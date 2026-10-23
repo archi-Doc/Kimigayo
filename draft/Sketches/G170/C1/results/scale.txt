@@ -1,22 +1,17 @@
 == m185 scale (default limits)
-List<i32> is Cp: none Complete rounds=12 V=102 E=98 J=84760 N=23 median 48866 us
+List<i32> is Cp: none Complete rounds=12 V=113 E=118 J=45685 N=23 median 72131 us
 == m185 time (harness)
-List<i32> is Cp: C none Complete rounds=12 V=102 E=98 J=84760 N=23 established-at-stop 2 277 ms; ref5 none 116 ms; ref7 none 777 ms
+List<i32> is Cp: C none Complete rounds=12 V=113 E=118 J=45685 N=23 established-at-stop 2 451 ms; ref5 none 117 ms; ref7 none 697 ms
 == seed 4242 two-parameter model 12 time at 3,000 items
-List<i32> is K3: C none Resource (items 3016>3000) rounds=106 V=2389 E=1033 J=7330349 N=110 established-at-stop 2 4199 ms; ref5 none 14 ms; ref7 none 14 ms
+List<i32> is K3: C none Resource (items 3016>3000) rounds=106 V=2389 E=1033 J=4354743 N=110 established-at-stop 2 4331 ms; ref5 none 13 ms; ref7 none 14 ms
 == n39 time at 3,000 items
-T is V: C + Complete rounds=15 V=211 E=68 J=664874 N=22 established-at-stop 1 1875 ms; ref5 + 13 ms; ref7 + 19 ms
+T is V: C + Complete rounds=15 V=211 E=68 J=258683 N=22 established-at-stop 1 1719 ms; ref5 + 12 ms; ref7 + 20 ms
 == n39 time at 1000 items
-T is V: C + Complete rounds=15 V=211 E=68 J=664874 N=22 established-at-stop 1 1851 ms; ref5 + 13 ms; ref7 + 18 ms
+T is V: C + Complete rounds=15 V=211 E=68 J=258683 N=22 established-at-stop 1 1485 ms; ref5 + 12 ms; ref7 + 19 ms
 == n39 time at 2000 items
-T is V: C + Complete rounds=15 V=211 E=68 J=664874 N=22 established-at-stop 1 1856 ms; ref5 + 13 ms; ref7 + 17 ms
+T is V: C + Complete rounds=15 V=211 E=68 J=258683 N=22 established-at-stop 1 1645 ms; ref5 + 13 ms; ref7 + 19 ms
 == n39 scale (default limits)
-T is V: + Complete rounds=15 V=211 E=68 J=664874 N=22 median 412818 us
+T is V: + Complete rounds=15 V=211 E=68 J=258683 N=22 median 544270 us
 == seed 78 nested model 2 time at 3,000 items
-T is V: C + Resource (items 4513>3000) rounds=12 V=3872 E=856 J=1445594 N=209 established-at-stop 1 3931 ms; ref5 + 85 ms; ref7 + 271 ms
+T is V: C + Resource (items 4631>3000) rounds=12 V=3962 E=912 J=1081983 N=209 established-at-stop 1 6962 ms; ref5 + 82 ms; ref7 + 274 ms
 == seed 78 nested model 2 at 65,536 items
-T is V: C + Resource (items 101613>65536) rounds=16 V=97898 E=5022 J=38741964 N=1200 established-at-stop 1 175491 ms; ref5 + 135 ms; ref7 + 280 ms
-== seed 7 model 322
-List<i32> is Cp: C none Resource (items 3041>3000) rounds=62 V=2528 E=673 J=4495948 N=176 established-at-stop 2 3832 ms; ref5 none 29 ms; ref7 none 61 ms
-== seed 4245 model 14
-T.(K1).Y is Cp or K0: C none Complete rounds=1 V=4 E=3 J=20 N=8 established-at-stop 0 56 ms; ref5 none 61 ms; ref7 none 105 ms

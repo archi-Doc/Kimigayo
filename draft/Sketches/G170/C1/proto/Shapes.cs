@@ -99,34 +99,28 @@ public sealed class ShapeTable
     /// <summary>The bare-variable shape `$0`: a promise of any shape, and the pattern every promise agrees with.</summary>
     public int Fresh() => this.Node(new VarHead(0), []);
 
-    /// <summary>The kid at a path of constructor positions, through a shape node's kids or a class's constructor, renumbered;
-    /// null when the path leaves the structure.</summary>
-    public int? Sub(int s, int[] path)
+    /// <summary>The kid at a constructor position (rule 8 down): a shape node's kid, renumbered (a class as itself); a class or a
+    /// shape variable has no kid there, the bare-variable shape.</summary>
+    public int Sub(int s, int i)
+    {
+        if (s >= 0 || this.heads[-1 - s] is VarHead)
+        {
+            return this.Fresh();
+        }
+
+        var k = this.kids[-1 - s][i];
+        return k >= 0 ? this.g.Find(k) : this.Canonical(k);
+    }
+
+    /// <summary>The kid at a path of constructor positions.</summary>
+    public int Sub(int s, int[] path)
     {
         foreach (var i in path)
         {
-            if (s >= 0)
-            {
-                var n = this.g.Constructor(s);
-                if (n < 0 || this.g.KidCount(n) <= i)
-                {
-                    return null;
-                }
-
-                s = this.g.KidOf(n, i);
-            }
-            else
-            {
-                if (this.heads[-1 - s] is VarHead || this.kids[-1 - s].Length <= i)
-                {
-                    return null;
-                }
-
-                s = this.kids[-1 - s][i];
-            }
+            s = this.Sub(s, i);
         }
 
-        return s >= 0 ? this.g.Find(s) : this.Canonical(s);
+        return s;
     }
 
     private int Rename(int s, List<int> map)

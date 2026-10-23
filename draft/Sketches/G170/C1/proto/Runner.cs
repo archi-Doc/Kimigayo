@@ -874,6 +874,8 @@ public static class Runner
         // them and select the negated identity rows there as at the goal pair.
         failures += Expect("B projection-side: a promise at the goal's class materialized by the structure need", "contract K\n  associate X is List<i32>\ninput T is K", "T.(K).X is Array<U>", "- C");
         failures += Expect("B negated-row-kid: a negated identity row selected at a constructor's kid class", "contract K\n  associate X\n  clause Self.(K).X is not i32\ninput T is K\ninput U is Option<T.(K).X>", "U is Option<i32>", "- C");
+        failures += Expect("w3 negated row bound by its antecedent: the side's match leaves the other side to the antecedent", "contract K<A>\n  associate X\n  clause Self.(K).X is not A\ninput T is K<U>", "T.(K).X is U", "- C");
+        failures += Expect("conflicting class holding a constructor over itself: production stops at a premise error (B 3.3, 3.6)", "contract Cp\ncontract K4<A>\n  associate X is List<i32>\ninput T is K4<i32>\ninput T.(K4<i32>).X is i32\ninput U is Cp", "List<i32> is U", "- C");
         return failures;
     }
 
@@ -1034,7 +1036,7 @@ public static class Runner
             return 0;
         }
 
-        var results = new (Stats Stats, List<string> Log)[count];
+        var results = new (Stats Stats, Stats Classified, List<string> Log)[count];
         var clock = Stopwatch.StartNew();
         Parallel.For(0, count, new ParallelOptions { MaxDegreeOfParallelism = int.Parse(Environment.GetEnvironmentVariable("G170_THREADS") ?? "6") }, i =>
         {
@@ -1062,10 +1064,12 @@ public static class Runner
         });
 
         var st = new Stats();
+        var cst = new Stats();
         var printed = 0;
-        foreach (var (s, log) in results)
+        foreach (var (s, c, log) in results)
         {
             st.Add(s);
+            cst.Add(c);
             foreach (var line in log)
             {
                 if (!line.StartsWith("RESOURCE", StringComparison.Ordinal) && !line.StartsWith("ENUM-RESOURCE", StringComparison.Ordinal) || printed++ < 12)
@@ -1081,13 +1085,18 @@ public static class Runner
         Console.WriteLine($"   answer kinds on stable agreement: {string.Join(", ", st.PositiveBy.OrderBy(x => x.Key).Select(x => x.Key + "=" + x.Value))}");
         Console.WriteLine($"   Enumerate: {st.Enumerations}: agree {st.EnumAgree}, disagree {st.EnumDisagree}, C Resource {st.EnumResource}, unstable {st.EnumUnstable}");
         Console.WriteLine($"   recursive classification (Model's declaration search vs the reference's bounded SPEC 8.3.3 closure): {st.Contracts} Contracts, {st.Recursive} recursive, {st.ClassificationDiffers} differ");
+        Console.WriteLine($"   models whose classifications differ (compared apart; the classification is C4's): {cst.Models}; Supply queries {cst.Queries}: stable {cst.Stable} (agree {cst.Agree}, disagree {cst.Disagree}, C Resource {cst.ResourceStable}), unstable {cst.Unstable}; Enumerate {cst.Enumerations}: agree {cst.EnumAgree}, disagree {cst.EnumDisagree}, C Resource {cst.EnumResource}");
         Console.WriteLine($"   cost per stable request: V {Dist(st.V)}; E {Dist(st.E)}; J {Dist(st.J)}; N {Dist(st.N)}; rounds {Dist(st.Rounds)}");
         return st.Disagree + st.EnumDisagree;
     }
 
-    private static (Stats, List<string>) OneModel(int i, string text, List<string> queries, List<string> subjects)
+    // A model whose Model classification (recursive or not) differs from the reference's is compared apart (cst): its answers can
+    // differ by the classification alone, which is C4's to decide, and nothing is hidden.
+    private static (Stats, Stats, List<string>) OneModel(int i, string text, List<string> queries, List<string> subjects)
     {
         var st = new Stats();
+        var cst = new Stats();
+        var flagged = false;
         var log = new List<string>();
         var nl = Environment.NewLine;
         var m = ModelText.Parse(text);
@@ -1142,40 +1151,43 @@ public static class Runner
                 st.ClassificationDiffers += differs.Count;
                 if (differs.Count != 0)
                 {
+                    flagged = true;
+                    cst.Models++;
                     log.Add($"CLASSIFICATION model {i}: {string.Join(", ", differs.Select(d => d.Name + (d.Recursive ? " (Model only)" : " (reference only)")))}{nl}{text}");
                 }
             }
 
+            var q = flagged ? cst : st;
             // Reference-derived queries: facts the bounded reference found on the query subjects (positive-biased).
             var derived = querySubjects.SelectMany(s => r1.FactsOn(s).Take(3).Select(x => x.Positive ? new Formula(FK.Is, s, x.Ref) : new Formula(FK.Not, l: new Formula(FK.Is, s, x.Ref)))).Take(8).ToList();
-            st.Derived += derived.Count;
+            q.Derived += derived.Count;
             var solver = new Solver(m);
             foreach (var f in formulas.Concat(derived))
             {
-                st.Queries++;
-                st.Frozen += view == View.Ordinary ? 0 : 1;
+                q.Queries++;
+                q.Frozen += view == View.Ordinary ? 0 : 1;
                 var a = solver.Supply(f, view, Harness);
                 var x1 = r1.Answer(f);
                 var x2 = r2.Answer(f);
                 if (a.Outcome == Outcome.Provisional)
                 {
-                    st.Provisional++;
+                    q.Provisional++;
                 }
 
                 if (x1 != x2)
                 {
-                    st.Unstable++;
-                    st.ResourceUnstable += a.Outcome == Outcome.Resource ? 1 : 0;
+                    q.Unstable++;
+                    q.ResourceUnstable += a.Outcome == Outcome.Resource ? 1 : 0;
                     continue;
                 }
 
-                st.Stable++;
+                q.Stable++;
                 if (a.Outcome == Outcome.Resource)
                 {
-                    st.ResourceStable++;
+                    q.ResourceStable++;
                     if (x1 == (false, false))
                     {
-                        st.ResourceNone++;
+                        q.ResourceNone++;
                     }
 
                     log.Add($"RESOURCE-ON-STABLE model {i} view {view.Name}: {f} ref {x1} C {a}{nl}{text}");
@@ -1187,21 +1199,21 @@ public static class Runner
                     continue;
                 }
 
-                st.V.Add(a.V);
-                st.E.Add(a.E);
-                st.J.Add(a.J);
-                st.N.Add(a.N);
-                st.Rounds.Add(a.Rounds);
+                q.V.Add(a.V);
+                q.E.Add(a.E);
+                q.J.Add(a.J);
+                q.N.Add(a.N);
+                q.Rounds.Add(a.Rounds);
                 var kind = (f.Kind == FK.Not ? f.L! : f).Kind + (f.IsAtom ? string.Empty : "-compound") + (a.Positive ? "+" : "") + (a.Negative ? "-" : "");
-                st.PositiveBy[kind] = st.PositiveBy.GetValueOrDefault(kind) + 1;
+                q.PositiveBy[kind] = q.PositiveBy.GetValueOrDefault(kind) + 1;
                 if ((a.Positive, a.Negative) == x1)
                 {
-                    st.Agree++;
+                    q.Agree++;
                 }
                 else
                 {
-                    st.Disagree++;
-                    log.Add($"DISAGREE model {i} view {view.Name}: {f} ref {x1} C {a}{nl}{text}");
+                    q.Disagree++;
+                    log.Add($"{(flagged ? "CLASSIFICATION-" : "")}DISAGREE model {i} view {view.Name}: {f} ref {x1} C {a}{nl}{text}");
                 }
             }
 
@@ -1212,7 +1224,7 @@ public static class Runner
 
             foreach (var s in subjectTerms)
             {
-                st.Enumerations++;
+                q.Enumerations++;
                 var a = solver.Enumerate(s, view, Harness);
                 var f1 = r1.FactsOn(s).Select(x => (x.Positive, x.Ref)).ToList();
                 var f2 = r2.FactsOn(s).Select(x => (x.Positive, x.Ref)).ToList();
@@ -1220,13 +1232,13 @@ public static class Runner
                 var c2 = Classes(r2, f2);
                 if (c1 != c2)
                 {
-                    st.EnumUnstable++;
+                    q.EnumUnstable++;
                     continue;
                 }
 
                 if (a.Outcome == Outcome.Resource)
                 {
-                    st.EnumResource++;
+                    q.EnumResource++;
                     log.Add($"ENUM-RESOURCE model {i}: {s} ref {c1} C {a}{nl}{text}");
                     continue;
                 }
@@ -1234,17 +1246,17 @@ public static class Runner
                 var complete = f1.All(x => Holds(new Solver(m).Supply(new Formula(FK.Is, s, x.Ref), view), x.Positive));
                 if (complete && a.Facts.Count == c1)
                 {
-                    st.EnumAgree++;
+                    q.EnumAgree++;
                 }
                 else
                 {
-                    st.EnumDisagree++;
-                    log.Add($"ENUM-DISAGREE model {i}: {s} ref [{string.Join(" ", f1.Select(x => (x.Positive ? "+" : "-") + x.Ref))}] ({c1} classes) C [{string.Join(" ", a.Facts)}] complete={complete}{nl}{text}");
+                    q.EnumDisagree++;
+                    log.Add($"{(flagged ? "CLASSIFICATION-" : "")}ENUM-DISAGREE model {i}: {s} ref [{string.Join(" ", f1.Select(x => (x.Positive ? "+" : "-") + x.Ref))}] ({c1} classes) C [{string.Join(" ", a.Facts)}] complete={complete}{nl}{text}");
                 }
             }
         }
 
-        return (st, log);
+        return (st, cst, log);
     }
 
     private static bool Holds(Answer a, bool positive) => a.Outcome != Outcome.Resource && (positive ? a.Positive : a.Negative);
@@ -1642,6 +1654,13 @@ public static class Runner
     // Declaration order (templates and Contracts) shuffled; ordinary and frozen views. Each request is compared in full (verdict,
     // outcome, reason, rounds, V, E, J, N, peak items) at harness limits, then at its own need and need − 1 for each limit: the
     // limit outcome must be the same in both orders, Complete/Provisional at the need and Resource below it.
+    // Fixed order models (the final reviews' witnesses) run before the generated ones: model 94 of `order 100 20261022` (track P's
+    // final review): a bound-expansion instance waiting for `List<i32>` was woken, and counted, by every later `List<…>` node.
+    private static readonly (string Text, string[] Queries)[] OrderFixed =
+    [
+        ("contract Cp\ncontract K0\ncontract K1\n  clause Self is K1\n  clause Self is K1\ncontract K2\n  associate X\n  clause Self.(K2).X is List<i32>\ninput T is K2\ninput U is K1\ninput U is not Cp\ninput T.(K2).X is i32\ninput List<U> is Cp\nconformance S1 is K0\nconformance S2 is K0", ["T is K1"]),
+    ];
+
     private static int Order(int count, int seed)
     {
         var rnd = new Random(seed);
@@ -1649,12 +1668,21 @@ public static class Runner
         var boundaries = 0;
         var differences = 0;
         var unexpected = 0;
-        for (var i = 0; i < count; i++)
+        for (var i = -OrderFixed.Length; i < count; i++)
         {
-            var text = Generate(rnd, out var queries, out _);
+            List<string> queries;
+            string text;
+            if (i < 0)
+            {
+                (text, queries) = (OrderFixed[i + OrderFixed.Length].Text, OrderFixed[i + OrderFixed.Length].Queries.ToList());
+            }
+            else
+            {
+                text = Generate(rnd, out queries, out _);
+            }
             var m = ModelText.Parse(text);
             var shuffled = ModelText.Parse(text);
-            var order = rnd;
+            var order = i < 0 ? new Random(seed) : rnd; // a fixed model's shuffle leaves the generated sequence as it was
             var templates = shuffled.Templates.OrderBy(_ => order.Next()).ToList();
             shuffled.Templates.Clear();
             shuffled.Templates.AddRange(templates);
@@ -1712,7 +1740,7 @@ public static class Runner
             }
         }
 
-        Console.WriteLine($"== ORDER: {requests} requests on {count} models (templates and Contracts shuffled; ordinary and frozen views) and {boundaries} limit-boundary runs: {differences} differ in verdict, outcome, reason, rounds, V, E, J, N or peak items; {unexpected} boundary outcomes other than Complete/Provisional at the need and Resource below it");
+        Console.WriteLine($"== ORDER: {requests} requests on {count} models and {OrderFixed.Length} fixed (templates and Contracts shuffled; ordinary and frozen views) and {boundaries} limit-boundary runs: {differences} differ in verdict, outcome, reason, rounds, V, E, J, N or peak items; {unexpected} boundary outcomes other than Complete/Provisional at the need and Resource below it");
         return differences + unexpected;
 
         int Compare(int model, string q, View view, string setting, Answer x, Answer y)
