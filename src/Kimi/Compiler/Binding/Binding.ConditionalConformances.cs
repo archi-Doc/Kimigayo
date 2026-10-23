@@ -196,7 +196,7 @@ public sealed partial class Binding
             {
                 this.ValidateConditionalBlock(syntax, container);
                 this.BindConstraint(target, outer);
-                if (container.BoundSymbol!.Schema!.GenericSlots.Count == 0 || target.Left is not IdentifierNameKoto { IdentifierName: "Self" } || target.BoundConstraint is not { Kind: ConstraintKind.Contract, Contract: { Contract: not null } contract } || premises.Operands.Length == 0)
+                if (container.BoundSymbol!.Schema!.GenericSlots.Count == 0 || target.Left is not IdentifierNameKoto { IdentifierName: "Self" } || target.BoundConstraint is not { Kind: ConstraintKind.Contract, Contract: { } contract } || premises.Operands.Length == 0)
                 {
                     this.Fail(syntax, BindingFailure.InvalidConstraint);
                     continue;
@@ -206,18 +206,17 @@ public sealed partial class Binding
                 {
                     this.Fail(target, BindingFailure.ClosedContractConformance); // SPEC 8.7: the conforming Types of a closed Contract are fixed.
                 }
-                else if (IntrinsicContract.Of(contract.Intrinsic).Declaration == BindingFailure.None)
+                else if (IntrinsicContract.Of(contract.Intrinsic).Declaration is not BindingFailure.None and var failure)
+                {
+                    this.Fail(target, failure); // SPEC 8.7.1: decided by the Type's structure alone.
+                }
+                else
                 {
                     this.RegisterConformanceDeclaration(container.BoundSymbol!, contract, target, scope, premises);
                     if (IsRefinement(contract, this.Library.Copy))
                     {
                         this.RegisterCopy(target, container, scope, premises);
                     }
-                }
-                else
-                {
-                    // SPEC 8.7.3: ObjectPayload is never granted, conditionally or otherwise.
-                    this.Fail(syntax, contract.Intrinsic == IntrinsicKind.ObjectPayload ? BindingFailure.InvalidSelfClause : BindingFailure.InvalidConstraint);
                 }
 
                 continue;
