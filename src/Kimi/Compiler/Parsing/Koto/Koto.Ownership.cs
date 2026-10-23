@@ -9,6 +9,9 @@ namespace Kimi.Compiler.Parsing;
 // outputs are parent links and edit notifications. Replacements cannot have another parent; binding owns semantic rebuilding.
 public abstract partial class Koto
 {
+    private CodeContext codeContext;
+    private Koto? parent;
+
     /// <summary>Gets the diagnostic destination associated with this node.</summary>
     public DiagnosticCollection? DiagnosticCollection => this.CodeContext?.DiagnosticCollection;
 
@@ -16,10 +19,36 @@ public abstract partial class Koto
     public SourceSpan Span { get; internal set; }
 
     /// <summary>Gets the code context that owns this node.</summary>
-    public CodeContext CodeContext { get; internal set; }
+    public CodeContext CodeContext
+    {
+        get => this.codeContext;
+        internal set
+        {
+            if (ReferenceEquals(this.codeContext, value))
+            {
+                return;
+            }
+
+            this.ChangeModule(value);
+            this.codeContext.CopyRecoveryTo(this, value);
+            this.codeContext = value;
+        }
+    }
 
     /// <summary>Gets the parent node, or <see langword="null"/> for the root.</summary>
-    public Koto? Parent { get; internal set; }
+    public Koto? Parent
+    {
+        get => this.parent;
+        internal set
+        {
+            if (value is not null)
+            {
+                this.ChangeModule(value.CodeContext);
+            }
+
+            this.parent = value;
+        }
+    }
 
     /// <summary>Gets the table that numbers this node, or <see langword="null"/> while the node has no id.</summary>
     public SyntaxTable? SyntaxOwner { get; internal set; }
@@ -89,6 +118,8 @@ public abstract partial class Koto
 
         if (this.AttributeChain == oldKoto && newKoto is AttributeKoto attribute)
         {
+            attribute.TakeSource(oldKoto);
+            attribute.Parent = this;
             // Only the head is replaced; the remaining attributes stay attached behind it.
             if (attribute.AttributeChain is null && oldKoto.AttributeChain is { } rest)
             {
@@ -109,6 +140,8 @@ public abstract partial class Koto
             {
                 return false;
             }
+
+            newKoto.TakeSource(oldKoto);
         }
 
         oldKoto.Parent = default;
@@ -147,8 +180,7 @@ public abstract partial class Koto
             throw new InvalidOperationException("A replacement cannot overwrite an existing attribute chain.");
         }
 
-        replacement.CodeContext = current.CodeContext;
-        replacement.Span = current.Span;
+        replacement.TakeSource(current);
         if (current.AttributeChain is { } attributes)
         {
             current.AttributeChain = null;
@@ -216,5 +248,17 @@ public abstract partial class Koto
                 children[i].Parent = this;
             }
         }
+    }
+
+    // A replacement takes the old slot's source metadata only after admission; its descendants keep their own documents.
+    private void TakeSource(Koto original)
+    {
+        if (this is NumberLiteralKoto number && (this.Span != original.Span || !ReferenceEquals(this.CodeContext, original.CodeContext)))
+        {
+            number.PreserveSourceSpelling();
+        }
+
+        this.CodeContext = original.CodeContext;
+        this.Span = original.Span;
     }
 }

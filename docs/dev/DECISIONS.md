@@ -26,13 +26,40 @@ rules that result from them.
   compensating in the ledger. Rejected: a new general detachment API in `ChildSlots` (misses attribute ownership),
   and automatic stealing in `KotoHelper` (implicitly changes another tree). The successful production path adds one null
   check and no allocation; the test setup explicitly represents the same ownership rule.
-  Scope: a correctly detached compound subtree from another compilation already fails reanalysis before this
+  Superseded for current ownership and root provenance transfer by AST2 below. Original scope: a correctly detached compound subtree from another compilation already fails reanalysis before this
   guard (G235). Semantic readers, including `HirTables.HasCurrentBinding`, confuse source provenance with its
   current semantic owner. Fixing that predicate alone would leave other readers and edit invalidation inconsistent;
   a consistent owner-publication design is a separate unit. The iteration-body and requirement-premise editing
   tests use a donor source unit in the recipient compilation, reestablish verified analysis after donor preparation,
   then retain their original edit, reanalysis, generation and diagnostic assertions. Cross-compilation syntax-ID
   relocation tests remain; their passing cases do not certify compound-subtree reanalysis.
+
+- **AST2 Current ownership of transplanted syntax** (2026-10-24, planning session; G235).
+  Attachment establishes the current module and diagnostic target for the whole reachable subtree. A node's
+  `CodeContext` carries that current ownership and its immutable source snapshot; descendants keep their documents
+  and spans. `Koto.Ownership` admits a replacement, transfers the old slot's root provenance, then attaches it,
+  before adopting retained children. `ReplaceChild` and `ReplaceAt` share this rule, including lazy numeric spelling;
+  `KotoHelper.Replace` remains the public facade. Constructors initialize context storage directly.
+  `Koto.Relocation` uses the canonical child walk and operation-local context, evidence and membership maps.
+  Relocation scans source/recipient documentation registries and indexes donor syntax facts only when recovery is moved.
+  Same-module attachment neither walks nor allocates and preserves custom diagnostic contexts. Cross-module
+  attachment copies contexts to the destination context's actual diagnostic target and immediately clears foreign
+  SyntaxIds. Binding rebuilds foreign HIR rows and opaque plans; renumbering preserves rows only within one table.
+  This supersedes AST1's G235 limitation and R2a's cross-module row preservation, which retained donor-owned plans.
+  DiagnosticOwner transfers only referenced syntax causes and their prerequisite closure, with source, related and
+  repair locations reindexed in source order. Context recovery and ErrorKoto causes both survive root provenance
+  replacement, including a custom diagnostic owner in the same module; missing known evidence is a contract fault.
+  DocumentationSource snapshots only moved declarations; the recipient registry replaces their previous associations,
+  retiring empty fragments. Mutable comments and optional-failure ownership are not shared across compilations.
+  Source identity compares immutable documents. Source-less contexts gain one lazy opaque token on first relocation;
+  initializing that token is monotonic and shared copies retain no donor context. CodeContext adds one reference;
+  Koto adds no storage. All transfer maps expire with the operation; none is a new persistent semantic table.
+  Hidden syntax reacquires ownership at activation through ordinary attachment; the implicit constructor now follows
+  that path. Parser-only DeclaringContainer provenance remains outside semantic ownership and can retain its source.
+  Independently compared: an explicit current-module field on every Koto versus rebased contexts. The latter keeps
+  existing semantic readers canonical without per-node storage or about a hundred reader changes. Rejected: repairing
+  only HasCurrentBinding, rebinding the donor, parent-chain lookup, per-plan transfer cases, copying unrelated errors
+  or comments, and replacing all descendant source metadata with the parent context.
 
 ## Build artifacts
 

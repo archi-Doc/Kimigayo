@@ -61,23 +61,7 @@ public static partial class KotoHelper
     /// <returns><see langword="true"/> when the child was replaced.</returns>
     /// <exception cref="InvalidOperationException">The replacement child is already attached; no node or analysis state is changed.</exception>
     public static bool Replace(Koto parent, Koto oldKoto, Koto newKoto)
-    {
-        if (parent.ReplaceChild(oldKoto, newKoto))
-        {
-            if (newKoto is NumberLiteralKoto number &&
-                (newKoto.Span != oldKoto.Span || !ReferenceEquals(newKoto.CodeContext, oldKoto.CodeContext)))
-            {
-                number.PreserveSourceSpelling();
-            }
-
-            // Preserve the source metadata associated with the replaced expression.
-            newKoto.Span = oldKoto.Span;
-            newKoto.CodeContext = oldKoto.CodeContext;
-            return true;
-        }
-
-        return false;
-    }
+        => parent.ReplaceChild(oldKoto, newKoto);
 
     /// <summary>
     /// Reads the qualified Name of a root group: Names separated by dots, whitespace allowed between the parts. A reserved word or

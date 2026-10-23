@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-public class UserIterationTest
+public partial class UserIterationTest
 {
     private const string Drain =
         "struct Drain<T>\n    Self is Iterator\n    associate Iterator.Item is T\n    var value: Option<T>\n" +
@@ -54,13 +54,9 @@ public class UserIterationTest
     {
         var c = MinimalEmissionTest.Analyze(Counter + Three + "for item in Three.init() => ()");
         var loop = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>());
-        var donor = new Kotonoha(c, "donor", "donor.kimi");
-        donor.AddSource(new SourceDocument("donor.kimi", Counter + Three + "for item in Three.init() => Console.writeLine(\"changed\")"));
-        var changed = Assert.Single(KotoTree.Walk(donor.RootKoto).OfType<ForKoto>());
-        var body = ParseTestHelper.Detach(changed.Body, new CodeBlockKoto(loop.CodeContext));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        var donor = MinimalEmissionTest.Analyze(Counter + Three + "for item in Three.init() => Console.writeLine(\"changed\")", "donor.kimi");
+        var changed = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<ForKoto>());
+        var body = ParseTestHelper.Detach(changed.Body, new CodeBlockKoto(changed.CodeContext));
         Assert.True(KotoHelper.Replace(loop, loop.Body, body));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Same(loop.Body, loop.IterationOf().Plan!.Decomposition.Arms[0].Syntax.Body);

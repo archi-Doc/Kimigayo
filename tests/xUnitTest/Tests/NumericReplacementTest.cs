@@ -33,6 +33,24 @@ public class NumericReplacementTest
     }
 
     [Fact]
+    public void ArgumentReplacementPreservesLazyDigitsAndDiagnosticLocation()
+    {
+        const string Literal = "2.5000000000000000001";
+        var recipient = CompilationTestHelper.BindSuccess("func take(value: f64) -> f64 => value\nlet result = take(0.0)");
+        var call = Assert.Single(KotoTree.Walk(recipient.Kotonoha.RootKoto).OfType<InvocationKoto>());
+        var old = call.ArgumentNodes[0];
+        var donor = ParseTestHelper.ParseSingleFunction("func donor() => " + Literal);
+        var number = Assert.IsType<NumberLiteralKoto>(donor.ExpressionBody);
+        ParseTestHelper.Detach(number, new CodeBlockKoto(number.CodeContext));
+        call.ReplaceArgument(0, number);
+        Assert.Same(old.CodeContext, number.CodeContext);
+        Assert.Equal(old.Span, number.Span);
+        Assert.Equal(Literal, number.SourceSpelling.ToString());
+        Assert.True(recipient.Bind().IsComplete, MinimalEmissionTest.Describe(recipient, null));
+        Assert.Equal(Literal, number.ToString());
+    }
+
+    [Fact]
     public void NumericReplacementRecomputesInferredPropertyType()
     {
         var c = MinimalEmissionTest.Analyze("enum Hidden\n    A\npublic group Api\n    public let item = Hidden.A");

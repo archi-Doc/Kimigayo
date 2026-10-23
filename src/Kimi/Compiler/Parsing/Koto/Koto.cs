@@ -374,7 +374,7 @@ public enum KotoKind : byte
 /// Provides the base representation of a Koto syntax-tree node.
 /// </summary>
 /// <remarks>
-/// Tree links (<see cref="Parent"/>, <see cref="CodeContext"/>) are set during parsing.
+/// Attachment establishes the current module and diagnostic target; source documents and spans retain provenance.
 /// Concrete nodes enumerate their children through <see cref="ChildNodes"/>.
 /// </remarks>
 public abstract partial class Koto
@@ -406,7 +406,7 @@ public abstract partial class Koto
     [MemberNotNullWhen(false, nameof(Parent))]
     public bool IsRoot => this.Parent is null;
 
-    /// <summary>Gets the source unit that owns this node.</summary>
+    /// <summary>Gets the current source unit that owns this node.</summary>
     public Kotonoha Kotonoha => this.CodeContext.Kotonoha;
 
     /// <summary>Gets a value indicating whether the node is a top-level declaration.</summary>
@@ -419,7 +419,7 @@ public abstract partial class Koto
     /// <param name="range">The node span.</param>
     public Koto(ref TokenReader reader, SourceSpan range)
     {
-        this.CodeContext = reader.CodeContext;
+        this.codeContext = reader.CodeContext;
         this.Span = range;
         if (reader.AttributeKoto is not null)
         {
@@ -429,7 +429,7 @@ public abstract partial class Koto
 
     internal Koto(CodeContext codeContext, SourceSpan range)
     {
-        this.CodeContext = codeContext;
+        this.codeContext = codeContext;
         this.Span = range;
     }
 

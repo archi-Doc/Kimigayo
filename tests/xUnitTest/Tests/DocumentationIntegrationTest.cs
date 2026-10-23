@@ -10,7 +10,7 @@ using Xunit;
 
 namespace XunitTest;
 
-public class DocumentationIntegrationTest(ITestOutputHelper output)
+public partial class DocumentationIntegrationTest(ITestOutputHelper output)
 {
     [Theory]
     [InlineData("/// d\ngroup G")]

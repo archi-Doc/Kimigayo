@@ -10,7 +10,7 @@ namespace Kimi.Compiler.Documentation;
 #pragma warning disable SA1202 // Keep source collection and extraction responsibilities together.
 
 /// <summary>Documentation for one immutable source snapshot; never part of executable syntax.</summary>
-public sealed class DocumentationSource
+public sealed partial class DocumentationSource
 {
     private readonly List<DocumentationComment> comments = new();
     private readonly Compilation? optionalOwner;
