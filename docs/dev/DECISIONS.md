@@ -4516,6 +4516,20 @@ resumed by R4-M86 (2026-10-20).
     session's (C1 N10): `ConstraintProof.Resource` (Q2); TypeIdentity's classes in a separate unit (Q4, OQ5).
   - PD21 (ruling 3): neither Binding.Constraints.cs nor Binding.ConstraintValidation.cs is due; the move restructures
     Binding.Constraints.cs below the token limit, and Binding.Contracts.cs shrinks (still over, no growth).
+  - C2 is C2a (the planning session's ruling on the measurement, 2026-10-23): Supply, the evidence view and the moves. `Enumerate`,
+    `SubjectFact`, `SubjectEvidence` and `Available` are not at C2. The eight Enumerate routings (FindAssociated, RequirementMember's
+    scan, HasContractFact, SelectArithmetic, ValidateArithmeticDirections' inner loop, ContractTypeCore, HasValueRole and
+    AdmittedSemantics; each a pure move, its trio without differences) are held for C3 on `claude/bu30-g170-c2b-held`
+    (1bee3c89a): C3's evaluator replaces the answers behind Enumerate, and its performance gate measures the routing with it.
+    Measured (pinned, interleaved, median of run medians): warm Bind Milestone1 +1.1%, Milestone27 +0.9%, outside the A/A spread
+    (C2a inside it); cold bytes equal. Cause: the subject rule (`AssociatedIdentityMatches(ClauseSubject(fact), subject)`) runs on
+    every fact of the chain before each consumer's kind test. Rejected: accepting +1%; the `fact.Subject ?? ClauseSubject(fact)`
+    variant (+0.4%, still outside the spread, and resting on an unstated `BoundConstraint` invariant, that a composite carries no
+    Subject). The census `draft/Sketches/G170/C2/census-c2.tsv` (56 rows) gives each read's disposition and C3 change;
+    AdmittedSemantics corrects C1 §8 ("none: inputs"): it reads derived facts today (AddArithmeticPremises' Owner premise), so its
+    C3 operation is Enumerate's compound rows.
+  - Ruling 4: AvailableEffectBounds' `ReferenceEquals` match misses a universal family pattern's bounds, a wrong result reproduced on
+    the default pipeline (a valid program rejected; the census row), filed as PLAN G234 by the planning session; not changed here.
   - Rejected: routing every read now (22 reads differ in subject relation, Invalid treatment, availability order or C3 operation, so
     routing them is C3's behavior change or a consumer filter imitating the old narrowing, a second copy of a rule); Supply only (C3
     would introduce Enumerate and rewrite every lookup reader with the evaluator); environments publishing facts by clause subject (a
