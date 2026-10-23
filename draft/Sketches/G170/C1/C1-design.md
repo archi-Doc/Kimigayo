@@ -16,7 +16,7 @@ SPEC 8.2.3's non-decomposition. [proto/](proto/): model, identity classes (`EGra
 2. **Agreement** (§2): 0 disagreements on 61,137 stable Supply queries and 5,282 enumerations over ten seeds and four profiles
    (two enumerations re-supplied at Resource; models whose classifications differ compared apart); the reference is independent. 3. **Real-source
    witnesses** (§3): G170 at every depth whatever the spelling, G180's probes, frozen views; the corpus matches `ProveCopy`. 4. **Resource** (§4): two
-   limits, order-free (290 requests, 980 boundary runs, three nested seeds included: 0 differ, J included); a published Resource state per source; the Proven obtained stands at a limit.
+   limits, order-free (3,166 requests, 10,092 boundary runs, three nested seeds included: 0 differ, J included); a published Resource state per source; the Proven obtained stands at a limit.
 
 ## 1. Rule selection (§4.3 step 2)
 
@@ -166,11 +166,10 @@ in D's own; without read sets (OQ3 (c)) `E.(Q).W is i32` is none in D's view (to
   stored chain promises; the seeded state counts); 4,096 and 65,536 provisional (§9); no join-work or read-alternatives limit.
   **Order-free**: each limit reads the state after a round and rounds are Jacobi; J (reported, never a limit) counts matching
   steps, index entries, probes and promise agreements (R3-N1), plus congruence repairs. `order` ([results/order.txt](results/order.txt)):
-  30 nested models on seeds 76 and 77 (145 / 145 requests, 496 / 484 boundary runs, where a merge follows a stored chain; seed 76 is the final
+  400 default models (seed 20261021: 1,833 requests, 5,752 boundary runs), 100 on seed 20261022 (453; 1,432), 100 two-parameter (seed 4242:
+  441; 1,438) and 30 nested, where a merge follows a stored chain, on seeds 76 / 77 / 78 (145 / 145 / 149; 496 / 484 / 490; seed 76 is the final
   review's B1 case, 21 of 636 differing in J before the round's promise table): 0 differ in verdict, outcome, reason, rounds, V, E, J, N or peak
-  items, Complete at the need and Resource below it; the final reviews' model 94 is a fixed model of `order` (a waiter woken by every node of its
-  head gave J 16 vs 14; 0 now). Seed 78, the default 400, seed 20261022 and the two-parameter runs are being regenerated on this build (the
-  previous build's files stand in `results/` until then; on it they were 0 differ, J included). **Tested values** (`resource`): G170 depth 8 and 64 complete at the need
+  items, Complete at the need and Resource below it; the final reviews' model 94 is a fixed model of `order` (a waiter woken by every node of its head gave J 16 vs 14; 0 now). **Tested values** (`resource`): G170 depth 8 and 64 complete at the need
   (depth 64: 130 rounds, 331 items) and are Resource at need − 1; a closed Type's infinite class is Resource at every limit;
   limit-keeps-proven (seed 20261022 model 312, `i32 is Cp` at 3,000 items) is judged Proven with one Resource record. **At a limit**
   (B 3.10, read literally): the answer keeps the polarities established at the stop; the judgment is Proven (both: Error) when the
