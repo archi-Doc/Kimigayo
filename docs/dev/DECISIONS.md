@@ -4397,7 +4397,8 @@ resumed by R4-M86 (2026-10-20).
   HIR contract (`HirAdjust.Of`, `HirAcquire.Reborrow`; the review's N-B1/C5): a same-mode Reborrow keeps the stored Semantics and
   referent, its Origin being Binding's name, the Type its consumer expects: a receiver's, argument's or payload's AdaptedType, a value
   call's callee operation's, the Subject borrow (`Hir.Patterns.Subject` tests Semantics and referent, not Type identity), the `$tryWrite`
-  writer operation's (`MirBuilder.Formatting` now passes it), or the destination's Type at a bare `let`/`var`/`return`, a tuple or
+  writer operation's (`MirBuilder.Formatting` now passes it), an object upcast's operand at `Reference(view Semantics, payload,
+  type.Origin)` (`MirBuilder.Operators.Convert`, bu31), or the destination's Type at a bare `let`/`var`/`return`, a tuple or
   array element, a Match binding or a capture (G227 states the capture's), and at an `if`, `match` or `do` result, whose common Type
   (SPEC 14.9.2) is chosen from the Types its sources supply: a result source without a fixed Target Result Type (a selection's or
   `do`'s body value, a jump's operand) is a bare acquisition position (SPEC 10.2; `Binding.BareAcquisition`'s
