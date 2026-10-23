@@ -36,9 +36,10 @@ dotnet run proto.cs -- -r16      # only round 16 (route taint, superseded); exit
 dotnet run proto.cs -- -r17      # only round 17 (body hold); exit code = its failures
 dotnet run proto.cs -- -r18      # only round 18 (ER-effects, A5-F5); exit code = its failures; -v adds every fact
 dotnet run proto.cs -- -r19      # only round 19 (ER-defaults, A5-F9); exit code = its failures; -v adds every fact
+dotnet run proto.cs -- -r20      # only round 20 (template ownership in copies, G171); exit code = its failures; -v adds every fact
 ```
 
-- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 7,092 lines after round 19.
+- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 7,810 lines after round 20 and unit 2b-3's round 18 record.
 - The first run takes about 30 s, mostly compilation; evaluation is a naive fixpoint.
 - `out.txt` holds the last `-v` run.
 
@@ -1504,14 +1505,15 @@ P42. e1–e5, e8–e9, e15 and their twins use implicit Loans (a writeback, a st
   A5 cannot tell that Loan's key from the ensured one, so a conflict of the initializer's keys that the proof would decide is the located
   `Unsupported_Kd` at the ensure. Without a live Loan on the Field, the keys are ordinary effects.
 
-**Cases.** The round has 34 cases: the audit's e1–e16 with lettered twins, the two F5 SPEC examples and e17. Each case states its SPEC
-verdict and R18's expected outcome. U is the located `Unsupported_Kd`.
+**Cases.** The round has 36 cases: the audit's e1–e16 with lettered twins, the two F5 SPEC examples, e17, and e10e and e10f (added by
+the 2b-D package's design A and review, recorded by unit 2b-3). Each case states its SPEC verdict and R18's expected outcome. U is the
+located `Unsupported_Kd`.
 
 | Case | Program | SPEC | R18 | Checks |
 | --- | --- | --- | --- | --- |
-| e1 | `State.count += g()`, g a common Function value | error | error at g() | Unknown vs the writeback's reservation (shared) |
-| e2 | `State.count += m()`, m reads State.count | valid | valid | a read key vs a reservation in its holder |
-| e3 | `State.count += w()`, w writes State.count | error | error at w() | a write key, any mode |
+| e1 | `State.counter.add(g())`, g a common Function value | error | error at g() | Unknown vs the receiver's reservation (shared) |
+| e2 | `State.counter.add(m())`, m reads State.counter | valid | valid | a read key vs a reservation in its holder |
+| e3 | `State.counter.add(w())`, w writes State.counter | error | error at w() | a write key, any mode |
 | e2u | `var u = State.count@uniq; m(); u@follow = 1` (P42) | error | error at m() | a read key vs a live uniq Loan |
 | e4 | `State.counter.bump()`, bump reads State.counter by name | error | error at the call | W6 |
 | e5 | the same, bump touches no static | valid | valid | |
@@ -1529,6 +1531,8 @@ verdict and R18's expected outcome. U is the located `Unsupported_Kd`.
 | e10b | the same without lx | error | error at the ensure | no proof |
 | e10c | the same without ll | valid | valid | nothing to meet |
 | e10d | lx on `Cache<i32>.S.x`, the ensure of `Cache<string>.S.x` (P42) | error | U at the ensure | P5 hides the other key |
+| e10e | lx and the ensure on one key, `Cache<string>.S.x` (P42) | valid | U at the ensure | P5 hides that the keys are one |
+| e10f | `var o = 1; var lx = o@ref; if k => (lx = State.x@ref); var ll = State.log@ref; let v = State.x; inspect(…)` (P42) | error | U at the ensure | the proof under may-liveness: lx carries x's Loan on one path only |
 | e11 | SPEC 15.6.4's `run` | error | error at g() | Unknown; l's immutable Loan unaffected |
 | e11b | `run` with l alone | valid | valid | |
 | e12a | `let c = State.count@ref; f(); inspect(c)`, f past A4's Limit, f reads (P42) | valid | U at f() | Limit |
@@ -1543,6 +1547,11 @@ verdict and R18's expected outcome. U is the located `Unsupported_Kd`.
 | e16b | the same with a second write `State.count = 6` (P42) | error | error at both writes | G136; finding 5 |
 | e16c | c dead at the write (P42) | valid | valid | G136 |
 | e17 | e11's conflict in a held body (round 16's closureRoute prefix; P42) | error | U at g() | R4-M73: the hold covers err(effect) |
+
+**Correction (unit 2b-3, 2026-10-21).** e1–e3 first modelled `State.count += f()` with the writeback's reservation pending during
+`f()`: an evaluation-order error. SPEC 13.7.2 secures the right operand before it locates and reserves the target (the MIR builder's
+`Update` does so), so that form meets nothing and is valid. The model's shape, a reservation pending while an argument's call runs, is
+the receiver form now named; its outcomes are unchanged. 2b-3's MIR test asserts the compound form valid and the receiver form's codes.
 
 **Run.** `-r18` reports 0 failures:
 
@@ -1559,9 +1568,10 @@ The full output and the `-v`, `-r13`, `-r15`, `-r16`, `-r17` and `-cases` output
 | `R18LiveOnly` (live-after holders and E only) | e4, e4m, e6 accepted: **UNSOUND** |
 | `R18NoR3` | e8, e9 accepted: **UNSOUND**; e8c valid |
 | `R18Merged` (G93's `bool`: Limit and Derived as Unknown) | Language errors at e8c and e12a (SPEC-valid) and at e13a (derived; R4-M10 drops it) |
-| `R18EnsureExact` (P42's key identity) | e10a valid, e10d error: SPEC's verdict in all four ensure cases |
-| `R18EnsureByField` (any live Loan on the Field as the proof) | e10a valid; e10d accepted: **UNSOUND** |
-| `R18EnsureIgnored` (no proof) | e10a error (over-strict); e10d error |
+| `R18EnsureExact` (P42's key identity) | e10a valid, e10d error, e10e valid; e10f accepted: **UNSOUND** |
+| `R18EnsureByField` (any live Loan on the Field as the proof) | e10a valid, e10e valid; e10d, e10f accepted: **UNSOUND** |
+| `R18EnsureIgnored` (no proof) | e10a, e10e error (over-strict); e10d, e10f error |
+| `R18EnsureClosed` (design A's closed-key proof; design B's `R18EnsureKeyed` is the same rule) | e10a valid; e10f accepted: **UNSOUND** |
 | `R18StaticEnds` (a static's whole write ends its Loans) | e16b: an error at the first write only |
 
 **G124 (`R18G`).** A confined witness's read of an immutable static is an environment effect unless the static's Type is proven
@@ -1600,7 +1610,9 @@ Transferable (SPEC 8.11.2; Unknown is unproven). `R18G.Transferable` follows SPE
 4. **PD12 (ii) is the only sound choice under P5 that keeps e10a free of a Language error.**
    - Taking any live Loan on the Field as the proof accepts e10d, which is unsound.
    - Ignoring the proof rejects e10a, which is over-strict.
-   - P42's key identity (`R18EnsureExact`) gives SPEC's verdict.
+   - Amended (the 2b-D review's P-1, recorded by unit 2b-3): P42's key identity (`R18EnsureExact`) and the closed-key proof
+     (`R18EnsureClosed`, `R18EnsureKeyed`) accept e10f, which is unsound: liveness is a may-property, so a Loan carried on one path proves
+     nothing on a path where the Field was never accessed. PD12 (ii) as written stays for every key (DECISIONS R4-M89 OQ-F5-6, R4-M92).
 5. **G136's lemma holds for verdicts but not for problems (a decision).** No verdict changes with the ending. But in e16b the compiler's
    rule (a static's write ends nothing) gives a second `ComparisonLoanConflict_Kd` at `State.count = 6`. `MirBorrows.Reports` takes the
    access as the subject, so R4-M71's key keeps both records.
@@ -1718,7 +1730,7 @@ other record). Borrow and Access are the two DefaultArgument codes; U is the loc
 
 **Run.** `-r19` reports 0 failures:
 
-- (i) The 459 earlier cases (425 plus round 18's 34) report the same (Loan, access) multiset under R19 as under R18, and none changes its
+- (i) The 459 earlier cases (425 plus round 18's 34 of then; 461 with e10e and e10f) report the same (Loan, access) multiset under R19 as under R18, and none changes its
   outcome. R4-M70's every-set rule made no earlier conflict `Unsupported_Kd`: each earlier default encoding also keeps the Loan in a clean
   holder.
 - (ii) Every round-19 case meets R19's expected outcome. None is unsound or over-strict against SPEC there, except dc-raw-hid-x, which G160
@@ -1787,3 +1799,160 @@ The full output and the `-v`, `-r13`, `-r15`, `-r16`, `-r17`, `-r18` and `-cases
 - The raw-pointer row's condition is given per case, not derived.
 - The copy lemma (a copy carries an inspection Loan into its slot only if its template's Return carries one in some view) is argued, not
   run: every invalid copy here has an invalid template, and R-a makes the lemma unnecessary.
+
+## Round 20 (template ownership of failures in inline default copies; PLAN G171, unit 2x-P11)
+
+**Input.** PLAN G171 and R4's fact check of 2026-10-21: on dev, `State.add(counter@uniq)` with `add(c: uniq/Counter, x: i32 =
+State.poke(counter@uniq))` in group State gives no MIR record, and its explicit twin `CallReservationConflict_Kd`. DECISIONS R4-M68–R4-M73 (R4-M69's
+Inlined drop and its premise, R4-M73's hold); `draft/Proposals/2026-10-20 M69 Default Loan Correspondence Plan.md` §§1, 4, 5, 7: option 3, with its §4
+nested table and §7 matrix as the checklist (its "adopted" status and R4-M84 are rolled-back records, DECISIONS R4-M86); SPEC 7.2.3, 15.6.4 and 15.6.7;
+DIAGNOSTICS' Defaults paragraph.
+
+**Model.** The round runs on R19: rule G, the body hold, the effect rules, and R-a without R4-M70's taint.
+
+- **Scopes.** `Node.Scope` and `Case.Scopes` give each scope's Outer, with Outer < index as MirValidator orders them. Every scope but the root is a copy's
+  Inlined scope, so Inlining(s) = s. A round-19 node marked `Inlined()` lies in one implicit copy scope.
+- **Copies.** A default's body is one `R20.Tpl`, built twice:
+  - as its template case (`dt20-`): the root scope, its value into `_0`, its slots as PreparedInputs;
+  - per omitting call, as a copy: a new Inlined scope whose labels, locals and Loan ids carry the copy's prefix `[fn/param]` (nested prefixes
+    concatenated; `#k` tells copies of one template apart), its value into the pending slot, with the prologue's shared borrows and R-a around it.
+  So a copy is its template under the prefix. A Loan's issuing scope is its issuing node's.
+- **Omission.** A failure that a rule gives a template is omitted (`Analysis.Omitted`, with its boundary). R4-M69 (R19) drops at a copy's node, and the
+  template it names is the access's copy.
+- **Candidate order.** Issue order, or the case's `LoanOrder`: the compiler's group and holder-scan order can put a later-issued Loan first.
+- **Statics.** State.counter, other and holder, all mutable. A group's unqualified borrow of its own storage is what Binding admits (G171's witness). (H)
+  marks a form whose Binding acceptance is unverified: a default whose value carries a borrow of group storage.
+
+**Rules.**
+
+- **R4-M69 today (`R19`).** A Loan problem whose access node lies in a copy is dropped.
+- **`R20Own` (the M69 plan's option 3).**
+  - Participating scopes: an access's or effect's scope and the conflicting Loan's issuing scope. An activation and a destroying call's destroy add the
+    reservation's issuing scope. err(ended) takes the EndBorrow's and the guard local's. R3 (Δf) takes the Drop's, as for a Loan 2b-D would issue there.
+  - The boundary is Inlining(Common(...)). A failure with a boundary is its template's and is omitted. Without one, the current body reports it, a held
+    view as a located U.
+  - It is decided per candidate, before the first is chosen.
+- **The simulation check (M69-0 in small).** For each omission, the boundary's template, run under the same rule, reports the same Loan at the same
+  access, both relative to the boundary (its prefix stripped), as an error or as a held view's U. Otherwise the omission is unsound.
+
+**Cases.** The round has 60 cases: 28 template bodies and 32 callers. SPEC is the verdict on the body's own code; a caller whose program fails only in a
+template is SPEC-valid in its own body. The expected outcome is SPEC's with one record per failure: the body's own failures, and the template-owned ones
+it omits. Each caller's templates are rows of `-r20`'s table with their own verdicts.
+
+| Case | Program | SPEC (the body; its template) | R20Own | today (R4-M69) | Checks |
+| --- | --- | --- | --- | --- | --- |
+| dc20-g171 | G171: `State.add(counter@uniq)` | error; valid | error at the copy's poke activation | dropped: **UNSOUND** | an activation vs the caller's reservation |
+| dc20-g171-disjoint, -read | the default pokes `other@uniq`; it is `State.peek(counter@ref)` | valid | valid | valid | |
+| dc20-g171-explicit | `State.add(counter@uniq, State.poke(counter@uniq))` | error | error | error | |
+| dc20-fx | `_ = counter.add()`, `x: i32 = State.touch()`, touch writes counter.count (the M69 plan §6's source) | error; valid | error at the copy's call | dropped: **UNSOUND** | G171's effect form (R18's R1) |
+| dc20-fx-disjoint, -read, -explicit | a key on other; a read key; the explicit argument | valid, valid, error | the same | the same | |
+| dc20-n1 | §4 row 1: `State.add(counter@uniq, State.f())`, f's `State.g()` (O), g's poke (I) | error; valid | error | dropped: **UNSOUND** | the caller's Loan, the access in I |
+| dc20-n2 | row 2: f2's `let r = counter@ref; State.g() + r.count` | valid; dt20-f2 error | omitted (f2's) | g's claim: **UNSOUND**; dt20-f2 drops it too | O's Loan, the access in I |
+| dc20-n3 | row 3: f3's `let k = State.keep(); counter.count = 1; k.count` (H) | valid; dt20-f3 error | omitted (f3's) | the same | I's Loan, the access in O after I |
+| dc20-n3top | row 3 at the top level: `let k = State.keep(); counter.count = 1; inspect(k)` (H) | error; valid | error | error | I's Loan, the caller's access |
+| dc20-n4 | row 4: f4's `State.h()`, h's `a = counter@ref` (H) and `b = State.poke(counter@uniq)` | valid; dt20-f4 error | omitted (f4's) | h.b's claim: **UNSOUND**; dt20-f4 drops it too | siblings in O |
+| dc20-sib | row 4 at the top level: `_ = State.h()` | error; valid | error | dropped: **UNSOUND** | siblings at the top level |
+| dc20-n5 | row 5: f5's `State.g5()`, g5's `let r = counter@ref; State.poke(counter@uniq) + r.count` | valid; dt20-g5 error | omitted (g5's) | the same | I / I |
+| dc20-twice | row 6: `let k1 = State.keep2(); let k2 = State.keep2(); inspect(k1)`, keep2's `State.poke(counter@uniq); counter@ref` (H) | error; valid | error at the second copy's poke | dropped: **UNSOUND** | equal syntax, two scopes |
+| dc20-twice-both | `State.add(counter@uniq); State.add(counter@uniq)` | error (twice); valid | error at both copies | dropped: **UNSOUND** | record identity |
+| dc20-act-out | model form: the copy's call activates the caller's reservation while the copy's r lives | error; A1's Move | error | dropped: **UNSOUND** | the reservation's scope |
+| dc20-first, -first-rev | `State.add5(counter@uniq)` (g5's body): r and the caller's reservation at one activation; r first, Lc first | error; dt20-add5 error | error (Lc), omitted (r) | dropped: **UNSOUND** | candidate priority |
+| dc20-indep | `let k = State.keepi(); counter.count = 1; inspect(k)`, keepi's `let r = counter@ref; State.poke(counter@uniq); r` (H) | error; error | error at the write, omitted at the poke | the same | independent conflicts on one Loan |
+| dc20-guard-in | gd's guard stores its candidate into the default's value (model form, as case 108) | valid; dt20-gd error | omitted (gd's) | the same | a guard ending inside |
+| dc20-guard-across | a copy inside the caller's guard copies the candidate (`keepd(a, b = a)`) into a value kept past the guard | error; valid | error at the EndBorrow | error | a guard ending across |
+| dc20-gen-u, -gen-r | `g<s/T>(v: s/T) => State.addg(v, counter@uniq)`, views uniq and ref | error; valid | error | dropped: **UNSOUND** | two views |
+| dc20-recur | `State.addr(counter@uniq, 3)`, `x = if n == 0 => State.poke(counter@uniq) else => State.addr(counter@uniq, n - 1)` | error; dt20-addr error | error at the template call | error | a template call has no copy |
+| dc20-held | `y0 = 2` while r0 lives, then `State.addh(counter@uniq)`; addh's default is e17's store prefix with g5's conflict | error; dt20-hold U | U at `y0 = 2` and at the copy's poke (Lc); omitted (r) | the copy's Lc dropped: **UNSOUND** | a held template beside the caller's failure |
+| dc20-limit | the same failure beside `State.addl(counter@uniq)`, addl's default past A4's Limit | error; valid | error at `y0 = 2`; U at the copy's call | the same | a Limit in a copy |
+| dc20-r3 | `_ = State.setd()`, `holder = Holder.init()` in the default, the old value's drop reading State.holder (e8) | valid; dt20-setd error | omitted (setd's) | the same | R3 in a copy |
+| dc20-loop | `var prev = other@ref; while c => (let k = State.keep2(); inspect(prev); prev = k)` (H) | error; valid | omitted, keep2's claim: **UNSOUND** (finding 2) | the same | a caller loop around a copy |
+| dc20-loop-nested | `_ = State.f6()`, f6's default holds the same loop | valid; dt20-loop error | omitted, keep2's claim: **UNSOUND**; dt20-loop omits it too | the same | the boundary is f6's |
+| dc20-loop-own | `while c => _ = State.g5()` | valid; dt20-g5 error | omitted (g5's) | the same | a loop around a template's failure |
+
+**Run.** `-r20` reports 0 failures:
+
+- (i) None of the 506 earlier cases (508 since unit 2b-3's e10e and e10f) has a Loan problem inside a copy: R19 drops nothing there. So R20Own and every
+  variant keep R19's (Loan, access) multiset and outcome in all of them.
+- (ii) Every round-20 case meets its expected outcome under R20Own, except the three loop cases (dt20-loop, dc20-loop, dc20-loop-nested), which record
+  finding 2 and are checked to reproduce it.
+- (iii) R20Own omits 15 failures. Its templates report 12 of them, the loop cases' three not. The run lists each omission and its template.
+- Records: dc20-twice-both's two failures share one subject (finding 5).
+
+The full output and the `-v`, `-r13`, `-r15`–`-r19`, `-r17 -v`, `-r18 -v`, `-r19 -v`, `-cases` (default and `None+PK ActivationEveryMode+PK
+NoFormationReport+PK`) and `-dump 9n` outputs are byte-equal to round 19's (checked; the new Abl members stay out of the S1′ variant table).
+
+| Variant | Cases it changes against R20Own |
+| --- | --- |
+| R4-M69 today (`R19`) | **UNSOUND**: the caller's failure is dropped in dc20-g171, -fx, -n1, -sib, -twice, -twice-both, -act-out, -first, -first-rev, -gen-u, -gen-r and -held. O's failure inside I's copy is dropped and claimed by I's template (valid) in dc20-n2 and -n4, and in their templates dt20-f2 and -f4 too. The loop cases are as under R20Own |
+| `R20AccessOnly` | the same as R4-M69 everywhere: R4-M69 is the access-scope rule |
+| `R20IssueOnly` | **UNSOUND**: dt20-f3, dt20-f4, dc20-n3, -n3top, -n4, -sib, -twice, -act-out, -indep (both accesses) |
+| `R20NoReservation` (no reservation scope) | **UNSOUND**: dc20-act-out |
+| `R20AfterSelect` (the recorder exception) | **UNSOUND**: dc20-first, where the covered r hides the caller's reservation; dc20-first-rev is unchanged |
+| `R20SameSpan` (copies of one template as one scope) | **UNSOUND**: dc20-twice |
+| `R20Entry` (repair candidate for finding 2) | dt20-loop and dc20-loop: error at the copy's poke; dc20-loop-nested: omitted as f6's, which reports it. Nothing else changes; without its liveness test dc20-loop-own gets an extra record |
+
+**Findings for 2b-D and 2e-D.**
+
+1. **R4-M69 drops failures the caller owns; R20Own reports them.**
+   - Today it drops them in 12 callers. In 2 more callers (dc20-n2, -n4) and their templates (dt20-f2, -f4) it drops an outer template's own failure:
+     the access lies in the inner copy, whose template is valid.
+   - G171's activation form needs no F5, so the MIR is unsound today, under the old pipeline's `Unsupported_Kd`. Its effect form (dc20-fx) arrives with 2b-3.
+   - So M69-2, or a rule as strong, must land with or before 2b-3.
+2. **R20Own is unsound on a loop around a copy (a finding; the rule is not adjusted).**
+   - In dc20-loop, dt20-loop and dc20-loop-nested, a Loan that the copy issued in an earlier evaluation reaches the next evaluation's access. The
+     earlier evaluation is a caller's loop iteration or the outer template's.
+   - The Loan's issuing scope equals the access's, so R20Own gives the failure to the copy's template. That template sees one evaluation and reports
+     nothing.
+   - R4-M69 drops the same failures, so this is no regression, but R20Own does not repair it. The issue scope names a site, not an evaluation. The M69
+     plan's simulation property ("the Loans issued within one enclosing template evaluation") cannot be read from it.
+   - It needs (H): a default whose value carries a borrow of group storage, the class of G171's static borrows; its effect form is the same.
+   - `R20Entry` repairs the model. A Loan that reaches the boundary's entry from outside, in a value live there (closed as the check sets close),
+     belongs to an earlier evaluation, so the boundary moves out to the outer template or the caller.
+   - It is sound on the three cases and changes nothing else in 566. Its liveness test is load-bearing: dc20-loop-own.
+   - In the compiler it needs the solve's state at each copy's entry from outside predecessors (or only for copies inside a cycle), read only for
+     covered candidates.
+   - Other options: a per-evaluation Loan identity at a copy's entry (more ids); or a copy inside a cycle taken as the caller's (an extra record for
+     template-owned failures, dc20-loop-own).
+   - M69-0's proof must cover loops around copies, and 2b-D or the M69 design must choose before M69-2.
+3. **Load-bearing parts of R20Own.**
+   - The access scope: issue-only is unsound in 9 cases.
+   - The issue scope: access-only is R4-M69.
+   - The reservation scope: dc20-act-out, a model form for which M69-0 must find a source form or classify it unreachable.
+   - Deciding before selection: dc20-first, while its reversed twin passes either way, so order matters.
+   - Scope identity, not source spans: dc20-twice.
+4. **R3 (2b-D).** With R3's Loan issued at the Drop, its only participating scope is the Drop's. So an R3 failure in a copy is always the template's,
+   and the template repeats it (dc20-r3, dt20-setd). If 2b-D issues no Loan, the Drop's scope alone serves the same way. An effect of the same Drop
+   against a caller's Loan stays the caller's (the effect row).
+5. **Record identity (2b-D, U11).**
+   - In dc20-twice-both, two caller-owned failures in two copies of one default, at two calls, share a subject: the default expression, where copies lie.
+   - R4-M71's key (code, subject, body) gives them one record with the first's facts, so the second call's anchor (Lc2) is lost until the first is fixed.
+   - With M69-2 deleting the Inlined fact, such a record also names no omitting call; the anchor is its only caller location.
+   - 2b-D or U11 chooses among:
+     - accepting the merge, which SPEC 23's visibility of independent errors argues against;
+     - a key or fact that separates copies;
+     - the omitting call as the subject of a caller-owned failure in a copy.
+   - The M69 plan excludes the last two; this case is a reason to revisit that.
+6. **Incomplete templates.**
+   - A P13-held template's copy holds the caller's view, since its store row lies in the caller's body. So the caller's independent failure and G171's
+     are located U (dc20-held).
+   - R4-M69 drops G171's there. The template's U is for its own Loan and covers nothing of the caller's.
+   - A Limit record in a copy depends on the caller's Loan, since the template has none (dc20-limit). It stays under every rule, and the independent
+     failure stays a Language error.
+7. **Guards, views, recursion.**
+   - err(ended)'s two scopes coincide in every form found, so the guard row decides as the access scope does (dc20-guard-in, -guard-across).
+   - The two views decide alike (dc20-gen-u, -gen-r).
+   - A template call has no copy: dc20-recur is reported by every rule, and dt20-addr reports its own recursion's conflict.
+8. **For 2e-D.**
+   - The round runs with R-a and no taint. R-a's inspection Loans are issued at the prologue, in the caller's scope, so a conflict on one inside a copy
+     would be the caller's. None arises: a copy only reads through them.
+   - If M69-2 lands before 2e-3, copies keep R4-M70's taint. The M69 plan §7's row for that interim is not run: a covered clean candidate first, a
+     taint-only one later.
+
+**Not modelled.**
+
+- The taint interim (M69-2 before 2e-3), and an observing destruction in a copy of a reservation the caller formed (the activation's twin, the same scopes).
+- Source forms (M69-0): the (H) defaults and the activation of an outside reservation (no source form known).
+- Builder details: composed substitutions, PairAcquire Copy or Reborrow per view, instance-elided Drops and rebind stability. Copies correspond to their
+  templates by construction.
+- The lifecycle half beyond the hold and Limit: A1's truncation, Opaque templates and case-bound rejection.
+- R4-M71's merge is reported, not run. The cost of the O(depth) walk and of `R20Entry`'s entry sets is not measured.

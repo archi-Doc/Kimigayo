@@ -191,38 +191,6 @@ public sealed partial class Binding
         this.types.ResetViews();
     }
 
-    private static bool InvalidDeclarationContext(Koto declaration)
-        => InvalidDeclarationContextCause(declaration) is not null;
-
-    // The nearest enclosing declaration (or conditional conformance) that failed; a member's check in that context rests on it.
-    // A declaration whose only failure keeps its signature valid (KeepsSignature: a form rule or the case bound) is no such context.
-    private static Koto? InvalidDeclarationContextCause(Koto declaration)
-    {
-        for (Koto? node = declaration; node is not null; node = node.Parent)
-        {
-            if ((node is DeclarationKoto or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance }) && node.BindingState == BindingState.Invalid &&
-                !KeepsSignature(node))
-            {
-                return node;
-            }
-        }
-
-        return null;
-    }
-
-    private static bool UnresolvedTypeDeclarationContext(Koto declaration)
-    {
-        for (Koto? node = declaration; node is not null; node = node.Parent)
-        {
-            if ((node is StructKoto or EnumKoto or ContractKoto && node.BindingState == BindingState.Unresolved) || node is ContractKoto { BoundSymbol.Contract.HasUnresolvedParents: true })
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     /// <summary>Gets the receiver shape of a function with a receiver (SPEC 7.3): its receiver's Semantics, or null.</summary>
     private static SemanticsKind? ReceiverShape(BindingSymbol symbol)
         => symbol.ReceiverIndex >= 0 && symbol.Declaration is FunctionKoto { IsSpecialization: false } function &&
@@ -472,10 +440,11 @@ public sealed partial class Binding
         this.ValidateLayoutFragments();
         this.ValidateBaseDeclarations();
         this.PrepareStorage();
+        // SPEC 5.7, 15.3.5: the slots' requirements and keepers exist before inline layouts substitute instances.
+        this.ComputeOriginRequirements();
         this.ValidateInlineLayouts();
         this.ValidateCLayoutFields();
         this.ValidateLibraryImports(); // Reads the C-layout fact and the prepared storage (SPEC 22.6).
-        this.ComputeOriginRequirements();
         this.ValidateSignatures();
         this.PrepareVirtualOverrides();
         this.ValidateContractDeclarations();
@@ -875,14 +844,6 @@ public sealed partial class Binding
         {
             // SPEC 8.1.2: a pair occurrence's Language cause, at the occurrence.
         }
-        else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.principalOriginFailures?.TryGetValue(issue.Node, out var principal) == true)
-        {
-            issue.Node.Report(
-                requirement,
-                issue.Code,
-                evidence: [$"neither {OriginDisplay(principal.First, issue.Node)} nor {OriginDisplay(principal.Second, issue.Node)} is proven to outlive the other lower bound"],
-                related: [("relation", principal.Clause, "lower bound of the inferred Origin")]);
-        }
         else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.perCallSlots?.TryGetValue(issue.Node, out var perCall) == true)
         {
             ReportPerCallSlot(issue.Node, perCall, requirement, issue.Code);
@@ -921,9 +882,9 @@ public sealed partial class Binding
         {
             ReportArity(issue.Node, arity, requirement, issue.Code);
         }
-        else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.invalidStaticOriginSlots?.TryGetValue(issue.Node, out var invalidSlot) == true)
+        else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.ReportInvalidOriginSlot(issue.Node, requirement, issue.Code))
         {
-            issue.Node.Report(requirement, issue.Code, evidence: [$"static cannot supply uniq for Origin slot {invalidSlot.Name}"], note: $"Origin slot {invalidSlot.Name} requires uniq and cannot bind to static; a static Origin admits no exclusive loan (SPEC 15.2.3)", relatedSpans: [("Origin slot", invalidSlot.Origin.Binder!, invalidSlot.Span, "requires uniq")]);
+            // SPEC 15.2.3, 5.7: an Origin slot the written binding cannot supply, at the annotation.
         }
         else if (issue.Code == DiagnosticCode.DuplicateBinding_Kd && issue.Node is TypeSemanticsKoto { BindingSetName: { } reusedSet } bindingSet)
         {
@@ -935,7 +896,7 @@ public sealed partial class Binding
         }
         else if (this.captureFailures?.TryGetValue(issue.Node, out var entry) == true)
         {
-            this.ReportCaptureEntry(issue.Node, entry.Capture, entry.Type, entry.Source, requirement, issue.Code);
+            this.ReportCaptureEntry(issue.Node, entry, requirement, issue.Code);
         }
         else if (this.writeTargets?.TryGetValue(issue.Node, out var target) == true)
         {
@@ -1013,16 +974,7 @@ public sealed partial class Binding
             }
 
             this.SettleSpecificationLinks();
-
-            // SPEC 23.1.1: an inherited conformance limited by OCC-X is reported once, at the derived Type's base clause, when a failing
-            // check rested on it; an explicit one was reported at its declaration (ValidateConformances).
-            for (var i = 0; i < this.activeConformancePaths.Count; i++)
-            {
-                if (this.activeConformancePaths[i] is { Needed: true } path)
-                {
-                    this.Fail(path.Use, BindingFailure.Unsupported);
-                }
-            }
+            this.PublishNeededLimits();
         }
 
         var resolved = 0;
@@ -1188,7 +1140,7 @@ public sealed partial class Binding
             }
         }
 
-        return new(mode, resolved, unresolved, invalid);
+        return new(mode, resolved, unresolved, invalid + this.PublishSites());
     }
 
     private BindingScope GetScope(object key, BindingScope? parent, Koto? owner = null)
@@ -1255,68 +1207,35 @@ public sealed partial class Binding
             return;
         }
 
-        symbol.Resolving = true;
-        if (symbol.Declaration is FunctionKoto function)
+        // A header is its declaration's, never the body that binds it lazily (SPEC 15.6.1; DECISIONS R4-M101 E3).
+        var saved = this.EnterBody(default);
+        try
         {
-            var scope = this.scopes[function];
-            this.PrepareVirtualHeaderPremises(function, scope);
-            var originDeclaration = this.BeginOriginDeclaration(function, scope);
-            for (var i = 0; i < function.Parameters.Count; i++)
+            symbol.Resolving = true;
+            if (symbol.Declaration is FunctionKoto function)
             {
-                var parameter = function.Parameters[i];
-                this.symbols[parameter].Type = this.BindType(parameter.Type, scope);
-            }
-
-            // Named signatures never infer a result from their body or callers (SPEC 10.5).
-            symbol.Type = function.ReturnType is { } result ? this.BindType(result, scope) : BoundType.Unit;
-            var pendingInputs = false;
-            for (var i = 0; i < function.Parameters.Count; i++)
-            {
-                // BindType retains a partial value on the parameter symbol without publishing it on
-                // syntax. A failed Type (null) is already an error, not an inference dependency.
-                pendingInputs |= this.symbols[function.Parameters[i]].Type is { } parameterType && this.PendingAssociatedType(parameterType);
-            }
-
-            var pendingHeader = pendingInputs || (symbol.Type is { } resultType && this.PendingAssociatedType(resultType));
-            if (this.associatedInferenceReady && pendingHeader)
-            {
-                // Result portions that do not depend on missing Type values use the ordinary Origin
-                // completion. Unrelated result holes do not hide a determined input/elision contract.
-                if (!pendingInputs && this.PartialOriginContractReady(function))
+                if (!this.BindFunctionHeader(symbol, function))
                 {
-                    this.CompleteOriginDeclaration(originDeclaration ?? this.originDeclarations.GetValueOrDefault(function));
-                }
-
-                symbol.Resolving = false;
-                return;
-            }
-
-            this.CompleteOriginDeclaration(originDeclaration ?? this.originDeclarations.GetValueOrDefault(function));
-            for (var i = 0; i < function.Parameters.Count; i++)
-            {
-                this.symbols[function.Parameters[i]].Type = function.Parameters[i].Type.BoundType;
-            }
-
-            if (symbol.ReceiverIndex >= 0)
-            {
-                var receiver = function.Parameters[symbol.ReceiverIndex];
-                if (!this.IsReceiverType(receiver.Type.BoundType, symbol.Scope.Owner.BoundSymbol!) || receiver.ExternalName != "self" || receiver.DefaultValue is not null)
-                {
-                    this.Fail(function, BindingFailure.InvalidTypeFormation);
+                    symbol.Resolving = false;
+                    return;
                 }
             }
-        }
-        else if (symbol.Property is { } property)
-        {
-            this.BindPropertyHeader(property);
-        }
-        else if (symbol.Declaration is VariableKoto variable && variable.TypeKoto is { } type)
-        {
-            symbol.Type = this.BindType(type, symbol.Scope);
-        }
+            else if (symbol.Property is { } property)
+            {
+                this.BindPropertyHeader(property);
+            }
+            else if (symbol.Declaration is VariableKoto variable && variable.TypeKoto is { } type)
+            {
+                symbol.Type = this.BindType(type, symbol.Scope);
+            }
 
-        symbol.HeaderBound = true;
-        symbol.Resolving = false;
+            symbol.HeaderBound = true;
+            symbol.Resolving = false;
+        }
+        finally
+        {
+            this.formingBody = saved;
+        }
     }
 
     private void ValidateSignatures()

@@ -131,10 +131,14 @@ internal struct BorrowLiveness()
             return true;
         }
 
+        // SPEC 15.6.6, 13.7.1: a destruction that may observe the Loans its value holds uses them: at the end of storage, and at `=`
+        // where the Write's Placement may destroy an old value (a destroying call is a whole update above).
         return operation.Place == place && operation.Kind switch
         {
             OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.LocateReceiver or OwnershipOperationKind.WriteBorrowedField or OwnershipOperationKind.StorePointer or OwnershipOperationKind.PatternTest or OwnershipOperationKind.AcquirePattern => true,
             OwnershipOperationKind.Cleanup => body.Places[place].CleanupObservesBorrows,
+            OwnershipOperationKind.Write => operation.Placement is PlacementKind.Replacement or PlacementKind.ConditionalReplacement &&
+                body.Places[place].CleanupObservesBorrows,
             _ => false,
         };
     }

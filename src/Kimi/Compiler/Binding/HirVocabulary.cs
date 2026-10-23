@@ -14,13 +14,20 @@ namespace Kimi.Compiler;
 
 /// <summary>What the MIR builder does with a syntax node: the Op column of <see cref="HirTables"/>. The vocabulary is closed; a
 /// form no member describes keeps <see cref="Unset"/>, and the builder reports the located Unsupported. An Op is published only with
-/// the facts it guarantees (<see cref="Binding.HasFacts"/>), which the builder trusts.</summary>
+/// the facts it guarantees (<see cref="Binding.HasFacts"/>), which the builder trusts. The operations (<see cref="Binding.Operation"/>:
+/// <see cref="Literal"/>, <see cref="Field"/>, <see cref="Deref"/>, <see cref="Index"/>, <see cref="PrimitiveOp"/>, <see cref="Logical"/>,
+/// <see cref="Borrow"/>, <see cref="Convert"/> and <see cref="RuntimeTypeTest"/>) form their value or Place from Binding's selection for
+/// the node, so their Type is one of their facts; a new member states there whether it is one, and whether it is a construct whose
+/// parts deliver its value (<see cref="Binding.Construct"/>: <see cref="Block"/>, <see cref="Unsafe"/>, <see cref="Do"/>,
+/// <see cref="If"/>, <see cref="Match"/>, <see cref="Try"/> and <see cref="Loop"/>).</summary>
 /// <remarks><see cref="Syntax"/>: not evaluated (a declaration without a buildable body, a Type, a qualifier, the callee of a selected
 /// call or construction, a member name, a binder, a Pattern, which its match plan describes, the text a <c>$tryWrite</c> writes, an
 /// attribute, or the inside of an Error).
 /// <see cref="Body"/>: a function, accessor or Property whose body or initializer Binding bound, to be built. <see cref="Error"/>: Binding rejected
-/// the expression or left it unresolved, or it lacks its Op's facts, which for a node Binding resolved is a broken contract the
-/// publisher lists (<see cref="HirTables.Broken"/>); the builder replaces it whole. <see cref="Name"/>: its Res says what it reads.
+/// the expression, or it lacks its Op's facts (an operation Binding left unresolved lacks its Type; a form no member describes that
+/// Binding left unresolved has none), which for a node Binding resolved is a broken contract the publisher lists
+/// (<see cref="HirTables.Broken"/>); its value is derived, after the operands the HIR keeps (DECISIONS R5-M63, R4-M88). A construct, a
+/// statement, a call or a name Binding left unresolved keeps its Op where it has its facts. <see cref="Name"/>: its Res says what it reads.
 /// <see cref="Group"/>: evaluates its one operand (parentheses, a label, a macro, and <c>@move</c>, <c>@copy</c> or a same-Type
 /// conversion, which acquire it). <see cref="Call"/>: the calls <see cref="CallPlan.Of"/> lists. <see cref="Jump"/> and
 /// <see cref="Continue"/>: the transfer to the target the node's plan row records. <see cref="For"/>, <see cref="Try"/>,
@@ -122,8 +129,9 @@ internal readonly record struct HirAdjust(HirAcquire Acquire, HirAdaptation Adap
         _ => new(HirAcquire.None, acquisition == CaptureAcquisition.SharedSlotBorrow ? HirAdaptation.SharedBorrow : HirAdaptation.ExclusiveBorrow),
     };
 
-    // A call's argument, receiver or payload operation (SPEC 7.3, 10.2); a Reborrow in the same mode keeps the Type, the bare acquisition,
-    // and an explicit borrow is the reference itself (SPEC 13.5.6), even the string borrow Binding records as the call's (SPEC 22.1).
+    // A call's argument, receiver or payload operation (SPEC 7.3, 10.2); a Reborrow in the same mode keeps the Semantics and the referent,
+    // the bare acquisition, its Origin being Binding's name, the Type the consumer expects (DECISIONS BU-27), and an explicit borrow is the
+    // reference itself (SPEC 13.5.6), even the string borrow Binding records as the call's (SPEC 22.1).
     internal static HirAdaptation Of(in BoundArgumentOperation operation) => operation.Kind switch
     {
         ArgumentOperationKind.Borrow when operation.Source is { } source && KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } => HirAdaptation.None,
@@ -138,7 +146,7 @@ internal readonly record struct HirAdjust(HirAcquire Acquire, HirAdaptation Adap
     };
 
     // An adaptation recorded at a node's fixed expected Type or for a receiver (SPEC 3.4.3, 3.5.3, 10.2); a Reborrow in the node's own mode
-    // keeps the Type, the bare acquisition.
+    // keeps the Semantics and the referent, the bare acquisition, its Origin the recorded Type's (DECISIONS BU-27).
     internal static HirAdaptation Of(in BoundAdaptation adaptation, BoundType? type) => adaptation.Kind switch
     {
         ExpectedAdaptationKind.ReferentRead => HirAdaptation.ReferentRead,
@@ -155,7 +163,7 @@ internal enum HirAcquire : byte
     None, // Used in place: a target, a projected, followed or borrowed Place, the Place its adaptation reads, or a group's operand.
     Copy,
     Move,
-    Reborrow, // The exclusive reference a Place stores, Reborrowed in its own mode.
+    Reborrow, // The exclusive reference a Place stores, Reborrowed in its own mode, of the Type its consumer expects (DECISIONS BU-27).
     ByCase, // As each Semantics case's Type acquires: a pair layer's Copy or Reborrow (SPEC 8.14).
     Temporary, // A value, not a Place, taken as it is.
 }

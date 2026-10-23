@@ -198,6 +198,37 @@ public sealed class MirValidatorTest
         Assert.All(findings, x => Assert.Equal((Enum.Parse<MirViolation>(rule), Broken.Syntax), (x.Rule, x.Subject)));
     }
 
+    // SPEC 4.3.1, 4.3.3, 4.3.4 (DECISIONS R4-M81): a fixed array's aggregate has one operand per element or none (noinit, the only count at
+    // a generic length, where no element literal binds), and a Fill one, at a fixed-array Type; any other count is an Arity finding
+    // (fail-before: a generic length admitted any count, and no Fill was valid).
+    [Theory]
+    [InlineData("FixedArray", 3, "b", false)]
+    [InlineData("FixedArray", 0, "b", false)]
+    [InlineData("FixedArray", 0, "a", false)]
+    [InlineData("Fill", 1, "b", false)]
+    [InlineData("Fill", 1, "a", false)]
+    [InlineData("FixedArray", 1, "b", true)]
+    [InlineData("FixedArray", 1, "a", true)]
+    [InlineData("Fill", 2, "b", true)]
+    [InlineData("Fill", 1, "d", true)]
+    public void AnArraysAggregateHasTheOperandsItsKindSays(string kind, int count, string parameter, bool broken)
+    {
+        var c = MirBuildTest.Compile("func w<length N>(a: [N of i32], b: [3 of i32], d: Array<i32>) -> i32 => 1\n");
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "w");
+        var body = new MirBody();
+        body.Reset(new(function.SymbolOf()!, MirBodyKind.Fn), default);
+        body.AddLocal(new(BoundType.I32, MirLocalKind.Return, At));
+        var target = MirModelTest.Local(body, function.Parameters.Single(x => x.InternalName == parameter).Type.TypeOf()!);
+        var one = MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.I32, 1)));
+        var block = body.AddBlock();
+        var aggregate = MirRvalue.Aggregate(Enum.Parse<MirAggregateKind>(kind), AddOperands(body, [.. Enumerable.Repeat(one, count)]), count, body.TypeOf(target)!);
+        body.Push(block, MirStatement.Assign(target, aggregate, Broken));
+        body.Terminate(block, MirTerminator.Return(At));
+        var findings = new List<MirFinding>();
+        new MirValidator(c.Types).Validate(body, findings);
+        Assert.Equal(broken ? [MirViolation.Arity] : [], findings.Select(static x => x.Rule));
+    }
+
     // SPEC 8.2, 15.3: Types that differ only by their Origins agree, and so do Types a body's Type-identity premise equates (E and S under
     // `E is S`), which the corpus's generic bodies rely on; other Types disagree.
     [Fact]
@@ -468,6 +499,84 @@ public sealed class MirValidatorTest
         Assert.Equal([(MirViolation.Binder, body.Source)], Validate(body).Select(static x => (x.Rule, x.Subject)));
     }
 
+    // DECISIONS R5-M90 (2e-D 5.7): a region, the body or an Inlined scope's locations (a default's copy), is entered only at its first
+    // location, and no edge from inside it targets the block that location lies in. Valid: a copy at (0, 0), which the body's entry enters;
+    // a copy the caller's statement before it enters mid-block, with a nested copy that shares its first location and a loop inside it;
+    // and a copy at a block's start that two caller edges enter (a loop's). Each broken form is an Entry finding at the edge: a caller jump
+    // into the second copy's second block, a check edge there from the third copy, the caller's statement between two parts of the second
+    // copy, its edge back into the block it began in, and the third copy's edge to its first location. An edge to block 0, the body's
+    // first location, is EachRuleRejectsTheBodyThatBreaksIt's.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("jump")]
+    [InlineData("check")]
+    [InlineData("fall")]
+    [InlineData("back")]
+    [InlineData("again")]
+    public void ARegionIsEnteredOnlyAtItsFirstLocation(string? broken)
+    {
+        var body = MirModelTest.NewBody(Fixture.Value.Types);
+        var flag = MirModelTest.Local(body, BoundType.Boolean, MirLocalKind.Temp);
+        var first = (ushort)body.AddScope(0, MirScopeKind.Inlined, default);
+        var copy = (ushort)body.AddScope(0, MirScopeKind.Inlined, default);
+        var inner = (ushort)body.AddScope(copy, MirScopeKind.Inlined, default);
+        var loop = (ushort)body.AddScope(0, MirScopeKind.Inlined, default);
+        var (entry, call, rest, after) = (body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock());
+        var (head, next, tail, done) = (body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock());
+        SourceInfo In(ushort scope, string form = "") => (broken == form ? Broken : At) with { Scope = scope };
+        void Read(int block, SourceInfo source) => body.Push(block, MirStatement.Of(MirStatementKind.FakeRead, flag, source));
+        MirTerminator Branch(int to, int otherwise, SourceInfo source)
+        {
+            body.AddCase(0, to);
+            return MirTerminator.SwitchInt(MirOperand.Copy(flag), body.Cases.Length - 1, 1, otherwise, source);
+        }
+
+        Read(entry, In(first));
+        Read(entry, At);
+        body.Terminate(entry, MirTerminator.Goto(call, At));
+        Read(call, At); // The caller's statement before the copy, its slot's StorageLive.
+        Read(call, In(inner));
+        Read(call, In(copy));
+        if (broken == "fall")
+        {
+            Read(call, Broken);
+            Read(call, In(copy));
+        }
+
+        body.Terminate(call, MirTerminator.Goto(rest, In(copy)));
+        Read(rest, In(copy));
+        body.Terminate(rest, Branch(broken == "back" ? call : rest, after, In(copy, "back")));
+        Read(after, At);
+        body.Terminate(after, Branch(broken == "jump" ? rest : head, head, In(0, "jump")));
+        Read(head, In(loop));
+        body.Terminate(head, MirTerminator.Goto(next, In(loop, "check"), broken == "check" ? rest : -1));
+        Read(next, In(loop));
+        body.Terminate(next, broken == "again" ? Branch(head, tail, In(loop, "again")) : MirTerminator.Goto(tail, In(loop)));
+        Read(tail, At);
+        body.Terminate(tail, Branch(head, done, At));
+        body.Terminate(done, MirTerminator.Return(At));
+        Assert.Equal(broken is null ? [] : [(MirViolation.Entry, Broken.Syntax)], Validate(body).Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // R5-M90's guard: the region walk follows the scope table and each location's scope, so a scope chain that does not lead out (an
+    // Inlined scope its own outer scope) or a location outside the scopes stops that walk alone: the Scope finding and the other rules'
+    // findings (an unreachable block) are reported, and the edge to block 0 is not walked.
+    [Theory]
+    [InlineData("outer")]
+    [InlineData("location")]
+    public void AScopeTheRegionWalkCannotFollowStopsOnlyIt(string broken)
+    {
+        var body = MirModelTest.NewBody(Fixture.Value.Types);
+        var flag = MirModelTest.Local(body, BoundType.Boolean, MirLocalKind.Temp);
+        var scope = body.AddScope(broken == "outer" ? body.Scopes.Length : 0, MirScopeKind.Inlined, default);
+        var (entry, loop) = (body.AddBlock(), body.AddBlock());
+        body.Push(entry, MirStatement.Of(MirStatementKind.FakeRead, flag, At with { Scope = (ushort)(broken == "outer" ? scope : 9) }));
+        body.Terminate(entry, MirTerminator.Goto(loop, At));
+        body.Terminate(loop, MirTerminator.Goto(entry, At));
+        body.Terminate(body.AddBlock(), MirTerminator.Return(Broken));
+        Assert.Equal([MirViolation.Scope, MirViolation.Unreachable], Validate(body).Select(static x => x.Rule));
+    }
+
     // V11: validating a body again, the Type tier's and its Adapt's case views included, and enumerating its uses, of the body and under
     // each case view, allocates nothing.
     [Trait("Purpose", "Allocation")]
@@ -641,6 +750,7 @@ public sealed class MirValidatorTest
         Assign(pairs, MirRvalue.Aggregate(MirAggregateKind.Tuple, Operands(one, Const(MirConstKind.Bool, BoundType.Boolean, 1)), 2, tuple));
         Assign(array, MirRvalue.Aggregate(MirAggregateKind.FixedArray, Operands(one, one, one), 3, types.Array));
         Assign(array, MirRvalue.Aggregate(MirAggregateKind.FixedArray, Operands(), 0, types.Array)); // SPEC 4.3.4 noinit: no element stored.
+        Assign(array, MirRvalue.Aggregate(MirAggregateKind.Fill, Operands(one), 1, types.Array)); // SPEC 4.3.3: every element a copy of one.
         Assign(point, MirRvalue.Aggregate(MirAggregateKind.Adt, Operands(MirOperand.Move(parent), one, Const(MirConstKind.Bool, BoundType.Boolean, 1)), 3, types.Point));
         Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(array, MirProjectionKind.Index, index.Root)))));
         Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(array, MirProjectionKind.ConstIndex, 2)))));
@@ -741,6 +851,9 @@ public sealed class MirValidatorTest
                 break;
             case MirViolation.Unreachable:
                 body.Terminate(body.AddBlock(), MirTerminator.Return(Broken));
+                break;
+            case MirViolation.Entry: // R5-M90: an edge to block 0, the body's first location.
+                body.Terminate(done, MirTerminator.Goto(entry, Broken));
                 break;
             case MirViolation.StatementRange:
                 Unsafe.AsRef(in body.Blocks[exit]).Count = 99;

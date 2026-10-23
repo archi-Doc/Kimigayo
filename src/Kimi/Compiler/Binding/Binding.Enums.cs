@@ -442,7 +442,8 @@ public sealed partial class Binding
         for (var i = 0; i < payload.Length; i++)
         {
             var source = ((InvocationKoto)use).ArgumentNodes[i];
-            var type = this.StoredType(payload[i].BoundType!, result)!;
+            var stored = this.StoredType(payload[i].BoundType!, result)!;
+            var type = this.ReplaceHolder(stored, null); // SPEC 5.7: a Case holding `during self` is constructed through no dereference.
             var fitted = default(BoundArgumentOperation);
             var fit = settled.Contains(i) ? CandidateApplicability.Applicable : this.FitArgument(source, type, scope, source, out fitted);
             if (fit is CandidateApplicability.Inapplicable or CandidateApplicability.Pending)
@@ -460,9 +461,17 @@ public sealed partial class Binding
                 return false;
             }
 
+            if (HoldsHolder(stored) && this.HolderWriteFailure(stored, HolderAccess.Write, source, source))
+            {
+                Complete(use, null);
+                return false;
+            }
+
             var actual = this.ArgumentType(source, source.ErasedFunctionType ?? completed);
+            // A payload's Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
             if (!this.AdaptInput(source, type, actual, scope, null, null, out var adapted, out var quality, out var kind) ||
-                (!this.FitsTypeAt(adapted, type, source) && !this.CheckLocalTypeUse(adapted, type, source)))
+                (!this.FailStaticBorrow(source, kind, type.Semantics) && !this.FitsTypeAt(adapted, type, source) &&
+                !this.CheckLocalTypeUse(adapted, type, source)))
             {
                 if (this.acquisitionFailure is { } acquisition)
                 {

@@ -31,6 +31,9 @@ public sealed class BoundClosure
 
     internal bool ExclusiveReborrow { get; set; }
 
+    // The body that evaluates the literal and binds its header and captures (SPEC 15.3.4; Binding.ExecutableBodies.cs). MIR never reads it.
+    internal ExecutableBody EvaluatingBody { get; set; }
+
     internal List<BoundCapture> Storage { get; } = new();
 
     internal List<BindingSymbol> SymbolPool { get; } = new();

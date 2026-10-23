@@ -1,0 +1,30 @@
+struct HolderR {a}
+    public var saved: ref/i32 during a
+    public init(saved: ref/i32 during a) => self.saved = saved
+func putHolder(slot: uniq/(raw/(HolderR during a)), v: ref/i32 during a)
+    unsafe => slot@follow[0].saved = v
+func putHolderV(slot: raw/(HolderR during a), v: ref/i32 during a)
+    unsafe => slot[0].saved = v
+func rawHolder()
+    var x = 1
+    let cell: raw/HolderR = Raw.allocate(1)
+    var c = cell
+    putHolder(c@uniq, x@ref)
+    x = 5
+func rawHolderV()
+    var x = 1
+    let cell: raw/HolderR = Raw.allocate(1)
+    putHolderV(cell, x@ref)
+    x = 5
+struct BoxH {a}
+    public var p: raw/(HolderR during a)
+    public var n: isize = 0
+    public init(p: raw/(HolderR during a)) => self.p = p
+func putBoxH(b: uniq/(BoxH during a), v: ref/i32 during a)
+    unsafe => b.p[0].saved = v
+func boxHolder()
+    var x = 1
+    let cell: raw/HolderR = Raw.allocate(1)
+    var b = BoxH.init(p: cell)
+    putBoxH(b@uniq, x@ref)
+    x = 5

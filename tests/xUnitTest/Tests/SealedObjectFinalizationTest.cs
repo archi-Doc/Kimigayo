@@ -7,6 +7,37 @@ namespace XunitTest;
 
 public class SealedObjectFinalizationTest
 {
+    private const string RecursiveNodes = """
+        struct Node
+            public let next: Option<rc/Node>
+            public init(next: Option<rc/Node>) => self.next = next@move
+            drop => Console.writeLine("node")
+        let tail = Kimi.Intrinsics.makeRc(Node.init(Option<rc/Node>.None))
+        let head = Kimi.Intrinsics.makeRc(Node.init(Option<rc/Node>.Some(tail@move)))
+        """;
+
+    // A Sealed payload's glue destroys its parts, whose handles release the next payload through the same glue (SPEC 16.3.2; package C
+    // 3.6), so recursive data is destroyed node by node, each allocation released once: an rc, arc or obj chain, and an enum whose Case
+    // holds the handle to the next. The obj nodes and the enum's items are named, so their order is fixed too: a node's destructor runs
+    // before its Fields (the next node), and a Case's payload elements go last to first (the rc tail before the item).
+    public static TheoryData<string, string, int, long, string> RecursivePayloads => new()
+    {
+        { "Rc", RecursiveNodes, 2, 64, "node\nnode\n" },
+        { "Arc", SharedObjectRuntimeTest.ArcSource(RecursiveNodes), 2, 64, "node\nnode\n" },
+        {
+            "Obj", "struct Node\n    public let name: string\n    public let next: Option<obj/Node>\n" +
+            "    public init(name: string, next: Option<obj/Node>)\n        self.name = name@move\n        self.next = next@move\n" +
+            "    drop => Console.writeLine(self.name)\nlet tail = Kimi.Intrinsics.makeObj(Node.init(\"tail\", Option<obj/Node>.None))\n" +
+            "let head = Kimi.Intrinsics.makeObj(Node.init(\"head\", Option<obj/Node>.Some(tail@move)))", 2, 112, "head\ntail\n"
+        },
+        {
+            "Enum", "struct Item\n    public let name: string\n    public init(name: string) => self.name = name@move\n" +
+            "    drop => Console.writeLine(self.name)\nenum List\n    Cons(Item, rc/List)\n    Nil\nlet nil = Kimi.Intrinsics.makeRc(List.Nil)\n" +
+            "let inner = Kimi.Intrinsics.makeRc(List.Cons(Item.init(\"inner\"), nil@move))\n" +
+            "let outer = Kimi.Intrinsics.makeRc(List.Cons(Item.init(\"outer\"), inner@move))", 3, 168, "inner\nouter\n"
+        },
+    };
+
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Obj")]
@@ -93,24 +124,14 @@ public class SealedObjectFinalizationTest
 
     [Trait("Purpose", "Allocation")]
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void RecursivePayloadsKeepFinitePlansAndDestroyEveryNode(bool atomic)
+    [MemberData(nameof(RecursivePayloads))]
+    public void RecursivePayloadsKeepFinitePlansAndDestroyEveryNode(string name, string source, int allocations, long bytes, string stdout)
     {
-        const string Source = """
-            struct Node
-                public let next: Option<rc/Node>
-                public init(next: Option<rc/Node>) => self.next = next@move
-                drop => Console.writeLine("node")
-            let tail = Kimi.Intrinsics.makeRc(Node.init(Option<rc/Node>.None))
-            let head = Kimi.Intrinsics.makeRc(Node.init(Option<rc/Node>.Some(tail@move)))
-            """;
-        var source = atomic ? SharedObjectRuntimeTest.ArcSource(Source) : Source;
         var c = MinimalEmissionTest.Analyze(source);
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid);
-        NativeAllocationAudit.WriteFixture("SealedObjectRecursive" + (atomic ? "Arc" : "Rc"), source, 2, 2, 64, "node\nnode\n");
+        NativeAllocationAudit.WriteFixture("SealedObjectRecursive" + name, source, allocations, allocations, bytes, stdout);
     }
 
     [Trait("Purpose", "Allocation")]

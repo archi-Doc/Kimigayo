@@ -145,10 +145,6 @@ public class NestedTypeParseTest
         Assert.Contains(tree.GeneratedFunction!.Body!.Items.OfType<FieldKoto>(), f => f.NameKoto.IdentifierName == "after");
     }
 
-    [Fact]
-    public void NestedPointerOriginsAreDiagnosed()
-        => Assert.NotEmpty(TestDiagnostics.Of(Parse("func f(x: raw/(raw/i32 during inner))")));
-
     private static Koto ParseParameterType(string type)
         => Assert.Single(ParseSingleFunction($"func use(value: {type}) => ()").Parameters).Type!;
 

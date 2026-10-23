@@ -75,7 +75,6 @@ contract LendingIterator
 contract Iterator: LendingIterator
     associate Item
     associate LendingIterator.LentItem(step) is Item
-    effect LendingIterator.next preserves results
 
 contract Iterable
     associate IteratorType(source) is LendingIterator for ref/Self during source
@@ -93,7 +92,7 @@ contract IntoIterable
 Every enumeration calls `LendingIterator.next`, which returns the next item as a value; each call binds `step` to that call's receiver borrow. `None` carries no Loan. A LendingIterator may return `Some` after `None`; `for` stops at the first `None`.
 
 - An **Iterator** has one complete `Item` Type that names no Origin of `next`; a conforming Type writes `associate Iterator.Item is T` and `func next(self: uniq/Self) -> Option<T>`.
-- A LendingIterator that is not an Iterator may lend items that borrow it: an item such as `ref/E during step` conflicts with the next `next` while retained. An item without `step` follows the ordinary Loan rules ([§15.6.3](15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting)), but generic code keeps it across the next `next` only under a `preserves results` bound.
+- A LendingIterator that is not an Iterator may lend items that borrow it: an item such as `ref/E during step` conflicts with the next `next` while retained. An item without `step` follows the ordinary Loan rules ([§15.6.3](15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting)).
 
 The three entries are independent; `for` requires the entry that its Subject mode selects, and its item is the `LentItem(step)` of the selected `IteratorType` ([§14.6.2](14-control-flow.md#1462-iteration-protocol)). The borrowing entries keep the per-call `source`; the owning entry keeps the dependencies inside `Self`. A Type may conform to `Iterator` and to entries at once. There is no conformance by member name, no automatic conformance of references or Iterators and no default body. No standard conformance advances an Iterator through a shared borrow.
 
@@ -114,7 +113,7 @@ for number in Kimi.Iteration.owning(Countdown.init()) => use(number)   // 2, 1, 
 
 ### 22.2.2. Standard adapters and iterators
 
-`Kimi.Iteration` declares two adapters over a LendingIterator `I`. Each result conforms to `LendingIterator`, to `IntoIterable` (itself) and to `UniqIterable` (`BorrowingIterator<Self>`), and to `Iterator` exactly when `I` does, with the same `Item`, dependencies and effect bound. Adapters keep their input's exhaustion guarantee, allocate nothing and take no item in advance.
+`Kimi.Iteration` declares two adapters over a LendingIterator `I`. Each result conforms to `LendingIterator`, to `IntoIterable` (itself) and to `UniqIterable` (`BorrowingIterator<Self>`), and to `Iterator` exactly when `I` does, with the same `Item` and dependencies. Adapters keep their input's exhaustion guarantee, allocate nothing and take no item in advance.
 
 - `owning(iterator) -> OwningIterator<I>` takes `I` by value (a Non-Copy Place is written `@move`) and forwards its `LentItem(step)` and dependencies.
 - `borrowing(iterator) -> BorrowingIterator<I>` takes `uniq/I` and advances it without moving it; its `source` is the outer Origin of the input; its items keep the contract of `I`, and the `step` of each item is the actual Reborrow of `next`.
@@ -132,13 +131,13 @@ for x in Kimi.Iteration.borrowing(it@uniq) => use(x)
 
 An Iterator's items satisfy the independence of published results ([§15.6.3](15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting)): an item depends neither on the receiver Loan of its call nor on the Iterator's Storage. An exclusive item is a child split from the Iterator's authority or a value it transfers out, so moving or freeing the Iterator invalidates no returned item, and an item of an Iterator reached through a borrow keeps no Loan of that borrow.
 
-`preserves results` ([§8.11.3](08-generics-constraints-and-contracts.md#8113-preserves-results)) means that the effects of `next` conflict with no Loan kept by an item the same Iterator returned earlier, including through transfer or Reborrow of that item. A Move of the Iterator carries the bound; every implementation, including user Types that declare `Self is Iterator`, is verified under [§8.11](08-generics-constraints-and-contracts.md#811-effect-bounds). Destroying a whole Iterator is a separate effect: a destruction that conflicts with a retained item is rejected. Unknown and parameter-dependent effects follow [§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls), [§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release) and [§4.9.6](04-arrays-indexing-and-slices.md#496-loans-dependencies-and-call-effects). A wrapper that borrows itself for its result, or adds conflicting effects to `next`, is only a LendingIterator.
+Keeping earlier items across later calls needs no bound: a later `next` reaches what its receiver Borrow reaches ([§8.11.3](08-generics-constraints-and-contracts.md#8113-checking-and-use)), and an item keeps no Loan of that Borrow. Every implementation, including user Types that declare `Self is Iterator`, returns nothing contained in its receiver's Origin ([§15.6.3](15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting)) and keeps the promise of [§5.2.2](05-raw-pointers-and-unsafe-memory.md#522-borrowing-raw-places) for every item it lends from raw storage. Destroying a whole Iterator is a destruction that may observe a Loan ([§15.6.6](15-ownership-and-lifetime-analysis.md#1566-destruction-lifetime-checking)). Unknown and parameter-dependent effects follow [§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls), [§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release) and [§4.9.6](04-arrays-indexing-and-slices.md#496-loans-dependencies-and-call-effects). A wrapper that borrows itself for its result is only a LendingIterator.
 
 ```kimi
 func nextPair<I>(iterator: uniq/I) -> (Option<I.Item>, Option<I.Item>)
     I is Iterator
     let first = iterator.next()
-    let second = iterator.next()   // preserves results permits retaining first.
+    let second = iterator.next()   // Valid: first keeps no receiver Loan.
     return (first@move, second@move)
 ```
 
@@ -443,7 +442,7 @@ Every Abort cause of [§17.4.1](17-failure-handling.md#1741-causes) and of the K
 
 `#LibraryImport("library", "symbol")` on a bodyless `func`, safe or unsafe, declares a C function. Both arguments are nonempty, non-interpolated string literals without NUL: a case-sensitive logical native library name of the defining Kotonoha, resolved when the program is built ([§20.4](../impl/20-compilation-configuration.md#204-native-libraries)), and the exact external symbol.
 
-An import is declared directly in a group or rootgroup, or as a receiverless struct type function, and has no task slot, receiver, parameter default, varargs, specialization or body. An import must not be generic: neither the import nor any enclosing Container may declare a generic parameter of any kind (Type, Semantics, length or Origin, [§6.1.3](06-declarations-and-containers.md#613-inherited-environments-and-declaration-references)), even an unused one; Origins introduced by borrow annotations in its own signature are allowed. Every argument is required; imports are only called directly, never used as function values.
+An import is declared directly in a group or rootgroup, or as a receiverless struct type function, and has no task slot, receiver, parameter default, varargs, specialization or body. An import must not be generic: neither the import nor any enclosing Container may declare a generic parameter of any kind (Type, Semantics, length or Origin, [§6.1.3](06-declarations-and-containers.md#613-inherited-environments-and-declaration-references)), even an unused one; Origins introduced by borrow annotations in its own signature are allowed, and a raw layer may state one of them ([§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins)) as part of the import's safety contract. Every argument is required; imports are only called directly, never used as function values.
 
 The declaration promises that, for every call meeting its signature and `- safety:` conditions, the foreign function behaves as a Kimigayo function with that signature would: it accesses only what its arguments permit, and only during the call: reads through `ref`, exclusive access through `uniq`, and through `raw/T` what its `- safety:` conditions allow; stores only valid values, constructs or overwrites only values whose Type has no user `drop`, recursively (a relocation, [§5.2](05-raw-pointers-and-unsafe-memory.md#52-raw-places), moves values and does neither), retains no borrow beyond its result's Origins, returns a valid result, and lets no unwinding, non-local jump, callback or reentry cross Kimigayo frames. A false promise is undefined behavior. An import is `unsafe` only when callers have obligations its Types cannot express ([§7.6](07-functions-and-callable-values.md#76-unsafe-functions)). A call's effects are the accesses its signature permits plus an environment effect ([§8.11.2](08-generics-constraints-and-contracts.md#8112-confined)). Arguments are evaluated once, left to right, and passed without marshalling, retention or ownership transfer; the floating-point boundary contract of [§21.2](../impl/21-layout-runtime-and-code-generation.md#212-foreign-function-abi) applies.
 
@@ -551,7 +550,7 @@ Both are ordinary, user-implementable static Contracts; `Utf8Format` is the only
 
 Only `Text.fixed`, `Text.writer` and `reserve` form these Loans; windows, views and adapters allocate nothing.
 
-`BufferWriter.reserve` has the `confined` bound ([§8.11.2](08-generics-constraints-and-contracts.md#8112-confined)). `Utf8Writer` erases the Writer Type, so `format` is not generic over it. The adapter calls only the Writer's `reserve`, never owns, moves or exposes the Writer, and the Writer keeps its Loans; an erased `reserve` call is checked against the `confined` bound ([§8.11.4](08-generics-constraints-and-contracts.md#8114-checking-and-use)).
+`BufferWriter.reserve` has the `confined` bound ([§8.11.2](08-generics-constraints-and-contracts.md#8112-confined)). `Utf8Writer` erases the Writer Type, so `format` is not generic over it. The adapter calls only the Writer's `reserve`, never owns, moves or exposes the Writer, and the Writer keeps its Loans; an erased `reserve` call is checked against the `confined` bound ([§8.11.3](08-generics-constraints-and-contracts.md#8113-checking-and-use)).
 
 ### 22.9.2. Text operations
 

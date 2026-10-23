@@ -42,6 +42,7 @@ public sealed partial class Binding
     // it contributes Proven, so only the clauses that can be judged decide.
     private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self = null, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengths = default, bool incomplete = false, bool skipUnresolved = false, Koto? slotOwner = null, Koto? failureUse = null)
     {
+        var outer = this.BeginProof(); // A clause list is one conjunction (DECISIONS BU-22).
         var result = ConstraintProof.Proven;
         for (var i = 0; i < clauses.Count; i++)
         {
@@ -86,7 +87,7 @@ public sealed partial class Binding
             result = CombineProof(result, bound.HasUnresolved && proof == ConstraintProof.Proven ? ConstraintProof.Unknown : proof, true);
         }
 
-        return result;
+        return this.EndProof(outer, result);
     }
 
     // SPEC 10.5, 8.3: whether a clause that no unbound slot leaves unresolved is Unknown. Such a proof waits on no argument, so it proves

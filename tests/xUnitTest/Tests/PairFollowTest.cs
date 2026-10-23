@@ -436,13 +436,12 @@ public class PairFollowTest
         Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
-    // SPEC 15.4.4: an omitted Origin that nothing constrains is not invented; the local is rejected.
+    // SPEC 15.3.6: an omitted Origin that nothing constrains has no candidate; in a body it is a local region, never invented as static.
     [Fact]
-    public void UnconstrainedQualifierOriginIsRejected()
+    public void UnconstrainedQualifierOriginIsALocalRegion()
     {
         var c = MinimalEmissionTest.Analyze(Collection + "public func main()\n    let refs = Collection<ref/Node>.init([])\n    let n = refs.indices.length");
-        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(DiagnosticCode.UnprovenConstraint_Kd, Codes(c));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]
@@ -495,6 +494,61 @@ public class PairFollowTest
         var c = MinimalEmissionTest.Analyze(Collection + source);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(code, Codes(c));
+    }
+
+    private const string Selected = Box + Collection +
+        "struct Q\n    public var w: i32\n    public var s: string\n    public init(w: i32)\n        self.w = w\n        self.s = \"a\"\n" +
+        "    public func bumpW(self: uniq/Self) => self.w += 1\n" +
+        "struct P\n    public var v: i32\n    public var inner: Q\n    public var items: Array<i32>\n    public var coll: Collection<i32>\n" +
+        "    public init(v: i32)\n        self.v = v\n        self.inner = Q.init(v)\n        self.items = [1, 2]\n        self.coll = Collection<i32>.init(items: [1, 2])\n" +
+        "    public func bump(self: uniq/Self) => self.v += 1\n";
+
+    // SPEC 13.5.5, 3.4.3: a member selected through a pair layer follows it as @follow does: with owner admitted, a Field inline
+    // in the operand needs it exclusively writable (a let binding or an owned parameter is not), no case offers Take, and a uniq
+    // reference stored in the operand still grants Write through it.
+    [Theory]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    p.v = 5", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    p.v += 1", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    p.v++", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g<s/T>(value: s/T, x: Box<s/P during b>)\n    s is owner or uniq\n    x.item.v = 5", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g<s/T, t/U>(value: s/T, n: t/U, x: s/(t/P during b))\n    s is owner or uniq\n    t is owner or uniq\n    x.v = 5", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g<s/T, t/U>(value: s/T, n: t/U, x: s/(t/P during b))\n    s is owner or uniq\n    t is owner or uniq\n    let y = x.inner@move", DiagnosticCode.ExclusivePathTake_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    p.inner.w = 5", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner\n    p.v = 5", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    let q = p@move\n    q.v = 5", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    p@follow.v = 5", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    let q = p@move\n    q@follow.v = 5", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g<s/T>(value: s/T, x: s/Box<uniq/i32 during b>, y: uniq/i32 during b)\n    s is owner or uniq\n    x.item = y@move", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    let y = p.inner@move", DiagnosticCode.ExclusivePathTake_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner\n    let y = p.inner@move", DiagnosticCode.ExclusivePathTake_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    var q = p@move\n    let y = q.inner@move", DiagnosticCode.ExclusivePathTake_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    let y = p.inner.s@move", DiagnosticCode.ExclusivePathTake_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    let y = p.v@move", DiagnosticCode.ExclusivePathTake_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    let y = p@follow.inner@move", DiagnosticCode.ExclusivePathTake_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    let y = p@follow@move", DiagnosticCode.ExclusivePathTake_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    p.v = 5", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    p.inner.w = 5", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    let r = p.v@uniq\n    r@follow = 3", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    p@follow.v = 5", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    p.inner.bumpW()", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    p.items.append(3)", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    p.coll[0] = 5", null)]
+    [InlineData("func g<s/T>(value: s/T, x: s/(uniq/P during b))\n    s is owner or uniq\n    let r = x.v@uniq", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    var q = p@move\n    q.v = 5", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    var q = p@move\n    q.inner.w = 5", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    var q = p@move\n    let r = q.v@uniq\n    r@follow = 3", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    var q = p@move\n    q@follow.v = 5", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner\n    var q = p@move\n    q.v = 5", null)]
+    [InlineData("func g<s/T>(value: s/T, x: s/Box<uniq/i32 during b>)\n    s is owner or uniq\n    x.item@follow = 5", null)]
+    [InlineData("func g<s/T, t/U>(value: s/T, n: t/U, x: s/Box<t/i32 during b>)\n    s is owner or uniq\n    t is uniq\n    x.item@follow = 5", null)]
+    [InlineData("func g<s/T, t/U>(value: s/T, n: t/U, x: s/Box<t/P during b>)\n    s is owner or uniq\n    t is uniq\n    x.item.bump()", null)]
+    [InlineData("func g<s/T, t/U>(value: s/T, n: t/U, x: s/Box<t/Array<i32> during b>)\n    s is owner or uniq\n    t is uniq\n    for v in x.item\n        v@follow += 1", null)]
+    [InlineData("func g<s/T>(value: s/T, x: s/Box<uniq/(uniq/P during b) during c>)\n    s is owner or uniq\n    x.item.v = 5", null)]
+    [InlineData("func g<s/T>(value: s/T, x: s/Box<uniq/Collection<Node> during b>)\n    s is owner or uniq\n    x.item[0].weight = 5", null)]
+    public void SelectionsFollowPairLayers(string function, DiagnosticCode? code)
+    {
+        var c = MinimalEmissionTest.Analyze(Selected + function);
+        Assert.Equal(code is { } expected ? [expected] : Array.Empty<DiagnosticCode>(), c.Binding.Issues.Select(x => x.Code));
     }
 
     // SPEC 10.2: s/U parameters are solved together with the other arguments, whatever their order, and must agree on s.

@@ -5,46 +5,20 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
+// The local-region graph (SPEC 15.3.6, 15.4.4): the region slots of a mutable local's Type (LocalRegionSlot), the contract bounds
+// recorded on them, never a current value (RecordLocalRegionBound, RecordRegionBound), their finite sources (LocalRegionSources) and the
+// value that brought a source in (LocalRegionSourceUse), and the relations judged through those sources (RegionContains,
+// VerifiedRegionOutlives, JudgeLocalRegion). The Types that carry the regions are Binding.LocalRegions.Types.cs's.
 public sealed partial class Binding
 {
     private readonly Dictionary<BoundOrigin, LocalRegion> localRegions = new(ReferenceEqualityComparer.Instance);
     private readonly List<BoundOrigin> regionWork = new();
     private readonly HashSet<BoundOrigin> regionVisited = new(ReferenceEqualityComparer.Instance);
+    private readonly List<Koto?> regionEvidence = new();
     private int regionVersion;
 
     internal static bool IsLocalRegion(BoundOrigin origin)
         => origin.Open || origin is { Kind: OriginKind.Inference, Binder: VariableKoto, Slot: < 0 };
-
-    internal static bool HasLocalRegion(BoundType type)
-    {
-        if (!type.CarriesOrigin || type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem)
-        {
-            return false;
-        }
-
-        if (type.Origin is { } origin && HasLocalRegion(origin))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (HasLocalRegion(type.OriginArguments[i]))
-            {
-                return true;
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (HasLocalRegion(type.Components[i]))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
 
     internal bool RegionContains(BoundOrigin expression, BoundOrigin origin)
     {
@@ -98,6 +72,12 @@ public sealed partial class Binding
                     continue;
                 }
 
+                if (!ReferenceEquals(current, origin) && EnclosingAtom(current, origin.Body))
+                {
+                    region.Sources.Add(current); // SPEC 15.6.5: fixed in the region's own body, so a source there, never followed.
+                    continue;
+                }
+
                 if (this.localRegions.TryGetValue(current, out var parents))
                 {
                     for (var i = parents.Parents.Count - 1; i >= 0; i--)
@@ -129,81 +109,58 @@ public sealed partial class Binding
     internal bool HasRegionBounds(BoundOrigin origin)
         => IsLocalRegion(origin) || (this.localRegions.TryGetValue(origin, out var region) && region.Parents.Count != 0);
 
-    internal bool HasRegionBounds(BoundType type)
-    {
-        if (!type.CarriesOrigin || type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem)
-        {
-            return false;
-        }
-
-        if (type.Origin is { } origin && this.HasRegionBounds(origin))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (this.HasRegionBounds(type.OriginArguments[i]))
-            {
-                return true;
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (this.HasRegionBounds(type.Components[i]))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
+    // The value that brought `source` into the region graph `region` reads, by LocalRegionSources' walk (each parent read through
+    // OriginAtUse at its bound's value, meet operands expanded, a meet `region` through its region operands): the value of the bound whose
+    // parent is `source` or a meet holding it; null when `region` holds `source` itself or does not reach it. A local's own initializer
+    // stands for its declaration.
     internal Koto? LocalRegionSourceUse(BoundOrigin region, BoundOrigin source)
     {
         this.regionWork.Clear();
+        this.regionEvidence.Clear();
         this.regionVisited.Clear();
         this.regionWork.Add(region);
+        this.regionEvidence.Add(null);
         while (this.regionWork.Count != 0)
         {
             var current = this.regionWork[^1];
+            var evidence = this.regionEvidence[^1];
             this.regionWork.RemoveAt(this.regionWork.Count - 1);
-            if (!this.regionVisited.Add(current) || !this.localRegions.TryGetValue(current, out var bounds))
+            this.regionEvidence.RemoveAt(this.regionEvidence.Count - 1);
+            if (ReferenceEquals(current, source))
+            {
+                return Use(evidence);
+            }
+
+            if (!this.regionVisited.Add(current))
             {
                 continue;
             }
 
-            for (var i = 0; i < bounds.Parents.Count; i++)
+            if (this.localRegions.TryGetValue(current, out var bounds))
             {
-                if (ReferenceEquals(bounds.Parents[i], source))
+                for (var i = 0; i < bounds.Parents.Count; i++)
                 {
-                    return bounds.Values[i] is VariableKoto { InitializerKoto: { } initializer } ? initializer : bounds.Values[i];
-                }
+                    var parent = this.OriginAtUse(bounds.Parents[i], bounds.Values[i]);
+                    if (ReferenceEquals(parent, source))
+                    {
+                        return Use(bounds.Values[i]); // A direct parent first, before a longer path.
+                    }
 
-                this.regionWork.Add(bounds.Parents[i]);
+                    this.regionWork.Add(parent);
+                    this.regionEvidence.Add(bounds.Values[i]);
+                }
+            }
+
+            for (var i = 0; i < current.Operands.Count; i++)
+            {
+                this.regionWork.Add(current.Operands[i]);
+                this.regionEvidence.Add(evidence);
             }
         }
 
         return null;
-    }
 
-    private static bool HasLocalRegion(BoundOrigin origin)
-    {
-        if (IsLocalRegion(origin))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < origin.Operands.Count; i++)
-        {
-            if (HasLocalRegion(origin.Operands[i]))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        static Koto? Use(Koto? value) => value is VariableKoto { InitializerKoto: { } initializer } ? initializer : value;
     }
 
     private void ResetLocalRegions()
@@ -232,114 +189,6 @@ public sealed partial class Binding
         return origin;
     }
 
-    private BoundType LocalBorrowType(BoundType type, VariableKoto owner, Koto value)
-    {
-        if (!IsMutableDeclaration(owner) || !type.CarriesOrigin)
-        {
-            return type;
-        }
-
-        var slot = -1;
-        var result = Open(type);
-        _ = this.CheckTypeUse(type, result, value);
-        return result;
-
-        BoundType Open(BoundType current)
-        {
-            // A complete generic binding and a callable's quantified signature are contracts, not local storage slots.
-            if (!current.CarriesOrigin || current.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Parameter)
-            {
-                return current;
-            }
-
-            var components = this.RentTypes(current.Components.Count);
-            var arguments = this.originScratch.Rent(current.OriginArguments.Count);
-            try
-            {
-                var origin = current.Origin is null ? null : this.LocalRegionSlot(owner, slot--);
-                for (var i = 0; i < current.OriginArguments.Count; i++)
-                {
-                    arguments[i] = this.LocalRegionSlot(owner, slot--);
-                }
-
-                for (var i = 0; i < current.Components.Count; i++)
-                {
-                    components[i] = Open(current.Components[i]);
-                }
-
-                return this.types.Intern(current.Kind, current.Symbol, current.Semantics, components.AsSpan(0, current.Components.Count), current.Length, origin, arguments.AsSpan(0, current.OriginArguments.Count), current.LengthExpression, current.ClosureContext, current.LengthArguments);
-            }
-            finally
-            {
-                this.typeScratch.Return(components, clearArray: true);
-                this.originScratch.Return(arguments, clearArray: true);
-            }
-        }
-    }
-
-    private BoundType ResolveLocalResultOrigins(BoundType type)
-    {
-        if (!HasLocalRegion(type))
-        {
-            return type;
-        }
-
-        var components = this.RentTypes(type.Components.Count);
-        var arguments = this.originScratch.Rent(type.OriginArguments.Count);
-        try
-        {
-            for (var i = 0; i < type.Components.Count; i++)
-            {
-                components[i] = this.ResolveLocalResultOrigins(type.Components[i]);
-            }
-
-            for (var i = 0; i < type.OriginArguments.Count; i++)
-            {
-                arguments[i] = Resolve(type.OriginArguments[i]);
-            }
-
-            return this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, type.Origin is { } origin ? Resolve(origin) : null, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments);
-        }
-        finally
-        {
-            this.typeScratch.Return(components, clearArray: true);
-            this.originScratch.Return(arguments, clearArray: true);
-        }
-
-        BoundOrigin Resolve(BoundOrigin origin)
-        {
-            if (origin.Kind == OriginKind.Intersection)
-            {
-                var resolved = BoundOrigin.Static;
-                for (var i = 0; i < origin.Operands.Count; i++)
-                {
-                    resolved = this.Meet(resolved, Resolve(origin.Operands[i]));
-                }
-
-                return resolved;
-            }
-
-            if (!IsLocalRegion(origin))
-            {
-                return origin;
-            }
-
-            var sources = this.LocalRegionSources(origin);
-            if (sources.IsEmpty)
-            {
-                return origin;
-            }
-
-            var result = sources[0];
-            for (var i = 1; i < sources.Length; i++)
-            {
-                result = this.Meet(result, sources[i]);
-            }
-
-            return result;
-        }
-    }
-
     private void RecordLocalRegionBound(in BindingObligation obligation)
     {
         if (obligation is not { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter })
@@ -348,6 +197,7 @@ public sealed partial class Binding
         }
 
         var evidence = obligation.Use;
+        var body = obligation.Body;
         Add(longer, shorter);
         if (obligation.Equality)
         {
@@ -358,7 +208,7 @@ public sealed partial class Binding
         {
             source = this.OriginAtUse(source, evidence);
             target = this.OriginAtUse(target, evidence);
-            if (ReferenceEquals(source, target) || (!IsLocalRegion(target) && target.Kind is not (OriginKind.Projection or OriginKind.Anchor or OriginKind.Intersection)))
+            if (ReferenceEquals(source, target) || !BoundableIn(target, body))
             {
                 return;
             }
@@ -390,6 +240,8 @@ public sealed partial class Binding
     }
 
     // Lowering may reuse only relations already represented in the checked graph. A new finite fit needs ownership analysis.
+    // Its readers, lowering and the old analysis's RecordCallInput, run after Binding judged the fit in its body, so it judges in no body
+    // (DECISIONS BU-28).
     private bool VerifiedRegionOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use)
     {
         if (this.ProvesOriginOutlives(longer, shorter, use))
@@ -409,7 +261,7 @@ public sealed partial class Binding
                 }
             }
 
-            return !this.OriginRelationFails(longer, shorter, use);
+            return !this.OriginRelationFails(longer, shorter, use, default);
         }
 
         if (longer.Kind == OriginKind.Intersection)
@@ -425,15 +277,12 @@ public sealed partial class Binding
             return true;
         }
 
-        return this.RegionContains(shorter, longer) && !this.OriginRelationFails(longer, shorter, use);
+        return this.RegionContains(shorter, longer) && !this.OriginRelationFails(longer, shorter, use, default);
     }
 
-    private bool CheckLocalTypeUse(BoundType actual, BoundType expected, Koto use)
-        => (HasLocalRegion(actual) || HasLocalRegion(expected)) && this.CheckTypeUse(actual, expected, use);
-
-    private OriginJudgment JudgeLocalRegion(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
+    private OriginJudgment JudgeLocalRegion(BoundOrigin longer, BoundOrigin shorter, Koto use, ExecutableBody body, ulong condition = 0)
     {
-        if (!FixedOrigin(shorter))
+        if (!FixedIn(shorter, body))
         {
             return OriginJudgment.Proven;
         }
@@ -442,7 +291,7 @@ public sealed partial class Binding
         var result = OriginJudgment.Proven;
         foreach (var source in sources)
         {
-            var judgment = this.JudgeOriginAtoms(source, shorter, use, condition);
+            var judgment = this.JudgeOriginAtoms(source, shorter, use, body, condition);
             if (judgment == OriginJudgment.Refuted)
             {
                 return judgment;

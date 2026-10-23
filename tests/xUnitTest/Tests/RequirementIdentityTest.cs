@@ -12,6 +12,9 @@ namespace XunitTest;
 
 public class RequirementIdentityTest(ITestOutputHelper output)
 {
+    // The contracts of LaterCallsOfEitherRequirementAreValid, whose program AbstractCallReachTest also instantiates (L1).
+    internal const string KeyedTake = "contract P<K, R>\n    func take(self: uniq/Self, key: K) -> R\ncontract Q<R>: P<i32, R>, P<i64, R>\n";
+
     [Theory]
     [InlineData("P<i32>, P<i64>")]
     [InlineData("P<i64>, P<i32>")]
@@ -114,23 +117,18 @@ public class RequirementIdentityTest(ITestOutputHelper output)
         }
     }
 
+    // SPEC 8.11.3 (the adopted proposal Abstract Calls Reach by Paths): a later call of either requirement of one Contract reaches
+    // its receiver's Places by path and no Loan the earlier result keeps; the call of the other requirement (`i64`) was a
+    // CallEffectConflict_Kd before the adoption, which nothing excluded.
     [Theory]
-    [InlineData("i32", true)]
-    [InlineData("i64", false)]
-    public void PreservedResultsAreSpecificToTheBoundRequirement(string second, bool valid)
+    [InlineData("i32")]
+    [InlineData("i64")]
+    public void LaterCallsOfEitherRequirementAreValid(string second)
     {
-        var source = "contract P<K, R>\n    func take(self: uniq/Self, key: K) -> R\n        effect preserves results\n" +
-            "contract Q<R>: P<i32, R>, P<i64, R>\n" +
-            "func pair<S, R>(source: uniq/S) -> (R, R)\n    S is Q<R>\n    let firstKey: i32 = 1\n    let secondKey: " + second + " = 2\n" +
-            "    let first = source.take(firstKey)\n    let second = source.take(secondKey)\n    return (first@move, second@move)\nlet present = 1";
+        var source = KeyedTake + EitherRequirement(second) + "let present = 1";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(valid == c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        if (!valid)
-        {
-            c.ReportAnalysis();
-            Assert.Equal("CallEffectConflict_Kd", Assert.Single(TestDiagnostics.Of(c)).Code);
-        }
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]
@@ -211,6 +209,11 @@ public class RequirementIdentityTest(ITestOutputHelper output)
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(0, bytes);
     }
+
+    // A generic function that calls the take of key Type i32, then the take of the second key Type, on one receiver.
+    internal static string EitherRequirement(string second)
+        => "func pair<S, R>(source: uniq/S) -> (R, R)\n    S is Q<R>\n    let firstKey: i32 = 1\n    let secondKey: " + second + " = 2\n" +
+            "    let first = source.take(firstKey)\n    let second = source.take(secondKey)\n    return (first@move, second@move)\n";
 
     private static string Declarations(string parents)
         => "contract P<T>\n    func value(self: ref/Self, x: T) -> T\ncontract Q: " + parents + "\n" +

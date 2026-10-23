@@ -6,10 +6,9 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly List<IsKoto> callableEffectClauses = new();
     private readonly List<CallableEffectUse> callableEffectUses = new(); // Each selected use of a bounded Callable clause, once per pass.
     private readonly Dictionary<Koto, CallableEffectViolation> callableEffectViolations = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<Koto, (IsKoto Clause, EffectBoundKoto Bound, FunctionKoto Requirement)> callablePremiseFailures = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Koto, (IsKoto Clause, FunctionKoto Requirement)> callablePremiseFailures = new(ReferenceEqualityComparer.Instance);
     private EffectSummary? callableEffectSummary;
 
     internal static BoundType? CallableCore(BoundType? type)
@@ -20,14 +19,13 @@ public sealed partial class Binding
     /// <param name="signature">The selected public signature.</param>
     /// <param name="receiver">The selected receiver acquisition.</param>
     /// <param name="at">The call or binding whose premises apply.</param>
-    /// <returns>The bounds available from matching clauses with an equal or stronger receiver.</returns>
-    internal (bool Confined, bool Preserves) AvailableCallableEffects(BoundType type, BoundType signature, SemanticsKind receiver, Koto at)
+    /// <returns>Whether confined is available from matching clauses with an equal or stronger receiver.</returns>
+    internal bool AvailableCallableEffects(BoundType type, BoundType signature, SemanticsKind receiver, Koto at)
         => this.AvailableCallableEffects(type, signature, receiver, this.ConstraintScope(at));
 
-    internal (bool Confined, bool Preserves) AvailableCallableEffects(BoundType type, BoundType signature, SemanticsKind receiver, BindingScope scope, List<EffectEvidence>? evidence = null)
+    internal bool AvailableCallableEffects(BoundType type, BoundType signature, SemanticsKind receiver, BindingScope scope, List<EffectEvidence>? evidence = null)
     {
         var confined = false;
-        var preserves = false;
         for (var current = scope; current is not null; current = current.Parent)
         {
             if (current.Constraints is not { Invalid: false } environment)
@@ -55,14 +53,13 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    confined |= effect.Bound == EffectBoundKind.Confined;
-                    preserves |= effect.Bound == EffectBoundKind.PreservesResults;
+                    confined = true;
                     evidence?.Add(new(effect, current.Owner, fact, clause));
                 }
             }
         }
 
-        return (confined, preserves);
+        return confined;
     }
 
     /// <summary>Discharges selected-use bounds after ownership has supplied cleanup plans.</summary>
@@ -81,9 +78,9 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (this.CallableEffectFailure(use.Subject, use.Signature, use.Receiver, bound.Bound, use.Use) is { } failure)
+                if (this.CallableEffectFailure(use.Subject, use.Signature, use.Receiver, use.Use) is { } failure)
                 {
-                    this.callableEffectViolations.TryAdd(use.At, new(use.Clause, bound, failure.Kind, failure.Node));
+                    this.callableEffectViolations.TryAdd(use.At, new(use.Clause, failure.Kind, failure.Node));
                 }
             }
         }
@@ -105,7 +102,6 @@ public sealed partial class Binding
             return false;
         }
 
-        var spelling = EffectBoundKoto.Spelling(violation.Bound.Bound);
         var cause = EffectCause(violation.Kind, callable: true);
         var virtualSlot = violation.Kind == EffectViolation.UnboundedVirtual && violation.Node is FunctionKoto { IsVirtual: true };
         var related = violation.Node is { } effect
@@ -114,7 +110,7 @@ public sealed partial class Binding
         use.Report(
             requirement,
             DiagnosticCode.UnsatisfiedEffectBound_Kd,
-            evidence: [$"{spelling}: {cause}"],
+            evidence: [$"{Constants.ConfinedKeyword}: {cause}"],
             note: "Effect bounds are checked after selection; a failed bound never selects another overload",
             related: related);
         return true;
@@ -123,52 +119,6 @@ public sealed partial class Binding
     private static bool ReceiverCovers(SemanticsMask premise, SemanticsKind receiver)
         => premise == SemanticsMask.Owner || receiver == SemanticsKind.Ref || (premise == SemanticsMask.Uniq && receiver == SemanticsKind.Uniq);
 
-    // Bounds are attached to clauses, never to interned propositions or applicability facts (SPEC 8.11.6).
-    private void PrepareCallableEffects()
-    {
-        this.callableEffectClauses.Clear();
-        this.callablePremiseFailures.Clear();
-        for (var n = 0; n < this.nodes.Count; n++)
-        {
-            if (this.nodes[n] is not IsKoto { EffectBounds.Count: > 0 } clause)
-            {
-                continue;
-            }
-
-            this.callableEffectClauses.Add(clause);
-            var kinds = 0;
-            for (var e = 0; e < clause.EffectBounds.Count; e++)
-            {
-                var effect = clause.EffectBounds[e];
-                EffectRejection? rejection = null;
-                if (clause.Right is not GenericsKoto || clause.BoundConstraint?.Kind != ConstraintKind.Callable || effect.IsSpecification)
-                {
-                    rejection = EffectRejection.CallableForm;
-                }
-                else if (clause.IsAssociatedConstraint || clause.Parent is not (FunctionKoto or StructKoto or EnumKoto))
-                {
-                    rejection = EffectRejection.CallablePosition;
-                }
-                else if ((kinds & (1 << (int)effect.Bound)) != 0)
-                {
-                    rejection = EffectRejection.CallableDuplicate;
-                }
-                else if (effect.Bound == EffectBoundKind.PreservesResults && clause.BoundConstraint.Mask == SemanticsMask.Owner)
-                {
-                    rejection = EffectRejection.CallableReceiver;
-                }
-
-                kinds |= 1 << (int)effect.Bound;
-                if (rejection is { } invalid)
-                {
-                    this.RejectEffectBound(effect, new(invalid, Requirement: clause));
-                }
-
-                this.BindEffectBound(effect);
-            }
-        }
-    }
-
     private bool ReportCallablePremiseFailure(Koto use, Kimi.Diagnostics.DiagnosticRequirement diagnostic)
     {
         if (!this.callablePremiseFailures.TryGetValue(use, out var failure))
@@ -176,17 +126,17 @@ public sealed partial class Binding
             return false;
         }
 
-        var spelling = EffectBoundKoto.Spelling(failure.Bound.Bound);
         use.Report(
             diagnostic,
             DiagnosticCode.IncompatibleContractImplementation_Kd,
-            evidence: [$"the implementation requires {spelling}, but the premises of requirement {failure.Requirement.Name} do not declare it"],
+            evidence: [$"the implementation requires {Constants.ConfinedKeyword}, but the premises of requirement {failure.Requirement.Name} " +
+                "do not declare it"],
             note: "An implementation must be callable under its requirement's declared premises",
             related: [("bound", failure.Clause, "the implementation's bounded Callable Constraint"), ("requirement", failure.Requirement, "the requirement whose premises lack the bound")]);
         return true;
     }
 
-    // SPEC 8.11.6: the selected uses of bounded Callable clauses: each selected call, function reference and Type formation, located at
+    // SPEC 8.11.4: the selected uses of bounded Callable clauses: each selected call, function reference and Type formation, located at
     // its argument or Type argument, with its substituted subject, signature and receiver; enumerated once at the end of the Binding pass.
     private void CollectCallableEffectUses()
     {
@@ -272,13 +222,12 @@ public sealed partial class Binding
         }
     }
 
-    private (EffectViolation Kind, Koto? Node)? CallableEffectFailure(BoundType type, BoundType signature, SemanticsKind receiver, EffectBoundKind bound, Koto use)
+    private (EffectViolation Kind, Koto? Node)? CallableEffectFailure(BoundType type, BoundType signature, SemanticsKind receiver, Koto use)
     {
         type = CallableCore(type)!;
         if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection)
         {
-            var available = this.AvailableCallableEffects(type, signature, receiver, use);
-            return (bound == EffectBoundKind.Confined ? available.Confined : available.Preserves) ? null : (EffectViolation.MissingCallablePremise, null);
+            return this.AvailableCallableEffects(type, signature, receiver, use) ? null : (EffectViolation.MissingCallablePremise, null);
         }
 
         if (type.Kind == BoundTypeKind.Function)
@@ -292,11 +241,11 @@ public sealed partial class Binding
         }
 
         var summary = this.callableEffectSummary ??= new(this);
-        return summary.Check(bound == EffectBoundKind.Confined, bound == EffectBoundKind.PreservesResults, symbol, this.ConstraintScope(use), true, type, receiver)
+        return summary.Check(symbol, this.ConstraintScope(use), true, type, receiver)
             ? null : (summary.Violation, summary.ViolationNode);
     }
 
-    private readonly record struct CallableEffectViolation(IsKoto Clause, EffectBoundKoto Bound, EffectViolation Kind, Koto? Node);
+    private readonly record struct CallableEffectViolation(IsKoto Clause, EffectViolation Kind, Koto? Node);
 
     // A selected use of a bounded Callable clause: where a failure is located, the use whose premises apply, the clause, and its substituted
     // subject, signature and receiver.

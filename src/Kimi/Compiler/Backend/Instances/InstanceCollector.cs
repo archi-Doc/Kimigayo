@@ -10,15 +10,16 @@
 // Output: the CheckedSet of the program version: the roots, in MirProgram.Bodies order, then the items a FIFO worklist admits, each with one
 // target per resolved site of its body, in location order, with whether a runtime path reaches the site; and its records, which
 // Compilation.MirRecords publishes under MIR code generation (K4b); for code generation (R5 C0b1) also an item's Types (TypeOf) and the
-// location of a record at a site of its body (Subject).
+// location of a record at a site of its body (Subject); a borrowing callee's owner Value call also targets its operand's glue, after the
+// body (DECISIONS R5-M102).
 // Roots (K 4.4): each body of a root module whose definition does not instantiate, a module's top-level statements included.
 // Edges (K 4.5): one template per body and version (InstanceCollector.Templates.cs) lists its sites that may carry a target (Fn,
 // Requirement and Value calls and the intrinsics the Target column names, a Virtual call none, X5; a Closure environment, an erasure and a
-// function item constant; a Drop), each with its runtime bit from one MirReach walk without CheckTarget edges. Replaying an item's template
-// resolves each site's row under the item's representative (InstanceCollector.Edges.cs), a callee's body (InstanceCollector.Callees.cs),
-// and a Requirement call's, a requirement Item's, a bodyless callee's published row's and an erased writer's by the witness there
-// (InstanceCollector.Witnesses.cs: a body, a Builtin or a property-witness shim keyed by its compiler function or Field and the erased
-// Self, or a gap); a type-driven item's targets follow from its representative Type by its kind's row (Expand: an adapter's Item;
+// function item constant; a Drop), each with its runtime bit from one MirReach walk without CheckTarget edges. An item's targets are
+// InstanceCollector.Edges.cs's: replaying a body item's template resolves each site's row under the item's representative, a callee's body
+// (InstanceCollector.Callees.cs), and a Requirement call's, a requirement Item's, a bodyless callee's published row's and an erased writer's
+// by the witness there (InstanceCollector.Witnesses.cs: a body, a Builtin or a property-witness shim keyed by its compiler function or Field
+// and the erased Self, or a gap); a type-driven item's targets follow from its representative Type by its kind's row (Expand: an adapter's Item;
 // InstanceCollector.Glue.cs: a DropGlue's direct parts, DropGlue.Parts; InstanceCollector.Witnesses.cs: a comparison shim's leaf
 // witnesses, TyCtxt.Comparison, a property-witness setter's Field glue; InstanceCollector.Objects.cs: a created payload's descriptor's
 // glue and VTable, a VTable's slot bodies by VTableDef and Applies).
@@ -26,8 +27,9 @@
 // Types are closed, every block included, once per definition and location, and of a root-module static's declaration (static storage
 // P42 has not brought, a generic container's included, DECISIONS R5-M82); Binding's refusals are Opaque values, so it never repeats them.
 // An operation whose Types depend on slots is a template site, checked in each instance with its Types there, once per location.
-// Layout obligations (K 4.8, InstanceCollector.Layouts.cs): each item's by-value uses (its body's locals but drop flags, its aggregates and
-// the Type argument of an intrinsic whose row names one), each type-driven item's Type and a DropGlue's collection element Types (X34) take
+// Layout obligations (K 4.8, InstanceCollector.Layouts.cs): each item's by-value uses (its body's locals but drop flags, its aggregates, the
+// Type argument of an intrinsic whose row names one, at its call or its function's Item, and the inputs and result of an erasure's target
+// Function Type, DECISIONS R5-M108), each type-driven item's Type and a DropGlue's collection element Types (X34) take
 // Layout's verdict: a limit is GenerationResourceLimit_Kd once per erased Type at its first use, a C-layout instance storing a zero-sized
 // Field InvalidCLayout_Kd and a layout over 2^63 - 1 bytes OversizedLayout_Kd at each use (both at one use when both hold); Rejected
 // storage derives from a Binding error; a type-driven item needs an Ok verdict.
@@ -40,9 +42,10 @@
 // A refused edge is dropped and collection continues.
 // Location (K 4.9): a record's subject is the cause's site, moved out of inlined library defaults to the outermost omitting call, else the
 // root-module site the admission chain first reached; code generation's records take the same rule.
-// Invariants: deterministic; one item per key; every representative is closed and closes its body (K 4.3); at most one target per site of a
-// body; a type-driven item's targets are at its default site, a DropGlue's in DropGlue.Parts' order, a ClosureErasure's body before its
-// environment's glue; a repeated run of a version is a no-op; a program with validator findings has an empty set; a warm run of a
+// Invariants: deterministic; one item per key; every representative is closed and closes its body (K 4.3); one target per site of a body,
+// plus the operand's glue at a borrowing callee's owner Value call, after its body (SPEC 8.10; DECISIONS R5-M102); a type-driven item's
+// targets are at its default site, a DropGlue's in DropGlue.Parts' order, a ClosureErasure's body before its environment's glue; a repeated
+// run of a version is a no-op; a program with validator findings has an empty set; a warm run of a
 // program as large as an earlier one allocates nothing.
 // Must not: read syntax, HIR or plans; depend on the MIR analyses' results or edit their driver; decide acceptance or publish its records
 // (Compilation does); prove anything on an erased value; add an IntrinsicId, CompilerFunctionKind or BindingFailure (PD21).
@@ -106,7 +109,8 @@ internal sealed partial class InstanceCollector
         {
             if (body.Source.Module < rootModules && (body.Key.Decl is null || !this.types.Instantiates(body.Key.Decl)))
             {
-                set.Add(new() { Key = new(MonoKind.Body, new(body.Key, null)), BodyOrdinal = body.Ordinal, Parent = -1, Site = body.Source });
+                var key = new MonoKey(MonoKind.Body, new(body.Key, null), null, null, 0, null);
+                set.Add(new() { Key = key, BodyOrdinal = body.Ordinal, Parent = -1, Site = body.Source });
             }
         }
 
@@ -126,71 +130,6 @@ internal sealed partial class InstanceCollector
     /// <returns>The Type in the instance, or null when TyCtxt cannot make it (the collector's storage-nesting gap).</returns>
     internal BoundType? TypeOf(int item, BoundType type)
         => this.Set.Items[item].Representative is { } representative ? this.types.Apply(type, representative) : type;
-
-    // An item's targets: a body item's template replayed under its representative, the target of each site that resolves and is admitted;
-    // a type-driven item's from its representative Type.
-    private void Replay(MirProgram program, int item)
-    {
-        var set = this.Set;
-        if (set.Items[item].BodyOrdinal < 0)
-        {
-            this.Expand(program, item);
-            return;
-        }
-
-        var body = program.Bodies[set.Items[item].BodyOrdinal];
-        this.LayOutLocals(item, body);
-        for (var i = this.starts[body.Ordinal]; i < this.starts[body.Ordinal + 1]; i++)
-        {
-            this.Work++;
-            var (at, runtime) = this.sites[i];
-            var block = body.Blocks[at.Block];
-            var target = at.Index == block.Count
-                ? this.Edge(program, item, body, block.Terminator)
-                : this.Edge(program, item, body, body.Statements[block.Start + at.Index]);
-            if (target >= 0)
-            {
-                set.Target(item, new(target, at, runtime));
-            }
-        }
-    }
-
-    // K 4.3: a type-driven item's targets, from its representative Type, each at the default site, by its kind's row: a ClosureErasure's
-    // body and its environment's glue; an ItemAdapter's body; a shim's (InstanceCollector.Witnesses.cs); a DropGlue's direct parts
-    // (InstanceCollector.Glue.cs); an object item's (InstanceCollector.Objects.cs). A kind without a row is a fault.
-    private void Expand(MirProgram program, int item)
-    {
-        var key = this.Set.Items[item].Key;
-        var type = this.Set.Items[item].RepresentativeType!;
-        var site = this.Set.Items[item].Site;
-        switch (key.Kind)
-        {
-            case MonoKind.Builtin or MonoKind.PropertyWitness:
-                this.Shim(program, item, site, key, type);
-                return;
-            case MonoKind.ClosureErasure or MonoKind.ItemAdapter:
-                this.Target(item, this.Callee(program, item, site, type));
-                this.Target(item, key.Kind == MonoKind.ClosureErasure ? this.Glue(item, site, type) : -1);
-                return;
-            case MonoKind.DropGlue:
-                this.DestructionTargets(program, item, site, type);
-                return;
-            case MonoKind.ObjectDescriptor or MonoKind.VTable:
-                this.Object(program, item, site, key.Kind, type);
-                return;
-            default:
-                throw new InvalidOperationException($"The mono item kind {key.Kind} has no target row.");
-        }
-    }
-
-    // A type-driven item's target at the default site, which runs whenever the item does.
-    private void Target(int item, int target)
-    {
-        if (target >= 0)
-        {
-            this.Set.Target(item, new(target, default, Runtime: true));
-        }
-    }
 
     // A Type of an item's body in the item's instance (TypeOf); null, with the storage-nesting gap at the site, when TyCtxt cannot make it.
     private BoundType? In(int item, SourceRef subject, BoundType type)

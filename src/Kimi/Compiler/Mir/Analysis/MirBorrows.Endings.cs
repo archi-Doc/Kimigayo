@@ -2,11 +2,13 @@
 
 namespace Kimi.Compiler.Mir;
 
-// A5's endings (E8, A3 4's destroying(site)): the Loans each location's destructions in place end, those of a Move Path's subtree one
-// run of ids, and the reservations of a call that destroys its target in place.
+// A5's endings (E8, A3 4's destroying(site); R-a, SPEC 7.2.3, 15.6.7): the Loans each location's destructions in place end, those of a
+// Move Path's subtree one run of ids, the reservations of a call that destroys its target in place, and the inspection Loans a call ends
+// before its plan and checks: those of the pending slots it moves.
 internal sealed partial class MirBorrows
 {
     private int[] ended = []; // By location: the set of the Loans its destructions in place end (0: none).
+    private int[] inspected = []; // By block: the set of the inspection Loans its Call ends before its plan and checks (R-a; 0: none).
 
     // The Loans each location's destructions in place end (E8): a whole write of a Move Path (an Assign's Place, a returning Call's
     // destination), StorageLive and StorageDead of a root, and a call target its published row destroys in place (`replace`), the Place
@@ -15,6 +17,7 @@ internal sealed partial class MirBorrows
     {
         var statements = this.body.Statements;
         MirDataflow.Grow(ref this.ended, statements.Length + this.body.Blocks.Length);
+        MirDataflow.Grow(ref this.inspected, this.body.Blocks.Length);
         for (var block = 0; block < this.body.Blocks.Length; block++)
         {
             ref readonly var data = ref this.body.Blocks[block];
@@ -34,9 +37,35 @@ internal sealed partial class MirBorrows
             }
 
             this.ended[statements.Length + block] = set;
+            this.inspected[block] = this.Inspections(terminator);
         }
 
         this.Work += statements.Length + this.body.Blocks.Length;
+    }
+
+    // R-a (SPEC 7.2.3, 15.6.7; R4-M90 D10): a Call's inspection Loans, those of the Move Path subtrees of the pending slots it moves, each
+    // one run. Every argument of an omitting call is its moved pending slot, which its defaults' prologue borrowed shared, so these end
+    // before callee entry; a template call's inputs are prologue temps, whose Content rows still read the slots.
+    private int Inspections(in MirTerminator call)
+    {
+        if (call.Kind != MirTerminatorKind.Call)
+        {
+            return 0;
+        }
+
+        var set = 0;
+        for (var o = call.Start; o < call.Start + call.Count; o++)
+        {
+            if (this.body.Operands[o] is { Kind: MirOperandKind.Move, Place: { Projection: 0, Root: >= 0 } slot } &&
+                this.body.Locals[slot.Root].Role == MirLocalRole.PendingSlot)
+            {
+                var (first, end) = this.Subtree(slot);
+                set = this.sets.Union(set, this.sets.Range(this.loanBase + first, end - first));
+            }
+        }
+
+        this.Work += call.Count;
+        return set;
     }
 
     // The argument local whose target a Call's published row destroys in place (`replace`), or -1.
@@ -66,18 +95,19 @@ internal sealed partial class MirBorrows
     }
 
     // The Loans destroying a Move Path in place ends (E8), those whose Places it exactly prefixes: the Loans whose groups lie in its
-    // subtree. A Place through a Deref or an index under the view, or a static's, is no Move Path.
+    // subtree. A Place through a Deref or an index under the view, or a part of a static, is no Move Path; a whole static is one, its
+    // group's Loans ended (OQ-F5-1 (a), R4-M92).
     private int Ending(MirPlace destroyed)
     {
-        if (destroyed.IsStatic)
+        if (destroyed.IsStatic && destroyed.Projection > 0)
         {
             return 0;
         }
 
-        var count = this.Walk(destroyed, reborrow: false, ref this.walk);
+        var count = this.placeSteps.Walk(this.body, destroyed, reborrow: false, ref this.walk);
         for (var i = 0; i < count; i++)
         {
-            if (this.walk[i].Class != StepClass.Inline)
+            if (this.walk[i].Class != MirStepClass.Inline)
             {
                 return 0;
             }

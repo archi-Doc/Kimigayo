@@ -28,19 +28,14 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
 
         var path = Path.GetFullPath("generic-generation.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+
+        // Check, then generation, as a build runs them: MIR code generation reports the instance's operation at check (K13a).
+        Assert.True(c.Analysis.IsVerified == Codegen.Expect(false, true, CodegenDeviations.CheckedSetAtCheck), MinimalEmissionTest.Describe(c, null));
+        c.ReportAnalysis();
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out var failure));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
-        Assert.False(c.Emission.FailureIsResourceLimit);
-        Assert.Equal("i128", c.Emission.FailureInstance!.TypeArguments[0]!.Name);
-        var refused = c.Ownership.FailedInstance;
-        Assert.NotNull(refused);
-        var issue = Assert.Single(refused.IssueStorage);
-        Assert.Equal(OwnershipRequirement.Unsupported, issue.Failure);
-        Assert.True(c.Analysis.IsVerified);
-        Assert.Empty(c.Problems);
-        c.Emission.ReportFailure(failure);
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(DiagnosticPartition.Input, DiagnosticPartition.Emission, rejected: true);
         var error = Assert.Single(result.Diagnostics);
@@ -62,11 +57,25 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
 
-        Assert.False(c.Validate(out var repeated));
-        Assert.Same(refused, c.Ownership.FailedInstance);
+        // The old generator's refused instance, on a compilation pinned to it so that every run checks it, until G2 (DECISIONS R5-M85).
+        var old = MinimalEmissionTest.Analyze(source, path, CompilerCodegen.Legacy);
+        using var oldWriter = new StringWriter();
+        Assert.False(old.WriteIr(oldWriter, out var failure));
+        Assert.Empty(oldWriter.ToString());
+        Assert.False(old.Emission.FailureIsResourceLimit);
+        Assert.Equal("i128", old.Emission.FailureInstance!.TypeArguments[0]!.Name);
+        var refused = old.Ownership.FailedInstance;
+        Assert.NotNull(refused);
+        var issue = Assert.Single(refused.IssueStorage);
+        Assert.Equal(OwnershipRequirement.Unsupported, issue.Failure);
+        Assert.True(old.Analysis.IsVerified);
+        Assert.Empty(old.Problems);
+        old.Emission.ReportFailure(failure);
+        Assert.False(old.Validate(out var repeated));
+        Assert.Same(refused, old.Ownership.FailedInstance);
         Assert.Equal(failure, repeated);
-        c.Bind();
-        Assert.Null(c.Ownership.FailedInstance);
+        old.Bind();
+        Assert.Null(old.Ownership.FailedInstance);
     }
 
     [Fact]
@@ -80,10 +89,12 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
         ScalarEmissionTest.EmitFixture("GenericGenerationDiagnosticValid", source, string.Empty);
     }
 
+    // The old instance run's storage limit (InstanceStorageLimit, deleted at G7), on a compilation pinned to the old generator, which goes
+    // by G4 at the latest (DECISIONS R5-M85).
     [Fact]
     public void TypeAndLengthSlotsAppearOnceInDeclarationOrder()
     {
-        var c = MinimalEmissionTest.Analyze("func pick<length N, T>(values: [N of i32], value: T) -> T => value@move\nlet result = pick([1, 2], (20, 22))");
+        var c = MinimalEmissionTest.Analyze("func pick<length N, T>(values: [N of i32], value: T) -> T => value@move\nlet result = pick([1, 2], (20, 22))", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var initial), initial);
         var previous = OwnershipStorage.ByteLimit;
         try
@@ -104,19 +115,20 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
     public void IndependentUnsupportedOperationsRetainSeparateLocations()
     {
         var c = MinimalEmissionTest.Analyze(WideDivision.Replace("    return value / 2", "    let first = value / 2\n    return value % 2", StringComparison.Ordinal));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Validate(out var failure));
-        c.Emission.ReportFailure(failure);
+        Assert.True(c.Analysis.IsVerified == Codegen.Expect(false, true, CodegenDeviations.CheckedSetAtCheck), MinimalEmissionTest.Describe(c, null));
+        c.ReportAnalysis();
+        Assert.False(c.Generate(TextWriter.Null));
         var errors = TestDiagnostics.Of(c);
         Assert.Equal(2, errors.Length);
         Assert.All(errors, x => Assert.Equal("Unsupported_Kd", x.Code));
         Assert.NotEqual(errors[0].Span, errors[1].Span);
     }
 
+    // The old instance run's storage limit, pinned as above.
     [Fact]
     public void InstanceStorageLimitsKeepResourceFactsAndRecover()
     {
-        var c = MinimalEmissionTest.Analyze("func identity<T>(value: T) -> T => value@move\nlet result = identity((20, 22))");
+        var c = MinimalEmissionTest.Analyze("func identity<T>(value: T) -> T => value@move\nlet result = identity((20, 22))", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var initial), initial);
         var previous = OwnershipStorage.ByteLimit;
         try

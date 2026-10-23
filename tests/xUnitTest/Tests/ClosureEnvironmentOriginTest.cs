@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Verification;
 using Xunit;
 
@@ -12,6 +13,85 @@ namespace XunitTest;
 public class ClosureEnvironmentOriginTest
 {
     private const string Main = "public func main() -> ()\n";
+
+    // BU's B3 family (PLAN G227): a Closure stores its own borrowed argument into its `[var arr@move]` capture and reads it in a later call.
+    private const string StoreHead = "func leak() -> i32\n    ";
+
+    private const string StoreTail = "\n    var f = func [var arr@move] (x: ref/i32) -> i32\n        if arr.length > 0\n            let old: i32 = arr[0]@follow\n" +
+        "            return old\n        arr.append(x)\n        return 0\n    var first: i32 = 0\n    if true\n        let inner: i32 = 41\n" +
+        "        first = f@uniq(inner@ref)\n    let other: i32 = 5\n    return first + f@uniq(other@ref)\npublic func main() => ()\n";
+
+    private const string VarStore = StoreHead + "var arr: Array<ref/i32> = []" + StoreTail;
+
+    private const string Generic = "func leak<T>(t: T) -> i32\n    var arr: Array<ref/i32> = []\n    var f = func [var arr@move] (x: ref/i32) -> i32\n" +
+        "        arr.append(x)\n        return 0\n    let a: i32 = 1\n    return f@uniq(a@ref)\npublic func main()\n    let r = leak(1)\n";
+
+    private const string Nested = "func leak() -> i32\n    var arr: Array<ref/i32> = []\n    var f = func [var arr@move] (x: ref/i32) -> i32\n" +
+        "        var g = func [arr@uniq] (y: ref/i32) -> i32\n            arr@follow.append(y)\n            return 0\n        return g@uniq(x)\n" +
+        "    let local: i32 = 1\n    return f@uniq(local@ref)\npublic func main() => ()\n";
+
+    private const string RawStore = "func leak(x: ref/i32) -> i32\n    var arr: Array<ref/i32> = []\n    let q = arr[0]@follow@raw\n" +
+        "    var f = func [var q@move] (y: ref/i32) -> i32\n        q = y@follow@raw\n        return 0\n    return f@uniq(x)\npublic func main() => ()\n";
+
+    private const string LocalStore = "func leak() -> i32\n    var arr: Array<ref/i32> = []\n    var f = func [var arr@move] () -> i32\n" +
+        "        let local: i32 = 1\n        arr.append(local@ref)\n        return 0\n    let first = f@uniq()\n    return first + f@uniq()\n" +
+        "public func main() => ()\n";
+
+    private const string CopyStore = "func leak() -> i32\n    let o: Option<ref/i32> = .None\n    var f = func [var o] (n: i32) -> i32\n" +
+        "        let local: i32 = n\n        o = .Some(local@ref)\n        return 0\n    let first = f@uniq(41)\n    return first + f@uniq(7)\n" +
+        "public func main() => ()\n";
+
+    private const string MovedStore = "func leak() -> i32\n    var o: Option<Array<ref/i32>> = .None\n    var f = func [var o@move] () -> i32\n" +
+        "        let local: i32 = 1\n        var inner: Array<ref/i32> = []\n        inner.append(local@ref)\n        o = .Some(inner@move)\n" +
+        "        return 0\n    return f@uniq()\npublic func main() => ()\n";
+
+    private const string TwoRegions = "func g(p: ref/i32) -> isize\n    var a1: Array<ref/i32> = []\n    a1.append(p)\n    var a2: Array<ref/i32> = []\n" +
+        "    var f = func [var a1@move, var a2@move] () -> isize\n        a2.append(a1[0])\n        return a2.length\n    return f@uniq()\n" +
+        "public func main() => ()\n";
+
+    private const string InputDuringP = "func g(p: ref/i32) -> isize\n    var arr: Array<ref/i32> = []\n    arr.append(p)\n" +
+        "    var f = func [var arr@move] (x: ref/i32 during p) -> isize\n        arr.append(x)\n        return arr.length\n    return f@uniq(p)\n" +
+        "public func main() => ()\n";
+
+    private const string CapturedParameter = "func g(p: ref/i32) -> isize\n    var arr: Array<ref/i32> = []\n    var f = func [var arr@move, p] () -> isize\n" +
+        "        arr.append(p)\n        return arr.length\n    return f@uniq()\npublic func main() => ()\n";
+
+    private const string CopiedOption = "func ok(p: ref/i32) -> i32\n    let o: Option<ref/i32> = .None\n    var f = func [var o, p] (n: i32) -> i32\n" +
+        "        o = .Some(p)\n        return n\n    return f@uniq(1)\npublic func main() => ()\n";
+
+    private const string EntryBorrow = "func ok() -> isize\n    let outer: i32 = 3\n    let arr: Array<ref/i32> = []\n" +
+        "    var f = func [var arr@move, outer@ref] () -> isize\n        arr.append(outer)\n        return arr.length\n    return f@uniq()\n" +
+        "public func main() => ()\n";
+
+    private const string CapturedBorrow = "func ok() -> isize\n    let a: i32 = 1\n    var arr: Array<ref/i32> = []\n    let r = a@ref\n" +
+        "    var f = func [var arr@move, r] () -> isize\n        arr.append(r)\n        return arr.length\n    return f@uniq()\npublic func main() => ()\n";
+
+    private const string StaticThroughLocal = "func leak() -> i32\n    var arr: Array<ref/i32> = []\n    let f = func [arr@move] () -> ref/i32\n" +
+        "        var tmp: Array<ref/i32> = []\n        tmp.append(arr[0])\n        return tmp[0]\n    return f()@follow\npublic func main() => ()\n";
+
+    private const string StaticDirect = "func leak() -> i32\n    var arr: Array<ref/i32> = []\n    let f = func [arr@move] () -> ref/i32 => arr[0]\n" +
+        "    return f()@follow\npublic func main() => ()\n";
+
+    private const string BodyError = "func ok() -> isize\n    let arr: Array<ref/i32> = []\n    var f = func [var arr@move] () -> isize\n" +
+        "        let wrong: bool = 5\n        return arr.length\n    return f@uniq()\npublic func main() => ()\n";
+
+    // A local clause in a Closure body relating the local's slot to a capture's Origin (the final review's k06, k07, k09).
+    private const string Holder = "struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\n";
+
+    private const string ClauseOverParameter = Holder + "func g(p: ref/i32) -> i32\n    let a: i32 = 1\n    let r = a@ref\n    let f = func [r, p] () -> i32\n" +
+        "        let h: H{x} = H.init(r)\n            origin x.s outlives p\n        return h.item@follow\n    return f()\npublic func main() => ()\n";
+
+    private const string ClauseOverCapture = Holder + "func g(p: ref/i32) -> i32\n    let a: i32 = 1\n    let b: i32 = 2\n    let r = a@ref\n    let q = b@ref\n" +
+        "    let f = func [r, q] () -> i32\n        let h: H{x} = H.init(r)\n            origin x.s outlives q\n        return h.item@follow\n    return f()\n" +
+        "public func main() => ()\n";
+
+    private const string ClauseOverCaptureFromInput = Holder + "func g(p: ref/i32) -> i32\n    let b: i32 = 2\n    let q = b@ref\n" +
+        "    let f = func [q] (y: ref/i32) -> i32\n        let h: H{x} = H.init(y)\n            origin x.s outlives q\n        return h.item@follow\n" +
+        "    let a: i32 = 1\n    return f(a@ref)\npublic func main() => ()\n";
+
+    private const string Unproven = nameof(DiagnosticCode.UnprovenOriginRelation_Kd);
+
+    private const string Unsatisfied = nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd);
 
     // S1 (PLAN G65): these bodies were accepted, and the first aborted at run time with the write observed through `r`.
     [Theory]
@@ -76,6 +156,79 @@ public class ClosureEnvironmentOriginTest
     [InlineData("    var n = 7\n    let view = n@uniq\n    let s = \"x\"\n    let take = func [view@move, s@move] () => keep2(s@move, view)\n")]
     public void AResultOverExternalOriginsOutlivesTheCall(string body)
         => Assert.Empty(DiagnosticCorpus.Check("func keep2(s: string, v: uniq/i32) -> uniq/i32 during v => v\n" + Main + body).Diagnostics);
+
+    // SPEC 15.6.5, 15.3.4 (PLAN G227, DECISIONS BU-28): in a Closure body the Origins of its captures are fixed, so the body never bounds
+    // them. Storing the call's own input or another capture's Origin into the environment is Unknown, and storing a borrow local to the call
+    // is Refuted, on both pipelines. dev accepted the first rows and read the dead argument natively (`leak 41`); the class S rows (TwoRegions
+    // to StaticDirect) are memory-safe and rejected because SPEC 15.6.5 stays (the owner, 2026-10-23), their rewrites over a written Origin
+    // being PLAN's open issue (a). A local clause over a capture's Origin is Binding's record at the initializer, as one over an enclosing
+    // parameter's (the final review's B1). The body is bound, so its own errors stay (BodyError, BU's N15).
+    [Theory]
+    [InlineData(VarStore, Unproven, "x)")]
+    [InlineData(StoreHead + "let arr: Array<ref/i32> = []" + StoreTail, Unproven, "x)")]
+    [InlineData(StoreHead + "let a0: Array<ref/i32> = []\n    var arr = a0@move" + StoreTail, Unproven, "x)")]
+    [InlineData(StoreHead + "let arr = Array<ref/i32>.init(capacity: 0)" + StoreTail, Unproven, "x)")]
+    [InlineData(StoreHead + "var arr = Array<ref/i32>.init(capacity: 0)" + StoreTail, Unproven, "x)")]
+    [InlineData(Generic, Unproven, "x)")]
+    [InlineData(Nested, Unproven, "y)")]
+    [InlineData(RawStore, Unproven, "y@follow@raw")]
+    [InlineData(LocalStore, Unsatisfied, "local@ref")]
+    [InlineData(CopyStore, Unsatisfied, "local@ref")]
+    [InlineData(MovedStore, Unsatisfied, "inner@move")]
+    [InlineData(TwoRegions, Unproven, "a1[0]")]
+    [InlineData(InputDuringP, Unproven, "x)")]
+    [InlineData(CapturedParameter, Unproven, "p)")]
+    [InlineData(CopiedOption, Unproven, "p)")]
+    [InlineData(EntryBorrow, Unproven, "outer)")]
+    [InlineData(CapturedBorrow, Unproven, "r)")]
+    [InlineData(StaticThroughLocal, Unproven, "tmp[0]\n")]
+    [InlineData(StaticDirect, Unproven, "arr[0]\n")]
+    [InlineData(ClauseOverParameter, Unproven, "H.init(r)")]
+    [InlineData(ClauseOverCapture, Unproven, "H.init(r)")]
+    [InlineData(ClauseOverCaptureFromInput, Unproven, "H.init(y)")]
+    [InlineData(BodyError, nameof(DiagnosticCode.TypeMismatch_Kd), "5\n")]
+    public void AStoreIntoTheEnvironmentIsJudgedAgainstItsFixedOrigins(string source, string code, string at)
+    {
+        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
+        {
+            var error = Assert.Single(ContextualCaptureTest.PublishedRecords(source, pipeline));
+            Assert.Equal(code, error.Code);
+            Assert.StartsWith(at, source[error.Span.Start..], StringComparison.Ordinal);
+        }
+    }
+
+    // SPEC 23.1 (DECISIONS BU-28): an enclosing local's region is shown as that local's omitted Origin, never by its atom's kind.
+    [Fact]
+    public void AnEnclosingRegionIsNamedByItsLocal()
+    {
+        var error = Assert.Single(ContextualCaptureTest.PublishedRecords(VarStore, CompilerPipeline.Legacy));
+        Assert.Equal("requires x outlives the omitted Origin of arr, which is not proven", error.Label);
+    }
+
+    // The valid twins: reading the environment, also into an inferred result or a body local, storing the environment's own Origin back,
+    // an outer store after a Copy capture, two levels of Closures, a raw pointer over a `var` region kept unused and an element written
+    // `during static` are accepted on both pipelines.
+    [Theory]
+    [InlineData("func ok() -> isize\n    let arr: Array<ref/i32> = []\n    var f = func [var arr@move] () -> isize => arr.length\n    return f@uniq()\n")]
+    [InlineData("func ok() -> i32\n    let a: Option<ref/i32> = .None\n    var f = func [var a] (n: i32) -> i32 => n\n    return f@uniq(2)\n")]
+    [InlineData("func ok(p: ref/i32) -> i32\n    var arr: Array<ref/i32> = []\n    arr.append(p)\n    var f = func [var arr@move] () -> i32\n        let first: i32 = arr[0]@follow\n        return first\n    return f@uniq()\n")]
+    [InlineData("func ok(p: ref/i32) -> i32\n    var arr: Array<ref/i32> = []\n    arr.append(p)\n    let f = func [arr@ref] () => arr[0]\n    return f()@follow\n")]
+    [InlineData("func ok(p: ref/i32) -> i32\n    var arr: Array<ref/i32> = []\n    arr.append(p)\n    let f = func [arr@move] () => arr[0]\n    let r = f()\n    return r@follow\n")]
+    [InlineData("func ok(p: ref/i32) -> isize\n    var arr: Array<ref/i32> = []\n    arr.append(p)\n    var f = func [var arr@move] () -> isize\n        let first = arr[0]\n        arr.append(first)\n        return arr.length\n    return f@uniq()\n")]
+    [InlineData("func ok(p: ref/i32) -> i32\n    var arr: Array<ref/i32> = []\n    arr.append(p)\n    let f = func [arr@ref] () -> i32\n        var tmp: Array<ref/i32> = []\n        tmp.append(arr[0])\n        return tmp[0]@follow\n    return f()\n")]
+    [InlineData("func ok(p: ref/i32) -> i32\n    var arr: Array<ref/i32> = []\n    arr.append(p)\n    let outer = func [arr@ref] () -> i32\n        let inner = func [arr] () -> i32 => arr[0]@follow\n        return inner()\n    return outer()\n")]
+    [InlineData("func ok(p: ref/i32) -> isize\n    var arr: Array<ref/i32> = []\n    arr.append(p)\n    var f = func [var arr@move] () -> isize\n        var g = func [var arr@move] () -> isize => arr.length\n        return g@uniq()\n    return f@move()\n")]
+    [InlineData("func ok(p: ref/i32) -> i32\n    let f = func [p] () => p\n    return f()@follow\n")]
+    [InlineData("func ok(p: ref/i32) -> i32\n    var o: Option<ref/i32> = .None\n    var f = func [var o] (n: i32) -> i32\n        match o\n            .Some(let r) => return r@follow\n            _ => return n\n    o = .Some(p)\n    return f@uniq(1)\n")]
+    [InlineData("func ok() -> i32\n    let n: i32 = 1\n    var v = n@ref\n    let q = v@follow@raw\n    var f = func [var q@move] () -> i32 => 0\n    return f@uniq()\n")]
+    [InlineData("func ok() -> i32\n    var arr: Array<ref/i32 during static> = []\n    let f = func [arr@move] () -> ref/i32 => arr[0]\n    return f()@follow\n")]
+    public void AnEnvironmentReadOrItsOwnOriginStaysValid(string function)
+    {
+        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
+        {
+            Assert.Empty(ContextualCaptureTest.PublishedRecords(function + "public func main() => ()\n", pipeline));
+        }
+    }
 
     [Trait("Purpose", "Allocation")]
     [Fact]

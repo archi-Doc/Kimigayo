@@ -332,7 +332,7 @@
 
   + Name="Syntax.EffectBound"
     Description="an effect item names its bound"
-    Phrase="'confined' or 'preserves results'"
+    Phrase="'confined'"
 
   + Name="Syntax.OriginSlotName"
     Description="an Origin header names each own slot"
@@ -631,9 +631,6 @@
 
   + Name="Ownership.VirtualEffectBound"
     Description="Every virtual implementation's cleanup satisfies the original public bounds"
-
-  + Name="Ownership.CallEffectConflict"
-    Description="the requirement call's derived effects conflict with no Loan an earlier result keeps"
 
   + Name="Ownership.StaticMovePathRequired"
     Description="a moved element has a static Move Path"

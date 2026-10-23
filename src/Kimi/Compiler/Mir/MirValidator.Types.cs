@@ -4,10 +4,67 @@ using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
 
-// The Type tier (SPEC 3.2-3.4, 13.2-13.5, 7.3, 8.9): the Types values flow between agree (MirTypes.Agree, modulo Origins, or as the
-// body's premises make them), each operation admits its operands' Types, and every Semantics case view resolves each Adapt.
+// The Type tier (SPEC 3.2-3.4, 8.2, 8.14, 8.15, 13.2-13.5).
+// - Responsibility: the Types values flow between agree (Agree, Agrees: MirTypes.Agree, modulo Origins, or as the body's premises
+//   make them); an rvalue's Type agrees with its destination's and each operation admits its operands' Types (Types, Casts, Component,
+//   Adapts); every Semantics case view resolves each Adapt (Views); and the temps whose Type the tier reads as unknown (Unknown).
+// - Inputs: an rvalue whose arity holds, with its destination's Type; operands and their Places; the body's case views (MirCases).
+// - Outputs: Type and Operation findings; the Adapts whose Places and token are in range, for Views; the unknown mask Unknown gives the
+//   checker (a flag per local).
+// - Invariants: an operand of unknown Type (a Place or constant out of range, a temp Unknown names, the Never value) agrees with
+//   every Type.
+// - Prohibitions: no range or kind finding (the walk's: MirValidator.Tables, .Rvalues); a Call's Types are MirValidator.Signatures'.
 internal sealed partial class MirValidator
 {
+    private bool[] unknown = [];
+
+    // The temps an Opaque value defines, whose Type is the replaced syntax's, which Binding may not know (an Error node has none), and those a
+    // Use, a unary operator or an arithmetic, bit or shift operator of such a temp defines, whose Type is that operand's: the Type tier reads
+    // them as of an unknown Type.
+    private bool[] Unknown(MirBody body)
+    {
+        if (this.unknown.Length < body.Locals.Length)
+        {
+            this.unknown = new bool[Math.Max(body.Locals.Length, this.unknown.Length * 2)];
+        }
+
+        var locals = body.Locals;
+        var operands = body.Operands;
+        Array.Clear(this.unknown, 0, locals.Length);
+        for (var changed = true; changed;)
+        {
+            changed = false;
+            foreach (ref readonly var statement in body.Statements)
+            {
+                if (statement is not { Kind: MirStatementKind.Assign, Place: { Projection: 0, Root: >= 0 and var root }, Rvalue: var rvalue } ||
+                    root >= locals.Length || locals[root].Kind != MirLocalKind.Temp || this.unknown[root])
+                {
+                    continue;
+                }
+
+                if (rvalue.Kind != MirRvalueKind.Opaque)
+                {
+                    if (rvalue is not { Kind: MirRvalueKind.Use or MirRvalueKind.UnaryOp } and not
+                        { Kind: MirRvalueKind.BinaryOp, Op: < (byte)MirBinaryOp.Eq } ||
+                        (uint)rvalue.Start >= (uint)operands.Length)
+                    {
+                        continue;
+                    }
+
+                    if (operands[rvalue.Start] is not { Kind: not MirOperandKind.Const, Place.Root: >= 0 and var read } ||
+                        read >= locals.Length || !this.unknown[read])
+                    {
+                        continue;
+                    }
+                }
+
+                this.unknown[root] = changed = true;
+            }
+        }
+
+        return this.unknown;
+    }
+
     private partial struct Checker
     {
         // SPEC 8.14, 8.15: under each Semantics case view an Adapt selects an operation (MirCases.Adapt), and a borrow or an address takes
@@ -53,23 +110,6 @@ internal sealed partial class MirValidator
         private static BoundType? Terminal(BoundType? type)
             => TyCtxt.Layer(type, out var below, out _) is var _ && !ReferenceEquals(below, type) ? Terminal(below) : type;
 
-        // The Type a body gives in _0: its function's result (a constructor's object), a default template's parameter's or a static's; none
-        // for the top-level statements, which have no symbol.
-        private static BoundType? Result(MirDefKey key)
-        {
-            if (key.Decl is not { } decl)
-            {
-                return null;
-            }
-
-            if (key.Kind == MirBodyKind.StaticInit)
-            {
-                return decl.Type;
-            }
-
-            return TyCtxt.Signature(decl, null, key.Kind == MirBodyKind.DefaultTemplate ? key.Index : -1, out _);
-        }
-
         // An operand's Type, unknown (null) for a Place out of range or a local an Opaque value defines, and for the Never value, which
         // fits any operand position (SPEC 3.8; DECISIONS R4-M62).
         private readonly BoundType? TypeOf(in MirOperand operand)
@@ -98,10 +138,10 @@ internal sealed partial class MirValidator
         }
 
         // The Type of an aggregate's operand, as the Place it initializes projects it: a Tuple's element, a Closure's capture, a struct's base
-        // then its own Fields, a Case's payload, a fixed array's element.
+        // then its own Fields, a Case's payload, a fixed array's or a Fill's element.
         private readonly BoundType? Component(in MirRvalue rvalue, int index) => (MirAggregateKind)rvalue.Op switch
         {
-            MirAggregateKind.FixedArray => rvalue.Type!.Components[0],
+            MirAggregateKind.FixedArray or MirAggregateKind.Fill => rvalue.Type!.Components[0],
             MirAggregateKind.Adt when AdtDef.IsEnum(rvalue.Type) => body.ProjectedType(
                 body.ProjectedType(
                     rvalue.Type,
@@ -176,72 +216,6 @@ internal sealed partial class MirValidator
             for (var i = 0; rvalue.Kind == MirRvalueKind.Aggregate && i < operands.Length; i++)
             {
                 this.Agree(this.Component(rvalue, i), this.TypeOf(operands[i]));
-            }
-        }
-
-        // SPEC 7.3: a Fn, Requirement or Virtual callee takes its function's parameters under its Subst, the receiver first (a default
-        // template, plan 5.6.2: shared references to the parameters before its own, in slot order), and gives its result; a Value callee of a
-        // Function Type its inputs and result. A call that diverges writes no destination.
-        private void Signature(in MirTerminator call)
-        {
-            var function = call.Callee.Symbol;
-            var subst = call.Callee.Subst;
-            var template = call.Callee.Kind == MirCalleeKind.Fn ? call.Callee.Arg - 1 : -1;
-            var value = function is null ? Terminal(this.TypeOf(call.Operand)) : null;
-            if (function is null && value is not { Kind: BoundTypeKind.Function, Components: [_, _] })
-            {
-                // A Closure's or a function item's signature is its declaration's, whose inputs give its arity (C8; retention numbers them).
-                if (body.Consts[call.Callee.Arg].Type is not { Components: [var inputs, _] } || inputs.Components.Count != call.Count)
-                {
-                    this.Report(MirViolation.Arity);
-                }
-
-                return;
-            }
-
-            var count = 0;
-            var result = function is null ? value!.Components[1] : TyCtxt.Signature(function, subst, template, out count);
-            if (function is null)
-            {
-                count = value!.Components[0].Components.Count;
-            }
-            else if (template >= 0)
-            {
-                count = template;
-            }
-
-            if (count != call.Count)
-            {
-                this.Report(MirViolation.Arity);
-                return;
-            }
-
-            for (var i = 0; i < count; i++)
-            {
-                var actual = this.TypeOf(body.Operands[call.Start + i]);
-                BoundType? expected;
-                if (function is null)
-                {
-                    expected = value!.Components[0].Components[i];
-                }
-                else
-                {
-                    expected = TyCtxt.Signature(function, subst, template < 0 ? MirCallee.Slot(function, i) : i, out _);
-                }
-
-                if (template < 0 || actual is null || actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [_] })
-                {
-                    this.Agree(expected, template < 0 ? actual : actual?.Components[0]);
-                }
-                else
-                {
-                    this.Report(MirViolation.Type); // A template's argument is no shared reference.
-                }
-            }
-
-            if (call.Target >= 0 && this.IsValid(call.Place))
-            {
-                this.Agree(body.TypeOf(call.Place), result);
             }
         }
     }

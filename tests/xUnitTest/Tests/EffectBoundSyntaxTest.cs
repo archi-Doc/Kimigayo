@@ -12,23 +12,21 @@ public class EffectBoundSyntaxTest
     [Fact]
     public void ParsesEffectClausesInTheConstraintRegion()
     {
-        var tree = ParseSuccess("contract Source\n    associate Item\n    func take(self: uniq/Self) -> Option<Self.Item>\n        effect preserves results\n    func put(self: uniq/Self, value: i32) -> ()\n        Self is Copy\n        effect confined");
+        var tree = ParseSuccess("contract Source\n    associate Item\n    func take(self: uniq/Self) -> Option<Self.Item>\n        effect confined\n    func put(self: uniq/Self, value: i32) -> ()\n        Self is Copy\n        effect confined");
         var contract = Assert.IsType<ContractKoto>(Assert.Single(tree.RootKoto.NestedContainers));
         var functions = contract.Members.OfType<FunctionKoto>().ToArray();
-        Assert.Equal(EffectBoundKind.PreservesResults, Assert.Single(functions[0].EffectBounds).Bound);
-        var confined = Assert.Single(functions[1].EffectBounds);
-        Assert.Equal(EffectBoundKind.Confined, confined.Bound);
-        Assert.False(confined.IsSpecification);
+        Assert.Single(functions[0].EffectBounds);
+        Assert.False(Assert.Single(functions[1].EffectBounds).IsSpecification);
         Assert.Single(functions[1].TypeConstraints);
         AssertRoundTrip(tree);
     }
 
     [Theory]
-    [InlineData("contract StableSource: Source\n    effect Source.take preserves results", "Source", "take", EffectBoundKind.PreservesResults)]
-    [InlineData("contract Strict: Indexable<i32>\n    effect (Indexable<i32>).index confined", "(Indexable<i32>)", "index", EffectBoundKind.Confined)]
-    [InlineData("contract Stable: Kimi.Iterator\n    effect Kimi.LendingIterator.next preserves results", "Kimi.LendingIterator", "next", EffectBoundKind.PreservesResults)]
-    [InlineData("contract Strict: confined\n    effect confined.f confined", "confined", "f", EffectBoundKind.Confined)]
-    public void ParsesEffectSpecificationsAsContractItems(string source, string selector, string name, EffectBoundKind bound)
+    [InlineData("contract StableSource: Source\n    effect Source.take confined", "Source", "take")]
+    [InlineData("contract Strict: Indexable<i32>\n    effect (Indexable<i32>).index confined", "(Indexable<i32>)", "index")]
+    [InlineData("contract Stable: Kimi.Iterator\n    effect Kimi.LendingIterator.next confined", "Kimi.LendingIterator", "next")]
+    [InlineData("contract Strict: confined\n    effect confined.f confined", "confined", "f")]
+    public void ParsesEffectSpecificationsAsContractItems(string source, string selector, string name)
     {
         var tree = ParseSuccess(source);
         var contract = Assert.IsType<ContractKoto>(Assert.Single(tree.RootKoto.NestedContainers));
@@ -36,7 +34,6 @@ public class EffectBoundSyntaxTest
         Assert.True(effect.IsSpecification);
         Assert.Equal(selector, effect.Selector!.ToString());
         Assert.Equal(name, effect.Name!.ToString());
-        Assert.Equal(bound, effect.Bound);
         AssertRoundTrip(tree);
     }
 

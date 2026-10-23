@@ -12,10 +12,12 @@ namespace XunitTest;
 
 public class OwnershipStorageLimitTest(ITestOutputHelper output)
 {
+    // The old instance run's storage limit (InstanceStorageLimit, deleted at G7), on a compilation pinned to the old generator, which goes
+    // by G4 at the latest (DECISIONS R5-M85).
     [Fact]
     public void ConcreteInstanceLimitsRemainResourceFailuresAndRecover()
     {
-        var c = MinimalEmissionTest.Analyze("func identity<T>(value: T) -> T => value@move\nidentity((20, 22))");
+        var c = MinimalEmissionTest.Analyze("func identity<T>(value: T) -> T => value@move\nidentity((20, 22))", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
         Assert.True(c.WriteIr(TextWriter.Null, out var initial), initial);
         var previous = OwnershipStorage.ByteLimit;
@@ -72,6 +74,12 @@ public class OwnershipStorageLimitTest(ITestOutputHelper output)
             Assert.Equal(4096, issue.LimitBytes);
             Assert.Contains("func check()", issue.Source.ToString(), StringComparison.Ordinal);
             Assert.False(c.Validate(out _));
+
+            // PD12: whichever generator the process selects, the limited body is refused before generation, with no module and no
+            // Internal record (the Finalize below covers what generation reported).
+            using var module = new StringWriter();
+            Assert.False(c.WriteIr(module, out _));
+            Assert.Empty(module.ToString());
             c.ReportAnalysis();
             c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
             var result = c.Diagnostics.Finalize();

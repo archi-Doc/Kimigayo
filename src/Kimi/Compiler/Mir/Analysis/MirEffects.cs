@@ -1,17 +1,19 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns A4 (plan 5.5; SPEC 8.11.2, 8.11.4, 8.11.6, 15.6.4; DECISIONS R4-M22): per body view the effect summary — the classes
+// Owns A4 (plan 5.5; SPEC 8.11.2, 8.11.3, 8.11.4, 15.6.4; DECISIONS R4-M22): per body view the effect summary — the classes
 // Environment, Unknown, Limit and Derived and atoms over the definition's abstract Types (Drop(T), a call through a Callable input T) — and
 // the `confined` obligations Binding publishes (TyCtxt.EffectObligations).
 // Input: validated bodies per MirCases view, their uses (MirUses), the blocks the runtime edges reach (MirDataflow.Begin), A2's verdicts
 // (MirProgram.Drops), TyCtxt's obligations and callee facts.
 // Output: IncompatibleContractImplementation_Kd,
-// UnsatisfiedEffectBound_Kd and Unsupported_Kd through MirReport, and for A5 the per-node summaries and a site's static keys (Keys).
-// Atoms compose through each call's substitution into the caller (an atom concrete there is resolved there); requirement and virtual calls
-// take the bounds of the caller's own premises; one worklist with recorded dependencies solves the least fixed point; storage is pooled and
-// reset by counts, so a warm version allocates nothing.
-// Must not read syntax or HIR, re-derive premises, bounds or obligations, decide `preserves results` (A5-3), or report a failure that only
-// an Opaque site or a callee Binding rejected causes (derived, R4-M10).
+// UnsatisfiedEffectBound_Kd and Unsupported_Kd through MirReport, and for A5 the per-node summaries and a site's key row and classes
+// per view (Keys, Field).
+// Atoms compose through each call's substitution into the caller (an atom concrete there is resolved there, one on a projection with a
+// recursive base where it arises, SPEC 15.6.4: the fixed point is finite where the view finds the base, and a base G170 hides still ends at
+// G128's bound); requirement and virtual calls take the bounds of the caller's own premises; one worklist with recorded dependencies solves
+// the least fixed point; storage is pooled and reset by counts, so a warm version allocates nothing.
+// Must not read syntax or HIR, re-derive premises, bounds or obligations, or report a failure that only an Opaque site or a callee
+// Binding rejected causes (derived, R4-M10).
 
 using System.Numerics;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
@@ -25,10 +27,17 @@ namespace Kimi.Compiler.Mir;
 /// <param name="flow">The dataflow, begun with the body whose views <see cref="Local"/> records: the blocks the runtime edges reach.</param>
 internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDataflow flow)
 {
-    private const byte Environment = 1; // The classes of a summary: an environment effect (SPEC 8.11.2),
-    private const byte Unknown = 2; // an effect that cannot be classified,
-    private const byte Limit = 4; // one this implementation cannot classify yet (Unsupported_Kd),
-    private const byte Derived = 8; // one only an Opaque site or a callee Binding rejected causes.
+    /// <summary>A class of a summary: an effect that cannot be classified, which may access any key (SPEC 15.6.4).</summary>
+    internal const byte Unknown = 2;
+
+    /// <summary>A class of a summary: an effect this implementation cannot classify yet (a located <c>Unsupported_Kd</c>).</summary>
+    internal const byte Limit = 4;
+
+    /// <summary>A class of a summary: an effect only an Opaque site or a callee Binding rejected causes, a dependent of that error
+    /// (R4-M10).</summary>
+    internal const byte Derived = 8;
+
+    private const byte Environment = 1; // The class of an environment effect (SPEC 8.11.2).
     private const byte Drop = 0; // An atom's kind: the destruction of a value of its Type, else 1 + the receiver of a call through it,
     private const byte Requires = byte.MaxValue; // or a published requirement on its Type (SPEC 4.9.6).
 
@@ -43,21 +52,22 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     private int itemCount;
     private int edgeCount;
     private byte found; // The classes the current evaluation or local walk found.
+    private ulong version; // The program version whose body views Local records (MirProgram.Version; 0: none).
 
     /// <summary>Records the local facts of a body view (driver step 2, after the body's A1 and A2, the dataflow begun with the body): its
     /// effects and static accesses, its calls with a body as edges into the callee views their substitution selects, and the parts its
-    /// Drops destroy (by A2's verdicts) and the Callable inputs it calls through as inputs of its summary. The first view of the first body
-    /// starts a program version.</summary>
+    /// Drops destroy (by A2's verdicts) and the Callable inputs it calls through as inputs of its summary. A program whose
+    /// <see cref="MirProgram.Version"/> differs from the one recorded starts a version; a body's views are recorded in order.</summary>
     /// <param name="program">The program.</param>
     /// <param name="body">The body, whose view is selected.</param>
     /// <param name="view">The selected view.</param>
     internal void Local(MirProgram program, MirBody body, long view)
     {
-        if (body.Ordinal == 0 && view == 0)
+        if (program.Version != this.version)
         {
+            this.version = program.Version;
             this.nodeCount = this.itemCount = this.edgeCount = this.keyCount = 0;
             this.fieldIds.Clear();
-            this.fields.Clear();
         }
 
         var node = this.nodeCount++;
@@ -110,7 +120,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         return false;
     }
 
-    // SPEC 8.11.2, 8.11.4, 8.11.6: what a terminator adds. A published operation adds its row through the call's substitution, never
+    // SPEC 8.11.2, 8.11.3, 8.11.4: what a terminator adds. A published operation adds its row through the call's substitution, never
     // its body (SPEC 4.9.6); a call of another function with a body enters each body its substitution may select (SPEC 8.13.3,
     // TyCtxt.Implementation), one without a body is what Binding classifies (TyCtxt.Bodyless). A requirement call that selects a built-in
     // target runs what its Self's witnesses run; any other requirement or dynamic virtual call has the bounds of the caller's
@@ -138,7 +148,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         else if (callee.Kind is MirCalleeKind.Requirement or MirCalleeKind.Virtual)
         {
             var subject = callee.Kind == MirCalleeKind.Requirement ? callee.Subst?.Self : null;
-            this.found |= types.DispatchBounds(body.Key.Decl, callee.Symbol!, subject, callee.Contract)?.Confined == true ? (byte)0 : Unknown;
+            this.found |= types.DispatchBounds(body.Key.Decl, callee.Symbol!, subject, callee.Contract) == true ? (byte)0 : Unknown;
             this.Given(body, terminator);
         }
         else if (callee.Kind == MirCalleeKind.Value)
@@ -152,8 +162,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
                 this.Given(body, terminator);
             }
         }
-        else if (callee.Arg == (int)IntrinsicId.StaticEnsure &&
-            program[new(body.Statics[(int)body.Consts[body.Operands[terminator.Start].Arg].Bits].Symbol, MirBodyKind.StaticInit)] is { } initializer)
+        else if (callee.Arg == (int)IntrinsicId.StaticEnsure && program.StaticInit(body, body.Operands[terminator.Start]) is { } initializer)
         {
             this.AddEdge(initializer, null);
         }
@@ -280,7 +289,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         return next;
     }
 
-    // SPEC 8.11.4 rule 1: a call the caller's premises bound may destroy each value moved into it.
+    // SPEC 8.11.3 rule 1: a call the caller's premises bound may destroy each value moved into it.
     private void Given(MirBody body, in MirTerminator terminator)
     {
         foreach (var operand in body.Operands.Slice(terminator.Start, terminator.Count))

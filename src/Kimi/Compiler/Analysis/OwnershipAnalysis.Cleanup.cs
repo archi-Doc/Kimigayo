@@ -6,11 +6,53 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
-    private static bool CleanupObservesBorrows(BoundType type, int depth = 0)
+    // A Place's query (DECISIONS BU-19, the owner's D5 exception): its source and context are fixed, and the answer at a depth is
+    // monotone in the depth (an observer is reachable, or a path from the depth reaches the bound), so a part keeps, within the query, the
+    // greatest depth it answered false at and the least it answered true at, and a depth between them is computed: exact, at most 66
+    // answers a part, so a Type's shared parts are not walked once per path.
+    private readonly Dictionary<BoundType, (int Query, int FalseTo, int TrueFrom)> cleanupAnswers = new(ReferenceEqualityComparer.Instance);
+    private int cleanupQuery;
+
+    // SPEC 15.6.6, 16.3.3, 8.15.1: whether destroying a value of the Type may observe the Loans it holds: through a struct that declares a
+    // drop, or an abstract part not proven Copy, whose destruction every instance decides (MirTypes.Observes, DECISIONS R4-M36).
+    private bool CleanupObservesBorrows(BoundType type, Koto source)
+    {
+        if (++this.cleanupQuery == int.MaxValue)
+        {
+            this.cleanupAnswers.Clear();
+            this.cleanupQuery = 1;
+        }
+
+        return this.CleanupObservesBorrows(type, source, 0);
+    }
+
+    private bool CleanupObservesBorrows(BoundType type, Koto source, int depth)
     {
         if (depth > 64)
         {
             return true; // Conservatively retain a dependency through recursive destruction.
+        }
+
+        var known = this.CleanupRange(type);
+        if (depth <= known.FalseTo || depth >= known.TrueFrom)
+        {
+            return depth >= known.TrueFrom;
+        }
+
+        var result = this.CleanupPart(type, source, depth);
+        known = this.CleanupRange(type);
+        this.cleanupAnswers[type] = result ? (this.cleanupQuery, known.FalseTo, Math.Min(known.TrueFrom, depth)) : (this.cleanupQuery, Math.Max(known.FalseTo, depth), known.TrueFrom);
+        return result;
+    }
+
+    private (int FalseTo, int TrueFrom) CleanupRange(BoundType type)
+        => this.cleanupAnswers.TryGetValue(type, out var entry) && entry.Query == this.cleanupQuery ? (entry.FalseTo, entry.TrueFrom) : (-1, int.MaxValue);
+
+    private bool CleanupPart(BoundType type, Koto source, int depth)
+    {
+        if (type.IsAbstract)
+        {
+            return this.CopyProof(type, source, this.Active) != ConstraintProof.Proven;
         }
 
         if (AdtDef.IsStruct(type))
@@ -22,13 +64,13 @@ public sealed partial class OwnershipAnalysis
 
             for (var i = 0; i < AdtDef.Count(type); i++)
             {
-                if (AdtDef.FieldType(type, i) is not { } field || CleanupObservesBorrows(field, depth + 1))
+                if (AdtDef.FieldType(type, i) is not { } field || this.CleanupObservesBorrows(field, source, depth + 1))
                 {
                     return true;
                 }
             }
 
-            if (AdtDef.Base(type) is { } parent && CleanupObservesBorrows(parent, depth + 1))
+            if (AdtDef.Base(type) is { } parent && this.CleanupObservesBorrows(parent, source, depth + 1))
             {
                 return true;
             }
@@ -38,7 +80,7 @@ public sealed partial class OwnershipAnalysis
         {
             for (var i = 0; i < type.Components.Count; i++)
             {
-                if (CleanupObservesBorrows(type.Components[i], depth + 1))
+                if (this.CleanupObservesBorrows(type.Components[i], source, depth + 1))
                 {
                     return true;
                 }
@@ -49,7 +91,7 @@ public sealed partial class OwnershipAnalysis
         {
             foreach (var payload in cases)
             {
-                if (CleanupObservesBorrows(payload, depth + 1))
+                if (this.CleanupObservesBorrows(payload, source, depth + 1))
                 {
                     return true;
                 }

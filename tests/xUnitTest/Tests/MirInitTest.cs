@@ -17,6 +17,9 @@ public sealed class MirInitTest(ITestOutputHelper output)
     private const string Resource = "struct Resource\n    var name: string\nfunc make() -> Resource => Resource.init(name: \"r\")\n" +
         "func consume(r: Resource) => ()\nfunc inspect(r: ref/Resource) => ()\n";
 
+    private const string Take = "func take(a: string, b: string) -> i32 => 1\nfunc once(a: string) -> i32 => 1\n";
+    private const string Pair = "struct P\n    public var a: i32 = 1\n    public init() => ()\nfunc make(a: string, b: string) -> P => P.init()\n";
+
     // SPEC 15.1.1: a use needs its Place initialized on every incoming runtime path.
     [Fact]
     public void AUseNeedsInitializationOnEveryPath()
@@ -60,6 +63,30 @@ public sealed class MirInitTest(ITestOutputHelper output)
             "    let age = pair.1\n";
         Assert.Empty(Problems(Pair + "    pair.0 = \"Bob\"\n    see(pair)\n"));
         Assert.Equal(["MovedPlace_Kd see(pair) 1"], Problems(Pair + "    see(pair)\n"));
+    }
+
+    // SPEC 13.5.3, 15.1.1-15.1.3 (PLAN G228): `@move` marks a Copy-typed part Moved like any part: a read, a second Move or a whole use
+    // after it is MovedPlace until the part is written again, also across a loop, and a Type with drop needs the part restored before
+    // the drop runs, a `during self` layer's Move restored by null included (SPEC 5.7, DECISIONS R4-M110); Copies of a part move nothing.
+    // The old analysis, which both published pipelines use until R6-check, accepts these forms (OwnershipAnalysis.AcquireElement ignores
+    // the explicit Move); the rows pin the verdicts R6-check publishes.
+    [Fact]
+    public void AMoveOfACopyTypedPartMarksItMoved()
+    {
+        const string Head = "func take(x: i32) => ()\nstruct D\n    public var n: i32 = 1\n    public init() => ()\n    drop => ()\n" +
+            "struct Block\n    internal var data: raw/u8 during self\n    public init() => self.data = null\n    drop => ()\n";
+        const string Tuple = "    var t: (i32, i32) = (1, 2)\n    take(t.0@move)\n";
+        const string Loop = "func cycle(n: i32)\n    var t: (i32, i32) = (1, 2)\n    var i = 0\n    while i < n\n        take(t.0@move)\n";
+        Assert.Equal(
+            ["MovedPlace_Kd t.0 1", "MovedPlace_Kd t.0 1", "MovedPlace_Kd t 1", "MovedPlace_Kd a[0] 1", "MovedPlace_Kd t.0 1",
+                "MovedPlace_Kd var d = D.init() 1", "MovedPlace_Kd var b = Block.init() 1"],
+            Problems(Head + "func read()\n" + Tuple + "    let b = t.0\nfunc twice()\n" + Tuple + "    take(t.0@move)\nfunc whole()\n" + Tuple +
+                "    let u = t@move\nfunc element()\n    var a: [2 of i32] = [1, 2]\n    take(a[0]@move)\n    let x = a[0]\n" + Loop +
+                "        i += 1\nfunc dropped()\n    var d = D.init()\n    take(d.n@move)\nfunc layer()\n    var b = Block.init()\n    let w = b.data@move\n"));
+        Assert.Empty(Problems(Head + "func restored()\n" + Tuple + "    t.0 = 5\n    let u = t@move\nfunc copies()\n    var t: (i32, i32) = (1, 2)\n" +
+            "    let a = t.0\n    let b = t.0\n    let u = t@move\nfunc elementRestored()\n    var a: [2 of i32] = [1, 2]\n    take(a[0]@move)\n" +
+            "    a[0] = 3\n    let x = a[0]\n" + Loop + "        t.0 = i\n        i += 1\n    let u = t@move\nfunc dropped()\n" +
+            "    var d = D.init()\n    take(d.n@move)\n    d.n = 3\nfunc layer()\n    var b = Block.init()\n    let w = b.data@move\n    b.data = null\n"));
     }
 
     // SPEC 6.3, 15.1.2: a constructor builds its object from fresh storage: a base and every own Field placed before it completes
@@ -394,11 +421,9 @@ public sealed class MirInitTest(ITestOutputHelper output)
     [Fact]
     public void AFailedNodeKeepsTheProblemsOfItsResolvedChildren()
     {
-        const string Take = "func take(a: string, b: string) -> i32 => 1\nfunc once(a: string) -> i32 => 1\n";
         const string Body = "func (n: i32)\n        let t = \"x\"\n        _ = take(t@move, t@move)\n        return n@ref\n";
         Assert.Equal(["MovedPlace_Kd t 1"], Problems(Take + "func f()\n    _ = " + Body));
         Assert.Equal(["MovedPlace_Kd t 1"], Problems(Take + "func f()\n    let g = " + Body));
-        const string Pair = "struct P\n    public var a: i32 = 1\n    public init() => ()\nfunc make(a: string, b: string) -> P => P.init()\n";
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f(n: i32) -> i32\n    let s = \"x\"\n    return n[take(s@move, s@move)]\n"));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + Pair + "func f() -> i32\n    let s = \"x\"\n    return make(s@move, s@move).missing\n"));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f() -> i32\n    let s = \"x\"\n    return take(s@move, s@move)@follow\n"));
@@ -411,6 +436,72 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Equal(slot, Problems(Take + "func g(s: string, x: i32 = (take(s@move, s@move)), y: i32 = 0) -> i32 => x\n"));
         Assert.Equal(slot, Problems(Take + "func g(s: string, x: i32 = (take(s@move, s@move)) y: i32 = 0) -> i32 => x\n"));
     }
+
+    // SPEC 23.1.2 (DECISIONS R4-M88): an operation Binding left unresolved evaluates every operand before its derived value, also inside
+    // an operand it did not resolve (`1 + (missing + once(s@move))`, a selection's index), so the problems of what it evaluates stay; one
+    // in a statement or a typed destination, `and`, a parenthesized `if` and a selection whose `if` or labeled do index, also in
+    // parentheses or under a unary operator, has no Type validate now (fail-before: a finding, which stops every analysis, or, for the
+    // index, the whole selection derived), such an operand replaced with its parts. A construct, an assignment, a labeled do and a default
+    // keep their forms elsewhere (a typed destination keeps the Loan its branch places), an assignment's derived value initializes its
+    // target, and a failed call's operands stay replaced (PLAN G121).
+    [Theory]
+    [InlineData(Take + "func f(c: bool) -> bool\n    let s = \"x\"\n    return take(s@move, s@move) == 1 and missing\n", "MovedPlace_Kd s 1")]
+    [InlineData(Take + "func f()\n    let s = \"x\"\n    _ = once(s@move) + missing\n    let t = s@move\n", "MovedPlace_Kd s 1")]
+    [InlineData(Take + "func f(c: bool) -> i32\n    let s = \"x\"\n    return (if c => take(s@move, s@move) else => missing)\n", "MovedPlace_Kd s 1")]
+    [InlineData(Take + "func f()\n    let s = \"x\"\n    let x: i32 = 1 + (missing + once(s@move))\n    let t = s@move\n", "MovedPlace_Kd s 1")]
+    [InlineData(Take + "func f(v: [3 of i32]) -> i32\n    let s = \"x\"\n    return v[take(s@move, s@move) + missing]\n", "MovedPlace_Kd s 1")]
+    [InlineData(
+        Take + "func f(c: bool, v: [3 of i32], i: isize) -> i32\n    let s = \"x\"\n    let a = once(s@move)\n    let b = once(s@move)\n" +
+        "    return v[if c => i else => missing]\n",
+        "MovedPlace_Kd s 1")]
+    [InlineData(
+        Take + "func f(c: bool, v: [3 of i32], i: isize) -> i32\n    let s = \"x\"\n    let a = once(s@move)\n    let b = once(s@move)\n" +
+        "    return v[(if c => i else => missing)]\n",
+        "MovedPlace_Kd s 1")]
+    [InlineData(
+        Take + "func f(c: bool, v: [3 of i32], i: isize) -> i32\n    let s = \"x\"\n    let a = once(s@move)\n    let b = once(s@move)\n" +
+        "    return v[-(if c => i else => missing)]\n",
+        "MovedPlace_Kd s 1")]
+    [InlineData("func a<T>(b: bool, x: T, y: T = if b => x else => 0) -> () => ()\n", "DefaultArgumentMove_Kd x 1")]
+    [InlineData(Take + Pair + "func f()\n    let s = \"x\"\n    var y: i32 = 0\n    y = make(s@move, s@move).missing\n", "MovedPlace_Kd s 1")]
+    [InlineData(Take + Pair + "func f()\n    let s = \"x\"\n    var y: i32 = 0\n    y += make(s@move, s@move).missing\n", "MovedPlace_Kd s 1")]
+    [InlineData(Take + "func f(c: bool)\n    let s = \"x\"\n    var y: i32 = 0\n    y = if c => take(s@move, s@move) else => missing\n", "MovedPlace_Kd s 1")]
+    [InlineData(Take + "func f(c: bool) -> i32\n    let s = \"x\"\n    let v: i32 = if c => take(s@move, s@move) else => missing\n    return v\n", "MovedPlace_Kd s 1")]
+    [InlineData(Take + "func f()\n    let s = \"x\"\n    let x: i32 = once(s@move) + missing\n    let t = s@move\n", "MovedPlace_Kd s 1")]
+    [InlineData(Take + Pair + "func f()\n    let s = \"x\"\n    _ = (make(s@move, \"y\").missing)\n    let t = s@move\n", "MovedPlace_Kd s 1")]
+    [InlineData(
+        "func index(a: string) -> isize => 1\nfunc f(v: [3 of i32])\n    let s = \"x\"\n    _ = (v[index(s@move)].missing)\n    let t = s@move\n",
+        "MovedPlace_Kd s 1")]
+    [InlineData(
+        Take + "func f(c: bool, v: [3 of i32], i: isize) -> i32\n    let s = \"x\"\n    let a = once(s@move)\n    let b = once(s@move)\n" +
+        "    return v[label l: do\n        if c => exit to l i\n        exit to l missing\n    ]\n",
+        "MovedPlace_Kd s 1")]
+    [InlineData(
+        Take + "func f(c: bool, v: [3 of i32], i: isize) -> i32\n    let s = \"x\"\n    let a = once(s@move)\n    let b = once(s@move)\n" +
+        "    return v[(label l: do\n        if c => exit to l i\n        exit to l missing\n    )]\n",
+        "MovedPlace_Kd s 1")]
+
+    // A labeled do or loop, an operand without a Type, is replaced with its body, whose problems are lost (PLAN G121's failed construct).
+    [InlineData(
+        Take + "func f() -> i32\n    let s = \"x\"\n    return other + label l: do\n        _ = once(s@move)\n        _ = once(s@move)\n" +
+        "        exit to l missing\n",
+        "")]
+    [InlineData(
+        Take + "func f(c: bool) -> i32\n    let s = \"x\"\n    _ = once(s@move)\n    _ = once(s@move)\n    return other + label l: loop\n" +
+        "        if c => exit to l 1\n        exit to l missing\n",
+        "MovedPlace_Kd s 1")]
+    [InlineData(Take + "func f()\n    var t: string\n    t = missing\n    _ = once(t@move)\n", "")]
+    [InlineData("struct S\n    var a: i32\n    public computed b: i32\n        get() -> i32 => 5\n    public init()\n        self.a = self.b\n", "UninitializedPlace_Kd self.b 1")]
+    [InlineData(
+        "func use(v: ref/i32) -> i32 => 1\nfunc f(c: bool) -> i32\n    var x: i32 = 1\n    let r: ref/i32 = if c => x@ref else => missing\n    x = 2\n" +
+        "    return use(r)\n",
+        "ComparisonLoanConflict_Kd x = 2 1")]
+    [InlineData(
+        Take + "func two(a: i32, b: i32) -> i32 => 1\nfunc f() -> i32\n    let s = \"x\"\n    let v: i32 = two(once(s@move), missing)\n    let t = s@move\n" +
+        "    return v\n",
+        "")]
+    public void ADerivedValueKeepsTheProblemsOfWhatItEvaluates(string source, string expected)
+        => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(source));
 
     // R4-M20: the words of A1's state arena for a body begun and built: its heads × the stored words of its lanes.
     internal static long ArenaWords(MirBody body, MirDataflow flow, MirMoveData moves)

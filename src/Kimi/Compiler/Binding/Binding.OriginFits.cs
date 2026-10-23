@@ -8,13 +8,15 @@ namespace Kimi.Compiler;
 // - Responsibility: the first, or with `all` every, Origin position of a fit, in the order of the outer borrow layer, the Semantics
 //   target, then slots and Type arguments, by the variance FitsTypeCore and CheckTypeUse compose, whose relation is not proven or,
 //   with `judged`, that the relation judge fails (FailedOriginRelation, FailedOriginPart); for a meet at the longer end, the chain of
-//   a failing operand, Refuted before Unknown (FailedChain, AddFailingChains, FailingOperand, OriginPartFails); and RecordMismatch's
-//   Origin part, a fit that fails only at Origin positions (RecordOriginFitFailure).
+//   a failing operand, Refuted before Unknown (FailedChain, AddFailingChains, FailingOperand, OriginPartFails); RecordMismatch's
+//   Origin part, a fit that fails only at Origin positions (RecordOriginFitFailure); and the reset of the pass's Origin relation
+//   records, a failed node's first chain and its others (ResetOriginRecords).
 // - Inputs: the fit's actual and expected Types and its use; the proof (ProvesOriginOutlives, VerifiedRegionOutlives), the judge
 //   (OriginRelationFails), a local region's sources (LocalRegionSources) and the outer-Origin decision (FitOuterOrigins).
 // - Outputs: OriginRelationFact values; RecordOriginFitFailure fails the node with its first chain in `originRelations` and the
 //   other chains through RecordMoreRelation, completes it as a dependent of a failed Origin environment (FailedOriginEnvironment)
-//   or fails it Unsupported, and returns whether a position failed.
+//   or fails it Unsupported, and returns whether a position failed; a record at a body chain adds the fit's position rows
+//   (CheckTypeUse, DECISIONS R4-M108) and makes its node a twin (IsTwinRecord, DECISIONS R4-M111).
 // - Invariants: the position search reads proof and judgment only and changes no inference, obligation or declaration state; an
 //   `outlives` record names a failing operand's chain, the whole longer end only when no operand fails alone; `relationScratch`
 //   is empty when RecordOriginFitFailure returns.
@@ -25,14 +27,37 @@ public sealed partial class Binding
     // The failed chains of one fit (FailedOriginRelation with `all`), which RecordOriginFitFailure publishes.
     private readonly List<OriginRelationFact> relationScratch = new();
 
+    // The pass's twin nodes (DECISIONS R4-M108, R4-M111): a fit's node with a recorded body chain and a local clause whose record is one,
+    // each added where its rows are formed.
+    private HashSet<Koto>? originTwins;
+
+    /// <summary>Gets whether a node's Origin relation records are twins, the records of a relation that is also a row A5 judges, which the
+    /// MIR difference ledger compares with A5 (DECISIONS R4-M108, R4-M111).</summary>
+    /// <param name="node">The records' node.</param>
+    /// <returns>Whether its records are twins.</returns>
+    [Transitional("R6", Reason = "The ledger's twin subset; H11 deletes it with the twins (DECISIONS R4-M111).")]
+    internal bool IsTwinRecord(Koto node) => this.originTwins?.Contains(node) == true;
+
+    // Resets the pass's Origin relation records at its start (ResetPrerequisites): each failed node's first chain and its others, and the
+    // twin nodes.
+    private void ResetOriginRecords()
+    {
+        this.originRelations?.Clear();
+        this.callRelations?.Clear();
+        this.originTwins?.Clear();
+    }
+
     // RecordMismatch's Origin part (SPEC 15.6.1, 15.6.5): whether a fit whose storage matches fails at an Origin position, which it
     // records. A position the relation judge fails records every failed chain; a position that is only unproven is recorded when an
     // end is unresolved and is otherwise Unsupported. Either is a dependent of a failed Origin environment instead, the first only
-    // when no failed chain is Refuted.
+    // when no failed chain is Refuted. A record at a body chain (2a0-D D1, ends resolved at the use) gives every position of the fit,
+    // fixed-fixed ones included, a row of its body for A5 (CheckTypeUse's obligations, up to its first differing Function Type
+    // component); the records stay Binding's until H11 (DECISIONS R4-M108), and the node is a twin (R4-M111).
     private bool RecordOriginFitFailure(Koto node, Koto at, BoundType actual, BoundType expected)
     {
         var all = this.relationScratch;
         all.Clear();
+        OriginRelationFact recorded;
         if (this.FailedOriginRelation(actual, expected, node, OriginVariance.Covariant, judged: true, all: all) is { } relation)
         {
             if (!relation.Refuted && this.FailedOriginEnvironment(node) is { } cause)
@@ -51,22 +76,9 @@ public sealed partial class Binding
                 }
             }
 
-            // SPEC 15.6.1: every failed chain is reported; the records other than the node's own are published with it.
-            var failed = node.BindingFailure == BindingFailure.None;
-            for (var i = 0; i < all.Count && failed; i++)
-            {
-                if (!all[i].Equals(relation))
-                {
-                    this.RecordMoreRelation(node, all[i] with { At = at, Destination = expected });
-                }
-            }
-
-            all.Clear();
-            this.FailExplained(ref this.originRelations, node, BindingFailure.OriginRelation, relation with { At = at, Destination = expected });
-            return true;
+            recorded = relation;
         }
-
-        if (this.FailedOriginRelation(actual, expected, node, OriginVariance.Covariant) is { } unproven)
+        else if (this.FailedOriginRelation(actual, expected, node, OriginVariance.Covariant) is { } unproven)
         {
             if (this.FailedOriginEnvironment(node) is { } cause)
             {
@@ -76,19 +88,40 @@ public sealed partial class Binding
 
             // No concrete lifetime was refuted above. An unresolved end without an identified failed contract remains
             // an independent proof failure; it must not be hidden by the presence of an unrelated declaration error.
-            if (unproven.Longer.Kind == OriginKind.Unbound || unproven.Shorter.Kind == OriginKind.Unbound)
-            {
-                this.FailExplained(ref this.originRelations, node, BindingFailure.OriginRelation, unproven with { At = at, Destination = expected });
-            }
-            else
+            if (unproven.Longer.Kind != OriginKind.Unbound && unproven.Shorter.Kind != OriginKind.Unbound)
             {
                 this.Fail(node, BindingFailure.Unsupported);
+                return true;
             }
 
-            return true;
+            all.Add(recorded = unproven);
+        }
+        else
+        {
+            return false;
         }
 
-        return false;
+        // SPEC 15.6.1: every failed chain is reported; the records other than the node's own are published with it.
+        var failed = node.BindingFailure == BindingFailure.None;
+        var rows = false;
+        for (var i = 0; i < all.Count && failed; i++)
+        {
+            rows |= BodyChain(this.OriginAtUse(all[i].Longer, node), this.OriginAtUse(all[i].Shorter, node), this.formingBody);
+            if (!all[i].Equals(recorded))
+            {
+                this.RecordMoreRelation(node, all[i] with { At = at, Destination = expected });
+            }
+        }
+
+        all.Clear();
+        this.FailExplained(ref this.originRelations, node, BindingFailure.OriginRelation, recorded with { At = at, Destination = expected });
+        if (rows)
+        {
+            (this.originTwins ??= new(ReferenceEqualityComparer.Instance)).Add(node);
+            _ = this.CheckTypeUse(actual, expected, node);
+        }
+
+        return true;
     }
 
     // SPEC 15.6.1: the first Origin position of a fit, in the order of the outer borrow layer, the Semantics target, then slots and
@@ -193,7 +226,7 @@ public sealed partial class Binding
             return null;
         }
 
-        OriginRelationFact equality = new(use, actual, expected, true, type, RefutesOriginRelation(actual, expected));
+        OriginRelationFact equality = new(use, actual, expected, true, type, RefutesOriginRelation(actual, expected, this.formingBody));
         all?.Add(equality);
         return equality;
 
@@ -208,7 +241,7 @@ public sealed partial class Binding
     private OriginRelationFact FailedChain(Koto use, BoundOrigin longer, BoundOrigin shorter, BoundType type, bool judged, List<OriginRelationFact>? all = null, ulong condition = 0)
     {
         var operand = this.FailingOperand(longer, shorter, use, judged, true, condition) ?? this.FailingOperand(longer, shorter, use, judged, false, condition) ?? longer;
-        OriginRelationFact chain = new(use, operand, shorter, false, type, RefutesOriginRelation(operand, shorter));
+        OriginRelationFact chain = new(use, operand, shorter, false, type, RefutesOriginRelation(operand, shorter, this.formingBody));
         if (all is not null && (ReferenceEquals(operand, longer) || !this.AddFailingChains(use, longer, shorter, type, judged, all, condition)))
         {
             all.Add(chain);
@@ -220,7 +253,7 @@ public sealed partial class Binding
     // Adds the chain of each failing operand of `origin`, nested meets flattened in order; whether any was added.
     private bool AddFailingChains(Koto use, BoundOrigin origin, BoundOrigin shorter, BoundType type, bool judged, List<OriginRelationFact> all, ulong condition = 0)
     {
-        if (IsLocalRegion(origin))
+        if (RegionIn(origin, this.formingBody))
         {
             var found = false;
             foreach (var source in this.LocalRegionSources(origin))
@@ -238,7 +271,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            all.Add(new(use, origin, shorter, false, type, RefutesOriginRelation(origin, shorter)));
+            all.Add(new(use, origin, shorter, false, type, RefutesOriginRelation(origin, shorter, this.formingBody)));
             return true;
         }
 
@@ -252,13 +285,14 @@ public sealed partial class Binding
     }
 
     private bool OriginPartFails(BoundOrigin longer, BoundOrigin shorter, Koto use, bool judged, ulong condition = 0)
-        => !this.ProvesOriginOutlives(longer, shorter, use, condition) && (!judged || this.OriginRelationFails(longer, shorter, use, condition));
+        => !this.ProvesOriginOutlives(longer, shorter, use, condition) &&
+            (!judged || this.OriginRelationFails(longer, shorter, use, this.formingBody, condition));
 
     // SPEC 15.6.5: the failing operand that the record names follows the judgment, a Refuted chain, which decides the record's code,
     // before an Unknown one, each first in the meet's order; with `refuted`, only a Refuted chain counts.
     private BoundOrigin? FailingOperand(BoundOrigin longer, BoundOrigin shorter, Koto use, bool judged, bool refuted, ulong condition = 0)
     {
-        if (IsLocalRegion(longer))
+        if (RegionIn(longer, this.formingBody))
         {
             foreach (var source in this.LocalRegionSources(longer))
             {
@@ -273,7 +307,8 @@ public sealed partial class Binding
 
         if (longer.Kind != OriginKind.Intersection)
         {
-            return (!refuted || RefutesOriginRelation(longer, shorter)) && this.OriginPartFails(longer, shorter, use, judged, condition) ? longer : null;
+            return (!refuted || RefutesOriginRelation(longer, shorter, this.formingBody)) && this.OriginPartFails(longer, shorter, use, judged, condition)
+                ? longer : null;
         }
 
         for (var i = 0; i < longer.Operands.Count; i++)

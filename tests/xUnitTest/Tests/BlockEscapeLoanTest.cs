@@ -10,7 +10,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 15.6.2, 15.6.5, 16.2.2: a borrow of a block-local root that escapes through the block's result, a closure capture or a
+// SPEC 15.6.2, 15.6.6, 16.2.2: a borrow of a block-local root that escapes through the block's result, a closure capture or a
 // longer-lived value is a Loan conflict at the destruction that ends the root while that value keeps its Loan. It is one record
 // per destroyed root and holder, at the transfer or statement whose cleanup destroys the root, relating the value keeping the
 // Loan (`loan`) and the Borrow or capture entry that created it (`borrow`). The join that the block's value reaches only after
@@ -40,8 +40,8 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
 
     private const string Temporary = "func make() -> i32 => 4\n\npublic func main() -> ()\n    let r = make()@ref\n    Console.writeLine(\"\\(r@follow)\")\n";
 
-    // SPEC 8.11.4: a loop over `C is Iterable` gives the body requirement results; the exit delivering z@ref still keeps no Loan
-    // of n, so the escaping exit has the record (review k06; it was at the z@ref exit only).
+    // SPEC 15.6.6: in a generic body with a loop over `C is Iterable`, the exit delivering z@ref keeps no Loan of n, so the escaping
+    // exit has the record (review k06; it was at the z@ref exit only).
     private const string GenericRequirement = "func show<C>(values: ref/C, c: bool) -> ()\n    C is Iterable\n    var count: i32 = 0\n    for a in values\n        count += 1\n" +
         "    let z = 1\n    let r = label block: do\n        let n = 5\n        if c\n            exit to block z@ref\n        exit to block n@ref\n    Console.writeLine(\"\\(r@follow) \\(count)\")\n\n" +
         "public func main() -> ()\n    let xs: Array<i32> = [1]\n    show(xs@ref, true)\n";
@@ -51,8 +51,8 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         "    let r = label block: do\n        let n = 5\n        if c\n            exit to block z@ref\n        exit to block n@ref\n    Console.writeLine(\"\\(r@follow)\")\n\n" +
         "public func main() -> ()\n    let v = 3\n    show(v@ref, true)\n";
 
-    // A holder whose Type has an abstract part, in a body with requirement results: the carrying walk does not decide it, so every
-    // destruction the Loan reaches keeps its record, the escaping one included.
+    // SPEC 15.6.6: a holder whose Type has an abstract part is decided like any other, so the exit delivering `other` keeps no Loan of
+    // n (the walk gave up on it while requirement calls had region dependencies, before the adoption of Abstract Calls Reach by Paths).
     private const string AbstractHolder = "func show<C, T>(values: ref/C, other: ref/T, c: bool) -> ()\n    C is Iterable\n    T is Copy\n    var count: i32 = 0\n" +
         "    for a in values\n        count += 1\n    let r = label block: do\n        let n: T = other@follow\n        if c\n            exit to block other\n" +
         "        exit to block n@ref\n    let k: T = r@follow\n    Console.writeLine(\"\\(count)\")\n\n" +
@@ -92,6 +92,14 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
 
     private const string SlotInt = "func slot(values: uniq/Array<i32>) -> uniq/i32 during values => values[0]@uniq\n";
 
+    // SPEC 3.6, 8.15.1: a temporary of any Type ends at its full expression: an abstract one in every instance of its generic body, and a
+    // Function value with the environment it owns.
+    private const string TemporaryGeneric = "func inspect<T>(value: ref/T) => ()\nfunc keep<T>(make: () -> T) -> ()\n    let r = make()@ref\n    inspect(r)\n\n" +
+        "public func main() -> ()\n    Console.writeLine(\"x\")\n";
+
+    private const string TemporaryFunction = "func mk() -> (() -> i32)\n    let values: Array<i32> = [11, 22, 33]\n    return func [values@move] () -> i32 => values[1]\n" +
+        "func call(f: ref/(() -> i32)) -> i32 => f()\n\npublic func main() -> ()\n    let r = mk()@ref\n    Console.writeLine(\"\\(call(r))\")\n";
+
     private const string Transfer = "; the transfer cleans up the scopes it leaves before it delivers its result (SPEC 16.2.2)";
 
     private const string Escaped = "`n` is destroyed here while a live value keeps the Loan of `n@ref`; the transfer cleans up the scopes it leaves before it delivers its result (SPEC 16.2.2)";
@@ -99,6 +107,12 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     private const string BorrowLabel = "borrow that created the loan";
 
     private const string LoanLabel = "value retaining the conflicting loan";
+
+    // A local that keeps n's Loan through an Option payload written in the block, a definition the carrying walk does not decide; both
+    // exits destroy n while it keeps the Loan.
+    private const string UndecidedHolder = "func inspect<T>(value: ref/T) => ()\nfunc show(c: bool) -> ()\n    let z = 1\n    var o: Option<ref/i32> = .Some(z@ref)\n" +
+        "    let k = label block: do\n        let n = 5\n        o = .Some(n@ref)\n        if c\n            exit to block 0\n        exit to block 1\n" +
+        "    inspect(o@ref)\n    Console.writeLine(\"\\(k)\")\n\npublic func main() -> ()\n    show(true)\n";
 
     // Top-level forms of the reproducers: the valid counterparts and the escapes, for the warm allocation checks.
     private const string ValidWorkload = "func pick(c: bool, z: ref/i32) -> i32\n    let r = label block: do\n        let n = 5\n        if c\n            exit to block z\n        exit to block z\n    return r@follow\n" +
@@ -129,6 +143,7 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         { "Temporary", Temporary, "let r = make()@ref", "make()@ref", "make()@ref", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()@ref`" },
         { "GenericRequirement", GenericRequirement, "exit to block n@ref", "exit to block n@ref", "n@ref", "do", Escaped },
         { "GenericReborrow", GenericReborrow, "exit to block n@ref", "exit to block n@ref", "n@ref", "do", Escaped },
+        { "AbstractHolder", AbstractHolder, "exit to block n@ref", "exit to block n@ref", "n@ref", "do", Escaped },
         { "ReadLocal", ReadLocal, "exit to b q", "let q = n@ref", "n@ref", "do", Escaped },
         { "NestedBlock", NestedBlock, "exit to outer inner", "exit to b n@ref", "n@ref", "do", Escaped },
         { "CapturedLocal", CapturedLocal, "exit to b func [q] () => q@follow", "let q = n@ref", "n@ref", "do", Escaped },
@@ -145,6 +160,8 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         { "TemporaryHandleSlot", TemporaryHandle + "    let r = make()@ref\n    let c = Kimi.Intrinsics.clone(r)\n", "let r = make()@ref", "make()@ref", "make()@ref", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()@ref`" },
         { "ReferenceSlot", "public func main() -> ()\n    let words: Array<string> = [\"a\"]\n    let r = label b: do\n        let q = words[0]@ref\n        exit to b q@ref\n    Console.writeLine(r@follow)\n", "exit to b q@ref", "exit to b q@ref", "q@ref", "do", "`q` is destroyed here while a live value keeps the Loan of `q@ref`" + Transfer },
         { "TemporaryReferenceSlot", FirstText + "\npublic func main() -> ()\n    let words: Array<string> = [\"a\"]\n    let r = first(words@ref)@ref\n    Console.writeLine(r@follow)\n", "let r = first(words@ref)@ref", "first(words@ref)@ref", "first(words@ref)@ref", "let r", "The temporary `first(words@ref)` is destroyed here while a live value keeps the Loan of `first(words@ref)@ref`" },
+        { "TemporaryGeneric", TemporaryGeneric, "let r = make()@ref", "make()@ref", "make()@ref", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()@ref`" },
+        { "TemporaryFunction", TemporaryFunction, "let r = mk()@ref", "mk()@ref", "mk()@ref", "let r", "The temporary `mk()` is destroyed here while a live value keeps the Loan of `mk()@ref`" },
         { "TemporaryExclusiveReferenceSlot", SlotInt + "\npublic func main() -> ()\n    var xs: Array<i32> = [1]\n    let r = slot(xs@uniq)@uniq\n    r@follow@follow = 2\n", "let r = slot(xs@uniq)@uniq", "slot(xs@uniq)@uniq", "slot(xs@uniq)@uniq", "let r", "The temporary `slot(xs@uniq)` is destroyed here while a live value keeps the Loan of `slot(xs@uniq)@uniq`" },
     };
 
@@ -179,7 +196,7 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         Assert.Equal(conflict, program.Problems.All.ToArray().Any(static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd));
     }
 
-    // SPEC 15.6.5: the plain escape is one record, at the destruction.
+    // SPEC 15.6.6: the plain escape is one record, at the destruction.
     [Fact]
     public void ThePlainEscapeIsOneRecord()
     {
@@ -197,18 +214,43 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         Assert.Null(records[0].Note);
     }
 
-    // SPEC 15.6.5: where the carrying walk gives up, the per-root deduplication never drops the escaping exit; every destruction the
-    // Loan reaches keeps a record relating only the value keeping it, while the join still adds none.
+    // SPEC 15.6.6: where the carrying walk gives up, the per-root deduplication never drops the escaping exit; every destruction the
+    // Loan reaches keeps a record relating only the value keeping it, while the join still adds none. The same body over a plain
+    // reference is decided: one record, at the first destruction its carrying definition reaches.
     [Fact]
     public void AnUndecidedHolderKeepsEveryDestruction()
     {
-        var records = DiagnosticCorpus.Check(AbstractHolder).Diagnostics;
+        var records = DiagnosticCorpus.Check(UndecidedHolder).Diagnostics;
         Assert.All(records, static x => Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), x.Code));
-        Assert.Equal(["exit to block other", "exit to block n@ref"], records.Select(x => Text(AbstractHolder, x.Span)));
-        Assert.Equal(AbstractHolder.IndexOf("exit to block n@ref", StringComparison.Ordinal), records[1].Span!.Value.Start);
-        Assert.All(records, x => Assert.Equal(("loan", "do"), (Assert.Single(x.Related!).Role, Text(AbstractHolder, x.Related![0].Span)[..2])));
+        Assert.Equal(["exit to block 0", "exit to block 1"], records.Select(x => Text(UndecidedHolder, x.Span)));
+        Assert.Equal(UndecidedHolder.IndexOf("exit to block 1", StringComparison.Ordinal), records[1].Span!.Value.Start);
+        Assert.All(records, x => Assert.Equal(("loan", "var o"), (Assert.Single(x.Related!).Role, Text(UndecidedHolder, x.Related![0].Span)[..5])));
         Assert.All(records, static x => Assert.Equal("`n` is destroyed here while a live value keeps its Loan" + Transfer, x.Note));
+        var decided = UndecidedHolder.Replace("var o: Option<ref/i32> = .Some(z@ref)", "var o = z@ref", StringComparison.Ordinal)
+            .Replace("o = .Some(n@ref)", "o = n@ref", StringComparison.Ordinal);
+        var record = Assert.Single(DiagnosticCorpus.Check(decided).Diagnostics);
+        Assert.Equal("exit to block 0", Text(decided, record.Span));
+        Assert.Equal(["borrow", "loan"], record.Related!.Select(static x => x.Role));
     }
+
+    // SPEC 3.6, 8.15.1: an abstract receiver temporary ends with its statement as well, so the iterator it lends cannot outlive it.
+    [Fact]
+    public void AnAbstractReceiverTemporaryEndsWithItsStatement()
+    {
+        const string source = "func keep<C>(make: () -> C) -> ()\n    C is Iterable\n    var it = make().iterate()\n    _ = it.next()\n\npublic func main() -> ()\n    Console.writeLine(\"x\")\n";
+        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "var it = make().iterate()"), (record.Code, Text(source, record.Span)));
+        Assert.StartsWith("var it", Text(source, Assert.Single(record.Related!, static x => x.Role == "loan").Span), StringComparison.Ordinal);
+        Assert.Equal("The temporary `make()` is destroyed here while a live value keeps its Loan", record.Note);
+    }
+
+    // SPEC 3.6: the valid twins of TemporaryGeneric and TemporaryFunction: a borrow of an abstract or a Function temporary used within
+    // its statement outlives no temporary.
+    [Theory]
+    [InlineData("func inspect<T>(value: ref/T) => ()\nfunc keep<T>(make: () -> T) -> ()\n    inspect(make()@ref)\n\npublic func main() -> ()\n    Console.writeLine(\"x\")\n")]
+    [InlineData("func mk() -> (() -> i32)\n    let values: Array<i32> = [11, 22, 33]\n    return func [values@move] () -> i32 => values[1]\nfunc call(f: ref/(() -> i32)) -> i32 => f()\n\npublic func main() -> ()\n    Console.writeLine(\"\\(call(mk()@ref))\")\n")]
+    public void ABorrowOfATemporaryWithinItsStatementIsValid(string source)
+        => Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
 
     // SPEC 15.6.2, 16.2.2: borrows that never outlive their root's scope are valid and run.
     [Theory]

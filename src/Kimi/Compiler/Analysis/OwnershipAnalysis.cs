@@ -23,9 +23,6 @@ public sealed partial class OwnershipAnalysis
     private readonly List<LoopFrame> loops = new();
     private readonly List<int> arguments = new();
     private readonly HashSet<InvocationKoto> referenceCalls = new(ReferenceEqualityComparer.Instance);
-
-    // SPEC 8.11.4: one effect region per abstract input Type of the body's generic requirement calls.
-    private readonly Dictionary<BoundType, int> effectRegions = new(ReferenceEqualityComparer.Instance);
     private ControlFlowAnalysis? flow;
     private OwnershipBody body = null!;
     private bool fixedArrayWitnesses;
@@ -135,6 +132,8 @@ public sealed partial class OwnershipAnalysis
 
     internal void Invalidate()
     {
+        this.cleanupAnswers.Clear();
+        this.completeTuples.Clear();
         this.ClearInstances();
         this.Result = default;
         for (var i = 0; i < this.bodies.Count; i++)
@@ -213,12 +212,6 @@ public sealed partial class OwnershipAnalysis
                 continue;
             }
 
-            if (issue.Failure == OwnershipRequirement.CallEffectConflict)
-            {
-                ReportCallEffect(issue);
-                continue;
-            }
-
             if (issue.Failure == OwnershipRequirement.ComparisonLoanConflict && issue.Destroyed is not null)
             {
                 ReportDestruction(issue);
@@ -231,7 +224,7 @@ public sealed partial class OwnershipAnalysis
                 // and a Type's clause substituted at a Type occurrence, a declared relation, at that occurrence.
                 var fit = Binding.IsFitObligation(obligation);
                 var at = fit && obligation.Use is VariableKoto { InitializerKoto: { } initializer } ? initializer : obligation.Use;
-                var relation = new OriginRelationFact(at, longer, shorter, obligation.Equality, obligation.Type, Binding.RefutesOriginRelation(longer, shorter), obligation.Clause, WellFormed: obligation.WellFormed);
+                var relation = new OriginRelationFact(at, longer, shorter, obligation.Equality, obligation.Type, Binding.RefutesOriginRelation(longer, shorter, obligation.Body), obligation.Clause, WellFormed: obligation.WellFormed);
                 var (evidence, related) = Binding.OriginRelationFacts(relation, fit ? "fit" : obligation.Clause is not null ? "declared" : "wellFormed");
                 if (ChainOrdinal(at, issue.Code, evidence) is { } chain)
                 {
@@ -311,26 +304,7 @@ public sealed partial class OwnershipAnalysis
             issue.Source.Report(Requirement(issue), issue.Code, note: Note(note), related: Locations(null), condition: Condition(issue), evidence: [name]);
         }
 
-        // SPEC 8.11.1: the Reason names the access and the Loan; the Note states that no available bound excludes it, without
-        // asserting that a conflict occurs; the related locations give the Place keeping the Loan and the call that created it.
-        void ReportCallEffect(in OwnershipIssue issue)
-        {
-            var call = issue.Source as InvocationKoto;
-            var name = (call?.BoundCall is { } bound ? this.compilation.Binding.Library.PresentedTarget(bound.Target).Name : null) ?? call?.BoundValueCall?.CalleeValue.ToString() ?? "the callable";
-            var holder = issue.LoanSource is VariableKoto { NameKoto.IdentifierName: { } named } ? named : issue.LoanSource?.ToString() ?? "a value";
-            (string Role, Koto At, string? Label)[]? related = issue.LoanSource is not { } loan ? null
-                : issue.Related is { } earlier ? [("loan", loan, "value retaining the conflicting loan"), ("call", earlier, "the earlier call whose result keeps the loan")]
-                : [("loan", loan, "value retaining the conflicting loan")];
-            issue.Source.Report(
-                Requirement(issue),
-                issue.Code,
-                note: Note($"{name} may affect every Loan that the Type of its inputs may denote, and {holder} keeps such a Loan from an earlier call; under the premises here no bound excludes it (SPEC 8.11.4)"),
-                evidence: [$"{name} may affect a Loan that {holder} keeps"],
-                related: Locations(related),
-                condition: Condition(issue));
-        }
-
-        // SPEC 15.6.2, 15.6.5, 16.2.2: a borrowed Place destroyed while a live value keeps its Loan is reported at the destruction,
+        // SPEC 15.6.2, 15.6.6, 16.2.2: a borrowed Place destroyed while a live value keeps its Loan is reported at the destruction,
         // relating that value and the Borrow or capture entry that created the Loan. A transfer cleans up the scopes it leaves
         // before it delivers its result, so a secured result never carries a borrow of a destroyed local out of its scope.
         void ReportDestruction(in OwnershipIssue issue)
@@ -517,7 +491,6 @@ public sealed partial class OwnershipAnalysis
         this.loops.Clear();
         this.arguments.Clear();
         this.referenceCalls.Clear();
-        this.effectRegions.Clear();
         this.formattingPlaces.Clear();
         this.placeValues.Clear();
         this.resultHeads.Clear();
@@ -676,7 +649,8 @@ public sealed partial class OwnershipAnalysis
     private int Place(Koto source, BoundType? type, OwnershipPlaceKind kind, bool mutable, AcquisitionKind? plannedAcquisition = null)
     {
         var id = this.body.PlaceStorage.Count;
-        type = this.Resolve(type, this.Active) ?? BoundType.Unit;
+        // D5 exception (the owner's Q-O3; DECISIONS BU-24): a Place's Type states no raw Origin. Removed with the old analysis (R6-check).
+        type = this.compilation.Binding.WithoutRawOrigins(this.Resolve(type, this.Active)) ?? BoundType.Unit;
         // Never has no value storage. Its result marker is only used on unreachable
         // delivery nodes; control-flow checking rejects any normal completion.
         var neverResult = kind == OwnershipPlaceKind.Result && ReferenceEquals(type, BoundType.Never);
@@ -695,7 +669,7 @@ public sealed partial class OwnershipAnalysis
         {
             DeferredExecution = kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result ? this.activeDeferred : -1,
             DefaultContext = this.defaultContext,
-            CleanupObservesBorrows = CleanupObservesBorrows(type),
+            CleanupObservesBorrows = this.CleanupObservesBorrows(type, source),
         });
         this.body.IsConcrete &= !type.HasAbstractPart;
         if (invalidCopy || !(neverResult || type.Kind == BoundTypeKind.Parameter || this.SupportsType(type)))
@@ -1667,99 +1641,9 @@ public sealed partial class OwnershipAnalysis
             this.body.CallLoans.Add(new(invoke, this.Value(result), loanEnd, ReferenceTypes.IndependentResult(plan.ReturnType) ? LoanRequirement.None : LoanRequirement.Ref));
         }
 
-        // SPEC 4.9.6: a Kimi operation with a published summary is no unbounded generic call; its inputs are accessed in their
-        // parameter modes and its result keeps the dependencies its row states, which the ordinary Loans track.
-        if (this.instance is null && plan.Target.Declaration is FunctionKoto callee && plan.Target.CompilerFunction == CompilerFunctionKind.None &&
-            !KimiLibraryCatalog.PublishesSummary(call.BoundSymbol))
-        {
-            this.RequirementEffects(call, plan, callee, invoke, result);
-        }
-
         this.comparisonDepth = loanDepth;
 
         return result;
-    }
-
-    // SPEC 8.11.4: a call in a generic body may affect every Loan that its abstract inputs' Types may denote, in the inputs'
-    // modes, and its result may keep those Loans. A requirement call's effects are bounded by the bounds available to it; an
-    // ordinary generic function's are not, since its body is not part of the caller's contract. Concrete inputs keep their
-    // Origins, which the ordinary Loans track. Each instance runs concrete code, so only the definition records these effects.
-    private void RequirementEffects(InvocationKoto call, CallPlan plan, FunctionKoto requirement, int invoke, int result)
-    {
-        var receiver = plan.Receiver is { } syntax ? this.ValueIdentity(syntax) : new(-1, null);
-        var effects = this.body.RequirementEffects ??= new();
-        var mark = effects.Count;
-        var preserves = false;
-        var bounds = false;
-        if (plan.Receiver is not null)
-        {
-            this.RequirementEffect(call, plan.ReceiverOperation.ParameterType, requirement, invoke, receiver, receiver, plan.ConformingType, ref bounds, ref preserves);
-        }
-
-        for (var i = 0; i < plan.ArgumentOperations.Length; i++)
-        {
-            var input = plan.ArgumentOperations[i].Source is { } source ? this.ValueIdentity(source) : new(-1, null);
-            this.RequirementEffect(call, plan.ArgumentOperations[i].ParameterType, requirement, invoke, input, receiver, plan.ConformingType, ref bounds, ref preserves);
-        }
-
-        if (result < 0 || effects.Count == mark || !plan.ReturnType.HasAbstractPart || ReferenceTypes.IndependentResult(plan.ReturnType))
-        {
-            return;
-        }
-
-        var results = this.body.RequirementResults ??= new();
-        for (var i = mark; i < effects.Count; i++)
-        {
-            results.Add(new(invoke, result, effects[i].Region, effects[i].Mode, requirement, effects[i].Input, receiver, plan.RequirementContract));
-        }
-    }
-
-    // The value an input expression designates: a local or parameter, or its first Field; unknown otherwise.
-    private OwnershipValueIdentity ValueIdentity(Koto syntax)
-    {
-        BindingSymbol? field = null;
-        var node = KotoHelper.UnwrapParentheses(syntax);
-        while (node is MemberAccessKoto { BoundSymbol: { } member } access)
-        {
-            field = member;
-            node = KotoHelper.UnwrapParentheses(access.Left);
-        }
-
-        return node is IdentifierNameKoto { BoundSymbol: { } symbol } && this.body.SymbolPlaces.TryGetValue(symbol, out var root) ? new(root, field) : new(-1, null);
-    }
-
-    private void RequirementEffect(InvocationKoto call, BoundType? parameter, object requirement, int invoke, OwnershipValueIdentity input, OwnershipValueIdentity receiver, BoundType? conforming, ref bool bounds, ref bool preserves)
-    {
-        var borrowed = parameter is { Kind: BoundTypeKind.Semantics, Semantics: not SemanticsKind.Owner, Components.Count: 1 };
-        var region = borrowed ? parameter!.Components[0] : parameter;
-        if (region is null || !region.IsAbstract)
-        {
-            return;
-        }
-
-        // An owned input is the callee's; through a borrow the call has the borrow's access. A projection formed over a shared
-        // borrow of its root, such as Iterable's IteratorType, reaches every Loan of its Origins through that shared borrow.
-        var mode = !borrowed || parameter!.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref;
-        if (region.Kind == BoundTypeKind.AssociatedProjection && region.Symbol?.Declaration is { } declaration &&
-            Binding.AssociatedFormationType(declaration) is { Semantics: SemanticsKind.Ref or SemanticsKind.ObjRef })
-        {
-            mode = LoanRequirement.Ref;
-        }
-
-        if (!bounds)
-        {
-            bounds = true;
-            preserves = requirement is FunctionKoto { IsRequirement: true } function && this.compilation.Binding.AvailableEffectBounds(function, conforming, call).Preserves;
-        }
-
-        if (!this.effectRegions.TryGetValue(region, out var place))
-        {
-            // A region holds no value: it needs no Copy proof, storage or cleanup, and no operation initializes it.
-            place = this.AddPlace(new(this.body.PlaceStorage.Count, call, region, OwnershipPlaceKind.EffectRegion, false, AcquisitionKind.None));
-            this.effectRegions.Add(region, place);
-        }
-
-        this.body.RequirementEffects!.Add(new(invoke, place, mode, requirement, input, receiver, preserves, call.BoundCall?.RequirementContract));
     }
 
     // Type arguments reach library bodies and standard Property bridges through their verified witnesses.

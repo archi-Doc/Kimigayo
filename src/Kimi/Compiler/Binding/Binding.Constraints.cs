@@ -7,7 +7,6 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<ConstraintKey, BoundConstraint> constraints = new();
-    private readonly HashSet<BindingSymbol> contractPremiseQueries = new(ReferenceEqualityComparer.Instance);
     private ConstraintSyntaxVisitor? constraintSyntaxVisitor;
 
     /// <summary>Queries a bound proposition using the lexical input constraints at a syntax node.</summary>
@@ -110,8 +109,8 @@ public sealed partial class Binding
         return subject is IdentifierNameKoto { IdentifierName: "Self" } or TypeSemanticsKoto { Type: null, Identifier: "Self", OriginName: null, OriginExpression: null, OriginArguments: null };
     }
 
-    private static bool IsObjectPayloadRequirement(BoundConstraint constraint)
-        => constraint.Contract?.Intrinsic == IntrinsicKind.ObjectPayload ||
+    private static bool IsSelfRequirement(BoundConstraint constraint)
+        => (constraint.Contract is { } contract && IntrinsicContract.Of(contract.Intrinsic).SelfRequirement) ||
         (constraint.Kind == ConstraintKind.Not && constraint.Left?.Contract?.Intrinsic == IntrinsicKind.ObjectPayload);
 
     private static bool IsDependentConstraint(IsKoto clause)
@@ -123,108 +122,15 @@ public sealed partial class Binding
         (constraint.Left is { } left && DependentConstraint(left, contractSelf)) ||
         (constraint.Right is { } right && DependentConstraint(right, contractSelf));
 
-    private static bool InvalidConstraintType(BoundType type)
-    {
-        if (type.Symbol is { } symbol && InvalidDeclarationContext(symbol.Declaration))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (InvalidConstraintType(type.Components[i]))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool UnresolvedConstraintType(BoundType type)
-    {
-        if (type.Symbol is { } symbol && UnresolvedTypeDeclarationContext(symbol.Declaration))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (UnresolvedConstraintType(type.Components[i]))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool UnresolvedConstraintOperand(BoundConstraint constraint)
-        => (constraint.Subject is { } subject && UnresolvedConstraintType(subject)) ||
-        (constraint.RequiredType is { } required && UnresolvedConstraintType(required)) ||
-        (constraint.Contract is { } contract && UnresolvedTypeDeclarationContext(contract.Declaration));
-
-    private bool AvailableContractPremise(BindingSymbol contract)
-    {
-        // Ancestors is already the deduplicated transitive closure. Recurse only through
-        // actual closed obligations, not through that flattened refinement list again.
-        var ancestors = contract.Contract?.Ancestors;
-        for (var i = -1; i < (ancestors?.Count ?? 0); i++)
-        {
-            var source = i < 0 ? contract : ancestors![i];
-            if (InvalidDeclarationContext(source.Declaration) || UnresolvedTypeDeclarationContext(source.Declaration) || !this.contractPremiseQueries.Add(source))
-            {
-                return false;
-            }
-
-            try
-            {
-                if (this.CheckClosedDeclarationConstraints((DeclarationContainerKoto)source.Declaration) != ConstraintProof.Proven)
-                {
-                    return false;
-                }
-            }
-            finally
-            {
-                this.contractPremiseQueries.Remove(source);
-            }
-        }
-
-        return true;
-    }
-
-    private bool AvailableConstraintFact(ConstraintEnvironment environment, BoundConstraint fact)
-    {
-        if (!environment.Facts.Contains(fact))
-        {
-            return false;
-        }
-
-        if (environment.DirectFacts.Contains(fact))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < environment.DerivedFacts.Count; i++)
-        {
-            var derived = environment.DerivedFacts[i];
-            if (ReferenceEquals(derived.Fact, fact) && this.AvailableContractPremise(derived.Source))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private ConstraintProof JudgeConstraintAtom(BoundConstraint proposition, BindingScope scope)
     {
-        if (InvalidConstraintType(proposition.Subject!) || (proposition.RequiredType is { } required && InvalidConstraintType(required)) || (proposition.Contract is { } contractSymbol && InvalidDeclarationContext(contractSymbol.Declaration)))
+        var contexts = this.OperandContexts(proposition);
+        if (contexts.Invalid)
         {
             return ConstraintProof.Error;
         }
 
-        if (UnresolvedConstraintOperand(proposition))
+        if (contexts.Unresolved)
         {
             return ConstraintProof.Unknown;
         }
@@ -280,7 +186,7 @@ public sealed partial class Binding
             return proposition.Mask.Contains(subject.Semantics) ? ConstraintProof.Proven : ConstraintProof.Refuted;
         }
 
-        if (proposition.Contract is { Intrinsic: IntrinsicKind.Copy or IntrinsicKind.Owned or IntrinsicKind.Sealed or IntrinsicKind.ObjectPayload or IntrinsicKind.PrimitiveInteger } intrinsic)
+        if (proposition.Contract is { } intrinsic && IntrinsicContract.Of(intrinsic.Intrinsic).Judged)
         {
             return this.RequestCapability(proposition.Subject!, intrinsic, scope);
         }
@@ -293,7 +199,7 @@ public sealed partial class Binding
     {
         if (!this.constraints.TryGetValue(key, out var result))
         {
-            result = new(key);
+            result = new(key, this.ContainsAssociatedProjection(key.Subject) || this.ContainsAssociatedProjection(key.RequiredType));
             this.constraints.Add(key, result);
         }
 
@@ -471,10 +377,10 @@ public sealed partial class Binding
 
         // Only propositions dependent on generic inputs or the conforming Self are premises.
         // Closed propositions are independently checked declaration obligations.
-        // SPEC 8.7.3, 8.7: inside a Contract, `Self is [not] ObjectPayload`, `Self is Copy` and `Self is Owned` are
+        // SPEC 8.7.3, 8.7: inside a Contract, `Self is K` for the table's Self requirements and `Self is not ObjectPayload` are
         // Self-dependent implementation requirements: premises for the Contract's own signatures, derived for every Type
         // that the Contract is available for, and obligations of every conformer.
-        var contractSelfClause = scope.Owner is ContractKoto && IsSelfConstraint(clause) && (IsObjectPayloadRequirement(requirement) || requirement.Contract?.Intrinsic is IntrinsicKind.Copy or IntrinsicKind.Owned);
+        var contractSelfClause = scope.Owner is ContractKoto && IsSelfConstraint(clause) && IsSelfRequirement(requirement);
         var input = symbol?.Kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter || (subject?.Kind == BoundTypeKind.AssociatedProjection && root?.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection);
         input |= scope.Owner is StructKoto or EnumKoto && !IsSelfConstraint(clause) && DependentConstraint(requirement);
         input |= contractSelfClause;
@@ -616,42 +522,17 @@ public sealed partial class Binding
         }
     }
 
-    private ConstraintProof ProveConstraint(BoundConstraint proposition, BindingScope scope)
+    private ConstraintProof ProveProposition(BoundConstraint proposition, BindingScope scope)
     {
-        var positive = false;
-        var negative = false;
-        var parameterIdentity = HasParameterIdentity(scope);
         var normalized = this.NormalizeProofConstraint(proposition, scope);
-        var negation = this.NegateConstraint(normalized);
-        for (var current = scope; current is not null; current = current.Parent)
+        var evidence = this.Supply(normalized, this.ViewOf(scope));
+        if (evidence.Invalid)
         {
-            if (current.Constraints is not { } environment)
-            {
-                continue;
-            }
-
-            if (environment.Invalid)
-            {
-                return ConstraintProof.Error;
-            }
-
-            positive |= this.AvailableConstraintFact(environment, normalized);
-            negative |= this.AvailableConstraintFact(environment, negation);
-            if (environment.HasAssociatedProjection || parameterIdentity || normalized.Kind == ConstraintKind.Callable || normalized is { Kind: ConstraintKind.Not, Left.Kind: ConstraintKind.Callable })
-            {
-                foreach (var fact in environment.Facts)
-                {
-                    if (!this.AvailableConstraintFact(environment, fact))
-                    {
-                        continue;
-                    }
-
-                    var identity = this.NormalizeProofConstraint(fact, scope);
-                    positive |= SameProofPremise(identity, normalized);
-                    negative |= SameProofPremise(identity, negation);
-                }
-            }
+            return ConstraintProof.Error;
         }
+
+        var positive = evidence.Positive;
+        var negative = evidence.Negative;
 
         // Always validate both operands, even when an exact compound assumption is available.
         var structural = proposition.Kind switch
@@ -672,7 +553,7 @@ public sealed partial class Binding
 
         positive |= structural == ConstraintProof.Proven;
         negative |= structural == ConstraintProof.Refuted;
-        if (structural != ConstraintProof.Error && (positive || negative) && UnresolvedConstraintOperand(proposition))
+        if (structural != ConstraintProof.Error && (positive || negative) && this.OperandContexts(proposition).Unresolved)
         {
             return ConstraintProof.Unknown;
         }
@@ -739,7 +620,7 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(components[i], type.Components[i]);
             }
 
-            return changed ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, count), type.Length, type.Origin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, type.ClosureContext, type.LengthArguments) : type;
+            return changed ? this.types.Rebuild(type, components.AsSpan(0, count), type.Origin, (BoundOrigin[])type.OriginArguments) : type;
         }
         finally
         {

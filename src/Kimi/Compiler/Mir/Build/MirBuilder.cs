@@ -160,7 +160,9 @@ internal sealed partial class MirBuilder(Compilation compilation)
     // constructor builds its object in _0, its self, from fresh storage (SPEC 6.3.3): the base constructor into the base subobject, this
     // layer's Field initializers in declaration order, then the body, whose Unit value is set aside. A default template's (plan 5.6.2), a
     // generic body of its function, takes the slots its call prepared for the earlier parameters as shared references p_i: ref/P_i in
-    // slot order (PreparedInput), which its names read through (Bound), and gives the parameter's value.
+    // slot order (PreparedInput), which its names read through (Bound), and gives the parameter's value. A parameter has no syntax node of
+    // its own: its p_i is located at the parameter's Type node, the one a fact about the slot names (DECISIONS R4-M90 D6); another
+    // argument is located at its function.
     private void Body(MirDefKey key, Koto declaration, BindingSymbol? function, BoundType result, Koto value)
     {
         var template = key.Kind == MirBodyKind.DefaultTemplate;
@@ -200,6 +202,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
             this.locals[parameter] = this.Argument(
                 compilation.Types.Reference(SemanticsKind.Ref, parameter.Type ?? BoundType.Unit),
                 parameter.Name,
+                ((FunctionKoto)declaration).Parameters[i].Type,
                 parameters,
                 MirLocalRole.PreparedInput);
         }
@@ -218,6 +221,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
             this.receiver = this.Argument(
                 plan.Receiver == SemanticsKind.Owner ? environment : compilation.Types.Reference(plan.Receiver, environment),
                 null,
+                declaration,
                 parameters);
         }
 
@@ -225,7 +229,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         for (var position = 0; !template && function is not null && position < Arity(function); position++)
         {
             var parameter = CallPlan.Parameter(function, special is null ? MirCallee.Slot(function, position) : position)!;
-            this.locals[parameter] = this.Argument(parameter.Type ?? BoundType.Unit, parameter.Name, parameters);
+            this.locals[parameter] = this.Argument(parameter.Type ?? BoundType.Unit, parameter.Name, declaration, parameters);
         }
 
         this.current = body.AddBlock();
@@ -235,18 +239,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         this.targets.Add(new(declaration, done, -1, -1, At: default, Reached: false)); // A return's target, opened at the body's scope.
         if (self is not null)
         {
-            if (((FunctionKoto)declaration).BaseInitializer is { } baseCall)
-            {
-                this.Initialize(body.Project(new(0), MirProjectionKind.Base, 1), baseCall);
-            }
-
-            for (var i = 0; i < AdtDef.Count(self); i++)
-            {
-                if (AdtDef.Field(self, i) is { InitializerKoto: { } initializer } field)
-                {
-                    this.Initialize(body.Project(new(0), MirProjectionKind.Field, i), initializer, HirTables.Op(field) != HirOp.Body);
-                }
-            }
+            this.Construct(self, (FunctionKoto)declaration);
         }
 
         this.Result(done, value, value, input: false);
@@ -264,37 +257,15 @@ internal sealed partial class MirBuilder(Compilation compilation)
         this.validator.Validate(body, this.program.Findings);
     }
 
-    // An argument local, dropped when the body is left where its Type may need drop (SPEC 16.2.1).
-    private int Argument(BoundType type, string? name, int parameters, MirLocalRole role = MirLocalRole.None)
+    // An argument local located at a syntax node, dropped when the body is left where its Type may need drop (SPEC 16.2.1).
+    private int Argument(BoundType type, string? name, Koto source, int parameters, MirLocalRole role = MirLocalRole.None)
     {
-        var local = this.body.AddLocal(new(type, MirLocalKind.Arg, this.Info(this.declaration, local: true), Name: name, Role: role));
+        var local = this.body.AddLocal(new(type, MirLocalKind.Arg, this.Info(source, local: true), Name: name, Role: role));
         if (MirTypes.MayNeedDrop(type, this.walked))
         {
             this.Register(Cleanup.Drop, local, null, parameters);
         }
 
         return local;
-    }
-
-    // A step of a constructor as a statement of its own (SPEC 6.3.3): the base call into the base subobject, or a Field's initializer,
-    // as its Adjust takes it, into the Field; that of a Field declaration Binding did not bind (no Body) is derived from its error.
-    private void Initialize(MirPlace place, Koto node, bool rejected = false)
-    {
-        this.statementStart = true;
-        var temporaries = this.OpenScope(block: false);
-        if (rejected)
-        {
-            this.Opaque(node, place);
-        }
-        else if (HirTables.AdjustOf(node).Acquire == HirAcquire.Unset)
-        {
-            this.Into(place, node);
-        }
-        else
-        {
-            this.Assign(place, node);
-        }
-
-        this.CloseScope(temporaries);
     }
 }

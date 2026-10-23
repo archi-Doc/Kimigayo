@@ -108,7 +108,7 @@ public contract LeftMultipliable<Lhs>
 
 **Built-in conformances.** Each numeric Type `N` conforms with counterpart and Output `N`; there are no mixed-Type or built-in Left conformances. Integers, `Wrapping<I>`, `f32` and `f64` have all five binary Contracts, except that floating-point Types lack `RemainderProvider`; signed integers, `Wrapping<I>` and floating-point Types have `Negatable`. The witnesses behave exactly as [§13.3.1](#1331-built-in-numeric-operators). They add no named members or constructors to numeric Types; the requirement is reachable only through the Contract, as in `T.added` (Function values below). `T is PrimitiveInteger` entails the five binary conformances of `T`, not `Negatable`, and `Wrapping<T>` then has all six. Entailed conformances serve generic use, such as passing `T` to a function requiring `Addable<T>`; they do not change operator routing ([§13.3.4](#1334-route-selection)).
 
-**Function values.** Under `T is Addable<R>`, `T.added` is a Function Item that keeps the selected requirement and implementation; it may be called, stored or converted under the ordinary rules ([§7.7](07-functions-and-callable-values.md#77-function-expressions), [§10.7](10-overload-resolution-and-inference.md#107-callable-signature-compatibility), [§8.11.6](08-generics-constraints-and-contracts.md#8116-callable-effect-bounds)).
+**Function values.** Under `T is Addable<R>`, `T.added` is a Function Item that keeps the selected requirement and implementation; it may be called, stored or converted under the ordinary rules ([§7.7](07-functions-and-callable-values.md#77-function-expressions), [§10.7](10-overload-resolution-and-inference.md#107-callable-signature-compatibility), [§8.11.4](08-generics-constraints-and-contracts.md#8114-callable-effect-bounds)).
 
 ```kimi
 struct Vec2
@@ -235,7 +235,7 @@ Comparing two operands of one user Type requires the Kimi Contract below, whose 
 | `E@raw`, `E@raw/U`, `E@usize` | Raw pointer forms: see [§5.4](05-raw-pointers-and-unsafe-memory.md#54-addresses-and-conversions) |
 | `E@wrap<U>`, `E@bits<U>` | Wrapping and bit conversion ([§13.5.4](#1354-numeric-wrapping-and-bit-conversions)) |
 
-An **adaptation target** gives Semantics and a Core, a complete inner Type for a borrow or pointer layer, or an object View Target. Origins written on its outer Semantics chain are an error, even through grouping; they are inferred. Types nested inside, such as an Option payload, keep their annotations. Container path syntax ([§9.7.1](09-names-signatures-and-access.md#971-bound-container-paths)) relaxes none of this, and bound Container qualifiers are unavailable here.
+An **adaptation target** gives Semantics and a Core, a complete inner Type for a borrow or pointer layer, or an object View Target. Origins written on its outer Semantics chain are an error, even through grouping; they are inferred. The exception is an outer `raw` layer: a grouped target such as `p@(raw/U during o)` states its Origin, a fit or a claim ([§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins)). Types nested inside, such as an Option payload, keep their annotations. Container path syntax ([§9.7.1](09-names-signatures-and-access.md#971-bound-container-paths)) relaxes none of this, and bound Container qualifiers are unavailable here.
 
 **Syntactic extent.** The extent of a target (Semantics prefixes, `/`, `<`, closed and open targets, and where postfix suffixes may follow) is defined in [§F.9.3](appendices/F-syntax-summary.md#f93-type-arguments-or-less-than) and [§F.9.4](appendices/F-syntax-summary.md#f94-adaptation-targets). Each Semantics prefix must resolve to a concrete Semantics or a declared pair binder; primitive keywords cannot be pair binders, so `x@i32 / y` is division.
 
@@ -266,7 +266,7 @@ The operation is chosen from the written target and the operand's Type and categ
 | Numeric, wrapping, bit conversion | [§13.5.4](#1354-numeric-wrapping-and-bit-conversions) |
 | Borrow, Reborrow | [§13.5.6](#1356-borrow-and-reborrow) |
 | Object creation, upcast | [§13.6.2](#1362-object-creation-clone-and-lifecycle), [§13.6.1](#1361-object-upcasts) |
-| Raw pointer conversion, address, typed null | The forms of [§5.4](05-raw-pointers-and-unsafe-memory.md#54-addresses-and-conversions); no unsafe context |
+| Raw pointer conversion, address, typed null | The forms of [§5.4](05-raw-pointers-and-unsafe-memory.md#54-addresses-and-conversions); no unsafe context, except a claim of a raw Origin ([§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins)) |
 
 **Transfer.** `E@move` on a Movable Place ([§15.1.5](15-ownership-and-lifetime-analysis.md#1515-access-operations-and-acquisition)) transfers its value and destruction responsibility and marks it Moved, even for a Copy Type. On a borrow value it moves the reference; a Place reached through a reference is never transferred. On a Temporary Value, including a getter result, it has no effect. `holder.item@move` transfers the Field or getter result, never the receiver ([§7.3](07-functions-and-callable-values.md#73-receivers)).
 

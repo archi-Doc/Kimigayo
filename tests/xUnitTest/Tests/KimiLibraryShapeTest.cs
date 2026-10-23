@@ -81,9 +81,9 @@ public class KimiLibraryShapeTest
         (KimiDeclarationId.StorageBorrowFixedShared, "internal func borrowStorage<E, length N>(value: ref/[N of E] during a) -> RefRemainder<E> during a"),
         (KimiDeclarationId.StorageBorrowFixedExclusive, "internal func borrowStorageUniq<E, length N>(value: uniq/[N of E] during a) -> UniqRemainder<E> during a"),
         (KimiDeclarationId.StorageOwnFixed, "internal func ownStorage<E, length N>(value: [N of E]) -> FixedOwnedRemainder<E, [N of E]>"),
-        (KimiDeclarationId.StorageDictionaryLayout, "internal unsafe func dictionaryStorage<K, V>(value: uniq/Dictionary<K, V>) -> (raw/u8, isize)\nK is Equatable"),
+        (KimiDeclarationId.StorageDictionaryLayout, "internal unsafe func dictionaryStorage<K, V>(value: uniq/Dictionary<K, V>) -> (raw/Dictionary<K, V> during value, isize)\nK is Equatable"),
         (KimiDeclarationId.StorageMissingDictionaryKey, "internal func missingDictionaryKey() -> Never"),
-        (KimiDeclarationId.StoragePlaceDictionaryEntry, "internal unsafe func placeEntry<K, V>(handle: raw/u8, key: K, value: V)"),
+        (KimiDeclarationId.StoragePlaceDictionaryEntry, "internal unsafe func placeEntry<K, V>(handle: raw/Dictionary<K, V>, key: K, value: V)\nK is Equatable"),
         (KimiDeclarationId.StorageCountOverflow, "internal func countOverflow() -> Never"),
         (KimiDeclarationId.StorageAllocationSizeExceeded, "internal func allocationSizeExceeded() -> Never"),
         (KimiDeclarationId.StorageTryAllocateBytes, "internal func tryAllocateBytes(bytes: isize) -> raw/u8"),
@@ -371,7 +371,7 @@ public class KimiLibraryShapeTest
     [InlineData(KimiDeclarationId.Indexable, "public contract Indexable<Key>\nassociate Element\nfunc index(self: ref/Self, key: ref/Key) -> ref/Element during self")]
     [InlineData(KimiDeclarationId.UniqIndexable, "public contract UniqIndexable<Key>: Indexable<Key>\nfunc indexUniq(self: uniq/Self, key: ref/Key) -> uniq/Element during self")]
     [InlineData(KimiDeclarationId.LendingIterator, "public contract LendingIterator\nassociate LentItem(step) for uniq/Self during step\nfunc next(self: uniq/Self during step) -> Option<Self.LentItem(step)>")]
-    [InlineData(KimiDeclarationId.Iterator, "public contract Iterator: LendingIterator\nassociate Item\nassociate LendingIterator.LentItem(step) is Item\neffect LendingIterator.next preserves results")]
+    [InlineData(KimiDeclarationId.Iterator, "public contract Iterator: LendingIterator\nassociate Item\nassociate LendingIterator.LentItem(step) is Item")]
     [InlineData(KimiDeclarationId.Iterable, "public contract Iterable\nassociate IteratorType(source) is ::Kimi.LendingIterator for ref/Self during source\nfunc iterate(self: ref/Self during source) -> Self.IteratorType(source)")]
     [InlineData(KimiDeclarationId.UniqIterable, "public contract UniqIterable\nassociate IteratorType(source) is ::Kimi.LendingIterator for uniq/Self during source\nfunc iterateUniq(self: uniq/Self during source) -> Self.IteratorType(source)")]
     [InlineData(KimiDeclarationId.IntoIterable, "public contract IntoIterable\nassociate IteratorType is ::Kimi.LendingIterator\nfunc intoIterator(self: Self) -> Self.IteratorType")]
@@ -385,15 +385,15 @@ public class KimiLibraryShapeTest
     // Lowering and the runtime address these records' stored Fields by name, in this order, and run their drop
     // (BodyLowering, LlvmModuleWriter, Utf8BufferRuntime.ll.in); a record without Fields stays zero-sized.
     [Theory]
-    [InlineData("Storage.RefRemainder", "internal struct RefRemainder<E> {source}\ninternal let storage: raw/E\ninternal var position: isize\ninternal var count: isize\ninternal let loan: Loan<ref/E during source>")]
-    [InlineData("Storage.UniqRemainder", "internal struct UniqRemainder<E> {source}\ninternal let storage: raw/E\ninternal var position: isize\ninternal var count: isize\ninternal let loan: Loan<uniq/E during source>")]
-    [InlineData("Storage.OwnedRemainder", "internal struct OwnedRemainder<E>\ninternal let storage: raw/E\ninternal var position: isize\ninternal var count: isize\ninternal var capacity: isize\ndrop")]
-    [InlineData("Storage.DictionaryRefRemainder", "internal struct DictionaryRefRemainder<K, V> {source}\ninternal let storage: raw/u8\ninternal let stride: isize\ninternal var link: isize\ninternal var count: isize\ninternal let loan: Loan<ref/(K, V) during source>")]
-    [InlineData("Storage.DictionaryUniqRemainder", "internal struct DictionaryUniqRemainder<K, V> {source}\ninternal let storage: raw/u8\ninternal let stride: isize\ninternal var link: isize\ninternal var count: isize\ninternal let loan: Loan<uniq/(K, V) during source>")]
-    [InlineData("Storage.DictionaryOwnedRemainder", "internal struct DictionaryOwnedRemainder<K, V>\ninternal let storage: raw/u8\ninternal let stride: isize\ninternal var link: isize\ninternal var tail: isize\ninternal var count: isize\ndrop")]
+    [InlineData("Storage.RefRemainder", "internal struct RefRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize\ninternal var count: isize\ninternal let loan: Loan<ref/E during source>")]
+    [InlineData("Storage.UniqRemainder", "internal struct UniqRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize\ninternal var count: isize\ninternal let loan: Loan<uniq/E during source>")]
+    [InlineData("Storage.OwnedRemainder", "internal struct OwnedRemainder<E>\ninternal let storage: raw/E during self\ninternal var position: isize\ninternal var count: isize\ninternal var capacity: isize\ndrop")]
+    [InlineData("Storage.DictionaryRefRemainder", "internal struct DictionaryRefRemainder<K, V> {source}\ninternal let storage: raw/u8 during source\ninternal let stride: isize\ninternal var link: isize\ninternal var count: isize\ninternal let loan: Loan<ref/(K, V) during source>")]
+    [InlineData("Storage.DictionaryUniqRemainder", "internal struct DictionaryUniqRemainder<K, V> {source}\ninternal let storage: raw/u8 during source\ninternal let stride: isize\ninternal var link: isize\ninternal var count: isize\ninternal let loan: Loan<uniq/(K, V) during source>")]
+    [InlineData("Storage.DictionaryOwnedRemainder", "internal struct DictionaryOwnedRemainder<K, V>\ninternal let storage: raw/u8 during self\ninternal let stride: isize\ninternal var link: isize\ninternal var tail: isize\ninternal var count: isize\ndrop")]
     [InlineData("Storage.InlineStorage", "internal struct InlineStorage<A>\ninternal var value: A")]
     [InlineData("Storage.FixedOwnedRemainder", "internal struct FixedOwnedRemainder<E, A>\ninternal var storage: InlineStorage<A>\ninternal var position: isize\ninternal var count: isize\ndrop")]
-    [InlineData("UniqSlice", "public struct UniqSlice<T> {source}\ninternal let storage: raw/T\npublic let length: isize\ninternal let loan: Loan<uniq/T during source>")]
+    [InlineData("UniqSlice", "public struct UniqSlice<T> {source}\ninternal let storage: raw/T during source\npublic let length: isize\ninternal let loan: Loan<uniq/T during source>")]
     [InlineData("ResolvedRange", "public struct ResolvedRange\npublic let start: isize\npublic let end: isize")]
     [InlineData("FromEnd", "public struct FromEnd<T>\npublic let offset: T")]
     [InlineData("Range", "public struct Range<S, E>\npublic let start: S\npublic let end: E")]
@@ -403,10 +403,10 @@ public class KimiLibraryShapeTest
     [InlineData("Loan", "public struct Loan<T>")]
     [InlineData("Wrapping", "public struct Wrapping<T>")]
     [InlineData("BufferFull", "public struct BufferFull")]
-    [InlineData("WriteWindow", "public struct WriteWindow {source}\nlet state: raw/u8\nlet start: isize\npublic let written: isize\npublic let remaining: isize\nlet loan: Loan<uniq/u8 during source>")]
-    [InlineData("Utf8Writer", "public struct Utf8Writer {target}\nlet destination: raw/u8\nlet dispatch: raw/u8\nlet kind: isize\nlet failed: bool\nlet hint: isize\nlet pending: raw/u8\nlet pendingLength: isize\nlet logicalLength: isize\nlet loan: Loan<uniq/u8 during target>")]
-    [InlineData("Text.FixedBuffer", "public struct FixedBuffer {source}\nlet data: raw/u8\npublic let capacity: isize\npublic let length: isize\nlet validated: isize\nlet loan: Loan<uniq/u8 during source>")]
-    [InlineData("Text.HeapBuffer", "public struct HeapBuffer\nlet data: raw/u8\npublic let capacity: isize\npublic let length: isize\nlet validated: isize\ndrop")]
+    [InlineData("WriteWindow", "public struct WriteWindow {source}\nlet state: raw/u8 during source\nlet start: isize\npublic let written: isize\npublic let remaining: isize\nlet loan: Loan<uniq/u8 during source>")]
+    [InlineData("Utf8Writer", "public struct Utf8Writer {target}\nlet destination: raw/u8 during target\nlet dispatch: raw/u8\nlet kind: isize\nlet failed: bool\nlet hint: isize\nlet pending: raw/u8\nlet pendingLength: isize\nlet logicalLength: isize\nlet loan: Loan<uniq/u8 during target>")]
+    [InlineData("Text.FixedBuffer", "public struct FixedBuffer {source}\nlet data: raw/u8 during source\npublic let capacity: isize\npublic let length: isize\nlet validated: isize\nlet loan: Loan<uniq/u8 during source>")]
+    [InlineData("Text.HeapBuffer", "public struct HeapBuffer\nlet data: raw/u8 during self\npublic let capacity: isize\npublic let length: isize\nlet validated: isize\ndrop")]
     [InlineData("Text.Utf8Slice", "public struct Utf8Slice {source}\nlet value: Slice<u8> during source")]
     [InlineData("Text.InvalidUtf8", "public struct InvalidUtf8")]
     public void RecordFieldsAreFixed(string path, string shape)

@@ -103,6 +103,36 @@ internal sealed class MirBody
         return scope;
     }
 
+    /// <summary>Gets the innermost scope enclosing two scopes, either included: a scope's Outer precedes it, scope 0 enclosing every
+    /// scope (MirValidator), so the later of two scopes is never the other's Outer.</summary>
+    /// <param name="left">A scope of the body.</param>
+    /// <param name="right">Another scope of the body.</param>
+    /// <returns>Their innermost common scope.</returns>
+    internal int Common(int left, int right)
+    {
+        while (left != right)
+        {
+            (left, right) = left > right ? (this.scopes[left].Outer, right) : (left, this.scopes[right].Outer);
+        }
+
+        return left;
+    }
+
+    /// <summary>Gets the omitting call of the outermost inline default copy a scope lies in: the source of the outermost Inlined scope
+    /// enclosing it, the call in this body's own source (SPEC 15.6, 23.1.1; DECISIONS R4-M97).</summary>
+    /// <param name="scope">A scope of the body.</param>
+    /// <returns>The call, or null when the scope lies in no copy.</returns>
+    internal SourceRef? OmittingCall(int scope)
+    {
+        SourceRef? call = null;
+        for (var copy = this.Inlining(scope); copy >= 0; copy = this.Inlining(this.scopes[copy].Outer))
+        {
+            call = this.scopes[copy].Source;
+        }
+
+        return call;
+    }
+
     /// <summary>Gets the Type of a Place: its last projection's, or its root's.</summary>
     /// <param name="place">A Place of the body.</param>
     /// <returns>The Type, or null when a projection is not admitted.</returns>

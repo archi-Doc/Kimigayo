@@ -169,7 +169,7 @@ public sealed partial class Binding
             conformance.IsVerified = false;
             if (conformance.Invalid && this.partPrerequisites.ContainsKey(conformance.Use))
             {
-                this.failedConformance ??= conformance; // A use rests on a conformance that rests on its specification.
+                this.failedCause ??= conformance; // A use rests on a conformance that rests on its specification.
             }
 
             return ConstraintProof.Error;
@@ -222,7 +222,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (conformance.Contract.Intrinsic is IntrinsicKind.Copy or IntrinsicKind.Owned or IntrinsicKind.Sealed)
+            if (IntrinsicContract.Of(conformance.Contract.Intrinsic).ConformanceJudged)
             {
                 var intrinsicProof = CombineProof(declarationProof, this.RequestCapability(self, conformance.Contract, scope, derivation: conformance.Contract.Intrinsic == IntrinsicKind.Copy), true);
                 conformance.IsVerified = intrinsicProof == ConstraintProof.Proven;
@@ -585,10 +585,10 @@ public sealed partial class Binding
                             continue; // An invalid item declares no obligation for the implementation.
                         }
 
-                        if (!(bound.Bound == EffectBoundKind.Confined ? available.Confined : available.Preserves))
+                        if (!available)
                         {
                             proof = CombineProof(proof, ConstraintProof.Refuted, true);
-                            this.callablePremiseFailures.TryAdd(conformance.Use, (clause, bound, requirement));
+                            this.callablePremiseFailures.TryAdd(conformance.Use, (clause, requirement));
                         }
                     }
                 }

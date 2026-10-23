@@ -1,0 +1,3 @@
+markAlias: var y = 2
+sharedBox: var y = 2
+sharedBoxLive: var y = 2

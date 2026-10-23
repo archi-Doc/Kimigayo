@@ -24,26 +24,6 @@ public sealed partial class Binding
     internal static bool IsFitObligation(in BindingObligation obligation)
         => obligation.Clause is null && !obligation.WellFormed && (obligation.Type is null || ReferenceEquals(obligation.Type.Origin, obligation.Shorter) || obligation.Use is not TypeKoto);
 
-    // SPEC 15.6.5: a fixed Origin is fixed by the body's contract: a signature, parameter or receiver Origin, a projection of one,
-    // static, or a meet of them.
-    internal static bool FixedOrigin(BoundOrigin origin)
-    {
-        if (origin.Kind == OriginKind.Intersection)
-        {
-            for (var i = 0; i < origin.Operands.Count; i++)
-            {
-                if (!FixedOrigin(origin.Operands[i]))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        return origin.Kind is OriginKind.Static or OriginKind.Parameter or OriginKind.Input;
-    }
-
     internal bool IsVerifiedOriginObligation(in BindingObligation obligation)
     {
         if (obligation.Kind == BindingObligationKind.OriginInference && obligation.Longer is { } pending)
@@ -68,39 +48,61 @@ public sealed partial class Binding
     internal OriginJudgment JudgeOriginObligation(in BindingObligation obligation, out bool reversed)
     {
         reversed = false;
-        var forward = this.JudgeOriginRelation(obligation.Longer!, obligation.Shorter!, obligation.Use, obligation.Condition);
+        var forward = this.JudgeOriginRelation(obligation.Longer!, obligation.Shorter!, obligation.Use, obligation.Body, obligation.Condition);
         if (!obligation.Equality || forward == OriginJudgment.Refuted)
         {
             return forward;
         }
 
-        var backward = this.JudgeOriginRelation(obligation.Shorter!, obligation.Longer!, obligation.Use, obligation.Condition);
+        var backward = this.JudgeOriginRelation(obligation.Shorter!, obligation.Longer!, obligation.Use, obligation.Body, obligation.Condition);
         reversed = Severity(backward) > Severity(forward);
         return reversed ? backward : forward;
-
-        static int Severity(OriginJudgment judgment) => judgment switch
-        {
-            OriginJudgment.Refuted => 3,
-            OriginJudgment.Unknown => 2,
-            OriginJudgment.Unrepresentable => 1,
-            _ => 0,
-        };
     }
 
     // SPEC 15.6.5: an unproven relation fails only when it is Refuted, a finite Origin outliving a fixed one, or Unknown between two
-    // fixed Origins. `condition` is the Semantics case the relation is required in (BindingObligation.Condition).
-    internal bool OriginRelationFails(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
-        => this.JudgeOriginRelation(longer, shorter, use, condition) is OriginJudgment.Refuted or OriginJudgment.Unknown;
+    // fixed Origins, both in `body`. `condition` is the Semantics case the relation is required in (BindingObligation.Condition).
+    internal bool OriginRelationFails(BoundOrigin longer, BoundOrigin shorter, Koto use, ExecutableBody body, ulong condition = 0)
+        => this.JudgeOriginRelation(longer, shorter, use, body, condition) is OriginJudgment.Refuted or OriginJudgment.Unknown;
 
     // SPEC 15.6.5: local storage regions carry their source bounds to ownership; a finite-to-local-to-fixed chain is refuted
     // even in checking code. Fixed contracts still need established premises; finite relations carry their actual Loans
-    // through the same reaching-value graph as inferred local regions.
-    internal OriginJudgment JudgeOriginRelation(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
+    // through the same reaching-value graph as inferred local regions. `body` formed the relation; an enclosing body's atom, which only
+    // its Closure's environment brings in, is fixed there and never judged through its sources (SPEC 15.6.5).
+    internal OriginJudgment JudgeOriginRelation(BoundOrigin longer, BoundOrigin shorter, Koto use, ExecutableBody body, ulong condition = 0)
     {
         longer = this.OriginAtUse(longer, use);
         shorter = this.OriginAtUse(shorter, use);
-        return this.HasRegionBounds(longer) ? this.JudgeLocalRegion(longer, shorter, use, condition) : this.JudgeOriginAtoms(longer, shorter, use, condition);
+        if (this.SourcesIn(longer, body))
+        {
+            return this.JudgeLocalRegion(longer, shorter, use, body, condition);
+        }
+
+        if (longer.Kind != OriginKind.Intersection || this.ProvesOriginOutlives(longer, shorter, use, condition))
+        {
+            return this.JudgeOriginAtoms(longer, shorter, use, body, condition);
+        }
+
+        // SPEC 15.6.5: a meet outlives an Origin when each of its operands does, each the end of its own chain (as OriginOutlives
+        // and VerifiedRegionOutlives read it): a raw Place borrow's anchor is an inferred region (SPEC 5.2.2), a local region is judged
+        // through its sources; the worst operand decides.
+        var worst = OriginJudgment.Proven;
+        for (var i = 0; i < longer.Operands.Count; i++)
+        {
+            var judgment = this.JudgeOriginRelation(longer.Operands[i], shorter, use, body, condition);
+            worst = Severity(judgment) > Severity(worst) ? judgment : worst;
+        }
+
+        return worst;
     }
+
+    // The order in which a judgment fails a relation: Refuted before Unknown before Unrepresentable.
+    private static int Severity(OriginJudgment judgment) => judgment switch
+    {
+        OriginJudgment.Refuted => 3,
+        OriginJudgment.Unknown => 2,
+        OriginJudgment.Unrepresentable => 1,
+        _ => 0,
+    };
 
     private static bool IsWithin(Koto use, Koto declaration)
     {
@@ -115,9 +117,14 @@ public sealed partial class Binding
         return false;
     }
 
-    private OriginJudgment JudgeOriginAtoms(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
+    private OriginJudgment JudgeOriginAtoms(BoundOrigin longer, BoundOrigin shorter, Koto use, ExecutableBody body, ulong condition = 0)
     {
-        if (IsLocalRegion(shorter))
+        if (UnstatedRelation(longer, shorter) is { } holds)
+        {
+            return holds ? OriginJudgment.Proven : OriginJudgment.Refuted; // Rulings S4.
+        }
+
+        if (RegionIn(shorter, body))
         {
             return OriginJudgment.Proven;
         }
@@ -129,13 +136,13 @@ public sealed partial class Binding
 
         longer = this.OriginAtUse(longer, use);
         shorter = this.OriginAtUse(shorter, use);
-        if (RefutesOriginRelation(longer, shorter))
+        if (RefutesOriginRelation(longer, shorter, body))
         {
             return OriginJudgment.Refuted;
         }
 
         return longer.Kind == OriginKind.Unbound || shorter.Kind == OriginKind.Unbound ? OriginJudgment.Unrepresentable
-            : FixedOrigin(longer) && FixedOrigin(shorter) ? OriginJudgment.Unknown
+            : FixedIn(longer, body) && FixedIn(shorter, body) ? OriginJudgment.Unknown
             : OriginJudgment.Proven;
     }
 
@@ -144,7 +151,7 @@ public sealed partial class Binding
     private OriginDeclaration? OpenInitializerInference(BoundOrigin atom, Koto use)
         => this.OpenInitializer(atom, use) is { } local ? this.InitializerDeclaration(local) : null;
 
-    // The declaration of the Origins a local's initializer infers, created on its first bound.
+    // The declaration of the Origins a local's initializer infers, created with the first Origin its initializer omits or bounds.
     private OriginDeclaration InitializerDeclaration(VariableKoto local)
     {
         if (!this.initializerOrigins.TryGetValue(local, out var declaration))
@@ -388,127 +395,6 @@ public sealed partial class Binding
                 this.BindAssociatedFormation(node, associatedScope);
                 this.CompleteOriginDeclaration(associatedOrigins);
             }
-        }
-    }
-
-    // SPEC 15.3.3: the clauses of each completed declaration that proof alone does not establish, in declaration order, judged by
-    // their owner's part: a local's (a FieldKoto, the parser's local declaration) by the local part, JudgeLocalClause, and any other
-    // owner's, a Field's, Case's, alias's or associated formation's, by the declaration part, JudgeDeclaredRelation: a declaration's
-    // own clause, which Binding alone judges.
-    private void ValidateOriginRelations()
-    {
-        foreach (var declaration in this.originDeclarations.Values)
-        {
-            if (declaration.State != 3 || declaration.Owner is FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto || IsAssociatedRequirement(declaration.Owner))
-            {
-                continue;
-            }
-
-            foreach (var relation in declaration.Relations)
-            {
-                if (!this.ProvesOriginOutlives(relation.Longer, relation.Shorter, relation.Syntax) ||
-                    (relation.Equality && !this.ProvesOriginOutlives(relation.Shorter, relation.Longer, relation.Syntax)))
-                {
-                    if (declaration.Owner is FieldKoto)
-                    {
-                        this.JudgeLocalClause(declaration, relation);
-                    }
-                    else
-                    {
-                        this.JudgeDeclaredRelation(relation);
-                    }
-                }
-            }
-        }
-    }
-
-    // SPEC 15.3.3, 15.6.1, 15.6.5: a declared clause is checked against established evidence and assumes no new facts. A chain the judge
-    // leaves to region inference is an obligation, which ownership reports as a located limit; a Refuted or Unknown relation is the
-    // Origin relation record returned, with the source `declared` and the clause related, located at the clause.
-    private OriginRelationFact? FailedDeclaredRelation(OriginRelation relation)
-    {
-        var use = relation.Syntax;
-        var obligation = new BindingObligation(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, relation.Longer, relation.Shorter, Equality: relation.Equality);
-        var resolvedLonger = this.OriginAtUse(relation.Longer, use);
-        var resolvedShorter = this.OriginAtUse(relation.Shorter, use);
-        if (HasLocalRegion(resolvedLonger) || HasLocalRegion(resolvedShorter) || !FixedOrigin(resolvedShorter))
-        {
-            this.AddObligation(obligation with { Longer = resolvedLonger, Shorter = resolvedShorter, Clause = use });
-            return null;
-        }
-
-        var judgment = this.JudgeOriginObligation(obligation, out var reversed);
-        if (judgment == OriginJudgment.Proven)
-        {
-            return null;
-        }
-
-        if (judgment == OriginJudgment.Unrepresentable)
-        {
-            this.AddObligation(obligation);
-            return null;
-        }
-
-        var longer = this.OriginAtUse(reversed ? relation.Shorter : relation.Longer, use);
-        var shorter = this.OriginAtUse(reversed ? relation.Longer : relation.Shorter, use);
-        return new OriginRelationFact(use, longer, shorter, relation.Equality, null, RefutesOriginRelation(longer, shorter), use);
-    }
-
-    // The declaration part: a Field's, Case's, alias's or associated formation's own clause, which Binding alone judges, is recorded
-    // at the clause.
-    private void JudgeDeclaredRelation(OriginRelation relation)
-    {
-        if (this.FailedDeclaredRelation(relation) is { } failed)
-        {
-            this.FailExplained(ref this.originRelations, relation.Syntax, BindingFailure.OriginRelation, failed);
-        }
-    }
-
-    // The local part (SPEC 15.3.6): a local's clause is judged as declared, then by its omitted Origins: a failed bound of one solved to
-    // its lower candidate is no principal candidate, and a relation is located at the initializer when the initializer supplies one of
-    // its ends, an Origin the local's Type omits, as the value that does not fit.
-    private void JudgeLocalClause(OriginDeclaration local, OriginRelation relation)
-    {
-        if (this.FailedDeclaredRelation(relation) is not { } failed)
-        {
-            return;
-        }
-
-        // The solved lower candidate still fails a bound: no principal candidate is proven. The local needs an
-        // annotation, not a feature-limit diagnostic; all clauses depending on the same unsolved local share this cause.
-        var use = relation.Syntax;
-        if (!relation.Equality && InferredEnd(relation.Longer) == OriginVariance.Contravariant)
-        {
-            this.FailExplained(ref this.principalOriginFailures, local.Owner, BindingFailure.MissingOrigin, (failed.Longer, failed.Shorter, use));
-            return;
-        }
-
-        var supplied = InferredEnd(relation.Longer) is not null || InferredEnd(relation.Shorter) is not null;
-        var record = supplied && local.Owner is VariableKoto { InitializerKoto: { } initializer } ? failed with { At = initializer } : failed;
-        this.FailExplained(ref this.originRelations, use, BindingFailure.OriginRelation, record);
-
-        // The variance of an Origin the local's Type omits and its initializer supplies, or null for any other end.
-        OriginVariance? InferredEnd(BoundOrigin end)
-        {
-            if (local.Inferred is not { } slots)
-            {
-                return null;
-            }
-
-            if (slots.TryGetValue(end, out var position))
-            {
-                return position;
-            }
-
-            for (var i = 0; i < end.Operands.Count; i++)
-            {
-                if (slots.TryGetValue(end.Operands[i], out position))
-                {
-                    return position;
-                }
-            }
-
-            return null;
         }
     }
 }

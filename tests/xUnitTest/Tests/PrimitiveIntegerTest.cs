@@ -69,12 +69,19 @@ public class PrimitiveIntegerTest
     [Fact]
     public void WideDivisionIsDiagnosedForTheInstance()
     {
-        // SPEC 8.7.4: the generic body is valid; the initial profile refuses its 128-bit instance before optimization.
-        var c = MinimalEmissionTest.Analyze("func half<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value / 2\nlet a = half(10)\nlet b = half(10@i128)");
+        // SPEC 8.7.4: the generic body is valid; the initial profile refuses its 128-bit instance before optimization, under MIR code
+        // generation at check (DECISIONS R5-M85).
+        const string Source = "func half<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value / 2\nlet a = half(10)\nlet b = half(10@i128)";
+        var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified == Codegen.Expect(false, true, CodegenDeviations.CheckedSetAtCheck), MinimalEmissionTest.Describe(c, null));
+        c.ReportAnalysis();
+        Assert.False(c.Generate(TextWriter.Null));
+
+        // The old generator's failure text, on a compilation pinned to it until G2.
+        var old = MinimalEmissionTest.Analyze(Source, codegen: CompilerCodegen.Legacy);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out var error));
+        Assert.False(old.WriteIr(writer, out var error));
         Assert.Contains("Generic instance", error, StringComparison.Ordinal);
     }
 

@@ -99,10 +99,12 @@ public sealed partial class Binding
             return null;
         }
 
+        // SPEC 15.6.3: the shared view of a borrowed operand is contained in the operand and the layers reaching it; of a handle, its Place's.
+        var origin = ReferenceEquals(operand, BoundType.Never) ? null : operand.Origin is null ? this.PlaceOrigin(test.Left) : this.ReferentOrigin(test.Left, operand);
         test.BoundRuntimeTest = plan with
         {
             SharedType = ReferenceEquals(operand, BoundType.Never) ? null :
-                this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.ObjRef, [operand.Components[0]], origin: operand.Origin is { } dependency ? this.Meet(this.PlaceOrigin(test.Left), dependency) : this.PlaceOrigin(test.Left)),
+                this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.ObjRef, [operand.Components[0]], origin: origin),
         };
         return Complete(test, BoundType.Boolean);
     }

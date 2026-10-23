@@ -1,0 +1,72 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+namespace Kimi.Compiler.Mir;
+
+// A5's location driver (A3 5, Check sets and err(conflict), with E5 and E13 (1)): at each location of the checks replay, its accesses of
+// borrowed roots (MirBorrows.Accesses) with the check sets they take, a Call's or Drop's effect access after them, and the reservations it
+// activates; one gather of their check sets (MirBorrows.CheckSets); each access compared with the Loans on its root by the conflicts
+// relation, its first conflict recorded by MirBorrows.Reports; then a guard candidate's EndBorrow (err(ended)), a call's retention Limit,
+// the location's activations (MirBorrows.Activations), its effects (MirBorrows.Effects, whose keys select other case views) and at a
+// default template's Return R26-borrow.
+// Must not decide whether an access meets a Loan (MirBorrows.Checks) or which problem a conflict becomes (MirBorrows.Reports).
+internal sealed partial class MirBorrows
+{
+    private MirStep[] accessSteps = [];
+
+    // The checks at a location (A3 5, E13 (1)): its accesses of borrowed roots, a guard candidate's EndBorrow, its activations and its
+    // effects, on the check sets of one gather; the first conflicting Loan of each access is its problem; at a Return, R26-borrow on its own
+    // gather.
+    private void Check(ulong[] state, int block, int index, int location)
+    {
+        this.accessCount = 0;
+        var at = new MirLocation(block, index);
+        var statement = index < this.body.Blocks[block].Count ? this.body.Statements[location] : default;
+        var visitor = new Accessing(this, at, index < this.body.Blocks[block].Count ? statement.Kind : MirStatementKind.Assign, this.Reborrowing(statement));
+        MirUses.ForEach(cases, at, ref visitor);
+        var (accessed, scope) = (this.accessCount, this.Source(location).Scope); // The location's own accesses; its effect access follows them.
+        this.Effecting(block, index);
+        this.Reserving(state, at);
+        var ended = statement is { Kind: MirStatementKind.EndBorrow, Place.Root: var guard } && this.MarkerOf(guard) == Marker.Guard;
+        if (this.accessCount + this.reserving.Count > 0 || ended)
+        {
+            this.Gather(state, at, this.entryCount);
+        }
+
+        for (var a = 0; a < accessed; a++)
+        {
+            var access = this.accesses[a];
+            if (access.Kind == AccessKind.Unclassified)
+            {
+                this.Unsupported(at);
+                continue;
+            }
+
+            var count = this.placeSteps.Walk(this.body, access.Place, access.Reborrow, ref this.accessSteps);
+            if (this.Conflict(this.Key(access.Place.Root), this.accessSteps.AsSpan(0, count), access.Kind, access.Taking, scope, -1) is var c and not None)
+            {
+                this.Report(this.Code(this.candidates[c], access.Kind, DiagnosticCode.ComparisonLoanConflict_Kd), c, access.Taking, at, -1, null);
+            }
+        }
+
+        if (ended)
+        {
+            this.Ended(at, statement.Place.Root);
+        }
+
+        if (index == this.body.Blocks[block].Count && this.Retaining(this.body.Blocks[block].Terminator) is { IsLimit: true })
+        {
+            this.Unsupported(at); // A contract Binding does not instantiate.
+        }
+
+        this.Activations(at);
+        if (accessed < this.accessCount)
+        {
+            this.Effects(at, this.accesses[accessed].Taking);
+        }
+
+        if (index == this.body.Blocks[block].Count && this.body.Blocks[block].Terminator.Kind == MirTerminatorKind.Return)
+        {
+            this.DefaultBorrows(state);
+        }
+    }
+}

@@ -9,9 +9,20 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 8.11.6: bounds constrain selected uses, never overload applicability.
+// SPEC 8.11.4: bounds constrain selected uses, never overload applicability.
 public class CallableEffectBoundTest
 {
+    // The generic programs of LaterCallsOfACallableValueReachByPaths and ReplacingTheCallableChangesNoVerdict's second calls (the same, a
+    // replaced and another Callable value), which AbstractCallReachTest also instantiates (L1).
+    internal const string TwiceByReference = "func twice<S,F>(source: uniq/S, next: ref/F) -> (S.Item, S.Item)\n    S is Source\n    F is Callable<(uniq/S) -> S.Item>\n" +
+        "    let first = next(source)\n    let second = next(source)\n    return (first@move, second@move)\n";
+
+    internal const string SameCallable = "    let second = f(source)\n";
+
+    internal const string ReplacedCallable = "    f = two@move\n    let second = f(source)\n";
+
+    internal const string OtherCallable = "    var g = two@move\n    let second = g(source)\n";
+
     private const string Apply = "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n        effect confined\n    return f()\n";
 
     [Fact]
@@ -35,20 +46,35 @@ public class CallableEffectBoundTest
         Assert.Contains("mutable static", error.Label);
     }
 
+    // SPEC 8.11.4: the Reason names the cause and the Note the rule; `confined` appears at most once in one Constraint.
     [Theory]
-    [InlineData("Copy", "F is Copy", "effect confined", "single Callable")]
-    [InlineData("Grouped", "F is (Callable<() -> i32>)", "effect confined", "single Callable")]
-    [InlineData("Combined", "F is Callable<() -> i32> and Copy", "effect confined", "single Callable")]
-    [InlineData("Duplicate", "F is Callable<() -> i32>", "effect confined\n        effect confined", "already declares confined")]
-    [InlineData("Owner", "F is Callable<owner, () -> i32>", "effect preserves results", "ref or uniq")]
-    public void InvalidDeclarationsExplainTheirCause(string name, string constraint, string bounds, string cause)
+    [InlineData("Copy", "F is Copy", "effect confined", "single Callable", "separate clauses")]
+    [InlineData("Grouped", "F is (Callable<() -> i32>)", "effect confined", "single Callable", "separate clauses")]
+    [InlineData("Combined", "F is Callable<() -> i32> and Copy", "effect confined", "single Callable", "separate clauses")]
+    [InlineData("Duplicate", "F is Callable<() -> i32>", "effect confined\n        effect confined", "already declares confined", "declares confined at most once")]
+    public void InvalidDeclarationsExplainTheirCause(string name, string constraint, string bounds, string cause, string note)
     {
         var source = $"func check<F>(f: F) -> ()\n    {constraint}\n        {bounds}\n    return\npublic func main() => ()\n";
         var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal("InvalidEffectBound_Kd", record.Code);
+        Assert.Equal(bounds[(bounds.LastIndexOf('\n') + 1)..].TrimStart(), source.Substring(record.Span!.Value.Start, record.Span.Value.Length));
         Assert.Contains(cause, record.Label);
+        Assert.Contains(note, record.Note);
         Assert.NotEmpty(record.Related!);
         Assert.False(string.IsNullOrEmpty(name));
+    }
+
+    // SPEC 8.11.3, 8.11.4: an invalid item supplies no bound, so the clause after it is no duplicate (PLAN G219, c2).
+    [Theory]
+    [InlineData("effect Runner.run confined", "InvalidEffectBound_Kd", "effect Runner.run confined")]
+    [InlineData("effect bogus", "ExpectedSyntax_Kd", "bogus")]
+    public void AnInvalidItemIsNoEarlierBound(string invalid, string code, string at)
+    {
+        var source = "contract Runner\n    func run(self: ref/Self) -> i32\n" +
+            $"func check<F>(f: F) -> ()\n    F is Callable<() -> i32>\n        {invalid}\n        effect confined\n    return\npublic func main() => ()\n";
+        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(code, record.Code);
+        Assert.Equal(source.IndexOf(at, StringComparison.Ordinal), record.Span!.Value.Start);
     }
 
     [Theory]
@@ -131,22 +157,14 @@ public class CallableEffectBoundTest
         }
     }
 
-    // With preserves results, excluding the earlier result of the same Callable value needs value identity across replacement,
-    // an implementation limit (reduction regression R1g): the later call is one located Unsupported_Kd.
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void EarlierResultsRequirePreservation(bool bounded)
+    // SPEC 8.11.4, 8.11.3 (the adopted proposal Abstract Calls Reach by Paths): a call through a Callable-constrained value reaches by
+    // path what its receiver and arguments reach; an earlier result that keeps no Loan of those Places does not conflict with a later
+    // call of the same value (CallEffectConflict_Kd and R1g's Unsupported_Kd before the adoption).
+    [Fact]
+    public void LaterCallsOfACallableValueReachByPaths()
     {
-        var source = "contract Source\n    associate Item\nfunc twice<S,F>(source: uniq/S, next: ref/F) -> (S.Item, S.Item)\n    S is Source\n    F is Callable<(uniq/S) -> S.Item>\n" +
-            (bounded ? "        effect preserves results\n" : string.Empty) +
-            "    let first = next(source)\n    let second = next(source)\n    return (first@move, second@move)\npublic func main() => ()\n";
-        var diagnostic = AssertSecondCall(source, bounded ? "Unsupported_Kd" : "CallEffectConflict_Kd", "next(source)");
-        if (!bounded)
-        {
-            Assert.Contains("Callable Constraint", diagnostic.Message);
-            Assert.Equal(["call", "loan"], diagnostic.Related!.Select(static r => r.Role));
-        }
+        var source = "contract Source\n    associate Item\n" + TwiceByReference + "public func main() => ()\n";
+        Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
     }
 
     [Theory]
@@ -204,14 +222,15 @@ public class CallableEffectBoundTest
     {
         const string Header = "contract Runner\n    func run<F>(self: ref/Self, callback: F) -> i32\n        F is Callable<owner, () -> i32>\n" +
             "struct Worker\n    Self is Runner\n    public func run<F>(self: ref/Self, callback: F) -> i32\n        F is Callable<owner, () -> i32>\n";
-        var source = Header + (invalid ? "            effect preserves results\n" : string.Empty) +
+        var source = Header + (invalid ? "            effect Runner.run confined\n" : string.Empty) +
             "        return callback@move()\npublic func main() => ()\n" + (independent ? "func broken() -> i32 => true\n" : string.Empty);
         var records = DiagnosticCorpus.Check(source).Diagnostics;
         Assert.Equal((invalid ? 1 : 0) + (independent ? 1 : 0), records.Length);
         if (invalid)
         {
             var bound = Assert.Single(records, static record => record.Code == "InvalidEffectBound_Kd");
-            Assert.Contains("ref or uniq", bound.Label);
+            Assert.Equal("effect Runner.run confined", source.Substring(bound.Span!.Value.Start, bound.Span.Value.Length));
+            Assert.Equal("an effect specification outside a Contract's items", bound.Label);
         }
 
         if (independent)
@@ -333,26 +352,6 @@ public class CallableEffectBoundTest
         Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
     }
 
-    [Theory]
-    [InlineData("ref", false, true)]
-    [InlineData("uniq", true, false)]
-    public void PreservingBindingsCheckEffectsAgainstResultLoans(string acquisition, bool write, bool valid)
-    {
-        var source = $"func identity(value: {acquisition}/i32) -> {acquisition}/i32\n" + (write ? "    value@follow += 1\n" : string.Empty) +
-            $"    return value\nfunc accept<F>(f: ref/F) -> ()\n    F is Callable<({acquisition}/i32) -> {acquisition}/i32>\n        effect preserves results\n    return\npublic func main() => accept(identity)\n";
-        var records = DiagnosticCorpus.Check(source).Diagnostics;
-        if (valid)
-        {
-            Assert.Empty(records);
-        }
-        else
-        {
-            var diagnostic = Assert.Single(records);
-            Assert.Equal("UnsatisfiedEffectBound_Kd", diagnostic.Code);
-            Assert.Contains("preserves results", diagnostic.Label);
-        }
-    }
-
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmRejectedBoundChecksReuseTheirStorage()
@@ -360,27 +359,6 @@ public class CallableEffectBoundTest
         var c = MinimalEmissionTest.Analyze(Apply + "func noisy() -> i32\n    Console.writeLine(\"noisy\")\n    return 0\npublic func main() => _ = apply(noisy)\n");
         Assert.False(c.Analysis.IsVerified);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
-    }
-
-    [Theory]
-    [InlineData("first", true)]
-    [InlineData("second", false)]
-    public void PreservationDelegationRequiresOneCallableValue(string other, bool valid)
-    {
-        var source = "contract Source\n    associate Item\n    func take(self: uniq/Self) -> Option<Self.Item>\n        effect preserves results\n" +
-            "struct Pair<F,I>\n    I is Iterator\n    F is Callable<uniq, () -> Option<I.Item>>\n        effect preserves results\n    Self is Source\n    associate Source.Item is I.Item\n    var first: F\n    var second: F\n" +
-            $"    public func take(self: uniq/Self) -> Option<I.Item>\n        if true => return self.first@uniq()\n        return self.{other}@uniq()\npublic func main() => ()\n";
-        var records = DiagnosticCorpus.Check(source).Diagnostics;
-        if (valid)
-        {
-            Assert.Empty(records);
-        }
-        else
-        {
-            var diagnostic = Assert.Single(records);
-            Assert.Equal("IncompatibleContractImplementation_Kd", diagnostic.Code);
-            Assert.Contains("another value", diagnostic.Note);
-        }
     }
 
     [Trait("Purpose", "Allocation")]
@@ -394,27 +372,24 @@ public class CallableEffectBoundTest
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 
-    // A replaced value is another callable value, so the guarantee no longer excludes the earlier result; whether the value was
-    // replaced is the same limit as above, while a call through a different value is the specified conflict.
+    // SPEC 8.11.4, 8.11.3 (the adopted proposal): nothing relates two calls, so the same, a replaced or another Callable value makes
+    // no difference (R1g's Unsupported_Kd and CallEffectConflict_Kd before the adoption).
     [Theory]
-    [InlineData("    let second = f(source)\n", "Unsupported_Kd", "f(source)")]
-    [InlineData("    f = two@move\n    let second = f(source)\n", "Unsupported_Kd", "f(source)")]
-    [InlineData("    var g = two@move\n    let second = g(source)\n", "CallEffectConflict_Kd", "g(source)")]
-    public void ReplacingTheCallableCannotReuseTheEarlierValuesGuarantee(string second, string code, string call)
+    [InlineData(SameCallable)]
+    [InlineData(ReplacedCallable)]
+    [InlineData(OtherCallable)]
+    public void ReplacingTheCallableChangesNoVerdict(string second)
     {
-        var source = "contract Source\n    associate Item\nfunc twice<S,F>(source: uniq/S, one: F, two: F) -> (S.Item, S.Item)\n    S is Source\n    F is Callable<uniq, (uniq/S) -> S.Item>\n        effect preserves results\n    var f = one@move\n    let first = f(source)\n" +
-            second + "    return (first@move, second@move)\npublic func main() => ()\n";
-        AssertSecondCall(source, code, call);
+        var source = "contract Source\n    associate Item\n" + Replacing(second) + "public func main() => ()\n";
+        Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
     }
 
     [Fact]
     public void ConfinedCallbacksRunNatively()
         => ScalarEmissionTest.EmitFixture("CallableEffectsConfined", Apply + "let f = func [] () -> i32 => 19\nrequire apply(f@ref) == 19 else => $abort(\"callback\")\n", string.Empty);
 
-    private static CheckDiagnostic AssertSecondCall(string source, string code, string call)
-    {
-        var diagnostic = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((code, source.LastIndexOf(call, StringComparison.Ordinal), call.Length), (diagnostic.Code, diagnostic.Span!.Value.Start, diagnostic.Span.Value.Length));
-        return diagnostic;
-    }
+    // A generic function that takes a first result through a Callable value, then makes a second call.
+    internal static string Replacing(string second)
+        => "func twice<S,F>(source: uniq/S, one: F, two: F) -> (S.Item, S.Item)\n    S is Source\n    F is Callable<uniq, (uniq/S) -> S.Item>\n    var f = one@move\n    let first = f(source)\n" +
+            second + "    return (first@move, second@move)\n";
 }

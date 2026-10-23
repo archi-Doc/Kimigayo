@@ -10,8 +10,9 @@ namespace XunitTest;
 
 /// <summary>The HIR rows each form publishes (docs/dev/COMPILER_ARCHITECTURE.md, R2b), as SPEC states them: a parameter read from a later
 /// default, an omitted default, a virtual body, completions, jump targets, Adjusts, Place shapes, expansion plans, a user index's
-/// selection, accessors, constructors and built-in forms; each program also satisfies the corpus contract (HirColumnsTest).</summary>
-public sealed class HirFormsTest
+/// selection, accessors, constructors and built-in forms; those of the nodes Binding rejected or left unresolved are in
+/// HirFormsTest.Errors.cs. Each program also satisfies the corpus contract (HirColumnsTest).</summary>
+public sealed partial class HirFormsTest
 {
     // SPEC 7.2.3: a later default reads the slot its call prepared for an earlier parameter; a closure there reads its capture.
     [Fact]
@@ -507,44 +508,5 @@ public sealed class HirFormsTest
         Assert.Equal(new HirAdjust(HirAcquire.None, HirAdaptation.None), HirTables.AdjustOf(closures[^1]));
         var statements = Reachable(c.Kotonoha).Where(x => x.Parent is CodeBlockKoto && IsWithin(x, closures[0])).Select(static x => HirTables.Op(x));
         Assert.Equal([HirOp.Let, HirOp.Discard, HirOp.Jump], statements);
-    }
-
-    // SPEC 23.1.2 (DECISIONS R5-M63): a failed Field, Index, follow or `*p` keeps the operands Binding resolved as a value or a Place at
-    // their positions, written in place (None, None) with their own Ops; a member name, a follow target, a Type name and an operand Binding
-    // did not resolve, or resolved without the facts of an evaluated name (both paths of a name), stay replaced, so the MIR records
-    // nothing. A group the parser recovered (a parameter default) keeps its operand; a group around a failed call is not the failed node,
-    // and the call's children stay replaced (PLAN G121).
-    [Fact]
-    public void AFailedPlaceKeepsTheOperandsBindingResolved()
-    {
-        const string Source = "struct P\n    public var a: i32 = 1\n    public init() => ()\nfunc make(a: string, b: string) -> P => P.init()\n" +
-            "func take(a: string, b: string) -> i32 => 1\nfunc f(n: i32)\n    let s = \"x\"\n    _ = n[take(s@move, s@move)]\n" +
-            "    _ = make(s@move, s@move).missing\n    _ = take(s@move, s@move)@follow\n    _ = missing.0\n    _ = P.missing\n" +
-            "    unsafe\n        _ = *take(s@move, s@move)\n    _ = (take(s@move, s@move, 1))\n";
-        var c = MinimalEmissionTest.Analyze(Source);
-        HirTables.Publish(c);
-        var rows = Reachable(c.Kotonoha).Where(static x => x.Parent is { } parent && HirTables.Op(parent) == HirOp.Error)
-            .Select(static x => (Node: x, Adjust: HirTables.AdjustOf(x)))
-            .Select(x => $"{Source.Substring(x.Node.Span.Start, x.Node.Span.Length)} {HirTables.Op(x.Node)} {x.Adjust.Acquire}/{x.Adjust.Adaptation}");
-        string[] expected =
-        [
-            "n Name None/None", "take(s@move, s@move) Call None/None", "make(s@move, s@move) Call None/None", "missing Syntax Unset/None",
-            "take(s@move, s@move) Call None/None", "follow Syntax Unset/None", "missing Syntax Unset/None", "0 Syntax Unset/None",
-            "P Syntax Unset/None", "missing Syntax Unset/None", "take(s@move, s@move) Call None/None", "take Syntax Unset/None",
-            "s@move Syntax Unset/None", "s@move Syntax Unset/None", "1 Syntax Unset/None",
-        ];
-        Assert.Equal(expected, rows);
-        Assert.Equal(HirOp.Group, HirTables.Op(Reachable(c.Kotonoha).OfType<ParenthesizedKoto>().Single()));
-        Assert.Empty(c.BuildMir().Records);
-        var ambiguous = MinimalEmissionTest.Analyze("group Config\n    public var count: i32 = 3\nstruct Settings\n    public var count: i32 = 0\n" +
-            "func read(Config: ref/Settings) -> i32\n    return Config.count\n");
-        Assert.Empty(ambiguous.BuildMir().Records);
-        var recovered = MinimalEmissionTest.Analyze(
-            "func take(a: string, b: string) -> i32 => 1\nfunc g(s: string, x: i32 = (take(s@move, s@move)) y: i32 = 0) -> i32 => x\n");
-        HirTables.Publish(recovered);
-        var group = Reachable(recovered.Kotonoha).OfType<ParenthesizedKoto>().Single();
-        Assert.Equal(
-            (HirOp.Error, HirOp.Call, new HirAdjust(HirAcquire.None, HirAdaptation.None)),
-            (HirTables.Op(group), HirTables.Op(group.Operand), HirTables.AdjustOf(group.Operand)));
     }
 }

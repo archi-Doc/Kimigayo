@@ -1,18 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
-using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
 #pragma warning disable SA1402, CS1591 // Retained closure conversion and capture vocabulary.
-
-// A capture name repeated by a later entry or by a parameter (Parameter), at Later, and the entry it repeats, at Earlier (SPEC 7.7.2).
-internal readonly record struct CaptureRepeat(SourceSpan Later, SourceSpan Earlier, string Name, bool Parameter);
-
-// The repeats of one capture list, and the first other entry that failed independently of them (SPEC 23.1.2): its failure, none
-// when every other entry is valid, and the Type its facts name, null for an entry without facts, such as an unresolved name.
-internal readonly record struct CaptureListFailure(CaptureRepeat[] Repeats, CaptureKoto Entry, BindingFailure Failure, BoundType? Type, BindingSymbol? Source);
 
 public sealed partial class Binding
 {
@@ -42,64 +34,6 @@ public sealed partial class Binding
 
     // Set only while TryCandidate asks whether a rejected candidate applies once its closure argument's minimum receiver is permitted.
     private bool permitClosureReceivers;
-
-    // Only closures with a repeated capture name need this storage: each later entry or parameter, the entry it repeats, and an
-    // independent failure of another entry.
-    private Dictionary<Koto, CaptureListFailure>? captureRepeats;
-
-    // SPEC 7.7.2: each capture name that an earlier entry repeats, then each that a parameter repeats; null for a valid list, which
-    // allocates nothing.
-    private static CaptureRepeat[]? RepeatedCaptures(FunctionKoto function, CaptureKoto[] captures)
-    {
-        List<CaptureRepeat>? repeats = null;
-        for (var i = 0; i < captures.Length; i++)
-        {
-            var name = captures[i].Name;
-            var repeated = false;
-            for (var j = 0; j < i && !repeated; j++)
-            {
-                if (captures[j].Name == name)
-                {
-                    (repeats ??= new()).Add(new(captures[i].Span, captures[j].Span, name, false));
-                    repeated = true;
-                }
-            }
-
-            for (var p = 0; p < function.Parameters.Count && !repeated; p++)
-            {
-                if (function.Parameters[p].InternalName == name)
-                {
-                    (repeats ??= new()).Add(new(function.Parameters[p].ExternalNameSpan, captures[i].Span, name, true));
-                    repeated = true;
-                }
-            }
-        }
-
-        return repeats?.ToArray();
-    }
-
-    // The later entry of a repeated name declares nothing, so the list binds only the entry it repeats.
-    private static bool RepeatsEarlierEntry(CaptureRepeat[] repeats, CaptureKoto capture)
-    {
-        for (var i = 0; i < repeats.Length; i++)
-        {
-            if (!repeats[i].Parameter && repeats[i].Later == capture.Span)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    // SPEC 7.7.2: the receiver `self` of a named function, accessor, constructor or destructor, and a setter's `value`.
-    private static bool IsContextualBinding(BindingSymbol symbol)
-        => symbol.Kind == BindingSymbolKind.Parameter && symbol.Declaration switch
-        {
-            FunctionKoto { IsAnonymous: false } declaring => symbol.Name == "self" || (symbol.Name == "value" && declaring.Accessor?.Kind == PropertyAccessorKind.Set),
-            PropertyAccessorKoto accessor => symbol.Name == "self" || (symbol.Name == "value" && accessor.AccessorKind == PropertyAccessorKind.Set),
-            _ => false,
-        };
 
     // SPEC 15.8.2: the first Origin of an inferred closure result that names the call's own storage: a parameter slot or a body local
     // of the closure, or, in a Consuming call, an environment binding. Origins of the enclosing body and receiver-dependent bindings
@@ -170,54 +104,6 @@ public sealed partial class Binding
             expected is { Kind: BoundTypeKind.Semantics, Components.Count: 1, OriginArguments.Count: 0, Origin: not null } && expected.Semantics == written.Semantics &&
             ReferenceEquals(expected.Components[0], written.Components[0]);
 
-    // SPEC 7.7.2, 23.1.2: a repeated capture name is one problem at the later entry or parameter, with the entry it repeats related.
-    // Another entry that failed on its own is reported beside the repeats, exactly as it is in a list that repeats no name.
-    private void ReportCaptureRepeats(Koto function, CaptureListFailure list, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        var repeats = list.Repeats;
-        if (list.Failure != BindingFailure.None)
-        {
-            var entryRequirement = DiagnosticRequirement.Binding(list.Failure);
-            var entryCode = list.Failure switch
-            {
-                BindingFailure.TransferRequired => DiagnosticCode.TransferRequired_Kd,
-                BindingFailure.InvalidAssignment => DiagnosticCode.InvalidAssignment_Kd,
-                _ => DiagnosticCode.InvalidCaptureBinding_Kd,
-            };
-            if (list.Type is { } type)
-            {
-                this.ReportCaptureEntry(function, list.Entry, type, list.Source, entryRequirement, entryCode);
-            }
-            else
-            {
-                function.Report(entryRequirement, entryCode);
-            }
-        }
-
-        for (var i = 0; i < repeats.Length; i++)
-        {
-            var repeat = repeats[i];
-            var name = repeat.Name;
-            var note = repeat.Parameter
-                ? $"The capture entry {name} and the parameter {name} would both declare {name} in the anonymous function's body; a parameter cannot repeat a capture name (SPEC 7.7.2)"
-                : $"The capture list names {name} twice; each entry declares its own environment binding, so a name is captured once (SPEC 7.7.2)";
-            function.Report(
-                requirement,
-                code,
-                note: note,
-                evidence: [name],
-                span: repeat.Later,
-                relatedSpans: [("declaration", function, repeat.Earlier, "capture entry")],
-                condition: (ushort)i);
-        }
-    }
-
-    // A capture entry that failed (its facts name the Type, or none for an unresolved name), or, in a list that repeats a name, the
-    // repeats with that entry's failure beside them.
-    private BoundType? FailCaptureEntry(FunctionKoto function, CaptureRepeat[]? repeats, CaptureKoto capture, BindingFailure failure, BoundType? type, BindingSymbol? source)
-        => repeats is not null ? this.FailExplained(ref this.captureRepeats, function, BindingFailure.Duplicate, new CaptureListFailure(repeats, capture, failure, type, source))
-            : type is not null ? this.FailExplained(ref this.captureFailures, function, failure, (capture, type, source)) : this.Fail(function, failure);
-
     // SPEC 7.7.3, 8.10: the one closure argument whose minimum call receiver the Callable Constraint of its parameter does not permit;
     // none when no argument or several do. A common Function parameter has no Callable Constraint and is never named here.
     private ClosureReceiverRefutation? ClosureReceiverMismatch(InvocationKoto call, FunctionKoto function, int[] mapping)
@@ -261,7 +147,7 @@ public sealed partial class Binding
     // and results written over a fixed Origin of the enclosing body stay as written.
     private BoundType ClosureExpectation(FunctionKoto function, BoundType expected)
     {
-        if (expected.Kind != BoundTypeKind.Function || !expected.CarriesOrigin || FunctionTypeBinder(expected) is not { } binder ||
+        if (expected.Kind != BoundTypeKind.Function || !expected.CarriesAnyOrigin || FunctionTypeBinder(expected) is not { } binder ||
             ReferenceEquals(binder, function))
         {
             return expected;
@@ -394,124 +280,8 @@ public sealed partial class Binding
         return this.BindConcreteClosure(function, scope, expected, openResult);
     }
 
-    // An unsupported captured Type is reported at the written capture entry when there is one.
-    private BindingSymbol? Capture(FunctionKoto function, BindingSymbol source, BindingScope scope, CaptureKoto? entry = null)
-    {
-        if (entry is null && IsContextualBinding(source))
-        {
-            return null; // SPEC 7.7.2: contextual self and a setter's value are never captured implicitly.
-        }
-
-        if (scope.Parent?.Function is { } outer && !ReferenceEquals(source.Scope.Function, outer))
-        {
-            // A nested closure can capture only what its immediately enclosing activation owns.
-            // An inferred outer environment may forward the capture; an explicit list may not.
-            if (!outer.IsAnonymous || outer.Captures is not null || this.Capture(outer, source, this.scopes[outer]) is not { } forwarded)
-            {
-                return null;
-            }
-
-            source = forwarded;
-        }
-
-        if (source.Type is null && source.Declaration is VariableKoto variable)
-        {
-            this.BindVariable(variable, source.Scope);
-        }
-
-        // Concrete environments preserve complete captured Types and dependencies.
-        // Common-function erasure retains its independent Owned requirement.
-        if (source.Kind is not (BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture) || source.Type is not { } type)
-        {
-            return null;
-        }
-
-        // SPEC 7.7.2: an environment holds any Type with slot storage, including enums (Option, Result), Arrays, Dictionaries,
-        // Slices, object Views and raw pointers. All safe borrows use the same representation boundary.
-        if (!(ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) ||
-                (function.ClosureStorage?.EnvironmentType is not null && (type.Kind == BoundTypeKind.Parameter || SlotTypes.IsResult(type) ||
-                    ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type)))))
-        {
-            if (entry is { } written)
-            {
-                this.FailExplained(ref this.unsupportedSpans, function, BindingFailure.Unsupported, written.Span);
-            }
-            else
-            {
-                this.Fail(function, BindingFailure.Unsupported);
-            }
-
-            return null;
-        }
-
-        var plan = function.ClosureStorage!;
-        for (var i = 0; i < plan.Storage.Count; i++)
-        {
-            if (ReferenceEquals(plan.Storage[i].Source, source))
-            {
-                return plan.Storage[i].Environment;
-            }
-        }
-
-        var index = plan.Storage.Count;
-        if (index == plan.SymbolPool.Count)
-        {
-            plan.SymbolPool.Add(new(source.Name, BindingSymbolKind.Capture, function, scope));
-        }
-
-        var environment = plan.SymbolPool[index];
-        if (environment.Name != source.Name)
-        {
-            environment = new(source.Name, BindingSymbolKind.Capture, function, scope);
-            plan.SymbolPool[index] = environment;
-        }
-
-        environment.Type = type;
-        environment.Scope = scope;
-        environment.Slot = index;
-        environment.MutableCapture = false;
-        plan.Storage.Add(new(source, environment));
-        scope.Values[source.Name] = environment;
-        return environment;
-    }
-
     // SPEC 23.1: the `closure` display `call result`, the shorter end of a result that outlives its call.
     private BoundOrigin CallResultOrigin(FunctionKoto function) => this.OriginAtom(function, OriginKind.Projection, CallResultSlot);
-
-    // SPEC 7.7.2: each explicit entry initializes one environment binding exactly as `let x = x` or `let x = x@op` would.
-    // A bare entry Copies a Copy binding and Reborrows a binding storing an exclusive reference; `x@ref` and `x@uniq`
-    // borrow the outer binding's slot, adding a reference layer, and an exclusive slot borrow needs a writable slot.
-    private BindingFailure? CaptureEntry(FunctionKoto function, CaptureKoto capture, BindingSymbol source, BindingSymbol environment)
-    {
-        var type = source.Type!;
-        switch (capture.Operation)
-        {
-            case Constants.MoveOperation:
-                environment.CaptureAcquisition = CaptureAcquisition.Move;
-                return null;
-            case null:
-                // SPEC 8.14: by case, each case run and instance acquires as its case Type does.
-                var bare = this.BareAcquire(type, function, out _);
-                if (bare == HirAcquire.Move)
-                {
-                    return BindingFailure.TransferRequired;
-                }
-
-                environment.CaptureAcquisition = bare == HirAcquire.Copy ? CaptureAcquisition.Copy : bare == HirAcquire.ByCase ? CaptureAcquisition.Bare : CaptureAcquisition.Reborrow;
-                return null;
-        }
-
-        var exclusive = capture.Operation == Constants.UniqKeyword;
-        if (exclusive && !Reassignable(source))
-        {
-            return BindingFailure.InvalidAssignment; // A let binding's slot grants no Write (SPEC 15.1.5).
-        }
-
-        var binder = source.Declaration ?? function;
-        environment.Type = this.types.Intern(BoundTypeKind.Semantics, null, exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, [type], origin: this.OriginAtom(binder, OriginKind.Projection, SymbolOriginSlot(source)));
-        environment.CaptureAcquisition = exclusive ? CaptureAcquisition.ExclusiveSlotBorrow : CaptureAcquisition.SharedSlotBorrow;
-        return null;
-    }
 
     private BoundType? BindConcreteClosure(FunctionKoto function, BindingScope scope, BoundType? expected, bool openResult = false)
     {
@@ -522,6 +292,7 @@ public sealed partial class Binding
         plan.ExclusiveUse = null;
         plan.ExclusiveReborrow = false;
         var symbol = this.symbols[function];
+        plan.EvaluatingBody = this.formingBody; // SPEC 15.3.4: the header and captures are the evaluating body's (DECISIONS R4-M101 E1).
         // The declaration identity distinguishes environments with identical storage.
         plan.EnvironmentType = this.types.Intern(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, []);
         symbol.HeaderBound = true;
@@ -562,6 +333,11 @@ public sealed partial class Binding
                     return this.FailCaptureEntry(function, repeats, capture, BindingFailure.Capture, source.Type ?? BoundType.Unit, source);
                 }
 
+                if (source is not null && this.HelperCarrier(function, source) is { } helper)
+                {
+                    return this.FailHelperEntry(function, repeats, capture, source, helper); // SPEC 16.3.1: nor its helper borrow.
+                }
+
                 if (source is null || this.Capture(function, source, scope, capture) is not { } environment)
                 {
                     // An entry whose binding failed derives from that failure and adds nothing to the repeats.
@@ -584,18 +360,26 @@ public sealed partial class Binding
 
         if ((function.Body ?? function.ExpressionBody) is { } body)
         {
-            if (symbol.Type is null)
+            var saved = this.EnterBody(new(symbol)); // The body and its result are the Closure's own.
+            try
             {
-                // SPEC 14.9: the function owns its result context; nested functions and defer bodies keep their own boundaries.
-                // Survey independent evidence before binding, then join the return operands with the single-item body's value,
-                // which takes the surveyed Type as an if branch does, or with the indented body's structural end Unit.
-                var context = this.BeginResult(function, scope, null);
-                this.BindNode(body, scope, function.Body is null ? context.Expected : null);
-                symbol.Type = this.FinishResult(function, context);
+                if (symbol.Type is null)
+                {
+                    // SPEC 14.9: the function owns its result context; nested functions and defer bodies keep their own boundaries.
+                    // Survey independent evidence before binding, then join the return operands with the single-item body's value,
+                    // which takes the surveyed Type as an if branch does, or with the indented body's structural end Unit.
+                    var context = this.BeginResult(function, scope, null);
+                    this.BindNode(body, scope, function.Body is null ? context.Expected : null);
+                    symbol.Type = this.FinishResult(function, context);
+                }
+                else
+                {
+                    this.RequireType(body, scope, function.Body is null ? symbol.Type : null); // A single-item body has the written result.
+                }
             }
-            else
+            finally
             {
-                this.RequireType(body, scope, function.Body is null ? symbol.Type : null); // A single-item body has the written result.
+                this.formingBody = saved;
             }
         }
 

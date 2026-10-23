@@ -173,34 +173,36 @@ public sealed partial class Binding
         return null;
     }
 
+    // SPEC 13.6.2: an object upcast: its Types (ObjectUpcastFits), then the handle it moves or the object it borrows (ObjectUpcastResult).
     private BoundType? BindObjectUpcast(ConversionKoto conversion, BindingScope scope, BoundType actual, BoundType target)
+        => this.ObjectUpcastFits(conversion, actual, target) ? this.ObjectUpcastResult(conversion, scope, actual, target) : null;
+
+    // Whether the target's View Target is a base of the operand's object Type whose erasure holds; false once the failure is recorded or
+    // depends on an invalid declaration.
+    private bool ObjectUpcastFits(ConversionKoto conversion, BoundType actual, BoundType target)
     {
         var core = actual.Components[0];
-        var supported = false;
         for (var parent = core; parent is not null; parent = AdtDef.Base(parent))
         {
             if (parent.Symbol?.Declaration.BindingState == BindingState.Invalid)
             {
-                return Complete(conversion, null);
+                Complete(conversion, null);
+                return false;
             }
 
             if (ReferenceEquals(parent, target.Components[0]))
             {
-                supported = true;
-                break;
+                return this.RequireObjectErasure(conversion, conversion.Left, core, target.Components[0]);
             }
         }
 
-        if (!supported)
-        {
-            return this.Fail(conversion, BindingFailure.TypeMismatch);
-        }
+        this.Fail(conversion, BindingFailure.TypeMismatch);
+        return false;
+    }
 
-        if (!this.RequireObjectErasure(conversion, conversion.Left, core, target.Components[0]))
-        {
-            return null;
-        }
-
+    // An upcast whose Types fit: the handle a Place gives up, or the object it borrows, named by BorrowFailure when the Place does not lend.
+    private BoundType? ObjectUpcastResult(ConversionKoto conversion, BindingScope scope, BoundType actual, BoundType target)
+    {
         BoundType result;
         if (target.HandleMode is { } targetMode)
         {
@@ -225,7 +227,7 @@ public sealed partial class Binding
         {
             if (!this.AdaptObjectBorrow(conversion.Left, target, actual, scope, true, out var borrowed, out _, out _))
             {
-                return this.Fail(conversion, BindingFailure.InvalidAssignment);
+                return this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, target.Semantics == SemanticsKind.ObjUniq));
             }
 
             result = this.types.Intern(BoundTypeKind.Semantics, null, target.Semantics, [target.Components[0]], origin: borrowed.Origin);

@@ -55,6 +55,7 @@ public sealed class InstanceCollectorTest
     // Uses of a Type one byte over the layout bound: two functions' parameters, and two callers passing theirs to a generic function, whose
     // records are each caller's parameter and argument and the generic instance's parameter.
     private const string Over = "func over(value: (" + Big + ", u8)) => ()";
+    private const string Huge = "(" + Big + ", u8)"; // One byte over the bound.
     private const string Again = "func again(value: (" + Big + ", u8)) => ()";
     private const string One = "func one(value: (" + Big + ", u8)) => pass(value@move)";
     private const string Two = "func two(value: (" + Big + ", u8)) => pass(value@move)";
@@ -520,8 +521,8 @@ public sealed class InstanceCollectorTest
     }
 
     // K 4.5 row 13: an erasure of a Closure or function item to its Function Type is its ClosureErasure or ItemAdapter item, keyed by the
-    // erased Type and represented by the first Type that requests it, whose target is the body the Closure or Item runs; a call of the
-    // Function Type value has no target.
+    // erased Type and the erased Function Type (DECISIONS R5-M108) and represented by the first Type that requests it, whose target is the
+    // body the Closure or Item runs; a call of the Function Type value has no target.
     [Fact]
     public void AnErasureIsItsAdapterItem()
     {
@@ -535,11 +536,27 @@ public sealed class InstanceCollectorTest
         var adapters = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind is MonoKind.ClosureErasure or MonoKind.ItemAdapter).ToArray();
         Assert.Equal([MonoKind.ClosureErasure, MonoKind.ItemAdapter], adapters.Select(x => set.Items[x].Key.Kind).Order());
         Assert.All(adapters, x => Assert.Same(c.Types.Erase(set.Items[x].RepresentativeType!), set.Items[x].Key.Type));
+        Assert.All(adapters, x => Assert.Equal("(i32) -> i32", TyCtxt.Name(set.Items[x].Key.Function!)));
         Assert.Equal(
             ["Closure adder [i32]", "Fn pick [i32]"],
             adapters.SelectMany(x => set.Targets(x).ToArray()).Select(x => Label(program, set.Items[x.Item])).Order(StringComparer.Ordinal));
         var adder = set.Targets(Item(program, set, "Fn adder [i32]")).ToArray();
         Assert.DoesNotContain(adder, x => Label(program, set.Items[x.Item]).StartsWith("Fn pick", StringComparison.Ordinal));
+    }
+
+    // SPEC 10.7 (DECISIONS R5-M108): a Never-result source fits Function Types of other results, so it has one adapter item per erased
+    // target Function Type, each running the source's body: two items for three erasures into two Types.
+    [Fact]
+    public void ANeverSourceHasAnAdapterPerTargetFunctionType()
+    {
+        var (program, set) = Collect("func fail() -> Never => $abort(\"x\")\nfunc i() -> () -> i32 => fail\nfunc s() -> () -> string => fail\n" +
+            "func j() -> () -> i32 => fail\nlet x = 1\n");
+        Assert.Empty(set.Records);
+        var adapters = set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.ItemAdapter).ToArray();
+        Assert.Equal(["() -> i32", "() -> string"], adapters.Select(static x => TyCtxt.Name(x.Key.Function!)).Order(StringComparer.Ordinal));
+        Assert.Single(adapters.Select(static x => x.Key.Type).Distinct());
+        Assert.All(adapters, x => Assert.Equal(["Fn fail"], set.Targets(Array.IndexOf(set.Items.ToArray(), x)).ToArray()
+            .Select(y => Label(program, set.Items[y.Item]))));
     }
 
     // K 4.5 rows 4 and 12 (X5): the Item of a virtual slot, whose calls dispatch, is no target where it is made: its receiver's VTable holds
@@ -886,11 +903,13 @@ public sealed class InstanceCollectorTest
     }
 
     // K 4.3: a type-driven item's representative is closed; an open one is a broken contract, InternalInvariant_Kd at its request. Binding
-    // never gives one, so the test appends an erasure of an open function item to the top-level body in a new unreachable block.
+    // never gives one, so the test appends an erasure of an open function item to the top-level body in a new unreachable block, into a
+    // Function Type (a parameter's) as the validator requires of an erasure's target.
     [Fact]
     public void AnOpenAdapterTypeIsABrokenContract()
     {
-        var c = MirBuildTest.Compile("func pick<T>(value: T) -> T => value@move\nfunc hold<T>(value: T) -> i32\n    let item = pick<T>\n    return 1\nlet z = 1\n");
+        var c = MirBuildTest.Compile("func pick<T>(value: T) -> T => value@move\nfunc hold<T>(value: T) -> i32\n    let item = pick<T>\n    return 1\n" +
+            "func take(f: (i32) -> i32) => ()\nlet z = 1\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var program = c.BuildMir();
         var hold = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "hold");
@@ -899,7 +918,8 @@ public sealed class InstanceCollectorTest
         var statement = top.Statements.ToArray().First(static x => x.Kind == MirStatementKind.Assign);
         var operand = top.AddOperand(MirOperand.Const(top.Const(new(MirConstKind.FnItem, open))));
         var block = top.AddBlock();
-        top.Push(block, statement with { Rvalue = new(MirRvalueKind.Cast, (byte)MirCastKind.Erasure, Start: operand, Count: 1, Type: BoundType.Unit) });
+        var function = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "take").Locals[1].Type;
+        top.Push(block, statement with { Rvalue = new(MirRvalueKind.Cast, (byte)MirCastKind.Erasure, Start: operand, Count: 1, Type: function) });
         top.Terminate(block, MirTerminator.Unreachable(statement.Source));
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal([(DiagnosticCode.InternalInvariant_Kd, statement.Source.Syntax)], set.Records.Select(static x => (x.Code, x.Subject)));
@@ -924,6 +944,45 @@ public sealed class InstanceCollectorTest
         Assert.Equal(["DropGlue Array<i32>", "DropGlue string", "DropGlue Array<bool>"], Targets(program, set, "DropGlue Shape"));
         Assert.Contains("DropGlue Triple", Targets(program, set, "Fn use"));
         Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x) == "DropGlue Plain");
+    }
+
+    // PLAN G157 (6), K 4.5 "DropGlue" (X27; DECISIONS R5-M95): DropGlue.Parts, which the collector targets and code generation writes from,
+    // and MirTypes.Destruction, which drop elaboration and the effects walk, decompose a Type alike. Over a glue Type of each kind (a struct
+    // with a base, its base, a Tuple, an enum, a struct that declares a drop, a nested generic struct, a fixed array, an Array, a Dictionary, a
+    // Sealed rc handle and a Closure environment) the walk's direct descents are the parts in reverse, a struct's base last and an enum's Case
+    // payloads each reversed; a struct that declares a drop and a handle are not descended, their part the destructor and the Sealed payload.
+    // Each part's position names its component in the aggregate writer's numbering (a struct's base 0, its Fields after it).
+    [Fact]
+    public void DropGluePartsAgreeWithTheDestructionWalk()
+    {
+        var c = MirBuildTest.Compile("open struct Base\n    public var log: Array<u8> = []\n    public init() => ()\nstruct Triple: Base\n" +
+            "    public var a: string = \"a\"\n    public var n: i32 = 0\n    public var b: Array<i32> = []\n" +
+            "    public var c: (Array<bool>, string) = ([], \"c\")\n    public init() : base() => ()\n" +
+            "enum Shape\n    Pair(string, Array<i32>)\n    Single(Array<bool>)\n    Empty\n" +
+            "struct Res\n    public var s: string = \"s\"\n    public init() => ()\n    drop => ()\n" +
+            "struct Holder<T>\n    public var value: T\n    public var n: i32 = 0\n    public init(value: T) => self.value = value@move\n" +
+            "struct Leaf\n    public var name: string\n    public init(name: string) => self.name = name@move\n" +
+            "func use(text: string) -> ()\n    let t = Triple.init()\n    let s = Shape.Pair(\"a\", [1])\n    let r = Res.init()\n" +
+            "    let h = Holder<(string, Holder<string>)>.init((\"a\", Holder<string>.init(\"b\")))\n    let f: [2 of string] = [\"x\", \"y\"]\n" +
+            "    let d: Dictionary<string, Array<i32>> = [:]\n    let o = Kimi.Intrinsics.makeRc(Leaf.init(\"o\"))\n" +
+            "    let e = func [text@move] () -> i32 => 1\n    return\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        var (parts, descents, names) = (new List<DropPart>(), new List<BoundType>(), new HashSet<string>());
+        foreach (var type in set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.DropGlue).Select(static x => x.RepresentativeType!))
+        {
+            parts.Clear();
+            descents.Clear();
+            DropGlue.Parts(c.Types, type, parts);
+            var walk = new Descents(descents);
+            _ = MirTypes.Destruction(type, ref walk);
+            Assert.Equal(Expected(c.Types, type, descents), parts.Select(static x => x.Type));
+            Assert.All(parts, x => Assert.Same(Component(type, x), x.Type));
+            names.Add(TyCtxt.Name(type));
+        }
+
+        Assert.Subset(names, new HashSet<string>(["Triple", "Base", "(Array<bool>, string)", "Shape", "Res", "Holder<(string, Holder<string>)>",
+            "[2 of string]", "Array<i32>", "Dictionary<string, Array<i32>>", "rc/Leaf", "closure () -> i32"]));
     }
 
     // K 4.5 "DropGlue", SPEC 16.3.2: a fixed array's glue destroys its elements through its element Type's glue, and a fixed array of
@@ -1000,6 +1059,32 @@ public sealed class InstanceCollectorTest
         Assert.Equal(["Closure capture", "DropGlue closure () -> i32"], Targets(program, set, "ClosureErasure closure () -> i32"));
         Assert.Equal(["DropGlue Array<i32>", "DropGlue string"], Targets(program, set, "DropGlue closure () -> i32"));
         Assert.Empty(Targets(program, set, "DropGlue () -> i32"));
+    }
+
+    // SPEC 8.10 (DECISIONS R5-M102): an owner Callable call whose callee borrows its environment destroys the operand after the call, so the
+    // operand Type's glue is the call's second target, after the body; a common Function value, whose entries borrow, has the glue as its one
+    // target; a Consuming body destroys it itself, and a call through a borrow transfers nothing, so neither has one.
+    [Fact]
+    public void AnOwnerCallOfABorrowingCalleeTargetsItsOperandsGlue()
+    {
+        var (program, set) = Collect("func invoke<F>(action: F) -> i32\n    F is Callable<owner, () -> i32>\n    return action@move()\n" +
+            "func lend<F>(action: ref/F) -> i32\n    F is Callable<() -> i32>\n    return action()\nfunc take(s: string) -> i32 => 2\n" +
+            "func host(a: string, b: string, c: string) -> i32\n    let shared = func [a@move] () -> i32 => 1\n" +
+            "    let consuming = func [b@move] () -> i32 => take(b@move)\n    let lent = func [c@move] () -> i32 => 3\n" +
+            "    return invoke(shared@move) + invoke(consuming@move) + lend(lent@ref)\nfunc erased(f: () -> i32) -> i32 => invoke(f@move)\n");
+        var calls = Enumerable.Range(0, set.Items.Length).Where(x => Label(program, set.Items[x]).StartsWith("Fn invoke", StringComparison.Ordinal) ||
+            Label(program, set.Items[x]).StartsWith("Fn lend", StringComparison.Ordinal)).Select(x => AtValueCall(x)).Order(StringComparer.Ordinal).ToArray();
+        Assert.Equal(["Closure host", "Closure host", "Closure host|DropGlue closure () -> i32", "DropGlue () -> i32"], calls);
+
+        // The labels of an item's targets at its one Value call, joined.
+        string AtValueCall(int item)
+        {
+            var body = program.Bodies[set.Items[item].BodyOrdinal];
+            var block = Enumerable.Range(0, body.Blocks.Length)
+                .Single(x => body.Blocks[x].Terminator is { Kind: MirTerminatorKind.Call, Callee.Kind: MirCalleeKind.Value });
+            return string.Join("|", set.Targets(item).ToArray().Where(x => x.At == new MirLocation(block, body.Blocks[block].Count))
+                .Select(x => Label(program, set.Items[x.Item])));
+        }
     }
 
     // K 4.5 "DropGlue" (X4): an Array's or Dictionary's glue targets the glues of its element Types that need a drop.
@@ -1319,13 +1404,24 @@ public sealed class InstanceCollectorTest
 
     // IMPL 21.1.1, SPEC 8.15.3, DECISIONS R5-M52: a by-value use needing a layout over 2^63 - 1 bytes is OversizedLayout_Kd at each
     // use (one record per subject), not a Resource record: a parameter (at its function), two functions' parameters, a generic instance's
-    // parameter and each caller's uses, a generic instance's Raw.allocate Type argument; M, exactly at the bound, and a 2^31-byte array are
-    // one Resource record each. Subjects by their first line, codes in record order.
+    // parameter and each caller's uses, a generic instance's Raw.allocate Type argument, an erasure's target Function Type's inputs and
+    // result (a Never source's, a body's beside its own result local, a compiler function Item's) and Raw.allocate's Type argument through
+    // its Item, erased or called as a value (DECISIONS R5-M108); M, exactly at the bound, and a 2^31-byte array are one Resource record
+    // each. Subjects by their first line, codes in record order.
     [Theory]
     [InlineData(Over + "\n", "OversizedLayout_Kd " + Over)]
     [InlineData(Over + "\n" + Again + "\n", "OversizedLayout_Kd " + Over + "|OversizedLayout_Kd " + Again)]
     [InlineData("func pass<T>(value: T) => ()\n" + One + "\n" + Two + "\n", PassRecords)]
     [InlineData("func make<T>() -> raw/T => Raw.allocate<T>(0)\nlet p = make<(" + Big + ", u8)>()\nunsafe => Raw.release(p)\n", "OversizedLayout_Kd Raw.allocate<T>(0)")]
+    [InlineData("func fail() -> Never => $abort(\"x\")\nfunc big() -> () -> " + Huge + " => fail\n", "OversizedLayout_Kd fail")]
+    [InlineData(
+        "func make() -> " + Huge + " => $abort(\"x\")\nfunc get() -> () -> " + Huge + " => make\n",
+        "OversizedLayout_Kd func make() -> " + Huge + " => $abort(\"x\")|OversizedLayout_Kd make")]
+    [InlineData("func swap() -> (uniq/" + Huge + ", " + Huge + ") -> " + Huge + " => Kimi.Intrinsics.exchange\n", "OversizedLayout_Kd Kimi.Intrinsics.exchange")]
+    [InlineData("func huge() -> (isize) -> raw/" + Huge + " => Raw.allocate\n", "OversizedLayout_Kd Raw.allocate")]
+    [InlineData(
+        "func huge() -> raw/" + Huge + "\n    let f = Raw.allocate<" + Huge + ">\n    return f(1)\n",
+        "OversizedLayout_Kd Raw.allocate<" + Huge + ">|OversizedLayout_Kd f(1)")]
     [InlineData("func at(value: " + Big + ") => ()\n", "GenerationResourceLimit_Kd func at(value: " + Big + ") => ()")]
     [InlineData("func at(value: [2 of [1073741824 of u8]]) => ()\n", "GenerationResourceLimit_Kd func at(value: [2 of [1073741824 of u8]]) => ()")]
     public void ALayoutOverTheBoundIsARecordAtEachUse(string source, string records)
@@ -1523,6 +1619,20 @@ public sealed class InstanceCollectorTest
         Assert.Throws<InvalidOperationException>(static () => IntrinsicRows.Of(IntrinsicId.None));
     }
 
+    // R5-M39 (DECISIONS BU-24): a raw Origin enters no instance key, so variants of a generic callee that differ in raw Origins alone are
+    // one item.
+    [Fact]
+    public void RawOriginVariantsAreOneInstance()
+    {
+        var c = MirBuildTest.Compile("func keep<T>(value: T) -> T\n    T is Copy\n    return value\n" +
+            "func host(a: ref/i32, b: ref/i32, p: raw/i32 during a, q: raw/i32 during b, r: raw/i32) -> i32\n    _ = keep(p)\n    _ = keep(q)\n    _ = keep(r)\n    return 0\n" +
+            "let x = 1\nlet y = 2\nrequire host(x@ref, y@ref, null, null, null) == 0 else => $abort(\"keep\")\n");
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Empty(set.Records);
+        Assert.Equal(["Fn keep [raw/i32]"], set.Items[set.RootCount..].ToArray().Select(x => Label(program, x)));
+    }
+
     // K 4.3: a representative is closed and makes every local Type of its body closed.
     private static bool Closes(TyCtxt types, MirBody body, Subst representative)
         => representative.Types.ToArray().Append(representative.Declaring).Append(representative.Self).All(static x => x is not { ContainsParameter: true }) &&
@@ -1584,5 +1694,68 @@ public sealed class InstanceCollectorTest
         return (body.Source.Module == 0 ? $"{body.Key.Kind} {name}" : $"library {body.Key.Kind} {name} in {body.Key.Decl!.Scope.Owner}") + instance;
 
         static FunctionKoto Enclosing(Koto node) => node is FunctionKoto { IsAnonymous: false } named ? named : Enclosing(node.Parent!);
+    }
+
+    // The parts the destruction walk's direct descents give: a destructor's struct and a handle are not descended (the destructor; a Sealed
+    // payload), an enum's Case payloads each last to first, any other Type's descents last to first with a struct's base, the last, kept last.
+    private static IEnumerable<BoundType> Expected(TyCtxt types, BoundType type, List<BoundType> descents)
+    {
+        if (AdtDef.Destructor(type) is not null || type.Kind == BoundTypeKind.Semantics)
+        {
+            Assert.Empty(descents);
+            return AdtDef.Destructor(type) is not null ? [type] : types.Sealed(null, type.Components[0]) ? [type.Components[0]] : [];
+        }
+
+        if (AdtDef.IsEnum(type))
+        {
+            return descents.SelectMany(static x => x.Components.Reverse());
+        }
+
+        var fields = AdtDef.Base(type) is null ? descents.Count : descents.Count - 1;
+        return descents.Take(fields).Reverse().Concat(descents.Skip(fields));
+    }
+
+    // The component a part's position names in the aggregate writer's numbering (FunctionCodegen.Component), or the part's own Type for a
+    // part without one (Index -1).
+    private static BoundType Component(BoundType type, DropPart part)
+    {
+        if (part.Index < 0)
+        {
+            return part.Type;
+        }
+
+        if (AdtDef.IsEnum(type))
+        {
+            return AdtDef.CaseTypes(type)![part.Ordinal].Components[part.Index];
+        }
+
+        if (!AdtDef.IsStruct(type))
+        {
+            return type.Components[part.Index];
+        }
+
+        var parent = AdtDef.Base(type);
+        return parent is not null && part.Index == 0 ? parent : AdtDef.FieldType(type, parent is null ? part.Index : part.Index - 1)!;
+    }
+
+    // The destruction walk's direct descents below its root: each Type it enters after the root, none entered further.
+    private struct Descents(List<BoundType> into) : IMirDestruction
+    {
+        private bool root;
+
+        public bool First(BoundType type)
+        {
+            if (!this.root)
+            {
+                return this.root = true;
+            }
+
+            into.Add(type);
+            return false;
+        }
+
+        public readonly bool Visit(BoundType type, int depth) => false;
+
+        public readonly bool Deep() => false;
     }
 }

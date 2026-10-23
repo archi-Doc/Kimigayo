@@ -8,10 +8,10 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>A4, effect summaries on MIR (SPEC 8.11.2, 8.11.4, 8.11.6, 15.6.4; docs/dev/DECISIONS.md R4-M22): each rule with a
+/// <summary>A4, effect summaries on MIR (SPEC 8.11.2, 8.11.3, 8.11.4, 15.6.4; docs/dev/DECISIONS.md R4-M22): each rule with a
 /// valid program and an invalid one, through the problems <c>Compilation.BuildMir</c> finds (R4 shadow: unpublished), each as its code,
 /// the first line of its subject and its views.</summary>
-public sealed class MirEffectsTest(ITestOutputHelper output)
+public sealed partial class MirEffectsTest(ITestOutputHelper output)
 {
     private const string Sink = "contract Sink\n    func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        effect confined\n";
 
@@ -59,7 +59,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
             Expected(expected),
             Problems(Sink + Loud + "group H\n    public func a() => H.b()\n    public func b() => H.c()\n" + last + Witness + "        H.a()\n        return .Ok(())\n"));
 
-    // SPEC 8.15, 8.11.4 (plan Appendix B X2): a requirement call in a generic body has the bounds of that body's own premises, never those
+    // SPEC 8.15, 8.11.3 (plan Appendix B X2): a requirement call in a generic body has the bounds of that body's own premises, never those
     // of an instance: the helper calls take under `S is Source`, which declares no confined bound, though Feed also proves Confined.
     [Theory]
     [InlineData("Source", Failed)]
@@ -134,7 +134,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
             Problems(Sink + Loud + "group H\n    public func a<T>(v: T, n: i32 = H.b(1)) -> i32 => n\n    specialize func a<i32>(v: i32, n: i32) -> i32 => n\n" +
                 "    public func b(m: i32, k: i32 = H.a(m)) -> i32\n        Console.writeLine(\"b\")\n        return k\n" + Witness + call + "        return .Ok(())\n"));
 
-    // SPEC 8.11.4: a requirement call whose Self is closed runs that Type's implementation, entered like any call.
+    // SPEC 8.11.3: a requirement call whose Self is closed runs that Type's implementation, entered like any call.
     [Theory]
     [InlineData("", "")]
     [InlineData("        Console.writeLine(\"equals\")\n", Failed)]
@@ -144,7 +144,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
             Problems(Sink + Loud + "struct Key\n    Self is Equatable\n    public var n: i32 = 0\n    public func equals(self: ref/Self, other: ref/Self) -> bool\n" +
                 effect + "        return self.n == other.n\n" + Witness + "        let key = Key.init()\n        _ = key == key\n        return .Ok(())\n"));
 
-    // SPEC 16.3, 8.11.4 rule 1: destroying a value runs its destructor; a generic helper's destruction of its parameter composes through
+    // SPEC 16.3, 8.11.3 rule 1: destroying a value runs its destructor; a generic helper's destruction of its parameter composes through
     // the caller's argument (Loud's drop prints, i32 has none); an abstract value destroyed at the top is unknown unless proven Copy.
     [Theory]
     [InlineData("        H.discard(Loud.init())\n", Failed)]
@@ -206,19 +206,24 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
             Expected(expected),
             Problems(Sink + Loud + "group H\n    public func keep<s/T>(item: s/T)\n        s is owner or ref\n        ()\n" + Witness + body + "        return .Ok(())\n"));
 
-    // SPEC 8.11.6: a call through a Callable input composes the actual Closure's or function item's summary at the caller; a bounded
+    // SPEC 8.11.4: a call through a Callable input composes the actual Closure's or function item's summary at the caller; a bounded
     // input's binding owes its bound after selection, decided by the premises where they can (a missing premise, an erased Function Type)
-    // at the argument; an owner call also destroys the remaining environment.
+    // at the argument; an owner call also destroys the remaining environment. Declared before the helpers, the worker is evaluated before
+    // invoke has its atom, so the Closure's body is a read only a later evaluation makes: a dependency recorded only at a node's first
+    // evaluation would lose the failure (the 2b-7 review's mutant).
     [Theory]
-    [InlineData("42", "")]
-    [InlineData("Helpers.noisy()", "IncompatibleContractImplementation_Kd Self is Work 1")]
-    public void SummariesComposeCallbacksThroughActualArguments(string expression, string expected)
-        => Assert.Equal(
+    [InlineData("42", false, "")]
+    [InlineData("Helpers.noisy()", false, "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData("Helpers.noisy()", true, "IncompatibleContractImplementation_Kd Self is Work 1")]
+    public void SummariesComposeCallbacksThroughActualArguments(string expression, bool workerFirst, string expected)
+    {
+        const string Helpers = "group Helpers\n    public func invoke<F>(f: ref/F) -> i32\n        F is Callable<() -> i32>\n        return f()\n" +
+            "    public func noisy() -> i32\n        Console.writeLine(\"noisy\")\n        return 0\n";
+        var worker = $"struct Worker\n    Self is Work\n    public func run(self: ref/Self) -> i32 => Helpers.invoke(func [] () -> i32 => {expression})\n";
+        Assert.Equal(
             Expected(expected),
-            Problems("contract Work\n    func run(self: ref/Self) -> i32\n        effect confined\n" +
-                "group Helpers\n    public func invoke<F>(f: ref/F) -> i32\n        F is Callable<() -> i32>\n        return f()\n" +
-                "    public func noisy() -> i32\n        Console.writeLine(\"noisy\")\n        return 0\n" +
-                $"struct Worker\n    Self is Work\n    public func run(self: ref/Self) -> i32 => Helpers.invoke(func [] () -> i32 => {expression})\n"));
+            Problems("contract Work\n    func run(self: ref/Self) -> i32\n        effect confined\n" + (workerFirst ? worker + Helpers : Helpers + worker)));
+    }
 
     [Theory]
     [InlineData("func entry() -> i32 => apply(func [] () -> i32 => 42)\n", "")]
@@ -228,7 +233,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
     public void CallableBindingsOweTheirBound(string declarations, string expected)
         => Assert.Equal(Expected(expected), Problems(Apply + declarations));
 
-    // SPEC 8.11.6: a binding's remaining atoms are resolved by the premises of the use: consume's destruction of its T is the user's T,
+    // SPEC 8.11.4: a binding's remaining atoms are resolved by the premises of the use: consume's destruction of its T is the user's T,
     // which only the user's premise proves Copy.
     [Theory]
     [InlineData("    T is Copy\n", "")]
@@ -239,7 +244,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
             Problems("func take<U, F>(f: ref/F, value: U)\n    F is Callable<(U) -> ()>\n        effect confined\n    f(value@move)\n" +
                 $"func consume<T>(v: T) => ()\nfunc user<T>(v: T)\n{premise}    take(consume<T>, v@move)\n"));
 
-    // SPEC 8.11.6: a call through an abstract input takes the bounds of its one Callable signature; with several, only the call's
+    // SPEC 8.11.4: a call through an abstract input takes the bounds of its one Callable signature; with several, only the call's
     // arguments chose among them, which MIR does not keep: a located limit (DECISIONS R4-M23).
     [Theory]
     [InlineData("", "")]
@@ -296,7 +301,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
             Problems("open struct Base<T>\n    public init() => ()\n    public virtual func keep(self: objref/Self, item: T)\n" +
                 $"        T is {premise}\n        effect confined\n        ()\nstruct Derived<U> : Base<U>\n    override func keep(self: objref/Self, item: U)\n        ()\n"));
 
-    // virtual-dispatch 6, SPEC 8.11.6: a virtual witness and a virtual function item dispatch, so their slot's bound decides, never the
+    // virtual-dispatch 6, SPEC 8.11.4: a virtual witness and a virtual function item dispatch, so their slot's bound decides, never the
     // original's body.
     [Theory]
     [InlineData("", "Self is Getter\n", "IncompatibleContractImplementation_Kd Self is Getter 18446744073709551615|IncompatibleContractImplementation_Kd Self is Reader 1")]
@@ -351,7 +356,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
             Problems(Sink + Loud + "struct LoudKey\n    Self is Equatable\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n" +
                 "    drop => Console.writeLine(\"drop\")\n" + WithField($"table: {table}") + body + "        return .Ok(())\n"));
 
-    // SPEC 4.9.6, 8.11.4 (R4-M28): a row's requirement on an abstract Type composes like its destruction, resolved where the Type closes;
+    // SPEC 4.9.6, 8.11.3 (R4-M28): a row's requirement on an abstract Type composes like its destruction, resolved where the Type closes;
     // a requirement call written in a generic body keeps the bounds of that body's premises (X2), whatever its caller's Type (fail-before:
     // the first, through the private Storage helper's requirement call).
     [Theory]
@@ -365,7 +370,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
             Problems(Sink + Loud + Noisy + Fixed + $"group H\n    public func put<K>(table: uniq/Dictionary<K, i32>, key: ref/K)\n        K is {premise}\n" +
                 $"        {statement}\n" + WithField($"table: Dictionary<{key}, i32> = [:]") + $"        H.put(self.table@uniq, {argument})\n        return .Ok(())\n"));
 
-    // SPEC 4.9.6, 8.11.4: at the top, a row's requirement on an abstract Type is judged by the premises (fail-before: the first).
+    // SPEC 4.9.6, 8.11.3: at the top, a row's requirement on an abstract Type is judged by the premises (fail-before: the first).
     [Theory]
     [InlineData("Fixed", "")]
     [InlineData("Equatable", Failed)]
@@ -376,7 +381,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
                 "    public init(key: K) => self.key = key@move\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n" +
                 "        _ = self.table.tryGet(self.key)\n        return .Ok(())\n"));
 
-    // SPEC 4.9.6, 8.11.4: a formatting function's row runs the value's Utf8Format witness: built-in for i32, Shown's printing one, also in
+    // SPEC 4.9.6, 8.11.3: a formatting function's row runs the value's Utf8Format witness: built-in for i32, Shown's printing one, also in
     // an interpolation (fail-before: each, a limit).
     [Theory]
     [InlineData("        _ = Text.toString(42)\n        _ = \"\\(value)\"\n", "")]
@@ -388,7 +393,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
             Problems(Sink + Loud + "struct Shown\n    Self is Utf8Format\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n" +
                 "        Console.writeLine(\"format\")\n        return .Ok(())\n" + Witness + body + "        return .Ok(())\n"));
 
-    // SPEC 8.11.4, 13.4: a tuple operator runs its leaves' witnesses (its expansion, DECISIONS R5-M75): built-in for i32, Compared's
+    // SPEC 8.11.3, 13.4: a tuple operator runs its leaves' witnesses (its expansion, DECISIONS R5-M75): built-in for i32, Compared's
     // environment read, also nested; a leaf with an abstract part runs its requirement under the caller's premises: Fixed's confined
     // equals, and Equatable's, which bounds no effect (fail-before: the first three, a limit; the fourth was a limit until R5-M75).
     [Theory]
@@ -406,7 +411,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
                 "    public func loose<T>(a: ref/T, b: ref/T) -> bool\n        T is Equatable\n        return (a, 1) == (b, 1)\n" + Witness + body +
                 "        return .Ok(())\n"));
 
-    // SPEC 8.11.4: a requirement on an open Type that is not abstract runs the witness its conformance maps it to, entered through the
+    // SPEC 8.11.3: a requirement on an open Type that is not abstract runs the witness its conformance maps it to, entered through the
     // instance (fail-before: the first, judged by the premises).
     [Theory]
     [InlineData(" => true\n", "")]
@@ -418,7 +423,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
                 "group H\n    public func find<K>(table: ref/Dictionary<Box<K>, i32>, key: ref/Box<K>)\n        _ = table.tryGet(key)\n" +
                 WithField("boxes: Dictionary<Box<i32>, i32> = [:]") + "        H.find(self.boxes@ref, Box<i32>.init())\n        return .Ok(())\n"));
 
-    // SPEC 8.11.4: a requirement on a Type whose conformance maps it to a base's function runs that inherited witness, entered through
+    // SPEC 8.11.3: a requirement on a Type whose conformance maps it to a base's function runs that inherited witness, entered through
     // the base's instance (the base path ConformanceWitness resolves; fail-before: each, a limit of the formatting function).
     [Theory]
     [InlineData(" => .Ok(())\n", "")]
@@ -430,7 +435,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
                 $"{format}struct Leaf : Base\n    Self is Utf8Format\n    public init() => ()\n" + Witness + "        _ = Text.toString(Leaf.init())\n" +
                 "        return .Ok(())\n"));
 
-    // SPEC 8.11.4: a witness entered for a row runs its own body, whose requirement call on its parameter keeps the witness's premises
+    // SPEC 8.11.3: a witness entered for a row runs its own body, whose requirement call on its parameter keeps the witness's premises
     // (X2) whatever the instance: `Box<Key>`'s equality is confined under `T is Fixed` and unknown under `T is Equatable`, reached
     // directly and through a generic helper (fail-before: the confined ones, through the private Storage helper).
     [Theory]
@@ -494,10 +499,53 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
         Assert.Equal(["Unsupported_Kd Self is Sink 1"], Problems(Sink + Loud + Chain + Witness + "        _ = G<i32>.init()\n        return .Ok(())\n"));
     }
 
+    // R4-M1 (G126): A4 records the program version MirProgram.Version names, whatever body comes first: a fresh A4 recording the bodies
+    // last first, so that body 0's first view comes last and must not start a version, finds the witness's failure, which composes its
+    // call of G.noisy (before, that view restarted the recording and lost every other body); the next version starts empty, so recording
+    // it in the driver's order takes a fresh A4's evaluations; and a version whose bodies Local never recorded, here one without bodies,
+    // solves no node (before, Run evaluated the previous version's nodes against it).
+    [Fact]
+    public void LocalRecordsTheProgramsVersion()
+    {
+        var c = MirBuildTest.Compile(Sink + Loud + "group G\n    public func noisy() => Console.writeLine(\"x\")\n" + Witness + "        G.noisy()\n" +
+            "        return .Ok(())\npublic func main() => ()\n");
+        var program = c.BuildMir();
+        var (cases, flow) = (new MirCases(c.Types), new MirDataflow(new MirReach()));
+        var effects = new MirEffects(c.Types, cases, flow);
+        Assert.Equal([Failed], Record(lastFirst: true));
+        program.Version++;
+        Assert.Equal([Failed], Record(lastFirst: false));
+        var fresh = new MirEffects(c.Types, cases, flow);
+        Analyze(fresh, flow, cases, program, new MirReport());
+        Assert.Equal(fresh.Evaluations, effects.Evaluations);
+        effects.Run(new MirProgram { Version = program.Version + 1 }, new MirReport());
+        Assert.Equal(0, effects.Evaluations);
+
+        string[] Record(bool lastFirst)
+        {
+            var bodies = program.Bodies.ToArray();
+            for (var i = 0; i < bodies.Length; i++)
+            {
+                var body = bodies[lastFirst ? bodies.Length - 1 - i : i];
+                flow.Begin(body);
+                for (var view = 0L; view < MirCases.Count(body); view++)
+                {
+                    cases.Select(body, view);
+                    effects.Local(program, body, view);
+                }
+            }
+
+            var report = new MirReport();
+            effects.Run(program, report);
+            return Problems(c, report);
+        }
+    }
+
     // V16 (plan "New V-checks"): A4 is linear: an N-deep call chain whose last member prints and an N-member ring of mutual calls (one
     // member prints), each with one problem, grow the evaluations and the cold allocation of a fresh A4 over the program (the library
-    // included) linearly; a warm re-analysis of the same program allocates nothing. N is 256/512/1024 so that the program's own bodies,
-    // not the library's, fill the pooled arrays, whose doubling makes the allocation of smaller programs step (16/32/64: +336, then +9,504).
+    // included) linearly; a warm re-analysis of the same bodies in a new version, which Local starts, allocates nothing and takes the same
+    // evaluations. N is 256/512/1024 so that the program's own bodies, not the library's, fill the pooled arrays, whose doubling makes the
+    // allocation of smaller programs step (16/32/64: +336, then +9,504).
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("    public func step{0}() => H.{1}()\n")]
@@ -528,97 +576,16 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
             evaluations[i] = effects.Evaluations;
             Assert.Equal(0, AllocationMeasurement.Measure(() =>
             {
+                program.Version++; // A new version of the same bodies, which Local starts.
                 report.Clear();
                 Analyze(effects, flow, cases, program, report);
             }));
+            Assert.Equal(evaluations[i], effects.Evaluations);
         }
 
         output.WriteLine($"N {string.Join(", ", sizes)}: evaluations {string.Join(", ", evaluations)}, cold A4 allocation {string.Join(", ", allocated)}");
         Assert.True(evaluations[2] - evaluations[1] <= 2 * (evaluations[1] - evaluations[0]), $"evaluations {string.Join(", ", evaluations)}");
         Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold A4 allocation {string.Join(", ", allocated)}");
-    }
-
-    // SPEC 15.6.4, 16.3.3, 22.4.4 (R4-M38, P5): the keys of a Call or a Drop are the mutable static Fields what it runs may access,
-    // composed through its callees and destructors, each Field once and written where any access writes it; a call through a common
-    // Function value or its destruction is unknown, and a site that runs nothing static has none. A call through an abstract Callable
-    // input is unknown, unless its bound is confined; an abstract part's destruction is unknown in its generic body and resolved where
-    // its caller's substitution makes it concrete, and the Drop of a moved value runs nothing. Mutually recursive callees share their
-    // keys.
-    [Fact]
-    public void KeysAreTheStaticFieldsASiteRuns()
-    {
-        var c = MirBuildTest.Compile(
-            "group G\n    public var x: i32 = 0\n    public var y: i32 = 0\nfunc writeX() => G.x = 1\nfunc readY() -> i32 => G.y\n" +
-            "func both() -> i32\n    writeX()\n    return readY()\nfunc plain() -> i32 => 1\nstruct Noisy\n    public var n: i32 = 0\n" +
-            "    drop => G.x = 2\nfunc caller(action: () -> ())\n    writeX()\n    _ = readY()\n    _ = both()\n    _ = plain()\n    action()\n" +
-            "    let noisy = Noisy.init()\nfunc anyCall<F>(f: ref/F)\n    F is Callable<() -> ()>\n    f()\nfunc confinedCall<F>(f: ref/F)\n" +
-            "    F is Callable<() -> ()>\n        effect confined\n    f()\nfunc absorb<T>(value: T) => ()\nfunc absorbed() => absorb(Noisy.init())\n" +
-            "func ping(n: i32)\n    G.x = n\n    if n > 0 => pong(n - 1)\nfunc pong(n: i32)\n    _ = G.y\n    if n > 0 => ping(n - 1)\nfunc pinged() => ping(3)\n");
-        var program = c.BuildMir();
-        var (cases, report) = (new MirCases(c.Types), new MirReport());
-        var flow = new MirDataflow(new MirReach());
-        var effects = new MirEffects(c.Types, cases, flow);
-        Analyze(effects, flow, cases, program, report);
-        Assert.Equal(["writeX:x!", "readY:y", "both:x!,y", "plain:", "value:?", "init:", "drop:x!", "drop:?"], Sites(effects, flow, program, "caller"));
-        Assert.Equal(["value:?"], Sites(effects, flow, program, "anyCall"));
-        Assert.Equal(["value:"], Sites(effects, flow, program, "confinedCall"));
-        Assert.Equal(["drop:?"], Sites(effects, flow, program, "absorb"));
-        Assert.Equal(["init:", "absorb:x!", "drop:"], Sites(effects, flow, program, "absorbed"));
-        Assert.Equal(["ping:x!,y"], Sites(effects, flow, program, "pinged"));
-        Assert.Equal(["pong:x!,y"], Sites(effects, flow, program, "ping"));
-    }
-
-    // V16, R4-M38: keys join once per component of the read graph after the fixed point, so a chain whose callers come first, each
-    // writing its own static, keeps its linear evaluations, and the head's call has every member's key.
-    [Fact]
-    public void KeysKeepTheEvaluationsLinear()
-    {
-        int[] sizes = [64, 128, 256];
-        var evaluations = new int[sizes.Length];
-        for (var i = 0; i < sizes.Length; i++)
-        {
-            var (statics, members) = (new StringBuilder("group G\n"), new StringBuilder("group H\n"));
-            for (var n = 0; n < sizes[i]; n++)
-            {
-                statics.Append(System.Globalization.CultureInfo.InvariantCulture, $"    public var v{n}: i32 = 0\n");
-                var next = n + 1 == sizes[i] ? "()" : $"H.step{n + 1}()";
-                members.Append(System.Globalization.CultureInfo.InvariantCulture, $"    public func step{n}()\n        G.v{n} = 1\n        {next}\n");
-            }
-
-            var c = MirBuildTest.Compile(statics.Append(members).Append("func chainHead() => H.step0()\n").ToString());
-            var program = c.BuildMir();
-            var (cases, report) = (new MirCases(c.Types), new MirReport());
-            var flow = new MirDataflow(new MirReach());
-            var effects = new MirEffects(c.Types, cases, flow);
-            Analyze(effects, flow, cases, program, report);
-            evaluations[i] = effects.Evaluations;
-            var keys = Assert.Single(Sites(effects, flow, program, "chainHead"));
-            Assert.Equal($"step0:{string.Join(",", Enumerable.Range(0, sizes[i]).Select(static n => $"v{n}!").Order(StringComparer.Ordinal))}", keys);
-        }
-
-        output.WriteLine($"N {string.Join(", ", sizes)}: evaluations {string.Join(", ", evaluations)}");
-        Assert.True(evaluations[2] - evaluations[1] <= 2 * (evaluations[1] - evaluations[0]), $"evaluations {string.Join(", ", evaluations)}");
-    }
-
-    // The keys of each Call (other than an intrinsic) and Drop of a function's body: the callee's name ("value" for a callable value,
-    // "drop"), its keys in order, a written one marked !, and ? where it is unknown.
-    private static List<string> Sites(MirEffects effects, MirDataflow flow, MirProgram program, string function)
-    {
-        var body = program.Bodies.ToArray().Single(x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == function);
-        flow.Begin(body);
-        var sites = new List<string>();
-        for (var block = 0; block < body.Blocks.Length; block++)
-        {
-            var terminator = body.Blocks[block].Terminator;
-            if (terminator.Kind == MirTerminatorKind.Drop || terminator is { Kind: MirTerminatorKind.Call, Callee.Kind: not MirCalleeKind.Intrinsic })
-            {
-                var keys = effects.Keys(body, 0, block, out var unknown).ToArray().Select(static x => x.Field.Name + (x.Write ? "!" : string.Empty));
-                var name = terminator.Kind == MirTerminatorKind.Drop ? "drop" : terminator.Callee.Symbol?.Name ?? "value";
-                sites.Add($"{name}:{string.Join(",", keys.Order(StringComparer.Ordinal))}{(unknown ? "?" : string.Empty)}");
-            }
-        }
-
-        return sites;
     }
 
     // The driver's A4 rows over a built program and its A2 table: each body begun, its views' local facts, then the run.
@@ -652,7 +619,10 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
     private static string[] Problems(Compilation c, MirProgram program)
     {
         Assert.Empty(program.Findings);
-        return [.. program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0 && x.Code is DiagnosticCode.IncompatibleContractImplementation_Kd or
-            DiagnosticCode.UnsatisfiedEffectBound_Kd or DiagnosticCode.Unsupported_Kd).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}")];
+        return Problems(c, program.Problems);
     }
+
+    private static string[] Problems(Compilation c, MirReport report)
+        => [.. report.All.ToArray().Where(static x => x.Subject.Module == 0 && x.Code is DiagnosticCode.IncompatibleContractImplementation_Kd or
+            DiagnosticCode.UnsatisfiedEffectBound_Kd or DiagnosticCode.Unsupported_Kd).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}")];
 }

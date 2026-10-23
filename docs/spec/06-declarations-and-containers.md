@@ -91,7 +91,7 @@ struct Outer<T>
 
 Input conditions supplied by the user of a declaration are assumptions while its definition is checked. Declaration obligations, such as an outer struct's conformance of Self and closed conditions, need their own proof. An inner declaration may use outer input conditions and proven evidence, but cannot turn an obligation into an assumption or read the outer Self as its own; its own input conditions do not propagate outward.
 
-In a Contract, a condition only on inherited arguments is a reference input condition, one on the conforming Self is an implementation requirement, and a closed one is a declaration obligation. In a Type declaration, `Self is not ObjectPayload` ([§8.7.3](08-generics-constraints-and-contracts.md#873-objectpayload)) is an opt-out, neither condition nor obligation. Function Constraint subjects follow [§7.5](07-functions-and-callable-values.md#75-function-constraints). A struct may implement a Contract nested in it. A conformance is never evidence for its own identification and compatibility ([§8.3](08-generics-constraints-and-contracts.md#83-constraint-proof), [§8.11.4](08-generics-constraints-and-contracts.md#8114-checking-and-use)). Obligations must hold for every admitted binding (Finality, [§8.3](08-generics-constraints-and-contracts.md#83-constraint-proof)).
+In a Contract, a condition only on inherited arguments is a reference input condition, one on the conforming Self is an implementation requirement, and a closed one is a declaration obligation. In a Type declaration, `Self is not ObjectPayload` ([§8.7.3](08-generics-constraints-and-contracts.md#873-objectpayload)) is an opt-out, neither condition nor obligation. Function Constraint subjects follow [§7.5](07-functions-and-callable-values.md#75-function-constraints). A struct may implement a Contract nested in it. A conformance is never evidence for its own identification and compatibility ([§8.3](08-generics-constraints-and-contracts.md#83-constraint-proof), [§8.11.3](08-generics-constraints-and-contracts.md#8113-checking-and-use)). Obligations must hold for every admitted binding (Finality, [§8.3](08-generics-constraints-and-contracts.md#83-constraint-proof)).
 
 ### 6.1.5. Self
 
@@ -203,7 +203,7 @@ Constructors are not inherited, there is no field-wise or zero-fill fallback, an
 
 After the arguments are evaluated, Uninitialized storage is allocated. The base arguments are evaluated next and may not access `self`; then the base constructor runs in the base subobject. Omitting the base clause selects a base constructor callable with no arguments; `: base(...)` without a base is an error. Exactly one base call occurs; same-Type delegation does not exist. Protected base constructors are accessible here ([§9.4.3](09-names-signatures-and-access.md#943-protected-receivers)).
 
-Then this layer's Field initializers run in logical declaration order ([§6.2.1](#621-logical-declaration-order)), and then the body. Field initializers cannot reference parameters or `self`. No Field is initialized implicitly. The Origins of stored arguments must be expressible by the Type's declared Origin contract ([§15.3](15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations)).
+Then this layer's Field initializers run in logical declaration order ([§6.2.1](#621-logical-declaration-order)), and then the body. Field initializers cannot reference parameters or `self`, and their Origin relations are judged under the Type's public premises and well-formedness ([§15.3.2](15-ownership-and-lifetime-analysis.md#1532-type-schemas-and-storage), [§15.6.1](15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness)), never under a constructor's signature or clauses, since every constructor of the layer runs them. No Field is initialized implicitly. The Origins of stored arguments must be expressible by the Type's declared Origin contract ([§15.3](15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations)).
 
 ### 6.3.4. The construction receiver
 
@@ -344,9 +344,7 @@ struct Derived<U> : Base
 
 ### 6.4.6. Effects and Contract witnesses
 
-Slot effect bounds follow [§8.11.1](08-generics-constraints-and-contracts.md#8111-declarations). A dynamic call uses only the slot's public contract and bounds, even for a sealed target: its effects follow rules 1 to 3 of [§8.11.4](08-generics-constraints-and-contracts.md#8114-checking-and-use), and results use only the public Origin and Loan contract.
-
-On a slot, `preserves results` ([§8.11.3](08-generics-constraints-and-contracts.md#8113-preserves-results)) relates calls on the same object (by dependency tracking, not Origin equality) through the same slot, or for direct base calls the same implementation; replacing or Moving the payload contents ends the relation. Handle Moves, Reborrows and lawful View changes preserve the relation; a guaranteed call's conservative input effects alone do not end it.
+Slot effect bounds follow [§8.11.1](08-generics-constraints-and-contracts.md#8111-declarations). A dynamic call uses only the slot's public contract and bounds, even for a sealed target: its effects follow rules 1 and 2 of [§8.11.3](08-generics-constraints-and-contracts.md#8113-checking-and-use), and results use only the public Origin and Loan contract.
 
 A virtual implementation of a Contract requirement maps to the slot: the slot's public contract and bounds must satisfy the requirement, never a body's stronger behavior.
 

@@ -27,6 +27,14 @@ public enum OriginKind : byte
     // SPEC 5.2.2: the fresh anchor of a raw Place borrow; Binder is the borrow. It has no upper bound, so it fits every
     // destination like static, while ownership analysis checks the borrow's Loan and those derived from it under the anchor.
     Anchor,
+
+    // SPEC 5.7 (DECISIONS BU-24): `self` on a raw layer in inline storage, the holding value; only in declared Field and payload
+    // Types, never in an instance's stored Types; every read replaces it (Binding.ReadHolder).
+    Holder,
+
+    // SPEC 5.7 (DECISIONS BU-24): the Origin a raw layer without `during` counts as stating, which every Origin outlives; only in
+    // relations and their records, never in a Type (Binding.UnstatedRelation).
+    Unstated,
 }
 
 public enum OriginVariance : byte
@@ -137,6 +145,11 @@ public sealed class BoundOrigin
     /// <summary>Gets the value input carrying this Origin; distinct from its inference slot.</summary>
     public int InputIndex { get; internal init; }
 
+    internal static BoundOrigin Holder { get; } = new(OriginKind.Holder, name: "self");
+
+    // Displayed as an omitted Origin (SPEC 23.1).
+    internal static BoundOrigin Unstated { get; } = new(OriginKind.Unstated, name: "a raw pointer without `during`");
+
     internal Koto? Occurrence { get; init; }
 
     internal int TargetSlot { get; init; }
@@ -149,6 +162,10 @@ public sealed class BoundOrigin
     internal bool Open { get; init; }
 
     internal BindingSymbol? BorrowCondition { get; set; }
+
+    // The body whose binding first formed the atom (Binding.ExecutableBodies.cs; DECISIONS R4-M101 E5): defined for a non-declaration
+    // binder, which one body binds; a declaration binder's atom is read by its slot's role instead.
+    internal ExecutableBody Body { get; init; }
 }
 
 /// <summary>A retained semantic requirement, independent of successful name resolution. An <see cref="BindingObligationKind.OriginOutlives"/>
@@ -158,8 +175,12 @@ public sealed class BoundOrigin
 /// relation of an input's instantiated Type at that input (SPEC 15.3.7, 15.6.4 step 3), which classifies the record's source and is
 /// discharged by judgment. <c>Discharge</c> names the check responsible for the obligation. <c>Condition</c> is the Semantics case
 /// the relation is required in (SPEC 15.6.5): the pair binders in scope of <c>Use</c> that must all be borrows, as bits of their
-/// order there (<see cref="Binding.PairSlotCondition"/>); its proof may use the premises of exactly those cases.</summary>
-public readonly record struct BindingObligation(BindingObligationKind Kind, Koto Use, BindingDeadline Deadline, BoundType? Type = null, BoundOrigin? Longer = null, BoundOrigin? Shorter = null, BoundLength? Length = null, bool Equality = false, Koto? Clause = null, bool WellFormed = false, OriginDischarge Discharge = OriginDischarge.Judgment, ulong Condition = 0);
+/// order there (<see cref="Binding.PairSlotCondition"/>); its proof may use the premises of exactly those cases. <c>Body</c> is the executable
+/// body Binding formed it in, none for a declaration's (Binding.ExecutableBodies.cs), part of its identity.</summary>
+public readonly record struct BindingObligation(BindingObligationKind Kind, Koto Use, BindingDeadline Deadline, BoundType? Type = null, BoundOrigin? Longer = null, BoundOrigin? Shorter = null, BoundLength? Length = null, bool Equality = false, Koto? Clause = null, bool WellFormed = false, OriginDischarge Discharge = OriginDischarge.Judgment, ulong Condition = 0)
+{
+    internal ExecutableBody Body { get; init; }
+}
 
 internal enum TypePosition : byte
 {
@@ -281,4 +302,52 @@ internal readonly struct CallableInstance
 internal readonly record struct TypeBindingContext(TypePosition Position, Koto Owner, int Slot = 0, bool Direct = false, bool SuppressOuter = false, bool CallQualifier = false)
 {
     internal TypeBindingContext Nested => this with { Direct = false, SuppressOuter = false };
+}
+
+// The Origin declaration of a definition, a Type or a local (SPEC 15.3.1-15.3.6): its binding sets, the replacements that resolve its
+// omitted Origins, its pending slots and its clauses, with the records they are made of (Binding.OriginDeclarations.cs binds them).
+public sealed partial class Binding
+{
+    private sealed class OriginDeclaration(Koto owner)
+    {
+        internal Koto Owner { get; } = owner;
+
+        internal BindingScope? Scope { get; set; }
+
+        // The body that opened it: a local's, or none for a declaration's (DECISIONS R4-M101 E1), whose late rows it owns.
+        internal ExecutableBody Body { get; set; }
+
+        internal int State { get; set; }
+
+        internal Koto? Failure { get; set; }
+
+        internal Dictionary<string, TypeSemanticsKoto> Sets { get; } = new(StringComparer.Ordinal);
+
+        internal Dictionary<BoundOrigin, BoundOrigin> Replacements { get; } = new(ReferenceEqualityComparer.Instance);
+
+        internal List<PendingOriginSlot> Pending { get; } = new(2);
+
+        internal List<OriginRelation> Relations { get; } = new(2);
+
+        // A local's omitted Origins inferred from its initializer (SPEC 15.4.4), with the variance of their positions in its Type;
+        // allocated only for a local that has such Origins and kept across binds.
+        internal Dictionary<BoundOrigin, OriginVariance>? Inferred { get; set; }
+
+        internal void Reset()
+        {
+            this.State = 0;
+            this.Failure = null;
+            this.Scope = null;
+            this.Body = default;
+            this.Sets.Clear();
+            this.Replacements.Clear();
+            this.Pending.Clear();
+            this.Relations.Clear();
+            this.Inferred?.Clear();
+        }
+    }
+
+    private readonly record struct PendingOriginSlot(Koto Use, BindingScope Scope, TypeBindingContext Context, LoanRequirement Requirement, int Slot, BoundOrigin Origin, BindingSymbol? BorrowCondition);
+
+    private readonly record struct OriginRelation(BoundOrigin Longer, BoundOrigin Shorter, bool Equality, OriginRelationKoto Syntax);
 }

@@ -6,17 +6,19 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
 
-// The place writer of FunctionCodegen (R5 plan C2a, package C 3.2 I4, I5, I7 and I9; DECISIONS R5-M83), the one owner of a Place's address,
-// and the loads and stores through it. A Place is its root's home, a local's (a static's slot is C7b's row, a zero-sized local's address
-// C2b's zero-sized address symbol), then each step of its interned projection chain, root first, by one row per MirProjectionKind, in the
-// Layout of the prefix's Type in the item's instance (IMPL 21.1): a Field at its Field offset; a Base at the derived struct's own address,
-// its complete base being a prefix (X1); a ConstIndex at its position times the element's stride, which the validator proved below the
-// length; a Downcast at the enum's payload offset; a Deref of a reference or raw pointer the address it stores (IMPL 21.1.3), of an object
-// handle or borrow the payload, C6a's row; a PairLayer the Place itself in the owner case, else the referent of its case Type by the Deref
-// row (MirCases.Layer under the item's view, SPEC 13.5.5); an Index its isize position checked against the length, a fixed array's closed
-// length or an Array's or Slice's length word, unsigned, so a negative position fails, Aborting with KIMI_E_INDEX_BOUNDS (SPEC 4.7.4,
-// 22.5.2) at its position local's location, which the builder locates at the selection (DECISIONS R4-M56, SPEC 22.5.1), then the element
-// at the position times the stride from the fixed array's or the buffer word's address. Offsets are written without inbounds (I9).
+// The place writer of FunctionCodegen (R5 plan C2a, C2b, package C 3.2 I4, I5, I7 and I9; DECISIONS R5-M83, R5-M87), the one owner of a
+// Place's address. A Place is its root's home, a local's (a zero-sized local's home is the module's zero-sized symbol, which ModuleCodegen
+// defines on request, IMPL 21.1.3) or a static's slot (FunctionCodegen.Statics' StaticAddress), then each step of its
+// interned projection chain, root first, by one row per MirProjectionKind, in the Layout of the prefix's Type in the item's instance (IMPL
+// 21.1): a Field at its Field offset; a Base at the derived struct's own address, its complete base being a prefix (X1); a ConstIndex at
+// its position times the element's stride, which the validator proved below the length; a Downcast at the enum's payload offset; a Deref of
+// a reference or raw pointer the address it stores (IMPL 21.1.3), of an object handle or borrow the payload, C6a's row; a PairLayer the
+// Place itself in the owner case, else the referent of its case Type by the Deref row (MirCases.Layer under the item's view, SPEC 13.5.5);
+// an Index its isize position checked against the length, a fixed array's closed length or an Array's or Slice's length word, unsigned, so
+// a negative position fails, Aborting with KIMI_E_INDEX_BOUNDS (SPEC 4.7.4, 22.5.2) at its position local's location, which the builder
+// locates at the selection (DECISIONS R4-M56, SPEC 22.5.1), then the element at the position times the stride from the fixed array's or the
+// buffer word's address. Offsets are written without inbounds (I9). The loads, stores and copies through it are
+// FunctionCodegen.Stores.cs.
 internal sealed partial class FunctionCodegen
 {
     // A Place's address (the rows above): false for a row not written yet, which the caller records at its site; true without an address
@@ -26,13 +28,14 @@ internal sealed partial class FunctionCodegen
         address = default;
         if (place.Root < 0)
         {
-            return false; // A static's slot (C7b).
+            address = this.StaticAddress(~place.Root);
+            return true;
         }
 
         if (place.Projection == 0)
         {
-            address = new('h', place.Root);
-            return this.slots[place.Root].Home != Home.None; // A zero-sized local's address is the zero-sized address symbol (C2b).
+            address = new('h', place.Root); // A zero-sized local's is the zero-sized symbol (WriteHome).
+            return true;
         }
 
         var prefix = place with { Projection = this.body.Projections[place.Projection].Prefix };
@@ -97,8 +100,8 @@ internal sealed partial class FunctionCodegen
     {
         address = start;
         var position = row.Arg;
-        var location = this.Location(this.body.Locals[position].Source);
-        if (location < 0 || this.Representation(row.Type!) is not { } element || this.LoweringOf(prefix) is not { } sequence)
+        if (!this.Location(this.body.Locals[position].Source, out var site) || this.Representation(row.Type!) is not { } element ||
+            this.LoweringOf(prefix) is not { } sequence)
         {
             return true; // Recorded.
         }
@@ -106,13 +109,9 @@ internal sealed partial class FunctionCodegen
         var type = this.InstanceType(prefix)!;
         var isize = this.slots[position].Value;
         var index = this.Load(position);
-        var buffer = start;
-        var length = new Value('\0', type.Length);
-        if (type.Kind != BoundTypeKind.FixedArray)
-        {
-            buffer = this.LoadAt(start, RuntimeAbi.StringReference.Layout); // An Array's or Slice's buffer word, a pointer (IMPL 21.1.3).
-            length = this.LoadAt(this.Offset(start, sequence.Layout.FieldOffsets.Span[1]), isize.Layout);
-        }
+        // An Array's or Slice's buffer word, a pointer (IMPL 21.1.3).
+        var buffer = type.Kind == BoundTypeKind.FixedArray ? start : this.LoadAt(start, RuntimeAbi.StringReference.Layout);
+        var length = this.Length(type, sequence, start);
 
         var id = this.next++;
         var output = this.output;
@@ -125,7 +124,7 @@ internal sealed partial class FunctionCodegen
         output.Write(", ");
         this.WriteValue(length);
         output.Write('\n');
-        LlvmScalarText.WriteFailure(output, "%invalid", AbortReasons.IndexBounds, this.Failure(id, location, stackalloc char[3 * SpellingLength]));
+        LlvmScalarText.WriteFailure(output, "%invalid", AbortReasons.IndexBounds, this.Failure(id, site, stackalloc char[3 * SpellingLength]));
         if (element.Layout.Stride == 0)
         {
             address = buffer; // A zero-sized element needs no address of its own; its check remains.
@@ -146,6 +145,12 @@ internal sealed partial class FunctionCodegen
         return true;
     }
 
+    // A sequence's length (SPEC 4.7.3) from its address: a fixed array's closed length, else the length word of an Array's or Slice's
+    // handle record, its Field 1 (IMPL 21.1.3).
+    private Value Length(BoundType sequence, ValueLowering record, Value start)
+        => sequence.Kind == BoundTypeKind.FixedArray ? new('\0', sequence.Length)
+            : this.LoadAt(this.Offset(start, record.Layout.FieldOffsets.Span[1]), Layout.Row(BoundType.ISize).Layout);
+
     // An address a constant number of bytes past another: the same address for none.
     private Value Offset(Value start, long bytes) => bytes == 0 ? start : this.Offset(start, new Value('\0', bytes));
 
@@ -160,120 +165,5 @@ internal sealed partial class FunctionCodegen
         this.WriteValue(bytes);
         this.output.Write('\n');
         return address;
-    }
-
-    // The address of an Assign's Place, located after its rvalue (SPEC 13.7.1), or false: a local without storage, whose value is none
-    // (I2), or a Place whose row is not written yet, recorded at the statement.
-    private bool Destination(in MirStatement statement, out Value address)
-    {
-        address = default;
-        if (this.Unstored(statement.Place))
-        {
-            return false;
-        }
-
-        if (this.Address(statement.Place, out address))
-        {
-            return true;
-        }
-
-        this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
-        return false;
-    }
-
-    // An Assign's value in its Place's storage representation, stored once its Place is located; nothing for a zero-sized Place.
-    private void Store(in MirStatement statement, Value value)
-    {
-        if (this.Destination(statement, out var address) && this.LoweringOf(statement.Place) is { Layout.Size: > 0 } lowering)
-        {
-            this.StoreAt(address, lowering.Layout, value);
-        }
-    }
-
-    // A Place's value in its storage representation (I4), none for a zero-sized one; false for a Place whose row is not written yet.
-    private bool Read(MirPlace place, out Value value)
-    {
-        value = default;
-        if (this.Unstored(place))
-        {
-            return true;
-        }
-
-        if (!this.Address(place, out var address))
-        {
-            return false;
-        }
-
-        if (this.LoweringOf(place) is { Layout.Size: > 0 } lowering)
-        {
-            value = this.LoadAt(address, lowering.Layout);
-        }
-
-        return true;
-    }
-
-    // Whether a Place is a local without storage (zero-sized, I2).
-    private bool Unstored(MirPlace place) => place is { Root: >= 0, Projection: 0 } && this.slots[place.Root].Home == Home.None;
-
-    // The Type of a Place in the item's instance: a local's, or its projection's.
-    private BoundType? InstanceType(MirPlace place)
-        => place is { Root: >= 0, Projection: 0 } ? this.types[place.Root] : this.collector.TypeOf(this.item, this.body.TypeOf(place)!);
-
-    // The representation of a Place's Type in the item's instance (I7): a local's slot's, or its Type's (null after a record).
-    private ValueLowering? LoweringOf(MirPlace place)
-        => place is { Root: >= 0, Projection: 0 } ? this.slots[place.Root].Value : this.Representation(this.body.TypeOf(place)!);
-
-    // A local's value, loaded from its home in its storage representation (I4).
-    private Value Load(int local) => this.LoadAt(new('h', local), this.slots[local].Value.Layout);
-
-    private Value LoadAt(Value address, TypeLayout layout)
-    {
-        var value = new Value('t', this.next++);
-        this.output.Write("  ");
-        this.WriteValue(value);
-        this.output.Write(" = load ");
-        this.output.Write(layout.StorageType);
-        this.WriteAccess(address, layout);
-        return value;
-    }
-
-    private void StoreAt(Value address, TypeLayout layout, Value value)
-    {
-        this.output.Write("  store ");
-        this.output.Write(layout.StorageType);
-        this.output.Write(' ');
-        this.WriteValue(value);
-        this.WriteAccess(address, layout);
-    }
-
-    // The end of a load or store: the address and its Layout's alignment.
-    private void WriteAccess(Value address, TypeLayout layout)
-    {
-        this.output.Write(", ptr ");
-        this.WriteValue(address);
-        this.output.Write(", align ");
-        WriteNumber(this.output, layout.Alignment);
-        this.output.Write('\n');
-    }
-
-    private void WriteHome(int local)
-    {
-        var slot = this.slots[local];
-        switch (slot.Home)
-        {
-            case Home.Slot:
-                this.output.Write("%l");
-                WriteNumber(this.output, local);
-                return;
-            case Home.Argument:
-                this.output.Write("%a");
-                WriteNumber(this.output, slot.Index);
-                return;
-            case Home.Result:
-                this.output.Write("%ret");
-                return;
-            default:
-                throw new InvalidOperationException("A zero-sized local has no home.");
-        }
     }
 }

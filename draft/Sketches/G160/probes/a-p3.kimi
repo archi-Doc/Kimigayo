@@ -1,0 +1,49 @@
+struct KeptBox<T>
+    public var p: raw/T
+    public init(p: raw/T) => self.p = p
+func storeKept<T>(b: uniq/KeptBox<T>, v: T)
+    unsafe => Raw.initialize(b.p, v@move)
+struct Buffer<T>
+    internal let data: raw/T
+    internal var length: isize
+    let capacity: isize
+    public init(capacity: isize)
+        self.data = Raw.allocate<T>(capacity)
+        self.length = 0
+        self.capacity = capacity
+    public func push(self: uniq/Self, value: T)
+        require self.length < self.capacity else => $abort("Buffer is full")
+        unsafe => Raw.initialize(self.data + self.length, value@move)
+        self.length += 1
+    public func get(self: ref/Self, index: isize) -> ref/T during self
+        unsafe => return self.data[index]@ref
+func keptReadKill()
+    var x = 1
+    var y = 2
+    var b = KeptBox<ref/i32>.init(p: Raw.allocate(1))
+    storeKept(b@uniq, x@ref)
+    var q = y@ref
+    unsafe => q = b.p[0]
+    b = KeptBox.init(p: Raw.allocate(1))
+    x = 5
+    inspect(q)
+func bufferReadKill()
+    var x = 1
+    var y = 2
+    var buf = Buffer<ref/i32>.init(capacity: 2)
+    buf.push(x@ref)
+    var q = y@ref
+    unsafe => q = buf.data[0]
+    buf = Buffer.init(capacity: 2)
+    x = 5
+    inspect(q)
+func bufferGetKill()
+    var x = 1
+    var y = 2
+    var buf = Buffer<ref/i32>.init(capacity: 2)
+    buf.push(x@ref)
+    var q = y@ref
+    q = buf.get(0)@follow
+    buf = Buffer.init(capacity: 2)
+    x = 5
+    inspect(q)

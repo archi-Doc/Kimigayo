@@ -171,27 +171,32 @@ internal sealed partial class MirBuilder
             ? this.body.Project(receiver, MirProjectionKind.Field, (int)element) : this.Field(receiver, HirTables.Symbol(member), member);
     }
 
-    // The stored Field of a symbol in a struct Place: AdtDef.FindField's position, the bases' Fields first, as the Base that declares it
-    // (the receiver's StorageProjection) and the Field's own index there.
+    // The stored Field of a symbol in a struct Place (AdtDef.FindField's position), or the value derived from the error of one that has
+    // no Place (Stored).
     private MirPlace Field(MirPlace receiver, BindingSymbol? field, Koto node)
     {
         var type = this.body.TypeOf(receiver);
         var position = -1;
-        if (type is null || !AdtDef.FindField(type, field, out _, out position))
-        {
-            return this.Unsupported(node, position >= 0); // A Field whose stored Type Binding could not substitute is derived from that error.
-        }
+        _ = type is not null && AdtDef.FindField(type, field, out _, out position);
+        return position >= 0 && this.Stored(receiver, type!, position) is { } place ? place : this.Unsupported(node, position >= 0);
+    }
 
+    // The Place of the stored Field at a storage position of a struct Place, the bases' Fields first: the Field's own index in the Base
+    // that declares it (the receiver's StorageProjection); none for a Field Binding formed no stored Type for, a value derived from that
+    // error (SPEC 23.1.2).
+    private MirPlace? Stored(MirPlace receiver, BoundType type, int position)
+    {
         var depth = 0;
         for (; position < Inherited(type); depth++)
         {
             type = AdtDef.Base(type)!;
         }
 
-        return this.body.Project(
+        position -= Inherited(type);
+        return AdtDef.FieldType(type, position) is null ? null : this.body.Project(
             depth == 0 ? receiver : this.body.Project(receiver, MirProjectionKind.Base, depth),
             MirProjectionKind.Field,
-            position - Inherited(type));
+            position);
 
         static int Inherited(BoundType type) => AdtDef.Base(type) is { } parent ? AdtDef.StorageCount(parent) : 0;
     }
@@ -205,16 +210,21 @@ internal sealed partial class MirBuilder
         return this.body.Project(result, MirProjectionKind.Deref, 0);
     }
 
-    // A value held in a temp where its consumer needs a Place, or in the place given where that has its Type, unless an expansion holds it
-    // already; a call's input as the call's (input).
-    private MirPlace Value(Koto node, MirPlace? into = null, bool input = false)
+    // A value held in a temp of its Type where its consumer needs a Place, or in the place given where that has its Type, unless an expansion
+    // holds it already; a call's input as the call's (input). One Binding gave no Type, a construct it left unresolved or a derived value,
+    // is held at the Type its consumer expects (expected), as Unsupported holds a derived one: SPEC 14.9.2 makes a construct's Type the
+    // fixed expectation, which Binding does not publish for one it left unresolved (DECISIONS R4-M88; PLAN G103 R1). An Error node's value is
+    // held there also where Binding gave the node a Type, and it is never taken from where an expansion located the node: each consumer
+    // receives its own derived value, whose site names the located root (SiteRoots; DECISIONS R4-M109).
+    private MirPlace Value(Koto node, MirPlace? into = null, bool input = false, BoundType? expected = null)
     {
-        if (this.Located(node) is { } located)
+        var derived = HirTables.Op(node) == HirOp.Error;
+        if (!derived && this.Located(node) is { } located)
         {
             return located;
         }
 
-        var temp = this.Temp(TypeOf(node), node, into);
+        var temp = this.Temp((derived ? expected : null) ?? HirTables.Meaning(node) as BoundType ?? expected ?? BoundType.Unit, node, into);
         this.Into(temp, node, input);
         return temp;
     }

@@ -206,13 +206,45 @@ public class IntrinsicCapabilityTest
         Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f));
     }
 
-    [Fact]
-    public void ExpandingGenericRecursionRemainsUnknownWithoutUnboundedExpansion()
+    // SPEC 15.3.5 (DECISIONS BU-22; OQ-F5-2 (b), PLAN G174): Owned is computed once per declaration in its own parameters, so a field
+    // obj/Chain<(T, T)> needs no instance of its storage and Chain<i32> is Owned; its arguments and Origins still decide.
+    [Theory]
+    [InlineData("i32", ConstraintProof.Proven)]
+    [InlineData("ref/i32 during a", ConstraintProof.Unknown)]
+    [InlineData("Text.FixedBuffer during a", ConstraintProof.Refuted)]
+    public void NonRegularRecursionIsOwnedPerDeclaration(string argument, ConstraintProof expected)
     {
-        var c = CompilationTestHelper.ParseSuccess("struct Chain<T>\n    let next: obj/Chain<(T, T)>\nfunc inspect(x: Chain<i32>) => ()");
+        var c = CompilationTestHelper.ParseSuccess($"struct Chain<T>\n    let next: obj/Chain<(T, T)>\nfunc inspect(x: Chain<{argument}>) => ()");
         c.Bind();
         var f = Function(c, "inspect");
-        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f));
+        Assert.Equal(expected, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f));
+    }
+
+    // The growth guard's one remaining decider (2b-4a's census, DECISIONS BU-22): a conditional Copy premise over a projection whose
+    // conformance binding grows re-enters G with ever larger arguments; Copy stays Unknown at the second growth step until SPEC 8.3.3's
+    // proof-depth limit is a resource failure (PLAN G200).
+    [Fact]
+    public void ConditionalCopyGrowingThroughAProjectionStaysUnknown()
+    {
+        var c = CompilationTestHelper.ParseSuccess("contract Has\n    associate Out\nstruct W<X>\n    Self is Has\n    associate Has.Out is G<W<(X, X)>>\n" +
+            "struct G<T>\n    Self is Copy when T is Has, T.(Has).Out is Copy\nfunc inspect(x: G<W<i32>>) => ()");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        var f = Function(c, "inspect");
+        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveCopy(f.Parameters[0].Type.TypeOf()!, f));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f));
+    }
+
+    // An invalid stored Field is Error through every declaration that stores its declaration (SPEC 8.7.3: an object form over an opted-out
+    // Core).
+    [Fact]
+    public void InvalidStorageIsErrorThroughAComponent()
+    {
+        var c = CompilationTestHelper.ParseSuccess("struct Parser\n    Self is not ObjectPayload\nstruct Bad\n    let p: obj/Parser\n" +
+            "struct Uses<T>\n    let b: Bad\n    let v: T\n" +
+            "func inspect(x: Uses<i32>) => ()");
+        c.Bind();
+        var f = Function(c, "inspect");
+        Assert.Equal(ConstraintProof.Error, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f));
     }
 
     [Fact]

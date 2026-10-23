@@ -164,16 +164,19 @@ internal sealed partial class MirBuilder
         }
     }
 
-    // A node's value as its consumer takes it (plan: Adjust to operand): a literal as its constant, another value through a temp, a Place,
-    // or a value held in a temp, as Acquire takes it for the expected Type, a call's input as the call's (input), a value the acquisition
-    // forms in the place given (into) where it has that Type. SPEC 15.6.7: only an input the call takes as an exclusive reference (its
-    // expected Type, or without one, a value call's callee, the reference it is or its acquisition forms) starts a reservation, so only its
-    // path is a preparation path (Place); on another input's path a written exclusive borrow is live, as SPEC 7.3.3's is. An input the call
-    // takes as a pair layer, exclusive only by case, reserves where it is acquired (reserves, MirCases.Reserves) and has no preparation
-    // path (A3 E13 (4)).
+    // A node's value as its consumer takes it, by the node's Adjust.
     private MirOperand Operand(Koto node, BoundType? expected, bool input = false, MirPlace? into = null)
+        => this.Operand(node, HirTables.AdjustOf(node), expected, input, into);
+
+    // A node's value as an Adjust takes it (plan: Adjust to operand; the column's, or an update getter's plan row, DECISIONS R4-M109): a
+    // literal as its constant, another value through a temp, a Place, or a value held in a temp, as Acquire takes it for the expected Type,
+    // a call's input as the call's (input), a value the acquisition forms in the place given (into) where it has that Type. SPEC 15.6.7:
+    // only an input the call takes as an exclusive reference (its expected Type, or without one, a value call's callee, the reference it is
+    // or its acquisition forms) starts a reservation, so only its path is a preparation path (Place); on another input's path a written
+    // exclusive borrow is live, as SPEC 7.3.3's is. An input the call takes as a pair layer, exclusive only by case, reserves where it is
+    // acquired (reserves, MirCases.Reserves) and has no preparation path (A3 E13 (4)).
+    private MirOperand Operand(Koto node, HirAdjust adjust, BoundType? expected, bool input = false, MirPlace? into = null)
     {
-        var adjust = HirTables.AdjustOf(node);
         var reserves = input && MirCases.Reserves(this.body, expected ?? TypeOf(node));
         input &= MirTypes.IsExclusive(expected) ||
             (expected is null && (adjust.Adaptation == HirAdaptation.ExclusiveBorrow || MirTypes.IsExclusive(TypeOf(node))));
@@ -181,22 +184,24 @@ internal sealed partial class MirBuilder
         if (InPlace(adjust))
         {
             return HirTables.Op(node) == HirOp.Literal && this.Literal(node) is var constant and >= 0 ? MirOperand.Const(constant)
-                : MirOperand.Move(this.Value(node, into, reserves));
+                : MirOperand.Move(this.Value(node, into, reserves, expected));
         }
 
         if (adjust.Acquire == HirAcquire.Unset || adjust.Adaptation == HirAdaptation.StorageProjection || (adjust.Adaptation == HirAdaptation.BaseBorrow &&
             expected?.Components is not [_]) || (adjust.Adaptation == HirAdaptation.Erasure && expected is null))
         {
-            // An Error proof left the acquisition unset; a projected receiver's storage is its Field's (Member).
-            return MirOperand.Move(this.Unsupported(node, derived: false, expected));
+            // An Error proof or a Place without a Type (Bare) leaves a consumed child's acquisition unset, so its value is derived from
+            // that error (SPEC 23.1.2); a projected receiver's storage is its Field's (Member), and the other adaptations are not built yet.
+            return MirOperand.Move(this.Unsupported(node, adjust.Acquire == HirAcquire.Unset, expected));
         }
 
         var place = adjust.Acquire == HirAcquire.Temporary ? this.Value(node, input: input) : this.Place(node, input);
         return this.Acquire(adjust, place, expected, reserves, node, into);
     }
 
-    // SPEC 3.2, 4.3.2, 6.6: a Tuple, a fixed array or an enum Case value from its operands in order, an enum's payloads as its construction
-    // acquires them; a dynamic Array literal the calls of its built-in form (Collection). Not built: a fill of a length its instance decides.
+    // SPEC 3.2, 4.3.1, 4.3.3, 6.6: a Tuple, a fixed array or an enum Case value from its operands in order, an enum's payloads as its
+    // construction acquires them, a fill from its value acquired once, which every element of its Type's length copies (Fill, DECISIONS
+    // R4-M81); a dynamic Array literal the calls of its built-in form (Collection).
     private void Aggregate(MirPlace destination, Koto node, BoundType type)
     {
         var construction = BoundEnumConstruction.Of(node);
@@ -209,8 +214,7 @@ internal sealed partial class MirBuilder
         var elements = node switch
         {
             TupleLiteralKoto tuple => tuple.Elements,
-            ArrayLiteralKoto array when type is { Kind: BoundTypeKind.FixedArray } && (array.FillLength is null || type.LengthExpression is null) =>
-                array.Elements,
+            ArrayLiteralKoto array when type.Kind == BoundTypeKind.FixedArray => array.Elements,
             _ => null,
         };
         if (construction is null && elements is null)
@@ -238,24 +242,6 @@ internal sealed partial class MirBuilder
             this.arguments.Add(i < last ? this.Secure(operand, elements[i]) : operand);
         }
 
-        // SPEC 4.3.3: a fill construction acquires its value once, even for length 0, and copies it into each element.
-        if (node is ArrayLiteralKoto { FillLength: not null })
-        {
-            var value = this.arguments[start];
-            if (value.Kind != MirOperandKind.Const)
-            {
-                var once = this.Temp(type.Components[0], node);
-                this.Use(once, value, node);
-                value = MirOperand.Copy(once);
-            }
-
-            this.arguments.RemoveAt(start);
-            for (var i = 0; i < type.Length; i++)
-            {
-                this.arguments.Add(value);
-            }
-        }
-
         for (var i = 0; i < payloads.Length; i++)
         {
             var operand = this.Operand(payloads[i].Source!, payloads[i].AdaptedType ?? payloads[i].ParameterType);
@@ -266,6 +252,10 @@ internal sealed partial class MirBuilder
         if (construction is not null)
         {
             kind = MirAggregateKind.Adt;
+        }
+        else if (node is ArrayLiteralKoto { FillLength: not null })
+        {
+            kind = MirAggregateKind.Fill; // SPEC 4.3.3: its one operand, the value acquired once even for length 0, in every element.
         }
         else
         {

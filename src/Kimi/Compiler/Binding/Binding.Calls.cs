@@ -468,7 +468,7 @@ public sealed partial class Binding
                 PremisesOnly = true,
             };
             this.acquisitionFailure = null;
-            this.failedConformance = null;
+            this.failedCause = null;
             this.EvaluateCallCandidates(ref evaluation, candidates);
             var count = evaluation.Count;
             var applicable = evaluation.Applicable;
@@ -476,7 +476,7 @@ public sealed partial class Binding
             {
                 // A candidate in a failed declaration cannot be judged, nor one whose Constraint fails on a conformance resting on a failed
                 // associated specification or limited by OCC-X, so the selection rests on that failure (SPEC 23.1.2).
-                return (evaluation.InvalidDeclaration ?? this.TakeFailedConformance()) is { } cause ? this.CompleteDependent(call, cause) : this.Fail(call, BindingFailure.InvalidConstraint);
+                return (evaluation.InvalidDeclaration ?? this.TakeFailedCause()) is { } cause ? this.CompleteDependent(call, cause) : this.Fail(call, BindingFailure.InvalidConstraint);
             }
 
             if (!this.CheckCallShapeContracts(call, generic, scope, expected, evaluated.AsSpan(0, count), allMaps, maxGenerics))

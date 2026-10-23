@@ -104,6 +104,13 @@
 //               2e-D's raw-pointer row (Node.RawRow), and R-a, the call's inspection Loans end before its checks (Node.EndInspections), with
 //               R4-M70's default taint deleted. R4-M69's Inlined drop at a copy's nodes (Node.Inlined). Variants: R19Taint, R19InlinedDrop,
 //               R19NoEnding, R19SlotsOnly, R19ValueRows, R19NoRawRow, R19SharedStep, R19ReturnOnly, R19AccessAll, R19RawAccess. -r19 prints it.
+//        Round 20 (template ownership of failures in inline default copies, PLAN G171; unit 2x-P11): on R19, a scope tree (Node.Scope, Case.Scopes:
+//               every scope but the root a copy's Inlined scope, Outer < index) and each default's body built once as its template case and once per
+//               omitting call as a copy under a prefix (R20.Ctx). R20Own: a failure is its template's where an Inlined scope contains its participating
+//               scopes (the access's, the Loan's issuing and an activation's reservation's issuing scope; err(ended): the EndBorrow's and the guard
+//               local's; R3: the Drop's), decided per candidate before the first is chosen (Analysis.Boundary, Omitted). The simulation check runs each
+//               omission's template under the same rule. Variants: R20AccessOnly, R20IssueOnly, R20NoReservation, R20AfterSelect (Case.LoanOrder),
+//               R20SameSpan, R20Entry (the round's repair candidate). -r20 prints it.
 using System.Text;
 using Fact = (string H, string L);
 
@@ -308,7 +315,7 @@ if (args.Contains("-r17")) return Round17();
 // exclusive Loan (R3) and staticEnsure under PD12 (R4) on R17Hold, with G136's lemma and G124's Transferable. Checks: (i) the earlier cases
 // keep R17Hold's outcome under R18; (ii) each round-18 case meets its expected outcome under R18; (iii) G136: R18 and R18StaticEnds give
 // one verdict everywhere; (iv) each G124 case's Transferable gives its SPEC verdict. -r18 prints only this; its exit code counts the failures.
-var round18Variants = new[] { Abl.R18NoW6, Abl.R18LiveOnly, Abl.R18NoR3, Abl.R18Merged, Abl.R18EnsureExact, Abl.R18EnsureByField, Abl.R18EnsureIgnored, Abl.R18StaticEnds };
+var round18Variants = new[] { Abl.R18NoW6, Abl.R18LiveOnly, Abl.R18NoR3, Abl.R18Merged, Abl.R18EnsureExact, Abl.R18EnsureByField, Abl.R18EnsureIgnored, Abl.R18StaticEnds, Abl.R18EnsureClosed };
 var round18Modes = round18Variants.Prepend(Abl.R18).ToArray();
 int Round18()
 {
@@ -426,6 +433,115 @@ int Round19()
     return fails;
 }
 if (args.Contains("-r19")) return Round19();
+// Round 20 (template ownership of failures in inline default copies, PLAN G171; unit 2x-P11): on R19, R20Own gives a failure to a template only where
+// an Inlined scope contains all its participating scopes, decided per candidate before the first is chosen. Checks: (i) every earlier case keeps R19's
+// (Loan, access) multiset and outcome, except where R4-M69 dropped a failure R20Own gives the caller; (ii) each round-20 case meets its SPEC outcome
+// (At, UnsuppAt, OmitAt) under R20Own, with no unsound, over-strict or extra record, unless the case records a finding, which R20Own must then
+// reproduce; (iii) the simulation check (the M69 plan's M69-0 in small): each omission's template, run under the same rule, reports the omitted Loan at
+// the omitted access, both relative to its boundary. -r20 prints only this (-v adds every fact); its exit code counts the failures.
+var round20Variants = new[] { Abl.R20AccessOnly, Abl.R20IssueOnly, Abl.R20NoReservation, Abl.R20AfterSelect, Abl.R20SameSpan, Abl.R20Entry };
+var round20Modes = round20Variants.Prepend(Abl.R20Own).ToArray();
+int Round20()
+{
+    static string Part(string what, IEnumerable<string> at) => at.Any() ? what + " at `" + string.Join("`, `", at) + "`" : null;
+    string O(Analysis a) => a.Errors.Count == 0 && a.Unsupported.Count == 0 && a.DefaultProblems.Count == 0 ? "valid"
+        : string.Join("; ", new[] { Part("error", a.ErrorNodes()), Part("Borrow", a.DefaultNodes("Borrow")), Part("Access", a.DefaultNodes("Access")), Part("U", a.UnsupportedNodes()) }.Where(x => x != null));
+    string O20(Analysis a) => !a.OmittedNodes().Any() ? O(a) : (O(a) == "valid" ? "" : O(a) + "; ") + Part("omitted", a.OmittedNodes());
+    string Expected(Case c) => c.At.Length + c.UnsuppAt.Length + c.OmitAt.Length == 0 ? "valid"
+        : string.Join("; ", new[] { Part("error", c.At), Part("U", c.UnsuppAt), Part("omitted", c.OmitAt) }.Where(x => x != null));
+    // A label or Loan id relative to a copy prefix (a template's own, R20.Ctx); γ and Δ ids carry theirs after the sign.
+    static string Rel(string x, string pre) => x.Length > 0 && x[0] is 'γ' or 'Δ' ? x[0] + Rel(x[1..], pre) : pre.Length > 0 && x.StartsWith(pre) ? x[pre.Length..].TrimStart() : x;
+    // The subject a record takes (R4-M71's key): a copy's node lies at its template's location, so every copy prefix is stripped.
+    static string Subject(string label) { while (label.StartsWith('[')) label = label[(label.IndexOf(']') + 1)..]; return label.TrimStart(); }
+    // The simulation check: each omission's boundary B names its template (Case.Scopes), which, run under the same mode, reports the omitted Loan at the
+    // omitted access, both relative to B, as a Language problem or (a held view) a located U for that Loan. A hidden candidate has no boundary.
+    List<string> Unsimulated(Case c, Analysis a, Abl m)
+    {
+        var bad = new List<string>();
+        foreach (var (l, p, _, b) in a.Omissions())
+        {
+            var at = a.LabelAt(p);
+            if (b <= 0 || b >= c.Scopes.Count) { bad.Add($"{l} at `{at}` (no template: {(b <= 0 ? "the caller's" : "unmodelled")})"); continue; }
+            var (pre, id) = (c.Scopes[b].Prefix, c.Scopes[b].Template);
+            var t = Design(R20.Template(id), m);
+            if (!t.Errors.Concat(t.Reclassified).Any(e => e.L == Rel(l, pre) && t.LabelAt(e.P) == Rel(at, pre)))
+                bad.Add($"{l} at `{at}` (dt20-{id} reports no {Rel(l, pre)} at `{Rel(at, pre)}`)");
+        }
+        return bad;
+    }
+    // Against SPEC: an omission its template does not report, or a missing record, is unsound; a Language record at an omitted access is an extra
+    // record (DIAGNOSTICS' Defaults paragraph: the calls that omit an invalid default add no other record); any other one is over-strict.
+    string W(Case c, Analysis a, Abl m)
+    {
+        var found = a.ErrorNodes().Concat(a.UnsupportedNodes()).ToHashSet();
+        var lang = a.ErrorNodes().Where(x => !c.At.Contains(x)).ToList();
+        bool unsound = Unsimulated(c, a, m).Count > 0 || c.At.Concat(c.UnsuppAt).Any(x => !found.Contains(x));
+        return O20(a) + (unsound ? " **UNSOUND**" : "") + (lang.Any(c.OmitAt.Contains) ? " (extra record)" : "") + (lang.Any(x => !c.OmitAt.Contains(x)) ? " (over-strict)" : "");
+    }
+    bool Meets(Case c, Analysis a) => a.ErrorNodes().ToHashSet().SetEquals(c.At) && a.UnsupportedNodes().ToHashSet().SetEquals(c.UnsuppAt)
+        && a.OmittedNodes().ToHashSet().SetEquals(c.OmitAt) && a.DefaultNodes("Borrow").ToHashSet().SetEquals(c.BorrowAt) && a.DefaultNodes("Access").ToHashSet().SetEquals(c.AccessAt);
+    IEnumerable<(string, int, string)> Found(Analysis a) => a.Errors.Concat(a.Reclassified);
+    bool SameMultiset(IEnumerable<(string, int, string)> x, IEnumerable<(string, int, string)> y)
+        => x.GroupBy(t => t).ToDictionary(g => g.Key, g => g.Count()) is var dx && y.GroupBy(t => t).ToDictionary(g => g.Key, g => g.Count()) is var dy
+            && dx.Count == dy.Count && dx.All(kv => dy.TryGetValue(kv.Key, out var n) && n == kv.Value);
+    int fails = 0;
+    // (i) The earlier cases under R20Own and each variant against R19 (R4-M69): a difference must be an R19 drop the mode reports as the caller's.
+    var earlier = Cases.All().Concat(R16.All()).Concat(R16X.All()).Concat(R18.All()).Concat(R19.All()).ToList();
+    var dropping = earlier.Where(c => Design(c, Abl.R19).Dropped.Count > 0).Select(c => c.Id).ToList();
+    Console.WriteLine($"\nRound 20, template ownership in inline default copies (PLAN G171; {R20.All().Count(c => c.Id.StartsWith("dt20"))} template bodies, {R20.All().Count(c => c.Id.StartsWith("dc20"))} callers):");
+    Console.WriteLine($"Earlier cases ({earlier.Count}) where R19 (R4-M69) drops a Loan problem: {(dropping.Count == 0 ? "none" : string.Join(", ", dropping))}");
+    foreach (var m in round20Modes)
+    {
+        var changed = new List<string>();
+        foreach (var c in earlier)
+        {
+            var a = Design(c, Abl.R19); var b = Design(c, m);
+            if (SameMultiset(Found(a), Found(b)) && O(a) == O(b)) continue;
+            var added = Found(b).Except(Found(a)).ToList();
+            bool reason = !Found(a).Except(Found(b)).Any() && added.All(e => a.Dropped.Any(d => d.L == e.Item1 && d.P == e.Item2));
+            if (m == Abl.R20Own && !reason) fails++;
+            changed.Add($"{c.Id}: R19 {O(a)}; {m} {O(b)}" + (reason ? " (R4-M69 dropped a failure the mode gives the caller)" : " **unexplained**"));
+        }
+        Console.WriteLine($"(i) {m}: earlier cases whose (Loan, access) multiset or outcome differs from R19's: {(changed.Count == 0 ? "none" : string.Join("; ", changed))}");
+    }
+    // (ii) The round's cases.
+    var cases = R20.All().ToList();
+    Console.WriteLine("\n| Case | Program | SPEC | SPEC outcome (one record per failure) | R20Own | today (R19, R4-M69) | " + string.Join(" | ", round20Variants) + " | meets |\n|"
+        + string.Concat(Enumerable.Repeat(" --- |", round20Variants.Length + 7)));
+    int own = 0;
+    foreach (var c in cases)
+    {
+        var d = Design(c, Abl.R20Own); var w = W(c, d, Abl.R20Own);
+        bool clean = !w.Contains("UNSOUND") && !w.Contains("over-strict") && !w.Contains("extra record");
+        bool ok = c.Finding != null ? w.Contains("UNSOUND") : Meets(c, d) && clean;
+        own += ok ? 0 : 1;
+        var spec = (c.Err ? "error" : "valid") + (c.Backstop != null ? $" ({c.Backstop})" : "") + (c.DupOf != null ? $" ({c.DupOf}'s error is its own)" : "");
+        Console.WriteLine($"| {c.Id} | {c.Title} | {spec} | {Expected(c)} | {w}{(c.Finding != null ? $" (finding: {c.Finding})" : "")} | {W(c, Design(c, Abl.R19), Abl.R19)} | "
+            + $"{string.Join(" | ", round20Variants.Select(v => W(c, Design(c, v), v)))} | {(ok ? "yes" : "**NO**")} |");
+    }
+    fails += own;
+    Console.WriteLine($"(ii) failures: {own}");
+    // (iii) The simulation check under R20Own; a case's own finding lists its unsimulated omissions.
+    var sims = cases.SelectMany(c => Unsimulated(c, Design(c, Abl.R20Own), Abl.R20Own).Select(x => (c, x))).ToList();
+    var omissions = cases.SelectMany(c => Design(c, Abl.R20Own) is var a ? a.Omissions().Select(e => $"{c.Id}: {e.L} at `{a.LabelAt(e.P)}` → dt20-{c.Scopes[e.B].Template}") : []).ToList();
+    fails += sims.Count(s => s.c.Finding == null);
+    Console.WriteLine($"(iii) simulation check: R20Own omits {omissions.Count} failures as their templates' ({string.Join("; ", omissions)}); unsimulated: "
+        + (sims.Count == 0 ? "none" : string.Join("; ", sims.Select(s => $"{s.c.Id}: {s.x}" + (s.c.Finding != null ? " (finding)" : " **FAILURE**")))));
+    // Records (R4-M71's key (code, subject, body)): failures of one body whose accesses share a subject through copies of one template.
+    var shared = cases.Select(c => (c, a: Design(c, Abl.R20Own))).SelectMany(x => Found(x.a).Distinct().GroupBy(e => Subject(x.a.LabelAt(e.Item2)))
+        .Where(g => g.Select(e => x.a.LabelAt(e.Item2)).Distinct().Count() > 1).Select(g => $"{x.c.Id}: {g.Count()} failures ({string.Join(", ", g.Select(e => $"{e.Item1} at `{x.a.LabelAt(e.Item2)}`"))}) share the subject `{g.Key}`")).ToList();
+    Console.WriteLine($"Records sharing a subject under R20Own (one record by R4-M71's key, the first's facts kept): {(shared.Count == 0 ? "none" : string.Join("; ", shared))}");
+    foreach (var v in round20Variants.Prepend(Abl.R19))
+        Console.WriteLine($"{v}: " + string.Join("; ", cases.Where(c => W(c, Design(c, v), v) != W(c, Design(c, Abl.R20Own), Abl.R20Own)).Select(c => $"{c.Id}: {W(c, Design(c, v), v)}").DefaultIfEmpty("no change")));
+    if (verbose)
+        foreach (var c in cases)
+            foreach (var x in round20Modes.Prepend(Abl.R19))
+                Console.WriteLine($"{c.Id,-18} {x,-16}: " + string.Join("; ", Design(c, x) is var a ? a.Errors.Select(e => $"{e.L} at `{a.LabelAt(e.P)}` vs {e.What}")
+                    .Concat(a.Unsupported.Select(e => $"U {e.L} at `{a.LabelAt(e.P)}` vs {e.What}")).Concat(a.Omissions().Select(e => $"omitted {e.L} at `{a.LabelAt(e.P)}` (boundary {e.B})")) : []));
+    Console.WriteLine($"\nRound 20 failures: {fails}");
+    return fails;
+}
+if (args.Contains("-r20")) return Round20();
 var table3 = new StringBuilder("| Case | SPEC | S1′ | design A | Class |\n| --- | --- | --- | --- | --- |\n");
 string V(Analysis a) => a.Errors.Count == 0 ? "valid" : "error at `" + string.Join("`, `", a.ErrorNodes()) + "`";
 void VerboseA(Case c, Analysis am) // design A and its first-Deref base (AF), every error fact; round 11: SA = SecureAcquire's encoding;
@@ -604,7 +720,7 @@ foreach (var (ab, fd) in new[] { (Abl.None, false), (Abl.FirstDerefBase, false),
         .GroupBy(c => Cls(c, new Analysis(c, Mode.A, ab, fd)) is var s && s.StartsWith("(a)") ? "listed loss" : s).OrderBy(g => g.Key)
         .Select(g => $"{g.Count()} {g.Key}" + (g.Key != "same" ? " (" + string.Join(", ", g.Select(c => c.Id)) + ")" : ""))));
 Console.WriteLine();
-foreach (var ab in Enum.GetValues<Abl>().Skip(1).Where(x => x is not (Abl.AIssueNotEnded or Abl.IdExclusion or Abl.AText or Abl.LastDerefBase or Abl.FirstDerefBase) && !phantomVariants.Contains(x) && !round10Variants.Contains(x) && !reviewMutations.Contains(x) && !round11Variants.Contains(x) && !round12Variants.Contains(x) && !round13Variants.Contains(x) && !round14Variants.Contains(x) && !round15Variants.Contains(x) && !round16Variants.Contains(x) && !round17Variants.Contains(x) && !round18Modes.Contains(x) && !round19Modes.Contains(x)))
+foreach (var ab in Enum.GetValues<Abl>().Skip(1).Where(x => x is not (Abl.AIssueNotEnded or Abl.IdExclusion or Abl.AText or Abl.LastDerefBase or Abl.FirstDerefBase) && !phantomVariants.Contains(x) && !round10Variants.Contains(x) && !reviewMutations.Contains(x) && !round11Variants.Contains(x) && !round12Variants.Contains(x) && !round13Variants.Contains(x) && !round14Variants.Contains(x) && !round15Variants.Contains(x) && !round16Variants.Contains(x) && !round17Variants.Contains(x) && !round18Modes.Contains(x) && !round19Modes.Contains(x) && !round20Modes.Contains(x)))
 {
     string At(Analysis a) => "`" + string.Join("`, `", a.ErrorNodes()) + "`";
     var changed = Cases.All().Where(c => !Cases.NoS1P(c)).Select(c => (c, a: new Analysis(c, Mode.S1P, ab), b: new Analysis(c, Mode.S1P)))
@@ -714,6 +830,7 @@ enum Abl { None, KillKeepOnly, NoMaterialize, SyntacticAccess, NoAuthority, NoCl
     R18EnsureExact,   // P42's exact rule: a live Loan proves its own key initialized (Case.StaticKey), so its initializer does not run
     R18EnsureByField, // P5 read as a proof: any live Loan on the ensured Field proves it initialized
     R18EnsureIgnored, // no proof: an ensure always takes its initializer's keys
+    R18EnsureClosed,  // design A (2b-D): a closed Field's live Loan proves it initialized (one key); a generic Field's is R18's located U
     R18StaticEnds,    // G136 the other way: a static's whole write ends its Loans as a Move Path's does (E8's PrefixKill)
     // Round 19 (ER-defaults, A5-F9): on R18, E15, R26-borrow, R26-access, P9's rows with the raw-pointer row, and R-a without R4-M70's taint (R19); each
     // variant replaces or removes one of them:
@@ -727,7 +844,19 @@ enum Abl { None, KillKeepOnly, NoMaterialize, SyntacticAccess, NoAuthority, NoCl
     R19SharedStep,    // today's step class: a PreparedInput's Deref is a shared Deref (Case.PreparedShared), so no Loan forms past it
     R19ReturnOnly,    // R26-borrow seeded by σ(_0) alone, without σ(E)
     R19AccessAll,     // R26-access also on an exclusive Loan R26-borrow reported (two codes for one failure)
-    R19RawAccess }    // R26-access also on a write through a raw pointer read from a slot
+    R19RawAccess,     // R26-access also on a write through a raw pointer read from a slot
+    // Round 20 (PLAN G171, unit 2x-P11): on R19, whether a failed comparison inside an inline default copy is its template's. R20Own is the candidate
+    // rule (the M69 plan's option 3); each variant reads other scopes or decides at another time:
+    R20Own,           // participating scopes: the access's, the conflicting Loan's issuing and an activation's (or a destroying call's destroy's) reservation's
+                      // issuing scope; err(ended): the EndBorrow's and the guard local's; R3: the Drop's. The deepest Inlined scope containing them is the
+                      // template boundary (the template's failure, omitted); none: the current body's. Decided per candidate, before the first is chosen
+    R20AccessOnly,    // the access scope alone (R4-M69's test, per candidate)
+    R20IssueOnly,     // the conflicting Loan's issuing scope alone
+    R20NoReservation, // R20Own without an activation's reservation scope
+    R20AfterSelect,   // R20Own decided after first-candidate selection (the recorder exception): a covered first candidate (Case.LoanOrder) hides the record
+    R20SameSpan,      // R20Own with the copies of one template at one nesting taken as one scope (equal source spans)
+    R20Entry }        // round 20's repair candidate: a Loan carried into the boundary's entry from outside it is an earlier evaluation's, so the boundary
+                      // moves out past it
 
 record StoreRow(string Arg, string Src, bool Content, int Depth, int Hidden, bool Raw); // round 15 (G148)
 enum K { Read, Write, Move, SBorrow, UBorrow, Destroy }
@@ -849,6 +978,8 @@ class Node
     public Node UnknownRow(string from, string to) { UnknownFlows.Add((from, to)); return Use(from); }
     public Node RawRow(params string[] srcs) { RawRows.AddRange(srcs); return Use(srcs); }
     public Node TemplateTaint(string slot) { TemplateTaints.Add(slot); return this; }
+    // Round 20: the scope the node lies in (Case.Scopes; 0: the body's root scope). A round-19 node marked Inlined() lies in one implicit copy scope.
+    public int Scope;
     public Node Goto(params string[] labels) { Succ = labels.ToList(); return this; }
     public Node Assume(string label) { Assumed.Add(label); return this; }                        // assumed edge (§14.10.3)
 }
@@ -882,6 +1013,10 @@ class Case
     // for a caller whose program's one error is its template's, that template (DupOf: a record at the call is a second one).
     public readonly HashSet<string> Prepared = new(), RawAt = new(), ReservedTemps = new(); public Case PreparedShared;
     public string[] BorrowAt = [], AccessAt = []; public string Backstop, Known, DupOf;
+    // Round 20: the scope tree (MirBody.Scopes: each scope's Outer, Outer < index; every scope but the root an Inlined copy scope), each copy's label
+    // and Loan-id prefix and its template's id (R20.Template); the compiler's candidate order where it is not the issue order; R20Own's expected
+    // omissions (template-owned failures); a finding the case records (R20Own's result there is listed, not a failure).
+    public readonly List<(int Outer, string Prefix, string Template)> Scopes = new(); public string[] LoanOrder, OmitAt = []; public string Finding;
     public Case(string id, string title) { Id = id; Title = title; }
     public Node N(string label) { var n = new Node(label, Nodes.Count); Nodes.Add(n); return n; }
     public Case Error(params string[] at) { Err = true; At = at; return this; }
@@ -903,6 +1038,8 @@ class Analysis
     public readonly List<(string L, int P, string What)> Reclassified = new(); // round 17: each Unsupported_Kd's conflict, by its access
     public readonly List<(string Code, string L, int P, string Param)> DefaultProblems = new(); // round 19: DefaultArgument{Borrow,Access}_Kd, related parameter
     public readonly List<(string L, int P, string What)> Dropped = new(); // round 19: Loan problems a drop rule removes (R4-M69's Inlined scope, R19InlinedDrop)
+    public readonly List<(string L, int P, string What, int B)> Omitted = new(); // round 20: failures a mode gives a template (its boundary scope B; 0: none, hidden)
+    readonly Dictionary<string, int> issueSeq = new(); // round 20: each Loan's issue order (the candidate order unless Case.LoanOrder gives one)
     public readonly Case Enc; // round 12: the MIR form analysed (the case itself, or one of its other forms)
 
     public Analysis(Case c, Mode m, Abl x = Abl.None, bool firstDeref = false, bool prefixKill = false)
@@ -922,6 +1059,7 @@ class Analysis
             {
                 var s = x == Abl.NoReservation || s0.Pair && PairLive ? s0 with { Reserve = false } : s0; // PairLive: a live Uniq Loan
                 issue[s.Id] = s; issueAt[s.Id] = n.Ix; places[s.Id] = new(); if (s.Param || m != Mode.PROV) places[s.Id].Add(s.Place);
+                issueSeq.TryAdd(s.Id, issueSeq.Count);
             }
             if (x != Abl.NoReservation) foreach (var a in n.Activates) activeAt[a] = n.Ix;
         }
@@ -983,10 +1121,12 @@ class Analysis
     bool Defaults => (Tainting || X is Abl.R17Hold or Abl.R17PerPart || Effects) && (!R19Mode || X is Abl.R19Taint or Abl.R19InlinedDrop);
     // Round 18: the effect rules, on R17Hold (rule G, the body hold, the default taint). Round 19 runs on them.
     bool Effects => X is Abl.R18 or Abl.R18NoW6 or Abl.R18LiveOnly or Abl.R18NoR3 or Abl.R18Merged or Abl.R18EnsureExact or Abl.R18EnsureByField
-        or Abl.R18EnsureIgnored or Abl.R18StaticEnds || R19Mode;
+        or Abl.R18EnsureIgnored or Abl.R18StaticEnds or Abl.R18EnsureClosed || R19Mode;
     // Round 19 (A5-F9): the defaults rules; R-a's ending, the template call's rows and the raw-pointer row by variant.
     bool R19Mode => X is Abl.R19 or Abl.R19Taint or Abl.R19InlinedDrop or Abl.R19NoEnding or Abl.R19SlotsOnly or Abl.R19ValueRows or Abl.R19NoRawRow
-        or Abl.R19SharedStep or Abl.R19ReturnOnly or Abl.R19AccessAll or Abl.R19RawAccess;
+        or Abl.R19SharedStep or Abl.R19ReturnOnly or Abl.R19AccessAll or Abl.R19RawAccess || R20Mode;
+    // Round 20: template ownership by participating scopes, on R19 (R-a, no default taint).
+    bool R20Mode => X is Abl.R20Own or Abl.R20AccessOnly or Abl.R20IssueOnly or Abl.R20NoReservation or Abl.R20AfterSelect or Abl.R20SameSpan or Abl.R20Entry;
     bool UnknownRows => !R19Mode || X == Abl.R19ValueRows;
     bool RawRowOn => R19Mode && X != Abl.R19NoRawRow;
     bool Inspected(Node n, string l) => R19Mode && X is not (Abl.R19Taint or Abl.R19InlinedDrop or Abl.R19NoEnding) && n.Ends.Contains(l)
@@ -1559,7 +1699,9 @@ class Analysis
                     // Round 16 (the owner's route taint): γ only tainted sets hold is the located Unsupported_Kd, as a Loan's conflict is.
                     var (cleanH, taintOf) = GammaTaint ? Taints(F0, entries0, X == Abl.R16Route) : (null, null);
                     var holding = F0.Where(t => t.L == "γ" + h0).Select(t => t.H).ToList();
-                    if (cleanH == null || holding.Any(cleanH.Contains)) { if (held) Unsupp("γ" + h0, i, "ended " + h0, i); else Err("γ" + h0, i, "ended " + h0); }
+                    // Round 20: err(ended)'s participating scopes are the EndBorrow's and the guard local's.
+                    if (R20Mode && Boundary(ScopeOf(i), GuardScope(h0), -1, ["γ" + h0]) is var gb && gb > 0) Omitted.Add(("γ" + h0, i, "ended " + h0, gb));
+                    else if (cleanH == null || holding.Any(cleanH.Contains)) { if (held) Unsupp("γ" + h0, i, "ended " + h0, i); else Err("γ" + h0, i, "ended " + h0); }
                     else Unsupp("γ" + h0, Located(holding, taintOf, i), "ended " + h0, i);
                 }
             }
@@ -1652,7 +1794,7 @@ class Analysis
                     if (X != Abl.NoRouteReach && shallowExclusive && (InWindow(h, l, i) || X == Abl.RouteAllParents && PendingHolder(h, i))) reach = true;
                     if (Path.Within(a.Place, p) || (Path.Within(p, a.Place) && (reach || !Path.DerefBelow(p, a.Place)))) hits.Add((h, l));
                 }
-                Report(i, F, entries, hits, $"{a.Kind} {a.Place}"); // rounds 16-17: the taint and the hold (Report)
+                Report(i, F, entries, hits, $"{a.Kind} {a.Place}", a.Except); // rounds 16-17: the taint and the hold (Report); round 20: the reservation
             }
             // Round 18 (ER-effects, A5-F5): err(effect) at a Call, a Drop or a staticEnsure with A4's keys and classes, and a destruction's
             // own exclusive Loan (R3). No earlier case carries an effect fact.
@@ -1675,7 +1817,7 @@ class Analysis
                 // the Loan's key is not known to be the ensured one, so a conflict that proof would decide is the located Unsupported_Kd.
                 bool proof = n.Ensure != null && X != Abl.R18EnsureIgnored
                     && F.Any(t => Static(t.L) == n.Ensure && (X != Abl.R18EnsureExact || Enc.StaticKey.GetValueOrDefault(t.L, "") == n.EnsureKey));
-                if (!(proof && X is Abl.R18EnsureExact or Abl.R18EnsureByField))
+                if (!(proof && (X is Abl.R18EnsureExact or Abl.R18EnsureByField || X == Abl.R18EnsureClosed && string.IsNullOrEmpty(n.EnsureKey))))
                 {
                     var hits = new List<(string H, string L)>();
                     foreach (var (h, l) in F)
@@ -1693,7 +1835,12 @@ class Analysis
                 // destruction's own key on that Field meets, and an Unknown effect where the Field is mutable.
                 if (X != Abl.R18NoR3)
                     foreach (var f in n.Accs.Where(a => a.Kind == K.Destroy).Select(a => Root(a.Place)).Where(Enc.Statics.ContainsKey).Distinct())
-                        if (n.Keys.Any(k => k.F == f) || unknown && Enc.Statics[f]) { if (held) Unsupp("Δ" + f, i, "destruction", i); else Err("Δ" + f, i, "destruction"); }
+                        if (n.Keys.Any(k => k.F == f) || unknown && Enc.Statics[f])
+                        {
+                            // Round 20: R3's Loan, if 2b-D issues it at the Drop, has the Drop's scope (the M69 plan §4's open row).
+                            if (R20Mode && Boundary(ScopeOf(i), ScopeOf(i), -1, []) is var rb && rb > 0) Omitted.Add(("Δ" + f, i, "destruction", rb));
+                            else if (held) Unsupp("Δ" + f, i, "destruction", i); else Err("Δ" + f, i, "destruction");
+                        }
                         else if (limit && Enc.Statics[f]) Unsupp("Δ" + f, i, "destruction (Limit)", i);
             }
         }
@@ -1703,15 +1850,65 @@ class Analysis
     // tainted holders hold is the located Unsupported_Kd. Without a taint mode every holder is clean. Round 17: in a held body every Loan
     // problem is the located Unsupported_Kd at its access; one the default taint already makes Unsupported_Kd keeps the omitting call (one
     // record per problem). Round 18: err(effect) reports here too (R4-M73).
-    void Report(int i, HashSet<Fact> F, HashSet<string> entries, List<(string H, string L)> hits, string what)
+    void Report(int i, HashSet<Fact> F, HashSet<string> entries, List<(string H, string L)> hits, string what, string except = null)
     {
         var (clean, taint) = Defaults ? Taints(F, entries, RouteTaint) : (null, null);
+        // Round 20 (R20AfterSelect, the recorder exception): the access's first candidate is chosen first, and a covered one hides its record.
+        bool hidden = X == Abl.R20AfterSelect && hits.Count > 0 && Boundary(i, hits.Select(x => x.L).MinBy(Rank), except) > 0;
         foreach (var g in hits.GroupBy(x => x.L))
-            if (ns[i].InScope) Dropped.Add((g.Key, i, what)); // round 19 (R4-M69): a Loan problem inside a copy's Inlined scope is its template's
+            if (R20Mode && (Boundary(i, g.Key, except) > 0 || hidden)) Omitted.Add((g.Key, i, what, Boundary(i, g.Key, except))); // round 20: its template's
+            else if (!R20Mode && ns[i].InScope) Dropped.Add((g.Key, i, what)); // round 19 (R4-M69): a Loan problem inside a copy's Inlined scope is its template's
             else if (clean == null || g.Any(x => clean.Contains(x.H))) { if (held) Unsupp(g.Key, i, what, i); else Err(g.Key, i, what); }
             else if (X == Abl.R19InlinedDrop) Dropped.Add((g.Key, i, what)); // round 19: the audit's option (a), the marker as a drop
             else Unsupp(g.Key, Located(g.Select(x => x.H), taint, i), what, i);
     }
+
+    // Round 20 (PLAN G171; the M69 plan §4-§5): the scope tree as MirBody has it (MirValidator: Outer < index, so Common is a linear walk). A round-19
+    // node marked Inlined() lies in one implicit copy scope 1; every other scope but the root is a copy's Inlined scope, so Inlining(s) is s itself.
+    int ScopeOf(int i) => ns[i].Scope > 0 ? ns[i].Scope : ns[i].InScope ? 1 : 0;
+    int Outer(int s) => s < Enc.Scopes.Count ? Enc.Scopes[s].Outer : 0;
+    // R20SameSpan: the first copy of the same template at the same nesting stands for every such copy.
+    int Canon(int s) => s == 0 || s >= Enc.Scopes.Count ? s
+        : Enumerable.Range(1, s).First(t => Enc.Scopes[t].Template == Enc.Scopes[s].Template && Canon(Outer(t)) == Canon(Outer(s)));
+    int Up(int s) => X == Abl.R20SameSpan ? Canon(Outer(s)) : Outer(s);
+    int Common(int a, int b) { if (X == Abl.R20SameSpan) { a = Canon(a); b = Canon(b); } while (a != b) { if (a > b) a = Up(a); else b = Up(b); } return a; }
+    bool Within(int s, int b) { while (s > b) s = Outer(s); return s == b; }
+    int IssueScope(string l) => issueAt.TryGetValue(l, out var at) ? ScopeOf(at) : 0; // an entry Loan: the root
+    int GuardScope(string h) => ScopeOf(ns.First(n => n.Defs.Contains(h) || n.Issues.Any(s => s.Into == h)).Ix); // the guard local's declaration
+    // The candidate order (MirBorrows.Conflict scans its candidates in order and returns the first): the case's, else the issue order.
+    int Rank(string l) { int k = Enc.LoanOrder == null ? -1 : Array.IndexOf(Enc.LoanOrder, l); return k >= 0 ? k : 1000 + issueSeq.GetValueOrDefault(l); }
+    int Boundary(int i, string l, string except) => except == null ? Boundary(ScopeOf(i), IssueScope(l), -1, [l]) : Boundary(ScopeOf(i), IssueScope(l), IssueScope(except), [l, except]);
+    // The template boundary of a failure: the deepest Inlined scope containing the participating scopes the mode reads; 0: none (the current body's).
+    // R20Entry moves it out while a participating Loan reaches its entry from outside it (an earlier evaluation's).
+    int Boundary(int access, int issued, int reservation, string[] loans)
+    {
+        int b = X switch
+        {
+            Abl.R20AccessOnly => access,
+            Abl.R20IssueOnly => issued,
+            Abl.R20NoReservation => Common(access, issued),
+            _ => reservation < 0 ? Common(access, issued) : Common(Common(access, issued), reservation),
+        };
+        if (X == Abl.R20Entry) while (b > 0 && EntryLoans(b) is var e && loans.Any(e.Contains)) b = Outer(b);
+        return b;
+    }
+    // The Loans that reach the first node of scope b's subtree from a node outside it in a value live there: a holder live into it or E, closed as the
+    // check sets close (a direct Loan naming T makes σ(T) live). A dead holder's set carried around a loop is no earlier evaluation's value.
+    HashSet<string> EntryLoans(int b)
+    {
+        int entry = Enumerable.Range(0, N).First(i => Within(ScopeOf(i), b));
+        var o = Enumerable.Range(0, N).Where(p => succ[p].Contains(entry) && !Within(ScopeOf(p), b)).SelectMany(p => TransferA(p)).ToHashSet();
+        var live = o.Where(t => t.H is "E" or "$ret" || liveIn[entry].Contains(t.H)).ToHashSet();
+        for (var work = new Queue<Fact>(live); work.Count > 0;)
+        {
+            var l0 = work.Dequeue().L; var T = issue[l0].Param ? "E" : Direct(l0) ? Root(issue[l0].Place) : null;
+            if (T != null) foreach (var t in o.Where(t => t.H == T)) if (live.Add(t)) work.Enqueue(t);
+        }
+        return live.Select(t => t.L).ToHashSet();
+    }
+    // Every omission with its boundary scope, whose template the simulation check runs (R4-M69's drop names the access's own copy).
+    public IEnumerable<(string L, int P, string What, int B)> Omissions() => R20Mode ? Omitted : Dropped.Select(d => (d.L, d.P, d.What, ScopeOf(d.P)));
+    public IEnumerable<string> OmittedNodes() => Omissions().Select(e => ns[e.P].Label).Distinct();
 
     // Round 19 (ER-defaults, A5-F9; 2e-2): a default template's own rules at its prepared slots (Case.Prepared). R26-borrow: at each Return, a Loan
     // rooted at a PreparedInput in closure(σ_in(_0) ∪ σ_in(E)) is DefaultArgumentBorrow_Kd at its site (R19ReturnOnly: seeded by σ_in(_0) alone).
@@ -1756,7 +1953,7 @@ class Analysis
 
     void Err(string l, int i, string what)
     {
-        if (ns[i].InScope) { if (!Dropped.Contains((l, i, what))) Dropped.Add((l, i, what)); return; } // round 19 (R4-M69): a copy's problem is its template's
+        if (!R20Mode && ns[i].InScope) { if (!Dropped.Contains((l, i, what))) Dropped.Add((l, i, what)); return; } // round 19 (R4-M69): a copy's problem is its template's
         if (!Errors.Contains((l, i, what))) Errors.Add((l, i, what));
     }
     void Unsupp(string l, int i, string what, int access) { if (!Unsupported.Contains((l, i, what))) Unsupported.Add((l, i, what)); if (!Reclassified.Contains((l, access, what))) Reclassified.Add((l, access, what)); }
@@ -6218,7 +6415,7 @@ static class R18
     public static IEnumerable<Case> All() => [Compound("e1"), Compound("e2"), Compound("e3"), LiveUniq(), Receiver("e4", read: true),
         Receiver("e5", read: false), MovedArgument(), TwoFailures(), DropHolder("e6", write: true), DropHolder("e7", write: false),
         OwnDrop("e8"), OwnDrop("e8b"), OwnDrop("e8c"), Erased("e9"), Erased("e9b"), Erased("e9s"),
-        Ensure("e10a"), Ensure("e10b"), Ensure("e10c"), Ensure("e10d"), Run("e11", both: true), Run("e11b", both: false),
+        Ensure("e10a"), Ensure("e10b"), Ensure("e10c"), Ensure("e10d"), Ensure("e10e"), EnsureJoin(), Run("e11", both: true), Run("e11b", both: false),
         Classes("e12a"), Classes("e12b"), Classes("e12c"), Classes("e13a"), Classes("e13b"), Classes("e14"),
         Generic("e15", copy: false), Generic("e15b", copy: true), Lemma("e16a"), Lemma("e16b"), Lemma("e16c"), Held()];
 
@@ -6229,16 +6426,19 @@ static class R18
         return c;
     }
 
-    // e1-e3 (SPEC 13.7.2, 15.6.4): `State.count += f()` reserves State.count in $w at locate and activates Lw at the write; the right-hand
-    // call's effects meet Lw, shared in its holder: g's unknown effects and w's write conflict with it, m's read does not.
+    // e1-e3 (SPEC 15.6.4, 15.6.7): `State.counter.add(f())` reserves its receiver State.counter in $w, located first, and activates Lw at
+    // add's call; the argument's call's effects meet Lw, shared in its holder: g's unknown effects and w's write conflict with it, m's read
+    // does not. Corrected by unit 2b-3: these cases first modelled `State.count += f()` with the writeback's reservation pending during
+    // f(), an evaluation-order error, since SPEC 13.7.2 secures the right operand before it locates and reserves the target, so that form
+    // meets nothing (valid).
     static Case Compound(string id)
     {
-        var (call, what) = id switch { "e1" => ("$v = g()", "g a common Function value: unknown effects"), "e2" => ("$v = m()", "m reads State.count"), _ => ("$v = w()", "w writes State.count") };
-        var c = S(id, $"`State.count += {call[5..]}` ({what})", Count);
-        c.N("$w = TwoPhaseUniq(State.count) (writeback)").Def("$w").Borrow("Lw", Count, Uniq, "$w", reserve: true);
+        var (call, what) = id switch { "e1" => ("$v = g()", "g a common Function value: unknown effects"), "e2" => ("$v = m()", "m reads State.counter"), _ => ("$v = w()", "w writes State.counter") };
+        var c = S(id, $"`State.counter.add({call[5..]})` ({what})", Counter);
+        c.N("$w = TwoPhaseUniq(State.counter) (receiver)").Def("$w").Borrow("Lw", Counter, Uniq, "$w", reserve: true);
         var n = c.N(call).Def("$v");
-        if (id == "e1") n.Fx(unknown: true); else n.Key(Count, write: id == "e3");
-        c.N("(*$w) = (*$w) + $v (activates Lw)").A(K.Read, "$w.*").Activate("Lw").Through("$w.*", "$v");
+        if (id == "e1") n.Fx(unknown: true); else n.Key(Counter, write: id == "e3");
+        c.N("add($w, $v) (activates Lw)").A(K.Read, "$w.*").Activate("Lw").Through("$w.*", "$v");
         return id == "e2" ? c.Valid() : c.Error(call);
     }
 
@@ -6346,14 +6546,14 @@ static class R18
     // proof decides, the ensure is a located Unsupported_Kd. e10b: no proof; e10c: nothing for the initializer to meet. P42 for lx and ll.
     static Case Ensure(string id)
     {
-        bool proof = id != "e10b", other = id != "e10c", generic = id == "e10d";
-        string f = generic ? CacheX : Xs, xi = generic ? "Cache<i32>.S.x" : "State.x", xe = generic ? "Cache<string>.S.x" : "State.x";
+        bool proof = id != "e10b", other = id != "e10c", generic = id is "e10d" or "e10e", same = id == "e10e";
+        string f = generic ? CacheX : Xs, xi = generic && !same ? "Cache<i32>.S.x" : generic ? "Cache<string>.S.x" : "State.x", xe = generic ? "Cache<string>.S.x" : "State.x";
         var c = S(id, (proof ? $"`var lx = {xi}@ref; " : "`") + (other ? "var ll = State.log@ref; " : "") + $"let v = {xe}; inspect(…)` (x's initializer writes State.log)", f, Log);
         if (proof)
         {
-            c.N($"staticEnsure({xi})").StaticEnsure(f, generic ? "i32" : "").Key(Log, write: true);
+            c.N($"staticEnsure({xi})").StaticEnsure(f, generic ? (same ? "string" : "i32") : "").Key(Log, write: true);
             c.N($"var lx = {xi}@ref").Def("lx").Borrow("Lx", f, Ref, "lx");
-            if (generic) c.StaticKey["Lx"] = "i32";
+            if (generic) c.StaticKey["Lx"] = same ? "string" : "i32";
         }
         if (other) c.N("var ll = State.log@ref").Def("ll").Borrow("Ll", Log, Ref, "ll");
         var ensure = $"staticEnsure({xe}) for `let v`";
@@ -6362,6 +6562,25 @@ static class R18
         c.N("inspect(lx), inspect(ll)").Use(new[] { proof ? "lx" : null, other ? "ll" : null }.Where(x => x != null).ToArray());
         if (proof && other) c.UnsuppAt = [ensure];
         return id == "e10b" ? c.Error(ensure) : id == "e10d" ? c.Error() : c.Valid();
+    }
+
+    // Reviewer's join case (2b-D package check): lx carries x's Loan on one path only; on the else path State.x is never accessed, so
+    // the ensure's initializer may run there and write State.log while ll lives (a may-live Loan proves nothing on a path it is absent from).
+    static Case EnsureJoin()
+    {
+        var c = S("e10f", "`var o = 1; var lx = o@ref; if k => (lx = State.x@ref); var ll = State.log@ref; let v = State.x; inspect(…)` (x's initializer writes State.log)", Xs, Log);
+        c.N("var o = 1").Def("o");
+        c.N("var lx = o@ref").Def("lx").Borrow("Lo", "o", Ref, "lx");
+        c.N("if k").Goto("staticEnsure(State.x) for `lx =`", "var ll = State.log@ref");
+        c.N("staticEnsure(State.x) for `lx =`").StaticEnsure(Xs, "").Key(Log, write: true);
+        c.N("lx = State.x@ref").Def("lx").Borrow("Lx", Xs, Ref, "lx");
+        c.N("var ll = State.log@ref").Def("ll").Borrow("Ll", Log, Ref, "ll");
+        var ensure = "staticEnsure(State.x) for `let v`";
+        c.N(ensure).StaticEnsure(Xs, "").Key(Log, write: true);
+        c.N("let v = State.x").Def("v").A(K.Read, Xs);
+        c.N("inspect(lx), inspect(ll)").Use("lx", "ll");
+        c.UnsuppAt = [ensure];
+        return c.Error();
     }
 
     // e11, e11b: SPEC 15.6.4's `run`: g's unknown effects meet c's Loan on the mutable State.count, never l's on the immutable State.limit.
@@ -7088,5 +7307,504 @@ static class R19
         c.N("inspect(q[0])").Input(K.Read, "%q.*.0");
         if (!omitted) { c.Known = "PLAN G160 (a)"; return c.Error(); }
         return c.Error("v = 5");
+    }
+}
+
+// ---- Round 20 (template ownership of failures in inline default copies, PLAN G171; unit 2x-P11). A default's body is one Tpl, built once as its template
+// case ("dt20-": the root scope, its value into _0, the slots it reads as PreparedInputs) and once per omitting call as a copy in a caller ("dc20-"): a new
+// Inlined scope (Case.Scopes) whose labels, locals and Loan ids carry the copy's prefix ("[fn/param]", nested copies' prefixes concatenated, a tag for
+// copies of one template), its value into the pending slot, with the prologue's shared borrows of the slots it reads and R-a's ending around it. So a
+// copy's nodes and Loans are its template's under the prefix, which the simulation check strips. Statics: State.counter, other and holder, all mutable; a
+// group's unqualified borrow of its own storage is what Binding admits (PLAN G171's witness); (H) marks a form whose Binding acceptance is unverified.
+// Err is SPEC's verdict on the body's own code. At, UnsuppAt and OmitAt are its SPEC outcome with one record per failure: the body's own failures (a held
+// view's as located U), and the failures its copies' templates own, which it omits.
+static class R20
+{
+    const bool Uniq = true, Ref = false;
+    const string Counter = "#State:counter", Other = "#State:other", Holder = "#State:holder";
+    static readonly Dictionary<string, Tpl> templates = new();
+    static readonly Dictionary<string, Case> built = new();
+
+    sealed record Tpl(string Id, string Fn, string Param, string Title, Action<Ctx> Body, Func<Case, Case> Expect, string[] Slots, string[] Prepared);
+
+    // One evaluation of a default (or the caller's own code at the root): its scope, its prefix, where its value goes, how it reads a slot, and (the model
+    // form of dt20-act) a reservation the caller formed that a copy's call activates.
+    sealed class Ctx(Case c, int scope, string prefix, string dest, Func<string, string> slot, (string H, string L)? res = null)
+    {
+        public readonly Case C = c; public readonly string Dest = dest; public readonly (string H, string L)? Res = res;
+        public string Lab(string label) => prefix.Length == 0 ? label : prefix + " " + label;
+        public Node N(string label) { var n = C.N(Lab(label)); n.Scope = scope; return scope > 0 ? n.Inlined() : n; }
+        public string L(string local) => prefix.Length == 0 ? local : local[0] is '#' or '%' ? local[0] + prefix + local[1..] : prefix + local;
+        public string Id(string loan) => prefix + loan;
+        public string Slot(string p) => slot(p);
+        // The node that places the evaluation's value (a template's _0; a copy's pending slot, with R4-M70's taint, unused on R19).
+        public Node Place(Node n) { n.Def(Dest); return scope > 0 ? n.DefaultTaint(Dest) : n; }
+        // An omitting call here: the prologue's shared borrows of the slots the default reads (its inspection Loans), the copy in a new Inlined scope,
+        // and R-a's ending of those Loans.
+        public void Copy(Tpl t, string into, string tag = "", (string H, string L)? reservation = null, params string[] slotLocals)
+        {
+            var pro = (t.Slots ?? []).Select((q, k) => (Q: q, Local: L("$5" + q), Loan: Id("Ls" + q), Slot: slotLocals[k])).ToList();
+            foreach (var x in pro) N($"{x.Local} = &{x.Slot} (prologue)").Def(x.Local).Borrow(x.Loan, x.Slot, Ref, x.Local);
+            var s = C.Scopes.Count; var p = prefix + "[" + t.Fn + "/" + t.Param + tag + "]";
+            C.Scopes.Add((scope, p, t.Id));
+            t.Body(new Ctx(C, s, p, into, q => pro.Single(x => x.Q == q).Local + ".*", reservation));
+            if (pro.Count > 0) N($"R-a: {t.Fn}'s inspection Loans end").EndInspections(pro.Select(x => x.Loan).ToArray());
+        }
+        // The same evaluation as an explicit argument: the body in this scope, no copy.
+        public void Here(Tpl t, string into) => t.Body(new Ctx(C, scope, prefix, into, slot));
+    }
+
+    static Tpl T(string id, string fn, string param, string title, Action<Ctx> body, Func<Case, Case> expect, string[] slots = null, string[] prepared = null)
+    { var t = new Tpl(id, fn, param, title, body, expect, slots, prepared); templates[id] = t; return t; }
+    public static Case Template(string id) => built.TryGetValue(id, out var c) ? c : built[id] = Build(templates[id]);
+    static Case Build(Tpl t)
+    {
+        var c = S("dt20-" + t.Id, $"`{t.Title}`");
+        var prepared = (t.Slots ?? []).Concat(t.Prepared ?? []).ToList();
+        if (prepared.Count > 0)
+        {
+            var n = c.N("entry (" + string.Join(", ", prepared.Select(p => $"p_{p}: ref/P")) + ")");
+            foreach (var p in prepared) { n.Param("Lp_" + p, "p_" + p); c.Prepared.Add("p_" + p); }
+        }
+        t.Body(new Ctx(c, 0, "", "_0", q => $"p_{q}.@"));
+        c.N("return _0").Return();
+        return t.Expect(c);
+    }
+    static Case S(string id, string title) { var c = new Case(id, title); c.Statics[Counter] = true; c.Statics[Other] = true; c.Statics[Holder] = true; c.Scopes.Add((-1, "", null)); return c; }
+    static Ctx Root(Case c) => new(c, 0, "", null, _ => throw new InvalidOperationException("a caller reads no slot"));
+    static Case Valid(Case c) => c.Valid();
+    static Case Omit(Case c, params string[] at) { c.OmitAt = at; return c; }
+
+    public static IEnumerable<Case> All() => templates.Keys.Select(Template).Concat(Callers());
+
+    // ---- Template bodies.
+    static string Nm(string s) => s == Counter ? "counter" : "other";
+    // poke(s@uniq): s reserved for poke's argument, and that reservation's activation at poke's call (labelled `call`).
+    static Node Poke(Ctx k, string call, string s = Counter)
+    {
+        k.N($"$p = &uniq two-phase {Nm(s)} (poke's argument)").Def(k.L("$p")).Borrow(k.Id("Lp"), s, Uniq, k.L("$p"), reserve: true);
+        return k.N(call).Input(K.Move, k.L("$p")).Activate(k.Id("Lp"));
+    }
+    static void LetR(Ctx k) => k.N("r = &counter").Def(k.L("r")).Borrow(k.Id("Lr"), Counter, Ref, k.L("r"));
+    static Node UseR(Ctx k, string label) => k.Place(k.N(label).Input(K.Read, k.L("$v")).Input(K.Read, k.L("r") + ".*"));
+    static void Retain(Ctx k, string into, string fn, string arg) => k.N($"{into} = {fn}(move {arg}) (retains its argument)").Def(k.L(into)).Input(K.Move, k.L(arg)).Flow(k.L(arg), k.L(into));
+
+    // PLAN G171: add's default borrows the group's counter exclusively for poke; the template alone meets nothing. Twins: another static; a shared borrow.
+    static readonly Tpl Add = T("add", "add", "x", "add(c: uniq/Counter, x: i32 = State.poke(counter@uniq))", k => k.Place(Poke(k, "x := poke(move $p)")), Valid);
+    static readonly Tpl AddOther = T("add-other", "add", "x", "add(c: uniq/Counter, x: i32 = State.poke(other@uniq))", k => k.Place(Poke(k, "x := poke(move $p)", Other)), Valid);
+    static readonly Tpl AddRead = T("add-read", "add", "x", "add(c: uniq/Counter, x: i32 = State.peek(counter@ref))", k =>
+    {
+        k.N("$q = &counter (peek's argument)").Def(k.L("$q")).Borrow(k.Id("Lq"), Counter, Ref, k.L("$q"));
+        k.Place(k.N("x := peek(move $q)").Input(K.Move, k.L("$q")));
+    }, Valid);
+    // The M69 plan §6's source: the default's call carries A4's key on counter (R18's err(effect)). Twins: a key on other; a read key.
+    static readonly Tpl Touch = T("touch", "add", "x", "Counter.add(self: uniq/Self, x: i32 = State.touch())` (touch writes counter.count",
+        k => k.Place(k.N("x := touch() (A4's key: counter, write)").Key(Counter, write: true)), Valid);
+    static readonly Tpl TouchOther = T("touch-other", "add", "x", "Counter.add(self: uniq/Self, x: i32 = State.touchOther())` (touchOther writes other.count",
+        k => k.Place(k.N("x := touchOther() (A4's key: other, write)").Key(Other, write: true)), Valid);
+    static readonly Tpl TouchRead = T("touch-read", "add", "x", "Counter.add(self: uniq/Self, x: i32 = State.peekCount())` (peekCount reads counter.count",
+        k => k.Place(k.N("x := peekCount() (A4's key: counter, read)").Key(Counter)), Valid);
+    // The M69 plan §4's nested relations: O an outer default whose body omits an inner one, I.
+    static readonly Tpl G = T("g", "g", "x", "g(x: i32 = State.poke(counter@uniq))", k => k.Place(Poke(k, "x := poke(move $p)")), Valid);
+    static readonly Tpl F1 = T("f1", "f", "y", "f(y: i32 = State.g())", k =>
+    {
+        k.Copy(G, k.L("$gx"));
+        k.Place(k.N("y := g(move $gx)").Input(K.Move, k.L("$gx")));
+    }, Valid);
+    static readonly Tpl F2 = T("f2", "f2", "y", "f2(y: i32 = label w: do let r = counter@ref; exit to w State.g() + r.count)", k =>
+    {
+        LetR(k);
+        k.Copy(G, k.L("$gx"));
+        k.N("$v = g(move $gx)").Def(k.L("$v")).Input(K.Move, k.L("$gx"));
+        UseR(k, "y := $v + r.count");
+    }, c => c.Error("[g/x] x := poke(move $p)"));
+    static readonly Tpl Keep = T("keep", "keep", "x", "keep(x: ref/Counter during s = counter@ref) -> ref/Counter during s => x` (H",
+        k => k.Place(k.N("x := &counter").Borrow(k.Id("Li"), Counter, Ref, k.Dest)), Valid);
+    static readonly Tpl F3 = T("f3", "f3", "y", "f3(y: i32 = label w: do let k = State.keep(); counter.count = 1; exit to w k.count)", k =>
+    {
+        k.Copy(Keep, k.L("$kx"));
+        Retain(k, "k", "keep", "$kx");
+        k.N("counter.count = 1").A(K.Write, Counter + ".count");
+        k.Place(k.N("y := k.count").Input(K.Read, k.L("k") + ".*"));
+    }, c => c.Error("counter.count = 1"));
+    static readonly Tpl HA = T("h-a", "h", "a", "h(a: ref/Counter during s = counter@ref, b: i32 = State.poke(counter@uniq))` (a's default; H",
+        k => k.Place(k.N("a := &counter").Borrow(k.Id("La"), Counter, Ref, k.Dest)), Valid);
+    static readonly Tpl HB = T("h-b", "h", "b", "h(a: ref/Counter during s = counter@ref, b: i32 = State.poke(counter@uniq))` (b's default",
+        k => k.Place(Poke(k, "b := poke(move $p)")), Valid);
+    static readonly Tpl F4 = T("f4", "f4", "y", "f4(y: i32 = State.h())", k =>
+    {
+        k.Copy(HA, k.L("$ha"));
+        k.Copy(HB, k.L("$hb"));
+        k.Place(k.N("y := h(move $ha, move $hb)").Input(K.Move, k.L("$ha")).Input(K.Move, k.L("$hb")));
+    }, c => c.Error("[h/b] b := poke(move $p)"));
+    static void RPoke(Ctx k)
+    {
+        LetR(k);
+        Poke(k, "$v = poke(move $p)").Def(k.L("$v"));
+        UseR(k, "x := $v + r.count");
+    }
+    static readonly Tpl G5 = T("g5", "g5", "x", "g5(x: i32 = label w: do let r = counter@ref; exit to w State.poke(counter@uniq) + r.count)", RPoke, c => c.Error("$v = poke(move $p)"));
+    static readonly Tpl F5 = T("f5", "f5", "y", "f5(y: i32 = State.g5())", k =>
+    {
+        k.Copy(G5, k.L("$gx"));
+        k.Place(k.N("y := g5(move $gx)").Input(K.Move, k.L("$gx")));
+    }, c => Omit(c.Valid(), "[g5/x] $v = poke(move $p)"));
+    static readonly Tpl Keep2 = T("keep2", "keep2", "x", "keep2(x: ref/Counter during s = label w: do State.poke(counter@uniq); exit to w counter@ref) -> ref/Counter during s => x` (H", k =>
+    {
+        Poke(k, "poke(move $p)");
+        k.Place(k.N("x := &counter").Borrow(k.Id("L"), Counter, Ref, k.Dest));
+    }, Valid);
+    // The candidate order and independent conflicts: a template-owned conflict at the access a caller-owned one shares, or on the Loan another access meets.
+    static readonly Tpl Add5 = T("add5", "add5", "x", "add5(c: uniq/Counter, x: i32 = label w: do let r = counter@ref; exit to w State.poke(counter@uniq) + r.count)", RPoke, c => c.Error("$v = poke(move $p)"));
+    static readonly Tpl KeepI = T("keepi", "keepi", "x", "keepi(x: ref/Counter during s = label w: do let r = counter@ref; State.poke(counter@uniq); exit to w r) -> ref/Counter during s => x` (H", k =>
+    {
+        LetR(k);
+        Poke(k, "poke(move $p)");
+        k.Place(k.N("x := r").Input(K.Read, k.L("r")).Flow(k.L("r"), k.Dest));
+    }, c => c.Error("poke(move $p)"));
+    // The M69 plan §4's external reservation (model form; no source form known): in a copy the call activates a reservation the caller formed; in the
+    // template it Moves its slot, A1's DefaultArgumentMove_Kd.
+    static readonly Tpl Act = T("act", "act", "x", "act(c: uniq/Counter, x: i32 = label w: do let r = counter@ref; exit to w consume(c) + r.count)` (model form", k =>
+    {
+        LetR(k);
+        var n = k.N("$v = consume(c) (activates c's reservation)").Def(k.L("$v"));
+        if (k.Res is { } res) n.Input(K.Move, res.H).Activate(res.L); else n.Input(K.Move, k.Slot("c"));
+        UseR(k, "x := $v + r.count");
+    }, c => { c.Backstop = "A1's DefaultArgumentMove_Kd, R4-M69"; return c.Error(); }, prepared: ["c"]);
+    // Guards (err(ended), E7): a guard inside the default whose candidate escapes into its value (model form, as case 108); a slot copy (dt-copyref).
+    static readonly Tpl Gd = T("gd", "gd", "y", "gd(y: ref/Data during s = match counter@ref { case .Data(d) if save(d) => … })` (model form: the guard stores its candidate into the value", k =>
+    {
+        k.N("$s = &counter (Subject)").Def(k.L("$s")).Borrow(k.Id("Lsub"), Counter, Ref, k.L("$s"));
+        k.N("d = $s.data (candidate)").Def(k.L("d")).Borrow(k.Id("Ld"), k.L("$s") + ".*.data", Ref, k.L("d"), sharedAt: 1);
+        k.Place(k.N("guard: y := d").Flow(k.L("d"), k.Dest));
+        k.N("guard cleanup: EndBorrow d").EndBorrow(k.L("d"));
+    }, c => c.Error("guard cleanup: EndBorrow d"));
+    static readonly Tpl Kd = T("kd", "keepd", "b", "keepd(a: ref/Data during p, b: ref/Data during p = a) -> ref/Data during p` (DefaultAccessTest :17's form",
+        k => k.Place(k.N("b := copy (*a)").Input(K.Read, k.Slot("a")).Flow(k.Slot("a"), k.Dest)), Valid, slots: ["a"]);
+    // A two-view generic callee (PD15 (ii)): G171's default in addg.
+    static readonly Tpl AddG = T("addg", "addg", "x", "addg<s/T>(a: s/T, c: uniq/Counter, x: i32 = State.poke(counter@uniq))", k => k.Place(Poke(k, "x := poke(move $p)")), Valid);
+    // A recursive default (a template call, no copy): its inner call reserves counter for c, then calls the template, whose summary writes counter.
+    const string TemplateCall = "x omitted: $d = addr#x(move $i) (its summary writes counter: A4's key)";
+    static Node Recur(Ctx k, string call)
+    {
+        k.N("$i = &$n (the template call's input)").Def(k.L("$i")).Borrow(k.Id("Ls"), k.L("#n"), Ref, k.L("$i"));
+        k.N(TemplateCall).Def(k.L("$d")).Input(K.Move, k.L("$i")).Flow(k.L("$i") + ".*", k.L("$d")).Key(Counter, write: true);
+        k.N("R-a: addr's inspection Loans end").EndInspections(k.Id("Ls"));
+        return k.N(call).Input(K.Move, k.L("$c")).Input(K.Move, k.L("#n")).Input(K.Move, k.L("$d")).Activate(k.Id("Lc"));
+    }
+    static readonly Tpl Addr = T("addr", "addr", "x", "addr(c: uniq/Counter, n: i32, x: i32 = if n == 0 => State.poke(counter@uniq) else => State.addr(counter@uniq, n - 1))", k =>
+    {
+        k.N("if n == 0").Input(K.Read, k.Slot("n")).Goto("$p = &uniq two-phase counter (poke's argument)", "$c = &uniq two-phase counter; $n = (*n) - 1 (addr's slots)");
+        Poke(k, "x := poke(move $p)").Def(k.Dest).Goto("return _0");
+        k.N("$c = &uniq two-phase counter; $n = (*n) - 1 (addr's slots)").Def("$c", "#n").Input(K.Read, k.Slot("n")).Borrow("Lc", Counter, Uniq, "$c", reserve: true);
+        Recur(k, "x := addr(move $c, move $n, move $d)").Def(k.Dest);
+    }, c => c.Error(TemplateCall), prepared: ["n"]);
+    // Incomplete templates: P13's hold (e17's store prefix: storeL stores past lh, a ByArgument holder) with G5's conflict; A4's Limit at the default's call.
+    static readonly Tpl Hold = T("hold", "addh", "x", "addh(c: uniq/Counter, x: i32 = label w: do (e17's prefix: storeL(lh@uniq, b@ref)); let r = counter@ref; exit to w State.poke(counter@uniq) + r.count)` (held", k =>
+    {
+        k.N("var x0 = 1").Def(k.L("#x0"));
+        k.N("var z = x0@ref").Def(k.L("z")).Borrow(k.Id("Lx"), k.L("#x0"), Ref, k.L("z"));
+        k.N("var w = z@ref").Def(k.L("w")).Borrow(k.Id("Lz"), k.L("z"), Ref, k.L("w"));
+        k.N("$1 = &uniq two-phase w").Def(k.L("$1")).Borrow(k.Id("Lw"), k.L("w"), Uniq, k.L("$1"), reserve: true);
+        k.N("var lh = Loan.init(move $1)").Def(k.L("lh")).Input(K.Move, k.L("$1")).Activate(k.Id("Lw")).Flow(k.L("$1"), k.L("lh")).Flow(k.L("$1") + ".*", k.L("lh"));
+        k.N("var b = x0@ref").Def(k.L("b")).Borrow(k.Id("Lb0"), k.L("#x0"), Ref, k.L("b"));
+        k.N("$q = &uniq two-phase lh").Def(k.L("$q")).Borrow(k.Id("Lq"), k.L("lh"), Uniq, k.L("$q"), reserve: true);
+        k.N("$v0 = b@ref").Def(k.L("$v0")).Borrow(k.Id("Lb"), k.L("b"), Ref, k.L("$v0"));
+        k.N("storeL(move $q, move $v0)").Input(K.Move, k.L("$q")).Input(K.Move, k.L("$v0")).Activate(k.Id("Lq")).Store(k.L("$q"), k.L("$q"), true, 1).Store(k.L("$q"), k.L("$v0"), false, 1);
+        k.C.SharedOnly.UnionWith([k.L("z"), k.L("w"), k.L("b")]); k.C.ByArgument.Add(k.L("lh"));
+        RPoke(k);
+    }, c => { c.UnsuppAt = ["$v = poke(move $p)"]; return c.Error(); });
+    // R3 inside a default (R18's e8 in a copy): replacing State.holder destroys its old value, whose drop reads State.holder (its own key).
+    static readonly Tpl SetD = T("setd", "setd", "x", "setd(x: i32 = label w: do holder = Holder.init(); exit to w 0)` (the old value's drop reads State.holder", k =>
+    {
+        k.N("$n = Holder.init()").Def(k.L("$n"));
+        k.N("drop State.holder (old value; its drop reads State.holder)").Drop(Holder).Key(Holder);
+        k.N("State.holder = move $n").Input(K.Move, k.L("$n")).Assign(Holder);
+        k.Place(k.N("x := 0"));
+    }, c => c.Error("drop State.holder (old value; its drop reads State.holder)"));
+    static readonly Tpl Lim = T("lim", "addl", "x", "addl(c: uniq/Counter, x: i32 = State.lim())` (lim's summary lies past A4's bound: Limit",
+        k => k.Place(k.N("x := lim() (A4's Limit)").Fx(limit: true)), Valid);
+    // A loop around an omitting call of keep2: prev keeps the last iteration's value, which the next iteration's copy meets.
+    static void Loop(Ctx k)
+    {
+        k.N("var prev = other@ref").Def(k.L("prev")).Borrow(k.Id("Lo"), Other, Ref, k.L("prev"));
+        k.N("while c").Goto(k.Lab("loop body: let k = State.keep2()"), k.Lab("after the loop: inspect(prev)"));
+        k.N("loop body: let k = State.keep2()");
+        k.Copy(Keep2, k.L("$x"));
+        Retain(k, "k", "keep2", "$x");
+        k.N("inspect(prev)").Input(K.Read, k.L("prev"));
+        k.N("prev = move k").Def(k.L("prev")).Input(K.Move, k.L("k")).Flow(k.L("k"), k.L("prev")).Goto(k.Lab("while c"));
+        k.N("after the loop: inspect(prev)").Input(K.Read, k.L("prev"));
+    }
+    const string Evaluations = "the issue scope names a site, not an evaluation";
+    static readonly Tpl LoopT = T("loop", "f6", "y", "f6(y: i32 = label w: do var prev = other@ref; while c => (let k = State.keep2(); inspect(prev); prev = k); exit to w 0)` (H", k =>
+    {
+        Loop(k);
+        k.Place(k.N("y := 0"));
+    }, c => { c.Finding = Evaluations; return c.Error("[keep2/x] poke(move $p)"); });
+
+    // ---- Callers.
+    static IEnumerable<Case> Callers() => [G171(""), G171("disjoint"), G171("read"), G171("explicit"), Effect(""), Effect("disjoint"), Effect("read"), Effect("explicit"),
+        N1(), N2(), N3(), N3Top(), N4(), Siblings(), N5(), Twice(), TwiceBoth(), ActOut(), First(rev: false), First(rev: true), Independent(), GuardIn(), GuardAcross(),
+        Generic(uniq: true), Generic(uniq: false), Recursive(), Held(), Limit(), DropIn(), LoopCaller(), LoopNested(), LoopOwn()];
+
+    // PLAN G171 (R4's fact check of 2026-10-21; eval-1020's m69y-default, m69y-explicit): `State.add(counter@uniq)` in group State. The caller reserves
+    // counter in add's slot c; add's default, copied after it, borrows counter exclusively for poke, and that activation meets the reservation (R4-M68:
+    // shared in its holder): the caller's failure, CallReservationConflict_Kd in the explicit twin (12:37). Twins: another static, a shared borrow.
+    static Case G171(string twin)
+    {
+        var t = twin switch { "disjoint" => AddOther, "read" => AddRead, _ => Add };
+        var c = S("dc20-g171" + (twin == "" ? "" : "-" + twin), twin == "explicit" ? "PLAN G171's explicit twin: `State.add(counter@uniq, State.poke(counter@uniq))`"
+            : $"{(twin == "" ? "PLAN G171" : "G171's " + twin + " twin")}: `State.add(counter@uniq)` omitting dt20-{t.Id}'s default");
+        var k = Root(c);
+        k.N("$c = &uniq two-phase counter (add's slot c)").Def("$c").Borrow("Lc", Counter, Uniq, "$c", reserve: true);
+        if (twin == "explicit") k.Here(t, "$x"); else k.Copy(t, "$x");
+        k.N("_ = add(move $c, move $x)").Input(K.Move, "$c").Input(K.Move, "$x").Activate("Lc");
+        return twin switch { "disjoint" or "read" => c.Valid(), "explicit" => c.Error("x := poke(move $p)"), _ => c.Error("[add/x] x := poke(move $p)") };
+    }
+
+    // G171's effect form (the M69 plan §6: receiver-group-default.kimi): `_ = counter.add()` reserves counter for the receiver; the copied default's call
+    // writes counter (A4's key), an err(effect) against that reservation (R18's R1, any mode). Twins: a key on other, a read key, the explicit argument.
+    static Case Effect(string twin)
+    {
+        var t = twin switch { "disjoint" => TouchOther, "read" => TouchRead, _ => Touch };
+        var c = S("dc20-fx" + (twin == "" ? "" : "-" + twin), twin == "explicit" ? "G171's effect form, explicit: `counter.add(State.touch())`"
+            : $"G171's effect form{(twin == "" ? "" : ", " + twin + " twin")}: `_ = counter.add()` omitting dt20-{t.Id}'s default");
+        var k = Root(c);
+        k.N("$r = &uniq two-phase counter (add's receiver)").Def("$r").Borrow("Lr", Counter, Uniq, "$r", reserve: true);
+        if (twin == "explicit") k.Here(t, "$x"); else k.Copy(t, "$x");
+        k.N("_ = add(move $r, move $x)").Input(K.Move, "$r").Input(K.Move, "$x").Activate("Lr");
+        return twin switch
+        {
+            "disjoint" or "read" => c.Valid(),
+            "explicit" => c.Error("x := touch() (A4's key: counter, write)"),
+            _ => c.Error("[add/x] x := touch() (A4's key: counter, write)"),
+        };
+    }
+
+    // §4 row 1: the caller's Loan, the access in I (O: f's default, an explicit argument's evaluation; I: g's inside it).
+    static Case N1()
+    {
+        var c = S("dc20-n1", "§4 row 1 (the caller's Loan, the access in I): `State.add(counter@uniq, State.f())`, f omitting dt20-f1's default (O), which omits dt20-g's (I)");
+        var k = Root(c);
+        k.N("$c = &uniq two-phase counter (add's slot c)").Def("$c").Borrow("Lc", Counter, Uniq, "$c", reserve: true);
+        k.Copy(F1, "$fy");
+        k.N("$x = f(move $fy)").Def("$x").Input(K.Move, "$fy");
+        k.N("_ = add(move $c, move $x)").Input(K.Move, "$c").Input(K.Move, "$x").Activate("Lc");
+        return c.Error("[f/y][g/x] x := poke(move $p)");
+    }
+
+    // A caller of one default: `_ = State.fn()` omitting the template's default.
+    static Case Calls(string id, string title, Tpl t, Func<Case, Case> expect)
+    {
+        var c = S(id, title);
+        var k = Root(c);
+        k.Copy(t, "$y");
+        k.N($"_ = {t.Fn}(move $y)").Input(K.Move, "$y");
+        c.DupOf = "dt20-" + t.Id;
+        return expect(c);
+    }
+    // §4 rows 2, 3, the siblings' and 5: O's Loan / access in I; I's Loan / access in O after I; siblings in O; I / I. Each is O's (I's) template's.
+    static Case N2() => Calls("dc20-n2", "§4 row 2 (O's Loan, the access in I): `_ = State.f2()`", F2, c => Omit(c.Valid(), "[f2/y][g/x] x := poke(move $p)"));
+    static Case N3() => Calls("dc20-n3", "§4 row 3 (I's Loan, the access in O after I): `_ = State.f3()`", F3, c => Omit(c.Valid(), "[f3/y] counter.count = 1"));
+    static Case N4() => Calls("dc20-n4", "§4 row 4 (sibling copies in O): `_ = State.f4()`", F4, c => Omit(c.Valid(), "[f4/y][h/b] b := poke(move $p)"));
+    static Case N5() => Calls("dc20-n5", "§4 row 5 (I / I, I nested in O): `_ = State.f5()`", F5, c => Omit(c.Valid(), "[f5/y][g5/x] $v = poke(move $p)"));
+    static Case DropIn() => Calls("dc20-r3", "R3 inside a copy: `_ = State.setd()` (R3's Loan, if 2b-D issues it at the Drop, lies in the Drop's scope)", SetD,
+        c => Omit(c.Valid(), "[setd/x] drop State.holder (old value; its drop reads State.holder)"));
+    static Case GuardIn() => Calls("dc20-guard-in", "a guard ending inside a copy, its candidate escaping in the value: `_ = State.gd()`", Gd, c => Omit(c.Valid(), "[gd/y] guard cleanup: EndBorrow d"));
+
+    // Row 3 at the top level: I's Loan, the caller's access after I.
+    static Case N3Top()
+    {
+        var c = S("dc20-n3top", "§4 row 3 at the top level (I's Loan, the caller's access): `let k = State.keep(); counter.count = 1; inspect(k)`");
+        var k = Root(c);
+        k.Copy(Keep, "$x");
+        Retain(k, "k", "keep", "$x");
+        k.N("counter.count = 1").A(K.Write, Counter + ".count");
+        k.N("inspect(k)").Input(K.Read, "k.*");
+        return c.Error("counter.count = 1");
+    }
+
+    // Row 4 at the top level: sibling copies, neither template invalid, conflict in the caller's evaluation.
+    static Case Siblings()
+    {
+        var c = S("dc20-sib", "§4 row 4 at the top level (sibling copies): `_ = State.h()` omitting dt20-h-a's and dt20-h-b's defaults");
+        var k = Root(c);
+        k.Copy(HA, "$ha");
+        k.Copy(HB, "$hb");
+        k.N("_ = h(move $ha, move $hb)").Input(K.Move, "$ha").Input(K.Move, "$hb");
+        return c.Error("[h/b] b := poke(move $p)");
+    }
+
+    // §4 row 6: the first top-level copy's Loan, the second's access, equal syntax.
+    static Case Twice()
+    {
+        var c = S("dc20-twice", "§4 row 6 (two top-level copies, equal syntax): `let k1 = State.keep2(); let k2 = State.keep2(); inspect(k1)`");
+        var k = Root(c);
+        k.Copy(Keep2, "$x1", "#1");
+        Retain(k, "k1", "keep2", "$x1");
+        k.Copy(Keep2, "$x2", "#2");
+        Retain(k, "k2", "keep2", "$x2");
+        k.N("inspect(k1)").Input(K.Read, "k1.*");
+        return c.Error("[keep2/x#2] poke(move $p)");
+    }
+
+    // Record identity (the M69 plan §5, U11): two copies sharing a source node, each meeting another caller Loan.
+    static Case TwiceBoth()
+    {
+        var c = S("dc20-twice-both", "record identity: `State.add(counter@uniq); State.add(counter@uniq)` (two copies of dt20-add's default, each meeting its own call's reservation)");
+        var k = Root(c);
+        foreach (var x in new[] { "1", "2" })
+        {
+            k.N($"$c{x} = &uniq two-phase counter (add's slot c, call {x})").Def("$c" + x).Borrow("Lc" + x, Counter, Uniq, "$c" + x, reserve: true);
+            k.Copy(Add, "$x" + x, "#" + x);
+            k.N($"_ = add(move $c{x}, move $x{x})").Input(K.Move, "$c" + x).Input(K.Move, "$x" + x).Activate("Lc" + x);
+        }
+        return c.Error("[add/x#1] x := poke(move $p)", "[add/x#2] x := poke(move $p)");
+    }
+
+    // The external reservation (model form): the copy's call activates the caller's reservation while the copy's own Loan r lives.
+    static Case ActOut()
+    {
+        var c = S("dc20-act-out", "an activation in a copy of a reservation the caller formed (model form), against the copy's own Loan r: `State.act(counter@uniq)`");
+        var k = Root(c);
+        k.N("$c = &uniq two-phase counter (act's slot c, reserved before the copy)").Def("$c").Borrow("Lc", Counter, Uniq, "$c", reserve: true);
+        k.Copy(Act, "$x", reservation: ("$c", "Lc"));
+        k.N("_ = act(move $x) (model form)").Input(K.Move, "$x");
+        return c.Error("[act/x] $v = consume(c) (activates c's reservation)");
+    }
+
+    // A covered first candidate (the copy's r, I-owned) and a later caller-owned one (the reservation Lc) at one access; and the Loan ids reversed.
+    static Case First(bool rev)
+    {
+        var c = S(rev ? "dc20-first-rev" : "dc20-first", $"one access, two candidates: `State.add5(counter@uniq)` (the copy's r, then the caller's reservation; candidate order {(rev ? "Lc first" : "r first")})");
+        var k = Root(c);
+        k.N("$c = &uniq two-phase counter (add5's slot c)").Def("$c").Borrow("Lc", Counter, Uniq, "$c", reserve: true);
+        k.Copy(Add5, "$x");
+        k.N("_ = add5(move $c, move $x)").Input(K.Move, "$c").Input(K.Move, "$x").Activate("Lc");
+        c.LoanOrder = rev ? ["Lc", "[add5/x]Lr"] : ["[add5/x]Lr", "Lc"];
+        return Omit(c.Error("[add5/x] $v = poke(move $p)"), "[add5/x] $v = poke(move $p)");
+    }
+
+    // Independent conflicts on one Loan: the copy's r meets the copy's poke (the template's) and the caller's later write (the caller's).
+    static Case Independent()
+    {
+        var c = S("dc20-indep", "one Loan, two accesses: `let k = State.keepi(); counter.count = 1; inspect(k)`");
+        var k = Root(c);
+        k.Copy(KeepI, "$x");
+        Retain(k, "k", "keepi", "$x");
+        k.N("counter.count = 1").A(K.Write, Counter + ".count");
+        k.N("inspect(k)").Input(K.Read, "k.*");
+        return Omit(c.Error("counter.count = 1"), "[keepi/x] poke(move $p)");
+    }
+
+    // A guard across a copy: the copy, inside the caller's guard, copies the candidate's value into the result the caller keeps past the guard.
+    static Case GuardAcross()
+    {
+        var c = S("dc20-guard-across", "a guard ending across a copy: `match counter@ref { case .Data(d) if (w = keepd(d)) … }; use(w)` (model form; keepd omits dt20-kd's default)");
+        var k = Root(c);
+        k.N("$s = &counter (Subject)").Def("$s").Borrow("Lsub", Counter, Ref, "$s");
+        k.N("d = $s.data (candidate)").Def("d").Borrow("Ld", "$s.*.data", Ref, "d", sharedAt: 1);
+        k.N("$a = copy d (keepd's slot a)").Def("$a").Input(K.Read, "d").Flow("d", "$a");
+        k.Copy(Kd, "$b", slotLocals: ["$a"]);
+        k.N("w = keepd(move $a, move $b) (retains a and b)").Def("w").Input(K.Move, "$a").Input(K.Move, "$b").Flow("$a", "w").Flow("$b", "w");
+        k.N("guard cleanup: EndBorrow d").EndBorrow("d");
+        k.N("use(w)").Use("w");
+        return c.Error("guard cleanup: EndBorrow d");
+    }
+
+    // A two-view generic caller (round 19's dc-gen2 shapes) of G171's form: each view is its own body (R4-M71) with its own copy.
+    static Case Generic(bool uniq)
+    {
+        var c = S($"dc20-gen-{(uniq ? "u" : "r")}", $"`g<s/T>(v: s/T) => State.addg(v, counter@uniq)`, view s = {(uniq ? "uniq" : "ref")} (dt20-addg's default copied)");
+        var k = Root(c);
+        k.N($"entry (v: {(uniq ? "uniq" : "ref")}/T)").Param("Lpv", "v");
+        if (uniq) k.N("$a = &uniq two-phase (*v) (addg's slot a)").Def("$a").Borrow("La", "v.*", Uniq, "$a", reserve: true);
+        else k.N("$a = copy v (addg's slot a)").Def("$a").Input(K.Read, "v").Flow("v", "$a");
+        k.N("$c = &uniq two-phase counter (addg's slot c)").Def("$c").Borrow("Lc", Counter, Uniq, "$c", reserve: true);
+        k.Copy(AddG, "$x");
+        var call = k.N("_ = addg(move $a, move $c, move $x)").Input(K.Move, "$a").Input(K.Move, "$c").Input(K.Move, "$x").Activate("Lc");
+        if (uniq) call.Activate("La");
+        return c.Error("[addg/x] x := poke(move $p)");
+    }
+
+    // A recursive default (dt20-addr): the caller's template call has no copy, so its effect against the caller's reservation lies in the caller's scope.
+    static Case Recursive()
+    {
+        var c = S("dc20-recur", "`State.addr(counter@uniq, 3)` (dt20-addr's recursive default: a template call)");
+        var k = Root(c);
+        k.N("$c = &uniq two-phase counter; $n = 3 (addr's slots)").Def("$c", "#n").Borrow("Lc", Counter, Uniq, "$c", reserve: true);
+        Recur(k, "_ = addr(move $c, move $n, move $d)");
+        return c.Error(TemplateCall);
+    }
+
+    // The caller's own failure, independent of every default: y0 written while r0 lives.
+    static void OwnFailure(Ctx k, bool before)
+    {
+        k.N("var y0 = 1").Def("#y0");
+        k.N("let r0 = y0@ref").Def("r0").Borrow("Lr0", "#y0", Ref, "r0");
+        if (!before) return;
+        k.N("y0 = 2").Assign("#y0");
+        k.N("inspect(r0)").Input(K.Read, "r0");
+    }
+
+    // A P13-held template copied: the copy's store holds the caller's view, so the caller's own failures, the independent one and G171's, are located U.
+    static Case Held()
+    {
+        var c = S("dc20-held", "`var y0 = 1; let r0 = y0@ref; y0 = 2; inspect(r0); State.addh(counter@uniq)` (dt20-hold's default copied)");
+        var k = Root(c);
+        OwnFailure(k, before: true);
+        k.N("$c = &uniq two-phase counter (addh's slot c)").Def("$c").Borrow("Lc", Counter, Uniq, "$c", reserve: true);
+        k.Copy(Hold, "$x");
+        k.N("_ = addh(move $c, move $x)").Input(K.Move, "$c").Input(K.Move, "$x").Activate("Lc");
+        c.UnsuppAt = ["y0 = 2", "[addh/x] $v = poke(move $p)"];
+        return Omit(c.Error(), "[addh/x] $v = poke(move $p)");
+    }
+
+    // A4's Limit inside a copy (a limit record, kept by R4-M69) beside the caller's independent failure.
+    static Case Limit()
+    {
+        var c = S("dc20-limit", "`var y0 = 1; let r0 = y0@ref; State.addl(counter@uniq); y0 = 2; inspect(r0)` (dt20-lim's default copied)");
+        var k = Root(c);
+        OwnFailure(k, before: false);
+        k.N("$c = &uniq two-phase counter (addl's slot c)").Def("$c").Borrow("Lc", Counter, Uniq, "$c", reserve: true);
+        k.Copy(Lim, "$x");
+        k.N("_ = addl(move $c, move $x)").Input(K.Move, "$c").Input(K.Move, "$x").Activate("Lc");
+        k.N("y0 = 2").Assign("#y0");
+        k.N("inspect(r0)").Input(K.Read, "r0");
+        c.UnsuppAt = ["[addl/x] x := lim() (A4's Limit)"];
+        return c.Error("y0 = 2");
+    }
+
+    // A caller loop around a copy: the copy's Loan from the last iteration, kept in prev, meets the next iteration's copy. Both lie in one scope.
+    static Case LoopCaller()
+    {
+        var c = S("dc20-loop", "a caller loop around a copy: `var prev = other@ref; while c => (let k = State.keep2(); inspect(prev); prev = k); inspect(prev)`");
+        Loop(Root(c));
+        c.Finding = Evaluations;
+        return c.Error("[keep2/x] poke(move $p)");
+    }
+
+    // A caller loop around a copy whose failure is its template's: r, the copy's local, is dead at the copy's entry, so no earlier evaluation's
+    // value reaches it.
+    static Case LoopOwn()
+    {
+        var c = S("dc20-loop-own", "a caller loop around a copy whose failure is its template's: `while c => _ = State.g5()`");
+        var k = Root(c);
+        k.N("while c").Goto("loop body: _ = State.g5()", "after the loop");
+        k.N("loop body: _ = State.g5()");
+        k.Copy(G5, "$x");
+        k.N("_ = g5(move $x)").Input(K.Move, "$x").Goto("while c");
+        k.N("after the loop");
+        c.DupOf = "dt20-g5";
+        return Omit(c.Valid(), "[g5/x] $v = poke(move $p)");
+    }
+
+    // The same loop inside a template (dt20-loop), copied: the failure is the outer template's, not keep2's.
+    static Case LoopNested()
+    {
+        var c = Calls("dc20-loop-nested", "a template's loop around a nested copy: `_ = State.f6()`", LoopT, c => Omit(c.Valid(), "[f6/y][keep2/x] poke(move $p)"));
+        c.Finding = Evaluations + ": the boundary is f6's, whose template reports it, not keep2's";
+        return c;
     }
 }

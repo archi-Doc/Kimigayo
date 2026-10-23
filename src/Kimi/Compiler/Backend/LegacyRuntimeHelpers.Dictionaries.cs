@@ -58,37 +58,10 @@ internal sealed record DictionaryHelper(
         => new(kind, LegacyRuntimeHelpers.DictionaryRow(kind).Shape(suffix, key, value), key, value, entry, related);
 }
 
-/// <summary>SPEC 4.3, 4.9.6, 22.2: the Dictionary runtime, the storage byte primitives and the per-entry Dictionary helpers over
-/// the compiled DictionaryStorage sources (Windows x64 profile).</summary>
+/// <summary>SPEC 4.3, 4.9.6: the Dictionary runtime and the per-entry Dictionary helpers over the compiled DictionaryStorage sources
+/// (Windows x64 profile); the storage byte primitives they write first are the storage kernels' (LegacyRuntimeHelpers.Storage.cs).</summary>
 internal sealed partial class LegacyRuntimeHelpers
 {
-    // SPEC 22.2, 21.4.3: the nullable form of Alloc returns null wherever Alloc would Abort, and the byte copy moves no
-    // responsibility; neither has a location to report.
-    private const string StorageBytePrimitives = """
-        define internal ptr @__kimi_try_allocate(i64 %bytes) #0 {
-        entry:
-          %invalid = icmp ugt i64 %bytes, 9223372036854775807
-          br i1 %invalid, label %failed, label %heap
-        heap:
-          %process_heap = call ptr @GetProcessHeap()
-          %no_heap = icmp eq ptr %process_heap, null
-          br i1 %no_heap, label %failed, label %try
-        try:
-          %zero = icmp eq i64 %bytes, 0
-          %actual = select i1 %zero, i64 1, i64 %bytes
-          %memory = call ptr @HeapAlloc(ptr %process_heap, i32 0, i64 %actual)
-          ret ptr %memory
-        failed:
-          ret ptr null
-        }
-        define internal void @__kimi_transfer_bytes(ptr %destination, ptr %source, i64 %size) #0 {
-        entry:
-          call void @llvm.memcpy.p0.p0.i64(ptr %destination, ptr %source, i64 %size, i1 false)
-          ret void
-        }
-
-        """;
-
     // The duplicate-key callback {environment, table}; its environment is the address of the caller's location record.
     private const string DuplicateCallback = """
           %origin = alloca { ptr, i64 }, align 8
@@ -159,9 +132,6 @@ internal sealed partial class LegacyRuntimeHelpers
     /// old lowering requests it for a Dictionary's construction until the runtime declares its own needs (C8e).</summary>
     internal bool NeedsDictionaryRuntime { get; set; }
 
-    /// <summary>Gets or sets a value indicating whether a lowered body uses the private storage byte primitives (SPEC 22.2).</summary>
-    internal bool NeedsStorageBytes { get; set; }
-
     /// <summary>Gets the row of a Dictionary helper kind; a kind without a row is a broken contract.</summary>
     /// <param name="kind">The helper kind.</param>
     /// <returns>The kind's row.</returns>
@@ -216,11 +186,7 @@ internal sealed partial class LegacyRuntimeHelpers
     /// <param name="output">The module text.</param>
     internal void WriteDictionaries(TextWriter output)
     {
-        if (this.NeedsStorageBytes)
-        {
-            output.Write(StorageBytePrimitives);
-        }
-
+        this.WriteStorageBytes(output);
         if (this.NeedsDictionaryRuntime)
         {
             output.Write(DuplicateAdapter);

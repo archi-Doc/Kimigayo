@@ -10,7 +10,7 @@
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>A MIR statement (plan 5.4). The six kind vocabularies of MIR are closed (ArchitectureRulesTest.VocabularyDoesNotGrow):
+/// <summary>A MIR statement (plan 5.4). The six kind vocabularies of MIR are closed (COMPILER_ARCHITECTURE, Closed vocabularies):
 /// a new member needs a SPEC basis and owner approval, and every member has a row in <see cref="MirDescriptors"/>.</summary>
 internal enum MirStatementKind : byte
 {
@@ -30,7 +30,7 @@ internal enum MirRvalueKind : byte
     BinaryOp,
     UnaryOp,
     Cast, // The operand converted to the Type (MirCastKind).
-    Aggregate, // A Tuple, struct or enum Case, fixed array or Closure environment from the operands (MirAggregateKind).
+    Aggregate, // A Tuple, struct or enum Case, fixed array, fill or Closure environment from the operands (MirAggregateKind).
     Discriminant, // The Case ordinal of an enum Place.
     Len, // The length of a sequence Place.
     Opaque, // A value of the Type that a Binding error or an Unsupported form replaced; its site lists the Places it touched.
@@ -132,8 +132,11 @@ internal enum MirAggregateKind : byte
 {
     Tuple,
     Adt, // A struct (its base first, then its own Fields) or the Case its ordinal names.
-    FixedArray, // A fixed array from its elements; an Array or a Dictionary from none, the empty collection its literal's calls fill.
+    FixedArray, // A fixed array from its elements, one operand each, or from none (noinit); an Array or a Dictionary from none, the empty
+    // collection its literal's calls fill.
     Closure, // A Closure environment from its captures.
+    Fill, // SPEC 4.3.3: a fixed array whose every element is a copy of its one operand, the value acquired once, also for length 0; its
+    // length is its Type's, which an instance closes (DECISIONS R4-M81).
 }
 
 internal enum MirConstKind : byte

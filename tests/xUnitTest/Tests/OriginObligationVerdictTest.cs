@@ -33,15 +33,15 @@ public class OriginObligationVerdictTest
         Assert.Equal(2 * count, metrics.Verdicts);
     }
 
-    // SPEC 8.1.2, 15.6.4: the well-formedness of a direct borrowed struct input belongs to each call's borrow formation, recorded
-    // where the input's Type is bound; Origins nested deeper in the input are judged.
+    // SPEC 8.1.2, 15.6.4: the well-formedness of a direct borrowed struct input belongs to each call's borrow formation; Origins nested
+    // deeper in the input are judged. Binding's declaration judge leaves the signature's rows to the calls (DECISIONS BU-26), so none stays
+    // an obligation, and the calls verify.
     [Fact]
     public void ADirectBorrowedInputBelongsToItsCalls()
     {
         var (c, _) = Analyze(OriginProofWorkloads.Create("valid", 2));
-        var calls = c.Binding.Obligations.Where(static x => x.Discharge == OriginDischarge.CallBorrows && x.Shorter?.Binder is FunctionKoto { Name: "g" }).ToArray();
-        Assert.Equal(2, calls.Length); // The Holder inputs h1 and h2.
-        Assert.All(calls, static x => Assert.Equal(OriginKind.Input, x.Shorter!.Kind));
+        Assert.DoesNotContain(c.Binding.Obligations, static x => x.Discharge == OriginDischarge.CallBorrows && x.Shorter?.Binder is FunctionKoto { Name: "g" });
+        Assert.True(c.Binding.Result.IsComplete);
         Assert.True(c.Analysis.IsVerified);
     }
 

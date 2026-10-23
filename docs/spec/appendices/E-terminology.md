@@ -9,6 +9,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Access path | How a non-raw Place is reached: Direct, through an exclusive reference or through a shared reference; Loan checking compares its steps ([§15.6.2](../15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts)). Raw Places have none. | [§3.4.1](../03-types-and-values.md#341-access-paths-and-value-kinds) |
 | Acquisition mode | What a parameter requires of a bare owned Place argument: ByValue, Shared or Exclusive, by the outer Semantics of its Type. | [§7.4.1](../07-functions-and-callable-values.md#741-acquisition-modes-and-admitted-cases) |
 | Adaptation Target | What `@` requests: a Semantics and Core, an inner Type or an object View Target. | [§13.5.1](../13-operators-and-assignment.md#1351-forms-and-adaptation-targets) |
+| Address (of a holder) | What a raw pointer carries in place of a Loan when it is formed by `@raw`, or read from a `during self` Field, through no borrow or raw pointer dereference: it reaches the holder, conflicts with nothing and grants no authority. | [§15.6](../15-ownership-and-lifetime-analysis.md#156-borrow-checking) |
 | Admitted set | The Semantics a pair binder may take under its premises. | [§8.3.4](../08-generics-constraints-and-contracts.md#834-semantics-admitted-set) |
 | Associated Type | A Type that each conformance fixes; it may declare Origin parameters. | [§8.5](../08-generics-constraints-and-contracts.md#85-associated-types) |
 | Bare acquisition | Acquisition of an expression written without an `@` operation. | [§3.5](../03-types-and-values.md#35-copy-and-move) |
@@ -18,6 +19,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Call Receiver Requirement | The minimum access a callable body needs of its receiver. | [§7.7.3](../07-functions-and-callable-values.md#773-call-receiver) |
 | Callable Constraint | A Constraint stating how a generic value can be called. | [§8.10](../08-generics-constraints-and-contracts.md#810-callable-constraints) |
 | Case / Payload | An enum alternative / its positional data. | [§6.5](../06-declarations-and-containers.md#65-enums) |
+| Claim (raw Origin) | `E@(raw/U during o)` in an unsafe context, where it is no fit: the promise that every access through the pointer lies in storage `o` covers. | [§5.7](../05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins) |
 | Closed Contract | `Position` or `PositionRange`: the Kimi Kotonoha fixes the conforming Types. | [§8.7.5](../08-generics-constraints-and-contracts.md#875-closed-contracts) |
 | Closure / Capture | A callable body with its environment; each capture entry initializes one environment binding, as `let x = x` or `var x = x` would. | [§7.7.2](../07-functions-and-callable-values.md#772-captures) |
 | Common adaptation | The single operation selected at a position with a fixed expected Type. | [§10.2](../10-overload-resolution-and-inference.md#102-common-adaptation) |
@@ -33,6 +35,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Conformance | A Type's fulfillment of a Contract. | [§8.6.1](../08-generics-constraints-and-contracts.md#861-conformance-declarations-and-identity) |
 | Conformance Identity | Complete conforming Type plus bound Contract reference. | [§8.6.1](../08-generics-constraints-and-contracts.md#861-conformance-declarations-and-identity) |
 | Constraint / Constraint Clause | A condition on a Type or Semantics / its clause `subject is requirement`. | [§8.2.1](../08-generics-constraints-and-contracts.md#821-constraint-clauses) |
+| Constructed Type / head | A Type whose form fixes its structure (not a Type parameter, pair target, Contract `Self` or unresolved projection) / what identifies that form: a declaration, Semantics, element count or the like. | [§8.2.3](../08-generics-constraints-and-contracts.md#823-type-identity-and-identity-premises) |
 | Consume | The static Eligibility and Legality check of an access operation. | [§15.1.4](../15-ownership-and-lifetime-analysis.md#1514-consume-checks) |
 | Contract | A Container declaring requirements, without implementations or storage. | [§8.4.1](../08-generics-constraints-and-contracts.md#841-contract-declarations) |
 | Copy | Duplication that leaves the source Initialized. | [§3.5](../03-types-and-values.md#35-copy-and-move) |
@@ -43,15 +46,16 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Diagnostic | A report with a severity and one category: Language, Proof, Unsupported, Input, Resource or Internal. | [§23.1.1](../23-compiler-services.md#2311-categories) |
 | Direct base call | `base.f(...)`, selecting the implementation held by the direct base. | [§6.4.4](../06-declarations-and-containers.md#644-direct-base-calls) |
 | Dynamic Type | The Core an object was actually constructed with. | [§3.3.1](../03-types-and-values.md#331-object-views-and-identity) |
-| Effect bound | A guarantee about what a call may access, declared on a requirement, a Callable Constraint or a virtual slot: `confined` or `preserves results`. | [§8.11](../08-generics-constraints-and-contracts.md#811-effect-bounds) |
+| Effect bound | A guarantee about what a call may access, declared on a requirement, a Callable Constraint or a virtual slot: `confined`. | [§8.11](../08-generics-constraints-and-contracts.md#811-effect-bounds) |
 | Effective Type | The Type with the most derived Core guaranteed at a point after a refinement. | [§14.10.1](../14-control-flow.md#14101-refinable-bindings-and-effective-types) |
 | Excluded syntax | Syntax a directive does not select; it gets source checks only. | [§19.4](../19-compile-time-directives.md#194-excluded-syntax) |
+| Expansion (of a Type) | The Type with each abstract Type replaced by a constructed Type identical with it, repeatedly; a premise error where some Type has no finite one. | [§8.3.3](../08-generics-constraints-and-contracts.md#833-recursion-and-finality) |
 | Field | The storage of a `let` or `var` Property. | [§11.1](../11-properties.md#111-property-kinds) |
 | Finite Origin | An Origin whose region is inferred from uses, within an upper bound. | [§15.6.5](../15-ownership-and-lifetime-analysis.md#1565-judging-origin-relations) |
 | Fixed expected call signature | The one call signature fixed by a position's expected Type: a common Function Type, or the one signature the Callable Constraints of an unbound slot `F` give at `F`, `ref/F` or `uniq/F`. | [§10.5.2](../10-overload-resolution-and-inference.md#1052-call-signatures) |
 | Follow | `@follow`: selects the Place a reference or a qualifying pair layer points to, or the payload of an object handle whose View Target is a proven Sealed Type. | [§13.5.5](../13-operators-and-assignment.md#1355-follow) |
 | Function Item / common Function Type | One resolved function declaration, no environment / the erased calling contract shared by callable values. | [§3.2.1](../03-types-and-values.md#321-callable-value-types) |
-| Holder | A local, parameter or temporary, which carries the Loans of the values stored in every part of it and reaches the storage the body does not own that its parts reach. | [§15.6](../15-ownership-and-lifetime-analysis.md#156-borrow-checking) |
+| Holder | A local, parameter or temporary, which carries the Loans and addresses of the values stored in every part of it, the storage a `during self` raw layer owns included, and reaches the storage the body does not own that its parts reach. | [§15.6](../15-ownership-and-lifetime-analysis.md#156-borrow-checking) |
 | Independently typable argument | A non-literal argument whose complete Type is fixed with no expectation from the call and no literal default; a nested call qualifies only with exactly one applicable candidate without an expected result, and an anonymous function never does. A Tuple or array literal argument is none of these; its elements are classified instead ([§10.5.1](../10-overload-resolution-and-inference.md#1051-argument-kinds)). | [§10.5.1](../10-overload-resolution-and-inference.md#1051-argument-kinds) |
 | Indexable / UniqIndexable | Contracts whose `index` and `indexUniq` return the reference that `receiver[key]` follows to its element. | [§4.7.1](../04-arrays-indexing-and-slices.md#471-index-expression-resolution) |
 | Integer / wrapping integer / numeric Type | One of twelve integer Cores / `Wrapping<T>` / integer, wrapping integer or floating-point. | [§3.1](../03-types-and-values.md#31-primitive-cores) |
@@ -86,12 +90,13 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Parameter-dependent effect | An effect a summary keeps in terms of a Type parameter or associated-Type projection, composed by callers with the actual Type unless [§15.6.4](../15-ownership-and-lifetime-analysis.md#1564-calls) widens it. | [§15.6.4](../15-ownership-and-lifetime-analysis.md#1564-calls) |
 | Place / Storage | Selected storage with its Type and capabilities / a region that holds values. | [§3.4](../03-types-and-values.md#34-places-and-storage) |
 | Position / Range | A boundary resolving into `[0, L]` / an interval of positions. | [§4.6.1](../04-arrays-indexing-and-slices.md#461-positions), [§4.6.2](../04-arrays-indexing-and-slices.md#462-ranges) |
-| `preserves results` | Effect bound: a call conflicts with no Loan of an earlier result of the same requirement. | [§8.11.3](../08-generics-constraints-and-contracts.md#8113-preserves-results) |
 | PrimitiveInteger | The compiler-intrinsic Contract of exactly the twelve integer Types. | [§8.7.4](../08-generics-constraints-and-contracts.md#874-primitiveinteger) |
 | Project root | The top of a Kotonoha's declaration hierarchy. | [§18](../18-modules-and-dependencies.md#18-modules-and-dependencies) |
+| Proper part | A Type reached by one or more steps into the components of constructed Types, never into a projection or a Field. | [§8.2.3](../08-generics-constraints-and-contracts.md#823-type-identity-and-identity-premises) |
 | Property | A stored `let`/`var` member or a computed member. | [§11.1](../11-properties.md#111-property-kinds) |
 | Punned Place | A transient Place of a Copy, positive-sized Type over bytes that Initialized Places hold. | [§5.2](../05-raw-pointers-and-unsafe-memory.md#52-raw-places) |
 | Raw pointer / raw Place | A `raw/T` address / `*p`, `p[n]` or a part of one, designating a Place at its address. | [§5](../05-raw-pointers-and-unsafe-memory.md#5-raw-pointers-and-unsafe-memory), [§5.2](../05-raw-pointers-and-unsafe-memory.md#52-raw-places) |
+| Raw pointer Origin | `raw/T during o`: the storage the pointer addresses, `o`'s or, for `self`, the holding value's own; it forms no Loan and constrains no region. | [§5.7](../05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins) |
 | Raw storage | Storage, such as an allocation or a dynamic collection's element storage, that declares no Place for the values placed in it. | [§3.4](../03-types-and-values.md#34-places-and-storage) |
 | Read / Write / Take | The capabilities of a Place: observe; initialize or replace; extract. | [§3.4](../03-types-and-values.md#34-places-and-storage) |
 | Read Type / Value read | A Scalar, position or range Type / the implicit Copy of the terminal value of safe `ref`/`uniq` layers where a read Type is required. | [§3.5.3](../03-types-and-values.md#353-value-read) |
@@ -117,6 +122,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Task slot | The leading `task;` of a parameter list or Function Type. | [§24.2](../24-suspension-and-asynchronous-tasks.md#242-task-slots) |
 | Temporary Value / Place | An expression's temporary result / the storage materializing it. | [§3.6](../03-types-and-values.md#36-temporaries) |
 | Type | A complete type: Semantics, target and all Origins. | [§3](../03-types-and-values.md#3-types-and-values) |
+| Type identity | The relation that makes two Types one in a scope: its grounds, closed under replacement and the decomposition of constructed Types with one head. | [§8.2.3](../08-generics-constraints-and-contracts.md#823-type-identity-and-identity-premises) |
 | Undefined behavior | The result of breaking an unsafe promise. | [§1.3](../01-overview.md#13-normative-status-and-wording), [§5](../05-raw-pointers-and-unsafe-memory.md#5-raw-pointers-and-unsafe-memory) |
 | UniqSlice | A non-Copy exclusive contiguous view. | [§4.8.4](../04-arrays-indexing-and-slices.md#484-views-and-uniqslice) |
 | Unsafe context / Unsafe Block | Permission for unsafe operations / `unsafe`, which grants it lexically. | [§5](../05-raw-pointers-and-unsafe-memory.md#5-raw-pointers-and-unsafe-memory), [§14.3](../14-control-flow.md#143-do-and-unsafe) |

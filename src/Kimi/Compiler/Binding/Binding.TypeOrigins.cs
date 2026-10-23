@@ -106,7 +106,7 @@ public sealed partial class Binding
 
     private BoundType WithOrigins(BoundType type, BoundOrigin? origin, ReadOnlySpan<BoundOrigin> arguments)
         => type.Kind == BoundTypeKind.SemanticsAdaptation ? this.TransformFamily(type, FamilyTransform.Origin, origin)
-            : this.types.Intern(type.Kind, type.Symbol, type.Semantics, (BoundType[])type.Components, type.Length, origin, arguments, type.LengthExpression, type.ClosureContext, type.LengthArguments);
+            : this.types.Rebuild(type, (BoundType[])type.Components, origin, arguments);
 
     private BoundType? CompleteOrigins(BoundType type, TypeSemanticsKoto? annotation, Koto use, BindingScope scope, TypeBindingContext context)
     {
@@ -192,6 +192,19 @@ public sealed partial class Binding
                 this.RetainInnerOutlives(type.Components[0], origin, use, discharge, RequiredCondition(this.PairSlotCondition(type, use)));
             }
         }
+        else if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
+        {
+            // SPEC 5.7: a raw layer states the Origin its `during` writes (WrittenRawOrigin) or none, and forms no borrow Origin.
+            if (written)
+            {
+                if (this.WrittenRawOrigin(annotation!, use, scope, context.Position) is not { } raw)
+                {
+                    return null;
+                }
+
+                type = this.types.Pointer(type.Components[0], raw);
+            }
+        }
         else
         {
             var target = type;
@@ -251,7 +264,7 @@ public sealed partial class Binding
                     }
 
                     target = this.WithOrigins(target, target.Origin, arguments.AsSpan(0, count));
-                    type = objectLayer ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, [target], type.Length, type.Origin) : target;
+                    type = objectLayer ? this.types.Rebuild(type, [target], type.Origin, []) : target;
                 }
                 finally
                 {
@@ -342,6 +355,13 @@ public sealed partial class Binding
         if (type.Origin is { } origin)
         {
             this.AccumulateOrigin(origin, schema, polarity, IsExclusive(type.Semantics) ? LoanRequirement.Uniq : LoanRequirement.Ref, ref changed);
+            this.Keep(schema, origin, type, null);
+        }
+
+        if (type.RawOrigin is { Kind: not OriginKind.Holder } raw)
+        {
+            // SPEC 5.7: a raw layer's Origin is a covariant position, no use of a slot for Loan requirements or Phantom status.
+            this.AccumulateOrigin(raw, schema, polarity, LoanRequirement.None, ref changed);
         }
 
         // A Type may carry fewer or more arguments than its declaration while a pass is
@@ -357,6 +377,7 @@ public sealed partial class Binding
 
             var sign = source.Variance == OriginVariance.Invariant ? 0 : source.Variance == OriginVariance.Contravariant ? -polarity : polarity;
             this.AccumulateOrigin(type.OriginArguments[i], schema, sign, source.LoanRequirement, ref changed);
+            this.Keep(schema, type.OriginArguments[i], type, source);
         }
 
         for (var i = 0; i < type.Components.Count; i++)
@@ -421,6 +442,11 @@ public sealed partial class Binding
             if (node.BoundType is not { } type)
             {
                 continue;
+            }
+
+            if (node is TypeSemanticsKoto { BoundType.RawOrigin: { } raw } written)
+            {
+                this.JudgeRawOrigin(written, raw); // SPEC 5.7: every written raw Origin, after the last fixed point.
             }
 
             var invalid = false;

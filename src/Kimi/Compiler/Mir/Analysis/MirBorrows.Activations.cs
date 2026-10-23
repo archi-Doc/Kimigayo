@@ -69,10 +69,10 @@ internal sealed partial class MirBorrows
         {
             var loan = this.loans[reservation];
             var steps = this.loanSteps.AsSpan(loan.Start, loan.Count);
-            var taking = Activation(this.slots[local]);
-            if (this.Conflict(loan.Root, steps, loan.Destroying ? AccessKind.ActivateInPlace : AccessKind.Activate, taking) is var c and not None)
+            var (taking, kind) = (Activation(this.slots[local]), loan.Destroying ? AccessKind.ActivateInPlace : AccessKind.Activate);
+            if (this.Conflict(loan.Root, steps, kind, taking, this.Source(at).Scope, reservation) is var c and not None)
             {
-                this.Report(this.Code(this.candidates[c], code), c, taking, at, reservation);
+                this.Report(this.Code(this.candidates[c], kind, code), c, taking, at, reservation, null);
             }
 
             if (loan.Destroying)
@@ -86,7 +86,7 @@ internal sealed partial class MirBorrows
 
     // err(destroy) (A3 5, E11): the old value a call destroys in place at its target, where its Type may observe what it holds, uses the
     // Places past those the destroying activation writes exclusively and deeply, on the activation's check set, before the ending: the
-    // conflicts relation's ObservePast, so a clean Loan is reported first (R4-M70); past the destruction walk's bound it is unclassified.
+    // conflicts relation's ObservePast; past the destruction walk's bound it is unclassified.
     private void Destroyed(int reservation, BoundType target, int taking, MirLocation at)
     {
         var kind = this.Destruction(target);
@@ -96,11 +96,11 @@ internal sealed partial class MirBorrows
             return;
         }
 
-        var loan = this.loans[reservation];
+        var (loan, scope) = (this.loans[reservation], this.Source(at).Scope);
         var steps = this.loanSteps.AsSpan(loan.Start, loan.Count);
-        if (kind == AccessKind.Observe && this.Conflict(loan.Root, steps, AccessKind.ObservePast, taking) is var c and not None)
+        if (kind == AccessKind.Observe && this.Conflict(loan.Root, steps, AccessKind.ObservePast, taking, scope, reservation) is var c and not None)
         {
-            this.Report(this.Code(this.candidates[c], DiagnosticCode.ComparisonLoanConflict_Kd), c, taking, at, reservation);
+            this.Report(this.Code(this.candidates[c], AccessKind.ObservePast, DiagnosticCode.ComparisonLoanConflict_Kd), c, taking, at, reservation, null);
         }
     }
 

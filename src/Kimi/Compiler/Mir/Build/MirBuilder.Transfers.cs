@@ -12,6 +12,20 @@ internal sealed partial class MirBuilder
 {
     private readonly List<Target> targets = []; // The constructs around the code being built that a transfer may target, innermost last.
 
+    // The root of a derived jump's operand (Transfer): a Place its Adjust would acquire (bare: Copied, moved, Reborrowed or by case)
+    // designated in place, any other operand built; -1 for a constant.
+    private int DerivedOperand(Koto operand)
+    {
+        var adjust = HirTables.AdjustOf(operand);
+        if (adjust is { Adaptation: HirAdaptation.None, Acquire: HirAcquire.Copy or HirAcquire.Move or HirAcquire.Reborrow or HirAcquire.ByCase })
+        {
+            return this.Place(operand).Root;
+        }
+
+        var given = this.Operand(operand, expected: null);
+        return given.Kind == MirOperandKind.Const ? -1 : given.Place.Root;
+    }
+
     // SPEC 14.5, 16.2.2, 15.6.7: a transfer evaluates and secures its operand, then branches: at run time it ends the borrows of the calls
     // it abandons (its operands pending since its target began), places its result and goes on through its target's drop tree to the
     // target its plan row names (a function's return block, built at its first return); for the checks it goes on to the code after it,
@@ -24,12 +38,13 @@ internal sealed partial class MirBuilder
         {
             // The published target row is null exactly where Binding rejected the jump (no valid target, or a #switch in its function part
             // selected no arm; DECISIONS R5-M31, R5-M42), so the jump is derived from that record (SPEC 23.1.2): its operand is built,
-            // keeping its own records, and the jump is an Opaque value of what the operand gave, without a record.
-            var given = operand is null ? default : this.Operand(operand, expected: null);
+            // keeping its own records, and the jump is an Opaque value of what the operand gave or designates, without a record. No
+            // consumer takes the operand, so a Place it designates is not acquired (an acquisition is its consumer's, DECISIONS BU-27).
+            var root = operand is null ? -1 : this.DerivedOperand(operand);
             this.roots.Clear();
-            if (operand is not null && given.Kind != MirOperandKind.Const)
+            if (root >= 0)
             {
-                this.roots.Add(given.Place.Root);
+                this.roots.Add(root);
             }
 
             this.Site(jump, this.Temp(jump), Completes(jump));

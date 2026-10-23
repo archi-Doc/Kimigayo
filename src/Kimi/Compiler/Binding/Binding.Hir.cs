@@ -20,7 +20,8 @@ public sealed partial class Binding
 
     // Where a node stands: evaluated, inside a Pattern (its match plan describes it), covered by its parent (the callee of a selected
     // call or construction, the call shape of a formatting macro, the name Type arguments apply to), or inside an Error, whose value the
-    // builder replaces (DECISIONS R5-M63 keeps a closure definition's parts and a failed compound Place's resolved operands).
+    // builder replaces (DECISIONS R5-M63 keeps a closure definition's parts and a failed compound Place's resolved operands, R4-M88 an
+    // unresolved operation's operands).
     [Flags]
     [Transitional("R7", Reason = "R7 replaces the publisher walk with inline Binding writes.")]
     private enum HirPosition : byte
@@ -67,6 +68,7 @@ public sealed partial class Binding
         private HirOp parentOp;
         private HirPosition position;
         private bool exclusive;
+        private bool unresolvedOperation; // The parent is an operation Binding left unresolved (Keeps).
 
         // The exclusive capability each consumed child's consumer needs, recorded where the consumer takes it (ExclusiveUse), by SyntaxId.
         private bool[] claims = [];
@@ -77,13 +79,19 @@ public sealed partial class Binding
 
         public override void Visit(Koto node)
         {
-            var (parent, parentOp, outer, defaults, exclusive) = (this.parent, this.parentOp, this.position, this.defaultCount, this.exclusive);
+            var (parent, parentOp, outer, defaults, exclusive, operation) =
+                (this.parent, this.parentOp, this.position, this.defaultCount, this.exclusive, this.unresolvedOperation);
             var position = this.PositionOf(node);
             var op = this.OpOf(node, position);
             var parts = this.Parts(node, op, position);
+            var unresolvedOperation = node.BindingState != BindingState.Resolved && op == HirOp.Error && !Rejected(node) && Operation(this.KindOp(node));
             if (this.parentOp == HirOp.Error && position == HirPosition.Evaluated)
             {
-                this.Write(node, new(HirAcquire.None, HirAdaptation.None)); // A failed compound Place's kept operand, used in place.
+                this.Write(node, new(HirAcquire.None, HirAdaptation.None)); // A kept operand of an Error (Keeps), used in place.
+            }
+            else if (op == HirOp.Error)
+            {
+                this.Derived(node); // Any other consumer takes it as its derived value (DECISIONS R4-M109).
             }
 
             if (op == HirOp.Body)
@@ -117,14 +125,15 @@ public sealed partial class Binding
                 this.Consume(node, parts);
             }
 
-            (this.parent, this.parentOp, this.position) = (node, parts, parts == op ? position : HirPosition.None);
+            (this.parent, this.parentOp, this.position, this.unresolvedOperation) = (node, parts, parts == op ? position : HirPosition.None, unresolvedOperation);
             node.VisitChildren(this);
             if (node is ForKoto { Iteration: { } iteration } && op == HirOp.For)
             {
                 this.Visit(iteration.Receiver); // The step's receiver, the iterator local the loop declares (SPEC 14.6.2).
             }
 
-            (this.parent, this.parentOp, this.position, this.defaultCount, this.exclusive) = (parent, parentOp, outer, defaults, exclusive);
+            (this.parent, this.parentOp, this.position, this.defaultCount, this.exclusive, this.unresolvedOperation) =
+                (parent, parentOp, outer, defaults, exclusive, operation);
         }
 
         internal void Publish(SyntaxTable table, Koto root)
@@ -153,7 +162,7 @@ public sealed partial class Binding
             (hir.Broken ??= []).Clear();
             this.table = table;
             this.completion?.Clear();
-            (this.parent, this.position, this.exclusive) = (null, HirPosition.None, false);
+            (this.parent, this.position, this.exclusive, this.unresolvedOperation) = (null, HirPosition.None, false, false);
             this.Visit(root);
         }
 
@@ -195,7 +204,7 @@ public sealed partial class Binding
 
         // The position of a child: a declaration evaluates its body, defaults and initializer, an expression its operands, and
         // nothing evaluates Types, names it declares or selects, attributes, Origin clauses or a fill length; an Error replaces its
-        // children but a failed compound Place's operands Binding resolved (Keeps).
+        // children but those it keeps (Keeps).
         private HirPosition PositionOf(Koto node)
         {
             if ((this.parentOp == HirOp.Error && !this.Keeps(node)) || (this.position & HirPosition.Replaced) != 0)
@@ -265,12 +274,27 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 23.1.2 (DECISIONS R5-M63): a compound Place Binding rejected or did not resolve, not a broken contract, keeps each operand
-        // Binding resolved as a value or a Place, an Op with its facts (not a Type or group name, Syntax), at its position, evaluated in
-        // place; its other children stay replaced. The parent is the child's.
-        private bool Keeps(Koto child) => child.BindingState == BindingState.Resolved && CompoundPlace(this.parent!) &&
-            (Rejected(this.parent!) || this.parent!.BindingState != BindingState.Resolved) &&
-            this.OpOf(child, HirPosition.Evaluated) is not (HirOp.Unset or HirOp.Syntax or HirOp.Error);
+        // SPEC 23.1.2: the children an Error keeps at their positions, evaluated in place; the others stay replaced. The parent is the child's.
+        // An operation Binding left unresolved (DECISIONS R4-M88) keeps every operand its form evaluates (one Binding resolved, one it did
+        // not, an Error), except a construct that has no Type (Construct), also in parentheses or labeled: no destination Type holds a
+        // kept operand, so it stays replaced, its parts' problems lost (PLAN G121's kept-construct design). A compound Place Binding
+        // rejected or did not resolve, not a broken contract, keeps each operand Binding resolved as a value or a Place, an Op with its facts
+        // (not a Type or group name, Syntax; DECISIONS R5-M63).
+        private bool Keeps(Koto child)
+        {
+            if (this.unresolvedOperation)
+            {
+                var op = this.OpOf(child, HirPosition.Evaluated);
+                var inner = KotoHelper.UnwrapParentheses(child);
+                inner = inner is LabeledKoto label ? label.Target : inner;
+                return op != HirOp.Syntax && !(Construct(ReferenceEquals(inner, child) ? op : this.OpOf(inner, HirPosition.Evaluated)) &&
+                    HirTables.Meaning(inner) is null && HirTables.Meaning(child) is null);
+            }
+
+            return child.BindingState == BindingState.Resolved && CompoundPlace(this.parent!) &&
+                (Rejected(this.parent!) || this.parent!.BindingState != BindingState.Resolved) &&
+                this.OpOf(child, HirPosition.Evaluated) is not (HirOp.Unset or HirOp.Syntax or HirOp.Error);
+        }
 
         // The Op a node's parts are published under (DECISIONS R5-M63): a closure Binding bound in this pass, at an evaluated or a replaced
         // position, whose definition it completed keeps its parts as a Closure whatever its creation is (built, failed, or part of a

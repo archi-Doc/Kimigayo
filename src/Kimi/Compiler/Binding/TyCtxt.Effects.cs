@@ -30,11 +30,11 @@ internal sealed partial class TyCtxt
             return null;
         }
 
-        var requirement = row.Runs is { } runs ? library.GetSymbol(runs)!.Contract!.Requirements[0].Symbol : null; // Its one requirement.
+        var requirement = row.Runs is { } runs ? this.OwnRequirement(runs) : null; // The one its Contract declares, not an inherited one.
         return (requirement, row.On, row.Destroys, row.InPlace);
     }
 
-    // SPEC 8.11.4: what a requirement runs on a Self that is not abstract (Binding.Witnesses), appended to a caller-owned list with each
+    // SPEC 8.11.3: what a requirement runs on a Self that is not abstract (Binding.Witnesses), appended to a caller-owned list with each
     // target's declaring instance (none for a compiler function); false where none resolves.
     internal bool Witnesses(BindingSymbol requirement, BoundType self, BindingSymbol? definition, List<(BindingSymbol Target, BoundType? Declaring)> into)
         => binding.Witnesses(requirement, self, definition, into);
@@ -42,16 +42,17 @@ internal sealed partial class TyCtxt
     // R4-M22: the confined obligations of the latest pass (Binding.EffectObligations), appended to a caller-owned list.
     internal void EffectObligations(List<EffectObligation> rows) => binding.EffectObligations(rows);
 
-    // SPEC 8.11.4, 8.7: the bounds a requirement or virtual call may use under the calling definition's own premises, null for a callee
-    // that does not dispatch (Binding.DispatchBounds).
-    internal (bool Confined, bool Preserves)? DispatchBounds(BindingSymbol? definition, BindingSymbol callee, BoundType? self, BindingSymbol? contract)
+    // SPEC 8.11.3, 8.7: whether confined is available to a requirement or virtual call under the calling definition's own premises, null
+    // for a callee that does not dispatch (Binding.DispatchBounds).
+    internal bool? DispatchBounds(BindingSymbol? definition, BindingSymbol callee, BoundType? self, BindingSymbol? contract)
         => binding.DispatchBounds(definition, callee, self, contract);
 
-    // SPEC 8.11.6: the bounds a call through an abstract Callable input may use, null where it has several signatures (Binding.CallableBounds).
-    internal (bool Confined, bool Preserves)? CallableBounds(BindingSymbol? definition, BoundType input, SemanticsKind receiver)
+    // SPEC 8.11.4: whether confined is available to a call through an abstract Callable input, null where it has several signatures
+    // (Binding.CallableBounds).
+    internal bool? CallableBounds(BindingSymbol? definition, BoundType input, SemanticsKind receiver)
         => binding.CallableBounds(definition, input, receiver);
 
-    // SPEC 8.11.4: a requirement function item's dispatching Contract reference (DispatchBounds' contract); null for another item.
+    // SPEC 8.11.3: a requirement function item's dispatching Contract reference (DispatchBounds' contract); null for another item.
     internal BindingSymbol? ItemContract(BoundType item) => binding.FunctionItemContext(item, requireClosed: false)?.RequirementContract;
 
     // SPEC 8.7.2, 16.3.3: whether a Type is proven Copy, whose destruction does nothing, or Sealed, whose handle's destruction runs only its

@@ -15,7 +15,8 @@ namespace XunitTest;
 /// the analyses' costs (V16), A3's (<see cref="MirLints"/>, R4-M7a) first.</summary>
 public sealed class MirAnalysisTest
 {
-    // One problem of each recording rule (MirEffectsTest's, MirDropTest's and MirBorrowsTest's forms).
+    // One problem of each recording rule (MirEffectsTest's, MirDropTest's and MirBorrowsTest's forms, A5's effect rule with A4's keys: R3,
+    // a static's destruction reading itself, which needs no Loan, as Binding reports a static's Borrows as Unsupported_Kd until P42).
     internal const string Requirements = """
         contract Sink
             func put(self: uniq/Self, value: i32) -> i32
@@ -95,6 +96,13 @@ public sealed class MirAnalysisTest
             let r = x@ref
             x = 2
             inspect(r)
+        struct Tally
+            public var n: i32 = 0
+            public init() => ()
+            drop => _ = Statics.tally.n
+        group Statics
+            public var tally: Tally = Tally.init()
+            public func effect() => tally = Tally.init()
         public func main() => ()
 
         """;
@@ -263,7 +271,8 @@ public sealed class MirAnalysisTest
     // R5-M23, DIAGNOSTICS rule 1: each recording rule names the requirement it judged, beside its code: A1's uses, Moves without a Move
     // Path and second initializations of a let, A2's incomplete layer at a Drop, A3's falling failure body, A4's confined obligations as
     // Binding's row carries them (a conformance, a virtual function, a Callable binding) and its limit, and A5's Loan conflicts and its
-    // limit (a destruction past the walk's bound). The storage limits need large bodies: A5ChecksTheViewsA1Completed has A1's.
+    // limit (a destruction past the walk's bound) and its effect rule, which the driver gives A4's keys (R4-M92). The storage limits need
+    // large bodies: A5ChecksTheViewsA1Completed has A1's.
     [Fact]
     public void EachRecordingRuleNamesItsRequirement()
     {
@@ -272,6 +281,7 @@ public sealed class MirAnalysisTest
         Assert.Equal(
             [
                 "ControlFlow RequireFallthrough_Kd ()", "Ownership.CallableEffectBound UnsatisfiedEffectBound_Kd noisy",
+                "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd tally = Tally.init()",
                 "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd x = 2",
                 "Ownership.EffectBound IncompatibleContractImplementation_Kd Self is Sink", "Ownership.PossiblyMovedUse MovedPlace_Kd r",
                 "Ownership.PossiblyMovedUse MovedPlace_Kd var box = Box.init(make())", "Ownership.ReassignedLet ReassignedLet_Kd resource = make()",
@@ -292,7 +302,9 @@ public sealed class MirAnalysisTest
         var program = c.BuildMir();
         Assert.Equal(
             [
-                "ComparisonLoanConflict_Kd x = 2 conflict", "IncompatibleContractImplementation_Kd Self is Sink -", "MovedPlace_Kd r moved",
+                "ComparisonLoanConflict_Kd tally = Tally.init() effect", "ComparisonLoanConflict_Kd x = 2 conflict",
+                "IncompatibleContractImplementation_Kd Self is Sink -",
+                "MovedPlace_Kd r moved",
                 "MovedPlace_Kd var box = Box.init(make()) layer", "ReassignedLet_Kd resource = make() twice", "RequireFallthrough_Kd () falls",
                 "StaticMovePathRequired_Kd values[i] runtime", "UninitializedPlace_Kd n unset", "UnsatisfiedEffectBound_Kd noisy -",
                 "UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32 -", "Unsupported_Kd Self is Store -",

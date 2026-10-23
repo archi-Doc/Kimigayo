@@ -101,10 +101,9 @@ contract LendingIterator
 contract Iterator: LendingIterator
     associate Item
     associate LendingIterator.LentItem(step) is Item
-    effect LendingIterator.next preserves results
 ```
 
-`next` exclusively borrows the iterator so it can advance its state. A lending item may borrow that call's receiver and prevent another call while retained. Iterator instead publishes a step-independent Item and declares `preserves results` for `next` ([§8.11.3](spec/08-generics-constraints-and-contracts.md#8113-preserves-results)): a later `next` on the same iterator conflicts with no Loan an earlier item keeps, so callers may retain earlier items across later calls. LendingIterator declares no bound. External source dependencies still apply.
+`next` exclusively borrows the iterator so it can advance its state. A lending item may borrow that call's receiver and prevent another call while retained. Iterator instead publishes a step-independent Item, so an item keeps no Loan of the borrow its call forms on the receiver and callers may retain earlier items across later calls ([§22.2.3](spec/22-core-execution-and-foreign-functions.md#2223-iterator-independence)). External source dependencies still apply.
 
 `for` stops at the first `None`. A general LendingIterator, including a user Iterator, may later return `Some`. Standard collection, Slice and range iterators remain exhausted after `None`.
 
@@ -509,7 +508,7 @@ Cyclic construction calls build once. Upgrading its Weak returns None while cons
 | `allocate<T>(count: isize) -> raw/T` | Safe. Allocates raw storage for `count` elements; it holds no value. A negative count, an overflow of `count * stride(T)` or an allocation failure Aborts. Zero bytes allocate nothing and return a nonnull address aligned for `T`, with provenance of its own. An element alignment above 16 is unsupported at compile time. |
 | `unsafe release<T>(storage: raw/T) -> ()` | Releases an `allocate` result at its start address without destroying any value. Null is ignored, and nothing is freed for a zero-byte result, which may be released again. Every Non-Copy value placed in the storage must already be destroyed, taken or relocated, whole or, if destroying it whole would only destroy its components, by its remaining Non-Copy components under the same rule (SPEC §5.6). |
 | `unsafe initialize<T>(storage: raw/T, value: T) -> ()` | Moves `value` into a Place of `T` at `storage`, an existing one or, in raw storage, a new one, destroying nothing. The write meets the raw access conditions: `storage` is live, aligned and writable, the Place lies within its provenance, and no live Loan conflicts. The Place holds no value, and no Initialized Place other than its ancestors holds any of its bytes (SPEC §5.2, §5.2.1). |
-| `unsafe slice<T>(storage: raw/T, length: isize) -> Slice<T> during s` | Forms a shared Slice of `length` elements at `storage` without reading them; `s` is fixed by the caller's expected Type. A positive length requires a nonnull, aligned `storage` with `length * stride(T)` fitting in `isize`, such that each `storage[i]` below `length` designates a distinct Place that holds a complete, valid value or belongs to a `noinit` array, and no element is written for `s`; a zero length accepts any storage. |
+| `unsafe slice<T>(storage: raw/T, length: isize) -> Slice<T> during s` | Forms a shared Slice of `length` elements at `storage` without reading them; `s` is fixed by the caller's expected Type, within the Origin the argument states, if any (SPEC §5.7). A positive length requires a nonnull, aligned `storage` with `length * stride(T)` fitting in `isize`, such that each `storage[i]` below `length` designates a distinct Place that holds a complete, valid value or belongs to a `noinit` array, and no element is written for `s`; a zero length accepts any storage. |
 
 Elements are taken and destroyed with `@move` on raw Places (`_ = storage[i]@move`). None of these operations is an environment effect: `allocate` is an allocation and the others are raw accesses.
 
@@ -594,7 +593,7 @@ Only the structured operations above request cancellation, for the children they
 
 The source library currently has the following differences from the required API. These entries record public source interfaces without changing the specification.
 
-[LendingIterator.kimi](../src/Kimi/Library/LendingIterator.kimi) declares the specified `LentItem(step)` formation domain and `next` signature; direct and generic calls preserve borrowed Option payloads and their Loans. [Iterator.kimi](../src/Kimi/Library/Iterator.kimi) refines it by fixing every `LentItem(step)` to `Item` and declares `preserves results` for `next`, which every conformance is checked against.
+[LendingIterator.kimi](../src/Kimi/Library/LendingIterator.kimi) declares the specified `LentItem(step)` formation domain and `next` signature; direct and generic calls preserve borrowed Option payloads and their Loans. [Iterator.kimi](../src/Kimi/Library/Iterator.kimi) refines it by fixing every `LentItem(step)` to `Item`.
 
 [Iterable.kimi](../src/Kimi/Library/Iterable.kimi) and [UniqIterable.kimi](../src/Kimi/Library/UniqIterable.kimi) declare the borrowing entries of §2: `IteratorType(source)` requires LendingIterator and publishes the shared or exclusive Self formation domain. Direct and generic entry calls and user `for` dispatch preserve the source borrow and the item Type returned by `next`; standard storage/adapter migration remains P29 work.
 

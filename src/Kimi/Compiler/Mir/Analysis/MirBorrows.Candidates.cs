@@ -3,10 +3,9 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's check-set candidates (A3 5's check sets and mode, E13 (1), (5)): each Loan an element of a gather's pass finds, once per mode (a
-// two-phase Loan is shared only in its reservation holder), tagged with the passes, operands and holders that reached it, apart for the sets
-// without a default taint and those with one (R4-M70: a marker whose role is a taint, MarkerOf; markers sort before Loans, so a set's taint
-// is known before its Loans), and listed by its Place's root, so an access scans only its root's; a marker found, the holder it was first
-// seen in (E7's witness). Which check sets hold a candidate is Tags.Takes; the passes and the closure are the gather's (MirBorrows.CheckSets).
+// two-phase Loan is shared only in its reservation holder), tagged with the passes, operands and holders that reached it, and listed by its
+// Place's root, so an access scans only its root's; a marker found, the holder it was first seen in (E7's witness). Which check sets hold a
+// candidate is Tags.Takes; the passes and the closure are the gather's (MirBorrows.CheckSets).
 // Must not compare Places or decide a conflict (MirBorrows.Checks), or read a holder's state itself.
 internal sealed partial class MirBorrows
 {
@@ -16,15 +15,13 @@ internal sealed partial class MirBorrows
     private int[] rootMarks = []; // By root key: the check that found a candidate on it.
     private int[] rootFirst = []; // By root key: the first and last of its candidates at that check.
     private int[] rootLast = [];
-    private int[] markSeen = []; // By marker (γ_H, a default taint): the check that saw it in the Based or Stored passes.
+    private int[] markSeen = []; // By marker (γ_H): the check that saw it in the Based or Stored passes.
     private int[] markVia = []; // By marker: the holder that check first saw it in (-1: a transit value).
     private int candidateCount;
-    private int taint = None; // The first taint marker of the set being scanned (Scan), None for none.
 
-    // A set found in a holder (-1: a transit value) by the pass: its elements in ascending order, so its taint is known before its Loans.
+    // A set found in a holder (-1: a transit value) by the pass: its elements.
     private void Scan(int set, int via)
     {
-        this.taint = None;
         this.Work += this.sets.Count(set);
         foreach (var element in this.sets.Elements(set))
         {
@@ -33,8 +30,8 @@ internal sealed partial class MirBorrows
     }
 
     // An element found in a holder (-1: a transit value) by the pass: a Loan once per mode (A3 5's mode: a two-phase Loan is shared only in
-    // its reservation holder), its candidate tagged with the pass and the set's taint, whose named holder the closure reads; Φ_E makes E
-    // live. An activation keeps the first two holders the Based, Seeded and Valued passes find it in.
+    // its reservation holder), its candidate tagged with the pass, whose named holder the closure reads; Φ_E makes E live. An activation
+    // keeps the first two holders the Based, Seeded and Valued passes find it in.
     private void Consider(int element, int via)
     {
         if (element == Escaped)
@@ -45,8 +42,7 @@ internal sealed partial class MirBorrows
 
         if (element < this.loanBase)
         {
-            // A marker never conflicts: a taint marks its set; the holder a guard-local γ_H is first seen in witnesses err(ended).
-            this.taint = this.taint == None && this.MarkerOf(element - Markers) == Marker.Taint ? element : this.taint;
+            // A marker never conflicts: the holder a guard-local γ_H is first seen in witnesses err(ended).
             if (this.pass is Based or Stored && this.markSeen[element] != this.stamp)
             {
                 (this.markSeen[element], this.markVia[element]) = (this.stamp, via);
@@ -68,7 +64,7 @@ internal sealed partial class MirBorrows
         }
 
         ref var candidate = ref this.candidates[this.candidateAt[key]];
-        candidate.Tag(this.pass, this.passIndex, via, this.taint);
+        candidate.Tag(this.pass, this.passIndex, via);
         if (loan is { Direct: true, Named: >= 0 })
         {
             this.Reach(loan.Named, scan: true);
@@ -93,38 +89,24 @@ internal sealed partial class MirBorrows
     // The first of a root's candidates at the check (None: none).
     private int First(int root) => this.rootMarks[root] == this.stamp ? this.rootFirst[root] : None;
 
-    /// <summary>A Loan of the check sets, once per mode: its index, whether its mode in the holders it was found in is unique, its tags
-    /// from the sets without a taint (Clean) and from those with one, the first taint of a set it was found in (None: none) and its root's
-    /// next candidate.</summary>
+    /// <summary>A Loan of the check sets, once per mode: its index, whether its mode in the holders it was found in is unique, its tags and
+    /// its root's next candidate.</summary>
     private struct Candidate(int loan, bool unique)
     {
-        private Tags clean = new();
-        private Tags tainted = new();
+        private Tags tags = new();
 
         internal readonly int Loan => loan;
 
         internal readonly bool Unique => unique;
 
-        internal readonly Tags Clean => this.clean;
-
-        internal int Taint { get; private set; } = None;
+        internal readonly Tags Tags => this.tags;
 
         internal int Next { get; set; } = None;
 
-        // Whether a check set holds it: each of Tags.Takes's terms is a disjunction over the sets, so over all its sets it is either tags'.
-        internal readonly bool Takes(int taking) => this.clean.Takes(taking) || this.tainted.Takes(taking);
+        // Whether a check set holds it (Tags.Takes).
+        internal readonly bool Takes(int taking) => this.tags.Takes(taking);
 
-        internal void Tag(byte pass, int index, int via, int taint)
-        {
-            if (taint == None)
-            {
-                this.clean.Tag(pass, index, via);
-                return;
-            }
-
-            this.tainted.Tag(pass, index, via);
-            this.Taint = this.Taint == None ? taint : this.Taint;
-        }
+        internal void Tag(byte pass, int index, int via) => this.tags.Tag(pass, index, via);
     }
 
     /// <summary>What reached a candidate in some sets: the first holder (-1: a transit value), the passes, the first operand whose value

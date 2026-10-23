@@ -74,9 +74,6 @@ public sealed partial class Binding
     // object handle, recorded only when the check fails.
     private Dictionary<Koto, (Koto Place, bool Object)>? acquisitionPlaces;
 
-    // SPEC 7.7.2: the explicit capture entry a closure failed at, with its outer binding's Type, recorded only when it fails.
-    private Dictionary<Koto, (CaptureKoto Capture, BoundType Type, BindingSymbol? Source)>? captureFailures;
-
     // SPEC 23.1.1: the part of an unsupported node that shows the form, such as one capture entry or a callee.
     private Dictionary<Koto, SourceSpan>? unsupportedSpans;
 
@@ -141,9 +138,6 @@ public sealed partial class Binding
             : DiagnosticTypeName(type, shorter.Kind == "expression" ? relation.Shorter : null, shorter.Text);
         return ([operation, longer, shorter, source, destination], related);
     }
-
-    // SPEC 15.6.1: whether a relation is Refuted: its longer end is a body-local finite Origin and its shorter end a fixed one.
-    internal static bool RefutesOriginRelation(BoundOrigin longer, BoundOrigin shorter) => BodyLocalOrigin(longer) && FixedOrigin(shorter);
 
     internal static DiagnosticCode OriginRelationCode(OriginRelationFact relation)
         => relation.Refuted ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd;
@@ -436,24 +430,6 @@ public sealed partial class Binding
         node.Report(requirement, code, note: note, evidence: evidence, related: related, at: relation.At, condition: condition);
     }
 
-    private static bool BodyLocalOrigin(BoundOrigin origin)
-    {
-        if (origin.Kind is OriginKind.Projection or OriginKind.Anchor)
-        {
-            return true;
-        }
-
-        for (var i = 0; i < origin.Operands.Count; i++)
-        {
-            if (BodyLocalOrigin(origin.Operands[i]))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     // The Borrow that supplies a body-local Origin: the value itself, or the initializer of the local it names. For a meet, it is the
     // Borrow of its first body-local operand, which the meet's display shows (SPEC 23.1).
     private static Koto? BorrowSource(Koto value, BoundOrigin origin)
@@ -588,14 +564,20 @@ public sealed partial class Binding
                 return new("expression", origin.Binder is DeclarationContainerKoto && !typeLevel ? "self." + origin.Name : origin.Name);
             case OriginKind.Inference when origin.Occurrence is null && origin.Binder is TypeKoto occurrence:
                 return new("omitted", occurrence.ToString());
+            case OriginKind.Inference when origin.Binder is VariableKoto local:
+                return new("omitted", local.NameKoto.IdentifierName); // A local's region (LocalRegionSlot), as a Closure body names it.
+            case OriginKind.Holder:
+                return new("expression", "self"); // SPEC 5.7: `during self`.
             case OriginKind.Projection when origin.Slot == CallResultSlot && origin.Binder is FunctionKoto { IsAnonymous: true }:
                 return new("closure", "call result");
             case OriginKind.Projection or OriginKind.Anchor:
-                // Without its Borrow, the Place: a local or a parameter by name, and a temporary by its text.
+                // Without its Borrow, the Place: a local or a parameter by name, a constructor's or destructor's receiver (and its helper
+                // borrow) as self, and a temporary by its text.
                 var text = value is not null && KotoHelper.UnwrapParentheses(value) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow ? borrow.ToString()
+                    : origin.Slot is HelperSlot or ReceiverSlot ? "self"
                     : origin.Binder is VariableKoto variable ? variable.NameKoto.IdentifierName
                     : origin.Binder is FunctionKoto function && origin.Slot >= 0 && origin.Slot < function.Parameters.Count ? function.Parameters[origin.Slot].InternalName
-                    : origin.Binder?.ToString() ?? origin.Name;
+                    : origin.Binder!.ToString(); // OriginAtom gives every Projection and Anchor its binder.
                 return new("borrow", text);
             default:
                 return new("omitted", origin.Occurrence?.ToString() ?? origin.Name);
@@ -720,24 +702,6 @@ public sealed partial class Binding
         };
     }
 
-    // SPEC 7.7.2: an anonymous function without a capture list never captures contextual self or a setter's value; its use is
-    // the location, and the declaration of the binding is related. In a later default of the receiver's function, an entry can
-    // neither move self nor keep a new borrow of it (SPEC 7.2.3), so only a Copy that holds no borrow, [self], can be offered.
-    private void ReportContextualCapture(Koto node, BindingSymbol contextual, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        var declaring = contextual.Declaration!;
-        var self = contextual.Name == "self";
-        var prepared = self && DefaultParameters.InLaterDefault(node, contextual);
-        var note = self ? "Contextual self is never captured implicitly; an anonymous function without a capture list captures only ordinary bindings (SPEC 7.7.2)"
-            : "A setter's value is never captured implicitly; an anonymous function without a capture list captures only ordinary bindings (SPEC 7.7.2)";
-        if (prepared)
-        {
-            note += "; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)";
-        }
-
-        node.Report(requirement, code, note: note, related: [("declaration", declaring is FunctionKoto { Accessor.Declaration: { } accessor } ? accessor : declaring, null)]);
-    }
-
     private BoundType? CompleteDependent(Koto node, Koto cause)
     {
         this.prerequisites[node] = (this.prerequisiteStore.Count, 1);
@@ -825,105 +789,13 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 15.2.3, 7.7.4: the first member of a conversion subject's OwnedOrigins through which a non-static Origin enters: a capture of a
-    // closure with a Shared receiver, or a bound Type argument of an Item, whose signature matches structurally. The first Refuted member
-    // (a body-local Origin) wins, else the first Unknown one; the Owned proof itself stays unchanged.
-    private OwnedConversionFact? OwnedConversionFailure(BoundType implementation, BoundType required, Koto at, Koto use)
-    {
-        BoundType? signature;
-        FunctionKoto? closure = null;
-        IReadOnlyList<BoundCapture>? captures = null;
-        if (implementation.Kind == BoundTypeKind.FunctionItem)
-        {
-            signature = this.FunctionItemSignature(implementation);
-        }
-        else if (implementation is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { ClosureStorage: { Receiver: SemanticsKind.Ref, Signature: not null } plan } declaration })
-        {
-            signature = this.ClosureSignature(implementation);
-            closure = declaration;
-            captures = plan.Captures;
-        }
-        else
-        {
-            return null;
-        }
-
-        if (signature is null || !ReferenceTypes.StorageMatches(required, signature) || this.ProveOwned(implementation, use) == ConstraintProof.Proven)
-        {
-            return null;
-        }
-
-        OwnedConversionFact? unknown = null;
-        var count = captures?.Count ?? implementation.Components.Count;
-        for (var i = 0; i < count; i++)
-        {
-            var member = captures is null ? implementation.Components[i]
-                : implementation.Components.Count == captures.Count ? implementation.Components[i] : captures[i].Environment.Type;
-            if (member is null || this.ProveOwned(member, use) == ConstraintProof.Proven)
-            {
-                continue;
-            }
-
-            var origin = this.FirstUnownedOrigin(member, use, 0);
-            var name = captures is null ? $"{Ordinal(i + 1)} Type argument" : captures[i].Environment.Name;
-
-            // A captured binding initialized by a Borrow shows that Borrow (SPEC 15.6.5).
-            var borrow = captures is not null && origin is not null && captures[i].Source.Declaration is VariableKoto { InitializerKoto: { } initializer } &&
-                KotoHelper.UnwrapParentheses(initializer) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } source && ReferenceEquals(source.BoundType?.Origin, origin) ? source : null;
-            var fact = new OwnedConversionFact(at, implementation, name, member, origin, closure is null ? null : CaptureEntryOf(closure, name), closure, borrow, origin is not null && BodyLocalOrigin(origin));
-            if (fact.Refuted)
-            {
-                return fact;
-            }
-
-            unknown ??= fact;
-        }
-
-        return unknown;
-
-        static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
-    }
-
-    // The first Origin in a Type's OwnedOrigins, in the order of SPEC 15.2.3, that is not proven static; a common Function Type
-    // contributes no per-call Origin (SPEC 15.2.3).
-    private BoundOrigin? FirstUnownedOrigin(BoundType type, Koto use, int depth)
-    {
-        if (depth > 32)
-        {
-            return null;
-        }
-
-        if (type.Origin is { } origin && !this.ProvesOriginOutlives(origin, BoundOrigin.Static, use))
-        {
-            return origin;
-        }
-
-        for (var i = 0; i < type.Components.Count && type.Kind != BoundTypeKind.Function; i++)
-        {
-            if (this.FirstUnownedOrigin(type.Components[i], use, depth + 1) is { } inner)
-            {
-                return inner;
-            }
-        }
-
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (type.OriginArguments[i] is { } argument && !this.ProvesOriginOutlives(argument, BoundOrigin.Static, use))
-            {
-                return argument;
-            }
-        }
-
-        return null;
-    }
-
     private BoundType? RecordMismatch(Koto node, Koto at, object actual, object expected)
     {
         // SPEC 15.2.3, 7.7.4: the Owned condition of a common Function conversion is a Constraint failure, never a Type mismatch.
         if (expected is BoundType { Kind: BoundTypeKind.Function } owner && actual is BoundType { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } value &&
-            this.OwnedConversionFailure(value, owner, at, node) is { } owned)
+            this.FailOwnedConversion(value, owner, at, node))
         {
-            return this.FailExplained(ref this.ownedConversions, node, owned.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, owned);
+            return null;
         }
 
         // SPEC 10.7, 15.6.1: a common Function conversion compares whole contracts; with matching signatures, its Origin failure is
@@ -1030,52 +902,6 @@ public sealed partial class Binding
         node.Report(requirement, code, at: place, evidence: [text], repairs: judgment == AcquisitionJudgment.Refuted ? null : TransferRepair(node, place, judgment));
     }
 
-    // SPEC 7.7.2: a capture entry initializes its environment binding as `let x = x` or `let x = x@op` would. The report is
-    // located at the entry and names the initialization it stands for; a bare entry of a Non-Copy binding offers the transfer
-    // and the borrow as candidates (SPEC 23.1.3). In a default, the binding of a preceding argument admits neither, nor an
-    // exclusive borrow (SPEC 7.2.3), so no candidate is offered.
-    private void ReportCaptureEntry(Koto node, CaptureKoto capture, BoundType type, BindingSymbol? source, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        var name = capture.Name;
-        switch (code)
-        {
-            case DiagnosticCode.InvalidAssignment_Kd when source is not null && DefaultParameters.InLaterDefault(node, source):
-                node.Report(requirement, code, note: $"The capture entry {name}@uniq borrows the slot of the let binding {name} exclusively, as let {name} = {name}@uniq would; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)", evidence: [name], span: capture.Span);
-                break;
-            case DiagnosticCode.InvalidAssignment_Kd:
-                node.Report(requirement, code, note: $"The capture entry {name}@uniq borrows the slot of the let binding {name} exclusively, as let {name} = {name}@uniq would", evidence: [name], span: capture.Span);
-                break;
-            case DiagnosticCode.TransferRequired_Kd when source is not null && DefaultParameters.InLaterDefault(node, source):
-                node.Report(
-                    requirement,
-                    code,
-                    note: $"The bare capture entry {name} initializes its environment binding as let {name} = {name} would; {DiagnosticTypeName(type)} is not proven Copy, and a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)",
-                    evidence: [name],
-                    span: capture.Span);
-                break;
-            case DiagnosticCode.TransferRequired_Kd:
-                node.Report(
-                    requirement,
-                    code,
-                    note: $"The bare capture entry {name} initializes its environment binding as let {name} = {name} would; {DiagnosticTypeName(type)} is neither proven Copy nor an exclusive reference{this.FailingCaseNote(type, node)}",
-                    evidence: [name],
-                    span: capture.Span,
-                    repairs:
-                    [
-                        new(RepairKind.Transfer, [name, "the closure's environment"], [node.Edit(new(capture.Span.End, 0), "@move")], RepairConditionSet.Take, RepairConditionSet.UsageLegality),
-                        new(RepairKind.Borrow, [name, "the closure's environment"], [node.Edit(new(capture.Span.End, 0), "@ref")], RepairConditionSet.None, RepairConditionSet.UsageLegality),
-                    ]);
-                break;
-            case DiagnosticCode.InvalidCaptureBinding_Kd:
-                // SPEC 7.7.2: an explicit capture of self obeys the construction and destruction restrictions.
-                node.Report(requirement, code, note: "In a constructor or destructor, self is reached only through its Fields, so a capture entry cannot take self (SPEC 7.7.2)", span: capture.Span);
-                break;
-            default:
-                node.Report(requirement, code, span: capture.Span);
-                break;
-        }
-    }
-
     // Reports a write failure at its target; an assignment names the target. An
     // Exclusive call of a closure (SPEC 7.7.3) borrows the callee exclusively, so the callee is the written target.
     private void ReportWrite(Koto node, Koto target, DiagnosticRequirement requirement, DiagnosticCode code)
@@ -1162,8 +988,7 @@ public sealed partial class Binding
         this.mismatches?.Clear();
         this.qualificationStops?.Clear();
         this.qualificationFailures?.Clear();
-        this.originRelations?.Clear();
-        this.callRelations?.Clear();
+        this.ResetOriginRecords();
         this.originContracts?.Clear();
         this.ownedConversions?.Clear();
         this.objectErasureFailures?.Clear();
@@ -1184,6 +1009,7 @@ public sealed partial class Binding
         this.arityFailures?.Clear();
         this.constructorAbsences?.Clear();
         this.invalidStaticOriginSlots?.Clear();
+        this.phantomRawOrigins?.Clear();
         this.rejectedCandidates?.Clear();
         this.unboundSlots?.Clear();
         this.acquisitionPlaces?.Clear();

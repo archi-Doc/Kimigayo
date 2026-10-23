@@ -1,98 +1,45 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Mir;
-using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Backend;
 
-// The Drop terminator of FunctionCodegen and the DropGlue items' functions (R5 package C 3.6, plan C4a; C0c brings the Keep and Elide
-// verdicts and the string glue forward, DECISIONS R5-M78): A2's verdict for the item's view (R4-M6a), Keep destroying exactly when the
-// dropped value's instance Type may need a drop, by calling its DropGlue item, the collector's target at the Drop, with the Place's address
-// and the Drop's location text, Elide writing nothing; Flag (C4b) and Open (C4c) are rows not written yet. A glue function calls its Type's
-// routine (DropGlue.Release) with its own parameters through the call writer (PD3); ModuleCodegen names and signs the item.
-// Gate step 2's stand-in (R5-M78, removed by C4a's per-body step 2, package C 3.8, which reads R4-M71's MirProblem.Body): under sel the
-// old analysis decides acceptance, so the MIR analyses' problems refuse nothing, and A2's verdicts are exact only for programs A1 accepts
-// (R4-M6a); a Drop is written only for a program whose MIR analyses recorded no Ownership problem (A1 with its arena record, A2, and
-// conservatively A4 and A5; A3's do not gate, PD12), else it is one located Unsupported_Kd.
+// The Drop terminator and A2's verdict rows of FunctionCodegen (R5 package C 3.6, plans C4a, C4b and C4c; C0c brings the Keep and Elide
+// verdicts forward, DECISIONS R5-M78, R5-M99, R5-M100): A2's verdict group for the item's view (R4-M6a), its first row the dropped Place's.
+// A value is destroyed by its row (DestroyByRow) exactly when its instance Type may need a drop: Keep and Flag by calling its DropGlue item,
+// the collector's target at the Drop, with the Place's address and the Drop's location text through the one destruction-call writer
+// (FunctionCodegen.Glue's Destroy), under the row's flag (FunctionCodegen.Flags' test; Keep's is none, so always); Elide writes nothing;
+// Open destroys what remains after a Partial Move (SPEC 16.3.2, 15.1.3): one level of the value through its glue item (FunctionCodegen.Glue's
+// Level), each part in destruction order by its child row, found by the part's move-path step (Governing), and a part without one by its
+// parent's own bit, a component no Place names having no path of its own (MirMoveData). The Drop ends through Branch, after its own clear
+// point. Gate step 2 has written only a body whose table is exact (FunctionCodegen.Write; DECISIONS R5-M96), so a runtime Drop without a
+// group is a broken contract, and no Open row is a struct's that declares a drop (A2's MovedPlace_Kd, R4-M6b).
 internal sealed partial class FunctionCodegen
 {
     private readonly HashSet<BoundType> seen = new(); // MirTypes.MayNeedDrop's scratch.
-    private MirProgram program = null!;
-    private ulong exactVersion; // The program version whose exactness is known (0: none).
-    private bool exact;
-    private int at; // The block being written.
-
-    /// <summary>Writes the function of a DropGlue item by its Type's row (<see cref="DropGlue.Release"/>): the routine called with the
-    /// function's own parameters, in order; a Type without a row is C4a's, one located <c>Unsupported_Kd</c> at the item's site.</summary>
-    /// <param name="collector">The collector of the checked set.</param>
-    /// <param name="item">The DropGlue item.</param>
-    /// <param name="output">The module's buffer.</param>
-    internal void WriteGlue(InstanceCollector collector, int item, TextWriter output)
-    {
-        var entry = collector.Set.Items[item];
-        if (DropGlue.Release(entry.RepresentativeType!) is not { } release)
-        {
-            this.module.Report(DiagnosticCode.Unsupported_Kd, entry.Site);
-            return;
-        }
-
-        var parameters = release.Parameters.Length;
-        this.arguments = this.arguments.Length < parameters ? new Value[parameters] : this.arguments;
-        for (var i = 0; i < parameters; i++)
-        {
-            this.arguments[i] = new('a', i);
-        }
-
-        this.output = output;
-        output.Write(this.module.Glue(item).GetDefinition(exported: false));
-        output.Write("entry:\n");
-        this.WriteCall(release, this.arguments.AsSpan(0, parameters));
-        output.Write("  ret void\n}\n");
-    }
 
     private void Drop(in MirTerminator drop)
     {
-        if (!this.Exact())
-        {
-            this.Report(DiagnosticCode.Unsupported_Kd, drop.Source); // C4a's per-body gate step 2.
-            return;
-        }
-
-        var table = this.program.Drops;
-        var group = table.Group(this.body.Ordinal, this.at, this.collector.Set.Items[this.item].View);
+        var group = this.program.Drops.Group(this.body.Ordinal, this.at, this.collector.Set.Items[this.item].View);
         if (group < 0)
         {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, drop.Source); // PD12: A1 and A2 judged every runtime Drop of the body.
+            this.Report(DiagnosticCode.InternalInvariant_Kd, drop.Source); // PD12: A1 and A2 judged every runtime Drop of an exact body.
             return;
         }
 
-        switch (table.RowsOf(this.body.Ordinal)[group].Verdict)
+        if (this.DropRow(group).Verdict != MirDropVerdict.Elide && !this.DestroyPlace(drop, group))
         {
-            case MirDropVerdict.Keep:
-                if (!this.Keep(drop))
-                {
-                    return;
-                }
-
-                break;
-            case MirDropVerdict.Elide:
-                break; // Nothing is destroyed.
-            case MirDropVerdict.Flag or MirDropVerdict.Open:
-                this.Report(DiagnosticCode.Unsupported_Kd, drop.Source); // C4b tests the flag, C4c destroys the remaining parts.
-                return;
-            default:
-                throw new InvalidOperationException("A drop verdict has no code generation row.");
+            return;
         }
 
-        this.output.Write("  br ");
-        this.WriteLabel(drop.Target);
-        this.output.Write('\n');
+        this.Branch(drop.Target);
     }
 
-    // Keep destroys exactly when the dropped value's instance Type may need a drop (MirTypes.MayNeedDrop, the rule the collector targets a
-    // Drop's glue by, K package 4.5 row 9): refuted, nothing is written; else the collector's target, the Type's DropGlue item, is called on
-    // the Place's address with the Drop's location, and a missing target is a broken contract (package C 3.2 I8). False after a record.
-    private bool Keep(in MirTerminator drop)
+    // SPEC 16.2.1 (R4-M6a): the dropped value destroyed by its group's first row, exactly when its instance Type may need a drop
+    // (MirTypes.MayNeedDrop, the rule the collector targets a Drop's glue by, K package 4.5 row 9): refuted, nothing is written, no test
+    // either; else by the collector's target, the Type's DropGlue item, on the Place's address with the Drop's location, and a missing
+    // target is a broken contract (package C 3.2 I8). False after a record.
+    private bool DestroyPlace(in MirTerminator drop, int group)
     {
         if (this.body.TypeOf(drop.Place) is not { } dropped || this.collector.TypeOf(this.item, dropped) is not { } type)
         {
@@ -118,47 +65,104 @@ internal sealed partial class FunctionCodegen
             return false;
         }
 
-        var location = this.Location(drop.Source);
-        if (location < 0)
+        if (!this.Location(drop.Source, out var site))
         {
             return false;
         }
 
-        this.arguments = this.arguments.Length < 3 ? new Value[3] : this.arguments;
-        (this.arguments[0], this.arguments[1], this.arguments[2]) = (address, new('@', location), new('\0', this.module.Constants[location].ByteLength));
-        this.WriteCall(this.module.Glue(glue), this.arguments.AsSpan(0, 3));
+        this.DestroyByRow(-1, group, glue, address, 0, site);
         return true;
     }
 
-    // The item the collector targets at a site of the item's body, or -1: its targets are in location order (K package 4.3).
-    private int Target(MirLocation site)
+    // A value or a part at an offset from an address by its row (R4-M6a): the child row's verdict, Keep and Flag its glue under the row's
+    // flag (Keep's none), Elide nothing (no address either), Open its own level by its child rows (Level); without a row (child -1), its
+    // glue under its parent's own bit, the parent's flag (none: set on every path). The glue is the target's.
+    private void DestroyByRow(int parent, int child, int glue, Value address, long offset, Site site)
     {
-        var targets = this.collector.Set.Targets(this.item);
-        var (low, high) = (0, targets.Length);
-        while (low < high)
+        var (verdict, flag) = child >= 0 ? (this.DropRow(child).Verdict, this.DropRow(child).Flag) : (MirDropVerdict.Keep, this.Own(parent));
+        switch (verdict)
         {
-            var middle = (low + high) >> 1;
-            var here = targets[middle].At;
-            (low, high) = here.Block < site.Block || (here.Block == site.Block && here.Index < site.Index) ? (middle + 1, high) : (low, middle);
+            case MirDropVerdict.Keep or MirDropVerdict.Flag:
+                var guard = this.Test(flag);
+                this.Destroy(this.module.Glue(glue), this.Offset(address, offset), site);
+                this.Join(guard);
+                return;
+            case MirDropVerdict.Elide:
+                return; // Nothing remains.
+            case MirDropVerdict.Open:
+                this.Level(glue, child, this.Offset(address, offset), site);
+                return;
+            default:
+                throw new InvalidOperationException("A drop verdict has no code generation row.");
         }
-
-        return low < targets.Length && targets[low].At == site ? targets[low].Item : -1;
     }
 
-    // Whether the program's MIR analyses recorded no Ownership problem, once per program version (the stand-in above).
-    private bool Exact()
+    // The rows governing a direct part under an Open row (-1: none, a glue function's): its child row, named by the part's move-path step
+    // (MirMoveData; the bridge from Component's numbering, which DropPart carries: a struct's own Field by its index, its position less one
+    // after a base, the base by one Base step, a Tuple's element by its index); an enum Case payload element through its Case's row, by
+    // that row's child at the payload's Field when the Case's row is Open, else by the Case's row; -1 for none, its parent's own bit.
+    private (int Parent, int Child) Governing(BoundType type, in DropPart part, int row)
     {
-        if (this.exactVersion != this.program.Version)
+        if (AdtDef.IsEnum(type))
         {
-            this.exact = true;
-            foreach (var problem in this.program.Problems.All)
+            var payload = this.Child(row, MirProjectionKind.Downcast, part.Ordinal);
+            return payload >= 0 && this.DropRow(payload).Verdict == MirDropVerdict.Open
+                ? (payload, this.Child(payload, MirProjectionKind.Field, part.Index)) : (row, payload);
+        }
+
+        var based = AdtDef.Base(type) is not null; // Component's numbering: a struct's base first, then its Fields.
+        if (based && part.Index == 0)
+        {
+            return (row, this.Child(row, MirProjectionKind.Base, 1));
+        }
+
+        return (row, this.Child(row, MirProjectionKind.Field, based ? part.Index - 1 : part.Index));
+    }
+
+    // The child row of a row by its step, among the rows of its depth below it in the group's pre-order; -1 for none or no row.
+    private int Child(int row, MirProjectionKind step, int arg)
+    {
+        if (row < 0)
+        {
+            return -1;
+        }
+
+        var rows = this.program.Drops.RowsOf(this.body.Ordinal);
+        for (var child = row + 1; child < rows.Length && rows[child].Depth > rows[row].Depth; child++)
+        {
+            if (rows[child].Depth == rows[row].Depth + 1 && rows[child].Step == step && rows[child].Arg == arg)
             {
-                this.exact &= problem.Requirement.Partition != DiagnosticPartition.Ownership;
+                return child;
             }
-
-            this.exactVersion = this.program.Version;
         }
 
-        return this.exact;
+        return -1;
     }
+
+    // The child row of an Open fixed array's row at the highest element position not above last (each a ConstIndex step), or -1.
+    private int Highest(int row, long last)
+    {
+        if (row < 0)
+        {
+            return -1;
+        }
+
+        var rows = this.program.Drops.RowsOf(this.body.Ordinal);
+        var found = -1;
+        for (var child = row + 1; child < rows.Length && rows[child].Depth > rows[row].Depth; child++)
+        {
+            if (rows[child].Depth == rows[row].Depth + 1 && rows[child].Arg <= last && (found < 0 || rows[child].Arg > rows[found].Arg))
+            {
+                found = child;
+            }
+        }
+
+        return found;
+    }
+
+    // A row of the body's drop table, by its index in RowsOf.
+    private MirDropRow DropRow(int index) => this.program.Drops.RowsOf(this.body.Ordinal)[index];
+
+    // The flag of a row's own bit, which its parts without a row follow: -1 (none, set on every path) for no row, a glue function's.
+    private int Own(int row) => row < 0 ? -1 : this.DropRow(row).Flag;
 }

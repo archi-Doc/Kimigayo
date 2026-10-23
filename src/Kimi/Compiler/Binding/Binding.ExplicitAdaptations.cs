@@ -94,7 +94,7 @@ public sealed partial class Binding
         var cases = this.adaptationCaseScratch.Rent(caseCount);
         try
         {
-            if (!this.CheckAdaptationRows(
+            var verdict = this.CheckAdaptationRows(
                 conversion,
                 scope,
                 source,
@@ -106,9 +106,10 @@ public sealed partial class Binding
                 0,
                 ref operations,
                 ref creationSource,
-                ref creationTarget))
+                ref creationTarget);
+            if (verdict != true)
             {
-                return null;
+                return verdict is null ? this.Fail(conversion, BindingFailure.Unsupported) : null;
             }
         }
         finally
@@ -138,7 +139,9 @@ public sealed partial class Binding
         return Complete(conversion, target);
     }
 
-    private bool CheckAdaptationRows(
+    // Judges the cases a row selects up to the first that fails (false); otherwise null when some hold only but for a Borrow Binding
+    // cannot form yet, true when all hold (CheckAdaptationCase).
+    private bool? CheckAdaptationRows(
         ConversionKoto conversion,
         BindingScope scope,
         BoundType source,
@@ -161,6 +164,7 @@ public sealed partial class Binding
                 return false;
             }
 
+            var unsupported = false;
             foreach (var mode in SemanticsOrder)
             {
                 if (admitted.Contains(mode))
@@ -175,7 +179,7 @@ public sealed partial class Binding
                         return false;
                     }
 
-                    if (!this.CheckAdaptationRows(
+                    var row = this.CheckAdaptationRows(
                         conversion,
                         scope,
                         actual,
@@ -187,14 +191,17 @@ public sealed partial class Binding
                         caseCount + 1,
                         ref operations,
                         ref creationSource,
-                        ref creationTarget))
+                        ref creationTarget);
+                    if (row == false)
                     {
                         return false;
                     }
+
+                    unsupported |= row is null;
                 }
             }
 
-            return true;
+            return unsupported ? null : true;
         }
 
         var operation = ExplicitAdaptationPlan.Select(source, target, shorthand);
@@ -204,7 +211,8 @@ public sealed partial class Binding
             return false;
         }
 
-        if (!this.CheckAdaptationCase(conversion, scope, source, target, operation, cases[..caseCount]))
+        var verdict = this.CheckAdaptationCase(conversion, scope, source, target, operation, cases[..caseCount]);
+        if (verdict == false)
         {
             return false;
         }
@@ -216,10 +224,14 @@ public sealed partial class Binding
             creationTarget ??= target;
         }
 
-        return true;
+        return verdict;
     }
 
-    private bool CheckAdaptationCase(ConversionKoto conversion, BindingScope scope, BoundType source, BoundType target, ConversionBinding operation, ReadOnlySpan<PairCase> cases)
+    // Judges one case: true when it holds, null when it holds but for a Borrow SPEC lends and Binding cannot form yet (BorrowFailure:
+    // Unsupported, not recorded, so that another case's Language error is reported instead, SPEC 23.1.1), false once its failure is
+    // recorded or it depends on one.
+    private bool? CheckAdaptationCase(
+        ConversionKoto conversion, BindingScope scope, BoundType source, BoundType target, ConversionBinding operation, ReadOnlySpan<PairCase> cases)
     {
         if (operation == ConversionBinding.None)
         {
@@ -249,7 +261,8 @@ public sealed partial class Binding
             }
         }
 
-        if (operation == ConversionBinding.ObjectUpcast && this.BindObjectUpcast(conversion, scope, source, target) is null)
+        // An upcast's Types are judged before its Borrow, whose Place may only be unsupported (null), and its result after.
+        if (operation == ConversionBinding.ObjectUpcast && !this.ObjectUpcastFits(conversion, source, target))
         {
             return false;
         }
@@ -257,10 +270,17 @@ public sealed partial class Binding
         if (operation is ConversionBinding.Borrow or ConversionBinding.Address ||
             (operation == ConversionBinding.ObjectUpcast && target.IsObjectBorrow))
         {
+            // SPEC 13.5.6, 15.1.5: a borrowing case, shared or exclusive, borrows a Place that lends in its mode or a Temporary Value.
             var exclusive = target.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
-            if (exclusive && !this.BorrowablePlace(conversion.Left, scope, true) && !BorrowableTemporary(conversion.Left, true, true, false))
+            if (!this.BorrowablePlace(conversion.Left, scope, exclusive) && !BorrowableTemporary(conversion.Left, exclusive, true, false))
             {
-                this.Fail(conversion, AccessFailure(conversion.Left));
+                var failure = this.BorrowFailure(conversion.Left, scope, exclusive);
+                if (failure == BindingFailure.Unsupported)
+                {
+                    return null;
+                }
+
+                this.Fail(conversion, failure);
                 return false;
             }
         }
@@ -270,6 +290,6 @@ public sealed partial class Binding
             return false;
         }
 
-        return true;
+        return operation != ConversionBinding.ObjectUpcast || this.ObjectUpcastResult(conversion, scope, source, target) is not null;
     }
 }

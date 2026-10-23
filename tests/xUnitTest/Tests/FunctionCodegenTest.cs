@@ -16,7 +16,7 @@ namespace XunitTest;
 /// slots, runtime-reached blocks, the Places of its place writer and the forms the frame covers, and a form not covered yet is one located
 /// <c>Unsupported_Kd</c> with no module. The fixtures run under the process's generators (the old one by default, MIR code generation
 /// under <c>-Pipeline mir -Codegen mir</c>); the other tests select MIR code generation themselves.</summary>
-public sealed class FunctionCodegenTest
+public sealed partial class FunctionCodegenTest
 {
     private const string Branches =
         "func choose(flag: bool, a: i64, b: i64) -> i64\n    if flag => return a\n    return b\nfunc nested(first: bool, second: bool) -> char\n" +
@@ -29,10 +29,6 @@ public sealed class FunctionCodegenTest
 
     private const string Strings =
         "func show(text: ref/string) => Console.writeLine(text)\nfunc greeting() -> string => \"Hi\"\nfunc nothing(flag: bool) -> string => \"\"\n";
-
-    // Two literals' temporaries, one on a conditional path, each borrowed and destroyed (Keep), and a string never initialized (Elide).
-    private const string Drops =
-        "Console.writeLine(\"a\")\nlet s: string\nlet flag = true\nif flag\n    Console.writeLine(\"b\")\n";
 
     private const string Arithmetic =
         "func f(a: i32, b: i32) -> i32 => a / b + a % b - (a << b) * 3\nfunc g(a: Wrapping<u8>, c: char) -> bool => -a > 3 and not (c < 'z')\n";
@@ -60,6 +56,51 @@ public sealed class FunctionCodegenTest
         "func f(a: ref/[3 of i32], i: isize) -> i32 => a[i]\nfunc g(a: [3 of i64]) -> i64 => a[2]\nfunc h(q: uniq/i32) => q@follow = 7\n" +
         "func k(t: ref/(i8, i64, i16), a: uniq/Array<u8>, i: isize) -> i16\n    a[i] += 1\n    return t.2\n" +
         "func m() -> i16\n    let b: [3 of i16] = [1, 2, 3]\n    return b[1]\n";
+
+    // The rvalue rows (R5 C2b; DECISIONS R5-M87): values in memory copied, a string moved, an enum Case built and matched, a length, a
+    // Fill of a value in memory and a zero-sized borrow.
+    private const string Rvalues =
+        "enum Shape\n    Circle(i32)\n    Rect(i32, i64)\n    Empty\nfunc copy(t: (i32, i64)) -> (i32, i64) => t\nfunc text(x: string) -> string => x@move\n" +
+        "func rect(a: i32, b: i64) -> Shape => .Rect(a, b)\nfunc area(s: ref/Shape) -> i64\n    return match s\n        .Rect(let w, let h) => w@i64 * h\n" +
+        "        _ => 0\nfunc count(a: ref/Array<i64>) -> isize => a.length\nfunc fill(p: (i32, i64)) -> [3 of (i32, i64)] => [3 of p]\n" +
+        "func unit() -> i32\n    let u = ()\n    let r = u@ref\n    return 1\n";
+
+    // A pair binder's acquisition (tests/mir/cases.kimi's keep) and a case adaptation, each in its owner and its other case (SPEC 8.14,
+    // 8.15), instanced by the calls.
+    private const string Acquisitions =
+        "func keep<s/T>(value: s/T, x: T) -> T\n    s is owner or uniq\n    T is Copy\n    var v = value@move\n    let local = v\n    _ = local\n" +
+        "    v@follow = x\n    return v@follow\nfunc owned() -> i32 => keep(5, 2)\nfunc lent() -> i32\n    var y: i32 = 1\n    return keep(y@uniq, 2)\n";
+
+    private const string Adaptations =
+        "func put<s/T>(value: s/T, x: i32) -> ()\n    s is owner or ref\n    T is Copy\n    _ = x@s\nfunc owned() => put(5, 1)\nfunc lent()\n" +
+        "    var y: i32 = 1\n    put(y@ref, 1)\n";
+
+    // A case adaptation whose one case creates an object (SPEC 8.14, 13.5.3), instanced by the call.
+    private const string Creations =
+        "func put<s/T>(value: s/T, x: i32) -> ()\n    s is obj\n    _ = x@s\nfunc lent()\n    let o = 5@obj\n    put(o@move, 1)\n";
+
+    // The call rows (R5 C3a; DECISIONS R5-M89): a scalar and a bool argument and result, a string borrow, a zero-sized parameter, a slot
+    // result, a string moved and a Tuple copied by pointer, a diverging callee, a generic instance and a recursive default's template.
+    private const string Calls =
+        "func id(x: i32) -> i32 => x\nfunc f(a: i32) -> i32 => id(a)\nfunc flip(b: bool) -> bool => not b\nfunc g(c: bool) -> bool => flip(c)\n" +
+        "func show(t: ref/string) => Console.writeLine(t)\nfunc call(t: ref/string) => show(t)\nfunc pair(a: i32) -> (i32, i64) => (a, 2)\n" +
+        "func second() -> i64 => pair(1).1\nfunc take(s: string) => ()\nfunc give()\n    let t = \"x\"\n    take(t@move)\n" +
+        "func use(p: (i32, i64)) -> i64 => p.1\nfunc copy(q: (i32, i64)) -> i64 => use(q)\nfunc unit(x: (), y: i32) -> i32 => y\n" +
+        "func callUnit() -> i32 => unit((), 3)\nfunc stop() -> Never\n    loop => ()\nfunc diverge(flag: bool) -> i32\n    if flag => stop()\n" +
+        "    return 1\nfunc keep<T>(value: T) -> T => value@move\nfunc kept() -> i32 => keep(1)\n" +
+        "func count(n: i32, m: i32 = if n <= 0 => 0 else => count(n - 1) + 1) -> i32 => m\nfunc counted() -> i32 => count(3)\n";
+
+    // The raw memory and failure rows (R5 C8a; DECISIONS R5-M92): Raw's storage operations, raw pointer displacement and equality, null and
+    // $abort.
+    private const string Raws =
+        "func make(n: isize) -> raw/i64 => Raw.allocate<i64>(n)\nfunc put(p: raw/i64, v: i64)\n    unsafe => Raw.initialize(p, v)\n" +
+        "func view() -> Slice<i64>\n    unsafe => return Raw.slice(null@raw/i64, 0)\nfunc free(p: raw/i64)\n    unsafe => Raw.release(p)\n" +
+        "func next(p: raw/i64, n: isize) -> raw/i64\n    var q: raw/i64 = null\n    unsafe => q = p - n\n    return q\n" +
+        "func empty(p: raw/i64) -> bool => p == null\nfunc stop() => $abort(\"stop\")\n";
+
+    // A #LibraryImport call (SPEC 22.6; DECISIONS R5-M89), its C signature memoized per Write.
+    private const string Imports = "group Native\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n    public unsafe func lastError() -> u32\n" +
+        "func last() -> u32\n    var e: u32 = 0\n    unsafe => e = Native.lastError()\n    return e\n";
 
     // Functions with scalar, string-borrow, zero-sized and Never signatures, a Library's roots.
     private const string Signatures =
@@ -228,6 +269,19 @@ public sealed class FunctionCodegenTest
             string.Empty
         },
         {
+            "PlaceFill",
+            "let x: i32 = 7\nlet five: [5 of i32] = [5 of x]\nlet none: [0 of i32] = [0 of x]\nlet i: isize = 4\nvar bad: i32 = 0\n" +
+            "if five[0] != 7 or five[i] != 7 => bad = 1\nlet bytes: [64 of u8] = [64 of 255]\nif bytes[63] != 255 => bad = 1\n" +
+            "let check = 1 / (1 - bad)\n",
+            string.Empty
+        },
+        {
+            "PlaceWidePosition",
+            "let a: [4 of i32] = [10, 20, 30, 40]\nlet b: [2 of u64] = [1, 3]\nlet c: [2 of i128] = [2, 0]\nlet i: isize = 1\nvar bad: i32 = 0\n" +
+            "if a[b[i]] != 40 or a[c[i]] != 10 or a[b[0]] != 20 or a[c[0]] != 30 => bad = 1\nlet check = 1 / (1 - bad)\n",
+            string.Empty
+        },
+        {
             "PlaceDeref",
             "var x: i32 = 1\nlet r = x@uniq\nr@follow = 41\nvar bad: i32 = 0\nif x != 41 => bad = 1\nx += 1\nlet s = x@ref\n" +
             "if s@follow != 42 => bad = 1\nvar flag = false\nlet f = flag@uniq\nf@follow = true\nif not flag => bad = 1\nlet check = 1 / (1 - bad)\n",
@@ -257,6 +311,151 @@ public sealed class FunctionCodegenTest
         },
     };
 
+    // The rvalue rows' programs (R5 C2b; DECISIONS R5-M87), self-checking as the operator rows' are: Tuples built, copied, nested and read,
+    // zero-sized values borrowed (SPEC 4.3, IMPL 21.1.3); enum Cases built and matched by their discriminant and payload (SPEC 6.5, 14.8);
+    // lengths and indices (SPEC 4.7.3); arrays of values in memory built and filled (SPEC 4.3.3); a string moved, then written.
+    public static TheoryData<string, string, string> RvaluePrograms => new()
+    {
+        {
+            "RvalueTuple",
+            "let t: (i8, i64) = (1, 2)\nlet u = t\nvar bad: i32 = 0\nif u.0 != 1 or u.1 != 2 => bad = 1\nlet n: ((i8, i64), i32) = (u, 3)\nlet m = n\n" +
+            "if m.0.1 != 2 or m.1 != 3 or m.0.0 != 1 => bad = 1\nlet z = ((), ())\nlet r = z@ref\nlet q = z.1@ref\nlet check = 1 / (1 - bad)\n",
+            string.Empty
+        },
+        {
+            "RvalueEnum",
+            "enum Shape\n    Circle(i32)\n    Rect(i32, i64)\n    Empty\nlet s: Shape = .Rect(3, 4)\nlet c: Shape = .Circle(5)\nlet e: Shape = .Empty\n" +
+            "var bad: i32 = 0\nlet a: i64 = match s\n    .Rect(let w, let h) => w@i64 + h\n    _ => 0\nif a != 7 => bad = 1\n" +
+            "let b: i32 = match c\n    .Circle(let r) => r\n    _ => 0\nif b != 5 => bad = 1\nlet k: i32 = match e\n    .Empty => 1\n    _ => 0\n" +
+            "if k != 1 => bad = 1\nlet o: Option<i64> = .Some(9)\nlet v: i64 = match o\n    .Some(let x) => x\n    .None => 0\nif v != 9 => bad = 1\n" +
+            "let check = 1 / (1 - bad)\n",
+            string.Empty
+        },
+        {
+            "RvalueLength",
+            "let a: [4 of i32] = [1, 2, 3, 4]\nvar bad: i32 = 0\nif a.length != 4 => bad = 1\nlet r = a.indices\nif r.start != 0 or r.end != 4 => bad = 1\n" +
+            "let none: [0 of i32] = [0 of 1]\nif none.length != 0 => bad = 1\nlet check = 1 / (1 - bad)\n",
+            string.Empty
+        },
+        {
+            "RvalueElements",
+            "let p: (i32, i64) = (1, 2)\nlet q: [2 of (i32, i64)] = [p, (3, 4)]\nlet f: [3 of (i32, i64)] = [3 of p]\nlet i: isize = 1\nvar bad: i32 = 0\n" +
+            "if q[i].0 != 3 or q[0].1 != 2 or q[i].1 != 4 => bad = 1\nif f[2].1 != 2 or f[i].0 != 1 => bad = 1\nlet check = 1 / (1 - bad)\n",
+            string.Empty
+        },
+        { "RvalueString", "let t = \"moved\"\nlet u = t@move\nConsole.writeLine(u)\n", "moved\n" },
+    };
+
+    // A requirement's witnesses (SPEC 8.6.3-8.6.4; DECISIONS R5-M93): a conformance's body, an inherited one and a generic Type's instance.
+    private const string RequirementWitnesses =
+        "contract Shape\n    func area(self: ref/Self) -> i32\nstruct Square\n    Self is Shape\n    public var side: i32\n" +
+        "    public init(side: i32) => self.side = side\n    public func area(self: ref/Self) -> i32 => self.side * self.side\n" +
+        "public open struct Base\n    public var side: i32 = 2\n    public func area(self: ref/Self) -> i32 => self.side\npublic struct Leaf : Base\n" +
+        "    Self is Shape\n    public init() => ()\nstruct Box<T>\n    Self is Shape when T is Copy\n    public var value: T\n" +
+        "    public init(value: T) => self.value = value@move\n    public func area(self: ref/Self) -> i32 => 4\nfunc measure<T>(x: ref/T) -> i32\n" +
+        "    T is Shape\n    return x.area()\nlet square = Square.init(3)\nlet leaf = Leaf.init()\nlet box = Box<i64>.init(5)\nvar bad: i32 = 0\n" +
+        "if measure(square) != 9 or measure(leaf) != 2 or measure(box) != 4 => bad = 1\nlet check = 1 / (1 - bad)\n";
+
+    // A Contract property a computed property's accessors witness (SPEC 8.6.4; DECISIONS R5-M93).
+    private const string RequirementAccessors =
+        "contract Counted\n    property count: i32 has get, set\nstruct Gauge\n    Self is Counted\n    var stored: i32 = 2\n    public computed count: i32\n" +
+        "        get() -> i32 => self.stored\n        set(value: i32) -> () => self.stored = value\n    public init() => ()\n" +
+        "func bump<T>(x: uniq/T) -> i32\n    T is Counted\n    x.count = x.count + 1\n    return x.count\nvar gauge = Gauge.init()\nvar bad: i32 = 0\n" +
+        "if bump(gauge@uniq) != 3 or gauge.count != 3 => bad = 1\nlet check = 1 / (1 - bad)\n";
+
+    // A caller-location library function's call (SPEC 22.5.1; DECISIONS R5-M93): Range.iterate, which RangeIterator.starting's Fail follows.
+    private const string CallerLocations = "let r = 3..1\nlet it = r.iterate()\n";
+
+    // The call rows' programs (R5 C3a, C3b; DECISIONS R5-M89, R5-M93), self-checking: recursion; Tuple arguments and results, a Copy argument kept
+    // independent of its source while the call writes the source through an exclusive borrow (the ABI result-slot and copy rules); a string
+    // moved into and out of a call; generic instances; defaults, a recursive one through its template; a pair binder's function in its
+    // owner and its uniq case (tests/mir/cases.kimi's keep, moved here from C2b); a #LibraryImport call; a diverging callee's Abort at its
+    // site (SPEC 22.5.1); requirement calls of each witness kind.
+    public static TheoryData<string, string, string, string> CallPrograms => new()
+    {
+        {
+            "CallScalar",
+            "func factorial(n: i64) -> i64\n    if n <= 1 => return 1\n    return n * factorial(n - 1)\nfunc even(n: u32) -> bool\n" +
+            "    if n == 0 => return true\n    return not even(n - 1)\nvar bad: i32 = 0\nif factorial(10) != 3628800 or not even(10) or even(7) => bad = 1\n" +
+            "let check = 1 / (1 - bad)\n",
+            string.Empty,
+            string.Empty
+        },
+        {
+            "CallSlots",
+            "func swap(p: (i32, i64)) -> (i64, i32) => (p.1, p.0)\nfunc probe(p: (i32, i64), r: uniq/(i32, i64)) -> i64\n    r@follow = (7, 8)\n" +
+            "    return p.1\nvar s: (i32, i64) = (1, 2)\nvar bad: i32 = 0\nlet w = swap(s)\nif w.0 != 2 or w.1 != 1 => bad = 1\n" +
+            "if probe(s, s@uniq) != 2 or s.1 != 8 or s.0 != 7 => bad = 1\nlet check = 1 / (1 - bad)\n",
+            string.Empty,
+            string.Empty
+        },
+        { "CallString", "func echo(s: string) -> string => s@move\nlet t = echo(\"called\")\nConsole.writeLine(t)\n", "called\n", string.Empty },
+        {
+            "CallGeneric",
+            "func pick<T>(flag: bool, a: T, b: T) -> T\n    T is Copy\n    if flag => return a\n    return b\nvar bad: i32 = 0\n" +
+            "if pick(true, 1, 2) != 1 or pick(false, 1.5, 2.5) != 2.5 or pick(true, (1, 2), (3, 4)).1 != 2 => bad = 1\nlet check = 1 / (1 - bad)\n",
+            string.Empty,
+            string.Empty
+        },
+        {
+            "CallDefault",
+            "func next(x: i32, y: i32 = x + 1) -> i32 => y\nfunc count(n: i32, m: i32 = if n <= 0 => 0 else => count(n - 1) + 1) -> i32 => m\n" +
+            "var bad: i32 = 0\nif next(1) != 2 or next(1, 5) != 5 or count(3) != 3 or count(3, 9) != 9 => bad = 1\nlet check = 1 / (1 - bad)\n",
+            string.Empty,
+            string.Empty
+        },
+        {
+            "CallViews",
+            "func keep<s/T>(value: s/T, x: T) -> T\n    s is owner or uniq\n    T is Copy\n    var v = value@move\n    let local = v\n    _ = local\n" +
+            "    v@follow = x\n    return v@follow\nvar y: i32 = 1\nvar bad: i32 = 0\nlet a = keep(5, 2)\nlet b = keep(y@uniq, 3)\n" +
+            "if a != 2 or b != 3 or y != 3 => bad = 1\nlet check = 1 / (1 - bad)\n",
+            string.Empty,
+            string.Empty
+        },
+        {
+            "CallForeign",
+            "group Native\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n    public unsafe func lastError() -> u32\nvar error: u32 = 1\n" +
+            "unsafe => error = Native.lastError()\nConsole.writeLine(\"imported\")\n",
+            "imported\n",
+            string.Empty
+        },
+        {
+            "CallNeverAbort",
+            "func fail(x: u8) -> Never\n    let y = x + 1\n    loop => ()\nlet z: u8 = 255\nfail(z)\n",
+            string.Empty,
+            "Hello.kimi:2:13: abort KIMI_E_INT_OVERFLOW: Integer overflow\n"
+        },
+        { "CallRequirementWitnesses", RequirementWitnesses, string.Empty, string.Empty },
+        { "CallRequirementAccessors", RequirementAccessors, string.Empty, string.Empty },
+    };
+
+    // The raw memory and failure rows' programs (R5 C8a; DECISIONS R5-M92), self-checking: storage allocated, initialized with a scalar and
+    // a Tuple, read through p[n] and a Slice, displaced and compared, then released; $abort of a constant and of a moved string, at the
+    // $abort expression; a Fail, a range selection out of bounds, at the selection (SPEC 22.5.1-22.5.2).
+    public static TheoryData<string, string, string> RawPrograms => new()
+    {
+        {
+            "RawRows",
+            "let p = Raw.allocate<i64>(3)\nvar bad: i32 = 0\nunsafe\n    Raw.initialize(p, 7)\n    Raw.initialize(p + 1, 8)\n    Raw.initialize(p + 2, 9)\n" +
+            "    let s = Raw.slice(p, 3)\n    if p[0] + p[1] + s[2] != 24 or s.length != 3 => bad = 1\n    let q = p + 2\n    if q - 1 != p + 1 => bad = 1\n" +
+            "    Raw.release(p)\nif p == null => bad = 1\nlet check = 1 / (1 - bad)\n",
+            string.Empty
+        },
+        {
+            "RawRowsTuple",
+            "let p = Raw.allocate<(i32, i64)>(1)\nvar bad: i32 = 0\nunsafe\n    Raw.initialize(p, (1, 2))\n    if (*p).1 != 2 => bad = 1\n" +
+            "    Raw.release(p)\nlet check = 1 / (1 - bad)\n",
+            string.Empty
+        },
+        { "AbortRowsConstant", "$abort(\"stop\")\n", "Hello.kimi:1:1: abort KIMI_E_ABORT: stop\n" },
+        { "AbortRowsMoved", "func fail(text: string) => $abort(text@move)\nfail(\"moved\")\n", "Hello.kimi:1:28: abort KIMI_E_ABORT: moved\n" },
+        {
+            "AbortRowsBounds",
+            "let a: [4 of i32] = [1, 2, 3, 4]\nvar n: isize = 5\nlet s = a[1..n]\n",
+            "Hello.kimi:3:9: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n"
+        },
+    };
+
     [Theory]
     [MemberData(nameof(Frames))]
     public void FrameProgramsRun(string name, string source)
@@ -282,6 +481,21 @@ public sealed class FunctionCodegenTest
     public void PlaceProgramsRun(string name, string source, string stderr)
         => ScalarEmissionTest.EmitFixture(name, source, string.Empty, stderr.Length == 0 ? 0 : 1, stderr);
 
+    [Theory]
+    [MemberData(nameof(RvaluePrograms))]
+    public void RvalueProgramsRun(string name, string source, string stdout)
+        => ScalarEmissionTest.EmitFixture(name, source, stdout);
+
+    [Theory]
+    [MemberData(nameof(CallPrograms))]
+    public void CallProgramsRun(string name, string source, string stdout, string stderr)
+        => ScalarEmissionTest.EmitFixture(name, source, stdout, stderr.Length == 0 ? 0 : 1, stderr);
+
+    [Theory]
+    [MemberData(nameof(RawPrograms))]
+    public void RawProgramsRun(string name, string source, string stderr)
+        => ScalarEmissionTest.EmitFixture(name, source, string.Empty, stderr.Length == 0 ? 0 : 1, stderr);
+
     // The console writeLine is a compiler function's legacy runtime row (RuntimeAbi.WriteLine): the routine is called with the string borrow
     // loaded from its local and the call site's location text (SPEC 22.5.1), a header constant. A string constant is stored whole into its
     // local, its bytes a header constant and its release kind Static (IMPL 21.1.3); the empty string has no bytes.
@@ -302,66 +516,6 @@ public sealed class FunctionCodegenTest
         Assert.Equal(
             "store %kimi.string { ptr null, i64 0, i8 0 }, ptr %, align 8",
             Assert.Single(ir.Single("internal void (ptr, i1)").Instructions, static x => x.Opcode == "store" && x.Shape.Contains("kimi.string")).Shape);
-    }
-
-    // DECISIONS R5-M78, R4-M6a: a Ref stores its local's address; a Keep Drop calls the dropped Type's glue once, on the Place's address, and
-    // an Elide Drop nothing, so each string a path initializes is destroyed exactly once and the one never initialized is not; the string's
-    // glue item calls the runtime release with its own parameters (PD18).
-    [Fact]
-    public void EachInitializedStringIsDestroyedOnce()
-    {
-        var ir = GeneratedIr.Parse(Generate(Drops));
-        var body = ir.Startup;
-        var strings = body.Instructions.Where(static x => x.Shape == "alloca %kimi.string, align 8").ToArray();
-        var literals = body.Instructions.Where(static x => x.Opcode == "store" && x.Shape.StartsWith("store %kimi.string", StringComparison.Ordinal))
-            .Select(static x => Assert.Single(x.Operands)).ToArray();
-        var borrows = body.Instructions.Where(static x => x.Shape == "store ptr %, ptr %, align 8").Select(static x => x.Operands[0]).ToArray();
-        var writes = body.Instructions.Where(x => x.Opcode == "call" && x.Callee == ir.Function("__kimi_write_line")).ToArray();
-        var drops = body.Instructions.Where(x => x.Opcode == "call" && x.Callee != ir.Function("__kimi_write_line")).ToArray();
-        Assert.Equal(3, strings.Length);
-        Assert.Equal(2, literals.Distinct().Count());
-        Assert.Equal(literals, borrows);
-        Assert.Equal(2, writes.Length);
-        Assert.Equal(literals, drops.Select(static x => x.Operands[0]));
-        Assert.All(drops, static x => Assert.Equal("call void @(ptr %, ptr @, i64 15)", x.Shape));
-        var glue = Assert.Single(drops.Select(static x => x.Callee).Distinct())!;
-        Assert.Equal(["call void @(ptr %, ptr %, i64 %)", "ret void"], glue.Instructions.Select(static x => x.Shape));
-        Assert.Same(ir.Function("__kimi_destroy_string"), glue.Instructions[0].Callee);
-        Assert.Equal(glue.Parameters, glue.Instructions[0].Operands);
-    }
-
-    // Gate step 2's stand-in (DECISIONS R5-M78): A2's verdicts are exact only for programs A1 accepts (R4-M6a), and under sel the old analysis
-    // decides acceptance, so a program whose MIR analyses recorded an Ownership problem writes no Drop: each is one located Unsupported_Kd; a
-    // control-flow problem (A3) does not gate. No program the old analysis accepts and the frame covers holds such a problem yet (ledger row
-    // a1-whole-incomplete needs a fixed array, and the arena-skipped bodies are rejected first), so the problem is added to the version's
-    // report.
-    [Theory]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    public void AnOwnershipProblemOfTheProgramLeavesItsDropsUnwritten(bool ownership, bool written)
-    {
-        var c = Analyze("Console.writeLine(\"a\")\n");
-        var program = c.BuildMir();
-        var requirement = ownership ? DiagnosticRequirement.Ownership(OwnershipRequirement.PossiblyMovedUse) : DiagnosticRequirement.ControlFlow;
-        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, requirement, program.Bodies[0].Source, 0, 1));
-        using var writer = new StringWriter();
-        Assert.Equal(written, c.Generate(writer));
-        Assert.Equal(written ? [] : [("Unsupported_Kd", (string?)"\"a\"")], Records(c));
-    }
-
-    // PD12: in a program the stand-in passes, A1 and A2 judged every runtime Drop, so one without a verdict group is a broken contract
-    // (InternalInvariant_Kd at the Drop); the program's one drop row is moved to another block to make it so.
-    [Fact]
-    public void ARuntimeDropWithoutAVerdictIsABrokenContract()
-    {
-        var c = Analyze("Console.writeLine(\"a\")\n");
-        var program = c.BuildMir();
-        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl: null });
-        var first = program.Bodies.ToArray().Take(body.Ordinal).Sum(x => program.Drops.RowsOf(x.Ordinal).Length);
-        var row = Assert.Single(program.Drops.RowsOf(body.Ordinal).ToArray());
-        program.Drops.Rows[first] = row with { Block = body.Blocks.Length };
-        Assert.False(c.Generate(TextWriter.Null));
-        Assert.Equal([("InternalInvariant_Kd", (string?)"\"a\"")], Records(c));
     }
 
     // The operator rows (R5 C1a; DECISIONS R5-M76; SPEC 13.3.1, IMPL 21.3.3): a checked integer operation is its overflow intrinsic, whose
@@ -573,7 +727,7 @@ public sealed class FunctionCodegenTest
     [InlineData(Places, "k", "%t14 = load ptr, ptr %l1, align 8\n  %t15 = getelementptr i8, ptr %t14, i64 8\n  %t16 = load i16, ptr %t15, align 2\n")]
     [InlineData(Layouts, "counted", "%t0 = load ptr, ptr %l1, align 8\n  %t1 = load i32, ptr %t0, align 4\n")]
     [InlineData(Layouts, "extra", "%t0 = load ptr, ptr %l1, align 8\n  %t1 = getelementptr i8, ptr %t0, i64 4\n  %t2 = load i32, ptr %t1, align 4\n")]
-    [InlineData(Layouts, "payload", "%t2 = load ptr, ptr %l3, align 8\n  %t3 = getelementptr i8, ptr %t2, i64 8\n  store ptr %t3, ptr %l5, align 8\n")]
+    [InlineData(Layouts, "payload", "%t5 = load ptr, ptr %l3, align 8\n  %t6 = getelementptr i8, ptr %t5, i64 8\n  store ptr %t6, ptr %l5, align 8\n")]
     [InlineData(Places, "g", "%t0 = getelementptr i8, ptr %a0, i64 16\n  %t1 = load i64, ptr %t0, align 8\n")]
     [InlineData(Places, "h", "%t0 = load i32, ptr %l3, align 4\n  %t1 = load ptr, ptr %l1, align 8\n  store i32 %t0, ptr %t1, align 4\n")]
     [InlineData(Places, "m", "store i16 1, ptr %l1, align 2\n  %t0 = getelementptr i8, ptr %l1, i64 2\n  store i16 2, ptr %t0, align 2\n")]
@@ -612,6 +766,402 @@ public sealed class FunctionCodegenTest
         Assert.DoesNotContain("inbounds", text);
     }
 
+    // SPEC 4.3.3 (DECISIONS R4-M81): a Fill stores its one value at each element by one counted i64 loop over its instance's closed
+    // length, so its text does not grow with the length (fail-before: one store per element), and a zero-length one stores nothing, also
+    // into a Field followed by another (a Field initializer's Fill is built into its Field).
+    [Fact]
+    public void AFillIsOneLoopOverItsLength()
+    {
+        IrFunction Filler(int length) => Assert.Single(
+            Parse($"func f() -> i32\n    let a: [{length} of i32] = [{length} of 7]\n    return a[1]\n").Ir.Functions,
+            static x => x.Instructions.Any(static y => y.Shape == "store i32 7, ptr %, align 4"));
+        var (small, large) = (Filler(4), Filler(4096));
+        Assert.Equal(small.Instructions.Select(static x => x.Opcode), large.Instructions.Select(static x => x.Opcode));
+        Assert.Single(large.Instructions, static x => x.Shape == "store i32 7, ptr %, align 4");
+        Assert.Single(large.Instructions, static x => x.Shape == "icmp eq i64 %, 4096");
+        Assert.Single(large.Instructions, static x => x.Opcode == "phi");
+
+        var init = Assert.Single(ItemTexts(
+            Analyze("struct S\n    public var n: i32 = 5\n    public var z: [0 of i32] = [0 of 9]\n    public var m: i32 = 6\n    public init() => ()\n", OutputKind.Library),
+            "init"));
+        Assert.Contains("store i32 6", init, StringComparison.Ordinal);
+        Assert.DoesNotContain("store i32 9", init, StringComparison.Ordinal);
+    }
+
+    // DECISIONS R5-M87 (IMPL 21.1.3, 21.3.1): a value in memory, a slot Type of nonzero size other than the string's first-class record, is
+    // copied from its source's address into its destination by one memcpy of its size with its alignment on both pointers, which the
+    // module then declares.
+    [Theory]
+    [InlineData("func f(t: (i32, i64)) -> (i32, i64) => t", 8, 16)]
+    [InlineData("func f(a: [3 of i16]) -> [3 of i16] => a", 2, 6)]
+    [InlineData("func f(o: Option<i32>) -> Option<i32> => o@move", 4, 8)]
+    [InlineData("struct P\n    public var x: i64\n    public var y: i8\n    public init(x: i64, y: i8)\n        self.x = x\n        self.y = y\nfunc f(p: P) -> P => p@move", 8, 16)]
+    public void AValueInMemoryIsCopiedByMemcpy(string source, int alignment, int size)
+    {
+        var (ir, text) = Parse(source);
+        var f = ir.Single("internal void (ptr, ptr)");
+        var copy = Assert.Single(f.Instructions, static x => x.Opcode == "call");
+        Assert.Same(ir.Function("llvm.memcpy.p0.p0.i64"), copy.Callee);
+        Assert.Equal($"call void @(ptr align {alignment} %, ptr align {alignment} %, i64 {size}, i1 false)", copy.Shape);
+        Assert.Equal(f.Parameters, copy.Operands);
+        Assert.Contains(LlvmModuleText.MemoryDeclarations, text);
+    }
+
+    // DECISIONS R5-M87: the string's record, a first-class value of its three Fields (RuntimeAbi.String), is loaded and stored whole, its
+    // Fields only, as the old generator moves it; nothing is copied by memcpy, so the module declares none.
+    [Fact]
+    public void AStringIsMovedAsItsRecord()
+    {
+        var (ir, text) = Parse("func f(x: string) -> string => x@move");
+        var f = ir.Single("internal void (ptr, ptr)");
+        var moves = f.Instructions.Where(static x => x.Opcode is "load" or "store").ToArray();
+        Assert.Equal(["load %kimi.string, ptr %, align 8", "store %kimi.string %, ptr %, align 8"], moves.Select(static x => x.Shape));
+        Assert.Equal([f.Parameters[1], moves[0], f.Parameters[0]], [moves[0].Operands[0], .. moves[1].Operands]);
+        Assert.DoesNotContain("llvm.memcpy", text);
+    }
+
+    // An aggregate puts each operand at its part (IMPL 21.1.2-21.1.3; DECISIONS R5-M87), after its operands: a Tuple's elements at the
+    // record's Field offsets (Kimigayo order: the i64 first); an enum Case's ordinal as its i32 tag at 0 and its payload at the payload's
+    // offset plus the payload Tuple's; a ResolvedRange's Fields; a value in memory copied into its part; a Fill's copied at each element.
+    [Theory]
+    [InlineData("func f(a: i8, b: i64) -> (i8, i64) => (a, b)", "  %t2 = getelementptr i8, ptr %ret, i64 8\n  store i8 %t0, ptr %t2, align 1\n  store i64 %t1, ptr %ret, align 8\n")]
+    [InlineData(
+        "enum Shape\n    Circle(i32)\n    Rect(i32, i64)\n    Empty\nfunc f(a: i32, b: i64) -> Shape => .Rect(a, b)",
+        "  store i32 1, ptr %ret, align 4\n  %t2 = getelementptr i8, ptr %ret, i64 16\n  store i32 %t0, ptr %t2, align 4\n  %t3 = getelementptr i8, ptr %ret, i64 8\n  store i64 %t1, ptr %t3, align 8\n")]
+    [InlineData("enum Shape\n    Circle(i32)\n    Rect(i32, i64)\n    Empty\nfunc f() -> Shape => .Empty", "b0:\n  store i32 2, ptr %ret, align 4\n  ret void\n")]
+    [InlineData(
+        "func f(p: (i32, i64), c: i8) -> ((i32, i64), i8) => (p, c)",
+        "  call void @llvm.memcpy.p0.p0.i64(ptr align 8 %ret, ptr align 8 %a0, i64 16, i1 false)\n  %t1 = getelementptr i8, ptr %ret, i64 16\n  store i8 %t0, ptr %t1, align 1\n")]
+    [InlineData(
+        "func f(a: ref/[3 of i32]) -> ResolvedRange => a.indices",
+        "  store i64 3, ptr %l2, align 8\n  %t1 = load i64, ptr %l2, align 8\n  store i64 0, ptr %ret, align 8\n  %t2 = getelementptr i8, ptr %ret, i64 8\n  store i64 %t1, ptr %t2, align 8\n")]
+    [InlineData(
+        "func f(p: (i32, i64)) -> [2 of (i32, i64)] => [p, p]",
+        "  call void @llvm.memcpy.p0.p0.i64(ptr align 8 %ret, ptr align 8 %a0, i64 16, i1 false)\n  %t0 = getelementptr i8, ptr %ret, i64 16\n  call void @llvm.memcpy.p0.p0.i64(ptr align 8 %t0, ptr align 8 %a0, i64 16, i1 false)\n")]
+    [InlineData(
+        "func f(p: (i32, i64)) -> [3 of (i32, i64)] => [3 of p]",
+        "  %t5 = getelementptr i8, ptr %ret, i64 %t3\n  call void @llvm.memcpy.p0.p0.i64(ptr align 8 %t5, ptr align 8 %a0, i64 16, i1 false)\n  %t2 = add i64 %t1, 1\n")]
+    public void AnAggregatePutsEachOperandAtItsPart(string source, string text)
+        => Assert.Contains(text, Parse(source).Text, StringComparison.Ordinal);
+
+    // SPEC 14.8, IMPL 21.1.3 (DECISIONS R5-M87): a Discriminant reads its enum Place's i32 tag at offset 0 and widens it to isize, which the
+    // match's SwitchInt compares with the Case ordinals; the Downcast then addresses the payload.
+    [Fact]
+    public void ADiscriminantReadsTheTag()
+        => Assert.Contains(
+            "  %t1 = load ptr, ptr %l3, align 8\n  %t2 = load i32, ptr %t1, align 4\n  %t3 = zext i32 %t2 to i64\n  store i64 %t3, ptr %l4, align 8\n  %t4 = load i64, ptr %l4, align 8\n  switch i64 %t4, label %b2 [ i64 1, label %b3 ]\n",
+            Assert.Single(ItemTexts(Analyze(Layouts, OutputKind.Library), "payload")),
+            StringComparison.Ordinal);
+
+    // SPEC 4.7.3 (DECISIONS R5-M87): a Len is a fixed array's closed length once its Place is located, or the length word (Field 1) of an
+    // Array's or a Slice's handle, the word an Index checks against.
+    [Theory]
+    [InlineData("func f(a: ref/[3 of i32]) -> isize => a.length", "  %t0 = load ptr, ptr %l1, align 8\n  store i64 3, ptr %l0, align 8\n")]
+    [InlineData(
+        "func f(a: ref/Array<i64>) -> isize => a.length",
+        "  %t0 = load ptr, ptr %l1, align 8\n  %t1 = getelementptr i8, ptr %t0, i64 8\n  %t2 = load i64, ptr %t1, align 8\n  store i64 %t2, ptr %l0, align 8\n")]
+    [InlineData("func f(s: Slice<u16>) -> isize => s.length", "  %t0 = getelementptr i8, ptr %a0, i64 8\n  %t1 = load i64, ptr %t0, align 8\n  store i64 %t1, ptr %l0, align 8\n")]
+    public void ALenIsTheSequencesLength(string source, string text)
+        => Assert.Contains(text, Parse(source).Text, StringComparison.Ordinal);
+
+    // IMPL 21.1.3 (package C row 10; DECISIONS R5-M87): a zero-sized local's home, so its borrow and its parts', is the module's one
+    // 16-aligned zero-sized symbol, which the module defines only when a definition uses it.
+    [Fact]
+    public void AZeroSizedHomeIsTheModulesSymbol()
+    {
+        var text = Parse("func f() -> i32\n    let u = ()\n    let r = u@ref\n    let z = ((), ())\n    let q = z.1@ref\n    return 1\n").Text;
+        Assert.Equal(["%l2", "%l4"], Regex.Matches(text, @"store ptr @__kimi_zero_sized, ptr (%l\d+), align 8\n").Select(static x => x.Groups[1].Value));
+        Assert.Contains("\n@__kimi_zero_sized = private unnamed_addr constant [1 x i8] zeroinitializer, align 16\n", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("__kimi_zero_sized", Parse(Unused).Text, StringComparison.Ordinal);
+    }
+
+    // SPEC 8.14, 8.15 (DECISIONS R5-M87): a PairAcquire writes its Place's bits in the item's case Type, a Copy in the owner case and, in
+    // the uniq case, the pointer the Place holds, its Reborrow; an Adapt is the rvalue the view selects, an Identity's Copy or a borrow.
+    [Fact]
+    public void AnAcquisitionAndAnAdaptationFollowTheItemsView()
+    {
+        var keep = ItemTexts(Analyze(Acquisitions, OutputKind.Library), "keep");
+        Assert.Equal(2, keep.Length);
+        Assert.Single(keep, static x => Regex.IsMatch(x, @"(%t\d+) = load i32, ptr %l3, align 4\n  store i32 \1, ptr %l4, align 4\n"));
+        Assert.Single(keep, static x => Regex.IsMatch(x, @"(%t\d+) = load ptr, ptr %l3, align 8\n  store ptr \1, ptr %l4, align 8\n"));
+        var put = ItemTexts(Analyze(Adaptations, OutputKind.Library), "put");
+        Assert.Equal(2, put.Length);
+        Assert.Single(put, static x => Regex.IsMatch(x, @"(%t\d+) = load i32, ptr %l2, align 4\n  store i32 \1, ptr %l\d+, align 4\n"));
+        Assert.Single(put, static x => Regex.IsMatch(x, @"store ptr %l2, ptr %l\d+, align 8\n"));
+    }
+
+    // DECISIONS R5-M87 (SPEC 8.14, 13.5.3): an Adapt whose view selects an object creation, which allocates, is C6a's row: one located
+    // Unsupported_Kd at the adaptation, and the instance writes no Copy of the operand in place of the object.
+    [Fact]
+    public void AnObjectCreationAdaptationIsLeftToC6a()
+    {
+        var c = Analyze(Creations, OutputKind.Library);
+        Assert.False(c.Generate(TextWriter.Null));
+        Assert.Contains(("Unsupported_Kd", (string?)"x@s"), Records(c));
+        Assert.DoesNotContain("load i32, ptr %l2", Assert.Single(ItemTexts(c, "put")), StringComparison.Ordinal);
+    }
+
+    // IMPL 21.3.1 (DECISIONS R5-M89): a call of a function's item passes each argument by its parameter's kind and puts its value into the
+    // destination: a scalar in its computation representation (a bool narrowed, its result widened), a string borrow with its attributes
+    // (the O2 parity list), nothing for a zero-sized parameter, the destination's address as a slot result, a moved value's Place itself
+    // and a Copy of a value in memory through a copy slot of the caller's entry block; the callee is the item's own definition.
+    [Theory]
+    [InlineData("func id(x: i32) -> i32 => x\nfunc f(a: i32) -> i32 => id(a)", "internal i32 (i32)", "call i32 @(i32 %)", "store i32 %, ptr %, align 4")]
+    [InlineData("func flip(b: bool) -> bool => not b\nfunc g(c: bool) -> bool => flip(c)", "internal i1 (i1)", "call i1 @(i1 %)", "zext i1 % to i8")]
+    [InlineData(
+        "func show(t: ref/string) => Console.writeLine(t)\nfunc call(t: ref/string) => show(t)",
+        "internal void (ptr noundef nonnull align 8 dereferenceable(24))",
+        "call void @(ptr noundef nonnull align 8 dereferenceable(24) %)",
+        null)]
+    [InlineData(
+        "func unit(x: (), y: i32) -> i32 => y\nfunc f() -> i32 => unit((), 3)",
+        "internal i32 (i32)",
+        "call i32 @(i32 3)",
+        "store i32 %, ptr %, align 4")]
+    [InlineData("func pair(a: i32) -> (i32, i64) => (a, 2)\nfunc f() -> i64 => pair(1).1", "internal void (ptr, i32)", "call void @(ptr %, i32 1)", null)]
+    [InlineData("func take(s: string) => ()\nfunc give()\n    let t = \"x\"\n    take(t@move)", "internal void (ptr)", "call void @(ptr %)", null)]
+    [InlineData(
+        "func use(p: (i32, i64)) -> i64 => p.1\nfunc copy(q: (i32, i64)) -> i64 => use(q)",
+        "internal i64 (ptr)",
+        "call i64 @(ptr %)",
+        "store i64 %, ptr %, align 8")]
+    [InlineData(
+        "func keep<T>(value: T) -> T => value@move\nfunc f() -> i32 => keep(1)",
+        "internal i32 (i32)",
+        "call i32 @(i32 1)",
+        "store i32 %, ptr %, align 4")]
+    public void ACallPassesEachArgumentByItsParameter(string source, string callee, string call, string? result)
+    {
+        var (ir, text) = Parse(source);
+        var definition = Assert.Single(
+            ir.Functions,
+            x => x.Signature == callee && !x.Instructions.Any(y => y.Opcode == "call" && y.Callee is { } c && c.Signature == callee));
+        var site = Assert.Single(ir.Functions.SelectMany(static x => x.Instructions), x => x.Opcode == "call" && x.Callee == definition);
+        Assert.Equal(call, site.Shape);
+        if (result is not null)
+        {
+            Assert.Contains(ir.Functions.SelectMany(static x => x.Instructions), x => x.Shape == result && x.Operands.Contains(site));
+        }
+
+        Assert.DoesNotContain("inbounds", text, StringComparison.Ordinal);
+    }
+
+    // SPEC 8.6.3-8.6.4 (DECISIONS R5-M93): a requirement call calls the witness the collector targets at it, under the witness's own
+    // signature: measure's three instances call the three area bodies (a conformance's, an inherited one, a generic Type's instance), and
+    // bump calls the computed property's Getter, Setter and Getter.
+    [Fact]
+    public void ARequirementCallCallsItsWitness()
+    {
+        var c = Analyze(RequirementWitnesses);
+        var areas = ItemTexts(c, "area");
+        var callees = ItemTexts(c, "measure").Select(static x => Regex.Match(x, @"= call i32 @(__kimi_f\d+)\(ptr %t\d+\)\n").Groups[1].Value).ToArray();
+        Assert.Equal(3, callees.Distinct(StringComparer.Ordinal).Count());
+        Assert.All(callees, x => Assert.Single(areas, y => y.StartsWith($"define internal i32 @{x}(ptr %a0) ", StringComparison.Ordinal)));
+        var bump = Assert.Single(ItemTexts(Analyze(RequirementAccessors), "bump"));
+        Assert.Equal(3, Regex.Matches(bump, @"\n  (?:%t\d+ = )?call (?:i32|void) @__kimi_f\d+\(ptr %t\d+").Count);
+    }
+
+    // SPEC 22.5.1 (DECISIONS R5-M93): a caller-location library function receives its caller's location as its last two parameters, which
+    // the user's call passes as its site's text (Hello.kimi:2:10, 15 bytes), and every location it reports is the one it received:
+    // Range.iterate forwards it to RangeIterator.starting, whose Fail Aborts at it, and no body with those parameters names a pooled one.
+    [Fact]
+    public void ACallerLocationBodyReportsTheLocationItReceived()
+    {
+        var text = Generate(CallerLocations);
+        Assert.Matches(@"\n  call void @__kimi_f\d+\(ptr %l\d+, ptr %t\d+, ptr @__kimi_location, i64 15\)\n", text);
+        const string Received = @"\ndefine internal [^\n]* @__kimi_f\d+\([^\n]*, ptr %location, i64 %location_length\) #0 \{\n(?:[^}\n][^\n]*\n)*\}\n";
+        var received = Regex.Matches(text, Received).Select(static x => x.Value).ToArray();
+        Assert.Equal(2, received.Length);
+        Assert.All(received, static x => Assert.DoesNotContain("@__kimi_location", x, StringComparison.Ordinal));
+        Assert.Single(received, static x => Regex.IsMatch(x, @"\n  call void @__kimi_f\d+\([^\n]*, ptr %location, i64 %location_length\)\n"));
+        var fail = $"\n  call void @__kimi_abort(i32 {AbortReasons.Of("KIMI_E_ARG_RANGE")}, ptr %location, i64 %location_length, i64 -2)\n";
+        Assert.Single(received, x => x.Contains(fail, StringComparison.Ordinal));
+    }
+
+    // SPEC 3.5 with IMPL 21.3.1 (DECISIONS R5-M89): a Copy of a value in memory passed by pointer is copied into a copy slot, an alloca of
+    // the caller's entry block, which the callee receives, and a string constant is written into one as its record (Static, IMPL 21.1.3);
+    // a moved string's Place is passed itself, its record never loaded.
+    [Fact]
+    public void ACopyArgumentInMemoryHasACopySlot()
+    {
+        var text = Parse("func use(p: (i32, i64)) -> i64 => p.1\nfunc copy(q: (i32, i64)) -> i64 => use(q)").Text;
+        Assert.Contains("  %s0 = alloca { [0 x i64], [16 x i8] }, align 8\n", text, StringComparison.Ordinal);
+        const string Copied = "  call void @llvm.memcpy.p0.p0.i64(ptr align 8 %s0, ptr align 8 %a0, i64 16, i1 false)\n  %t0 = call i64 @";
+        Assert.Contains(Copied, text, StringComparison.Ordinal);
+        var moved = Parse("func take(s: string) => ()\nfunc give()\n    let t = \"x\"\n    take(t@move)").Text;
+        Assert.Matches(@"\n  call void @__kimi_f\d+\(ptr %l\d+\)\n", moved);
+        Assert.DoesNotContain("%s0", moved, StringComparison.Ordinal);
+        var constant = Parse("func take(s: string) => ()\nfunc give() => take(\"x\")").Text;
+        Assert.Contains("  %s0 = alloca %kimi.string, align 8\n", constant, StringComparison.Ordinal);
+        Assert.Matches(@"\n  store %kimi.string \{ ptr @[^,]+, i64 1, i8 \d+ \}, ptr %s0, align 8\n  call void @__kimi_f\d+\(ptr %s0\)\n", constant);
+    }
+
+    // I1 (DECISIONS R5-M92): a copy slot's name is never a block's, so a function with copy slots and checks whose success labels share
+    // their numbers (c<id>) stays valid IR; R5-M89's %c<k> collided with them.
+    [Fact]
+    public void CopySlotsAndCheckLabelsNeverShareAName()
+    {
+        var text = Parse("func use(a: (i32, i64), b: (i32, i64), c: (i32, i64)) -> i64 => a.1\nfunc f(x: i32, q: (i32, i64)) -> i64\n" +
+            "    let y = x + 1\n    return use(q, q, q) + y@i64").Text;
+        var slots = Regex.Matches(text, @"\n  %(\w+) = alloca ").Select(static x => x.Groups[1].Value).ToHashSet(StringComparer.Ordinal);
+        var labels = Regex.Matches(text, @"\n(\w+):\n").Select(static x => x.Groups[1].Value);
+        Assert.Contains("s2", slots);
+        Assert.Contains("c1", labels);
+        Assert.DoesNotContain(labels, slots.Contains);
+    }
+
+    // An ABI requirement (IMPL 21.3.1; DECISIONS R5-M89): a slot result is written through the caller's destination, which is never one of
+    // the arguments' pointers: a moved argument's Place is moved out and a copied one's is a copy slot.
+    [Theory]
+    [InlineData("func swap(p: (i32, i64)) -> (i64, i32) => (p.1, p.0)\nfunc f(q: (i32, i64)) -> (i64, i32) => swap(q)")]
+    [InlineData("func swap(p: (i32, i64)) -> (i64, i32) => (p.1, p.0)\nfunc f(q: (i32, i64)) -> i64\n    let r = swap(q)\n    return r.0")]
+    [InlineData("func echo(s: string) -> string => s@move\nfunc f(t: string) -> string => echo(t@move)")]
+    [InlineData("func join(p: (i32, i64), q: (i32, i64)) -> (i64, i64) => (p.1, q.1)\nfunc f(a: (i32, i64), b: (i32, i64)) -> (i64, i64) => join(a, b@move)")]
+    public void AResultSlotIsNeverAnArgumentsPointer(string source)
+    {
+        var ir = Parse(source).Ir;
+        var calls = ir.Functions.SelectMany(static x => x.Instructions)
+            .Where(static x => x.Opcode == "call" && x.Shape.StartsWith("call void @(ptr %, ptr %", StringComparison.Ordinal)).ToArray();
+        Assert.NotEmpty(calls);
+        Assert.All(calls, static x => Assert.DoesNotContain(x.Operands[0], x.Operands.Skip(1)));
+    }
+
+    // SPEC 14.10.3, the O2 parity list: a callee of result Never is defined noreturn, and a call without a target is followed by unreachable.
+    [Fact]
+    public void ADivergingCallIsFollowedByUnreachable()
+    {
+        var text = Parse("func stop() -> Never\n    loop => ()\nfunc diverge(flag: bool) -> i32\n    if flag => stop()\n    return 1").Text;
+        Assert.Matches(@"define internal void @__kimi_f\d+\(\) noreturn #0 \{", text);
+        Assert.Matches(@"\n  call void @__kimi_f\d+\(\)\n  unreachable\n", text);
+    }
+
+    // Plan 5.6.2 (DECISIONS R5-M89): a recursive default calls its template, whose Arg locals are its prepared inputs in slot order, each a
+    // shared borrow of the slot the call prepared; the template is written as a function of them.
+    [Fact]
+    public void ARecursiveDefaultCallsItsTemplate()
+    {
+        var ir = Parse("func count(n: i32, m: i32 = if n <= 0 => 0 else => count(n - 1) + 1) -> i32 => m\nfunc counted() -> i32 => count(3)").Ir;
+        var template = ir.Single("internal i32 (ptr)");
+        Assert.Contains(template.Instructions, x => x.Opcode == "call" && x.Callee == template && x.Shape == "call i32 @(ptr %)");
+        Assert.Contains(ir.Functions.SelectMany(static x => x.Instructions), x => x.Opcode == "call" && x.Callee == ir.Single("internal i32 (i32, i32)"));
+    }
+
+    // SPEC 5.6, 17.4, 22.5.2 (DECISIONS R5-M92): an intrinsic is written by its row's writer: Raw.allocate calls its routine with the
+    // element's stride and the call's location, Raw.release its routine, Raw.initialize stores the value at the storage, Raw.slice puts the
+    // record's two Fields, $abort calls the message routine with its constant's copy slot and Fail the Abort routine with its code's reason,
+    // each without a successor.
+    [Theory]
+    [InlineData("func make(n: isize) -> raw/i64 => Raw.allocate<i64>(n)", @"= call ptr @__kimi_raw_allocate\(i64 %t\d+, i64 8, ptr @\S+, i64 \d+\)\n")]
+    [InlineData("func make(n: isize) -> raw/(i32, i64) => Raw.allocate<(i32, i64)>(n)", @"= call ptr @__kimi_raw_allocate\(i64 %t\d+, i64 16, ptr @\S+")]
+    [InlineData("func free(p: raw/i64)\n    unsafe => Raw.release(p)", @"\n  call void @__kimi_free\(ptr %t\d+, ptr @\S+, i64 \d+\)\n  br ")]
+    [InlineData("func put(p: raw/i64, v: i64)\n    unsafe => Raw.initialize(p, v)", @"\n  store i64 %t\d+, ptr %t\d+, align 8\n  br ")]
+    [InlineData(
+        "func put(p: raw/(i32, i64), v: (i32, i64))\n    unsafe => Raw.initialize(p, v@move)",
+        @"@llvm\.memcpy\.p0\.p0\.i64\(ptr align 8 %t\d+, ptr align 8 %l\d+, i64 16, i1 false\)\n  br ")]
+    [InlineData(
+        "func view() -> Slice<i64>\n    unsafe => return Raw.slice(null@raw/i64, 0)",
+        @"\n  store ptr %t\d+, ptr (%\w+), align 8\n  (%t\d+) = getelementptr i8, ptr \1, i64 8\n  store i64 0, ptr \2, align 8\n")]
+    [InlineData("func stop() => $abort(\"stop\")", @"\n  call void @__kimi_abort_message\(ptr %s0, ptr @\S+, i64 \d+\)\n  unreachable\n")]
+    [InlineData(
+        "func cut(a: ref/[4 of i32], n: isize) -> isize\n    let s = a[1..n]\n    return s.length",
+        @"\n  call void @__kimi_abort\(i32 10, ptr @\S+, i64 \d+, i64 -2\)\n  unreachable\n")]
+    public void AnIntrinsicIsWrittenByItsRow(string source, string pattern)
+        => Assert.Matches(pattern, Parse(source).Text);
+
+    // SPEC 5.1, 5.3 (DECISIONS R5-M92): p + n and p - n displace a raw pointer by n * stride(T) through the place writer's byte offset, a zero
+    // stride keeping the pointer; == and != compare addresses, null the one pointer constant.
+    [Theory]
+    [InlineData(
+        "func next(p: raw/i64, n: isize) -> raw/i64\n    var q: raw/i64 = null\n    unsafe => q = p + n\n    return q",
+        @"= mul i64 %t\d+, 8\n  %t\d+ = getelementptr i8, ptr %t\d+, i64 %t\d+\n")]
+    [InlineData("func back(p: raw/i64, n: isize) -> raw/i64\n    var q: raw/i64 = null\n    unsafe => q = p - n\n    return q", @"= mul i64 %t\d+, -8\n")]
+    [InlineData("func same(p: raw/i32, q: raw/i32) -> bool => p == q", @"= icmp eq ptr %t\d+, %t\d+\n")]
+    [InlineData("func empty(p: raw/i32) -> bool => p != null", @"= icmp ne ptr %t\d+, null\n")]
+    [InlineData("func none() -> raw/i32 => null", @"\n  store ptr null, ptr %l0, align 8\n")]
+    public void ARawPointerOperatorIsItsColumn(string source, string pattern)
+        => Assert.Matches(pattern, Parse(source).Text);
+
+    // SPEC 5.3: a raw pointer to a zero-sized Type is displaced by nothing, so p + n is the pointer itself.
+    [Fact]
+    public void AZeroStrideDisplacementKeepsThePointer()
+    {
+        const string Source = "func next(p: raw/(), n: isize) -> raw/()\n    var q: raw/() = null\n    unsafe => q = p + n\n    return q";
+        var text = Assert.Single(ItemTexts(Analyze(Source, OutputKind.Library), "next"));
+        Assert.DoesNotContain("getelementptr", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(" = mul ", text, StringComparison.Ordinal);
+    }
+
+    // SPEC 22.2 (DECISIONS R5-M18, R5-M92): DictionaryStorage's byte copy is llvm.memcpy, its ranges never overlapping, and its nullable Alloc
+    // calls the runtime routine both generators define where a body calls it.
+    [Fact]
+    public void TheStorageBytePrimitivesAreTheirRows()
+    {
+        const string Source = "func more(d: uniq/Dictionary<i32, i32>) => d.reserve(4)\nfunc fit(d: uniq/Dictionary<i32, i32>) => d.shrinkToFit()\n";
+        var c = Analyze(Source, OutputKind.Library);
+        const string Copy = @"\n  call void @llvm\.memcpy\.p0\.p0\.i64\(ptr %t\d+, ptr %t\d+, i64 %t\d+, i1 false\)\n";
+        Assert.Contains(ItemTexts(c, "grow"), static x => Regex.IsMatch(x, Copy));
+        Assert.Contains(ItemTexts(c, "shrinkToFit"), static x => Regex.IsMatch(x, @"= call ptr @__kimi_try_allocate\(i64 %t\d+\)\n"));
+    }
+
+    // SPEC 21.4.3, 22.2 (DECISIONS R5-M92): the nullable Alloc's definition is one runtime text spliced from its FunctionAbi, which a module
+    // whose bodies call it defines exactly once; the old generator writes that text (its pin goes by G4; MIR code generation's first such
+    // module is C8e's, through the same text).
+    [Fact]
+    public void TheNullableAllocIsDefinedOnceFromItsOneText()
+    {
+        var definition = RuntimeAbi.TryAllocateBytes.GetDefinition(exported: false);
+        Assert.StartsWith(definition, LlvmModuleText.TryAllocate, StringComparison.Ordinal);
+        Assert.Single(Regex.Matches(LlvmModuleText.TryAllocate, Regex.Escape(definition)));
+        var c = MinimalEmissionTest.Analyze("var d: Dictionary<i32, i32> = [1: 2]\nd.shrinkToFit()\n", codegen: CompilerCodegen.Legacy);
+        var ir = CompilationTestHelper.WriteIr(c);
+        Assert.Single(Regex.Matches(ir, Regex.Escape(definition)));
+        Assert.Contains(LlvmModuleText.TryAllocate, ir, StringComparison.Ordinal);
+    }
+
+    // SPEC 22.5.2 (DECISIONS R5-M92): each of the 7 fixed codes MIR's Fail carries, the five the served compiler functions name and the
+    // builder's duplicate key and format codes, names its Abort reason (AbortReasons.Of), whose text begins with the code.
+    [Fact]
+    public void EveryMirFailCodeHasAReason()
+    {
+        CompilerFunctionKind[] served =
+        [
+            CompilerFunctionKind.StorageIndexBounds, CompilerFunctionKind.StorageMissingDictionaryKey, CompilerFunctionKind.StorageArgumentOutOfRange,
+            CompilerFunctionKind.StorageCountOverflow, CompilerFunctionKind.StorageAllocationSizeExceeded,
+        ];
+        string[] codes = [.. served.Select(static x => IntrinsicDisposition.Of(x).Code!), "KIMI_E_DUPLICATE_KEY", "KIMI_E_FORMAT"];
+        Assert.Equal(7, codes.Distinct().Count());
+        Assert.All(codes, static x => Assert.StartsWith(x + ":", AbortReasons.All[AbortReasons.Of(x)].Text, StringComparison.Ordinal));
+        Assert.Equal(-1, AbortReasons.Of("KIMI_E_UNKNOWN"));
+    }
+
+    // SPEC 22.6, IMPL 21.4.7 (DECISIONS R5-M89): a #LibraryImport function is called by its C signature, whose declaration its call
+    // requests, once per symbol; an import no call reaches is not declared. A caller-location library callee is called since C3b (R5-M93),
+    // and Dictionary.reserve's body still holds a row not written yet, one record at the user's call (K package 4.9).
+    [Fact]
+    public void AnImportIsCalledByItsCSignature()
+    {
+        var imported = Compilation.CreateForTest();
+        (imported.Pipeline, imported.Codegen) = (CompilerPipeline.Mir, CompilerCodegen.Mir);
+        imported.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+        Assert.True(imported.Prepare(WindowsProfile.Target));
+        const string Source =
+            "group Native\n    #LibraryImport(\"codec\", \"mix\")\n    public unsafe func mix(a: i8, b: f64) -> f64\n    #LibraryImport(\"codec\", \"mix\")\n" +
+            "    public unsafe func again(a: i8, b: f64) -> f64\n    #LibraryImport(\"codec\", \"idle\")\n    public unsafe func idle() -> ()\n" +
+            "public func main()\n    var t: f64 = 0.0\n    unsafe => t = Native.mix(-1, 2.25)\n    unsafe => t = Native.again(1, t)\n";
+        imported.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Source));
+        imported.Bind();
+        imported.Binding.CheckStartup(OutputKind.Application);
+        imported.Analyze();
+        var text = Generate(imported);
+        Assert.Single(Regex.Matches(text, @"\ndeclare double @mix\(i8, double\)\n"));
+        Assert.Matches(@"= call double @mix\(i8 -1, double 0x4002000000000000\)\n", text);
+        Assert.Matches(@"= call double @mix\(i8 1, double %t\d+\)\n", text);
+        Assert.DoesNotContain("@idle", text, StringComparison.Ordinal);
+        var c = Analyze("func grow(d: uniq/Dictionary<i32, i32>) => d.reserve(4)\n", OutputKind.Library);
+        Assert.False(c.Generate(TextWriter.Null));
+        Assert.Contains(("Unsupported_Kd", (string?)"d.reserve(4)"), Records(c));
+    }
+
     // X13, SPEC 13.5.5: a PairLayer step is decided by the item's view: in the owner case the Place itself, so the write stores into the
     // binding's own slot; in the uniq case the referent of the reference that slot holds.
     [Fact]
@@ -633,6 +1183,8 @@ public sealed class FunctionCodegenTest
     [InlineData("func f() -> f32 => 2139095040@bits<f32>", "store float 0x7FF0000000000000, ptr %, align 4")]
     [InlineData("func f() -> f32 => 2139095041@bits<f32>", "store float 0x7FF0000020000000, ptr %, align 4")]
     [InlineData("func f() -> f32 => 4290772993@bits<f32>", "store float 0xFFF8000020000000, ptr %, align 4")]
+    [InlineData("func f() -> f32 => 4286578689@bits<f32>", "store float 0xFFF0000020000000, ptr %, align 4")]
+    [InlineData("func f() -> f64 => 9218868437227405313@bits<f64>", "store double 0x7FF0000000000001, ptr %, align 8")]
     public void FloatingConstantsAreHexadecimalDoubles(string source, string store)
         => Assert.Single(Parse(source).Ir.Functions.SelectMany(static x => x.Instructions), x => x.Shape == store);
 
@@ -705,34 +1257,55 @@ public sealed class FunctionCodegenTest
     }
 
     // PD11: a form the frame does not cover yet is one Unsupported_Kd in the Emission partition at its location, and no module is written;
-    // its valid counterpart is. A string's Move into another local copies a slot Type (C2b's row), at the source; a callee's call is C3a's,
-    // at that call, while a generic callee's instance whose Keep of a T instanced at i32 needs no drop records nothing (R5-M78); the
-    // Utf8Slice overload of writeLine is another legacy row (C9a), at its call; the records of a for loop's statement and of the siblings
-    // its expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location (DECISIONS R5-M65), which the
-    // diagnostics could not order when each was keyed by its node. A static's initializer is C7b's row, at the static. The operator rows
-    // (DECISIONS R5-M76) leave raw pointers to C8a and checked 128-bit arithmetic to ModuleCodegen's wide overflow declarations; the conversion
-    // rows (DECISIONS R5-M80) leave an erasure to C5b, at its Cast, and a raw pointer's null to C8a, at the Cast that reads it; the place
-    // writer (DECISIONS R5-M83) leaves a Tuple aggregate to C2b, at the literal, as it does a zero-sized local's address, at its borrow, and an
-    // object borrow's payload to C6a, at the Place read through it. K11: an Application's function nothing calls is not generated, so its form
-    // records nothing; a Library generates it.
+    // its valid counterpart is. A string's Move into another local is written since C2b (DECISIONS R5-M87), a function's call since C3a, a
+    // generic callee's instance whose Keep of a T instanced at i32 needs no drop included (R5-M78, R5-M89), a requirement's since C3b
+    // (R5-M93), whose witness a Builtin shim (C8f), a property witness (C3c) or one without a body (PLAN G157 (10)) is one record at the
+    // call; a Fn call whose target is a Builtin shim (Text.toString of an i32, BuiltinFormat, R5-M70) is
+    // its compiler function's legacy row (C9a), at the call, as the Utf8Slice overload of writeLine is; the records of a for loop's
+    // statement and of the siblings its expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location
+    // (DECISIONS R5-M65), which the diagnostics could not order when each was keyed by its node. A static's initializer is written since
+    // C7b (DECISIONS R5-M106), a constant one folded into its slot. The operator rows (DECISIONS R5-M76) leave checked 128-bit arithmetic to ModuleCodegen's wide overflow declarations and
+    // have a raw pointer column since C8a (R5-M92), which writes null too; an erasure is written since C5b (DECISIONS R5-M104), into any
+    // target since C5c (R5-M108); an intrinsic of a later unit is its row's (an Array's capacity, C8d), at its call; the place writer (DECISIONS R5-M83)
+    // leaves an object borrow's payload to C6a, at the Place read through it; the rvalue rows (DECISIONS R5-M87) write a Tuple aggregate
+    // and a zero-sized local's address and leave a Dictionary's length to C8e, at the member, and an Array from none to C8d, at the
+    // literal. K11: an Application's function nothing calls is not generated, so its form records nothing; a Library generates it.
     [Theory]
     [InlineData("func twice(a: i128) -> i128 => a + a\n", OutputKind.Library, new[] { "a + a" })]
     [InlineData("func twice(a: i128) -> i128 => a + a\n()", OutputKind.Application, new string[0])]
     [InlineData("func twice(a: f64) -> f64 => a + a\n", OutputKind.Library, new string[0])]
-    [InlineData("func id(x: i32) -> i32 => x\nfunc get() -> (i32) -> i32 => id\n", OutputKind.Library, new[] { "id" })]
-    [InlineData("func none() -> usize => null@raw/i32@usize\n", OutputKind.Library, new[] { "null@raw/i32" })]
-    [InlineData("func same(p: raw/i32, q: raw/i32) -> bool => p == q\n", OutputKind.Library, new[] { "p == q" })]
-    [InlineData("let t = (1, 2)\n", OutputKind.Application, new[] { "(1, 2)" })]
-    [InlineData("let u = ()\nlet r = u@ref\n", OutputKind.Application, new[] { "u@ref" })]
+    [InlineData("func id(x: i32) -> i32 => x\nfunc get() -> (i32) -> i32 => id\n", OutputKind.Library, new string[0])]
+    [InlineData("func none() -> usize => null@raw/i32@usize\n", OutputKind.Library, new string[0])]
+    [InlineData("func same(p: raw/i32, q: raw/i32) -> bool => p == q\n", OutputKind.Library, new string[0])]
+    [InlineData("func room(a: ref/Array<i32>) -> isize => a.capacity\n", OutputKind.Library, new[] { "a.capacity" })]
+    [InlineData("let t = (1, 2)\n", OutputKind.Application, new string[0])]
+    [InlineData("let u = ()\nlet r = u@ref\n", OutputKind.Application, new string[0])]
+    [InlineData("func count(d: ref/Dictionary<i32, i32>) -> isize => d.length\n", OutputKind.Library, new[] { "d.length" })]
+    [InlineData("func make() -> Array<i32> => []\n", OutputKind.Library, new[] { "[]" })]
     [InlineData("struct Item\n    public var id: i32 = 7\nfunc take(v: objref/Item) -> i32 => v.id\n", OutputKind.Library, new[] { "v.id" })]
     [InlineData("func twice(a: Wrapping<i128>) -> Wrapping<i128> => a + a\n", OutputKind.Library, new string[0])]
-    [InlineData("func twice(a: i32) -> i32 => a\nlet x = twice(1)\n", OutputKind.Application, new[] { "twice(1)" })]
-    [InlineData("let t = \"x\"\nlet u = t@move\n", OutputKind.Application, new[] { "t" })]
-    [InlineData("func keep<T>(value: T) => ()\nkeep(1)\n", OutputKind.Application, new[] { "keep(1)" })]
-    [InlineData("func name() -> string => \"x\"\nfunc show() => Console.writeLine(name())\n", OutputKind.Library, new[] { "name()" })]
+    [InlineData("func twice(a: i32) -> i32 => a\nlet x = twice(1)\n", OutputKind.Application, new string[0])]
+    [InlineData("let t = \"x\"\nlet u = t@move\n", OutputKind.Application, new string[0])]
+    [InlineData("func keep<T>(value: T) => ()\nkeep(1)\n", OutputKind.Application, new string[0])]
+    [InlineData("func name() -> string => \"x\"\nfunc show() => Console.writeLine(name())\n", OutputKind.Library, new string[0])]
+    [InlineData(
+        "func same<T>(a: T, b: T) -> bool\n    T is Equatable\n    return a == b\nfunc use() -> bool => same(1, 2)\n",
+        OutputKind.Library,
+        new[] { "a == b" })]
+    [InlineData(
+        "contract Counted\n    property count: i32 has get, set\nstruct Tally\n    Self is Counted\n    public var count: i32 = 1\n    public init() => ()\n" +
+        "func read<T>(x: ref/T) -> i32\n    T is Counted\n    return x.count\nfunc use(t: ref/Tally) -> i32 => read(t)\n",
+        OutputKind.Library,
+        new[] { "x.count" })]
+    [InlineData(
+        "func room<W>(w: uniq/W) -> i32\n    W is BufferWriter\n    match w.reserve(4)\n        .Ok(_) => return 1\n        .Err(_) => return 0\n" +
+        "func use(heap: uniq/Text.HeapBuffer) -> i32 => room(heap)\n",
+        OutputKind.Library,
+        new[] { "w.reserve(4)" })]
     [InlineData("func show(text: Text.Utf8Slice) => Console.writeLine(text)\n", OutputKind.Library, new[] { "Console.writeLine(text)" })]
+    [InlineData("func show(x: i32) -> string => Text.toString(x)\n", OutputKind.Library, new[] { "Text.toString(x)" })]
     [InlineData(ForLoop, OutputKind.Library, new[] { "for value in values\n        total = 1" })]
-    [InlineData("group Registry\n    public let limit: i32 = 4\n", OutputKind.Library, new[] { "let limit: i32 = 4" })]
+    [InlineData("group Registry\n    public let limit: i32 = 4\n", OutputKind.Library, new string[0])]
     [InlineData("func twice(a: i32) -> i32 => a\n", OutputKind.Library, new string[0])]
     [InlineData(Signatures, OutputKind.Library, new string[0])]
     public void AnUncoveredFormIsOneLocatedUnsupportedRecord(string source, OutputKind output, string[] sites)
@@ -757,6 +1330,21 @@ public sealed class FunctionCodegenTest
     [InlineData(Conversions, OutputKind.Library)]
     [InlineData(Drops, OutputKind.Application)]
     [InlineData(Places, OutputKind.Library)]
+    [InlineData(Rvalues, OutputKind.Library)]
+    [InlineData(Acquisitions, OutputKind.Library)]
+    [InlineData(Adaptations, OutputKind.Library)]
+    [InlineData(Calls, OutputKind.Library)]
+    [InlineData(Imports, OutputKind.Library)]
+    [InlineData(Raws, OutputKind.Library)]
+    [InlineData(RequirementWitnesses, OutputKind.Application)]
+    [InlineData(CallerLocations, OutputKind.Application)]
+    [InlineData(Glues, OutputKind.Library)]
+    [InlineData(Flags, OutputKind.Library)]
+    [InlineData(Opens, OutputKind.Library)]
+    [InlineData(Closures, OutputKind.Library)]
+    [InlineData(Owners, OutputKind.Library)]
+    [InlineData(Erasures, OutputKind.Library)]
+    [InlineData(Statics, OutputKind.Library)]
     public void GenerationIsDeterministic(string source, OutputKind output)
     {
         var first = Generate(Analyze(source, output));
@@ -783,7 +1371,7 @@ public sealed class FunctionCodegenTest
         var set = collector.Run(program, 1);
         var (start, unused) = (Of(set, null), Of(set, "unused"));
         set.Mark([start]);
-        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types);
+        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports);
         Assert.True(module.Write(program, collector, c.Binding.Startup, [start], TextWriter.Null));
         new FunctionCodegen(module, c.Types).Write(program, collector, unused, TextWriter.Null);
         Assert.Equal([new(DiagnosticCode.InternalInvariant_Kd, set.Items[unused].Site)], module.Records);
@@ -837,6 +1425,21 @@ public sealed class FunctionCodegenTest
     [InlineData(Conversions, OutputKind.Library)]
     [InlineData(Drops, OutputKind.Application)]
     [InlineData(Places, OutputKind.Library)]
+    [InlineData(Rvalues, OutputKind.Library)]
+    [InlineData(Acquisitions, OutputKind.Library)]
+    [InlineData(Adaptations, OutputKind.Library)]
+    [InlineData(Calls, OutputKind.Library)]
+    [InlineData(Imports, OutputKind.Library)]
+    [InlineData(Raws, OutputKind.Library)]
+    [InlineData(RequirementWitnesses, OutputKind.Application)]
+    [InlineData(CallerLocations, OutputKind.Application)]
+    [InlineData(Glues, OutputKind.Library)]
+    [InlineData(Flags, OutputKind.Library)]
+    [InlineData(Opens, OutputKind.Library)]
+    [InlineData(Closures, OutputKind.Library)]
+    [InlineData(Owners, OutputKind.Library)]
+    [InlineData(Erasures, OutputKind.Library)]
+    [InlineData(Statics, OutputKind.Library)]
     public void WarmGenerationAllocatesNothing(string source, OutputKind output)
     {
         var c = Analyze(source, output);
@@ -890,7 +1493,7 @@ public sealed class FunctionCodegenTest
         var set = collector.Run(program, 1);
         var bodies = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.Body).ToArray();
         set.Mark(bodies);
-        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types);
+        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports);
         _ = module.Write(program, collector, c.Binding.Startup, bodies, TextWriter.Null);
         return [.. bodies.Where(x => set.Items[x].Key.Body.Def.Decl?.Name == name).Select(x =>
         {

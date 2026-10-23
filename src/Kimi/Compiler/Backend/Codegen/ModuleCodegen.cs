@@ -1,27 +1,35 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// ModuleCodegen (R5 plan C0b1, K11, package C 3.3 and 3.9, design 2 2.3 and 2.12; DECISIONS R5-M65, R5-M77), one per Compilation.
+// ModuleCodegen (R5 plan C0b1, K11, C3a, C5b, package C 3.3 and 3.9, design 2 2.3 and 2.12; DECISIONS R5-M65, R5-M77, R5-M89, R5-M104),
+// one per Compilation.
 // Responsibility: one module of a program version from its checked set: every Generated item in admission order, a body item written by
-// FunctionCodegen as __kimi_f<item> under its signature (Abi.Of, internal convention), the output form around the output roots (IMPL
-// 21.4.2: an Application's __kimi_start calls its startup root and exits with 0, a Library has no entry) and the module frame through LlvmModuleText
-// in the old generator's order (header with the pooled constants, runtime, overflow declarations, functions, entry, footer); the coverage
-// rows (PD11) of the item kinds and output forms: DropGlue (__kimi_drop<item>, written by FunctionCodegen for a Type DropGlue has a row for,
-// the string's, R5-M78; C4a the others), ClosureErasure and
-// ItemAdapter (C5b), the Builtin shims (C8f, C9b), the
-// property witnesses (C3c), K8's ObjectDescriptor and VTable items (C6a, C6c), a test build's TestEntry (C10a).
+// FunctionCodegen as __kimi_f<item> under its signature (Abi.Of, internal convention), which this owner gives from the item's own body to
+// its definition and every call (Signature), a called #LibraryImport function's C signature and declaration (Import), the output form
+// around the output roots (IMPL 21.4.2: an Application's __kimi_start calls its startup root and exits with 0, a Library has no entry) and
+// the module frame through LlvmModuleText in the old generator's order (header with the pooled constants, runtime, the called imports'
+// declarations, overflow declarations, functions, entry, footer); the coverage rows (PD11) of the item kinds and output forms: DropGlue
+// (__kimi_drop<item>, written by FunctionCodegen by its Type's row, DropGlue.Row: a string's (R5-M78), a struct's, Tuple's, enum's or fixed
+// array's (R5-M95), a Closure environment's (R5-M102), an erased function's (R5-M104); a handle's C6b, a collection's C8d and C8e),
+// ClosureErasure and ItemAdapter (__kimi_erase<item>, its entry under its target Function Type's erased signature, its table and its
+// heap environment's release, written by FunctionCodegen; R5-M108), the Builtin shims (C8f, C9b), the property witnesses (C3c), K8's
+// ObjectDescriptor and VTable items (C6a, C6c), a test build's TestEntry (C10a).
 // Inputs: the program the generation gate passed (validated, analyzed and accepted); the instance collector's checked set, marked from the
 // output roots the generation entry gives (K package 4.10), TypeOf and location rule (K package 4.9); the compilation's Layout and runtime
 // location texts (Compilation.Locations); the startup selection.
 // Output: the complete module written to the caller's writer, or nothing and the Records of why: one Unsupported_Kd per subject of a
-// row not written yet (until the R5 plan's unit X2), InternalInvariant_Kd at a broken input contract; no record only for a broken contract
+// row not written yet (until the R5 plan's unit X2), gate step 2's refusal of a body A1 or A2 left inexact (its problem's code at its
+// subject, FunctionCodegen.Write; DECISIONS R5-M96), InternalInvariant_Kd at a broken input contract; no record only for a broken contract
 // without a subject (an Application's startup that is no generated root), which the caller records. The caller publishes each record
-// keyed by its location (DECISIONS R5-M65). The entry's call goes through FunctionCodegen's call writer once C3a writes calls.
+// keyed by its location (DECISIONS R5-M65). The entry's call goes through FunctionCodegen's one call writer (DECISIONS R5-M89).
 // Invariants: generation runs over every item, so every gap is recorded (SPEC 23.1.2), and the buffered text is discarded when any
 // record was made; deterministic (admission order, item-indexed names); each item's signature is reused while Abi.Matches holds and every
 // buffer is kept, so a warm module allocates nothing; a request for an item outside Generated (its Signature or Glue, the requests naming an
 // item) is a broken contract, InternalInvariant_Kd at the item's site.
 // Must not decide acceptance (the gate) or what is generated (the generation entry's mark), read syntax, HIR or the old Emission, write a
 // partial module, use LINQ, Supports* or catch-alls.
+// Files: the items and the records (this file); the body, glue and ensure signatures and the signature cache (ModuleCodegen.Signatures.cs),
+// the called imports' C signatures and declarations (ModuleCodegen.Imports.cs) and the common Function values' entries
+// (ModuleCodegen.Erasures.cs); the module frame and the output form (ModuleCodegen.Frame.cs).
 
 using System.Globalization;
 using Kimi.Compiler.Mir;
@@ -29,22 +37,27 @@ using Kimi.Compiler.Mir;
 namespace Kimi.Compiler.Backend;
 
 /// <summary>Writes the LLVM module of a program version's checked set (R5 package C 3.3).</summary>
-internal sealed class ModuleCodegen
+internal sealed partial class ModuleCodegen
 {
     private readonly StringWriter functions = new(CultureInfo.InvariantCulture); // The definitions, buffered until the module is complete.
     private readonly LlvmConstantPool constants = new();
     private readonly HashSet<Problem> reported = new();
     private readonly FunctionCodegen bodies;
-    private FunctionAbi?[] signatures = []; // By item.
+    private readonly IReadOnlyList<LibraryImport> imports; // Binding's validated #LibraryImport declarations (F2b).
+    private readonly List<ExternalFunction> externals = []; // The imports the latest Write's definitions call, one per symbol (Import).
+    private int writes; // The number of Writes.
     private CheckedSet set = null!; // The checked set of the latest Write.
+    private MirProgram program = null!; // The program of the latest Write.
+    private InstanceCollector collector = null!; // The collector of the latest Write.
 
     /// <summary>Initializes a new instance of the <see cref="ModuleCodegen"/> class.</summary>
     /// <param name="layout">The layout of the compilation's Types.</param>
     /// <param name="locations">The compilation's runtime location texts.</param>
     /// <param name="types">The compilation's Type context, which FunctionCodegen's case views read.</param>
-    internal ModuleCodegen(Layout layout, SourceLocationTable locations, TyCtxt types)
+    /// <param name="imports">Binding's validated <c>#LibraryImport</c> declarations, kept current across its passes.</param>
+    internal ModuleCodegen(Layout layout, SourceLocationTable locations, TyCtxt types, IReadOnlyList<LibraryImport> imports)
     {
-        (this.Layout, this.Locations) = (layout, locations);
+        (this.Layout, this.Locations, this.imports) = (layout, locations, imports);
         this.bodies = new(this, types);
     }
 
@@ -71,9 +84,11 @@ internal sealed class ModuleCodegen
     {
         this.Records.Clear();
         this.reported.Clear();
+        this.needs = Needs.None;
         this.constants.Clear();
         this.functions.GetStringBuilder().Clear();
-        this.set = collector.Set;
+        this.externals.Clear();
+        (this.set, this.program, this.collector, this.writes) = (collector.Set, program, collector, this.writes + 1);
         for (var item = 0; item < this.set.Items.Length; item++)
         {
             if (this.set.IsGenerated(item))
@@ -87,72 +102,13 @@ internal sealed class ModuleCodegen
             return false;
         }
 
-        LlvmModuleText.WriteHeader(output, this.constants);
-        LlvmModuleText.WriteRuntime(output, testRuntime: null);
-        output.Write(LlvmModuleText.OverflowDeclarations);
-        output.Write(this.functions.GetStringBuilder());
-        if (start is not null)
-        {
-            WriteStart(output, start);
-        }
-
-        output.Write(LlvmModuleText.Footer);
+        this.Assemble(output, start);
         return true;
     }
 
-    /// <summary>Gets the signature of a body item, named <c>__kimi_f</c> with its index: the previous one while it still matches.</summary>
-    /// <param name="item">The item.</param>
-    /// <param name="flags">The signature's facts beyond its Types.</param>
-    /// <param name="result">The closed result Type.</param>
-    /// <param name="parameters">The closed parameter Types in slot order.</param>
-    /// <returns>The signature.</returns>
-    internal FunctionAbi Signature(int item, Abi.Flags flags, BoundType result, ReadOnlySpan<BoundType> parameters)
-    {
-        if (!this.set.IsGenerated(item))
-        {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, this.set.Items[item].Site); // Only a Generated item is requested (K11).
-        }
-
-        if (item >= this.signatures.Length)
-        {
-            Array.Resize(ref this.signatures, Math.Max(item + 1, 2 * this.signatures.Length));
-        }
-
-        if (this.signatures[item] is { } previous && Abi.Matches(previous, this.Layout, Abi.Convention.Internal, flags, result, parameters))
-        {
-            return previous;
-        }
-
-        var name = "__kimi_f" + item.ToString(CultureInfo.InvariantCulture);
-        return this.signatures[item] = Abi.Of(this.Layout, Abi.Convention.Internal, flags, result, parameters).Named(name);
-    }
-
-    /// <summary>Gets the signature of a DropGlue item (package C 3.6), named <c>__kimi_drop</c> with its index: the previous one while it is
-    /// a glue signature (its parameters <see cref="DropGlue.Parameters"/>).</summary>
-    /// <param name="item">The item.</param>
-    /// <returns>The signature.</returns>
-    internal FunctionAbi Glue(int item)
-    {
-        if (!this.set.IsGenerated(item))
-        {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, this.set.Items[item].Site); // Only a Generated item is requested (K11).
-        }
-
-        if (item >= this.signatures.Length)
-        {
-            Array.Resize(ref this.signatures, Math.Max(item + 1, 2 * this.signatures.Length));
-        }
-
-        if (this.signatures[item] is { } previous && ReferenceEquals(previous.Parameters, DropGlue.Parameters))
-        {
-            return previous;
-        }
-
-        return this.signatures[item] = new("__kimi_drop" + item.ToString(CultureInfo.InvariantCulture), "void", DropGlue.Parameters);
-    }
-
-    /// <summary>Records a coverage row not written yet or a broken input contract at its subject, once per code and subject.</summary>
-    /// <param name="code">Unsupported_Kd or InternalInvariant_Kd.</param>
+    /// <summary>Records a coverage row not written yet, gate step 2's refusal of a body or a broken input contract at its subject, once per
+    /// code and subject.</summary>
+    /// <param name="code">Unsupported_Kd, a refused body's A1 or A2 code (DECISIONS R5-M96) or InternalInvariant_Kd.</param>
     /// <param name="subject">The located subject.</param>
     internal void Report(DiagnosticCode code, SourceRef subject)
     {
@@ -160,19 +116,6 @@ internal sealed class ModuleCodegen
         {
             this.Records.Add(new(code, subject));
         }
-    }
-
-    // __kimi_start (IMPL 21.4.2): the startup body, which takes no parameter (Binding's startup check), then a normal exit with 0.
-    private static void WriteStart(TextWriter output, FunctionAbi startup)
-    {
-        output.Write(RuntimeAbi.Start.GetDefinition(exported: true));
-        output.Write("entry:\n  call ");
-        output.Write(startup.Result);
-        output.Write(" @");
-        output.Write(startup.Name);
-        output.Write("()\n  call void @");
-        output.Write(RuntimeAbi.Exit.Name);
-        output.Write("(i32 0)\n  unreachable\n}\n");
     }
 
     // An item by its kind's row: a body item through FunctionCodegen; a type-driven item is a row not written yet, at the site that
@@ -189,7 +132,7 @@ internal sealed class ModuleCodegen
                 this.bodies.WriteGlue(collector, item, this.functions);
                 return;
             case MonoKind.ClosureErasure or MonoKind.ItemAdapter:
-                this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // C5b writes the erasure and item adapters.
+                this.bodies.WriteAdapter(collector, item, this.functions);
                 return;
             case MonoKind.Builtin or MonoKind.PropertyWitness:
                 this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // C3c writes property witnesses; C8f and C9b the Builtin shims (R5-M67).
@@ -200,30 +143,5 @@ internal sealed class ModuleCodegen
             default:
                 throw new InvalidOperationException($"The mono item kind {entry.Key.Kind} has no code generation row.");
         }
-    }
-
-    // The output form (IMPL 21.4.2) around the output roots: an Application's entry calls its startup root; a Library has none; a test
-    // build's TestEntry is a row not written yet (C10a), at each test root. False for an Application whose startup root has no signature
-    // while nothing explains it: a broken contract without a subject.
-    private bool Start(MirProgram program, InstanceCollector collector, in StartupResult startup, ReadOnlySpan<int> roots, out FunctionAbi? entry)
-    {
-        entry = null;
-        if (startup.Kind == StartupKind.Test)
-        {
-            foreach (var root in roots)
-            {
-                this.Report(DiagnosticCode.Unsupported_Kd, collector.Subject(root, program.Bodies[this.set.Items[root].BodyOrdinal], default));
-            }
-
-            return true;
-        }
-
-        if (startup.OutputKind == OutputKind.Library)
-        {
-            return true;
-        }
-
-        entry = roots[0] < this.signatures.Length ? this.signatures[roots[0]] : null;
-        return entry is not null || this.Records.Count != 0;
     }
 }

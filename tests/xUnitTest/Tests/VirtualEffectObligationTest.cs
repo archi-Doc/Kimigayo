@@ -29,6 +29,29 @@ public class VirtualEffectObligationTest(ITestOutputHelper output)
         }
     }
 
+    // SPEC 8.11.3: an invalid item in the slot's leading region supplies no bound; the slot's guarantee is its valid clause
+    // alone, which the body's Console output then violates (PLAN G219, v2).
+    [Theory]
+    [InlineData("effect Runner.run confined\n", "InvalidEffectBound_Kd", "effect Runner.run confined", false)]
+    [InlineData("effect Runner.run confined\n        effect confined\n", "InvalidEffectBound_Kd", "effect Runner.run confined", true)]
+    [InlineData("effect bogus\n        effect confined\n", "ExpectedSyntax_Kd", "bogus", true)]
+    public void AnInvalidSlotItemSuppliesNoBound(string items, string code, string at, bool bounded)
+    {
+        var source = "contract Runner\n    func run(self: ref/Self) -> i32\n" +
+            "open struct Base\n    public virtual func score(self: objref/Self) -> i32\n        " + items +
+            "        Console.writeLine(\"x\")\n        return 1\npublic func main() => ()\n";
+        var records = DiagnosticCorpus.Check(source).Diagnostics;
+        var item = Assert.Single(records, x => x.Code == code);
+        Assert.Equal(source.IndexOf(at, StringComparison.Ordinal), item.Span!.Value.Start);
+        Assert.Equal(bounded ? 2 : 1, records.Length);
+        if (bounded)
+        {
+            var violation = Assert.Single(records, static x => x.Code == "UnsatisfiedEffectBound_Kd");
+            var bound = Assert.Single(violation.Related!, static x => x.Role == "bound");
+            Assert.Equal(source.IndexOf("effect confined", StringComparison.Ordinal), bound.Span!.Value.Start);
+        }
+    }
+
     [Fact]
     public void EachImplementationIsCheckedIndependently()
     {
@@ -120,16 +143,5 @@ public class VirtualEffectObligationTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze("group State\n    public var count: i32 = 0\nopen struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n        return 1\nstruct Derived : Base\n    override func read(self: objref/Self) -> i32 => " + body + "\n()");
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
-    }
-
-    [Theory]
-    [InlineData("", false)]
-    [InlineData("        self.value@follow += 1\n", true)]
-    public void PreservesResultsComparesLoansRetainedByTheDeclaredResult(string mutation, bool fails)
-    {
-        var source = "open struct Base {a}\n    let value: uniq/i32 during a\n    public virtual func read(self: objuniq/Self) -> ref/i32 during a\n        effect preserves results\n" + mutation + "        return self.value\n()";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.Equal(fails, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.UnsatisfiedEffectBound_Kd));
-        Assert.All(c.Binding.Issues, x => Assert.True(x.Code is DiagnosticCode.UnsatisfiedEffectBound_Kd or DiagnosticCode.Unsupported_Kd, x.ToString()));
     }
 }

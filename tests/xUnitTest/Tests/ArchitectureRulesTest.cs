@@ -9,6 +9,21 @@ namespace XunitTest;
 /// the stage that set it; a count may fall but never rise. A deleted construct counts as zero.</summary>
 public class ArchitectureRulesTest
 {
+    // DECISIONS BU-24's closed families (SourcePatternStaysAtItsSites).
+    private const string SelfRebuild = @"\.Intern\(\s*(\w+)\.Kind,\s*\1\.Symbol,\s*\1\.Semantics\b";
+    private const string SelfRebuildSites = "Binding/Binding.ArrayInference.cs=1;Binding/Binding.ClosureInstances.cs=1;" +
+        "Binding/Binding.LocalRegions.Types.cs=1;Binding/Binding.OriginDeclarations.cs=1;Binding/Binding.Storage.cs=1;" +
+        "Binding/Binding.TypeRelations.Origins.cs=1;Binding/Binding.TypeRelations.cs=1;Binding/TyCtxt.Instances.cs=1;Binding/TyCtxt.cs=1";
+
+    private const string RawOriginRole = @"\.RawOrigin\b|\bPointer\((?:[^()]|\([^()]*\))*,";
+    private const string RawOriginRoleSites = "Binding/Binding.ClosureInstances.cs=1;Binding/Binding.ContractCalls.cs=1;Binding/Binding.Conversions.Raw.cs=7;" +
+        "Binding/Binding.DiagnosticTypes.cs=1;Binding/Binding.Lints.cs=1;Binding/Binding.LocalRegions.Types.cs=2;" +
+        "Binding/Binding.OriginDeclarations.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.PlaceAuthority.Raw.cs=1;" +
+        "Binding/Binding.RawOrigins.Holder.cs=5;Binding/Binding.RawOrigins.Steps.cs=5;Binding/Binding.RawOrigins.cs=4;" +
+        "Binding/Binding.Retention.cs=1;Binding/Binding.Storage.cs=2;Binding/Binding.TypeOrigins.cs=3;" +
+        "Binding/Binding.TypeRelations.Origins.cs=7;Binding/Binding.TypeRelations.cs=2;" +
+        "Binding/BindingModel.cs=2;Binding/TyCtxt.Raw.cs=1;Binding/TyCtxt.cs=4";
+
     // Test-only semantic-slot ratchet; production member policy is reviewed against COMPILER_ARCHITECTURE.
     private const string SemanticSlots = "Bound(?:Type|Origin|Symbol|Call|ValueCall|Constraint|RuntimeTest|Meaning|Closure)|BindingState|BindingFailure|HasCurrentBinding|CallStorage|ClosureStorage|ConversionBinding|FoldedConstant|CreationCall|ErasedFunctionType|EntryCall|FormattingStorage|ArithmeticCall|ComparisonCall|IsDirectStorage|FillCount|SemanticsIndexed|RequirementStorage|ImplementationStorage";
 
@@ -20,6 +35,12 @@ public class ArchitectureRulesTest
     [InlineData("Operator Koto subclasses", "src/Kimi/Compiler/Parsing/Koto/Expressions", "*.cs", @"\bclass\s+\w+\s*:\s*(?:Binary|Unary)Koto\b", 9)]
     [InlineData("Semantic auto-properties on Koto classes", "src/Kimi/Compiler/Parsing/Koto", "*.cs", @"\b(?:Bound[A-Z]\w*|BindingSymbol|CallPlan)\??\s+\w+\s*\{\s*get;\s*(?:(?:internal|private|protected)\s+)?set;\s*\}", 7)]
 
+    // R5 G199b: the collection of a collectible load context or dynamic assembly flushes the runtime's process-wide caches (the cast cache
+    // among them) and charges their rebuild, 98,352 bytes, to whichever test's measuring thread inserts next. A test that needs the state
+    // of a fresh process runs as an Explicit test in a child process (FreshProcess). A letter in brackets keeps this row's own pattern
+    // from matching its source.
+    [InlineData("Test collectible assemblies and load context unloads", "tests/xUnitTest", "*.cs", @"\bAssemblyLoad[C]ontext\b|\bRunAndCollec[t]\b|\.Unload\(\)", 0)]
+
     // R3 U6: tests run and read analysis and generation through the Compilation entry points. The old path's structure is read only
     // where no entry point carries it, until the stage that replaces it: dump goldens (R4), the MIR emission (R5, R6). R4-M13a: the
     // control-flow structure is read only by LegacyRecords, and direct calls of the old control-flow entries cannot grow.
@@ -30,12 +51,36 @@ public class ArchitectureRulesTest
     [InlineData("Test calls of the old control-flow entries (R6)", "tests/xUnitTest", "*.cs", @"\bAnalyzeControlFlow\(\)|\bControlFlowAnalysis\.Analyze\(", 64)]
     [InlineData("Test inspections of a prepared emission module (R5)", "tests/xUnitTest", "*.cs", @"\.Emission\.TryPrepare\(out (?!_,)", 119)]
     [InlineData("Test reads of instance analysis (R5, R6)", "tests/xUnitTest", "*.cs", @"\b(?:Failed|Failure|Analyze)Instance\b", 11)]
-    [InlineData("Test reads of generation failure facts without an entry point", "tests/xUnitTest", "*.cs", @"\.Emission\.(?:FailureIsResourceLimit|ReportFailure)\b", 21)]
+    [InlineData("Test reads of generation failure facts without an entry point", "tests/xUnitTest", "*.cs", @"\.Emission\.(?:FailureIsResourceLimit|ReportFailure)\b", 13)]
+    // DECISIONS R4-M101 E8 (2a0-D D7, D8): only the C1-F4 view decodes an Origin's slot, binder or forming body, so no Mir source reads
+    // them (G163); fixed-fixed entailment has one owner, so OriginPremiseClosure.AddEdge has one caller, the premise catalog's writer
+    // (AddPremiseEdge, bu20's C0d).
+    [InlineData("Mir reads of an Origin's slot, binder or forming body", "src/Kimi/Compiler/Mir", "*.cs", @"(\b[Oo]rigin|[Aa]tom)\w*\??\.(Slot|Binder|Body)\b|\.EvaluatingBody\b", 0)]
+    [InlineData("Premise edges written outside the premise catalog's writer", "src/Kimi/Compiler", "*.cs", @"(?<!this)\.AddEdge\(", 1)]
     public void SourcePatternDoesNotGrow(string rule, string directory, string pattern, string regex, int limit)
     {
         var expression = new Regex(regex);
         var count = SourceFiles(directory, pattern).Sum(x => expression.Count(File.ReadAllText(x)));
         Assert.True(count <= limit, $"{rule}: {count} occurrences; the limit is {limit}.");
+    }
+
+    // DECISIONS BU-24: the families of the raw Origin's representation are closed by their sites, file by file. A self-rebuild
+    // `Intern(x.Kind, x.Symbol, x.Semantics, …)` is the keep-rebuild (TyCtxt.Rebuild), the erasure (EraseParts), a mapping rewriter that
+    // G160-1 gives its raw arm (Storage, TypeRelations, OriginDeclarations, LocalRegions.Types, TypeRelations.Origins), a closure instance's
+    // context change, which passes the raw role on, or an array literal's formation, never a raw layer. The raw role (BoundType.RawOrigin,
+    // a Pointer that states one) is read and written only at its named sites; review checks the Intern calls whose Semantics is a variable.
+    // Mir/ has none: A5 reads a raw layer's step only through TyCtxt.RawStep, a stored layer's from its declaration (design-final §15).
+    [Theory]
+    [InlineData("Self-rebuilds of a Type", "src/Kimi/Compiler", SelfRebuild, SelfRebuildSites)]
+    [InlineData("Reads and writes of the raw Origin role", "src/Kimi/Compiler", RawOriginRole, RawOriginRoleSites)]
+    public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
+    {
+        var expression = new Regex(regex);
+        var root = Path.Combine(Repository.Root, directory);
+        var actual = SourceFiles(directory, "*.cs")
+            .Select(x => (Name: Path.GetRelativePath(root, x).Replace(Path.DirectorySeparatorChar, '/'), Count: expression.Count(File.ReadAllText(x))))
+            .Where(static x => x.Count != 0).Select(static x => $"{x.Name}={x.Count}").Order(StringComparer.Ordinal).ToArray();
+        Assert.True(sites.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual), $"{rule}: {string.Join(";", actual)}; the sites are {sites}.");
     }
 
     // A directory that does not exist (deleted, or not yet created) has no files.

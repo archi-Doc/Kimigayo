@@ -206,7 +206,7 @@ public sealed partial class Binding
                 {
                     this.Fail(target, BindingFailure.ClosedContractConformance); // SPEC 8.7: the conforming Types of a closed Contract are fixed.
                 }
-                else if (contract.Intrinsic is IntrinsicKind.None or IntrinsicKind.Copy or IntrinsicKind.Owned)
+                else if (IntrinsicContract.Of(contract.Intrinsic).Declaration == BindingFailure.None)
                 {
                     this.RegisterConformanceDeclaration(container.BoundSymbol!, contract, target, scope, premises);
                     if (IsRefinement(contract, this.Library.Copy))
@@ -329,7 +329,7 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
-        if (InvalidConstraintType(type) || contract.Declaration.BindingState == BindingState.Invalid)
+        if (this.OperandContexts(type).Invalid || contract.Declaration.BindingState == BindingState.Invalid)
         {
             return ConstraintProof.Error;
         }
@@ -377,6 +377,7 @@ public sealed partial class Binding
 
         try
         {
+            var outer = this.BeginProof(); // The paths are one disjunction (DECISIONS BU-22).
             var result = ConstraintProof.Refuted;
             for (var i = 0; i < identity.PathStorage.Count; i++)
             {
@@ -384,8 +385,8 @@ public sealed partial class Binding
                 var definition = this.VerifyConformance(path);
                 if (path.Unsupported && this.conformanceChecks == 0)
                 {
-                    // SPEC 23.1.1, 23.1.2: a check that needs a conformance limited by OCC-X rests on its one record (TakeFailedConformance).
-                    this.failedConformance ??= path;
+                    // SPEC 23.1.1, 23.1.2: a check that needs a conformance limited by OCC-X rests on its one record (TakeFailedCause).
+                    this.failedCause ??= path;
                     definition = ConstraintProof.Error;
                 }
 
@@ -408,7 +409,7 @@ public sealed partial class Binding
                 evidence = null;
             }
 
-            return result;
+            return this.EndProof(outer, result);
         }
         finally
         {
@@ -454,6 +455,7 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
+        var outer = this.BeginProof();
         var result = ConstraintProof.Proven;
         for (var i = 0; i < premises.Operands.Length; i++)
         {
@@ -468,6 +470,6 @@ public sealed partial class Binding
             result = CombineProof(result, proof, true);
         }
 
-        return result;
+        return this.EndProof(outer, result);
     }
 }

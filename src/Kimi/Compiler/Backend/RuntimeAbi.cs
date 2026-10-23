@@ -21,6 +21,10 @@ internal static class RuntimeAbi
     /// element, and below the 64 KiB that Windows never maps, so it is never allocated or released (__kimi_free skips it).</summary>
     internal const int ZeroSizedBuffer = 4096;
 
+    /// <summary>The runtime Abort's os_error for a failure without an operating system error, which the runtime does not print (it prints
+    /// only an os_error of 0 or more).</summary>
+    internal const long NoOsError = -2;
+
     internal static readonly ValueLowering Unit = new(new("void", 0, 1, 0, ReadOnlyMemory<int>.Empty), "void", null);
 
     // { data, byteLength, releaseKind }: size/stride 24, alignment 8, offsets 0/8/16 (implementation-defined, IMPL 21.1.3).
@@ -35,7 +39,7 @@ internal static class RuntimeAbi
     internal static readonly FunctionAbi Abort = new(
         "__kimi_abort",
         Unit.ComputationType,
-        [new("i32", "reason"), new("ptr", "location"), new("i64", "location_length"), new("i64", "os_error")]) { NoReturn = true };
+        [new("i32", "reason"), Location, LocationLength, new("i64", "os_error")]) { NoReturn = true };
 
     // Hidden diagnostic context follows the ordinary parameters (SPEC 21.3.1, 22.5.1).
     internal static readonly AbiParameter[] OwnedStringParameters =
@@ -66,8 +70,16 @@ internal static class RuntimeAbi
     internal static readonly FunctionAbi ArrayInit = new("__kimi_array_init", Unit.ComputationType, ArrayHandleParameters);
     internal static readonly FunctionAbi DictionaryInit = new("__kimi_dictionary_init", Unit.ComputationType, ArrayHandleParameters);
     internal static readonly FunctionAbi ArrayFree = new("__kimi_array_free", Unit.ComputationType, ArrayHandleParameters);
-    internal static readonly FunctionAbi RawAllocate = new("__kimi_raw_allocate", "ptr", [new("i64", "count"), new("i64", "stride"), Location, LocationLength]);
-    internal static readonly FunctionAbi StorageRelease = new("__kimi_free", Unit.ComputationType, [new("ptr", "storage"), Location, LocationLength]);
+
+    // IMPL 21.4.3: a heap block of a byte size, 16-aligned; an allocation failure Aborts at the location (an erased environment, SPEC 7.7.4).
+    internal static readonly FunctionAbi Allocate =
+        new("__kimi_alloc", "ptr", [new("i64", "size", AbiParameterKind.Value, 0), Location, LocationLength]);
+
+    internal static readonly FunctionAbi RawAllocate =
+        new("__kimi_raw_allocate", "ptr", [new("i64", "count", AbiParameterKind.Value, 0), new("i64", "stride"), Location, LocationLength]);
+
+    internal static readonly FunctionAbi StorageRelease =
+        new("__kimi_free", Unit.ComputationType, [new("ptr", "storage", AbiParameterKind.Value, 0), Location, LocationLength]);
 
     // SPEC 4.9.5, 4.9.8: capacity routines move element bytes by stride and run no user code; the writer emits them only for
     // modules that use Arrays.
@@ -80,9 +92,9 @@ internal static class RuntimeAbi
     internal static readonly FunctionAbi ArrayShrink =
         new("__kimi_array_shrink", Unit.ComputationType, [new("ptr", "handle"), new("i64", "stride"), Location, LocationLength]);
 
-    // SPEC 22.2: the private nullable Alloc and byte copy behind Kimi.Storage; the writer emits them only for modules whose
-    // bodies call them.
-    internal static readonly FunctionAbi TryAllocateBytes = new("__kimi_try_allocate", "ptr", [new("i64", "bytes")]);
+    // SPEC 22.2: the private nullable Alloc and byte copy behind Kimi.Storage, defined only in modules whose bodies call them (the first
+    // by LlvmModuleText.TryAllocate for both generators).
+    internal static readonly FunctionAbi TryAllocateBytes = new("__kimi_try_allocate", "ptr", [new("i64", "bytes", AbiParameterKind.Value, 0)]);
 
     internal static readonly FunctionAbi TransferBytes =
         new("__kimi_transfer_bytes", Unit.ComputationType, [new("ptr", "destination"), new("ptr", "source"), new("i64", "size")]);

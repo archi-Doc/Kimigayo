@@ -1,19 +1,15 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Numerics;
-using System.Runtime.InteropServices;
-
 namespace Kimi.Compiler.Mir;
 
-// A4's static keys for A5 (SPEC 15.6.4, 16.3.3, 22.4.4; DECISIONS R4-M38): the mutable static Fields a Call or a Drop may access through
-// what it runs. Under the owner's P5 every key of one Field is one key, so keys are Fields, never substituted: a node's keys are its local
-// accesses (AddKey, as Local walks the view) joined with those of every body view it composes (Spread, after Run's fixed point); Keys
-// answers a site from the summaries and keys of the last Run.
+// A4's static keys for A5 (SPEC 15.6.4, 16.3.3, 22.4.4; DECISIONS R4-M38, R4-M91, R4-M92): the mutable static Fields a Call or a Drop may
+// access through what it runs. Under the owner's P5 every key of one Field is one key, so keys are Fields, never substituted: a node's keys
+// are its local accesses (AddKey, as Local walks the view) joined with those of every body view it composes (Spread, after Run's fixed
+// point); Keys answers a site of one view with its key row and classes from the summaries and keys of the last Run, Summary gives a body
+// view's own row and classes (a static initializer's, for A5's initialization proof), and Field numbers a Field's bits.
 internal sealed partial class MirEffects
 {
-    private readonly Dictionary<BindingSymbol, int> fieldIds = new(ReferenceEqualityComparer.Instance); // Each mutable static Field's number,
-    private readonly List<BindingSymbol> fields = []; // and the Field of each number (P5: one key per Field).
-    private readonly List<(BindingSymbol Field, bool Write)> accessed = []; // The last query's keys.
+    private readonly Dictionary<BindingSymbol, int> fieldIds = new(ReferenceEqualityComparer.Instance); // Each mutable static Field's number (P5).
     private int[] localKeys = []; // A key's bit: 2 × its Field's number, plus 1 for a write.
     private int[] keyEnds = []; // The end of each node's local keys in localKeys.
     private int keyCount;
@@ -25,16 +21,17 @@ internal sealed partial class MirEffects
     private int[] members = [];
     private (int Node, int Edge)[] frames = []; // and the walk's path, each node with its next dependency.
 
-    /// <summary>Gets the mutable static Fields a Call or a Drop of a body view may access through what it runs, from the summaries of
-    /// the last <see cref="Run"/>: its terminator's inputs, as <see cref="Local"/> records them, evaluated against them, each Field once,
-    /// written where any access writes it. What the site runs and A4 does not classify (an unknown effect, an atom left abstract under
-    /// the body's premises, a limit, or a dependent of an error) makes it unknown, so it may access any key.</summary>
+    /// <summary>Gets the key row of a Call or a Drop of a body view, from the summaries of the last <see cref="Run"/>: its terminator's
+    /// inputs, as <see cref="Local"/> records them, evaluated against them in the view. Bit 2f is a read and bit 2f + 1 a write of the
+    /// mutable static Field that <see cref="Field"/> numbers f; a read bit beside its write bit is the write. The classes tell apart what
+    /// the site runs and A4 does not classify: <see cref="Unknown"/> (an unknown effect, or an atom left abstract under the body's
+    /// premises), which may access any key, <see cref="Limit"/> and <see cref="Derived"/> (a dependent of an error).</summary>
     /// <param name="body">A body of the last <see cref="Run"/>'s program, with which the dataflow is begun.</param>
-    /// <param name="view">The view, which the case views select.</param>
+    /// <param name="view">The view, which the case views select (a caller reselects its own afterwards).</param>
     /// <param name="block">The block whose terminator is the Call or the Drop.</param>
-    /// <param name="unknown">Whether the site may access any key.</param>
-    /// <returns>The keys, in a buffer the next query reuses; none for another terminator.</returns>
-    internal ReadOnlySpan<(BindingSymbol Field, bool Write)> Keys(MirBody body, long view, int block, out bool unknown)
+    /// <param name="classes">The site's classes among <see cref="Unknown"/>, <see cref="Limit"/> and <see cref="Derived"/>.</param>
+    /// <returns>The row, valid until the next query or <see cref="Run"/>; no bit for another terminator.</returns>
+    internal ReadOnlySpan<ulong> Keys(MirBody body, long view, int block, out byte classes)
     {
         cases.Select(body, view);
         var (items, edges) = (this.itemCount, this.edgeCount);
@@ -44,31 +41,41 @@ internal sealed partial class MirEffects
         this.Terminator(this.program, body, block, view, body.Blocks[block].Terminator);
         this.Inputs(items, this.itemCount, edges, this.edgeCount);
         (this.itemCount, this.edgeCount) = (items, edges); // The site's inputs are not the body's.
-        unknown = (this.found & (Unknown | Limit | Derived)) != 0; // With no reader an atom left abstract is Unknown (AddAtom).
-        this.accessed.Clear();
-        for (var word = 0; word < this.keyWords; word++)
+        classes = (byte)(this.found & (Unknown | Limit | Derived)); // With no reader an atom left abstract is Unknown (AddAtom).
+        return this.keyScratch.AsSpan(0, this.keyWords);
+    }
+
+    /// <summary>Gets the summary of a body view from the last <see cref="Run"/>: the key row of what the body may run (its local keys
+    /// joined with every body it composes) and its classes. An atom the summary keeps is <see cref="Unknown"/> here, since a site that
+    /// composes the body may resolve it so (R4-M92).</summary>
+    /// <param name="body">A body of the last <see cref="Run"/>'s program.</param>
+    /// <param name="view">The view.</param>
+    /// <param name="classes">The summary's classes among <see cref="Unknown"/>, <see cref="Limit"/> and <see cref="Derived"/>.</param>
+    /// <returns>The row, A4's storage, valid until the next <see cref="Run"/>.</returns>
+    internal ReadOnlySpan<ulong> Summary(MirBody body, long view, out byte classes)
+    {
+        var node = this.bases[body.Ordinal] + (int)view;
+        classes = (byte)(this.classes[node] & (Unknown | Limit | Derived));
+        if (this.atomCounts[node] > 0)
         {
-            for (var bits = this.keyScratch[word]; bits != 0; bits &= bits - 1)
-            {
-                // A read bit beside its write bit is the write's key.
-                var bit = (word << 6) + BitOperations.TrailingZeroCount(bits);
-                if ((bit & 1) != 0 || (bits & (2UL << (bit & 63))) == 0)
-                {
-                    this.accessed.Add((this.fields[bit >> 1], (bit & 1) != 0));
-                }
-            }
+            classes |= Unknown;
         }
 
-        return CollectionsMarshal.AsSpan(this.accessed);
+        return this.keys.AsSpan(node * this.keyWords, this.keyWords);
     }
+
+    /// <summary>Gets A4's number of a mutable static Field in the program version of the last <see cref="Run"/>, whose bits in a key row
+    /// are 2f and 2f + 1 (<see cref="Keys"/>). Every Field a body of the version accesses has one, so a borrowed one always does.</summary>
+    /// <param name="field">The Field.</param>
+    /// <returns>The number; -1 for a Field no body of the version accesses or one that is not mutable.</returns>
+    internal int Field(BindingSymbol field) => this.fieldIds.TryGetValue(field, out var id) ? id : -1;
 
     // A local access to a mutable static Field: its key, numbered by Field once per program version.
     private void AddKey(BindingSymbol field, bool write)
     {
         if (!this.fieldIds.TryGetValue(field, out var id))
         {
-            (id, this.fieldIds[field]) = (this.fields.Count, this.fields.Count);
-            this.fields.Add(field);
+            this.fieldIds[field] = id = this.fieldIds.Count;
         }
 
         MirDataflow.Grow(ref this.localKeys, this.keyCount + 1);

@@ -520,7 +520,8 @@ adopted S1 the same day (「S1採用します」, DECISIONS R4-M39) and confirme
     the children of §15.6.3. "Storage the body does not own" is decided as A3's `Φ_E` is: a reference from a parameter
     or capture, static or raw storage, or a call result its contract ties to no argument. Paths include base subobject
     steps, and examples write a dereference as `.*`.
-  - Not integrated: S2, S3, S5, the root-most kill and relaxation (c) (not adopted).
+  - Not integrated: S2 (closed as 完了 on 2026-10-22, superseded by Abstract Calls Reach by Paths; DECISIONS R4-M106), S3, S5,
+    the root-most kill and relaxation (c) (not adopted).
 - Principles. One Concept, One Canonical Form: one Loan identity (the Borrow site), one Place name (the access path), one
   carrying unit (the holder) and one retention unit (the argument). Local Reasoning: a verdict depends on one body's
   paths, published contracts and finite facts; no clause needs value identity or unbounded Places. Explicit Semantics:
@@ -680,7 +681,8 @@ ending) and **P12**.
   its questions OQ1–OQ13 at once (its status line and §2.2 record the outcomes; DECISIONS R4-M74). It is a working plan: no
   section is integrated into SPEC or IMPL, and no text is frozen.
 - Its specification work goes separately, each as an explicit revision recorded here when it lands: S3's SPEC 15.3.6
-  clarification before 2a0-3b (OQ12); S2's revision and integration (2f-S2, if round 2x-P6 shows it sound, OQ3); S5's
+  clarification before 2a0-3b (OQ12); S2's revision and integration (2f-S2, if round 2x-P6 shows it sound, OQ3; superseded:
+  S2 closed on 2026-10-22, DECISIONS R4-M106); S5's
   proposal (2x-S5) and, after its review, its SPEC integration (OQ13); each family's approved losses as SPEC clauses (OQ8).
   Adoption implies no implementation support.
 
@@ -807,3 +809,356 @@ to Obsolete as superseded."
   rule (plan B §1.3, §3.3). Its other sections (results and ownership, nesting, Deferred Block, migration,
   implementation plan, mapping) transfer to plan B, which revises them. Its §1 precedence over SPEC lapses with its
   closure.
+
+## 2026-10-21 — Implementation-defect plans: M69, S3, premise supply and Transferable, G170 PlanB, G172 (R4's evaluation)
+
+The owner's commit `e307e9f9` added seven plans to the reset dev (DECISIONS R4-M86), and the owner instructed R4 at its
+resume (verbatim): 「これらの文書は、実装上の問題点の修正計画書です。どのような内容か確認し、有用ならR4、R5、Binding Unitへ通達し、共有・利用してください。実装完了後は、通常通りdraft/Changesに移動してください。有用でなければ、理由を表示して、Obsoleteに移動してください。」
+for the five below (Accessor Result Contracts and As Naming Syntax are outside it). R4's planning session evaluated each
+against dev with an independent fact check (2026-10-21, probes at dev `4b36db41`; its summary, probe sources and outputs are
+copied to `artifacts/verify/20261021-r4-plans-eval/`, main checkout, Git-ignored). All five are
+useful and stay in `Proposals` as 一部取り込み (open) until implemented; none moves to `Obsolete`. No section is integrated into
+SPEC or IMPL, and no text is frozen; their text is unchanged, and the corrections below apply to it. Intake implies no
+implementation support and no owner adoption: the adoptions and holds their texts name ("adopted (PLAN)", R4-M83, R4-M84,
+R4-M85) are rolled-back records not in force on dev (R4-M86), and each plan's design choice is taken again in the design its row
+names, with the owner's package approval (R4-M74 OQ2) or under BU's planning.
+
+- **Common corrections.** Not on dev: DECISIONS R4-M82–R4-M85; the INTEGRATED entries for these five plans; `Loan.Statement`
+  (M69-1); the edit of SPEC 8.5.5 and 23.1.2; the baselines `a415c755`, `bc3fcd3f`, `8400ce72`, `3a272f3e`, `0c8ec470`,
+  `f373cd67`, `64649f97`, `338831f7`, `0ccf13ce`, `71984552`, `37184417` (all on `origin/backup/rollback-20261020-origin-dev`,
+  as are the linked `draft/Sketches/A5 Step 2/S3-M69/` option designs and review record); `artifacts/verify/20261020-g170-plan-revision/`
+  and `-g172-inference-plan/` exist nowhere. Binding and SPEC chapter 8 at dev equal those at the plans' baselines, so their
+  Binding observations carry over; line numbers drift where the rolled-back history split files.
+- **PLAN numbers.** G171, G172 and G174 are registered on dev with the meanings the evaluated plans cite. G173 is not: no
+  evaluated plan cites it (the rolled-back row's G173, `TestDiagnostics.Collect`'s first document by path, tied to S3's same-path
+  donor edit whose evidence head `74c3b8b5` is not on dev, is registered as G175), and As Naming Syntax cites "PLAN G173" for
+  another issue. Accessor Result Contracts cites "PLAN G174" for an issue other than the evaluated plans' G174; R4 or the owner
+  numbers those two plans' issues when they are taken up.
+- [M69 Default Loan Correspondence](Proposals/2026-10-20%20M69%20Default%20Loan%20Correspondence%20Plan.md) — useful (R4,
+  A5). Its A5 facts hold at dev (`Report`'s access-scope Inlined fact, `MirReport.Add`'s drop, `Conflict`'s first-clean
+  selection, an empty `Accessing.Effect`); `Loan` carries `Site`, not `Statement`. Correction: G171 is already an unsound MIR
+  acceptance, not only an integration hazard: `add(c: uniq/Counter, x: i32 = State.poke(counter@uniq))` called as
+  `State.add(counter@uniq)` in its group is accepted on the MIR, while the explicit twin reports `CallReservationConflict_Kd`
+  (shadow; the default pipeline reports `Unsupported_Kd`). The cause is R4-M69's Inlined drop; Binding's binding of an unqualified
+  group-storage borrow makes the route reachable, against R4-M69's premise. Use: PLAN G171. Option 3 is a candidate for 2e-D's copy
+  disposition (PD15 (ii)); because M69-2 must land before or with 2b-3 and PD1 puts F5 before F9, R4 proposes to take that item
+  into 2b-D's package, for the owner's approval (OQ2); it supersedes part of R4-M69, an owner-approved design, so it takes the full
+  process. An additional prototype round with G171's shapes (round 20; R4 proposes the unit name 2x-P11, not yet in the step 2 plan, which gains
+  it with its next edit) serves M69-0's proof obligation before that design
+  review; M69-1 is redone from dev if the design adopts it.
+- [S3 Closure Origin Publication](Proposals/2026-10-20%20S3%20Closure%20Origin%20Publication%20Plan.md) — useful (R4's
+  Binding views, BU reviewing). §3's probe gives the stated verdicts on dev, §2's anchors exist as described and its planned
+  components are absent; the mir pipeline also records an unpublished A5 `ComparisonLoanConflict_Kd` at `g`'s `let m = 8`
+  (a storage end, PD11's merge in 2a-2). Use: design input to 2a0-D (body-relative atom classes of captured Origins) and 2c-D
+  (C2's result formals and source rows). S3-2, S3-3, S3-4a, S3-4b and S3-5 refine 2a0-2, 2c-2, 2c-3 (with 2c-5's OQ4 gate), 2c-4
+  and 2c-6; S3-0 (gate R's source-backed prototype, taking 2x-P4's prototype and 2x-P7's cases as inputs; 2x-P7 has not run and
+  stays 2c-D's prerequisite) and S3-1 (a restructure) have no step-2 unit and run inside 2a0-D's and 2c-D's preparation; S3-6
+  (S3's closing review) is the F7 group's final review, after 2c-6; they open no separate series. Option 3 is chosen again in those designs.
+  2a0-D (DECISIONS R4-M94) took S3's body-relative atom classes (an atom whose binder lies in an enclosing body is Fixed;
+  environment bindings Finite until 2c-6) and modelled S3's `f` and `g` in its prototype; S3-0's gate R and S3-1 did not run
+  there and stay in 2c-D's preparation.
+- [Canonical Premise Supply and Transferable](Proposals/2026-10-20%20Canonical%20Premise%20Supply%20and%20Transferable%20Plan.md)
+  — useful (R4's 2b; the Binding producer with BU's review). At dev no Transferable producer exists, `Core.kimi` lacks
+  `contract Transferable` while SPEC 22.1 and LIBRARY declare it, and a written `T is Transferable` is `UnresolvedBinding_Kd` (a
+  Language error for a valid form); `HoldsRaw` has one production reader (`StaticRoot`); `Register` falls through for an
+  unlisted intrinsic; G174 holds as stated. Use: T0 → 2b-D's Transferable contract (PD5): the finite per-declaration summary, the
+  site census, the default-pipeline disposition (D5/O3), the per-case proof anchor and the choice for G174; T1 → 2b-4, T2 → 2b-5,
+  T3 → 2b-8; PLAN G124's note and G174. 2b-4 and 2b-5 follow 2b-D (the step 2 plan's prerequisites), whose package needs the
+  owner's approval, so neither starts before it; R4-M86's interim hold ends with this evaluation; whether they also wait for
+  G170's supply (the rolled-back R4-M83) goes to the owner in that package. Its §§2–4 stay replaced by G170 PlanB.
+- [G170 PlanB](Proposals/2026-10-20%20G170%20Premise%20Dependencies%20and%20Inference%20PlanB.md) — useful (BU; R4 reviews the
+  A1/A4 consumers). The defect is broader than dev's PLAN G170 said: Binding's `ProveCopy` is Unknown or false for the deep
+  projection, so the default pipeline rejects `(value, value)` too (`TransferRequired_Kd`, `MovedPlace_Kd`); the unused stronger
+  spelling makes both pipelines accept; a non-recursive Contract shows the same; §2's cause sites and the six callers exist as
+  described (the causal explanation is the plan's C0 to confirm). `S5Probe.cs`'s helper chains are not G170's (no Copy-proof
+  evidence; the Transferable plan §5.3). Use: PLAN G170 restated and STATUS's Types and Contracts row; the candidate plan for
+  BU's planning (C0–C4).
+- [G172 Associated Value Inference](Proposals/2026-10-20%20G172%20Associated%20Value%20Inference%20Plan.md) — useful (BU).
+  SPEC 8.5.5's PA/PB example is rejected in both declaration orders; requirement order has no effect today, so the plan's
+  order-dependent step 2 of §1 is not needed to explain the failure (whole-batch withholding is consistent with it; untested);
+  `alt` is accepted with E first (D.X = E.W = `i32`) and rejected with D first; the exclusion chains' diagnostics change with
+  declaration order; the collecting-conformance guard is unreachable by code reading; the `InferenceProblem.Dependency` reason
+  text is truncated mid-phrase. Use: PLAN G172 and STATUS's Inference row; the candidate plan for BU's planning (G0–G4); its G1
+  fixes "depends" from SPEC 8.5.5 and 8.3.3 or reports the gap for the owner's reading (the rolled-back R4-M85 is not in force).
+- Shared on 2026-10-21 with R5's and BU's planning sessions by cross-session messages; their confirmations: BU takes G170, G172
+  and G174's Binding part after its unsound-acceptance units (bu11, G163; G170's C0 may run beside them) and will have 2b-6 treat
+  the unqualified in-group borrow as it treats the qualified one (2b-6's row names only `InvalidAssignment_Kd`); R5 reviews 2b-5's
+  MIR consumption with `StaticRoot` (AR-2) and M69's scope query in the shared `MirBody`, and its E lane takes G175.
+
+## 2026-10-21 — Introduction-site requirements for generic parameters
+
+The owner's instruction of 2026-10-20 (translated): write the formal plan, specification and implementation plan, for the
+generic-parameter constraint draft "R1"; implementation starts after R9; the plan takes precedence over SPEC and its
+references for the matters it changes, and existing specifications govern the rest; SPEC is not changed by this task;
+record the intake in INTEGRATED at commit.
+
+- [Introduction-Site Requirements and Implementation Plan](Proposals/2026-10-21%20Introduction-Site%20Requirements%20and%20Implementation%20Plan.md):
+  一部取り込み (open, intake only). A requirement on an ordinary Type slot is written on the slot (`<T is R>`), the
+  introduction-site concept `associate X is R` already uses; each Constraint Clause has one place, decided by its shape;
+  requirements on one slot are one `and` requirement, and a Constraint is a conjunct. Implementation starts after R9
+  (units GR0–GR6). By the owner's instruction, the plan takes precedence over SPEC and its references for its stated
+  changes.
+- Planned mapping (its §6): §2.1 → F.5, F.2.1, §8.1.1, §8.2.2, §13.6.4, Appendix E; §2.2–§2.3 → §7.5, §8.2.1,
+  §8.4.1–§8.4.2, §8.11.6, F.6.2–F.6.3, §6.1.4; §2.4 → §8.3.1, §8.10, §8.11.6, §10.5.2, §10.8; §2.5 → §6.1.2, §6.1.4,
+  §7.5, §8.2.3, §8.5.2, §9.1, §9.4.4, §9.5, §15.3.4; §2.6 → §8.4.1, §8.5.1, §8.5.3, §8.5.4; §2.7 → §19.1, §19.4; §2.8 →
+  §23.1.3 and the check output schema; §2.9 → F.4.3; 63 example lines in 53 declarations. Formal integration needs the
+  owner's explicit instruction and lands only inside the GR3–GR5 group merge (its §1, §4).
+- No section is integrated into SPEC or IMPL, no text is frozen, and no compiler support is claimed. Its §7 requests the
+  owner's decisions: the rules it adds to the draft, option (ii) for effect-bearing Callable parameters (the owner's
+  preliminary preference was (i)), the `length` keyword, the SyntaxForm row and repair kind, and the scope of the
+  integration instruction; it also lists open issues for PLAN after a check on the current tree.
+
+## 2026-10-21 — G160 raw storage plan
+
+- `Obsolete/2026-10-21 G160 Raw Storage Kept by Declarations.md`: 完了 (closed 2026-10-21; see the next section). The
+  record of its intake follows unchanged. The planning session's plan for PLAN G160, selected from designs A and B (`Sketches/G160/`) and plan X
+  (`2026-10-21 G160 Stored Loan Destinations.md`, branch `codex/g160-storage-loan-plan`, `e76e03ae`, not on dev), after seven
+  independent review rounds (`Sketches/G160/review-1.md` to `review-7.md`, the last a records check). The in-body read side
+  became PLAN G184, and the interim for one class went to the owner after three rounds, as AGENTS requires. Nothing is integrated into SPEC or IMPL, and no
+  text is frozen. It awaits the owner's answers Q1–Q5. Q1's recommended answer adopts X's §5 declaration contract (or its minimal
+  core) as an explicit SPEC revision, which will be recorded here when it lands. Adoption implies no implementation support.
+
+## 2026-10-21 — Raw reach and raw Origins (G160, G184)
+
+The owner's request of 2026-10-21 on PLAN G160 and G184 asked for common rules instead of more cases (「とにかく、場合分けを
+増やすと実装の難易度が極度に上がる。共通の規則で対処したい。」), allowed raw SPEC changes for simplicity and speed, rejected the
+G160 plan's declaration statement and confirmed the planning session's recommendations (「推奨の仕様で結構です。」,
+「残りの判断事項はすべて推奨どおりで確定します。」, 「案aで決定します。」), then asked for the documents, their review and their
+integration (「推奨の進め方の通り、文書の作成、レビュー、反映処理を行ってください。」). DECISIONS R4-M95 records the decisions and
+the owner's confirmation of C1–C3; the review is `Sketches/G160/raw-origins-review-1.md` and its re-check `raw-origins-review-2.md`.
+
+- `Changes/2026-10-21 G160 Raw Reach and Raw Origins.md`: 取り込み済み. Mapping:
+  - §3.1 (reach and addresses) → §15.6's new Addresses bullet (a raw dereference counts as a dereference), the write-through
+    bullet (a reference also reaches the holders it addresses; a raw pointer that reaches no holder reaches storage the body does
+    not own; "from static or raw storage" becomes "from static storage") and the liveness bullet (an address of the holder);
+    §5.2.1 condition 4 (Loan liveness follows the uses of values, raw pointers included); §5.2.2 (a raw Place borrow carries what
+    the pointer reaches; its anchor recovers no owner or Loan); Appendix E's Address and Holder rows.
+  - §3.2 (raw Origins) → the new §5.7 with its `Lens` example; §5's opening paragraphs (a raw layer may state an Origin; a claim
+    needs an unsafe context); §5.2.2 and §5.6's `slice` (within the pointer's Origin); §5.3 (a displacement keeps the Origin);
+    §5.4's `P@raw` row, the new `E@(raw/U during o)` row and its conversion sentence; §13.5.1 (a grouped target may state an outer
+    `raw` layer's Origin) and §13.5.3's raw conversion row; §15.2.1 (`self` on a raw layer); §15.3.5's Variance and Loan
+    requirements; §15.6.1's Liveness (a raw pointer's uses add no point to its Origin's region); §15.6.5's inferred region (a raw
+    Place borrow is contained in the pointer's Origin); Appendix E's Claim and Raw pointer Origin rows; LIBRARY's `Raw.slice` row.
+  - §3.3 (no write past a shared layer, with C1) → §5.2.1 condition 3's first limit and §15.6.2's Shared access paragraph.
+  - §3.2's Authority and §3.4 (own steps and Move) → §5.2.1 condition 3's second and third limits and §5.7's Authority item.
+  - §3.5 (calls) → §15.6.4's retention paragraph, §5.7's Origins and Calls items (the borrow an Origin belongs to), §5.2.1's
+    Retained dependencies (rewritten: where a stored value's Loans go, and a function stores through raw storage only what its
+    contract lets it retain) and condition 5 (C2); §8.11.4 rule 1 (raw layers, inside abstract parts too).
+  - §3.6 (integer addresses) → §5.5.
+  - §3.7 (Types and syntax) → §3.3.2 (`during` on `raw`; `raw/ref/T during a` annotates the raw layer), §3.8 (an unstated raw
+    Origin is outlived by every Origin), §8.1.2's raw row, §15.2.3 (OwnedOrigins), §15.3.1, §15.3.2 (`self` in storage), §15.4.2
+    and §22.6 (raw Origins in an import's safety contract).
+  - §4 (examples) → §5.6's `Buffer` (`data: raw/T during self`, the claim in `init`) and `BufferView` (`data: raw/T during
+    source`, no claim) with the prose after them, and §15.6.3's region-splitting sentence (a raw Field `during source`).
+  - §0–§2 and §5–§8 → the rationale, verdicts, Principles, rejected options and costs. §9 → transferred to PLAN G147 (1), G160,
+    G184 and §3's next actions (units G160-0 to G160-5, R4's exit), DECISIONS R4-M95 and COMPILER_ARCHITECTURE's R4 row.
+    §10–§11 → records.
+  - Every item is incorporated, transferred or recorded. The file was written in `Proposals`, revised after the review (§11) and
+    moved to `Changes` as 取り込み済み.
+  - Principles. One Concept, One Canonical Form: the relation between a pointer and the Loans that protect its storage is an
+    Origin, as for every borrow, and the Loan's mode stays the `Loan<T>` marker's. Local Reasoning: a raw Field's class is in
+    its Type and a call's effect on raw storage in its signature. Explicit Semantics: ownership and dependency are written,
+    omission is sound, and every claim is a visible unsafe operation. Compiler Server Protocol: located errors with repair
+    candidates (a write through a shared Origin, a Phantom slot a raw layer states, a missing claim).
+  - No implementation is claimed (STATUS): until unit G160-0 the parser rejects `during` on a raw layer and the claim with
+    Language errors; the ungrouped `E@raw/U during o` stays a syntax error. Not refreshed: SPECJ and GUIDE.
+- `Obsolete/2026-10-21 G160 Raw Storage Kept by Declarations.md`: 完了. Nothing was integrated. Q1's declaration statement was
+  rejected by the owner; its shapes, probes (`Sketches/G160/probes/`) and call-side analysis are taken over by the design above,
+  which answers Q1–Q5 (DECISIONS R4-M95). The file moved with only its status paragraph replaced.
+
+## 2026-10-21 — Closure calls as receiver calls (R4)
+
+The owner's instruction of 2026-10-21, after R4's list of SPEC improvement candidates in its area: 「候補1（クロージャを受け手つき呼び出しとして定義）と候補3（派生失敗の定義）を、2c-D・2g-D の前に判断できるよう draft/Proposals に提案書として書いてください。」
+Its independent review is `Sketches/R4 Proposals 2026-10-21/review-1.md`; the second proposal's round 2 is reviewed in
+`review-2.md`.
+
+- [Closure Calls as Receiver Calls](Proposals/2026-10-21%20Closure%20Calls%20as%20Receiver%20Calls.md): 一部取り込み (open,
+  intake only); adopted by the owner (OQ-C1 (a), OQ-C2 (a); DECISIONS R4-M99). One sentence in §15.8.2: a Closure body is checked
+  against its call receiver as an instance function's body is, its environment bindings being Fields of the receiver's referent,
+  so results, containment and retention follow the receiver rules; the five-row table becomes a restatement. §7.7.2, §7.7.3 and
+  the Closure Type are unchanged; the receiver stays out of an annotated result's elision, and `{environment}` stays in Appendix
+  D.2. Meant to change no verdict. The owner answered on the round-1 text; the review's narrower formulation, used now, keeps
+  option A's intent and removes two verdict changes the round-1 definition had (its §9). Planned mapping (its §5): §15.8.2,
+  §15.6.5, §7.7.4. The SPEC text lands only after 2x-P7's derivation column agrees (its §8), before 2c-D's design review.
+- [Failures Caused Only by Other Failures](Proposals/2026-10-21%20Failures%20Caused%20Only%20by%20Other%20Failures.md):
+  一部取り込み (open, intake only), candidate 3. Round 1 ("Escapes and Derived Failures", not kept) and round 2 (a general
+  definition of "caused only by" in §23.1.2) were not accepted by their reviews. After two rounds on one family the owner chooses
+  between W, one concrete §15.6.5 sentence for a Loan conflict on the Loan of a Borrow refuted to a fixed Origin, R, the same rule
+  as an implementation contract of A6, and H, 2a0-D §7 as approved; the owner chose W (2026-10-22, 「P2は、W：個別規則に決定します」).
+  Round 3 writes W out; it passed its review with fixes, a re-check and a confirmation
+  (`Sketches/R4 Proposals 2026-10-21/review-p2r3.md`), and DECISIONS R4-M104 adopts it. Planned mapping, after the prototype round
+  and a SPEC session: §15.6.5, §14.8.3, §15.8.2. The owner's answers to round 1 are not applied.
+- Nothing is integrated into SPEC or IMPL, no text is frozen, and no support is claimed.
+
+## 2026-10-22 — Static slots, layout requirements and lifecycle receivers (R4)
+
+The owner's instruction of 2026-10-21: 「この勢いで、先ほどの新しく挙げる候補 2、4、5、6の提案書も書いてください。」 R5's and BU's
+planning sessions checked the facts; the independent review is `Sketches/R4 Proposals 2026-10-21/review-3.md`. Candidate 4 (raw
+pointer rules left open by G160) was not accepted in that review and was redone (round 2, reviewed in `review-rp2.md`).
+
+- [Static Slots for P42](Proposals/2026-10-22%20Static%20Slots%20for%20P42.md): 一部取り込み (open, intake only), candidate 2.
+  No SPEC change: SPEC §22.4 and §15.6 already state one model (the key for storage, state and destruction; the Field for Loans and
+  effects). Proposes one static slot key, (Field, `TyCtxt.Erase` of the enclosing Subst), owned by `TyCtxt`, and one full-process
+  P42 design package before P42's units; the A5 plan's two narrowings are not adopted. Adopted by the owner (OQ-S1 (a), OQ-S2 (a),
+  DECISIONS R4-M103). Integrated: none (no SPEC change); open: the key and the package, transferred to P42's package file when it
+  exists.
+- `Obsolete/2026-10-22 Layout Requirements on Type Parameters.md`: 完了 (closed 2026-10-22), candidate 6. The owner chose D, no
+  change (OQ-Y1 (d), DECISIONS R4-M103): A′ (an intrinsic Contract for a C-layout Field that is not zero-sized) is rejected (locality
+  for one record kind at the price of a narrowing and a vocabulary entry; the collector stays at `check` for its other records), the
+  first draft's Resource reclassification was withdrawn (it reversed R5-M52 and IMPL 21.1.1), and the A5 plan's optional candidate
+  is not adopted. Nothing is integrated; the file moved with only its status line replaced.
+- `Changes/2026-10-22 Lifecycle Receivers.md`: 取り込み済み (2026-10-22), candidate 5. The owner chose option B (OQ-L1 (b), DECISIONS
+  R4-M103). Mapping: §2's root → SPEC §15.6.5's body-local bullet ("or in the receiver of a constructor or `drop`", citing §6.3.4 and
+  §16.3.1); §6.3.4, §16.3.1, §7.7.2 and §5.7 unchanged; its §5 (consequences) is transferred to 2a0-2 (2a0-D §3 row 3, DECISIONS
+  R4-M101) and to BU's G166. Option A (a unified "lifecycle receiver" definition) is rejected (editorial, with the rule drift
+  review-3 found); option C (no change) is rejected (the classification G161, G165 and G166 need would stay a reading of §6.3.4 and
+  §16.3.1). No support is claimed (STATUS unchanged); SPECJ and GUIDE are not refreshed.
+- `Changes/2026-10-22 Raw Pointer Rules Left Open by G160.md`: 取り込み済み (2026-10-22), candidate 4, round 2 (review-rp2: ACCEPT WITH
+  FIXES, applied; BU checked §2.1 against B′+). The owner chose OQ-R1 (a), OQ-R2 (a), OQ-R3 (b) and OQ-R4 (a) (DECISIONS R4-M105).
+  Mapping: 2.1 A → SPEC §5.7's new "Writing a Field" bullet (through a dereference, the Origin reading gives; through no
+  dereference, reads, shared borrows and `null` writes only; the repair through a borrow; Case payloads), without §2.1's sketch (a
+  new SPEC example is a diagnostic-corpus case); 2.2 A → §5.7 "Origins" (a written `o` is one atom; a formed raw Origin is the
+  outer Origin of the borrow it is formed through, whatever its form), which "Reading a Field", "Typed paths" and "Calls" read
+  unchanged. Transferred: 2.3 B to G160-4's full-process design (the own-step marker, whose change to the address representation
+  the owner approved with (b); the Warning's sentence in §5.2.1 condition 3 with that design); 2.4 A to BU's implementing unit as
+  a DIAGNOSTICS Information code, not SPEC text (the SPEC requires warnings only; other diagnostics and their codes are the
+  implementation's, §23.1.1). Rejected: a Place Origin (2.1 B), the located `Unsupported_Kd` kept (2.1 C), no Origin or an error
+  for a formed intersection (2.2 B, C), an error for an own-step pointer's later use (2.3 A), a broader Warning (2.4 B). No
+  support is claimed (STATUS unchanged); SPECJ and GUIDE are not refreshed.
+- Integrated: the lifecycle receivers' root (SPEC §15.6.5) and the raw pointer rules' 2.1 A and 2.2 A (SPEC §5.7); no support is
+  claimed.
+
+## 2026-10-22 — Abstract calls reach by paths (`preserves results` removed)
+
+The owner asked on 2026-10-22 for a scrutiny of design C (unify concrete and abstract calls under the ordinary borrowing
+rules, including the removal of `preserves results`), then: 「推奨の通り修整し、bの移行方法で進めます。正式な変更案を書き、独立レビューにかけて下さい」,
+and after the review: 「Q1 (a) P12も削除、Q2 (a) CallEffectConflict_Kdを廃止、で採択します。提案をdevにコミット・pushしてください。」
+Two independent reviewers (soundness and design; SPEC text, completeness and plan) reviewed it in three rounds; every finding is
+applied (its §13). The owner then instructed the R4 planning session: 「この計画書を採用し、処理してください。3回の独立レビューに通っています。処理の流れは、推奨の通りでOKです。」
+
+- [Abstract Calls Reach by Paths](Changes/2026-10-22%20Abstract%20Calls%20Reach%20by%20Paths.md): 取り込み済み (2026-10-22,
+  unit U0). Adopted with Q1 (a), Q2 (a) and migration (b) (DECISIONS R4-M106). An abstract call reaches what a concrete call
+  reaches; SPEC 8.11.4 rule 1's "an abstract input may reach every Loan its Origins may denote" and everything that excused or
+  completed it are deleted, and `confined` is the only effect bound. Mapping by its §5 site:
+  - §5.1 → §8.11 (the vocabulary is `confined`). §5.2 → §8.11.1's example (`QuietTake` with `confined`; `takeTwo` moved) and its
+    deleted Take-only sentence. §5.3 → §8.11.2's two unclassifiable rows ("a conflict under `confined`") and its foreign-call
+    sentence.
+  - §5.4 → §8.11.3 (`preserves results`) deleted; §8.11.4 renumbered §8.11.3 "Checking and use": rule 1 without the Origin reach
+    and with "As for any call, an input reaches a Loan only through these Places", rule 3 deleted, "an error at the call", and
+    the Take-only `takeTwo` example after `Feed` with its sentence on a result whose Type depends on the receiver Loan.
+  - §5.5 → §8.11.5 (delegation, `Drain`, `Merge`) deleted; §8.11.6 renumbered §8.11.4: `confined` at most once, "the
+    Constraint's bound", the table's slot and requirement rows, "rules 1 and 2 of §8.11.3".
+  - §5.6 → §15.6's Loans link; §15.6.3: P12's sentence deleted, the region-splitting obligation citing §5.2.2's promise, the
+    `takeFirst` example with `h.1 = 5` valid, the kept-result sentence for concrete and abstract callees; §15.6.4: P12's second
+    sentence deleted.
+  - §5.7 → §6.4.6 (rules 1 and 2 of §8.11.3; the slot `preserves results` paragraph deleted). §5.8 → §12.7.1's anchor, its text
+    unchanged; §16.3.3's generic destruction sentence (a destruction that may observe a Loan, with unknown environment effects).
+  - §5.9 → §22.2.1 (Iterator's `effect` line deleted; the LendingIterator bullet), §22.2.2's adapter sentence, §22.2.3's second
+    paragraph and `nextPair`'s comment. §5.10 → Appendix D.4's vocabulary item, Appendix E's Effect bound row (the `preserves
+    results` row deleted), Appendix F.3.2's `effect` row and F.6.2's `EffectBound := "confined"`. §5.11 → LIBRARY's Iterator
+    contract, its paragraph (citing §22.2.3) and the library-file sentence; IMPL Appendix A's anchor.
+  - Anchors, with their link text, in `docs/spec`, `docs/impl` and `docs/LIBRARY.md`: `#8114-checking-and-use` → `#8113-checking-and-use`
+    (15 links before, 13 after the deletions of §8.11.5 and P12's sentence, plus 2 new in §15.6.3 and §22.2.3) and
+    `#8116-callable-effect-bounds` → `#8114-callable-effect-bounds` (10 before, 9 after); the 6 links to `#8113-preserves-results`
+    went with their text or were replaced (§15.6.3, §22.2.3, LIBRARY). Only frozen draft files still name the old anchors.
+    Numeric citations outside SPEC follow in U3.
+  - §0–§4 and §6–§9 → the rationale, soundness argument, examples, verdicts, Principles and rejected options (DECISIONS R4-M106);
+    §10 → DECISIONS R4-M106 and its superseded entries, COMPILER_ARCHITECTURE's freeze exception, PLAN (§3's position, §6 item 5,
+    G78, G106) and this record; §11 → units U1–U5 (PLAN, DECISIONS R4-M106); §12–§13 → its record. Appendix A stays as the record
+    of Q1 (b), not adopted. Every §5 item is integrated; nothing is rejected. The file moved to `Changes` with only its status
+    paragraph replaced.
+  - Test data the intake invalidates (U0): `tests/diagnostics/spec-cases.json` loses `8.11.3-preserves-results` (its block is
+    gone), renames `8.11.6-callable-effect-bounds` to `8.11.4-callable-effect-bounds`, and drops `15.6.3-abstract-descent`'s
+    `h.1 = 5` variant with its Old (d) note, the case taking family F3 (Calls: rule 9's descent; landed) for the retired F6;
+    `classification.tsv`'s clause cells of `a4-x2` (8.11.3), `a4-callable-preserves` (8.11.4) and `a4-binding-limit` (8.11 F.6.2).
+    The case `8.11.3-checking-and-use` for `takeTwo` comes with U1, since the old Analysis rejects it until then.
+  - Principles (its §8): one call rule for concrete and abstract callees; a call is judged by its arguments, its published
+    contract and its environment effects, with no relation between calls; a result's dependence on its receiver is stated by its
+    Type, retention by the contract and the unsafe obligation by §5.2.1 and §5.2.2; a rejection is an ordinary located Loan conflict.
+- Safety of E8, restated without P12 (its §4.3; the 2026-10-17 entry above stays as written). That note assumes, "as §15.6.3 and
+  P12 make true", that every value carrying a Loan `L` also carries `L`'s parent Loans. Without P12 the assumption rests on
+  §15.6.3's Borrow rule (the values of a child Loan carry the Loans of every reference dereferenced to reach it) and §15.6.4's
+  per-argument retention (a result that may retain an Origin inside a borrowed argument's referent Type carries every Loan a read
+  through the argument carries). A descending result carries no child Loan of its receiver's route, since the call's receiver
+  Loan is excluded, so it carries no `L` without `L`'s parents (H). The note's other steps are unchanged.
+- Unsafe audit (its §4.4; the test, milestone and kind-B halves; the library half is the proposal's own reading). Searched for code
+  that acts, through the authority a raw lend was taken from, on a Place it lent (a raw borrow of a raw Place whose result leaves
+  the body by return, store or capture, then a raw or safe access, Take, Move, reset, clear, the Type's `drop` or a re-lend in
+  another method while the lent Origin may be used), in code that only abstract calls reach.
+  - Kind-B programs: the 197 ledger sources of the affected rows (effect-bound, `IncompatibleImplementation`, `CallEffectConflict`
+    and Binding `Unsupported` requirements in the mir ledger `artifacts/verify/mir-diff/bu18-head`) and the 16 test classes its §7
+    names, grepped for raw constructs, every hit read. Hits: four ledger sources and the classes' `confined` cases (a raw write
+    through `self`, integer-made pointers, a pointer to a mutable static, a foreign call) and `Counted`'s body-local raw borrow;
+    none lends a raw Place out of its body.
+  - Tests and milestones generally: all 52,225 C# string-literal fragments of `tests/xUnitTest` (adjacent literals joined) and the
+    44 milestones, filtered mechanically for an unsafe context with a borrow of a dereferenced, indexed or followed Place: 22
+    C# fragments, Milestones 7 and 27, and one interpolated borrow, each read. Raw lends that leave their body: `FunctionDefaultTest`'s `leak` (two
+    programs), `LoanFieldTest`'s `Window.get`, `RawPlaceAccessTest`'s `get` (three forms), `view` and `generic<T>`, and
+    `MirBorrowsTest.Defaults`' `rawRef` (into a default). Each is called concretely or only bound; none is a conformance witness,
+    override, Closure or runtime-Contract implementation, and none is followed by code acting on the lent Place through the lend's
+    authority (`Window.get` re-lends shared only).
+  - Native fixtures and milestones that run a kind-B program: none (a fixture needs default-pipeline acceptance, which no kind-B
+    program has; the 39 fixture emission sites of those classes run accepted programs, two with unsafe code that reads; the
+    milestones change no verdict, and Milestones 7 and 27's `unsafe` blocks fill `noinit` arrays through safe borrows).
+  - Result: no code found that only abstract calls reach and that acts on a Place it lent; nothing in the tests, milestones or
+    kind-B programs relied on rule 1's reach.
+- `Obsolete/2026-10-16 Preserves Results by Receiver Place.md` (S2): 完了 (closed 2026-10-22). Nothing was integrated; it existed to
+  excuse the reach the proposal above deletes (DECISIONS R4-M106), which also answers the open questions of its revision sketch
+  `Sketches/A5 Step 2/preserves-revision.md` (G3 moot, G4 by §16.3.3). The file moved with only its status sentence replaced.
+- Integrated: the proposal's §5 (SPEC §6.4.6, §8.11, §12.7.1, §15.6, §15.6.3, §15.6.4, §16.3.3, §22.2, Appendices D, E and F,
+  LIBRARY, IMPL Appendix A). No support is claimed: the default pipeline changes with U1 and U2, STATUS with U2. Not refreshed:
+  SPECJ (being retranslated on `codex/specj-from-source`, whose source revision predates this change) and GUIDE.
+
+## 2026-10-22 — Type identity by structural decomposition (G170; intake only)
+
+The owner wrote two proposals on 2026-10-22 and combined them into proposal B; G170 C1 (merged on 2026-10-23, `draft/Sketches/G170/C1/`)
+follows B's section 3. Recorded by the R4 planning session on 2026-10-23, when the owner asked it to check the documents and merge C1.
+
+- [Type Identity by Structural Decomposition B](Changes/2026-10-22%20Type%20Identity%20by%20Structural%20Decomposition%20B.md): 一部取り込み
+  (intake only, as its status line said). Not integrated into SPEC then: §8.2.3 still stated non-decomposition; B's section 6 left
+  Q1–Q4 (with recommendations) and Q5–Q7 (decidability) for the owner. G170 C1's executable design cites it as B 3.x. Its link to the
+  original Structural Decomposition proposal does not resolve on dev (that file is not on dev). (Superseded: closed as 取り込み済み on
+  2026-10-23, below.)
+- [Type Identity Normalization](Changes/2026-10-22%20Type%20Identity%20Normalization.md) (案 G′): 提案 (not adopted, its status line);
+  B takes its rules where they agree and lists the differences in B's section 6. (Superseded: closed as 取り込み済み on 2026-10-23,
+  below.)
+
+## 2026-10-23 — Type identity by structural decomposition integrated (proposal B; R4 unit spec-tid)
+
+The owner, 2026-10-23, verbatim: 「proposal B を Q1〜Q7 の推奨どおり（Q1 本案、Q2 入れない（§8.5.5 の改訂として別に扱う）、Q3 採用、
+Q4 本案、Q5 採用、Q6 採用、Q7 経路等式を残す）採択します。R4 で SPEC へ取り込んでください（独立レビューつき）。」 DECISIONS R4-M115.
+
+- `Changes/2026-10-22 Type Identity by Structural Decomposition B.md`: 取り込み済み (closed 2026-10-23); the file moved from
+  `Proposals/` with only its status sentence replaced. Mapping by B section:
+  - 3.1 (grounds and relation; Q1 kept), 3.2 (the structure table, constructed Type, head), 3.3 (decomposition, Refuted), 3.4
+    (compared attributes), 3.5 (projections), 3.6 (proper part, cycles) and 3.10 (premise errors, reporting, display, the AddPremise
+    repair's precondition and guarantee) → SPEC §8.2.3; 3.3's proposition → §8.3.1; 3.1 and 3.9 → §8.3.2 (Contract refinement and
+    identity rows).
+  - 3.7 → §8.5.1 (specification atoms determine only), §8.5.5 (frozen premises); 3.8 → §8.8.2 and §7.5 (conditions), §8.9.1 steps
+    1–4 and §7.4.3 (heads of the structure); overloads (§10) need no text.
+  - 3.10's Resource and Q7 → §8.3.3 Limits; Q3 → §8.3.3 Finality and §8.5.5; Q5 → §8.3.3 Expanding recursion (G′ 4.6's edges); Q6 →
+    §8.3.3 Unbounded Types (G′ 4.9's criterion, stated without its normal-form procedure, as B 7.2 requires).
+  - 3.10's repair kinds → `schemas/check-output.schema.json` (`Repair.AddPremise`, `Repair.RemovePremise`; no new condition value).
+  - Appendix D (the deferred decomposition of identity premises removed), Appendix E (Constructed Type / head, Proper part, Type
+    identity).
+  - §4 examples → §8.2.3 (`same`, `conflict`, `otherView`, `independent`, `cyclic`), §8.3.3 (`Nested`, `Stream`, `Window`, from G′
+    5.3 and 5.4), §8.5.1 (`Number`, `Pack`) and §8.8.2 (`Either`, `Slot`/`plain`/`fill`), each registered in
+    `tests/diagnostics/spec-cases.json` with the implementation's records as a (b) difference. The §4 examples not carried are
+    covered by the integrated rules: `tuplePart`, `arrayPart`, `functionPart` and `sameView` (decomposition, compared attributes),
+    `escape` (quantified Origins), `loopy` (truth by Semantics case), `optional` (closed world, unchanged), `reconstructed`
+    (projections of a constructed subject), `twice` (Constraints for every projection) and the `show` overload (identity as
+    written premises).
+  - Not integrated: Q2 (§8.5.5's extraction does not enter Function Types; a separate §8.5.5 revision, PLAN G170) and Q4's G′
+    alternative; B 3.4's gap (an omitted Origin in a layer of a Constraint's Type outside a Function Type has no §15.4.2 row) is not
+    filled (DECISIONS R4-M115, open).
+  - OldRule id `B3.3` (DECISIONS R4-M50): `NormalizedConstraintProofBindingTest.NormalizationDoesNotAddLogicalRulesOrEraseTypeStructure`
+    (its `[3 of i32]` and `i32` rows are Refuted under B 3.3).
+  - Corrections (B's and G′'s bodies are frozen): the link to the Structural Decomposition proposal in B's header and G′'s section 6.3
+    does not resolve (that file is not on dev); after the move, the PlanB links in B 1.2 and G′ 1.1 resolve at
+    `../Proposals/2026-10-20%20G170%20Premise%20Dependencies%20and%20Inference%20PlanB.md`.
+  - Not implemented: STATUS (Types and Contracts) states the default pipeline's old rule until PLAN G170's C2–C4.
+- `Changes/2026-10-22 Type Identity Normalization.md` (案 G′): 取り込み済み (closed 2026-10-23), not adopted as a whole; the rules B
+  shares with it, and its 4.6 and 4.9 criteria through B's Q5 and Q6, are integrated as above. Its own items: Q1's proven-conformance
+  rule, rejected by the owner's Q1; Q2's Function-Type extraction, transferred to a separate §8.5.5 revision (PLAN G170); Q4/Q9's
+  declaration errors for unsatisfiable conditions, rejected by Q4; 4.7 and 4.10's representative order, completion and its limits, and
+  the decision procedure (normal forms), not in SPEC (B 7.2). The file moved from `Proposals/` with only its status sentence replaced.

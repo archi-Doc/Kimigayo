@@ -35,6 +35,18 @@ public sealed partial class Binding
         }
     }
 
+    // The one writer of the premise graph's edges, by node: `longer` outlives `shorter` under `rule` in the Semantics cases
+    // `condition` (none: every case). The catalog's premises (AddPremise, AddStoredPremises) and retention's carrier and erased-callable
+    // relations (Binding.Retention.cs) all write through it.
+    private static void AddPremiseEdge(OriginPremiseEnvironment environment, int longer, int shorter, OriginPremiseRule rule, ulong condition = 0)
+        => environment.Closure.AddEdge(longer, shorter, rule, condition);
+
+    // SPEC 11.4, 11.5, 15.6.1: the getter whose result a computed or requirement Property's header is, reached from that header; a use
+    // in the header has the getter's input premises (R2), which its body assumes too (DECISIONS BU-26).
+    private static PropertyAccessorKoto? HeaderGetter(Koto node, Koto? previous)
+        => node is PropertyKoto { DeclarationKind: PropertyDeclarationKind.Computed or PropertyDeclarationKind.Requirement, TypeKoto: { } header } property &&
+            ReferenceEquals(header, previous) && property.BoundSymbol?.Property is not null ? property.GetAccessor(PropertyAccessorKind.Get) : null;
+
     // SPEC 15.3.6 (PLAN G74): whether the premises visible at `use` entail `longer outlives shorter`, both resolved at the use.
     // The structural instances of reflexivity, `static`, anchors and meets (I1-I4) answer first. Otherwise one environment
     // collects the catalog's premises (OriginPremiseRule) as the edges of a finite graph over the Origin expressions they name,
@@ -44,6 +56,11 @@ public sealed partial class Binding
         if (OriginOutlives(longer, shorter))
         {
             return true;
+        }
+
+        if (UnstatedRelation(longer, shorter) is not null)
+        {
+            return false; // Rulings S4: Refuted before any premise node is built.
         }
 
         var environment = this.RentPremises(use) ??
@@ -132,20 +149,22 @@ public sealed partial class Binding
     {
         var a = this.PremiseNode(environment, longer);
         var b = this.PremiseNode(environment, shorter);
-        environment.Closure.AddEdge(a, b, rule);
+        AddPremiseEdge(environment, a, b, rule);
         if (equality)
         {
-            environment.Closure.AddEdge(b, a, rule);
+            AddPremiseEdge(environment, b, a, rule);
         }
     }
 
     // The catalog's context-dependent premises from `from` outward (for a request, its use): associated formation and requirements
-    // (R4), the inputs (R2) and result (R3) of each enclosing signature, and the clauses of each established enclosing declaration (R1).
+    // (R4), the inputs (R2) and result (R3) of each enclosing signature, a computed or requirement Property's header being its getter's
+    // result (SPEC 11.4), and the clauses of each established enclosing declaration (R1).
     // Then every borrowed complete local Place among the graph's expressions adds its stored Origins (R5), including Places
     // that those Origins introduce, so the closure applies R5 at every expression it reaches.
     private void ExtractOriginPremises(OriginPremiseEnvironment environment, Koto? from)
     {
-        for (var node = from; node is not null; node = node.Parent)
+        Koto? previous = null;
+        for (var node = from; node is not null; previous = node, node = node.Parent)
         {
             var requirement = IsAssociatedRequirement(node);
             if (requirement && AssociatedFormationType(node) is { } formation)
@@ -154,20 +173,21 @@ public sealed partial class Binding
             }
 
             this.AddAssociatedRequirementPremises(environment, node);
-            if (node is FunctionKoto or FunctionTypeKoto or PropertyAccessorKoto)
+            if ((node is FunctionKoto or FunctionTypeKoto or PropertyAccessorKoto ? node : HeaderGetter(node, previous)) is { } signature)
             {
                 // A Function Type quantifies well-formed inputs just as a declaration does. Their intrinsic
                 // relations are assumptions only while checking that signature, never in the enclosing body.
-                for (var i = 0; i < InputCount(node); i++)
+                for (var i = 0; i < InputCount(signature); i++)
                 {
-                    if (this.BoundInputType(node, i) is { } input)
+                    if (this.BoundInputType(signature, i) is { } input)
                     {
                         this.AddTypePremises(environment, input, OriginPremiseRule.Input);
                     }
                 }
 
                 // SPEC 15.3.7: the result Type's intrinsic well-formedness is a premise of the definition (Binding.ResultPremises.cs).
-                if (!ReferenceEquals(node, this.resultPremiseExcluded) && node is FunctionKoto { IsAnonymous: false, IsConstructor: false, BoundSymbol.Type: { } result })
+                if (!ReferenceEquals(signature, this.resultPremiseExcluded) &&
+                    signature is FunctionKoto { IsAnonymous: false, IsConstructor: false, BoundSymbol.Type: { } result })
                 {
                     this.AddResultPremises(environment, result);
                 }
@@ -308,12 +328,12 @@ public sealed partial class Binding
 
         if (this.StoredSlot(type, environment.Use, out var slot) is { } origin)
         {
-            environment.Closure.AddEdge(this.PremiseNode(environment, origin), shorter, rule, condition | slot);
+            AddPremiseEdge(environment, this.PremiseNode(environment, origin), shorter, rule, condition | slot);
         }
 
         for (var i = 0; i < type.OriginArguments.Count; i++)
         {
-            environment.Closure.AddEdge(this.PremiseNode(environment, type.OriginArguments[i]), shorter, rule, condition);
+            AddPremiseEdge(environment, this.PremiseNode(environment, type.OriginArguments[i]), shorter, rule, condition);
         }
 
         for (var i = 0; i < type.Components.Count; i++)

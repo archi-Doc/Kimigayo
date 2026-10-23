@@ -47,6 +47,22 @@ public class LayoutTest
         Assert.Same(value, WindowsLowering.GetValue(BoundType.Primitives[type]));
     }
 
+    // DECISIONS R5-M92: no Layout alignment exceeds 16, the heap's (SPEC 5.6, 21.4.3), which Raw.allocate's row relies on in place of the
+    // old generator's refusal: every row is at most 16 (the primitives', a borrow's, a raw pointer's, a handle's, a function value's and
+    // the sequence handles') and a placement takes its parts' maximum (IMPL 21.1.2), in C mode too.
+    [Fact]
+    public void NoLayoutAlignmentExceedsTheHeapAlignment()
+    {
+        var c = CompilationTestHelper.BindSuccess(
+            "struct S\n    var a: i128\n    var b: u8\n#Layout(\"C\")\nstruct C\n    var a: u128\n    var b: i8\n" +
+            "func probe(s: S, c: C, t: (i128, (u128, i8)), a: [3 of i128], o: Option<i128>) => ()");
+        Assert.All(BoundType.Primitives.Values, x => Assert.InRange(c.Layout.Of(x).Value!.Layout.Alignment, 1, 16));
+        Assert.All(Parameters(c), x => Assert.Equal(16, c.Layout.Of(x).Value!.Layout.Alignment));
+        var rows = CompilationTestHelper.BindSuccess(
+            "func probe(r: ref/i32, p: raw/i32, h: obj/i32, f: (i32) -> i32, s: Slice<i32>, a: Array<i32>, d: Dictionary<i32, i32>) => ()");
+        Assert.All(Parameters(rows), x => Assert.InRange(rows.Layout.Of(x).Value!.Layout.Alignment, 1, 16));
+    }
+
     [Fact]
     public void UnitStringAndNeverUseTheRuntimeRecords()
     {
@@ -631,6 +647,17 @@ public class LayoutTest
         GC.WaitForPendingFinalizers();
         GC.Collect();
         Assert.False(compilation.IsAlive);
+    }
+
+    // SPEC 5.7, R5-M37 (DECISIONS BU-24): a raw Origin is no part of a layout; the memo is keyed by the interned Type, so a Type that
+    // differs in a raw Origin alone is its own entry with the same layout.
+    [Fact]
+    public void ARawOriginChangesNoLayout()
+    {
+        var c = CompilationTestHelper.BindSuccess("func probe(r: ref/i32, p: (raw/i32 during r, isize), q: (raw/i32, isize)) => ()");
+        var parameters = Parameters(c);
+        Assert.NotSame(parameters[1], parameters[2]);
+        Assert.Equal(Row(c.Layout.Of(parameters[2]).Value!), Row(c.Layout.Of(parameters[1]).Value!));
     }
 
     private static (string Storage, int Size, int Alignment, int Stride, string Computation, string? Argument) Row(ValueLowering value)

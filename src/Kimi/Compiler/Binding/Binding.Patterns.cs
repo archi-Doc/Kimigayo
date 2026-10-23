@@ -315,8 +315,9 @@ public sealed partial class Binding
 
         if (mode == SubjectMode.Exclusive)
         {
-            borrow = type;
-            return type;
+            // SPEC 15.1.6, 15.6.3: the stored exclusive reference's Reborrow, contained in it and in the layers reaching the Subject.
+            borrow = this.types.Rebuild(type, [type.Components[0]], this.ReferentOrigin(expression, type), []);
+            return borrow;
         }
 
         if (this.PairSubject(expression, type, this.ConstraintScope(expression)) is { } followed)
@@ -330,7 +331,7 @@ public sealed partial class Binding
         if (type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq)
         {
             // SPEC 15.1.6, 15.6.2: a stored exclusive reference reached through a shared layer is shared-Reborrowed.
-            var origin = type.Origin is { } stored ? this.Meet(this.PlaceOrigin(expression), stored) : this.PlaceOrigin(expression);
+            var origin = this.ReferentOrigin(expression, type);
             var semantics = type.Semantics == SemanticsKind.Uniq ? SemanticsKind.Ref : SemanticsKind.ObjRef;
             borrow = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [type.Components[0]], origin: origin);
             return borrow;
@@ -434,7 +435,7 @@ public sealed partial class Binding
                 syntax.BoundSymbol = selected.Symbol;
                 for (var i = 0; i < children.Length; i++)
                 {
-                    var payload = this.StoredType(selected.Payload[i], type);
+                    var payload = this.StoredType(selected.Payload[i], type) is { } stored ? this.PayloadRead(stored, plan, reach, children[i]) : null;
                     if (payload is null)
                     {
                         plan.Invalid = true;

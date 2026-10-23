@@ -169,10 +169,12 @@ internal sealed partial class MirBuilder
         }
         else
         {
-            // SPEC 13.6.1: an upcast to a view of another Semantics borrows its operand's payload in the view's mode, then changes the view.
-            var borrowed = HirTables.AdjustOf(conversion.Left).Adaptation is HirAdaptation.SharedBorrow or HirAdaptation.ExclusiveBorrow &&
-                TypeOf(conversion.Left).Components is [var payload]
-                ? compilation.Types.Reference(type.Semantics, payload) : null;
+            // SPEC 13.6.1, 15.1.5 (DECISIONS BU-27): an upcast to a view of another Semantics borrows its operand's payload in the view's
+            // mode, one of its own Semantics Reborrows the stored exclusive reference; either is the reference Binding names for the upcast's
+            // borrow, to the payload in the view's Semantics and of the view's Origin, whose view the Cast then changes.
+            var borrowed = HirTables.AdjustOf(conversion.Left) is { Adaptation: HirAdaptation.SharedBorrow or HirAdaptation.ExclusiveBorrow } or
+                { Acquire: HirAcquire.Reborrow, Adaptation: HirAdaptation.None } && TypeOf(conversion.Left).Components is [var payload]
+                ? compilation.Types.Reference(type.Semantics, payload, type.Origin) : null;
             var operand = this.Operand(conversion.Left, borrowed);
             var source = this.TypeOf(operand) ?? type;
             var kind = binding switch

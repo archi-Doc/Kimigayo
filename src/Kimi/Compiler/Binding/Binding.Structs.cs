@@ -22,6 +22,7 @@ public sealed partial class Binding
     private readonly Dictionary<BoundType, (int Height, int Open)> storageMarks = new(ReferenceEqualityComparer.Instance);
     private readonly List<BoundType> storageStack = new();
     private Dictionary<Koto, ConstructorAbsence>? constructorAbsences;
+    private HelperCaptures? helperCaptures;
     private ulong storageVersion;
 
     internal BindingSymbol? SpecialReceiver(FunctionKoto function) => this.specialReceivers.GetValueOrDefault(function);
@@ -77,12 +78,13 @@ public sealed partial class Binding
     // (DECISIONS BU-15); null for a node or symbol naming no such receiver. Every special receiver writes its own initialized Fields
     // (Writable), no part of it gives up a Non-Copy value (CompleteTransfer) and no capture entry takes it (Binding.Closures).
     // Parts: the authority its path gives every part (PathAuthority). Whole: whether a use of the whole receiver is judged by the
-    // general rules under Parts (BindReference). LendsFields: whether its writable Fields are lent exclusively (BorrowablePlace);
+    // general rules under Parts (BindReference), a borrow of the whole receiver then being the helper borrow (HelperOrigin), which no
+    // Closure captures (JudgeHelperCaptures). LendsFields: whether its writable Fields are lent exclusively (BorrowablePlace);
     // where SPEC lends them but Binding does not, the exclusive borrow is a located Unsupported_Kd (AccessFailure).
     // - Construction (6.3.4): an owner's path; the whole receiver is never named. Its Fields are not lent exclusively until PLAN
     //   G166 models the Loans the old analysis and A5 lack (6.3.4's "Field borrows end before completion"); LendsFields then goes.
     // - Destruction (16.3.1): access equivalent to uniq/Self, so no part offers Take, a Copy one included; of the whole receiver only a
-    //   shared borrow is valid (no Take, Copy, exclusive acquisition or assignment).
+    //   shared borrow is valid (no Take, Copy, exclusive acquisition or assignment), the helper borrow.
     private static ReceiverAuthority? Receiver(Koto? node) => Receiver((node as IdentifierNameKoto)?.BoundSymbol);
 
     private static ReceiverAuthority? Receiver(BindingSymbol? symbol)
@@ -107,6 +109,63 @@ public sealed partial class Binding
         function = node is MemberAccessKoto { Left: IdentifierNameKoto { BoundSymbol.Declaration: FunctionKoto receiver } left } &&
             Receiver(left) is not null ? receiver : null!;
         return function is not null;
+    }
+
+    // SPEC 16.3.1: the Origin of the helper borrow, a borrow of the whole receiver of a row with Whole (the destruction row): the
+    // destructor's HelperSlot Projection (H), so every value that carries the helper borrow carries H (SPEC 15.6), while the receiver's
+    // parts keep its own Projection, its ReceiverSlot; null for any other place. PlaceOrigin and SlotOrigin ask it first.
+    private BoundOrigin? HelperOrigin(Koto place)
+        => KotoHelper.UnwrapParentheses(place) is IdentifierNameKoto { BoundSymbol: { Declaration: FunctionKoto function } symbol } &&
+            Receiver(symbol) is { Whole: true } ? this.OriginAtom(function, OriginKind.Projection, HelperSlot) : null;
+
+    // The helper borrow's Origin H of a function whose special receiver's row has Whole, once a borrow of the whole receiver interned it;
+    // it is only looked up, never interned to check.
+    private BoundOrigin? InternedHelper(FunctionKoto function)
+        => Receiver(this.SpecialReceiver(function)) is { Whole: true } &&
+            this.originAtoms.TryGetValue((function, OriginKind.Projection, HelperSlot), out var helper) ? helper : null;
+
+    // SPEC 16.3.1, 7.7.2: no Closure created in the body of a destructor captures a value that carries its helper borrow (SPEC 15.6),
+    // judged on Origins without flow (15.6.5) where the capture is made (an explicit entry, an omitted list's use), over the facts
+    // recorded so far: the Origin through which the captured binding carries H, and H; null when it does not.
+    private (BoundOrigin Carrier, BoundOrigin Helper)? HelperCarrier(FunctionKoto closure, BindingSymbol source)
+        => source.Type is { } type && this.EnclosingHelper(closure) is { } helper && this.CarrierOf(type, helper, closure) is { } carrier
+            ? (carrier, helper) : null;
+
+    // The helper borrow's Origin H of the destructor whose body creates a Closure (InternedHelper).
+    private BoundOrigin? EnclosingHelper(FunctionKoto closure)
+    {
+        for (var node = closure.Parent; node is not null; node = node.Parent)
+        {
+            if (node is FunctionKoto { IsAnonymous: false } named)
+            {
+                return this.InternedHelper(named);
+            }
+        }
+
+        return null;
+    }
+
+    // SPEC 15.6.5: once a destructor's body is bound, every region source of its locals is recorded; a var a Closure captured before a
+    // later value brought the helper borrow into its region is judged then, the one capture the capture site could not judge (OQ2).
+    // Only a body that formed the helper borrow is walked.
+    private void JudgeHelperCaptures(FunctionKoto function)
+    {
+        if (this.InternedHelper(function) is { } helper)
+        {
+            (this.helperCaptures ??= new(this)).Judge(function, helper);
+        }
+    }
+
+    // A captured binding that now carries the helper borrow, which only a region's later source can bring: that source fails.
+    private void JudgeHelperCapture(FunctionKoto closure, BoundClosure plan, BoundOrigin helper)
+    {
+        for (var i = 0; i < plan.Storage.Count; i++)
+        {
+            if (plan.Storage[i].Environment.Type is { } type && this.CarrierOf(type, helper, closure) is { } carrier)
+            {
+                this.FailLateHelperSource(closure, plan.Storage[i], carrier, helper);
+            }
+        }
     }
 
     // The storage height of a Type the walk meets as the path-th Type from the query's root, one strongly connected component at a time
@@ -210,7 +269,7 @@ public sealed partial class Binding
 
         if (!this.specialReceivers.TryGetValue(function, out var receiver))
         {
-            this.specialReceivers.Add(function, receiver = new("self", BindingSymbolKind.Parameter, function, scope));
+            this.specialReceivers.Add(function, receiver = new("self", BindingSymbolKind.Parameter, function, scope) { Slot = ReceiverSlot });
         }
 
         receiver.Scope = scope;
@@ -430,6 +489,32 @@ public sealed partial class Binding
         finally
         {
             this.originScratch.Return(origins, clearArray: true);
+        }
+    }
+
+    // One reusable visitor walks a destructor's body to each Closure it creates, judging the bound ones; it stops at a Closure, whose
+    // storage holds every binding its nested Closures forward, and at a nested declaration (a container or named function).
+    private sealed class HelperCaptures(Binding binding) : KotoVisitor
+    {
+        private BoundOrigin helper = null!;
+
+        public void Judge(FunctionKoto function, BoundOrigin helper)
+        {
+            this.helper = helper;
+            function.VisitChildren(this);
+        }
+
+        public override void Visit(Koto node)
+        {
+            if (node is FunctionKoto { BoundClosure: { } plan } closure)
+            {
+                binding.JudgeHelperCapture(closure, plan, this.helper);
+            }
+
+            if (node is not (FunctionKoto or DeclarationContainerKoto))
+            {
+                node.VisitChildren(this);
+            }
         }
     }
 }

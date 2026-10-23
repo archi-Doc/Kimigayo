@@ -141,7 +141,7 @@ This table is exhaustive.
 | `get` `set` `has` `value` | In accessor and Property-requirement syntax ([§F.7](#f7-properties)). |
 | `associate` `when` `specialize` | In associated-Type declarations and specifications, in a ConditionalConformance, and immediately before `func`. |
 | `Callable` | At the start of a RequirementAtom or ConformanceAtom when followed by `<`. |
-| `effect` `confined` `preserves` `results` | `effect` when it starts an item and is followed on the same line by `confined` or `preserves`, or, in a Contract item, by a ContractSelector; `confined`, `preserves` and `results` only after `effect`. Effect items are valid in a requirement's Constraint region, a Contract `EffectSpecification`, a Callable effect list and the leading region of an original virtual function body ([§8.11.1](../08-generics-constraints-and-contracts.md#8111-declarations)). |
+| `effect` `confined` | `effect` when it starts an item and is followed on the same line by `confined`, or, in a Contract item, by a ContractSelector; `confined` only after `effect`. Effect items are valid in a requirement's Constraint region, a Contract `EffectSpecification`, a Callable effect list and the leading region of an original virtual function body ([§8.11.1](../08-generics-constraints-and-contracts.md#8111-declarations)). |
 | `during` `outlives` `static` | `during` after the body and `?` suffixes of an AnnotatedType; `outlives` inside an OriginRelation; `static` as an OriginAtom. |
 | `origin` | When it starts an item in a position that admits an OriginRelation: an attached clause list; a struct or enum body (ContainerItem, EnumItem); a requirement Constraint region; or the leading region of a function, constructor or accessor body ([§7.5](../07-functions-and-callable-values.md#75-function-constraints)). There the item is always an OriginRelation, including `origin (...) == ...`. |
 | `owner` `ref` `uniq` `obj` `rc` `arc` `objref` `objuniq` `raw` | In Semantics positions: Types, requirements, CallableReceiver, Capture operations and adaptation targets. Elsewhere they are Names, such as a Field `raw`. |
@@ -395,7 +395,7 @@ RequirementParameter := ParameterName ":" Type | ReceiverShorthand
 RequirementConstraints := IndentedList<ConstraintClause | OriginRelation | EffectClause>
 EffectClause         := "effect" EffectBound
 EffectSpecification  := "effect" ContractSelector "." Name EffectBound
-EffectBound          := "confined" | "preserves" "results"
+EffectBound          := "confined"
 AssociatedTypeDeclaration := "associate" Name OriginParameters? ("is" IsRequirement)?
                              FormationType? IndentedList<OriginRelation>?
 FormationType        := "for" Type

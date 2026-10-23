@@ -84,9 +84,8 @@ public sealed class BoundContract
 
 /// <summary>An effect bound a Contract declares for a function requirement, as its effect item states it (SPEC 8.11.1).</summary>
 /// <param name="Identity">The requirement's declaration and bound declaring Contract.</param>
-/// <param name="Bound">The bound.</param>
 /// <param name="Declaration">The effect item.</param>
-public readonly record struct BoundEffectBound(BoundRequirement Identity, EffectBoundKind Bound, EffectBoundKoto Declaration)
+public readonly record struct BoundEffectBound(BoundRequirement Identity, EffectBoundKoto Declaration)
 {
     /// <summary>Gets the original requirement declaration.</summary>
     public BindingSymbol Requirement => this.Identity.Symbol;
@@ -156,7 +155,7 @@ public sealed class BoundConformance
 }
 
 /// <summary>Reusable definition-side conformance metadata. Only verified mappings supply evidence.</summary>
-public sealed class BoundConformancePath
+public sealed class BoundConformancePath : ICheckCause
 {
     internal BoundConformancePath(BindingSymbol type, BindingSymbol contract)
     {
@@ -192,6 +191,8 @@ public sealed class BoundConformancePath
 
     /// <summary>Gets the separately verified get/set mappings, valid only while IsVerified is true.</summary>
     public IReadOnlyList<BoundPropertyWitness> PropertyWitnesses => this.PropertyWitnessStorage;
+
+    Koto ICheckCause.Use => this.Use;
 
     internal BoundConformance Identity { get; set; } = null!;
 
@@ -250,6 +251,10 @@ public sealed class BoundConformancePath
     /// <returns>The operation mapping, or null if unavailable.</returns>
     public BoundPropertyWitness? GetPropertyWitness(BoundRequirement requirement, PropertyAccessorKind kind)
         => this.IsVerified && this.PropertyWitnessMap.TryGetValue((requirement, kind), out var witness) ? witness : null;
+
+    // SPEC 23.1.2: a check resting on a conformance resting on its specification derives its record from Use; one resting on its OCC-X
+    // limit needs that limit published.
+    void ICheckCause.Rest() => this.Needed |= this.Unsupported;
 
     internal BoundConformancePath InheritedSource(int index) => index == 0 ? this.InheritedFrom! : this.AdditionalInheritedSources![index - 1];
 }

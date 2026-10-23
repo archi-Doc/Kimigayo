@@ -3,22 +3,23 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's Loans of the view (A3 4's issued, E3, E13 (4)): one per non-raw Ref and Reborrowing PairAcquire past no shared borrow Deref, by
-// location, each with its Place's steps, in group order; and whether the body has a guard candidate, whose guard-local Origin a check
-// follows without a Loan (E7).
+// location, each with its Place's steps, in group order (MirBorrows.Groups); whether the view has an input of a Loan-stratum producer (D5, R4-M98): a Loan, a
+// guard candidate, whose guard-local Origin a check follows without a Loan (E7), a Drop of a mutable static (R3) or a write rooted at a
+// default template's PreparedInput (R26-access); and for the effect rule (R4-M92) the view's effect roots, the mutable statics its Loans are
+// on, and each static's A4 Field number.
 internal sealed partial class MirBorrows
 {
+    private readonly List<int> effectRoots = []; // The root keys of the mutable statics the view's Loans are on, each once.
     private bool[] named = []; // By local: whether a direct Loan names it, so it is a flow holder.
     private bool[] borrowed = []; // By root key (Key): whether a Loan's Place has that root.
     private MirPlace[] lent = []; // By local: the Place a Ref lent into it, or the local itself.
     private Loan[] loans = [];
-    private Step[] loanSteps = []; // The Loans' Places, each a run.
+    private MirStep[] loanSteps = []; // The Loans' Places, each a run.
     private int[] loanAt = []; // By location (Location): the Loan its Ref or Reborrowing PairAcquire issues, or -1.
-    private int[] loanStart = []; // By group (Loan.Group): its first Loan, the Loans being in group order.
-    private Loan[] ordered = []; // The Loans being put in group order.
-    private int[] renumbered = []; // By Loan in issue order: its id in group order.
     private int loanCount;
     private int loanStepCount;
-    private bool guarded; // Whether a local's marker is a guard candidate's γ (MarkerOf).
+    private bool producing; // Whether the view has an input of a Loan-stratum producer, which each producer's scan below sets (D5).
+    private int[] fields = []; // By static: A4's number of its Field (MirEffects.Field), -1 for none.
 
     // The Reborrow a statement's PairAcquire makes under the view (A3 E13 (4)): the borrow its Use's marker names (Uniq, or TwoPhaseUniq for
     // an invocation's input), or Raw where it Copies or the statement is none.
@@ -39,11 +40,18 @@ internal sealed partial class MirBorrows
         Array.Fill(this.loanAt, -1, 0, locations);
         Array.Clear(this.borrowed, 0, keys);
         Array.Clear(this.named, 0, locals);
-        this.guarded = false;
+        MirDataflow.Grow(ref this.fields, this.body.Statics.Length);
+        for (var i = 0; i < this.body.Statics.Length; i++)
+        {
+            this.fields[i] = effects.Field(this.body.Statics[i].Symbol);
+        }
+
+        this.producing = false;
+        this.effectRoots.Clear();
         for (var i = 0; i < locals; i++)
         {
             this.lent[i] = new(i);
-            this.guarded |= this.MarkerOf(i) == Marker.Guard;
+            this.producing |= this.MarkerOf(i) == Marker.Guard;
         }
 
         (this.loanCount, this.loanStepCount) = (0, 0);
@@ -58,10 +66,11 @@ internal sealed partial class MirBorrows
                     continue;
                 }
 
+                this.producing |= MirSteps.Prepared(this.body, statement.Place.Root);
                 var rvalue = statement.Rvalue.Kind == MirRvalueKind.Adapt ? cases.Adapt(statement.Rvalue, out _) : statement.Rvalue;
                 if (rvalue.Kind == MirRvalueKind.Ref && (MirRefKind)rvalue.Op != MirRefKind.Raw)
                 {
-                    this.loanAt[data.Start + i] = this.Issue(rvalue.Place, reborrow: false, (MirRefKind)rvalue.Op, statement.Place.Root, statement.Source);
+                    this.loanAt[data.Start + i] = this.Issue(rvalue.Place, reborrow: false, (MirRefKind)rvalue.Op, statement.Place.Root, data.Start + i);
                     if (statement.Place is { Projection: 0, Root: >= 0 } into)
                     {
                         this.lent[into.Root] = rvalue.Place;
@@ -70,69 +79,35 @@ internal sealed partial class MirBorrows
                 else if (this.Reborrowing(statement) is var kind and not MirRefKind.Raw)
                 {
                     var place = this.body.Operands[rvalue.Start].Place;
-                    this.loanAt[data.Start + i] = this.Issue(place, reborrow: true, kind, statement.Place.Root, statement.Source);
+                    this.loanAt[data.Start + i] = this.Issue(place, reborrow: true, kind, statement.Place.Root, data.Start + i);
                 }
             }
+
+            var terminator = data.Terminator;
+            this.producing |= this.DroppedStatic(terminator) >= 0 ||
+                (terminator.Kind == MirTerminatorKind.Call && MirSteps.Prepared(this.body, terminator.Place.Root));
         }
+
+        this.producing |= this.loanCount > 0;
 
         this.Order(moves.Paths.Length + this.body.Statics.Length);
         this.Renumber(this.loanAt.AsSpan(0, locations));
         this.Work += locations;
     }
 
-    // Orders the Loans by group, stably, so the Loans a Move Path prefixes are one run of ids (Subtree).
-    private void Order(int groups)
+    // A Loan of a Place issued into a local (-1: none) at a location, or -1 past a shared borrow Deref (E3).
+    private int Issue(MirPlace place, bool reborrow, MirRefKind mode, int into, int location)
     {
-        MirDataflow.Grow(ref this.loanStart, groups + 1);
-        MirDataflow.Grow(ref this.ordered, this.loanCount);
-        MirDataflow.Grow(ref this.renumbered, this.loanCount);
-        Array.Clear(this.loanStart, 0, groups + 1);
-        for (var l = 0; l < this.loanCount; l++)
-        {
-            this.loanStart[this.loans[l].Group + 1]++;
-        }
-
-        for (var g = 1; g <= groups; g++)
-        {
-            this.loanStart[g] += this.loanStart[g - 1]; // Each group's start.
-        }
-
-        for (var l = 0; l < this.loanCount; l++)
-        {
-            var id = this.loanStart[this.loans[l].Group]++; // Each group's start becomes its end.
-            (this.renumbered[l], this.ordered[id]) = (id, this.loans[l]);
-        }
-
-        this.loanStart.AsSpan(0, groups).CopyTo(this.loanStart.AsSpan(1));
-        this.loanStart[0] = 0;
-        (this.loans, this.ordered) = (this.ordered, this.loans);
-        this.Work += groups + (2 * this.loanCount);
-    }
-
-    // The sites' Loans in group order.
-    private void Renumber(Span<int> sites)
-    {
-        foreach (ref var loan in sites)
-        {
-            loan = loan >= 0 ? this.renumbered[loan] : -1;
-        }
-
-        this.Work += sites.Length;
-    }
-
-    // A Loan of a Place issued into a local (-1: none), or -1 past a shared borrow Deref (E3).
-    private int Issue(MirPlace place, bool reborrow, MirRefKind mode, int into, in SourceInfo source)
-    {
-        var count = this.Walk(place, reborrow, ref this.walk);
+        var count = this.placeSteps.Walk(this.body, place, reborrow, ref this.walk);
         var direct = true;
         for (var i = 0; i < count; i++)
         {
-            if (this.walk[i].Class == StepClass.Shared)
+            if (this.walk[i].Class == MirStepClass.Shared)
             {
                 return -1;
             }
 
-            direct &= this.walk[i].Class is not (StepClass.Uniq or StepClass.Raw);
+            direct &= this.walk[i].Class is not (MirStepClass.Uniq or MirStepClass.Raw);
         }
 
         MirDataflow.Grow(ref this.loans, this.loanCount + 1);
@@ -149,9 +124,14 @@ internal sealed partial class MirBorrows
             Holder = into,
             Named = root,
             Direct = direct,
-            Site = this.body.Subject(source),
+            Location = location,
         };
         this.loanStepCount += count;
+        if (place.IsStatic && !this.borrowed[key] && this.body.Statics[~place.Root].Mutable)
+        {
+            this.effectRoots.Add(key);
+        }
+
         this.borrowed[key] = true;
         if (root >= 0)
         {
@@ -183,7 +163,7 @@ internal sealed partial class MirBorrows
         /// <summary>Gets or sets the slot it was issued into, a two-phase Loan's reservation holder (-1: none).</summary>
         internal int Holder { get; set; }
 
-        /// <summary>Gets or sets the slot a direct Loan names (-1: none).</summary>
+        /// <summary>Gets or sets the slot a direct Loan names, E's for a static's (G136 (i), R4-M92), -1 for none.</summary>
         internal int Named { get; set; }
 
         /// <summary>Gets or sets a value indicating whether it is direct: its Place passes no borrow or raw Deref.</summary>
@@ -192,7 +172,8 @@ internal sealed partial class MirBorrows
         /// <summary>Gets or sets a value indicating whether it is a destroying reservation: its call destroys its target in place.</summary>
         internal bool Destroying { get; set; }
 
-        /// <summary>Gets or sets its anchor.</summary>
-        internal SourceRef Site { get; set; }
+        /// <summary>Gets or sets its issuing statement's or terminator's location (Location's index), whose subject is its anchor and whose
+        /// scope its issue's (D14).</summary>
+        internal int Location { get; set; }
     }
 }

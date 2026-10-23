@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns constructed Type interning and pure Type operations, and the lifetime of TyCtxt's views (ResetViews); substitutions are
-// TyCtxt.Substitutions.cs's.
+// TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's.
 // Input: immutable Type shapes. Output: canonical Types and derived views.
 // Interned identity is equality; values live with the compilation and survive warm rebinds.
 // Must not resolve source expressions or let consumers duplicate Type construction.
@@ -72,6 +72,8 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // over its direct target, which the MIR's case views give every Type by.
     internal BoundType CaseType(BoundType type, ReadOnlySpan<PairCase> cases) => binding.CaseType(type, cases);
 
+    // A Type by its parts, one instance per parts. `origin` is the layer's stated Origin, whose role the Semantics decides: a raw layer's raw
+    // Origin (BoundType.RawOrigin; Pointer and Rebuild write it), any other layer's Origin (DECISIONS BU-24).
     internal BoundType Intern(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null, Subst? closureContext = null, ReadOnlySpan<BoundLength?> lengthArguments = default)
     {
         if (kind == BoundTypeKind.SemanticsAdaptation && components.Length > 0)
@@ -148,7 +150,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
             for (var i = 0; i < bucket.Count; i++)
             {
                 var type = bucket[i];
-                if (type.Kind != kind || type.Symbol != symbol || !ReferenceEquals(type.ClosureContext, closureContext) || type.Semantics != semantics || type.Length != length || !ReferenceEquals(type.LengthExpression, lengthExpression) || !lengthArguments.SequenceEqual(type.LengthArguments) || type.Components.Count != components.Length || !ReferenceEquals(type.Origin, origin) || type.OriginArguments.Count != originArguments.Length)
+                if (type.Kind != kind || type.Symbol != symbol || !ReferenceEquals(type.ClosureContext, closureContext) || type.Semantics != semantics || type.Length != length || !ReferenceEquals(type.LengthExpression, lengthExpression) || !lengthArguments.SequenceEqual(type.LengthArguments) || type.Components.Count != components.Length || !ReferenceEquals(type.Origin ?? type.RawOrigin, origin) || type.OriginArguments.Count != originArguments.Length)
                 {
                     continue;
                 }
@@ -183,8 +185,24 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // SPEC 3.4: the reference of a Semantics kind (ref, uniq, objref, objuniq) to a referent; a null Origin is the ownership analysis's to infer.
     internal BoundType Reference(SemanticsKind semantics, BoundType referent, BoundOrigin? origin = null) => this.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: origin);
 
-    // SPEC 5.2: the raw pointer to a pointee; a raw pointer carries no Origin.
-    internal BoundType Pointer(BoundType referent) => this.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Raw, [referent]);
+    // SPEC 5.2, 5.7: the raw pointer to a pointee, stating `rawOrigin` (null: unstated).
+    internal BoundType Pointer(BoundType referent, BoundOrigin? rawOrigin = null)
+        => this.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Raw, [referent], origin: rawOrigin);
+
+    // The same Type with these components, Origin and Origin arguments, every other part kept, a raw layer's Origin included: the one form
+    // of a rebuild that keeps a Type's shape (DECISIONS BU-24). A raw layer takes no `origin` (its role's getter gives none).
+    internal BoundType Rebuild(BoundType type, ReadOnlySpan<BoundType> components, BoundOrigin? origin, ReadOnlySpan<BoundOrigin> originArguments)
+        => this.Intern(
+            type.Kind,
+            type.Symbol,
+            type.Semantics,
+            components,
+            type.Length,
+            origin ?? type.RawOrigin,
+            originArguments,
+            type.LengthExpression,
+            type.ClosureContext,
+            type.LengthArguments);
 
     internal BoundType Tuple(ReadOnlySpan<BoundType> elements) => this.Intern(BoundTypeKind.Tuple, null, SemanticsKind.Owner, elements);
 

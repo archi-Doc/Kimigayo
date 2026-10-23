@@ -18,119 +18,6 @@ public sealed partial class Binding
 
     private static bool Compatible(BoundType actual, BoundType expected) => FitsType(actual, expected);
 
-    private static bool Writable(Koto node)
-    {
-        node = KotoHelper.UnwrapParentheses(node);
-        if (node.BoundSymbol?.Property is { IsStored: false, Setter.IsPresent: true })
-        {
-            return true; // The accessor's Receiver Expression checks its own capability.
-        }
-
-        // SPEC 5.2: binding mutability does not decide pointee write permission.
-        if (node is DereferenceKoto dereference)
-        {
-            return ReferenceTypes.IsPointer(dereference.Operand.BoundType);
-        }
-
-        if ((node is IndexKoto index && ReferenceTypes.IsPointer(index.Left.BoundType)) || ElementAccess.IsPointerPath(node))
-        {
-            return true;
-        }
-
-        if (node.BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate || ReachedThroughShared(node))
-        {
-            return false; // SPEC 3.4, 15.6.2: a shared layer anywhere on the path grants Read only.
-        }
-
-        if (node is ConversionKoto { ConversionBinding: ConversionBinding.Follow } selected)
-        {
-            // SPEC 13.5.5: the referent of uniq/T offers Write; a shared layer on the path bounds it.
-            return selected.Left.BoundType?.Semantics == SemanticsKind.Uniq && !ReachedThroughShared(selected.Left);
-        }
-
-        if (node is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair)
-        {
-            return pair.CodeContext.Compilation.Binding.PairCapability(pair, null, true); // SPEC 13.5.5 pair layers
-        }
-
-        if (node is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } payload)
-        {
-            return payload.Left.BoundType?.Semantics switch
-            {
-                SemanticsKind.ObjUniq => !ReachedThroughShared(payload.Left),
-                SemanticsKind.Obj => Writable(payload.Left),
-                _ => false,
-            };
-        }
-
-        if (node is IndexKoto userIndex && ElementAccess.IsUserIndex(userIndex))
-        {
-            return ElementAccess.IndexerCall(userIndex, true) is not null; // SPEC 4.7.1: an update selects indexUniq.
-        }
-
-        if (ElementAccess.IsExclusiveArrayElement(node))
-        {
-            return true;
-        }
-
-        if (node is MemberAccessKoto { Right: NumberLiteralKoto } nested && !ReferenceTypes.IsTuple(ElementAccess.AccessType(nested.Left)) &&
-            ElementAccess.BorrowedPathRoot(nested) is { } root)
-        {
-            return ElementAccess.AccessType(root, true)!.Semantics == SemanticsKind.Uniq; // An inline Tuple level below a borrowed base.
-        }
-
-        if (node is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(ElementAccess.AccessType(tupleElement.Left)))
-        {
-            return ElementAccess.AccessType(tupleElement.Left, true)!.Semantics == SemanticsKind.Uniq && ElementAccess.TryBorrowedTupleElement(tupleElement, out _, out _);
-        }
-
-        if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } throughLayers &&
-            node.CodeContext.Compilation.Binding.TryGetAdaptation(throughLayers.Left, out var receiver) && receiver.Kind == ExpectedAdaptationKind.ReferenceRead)
-        {
-            return receiver.Type.Semantics == SemanticsKind.Uniq; // SPEC 3.4.3: a shared layer bounds the path to shared access.
-        }
-
-        if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } field &&
-            (AdtDef.IsStruct(field.Left.BoundType) || field.Left.BoundType?.HandleMode is not null) &&
-            Receiver(field.Left) is null && !Writable(field.Left) && ElementAccess.WritableRoot(field.Left) is null)
-        {
-            return false; // A mutable field still requires a mutable owning root.
-        }
-
-        if (node.BoundSymbol is { Kind: BindingSymbolKind.Storage, Scope.Owner: PropertyAccessorKoto syntax })
-        {
-            var accessor = Accessor(syntax);
-            if (accessor.Receiver is { Semantics: not SemanticsKind.Uniq })
-            {
-                return false;
-            }
-        }
-
-        return node.BoundSymbol is { } symbol && Reassignable(symbol);
-    }
-
-    // SPEC 3.5: the positions without a fixed expected Type that acquire any Place operand by bare acquisition.
-    // Arguments, assignment sources and results take their expected Type from the
-    // declaration and adapt there instead; an anonymous function's expression body without a written or expected result
-    // Type is a result source (SPEC 14.9.2) whose Type the bare acquisition infers.
-    private static bool IsBareAcquisitionPosition(Koto node)
-    {
-        var target = node;
-        while (target.Parent is ParenthesizedKoto parenthesized)
-        {
-            target = parenthesized;
-        }
-
-        return target.Parent switch
-        {
-            VariableKoto variable => ReferenceEquals(variable.InitializerKoto, target),
-            DiscardKoto discard => ReferenceEquals(discard.Operand, target),
-            TupleLiteralKoto or ArrayLiteralKoto => true,
-            FunctionKoto { IsAnonymous: true } function => ReferenceEquals(function.ExpressionBody, target),
-            _ => false,
-        };
-    }
-
     // SPEC 7: an unsafe function supports direct calls only, so every appearance of its name
     // that is not the callee of a direct call acquires it as a value. This is the complement of
     // the callee position, not a list of acquisition positions, so no position stays unchecked.
@@ -430,14 +317,10 @@ public sealed partial class Binding
             return adaptation.Type;
         }
 
-        // SPEC 3.5: without a fixed expected Type, the bare acquisition of a Place storing an exclusive reference Reborrows
-        // it in its own Semantics, exactly as an annotation of the same complete Type would.
-        if (expected is null && actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components.Count: 1 } &&
-            node.ErasedFunctionType is null && IsBareAcquisitionPosition(node) && IsBarePlace(node) &&
-            this.ExpectedAdaptation(node, actual, actual) is { } reborrow)
+        // SPEC 3.5: without a fixed expected Type, the bare acquisition of a Place storing an exclusive reference Reborrows it.
+        if (expected is null && this.StoredReborrow(node, actual) is { } reborrowed)
         {
-            this.adaptations[node] = reborrow;
-            return reborrow.Type;
+            return reborrowed;
         }
 
         return node.ErasedFunctionType ?? actual;
@@ -845,8 +728,7 @@ public sealed partial class Binding
 
         if (symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate or BindingSymbolKind.Capture && scope.Function != symbol.Scope.Function)
         {
-            if (scope.Function is not { IsAnonymous: true, Captures: null } closure ||
-                this.Capture(closure, symbol, this.scopes[closure]) is not { } capture)
+            if (this.CaptureOuterUse(node, symbol, scope) is not { } capture)
             {
                 return this.Fail(node, BindingFailure.Capture);
             }
@@ -920,7 +802,7 @@ public sealed partial class Binding
                     return this.Fail(node, BindingFailure.InvalidAssignment);
                 }
 
-                return Complete(node, symbol.Type);
+                return Complete(node, symbol.Type is { } field ? this.ReadHolder(field, node, node) : null);
             }
 
             var operation = write ? property.Setter : property.Getter;
@@ -1002,7 +884,7 @@ public sealed partial class Binding
             this.Consulted(annotation ?? accessor.Property.Declaration.TypeKoto ?? accessor.Property.Declaration);
         }
 
-        return Complete(node, type);
+        return Complete(node, node is MemberAccessKoto && type is not null ? this.ReadHolder(type, node, node) : type);
     }
 
     private BoundType? RequireType(Koto node, BindingScope scope, BoundType? expected)
@@ -1109,6 +991,11 @@ public sealed partial class Binding
                     return this.FailWrite(unary, unary.Operand);
                 }
 
+                if (this.HolderPlaceFailure(unary.Operand, HolderAccess.Update, null, unary))
+                {
+                    return null;
+                }
+
                 // Increment and decrement apply to integer and wrapping integer Types, never to floats (SPEC 13.2).
                 var destination = ElementAccess.DestinationType(unary.Operand, operand);
                 return this.IsArithmeticInteger(destination, scope) ? Complete(unary, destination)
@@ -1188,7 +1075,7 @@ public sealed partial class Binding
                 : !assignment && ReferenceEquals(left, BoundType.Never) ? null
                 : ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus ? BoundType.ISize
                 : arithmetic && left is not null && (NonNumericOperand(left) || (integerOnly && NonIntegerOperand(left))) ? null
-                : comparison && comparand?.CarriesOrigin == true && !IsUnfittedLiteral(binary.Right) ? null
+                : comparison && comparand?.CarriesAnyOrigin == true && !IsUnfittedLiteral(binary.Right) ? null
                 : comparand;
             right = this.BindExpected(binary.Right, scope, expectedRight, assignment ? binary.Left : null);
             if (assignment && kind == KotoKind.Equals && left is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
@@ -1222,6 +1109,11 @@ public sealed partial class Binding
             !(kind == KotoKind.Equals && (CanInitializeLocal(binary.Left, scope) || (IsSpecialField(binary.Left, out var constructor) && constructor.IsConstructor))))
         {
             return this.FailWrite(binary, binary.Left);
+        }
+
+        if (assignment && this.HolderPlaceFailure(binary.Left, kind == KotoKind.Equals ? HolderAccess.Write : HolderAccess.Update, binary.Right, binary))
+        {
+            return null;
         }
 
         var result = assignment ? BoundType.Unit : left;

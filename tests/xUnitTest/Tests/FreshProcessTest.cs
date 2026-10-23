@@ -1,0 +1,31 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+using Xunit;
+
+namespace XunitTest;
+
+public class FreshProcessTest
+{
+    // A child takes no part in the run's evidence collection: KIMI_MIR_DIFF would start the difference ledger's assembly fixture in it,
+    // which runs Compilation's type initializer before its test and aggregates the parent's open raw file. It keeps the pipeline
+    // selection, whatever the case of the names, and every variable outside the KIMI_ namespace.
+    [Fact]
+    public void TheChildKeepsThePipelineSelectionAndNoVariableOfTheRunsEvidence()
+    {
+        var parent = new Dictionary<string, string?>(StringComparer.Ordinal)
+        {
+            ["PATH"] = "path",
+            ["DOTNET_GCHighMemPercent"] = "0xA",
+            ["Kimigayo"] = "outside the namespace",
+            ["KIMI_PIPELINE"] = "mir",
+            ["kimi_codegen"] = "mir",
+            ["KIMI_MIR_DIFF"] = "directory",
+            ["KIMI_FIXTURE_DIRECTORY"] = "directory",
+            ["KIMI_UNRELATED"] = "1",
+        };
+        var child = FreshProcess.ChildEnvironment(parent);
+        string[] kept = ["DOTNET_GCHighMemPercent", "Kimigayo", "PATH", "KIMI_PIPELINE", "kimi_codegen"];
+        Assert.Equal(kept.Order(StringComparer.OrdinalIgnoreCase), child.Keys.Order(StringComparer.OrdinalIgnoreCase));
+        Assert.All(child, x => Assert.Equal(parent[x.Key], x.Value));
+    }
+}

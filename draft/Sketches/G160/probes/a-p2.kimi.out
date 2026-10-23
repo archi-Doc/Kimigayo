@@ -1,0 +1,3 @@
+untiedInit: x = 5
+untiedInit: var w: ref/i32 = z@ref
+untiedInit: var z = 3

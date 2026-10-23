@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -79,6 +81,49 @@ public class BorrowingIterationTest
         Assert.False(c.Analysis.IsVerified);
     }
 
+    // SPEC 15.6.6, 16.3.3, 8.15.1 (PLAN10-X1): a generic body is checked for every instance, so a holder whose Type has an abstract part
+    // not proven Copy may observe its Loans when it is destroyed: replacing `local` while the iterator or view it lent lives to its cleanup
+    // conflicts, also with the abstract part inside an Option, while the concrete twin, whose Cursor has no drop, and a Copy view are valid.
+    [Theory]
+    [InlineData("<T>(first: T, second: T)\n    T is Iterable", "var it = local.iterate()\n    _ = it.next()", "var it")]
+    [InlineData("<T>(first: T, second: T)\n    T is Iterable", "let it = Option.Some(local.iterate())", "let it")]
+    [InlineData("(first: Values, second: Values)", "var it = local.iterate()\n    _ = it.next()", null)]
+    [InlineData("<T>(first: T, second: T)\n    T is Lens", "let v = local.look()", "let v")]
+    [InlineData("<T>(first: T, second: T)\n    T is CopyLens", "let v = local.look()", null)]
+    public void AnAbstractHolderMayObserveItsLoansWhenDestroyed(string signature, string hold, string? loan)
+    {
+        var source = Declarations(false) + "contract Lens\n    associate View(source)\n    func look(self: ref/Self during source) -> Self.View(source)\n" +
+            "contract CopyLens\n    associate View(source) is Copy\n    func look(self: ref/Self during source) -> Self.View(source)\n" +
+            "func hold" + signature + "\n    var local = first@move\n    " + hold + "\n    local = second@move\npublic func main() => ()\n";
+        AssertSourceReplacement(source, loan);
+    }
+
+    // SPEC 13.7.1, 15.6.6 (PLAN G176): `=` destroys the holder's old value before placing the new one, so where that destruction may
+    // observe (a Cursor with a drop, an abstract iterator), replacing the source the old value borrows first conflicts with it, also where
+    // the holder was moved out on one path only (a conditional replacement); moving the holder out first, assigning it first, also after a
+    // conditional move, or a Cursor whose destruction observes nothing is valid.
+    [Theory]
+    [InlineData("(first: Values, second: Values, third: Values)", true, "local = second@move\n    it = other.iterate()", "var it")]
+    [InlineData("(first: Values, second: Values, third: Values, c: bool)", true, "if c => sink(it@move)\n    local = second@move\n    it = other.iterate()", "var it")]
+    [InlineData("(first: Values, second: Values, third: Values, c: bool)", true, "if c => sink(it@move)\n    it = other.iterate()\n    local = second@move", null)]
+    [InlineData("<T>(first: T, second: T, third: T)\n    T is Iterable", false, "local = second@move\n    it = other.iterate()", "var it")]
+    [InlineData("(first: Values, second: Values, third: Values)", true, "sink(it@move)\n    local = second@move\n    it = other.iterate()", null)]
+    [InlineData("(first: Values, second: Values, third: Values)", true, "it = other.iterate()\n    local = second@move", null)]
+    [InlineData("(first: Values, second: Values, third: Values)", false, "local = second@move\n    it = other.iterate()", null)]
+    public void ReplacingAHolderMayObserveItsOldValue(string signature, bool drop, string replace, string? loan)
+    {
+        var declarations = Declarations(false);
+        if (drop)
+        {
+            declarations = declarations.Replace(
+                "=> self.value = value\n", "=> self.value = value\n    drop\n        Console.writeLine(\"\\(self.value@follow)\")\n", StringComparison.Ordinal);
+        }
+
+        var source = declarations + "func sink<T>(value: T) => ()\nfunc hold" + signature + "\n    var local = first@move\n    var other = third@move\n" +
+            "    var it = local.iterate()\n    _ = it.next()\n    " + replace + "\n    _ = it.next()\npublic func main() => ()\n";
+        AssertSourceReplacement(source, loan);
+    }
+
     [Theory]
     [InlineData("origin a outlives b", true)]
     [InlineData("", false)]
@@ -87,5 +132,23 @@ public class BorrowingIterationTest
     {
         var c = MinimalEmissionTest.Analyze("func f(value: ref/i32 during a, other: ref/i32 during b) -> Option<ref/i32 during b>\n    " + relation + "\n    return .Some(value)");
         Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+    }
+
+    // A source's one Loan conflict at `local = second@move`, whose Loan the value declared by `loan` keeps; no diagnostic for null.
+    private static void AssertSourceReplacement(string source, string? loan)
+    {
+        var diagnostics = DiagnosticCorpus.Check(source).Diagnostics;
+        if (loan is null)
+        {
+            Assert.Empty(diagnostics);
+            return;
+        }
+
+        var record = Assert.Single(diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), record.Code);
+        Assert.Equal("local = second@move", Text(record.Span));
+        Assert.StartsWith(loan, Text(Assert.Single(record.Related!, static x => x.Role == "loan").Span), StringComparison.Ordinal);
+
+        string Text(SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;
     }
 }
