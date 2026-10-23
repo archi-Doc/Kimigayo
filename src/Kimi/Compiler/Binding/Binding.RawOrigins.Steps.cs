@@ -90,22 +90,24 @@ public sealed partial class Binding
     // SPEC 5.2.1 condition 3 (the owner's 「Loan 要求で上限 (推奨)」; design-final §15): the step of a raw layer an instance stores, read from
     // its declaration, since an instance's stored Types state none: Shared when the declaration states the layer with a slot whose Loan
     // requirement is `ref`, since a pointer read from it has read authority only; any other is the kind of its Origin under the instance's
-    // substitution (`self` the holder's own step, an Unbound slot argument Unstated).
+    // substitution (`self` the holder's own step, an Unbound slot argument Unstated). A layer a Type argument supplies is no layer the
+    // declaration states, so no cap reads it: it has the kind of the Origin the argument states, as any layer no declaration states.
     internal RawStep StoredStep(BoundType instance, int part, ReadOnlySpan<int> positions)
     {
-        var declared = this.StoredLayer(instance, part, positions, out var layer);
-        return declared.RawOrigin is { Kind: OriginKind.Parameter } && NamedSlot(declared.RawOrigin) is { LoanRequirement: LoanRequirement.Ref }
+        var layer = this.StoredLayer(instance, part, positions, out var declared);
+        return declared?.RawOrigin is { Kind: OriginKind.Parameter } && NamedSlot(declared.RawOrigin) is { LoanRequirement: LoanRequirement.Ref }
             ? RawStep.Shared : StepOf(layer.RawOrigin);
     }
 
     // RawMembers of the raw layer an instance stores (StoredLayer): its Origin under the instance's substitution, within the instance, so
     // its members are the keepers of the slots the instance binds it to; `self`, `static` and an unstated layer have none. False when the
-    // walk is incomplete (RawMembers).
+    // walk is incomplete (RawMembers), and for a layer a Type argument supplies whose Origin steps Exclusive: that Origin belongs to the
+    // borrows of the scope that wrote the Type (an input's, a body local's), not to the instance's, and a call may store through it.
     internal bool StoredMembers(BoundType instance, int part, ReadOnlySpan<int> positions, List<RawMember> members)
     {
-        _ = this.StoredLayer(instance, part, positions, out var layer);
+        var layer = this.StoredLayer(instance, part, positions, out var declared);
         return layer.RawOrigin is not { } origin || StepOf(origin) != RawStep.Exclusive ||
-            this.RawMembers(origin, new ReadOnlySpan<BoundType>(in instance), members);
+            (declared is not null && this.RawMembers(origin, new ReadOnlySpan<BoundType>(in instance), members));
     }
 
     // The declared slot a raw Origin names: an Input atom's target slot (a projection `x.s` whose slot argument is omitted), a
@@ -119,10 +121,10 @@ public sealed partial class Binding
         _ => null,
     };
 
-    // The component a Tuple's or fixed array's inline position selects; null for any other Type.
-    private static BoundType? InlinePart(BoundType type, int position)
-        => type.Kind == BoundTypeKind.Tuple && (uint)position < (uint)type.Components.Count ? type.Components[position]
-            : type.Kind == BoundTypeKind.FixedArray ? type.Components[0] : null;
+    // The component a Tuple's or fixed array's inline position selects; null for any other Type or none.
+    private static BoundType? InlinePart(BoundType? type, int position)
+        => type is { Kind: BoundTypeKind.Tuple } && (uint)position < (uint)type.Components.Count ? type.Components[position]
+            : type is { Kind: BoundTypeKind.FixedArray } ? type.Components[0] : null;
 
     // Whether an Origin is `origin` or a meet with it as an operand.
     private static bool Names(BoundOrigin? stated, BoundOrigin origin)
@@ -166,24 +168,26 @@ public sealed partial class Binding
     }
 
     // The raw layer an instance stores at a struct's Field `part`, or an enum's Case `part` whose first position selects the payload's
-    // component, then the inline positions (a Tuple's component, a fixed array's element): as its declaration states it, and as `layer`
-    // under the instance's substitution (StoredType). A path that ends at no raw layer is a broken contract.
-    private BoundType StoredLayer(BoundType instance, int part, ReadOnlySpan<int> positions, out BoundType layer)
+    // component, then the inline positions (a Tuple's component, a fixed array's element), under the instance's substitution (StoredType),
+    // and as `declared` the raw layer its declaration states there: null where a Type argument supplies the layer, the declaration
+    // stating another Type (a Type parameter, a pair layer) at the path or above it. A path whose substituted part is no raw layer is a
+    // broken contract.
+    private BoundType StoredLayer(BoundType instance, int part, ReadOnlySpan<int> positions, out BoundType? declared)
     {
         var adt = instance.Symbol?.Adt;
         var structure = AdtDef.IsStruct(instance);
         Koto? declaration = structure ? (uint)part < (uint)adt!.Fields.Length ? adt.Fields[part] : null
             : adt is not null && (uint)part < (uint)adt.Cases.Length && adt.Cases[part] is { } selected && positions.Length > 0 &&
                 (uint)positions[0] < (uint)selected.Payload.Length ? selected.Payload[positions[0]] : null;
-        var declared = declaration?.BoundType ?? (declaration as PropertyKoto)?.BoundSymbol?.Type;
-        var stored = declared is null ? null : this.StoredType(declared, instance);
-        for (var i = structure ? 0 : 1; i < positions.Length && declared is not null && stored is not null; i++)
+        var written = declaration?.BoundType ?? (declaration as PropertyKoto)?.BoundSymbol?.Type;
+        var stored = written is null ? null : this.StoredType(written, instance);
+        for (var i = structure ? 0 : 1; i < positions.Length && stored is not null; i++)
         {
-            (declared, stored) = (InlinePart(declared, positions[i]), InlinePart(stored, positions[i]));
+            (written, stored) = (InlinePart(written, positions[i]), InlinePart(stored, positions[i]));
         }
 
-        layer = stored!;
-        return ReferenceTypes.IsPointer(declared) && ReferenceTypes.IsPointer(stored)
-            ? declared! : throw new InvalidOperationException($"No raw layer is stored at part {part} of `{instance}` (InternalInvariant).");
+        declared = ReferenceTypes.IsPointer(written) ? written : null;
+        return ReferenceTypes.IsPointer(stored)
+            ? stored! : throw new InvalidOperationException($"No raw layer is stored at part {part} of `{instance}` (InternalInvariant).");
     }
 }

@@ -18,7 +18,9 @@ internal sealed partial class TyCtxt
     // whose Loan requirement is `ref`, else the kind of its Origin under the instance's substitution, `self` the holding value's own step;
     // A5 never reads an instance's FieldType or CaseTypes for a raw Origin (they state none) nor substitutes one itself. Cost: one
     // substitution of the declared part per call, interned, allocating nothing when warm. Total over what Binding accepts: an Unbound slot
-    // argument gives Unstated, an erased instance answers with its erased arguments; a path that ends at no raw layer is a broken contract.
+    // argument gives Unstated, an erased instance answers with its erased arguments, and a layer a Type argument supplies (the declaration
+    // states a Type parameter or pair layer at the path or above it) has the kind of the Origin it states, never the cap; a path that ends
+    // at no raw layer is a broken contract.
     internal RawStep RawStep(BoundType instance, int part, ReadOnlySpan<int> positions) => binding.StoredStep(instance, part, positions);
 
     // SPEC 5.2.1 condition 3 (the owner's 「シグネチャ版も入れる (推奨)」): the step of a raw layer a function's or accessor's signature
@@ -40,6 +42,7 @@ internal sealed partial class TyCtxt
 
     // RawMembers of the raw layer an instance stores (positions as for RawStep): its Origin under the instance's substitution, within the
     // instance, so its members are the keepers of the slots the instance binds it to; `self`, `static` and an unstated layer have none.
+    // A layer a Type argument supplies whose Origin steps Exclusive is incomplete (false): its borrows are the scope's that wrote the Type.
     internal bool RawMembers(BoundType instance, int part, ReadOnlySpan<int> positions, List<RawMember> members)
         => binding.StoredMembers(instance, part, positions, members);
 }

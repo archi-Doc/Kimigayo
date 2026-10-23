@@ -457,6 +457,27 @@ public sealed class TyCtxtTest
         Assert.All([AdtDef.FieldType(p[3], 0)!, AdtDef.CaseTypes(p[4])![0].Components[0], AdtDef.FieldType(p[5], 1)!], static x => Assert.Null(x.RawOrigin));
     }
 
+    // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-24; R4's constraint 2): a raw layer a Type argument supplies, where the declaration states a
+    // Type parameter or a pair layer (a Field, a Case payload, a Tuple or array element, or above the layer in a Tuple argument), is no
+    // declared layer: it has the kind of the Origin the argument states (none Unstated, `static` Static, any other Exclusive), never the
+    // stored cap, and a pair's raw case states none (SPEC 8.1.2). Its Origin's borrows are not the instance's, so an Exclusive one's
+    // members are incomplete. A path whose substituted part is no raw layer stays a broken contract.
+    [Fact]
+    public void ARawLayerATypeArgumentSuppliesStepsByItsOwnOrigin()
+    {
+        var (types, p) = StoredLayers();
+        Assert.Equal(
+            [RawStep.Unstated, RawStep.Exclusive, RawStep.Static, RawStep.Unstated, RawStep.Unstated, RawStep.Unstated, RawStep.Unstated,
+                RawStep.Unstated, RawStep.Unstated, RawStep.Unstated, RawStep.Exclusive, RawStep.Exclusive],
+            [types.RawStep(p[9], 0, []), types.RawStep(p[10], 0, []), types.RawStep(p[11], 0, []), types.RawStep(p[12], 0, []),
+                types.RawStep(p[13], 0, []), types.RawStep(p[14], 1, []), types.RawStep(p[15], 0, [0]), types.RawStep(p[15], 1, [0]),
+                types.RawStep(p[16], 0, [0]), types.RawStep(p[17], 0, [0]), types.RawStep(p[18], 0, [0]), types.RawStep(p[19], 0, [0])]);
+        var members = new List<RawMember>();
+        Assert.Equal((false, true), (types.RawMembers(p[10], 0, [], members), types.RawMembers(p[9], 0, [], members)));
+        Assert.Empty(members);
+        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.RawStep(p[20], 0, [])).Message, StringComparison.Ordinal);
+    }
+
     // design-final §15: the stored-layer reader allocates nothing when warm.
     [Trait("Purpose", "Allocation")]
     [Fact]
@@ -465,7 +486,8 @@ public sealed class TyCtxtTest
         var (types, p) = StoredLayers();
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (types.RawStep(p[3], 0, []) != RawStep.Own || types.RawStep(p[6], 1, []) != RawStep.Shared || types.RawStep(p[8], 1, [1]) != RawStep.Own)
+            if (types.RawStep(p[3], 0, []) != RawStep.Own || types.RawStep(p[6], 1, []) != RawStep.Shared || types.RawStep(p[8], 1, [1]) != RawStep.Own ||
+                types.RawStep(p[19], 0, [0]) != RawStep.Exclusive)
             {
                 throw new InvalidOperationException("Stored raw steps changed.");
             }
@@ -801,13 +823,20 @@ public sealed class TyCtxtTest
 
     // A struct's Fields and base, or an enum's Case payloads.
     // The Type context and the parameter Types of `probe` in RawShapeSource with a `uniq` remainder and inline raw parts: x, y, z, then a
-    // Block, a Cell, Views under x and `static`, a remainder under y and the inline parts.
+    // Block, a Cell, Views under x and `static`, a remainder under y and the inline parts; then (9-20) raw layers Type arguments supply.
     private static (TyCtxt Types, BoundType[] Parameters) StoredLayers()
     {
         var c = MinimalEmissionTest.Analyze(RawShapeSource + "struct R<E> {source}\n    internal let at: raw/E during source\n    internal let loan: Loan<uniq/E during source>\n" +
             "struct Parts\n    internal var pair: (raw/u8 during self, isize)\n    internal var cells: [2 of raw/u8 during self]\n" +
             "    public init()\n        self.pair = (null, 0)\n        self.cells = [null, null]\n" +
-            "func probe(x: ref/i32, y: uniq/i32, z: i32, b: Block, c: Cell, v: View<i32> during x, s: View<i32> during static, r: R<i32> during y, p: Parts) => ()\n");
+            "struct Local<T>\n    internal let value: T\nstruct Holder<s/T>\n    internal let value: s/T\n" +
+            "struct Anchored<s/T, U> {a}\n    s is owner or ref or uniq or raw\n    internal let anchor: ref/i32 during a\n" +
+            "    internal let other: s/U during a\nstruct InTuple<T>\n    internal let v: (T, i32)\nstruct InArray<T>\n    internal let cells: [2 of T]\n" +
+            "enum Choice<s/T, U> {a}\n    s is owner or ref or raw\n    First(s/T)\n    Second(s/U during a)\n" +
+            "func probe<T>(x: ref/i32, y: uniq/i32, z: i32, b: Block, c: Cell, v: View<i32> during x, s: View<i32> during static, r: R<i32> during y, " +
+            "p: Parts, ta: Local<raw/i32>, tb: Local<raw/i32 during y>, tc: Local<raw/i32 during static>, td: Local<raw/T>, te: Holder<raw/i32>, " +
+            "tf: Anchored<raw/i32, i64> during x, tg: Choice<raw/i32, i64> during x, th: InTuple<raw/u8>, ti: InArray<raw/u8>, " +
+            "tj: Local<(raw/u8 during y, isize)>, tk: Option<raw/u8 during y>, tn: Local<i32>) => ()\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var probe = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe");
         return (c.Types, probe.Parameters.Select(static x => x.Type.TypeOf()!).ToArray());
