@@ -116,6 +116,18 @@ rules that result from them.
   (loses the documented measurement guarantee), or switching to `all` (changes every class's scheduling and needs an
   unrelated fixture/static-state audit). No compiler representation changes; managed suite duration may increase.
 
+- **G138-1 Native execution and verification evidence ownership** (2026-10-24; planning session, independent designs A/B and
+  independent pre-code review). G138 needs execution progress distinguished from scheduling delay and missing observations
+  distinguished from program failures. Before changing that representation, test-scalar-process.ps1 owns one executable's
+  launch, stream draining, oracle comparison and recovery; test-scalar-fixture.ps1 retains compilation and level aggregation.
+  verification-native.ps1 owns the native success-line and pending-coverage predicates and their detail text; verify.ps1
+  retains invocation, selection, step reporting and the default conjunction with invocation success. The pending gate still
+  owns failing-set comparison. This first unit preserves waits, output, result schema and missing-evidence decisions.
+  The process extraction reuses e3f7f35fa3348c7dcc8a49d529066ad6d0cc4ebb; verify's native evaluation is also split before its
+  next change after three consecutive units. Rejected: expanding inline lifecycle/evidence logic, a generic process framework,
+  new mode arguments or a build component without a new responsibility. The following G138 unit replaces wall-time
+  divergence observation and publishes incomplete verification through these existing owners; G138 remains open.
+
 ## Code rules (2026-10-12)
 
 CR-R1 supersedes only the analyzer enforcement, Report and approval requirements in CR-A0–CR-A9b below.
