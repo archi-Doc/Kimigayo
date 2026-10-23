@@ -3191,6 +3191,46 @@ and migration obligations remain in force; no numeric cap changes are authorized
     drops it). The representation and its supersessions (R4-M36, R4-M73's Raw bullet, A3 E16, R4-M93's r3) are recorded with 4b.
   - Not implemented (STATUS). Unverified until 4b: G160-2c's mechanism, the census and ledger beyond the prototypes, the Exclusive
     guard row on a layer a Type argument supplies, the Warning, the located `Unsupported_Kd`'s census, cost and warm allocation.
+- **R4-M117 The SPEC session of 2026-10-23: eleven raw-pointer, Tuple, retention and capture points** (owner, verbatim, the decision
+  lines: 「SPECセッションを始めて下さい。 / 事前の決断事項と決定は、以下の通りです。 / 他にありますか？ / なければ、修正・レビューを進めてください。 / A. raw ポインタの書き込み権限（SPEC 5.2.1 条件 3） / 1.
+  派生したポインタにも制限がかかるか / 第 1 の制限に「そこから派生したすべてのポインタ（コピー、変位、raw ポインタ型の間の変換、Origin を落とす fit）も」を加える / 2・3. 「Origin が属する
+  borrow」をどこまで見るか／本体の中で作った borrow を数えるか / 推奨の内容でOKです。 / Origin ごとに、それを束縛する宣言で判断します。 / 入力や slot の Origin は、シグネチャや型の宣言で判断します。 / 本体の中の局所の
+  borrow の Origin は、その borrow 自身で判断します。h は未定義動作になります。 / 呼び出し側の実際の borrow は見ません。 / B. raw の Origin の伝わり方 / 4. pair の引数を通った raw の Origin
+  を落とすか（SPEC 8.1.1、BU の項目） / 推奨の通り、落とす規則を残します。SPEC は変えず、Binding を SPEC に合わせます。 / 5. どの引数にも結びつかない call の結果を、部分ごとに読むか（SPEC 15.6） /
+  「結果の部分のうち、契約がどの引数にも結びつけないもの」 / C. during self の層 / 6. 層を含む Tuple の Place を読む・Move すると何が得られるか（G212） / 層の規則を、Tuple の要素ごとに当てはめます。 / 7.
+  raw/u8 during self と、それを含む Tuple は Copy か（G212） / 推奨の内容でOKです。 / D. 診断 / 8. claim を入れる修正候補を出すか（BU-24） / 推奨の内容でOKです。 / E.
+  文の整理と明確化（判定は変わりません） / 9. G221：§15.6.3 の文を参照に置き換える / 推奨の内容でOKです。 / 10. §15.6.7：再帰する default が運ぶ、自分自身の Loan / 推奨の内容でOKです。 / F. 静的な
+  Property / 11. Closure の中の storage は静的なアクセスか、禁止されたキャプチャか（SPEC 7.7.2、BU の項目） / 推奨の内容でOKです。」; the accepted recommendations
+  as the planning session showed them; unit spec-s1023) SPEC states:
+  - 5.2.1 condition 3: the first limit also binds every pointer derived from such a pointer (copies, displacements, conversions between
+    raw pointer Types, fits that drop the Origin), as the caps' sentence does (item 1). "Keeps only shared Loans" is judged where each
+    Origin is bound (5.7 Authority): an input's or slot's Origin by the signature or Type declaration, a body-local borrow's outer Origin
+    by that borrow, never the caller's actual borrow, so the dynamic limit and the two caps share one scope (items 2-3; `h` in 5.2.1).
+  - 8.1.1 unchanged: a pair parameter drops a raw argument's stated Origin (item 4). 15.6: storage the body does not own comes from a
+    part of a call result that its contract ties to no argument (item 5).
+  - 5.7: a Tuple or fixed-array Place enclosing a `during self` layer is read, Moved, written and borrowed element-wise by the layer's
+    rule: the layer's element reads as a pointer without an Origin reaching what `@raw` of its storage reaches, a Move reads it and Moves
+    the others, a restore writes `null` there (item 6, `Packet`); only the holding struct or enum is not Copy, the layer's Type and such a
+    Tuple stay Copy (3.5.2), their Places following "Writing a Field" and an explicit `@move` (item 7).
+  - No `Repair.*` kind inserts a claim, an unsafe promise only its author can make; a diagnostic's facts may say that a claim or a typed
+    path states the Origin (item 8; the schema is unchanged).
+  - 15.6.3's descent sentence is a cross-reference to 15.6.4's per-argument retention, keeping "published child Loans" (item 9, G221);
+    15.6.7: an activation does not conflict with its reservation's own Loan that a recursive default's value carries (item 10, R4-M90
+    D16); 7.7.2: a static Property's `storage` in a Closure is a static access, an instance Property's never captured (item 11,
+    `Totals`).
+  - Rationale and Principles: each item closes a point the raw-pointer and Closure work left open (BU-24, PLAN G212, G221, G136, G224).
+    One Concept, One Canonical Form: one authority scope (the binder) for the dynamic limit and both caps, one layer rule for a Place and
+    the Tuples holding it, one retention rule (15.6.4) cited instead of restated. Local Reasoning: an Origin's authority is read from its
+    binder, never from a caller. Explicit Semantics: undefined behavior is named; a claim stays the author's explicit promise.
+    Compiler Server Protocol: no repair asserts a promise the tool cannot verify.
+  - Settles: BU-24's three open SPEC points (the dynamic limit's scope, body-local borrows, the first limit for derived pointers); PLAN
+    G212's open points; G221; G136's 15.6.7 sentence; G224's 7.7.2 question; BU-24's claim-repair item; S2's 15.6 per-part observation.
+  - Implementing work: BU, Binding drops a pair-supplied raw Origin (8.1.1), reads a static `storage` in a Closure as a static access
+    (today `InvalidCaptureBinding_Kd`), and reads and Moves an enclosing Tuple element-wise (today a whole Copy and the located
+    `Unsupported_Kd`); R4, A5 assumes item 1 in G160-4's 4b. The `Packet` and `Totals` examples are registered in `spec-cases.json` with
+    those records as (b) differences; `h` has none. STATUS states the differences.
+  - Later: the owner, 2026-10-23, verbatim 「RZ、G86、G159(2)、G158(3)、B 3.4 の §15.4.2 の穴は、分析してから別の SPEC セッションで決め
+    ます。今回は 11 項目だけ進めてください。」: these five points go to a later SPEC session after their analysis.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
