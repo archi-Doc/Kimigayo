@@ -38,7 +38,7 @@ public sealed partial class Binding
                 case VariableKoto or PropertyKoto:
                     this.Take(node is VariableKoto variable ? variable.InitializerKoto : ((PropertyKoto)node).InitializerKoto);
                     break;
-                case ParenthesizedKoto or MacroKoto or LabeledKoto when op == HirOp.Group: // Its group acquires it, an erasure recorded at it included.
+                case ParenthesizedKoto or LabeledKoto when op == HirOp.Group: // Its group acquires it, an erasure recorded at it included.
                     var grouped = node is LabeledKoto label ? label.Target : ((UnaryKoto)node).Operand;
                     this.Write(grouped, HirTables.ErasedType(grouped) is null ? new(HirAcquire.None, HirAdaptation.None) : new(this.Bare(grouped), HirAdaptation.Erasure));
                     break;
