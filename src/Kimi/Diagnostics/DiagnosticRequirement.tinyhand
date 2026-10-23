@@ -242,6 +242,10 @@
     Description="the adaptation infers its borrow Origin"
     Phrase="Origin annotation on an adaptation's borrow layer"
 
+  + Name="Syntax.RuntimeTypeTestOrigin"
+    Description="the runtime Type-test target writes no Origin annotation at any depth"
+    Phrase="Origin annotation in a runtime Type-test target"
+
   + Name="Syntax.AdaptationDuring"
     Description="an annotated adaptation target is grouped"
     Phrase="'during' after an ungrouped adaptation target"

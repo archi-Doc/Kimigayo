@@ -146,18 +146,18 @@ public sealed partial class Binding
         var candidates = default(TypeCandidates);
         var documentAliases = use.CodeContext.SourceDocument is { } document ? this.aliasesByDocument.GetValueOrDefault(document) : null;
         if (use.CodeContext.SourceDocument is { } source &&
-            this.namedAliases.TryGetValue((source, name), out var named) && named.BindingState == BindingState.Resolved)
+            this.namedAliases.TryGetValue((source, name), out var named) && named.Declaration!.BindingState == BindingState.Resolved)
         {
-            this.AddTypeCandidates(ref candidates, named.BoundSymbol, scope, core, arity, named.BoundType, role);
+            this.AddTypeCandidates(ref candidates, named.Declaration!.BoundSymbol, scope, core, arity, named, role);
         }
 
         for (var i = 0; documentAliases is not null && i < documentAliases.Count; i++)
         {
             var alias = documentAliases[i];
-            var target = this.AliasTarget(alias);
+            var target = this.AliasTarget(alias.Declaration!);
             if (target is not null && target.Types.TryGetValue(name, out var candidate))
             {
-                this.AddTypeCandidates(ref candidates, candidate, scope, core, arity, alias.BoundType, role);
+                this.AddTypeCandidates(ref candidates, candidate, scope, core, arity, alias, role);
             }
         }
 
@@ -182,7 +182,7 @@ public sealed partial class Binding
         for (var i = 0; documentAliases is not null && i < documentAliases.Count; i++)
         {
             var alias = documentAliases[i];
-            var target = this.AliasTarget(alias);
+            var target = this.AliasTarget(alias.Declaration!);
             if (target is null || !target.Values.TryGetValue(name, out var candidate))
             {
                 continue;
@@ -199,15 +199,20 @@ public sealed partial class Binding
                 return null;
             }
 
-            if (alias.BoundType is { } importedEnvironment)
+            if (alias.Environment is { } importedEnvironment)
             {
-                if (this.importedContainerEnvironments.TryGetValue(use, out var previous) && !ReferenceEquals(previous, importedEnvironment))
+                if (this.importedContainers.TryGetValue(use, out var previous))
                 {
-                    this.Fail(use, BindingFailure.Ambiguous, unresolved: true);
-                    return null;
+                    if (!ReferenceEquals(previous.Environment, importedEnvironment))
+                    {
+                        this.Fail(use, BindingFailure.Ambiguous, unresolved: true);
+                        return null;
+                    }
+
+                    alias = previous.MergeWitness(alias);
                 }
 
-                this.importedContainerEnvironments[use] = importedEnvironment;
+                this.importedContainers[use] = alias;
             }
         }
 

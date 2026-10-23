@@ -4621,6 +4621,26 @@ resumed by R4-M86 (2026-10-20).
   No grammar, diagnostic, Type identity, table or plan changes in this unit. The following G209 unit adds the written-Origin check
   and selected-import provenance, replacing the outer-Origin shortcut; G209 remains open until then. Rejected: growing the oversized
   parser and Type-formation file, a new lookup mode or argument bag, and sharing Type-arity selection with value-overload merging.
+- **G209-2** (2026-10-24; the planning session, independent designs A/B and independent pre-code review; owner explicitly approved
+  `SyntaxForm.RuntimeTypeTestOrigin` on 2026-10-24) SPEC 13.6.4's `NamedCoreType` forbids written Origins throughout complete Type
+  arguments and alias expansions. Ordinary Type parsing allowed them, while normalized `BoundType.Origin` cannot distinguish them
+  from implicit function Origins. `Parser.RuntimeTypeTests.ParseNamedCoreType` checks the whole owned syntax tree through the shared
+  `WrittenOrigin` query (`TypeSemanticsKoto.HasOrigin` and `OriginApplicationKoto`), records `MisplacedSyntax_Kd` at the first written
+  node and makes the target a recovery. Binding queries each successfully resolved alias target once during `PrepareAliases`.
+  Its existing alias lists, named entries, candidate summary and imported-container map retain one pass-local `AliasImport`: the
+  actual alias plus its first written-Origin witness. `Environment` reads that alias's stable `BoundType` after `AliasTarget` has
+  completed; no snapshot table or normalized-Type flag is needed. Original resolution, access, role and arity selection stay intact.
+  Same-candidate/environment imports keep the first selected declaration and union only the witness through AliasImport.MergeWitness,
+  retaining its first actual source; replacement candidates replace provenance.
+  Named equivalent aliases use the same rule. Unused, shadowed or eliminated aliases supply no witness. `ResetAliases` clears this
+  state before every pass and on invalidation; reusable query visitors clear their source reference after each query.
+  After Type formation succeeds, runtime-test Binding checks only the selected import facts in the target before the dependency
+  `Unsupported_Kd` boundary. A written alias Origin is `InvalidTypeFormation_Kd` and publishes no runtime-test plan. The former outer
+  Origin shortcut is removed. Ordinary Type declarations, implicit function Origins, lookup stages and generated-code rules stay
+  unchanged. A's selected-import provenance replaces the lost source information; B independently identified the same loss.
+  Rejected: normalized-Type provenance or recursive `BoundType.Origin` rejection, direct-syntax-only checking, a new side table,
+  rescanning all aliases, or an alias graph (SPEC 18.2 forbids alias chains). Syntax forms `OriginClause` and `AdaptationOrigin` have
+  different contracts; the approved new form is one row under the existing syntax diagnostic catalog. No new Binding/IR vocabulary.
 ## R5 and R6 (adopted 2026-10-18)
 
 The owner's answers to the plan's questions OQ1–OQ17, given on 2026-10-18 and relayed by the R4 planning session. "Plan"

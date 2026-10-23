@@ -10,12 +10,24 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<SourceDocument, List<AliasKoto>> aliasesByDocument = new();
+    private readonly Dictionary<SourceDocument, List<AliasImport>> aliasesByDocument = new();
     private readonly Dictionary<AliasKoto, BindingScope?> aliasTargets = new();
-    private readonly Dictionary<(SourceDocument Document, string Name), AliasKoto> namedAliases = new();
+    private readonly Dictionary<(SourceDocument Document, string Name), AliasImport> namedAliases = new();
     private readonly List<AliasKoto> aliasWarnings = new();
-    private readonly Dictionary<Koto, BoundType> importedContainerEnvironments = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Koto, AliasImport> importedContainers = new(ReferenceEqualityComparer.Instance);
     private int aliasResolutionDepth;
+    private ImportedOriginVisitor? importedOriginVisitor;
+
+    // A pass-local selected import: AliasTarget completed before construction, so Declaration.BoundType is its stable environment.
+    // Same-candidate/environment merges retain the first actual witness; replacement candidates replace provenance as well.
+    // ResetAliases clears every consumer before the next pass or source invalidation. Normalized Type identity carries no syntax.
+    private readonly record struct AliasImport(AliasKoto? Declaration, Koto? WrittenOrigin)
+    {
+        internal BoundType? Environment => this.Declaration?.BoundType;
+
+        // The caller has kept the same selection and environment; only the first actual witness may be added.
+        internal AliasImport MergeWitness(AliasImport other) => this with { WrittenOrigin = this.WrittenOrigin ?? other.WrittenOrigin };
+    }
 
     private void ResetAliases()
     {
@@ -25,7 +37,7 @@ public sealed partial class Binding
         }
 
         this.aliasTargets.Clear();
-        this.importedContainerEnvironments.Clear();
+        this.importedContainers.Clear();
         this.defaultAliasTargets.Clear();
         this.namedAliases.Clear();
         this.aliasWarnings.Clear();
@@ -40,6 +52,8 @@ public sealed partial class Binding
                 continue;
             }
 
+            var target = this.AliasTarget(alias);
+            var import = new AliasImport(alias, target is not null && alias.TargetSyntax is { } syntax ? Parser.WrittenOrigin(syntax) : null);
             if (alias.Name is null)
             {
                 if (!this.aliasesByDocument.TryGetValue(document, out var list))
@@ -48,24 +62,29 @@ public sealed partial class Binding
                     this.aliasesByDocument.Add(document, list);
                 }
 
-                list.Add(alias);
+                list.Add(import);
             }
 
-            if (this.AliasTarget(alias) is null || alias.Name is not { } name)
+            if (target is null || alias.Name is not { } name)
             {
                 continue;
             }
 
             if (this.namedAliases.TryGetValue((document, name), out var previous))
             {
-                if (!ReferenceEquals(previous.BoundSymbol, alias.BoundSymbol) || !ReferenceEquals(previous.BoundType, alias.BoundType) || previous.BindingState == BindingState.Invalid)
+                if (!ReferenceEquals(previous.Declaration!.BoundSymbol, alias.BoundSymbol) ||
+                    !ReferenceEquals(previous.Environment, alias.BoundType) || previous.Declaration!.BindingState == BindingState.Invalid)
                 {
-                    this.FailDuplicate(previous, alias, true);
+                    this.FailDuplicate(previous.Declaration!, alias, true);
+                }
+                else
+                {
+                    this.namedAliases[(document, name)] = previous.MergeWitness(import);
                 }
             }
             else
             {
-                this.namedAliases.Add((document, name), alias);
+                this.namedAliases.Add((document, name), import);
             }
         }
 
@@ -193,5 +212,42 @@ public sealed partial class Binding
         alias.BindingState = BindingState.Resolved;
         this.aliasTargets[alias] = scope;
         return scope;
+    }
+
+    // Read only provenance that ordinary lookup actually selected in this target; no alias lookup or Type reconstruction occurs.
+    private Koto? ImportedOrigin(Koto syntax)
+    {
+        var visitor = this.importedOriginVisitor ??= new(this);
+        try
+        {
+            visitor.Visit(syntax);
+            return visitor.Found;
+        }
+        finally
+        {
+            visitor.Found = null;
+        }
+    }
+
+    private sealed class ImportedOriginVisitor(Binding binding) : KotoVisitor
+    {
+        internal Koto? Found { get; set; }
+
+        public override void Visit(Koto node)
+        {
+            if (this.Found is not null)
+            {
+                return;
+            }
+
+            if (binding.importedContainers.TryGetValue(node, out var import) && import.WrittenOrigin is { } written)
+            {
+                this.Found = written;
+            }
+            else
+            {
+                node.VisitChildren(this);
+            }
+        }
     }
 }
