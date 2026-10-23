@@ -4787,6 +4787,17 @@ resumed by R4-M86 (2026-10-20).
   an IR/operator framework without a new consumer fact; argument-only bags or mode parameters. The behavior unit
   replaces the late applicability checks and inadequate operand facts; G51 remains open until it is verified.
 
+- **G52-1 Binding prerequisite ownership** (2026-10-24; planning session, independent designs A/B and
+  independent pre-code review). SPEC 23.1.2 makes a declaration rejected because a part failed depend on that part;
+  it does not invent another independent failure. G52 needs the existing prerequisite storage and readers together
+  before correcting attribute-target causality. Move consultation recording, declaration-part dependencies,
+  derived-failure classification and cause-key publication unchanged to `Binding.Diagnostics.Prerequisites`.
+  Their fields and `DerivedIssues` move with them; `ResetPrerequisites` keeps the same clearing order.
+  This separates dependency lifetime and traversal from diagnostic facts/rendering in the oversized entry file.
+  It is one Binding responsibility, not a line-count split or a new component, state, table or vocabulary.
+  Rejected: growing the mixed file, an argument-only wrapper or a merged prerequisite representation before its need
+  is established. Attribute legality and the behavior change remain with their existing owners in the next unit.
+
 ## R5 and R6 (adopted 2026-10-18)
 
 The owner's answers to the plan's questions OQ1–OQ17, given on 2026-10-18 and relayed by the R4 planning session. "Plan"
