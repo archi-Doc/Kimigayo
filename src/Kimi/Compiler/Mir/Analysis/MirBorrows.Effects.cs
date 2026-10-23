@@ -7,7 +7,7 @@ namespace Kimi.Compiler.Mir;
 
 // A5's effect rule (SPEC 15.6.4, 15.6.7, 16.3.3, 16.4 with 16.3.1, 22.4.3; DECISIONS R4-M92): a Call's or a Drop's effects on static
 // storage, by A4's key row and classes (MirEffects.Keys), against the live Loans on the view's mutable static roots.
-// Input: the location's one gather, its effect access listed by MirBorrows.Locations (a Call's set the last operand's, every operand's
+// Input: the location's one gather, its effect access listed by MirBorrows.Accesses (a Call's set the last operand's, every operand's
 // value with no holder left out; a Drop's its value's), the reservations the location activates, the view's effect roots and A4's Field
 // numbers (MirBorrows.Loans), and A4's summaries of the static initializers (MirEffects.Summary).
 // Output, per view of the run (each record with the views whose keys give it, R4-M11), through MirBorrows.Reports:

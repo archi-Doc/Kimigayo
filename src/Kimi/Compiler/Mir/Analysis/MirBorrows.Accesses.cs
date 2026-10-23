@@ -1,0 +1,156 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+namespace Kimi.Compiler.Mir;
+
+// A5's accesses at a location (A3 5's access, E13 (1)): the accesses of borrowed roots that the location's uses make, each classified by
+// what it does (MirBorrows.Checks' AccessKind) and with the check set it takes, and a Call's or Drop's effect access after them
+// (MirBorrows.Effects); every write also goes to R26-access before the borrowed-root filter (MirBorrows.Defaults). Its classifiers Dropping
+// and Destruction are also read by MirBorrows.Liveness and MirBorrows.Activations.
+// Must not compare an access with a Loan (MirBorrows.Checks) or record a problem (MirBorrows.Reports).
+internal sealed partial class MirBorrows
+{
+    private Access[] accesses = [];
+    private int accessCount;
+
+    // How a Drop under the view destroys its Place (A3 5's access, R4-M6): observing what it holds where its case Type observes and A2 keeps
+    // some of it (no group: only the checks reach it), else shallowly.
+    private AccessKind Dropping(int block, MirPlace place)
+    {
+        var group = this.program.Drops.Group(this.body.Ordinal, block, this.view);
+        if (group >= 0 && this.program.Drops.RowsOf(this.body.Ordinal)[group].Verdict == MirDropVerdict.Elide)
+        {
+            return AccessKind.Destroy;
+        }
+
+        return this.Destruction(cases.Type(this.body.TypeOf(place)!));
+    }
+
+    // How destroying a value of a case Type accesses it (MirTypes.Observes): observing, unclassified past the walk's bound, or shallowly.
+    private AccessKind Destruction(BoundType type)
+    {
+        if (!MirTypes.Observes(type, types, this.body.Key.Decl, this.seen, out var deep))
+        {
+            return AccessKind.Destroy;
+        }
+
+        return deep ? AccessKind.Unclassified : AccessKind.Observe;
+    }
+
+    // A Ref's access: a unique one borrows exclusively, the destroying reservation reads its target (A3 4's destroying(site)), another
+    // borrows shared.
+    private AccessKind Borrowing(MirLocation at, MirRefKind kind)
+    {
+        if (kind == MirRefKind.Uniq)
+        {
+            return AccessKind.UniqueBorrow;
+        }
+
+        var loan = this.loanAt[this.Location(at.Block, at.Index)];
+        return loan >= 0 && this.loans[loan].Destroying ? AccessKind.Read : AccessKind.SharedBorrow;
+    }
+
+    // A location's effect access, listed after its own accesses so that the one gather takes its values (MirBorrows.Effects checks it): at a
+    // Call or a Drop of a view with an effect root, or at a Drop of a mutable static (R3), a Call's set its last operand's (TakesStores
+    // without one: its result carries no Loan of its own), a Drop's its value's (TakesValue). It is listed as the widest row; the rule
+    // gives each root its own.
+    private void Effecting(int block, int index)
+    {
+        ref readonly var data = ref this.body.Blocks[block];
+        var terminator = data.Terminator;
+        if (index < data.Count || terminator.Kind is not (MirTerminatorKind.Call or MirTerminatorKind.Drop) ||
+            (this.effectRoots.Count == 0 && this.DroppedStatic(terminator) < 0))
+        {
+            return;
+        }
+
+        var taking = TakesValue;
+        if (terminator.Kind == MirTerminatorKind.Call)
+        {
+            var operands = terminator.Count + (terminator.Callee.Kind == MirCalleeKind.Value ? 1 : 0);
+            taking = operands > 0 ? operands - 1 : TakesStores;
+        }
+
+        MirDataflow.Grow(ref this.accesses, this.accessCount + 1);
+        this.accesses[this.accessCount++] = new(terminator.Place, AccessKind.EffectWrite, false, taking);
+    }
+
+    private void Accessed(in Access access)
+    {
+        if (this.borrowed[this.Key(access.Place.Root)])
+        {
+            MirDataflow.Grow(ref this.accesses, this.accessCount + 1);
+            this.accesses[this.accessCount++] = access;
+        }
+    }
+
+    /// <summary>An access of a borrowed root: its Place, a Reborrow's of its Place's referent, its kind and its check set (A3 E13 (1)):
+    /// its operand's index from 0, TakesParents for a borrow, TakesValue for an observing destruction, else TakesStores.</summary>
+    private readonly record struct Access(MirPlace Place, AccessKind Kind, bool Reborrow, int Taking);
+
+    // The accesses of one location (A3 5's access, E13 (1)): Copy, FakeRead, Discriminant, Len and an index read; Move; a Ref borrows
+    // (Borrowing), a Reborrowing PairAcquire too, as its Use's marker says (reborrow; TwoPhaseUniq reserves, a shared access); a
+    // destination is written, every write also R26-access's, whether its root is borrowed or not (MirBorrows.Defaults); StorageDead
+    // destroys, and a Drop as Dropping says. Each operand's accesses, its index locals' and its own, take its operand's check set. An Opaque
+    // site's roots are its problems' (derived, R4-M10).
+    private struct Accessing(MirBorrows owner, MirLocation at, MirStatementKind statement, MirRefKind reborrow) : IMirUses
+    {
+        private MirOperand operand;
+        private int operands; // The operands reported: the current one's index plus 1.
+        private bool inOperand; // Whether the Places reported are the current operand's.
+
+        public void Operand(in MirOperand operand)
+            => (this.operand, this.operands, this.inOperand) = (operand, this.operands + 1, operand.Kind != MirOperandKind.Const);
+
+        public readonly void Effect(MirEffect effects, int site)
+        {
+        }
+
+        public void Place(MirPlace place, MirAccess access, MirRefKind kind)
+        {
+            var (taking, reborrows) = (this.inOperand ? this.operands - 1 : TakesStores, this.inOperand && this.operand.Kind == MirOperandKind.PairAcquire &&
+                reborrow != MirRefKind.Raw && this.operand.Place == place);
+            this.inOperand &= this.operand.Place != place; // An operand's index locals precede its Place.
+            var opaque = (access & (MirAccess.Reads | MirAccess.Writes)) == (MirAccess.Reads | MirAccess.Writes);
+            if (!opaque && this.Kind(place, access, reborrows ? reborrow : kind, reborrows) is { } known)
+            {
+                if (known == AccessKind.Write)
+                {
+                    owner.DefaultWrite(place, at);
+                }
+
+                taking = known == AccessKind.Observe ? TakesValue : reborrows || (access & MirAccess.Borrows) != 0 ? TakesParents : taking;
+                owner.Accessed(new(place, known, reborrows, taking));
+            }
+        }
+
+        private readonly AccessKind? Kind(MirPlace place, MirAccess access, MirRefKind kind, bool reborrows)
+        {
+            if ((access & MirAccess.Kills) != 0)
+            {
+                return statement == MirStatementKind.StorageDead ? AccessKind.Destroy : null;
+            }
+
+            if ((access & MirAccess.DropUse) != 0)
+            {
+                return owner.Dropping(at.Block, place);
+            }
+
+            if ((access & MirAccess.Writes) != 0)
+            {
+                return AccessKind.Write;
+            }
+
+            if (reborrows || (access & MirAccess.Borrows) != 0)
+            {
+                return owner.Borrowing(at, kind);
+            }
+
+            if ((access & MirAccess.Moves) != 0)
+            {
+                return AccessKind.Move;
+            }
+
+            return (access & MirAccess.Reads) != 0 ? AccessKind.Read : null;
+        }
+    }
+}

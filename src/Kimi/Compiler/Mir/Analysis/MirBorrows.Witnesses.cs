@@ -6,10 +6,13 @@ namespace Kimi.Compiler.Mir;
 
 // A5's problem codes and witness sites (A3 5's A6 table, 6.4): a conflict's code (a Loan found in its reservation holder is a reservation
 // conflict, else the check's), a location's subject and source (its statement's or terminator's), a Loan's anchor (its issuing location's
-// subject, D14) and a witness holder's next use in its chain, which MirBorrows.Reports records as a problem's subject and facts.
+// subject, D14), a witness holder's next use in its chain, and a Loan problem's subject and facts built from them (Facts), which
+// MirBorrows.Reports records.
 // Must not record a problem or decide which problem a conflict becomes (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
+    private readonly MirFact[] facts = new MirFact[5]; // The facts Facts builds for one problem.
+
     // A conflict's code (A3 5's A6 table, row 1 for every access): a Loan found in its reservation holder, as the access sees it (a call's
     // effect rows see a reservation it activates unique, W6, R4-M92), is a reservation conflict, else the check's code.
     private DiagnosticCode Code(in Candidate candidate, AccessKind kind, DiagnosticCode code)
@@ -59,5 +62,45 @@ internal sealed partial class MirBorrows
         }
 
         return null;
+    }
+
+    // A Loan problem's subject and facts at a location (A3 6.4): the anchor of the Loan, guard candidate or destruction; its witness, a
+    // holder's next use (none when that lies in a later chain), from the location itself for a reservation's check set, the location for a
+    // value it takes, a transit value's or E's store, or none (None: a destruction's own hold, which no value carries); the reservation's
+    // anchor; the static Field an effect met (R4-M92); and last, inside an inline default copy, the default's operation, at the omitting call
+    // (D13), which is then the subject.
+    private (SourceRef Subject, int Count) Facts(SourceRef anchor, int via, MirLocation at, int reservation, MirFact? effect)
+    {
+        var (operation, from) = (this.Subject(at), reservation >= 0 ? at : at with { Index = at.Index + 1 });
+        SourceRef? witness = via == None ? null : operation;
+        if (via > Escaped)
+        {
+            witness = this.NextUse(via, from);
+        }
+
+        var count = 0;
+        this.facts[count++] = new(MirFactKind.Anchor, anchor);
+        if (witness is { } site)
+        {
+            this.facts[count++] = new(via > Escaped || via == Taken ? MirFactKind.Use : MirFactKind.Store, site);
+        }
+
+        if (reservation >= 0)
+        {
+            this.facts[count++] = new(MirFactKind.Reservation, this.Site(reservation));
+        }
+
+        if (effect is { } met)
+        {
+            this.facts[count++] = met;
+        }
+
+        var call = this.body.OmittingCall(this.Source(at).Scope);
+        if (call is not null)
+        {
+            this.facts[count++] = new(MirFactKind.Evaluated, operation);
+        }
+
+        return (call ?? operation, count);
     }
 }
