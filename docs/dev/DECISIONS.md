@@ -3302,6 +3302,18 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (Copy, borrow or replace, as for Array) is what following the returned reference gives, and its §7 had already fixed
     the ABI to that of the reference result.
 
+## Diagnostic publication (2026-10-23)
+
+- **G89-1 Override and match facts** (planning session; the owner's G89 request, two independent designs and independent
+  design review). SPEC 6.4 and 14.8 keep their existing judgments; SPEC 23.1 and DIAGNOSTICS require retained facts and an
+  explanation owned by the diagnostic adapter. `Binding.Diagnostics.VirtualOverrides` and `Binding.Diagnostics.Match`
+  own their conversions; the semantic failure records never select wording or repeat a check during publication.
+  - First extract the conversions with every published fact, Note, Label and location unchanged. The existing string
+    override cause is removed by the following G89 behavior unit, which records cause, compared Types or names, the
+    violating parameter's declaration index, proof and locations. Match retains its existing reason and Case index.
+  - Rejected: leaving publication in semantic owners, or moving individual cause formatting into DiagnosticOwner.
+    The existing phase-specific adapters own these conversions; the common owner keeps schema and display limits.
+
 ## Binding units (2026-10-18)
 
 Units of the BU planning session (PLAN G129, G130 and the retention gap found by R4's E14 implementer), run in parallel with R4

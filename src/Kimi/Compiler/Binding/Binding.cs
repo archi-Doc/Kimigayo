@@ -627,9 +627,7 @@ public sealed partial class Binding
         }
         else if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd)
         {
-            // Only a match plan fails NonExhaustiveMatch, so its coverage is always known.
-            var coverage = this.matches[(MatchKoto)issue.Node].Coverage;
-            issue.Node.Report(requirement, issue.Code, note: coverage.Describe(), evidence: [coverage.Requirement]);
+            this.ReportMatchCoverage((MatchKoto)issue.Node, requirement);
         }
         else if (issue.Code == DiagnosticCode.InvalidNumericLiteral_Kd && LiteralConversionTarget(issue.Node) is { } literalTarget)
         {
