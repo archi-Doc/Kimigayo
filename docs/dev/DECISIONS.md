@@ -3069,24 +3069,6 @@ and migration obligations remain in force; no numeric cap changes are authorized
     一時的なその場の Unsupported_Kd を付けて今入れ、G225 を直す。h2 の記録された差は取り消す。並行して BU が Closure の環境の保持（環境の Origin
     を Closure 本体で固定）の誤ったコードの修正を始めてよい。それが入ったら一時的な U を外す。」 This withdraws the earlier decision that
     accepted h2 as a recorded difference until R6-check (「記録された差： R6-check まで受け入れます。」, the same day).
-  - The temporary guard (`[Transitional]`, removed when PLAN G227's Closure-environment fix lands; then v6a, h2 and their tests take the
-    fix's verdict): a `var` capture entry, by Move or by Copy, of a value whose Type names a region this unit made for a `let` local is a
-    located `Unsupported_Kd` at the entry, on both pipelines (`NamesLetRegion`, one predicate where the entry is bound, in
-    `Binding.Closures.cs`). The fact is the one the region slot carries: `LocalRegionSlot`'s form (an `Inference` atom with a negative slot)
-    whose binder is a `let`; a `var` local's own regions are not this unit's, so v6b keeps dev's acceptance (PLAN G227). A raw layer's
-    Origin is read only at the raw role's sites (BU-24), and SPEC 5.7 judges it by fits, so B3 has a raw form: `let q = arr[0]@follow@raw`
-    of a `let arr` whose element Origin is a region, assigned `y@follow@raw` of the Closure's own argument in `[var q@move]` (this unit
-    without the guard accepts it; dev gives the located limit at the store). A raw layer is guarded when it or its pointee names any local
-    region (`HasLocalRegion`, which reads the raw role at its own site). This over-guards a `var` capture of a value whose raw layer or
-    pointee names a `var` local's region (`let q = v@follow@raw` with `var v = a@ref`, which dev accepts), the conservative side of G227's
-    dev class (v6b is its `var` form), not a narrowing of a sound form (planning ruling (C), 2026-10-23; rejected: (A) a new raw-role site,
-    widening BU-24's closed family for a temporary guard; (B) the Origin role alone, which newly allows the raw form). It is the located
-    limit an unsupported captured Type is (`Capture`): one per Closure, at its first guarded entry, and the Closure's body is not bound.
-    One record per entry with the body bound would need a located span per entry (Binding keys them by node, and a capture entry is no
-    node), a new representation, so it is not done. Guarded now: h2, h2b, h1, v6a, v6c, c8a, c8b, y1, y8 and the capture forms c3–c6, c6b,
-    c9, u3 and k1 (their closure-body records, c4's `UnsatisfiedOriginRelation_Kd` and k1's three, go with the body). Not pinned: dev's v6b
-    and v6c acceptance (PLAN G227 holds it; BU's fix adds the regressions). B1's store-following stays tested through a `var` local that
-    takes the `let` value (`AStoreIntoARegionWithNoCandidateIsFollowed`).
   - The re-check's non-blocking items: N8, a cycle whose resolution is a meet of its own variables is not detected by R1's test (no
     instance found; y1–y4 and y7 are rejected on the read route); N9, R2's post-pass leaves a covariant dependent's meet on the replaced
     candidate (z1, rejected on dev and here, names `p ∧ a` where 15.3.6 reads `p` alone); N11, c8a, a Copy capture of h2's class, is in

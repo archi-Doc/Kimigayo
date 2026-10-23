@@ -21,61 +21,6 @@ public sealed partial class Binding
     // are kept apart from declared Origin contracts, which are completed before bodies bind; entries are reused across binds.
     private readonly Dictionary<Koto, OriginDeclaration> initializerOrigins = new(ReferenceEqualityComparer.Instance);
 
-    // SPEC 15.3.4, 15.6.5 (the owner, 2026-10-23, (d)+(a); DECISIONS R4-M112, PLAN G227): whether a Type names a region this unit made for a
-    // `let` local (R1-R3: a region slot of a `let`, the fact the slot's binder carries; a `var` local's own regions are not this unit's).
-    // A `var` capture entry of such a value is a located Unsupported_Kd (Binding.Closures.cs), since the Closure body does not fix its
-    // environment's Origins, so a store into the capture is not judged. A raw layer's Origin is read only at the raw role's sites
-    // (DECISIONS BU-24), so a raw layer is guarded when it or its pointee names any local region (HasLocalRegion), a `var`'s included.
-    [Transitional("G227", Reason = "BU's Closure-environment fix fixes the environment's Origins in the Closure body; then the guard goes.")]
-    private static bool NamesLetRegion(BoundType type)
-    {
-        if (type.Semantics == SemanticsKind.Raw)
-        {
-            return HasLocalRegion(type);
-        }
-
-        if (type.Origin is { } origin && NamesLetRegion(origin))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (NamesLetRegion(type.OriginArguments[i]))
-            {
-                return true;
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (NamesLetRegion(type.Components[i]))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool NamesLetRegion(BoundOrigin origin)
-    {
-        if (origin is { Kind: OriginKind.Inference, Binder: VariableKoto local, Slot: < 0 } && !IsMutableDeclaration(local))
-        {
-            return true; // LocalRegionSlot's form, of a `let`.
-        }
-
-        for (var i = 0; i < origin.Operands.Count; i++)
-        {
-            if (NamesLetRegion(origin.Operands[i]))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     // SPEC 15.4.4, 15.3.6: `local`'s initializer has acquired every bound. An Origin its initializer omits whose bounds reach no Origin
     // but its own variables (none, or a cycle among them) has no candidate and is a local region of `local` (DECISIONS R4-M112); each
     // resolved Origin's inference obligation is discharged, and the resolutions are published as region bounds. `slot` is the local's
