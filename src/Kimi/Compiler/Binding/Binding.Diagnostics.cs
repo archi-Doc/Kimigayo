@@ -13,9 +13,6 @@ public sealed partial class Binding
 
     private const string SharedObjectAuthorityNote = "rc and arc provide shared payload access only; even a strong count of one does not grant objuniq or uniq/Self authority";
 
-    // SPEC 12.4.2, 13.3.1: string has no arithmetic; an interpolated literal is the one way to join strings, and a buffer builds text.
-    private const string StringOperatorNote = "string has no arithmetic operators; an interpolated literal creates an owning string and borrows the values it embeds (SPEC 12.4.2, 13.3.1)";
-
     // SPEC 23.1.2: the operands a node consulted that did not resolve are its explicit prerequisites. They are recorded
     // when consulted (BindNode, failures of other nodes, symbol uses), never searched in the tree afterwards. The storage is
     // reused across passes, so neither resolving nodes nor a warm rebind of invalid code allocates.
@@ -57,9 +54,6 @@ public sealed partial class Binding
 
     // SPEC 10.5: why a single generic reference's slots did not bind from its fixed expected call signature, for its Type-mismatch Note.
     private Dictionary<Koto, ReferenceSlotFact>? referenceSlotFacts;
-
-    // SPEC 13.2, 13.3.1: the operand Type an operator rejected, or the count Type a shift rejected, recorded only when the check fails.
-    private Dictionary<Koto, BoundType>? operatorOperands;
 
     // The selected iteration entry and the range whose boundary Types cannot supply it.
     private Dictionary<Koto, (BoundType Subject, BindingSymbol Entry)>? rangeIterationFailures;
@@ -832,44 +826,6 @@ public sealed partial class Binding
         }
 
         return this.Fail(node, failure, unresolved);
-    }
-
-    /// <summary>Fails an operation whose operand Type has no such operator, or a shift whose count is not an integer Type
-    /// (SPEC 13.2, 13.3.1), recording that Type.</summary>
-    /// <param name="node">The operation.</param>
-    /// <param name="operand">The operand Type as compared, or the count Type.</param>
-    /// <param name="failure"><see cref="BindingFailure.NonNumericOperand"/>, <see cref="BindingFailure.NonIntegerOperand"/> or
-    /// <see cref="BindingFailure.InvalidShiftCount"/>.</param>
-    /// <returns><see langword="null"/>.</returns>
-    private BoundType? FailOperand(Koto node, BoundType operand, BindingFailure failure)
-        => this.FailExplained(ref this.operatorOperands, node, failure, operand);
-
-    // SPEC 13.2, 13.3.1: the operand Type and the operator are the facts. A string operand is told that interpolation joins strings;
-    // a shift count is located at the count, and a wrapping count is told to leave Wrapping<U> through U.
-    private void ReportOperatorOperand(Koto operation, BoundType operand, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        var symbol = operation is BinaryKoto binary ? binary.InfixText.Trim() : ((UnaryKoto)operation).OperatorText;
-        if (code == DiagnosticCode.NonNumericOperand_Kd)
-        {
-            var text = ReferenceTypes.EndsInString(operand);
-            operation.Report(requirement, code, DiagnosticTypeName(operand), symbol, note: text ? StringOperatorNote : null);
-        }
-        else if (code == DiagnosticCode.NonIntegerOperand_Kd)
-        {
-            operation.Report(requirement, code, DiagnosticTypeName(operand), symbol);
-        }
-        else
-        {
-            // SPEC 13.5.4: a numeric conversion leaves Wrapping<U> to U itself, which is always exact.
-            var integer = operand.IsWrappingInteger ? DiagnosticTypeName(operand.Underlying) : null;
-            operation.Report(
-                requirement,
-                code,
-                DiagnosticTypeName(operand),
-                symbol,
-                note: integer is not null ? "A wrapping integer Type is never a shift count (SPEC 13.3.1)" : null,
-                at: ((BinaryKoto)operation).Right);
-        }
     }
 
     /// <summary>Fails a write whose target's path denies it (SPEC 3.4, 15.1.5), recording the target.</summary>

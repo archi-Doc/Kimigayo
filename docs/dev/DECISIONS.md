@@ -4775,6 +4775,18 @@ resumed by R4-M86 (2026-10-20).
   Rejected: normalized-Type provenance or recursive `BoundType.Origin` rejection, direct-syntax-only checking, a new side table,
   rescanning all aliases, or an alias graph (SPEC 18.2 forbids alias chains). Syntax forms `OriginClause` and `AdaptationOrigin` have
   different contracts; the approved new form is one row under the existing syntax diagnostic catalog. No new Binding/IR vocabulary.
+- **G51-1 Operator binding and diagnostic ownership** (2026-10-24; planning session, independent designs A/B and
+  independent pre-code review). SPEC 13.2–13.4 and 5.3 put operation legality before the expectation it gives an operand.
+  G51 needs that decision and its failed facts at the Binding owner; the oversized expression and diagnostic files
+  cannot coherently grow around the present late guards. First move operator binding and its existing integer
+  predicates to `Binding.Operators`, and operand-failure storage/publication to `Binding.Diagnostics.Operators`.
+  Every moved member retains its name, parameters and body. `BindBinary` keeps its existing 106 statements under the
+  architecture's no-growth rule; the behavior unit must split it by responsibility to at most 60 before it grows.
+  No new state, table or vocabulary is introduced. Arithmetic selection and comparison composition keep their owners.
+  Rejected: a preliminary stage split that copied syntax classifications; per-form guards in the old members;
+  an IR/operator framework without a new consumer fact; argument-only bags or mode parameters. The behavior unit
+  replaces the late applicability checks and inadequate operand facts; G51 remains open until it is verified.
+
 ## R5 and R6 (adopted 2026-10-18)
 
 The owner's answers to the plan's questions OQ1–OQ17, given on 2026-10-18 and relayed by the R4 planning session. "Plan"
