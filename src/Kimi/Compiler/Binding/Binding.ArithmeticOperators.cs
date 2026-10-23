@@ -195,19 +195,11 @@ public sealed partial class Binding
     {
         plan.Candidates.Clear();
         plan.Sources.Clear();
-        for (var current = scope; current is not null; current = current.Parent)
+        foreach (var row in this.Enumerate(self, this.ViewOf(scope)))
         {
-            if (current.Constraints is not { Invalid: false } environment)
+            if (row.Fact is { Kind: ConstraintKind.Contract, Contract: not null } && this.Available(row))
             {
-                continue;
-            }
-
-            foreach (var fact in environment.Facts)
-            {
-                if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, self) && fact.Contract is { } contract && this.AvailableConstraintFact(environment, fact))
-                {
-                    Add(this.AppliedAssociatedContract(fact, self), ArithmeticFactUse(fact, current));
-                }
+                Add(this.AppliedAssociatedContract(row.Fact, self), ArithmeticFactUse(row.Fact, row.Scope));
             }
         }
 

@@ -1,12 +1,14 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // ContractSolver (PlanB §4.1; DECISIONS BU-29): premise derivation and evidence availability (SPEC 8.3): what the premises supply for a
-// proposition and its negation (Supply) under the request's view (ViewOf, the one derivation point); until C3 the eager derivation too
-// (ExpandContractPremises, ExpandScopeContractPremises, AddContractPremises) and the availability of a fact (AvailableConstraintFact).
+// proposition and its negation (Supply) and which facts they state on a subject (Enumerate), under the request's view (ViewOf, the one
+// derivation point); until C3 the eager derivation too (ExpandContractPremises, ExpandScopeContractPremises, AddContractPremises) and
+// the availability of a fact (AvailableConstraintFact, which Available asks for a row).
 // - Inputs: the view's scope chain (ConstraintEnvironments), derived facts' source Contracts.
-// - Outputs: Evidence (Positive, Negative; Invalid, temporary until C3: the chain holds an Invalid environment).
-// - Invariants: innermost scope first, each environment in its order; an Invalid environment answers Invalid to Supply; availability
-//   is asked per fact, lazily, in the caller's order.
+// - Outputs: Evidence (Positive, Negative; Invalid, temporary until C3: the chain holds an Invalid environment); SubjectEvidence rows
+//   (a fact whose clause subject states the subject, SPEC 8.5's universal family patterns included, and its scope).
+// - Invariants: innermost scope first, each environment in its order; an Invalid environment answers Invalid to Supply and no row to
+//   Enumerate; availability is asked per fact or row, lazily, in the caller's order.
 // - Prohibitions: no judgment, lookup, normalization or inference rule here; no mode or bool parameter; no answer kept across
 //   requests; no new syntax-triggered supply; no read sets.
 
@@ -33,6 +35,48 @@ public sealed partial class Binding
         internal bool Negative { get; init; }
 
         internal bool Invalid { get; init; }
+    }
+
+    // A fact Enumerate yields and the scope whose environment states it.
+    private readonly record struct SubjectFact(BoundConstraint Fact, BindingScope Scope);
+
+    // Enumerate's rows. Each scope's environment is read when the walk reaches it, and its Parent after its facts, as the loops this
+    // replaces read them.
+    private ref struct SubjectEvidence(BoundType subject, BindingScope premises)
+    {
+        private BindingScope? scope = premises;
+        private HashSet<BoundConstraint>.Enumerator facts;
+        private bool reading;
+
+        public SubjectFact Current { get; private set; }
+
+        public readonly SubjectEvidence GetEnumerator() => this;
+
+        public bool MoveNext()
+        {
+            while (this.scope is { } current)
+            {
+                if (!this.reading && current.Constraints is { Invalid: false } environment)
+                {
+                    this.facts = environment.Facts.GetEnumerator();
+                    this.reading = true;
+                }
+
+                while (this.reading && this.facts.MoveNext())
+                {
+                    if (AssociatedIdentityMatches(ClauseSubject(this.facts.Current), subject))
+                    {
+                        this.Current = new(this.facts.Current, current);
+                        return true;
+                    }
+                }
+
+                this.reading = false;
+                this.scope = current.Parent;
+            }
+
+            return false;
+        }
     }
 
     private EvidenceView ViewOf(BindingScope scope) => new(scope);
@@ -76,6 +120,11 @@ public sealed partial class Binding
 
         return new() { Positive = positive, Negative = negative };
     }
+
+    // Discovery reads a row without asking Available, so a pending candidate stays visible.
+    private SubjectEvidence Enumerate(BoundType subject, EvidenceView view) => new(subject, view.Premises);
+
+    private bool Available(in SubjectFact row) => this.AvailableConstraintFact(row.Scope.Constraints!, row.Fact);
 
     private bool AvailableContractPremise(BindingSymbol contract)
     {

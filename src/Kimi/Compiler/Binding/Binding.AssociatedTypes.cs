@@ -104,19 +104,11 @@ public sealed partial class Binding
                 SearchAvailable(own);
             }
 
-            for (var current = scope; current is not null; current = current.Parent)
+            foreach (var row in this.Enumerate(type, this.ViewOf(scope)))
             {
-                if (current.Constraints is not { Invalid: false } environment)
+                if (row.Fact is { Kind: ConstraintKind.Contract, Contract.Contract: not null })
                 {
-                    continue;
-                }
-
-                foreach (var fact in environment.Facts)
-                {
-                    if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, type) && fact.Contract?.Contract is not null)
-                    {
-                        SearchAvailable(this.AppliedAssociatedContract(fact, type).Contract!);
-                    }
+                    SearchAvailable(this.AppliedAssociatedContract(row.Fact, type).Contract!);
                 }
             }
 

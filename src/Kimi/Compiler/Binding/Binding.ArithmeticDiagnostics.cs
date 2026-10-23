@@ -58,23 +58,15 @@ public sealed partial class Binding
 
             var reversed = ArithmeticContracts.IsLeft(id);
             var oppositeId = reversed ? id - (KimiDeclarationId.LeftAddable - KimiDeclarationId.Addable) : id + (KimiDeclarationId.LeftAddable - KimiDeclarationId.Addable);
-            for (var current = scope; current is not null; current = current.Parent)
+            foreach (var row in this.Enumerate(counterpart, this.ViewOf(scope)))
             {
-                if (current.Constraints is not { Invalid: false } other)
+                if (row.Fact is { Kind: ConstraintKind.Contract, Contract: { Type.Components: [var oppositeCounterpart] } opposite } &&
+                    ArithmeticContracts.Identity(opposite) == oppositeId && AssociatedIdentityMatches(oppositeCounterpart, subject) && this.Available(row))
                 {
-                    continue;
-                }
-
-                foreach (var oppositeFact in other.Facts)
-                {
-                    if (oppositeFact.Kind == ConstraintKind.Contract && oppositeFact.Contract is { Type.Components: [var oppositeCounterpart] } opposite &&
-                        ArithmeticContracts.Identity(opposite) == oppositeId && AssociatedIdentityMatches(oppositeFact.Subject, counterpart) && AssociatedIdentityMatches(oppositeCounterpart, subject) && this.AvailableConstraintFact(other, oppositeFact))
-                    {
-                        var here = ArithmeticFactUse(fact, scope);
-                        var there = ArithmeticFactUse(oppositeFact, current);
-                        this.FailExplained(ref this.arithmeticDirectionFailures, scope.Owner, BindingFailure.ArithmeticDirection, reversed ? new(counterpart, subject, oppositeId, opposite, contract, there, here) : new(subject, counterpart, id, contract, opposite, here, there));
-                        return false;
-                    }
+                    var here = ArithmeticFactUse(fact, scope);
+                    var there = ArithmeticFactUse(row.Fact, row.Scope);
+                    this.FailExplained(ref this.arithmeticDirectionFailures, scope.Owner, BindingFailure.ArithmeticDirection, reversed ? new(counterpart, subject, oppositeId, opposite, contract, there, here) : new(subject, counterpart, id, contract, opposite, here, there));
+                    return false;
                 }
             }
         }

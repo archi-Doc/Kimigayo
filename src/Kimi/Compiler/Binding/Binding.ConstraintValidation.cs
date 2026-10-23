@@ -56,19 +56,11 @@ public sealed partial class Binding
     internal SemanticsMask AdmittedSemantics(BoundType whole, BindingScope scope)
     {
         var admitted = SemanticsMask.All;
-        for (var current = scope; current is not null; current = current.Parent)
+        foreach (var row in this.Enumerate(whole, this.ViewOf(scope)))
         {
-            if (current.Constraints is not { Invalid: false } environment)
+            if (SemanticsPremise(row.Fact, whole) && this.Available(row))
             {
-                continue;
-            }
-
-            foreach (var fact in environment.Facts)
-            {
-                if (SemanticsPremise(fact, whole) && this.AvailableConstraintFact(environment, fact))
-                {
-                    admitted &= SemanticsSet(fact);
-                }
+                admitted &= SemanticsSet(row.Fact);
             }
         }
 
@@ -744,19 +736,11 @@ public sealed partial class Binding
             return true;
         }
 
-        for (var current = scope; current is not null; current = current.Parent)
+        foreach (var row in this.Enumerate(type, this.ViewOf(scope)))
         {
-            if (current.Constraints is not { Invalid: false } environment)
+            if (row.Fact.Kind == ConstraintKind.TypeIdentity && this.FactStates(row.Fact, type, out var stated) && stated is { } required && required.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection or BoundTypeKind.SemanticsApplication) && (!objectTarget || (required.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed && required.Symbol?.Declaration is StructKoto or EnumKoto && required.Symbol.ObjectPayloadOptOut is null)) && this.ProveConstraint(row.Fact, scope) == ConstraintProof.Proven)
             {
-                continue;
-            }
-
-            foreach (var fact in environment.Facts)
-            {
-                if (fact.Kind == ConstraintKind.TypeIdentity && this.FactStates(fact, type, out var stated) && stated is { } required && required.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection or BoundTypeKind.SemanticsApplication) && (!objectTarget || (required.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed && required.Symbol?.Declaration is StructKoto or EnumKoto && required.Symbol.ObjectPayloadOptOut is null)) && this.ProveConstraint(fact, scope) == ConstraintProof.Proven)
-                {
-                    return true;
-                }
+                return true;
             }
         }
 

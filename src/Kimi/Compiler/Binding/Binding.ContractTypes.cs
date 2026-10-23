@@ -91,19 +91,11 @@ public sealed partial class Binding
                         ? this.ContractType(stored, scope, self) : result;
                 }
 
-                for (var current = scope; current is not null; current = current.Parent)
+                foreach (var row in this.Enumerate(result, this.ViewOf(scope)))
                 {
-                    if (current.Constraints is not { Invalid: false } environment)
+                    if (row.Fact.Kind == ConstraintKind.TypeIdentity && this.FactStates(row.Fact, result, out var required) && this.Available(row) && required is not null)
                     {
-                        continue;
-                    }
-
-                    foreach (var fact in environment.Facts)
-                    {
-                        if (fact.Kind == ConstraintKind.TypeIdentity && this.FactStates(fact, result, out var required) && this.AvailableConstraintFact(environment, fact) && required is not null)
-                        {
-                            return this.ContractType(required, scope, self);
-                        }
+                        return this.ContractType(required, scope, self);
                     }
                 }
 

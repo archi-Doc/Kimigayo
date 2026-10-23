@@ -4516,12 +4516,27 @@ resumed by R4-M86 (2026-10-20).
     session's (C1 N10): `ConstraintProof.Resource` (Q2); TypeIdentity's classes in a separate unit (Q4, OQ5).
   - PD21 (ruling 3): neither Binding.Constraints.cs nor Binding.ConstraintValidation.cs is due; the move restructures
     Binding.Constraints.cs below the token limit, and Binding.Contracts.cs shrinks (still over, no growth).
+  - C2b: `Enumerate(subject, view)` yields `SubjectEvidence` rows `SubjectFact(Fact, Scope)`: each fact of every non-Invalid
+    environment of the chain, innermost first and in each environment's order, whose clause subject (`ClauseSubject`) states the
+    subject by `AssociatedIdentityMatches`, the relation FactStates and AppliedAssociatedContract use (SPEC 8.5's universal family
+    patterns included); a scope's environment is read when the walk reaches it and its Parent after its facts, as the loops did, and
+    it allocates nothing. `Available(row)` asks `AvailableConstraintFact`; discovery does not ask it, so pending candidates stay
+    visible. Routed, each its chain walk moved as is: FindAssociated, RequirementMember's scan, HasContractFact, SelectArithmetic
+    (`row.Scope` locates the clause), ValidateArithmeticDirections' inner loop (on the counterpart), ContractTypeCore, HasValueRole and
+    AdmittedSemantics, which corrects C1 §8 ("none: inputs"): it reads derived facts today (AddArithmeticPremises' Owner premise), so
+    its C3 operation is Enumerate's compound rows. The 22 reads left for C3 are not pure moves (another subject relation, not one
+    subject, another environment treatment, a C3 operation answering more, source states, a scope's own facts, flags and
+    normalization); they, the writers, composers and presence flags, and the change each needs at C3 are the census
+    `draft/Sketches/G170/C2/census-c2.tsv` (56 rows). Ruling 4: AvailableEffectBounds' `ReferenceEquals` match misses a universal
+    family pattern's bounds, reproduced on the default pipeline (the census row); reported for a PLAN issue, not changed here.
   - Rejected: routing every read now (22 reads differ in subject relation, Invalid treatment, availability order or C3 operation, so
     routing them is C3's behavior change or a consumer filter imitating the old narrowing, a second copy of a rule); Supply only (C3
     would introduce Enumerate and rewrite every lookup reader with the evaluator); environments publishing facts by clause subject (a
     representation C3 deletes with `DerivedFacts`, whose order needs a sequence number to stay pure, with no measured need); a move
     only (PlanB's C2 routing condition unmet); Invalid as both polarities (ProveProposition would skip its structural judgment where
-    facts alone give both, changing EndProof's cause); the raw proposition at C2 (two normalizations per proof).
+    facts alone give both, changing EndProof's cause); the raw proposition at C2 (two normalizations per proof); ProveConformance's
+    premise loop through Enumerate (pure, but C3 routes it to Supply); C1's prototype `discovery` bool on Enumerate (rows carry
+    availability).
 
 ## R5 and R6 (adopted 2026-10-18)
 

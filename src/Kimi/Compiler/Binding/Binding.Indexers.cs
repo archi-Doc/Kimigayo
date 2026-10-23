@@ -199,20 +199,11 @@ public sealed partial class Binding
     // SPEC 8.4.3, 8.3: whether an available Constraint fact makes the subject conform to the Contract declaration or a refinement.
     private bool HasContractFact(BoundType subject, BindingSymbol contract, BindingScope scope)
     {
-        for (var current = scope; current is not null; current = current.Parent)
+        foreach (var row in this.Enumerate(subject, this.ViewOf(scope)))
         {
-            if (current.Constraints is not { Invalid: false } environment)
+            if (row.Fact is { Kind: ConstraintKind.Contract, Contract: { } bound } && this.Available(row) && RefinesDeclaration(bound, contract.Declaration))
             {
-                continue;
-            }
-
-            foreach (var fact in environment.Facts)
-            {
-                if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, subject) && fact.Contract is { } bound &&
-                    this.AvailableConstraintFact(environment, fact) && RefinesDeclaration(bound, contract.Declaration))
-                {
-                    return true;
-                }
+                return true;
             }
         }
 
