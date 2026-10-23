@@ -15,7 +15,7 @@ internal sealed partial class InstanceCollector
     // (MirTypes.MayNeedDrop); A2's verdicts do not narrow the checked set (codegen reads them). -1 for a Type with nothing to destroy or a
     // refused edge.
     private int GlueOf(int item, SourceRef subject, BoundType closed)
-        => MirTypes.MayNeedDrop(closed, this.seen) ? this.AdmitType(item, subject, new(MonoKind.DropGlue, default), closed) : -1;
+        => MirTypes.MayNeedDrop(closed, this.seen) ? this.AdmitType(item, subject, new(MonoKind.DropGlue, default, null, null, 0, null), closed) : -1;
 
     // K 4.5 row 7: the StaticInit body a staticEnsure names (MirProgram.StaticInit, F10); none is a broken contract, since the builder
     // ensures only the statics whose initializers it builds. A static of a generic container's group, whose storage the MIR keys by its

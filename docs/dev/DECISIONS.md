@@ -4169,6 +4169,24 @@ resumed by R4-M86 (2026-10-20).
   Dictionary layout and placement shape checks (`BodyLowering.DictionaryStorage`, `BodyLowering.Dictionaries`) accept a Dictionary
   pointee in place of `u8` until R6-gen; with R4's consent the MIR builder's literal handle temporary (`MirBuilder.Expansions`) is
   the Tuple of a pointer to the literal's Dictionary Type, stating no raw Origin, and `isize`, in place of the declared result Type.
+  G212 (unit bu26, 2026-10-23; R4-M110, the planning session's rulings on `g212/design.md`, one design and one review): a Tuple or
+  fixed-array Place enclosing a `during self` layer in the same holding value is written and borrowed as the layer's Place is. One
+  verdict table in `HolderWriteFailure` decides the allowlist's accesses (`PathOrigin` publishes the whitelisted Place forms: a
+  stored Field, then Tuple and fixed-array elements): a write putting `null` in every layer and a Move of the layer's Place
+  (`b.data@move`, `b.pair.0@move`, `b.arr[0]@move`, a read whose restoring write the allowlist admits only as `null`) pass; a Move
+  of an enclosing Place (`b.pair@move`) stays the located `Unsupported_Kd`, since SPEC does not say what it gives (PLAN G212); every
+  other write, an update and an exclusive borrow of the layer's or an enclosing Place are the Origin relation error (the enclosing
+  borrow was the located U). A site sharing the cause had no check: a call receiver, the one implicit exclusive lending of an owned
+  Place (SPEC 7.3), so `var s = b.arr.sliceUniq()` then `s[0] = fresh` was accepted; `JudgeCallFit` asks `HolderPlaceFailure` for
+  every input's exclusive `Borrow` beside `FailStaticBorrow`, records at the operand and judges that fit no further (an explicit
+  `x@uniq` argument's source is the conversion, a path root, so it records once). PD21 (ruling (b)): `Binding.CallRelations.cs`
+  (due: bu20, 2a0-2, bu22) was split first, its records beyond the first in `Binding.CallRelations.Records.cs`; RawOrigins.cs and
+  Retention.cs, unchanged here, stay due. Measured: a pinned interleaved Bind A/B against a352ae27b over Milestones 1, 20 and 33
+  gave warm minima within 0.3% and equal cold bytes. Rejected: a check in `AdaptInput` or `LendsPlace` (selection may discard the
+  candidate; authority, not Origins); Holder kept on the read Type so that invariance fails (Holder would leave stored shapes).
+  Open: neither published pipeline marks a Copy-typed part Moved (`t.0@move` then `t.0`), so a missing restore after `b.data@move`
+  goes unreported as for any Copy part (PLAN G228); whether a `during self` layer or such a Tuple is Copy and what reading an
+  enclosing Place gives (`let t = b.pair` binds as a Copy read of `(raw/u8, isize)`) stay PLAN G212's.
 - **BU-27** (2026-10-23; the BU planning session after the full process: designs A and B, the design review with R4's A5 part, the
   planning session's choice of B with A's `objuniq` Follow and A's residual issues; PLAN G226, G204, G192; unit bu27) A Borrow reached
   through safe borrow layers (`ref`, `uniq`, `objref`, `objuniq`, a pair layer by its admitted cases) is contained in each from its
@@ -5063,7 +5081,8 @@ structure is recorded here by the unit that first implements it.
   requirement call's until K6b (superseded by R5-M67, which moved it from K6). The collector's templates gain statement sites, in
   location order with the calls: an `Aggregate(Closure)`
   is the Closure's body (row 11), a `Use` of a `Const(FnItem)` (the builder's one form of that operand) the Item's (row 12), a
-  `Cast(Erasure)` a `ClosureErasure` or `ItemAdapter` item keyed by the erased Closure or Item Type (row 13); a Value callee's Closure or
+  `Cast(Erasure)` a `ClosureErasure` or `ItemAdapter` item keyed by the erased Closure or Item Type (row 13; superseded by R5-M108: also
+  by the erased target Function Type); a Value callee's Closure or
   Item in the item's instance (`Apply`) is its body (row 5). A Closure's body is keyed by its definition and the erased substitution of
   the instance that closed it (`SubstOfClosure`, exact since G142, R5-M36), an Item's by its function's implementation under the Item's
   substitution; the Item of a function whose calls dispatch (`TyCtxt.Dispatches`, new, over `CallPlan.KindOf`, the one rule that also
@@ -6458,7 +6477,8 @@ structure is recorded here by the unit that first implements it.
   - Value calls (`FunctionCodegen.Closures.cs`), by the callee value's Type below its reference layer, a closed vocabulary: a Closure's body
     by the collector's target, the environment a borrow's pointer or an owned operand's storage (a Move's Place; a Copy's copy slot, numbered
     after the body's operands by block, since a block's terminator is its one call); a function Item's body or a requirement Item's witness
-    directly; an Item without a body target the later unit's located `Unsupported_Kd` (a virtual slot's Item C6c, a compiler function's Item
+    directly (superseded by R5-M108: what an Item's call runs is decided by its function, a compiler function's by its direct call's row,
+    not by its target's kind); an Item without a body target the later unit's located `Unsupported_Kd` (a virtual slot's Item C6c, a compiler function's Item
     C5b, C6a or C8*, a Builtin shim C8f or C9b, a property witness C3c); a common Function value through its table `{entry, context, drop}`
     (offsets 0, 8, 16, the layout C5b's erasure writes) with its environment word, under `ModuleCodegen.Erased`, `Abi.Of(ErasedClosure |
     CallerLocation)` of the call's Callable signature (SPEC 22.5.1: the call's location), reused by `Abi.Matches`. The old generator writes
@@ -6561,6 +6581,8 @@ structure is recorded here by the unit that first implements it.
     environments whenever they need destruction (the old generator's; IMPL 21.1.3); an adapter per erasure site (the old generator's; one
     item per Type); value-based copies of the intrinsic writers for erased compiler Items (a second copy of each row); `MirBodyKind.Shim`
     bodies (PD3); a MIR box for large environments (held MIR; IMPL leaves layout to the backend); a `MonoKind` per runtime routine.
+  - Superseded by R5-M108 (C5c): the adapter entry under its source's own signature, ruling Q3's descriptor-arity test and the temporary
+    structure above (an adapter item is keyed also by its erased target Function Type and its entry defined under that Type's signature).
 - **R5-M105 The owner confirms C5b's departure** (owner, 2026-10-22, on the R5 planning session's explanation before C5b landed;
   verbatim 「C5b の逸脱（ErasedCalls の corpus O2 A/B を C8d と C9c の遅い方へ移し、C5b は固定配列版で参考測定する）を承認します。」;
   the consequences are the planning session's) The departure R5-M104 records is confirmed: plan row C5b's verification "the ErasedCalls
@@ -6642,3 +6664,57 @@ structure is recorded here by the unit that first implements it.
   (AGENTS: no speculative mechanism; no audit deviates in its output before then); and plan row C7's native run of `tests/mir/statics.kimi`
   is replaced by the `StaticRows` program and `StaticInitializationTest`'s fixtures, since that program declares `var` statics, which
   R5-M82's `StaticStorage` row rejects at check until P42. They leave the list.
+- **R5-M108 Adapter items keyed by the erased target Function Type (C5c)** (2026-10-23, C lane; R5-M104's removal condition, PLAN G157
+  (12) and (22); designs 1 and 2, one design review and the planning session's choice, `c5c-decision.md`, under the full process; SPEC
+  7.7.4, 10.7, 22.5.1, IMPL 21.1.3, 21.3.1)
+  - Key: SPEC 10.7 lets a source whose result is Never fit a Function Type of any result, and subtyping differs only in Origins (SPEC
+    3.8), so one source reaches Function Types of different erased signatures exactly then: a Never function Item into another result, a
+    requirement Item whose witness's result is Never at the requirement's own result, a Never Closure erased once stored. A ClosureErasure
+    or ItemAdapter item is keyed by the erased source Type and the erased target Function Type, the Cast's (`MonoKey.Function`, a
+    positional field; `MonoKey` has no default arguments). Raw count over the ledger's 300 classes under sel: 414 adapter items for 414
+    sources, so no source of the corpus has two.
+  - Layout (K 4.8): the target's inputs and result are by-value uses at the erasure, laid out by row 13's caller (`LaysOutSignature`);
+    one that does not lay out drops the edge with its record, so a body with an oversized result has `OversizedLayout_Kd` at its erasure
+    besides its own result local. An intrinsic row's `LaysOutType` also lays out its function Item's Type argument (`Bodyless`; G157 (12)).
+  - Entry: `ModuleCodegen.Adapter` is the erased signature of the item's target Function Type (`Erased`'s form, named by the item), the
+    one every erased call of that Type writes; Abi reads no Origin, so the erased Type serves.
+  - What a function Item's call runs (`FunctionCodegen.Runs`, for its Value call and its ItemAdapter's entry), decided by its function: a
+    compiler function's call is its direct call's row, whatever targets the row needs, written when it is one runtime routine (`Routine`
+    by disposition: an intrinsic's Routine, TryAllocate or Allocate row, the legacy writeLine row) with its slot-less values, else that
+    row's unit's located `Unsupported_Kd`; any other function's is its body target (its body, a requirement Item's witness). `Pass` and
+    `Forward` share `Given`. A Never callee leaves the entry's result slot unused and ends it `unreachable`.
+  - Defect fixed (sel, wrong code without a record): a Value call of `Text.toString<V>` with a user witness called the format witness, and
+    `Text.writer<Sink>`'s the reserve witness, with the function's own operands; both are C9a's located `Unsupported_Kd` now.
+  - Deleted: `ModuleCodegen.Fits`, `Adapter`'s body lookup, both temporary located `Unsupported_Kd` arms, the Value call's arity test (Fail
+    and Slice are no routine rows).
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M109): K package 4.3's `MonoKey` gains the erased target
+    Function Type, and its ClosureErasure and ItemAdapter rows are keyed by it beside the erased source Type.
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M109): R5-M43 row 13's "keyed by the erased Closure or Item
+    Type" reads "and the erased target Function Type".
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M109): K package 4.8's by-value list gains an adapter's target
+    inputs and result, laid out at the erasure.
+  - Supersedes R5-M104's entry rule ("under the erased signature of its source's own Callable signature"), its temporary structure and
+    ruling Q3's arity test, and R5-M102's reading of a function Item's Value call as its first target when that is a body.
+  - The old generator stays frozen (R5-M6): its adapter of a Never source is defined under the source's signature and called under the
+    target's, but natively at O0 and O2 it gives MIR code generation's outcome (a user function reads no received location or context); no
+    D5 exception, and G157 (22)'s old half closes.
+  - Restructured first, behavior unchanged: an item's targets in `InstanceCollector.Edges.cs`, `MonoKey` without default arguments,
+    ModuleCodegen's signatures split (`.Imports`, `.Erasures`), a routine row by one function.
+  - Verified: the sel ledger loses 12 rows (C-frame 10, call 2: Raw.allocate and Console.writeLine erased or as defaults), all this
+    unit's; their families `CompilerReference*` and `CompilerFunction*` and the new `ErasureTargets` run natively under sel at O0 and O2;
+    `InstanceCollectorTest` (the key's Function; a Never source's two items for three erasures; the oversized target, body result,
+    exchange and Raw.allocate erasures and Raw.allocate's Item call as located records, each failing before); `FunctionCodegenTest`
+    (entries per target signature for the three Never forms, the erased compiler Items' routines with the received location, the two
+    defects' regressions, M9's 0 B and I1 over the extended erasure source); `ErasureTargets` under both generators.
+  - Rejected: per-target entries inside code generation (functions no item names); a result-independent erased ABI (every erased call
+    changes, results through memory at O2); an adaptation in MIR (SPEC 10.7 inserts none; held MIR); re-keying only Never sources (a clause
+    for one form); keying by the physical signature (the collector keys by Types); one call writer with two input forms (a mode); row
+    writers over materialized inputs (no instruction writer is reachable from an Item: Raw.release, initialize, slice and transferBytes
+    are unsafe, never values; C8d keeps the adapters of instruction-shaped rows); a compiler-entry item per Item (one more item and call).
+- **R5-M109 The owner confirms C5c's departures** (owner, 2026-10-23, on the R5 planning session's explanation after C5c's design review
+  and before its behavior commit; verbatim 「C5c の逸脱 3 件（K package 4.3 の MonoKey に変換先の Function 型を加えること、R5-M43 の
+  13 行目のキーの書き方、K package 4.8 の by-value 一覧に adapter の変換先の入力と結果を加えること）を承認します。」; the consequences are
+  the planning session's) The three departures R5-M108 records are confirmed: the instance key `MonoKey` gains the erased target Function
+  Type, so ClosureErasure and ItemAdapter items are keyed by their erased source and target (against K package 4.3, R5-M18); R5-M43 row
+  13's "keyed by the erased Closure or Item Type" reads "and the erased target Function Type"; and K package 4.8's by-value list gains an
+  adapter's target inputs and result, laid out at the erasure. They leave the list.

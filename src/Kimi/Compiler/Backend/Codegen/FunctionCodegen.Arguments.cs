@@ -54,6 +54,11 @@ internal sealed partial class FunctionCodegen
         _ => MirCallee.Position(callee.Decl, slot),
     };
 
+    // Whether a parameter takes no operand but the next of the values its call writer is given (Pass, Forward): a runtime routine's
+    // slot-less value (a stride, a reason, a Value without a logical index), a Closure's environment or a context.
+    private static bool Given(in AbiParameter parameter)
+        => parameter is { Kind: AbiParameterKind.Value, LogicalIndex: < 0 } or { Kind: AbiParameterKind.Environment or AbiParameterKind.Context };
+
     // SPEC 3.5 with IMPL 21.3.1 (DECISIONS R5-M89): a Copy of a value in memory that a runtime-reached Call passes to a parameter by pointer,
     // which the callee owns from the call on, is copied into a copy slot of its own, so the callee never sees its source change; a string
     // constant so passed is written into one as its record. One pass over the reached Calls' operands numbers the slots before the prologue

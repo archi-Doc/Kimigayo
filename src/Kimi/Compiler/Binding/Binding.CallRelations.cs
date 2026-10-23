@@ -1,16 +1,15 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
-using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
+// Call relations (SPEC 15.6.1, 15.6.5, 10.1): the Origin relations of a selected call, judged after selection at their own sources
+// (the receiver's and each argument's fit to its completed parameter Type, then each substituted clause and a Within row), the bounds
+// its fits give omitted Origins (CollectFitBounds) and the input that fixed an equality. Files: this one; .Records.cs (the records of
+// a node beyond the first).
 public sealed partial class Binding
 {
-    // The records of a node beyond the first, published after it with their own conditions (SPEC 15.6.1: every failed chain).
-    private readonly List<(Koto Node, OriginRelationFact Fact)> callRelationScratch = new();
-    private Dictionary<Koto, List<OriginRelationFact>>? callRelations;
-
     private static bool MentionsOrigin(BoundType type, BoundOrigin origin)
     {
         if (!type.CarriesOrigin)
@@ -192,26 +191,16 @@ public sealed partial class Binding
         return this.SubstituteStoredOrigin(origin, binder, origins[..originCount], inputs[..Math.Min(inputs.Length, InputOriginCount(binder))]);
     }
 
-    // The records of one call node beyond the first, each with its own condition so that it stays an independent problem.
-    private void ReportMoreCallRelations(Koto node, DiagnosticRequirement requirement)
-    {
-        if (this.callRelations?.TryGetValue(node, out var more) != true)
-        {
-            return;
-        }
-
-        for (var i = 0; i < more!.Count; i++)
-        {
-            ReportOriginRelation(node, more[i], requirement, OriginRelationCode(more[i]), this.OmittedResultNote(node), (ushort)(i + 1));
-        }
-    }
-
     // The receiver (index == argumentCount) or argument whose adapted Type is fitted to its completed parameter Type; a selected input that
-    // borrows a static root is first the located limit (FailStaticBorrow), its relations (SPEC 11.8, a fit to static) waiting for P42.
+    // borrows a static root is first the located limit (FailStaticBorrow), its relations (SPEC 11.8, a fit to static) waiting for P42,
+    // and an implicit exclusive Borrow (a receiver's, SPEC 7.3) of a `during self` layer's Place or an enclosing one is first the
+    // allowlist's Origin relation failure (HolderPlaceFailure; SPEC 5.7, DECISIONS R4-M110), its fit then judged no further.
     private void JudgeCallFit(FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, int argumentCount, int index)
     {
         var operation = operations[index];
-        if (operation is { Source: { } source, ParameterType: { } mode } && this.FailStaticBorrow(source, operation.Kind, mode.Semantics))
+        if (operation is { Source: { } source, ParameterType: { } mode } && (this.FailStaticBorrow(source, operation.Kind, mode.Semantics) ||
+            (operation.Kind == ArgumentOperationKind.Borrow && IsExclusive(mode.Semantics) &&
+            this.HolderPlaceFailure(source, HolderAccess.ExclusiveBorrow, null, source))))
         {
             return;
         }
@@ -392,59 +381,6 @@ public sealed partial class Binding
         }
 
         return null;
-    }
-
-    private bool HasCallRelation(Koto node)
-    {
-        for (var i = 0; i < this.callRelationScratch.Count; i++)
-        {
-            if (ReferenceEquals(this.callRelationScratch[i].Node, node))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    // Fails each node with its first record and keeps the others for publication with it.
-    private void PublishCallRelations()
-    {
-        for (var i = 0; i < this.callRelationScratch.Count; i++)
-        {
-            var (node, fact) = this.callRelationScratch[i];
-            var first = true;
-            for (var j = 0; j < i; j++)
-            {
-                first &= !ReferenceEquals(this.callRelationScratch[j].Node, node);
-            }
-
-            if (first)
-            {
-                this.FailExplained(ref this.originRelations, node, BindingFailure.OriginRelation, fact);
-            }
-            else if (this.originRelations?.TryGetValue(node, out var primary) == true && !primary.Equals(fact))
-            {
-                this.RecordMoreRelation(node, fact);
-            }
-        }
-
-        this.callRelationScratch.Clear();
-    }
-
-    // A record of `node` after its first, published with it (ReportMoreCallRelations).
-    private void RecordMoreRelation(Koto node, OriginRelationFact fact)
-    {
-        var callRelations = this.callRelations ??= new(ReferenceEqualityComparer.Instance);
-        if (!callRelations.TryGetValue(node, out var more))
-        {
-            callRelations.Add(node, more = new());
-        }
-
-        if (!more.Contains(fact))
-        {
-            more.Add(fact);
-        }
     }
 
     // One fit of a selected call: the callee, its operations, the value and the completed parameter Type.
