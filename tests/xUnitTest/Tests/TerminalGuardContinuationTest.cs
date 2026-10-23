@@ -73,7 +73,7 @@ public class TerminalGuardContinuationTest
     public void DivergentGuardKeepsCleanupUnreachable()
     {
         const string Source = "match \"held\"\n    let text if (loop => ()) => Console.writeLine(\"selected\")\n    _ => Console.writeLine(\"fallback\")";
-        ScalarEmissionTest.EmitFixture("TerminalGuardWindowDivergence", Source, string.Empty, timeoutMilliseconds: 300);
+        ScalarEmissionTest.EmitFixture("TerminalGuardWindowDivergence", Source, string.Empty, observationMilliseconds: 300);
     }
 
     private static string Source(string declaration, string guard, string body, string tail, string subject = "c")

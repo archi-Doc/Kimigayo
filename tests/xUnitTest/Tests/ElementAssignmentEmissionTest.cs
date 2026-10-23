@@ -154,7 +154,7 @@ public class ElementAssignmentEmissionTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         Assert.DoesNotContain(module.GetFunction(0).Instructions, x => x.Opcode is EmissionOpcode.StoreElement or EmissionOpcode.ElementAddress or EmissionOpcode.DestroyAggregate);
-        ScalarEmissionTest.EmitFixture("ElementAssignmentDivergent", Source, string.Empty, timeoutMilliseconds: 300);
+        ScalarEmissionTest.EmitFixture("ElementAssignmentDivergent", Source, string.Empty, observationMilliseconds: 300);
     }
 
     [Fact]
@@ -164,7 +164,7 @@ public class ElementAssignmentEmissionTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         Assert.DoesNotContain(module.GetFunction(0).Instructions, x => x.Opcode is EmissionOpcode.StoreElement or EmissionOpcode.DestroyAggregate);
-        ScalarEmissionTest.EmitFixture("ElementAssignmentIndexDivergent", Source, string.Empty, timeoutMilliseconds: 300);
+        ScalarEmissionTest.EmitFixture("ElementAssignmentIndexDivergent", Source, string.Empty, observationMilliseconds: 300);
     }
 
     [Theory]

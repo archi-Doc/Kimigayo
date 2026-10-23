@@ -117,7 +117,7 @@ public class StringComparisonEmissionTest
     public void DivergentOperandKeepsTheProgramNonterminating()
     {
         const string Source = "func forever() -> string\n    loop => ()\nlet text = \"held\"\ntext == forever()";
-        var ir = ScalarEmissionTest.EmitFixture("StringComparisonDivergent", Source, string.Empty, timeoutMilliseconds: 300);
+        var ir = ScalarEmissionTest.EmitFixture("StringComparisonDivergent", Source, string.Empty, observationMilliseconds: 300);
         GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 

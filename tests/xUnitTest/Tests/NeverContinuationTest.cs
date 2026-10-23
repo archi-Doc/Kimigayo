@@ -41,7 +41,11 @@ public class NeverContinuationTest
     [InlineData("Nested", "var n: i32 = do => do => loop => continue\nConsole.writeLine(\"after\")")]
     [InlineData("Default", "func f(y: i32 = (do => loop => continue)) -> i32 => y\nvar n: i32 = f()\nConsole.writeLine(\"after\")")]
     public void TransparentDivergentScopesHaveNoRuntimeSuccessor(string name, string source)
-        => ScalarEmissionTest.EmitFixture("NeverWrapper" + Configuration + name, "Console.writeLine(\"begin\")\n" + source, "begin\n", timeoutMilliseconds: 200);
+        => ScalarEmissionTest.EmitFixture(
+            "NeverWrapper" + Configuration + name,
+            "Console.writeLine(\"begin\")\n" + source,
+            "begin\n",
+            observationMilliseconds: 200);
 
     [Theory]
     [InlineData("stop() + 1", "i32")]
@@ -261,7 +265,11 @@ public class NeverContinuationTest
 
     [Fact]
     public void DivergentOperatorSkipsCalleeAndLaterOutput()
-        => ScalarEmissionTest.EmitFixture("NeverOperand" + Configuration + "Divergence", "Console.writeLine(\"begin\")\nvar n: i32 = 1 << (loop => continue)\nConsole.writeLine(\"after\")", "begin\n", timeoutMilliseconds: 200);
+        => ScalarEmissionTest.EmitFixture(
+            "NeverOperand" + Configuration + "Divergence",
+            "Console.writeLine(\"begin\")\nvar n: i32 = 1 << (loop => continue)\nConsole.writeLine(\"after\")",
+            "begin\n",
+            observationMilliseconds: 200);
 
     [Fact]
     public void NoncompletingFirstArgumentSkipsLaterAcquisitionsAndCallee()
@@ -269,7 +277,7 @@ public class NeverContinuationTest
             "NeverContinuation" + Configuration + "FirstArgument",
             "func spin() -> Never => loop => ()\nfunc f(a: i32, b: i32) => Console.writeLine(\"bad\")\nConsole.writeLine(\"begin\")\nf(spin(), 2)\nConsole.writeLine(\"bad\")",
             "begin\n",
-            timeoutMilliseconds: 200);
+            observationMilliseconds: 200);
 
 #if DEBUG
     private const string Configuration = "Debug";

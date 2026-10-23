@@ -41,7 +41,17 @@ function Read-Run([string] $path) {
         if (-not (Test-Path -LiteralPath $results -PathType Leaf)) { throw "$($step.FullName) has no results.json." }
         foreach ($record in @(Get-Content -LiteralPath $results -Raw | ConvertFrom-Json)) {
             if (-not $outcomes.ContainsKey($record.fixture)) { $outcomes[$record.fixture] = @(); $logs[$record.fixture] = @() }
-            $outcomes[$record.fixture] += (@(if ($record.ok) { 'PASS' } else { 'FAIL' }) + $record.levels) -join ' '
+            # Archived evidence used ok; current runs publish status. Compatibility is confined to this historical reader.
+            $status = if ($record.PSObject.Properties['status']) { $record.status }
+            elseif ($record.PSObject.Properties['ok'] -and $record.ok -is [bool]) { if ($record.ok) { 'passed' } else { 'failed' } }
+            else { throw "$results has no native status for $($record.fixture)." }
+            $label = switch -CaseSensitive ($status) {
+                'passed' { 'PASS' }
+                'failed' { 'FAIL' }
+                'incomplete' { throw "$results has incomplete native observation for $($record.fixture)." }
+                default { throw "$results has unknown native status '$status'." }
+            }
+            $outcomes[$record.fixture] += (@($label) + $record.levels) -join ' '
             $logs[$record.fixture] += "$($step.Name)/$([IO.Path]::GetFileName($record.log))"
             # verify.ps1 writes native<suffix>-fixtures into the evidence and that step's outputs into <work>/native<suffix>.
             $file = if ($O2Metrics) { [IO.Path]::Combine($work, $step.Name -creplace '-fixtures$', [IO.Path]::ChangeExtension($record.fixture, '.O2.ll')) }

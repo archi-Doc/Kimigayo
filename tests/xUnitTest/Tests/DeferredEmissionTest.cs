@@ -158,7 +158,7 @@ public class DeferredEmissionTest
         const string Source = "defer\n    Console.writeLine(\"bad\")\ndefer => loop => ()\nConsole.writeLine(\"begin\")";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        ScalarEmissionTest.EmitFixture("DeferredDivergent", Source, "begin\n", timeoutMilliseconds: 1000);
+        ScalarEmissionTest.EmitFixture("DeferredDivergent", Source, "begin\n", observationMilliseconds: 1000);
     }
 
     [Theory]

@@ -37,7 +37,11 @@ public class RequireContinuationTest
     [InlineData("true")]
     [InlineData("false")]
     public void DefaultRequireDoesNotCreateRuntimeCompletion(string condition)
-        => ScalarEmissionTest.EmitFixture("NeverRequire" + Configuration + "Default" + condition, Default + "Console.writeLine(\"begin\")\nvalue(" + condition + ")", "begin\n", timeoutMilliseconds: 200);
+        => ScalarEmissionTest.EmitFixture(
+            "NeverRequire" + Configuration + "Default" + condition,
+            Default + "Console.writeLine(\"begin\")\nvalue(" + condition + ")",
+            "begin\n",
+            observationMilliseconds: 200);
 
     [Fact]
     public void DefaultFailureCanDeliverToItsEnclosingScope()

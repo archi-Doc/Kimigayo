@@ -80,7 +80,12 @@ public class ScalarDefaultEmissionTest
 
     [Fact]
     public void NoncompletingUnitDefaultSkipsTheCallee()
-        => ScalarEmissionTest.EmitFixture(Prefix + "UnitNever", "func f(x: () = (loop => continue)) => Console.writeLine(\"bad\")\nConsole.writeLine(\"begin\")\nf()", "begin\n", 0, timeoutMilliseconds: 250);
+        => ScalarEmissionTest.EmitFixture(
+            Prefix + "UnitNever",
+            "func f(x: () = (loop => continue)) => Console.writeLine(\"bad\")\nConsole.writeLine(\"begin\")\nf()",
+            "begin\n",
+            0,
+            observationMilliseconds: 250);
 
     [Trait("Purpose", "Allocation")]
     [Fact]
@@ -163,7 +168,12 @@ public class ScalarDefaultEmissionTest
 
     [Fact]
     public void NoncompletingDefaultSkipsLaterDefaultsAndTheCallee()
-        => ScalarEmissionTest.EmitFixture(Prefix + "TransferNever", "func f(x: i32 = (loop => continue), y: i32 = 2147483647 + 1) => Console.writeLine(\"bad\")\nConsole.writeLine(\"begin\")\nf()", "begin\n", 0, timeoutMilliseconds: 250);
+        => ScalarEmissionTest.EmitFixture(
+            Prefix + "TransferNever",
+            "func f(x: i32 = (loop => continue), y: i32 = 2147483647 + 1) => Console.writeLine(\"bad\")\nConsole.writeLine(\"begin\")\nf()",
+            "begin\n",
+            0,
+            observationMilliseconds: 250);
 
     [Fact]
     public void DefaultTransferOperandOverflowAbortsAtItsDeclaration()
@@ -314,7 +324,12 @@ public class ScalarDefaultEmissionTest
 
     [Fact]
     public void NoncompletingExplicitArgumentSkipsDefaultsAndTheCallee()
-        => ScalarEmissionTest.EmitFixture(Prefix + "Never", "func spin() -> Never => loop => ()\nfunc f(x: i32, y: i32 = 2147483647 + 1) => Console.writeLine(\"bad\")\nConsole.writeLine(\"begin\")\nf(spin())", "begin\n", 0, timeoutMilliseconds: 250);
+        => ScalarEmissionTest.EmitFixture(
+            Prefix + "Never",
+            "func spin() -> Never => loop => ()\nfunc f(x: i32, y: i32 = 2147483647 + 1) => Console.writeLine(\"bad\")\nConsole.writeLine(\"begin\")\nf(spin())",
+            "begin\n",
+            0,
+            observationMilliseconds: 250);
 
     [Fact]
     public void PreparedReadCannotAliasAnotherAcquiredArgument()

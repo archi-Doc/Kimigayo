@@ -10,9 +10,11 @@ function Get-KimiNativeLogResult([string] $Log) {
 }
 
 function Get-KimiNativePendingResult([string] $ResultsPath, [int] $SelectedCount, [string] $Log) {
-    $count = if (Test-Path -LiteralPath $ResultsPath) { @(Get-Content -LiteralPath $ResultsPath -Raw | ConvertFrom-Json).Count } else { 0 }
+    $results = @(if (Test-Path -LiteralPath $ResultsPath) { Get-Content -LiteralPath $ResultsPath -Raw | ConvertFrom-Json })
+    $count = $results.Count
+    $incomplete = @($results | Where-Object { $_.status -cnotin @('passed', 'failed') }).Count
     [pscustomobject]@{
-        passed = $count -gt 0 -and $count -eq $SelectedCount
-        detail = "results for $count of $SelectedCount fixtures, judged by codegen pending; $Log"
+        passed = $count -gt 0 -and $count -eq $SelectedCount -and $incomplete -eq 0
+        detail = "results for $count of $SelectedCount fixtures, $incomplete incomplete; completed results judged by codegen pending; $Log"
     }
 }

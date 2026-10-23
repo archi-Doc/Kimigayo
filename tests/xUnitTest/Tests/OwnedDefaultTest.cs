@@ -23,7 +23,7 @@ public class OwnedDefaultTest
     [InlineData("UnexecutedArm", "func helper(s: string) -> i32 => 2\nfunc f(x: i32 = (if true => 1 else => helper(\"a\"))) -> i32 => x\nrequire f() == 1 and f(3) == 3 else => $abort(\"arm\")", "")]
     [InlineData("SuppliedBorrow", "func helper(r: ref/i32) -> i32 => r@follow + 1\nfunc f(x: i32, y: i32 = helper(x@ref)) -> i32 => y\nrequire f(2) == 3 and f(2, 5) == 5 else => $abort(\"borrow\")", "")]
     public void OwnedResultsAndTemporaryInspectionExecute(string name, string source, string output)
-        => ScalarEmissionTest.EmitFixture("OwnedDefault" + name, source, output, timeoutMilliseconds: name == "DefaultNever" ? 200 : 0);
+        => ScalarEmissionTest.EmitFixture("OwnedDefault" + name, source, output, observationMilliseconds: name == "DefaultNever" ? 200 : 0);
 
     [Theory]
     [InlineData("Delivered", "func f(a: string, b: string, c: string = \"default\") => ()\nf(b: \"second\", a: \"first\")", "first=1;second=1;default=1", new[] { 2, 1, 0 })]

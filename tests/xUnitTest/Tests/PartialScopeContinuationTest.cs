@@ -41,7 +41,7 @@ public class PartialScopeContinuationTest
             "NeverPartialScope" + Configuration + "Default" + condition,
             Default + "Console.writeLine(\"begin\")\nvalue(" + condition + ")\nConsole.writeLine(\"after\")",
             "begin\n",
-            timeoutMilliseconds: 200);
+            observationMilliseconds: 200);
 
     private static string Source(string declaration, string yes, string tail, string use)
         => Stop + "func f(c: bool)\n    " + declaration + "\n    do\n        if c\n            " + yes + "\n        " + tail + "\n    " + use + "\nf(true)";

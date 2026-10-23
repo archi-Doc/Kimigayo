@@ -22,7 +22,7 @@ public class WhileConditionContinuationTest
             "NeverWhileCondition" + Configuration + "Default",
             "func value(y: () = (while (loop => continue) => ())) => ()\nConsole.writeLine(\"begin\")\nvalue()\nConsole.writeLine(\"after\")",
             "begin\n",
-            timeoutMilliseconds: 200);
+            observationMilliseconds: 200);
 
 #if DEBUG
     private const string Configuration = "Debug";
