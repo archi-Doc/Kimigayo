@@ -4201,8 +4201,13 @@ resumed by R4-M86 (2026-10-20).
   and TyCtxt's raw views to `TyCtxt.Raw.cs` first (TyCtxt.cs due under the three-unit rule). Rejected: PQ-13 (b), A5 reading the
   declaration's shape (a second owner); Unstated for every Type argument layer (drops a stated Origin); a clause per declared form; a
   signature cap from the Origin atom's binder (caps body-written Types that SPEC 5.2.1 leaves uncapped). R4's OQ-3 (a raw argument
-  retained as a borrowed one, SPEC 15.6.4) has no Binding consequence: every (raw input, output) pair that may retain is a Value row,
-  which A5 reads. Open (PLAN at merge): Binding keeps a pair argument's raw Origin, which SPEC 8.1.1's raw row drops.
+  retained as a borrowed one, SPEC 15.6.4) is Binding's to publish: `Binding.RetentionInput` decides those rows in BU's G160-2c (R4-M116;
+  `Raw.initialize(slot, p)` with `slot: raw/(raw/i32)` gives no row today). Nested instances: a raw layer a Type argument supplies below
+  the holding value (`Local<Local<raw/i32 during y>>`, `Outer<raw/i32 during y>.inner`, a `uniq`-kept `inner: Local<raw/i32 during a>`)
+  is reached only through instance shapes, which state no raw Origin, so it reads Unstated with `RawMembers(instance)` complete and empty
+  whatever the program states — never Shared, not a regression (the reader threw), and G160-4 (B′ §4.4) reads Unstated as a concrete
+  exclusive reference. Open (PLAN at merge): that nested case (nested paths in the reader, full process, or shapes that keep Type
+  arguments' raw Origins); Binding keeps a pair argument's raw Origin, which SPEC 8.1.1's raw row drops.
 
 ## R5 and R6 (adopted 2026-10-18)
 
