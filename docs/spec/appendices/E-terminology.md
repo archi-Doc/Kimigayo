@@ -35,6 +35,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Conformance | A Type's fulfillment of a Contract. | [§8.6.1](../08-generics-constraints-and-contracts.md#861-conformance-declarations-and-identity) |
 | Conformance Identity | Complete conforming Type plus bound Contract reference. | [§8.6.1](../08-generics-constraints-and-contracts.md#861-conformance-declarations-and-identity) |
 | Constraint / Constraint Clause | A condition on a Type or Semantics / its clause `subject is requirement`. | [§8.2.1](../08-generics-constraints-and-contracts.md#821-constraint-clauses) |
+| Constructed Type / head | A Type whose form fixes its structure (not a Type parameter, pair target, Contract `Self` or unresolved projection) / what identifies that form: a declaration, Semantics, element count or the like. | [§8.2.3](../08-generics-constraints-and-contracts.md#823-type-identity-and-identity-premises) |
 | Consume | The static Eligibility and Legality check of an access operation. | [§15.1.4](../15-ownership-and-lifetime-analysis.md#1514-consume-checks) |
 | Contract | A Container declaring requirements, without implementations or storage. | [§8.4.1](../08-generics-constraints-and-contracts.md#841-contract-declarations) |
 | Copy | Duplication that leaves the source Initialized. | [§3.5](../03-types-and-values.md#35-copy-and-move) |
@@ -90,6 +91,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Position / Range | A boundary resolving into `[0, L]` / an interval of positions. | [§4.6.1](../04-arrays-indexing-and-slices.md#461-positions), [§4.6.2](../04-arrays-indexing-and-slices.md#462-ranges) |
 | PrimitiveInteger | The compiler-intrinsic Contract of exactly the twelve integer Types. | [§8.7.4](../08-generics-constraints-and-contracts.md#874-primitiveinteger) |
 | Project root | The top of a Kotonoha's declaration hierarchy. | [§18](../18-modules-and-dependencies.md#18-modules-and-dependencies) |
+| Proper part | A Type reached by one or more steps into the components of constructed Types, never into a projection or a Field. | [§8.2.3](../08-generics-constraints-and-contracts.md#823-type-identity-and-identity-premises) |
 | Property | A stored `let`/`var` member or a computed member. | [§11.1](../11-properties.md#111-property-kinds) |
 | Punned Place | A transient Place of a Copy, positive-sized Type over bytes that Initialized Places hold. | [§5.2](../05-raw-pointers-and-unsafe-memory.md#52-raw-places) |
 | Raw pointer / raw Place | A `raw/T` address / `*p`, `p[n]` or a part of one, designating a Place at its address. | [§5](../05-raw-pointers-and-unsafe-memory.md#5-raw-pointers-and-unsafe-memory), [§5.2](../05-raw-pointers-and-unsafe-memory.md#52-raw-places) |
@@ -119,6 +121,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Task slot | The leading `task;` of a parameter list or Function Type. | [§24.2](../24-suspension-and-asynchronous-tasks.md#242-task-slots) |
 | Temporary Value / Place | An expression's temporary result / the storage materializing it. | [§3.6](../03-types-and-values.md#36-temporaries) |
 | Type | A complete type: Semantics, target and all Origins. | [§3](../03-types-and-values.md#3-types-and-values) |
+| Type identity | The relation that makes two Types one in a scope: its premises, closed under replacement and the decomposition of constructed Types with one head. | [§8.2.3](../08-generics-constraints-and-contracts.md#823-type-identity-and-identity-premises) |
 | Undefined behavior | The result of breaking an unsafe promise. | [§1.3](../01-overview.md#13-normative-status-and-wording), [§5](../05-raw-pointers-and-unsafe-memory.md#5-raw-pointers-and-unsafe-memory) |
 | UniqSlice | A non-Copy exclusive contiguous view. | [§4.8.4](../04-arrays-indexing-and-slices.md#484-views-and-uniqslice) |
 | Unsafe context / Unsafe Block | Permission for unsafe operations / `unsafe`, which grants it lexically. | [§5](../05-raw-pointers-and-unsafe-memory.md#5-raw-pointers-and-unsafe-memory), [§14.3](../14-control-flow.md#143-do-and-unsafe) |

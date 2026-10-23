@@ -3026,6 +3026,36 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Closure result and re-runs the formation test); rows at the record's node (a call argument's fixed-fixed record shares its node with
     that position's rows); the code (Closure results are Unsatisfied, and a mixed twin is Unproven); one more `twinOnly` branch (a second
     special case where the canonical table takes a column).
+- **R4-M115 Type identity by structural decomposition (proposal B) in SPEC** (owner, 2026-10-23, verbatim: 「proposal B を Q1〜Q7 の推奨
+  どおり（Q1 本案、Q2 入れない（§8.5.5 の改訂として別に扱う）、Q3 採用、Q4 本案、Q5 採用、Q6 採用、Q7 経路等式を残す）採択します。R4 で SPEC へ取り込ん
+  でください（独立レビューつき）。」; unit spec-tid, `draft/Changes/2026-10-22 Type Identity by Structural Decomposition B.md`, INTEGRATED
+  2026-10-23) SPEC §8.2.3 states B's section 3: Type identity is one relation from its grounds (premises, the Constraints `T is C` supplies
+  for every projection a query needs, completed bindings), closed under replacement and the decomposition of constructed Types with one
+  head and agreeing compared attributes (one structure table read by decomposition, Refuted, premise errors, cycles, collisions and
+  overlap); projections and Contract arguments never decompose; Origin, length and Semantics agreement is proven by its own rules, never
+  by identity; premise errors (Language: a Refuted stated identity, a proper-part cycle; Proof: unproven compared attributes, truth by
+  Semantics case) are reported once where their premises first meet.
+  - The answers: Q1, a conformance premise on a Type identical with a constructed Type is evidence (§8.2.3); Q3, "depends" means not
+    holding with the judgment, or the current definition's inferred values, held pending, whatever derivation is recorded (§8.3.3,
+    §8.5.5); Q4, only identity premise errors are reported at the declaration (§8.2.3, §8.8.2, §7.5), other contradictory evidence as
+    before; Q5, expanding recursion among Contracts is a Language error (§8.3.3, G′ 4.6's edges); Q6, a Type without finite expansion is
+    a premise error (§8.3.3, G′ 4.9's criterion stated declaratively); Q7, path equations stay and only whether a limit is reached may
+    depend on declaration names; Resource keeps the identities obtained (§8.3.3). Q2: §8.5.5's extraction still does not enter Function
+    Types.
+  - Supersedes: SPEC 8.2.3's non-decomposition and its "two different fully bound Types" error (now the structural conflict); PlanB §4.3
+    rule 6's "never decompose equality" for constructed Types (projections and Contract arguments still never decompose); the reading
+    "SPEC 8.5.5's 'depends' per derivation" of PLAN G170's 2026-10-21 owner item, by Q3 (whether C2–C4's implementation without read
+    sets meets Q3 is BU's planning).
+  - Examples and tests: the new SPEC blocks are registered in `spec-cases.json` with the implementation's records as (b) differences;
+    their expected codes use existing codes (InvalidConstraint_Kd, UnprovenConstraint_Kd, InvalidAssociatedType_Kd), which the
+    implementing units may refine with their own codes. OldRule `B3.3`: NormalizedConstraintProofBindingTest's two Unknown rows that B
+    refutes. No library or milestone program has an identity premise on a constructed Type or a growing Contract cycle.
+  - Repairs: `Repair.AddPremise` and `Repair.RemovePremise` join the schema's kinds (B 3.10); no condition value is added, the
+    AddPremise precondition and guarantee being §8.2.3's text.
+  - Open: §8.5.5's Function-Type extraction (Q2), a separate revision; B 3.4's gap, an omitted Origin in a layer of a Constraint's
+    Type outside a Function Type, which §15.4.2 has no row for (not filled). Not implemented: PLAN G170's C2–C4 (BU); STATUS states it.
+  - Rejected (B 7.2): non-decomposition; decomposing projections or Contract arguments; deriving Origin, length or Semantics relations
+    from decomposition; Refuted by contradiction; constructed Constraint subjects; G′'s decision procedure in SPEC.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

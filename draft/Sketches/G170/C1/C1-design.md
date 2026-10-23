@@ -4,7 +4,7 @@ Unit C1 of [PlanB](../../../Proposals/2026-10-20%20G170%20Premise%20Dependencies
 after [C0](../C0-evidence.md). Draft data only. Branch `claude/bu-g170-c1` from origin/dev `e0f24c83`; round 5 on `claude/g170-c1-short`
 (track S of the owner's brief, `artifacts/handoff/g170-c1-owner/`; the planning session's design and its proposal-B addendum under
 `artifacts/handoff/g170-c1-r5/design/`), revised after each independent review (§10). Type identity follows the owner's 2026-10-22 spec
-change, [proposal B](../../../Proposals/2026-10-22%20Type%20Identity%20by%20Structural%20Decomposition%20B.md) §3 (cited as B 3.x), in place of
+change, [proposal B](../../../Changes/2026-10-22%20Type%20Identity%20by%20Structural%20Decomposition%20B.md) §3 (cited as B 3.x), in place of
 SPEC 8.2.3's non-decomposition. [proto/](proto/): model, identity classes (`EGraph.cs`), shapes (`Shapes.cs`), C (`Solver.cs`), judgments
 (`Checker.cs`), bounded reference, runner (modes and `G170_*` variables in `Runner.cs`; `nested_probe.py`); [adapter/](adapter/G170C1AdapterTest.cs).
 

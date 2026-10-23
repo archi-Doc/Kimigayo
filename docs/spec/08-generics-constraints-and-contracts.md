@@ -98,19 +98,72 @@ A Requirement Test cannot be part of a Boolean expression such as `(T is A) and 
 
 ### 8.2.3. Type identity and identity premises
 
-`X is U` with a complete Type `U` requires `X` and `U` to be the same Type. Identity implies no conversion.
+`X is U` with a complete Type `U` requires `X` and `U` to be the same Type. Identity is not conversion, subtyping, Copy or conformance; the known capabilities of identical Types are used through ordinary evidence.
 
-**Identity premises.** In a scope, the available Type-identity facts (premises `X is U` that name complete Types, and associated-Type specifications) group Types into classes: the smallest equivalence relation that contains these facts and is closed under replacing a Type by an identical one inside any Type, including projections (if `X` and `U` are one Type, so are `Option<X>` and `Option<U>`, and `X.(C).Item` and `U.(C).Item`). Two Types are identical when they normalize into the same class, and all Type checking in the scope treats them as one Type. The scope is the constrained declaration, or the conformance scope and block of a conditional conformance ([§8.8.1](#881-conditions-and-implementation-blocks)). A declaration is an error when one class contains two different fully bound Types, or when a Type would have to contain itself as a proper part. Identity is never decomposed: `Option<U> is Option<i32>` does not imply `U is i32`.
+**Identity premises.** In a scope, **Type identity** is the smallest relation that contains the grounds below and is reflexive, symmetric, transitive, closed under replacing a Type by an identical one inside any Type (a projection's subject and Contract arguments included) and closed under decomposition. The grounds are the available positive premises `X is U` naming complete Types (conjunction elimination and the enclosing declaration's inputs included), the Constraints and associated-Type requirements that `T is C` supplies ([§8.3.2](#832-proof-rules), [§8.5.3](#853-constraints-on-inherited-associated-types)), which apply to every projection a query needs however deep, whatever its spelling and identity path, and the available completed associated-Type bindings. Atoms under `or` or `not`, bodies, calls, instantiations and obligations (such as the conformances of the Type being declared) are no grounds; a conforming Type's associated-Type specifications follow [§8.5.1](#851-declaration-and-specification). The scope is the constrained declaration, or the conformance scope and block of a conditional conformance ([§8.8.1](#881-conditions-and-implementation-blocks)). All Type checking in the scope treats identical Types as one Type: a Contract fact about a Type is evidence for an identical one, also where that Type is constructed, but identity creates no conformance declaration or member and changes no lookup. A Type parameter denotes the one Type its declaration binds, never a pattern. The meaning does not depend on the side, order, direction or spelling of premises, or on the order of checks and queries (except for limits, [§8.3.3](#833-recursion-and-finality)), and a contradiction derives no other identity.
+
+**Structure.** Before comparison, aliases, grouping, a redundant `owner/` and available completed projections are interpreted by their rules, and names denote their bound declarations. Every Type has the form of one row:
+
+| Form | Head | Components | Compared attributes |
+| --- | --- | --- | --- |
+| Primitive Type, Never | The Type | None | None |
+| Nominal Type (struct, enum, library Type, nested Type, `Wrapping<T>`) | Its declaration, with the enclosing declarations | Its own and enclosing Type arguments, unused ones included | Origins (`during`, binding sets) |
+| Tuple (Unit has none) | The element count | The elements | None |
+| Fixed array `[N of E]` | Fixed array | `E` | The length, normalized ([§4.4.2](04-arrays-indexing-and-slices.md#442-formation-obligations-and-normalization)) |
+| Semantics layer `k/V during o` (`owner/V` is `V`) | `k` | `V` | `o` |
+| Pair application `s/V during o` | The one `k` of an admitted set of one Semantics; otherwise undetermined, and applications of one `s` share it | `V` | `o` |
+| Common Function Type | The task slot's presence and the parameter count | The parameter and result Types | Origins: fixed ones, and the quantification structure (the number of quantified Origins and their occurrences and relations in parameters and result; renaming changes nothing) |
+| Function Item, concrete Closure | The function declaration, the Closure expression's occurrence | The Type arguments of the instantiation its identity includes | The instantiation's length arguments and Origins |
+| Abstract Type: a Type parameter, a pair target, a Contract's `Self`, an unresolved projection | None | None | None |
+
+A Type of any row but the last is a **constructed Type** (a struct's or enum's `Self` included); its **head** and **components** are its row's. Fields, captures and method sets are no components: Types of distinct declarations are never identical, whatever their structure, layout or values, and a Function Item or Closure is not identical with a common Function Type it converts to. An abstract Type has no head, and takes the form its binding, a completed projection or its admitted set fixes. A pair application with an undetermined head differs from another form only when its admitted set ([§8.3.4](#834-semantics-admitted-set)) is disjoint from the other's outer Semantics (`owner` for a Type that is no Semantics layer); with `owner` admitted, `s/V` may be `V` itself and meets every form. An Origin quantified inside a Function Type corresponds only within it and is never identical with an outer Origin; whole Function Types may still be identical, keeping their quantification. The target of a runtime Contract view ([§8.12](#812-runtime-contracts)) has the Contract declaration as head and its Type arguments and published associated-Type bindings as components. Decomposition, Refuted, premise errors, cycles, collisions ([§8.9.1](#891-direct-conformance-collisions)) and overlap ([§7.4.3](07-functions-and-callable-values.md#743-matching-keys-and-overlap)) read this table; extraction ([§8.5.5](#855-inference)) follows its components only where §8.5.5 enters them.
+
+**Decomposition.** Two constructed Types whose heads are known to be one and whose compared attributes are proven to agree are identical exactly when each pair of corresponding components is: `F<A1, …, An>` and `F<B1, …, Bn>` (components only) are identical if and only if each `Ai` is identical with `Bi`. This applies to premises, to identities obtained transitively and to associated-Type bindings alike; several bindings of one Type all hold, none preferred.
+
+**Compared attributes.** Decomposition creates no Origin relation, length equality or Semantics fact. Where two constructed Types are identified, their compared attributes and pair heads must agree by the declaration's available premises under each domain's rules (Origins [§15.6.5](15-ownership-and-lifetime-analysis.md#1565-judging-origin-relations), lengths [§4.4.2](04-arrays-indexing-and-slices.md#442-formation-obligations-and-normalization), Semantics [§8.3.4](#834-semantics-admitted-set)), never through that identity or what depends on it: `[4 of U]` and `[(2 + 2) of i32]` agree, giving `U is i32`, but `[N of U]` and `[M of i32]` for length slots give no `N = M`, and `ref/U during a` and `ref/i32 during b` decompose only where `a == b` is proven, never by one `outlives`. Unproven agreement is no disagreement: a query is Unknown, a premise an unproven requirement (below), judged over all the declaration's premises, never in written order. A premise whose truth varies by Semantics case is an unproven requirement too. Omitted Origins of a Function Type's parameters in a Constraint follow the parameter rule of [§15.4.2](15-ownership-and-lifetime-analysis.md#1542-position-rules).
+
+**Projections.** A projection `X.(C).A(o)` is identified by its subject, the associated-Type declaration, the bound defining Contract and its Origin arguments, never by inheritance path or name. Equal projections of identical subjects, Contract arguments and Origin arguments are identical, but identical projections identify neither subjects nor Contract or Origin arguments, and Contract arguments never decompose: `T is K<U>` and `T is K<i32>` are two conformances relating no `U` and `i32`. A projection of a constructed Type is the binding of that Type's declared conformance (explicit, inherited, through a parent Contract or conditional) with its Type and Origin arguments substituted, and so is a projection of a subject identical with one; a constructed result takes part in decomposition. Using a binding needs its conformance path's premises, and a conditional conformance's binding is never used unconditionally in another scope. Applications with different Origin arguments (`I.LentItem(a)`, `I.LentItem(b)`) are not identified unless the Contract binds them, as Iterator's `LentItem(step) is Item` does for every `a`. A pair target's identity never recovers its complete Type or outer Semantics.
+
+**Refuted.** An identity is Refuted, even with unbound Type arguments, when at corresponding positions heads or compared attributes (constant lengths, quantification structures) are known and differ, when the identity of corresponding components is Refuted, or when one side is identical with a proper part of the other (not through pair applications admitting `owner` alone). Refuted never comes from assuming the identity and finding a contradiction, an unresolved projection or a distinct Type parameter is never Refuted for looking different, and a negated compound identity never chooses which component differs.
+
+**Cycles.** A **proper part** of a Type is a Type reached by one or more steps into the components of constructed Types (pair applications with an undetermined head included), up to identity, never into a projection's subject or arguments or a nominal Type's Fields. `T is U` with `U is T` identifies them; `T is Option<T>` is an error; `T is T.(C).X` and `T is Option<T.(C).X>` are not errors alone, but the latter is with `T.(C).X is T`. Recursive nominal layouts, recursive Contracts and self-dependent evidence follow their own rules.
+
+**Premise errors.** A declaration's premises are an error in these cases:
+
+| Error | Category | Example | Repair |
+| --- | --- | --- | --- |
+| An identity they state is Refuted, an Origin quantified in a Function Type carried out of it included | Language | `conflict` below | Remove a premise |
+| A Type is identical with a proper part of itself | Language | `cyclic` below | Remove a premise |
+| Compared attributes are not proven to agree | Proof (unproven requirement) | `otherView` below; different length slots | `origin a == b`; one length slot |
+| The truth varies by Semantics: unproven pair heads, a cycle only through pair applications admitting `owner` | Proof (unproven requirement) | `s/U` with `ref/i32 during a` under `s is ref or uniq` | `s is ref`, `s is owner` |
+
+Each is reported once, at the declaration where the premises causing it first meet: a Contract for what its Constraints alone cause, otherwise the constrained declaration (a function, a Type, a conditional conformance's scope or a conditional member), never again at uses. Other contradictory evidence is an Error only for a proposition obtained directly or queried ([§8.3.2](#832-proof-rules)). A premise error shows the conflicting structure or cycle and the premises that linked it, an unproven requirement the missing requirement. Diagnostics and hover show Types as written and, where a judgment used identity, the identical Type it used and its source (a premise, a Constraint, decomposition or a resolved projection); which Type is shown has no meaning. A repair adding an Unknown identity as a premise has the precondition that it is not Refuted and causes no premise error, and guarantees that the requirement is Proven and that callers prove it ([§23.1.3](23-compiler-services.md#2313-repair-candidates)).
 
 ```kimi
-func same<T, U>(value: T) -> i32
+func same<T, U>(value: U) -> i32
     T is Option<U>
     T is Option<i32>
-    return 0      // Option<U> and Option<i32> are one Type here; U and i32 are not.
+    return value                    // Valid: U is i32.
+
+func conflict<T, U>(value: T) -> i32
+    T is Option<U>
+    T is Array<U>                   // Error: two different nominal Types are identified.
+    return 0
+
+func otherView<T, U>(first: ref/U during a, second: ref/i32 during b, value: T) -> i32
+    T is ref/U during a
+    T is ref/i32 during b           // Error: a == b is not proven; a repair adds origin a == b.
+    return 0
+
+func independent<T, U>(left: T, right: U) -> i32
+    T is Source
+    U is Source
+    T.(Source).Element is U.(Source).Element
+    return 0                        // The Elements are one Type; T and U are not.
 
 func cyclic<T, U>(value: T) -> i32
     T is Option<U>
-    U is Option<T>  // Error: T would contain itself.
+    U is Option<T>                  // Error: T would contain itself.
     return 0
 ```
 
@@ -120,7 +173,7 @@ func cyclic<T, U>(value: T) -> i32
 
 Generic checking proves Constraints only by the rules of this section, never by SAT solving, theorem proving, enumeration of Types or optimizer facts. Fully determined concrete conditions use Boolean evaluation. Callable effect bounds are not propositions ([§8.11.4](#8114-callable-effect-bounds)).
 
-Requirement precedence applies first: `T is (A and B)` supplies `(T is A) and (T is B)`. Propositions are identified by bound Symbols and normalized complete Types, not spelling. Parentheses are transparent and `not not P` is `P`; there is no other logical normalization.
+Requirement precedence applies first: `T is (A and B)` supplies `(T is A) and (T is B)`. Propositions are identified by bound Symbols and normalized complete Types, not spelling. Parentheses are transparent, `not not P` is `P`, and an identity of two constructed Types with one head is the conjunction of their compared attributes' agreement and their components' identities ([§8.2.3](#823-type-identity-and-identity-premises)); there is no other logical normalization.
 
 | Outcome | Meaning |
 | --- | --- |
@@ -142,8 +195,8 @@ Evidence comes from the declaration's input Constraints, built-in capability rul
 | Concrete judgment | Concrete Type-identity, Semantics, category and built-in capability tests, and the closed-world rule below. |
 | Admitted set | A requirement on a pair binder is decided by [§8.3.4](#834-semantics-admitted-set). |
 | Verified conformance | A verified explicit, conditional ([§8.8](#88-conditional-conformance)) or inherited ([§8.6.2](#862-inherited-conformance)) conformance supplies evidence once its implementations are identified and compatible ([§8.6.3](#863-implementation-matching)); effect bounds are checked separately ([§8.11.3](#8113-checking-and-use)). |
-| Contract refinement | `T is C` supplies each ancestor conformance and `C`'s own and inherited Constraints, with `T` for `Self`; an associated-Type declaration's requirement is one of them (`associate X is R` in `C` supplies `T.(C).X is R`). |
-| Type and associated-Type identity | Proven when both sides are in one identity class ([§8.2.3](#823-type-identity-and-identity-premises)), after substituting completed associated-Type bindings; Refuted when both are fully bound and differ. Proof never searches members or chooses a Type. |
+| Contract refinement | `T is C` supplies each ancestor conformance and `C`'s own and inherited Constraints, with `T` for `Self`; an associated-Type declaration's requirement is one of them (`associate X is R` in `C` supplies `T.(C).X is R`). It applies to every projection a query needs, whatever its spelling ([§8.2.3](#823-type-identity-and-identity-premises)). |
+| Type and associated-Type identity | Proven when both sides are identical ([§8.2.3](#823-type-identity-and-identity-premises)), after substituting completed associated-Type bindings; Refuted as [§8.2.3](#823-type-identity-and-identity-premises) states, also with unbound Type arguments. Proof never searches members or chooses a Type. |
 | Closed implication | `T is PrimitiveInteger` supplies `T is Position` ([§8.7.4](#874-primitiveinteger)). |
 | Other cases | Unknown. |
 
@@ -159,9 +212,15 @@ func pick<T>(value: T) -> T
 
 ### 8.3.3. Recursion and Finality
 
-**Recursion.** A conformance cannot use itself as evidence: an obligation revisited while it is being proven supplies no evidence, and no coinduction is assumed. Recursive declarations alone are valid; structural analyses such as Owned use [§15.3.5](15-ownership-and-lifetime-analysis.md#1535-variance-loan-requirements-and-phantom-origins). A Contract `C` is **recursive** when `T is C` supplies ([§8.3.2](#832-proof-rules): `C`'s own and inherited Constraints, with `T` for `Self`), directly or through the Constraints of the Contracts so supplied, a conformance of a projection of `T` to `C`'s declaration, with any Type arguments, or to a Contract that refines it. A recursive Contract is valid, but no concrete Type can be proven to conform. The depth of a proof search is limited by an implementation-defined resource limit; a proof that exceeds it is a resource failure ([§23.1.1](23-compiler-services.md#2311-categories)), never Unknown or Refuted.
+**Recursion.** A conformance cannot use itself as evidence: an obligation revisited while it is being proven supplies no evidence, and no coinduction is assumed. Recursive declarations alone are valid; structural analyses such as Owned use [§15.3.5](15-ownership-and-lifetime-analysis.md#1535-variance-loan-requirements-and-phantom-origins). A Contract `C` is **recursive** when `T is C` supplies ([§8.3.2](#832-proof-rules): `C`'s own and inherited Constraints, with `T` for `Self`), directly or through the Constraints of the Contracts so supplied, a conformance of a projection of `T` to `C`'s declaration, with any Type arguments, or to a Contract that refines it. A recursive Contract is valid, but no concrete Type can be proven to conform.
 
-**Finality.** A judgment uses every fact of the program that does not depend on that judgment; the order in which an implementation checks declarations never changes the result. A fact that depends on its own judgment, directly or through other declarations, supplies no evidence. Where proof is required, Unknown is an error (unproven requirement); it is never accepted or treated as Refuted. A generic definition is judged under its declared premises when it is checked; instantiation adds no semantic use condition and never repeats lookup or overload selection, and only layout and representation obligations depend on instantiation ([§8.15.3](#8153-concrete-layout-and-representation)).
+**Expanding recursion.** Among Contracts that refer to one another, each reference to such a Contract `M` in what `Self is K` supplies to `Self` or a projection of `Self` (an ancestor conformance or a Constraint) passes each parameter `P` of `K`'s binding (its own and its enclosing declarations' Type arguments) to each parameter of `M` whose argument, normalized under `K`'s premises, contains `P`, Contract arguments of projections included: flatly where the argument is `P` itself, expandingly otherwise. A cycle of passes with an expanding one is a Language error at each Contract on it, related to the references forming it; it depends on the declarations alone, never on a limit. As with a revisited refinement path ([§8.9.2](#892-merging-paths-and-cycles)), only Contracts that no concrete Type can conform to lose their abstract uses.
+
+**Unbounded Types.** The **expansion** of a Type replaces each abstract Type in it by a constructed Type identical with it in the scope ([§8.2.3](#823-type-identity-and-identity-premises)), again inside each replacement, entering components and the Contract arguments of projections but never a projection's subject. Premises, a Contract's Constraints included, under which some Type has no finite expansion are a premise error of category Language, reported as [§8.2.3](#823-type-identity-and-identity-premises) states, or an unproven requirement where every unbounded expansion runs through pair applications admitting `owner`. A Type identical with a proper part of itself is one case; another is a cycle through a projection's arguments, as in `T is Option<U.(K<T>).X>`.
+
+**Limits.** Identities between two projection sequences from one subject (path equations, such as `Self.A.B.A is Self.B.A.B`) are allowed. Proofs and the closure of a declaration's premises are bounded by implementation-defined limits. Reaching one keeps every identity obtained before it, so the Proven and Error results it gave stand; only a Refuted or Unknown judgment that depends on the analysis that reached the limit becomes a resource failure ([§23.1.1](23-compiler-services.md#2311-categories)), never Unknown or Refuted. The limit is reported once, at the declaration that reaches it, and the resource failures of declarations depending on it are related to that report ([§23.1.2](23-compiler-services.md#2312-reporting)). Whether a limit is reached never depends on the order of checks, but may depend on declaration names, the only way spelling can matter.
+
+**Finality.** A judgment uses every fact of the program that does not depend on that judgment; the order in which an implementation checks declarations never changes the result. A fact that depends on its own judgment, directly or through other declarations, supplies no evidence; a fact depends on a judgment when it does not hold with that judgment's result held pending, whatever derivation an implementation records. Where proof is required, Unknown is an error (unproven requirement); it is never accepted or treated as Refuted. A generic definition is judged under its declared premises when it is checked; instantiation adds no semantic use condition and never repeats lookup or overload selection, and only layout and representation obligations depend on instantiation ([§8.15.3](#8153-concrete-layout-and-representation)).
 
 ```kimi
 contract Tree
@@ -170,6 +229,21 @@ contract Tree
 struct Node
     Self is Tree                 // Error: proving Node is Tree needs Node is Tree.
     associate Tree.Child is Node
+```
+
+```kimi
+contract Nested<A>
+    associate Inner is Nested<Option<A>>  // Error: the argument grows; Nested<A> would be flat.
+
+contract Stream
+    Self.(Stream).Head is Option<Self.(Stream).Next.(Stream).Head>  // Error: Head has no finite expansion.
+    associate Next is Stream
+    associate Head
+
+contract Window
+    Self.(Window).Next.(Window).Head is Option<Self.(Window).Head>  // Valid: Self.(Window).Head stays abstract.
+    associate Next is Window
+    associate Head
 ```
 
 ### 8.3.4. Semantics admitted set
@@ -238,7 +312,7 @@ An associated Type denotes a complete Type. Binding, projecting or expanding it 
 | `associate C.Element is R` | Specifies or constrains the one declared by `C`. |
 | `associate LentItem(step) ...` | With Origin parameters ([§8.5.4](#854-origin-parameters)). |
 
-In a conforming Type, `associate C.X is R` specifies `X` when conjunction elimination ([§8.3.2](#832-proof-rules)) of `R` yields a Type-identity atom; otherwise it leaves `X` to be specified elsewhere or inferred ([§8.5.5](#855-inference)). In both cases the completed Type must satisfy all of `R`. Several identity atoms follow [§8.2.3](#823-type-identity-and-identity-premises). Each associated Type of a conformance is determined uniquely by specifications, identity Constraints, inherited bindings or inference; one left undetermined is an error.
+In a conforming Type, `associate C.X is R` specifies `X` when conjunction elimination ([§8.3.2](#832-proof-rules)) of `R` yields a Type-identity atom; otherwise it leaves `X` to be specified elsewhere or inferred ([§8.5.5](#855-inference)). In both cases the completed Type must satisfy all of `R`. A specification's identity atoms and the identity Constraints of the Contract and its ancestors are premises only for determining the conformance's undetermined associated Types, decomposition included ([§8.2.3](#823-type-identity-and-identity-premises)); any other consequence, an identity between Types without an undetermined associated Type (two inputs, or an input and a concrete Type), is an obligation of the conformance, checked and never assumed. Each associated Type of a conformance is determined uniquely by specifications, identity Constraints, inherited bindings or inference; one left undetermined is an error.
 
 **Qualification.** `C` in `associate C.Element` is a direct conformance or an ancestor, with its Type arguments. The unqualified form is valid only when one associated Type with that name is available across the conformances and refinements (paths to one declaration with equal bindings count once, [§8.9.2](#892-merging-paths-and-cycles)); `C<i32>.Element` and `C<i64>.Element` need qualifiers when both are available.
 
@@ -262,6 +336,23 @@ struct B
     Self is Source
     associate Source.Element is i32 or i64     // Leaves Element to inference; the result must be i32 or i64.
     public func read(self: ref/Self) -> i64 => 0
+```
+
+```kimi
+contract Wrapped
+    associate Inner
+    associate Outer is Option<Inner>
+
+struct Number
+    Self is Wrapped
+    associate Wrapped.Outer is Option<i32>     // Valid: decomposition determines Inner as i32.
+
+contract Holder
+    associate Item
+
+struct Pack<T>
+    Self is Holder
+    associate Holder.Item is Option<T> and Option<i32>  // Error: T is i32 is an obligation that cannot be proven.
 ```
 
 ### 8.5.2. Projections
@@ -313,9 +404,9 @@ contract Lender<E>
 
 A struct or enum conformance may omit an associated Type without Origin parameters; inference completes it from the declared result of an implementation. Inference never runs at instantiation, and an inferred binding is the same contract as an equal explicit one.
 
-**Frozen premises.** Each conformance path's premises are frozen first: its specifications, the identity Constraints of its Contract and ancestors, its inherited bindings and their consequences ([§8.3](#83-constraint-proof)). Only premises valid throughout the path count; premises of one requirement or implementation never determine a binding. An associated identity is the conforming Type, the associated declaration and the bound defining Contract; equal names do not establish it, and an identity conditional on one path is not unconditional on another. Fixed identities substitute forward: Iterator's `LentItem(step) is Item` exposes `Item`.
+**Frozen premises.** Each conformance path's premises are frozen first: its specifications, the identity Constraints of its Contract and ancestors, its inherited bindings and their consequences ([§8.3](#83-constraint-proof)), decomposition included as far as [§8.5.1](#851-declaration-and-specification) makes them premises. Only premises valid throughout the path count; premises of one requirement or implementation never determine a binding. An associated identity is the conforming Type, the associated declaration and the bound defining Contract; equal names do not establish it, and an identity conditional on one path is not unconditional on another. Fixed identities substitute forward: Iterator's `LentItem(step) is Item` exposes `Item`.
 
-The current definition is one struct or enum with its conformances; nested definitions are separate. No value inferred for it enters its frozen premises. A value inferred for another definition may be used as soon as that value is determined, without waiting for the other definition's remaining values. Evidence for a value of the current definition that depends, directly or through other definitions' values, on a value inferred in the current definition supplies no evidence.
+The current definition is one struct or enum with its conformances; nested definitions are separate. No value inferred for it enters its frozen premises. A value inferred for another definition may be used as soon as that value is determined, without waiting for the other definition's remaining values. Evidence for a value of the current definition supplies none unless it determines the same value with every value inferred in the current definition held pending, directly or through other definitions' values; acceptance never depends on how a derivation was recorded.
 
 **Identification.** Each requirement's implementation is identified once by the key of [§8.6.3](#863-implementation-matching) under the frozen premises, never filtered by result, Origins, Constraints or Effects. The outcome is **pending** when some candidate's key comparison depends on a missing associated Type of the definition; otherwise it is **unique**, **missing** or **ambiguous**. Only a unique match supplies evidence. After completion, only pending identifications are identified again, for compatibility only; missing and ambiguous ones are final. Function results supply evidence, `index` and `indexUniq` among them; Property and accessor results supply none. The implementation's result is its declared result, or Unit when omitted. Bodies, call sites and instantiations supply nothing.
 
@@ -566,7 +657,7 @@ struct Box<T>
 
 ### 8.8.2. Verification and use
 
-At definition, `C` is verified under `D` and `P` for every admitted binding, even if no Type satisfies `P`. Implementations are identified by [§8.6.3](#863-implementation-matching); completion uses frozen path-wide premises ([§8.5.5](#855-inference)). Each requirement is checked in a **conformance scope** of `D`, `P` and the requirement's premises, with both sides normalized there; under `I is Iterator`, `Option<I.(LendingIterator).LentItem(step)>` is `Option<I.Item>`. An implementation outside the block keeps its own signature.
+At definition, `C` is verified under `D` and `P` for every admitted binding, even if no Type satisfies `P`; `P`'s identity atoms are premises of the conformance scope, decomposed as [§8.2.3](#823-type-identity-and-identity-premises) states, and their premise errors are errors of the conformance all the same. Implementations are identified by [§8.6.3](#863-implementation-matching); completion uses frozen path-wide premises ([§8.5.5](#855-inference)). Each requirement is checked in a **conformance scope** of `D`, `P` and the requirement's premises, with both sides normalized there; under `I is Iterator`, `Option<I.(LendingIterator).LentItem(step)>` is `Option<I.Item>`. An implementation outside the block keeps its own signature.
 
 At a use, a proof of `P` for the substituted arguments enables the verified conformance; implementations are never selected again. A block member, or a conditional member ([§7.5](07-functions-and-callable-values.md#75-function-constraints)) with its clauses joined to `P`, is applicable after lookup and inference only as `P` is judged; the same applies to function references and computed access:
 
@@ -578,6 +669,25 @@ At a use, a proof of `P` for the substituted arguments enables the verified conf
 | Error | Error | Error |
 
 Conditions never change the committed lookup layer, an inapplicable member never reopens lookup, condition strength does not rank candidates, and a later Loan failure never causes reselection. Step 5 of [§10.1](10-overload-resolution-and-inference.md#101-candidate-applicability) owns how Unknown applicability affects selection.
+
+```kimi
+contract Flag
+
+struct Either<A, B>
+    Self is Flag when A is Option<B>, A is Array<B>  // Error: the condition identifies two nominal Types.
+    var value: A
+
+struct Slot<T>
+    Self is Flag when T is Option<i32>
+    var value: T
+
+func plain<T>(value: T) -> i32
+    T is not Flag
+    return 0
+
+func fill<V>(slot: Slot<Array<V>>) -> i32
+    return plain(slot@move)         // Valid: Array<V> is Option<i32> is Refuted.
+```
 
 ### 8.8.3. Parent Contracts
 
@@ -606,10 +716,10 @@ A conformance is identified as [§8.6.1](#861-conformance-declarations-and-ident
 
 Direct conformances and merging paths use one collision test:
 
-1. Group by Contract declaration; different declarations never collide. Normalize with the identity premises and Origin rules.
-2. Unify parameters and fixed structure (nominal Types, Tuples, Function Types and applications of a determined Semantics) with an occurs check; local function binders are renamed apart.
-3. A mismatch of fixed structure proves non-collision; otherwise the substitution is a collision condition.
-4. The remaining unresolved terms are residual conditions: unresolved associated projections, applications of a pair binder, non-constant length expressions, Origin intersections and orderings, and other non-free terms. Unresolved residuals mean a possible collision; `A.Item` and `B.Item` may be equal.
+1. Group by Contract declaration; different declarations never collide. Normalize with the identity premises, decomposition included ([§8.2.3](#823-type-identity-and-identity-premises)), and Origin rules.
+2. Unify parameters and the heads and components of [§8.2.3](#823-type-identity-and-identity-premises)'s structure with an occurs check; local function binders are renamed apart.
+3. A mismatch of heads or of constant lengths proves non-collision; otherwise the substitution is a collision condition.
+4. The remaining unresolved terms are residual conditions: unresolved associated projections, applications of a pair binder with an undetermined head, non-constant length expressions, Origin intersections and orderings and other compared attributes, and other non-free terms. Unresolved residuals mean a possible collision; `A.Item` and `B.Item` may be equal.
 
 Every pair of direct conformances must be proven non-colliding under the Type's Constraints; mutually exclusive `when` conditions do not exempt them.
 
