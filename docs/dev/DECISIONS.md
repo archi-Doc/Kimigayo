@@ -4222,9 +4222,13 @@ resumed by R4-M86 (2026-10-20).
   Reborrow-only column (OQ-2: a closed column of a due file, two rules for a Ref's Type in one function). Open: R4's C3 (a Borrow
   through a capture is not met with the Closure's call receiver, SPEC 15.6.3; G227); A's residuals (a finite source through a `var`
   slot inside a meet, now Binding's Refuted for the probed forms; an inferred element Origin whose receiver Loan no pipeline carries,
-  `t2`/`t3`/LocalInputs); a discarded bare Reborrow (`_ = h.link`, and a Place standing alone in Discard Context, SPEC 14.2) has no
-  consumer Type: the builder's temporary takes the Place's stored Type, for which A5 on the held 2a-1b judges a reaching layer's edge
-  (`s -> a`) Unknown on a valid program; no published channel carries the named Type there (a planning ruling pending). Not temporary.
+  `t2`/`t3`/LocalInputs); a discarded bare Reborrow (`_ = h.link`, and a bare Place alone in Discard Context, SPEC 14.2) has no
+  consumer Type: `MirBuilder.Discard`'s temporary takes the Place's stored Type through HIR Meaning, and a Place alone is read through
+  Into's by-case Ref of its stored Type, so A5 on R4's held 2a-1b judges a reaching layer's edge (`s -> a`) Unknown on a valid program
+  (no verdict changes on dev; the library and milestones are unaffected); no published channel carries Binding's name to a discard.
+  Options, none taken in this unit (the planning session's ruling, 2026-10-23): (a) a fact in the Discard node's plan row, a new HIR
+  fact for R4 and possibly the owner to decide; (b) publishing adaptation Types, A's rejected `ErasedTypes` column; (c) the builder
+  meeting the layers itself, a second copy of the rule. Not temporary.
 
 ## R5 and R6 (adopted 2026-10-18)
 
