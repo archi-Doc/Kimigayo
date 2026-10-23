@@ -153,12 +153,9 @@ public sealed partial class Binding
             return new(atom, this.RootKind(atom, role), role);
         }
 
-        for (var body = EvaluatingBody(slice.Body); body.IsBody; body = EvaluatingBody(body))
+        if (EnclosingAtom(atom, slice.Body))
         {
-            if (RootOf(atom, role, body))
-            {
-                return new(atom, OriginAtomKind.Fixed, role); // Row 6: an enclosing body's atom.
-            }
+            return new(atom, OriginAtomKind.Fixed, role); // Row 6: an enclosing body's atom.
         }
 
         return new(atom, OriginAtomKind.Unclassed, role); // Row 9: another body's root seen from B.

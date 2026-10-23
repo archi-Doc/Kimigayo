@@ -72,7 +72,7 @@ public sealed partial class Binding
             return scalar;
         }
 
-        // Borrow results with the same referent retain every incoming dependency.
+        // Borrow results with the same referent retain every incoming dependency; results that differ in raw Origins alone join unstated.
         // This does not search common bases or change referent variance.
         var borrowed = types.Count > 0 ? types[0] : null;
         for (var i = 1; i < types.Count && borrowed is not null; i++)
@@ -130,6 +130,11 @@ public sealed partial class Binding
         if (ReferenceEquals(right, BoundType.Never) || ReferenceEquals(left, right))
         {
             return left;
+        }
+
+        if ((left.CarriesRawOrigin || right.CarriesRawOrigin) && SameExceptRawOrigins(left, right))
+        {
+            return this.CommonOriginType(left, right); // SPEC 5.7 (Q-O6): differing raw Origins join unstated, never as a meet.
         }
 
         if (left.Kind != BoundTypeKind.Semantics || right.Kind != BoundTypeKind.Semantics ||

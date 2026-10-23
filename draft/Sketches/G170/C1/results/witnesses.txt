@@ -1,0 +1,12 @@
+== round-4 review witnesses (review-assets/round4/models) on the committed build: time mode (C, then the reference at bounds 5 and 7; harness 300 rounds, 3,000 items)
+inv3.txt: T is Copy: C + Complete rounds=2 V=5 E=9 J=95 N=8 established-at-stop 3 61 ms; ref5 + 8 ms; ref7 + 0 ms
+invarg.txt: T is Copy: C + Complete rounds=2 V=5 E=10 J=124 N=9 established-at-stop 3 62 ms; ref5 + 8 ms; ref7 + 0 ms
+invkid.txt: T is V: C + Complete rounds=4 V=9 E=10 J=513 N=9 established-at-stop 1 71 ms; ref5 + 10 ms; ref7 + 0 ms
+need3.txt: V.(M).P is D<T>: C + Complete rounds=4 V=15 E=8 J=189 N=12 established-at-stop 3 63 ms; ref5 + 10 ms; ref7 + 0 ms
+shape5.txt: T.(Gz).Z is Copy: C none Complete rounds=2 V=7 E=4 J=71 N=11 established-at-stop 2 55 ms; ref5 +! 9 ms; ref7 +! 0 ms
+shape7.txt: T.(Gz).Z is Copy: C none Complete rounds=2 V=7 E=4 J=71 N=11 established-at-stop 2 58 ms; ref5 +! 10 ms; ref7 +! 0 ms
+shared-40.txt: T is Copy: C none Complete rounds=1 V=3 E=2 J=1 N=4 established-at-stop 2 37 ms; ref5 none 9 ms; ref7 none 0 ms
+shared40-pos.txt: W is Copy: C none Complete rounds=5 V=57 E=13 J=2843 N=11 established-at-stop 2 79 ms; ref5 none 10 ms; ref7 none 0 ms
+mix-400.txt: T is Copy: C none Complete rounds=1 V=4 E=3 J=19 N=5 established-at-stop 2 57 ms; ref5 none 25 ms; ref7 none 17 ms
+m185.txt: List<i32> is Cp: C none Complete rounds=12 V=102 E=98 J=84760 N=23 established-at-stop 2 274 ms; ref5 none 115 ms; ref7 none 777 ms
+n39.txt (nested profile): T is V: C + Complete rounds=15 V=211 E=68 J=664874 N=22 established-at-stop 1 1707 ms; ref5 + 12 ms; ref7 + 18 ms

@@ -11,7 +11,7 @@ namespace Kimi.Compiler.Backend;
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal enum StorageKernelKind : byte
 {
-    /// <summary>StorageDictionaryLayout: the (raw u8, isize) Tuple {handle address, entry stride}, at offsets 0 and 8.</summary>
+    /// <summary>StorageDictionaryLayout: the (raw Dictionary, isize) Tuple {handle address, entry stride}, at offsets 0 and 8.</summary>
     DictionaryLayout,
 
     /// <summary>StorageKeyAt and StorageValueAt: the address of a key or value inside a validated live slot.</summary>

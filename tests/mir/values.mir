@@ -312,7 +312,7 @@ fn unfinished @199
   _7: ref/Dictionary<i32, bool> temp @210 s1
   _8: ref/i32 temp @210 s1
   _9: Never temp @210 s1
-  _10: (raw/u8, isize) temp @211 s1
+  _10: (raw/Dictionary<i32, bool>, isize) temp @211 s1
   _11: uniq/Dictionary<i32, bool> temp @211 s1
   _12: () temp @211 s1
   _13: i32 temp @212 s1
@@ -323,7 +323,7 @@ fn unfinished @199
   _18: ref/i32 temp @212 s1
   _19: Never temp @212 s1
   _20: () temp @199
-  _21: (raw/u8, isize) temp @213 s1
+  _21: (raw/Dictionary<i32, bool>, isize) temp @213 s1
   _22: uniq/Dictionary<i32, bool> temp @213 s1
   _23: () temp @213 s1
   s1: lexical in s0 @201

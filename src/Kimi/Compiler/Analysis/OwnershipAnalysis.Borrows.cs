@@ -122,12 +122,12 @@ public sealed partial class OwnershipAnalysis
                 return false;
             }
 
-            if (reversed && Binding.IsLocalRegion(obligation.Shorter))
+            if (reversed && Binding.RegionIn(obligation.Shorter, obligation.Body))
             {
                 return this.ReportUnprovenOriginObligation(obligation with { Longer = obligation.Shorter, Shorter = longer, Equality = false }, true);
             }
 
-            if (Binding.IsLocalRegion(longer))
+            if (Binding.RegionIn(longer, obligation.Body))
             {
                 foreach (var source in this.compilation.Binding.LocalRegionSources(longer))
                 {

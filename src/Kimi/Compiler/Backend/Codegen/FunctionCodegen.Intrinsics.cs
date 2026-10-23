@@ -4,28 +4,28 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The intrinsic rows of FunctionCodegen (R5 plan C8a, package C 3.2; DECISIONS R5-M92): a call of an intrinsic by its row's writer
-// (IntrinsicRows' writer column), one switch over the closed IntrinsicWriter vocabulary: a runtime routine through the one call writer
-// (Invoke; Raw.release, $abort, tryAllocateBytes), Raw.allocate's routine with its element stride, a Fail's Abort reason, Raw.initialize's
-// copy, Raw.slice's record, transferBytes' memcpy and a staticEnsure's state test (FunctionCodegen.Statics). Each takes its operands at
-// its declaration's slots (ArgumentPosition) and ends through Finish; a row not written yet is one located Unsupported_Kd at the call, its
-// owning unit named in IntrinsicRows. In a caller-location body a location is C3b's row (Location).
+// The intrinsic rows of FunctionCodegen (R5 plans C8a and C5c, package C 3.2; DECISIONS R5-M92, R5-M108): a call of an intrinsic by its
+// row's writer (IntrinsicRows' writer column), over the closed IntrinsicWriter vocabulary: a routine row (Routine: a runtime routine through
+// the one call writer, Invoke, with its slot-less values; Raw.release, $abort, tryAllocateBytes, Raw.allocate with its element stride),
+// which a compiler function's Value call and adapter entry also call by its disposition (Routine by kind), a Fail's
+// Abort reason, Raw.initialize's copy, Raw.slice's record, transferBytes' memcpy and a staticEnsure's state test
+// (FunctionCodegen.Statics). Each takes its operands at its declaration's slots (ArgumentPosition) and ends through Finish; a row not
+// written yet is one located Unsupported_Kd at the call, its owning unit named in IntrinsicRows. In a caller-location body a location is
+// C3b's row (Location).
 internal sealed partial class FunctionCodegen
 {
+    private readonly Value[] slotless = new Value[1]; // A routine row's slot-less values (Routine).
+
     private void Intrinsic(in MirTerminator call, in IntrinsicRow row)
     {
+        if (this.Routine(row, this.InstanceType(call.Place), out var given) is { } routine)
+        {
+            this.Invoke(call, routine, new(call.Callee.Symbol, MirBodyKind.Fn), given);
+            return;
+        }
+
         switch (row.Writer)
         {
-            case IntrinsicWriter.Routine:
-                this.Invoke(call, row.Routine!, new(call.Callee.Symbol, MirBodyKind.Fn));
-                return;
-            case IntrinsicWriter.TryAllocate:
-                this.module.Request(ModuleCodegen.Needs.TryAllocate);
-                this.Invoke(call, row.Routine!, new(call.Callee.Symbol, MirBodyKind.Fn));
-                return;
-            case IntrinsicWriter.Allocate:
-                this.Allocate(call, row.Routine!);
-                return;
             case IntrinsicWriter.Fail:
                 this.Fail(call, row.Routine!);
                 return;
@@ -49,17 +49,42 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // SPEC 5.6: Raw.allocate<T>(count) through its routine (__kimi_raw_allocate), which checks the count and the byte size and gives a
-    // nonnull aligned address for zero bytes: the count, T's stride in the item's instance (its one slot-less parameter), the call's location.
-    // No Layout alignment exceeds the heap's 16 (DECISIONS R5-M92), so no T is refused.
-    private void Allocate(in MirTerminator call, FunctionAbi routine)
+    // SPEC 7.7.4 (DECISIONS R5-M108): a compiler function's routine row by its disposition, what its Value call and its adapter's entry call
+    // (FunctionCodegen.Closures' Runs): an intrinsic's routine row (below), a Body disposition's legacy routine (LegacyRoutine); null for
+    // any other row, which is not one routine call or not written yet (a Shim's, an instruction writer's, an unwritten row's).
+    private FunctionAbi? Routine(CompilerFunctionKind kind, BoundType? result, out ReadOnlySpan<Value> given)
     {
-        if (this.InstanceType(call.Place) is not { Components: [var element] } || this.Laid(element) is not { } stored)
+        given = default;
+        return IntrinsicDisposition.Of(kind) switch
         {
-            return; // A broken contract, recorded.
-        }
+            { Kind: DispositionKind.Intrinsic, Id: var id } => this.Routine(IntrinsicRows.Of(id), result, out given),
+            { Kind: DispositionKind.Body } => LegacyRoutine(kind),
+            _ => null,
+        };
+    }
 
-        this.Invoke(call, routine, new(call.Callee.Symbol, MirBodyKind.Fn), [new('\0', stored.Layout.Stride)]);
+    // A routine row, a call that is one runtime routine: its routine, after its module request (TryAllocate's), and its slot-less values in
+    // order into `given`, from the call's result Type in the item's instance. Raw.allocate<T>(count) (SPEC 5.6) is __kimi_raw_allocate, which
+    // checks the count and the byte size and gives a nonnull aligned address for zero bytes, with T's stride; no Layout alignment exceeds the
+    // heap's 16 (DECISIONS R5-M92), so no T is refused. Null for any other writer. A result without its element's layout is a broken
+    // contract, recorded by Laid (its stride 0, in a module then not written).
+    private FunctionAbi? Routine(IntrinsicRow row, BoundType? result, out ReadOnlySpan<Value> given)
+    {
+        given = default;
+        switch (row.Writer)
+        {
+            case IntrinsicWriter.Routine:
+                return row.Routine;
+            case IntrinsicWriter.TryAllocate:
+                this.module.Request(ModuleCodegen.Needs.TryAllocate);
+                return row.Routine;
+            case IntrinsicWriter.Allocate:
+                this.slotless[0] = new('\0', this.Laid(result is { Components: [var element] } ? element : null)?.Layout.Stride ?? 0);
+                given = this.slotless.AsSpan(0, 1);
+                return row.Routine;
+            default:
+                return null;
+        }
     }
 
     // SPEC 17.4, 22.5.2: a Fail Aborts through the runtime Abort with its fixed code's reason (AbortReasons.Of; its one operand, the code,

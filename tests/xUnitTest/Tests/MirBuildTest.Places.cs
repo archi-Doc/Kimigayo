@@ -299,6 +299,84 @@ public sealed partial class MirBuildTest
         Assert.True(deaths >= 2 && ends == deaths, $"{ends} EndBorrows, {deaths} StorageDeads");
     }
 
+    // SPEC 15.1.5, 15.6.3, 14.9.2 (DECISIONS BU-27): a stored exclusive reference Reborrowed in its own mode, as an argument, a receiver, a
+    // Subject or the source of an `if`, `do` or `match` result, is a Ref of the Type its consumer expects, Binding's name for the Reborrow:
+    // the meet of the stored layer and the parameter layer that reaches it, never the stored Type alone (a result's common Type is the
+    // named Type its sources supply).
+    [Theory]
+    [InlineData("func f(holder: uniq/(Holder during a) during h)\n    change(holder.link)\n    holder.counter.bump()\n    match holder.o\n        .Some(let v) => ()\n        .None => ()\n", 3)]
+    [InlineData("func f(holder: uniq/(Holder during a) during h, c: bool) -> i32\n    let r = if c => holder.link else => holder.link\n    return r@follow\n", 2)]
+    [InlineData("func f(holder: uniq/(Holder during a) during h) -> i32\n    let r = label l: do\n        exit to l holder.link\n    return r@follow\n", 1)]
+    [InlineData("func f(holder: uniq/(Holder during a) during h, o: Option<i32>) -> i32\n    let r = match o\n        .Some(_) => holder.link\n        .None => holder.link\n    return r@follow\n", 2)]
+    public void ABareReborrowIsARefOfItsNamedType(string body, int reborrows)
+    {
+        const string Declarations = "func change(value: uniq/i32) => value@follow = 1\nstruct Counter\n    var count: i32\n    public init() => self.count = 0\n" +
+            "    public func bump(self: uniq/Self) => self.count = self.count + 1\nstruct Holder {a}\n    public var link: uniq/i32 during a\n" +
+            "    public var counter: uniq/Counter during a\n    public var o: uniq/Option<i32> during a\n";
+        var program = Compile(Declarations + body + "public func main() => ()\n").BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Records);
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
+        var f = program.Bodies.ToArray().Single(x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        var refs = f.Statements.ToArray().Where(static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref }).Select(static x => x.Rvalue.Type!)
+            .Where(static x => x.Semantics == SemanticsKind.Uniq).ToArray();
+        Assert.True(refs.Length >= reborrows);
+        Assert.All(refs, static x => Assert.Equal(OriginKind.Intersection, x.Origin?.Kind));
+    }
+
+    // SPEC 13.6.1, 15.1.5 (DECISIONS BU-27): an object upcast of a stored exclusive reference to a view of its own Semantics Reborrows it,
+    // a Ref of its payload in that Semantics of the Origin Binding names for the upcast's borrow (a path's meet through an exclusive
+    // parameter), which the Upcast then changes to the view; a view of another Semantics borrows it in the view's mode (fail-before: an
+    // InternalInvariant_Kd at the Reborrowed operand).
+    [Theory]
+    [InlineData("func f()\n    var owner = make()\n    let child = owner@objuniq/Leaf\n    exclusive(child@objuniq/Base)\n", SemanticsKind.ObjUniq, false)]
+    [InlineData("func f(holder: uniq/(Holder during a) during h)\n    exclusive(holder.leaf@objuniq/Base)\n", SemanticsKind.ObjUniq, true)]
+    [InlineData("func f()\n    var owner = make()\n    let child = owner@objuniq/Leaf\n    shared(child@objref/Base)\n", SemanticsKind.ObjRef, false)]
+    public void AnUpcastsOperandIsARefOfItsPayloadInTheView(string body, SemanticsKind view, bool met)
+    {
+        const string Declarations = "open struct Base\n    public let value: i32\n    protected init(value: i32) => self.value = value\nstruct Leaf: Base\n" +
+            "    public init(): base(10) => ()\nstruct Holder {a}\n    public var leaf: objuniq/Leaf during a\nfunc shared(view: objref/Base) => ()\n" +
+            "func exclusive(view: objuniq/Base) => ()\nfunc make() -> obj/Leaf => Kimi.Intrinsics.makeObj(Leaf.init())\n";
+        var program = Compile(Declarations + body + "public func main() => ()\n").BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Records);
+        var f = program.Bodies.ToArray().Single(x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        var statements = f.Statements.ToArray();
+        var cast = Assert.Single(statements, static x => x is { Kind: MirStatementKind.Assign, Rvalue: { Kind: MirRvalueKind.Cast, Op: (byte)MirCastKind.Upcast } }).Rvalue;
+        var operand = f.Operands[cast.Start];
+        var reference = Assert.Single(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref } && x.Place == operand.Place).Rvalue.Type!;
+        Assert.Equal((view, "Leaf"), (reference.Semantics, reference.Components[0].Symbol?.Name));
+        Assert.Equal((view, "Base"), (cast.Type!.Semantics, cast.Type.Components[0].Symbol?.Name));
+        Assert.True(!met || reference.Origin?.Kind == OriginKind.Intersection, $"{reference.Origin?.Kind}");
+    }
+
+    // SPEC 23.1.2 (DECISIONS BU-27): a jump Binding rejects (no target, an unknown label, a yield outside a construct, an exit across a
+    // Closure) is derived; no consumer takes its operand, so a stored exclusive reference there is designated, never Reborrowed, and the
+    // build adds no record of its own to Binding's.
+    [Theory]
+    [InlineData("func f(r: uniq/i32)\n    exit r\n")]
+    [InlineData("func f(r: uniq/i32) -> i32\n    while true\n        exit to nowhere r\n    return 0\n")]
+    [InlineData("func f(r: uniq/i32)\n    yield r\n")]
+    [InlineData("struct H {a}\n    public var link: uniq/i32 during a\nfunc f(h: uniq/(H during a) during b)\n    exit h.link\n")]
+    [InlineData("func f(r: uniq/i32) -> i32\n    let g = func () -> i32\n        exit to outer r\n    label outer: while true\n        return g()\n    return 0\n")]
+    [InlineData("func f(r: uniq/i32) -> uniq/i32 during r\n    exit r\n")]
+    public void ARejectedJumpsOperandIsNotAcquired(string source)
+    {
+        var c = Compilation.CreateForTest();
+        c.Pipeline = CompilerPipeline.Mir;
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source + "public func main() => ()\n"));
+        c.Bind();
+        c.Binding.CheckStartup(OutputKind.Application);
+        c.Analyze();
+        c.Binding.ReportDiagnostics();
+        c.ReportAnalysis();
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
+        var codes = TestDiagnostics.Of(c).Select(static x => x.Code).ToArray();
+        Assert.Contains(nameof(DiagnosticCode.InvalidJumpTarget_Kd), codes);
+        Assert.DoesNotContain(nameof(DiagnosticCode.InternalInvariant_Kd), codes);
+    }
+
     // SPEC 15.6.2: whether a Place is reached through a Deref of a shared reference or view, which grants Read only.
     private static bool BelowSharedDeref(MirBody body, MirPlace place)
     {

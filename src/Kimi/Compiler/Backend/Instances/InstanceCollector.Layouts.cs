@@ -31,6 +31,19 @@ internal sealed partial class InstanceCollector
         }
     }
 
+    // K 4.8 (DECISIONS R5-M108): a Function Type's inputs and result, each a by-value use at a site (an erasure's target: its adapter's entry
+    // takes and gives them); whether every one is laid out, each checked.
+    private bool LaysOutSignature(SourceRef subject, BoundType function)
+    {
+        var (inputs, laid) = (function.Components[0].Components, this.LaysOut(subject, function.Components[1]));
+        for (var i = 0; i < inputs.Count; i++)
+        {
+            laid &= this.LaysOut(subject, inputs[i]); // By index: a warm run allocates no enumerator.
+        }
+
+        return laid;
+    }
+
     // Whether a by-value use's Type is laid out, by Layout's verdict, memoized per program version and the same for Types that differ in
     // Origins only (Layout reads no Origin). A Language record is at each use (SPEC 8.15.3; one per code and subject), a layout over
     // 2^63 - 1 bytes (IMPL 21.1.1, R5-M52) beside a CLayout's when both hold; a limit is the erased Type's one Resource record, at its

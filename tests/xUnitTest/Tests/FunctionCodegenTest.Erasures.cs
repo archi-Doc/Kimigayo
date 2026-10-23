@@ -6,19 +6,23 @@ using Xunit;
 
 namespace XunitTest;
 
-// The common Function values of MIR code generation (R5 C5b; IMPL 21.1.3, SPEC 7.7.4, 16.4, 22.5.1; DECISIONS R5-M104): erasure, the adapter
-// items' tables and entries, a heap environment's release, a Function value's glue, and a compiler function's Item called as a value.
+// The common Function values of MIR code generation (R5 C5b, C5c; IMPL 21.1.3, SPEC 7.7.4, 10.7, 16.4, 22.5.1; DECISIONS R5-M104, R5-M108):
+// erasure, the adapter items' tables and entries (one per target signature), a heap environment's release, a Function value's glue, and
+// a compiler function's Item called as a value or erased.
 public sealed partial class FunctionCodegenTest
 {
     // A Library's erasures (SPEC 7.7.4): Closures of a 4-byte environment, a 4-byte and a zero-sized drop-needing one and a 24-byte string
-    // one, a function Item; an erased value called through its parameter and destroyed by its glue, and transferred to an owner call.
+    // one, a function Item; an erased value called through its parameter and destroyed by its glue, and transferred to an owner call; a
+    // Never-result Item erased into three results (SPEC 10.7) and two compiler functions' Items (DECISIONS R5-M108).
     private const string Erasures =
         "struct Guard\n    public let id: i32 = 1\n    drop => ()\nstruct Zero\n    drop => ()\nfunc add(a: i32, b: i32) -> i32 => a + b\n" +
         "func inline(n: i32) -> () -> i32 => func [n] () -> i32 => n\nfunc guarded(g: Guard) -> () -> i32 => func [g@move] () -> i32 => g.id\n" +
         "func zero(z: Zero) -> () -> i32 => func [z@move] () -> i32 => 7\nfunc heap(s: string) -> () -> i64 => func [s@move] () -> i64 => 1\n" +
         "func item() -> (i32, i32) -> i32 => add\nfunc call(f: () -> i32) -> i32 => f()\n" +
         "func invoke<F>(action: F) -> i32\n    F is Callable<owner, () -> i32>\n    return action@move()\n" +
-        "func consume(f: () -> i32) -> i32 => invoke(f@move)\n";
+        "func consume(f: () -> i32) -> i32 => invoke(f@move)\n" +
+        "func fail() -> Never => $abort(\"x\")\nfunc ni() -> () -> i32 => fail\nfunc ns() -> () -> string => fail\n" +
+        "func nn() -> () -> Never => fail\nfunc ra() -> (isize) -> raw/u8 => Raw.allocate\nfunc wl() -> (ref/string) -> () => Console.writeLine\n";
 
     // SPEC 7.7.4 (DECISIONS R5-M104): erased values called twice and destroyed once, in reverse declaration order: an inline environment, an
     // inline drop-needing one, a heap one holding a drop-declaring struct and a function Item, also under the old generator.
@@ -150,27 +154,29 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal("internal void (ptr, ptr, i64)", calls[1].Callee!.Signature);
     }
 
-    // SPEC 10.7, 7.7.4 (DECISIONS R5-M104): an Item whose result is Never fits any result, but its adapter's entry is under its own signature
-    // until C5c keys an adapter by its target Function Type: erased into another result it is one located Unsupported_Kd at each
-    // conversion; erased into its own, it is written, the entry ending unreachable after the call.
-    [Fact]
-    public void ANeverItemIsErasedOnlyIntoItsOwnSignatureUntilC5c()
+    // SPEC 10.7, 7.7.4 (DECISIONS R5-M108): a source whose result is Never fits any result, so its adapter items are keyed also by their
+    // target Function Type and each entry has the erased signature the target's calls write, the source's call then unreachable: a function
+    // Item into i32, string and Never; a requirement Item whose witness's result is Never, at its requirement's own result (a slot Type); a
+    // Closure annotated Never, stored and then erased.
+    [Theory]
+    [InlineData(Erasures, "ni", "internal i32 (i64, ptr, ptr, i64)")]
+    [InlineData(Erasures, "ns", "internal void (i64, ptr, ptr, ptr, i64)")]
+    [InlineData(Erasures, "nn", "internal void (i64, ptr, ptr, i64)")]
+    [InlineData(NeverWitness, "g", "internal void (i64, ptr, ptr, ptr, i64)")]
+    [InlineData("func c() -> () -> i32\n    let k = func () -> Never => $abort(\"x\")\n    return k@move\n", "c", "internal i32 (i64, ptr, ptr, i64)")]
+    public void ANeverSourceHasAnEntryPerTargetSignature(string source, string function, string signature)
     {
-        const string Fail = "func fail() -> Never => $abort(\"x\")\n";
-        var c = Analyze(Fail + "func i() -> () -> i32 => fail\nfunc s() -> () -> string => fail\n", OutputKind.Library);
-        Assert.False(c.Generate(TextWriter.Null));
-        Assert.Equal([("Unsupported_Kd", (string?)"fail"), ("Unsupported_Kd", "fail")], Records(c));
-
-        c = Analyze(Fail + "func n() -> () -> Never => fail\n", OutputKind.Library);
+        var c = Analyze(source, OutputKind.Library);
         var text = Generate(c);
-        var entry = GeneratedIr.Parse(text).Function(TableOf(text, Assert.Single(ItemTexts(c, "n"))).Entry);
-        Assert.Equal("internal void (i64, ptr, ptr, i64)", entry.Signature);
-        Assert.Contains("noreturn", entry.Attributes);
-        Assert.Equal(["call", "unreachable"], entry.Instructions.Select(static x => x.Opcode));
+        var entry = GeneratedIr.Parse(text).Function(TableOf(text, Assert.Single(ItemTexts(c, function))).Entry);
+        Assert.Equal(signature, entry.Signature);
+        Assert.Equal(signature.StartsWith("internal void (i64, ptr, ptr, i64)", StringComparison.Ordinal), entry.Attributes.Contains("noreturn"));
+        Assert.Single(CallsOf(entry));
+        Assert.Equal(["call", "unreachable"], entry.Instructions.Select(static x => x.Opcode).TakeLast(2));
     }
 
     // SPEC 7.7.4 (DECISIONS R5-M104): a compiler function's Item called as a value calls what its direct call does, its intrinsic's row over
-    // the call's operands (Raw.allocate: the count, the element's stride, the call's location); erased, it waits for C5c's adapter key.
+    // the call's operands (Raw.allocate: the count, the element's stride, the call's location).
     [Fact]
     public void ACompilerFunctionItemCallsItsDirectCallsRow()
     {
@@ -179,11 +185,48 @@ public sealed partial class FunctionCodegenTest
         var call = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "alloc"))));
         Assert.Same(ir.Function("__kimi_raw_allocate"), call.Callee);
         Assert.Matches(@"^call ptr @\(i64 2, i64 1, ptr @, i64 \d+\)$", call.Shape);
-
-        c = Analyze("func e() -> (isize) -> raw/u8 => Raw.allocate\n", OutputKind.Library);
-        Assert.False(c.Generate(TextWriter.Null));
-        Assert.Equal([("Unsupported_Kd", (string?)"Raw.allocate")], Records(c));
     }
+
+    // SPEC 7.7.4, 22.5.1 (DECISIONS R5-M108): an erased compiler function's Item runs its direct call's routine row from its entry, with the
+    // entry's own parameters, the row's slot-less values and the location the entry received (the erased call's): Raw.allocate's count, its
+    // element's stride and the location; the console writeLine's borrowed string and the location.
+    [Fact]
+    public void AnErasedCompilerFunctionItemRunsItsRoutine()
+    {
+        var c = Analyze(Erasures, OutputKind.Library);
+        var text = Generate(c);
+        var ir = GeneratedIr.Parse(text);
+        var allocate = ir.Function(TableOf(text, Assert.Single(ItemTexts(c, "ra"))).Entry);
+        Assert.Equal("internal ptr (i64, i64, ptr, ptr, i64)", allocate.Signature);
+        var call = Assert.Single(CallsOf(allocate));
+        Assert.Same(ir.Function("__kimi_raw_allocate"), call.Callee);
+        Assert.Equal("call ptr @(i64 %, i64 1, ptr %, i64 %)", call.Shape);
+        Assert.Equal([allocate.Parameters[1], allocate.Parameters[3], allocate.Parameters[4]], call.Operands);
+        var write = ir.Function(TableOf(text, Assert.Single(ItemTexts(c, "wl"))).Entry);
+        var line = Assert.Single(CallsOf(write));
+        Assert.Same(ir.Function("__kimi_write_line"), line.Callee);
+        Assert.Equal([write.Parameters[1], write.Parameters[3], write.Parameters[4]], line.Operands);
+    }
+
+    // SPEC 7.7.4 (DECISIONS R5-M108): a compiler function's call is its direct call's row, whatever targets the row needs: Text.toString's
+    // row runs the format witness and Text.writer's the reserve witness, but neither function is its witness, so their Items, called as
+    // values or erased, wait for C9a's rows, one located Unsupported_Kd each (they called the witness with the function's operands before).
+    [Theory]
+    [InlineData(UserFormat + "public func run(n: ref/Value<i32>) -> string\n    let show = Text.toString<Value<i32>>\n    return show(n)\n", "show(n)")]
+    [InlineData(UserFormat + "public func run(n: ref/Value<i32>) -> string\n    let show: (ref/Value<i32>) -> string = Text.toString\n    return show(n)\n", "Text.toString")]
+    [InlineData(Sink + "public func run(s: uniq/Sink) -> Utf8Writer during s\n    let make = Text.writer<Sink>\n    return make(s)\n", "make(s)")]
+    public void ACompilerFunctionsItemRunsItsRowNotItsRowsWitness(string source, string site)
+    {
+        var c = Analyze(source, OutputKind.Library);
+        Assert.False(c.Generate(TextWriter.Null));
+        Assert.Equal([("Unsupported_Kd", (string?)site)], Records(c));
+    }
+
+    // SPEC 7.7.4, 10.7, 22.5.1 (DECISIONS R5-M108): erased compiler functions' Items and a Never Item erased into two results run natively, the
+    // Never one called through a borrowed string-result value; also under the old generator.
+    [Fact]
+    public void ErasedTargetsRun()
+        => ScalarEmissionTest.EmitFixture("ErasureTargets", ErasureTargets, "write\n", 1, "Hello.kimi:1:25: abort KIMI_E_ABORT: never\n");
 
     // SPEC 7.7.4 (DECISIONS R5-M104): a compiler function's Item whose direct call is a legacy runtime row (the console writeLine) calls that
     // row, over the call's operands and its location.
@@ -198,6 +241,25 @@ public sealed partial class FunctionCodegenTest
         Assert.Matches(@"^call void @\(ptr noundef nonnull align 8 dereferenceable\(24\) %, ptr @, i64 \d+\)$", call.Shape);
         Assert.Contains(Constant("Hello.kimi:3:5"), text);
     }
+
+    // ErasedTargetsRun's program.
+    private const string ErasureTargets = "func fail() -> Never => $abort(\"never\")\nfunc pick(f: ref/(() -> string)) -> string => f()\n" +
+        "let w: (ref/string) -> () = Console.writeLine\nw(\"write\")\nlet a: (isize) -> raw/u8 = Raw.allocate\nlet p = a(0)\n" +
+        "let n: () -> i32 = fail\nlet s: () -> string = fail\nConsole.writeLine(pick(s@ref))\n";
+
+    // A requirement whose witness's result is Never (SPEC 10.7), its Item taken in a generic function at the requirement's result.
+    private const string NeverWitness = "contract Empty\n    func empty() -> Self\nstruct Impossible\n    Self is Empty\n    public let x: i64 = 0\n" +
+        "    public func empty() -> Never => $abort(\"no value\")\nfunc g<T>() -> () -> T\n    T is Empty\n    T is Owned\n    return T.empty\n" +
+        "public func h() -> () -> Impossible => g<Impossible>()\n";
+
+    // A user Utf8Format witness (Text.toString's row runs it).
+    private const string UserFormat = "struct Value<T>\n    Self is Utf8Format\n    let value: T\n    public init(value: T) => self.value = value@move\n" +
+        "    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => Result<(), BufferFull>.Ok(())\n";
+
+    // A user BufferWriter witness (Text.writer's row reserves through it).
+    private const string Sink = "struct Sink\n    Self is BufferWriter\n    public var count: i32 = 0\n" +
+        "    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>\n        self.count += 1\n" +
+        "        return .Err(BufferFull.init())\n";
 
     // The table an item's text stores into its Function value, read from the module's text: its entry's and its drop entry's names (null:
     // none).

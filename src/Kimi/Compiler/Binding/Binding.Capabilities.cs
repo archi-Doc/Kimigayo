@@ -387,8 +387,8 @@ public sealed partial class Binding
         }
         else
         {
-            var origin = type.Origin is null ||
-                this.ProvesOriginOutlives(type.Origin, BoundOrigin.Static, work.Scope.Owner) ? ConstraintProof.Proven : ConstraintProof.Unknown;
+            var origin = OwnedOrigin(type) is not { } owned ||
+                this.ProvesOriginOutlives(owned, BoundOrigin.Static, work.Scope.Owner) ? ConstraintProof.Proven : ConstraintProof.Unknown;
             return CombineProof(origin, this.StructuralCapability(work), true);
         }
 
@@ -510,6 +510,11 @@ public sealed partial class Binding
         {
             var type = this.StoredType(shape.Types[i], work.Type);
             var proof = shape.Types[i].BindingState == BindingState.Invalid ? ConstraintProof.Error : type is null ? ConstraintProof.Unknown : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: work.Intrinsic)), work.Scope);
+            if (work.Intrinsic.Intrinsic == IntrinsicKind.Copy && type is not null && HoldsHolder(type))
+            {
+                proof = ConstraintProof.Refuted; // SPEC 5.7: a `during self` layer makes its Type non-Copy.
+            }
+
             result = CombineProof(result, proof, true);
         }
 

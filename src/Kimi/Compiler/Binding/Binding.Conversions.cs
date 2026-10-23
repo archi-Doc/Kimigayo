@@ -113,6 +113,11 @@ public sealed partial class Binding
             return this.Fail(conversion, AccessFailure(conversion.Left, take: true));
         }
 
+        if (this.HolderPlaceFailure(conversion.Left, HolderAccess.Move, null, conversion))
+        {
+            return null;
+        }
+
         // SPEC 11.2: consuming var storage requires its accessible standard setter,
         // including enclosing owned projections. Move does not require a writable
         // root; a custom getter instead starts a separate result value.
@@ -247,7 +252,8 @@ public sealed partial class Binding
         {
             var pattern = this.BindType(conversion.Right, scope, this.TypeContext(conversion.Right, scope) with { SuppressOuter = true });
             var actual = this.BindNode(conversion.Left, scope);
-            if (pattern is null || actual is null)
+            if (pattern is null || actual is null ||
+                (IsExclusive(pattern.Semantics) && this.HolderPlaceFailure(conversion.Left, HolderAccess.ExclusiveBorrow, null, conversion)))
             {
                 return Complete(conversion, null);
             }
@@ -355,7 +361,7 @@ public sealed partial class Binding
                 this.KindOf(conversion.Left) == ArgumentKind.Literal &&
                 expected is { Kind: BoundTypeKind.Semantics, Components: [var referent] } && expected.Semantics == semantics ? referent : null;
             var operandType = this.BindNode(conversion.Left, scope, operandExpectation);
-            if (operandType is null)
+            if (operandType is null || (IsExclusive(semantics) && this.HolderPlaceFailure(conversion.Left, HolderAccess.ExclusiveBorrow, null, conversion)))
             {
                 return Complete(conversion, null);
             }

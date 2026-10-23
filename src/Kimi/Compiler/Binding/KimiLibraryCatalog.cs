@@ -25,6 +25,10 @@ internal enum KimiLibraryContainer : byte
 // destruction destroys that target in place (SPEC 15.6.3, 15.7: `replace`), which ends the children based in it (design A3 4.1).
 internal readonly record struct PublishedRow(KimiDeclarationId? Runs = null, sbyte On = -1, sbyte Destroys = -1, bool InPlace = false);
 
+// SPEC 5.6, 5.7 (D14): an Origin relation a library operation publishes beyond its signature: its result Origin lies within the Origin
+// that the argument of parameter Within states before its fit to that parameter (Raw.slice's storage).
+internal readonly record struct WithinRow(KimiDeclarationId Id, sbyte Within);
+
 /// <summary>Immutable recognition rules, shared across compilations. Stable IDs are independent of catalog and syntax order.</summary>
 internal static class KimiLibraryCatalog
 {
@@ -36,6 +40,9 @@ internal static class KimiLibraryCatalog
     private static readonly PublishedRow Target = new(Destroys: 0);
     private static readonly PublishedRow Formats = new(KimiDeclarationId.Utf8Format, On: 0);
     private static readonly PublishedRow FormatsValue = new(KimiDeclarationId.Utf8Format, On: 1);
+
+    // The operations' Origin relations beyond their signatures (WithinRow), apart from their recognition entries.
+    private static readonly WithinRow[] WithinRows = [new(KimiDeclarationId.RawSlice, 0)];
 
     private static readonly Entry[] Definitions =
     [
@@ -274,6 +281,21 @@ internal static class KimiLibraryCatalog
     // that summary, never the private body, which is verified against it.
     internal static PublishedRow? Row(BindingSymbol? symbol)
         => symbol?.LibraryDeclaration is { } id && Index(ImplementationOf(id) ?? id) is >= 0 and var index ? Definitions[index].Row : null;
+
+    // SPEC 5.6, 5.7 (D14): the parameter whose argument's raw Origin, as stated before its fit, the operation's result Origin lies
+    // within (WithinRows); -1 for none.
+    internal static int Within(BindingSymbol? symbol)
+    {
+        foreach (var row in WithinRows)
+        {
+            if (symbol?.LibraryDeclaration == row.Id)
+            {
+                return row.Within;
+            }
+        }
+
+        return -1;
+    }
 
     internal static int Index(KimiDeclarationId id) => (uint)id < (uint)Indices.Length ? Indices[(int)id] : -1;
 

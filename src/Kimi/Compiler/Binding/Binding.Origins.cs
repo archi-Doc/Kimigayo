@@ -81,6 +81,11 @@ public sealed partial class Binding
             return true;
         }
 
+        if (UnstatedRelation(a, b) is { } decided)
+        {
+            return decided;
+        }
+
         if (a.Kind == OriginKind.Intersection)
         {
             for (var i = 0; i < a.Operands.Count; i++)
@@ -245,6 +250,22 @@ public sealed partial class Binding
 
     private void AddObligation(BindingObligation obligation)
     {
+        // Rulings S4, design-final §13 A2: a relation with an Unstated end forms no obligation; a Refuted one is recorded at its use,
+        // its Unstated end first.
+        if (obligation is { Longer: { } longer, Shorter: { } shorter } && UnstatedRelation(longer, shorter) is { } holds)
+        {
+            if (!holds || (obligation.Equality && UnstatedRelation(shorter, longer) == false))
+            {
+                // As ownership reports a fit's record: at the value that supplies the longer end, a local's initializer.
+                var at = IsFitObligation(obligation) && obligation.Use is VariableKoto { InitializerKoto: { } initializer } ? initializer : obligation.Use;
+                var fact = holds ? new OriginRelationFact(at, shorter, longer, Equality: true, obligation.Type, Refuted: true)
+                    : new(at, longer, shorter, obligation.Equality, obligation.Type, Refuted: true);
+                this.FailExplained(ref this.originRelations, at, BindingFailure.OriginRelation, fact);
+            }
+
+            return;
+        }
+
         obligation = obligation with { Body = this.formingBody }; // The body Binding formed it in (DECISIONS R4-M101 E1).
         if (this.obligationSet.Add(obligation))
         {

@@ -8,8 +8,9 @@
 // its schemas; for Erase, an interned Type or substitution. Output: a class per definition (Closed, Generic, GenericThroughSpecialization),
 // kept across passes with no edit and discarded at an edit (Binding.Invalidate); an interned erased value, memoized like the interning.
 // Erase: every Origin becomes static (a reference's or a Slice's, written or inferred, every Origin argument and every Origin binding of a
-// substitution or closure context), while Kind, Semantics, symbols, lengths, arities, Self and the declaring Type are kept; idempotent;
-// Types whose instances differ in Origins only erase to one value; it only interns, never preparing storage or rewriting a value.
+// substitution or closure context) and a raw layer states none (DECISIONS BU-24), while Kind, Semantics, symbols, lengths, arities, Self and
+// the declaring Type are kept; idempotent; Types whose instances differ in Origins only erase to one value; it only interns, never
+// preparing storage or rewriting a value.
 // Invariants: true exactly when the definition or a declaration enclosing it on its scope chain has a Type, Semantics or length slot, even an
 // unused one (SPEC 6.1.3). A specialization declares no slot (SPEC 8.13.1), so one in a generic container, and every declaration nested in
 // it, is generic in the container's slots, its instance key holding the container's arguments (SPEC 8.13.3). Origin slots never count.

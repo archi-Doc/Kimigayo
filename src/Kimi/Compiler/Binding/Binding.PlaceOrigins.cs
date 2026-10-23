@@ -1,19 +1,25 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// Place Origins (SPEC 13.5.6, 15.6.3, 15.6.5, 15.8.2): the Origin of a Borrow of the Place an expression designates (PlaceOrigin), of a
-// slot that stores a reference (SlotOrigin), of a borrow prepared from a source (PreparedOrigin) and of a Reborrow through exclusive
-// references (PathReborrowOrigin, FollowedOrigin); the binder and Projection slot naming a Place's own atom (PlaceOriginSource,
-// PlaceOriginBinder, PlaceOriginSlot, SymbolOriginSlot, CandidateOriginBinder) and the reserved Projection slots (EnvironmentSlot,
-// CallResultSlot, ClosureValueSlot, HelperSlot, ReceiverSlot).
-// - Inputs: the bound syntax, the recorded adaptations and pair-layer facts, the helper borrow (HelperOrigin), the indexer calls.
-// - Outputs: Origins interned through OriginAtom and Meet, which adaptations, written Borrows and the Origin rows read.
-// - Invariants: a Place reached through a shared layer depends only on that layer; a Reborrow stays within the borrows that reach
-//   its exclusive references up to the first shared layer; a binding's own Place is the atom of its binder and slot.
-// - Prohibitions: nothing here judges an Origin relation, selects an adaptation or reports a diagnostic.
+// Place Origins (SPEC 13.5.6, 15.6.3, 15.6.5, 15.8.2; DECISIONS BU-27): the Origin of a Borrow of the Place an expression designates
+// (PlaceOrigin), of a slot that stores a reference (SlotOrigin), of a borrow prepared from a source (PreparedOrigin) and of a Borrow of the
+// referent of a stored reference (ReferentOrigin, PathReborrowOrigin), through the one containment walk over a path's steps
+// (ContainedOrigin, MeetLayers); the binder and Projection slot naming a Place's own atom (PlaceOriginSource, PlaceOriginBinder,
+// PlaceOriginSlot, SymbolOriginSlot, CandidateOriginBinder) and the reserved Projection slots (EnvironmentSlot, CallResultSlot,
+// ClosureValueSlot, HelperSlot, ReceiverSlot).
+// - Inputs: the bound syntax and its path steps (NextPathStep), the recorded adaptations and pair-layer facts, the helper borrow
+//   (HelperOrigin), the indexer calls.
+// - Outputs: Origins interned through OriginAtom and Meet, which adaptations, written Borrows, Subjects, in-place reads and the Origin
+//   rows read.
+// - Invariants: a Borrow reached through safe borrow layers is named by the meet of their Origins, from its last dereference outward up
+//   to and including the first shared layer, every one when none is shared (SPEC 15.6.3); a reference read in place is its referent; a
+//   binding's own Place is the atom of its binder and slot; a raw dereference ends the walk (raw Origins are Binding.RawOrigins').
+// - Prohibitions: nothing here judges an Origin relation, selects an adaptation or reports a diagnostic; no other component meets the
+//   layers of a Borrow's path, and a Pattern position's layers (Binding.Patterns.Layers) meet through MeetLayer, this walk's step.
 public sealed partial class Binding
 {
     internal static Koto PlaceOriginSource(Koto source)
@@ -72,95 +78,133 @@ public sealed partial class Binding
     internal static int PlaceOriginSlot(Koto source) => source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate or BindingSymbolKind.Capture } symbol
         ? SymbolOriginSlot(symbol) : 0;
 
-    // An Origin that a function's signature introduces, over its receiver or parameters, rather than a body-local borrow.
-    private static bool SignatureOrigin(BoundOrigin origin)
-    {
-        if (origin.Kind is OriginKind.Input or OriginKind.Parameter)
-        {
-            return true;
-        }
-
-        for (var i = 0; i < origin.Operands.Count; i++)
-        {
-            if (SignatureOrigin(origin.Operands[i]))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     // The dependency of a borrow prepared from a source: through an implicitly followed pair layer it is the layer's own
     // (SPEC 13.5.5), as the adaptation recorded it; otherwise the source Place's.
     private BoundOrigin PreparedOrigin(Koto source)
         => KotoHelper.UnwrapParentheses(source) is var place && this.ImplicitPairAdmitted(place) is var admitted && admitted != SemanticsMask.None && place.BoundType is { } pair
             ? this.PairOrigin(place, pair, admitted) : this.PlaceOrigin(source);
 
-    // SPEC 15.6.3: a Reborrow through an exclusive reference stored in a Place is contained in that reference's Origin and in the
-    // Origin of each safe borrow through which the Place is reached, counting outward up to and including the first shared
-    // layer, so a result reached through a borrowed receiver or parameter stays within that borrow. A shared reference is Copied
-    // and keeps its own Origin. Body-local borrows on the path stay ancestors in ownership analysis (SPEC 15.6.2).
+    // SPEC 15.6.3: a Reborrow of the referent of an exclusive reference stored at `place`, whose Origin is `origin`, is contained in that
+    // reference and in the layers `place` is reached through (ContainedOrigin).
     private BoundOrigin? PathReborrowOrigin(Koto place, BoundOrigin? origin)
+        => origin is null ? null : this.MeetWith(origin, this.ContainedOrigin(place));
+
+    // SPEC 15.6.3, 13.5.5, 3.4.3: a Borrow of the referent that `layers` safe borrow layers of `reference`, stored at `holder`, reach (a
+    // follow, a Subject's Reborrow, a read in place or through several layers): those layers first (MeetLayers), then, unless one of
+    // them is shared, the layers `holder` is reached through. A Type that is no safe borrow layer keeps its own Origin.
+    private BoundOrigin? ReferentOrigin(Koto holder, BoundType? reference, int layers = 1)
     {
-        if (origin is null)
+        if (reference is not { Kind: BoundTypeKind.Semantics, Components.Count: 1 } || !IsBorrow(reference.Semantics))
         {
-            return null;
+            return reference?.Origin;
         }
 
+        BoundOrigin? origin = null;
+        return this.MeetLayers(reference, layers, ref origin) ? origin : this.MeetWith(origin, this.ContainedOrigin(holder));
+    }
+
+    // SPEC 15.6.3, 4.7.1, 4.8.2, 14.8 (DECISIONS BU-27): the meet of the Origins of the safe borrow layers `place`'s path dereferences,
+    // from its last step outward up to and including the first shared one, over NextPathStep (MeetStep); null when the path dereferences
+    // no layer.
+    private BoundOrigin? ContainedOrigin(Koto place)
+    {
+        BoundOrigin? origin = null;
         var path = KotoHelper.UnwrapParentheses(place);
-        for (var depth = 0; depth < 64 && origin is not null; depth++)
+        for (var depth = 0; depth < 64; depth++)
         {
-            var outer = path switch
-            {
-                MemberAccessKoto member => member.Left,
-                IndexKoto index => index.Left,
-                ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PairFollow } follow => follow.Left,
-                _ => null,
-            };
-            if (outer is null)
+            var step = NextPathStep(path, out var next);
+            next = KotoHelper.UnwrapParentheses(next);
+            if (this.MeetStep(step, path, next, ref origin))
             {
                 break;
             }
 
-            outer = KotoHelper.UnwrapParentheses(outer);
-            if (path is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair)
-            {
-                // SPEC 13.5.5: an outer pair layer is a reference in its borrow cases, whose slot bounds the result there; the
-                // walk goes on while an owner or exclusive case reaches further, and the meet over the cases keeps every bound.
-                var admitted = this.PairAdmitted(pair);
-                if ((admitted & SemanticsMask.Borrow) != 0 && outer.BoundType is { } pairLayer && this.OuterOrigin(pairLayer) is { } slot && SignatureOrigin(slot))
-                {
-                    origin = this.Meet(origin, slot);
-                }
-
-                if ((admitted & (SemanticsMask.Owner | SemanticsMask.Uniq | SemanticsMask.ObjUniq)) == 0)
-                {
-                    break;
-                }
-            }
-            else if (outer.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1, Origin: { } layer })
-            {
-                if (SignatureOrigin(layer))
-                {
-                    origin = this.Meet(origin, layer);
-                }
-
-                if (outer.BoundType.Semantics == SemanticsKind.Ref)
-                {
-                    break;
-                }
-            }
-
-            path = outer;
+            path = next;
         }
 
         return origin;
     }
 
-    // The Origin a followed reference's referent keeps: an exclusive reference's own Origin met with its reaching borrows.
-    private BoundOrigin? FollowedOrigin(Koto reference)
-        => reference.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Origin: { } origin } ? this.PathReborrowOrigin(reference, origin) : reference.BoundType?.Origin;
+    // One step of ContainedOrigin from `path` to `next`, met into `origin`; whether it ends the walk. A follow dereferences its operand's
+    // outer layer, a member or a borrowed element every layer of its receiver's own Type (SPEC 3.4.3), a pair follow its slot by its
+    // admitted cases (SPEC 13.5.5): on unless shared. A user index's element is the referent of its published result, an Array or
+    // UniqSlice element of a reference to the receiver's Borrow, a Slice element of `ref/E during s.source` (SPEC 4.7.1), a guard candidate
+    // `ref/T during g` (SPEC 14.8): each names its receiver or is shared, and ends it. An inline part goes on; a root, a special receiver
+    // and a raw dereference end it.
+    private bool MeetStep(PathStep step, Koto path, Koto next, ref BoundOrigin? origin)
+    {
+        switch (step)
+        {
+            case PathStep.Follow:
+                return this.MeetLayers(next.BoundType, 1, ref origin);
+            case PathStep.Member or PathStep.BorrowedElement:
+                return this.MeetLayers(next.BoundType, int.MaxValue, ref origin);
+            case PathStep.InlinePart:
+                return false;
+            case PathStep.PairFollow:
+                var admitted = this.PairAdmitted(path);
+                origin = this.MeetWith(origin, (admitted & SemanticsMask.Borrow) != 0 && next.BoundType is { } pair ? this.OuterOrigin(pair) : null);
+                return (admitted & (SemanticsMask.Owner | SemanticsMask.Uniq | SemanticsMask.ObjUniq)) == 0;
+            case PathStep.UserIndex:
+                origin = this.MeetWith(origin, ElementAccess.IndexerCall(path, false)?.BoundType?.Origin);
+                return true;
+            case PathStep.ArrayElement:
+                origin = this.MeetWith(origin, this.PlaceOrigin(next));
+                return true;
+            case PathStep.SliceElement:
+                origin = this.MeetWith(origin, (next.BoundType?.Kind == BoundTypeKind.Slice ? next.BoundType : next.BoundType?.Components[0])?.Origin);
+                return true;
+            case PathStep.Candidate:
+                origin = this.MeetWith(origin, this.OriginAtom(PlaceOriginBinder(path), OriginKind.Projection, PlaceOriginSlot(path)));
+                return true;
+            case PathStep.Root or PathStep.Receiver or PathStep.RawFollow:
+                return true;
+            default:
+                throw new UnreachableException();
+        }
+    }
+
+    // SPEC 15.6.3, 3.4.3: the outer `count` safe borrow layers of a Type that one selection dereferences (a pair layer by its admitted
+    // cases), met into `origin` from the innermost outward up to and including the first shared one; whether a shared layer ends the
+    // walk. SharedReferenceThroughLayers names a read through several layers by it.
+    private bool MeetLayers(BoundType? type, int count, ref BoundOrigin? origin)
+    {
+        BoundOrigin? met = null;
+        var shared = false;
+        for (var i = 0; i < count && type is not null; i++)
+        {
+            BoundOrigin? layer;
+            bool ends;
+            if (TryPairLayer(type, out _, out _))
+            {
+                var admitted = this.LayerAdmitted(type);
+                layer = (admitted & SemanticsMask.Borrow) != 0 ? this.OuterOrigin(type) : null;
+                ends = (admitted & (SemanticsMask.Owner | SemanticsMask.Uniq | SemanticsMask.ObjUniq)) == 0;
+            }
+            else if (type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && IsBorrow(type.Semantics))
+            {
+                layer = type.Origin;
+                ends = type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef;
+            }
+            else
+            {
+                break;
+            }
+
+            met = this.MeetLayer(met, layer, ends);
+            shared |= ends;
+            type = BelowLayer(type);
+        }
+
+        origin = this.MeetWith(origin, met);
+        return shared;
+    }
+
+    // SPEC 15.6.3: one layer's Origin met, from the outside in, into the Origin the layers outside it reached: a shared layer restarts it
+    // at its own Origin (dropping the layers outside it), an exclusive one meets it. MeetLayers' step and a Pattern position's (SelectLayers).
+    private BoundOrigin? MeetLayer(BoundOrigin? reached, BoundOrigin? layer, bool shared) => shared ? layer ?? reached : this.MeetWith(reached, layer);
+
+    private BoundOrigin? MeetWith(BoundOrigin? a, BoundOrigin? b) => a is null ? b : b is null ? a : this.Meet(a, b);
 
     // SPEC 13.5.6, 15.6.5: a borrow of a slot that stores a reference depends on that slot. A slot reached through a reference
     // keeps that reference's dependencies, whereas the own slot of a local, a parameter, an environment binding or a temporary is
@@ -197,7 +241,7 @@ public sealed partial class Binding
             // SPEC 13.5.5, 15.6.3: a selected referent or payload keeps the dependencies of its reference or handle,
             // so a Reborrow depends on the referent and the parent Loan, not on the slot holding the parent; through an
             // exclusive reference, it also stays within the borrows that reach that reference.
-            return this.FollowedOrigin(selected.Left) ?? this.PlaceOrigin(selected.Left);
+            return this.ReferentOrigin(selected.Left, selected.Left.BoundType) ?? this.PlaceOrigin(selected.Left);
         }
 
         if (ElementAccess.IndexerCall(source, false) is { BoundType.Origin: { } publishedElement })
@@ -222,12 +266,14 @@ public sealed partial class Binding
         {
             // SPEC 13.5.5, 15.6.3: a part of any other selected referent (`p@follow.x`) keeps the dependencies of the reference,
             // as the referent itself does.
-            return this.FollowedOrigin(reached.Left) ?? this.PlaceOrigin(reached.Left);
+            return this.ReferentOrigin(reached.Left, reached.Left.BoundType) ?? this.PlaceOrigin(reached.Left);
         }
 
-        // SPEC 3.4.3, 4.8.1: a reference read in place is its referent, and a Place reached through an exclusive layer stored in
-        // place depends on that layer; a Slice handle that is itself the Place is a Place of its root.
-        return layer is not null && (reachedThrough || layer.Kind == BoundTypeKind.Semantics) ? layer.Origin!
-            : this.OriginAtom(PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source));
+        // SPEC 3.4.3, 4.8.1, 15.6.3: a Place reached through an exclusive layer stored in place is contained in it and in the layers
+        // reaching it (ContainedOrigin), a reference read in place is its referent, and a Slice handle that is itself the Place is a
+        // Place of its root.
+        return layer is null || !(reachedThrough || layer.Kind == BoundTypeKind.Semantics)
+            ? this.OriginAtom(PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source))
+            : reachedThrough ? this.ContainedOrigin(place) ?? layer.Origin! : layer.Origin!;
     }
 }

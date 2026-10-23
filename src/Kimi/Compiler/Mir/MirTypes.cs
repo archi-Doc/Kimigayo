@@ -93,7 +93,7 @@ internal static partial class MirTypes
             return true;
         }
 
-        if ((!left.CarriesOrigin && !right.CarriesOrigin) || left.Kind != right.Kind || left.Semantics != right.Semantics ||
+        if ((!left.CarriesAnyOrigin && !right.CarriesAnyOrigin) || left.Kind != right.Kind || left.Semantics != right.Semantics ||
             !ReferenceEquals(left.Symbol, right.Symbol))
         {
             return false;

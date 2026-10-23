@@ -23,6 +23,15 @@ internal sealed partial class FunctionCodegen
         _ = this.WriteCall(startup, default);
     }
 
+    // The legacy runtime row of a compiler function of the Body disposition, by its kind: the console writeLine (RuntimeAbi.WriteLine, SPEC
+    // 22.1-22.5.5: it borrows its string); C8b-C8e add theirs, and C9a's formatting rows come from one Backend table beside
+    // LegacyRuntimeHelpers.FormattingRow, not from more arms here. Null for a row not written yet.
+    private static FunctionAbi? LegacyRoutine(CompilerFunctionKind kind) => kind switch
+    {
+        CompilerFunctionKind.WriteLine => RuntimeAbi.WriteLine,
+        _ => null,
+    };
+
     // A Call by its callee's row: a compiler function of the Body disposition (KimiLibraryKinds' published IntrinsicDisposition) by its
     // legacy row, any other Fn callee and a Requirement by its target (Function), an intrinsic by its row's writer
     // (FunctionCodegen.Intrinsics); the other rows are not written yet, each at the call.
@@ -105,8 +114,8 @@ internal sealed partial class FunctionCodegen
 
     // A call's arguments in its signature's parameter order, into `arguments` (IMPL 21.3.1, SPEC 22.6): each parameter's argument (Argument),
     // the destination's address as the result slot, the call's location for the location parameters (SPEC 22.5.1, Location; DECISIONS
-    // R5-M92, R5-M93), a parameter without a slot (a runtime routine's stride or reason, a Closure's environment and context) the next of
-    // the given values. The operands are in the order the callee's key gives (ArgumentPosition). A result slot is the destination, a fresh
+    // R5-M92, R5-M93), a parameter without an operand (Given: a runtime routine's stride or reason, a Closure's environment and context)
+    // the next of the given values. The operands are in the order the callee's key gives (ArgumentPosition). A result slot is the destination, a fresh
     // temp or local, never a pointer argument: a Move's Place is moved out and a Copy's a copy slot (DECISIONS R5-M89). False after a record.
     private bool Pass(in MirTerminator call, FunctionAbi signature, MirDefKey callee, ReadOnlySpan<Value> given)
     {
@@ -116,7 +125,7 @@ internal sealed partial class FunctionCodegen
         for (var i = 0; i < parameters.Length; i++)
         {
             var parameter = parameters[i];
-            if (parameter is { Kind: AbiParameterKind.Value, LogicalIndex: < 0 } or { Kind: AbiParameterKind.Environment or AbiParameterKind.Context })
+            if (Given(parameter))
             {
                 this.arguments[i] = given[next++];
                 continue;
@@ -164,18 +173,12 @@ internal sealed partial class FunctionCodegen
         this.Branch(call.Target);
     }
 
-    // A compiler function the backend serves from a legacy runtime row until R8 writes its body (the Body disposition), by its kind: the
-    // console writeLine (RuntimeAbi.WriteLine, SPEC 22.1-22.5.5: it borrows its string); C8b-C8e add theirs, and C9a's formatting rows come
-    // from one Backend table beside LegacyRuntimeHelpers.FormattingRow, not from more arms here. The routine is called through the one call
-    // writer (Invoke): the call's operands at its parameters' slots, placed by the call's own key, and the call site's location; its result
-    // is Unit.
+    // A compiler function the backend serves from a legacy runtime row until R8 writes its body (the Body disposition), by its kind's
+    // routine (LegacyRoutine), called through the one call writer (Invoke): the call's operands at its parameters' slots, placed by the
+    // call's own key, and the call site's location; its result is Unit.
     private void Legacy(in MirTerminator call, CompilerFunctionKind kind)
     {
-        var routine = kind switch
-        {
-            CompilerFunctionKind.WriteLine => RuntimeAbi.WriteLine,
-            _ => null,
-        };
+        var routine = LegacyRoutine(kind);
         if (routine is null)
         {
             this.Report(DiagnosticCode.Unsupported_Kd, call.Source);

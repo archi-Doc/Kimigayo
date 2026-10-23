@@ -5,14 +5,14 @@
 internal group Storage
     /// The shared Loan of its `source` slot and the untaken contiguous elements; it does not own them.
     internal struct RefRemainder<E> {source}
-        internal let storage: raw/E
+        internal let storage: raw/E during source
         internal var position: isize
         internal var count: isize
         internal let loan: Loan<ref/E during source>
 
     /// The parent Loan of its `source` slot and exclusive access to the untaken contiguous elements.
     internal struct UniqRemainder<E> {source}
-        internal let storage: raw/E
+        internal let storage: raw/E during source
         internal var position: isize
         internal var count: isize
         internal let loan: Loan<uniq/E during source>
@@ -30,7 +30,7 @@ internal group Storage
 
     /// The heap Storage and destruction responsibility transferred from an Array for its unreturned elements.
     internal struct OwnedRemainder<E>
-        internal let storage: raw/E
+        internal let storage: raw/E during self
         internal var position: isize
         internal var count: isize
         internal var capacity: isize
@@ -45,7 +45,7 @@ internal group Storage
     /// The shared Loan of its `source` Dictionary slot and the untaken live entries, followed in insertion order through
     /// the slot links; it does not own them.
     internal struct DictionaryRefRemainder<K, V> {source}
-        internal let storage: raw/u8
+        internal let storage: raw/u8 during source
         internal let stride: isize
         internal var link: isize
         internal var count: isize
@@ -54,7 +54,7 @@ internal group Storage
     /// The parent Loan of its `source` Dictionary slot, shared access to the untaken keys and exclusive access to their
     /// values; keys never become exclusive references.
     internal struct DictionaryUniqRemainder<K, V> {source}
-        internal let storage: raw/u8
+        internal let storage: raw/u8 during source
         internal let stride: isize
         internal var link: isize
         internal var count: isize
@@ -63,7 +63,7 @@ internal group Storage
     /// The slot buffer and destruction responsibility transferred from a Dictionary for its unreturned entries, which
     /// are the last `count` live entries ending at `tail`.
     internal struct DictionaryOwnedRemainder<K, V>
-        internal let storage: raw/u8
+        internal let storage: raw/u8 during self
         internal let stride: isize
         internal var link: isize
         internal var tail: isize

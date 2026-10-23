@@ -1,0 +1,717 @@
+RESOURCE-ON-STABLE model 1 view ordinary: i32 is U ref (False, False) C none Resource (items 3095>3000) rounds=39 V=2720 E=439 J=41075 N=154
+contract Cp
+contract K0
+  associate X is K0
+  associate Y is i32
+contract K1<A>
+  associate X
+  associate Y
+  clause Self.(K1<A>).X.(K0).Y is Cp or Cp
+contract K2<A>
+  associate X
+  associate Y is K1<List<i32>>
+  clause Self.(K2<A>).X.(K2<Self.(K2<A>).X>).X is K2<List<A>>
+input T is K0
+input U is K0
+input List<U> is Cp
+conformance S1 is K2<i32> pending
+  binding X = i64
+  binding Y = List<i32>
+
+RESOURCE-ON-STABLE model 1 view ordinary: i32 is T ref (False, False) C none Resource (items 3094>3000) rounds=39 V=2719 E=439 J=35308 N=154
+contract Cp
+contract K0
+  associate X is K0
+  associate Y is i32
+contract K1<A>
+  associate X
+  associate Y
+  clause Self.(K1<A>).X.(K0).Y is Cp or Cp
+contract K2<A>
+  associate X
+  associate Y is K1<List<i32>>
+  clause Self.(K2<A>).X.(K2<Self.(K2<A>).X>).X is K2<List<A>>
+input T is K0
+input U is K0
+input List<U> is Cp
+conformance S1 is K2<i32> pending
+  binding X = i64
+  binding Y = List<i32>
+
+RESOURCE-ON-STABLE model 1 view ordinary: (T.(K0).Y is Cp) or (T.(K0).Y is K0) ref (False, False) C none Resource (items 3098>3000) rounds=41 V=2723 E=439 J=47809 N=154
+contract Cp
+contract K0
+  associate X is K0
+  associate Y is i32
+contract K1<A>
+  associate X
+  associate Y
+  clause Self.(K1<A>).X.(K0).Y is Cp or Cp
+contract K2<A>
+  associate X
+  associate Y is K1<List<i32>>
+  clause Self.(K2<A>).X.(K2<Self.(K2<A>).X>).X is K2<List<A>>
+input T is K0
+input U is K0
+input List<U> is Cp
+conformance S1 is K2<i32> pending
+  binding X = i64
+  binding Y = List<i32>
+
+RESOURCE-ON-STABLE model 42 view ordinary: List<i32> is K1 ref (False, False) C none Resource (items 3075>3000) rounds=75 V=2708 E=430 J=68068 N=151
+contract Cp
+contract K0 : Cp
+  associate X
+  clause Self.(K0).X is K0 or K1
+  clause Self.(K0).X.(K1).X is Self.(K0).X
+contract K1
+  associate X
+  associate Y is K2 or Cp
+  clause Self.(K1).X is not K0
+  clause Self.(K1).Y.(K1).Y is K1
+contract K2
+  associate X is List<i32>
+  associate Y is K2
+contract K3<A>
+  associate X is K1
+  associate Y
+  clause A.(K3<Self.(K3<A>).X>).X is K1 or Cp
+  clause Self.(K3<A>).X.(K1).X is K0 or Cp
+input T is K0
+input U is K2
+conformance S1 is K1
+  binding X = i32
+  binding Y = List<i32> inferred 1
+conformance S2 is K3<i32>
+
+RESOURCE-ON-STABLE model 42 view ordinary: List<i32> is K3<U> ref (False, False) C none Resource (rounds>300) rounds=301 V=304 E=1190 J=357600 N=601
+contract Cp
+contract K0 : Cp
+  associate X
+  clause Self.(K0).X is K0 or K1
+  clause Self.(K0).X.(K1).X is Self.(K0).X
+contract K1
+  associate X
+  associate Y is K2 or Cp
+  clause Self.(K1).X is not K0
+  clause Self.(K1).Y.(K1).Y is K1
+contract K2
+  associate X is List<i32>
+  associate Y is K2
+contract K3<A>
+  associate X is K1
+  associate Y
+  clause A.(K3<Self.(K3<A>).X>).X is K1 or Cp
+  clause Self.(K3<A>).X.(K1).X is K0 or Cp
+input T is K0
+input U is K2
+conformance S1 is K1
+  binding X = i32
+  binding Y = List<i32> inferred 1
+conformance S2 is K3<i32>
+
+RESOURCE-ON-STABLE model 42 view ordinary: List<i32> is K1 ref (False, False) C none Resource (items 3075>3000) rounds=75 V=2708 E=430 J=68068 N=151
+contract Cp
+contract K0 : Cp
+  associate X
+  clause Self.(K0).X is K0 or K1
+  clause Self.(K0).X.(K1).X is Self.(K0).X
+contract K1
+  associate X
+  associate Y is K2 or Cp
+  clause Self.(K1).X is not K0
+  clause Self.(K1).Y.(K1).Y is K1
+contract K2
+  associate X is List<i32>
+  associate Y is K2
+contract K3<A>
+  associate X is K1
+  associate Y
+  clause A.(K3<Self.(K3<A>).X>).X is K1 or Cp
+  clause Self.(K3<A>).X.(K1).X is K0 or Cp
+input T is K0
+input U is K2
+conformance S1 is K1
+  binding X = i32
+  binding Y = List<i32> inferred 1
+conformance S2 is K3<i32>
+
+RESOURCE-ON-STABLE model 42 view ordinary: i32 is K3<List<i32>> ref (False, False) C none Resource (rounds>300) rounds=301 V=305 E=1194 J=360294 N=603
+contract Cp
+contract K0 : Cp
+  associate X
+  clause Self.(K0).X is K0 or K1
+  clause Self.(K0).X.(K1).X is Self.(K0).X
+contract K1
+  associate X
+  associate Y is K2 or Cp
+  clause Self.(K1).X is not K0
+  clause Self.(K1).Y.(K1).Y is K1
+contract K2
+  associate X is List<i32>
+  associate Y is K2
+contract K3<A>
+  associate X is K1
+  associate Y
+  clause A.(K3<Self.(K3<A>).X>).X is K1 or Cp
+  clause Self.(K3<A>).X.(K1).X is K0 or Cp
+input T is K0
+input U is K2
+conformance S1 is K1
+  binding X = i32
+  binding Y = List<i32> inferred 1
+conformance S2 is K3<i32>
+
+RESOURCE-ON-STABLE model 42 view frozen 0: List<i32> is K1 ref (False, False) C none Resource (items 3075>3000) rounds=75 V=2708 E=430 J=68068 N=151
+contract Cp
+contract K0 : Cp
+  associate X
+  clause Self.(K0).X is K0 or K1
+  clause Self.(K0).X.(K1).X is Self.(K0).X
+contract K1
+  associate X
+  associate Y is K2 or Cp
+  clause Self.(K1).X is not K0
+  clause Self.(K1).Y.(K1).Y is K1
+contract K2
+  associate X is List<i32>
+  associate Y is K2
+contract K3<A>
+  associate X is K1
+  associate Y
+  clause A.(K3<Self.(K3<A>).X>).X is K1 or Cp
+  clause Self.(K3<A>).X.(K1).X is K0 or Cp
+input T is K0
+input U is K2
+conformance S1 is K1
+  binding X = i32
+  binding Y = List<i32> inferred 1
+conformance S2 is K3<i32>
+
+RESOURCE-ON-STABLE model 42 view frozen 0: List<i32> is K3<U> ref (False, False) C none Resource (rounds>300) rounds=301 V=304 E=1190 J=357600 N=601
+contract Cp
+contract K0 : Cp
+  associate X
+  clause Self.(K0).X is K0 or K1
+  clause Self.(K0).X.(K1).X is Self.(K0).X
+contract K1
+  associate X
+  associate Y is K2 or Cp
+  clause Self.(K1).X is not K0
+  clause Self.(K1).Y.(K1).Y is K1
+contract K2
+  associate X is List<i32>
+  associate Y is K2
+contract K3<A>
+  associate X is K1
+  associate Y
+  clause A.(K3<Self.(K3<A>).X>).X is K1 or Cp
+  clause Self.(K3<A>).X.(K1).X is K0 or Cp
+input T is K0
+input U is K2
+conformance S1 is K1
+  binding X = i32
+  binding Y = List<i32> inferred 1
+conformance S2 is K3<i32>
+
+RESOURCE-ON-STABLE model 42 view frozen 0: List<i32> is K1 ref (False, False) C none Resource (items 3075>3000) rounds=75 V=2708 E=430 J=68068 N=151
+contract Cp
+contract K0 : Cp
+  associate X
+  clause Self.(K0).X is K0 or K1
+  clause Self.(K0).X.(K1).X is Self.(K0).X
+contract K1
+  associate X
+  associate Y is K2 or Cp
+  clause Self.(K1).X is not K0
+  clause Self.(K1).Y.(K1).Y is K1
+contract K2
+  associate X is List<i32>
+  associate Y is K2
+contract K3<A>
+  associate X is K1
+  associate Y
+  clause A.(K3<Self.(K3<A>).X>).X is K1 or Cp
+  clause Self.(K3<A>).X.(K1).X is K0 or Cp
+input T is K0
+input U is K2
+conformance S1 is K1
+  binding X = i32
+  binding Y = List<i32> inferred 1
+conformance S2 is K3<i32>
+
+RESOURCE-ON-STABLE model 42 view frozen 0: i32 is K3<List<i32>> ref (False, False) C none Resource (rounds>300) rounds=301 V=305 E=1194 J=360294 N=603
+contract Cp
+contract K0 : Cp
+  associate X
+  clause Self.(K0).X is K0 or K1
+  clause Self.(K0).X.(K1).X is Self.(K0).X
+contract K1
+  associate X
+  associate Y is K2 or Cp
+  clause Self.(K1).X is not K0
+  clause Self.(K1).Y.(K1).Y is K1
+contract K2
+  associate X is List<i32>
+  associate Y is K2
+contract K3<A>
+  associate X is K1
+  associate Y
+  clause A.(K3<Self.(K3<A>).X>).X is K1 or Cp
+  clause Self.(K3<A>).X.(K1).X is K0 or Cp
+input T is K0
+input U is K2
+conformance S1 is K1
+  binding X = i32
+  binding Y = List<i32> inferred 1
+conformance S2 is K3<i32>
+
+DECLARATION-ERROR model 55 view ordinary: conflict
+contract Cp
+contract K0<A>
+  associate X
+  associate Y
+  clause A is K3<Self.(K0<A>).X>
+  clause Self.(K0<A>).Y is i32
+contract K1
+  associate X is K2
+  clause Self.(K1).X.(K3<List<i32>>).Y is Cp
+contract K2 : Cp
+  associate X
+  associate Y
+contract K3<A> : K2
+  associate Y
+input T is K2
+input U is K0<i64>
+conformance S1 is K0<i64>
+  binding X = i64 inferred 0
+  binding Y = i64
+conformance S2 is K2
+
+SLOW model 60: 16 s
+DECLARATION-ERROR model 64 view ordinary: conflict
+contract Cp
+contract K0<A>
+  associate X is K0<Self.(K0<A>).X>
+  associate Y is Cp
+  clause Self.(K0<A>).Y is Cp or K3
+contract K1<A>
+  associate Y is not Cp
+  clause A is Cp and K2
+contract K2 : Cp
+  associate X
+  associate Y is K4<List<i32>>
+  clause Self.(K2).Y is Cp and K2
+contract K3 : Cp
+  associate X
+  associate Y
+  clause Self.(K3).X is K3 or Cp
+  clause Self.(K3).Y.(K1<Self.(K3).X>).Y is Self
+contract K4<A>
+  clause A is i32
+  clause A is not Cp
+input T is K2
+input T.(K2).Y is U
+
+DECLARATION-ERROR model 73 view ordinary: conflict
+contract Cp
+contract K0 : Cp
+  associate X is List<i32>
+  associate Y
+contract K1
+  associate X is List<i32>
+  associate Y
+  clause Self is Cp
+  clause Self.(K1).Y is Cp and K0
+contract K2 : Cp
+  associate X is i32
+contract K3
+  associate Y
+  clause Self.(K3).Y is K2 and K1
+  clause Self is Cp
+contract K4<A>
+  associate X is K0
+  associate Y
+  clause A.(K4<Self.(K4<A>).Y>).Y is K0 or K0
+input T is K4<i64>
+input U is K1
+input T.(K4<i64>).Y is U
+input T is Cp or Cp
+conformance S1 is K0
+  binding X = i32
+  binding Y = List<i32>
+
+RESOURCE-ON-STABLE model 76 view ordinary: S1.(K0).X is K2 ref (False, False) C none Resource (items 3001>3000) rounds=257 V=2672 E=386 J=2735038 N=135
+contract Cp
+contract K0
+  associate X
+  associate Y is K0 or Cp
+  clause Self.(K0).Y.(K1).X is K2
+  clause Self.(K0).Y.(K0).Y is Cp
+contract K1 : Cp
+  associate X
+  associate Y
+  clause Self.(K1).Y is Self
+contract K2
+  associate X is K1
+  associate Y is K0 and K2
+  clause Self.(K2).Y.(K1).X is Self
+  clause Self.(K2).X is Cp
+input T is K2
+input U is T.(K2).Y
+conformance S1 is K0
+  binding X = i32
+  binding Y = S2
+
+SLOW model 76: 18 s
+DECLARATION-ERROR model 157 view ordinary: conflict
+contract Cp
+contract K0
+  associate X is K0 or Cp
+  associate Y is Self.(K0).X
+  clause Self is K1
+  clause Self is K0 or Cp
+contract K1
+  clause Self is K2<List<i32>>
+contract K2<A> pending
+  associate X
+  associate Y
+  clause A.(K0).Y is K1
+  clause Self.(K2<A>).Y is List<i32>
+input T is K0
+input T.(K0).X is U
+conformance S1 is K0
+  binding X = S2
+  binding Y = i64 inferred 0
+
+DECLARATION-ERROR model 162 view ordinary: conflict
+contract Cp
+contract K0
+  associate Y
+  clause Self is Cp or Cp
+  clause Self.(K0).Y is Cp or Cp
+contract K1<A>
+contract K2<A>
+  associate Y is List<i32>
+contract K3<A> : Cp
+  associate Y is K0 or Cp
+  clause A is Cp and Cp
+contract K4
+  associate Y
+  clause Self.(K4).Y is Cp or Cp
+input T is K2<i32>
+input T.(K2<i32>).Y is i32
+input U is List<T.(K2<i32>).Y>
+conformance S1 is K1<i32>
+
+DECLARATION-ERROR model 166 view ordinary: cyclic
+contract Cp
+contract K0 : Cp
+  associate X is K1 or Cp
+  clause Self is K0 or Cp
+  clause Self.(K0).X.(K2).Y is Cp
+contract K1
+contract K2
+  associate Y is Cp
+contract K3 : K0
+  associate X is K3 and K0
+  associate Y
+  clause Self.(K3).X.(K2).Y is Self.(K3).Y
+  clause Self.(K3).X is List<i32>
+input T is K2
+input U is K1
+input T.(K2).Y is U
+input U is List<T.(K2).Y>
+conformance S1 is K3
+  binding X = List<i32>
+  binding Y = i64
+
+DECLARATION-ERROR model 185 view ordinary: conflict
+contract Cp
+contract K0<A>
+  associate Y is Cp or Cp
+  clause A.(K0<List<A>>).Y is List<i32>
+  clause Self is Cp or Cp
+contract K1<A> : K0<A>
+contract K2<A>
+  associate X is not K2<A>
+  clause Self.(K2<A>).X is Cp
+  clause A is List<i32>
+contract K3 : Cp
+  associate X
+  associate Y is Cp or Cp
+input T is K2<i32>
+input U is K2<i64>
+
+DECLARATION-ERROR model 208 view ordinary: cyclic
+contract Cp
+contract K0
+  clause Self is K2 or K0
+  clause Self is not Cp
+contract K1 : K0
+  associate X
+  associate Y
+  clause Self.(K1).Y is K1
+  clause Self.(K1).X is not Cp
+contract K2
+  associate X
+  associate Y is Self.(K2).Y
+  clause Self.(K2).X is Cp
+  clause Self.(K2).Y is K1 or Cp
+input T is K2
+input U is K2
+input U is T.(K2).X
+input U is List<T.(K2).X>
+
+DECLARATION-ERROR model 220 view ordinary: conflict
+contract Cp
+contract K0
+  associate X is Cp or Cp
+  clause Self is K0 or K0
+  clause Self.(K0).X is Cp
+contract K1<A>
+  associate Y is not Cp
+  clause Self.(K1<A>).Y is Cp and Cp
+  clause A is K1<List<i32>>
+contract K2<A>
+contract K3
+  associate X is not Cp
+  associate Y is K2<List<i32>>
+contract K4
+  associate X is K0 or Cp
+  associate Y is Cp
+input T is K3
+input U is K4
+input U is T.(K3).Y
+input U is not K0
+input T is Cp or K4
+input T.(K3).Y is i32
+input U is List<T.(K3).Y>
+conformance S2 is K3
+
+DECLARATION-ERROR model 221 view ordinary: conflict
+contract Cp
+contract K0<A> : Cp
+  associate X is K2
+contract K1 pending
+  associate Y is Cp and Cp
+  clause Self.(K1).Y.(K0<Self>).X is Cp and K1
+contract K2
+  associate Y is Self
+  clause Self.(K2).Y is i32
+  clause Self is K1 or Cp
+input T is K1
+input U is List<T.(K1).Y>
+conformance S1 is K0<i32>
+  binding X = i64
+
+DECLARATION-ERROR model 223 view ordinary: conflict
+contract Cp
+contract K0
+  associate X is Self.(K0).Y
+  associate Y
+contract K1 : Cp pending
+  associate X is List<i32>
+  associate Y is Cp or K0
+  clause Self.(K1).Y is K0
+contract K2<A>
+  associate Y is K2<Self.(K2<A>).Y>
+  clause Self is Cp
+input T is K1
+input U is K0
+input T.(K1).X is U
+input T.(K1).X is i32
+conformance S1 is K0
+  binding X = i32
+  binding Y = S2 inferred 1
+
+SLOW model 241: 115 s
+DECLARATION-ERROR model 249 view ordinary: conflict
+contract Cp
+contract K0<A>
+  associate X is Cp
+  clause Self is Cp and Cp
+  clause Self.(K0<A>).X is Cp
+contract K1
+  clause Self is Cp or Cp
+contract K2<A> : Cp
+  associate X
+  associate Y is Self.(K2<A>).X
+input T is K0<U>
+input T.(K0<U>).X is i32
+conformance S1 is K2<i32>
+  binding X = List<i32>
+  binding Y = i64
+
+DECLARATION-ERROR model 252 view ordinary: conflict
+contract Cp
+contract K0<A>
+  associate X
+  associate Y is K4
+  clause Self is K2<A>
+  clause Self.(K0<A>).X is K4 or Cp
+contract K1 : K0<List<i32>>
+contract K2<A>
+  associate X is K4
+  associate Y is Cp and K4
+  clause Self.(K2<A>).Y is Cp and K3
+  clause A is i32
+contract K3
+  associate X is not Cp
+contract K4
+input T is K0<U>
+input U is K1
+input T is Cp or Cp
+input U is List<T.(K0<U>).X>
+conformance S1 is K2<i64> pending
+  binding X = List<i32>
+  binding Y = List<i32> inferred 0
+
+SLOW model 263: 58 s
+DECLARATION-ERROR model 279 view ordinary: conflict
+contract Cp
+contract K0<A>
+  associate X is Cp and K1
+  associate Y is Cp or Cp
+  clause Self.(K0<A>).Y is not K1
+  clause Self.(K0<A>).X.(K2).X is K3
+contract K1
+  associate X is K2
+  clause Self is K0<List<i32>>
+contract K2 : K0<Self.(K2).X>
+  associate X is K1 or Cp
+  associate Y
+  clause Self.(K2).X is List<i32>
+  clause Self.(K2).X.(K0<Self>).X is Cp
+contract K3
+  associate X is Cp
+  clause Self is not K2
+input T is K2
+input T.(K2).X is U
+input T.(K2).X is i32
+input List<i32> is Cp
+
+DECLARATION-ERROR model 299 view ordinary: conflict
+contract Cp
+contract K0
+  associate X is K0
+  clause Self.(K0).X.(K3<Self>).X is Cp or Cp
+  clause Self.(K0).X.(K1).X is K0
+contract K1 : K0
+  associate X is Self.(K1).Y
+  associate Y
+  clause Self.(K1).X is K0 or Cp
+  clause Self.(K1).X.(K0).X is List<i32>
+contract K2<A>
+  associate X
+  associate Y is Cp and K1
+contract K3<A> : K0
+  associate X is List<i32>
+input T is K0
+input U is K3<i32>
+input T is Cp or K0
+input U is List<T.(K0).X>
+conformance S1 is K3<i64>
+  binding X = i64 inferred 0
+
+SLOW model 308: 12 s
+DECLARATION-ERROR model 313 view ordinary: conflict
+contract Cp
+contract K0
+  associate X
+contract K1<A> : K0 pending
+  associate Y is A
+  clause Self.(K1<A>).Y.(K1<Self.(K1<A>).Y>).Y is Cp
+  clause A is i32
+contract K2
+  associate Y is i32
+input T is K1<i32>
+input T.(K1<i32>).Y is U
+conformance S1 is K2
+  binding Y = S2
+
+DECLARATION-ERROR model 357 view ordinary: conflict
+contract Cp
+contract K0
+  associate Y
+contract K1 : K0
+  associate X is K2
+  associate Y is Self.(K1).X
+  clause Self.(K1).Y is K0 and K2
+  clause Self.(K1).X is K1 or Cp
+contract K2
+  associate X
+contract K3 : Cp
+  associate X is List<i32>
+  associate Y is K1 and K3
+  clause Self.(K3).X is K2
+input T is K2
+input U is K1
+input U is not Cp
+conformance S1 is K1
+  binding X = i64 inferred 1
+  binding Y = S2
+conformance S2 is K0
+
+DECLARATION-ERROR model 362 view ordinary: cyclic
+contract Cp
+contract K0<A>
+  clause Self is not K1
+contract K1
+  associate X
+  associate Y
+  clause Self.(K1).X is K0<List<i32>>
+  clause Self.(K1).Y.(K1).Y is K2<Self>
+contract K2<A>
+  associate X is Cp and K1
+input T is K2<List<i32>>
+input U is T.(K2<List<i32>>).X
+input U is List<T.(K2<List<i32>>).X>
+conformance S1 is K1
+  binding X = i64
+  binding Y = S2 inferred 0 pending
+
+DECLARATION-ERROR model 371 view ordinary: cyclic
+contract Cp
+contract K0 : Cp
+  associate Y
+  clause Self.(K0).Y.(K2).X is K2 or K0
+  clause Self.(K0).Y is Self.(K0).Y
+contract K1 : K0, Cp
+  associate X
+  associate Y is K1
+contract K2 : K0
+  associate X is K1
+  clause Self.(K2).X is K0 or Cp
+input T is K2
+input U is K1
+input T.(K2).X is U
+input List<i32> is Cp
+input U is List<T.(K2).X>
+conformance S1 is K2 pending
+  binding X = List<i32>
+
+DECLARATION-ERROR model 388 view ordinary: conflict
+contract Cp
+contract K0<A>
+  associate X
+  associate Y is A
+  clause Self is Cp and K2
+contract K1<A> : K0<A>
+  associate X
+  associate Y is Cp or Cp
+  clause Self.(K1<A>).Y is i32
+contract K2
+  associate Y
+contract K3<A>
+input T is K0<List<i32>>
+input T.(K0<List<i32>>).Y is i32
+
+== RANDOM seed 4242: 137 s; models 400 (reference overflow 9, declaration errors 20); Supply queries 7813 (1728 of them reference-derived facts, 984 in a frozen view): stable 7813 (agree 7747, disagree 0, C Resource 66), unstable 0 (C Resource 0), provisional 551
+   C Resource on stable queries: 66, of which the reference has evidence for neither polarity 53
+   answer kinds on stable agreement: Eq=666, Eq-=447, Eq+=31, Is=3725, Is-=17, Is+=2130, Is+-=54, Or-compound=659, Or-compound+=18
+   Enumerate: 707: agree 701, disagree 0, C Resource 6, unstable 0
+   recursive classification (Model's declaration search vs the reference's bounded SPEC 8.3.3 closure): 1842 Contracts, 507 recursive, 0 differ
+   models whose classifications differ (compared apart; the classification is C4's): 0; Supply queries 0: stable 0 (agree 0, disagree 0, C Resource 0), unstable 0; Enumerate 0: agree 0, disagree 0, C Resource 0
+   cost per stable request: V median 4, p95 18, max 152; E median 3, p95 9, max 83; J median 6, p95 218, max 17177; N median 6, p95 10, max 34; rounds median 1, p95 4, max 16
+FAILURES 0

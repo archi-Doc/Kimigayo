@@ -22,11 +22,8 @@ public sealed partial class Binding
             return equal;
         }
 
-        equal = left.Kind != BoundTypeKind.Primitive && left.Kind == right.Kind && left.Symbol == right.Symbol &&
-            left.Semantics == right.Semantics && left.Length == right.Length &&
-            ReferenceEquals(left.LengthExpression, right.LengthExpression) && ReferenceEquals(left.ClosureContext, right.ClosureContext) &&
-            left.LengthArguments.AsSpan().SequenceEqual(right.LengthArguments) && ReferenceEquals(left.Origin, right.Origin) &&
-            ((BoundOrigin[])left.OriginArguments).AsSpan().SequenceEqual((BoundOrigin[])right.OriginArguments) && left.Components.Count == right.Components.Count;
+        equal = left.Kind != BoundTypeKind.Primitive && left.SameExceptOrigins(right) && ReferenceEquals(left.Origin, right.Origin) &&
+            ((BoundOrigin[])left.OriginArguments).AsSpan().SequenceEqual((BoundOrigin[])right.OriginArguments);
         if (equal && left.Kind == BoundTypeKind.Function)
         {
             equal = IsSubtype(left, right) && IsSubtype(right, left);

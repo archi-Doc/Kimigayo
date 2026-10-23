@@ -1,0 +1,55 @@
+RESOURCE model 2: T is T.(K3).X: C none Resource (items 3094>3000) rounds=46 V=2733 E=351 J=30098 N=182 established-at-stop 0 724 ms; ref5 none 644 ms; ref7 none 301 ms
+RESOURCE model 2: T is i32: C none Resource (items 3094>3000) rounds=46 V=2733 E=351 J=30098 N=182 established-at-stop 0 845 ms; ref5 none 536 ms; ref7 none 390 ms
+RESOURCE model 2: List<i32> is S2: C - Resource (items 3097>3000) rounds=47 V=2734 E=351 J=30185 N=184 established-at-stop 2 789 ms; ref5 - 641 ms; ref7 - 477 ms
+DECLARATION-ERROR model 5: T is V
+DECLARATION-ERROR model 5: T is Cp
+DECLARATION-ERROR model 5: T is K3
+DECLARATION-ERROR model 5: T is K2<i32>
+DECLARATION-ERROR model 5: i32 is K0
+DECLARATION-ERROR model 5: List<i32> is K1
+DECLARATION-ERROR model 5: List<i32> is K1
+DECLARATION-ERROR model 5: T.(K0).X is K1
+DECLARATION-ERROR model 5: V is K2<U>
+DECLARATION-ERROR model 5: T.(K0).X.(K0).X is Cp
+DECLARATION-ERROR model 5: U is K2<U>
+DECLARATION-ERROR model 5: T.(K0).X.(K0).X is K2<List<i32>>
+DECLARATION-ERROR model 5: S1 is i32
+DECLARATION-ERROR model 5: i32 is T.(K0).X.(K0).X
+DECLARATION-ERROR model 5: S1 is T.(K0).X.(K0).X
+DECLARATION-ERROR model 5: T is Cp or K0
+DECLARATION-ERROR model 5: T.(K0).X is Cp or K0
+DECLARATION-ERROR model 23: T is V
+DECLARATION-ERROR model 23: T is Cp
+DECLARATION-ERROR model 23: i32 is K2
+DECLARATION-ERROR model 23: List<T.(K0).Y> is Cp
+DECLARATION-ERROR model 23: List<T.(K0).Y> is Cp
+DECLARATION-ERROR model 23: S1 is K3<i32>
+DECLARATION-ERROR model 23: T.(K0).Y.(K1).X is K3<i32>
+DECLARATION-ERROR model 23: T is K0
+DECLARATION-ERROR model 23: V is K3<List<i32>>
+DECLARATION-ERROR model 23: V is K0
+DECLARATION-ERROR model 23: S1 is K2
+DECLARATION-ERROR model 23: T.(K0).Y.(K1).X is K0
+DECLARATION-ERROR model 23: T.(K0).Y.(K0).Y is U
+DECLARATION-ERROR model 23: V is S2
+DECLARATION-ERROR model 23: T is List<i32>
+DECLARATION-ERROR model 23: T is Cp or K0
+DECLARATION-ERROR model 23: T.(K0).Y is Cp or K0
+OVER BUDGET model 36: T is V; C alone + Complete rounds=5 V=22 E=15 J=2168 N=8 0.3 s wall
+OVER BUDGET model 36: T is Cp; C alone + Complete rounds=2 V=6 E=11 J=90 N=8 0.3 s wall
+OVER BUDGET model 36: T.(K1<i64>).X.(K1<i64>).X is K2; C alone none Complete rounds=0 V=2 E=5 J=22 N=10 0.2 s wall
+OVER BUDGET model 36: T.(K1<i64>).X.(K4).Y is K3<U>; C alone none Complete rounds=0 V=2 E=5 J=3 N=12 0.2 s wall
+OVER BUDGET model 36: U is K4; C alone none Complete rounds=0 V=2 E=5 J=2 N=10 0.3 s wall
+OVER BUDGET model 36: i32 is K1<i32>; C alone none Complete rounds=4 V=23 E=19 J=3401 N=9 0.4 s wall
+OVER BUDGET model 36: List<i32> is K0<i64>; C alone none Complete rounds=0 V=2 E=5 J=3 N=10 0.2 s wall
+OVER BUDGET model 36: S1 is K3<i32>; C alone none Complete rounds=0 V=2 E=5 J=3 N=10 0.6 s wall
+OVER BUDGET model 36: U is K0<i32>; C alone none Complete rounds=0 V=2 E=5 J=3 N=10 0.7 s wall
+OVER BUDGET model 36: T.(K1<i64>).X.(K4).Y is K2; C alone none Complete rounds=0 V=2 E=5 J=3 N=11 0.6 s wall
+OVER BUDGET model 36: List<S1.(K1<i64>).X> is K4; C alone none Complete rounds=0 V=2 E=5 J=5 N=12 0.7 s wall
+OVER BUDGET model 36: U is K0<i32>; C alone none Complete rounds=0 V=2 E=5 J=3 N=10 0.7 s wall
+OVER BUDGET model 36: T.(K1<i64>).X.(K4).Y is i32; C alone none Complete rounds=4 V=30 E=15 J=3868 N=10 0.8 s wall
+OVER BUDGET model 36: List<S1.(K1<i64>).X> is List<i32>; C alone none Complete rounds=4 V=52 E=15 J=5235 N=12 0.9 s wall
+OVER BUDGET model 36: S1 is U; C alone none Complete rounds=6 V=35 E=15 J=2666 N=10 0.8 s wall
+OVER BUDGET model 36: T is Cp or K2; C alone none Complete rounds=4 V=24 E=15 J=2187 N=9 1.3 s wall
+OVER BUDGET model 36: T.(K1<i64>).X is Cp or K2; C alone none Complete rounds=4 V=24 E=19 J=3259 N=10 0.5 s wall
+== NESTED seed 77: 40 models, 653 queries (budget 60 s each, C and both reference bounds): agree 550, disagree 0, C Resource 3, reference unstable 0, overflow 49, declaration errors 34, over budget 17; C time on finished queries median 150 ms, p95 3343 ms, max 7351 ms

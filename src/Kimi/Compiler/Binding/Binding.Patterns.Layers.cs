@@ -35,7 +35,7 @@ public sealed partial class Binding
                 // is Reborrowed, so its Origin is met with the dependency reached so far.
                 var origin = reach.Origin;
                 var readOnly = type.Semantics == SemanticsKind.Ref || reach.Access == PatternAccessMode.Shared;
-                var restarted = type.Semantics == SemanticsKind.Ref || origin is null ? type.Origin ?? origin : type.Origin is { } layer ? this.Meet(origin, layer) : origin;
+                var restarted = this.MeetLayer(origin, type.Origin, shared: type.Semantics == SemanticsKind.Ref);
                 reach = new(readOnly ? PatternAccessMode.Shared : PatternAccessMode.Exclusive, restarted, OwnedPart: false);
                 type = type.Components[0];
                 layers++;
@@ -71,6 +71,18 @@ public sealed partial class Binding
             type = target;
             layers++;
         }
+    }
+
+    // SPEC 5.7: a Case payload's `during self` layer read at a position: through the layer the position is reached by, in its mode,
+    // else through the Subject's path (ReadHolder); null after a located Unsupported_Kd at `node`.
+    private BoundType? PayloadRead(BoundType stored, BoundMatch plan, in PatternReach reach, Koto node)
+    {
+        if (reach.Access == PatternAccessMode.Owned || !HoldsHolder(stored))
+        {
+            return this.ReadHolder(stored, plan.Syntax.Expression, node);
+        }
+
+        return this.ReplaceHolder(stored, reach.Origin);
     }
 
     // SPEC 15.1.6 (Bindings): a part of an owned Subject or item reached with owned access is bound as its stored Type; a Place reached

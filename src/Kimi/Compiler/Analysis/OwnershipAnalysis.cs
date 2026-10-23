@@ -224,7 +224,7 @@ public sealed partial class OwnershipAnalysis
                 // and a Type's clause substituted at a Type occurrence, a declared relation, at that occurrence.
                 var fit = Binding.IsFitObligation(obligation);
                 var at = fit && obligation.Use is VariableKoto { InitializerKoto: { } initializer } ? initializer : obligation.Use;
-                var relation = new OriginRelationFact(at, longer, shorter, obligation.Equality, obligation.Type, Binding.RefutesOriginRelation(longer, shorter), obligation.Clause, WellFormed: obligation.WellFormed);
+                var relation = new OriginRelationFact(at, longer, shorter, obligation.Equality, obligation.Type, Binding.RefutesOriginRelation(longer, shorter, obligation.Body), obligation.Clause, WellFormed: obligation.WellFormed);
                 var (evidence, related) = Binding.OriginRelationFacts(relation, fit ? "fit" : obligation.Clause is not null ? "declared" : "wellFormed");
                 if (ChainOrdinal(at, issue.Code, evidence) is { } chain)
                 {
@@ -649,7 +649,8 @@ public sealed partial class OwnershipAnalysis
     private int Place(Koto source, BoundType? type, OwnershipPlaceKind kind, bool mutable, AcquisitionKind? plannedAcquisition = null)
     {
         var id = this.body.PlaceStorage.Count;
-        type = this.Resolve(type, this.Active) ?? BoundType.Unit;
+        // D5 exception (the owner's Q-O3; DECISIONS BU-24): a Place's Type states no raw Origin. Removed with the old analysis (R6-check).
+        type = this.compilation.Binding.WithoutRawOrigins(this.Resolve(type, this.Active)) ?? BoundType.Unit;
         // Never has no value storage. Its result marker is only used on unreachable
         // delivery nodes; control-flow checking rejects any normal completion.
         var neverResult = kind == OwnershipPlaceKind.Result && ReferenceEquals(type, BoundType.Never);

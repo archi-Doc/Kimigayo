@@ -170,7 +170,8 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (annotation.OriginExpression is not { } expression)
+            // SPEC 5.7 (design-final §0, bu19): a raw layer's Origin belongs to an input's borrow, a slot or static, so it introduces no name.
+            if (annotation.OriginExpression is not { } expression || annotation.SemanticsKind == SemanticsKind.Raw)
             {
                 continue;
             }
@@ -307,87 +308,6 @@ public sealed partial class Binding
         }
 
         return declaration;
-    }
-
-    // A name that resolves to a binding set that failed as a repeat yields that set as repeated (RestOnRepeatedSet) beside its Type.
-    private bool OriginCandidate(string name, Koto use, BindingScope scope, out BoundOrigin? scalar, out BoundType? carrier, out TypeSemanticsKoto? repeated)
-    {
-        scalar = null;
-        carrier = null;
-        repeated = null;
-        var owner = OriginOwner(use);
-        if (owner is not null && !ReferenceEquals(owner, scope.Owner) &&
-            this.originDeclarations.GetValueOrDefault(owner)?.Sets.TryGetValue(name, out var localSet) == true)
-        {
-            carrier = this.BindOriginSetType(localSet, scope);
-            repeated = RepeatedSet(localSet) ? localSet : null;
-            return true;
-        }
-
-        for (var current = scope; current is not null; current = current.Parent)
-        {
-            var visibleValue = current.Values.TryGetValue(name, out var competing) &&
-                competing.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture &&
-                (competing.Kind != BindingSymbolKind.Local || ReferenceEquals(competing.Declaration, owner) || competing.Declaration.Span.End <= use.Span.Start);
-            var sets = this.originDeclarations.GetValueOrDefault(current.Owner)?.Sets;
-            if (visibleValue && (current.Origins?.ContainsKey(name) == true || sets?.ContainsKey(name) == true))
-            {
-                this.Fail(use, BindingFailure.Duplicate);
-                return true;
-            }
-
-            if (sets?.TryGetValue(name, out var set) == true)
-            {
-                carrier = this.BindOriginSetType(set, current);
-                repeated = RepeatedSet(set) ? set : null;
-                return true;
-            }
-
-            if (current.OriginSets?.TryGetValue(name, out var local) == true && OriginOwner(local) is { } localOwner &&
-                (ReferenceEquals(localOwner, owner) || localOwner.Span.End <= use.Span.Start))
-            {
-                carrier = this.BindOriginSetType(local, current);
-                repeated = RepeatedSet(local) ? local : null;
-                return true;
-            }
-
-            if (current.Origins?.TryGetValue(name, out scalar) == true)
-            {
-                return true;
-            }
-
-            var count = InputCount(current.Owner);
-            for (var i = 0; i < count; i++)
-            {
-                if (InputName(current.Owner, i) == name)
-                {
-                    var nameNode = use is MemberAccessKoto member ? member.Left : use;
-                    if (current.Values.TryGetValue(name, out var parameter))
-                    {
-                        nameNode.BoundSymbol = parameter;
-                    }
-
-                    carrier = this.BoundInputType(current.Owner, i) ?? (InputType(current.Owner, i) is { } syntax ? this.BindType(syntax, current) : null);
-                    return true;
-                }
-            }
-
-            if (current.Values.TryGetValue(name, out var symbol) &&
-                symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture)
-            {
-                if (symbol.Kind == BindingSymbolKind.Local && !ReferenceEquals(symbol.Declaration, owner) && symbol.Declaration.Span.End > use.Span.Start)
-                {
-                    continue;
-                }
-
-                (use is MemberAccessKoto member ? member.Left : use).BoundSymbol = symbol;
-                carrier = symbol.Type ?? (symbol.Declaration is VariableKoto { TypeKoto: { } type } ? this.BindType(type, current) : null);
-
-                return true; // An unsuitable nearest candidate never falls through.
-            }
-        }
-
-        return false;
     }
 
     // SPEC 15.3.1, 23.1.2: a name that resolves to a binding set that failed as a repeat names neither that set nor the outer
@@ -699,7 +619,7 @@ public sealed partial class Binding
 
     private BoundType RewriteOrigins(BoundType type, OriginDeclaration declaration)
     {
-        if (!type.CarriesOrigin)
+        if (!type.CarriesAnyOrigin)
         {
             return type;
         }
@@ -718,7 +638,13 @@ public sealed partial class Binding
                 arguments[i] = this.ResolveOrigin(type.OriginArguments[i], declaration);
             }
 
-            return this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, type.Origin is { } origin ? this.ResolveOrigin(origin, declaration) : null, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments);
+            var origin = type.Origin is { } outer ? this.ResolveOrigin(outer, declaration) : null;
+            if (type.RawOrigin is { } raw)
+            {
+                origin = this.ResolveOrigin(raw, declaration);
+            }
+
+            return this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments);
         }
         finally
         {

@@ -422,6 +422,15 @@ public sealed partial class Binding
 
         _ = receiver != SemanticsKind.Owner && receiverType.Semantics == SemanticsKind.Owner &&
             this.FailStaticBorrow(call.Method, ArgumentOperationKind.Borrow, receiver);
+
+        // SPEC 7.7.3, 15.6.3 (DECISIONS BU-27): a stored exclusive callee taken in its own mode is Reborrowed, named as every Reborrow is;
+        // the MIR builder types the Reborrow by the operation's AdaptedType.
+        if (receiver == SemanticsKind.Uniq && receiverType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [var target] })
+        {
+            var reborrow = this.types.Rebuild(receiverType, [target], this.ReferentOrigin(call.Method, receiverType), []);
+            receiverOperation = new(null, receiverType, null, ArgumentOperationKind.Reborrow, ArgumentAdaptation.SameSemanticsReborrow, AdaptedType: reborrow);
+        }
+
         return true;
     }
 

@@ -55,7 +55,7 @@ internal sealed partial class MirBuilder
             case HirAdaptation.None:
                 return adjust.Acquire switch
                 {
-                    HirAcquire.Reborrow => this.Temporary(type, this.Ref(place, type, input), node, into),
+                    HirAcquire.Reborrow => this.Reborrowed(place, type, expected, input, node, into),
                     HirAcquire.Copy => MirOperand.Copy(place),
                     _ => MirOperand.Move(place),
                 };
@@ -80,6 +80,22 @@ internal sealed partial class MirBuilder
             adaptation == HirAdaptation.ExclusiveBorrow ? SemanticsKind.Uniq : SemanticsKind.Ref,
             this.body.TypeOf(place) ?? BoundType.Unit);
         return this.Temporary(reference, this.Ref(place, reference, input), node, into);
+    }
+
+    // SPEC 15.1.5, 15.6.3 (DECISIONS BU-27): a stored exclusive reference Reborrowed in its own mode, of the Type its consumer expects,
+    // which is Binding's name for the Reborrow (a receiver's, an argument's or a payload's AdaptedType, a Subject's borrow, a destination's
+    // Type) and a same-mode reference to the stored referent; as Acquired types every other borrow by `expected`. Any other expected Type is
+    // a broken contract: InternalInvariant_Kd, the value a derived Opaque of the stored Type.
+    private MirOperand Reborrowed(MirPlace place, BoundType stored, BoundType? expected, bool input, Koto node, MirPlace? into)
+    {
+        if (expected is not { Kind: BoundTypeKind.Semantics, Components: [var named] } || expected.Semantics != stored.Semantics ||
+            stored.Components is not [var referent] || !MirTypes.Agree(named, referent))
+        {
+            this.program.Report(SourceRef.Of(node), DiagnosticCode.InternalInvariant_Kd);
+            return MirOperand.Move(this.Unsupported(node, derived: true, stored));
+        }
+
+        return this.Temporary(expected, this.Ref(place, expected, input), node, into);
     }
 
     // SPEC 8.14, 15.1.5: the rvalue a Place's acquisition by its pair layer's case forms where its Type decides the case: a PairAcquire
