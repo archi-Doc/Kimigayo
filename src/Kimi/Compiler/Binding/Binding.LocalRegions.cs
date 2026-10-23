@@ -72,6 +72,12 @@ public sealed partial class Binding
                     continue;
                 }
 
+                if (!ReferenceEquals(current, origin) && EnclosingAtom(current, origin.Body))
+                {
+                    region.Sources.Add(current); // SPEC 15.6.5: fixed in the region's own body, so a source there, never followed.
+                    continue;
+                }
+
                 if (this.localRegions.TryGetValue(current, out var parents))
                 {
                     for (var i = parents.Parents.Count - 1; i >= 0; i--)
@@ -191,6 +197,7 @@ public sealed partial class Binding
         }
 
         var evidence = obligation.Use;
+        var body = obligation.Body;
         Add(longer, shorter);
         if (obligation.Equality)
         {
@@ -201,7 +208,9 @@ public sealed partial class Binding
         {
             source = this.OriginAtUse(source, evidence);
             target = this.OriginAtUse(target, evidence);
-            if (ReferenceEquals(source, target) || (!IsLocalRegion(target) && target.Kind is not (OriginKind.Projection or OriginKind.Anchor or OriginKind.Intersection)))
+            // SPEC 15.6.5: an enclosing body's atom is fixed in the body that formed the relation, which never bounds it.
+            if (ReferenceEquals(source, target) || EnclosingAtom(target, body) ||
+                (!IsLocalRegion(target) && target.Kind is not (OriginKind.Projection or OriginKind.Anchor or OriginKind.Intersection)))
             {
                 return;
             }
@@ -233,6 +242,7 @@ public sealed partial class Binding
     }
 
     // Lowering may reuse only relations already represented in the checked graph. A new finite fit needs ownership analysis.
+    // It runs after binding, so it judges in no body (DECISIONS BU-28).
     private bool VerifiedRegionOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use)
     {
         if (this.ProvesOriginOutlives(longer, shorter, use))
@@ -252,7 +262,7 @@ public sealed partial class Binding
                 }
             }
 
-            return !this.OriginRelationFails(longer, shorter, use);
+            return !this.OriginRelationFails(longer, shorter, use, default);
         }
 
         if (longer.Kind == OriginKind.Intersection)
@@ -268,12 +278,12 @@ public sealed partial class Binding
             return true;
         }
 
-        return this.RegionContains(shorter, longer) && !this.OriginRelationFails(longer, shorter, use);
+        return this.RegionContains(shorter, longer) && !this.OriginRelationFails(longer, shorter, use, default);
     }
 
-    private OriginJudgment JudgeLocalRegion(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
+    private OriginJudgment JudgeLocalRegion(BoundOrigin longer, BoundOrigin shorter, Koto use, ExecutableBody body, ulong condition = 0)
     {
-        if (!FixedOrigin(shorter))
+        if (!FixedIn(shorter, body))
         {
             return OriginJudgment.Proven;
         }
@@ -282,7 +292,7 @@ public sealed partial class Binding
         var result = OriginJudgment.Proven;
         foreach (var source in sources)
         {
-            var judgment = this.JudgeOriginAtoms(source, shorter, use, condition);
+            var judgment = this.JudgeOriginAtoms(source, shorter, use, body, condition);
             if (judgment == OriginJudgment.Refuted)
             {
                 return judgment;

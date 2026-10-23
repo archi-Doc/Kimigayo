@@ -48,37 +48,38 @@ public sealed partial class Binding
     internal OriginJudgment JudgeOriginObligation(in BindingObligation obligation, out bool reversed)
     {
         reversed = false;
-        var forward = this.JudgeOriginRelation(obligation.Longer!, obligation.Shorter!, obligation.Use, obligation.Condition);
+        var forward = this.JudgeOriginRelation(obligation.Longer!, obligation.Shorter!, obligation.Use, obligation.Body, obligation.Condition);
         if (!obligation.Equality || forward == OriginJudgment.Refuted)
         {
             return forward;
         }
 
-        var backward = this.JudgeOriginRelation(obligation.Shorter!, obligation.Longer!, obligation.Use, obligation.Condition);
+        var backward = this.JudgeOriginRelation(obligation.Shorter!, obligation.Longer!, obligation.Use, obligation.Body, obligation.Condition);
         reversed = Severity(backward) > Severity(forward);
         return reversed ? backward : forward;
     }
 
     // SPEC 15.6.5: an unproven relation fails only when it is Refuted, a finite Origin outliving a fixed one, or Unknown between two
-    // fixed Origins. `condition` is the Semantics case the relation is required in (BindingObligation.Condition).
-    internal bool OriginRelationFails(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
-        => this.JudgeOriginRelation(longer, shorter, use, condition) is OriginJudgment.Refuted or OriginJudgment.Unknown;
+    // fixed Origins, both in `body`. `condition` is the Semantics case the relation is required in (BindingObligation.Condition).
+    internal bool OriginRelationFails(BoundOrigin longer, BoundOrigin shorter, Koto use, ExecutableBody body, ulong condition = 0)
+        => this.JudgeOriginRelation(longer, shorter, use, body, condition) is OriginJudgment.Refuted or OriginJudgment.Unknown;
 
     // SPEC 15.6.5: local storage regions carry their source bounds to ownership; a finite-to-local-to-fixed chain is refuted
     // even in checking code. Fixed contracts still need established premises; finite relations carry their actual Loans
-    // through the same reaching-value graph as inferred local regions.
-    internal OriginJudgment JudgeOriginRelation(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
+    // through the same reaching-value graph as inferred local regions. `body` formed the relation; an enclosing body's atom, which only
+    // its Closure's environment brings in, is fixed there and never judged through its sources (SPEC 15.6.5).
+    internal OriginJudgment JudgeOriginRelation(BoundOrigin longer, BoundOrigin shorter, Koto use, ExecutableBody body, ulong condition = 0)
     {
         longer = this.OriginAtUse(longer, use);
         shorter = this.OriginAtUse(shorter, use);
-        if (this.HasRegionBounds(longer))
+        if (this.HasRegionBounds(longer) && !EnclosingAtom(longer, body))
         {
-            return this.JudgeLocalRegion(longer, shorter, use, condition);
+            return this.JudgeLocalRegion(longer, shorter, use, body, condition);
         }
 
         if (longer.Kind != OriginKind.Intersection || this.ProvesOriginOutlives(longer, shorter, use, condition))
         {
-            return this.JudgeOriginAtoms(longer, shorter, use, condition);
+            return this.JudgeOriginAtoms(longer, shorter, use, body, condition);
         }
 
         // SPEC 15.6.5: a meet outlives an Origin when each of its operands does, each the end of its own chain (as OriginOutlives
@@ -87,7 +88,7 @@ public sealed partial class Binding
         var worst = OriginJudgment.Proven;
         for (var i = 0; i < longer.Operands.Count; i++)
         {
-            var judgment = this.JudgeOriginRelation(longer.Operands[i], shorter, use, condition);
+            var judgment = this.JudgeOriginRelation(longer.Operands[i], shorter, use, body, condition);
             worst = Severity(judgment) > Severity(worst) ? judgment : worst;
         }
 
@@ -116,14 +117,14 @@ public sealed partial class Binding
         return false;
     }
 
-    private OriginJudgment JudgeOriginAtoms(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
+    private OriginJudgment JudgeOriginAtoms(BoundOrigin longer, BoundOrigin shorter, Koto use, ExecutableBody body, ulong condition = 0)
     {
         if (UnstatedRelation(longer, shorter) is { } holds)
         {
             return holds ? OriginJudgment.Proven : OriginJudgment.Refuted; // Rulings S4.
         }
 
-        if (IsLocalRegion(shorter))
+        if (RegionIn(shorter, body))
         {
             return OriginJudgment.Proven;
         }
@@ -135,13 +136,13 @@ public sealed partial class Binding
 
         longer = this.OriginAtUse(longer, use);
         shorter = this.OriginAtUse(shorter, use);
-        if (RefutesOriginRelation(longer, shorter))
+        if (RefutesOriginRelation(longer, shorter, body))
         {
             return OriginJudgment.Refuted;
         }
 
         return longer.Kind == OriginKind.Unbound || shorter.Kind == OriginKind.Unbound ? OriginJudgment.Unrepresentable
-            : FixedOrigin(longer) && FixedOrigin(shorter) ? OriginJudgment.Unknown
+            : FixedIn(longer, body) && FixedIn(shorter, body) ? OriginJudgment.Unknown
             : OriginJudgment.Proven;
     }
 

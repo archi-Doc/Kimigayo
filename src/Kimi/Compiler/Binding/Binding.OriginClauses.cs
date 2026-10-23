@@ -158,6 +158,7 @@ public sealed partial class Binding
     {
         var use = relation.Syntax;
         var obligation = new BindingObligation(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, relation.Longer, relation.Shorter, Equality: relation.Equality);
+        obligation = obligation with { Body = this.formingBody }; // Judged in the body that forms it (SPEC 15.6.5; DECISIONS BU-28).
         var resolvedLonger = this.OriginAtUse(relation.Longer, use);
         var resolvedShorter = this.OriginAtUse(relation.Shorter, use);
         if (HasLocalRegion(resolvedLonger) || HasLocalRegion(resolvedShorter) || !FixedOrigin(resolvedShorter))
@@ -180,7 +181,7 @@ public sealed partial class Binding
 
         var longer = this.OriginAtUse(reversed ? relation.Shorter : relation.Longer, use);
         var shorter = this.OriginAtUse(reversed ? relation.Longer : relation.Shorter, use);
-        return new OriginRelationFact(use, longer, shorter, relation.Equality, null, RefutesOriginRelation(longer, shorter), use);
+        return new OriginRelationFact(use, longer, shorter, relation.Equality, null, RefutesOriginRelation(longer, shorter, this.formingBody), use);
     }
 
     // The declaration part: a Field's, Case's, alias's or associated formation's own clause, which Binding alone judges, is recorded
@@ -218,7 +219,7 @@ public sealed partial class Binding
 
         // 2a0-D §5.1 (DECISIONS R4-M108): a record at a body chain (a finite end over a fixed one) is also the clause's row, for A5, and
         // the clause is a twin (R4-M111).
-        if (BodyChain(failed.Longer, failed.Shorter))
+        if (BodyChain(failed.Longer, failed.Shorter, this.formingBody))
         {
             (this.originTwins ??= new(ReferenceEqualityComparer.Instance)).Add(use);
             var row = new BindingObligation(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, failed.Longer, failed.Shorter);

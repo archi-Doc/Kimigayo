@@ -242,7 +242,7 @@ public class ContextualCaptureTest
     }
 
     // The Binding and analysis records a pipeline publishes for a program, which records no internal fault.
-    private static TestDiagnostic[] PublishedRecords(string source, CompilerPipeline pipeline)
+    internal static TestDiagnostic[] PublishedRecords(string source, CompilerPipeline pipeline)
     {
         var c = Compilation.CreateForTest();
         c.Pipeline = pipeline;

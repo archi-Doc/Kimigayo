@@ -1,10 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// SPEC 15.6.5's classes of an Origin as Binding's judge and the C1-F4 view read them: fixed by the body's contract (FixedOrigin), a
-// body-local finite Origin (BodyLocalOrigin), a relation A5 judges as a row (BodyChain, 2a0-D D1), a Refuted relation
-// (RefutesOriginRelation), and the view's row 6, an atom an enclosing body formed (EnclosingAtom; 2a0-D section 3, DECISIONS R4-M101 E5).
-// - Inputs: an Origin as the caller has it at its use; for EnclosingAtom a body and the formation context (BoundOrigin.Body,
-//   BoundClosure.EvaluatingBody, Binding.ExecutableBodies.cs).
+// SPEC 15.6.5's classes of an Origin in a body B, as Binding's judge and the C1-F4 view read them: fixed by the contract (FixedOrigin), fixed
+// in B (FixedIn), a region B judges through its sources (RegionIn), a finite Origin local to B (BodyLocalIn), a relation A5 judges as a row
+// (BodyChain, 2a0-D D1) and a Refuted relation (RefutesOriginRelation). They share one rule, the view's row 6 (EnclosingAtom; 2a0-D
+// section 3, DECISIONS R4-M101 E5, BU-28): in a Closure body the Origins of its captures, atoms an enclosing body formed, are fixed.
+// - Inputs: an Origin as the caller has it at its use, and the body that formed the relation (an obligation's Body, or the forming body
+//   while binding; no body after binding); the formation context (BoundOrigin.Body, BoundClosure.EvaluatingBody, Binding.ExecutableBodies.cs).
 // - Outputs: the class, read by the judge (Binding.OriginProof.cs, Binding.LocalRegions.cs), the records (Binding.OriginFits.cs,
 //   Binding.OriginClauses.cs, Binding.CallRelations.cs), the old analysis's reporter and the view (Binding.OriginRows.cs, ClassifyAtom).
 // - Invariants: each class is decided here once, by one pure predicate that every reader shares.
@@ -30,8 +31,7 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 15.6.5: a fixed Origin is fixed by the body's contract: a signature, parameter or receiver Origin, a projection of one,
-    // static, or a meet of them.
+    // SPEC 15.6.5: an Origin fixed by the contract: a signature, parameter or receiver Origin, a projection of one, static, or a meet of them.
     internal static bool FixedOrigin(BoundOrigin origin)
     {
         if (origin.Kind == OriginKind.Intersection)
@@ -50,25 +50,48 @@ public sealed partial class Binding
         return origin.Kind is OriginKind.Static or OriginKind.Parameter or OriginKind.Input;
     }
 
+    // SPEC 15.6.5: an Origin fixed in `body`: by the contract, or as an enclosing body's atom (a Closure's captures); a meet when each operand is.
+    internal static bool FixedIn(BoundOrigin origin, ExecutableBody body)
+    {
+        if (origin.Kind == OriginKind.Intersection)
+        {
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (!FixedIn(origin.Operands[i], body))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        return FixedOrigin(origin) || EnclosingAtom(origin, body);
+    }
+
+    // SPEC 15.3.6, 15.6.5: a local region that `body` judges through its sources; an enclosing body's region is fixed in it.
+    internal static bool RegionIn(BoundOrigin origin, ExecutableBody body) => IsLocalRegion(origin) && !EnclosingAtom(origin, body);
+
     // SPEC 15.6.1, 15.6.5 (2a0-D D1): a relation is a body chain, a row A5 judges, when one of its ends, as the caller has it at its use,
-    // is not fixed (an Unbound end counts); a fixed-fixed relation is Binding's to judge (A3 §7, until R7).
-    internal static bool BodyChain(BoundOrigin longer, BoundOrigin shorter) => !FixedOrigin(longer) || !FixedOrigin(shorter);
+    // is not fixed in `body` (an Unbound end counts); a fixed-fixed relation is Binding's to judge (A3 §7, until R7).
+    internal static bool BodyChain(BoundOrigin longer, BoundOrigin shorter, ExecutableBody body) => !FixedIn(longer, body) || !FixedIn(shorter, body);
 
-    // SPEC 15.6.1: whether a relation is Refuted: its longer end is a body-local finite Origin and its shorter end a fixed one, or its
-    // longer end is Unstated (UnstatedRelation).
-    internal static bool RefutesOriginRelation(BoundOrigin longer, BoundOrigin shorter)
-        => UnstatedRelation(longer, shorter) == false || (BodyLocalOrigin(longer) && FixedOrigin(shorter));
+    // SPEC 15.6.1: whether a relation is Refuted in `body`: its longer end is a finite Origin local to it and its shorter end fixed in it, or
+    // its longer end is Unstated (UnstatedRelation).
+    internal static bool RefutesOriginRelation(BoundOrigin longer, BoundOrigin shorter, ExecutableBody body)
+        => UnstatedRelation(longer, shorter) == false || (BodyLocalIn(longer, body) && FixedIn(shorter, body));
 
-    private static bool BodyLocalOrigin(BoundOrigin origin)
+    // SPEC 15.6.5: a finite Origin local to `body` (a Borrow's), or a meet with one; an enclosing body's Borrow is fixed in it.
+    private static bool BodyLocalIn(BoundOrigin origin, ExecutableBody body)
     {
         if (origin.Kind is OriginKind.Projection or OriginKind.Anchor)
         {
-            return true;
+            return !EnclosingAtom(origin, body);
         }
 
         for (var i = 0; i < origin.Operands.Count; i++)
         {
-            if (BodyLocalOrigin(origin.Operands[i]))
+            if (BodyLocalIn(origin.Operands[i], body))
             {
                 return true;
             }
