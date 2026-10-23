@@ -35,6 +35,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Conformance | A Type's fulfillment of a Contract. | [§8.6.1](../08-generics-constraints-and-contracts.md#861-conformance-declarations-and-identity) |
 | Conformance Identity | Complete conforming Type plus bound Contract reference. | [§8.6.1](../08-generics-constraints-and-contracts.md#861-conformance-declarations-and-identity) |
 | Constraint / Constraint Clause | A condition on a Type or Semantics / its clause `subject is requirement`. | [§8.2.1](../08-generics-constraints-and-contracts.md#821-constraint-clauses) |
+| Constructed Type / head | A Type whose form fixes its structure (not a Type parameter, pair target, Contract `Self` or unresolved projection) / what identifies that form: a declaration, Semantics, element count or the like. | [§8.2.3](../08-generics-constraints-and-contracts.md#823-type-identity-and-identity-premises) |
 | Consume | The static Eligibility and Legality check of an access operation. | [§15.1.4](../15-ownership-and-lifetime-analysis.md#1514-consume-checks) |
 | Contract | A Container declaring requirements, without implementations or storage. | [§8.4.1](../08-generics-constraints-and-contracts.md#841-contract-declarations) |
 | Copy | Duplication that leaves the source Initialized. | [§3.5](../03-types-and-values.md#35-copy-and-move) |
@@ -48,6 +49,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Effect bound | A guarantee about what a call may access, declared on a requirement, a Callable Constraint or a virtual slot: `confined`. | [§8.11](../08-generics-constraints-and-contracts.md#811-effect-bounds) |
 | Effective Type | The Type with the most derived Core guaranteed at a point after a refinement. | [§14.10.1](../14-control-flow.md#14101-refinable-bindings-and-effective-types) |
 | Excluded syntax | Syntax a directive does not select; it gets source checks only. | [§19.4](../19-compile-time-directives.md#194-excluded-syntax) |
+| Expansion (of a Type) | The Type with each abstract Type replaced by a constructed Type identical with it, repeatedly; a premise error where some Type has no finite one. | [§8.3.3](../08-generics-constraints-and-contracts.md#833-recursion-and-finality) |
 | Field | The storage of a `let` or `var` Property. | [§11.1](../11-properties.md#111-property-kinds) |
 | Finite Origin | An Origin whose region is inferred from uses, within an upper bound. | [§15.6.5](../15-ownership-and-lifetime-analysis.md#1565-judging-origin-relations) |
 | Fixed expected call signature | The one call signature fixed by a position's expected Type: a common Function Type, or the one signature the Callable Constraints of an unbound slot `F` give at `F`, `ref/F` or `uniq/F`. | [§10.5.2](../10-overload-resolution-and-inference.md#1052-call-signatures) |
@@ -90,6 +92,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Position / Range | A boundary resolving into `[0, L]` / an interval of positions. | [§4.6.1](../04-arrays-indexing-and-slices.md#461-positions), [§4.6.2](../04-arrays-indexing-and-slices.md#462-ranges) |
 | PrimitiveInteger | The compiler-intrinsic Contract of exactly the twelve integer Types. | [§8.7.4](../08-generics-constraints-and-contracts.md#874-primitiveinteger) |
 | Project root | The top of a Kotonoha's declaration hierarchy. | [§18](../18-modules-and-dependencies.md#18-modules-and-dependencies) |
+| Proper part | A Type reached by one or more steps into the components of constructed Types, never into a projection or a Field. | [§8.2.3](../08-generics-constraints-and-contracts.md#823-type-identity-and-identity-premises) |
 | Property | A stored `let`/`var` member or a computed member. | [§11.1](../11-properties.md#111-property-kinds) |
 | Punned Place | A transient Place of a Copy, positive-sized Type over bytes that Initialized Places hold. | [§5.2](../05-raw-pointers-and-unsafe-memory.md#52-raw-places) |
 | Raw pointer / raw Place | A `raw/T` address / `*p`, `p[n]` or a part of one, designating a Place at its address. | [§5](../05-raw-pointers-and-unsafe-memory.md#5-raw-pointers-and-unsafe-memory), [§5.2](../05-raw-pointers-and-unsafe-memory.md#52-raw-places) |
@@ -119,6 +122,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Task slot | The leading `task;` of a parameter list or Function Type. | [§24.2](../24-suspension-and-asynchronous-tasks.md#242-task-slots) |
 | Temporary Value / Place | An expression's temporary result / the storage materializing it. | [§3.6](../03-types-and-values.md#36-temporaries) |
 | Type | A complete type: Semantics, target and all Origins. | [§3](../03-types-and-values.md#3-types-and-values) |
+| Type identity | The relation that makes two Types one in a scope: its grounds, closed under replacement and the decomposition of constructed Types with one head. | [§8.2.3](../08-generics-constraints-and-contracts.md#823-type-identity-and-identity-premises) |
 | Undefined behavior | The result of breaking an unsafe promise. | [§1.3](../01-overview.md#13-normative-status-and-wording), [§5](../05-raw-pointers-and-unsafe-memory.md#5-raw-pointers-and-unsafe-memory) |
 | UniqSlice | A non-Copy exclusive contiguous view. | [§4.8.4](../04-arrays-indexing-and-slices.md#484-views-and-uniqslice) |
 | Unsafe context / Unsafe Block | Permission for unsafe operations / `unsafe`, which grants it lexically. | [§5](../05-raw-pointers-and-unsafe-memory.md#5-raw-pointers-and-unsafe-memory), [§14.3](../14-control-flow.md#143-do-and-unsafe) |

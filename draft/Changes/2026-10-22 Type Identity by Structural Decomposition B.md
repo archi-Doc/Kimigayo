@@ -1,6 +1,6 @@
 # 型の構造に基づく同一性（B 版）
 
-状態: 一部取り込み（提案受付のみ。仕様への取り込み・実装は未実施）。
+状態: 取り込み済み（2026-10-23 終了。Q1〜Q7 は推奨どおり採択され、SPEC §8.2.3 ほかへ取り込み、DECISIONS R4-M115。実装は未実施: PLAN G170 の C2〜C4）。
 作成日: 2026-10-22。[Type Identity by Structural Decomposition](2026-10-22%20Type%20Identity%20by%20Structural%20Decomposition.md)（以下 SD）を基に、[Type Identity Normalization](2026-10-22%20Type%20Identity%20Normalization.md)（案 G′、以下 G′）の規則を取り込んだ統合版。両案で答えが異なる点は本書 6 にまとめる。
 現行仕様の参照版: `fed0f2073`。本書は言語の意味と診断の位置を定め、内部表現・正規化の方式・実装計画は定めない。仕様の節は「§n」、本書の節は「本書 n」と書く。
 

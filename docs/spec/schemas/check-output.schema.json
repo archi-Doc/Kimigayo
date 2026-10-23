@@ -160,7 +160,7 @@
       "additionalProperties": false,
       "properties": {
         "kind": {
-          "enum": ["Repair.Transfer", "Repair.Borrow", "Repair.BorrowExclusively", "Repair.RemoveUnsafe", "Repair.ReplaceToken", "Repair.InsertToken", "Repair.PropagateFailure", "Repair.ExplicitDiscard", "Repair.Qualify"]
+          "enum": ["Repair.Transfer", "Repair.Borrow", "Repair.BorrowExclusively", "Repair.RemoveUnsafe", "Repair.ReplaceToken", "Repair.InsertToken", "Repair.PropagateFailure", "Repair.ExplicitDiscard", "Repair.Qualify", "Repair.AddPremise", "Repair.RemovePremise"]
         },
         "title": { "type": "string" },
         "facts": { "type": "array", "items": { "$ref": "#/$defs/value" } },
