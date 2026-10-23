@@ -575,7 +575,7 @@ c@follow = 1                    // Writes x.
 func takeFirst<S>(h: uniq/(uniq/S during s, i32)) -> Option<S.Item>
     S is Take
     var r = h@follow@uniq
-    let first = r.0.take()  // Descends from the receiver r.0: keeps what a read through it carries, not r's Loan on h.*.
+    let first = r.0.take()  // Returned from the receiver r.0's Origins: keeps what a read through it carries (§15.6.4), not r's Loan on h.*.
     h.1 = 5                 // Valid: no live value carries r's Loan.
     return first@move
 ```

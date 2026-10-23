@@ -3227,10 +3227,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
     G212's open points; G221; G136's 15.6.7 sentence; G224's 7.7.2 question; BU-24's claim-repair item; S2's 15.6 per-part observation.
   - Implementing work: BU, Binding drops a pair-supplied raw Origin (8.1.1), reads a static `storage` in a Closure as a static access
     (today `InvalidCaptureBinding_Kd`), and reads and Moves an enclosing Tuple element-wise (today a whole Copy and the located
-    `Unsupported_Kd`); R4, A5 assumes item 1 in G160-4's 4b. The `Packet` and `Totals` examples are registered in `spec-cases.json` with
-    those records as (b) differences; `h` has none. STATUS states the differences.
-  - Later: the owner, 2026-10-23, verbatim 「RZ、G86、G159(2)、G158(3)、B 3.4 の §15.4.2 の穴は、分析してから別の SPEC セッションで決め
-    ます。今回は 11 項目だけ進めてください。」: these five points go to a later SPEC session after their analysis.
+    `Unsupported_Kd`); unimplemented static-storage forms stay the located `Unsupported_Kd` (P42); R4, A5 assumes item 1 in G160-4's
+    4b. The `Packet` and `Totals` examples are registered in `spec-cases.json` with those records as (b) differences; `h` has none.
+    STATUS states the differences.
+  - Later: the owner, 2026-10-23, verbatim 「RZ、G86、G159(2)、G158(3)、B 3.4 の §15.4.2 の穴は、分析してから別の SPEC セッションで
+    決めます。今回は 11 項目だけ進めてください。」: these five points go to a later SPEC session after their analysis.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
