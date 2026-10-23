@@ -4485,6 +4485,44 @@ resumed by R4-M86 (2026-10-20).
     15.3.4): its fix extends `EnclosingAtom`'s chain to named nested functions, not a second rule. Row 5's call result is Fixed in the view
     and finite in the judge (display only today; for 2c-D). PD21: the classes moved first (behavior-preserving) into
     Binding.OriginClasses.cs; Binding.OriginProof.cs's count restarted at 2a0-4's split.
+- **BU-30** (2026-10-23; the BU planning session; PLAN G160's G160-2c, unit bu32, under G160-4's owner-approved design B′ §3.2 as its
+  re-review amended it, R-B2 to R-B5 (DECISIONS R4-M116), one implementation and one review (DECISIONS Q6); the owner's go relayed by R4:
+  「(a) はい」) Binding publishes raw arguments' retention rows by SPEC 15.6.4's kinds (OQ-3 (a)); `TyCtxt.Retains`' row shape is unchanged.
+  - Pointee (item 1, R-B3): an input whose instantiated Type is a raw layer is walked as a borrowed input's referent: `RetentionInput`
+    walks its parts as Content under the raw step rules (`RetentionParts`, the walk below a Type's own layer, split out of
+    `RetentionWalk`), so its self-store row is Content (`Raw.initialize`: `0 Content store 0`). Its own layer's Origin stays an atom of no
+    kind (`RetentionAtom.Kind` nullable): it places the input among the premises, and among an erased callable's fixed Origins (R4-M52), as
+    a borrow's outer Origin does, and gives no row.
+  - Own value (item 2, R-B4): `RetentionInput` records each raw input with its Type and `RetentionWalk` each hold of an output (a position
+    of the result, or of input j's writable storage, whose Type is a raw layer, an abstract part, a struct or an enum); `RetentionRows`
+    matches them (`HeldBy`, `Holds`): a raw layer agreeing with the input's Type with Origins fitted (their `TyCtxt.Erase` forms are one
+    Type) or an abstract part, at the position or in a struct's or enum's stored content (`StoresUntied`, `StoredPart`: SPEC 5.7's inline
+    storage, the base, Case payloads, Tuple and fixed-array elements, nested structs and enums, and `during self` pointees; a borrow, a
+    handle or a raw layer not stating `self` ends it), is a Value row, never for j itself. So `link(head: raw/Node, n: raw/Node)` stores `n` into `head`
+    through Node's `next`, which can hold it. A raw input may have a Value and a Content row to one output.
+  - D6 and Within (items 3, 4): an unstated raw result layer outside a nominal Type's Fields retains every input as Value and a raw input
+    also as Content (`keyAt`); the result retains `KimiLibraryCatalog.Within`'s argument by Value (`Raw.slice`'s `storage`).
+  - Untied (item 5, R-B2): a struct or enum among an output's holds whose stored content has a raw layer stepping Unstated or Static
+    (`StoredStep` on an instance's inline path; past a `during self` pointee, the Origin's kind, as for any layer no declaration states)
+    makes the result untied (`CallRetention.Untied`) or input j an untied store: `CallRetention.UntiedStores`, the inputs ascending,
+    beside `Untied` (A5's 4b joins Φ_E into their write targets). A stored Type Binding does not instantiate makes the contract
+    `CallRetention.Limit`. `Text.writer`'s Utf8Writer (`dispatch`, `pending`) is untied, and so is every input storing one or a
+    `DictionaryStorage.Handle` (`buffer`).
+  - PD21: Binding.Retention.cs (PLAN's due list) and TyCtxt.Retention.cs (seven changing units, never restructured) were split first,
+    behavior-preserving: the atom walk to `Binding.Retention.Atoms.cs`, TyCtxt's memo and per-call view to `TyCtxt.Retention.Calls.cs`.
+  - Rejected: a sentinel input or output in `Retention` for an untied store (A5 maps every row's slots to operands); `Untied` turned
+    into a per-output set (a change of A5's reader in this unit); dropping the raw input's own-layer atom (it loses R4-M52's erased
+    relations and its premise node); the own value as an atom of `retentionAtoms` (every atom reader would skip it); the walk's Type
+    positions alone (a Field that can hold the pointer, Node's `next`, would retain nothing); a second structural identity beside `Erase`.
+  - Open: a raw layer directly at a writable position (`uniq/(raw/T)`, outside a nominal's Fields) gives no untied store, which the
+    contract leaves to 4b's empty-σ and untracked rules (B′ §4.2; unverified); a raw layer a pair parameter supplies reads the Origin
+    Binding keeps (`Holder<raw/i32 during x>`: Exclusive, not untied, where SPEC 8.1.1's raw row gives Unstated), G160-2b's open item, whose
+    owner is the pair binding (written and inferred), not one rule of this unit; a result's holds include positions behind a borrow, as
+    D6's raw layers do (conservative).
+  - R-B5 (on this branch against the base ece46cfa5): MirCensusTest passes on both pipelines; the mir Functional suite (21,914 tests,
+    the Utf8* and InterpolationScanRecoveryTest classes among them) passes as the base's 21,905 do; its MIR difference ledger keeps the
+    base's 3,076 rows and adds 2 from this unit's new RetentionTest program (`fill`, `hidden`), which the base compiler gives alike. The
+    untied Utf8Writer results and handle stores change no verdict of today's A5; their Φ_E at write targets is 4b's.
 
 ## R5 and R6 (adopted 2026-10-18)
 

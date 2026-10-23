@@ -78,6 +78,8 @@ public sealed partial class Binding
         this.retentionAtoms.Clear();
         this.retentionCallables.Clear();
         this.retentionCarriers.Clear();
+        this.retentionRawInputs.Clear();
+        this.retentionHolds.Clear();
         this.retentionScope.Clear();
         this.retentionScope.AddRange(inputs);
         this.retentionInputs = callee is null ? 0 : inputs.Length;
@@ -120,7 +122,7 @@ public sealed partial class Binding
                 this.ExtractOriginPremises(environment, use.Parent);
             }
 
-            return this.RetentionRows(environment, nodes, inputs.Length);
+            return this.RetentionRows(environment, nodes, inputs.Length, KimiLibraryCatalog.Within(callee?.BoundSymbol));
         }
         finally
         {
@@ -128,6 +130,8 @@ public sealed partial class Binding
             this.retentionAtoms.Clear();
             this.retentionCallables.Clear();
             this.retentionCarriers.Clear();
+            this.retentionRawInputs.Clear();
+            this.retentionHolds.Clear();
         }
     }
 
@@ -176,11 +180,12 @@ public sealed partial class Binding
         }
     }
 
-    // An erased callable signature's own atoms, walked after the contract's, its relations added, then dropped.
+    // An erased callable signature's own atoms, walked after the contract's, its relations added, then dropped with its raw inputs and
+    // holds, which are no outputs of the contract.
     private void AddErasedSignature(OriginPremiseEnvironment environment, BoundType signature)
     {
         var atoms = this.retentionAtoms;
-        var start = atoms.Count;
+        var (start, raws, holds) = (atoms.Count, this.retentionRawInputs.Count, this.retentionHolds.Count);
         var inputs = signature.Components[0];
         var unstated = this.retentionUnstatedResult;
         this.retentionScope.Clear();
@@ -201,6 +206,8 @@ public sealed partial class Binding
         this.RetentionWalk(signature.Components[1], result, OriginVariance.Covariant, callable: false);
         this.AddErasedRelations(environment, start);
         atoms.RemoveRange(start, atoms.Count - start);
+        this.retentionRawInputs.RemoveRange(raws, this.retentionRawInputs.Count - raws);
+        this.retentionHolds.RemoveRange(holds, this.retentionHolds.Count - holds);
         this.retentionUnstatedResult = unstated;
     }
 
