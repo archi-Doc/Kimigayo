@@ -69,11 +69,12 @@ function Get-KimiCodegenGroup([string] $Row) {
 }
 
 # The run's executed and failing ids and the methods its results record: a case failed when it ran and did not pass, and a
-# name executed twice throws (a row names one case); a fixture failed when a native run of it did not pass at both O0 and O2
-# (test-scalars.ps1's rule).
+# name executed twice throws (a row names one case); each fixture takes the native owner's status.
+# Incomplete observations never enter the failing set.
 function Get-KimiCodegenRun([string] $Evidence) {
     $executed = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     $failing = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $incomplete = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     $results = @(Get-ChildItem -LiteralPath $Evidence -Filter 'tests-*.xml' -File)
     if ($results.Count -eq 0) { throw "$Evidence records no test results." }
     $recorded = [Collections.Generic.HashSet[string]]::new([string[]]@($results | ForEach-Object { Get-KimiRecordedCases $_.FullName } |
@@ -89,18 +90,25 @@ function Get-KimiCodegenRun([string] $Evidence) {
         # A fixture several native steps ran failed when one of its runs failed.
         $id = "fixture`t$($record.fixture)"
         $null = $executed.Add($id)
-        if (-not $record.ok -or ($record.levels -join ',') -cne 'O0,O2') { $null = $failing.Add($id) }
+        switch -CaseSensitive ($record.status) {
+            'passed' {}
+            'failed' { $null = $failing.Add($id) }
+            'incomplete' { $null = $incomplete.Add($id) }
+            default { throw "Unknown native status '$($record.status)' for $($record.fixture)." }
+        }
     }
-    [pscustomobject]@{ executed = $executed; failing = $failing; recorded = $recorded; native = $native.Count -gt 0 }
+    # Any incomplete execution prevents judging this fixture, even beside a completed run.
+    $failing.ExceptWith($incomplete)
+    [pscustomobject]@{ executed = $executed; failing = $failing; incomplete = $incomplete; recorded = $recorded; native = $native.Count -gt 0 }
 }
 
 # The entries of the ledger, the failing set and each state other than pending, as test cases and as fixtures.
 function Get-KimiCodegenTotals($Entries) {
     $totals = [ordered]@{}
-    foreach ($name in @('ledger', 'failing', 'passesNow', 'noLongerExecuted', 'outOfScope', 'added')) { $totals[$name] = [ordered]@{ tests = 0; fixtures = 0 } }
+    foreach ($name in @('ledger', 'failing', 'passesNow', 'noLongerExecuted', 'outOfScope', 'added', 'incomplete')) { $totals[$name] = [ordered]@{ tests = 0; fixtures = 0 } }
     foreach ($entry in $Entries) {
         $kind = if ($entry.kind -ceq 'test') { 'tests' } else { 'fixtures' }
-        if ($entry.state -cne 'added') { $totals.ledger[$kind] += 1 }
+        if ($null -ne $entry.group) { $totals.ledger[$kind] += 1 }
         if ($entry.state -ceq 'pending' -or $entry.state -ceq 'added') { $totals.failing[$kind] += 1 }
         if ($entry.state -cne 'pending') { $totals[$entry.state][$kind] += 1 }
     }
@@ -111,7 +119,7 @@ function Get-KimiCodegenTotals($Entries) {
 # row that ran and passed passes now; a row that did not run is no longer executed when the run covers it (its selected
 # methods, which a Session discovers as all, and any method its fresh assembly lacks; once its native steps wrote results,
 # every fixture matching a -Fixtures pattern), else out of scope. A selected method the results record no case of (a partial
-# run) throws. differences counts the entries other than pending and out of scope: the run passes when it is 0.
+# run) throws. Incomplete overrides every other state for its fixture; differences includes it and blocks the gate.
 function Write-KimiCodegenPending([string] $Evidence, [string] $Mode, [string] $Configuration, [string[]] $Fixtures, [string] $Ledger) {
     $ledgerRows = Read-KimiCodegenLedger $Ledger
     $run = Get-KimiCodegenRun $Evidence
@@ -124,10 +132,12 @@ function Write-KimiCodegenPending([string] $Evidence, [string] $Mode, [string] $
     if ($unrecorded.Count -gt 0) { throw "The results record no case of $($unrecorded.Count) selected methods (a partial run): $($unrecorded -join ', ')" }
     $ids = [Collections.Generic.SortedSet[string]]::new([string[]]@($ledgerRows.rows.Keys), [StringComparer]::Ordinal)
     $ids.UnionWith($run.failing)
+    $ids.UnionWith($run.incomplete)
     $entries = @(foreach ($id in $ids) {
         $kind, $key, $name = $id -split "`t", 3
         $group = $ledgerRows.rows[$id]
-        $state = if ($run.failing.Contains($id)) { if ($null -ne $group) { 'pending' } else { 'added' } }
+        $state = if ($run.incomplete.Contains($id)) { 'incomplete' }
+        elseif ($run.failing.Contains($id)) { if ($null -ne $group) { 'pending' } else { 'added' } }
         elseif ($run.executed.Contains($id)) { 'passesNow' }
         elseif ($kind -ceq 'fixture') {
             if ($run.native -and @($Fixtures | Where-Object { $key -like $_ }).Count -gt 0) { 'noLongerExecuted' } else { 'outOfScope' }
@@ -142,7 +152,7 @@ function Write-KimiCodegenPending([string] $Evidence, [string] $Mode, [string] $
     foreach ($group in $ledgerRows.groups) { $groups[$group] = Get-KimiCodegenTotals @($entries | Where-Object { $_.group -ceq $group }) }
     $totals = Get-KimiCodegenTotals $entries
     $differences = 0
-    foreach ($state in @('passesNow', 'noLongerExecuted', 'added')) { $differences += $totals[$state].tests + $totals[$state].fixtures }
+    foreach ($state in @('passesNow', 'noLongerExecuted', 'added', 'incomplete')) { $differences += $totals[$state].tests + $totals[$state].fixtures }
     $report = Join-Path $Evidence 'codegen-pending.json'
     [ordered]@{
         run = [ordered]@{ directory = $Evidence; mode = $Mode; configuration = $Configuration; fixtures = @($Fixtures) }
@@ -157,10 +167,12 @@ function Write-KimiCodegenPending([string] $Evidence, [string] $Mode, [string] $
 # group by the filing rule. Each file keeps the report's ordinal order with LF line ends; a file whose rows did not change is
 # not written, and one left without rows is removed.
 function Update-KimiCodegenLedger([string] $Ledger, [string] $Report) {
+    $entries = @((Get-Content -LiteralPath $Report -Raw | ConvertFrom-Json).entries)
+    if (@($entries | Where-Object state -CEQ 'incomplete').Count -gt 0) { throw 'The ledger is not updated: incomplete native observation.' }
     $files = [Collections.Generic.SortedDictionary[string, Collections.Generic.List[string]]]::new([StringComparer]::Ordinal)
     $changes = @{}
     foreach ($group in (Read-KimiCodegenLedger $Ledger).groups) { $files[$group] = [Collections.Generic.List[string]]::new(); $changes[$group] = @(0, 0) }
-    foreach ($entry in (Get-Content -LiteralPath $Report -Raw | ConvertFrom-Json).entries) {
+    foreach ($entry in $entries) {
         if ($entry.state -cne 'pending' -and $entry.state -cne 'outOfScope' -and $entry.state -cne 'added') { $changes[$entry.group][1]++; continue }
         $row = if ($entry.kind -ceq 'test') { "test`t$($entry.key)`t$($entry.name)" } else { "fixture`t$($entry.key)`t1" }
         if ($row -cnotmatch $KimiCodegenRow) { throw "$($row.Replace("`t", ' ')) cannot be a pending row." }

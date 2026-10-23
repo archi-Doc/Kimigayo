@@ -1,35 +1,54 @@
-# Native fixture execution: launch one executable, drain strict UTF-8 streams, enforce its oracle and reap it.
-# Inputs: executable stem and its stdout/stderr/exit/timeout expectation row. Success returns nothing; failures throw.
-# Owns process lifetime only; no compilation, fixture aggregation or codegen-pending decisions.
-function Invoke-KimiFixtureProcess([string] $Target, [hashtable] $Expectation) {
-    $expected = $Expectation.stdout
-    $expectedError = $Expectation.stderr
-    $exit = $Expectation.exit
-    $timeout = $Expectation.timeout
-    $executionEncoding = [Text.UTF8Encoding]::new($false, $true)
+# Native fixture execution: observe one executable, compare its oracle and reap it.
+# Inputs: executable stem, stdout/stderr/exit/CPU-observation oracle, launch-to-stop deadline in milliseconds.
+# Output: passed/failed/incomplete plus measured CPU/wall time, termination and captured streams.
+# A finite observation never proves divergence. No wall-time substitute for CPU progress or pending decisions.
+function Invoke-KimiFixtureProcess(
+    [string] $Target, [hashtable] $Expectation,
+    [ValidateRange(1, 2147483647)] [int] $ExecutionDeadlineMilliseconds
+) {
+    $observation = [int]$Expectation.observationMilliseconds
+    if ($observation -lt 0) { throw 'A fixture CPU observation budget cannot be negative.' }
     $start = [Diagnostics.ProcessStartInfo]::new("$Target.exe")
     $start.UseShellExecute = $false
     $start.CreateNoWindow = $true
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
-    # Kimi writes UTF-8 bytes regardless of the invoking console's code page.
-    # A hidden verification worker can otherwise decode these as legacy text.
-    $start.StandardOutputEncoding = $executionEncoding
-    $start.StandardErrorEncoding = $executionEncoding
+    $start.StandardOutputEncoding = $start.StandardErrorEncoding = [Text.UTF8Encoding]::new($false, $true)
+    $timer = [Diagnostics.Stopwatch]::StartNew()
     $process = [Diagnostics.Process]::Start($start)
     try {
         $stdout = $process.StandardOutput.ReadToEndAsync()
         $stderr = $process.StandardError.ReadToEndAsync()
-        if ($timeout -gt 0) {
-            if ($process.WaitForExit($timeout)) { throw "Divergent fixture returned: $Target, exit=$($process.ExitCode)" }
-            $process.Kill($true)
-            $process.WaitForExit()
+        $termination = 'exited'
+        while (-not $process.HasExited) {
+            $process.Refresh()
+            $cpu = $process.TotalProcessorTime.TotalMilliseconds
+            if ($process.HasExited) { break }
+            # Conservatively reject a late observation even if its CPU sample reaches the budget.
+            if ($timer.Elapsed.TotalMilliseconds -ge $ExecutionDeadlineMilliseconds) { $termination = 'deadline'; break }
+            if ($observation -gt 0 -and $cpu -ge $observation) { $termination = 'observed'; break }
+            $null = $process.WaitForExit(10)
         }
-        elseif (-not $process.WaitForExit(30000)) { throw "Timed out: $Target" }
+        $elapsed = $timer.Elapsed.TotalMilliseconds
+        $cpu = $process.TotalProcessorTime.TotalMilliseconds
+        if ($termination -ne 'exited') {
+            if ($process.HasExited) { $termination = 'exited' }
+            else { $process.Kill($true) }
+        }
+        $process.WaitForExit()
         $actual = $stdout.GetAwaiter().GetResult()
         $errorText = $stderr.GetAwaiter().GetResult()
-        if (($timeout -eq 0 -and $process.ExitCode -ne $exit) -or $actual -cne $expected -or $errorText -cne $expectedError) {
-            throw "Failed: $Target, exit=$($process.ExitCode), stdout=$actual, stderr=$errorText"
+        $status = switch ($termination) {
+            'deadline' { if ($observation -gt 0) { 'incomplete' } else { 'failed' } }
+            'exited' { if ($observation -gt 0 -or $process.ExitCode -ne $Expectation.exit) { 'failed' } else { 'passed' } }
+            'observed' { 'passed' }
+        }
+        if ($status -ceq 'passed' -and ($actual -cne $Expectation.stdout -or $errorText -cne $Expectation.stderr)) { $status = 'failed' }
+        [pscustomobject]@{
+            status = $status; termination = $termination
+            cpuMilliseconds = $cpu; observationMilliseconds = $observation
+            elapsedMilliseconds = [Math]::Round($elapsed, 3); deadlineMilliseconds = $ExecutionDeadlineMilliseconds
+            exitCode = $process.ExitCode; stdout = $actual; stderr = $errorText
         }
     }
     finally {

@@ -187,7 +187,7 @@ public class StringEmissionTest
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var function = module.GetFunction(0);
         Assert.DoesNotContain(function.Instructions, x => x.Callee == RuntimeAbi.DestroyString || x.Opcode is EmissionOpcode.ReturnVoid or EmissionOpcode.ReturnScalar);
-        var ir = ScalarEmissionTest.EmitFixture("StringDivergentDefer", Source, string.Empty, timeoutMilliseconds: 300);
+        var ir = ScalarEmissionTest.EmitFixture("StringDivergentDefer", Source, string.Empty, observationMilliseconds: 300);
         GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 

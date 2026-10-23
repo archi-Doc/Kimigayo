@@ -325,7 +325,7 @@ public class ElementBorrowEmissionTest
     [InlineData("Call", "func forever(a: ref/string) -> Never\n    loop => ()\nlet a = (\"held\", 0)\nforever(a.0)")]
     [InlineData("Cleanup", "func f() -> string\n    let a = (\"held\", 0)\n    defer => loop => ()\n    a.0 == (return \"ok\")\n    return \"bad\"\nConsole.writeLine(f())")]
     public void NonterminationCannotReleaseOrDeliverNormally(string name, string source)
-        => ScalarEmissionTest.EmitFixture("ElementBorrowDivergent" + name, source, string.Empty, timeoutMilliseconds: 300);
+        => ScalarEmissionTest.EmitFixture("ElementBorrowDivergent" + name, source, string.Empty, observationMilliseconds: 300);
 
     // SPEC 3.4.3, 4.7.1: emission accepts a part borrow only through its element's own borrow of the element's stored Type, and an
     // exclusive fixed-array element only in exclusive mode; a corrupted route record fails before output and a fresh analysis recovers.

@@ -5,7 +5,7 @@ $compare = Join-Path $repo 'scripts/compare-fixtures.ps1'
 $work = Join-Path $repo ('temp/fixture-comparison/' + [Guid]::NewGuid().ToString('N'))
 $utf8 = [Text.UTF8Encoding]::new($false)
 $cases = 0
-$passing = [ordered]@{ ok = $true; levels = @('O0', 'O2') }
+$passing = [ordered]@{ status = 'passed'; levels = @('O0', 'O2') }
 function Put([string] $path, [string] $text) {
     $null = [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($path))
     [IO.File]::WriteAllText($path, $text, $utf8)
@@ -22,9 +22,9 @@ function New-Run([string] $name, [hashtable] $returns, [hashtable] $native = @{}
     $records = foreach ($stem in @($returns.Keys | Sort-Object)) {
         Put (Join-Path $directory "fixtures-Release/$stem.ll") "; $location`ndefine i32 @main() {`n  ret i32 $($returns[$stem])`n}`n"
         Put (Join-Path $directory "fixtures-Release/$stem.stdout") $(if ($stdout.ContainsKey($stem)) { $stdout[$stem] } else { "ok`n" })
-        foreach ($kind in @('stderr', 'exit', 'timeout')) { Put (Join-Path $directory "fixtures-Release/$stem.$kind") $(if ($kind -eq 'stderr') { '' } else { '0' }) }
+        foreach ($kind in @('stderr', 'exit', 'observation')) { Put (Join-Path $directory "fixtures-Release/$stem.$kind") $(if ($kind -eq 'stderr') { '' } else { '0' }) }
         $outcome = if ($native.ContainsKey($stem)) { $native[$stem] } else { $passing }
-        [ordered]@{ fixture = "$stem.ll"; ok = $outcome.ok; levels = $outcome.levels; seconds = 0.1; log = "X:\elsewhere\native-fixtures\$stem.log" }
+        [ordered]@{ fixture = "$stem.ll"; status = $outcome.status; levels = $outcome.levels; seconds = 0.1; log = "X:\elsewhere\native-fixtures\$stem.log" }
     }
     Put (Join-Path $directory 'native-fixtures/results.json') (ConvertTo-Json -InputObject @($records) -Depth 4)
 }
@@ -62,7 +62,7 @@ foreach ($name in @('base', 'same', 'added', 'sidecar', 'failed', 'unrecorded'))
 New-Run 'path' @{ one = 0; two = 0 } -location 'C:\work\a.kimi'
 New-Run 'byte' @{ one = 1; two = "0`0" }
 New-Run 'set' @{ one = 0; three = 0 }
-New-Run 'result' @{ one = 0; two = 0 } @{ two = [ordered]@{ ok = $false; levels = @('O0') } }
+New-Run 'result' @{ one = 0; two = 0 } @{ two = [ordered]@{ status = 'failed'; levels = @('O0') } }
 # Every fixture output is compared, not only the .ll files and the sidecars the native runner reads.
 Put (Join-Path $work 'added/fixtures-Release/one.matrix.tsv') "row`n"
 Put (Join-Path $work 'sidecar/fixtures-Release/one.stdout') "changed`n"
@@ -91,13 +91,30 @@ Reject 'unrecorded' 'has no results.json'
 Remove-Item -LiteralPath (Join-Path $work 'set/fixtures-Release') -Recurse
 Reject 'set' 'has no fixtures-Release evidence'
 
+
+# Only this historical reader accepts archived ok records. Incomplete/unknown current results are never equal evidence.
+New-Run 'historical' @{ one = 0; two = 0 }
+$path = Join-Path $work 'historical/native-fixtures/results.json'
+$records = @(Get-Content $path -Raw | ConvertFrom-Json)
+foreach ($record in $records) {
+    $record.PSObject.Properties.Remove('status')
+    $record | Add-Member -NotePropertyName ok -NotePropertyValue $true
+}
+Put $path (ConvertTo-Json -InputObject $records)
+Expect (Compare-Run 'base' 'historical' 0).identical 'Historical ok and current passed outcomes must compare identically.'
+New-Run 'incomplete' @{ one = 0; two = 0 } @{ two = @{ status = 'incomplete'; levels = @('O0') } }
+Reject 'incomplete' 'incomplete native observation'
+Reject 'incomplete' 'incomplete native observation' -baseline 'incomplete'
+New-Run 'unknown' @{ one = 0; two = 0 } @{ two = @{ status = 'other'; levels = @('O0', 'O2') } }
+Reject 'unknown' 'unknown native status'
+
 # DECISIONS R5-M85, R5-M106: between an old-generator run and a MIR code generation run, two's outcome sidecars deviate by a decided
 # item when both runs carry the same .deviation and each run's outcome is its side's: only those three sidecars are counted apart. Its
 # .ll and its native outcomes stay compared; a side that does not match its run, or a sidecar in one run only, stays a difference;
 # within one generator nothing deviates.
 $deviation = '{"id":"d","class":"a","item":"R5-M106","clause":"22.4.3","reason":"r","legacy":{"stdout":"ok\n","exit":0,"stderr":""},' +
     '"target":{"stdout":"new\n","exit":1,"stderr":"cycle\n"}}' + "`n"
-$fails = @{ two = [ordered]@{ ok = $false; levels = @('O0') } }
+$fails = @{ two = [ordered]@{ status = 'failed'; levels = @('O0') } }
 foreach ($name in @('legacyside', 'mirside', 'mirwrong', 'mirone', 'mirfail')) {
     New-Run $name @{ one = 0; two = $(if ($name -eq 'legacyside') { 0 } else { 1 }) } $(if ($name -eq 'mirfail') { $fails } else { @{} }) -codegen $(if ($name -eq 'legacyside') { 'legacy' } else { 'mir' })
     if ($name -ne 'legacyside') {
@@ -133,7 +150,7 @@ Only (Compare-Run 'devbase' 'devfail' 1) 'native' 'two.ll'
 
 # O2 metrics: four.ll fails before O2 in the candidate and five.ll is the candidate's only, so each lacks one side.
 New-Run 'o2base' @{ one = 0; two = 0; three = 0; four = 0; six = 0 }
-New-Run 'o2head' @{ one = 0; two = 0; three = 0; four = 0; five = 0; six = 0 } @{ four = [ordered]@{ ok = $false; levels = @('O0') } }
+New-Run 'o2head' @{ one = 0; two = 0; three = 0; four = 0; five = 0; six = 0 } @{ four = [ordered]@{ status = 'failed'; levels = @('O0') } }
 New-Run 'o2empty' @{ one = 0 }
 # Two instructions in an unlabeled entry block; four (not a switch case or its ']') in three labeled blocks.
 $sample = "define void @__kimi_start() #1 {`n  tail call void @__kimi_f1(i32 1)`n  ret void`n}`n`n; Function Attrs: uwtable`n" +

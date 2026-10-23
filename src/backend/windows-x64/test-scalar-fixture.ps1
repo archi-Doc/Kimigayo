@@ -12,18 +12,19 @@ $allowedSymbols = [Collections.Generic.HashSet[string]]::new([string[]]$Context.
 $log = Join-Path $Context.logs ($Fixture.BaseName + '.log')
 $completed = [Collections.Generic.List[string]]::new()
 $timer = [Diagnostics.Stopwatch]::StartNew()
-$ok = $false
+$status = 'failed'
+$executions = [Collections.Generic.List[object]]::new()
 function Invoke-Tool([string] $exe, [string[]] $arguments) {
     & $exe @arguments
     if ($LASTEXITCODE -ne 0) { throw "$exe failed ($LASTEXITCODE)" }
 }
 try {
-    & {
+    . {
         $stem = [IO.Path]::Combine($fixtures, $fixture.BaseName)
         $expected = [IO.File]::ReadAllText("$stem.stdout")
         $exit = [int][IO.File]::ReadAllText("$stem.exit")
         $expectedError = [IO.File]::ReadAllText("$stem.stderr")
-        $timeout = if (Test-Path -LiteralPath "$stem.timeout") { [int][IO.File]::ReadAllText("$stem.timeout") } else { 0 }
+        $observation = if (Test-Path -LiteralPath "$stem.observation") { [int][IO.File]::ReadAllText("$stem.observation") } else { 0 }
         Invoke-Tool $tools.opt @('-passes=verify', '-disable-output', $fixture.FullName)
         foreach ($level in @('O0', 'O2')) {
             $target = Join-Path $out ($fixture.BaseName + '.' + $level)
@@ -42,11 +43,16 @@ try {
                 if (-not $allowedSymbols.Contains($symbol)) { throw "Unexpected dependency in ${target}: $symbol" }
             }
             Invoke-Tool $tools['lld-link'] @("$target.obj", $archive, $kernel.path, '/entry:__kimi_start', '/subsystem:console', '/nodefaultlib', '/Brepro', "/out:$target.exe")
-            Invoke-KimiFixtureProcess $target @{ stdout = $expected; stderr = $expectedError; exit = $exit; timeout = $timeout }
+            $execution = Invoke-KimiFixtureProcess $target @{
+                stdout = $expected; stderr = $expectedError; exit = $exit; observationMilliseconds = $observation
+            } $Context.executionDeadlineMilliseconds
+            $executions.Add([pscustomobject]@{ level = $level; result = $execution })
+            $execution | ConvertTo-Json
+            $status = $execution.status
+            if ($status -cne 'passed') { break }
             $completed.Add($level)
         }
     } *> $log
-    $ok = $true
 }
-catch { $_ | Out-String | Add-Content -LiteralPath $log }
-[pscustomobject]@{ fixture = $Fixture.Name; ok = $ok; levels = @($completed); seconds = [Math]::Round($timer.Elapsed.TotalSeconds, 3); log = $log }
+catch { $status = 'failed'; $_ | Out-String | Add-Content -LiteralPath $log }
+[pscustomobject]@{ fixture = $Fixture.Name; status = $status; executions = @($executions); levels = @($completed); seconds = [Math]::Round($timer.Elapsed.TotalSeconds, 3); log = $log }

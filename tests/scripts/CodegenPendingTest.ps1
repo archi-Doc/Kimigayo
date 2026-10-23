@@ -26,7 +26,7 @@ function Reject([scriptblock] $action, [string] $message) {
 function Method([string] $name) { if ($name.Contains('(')) { $name.Substring(0, $name.IndexOf('(')) } else { $name } }
 function Row([string] $name) { "test`tXunitTest.$(Method $name)`tXunitTest.$name" }
 # Tests are 'Name=Result' cases of XunitTest.<Name>; each native step is a hashtable of fixture -> levels, where a leading '!'
-# records a failed run.
+# records a failed run and '?' an incomplete observation.
 function New-Run([string] $name, [string[]] $tests, [hashtable[]] $native = @(), [string[]] $selected = $null, [string[]] $discovered = $null) {
     $directory = Join-Path $work $name
     $nodes = foreach ($test in $tests) {
@@ -39,8 +39,8 @@ function New-Run([string] $name, [string[]] $tests, [hashtable[]] $native = @(),
     Put (Join-Path $directory 'tests-Release-run.xml') "<assemblies><assembly><collection>$($nodes -join '')</collection></assembly></assemblies>"
     for ($i = 0; $i -lt $native.Count; $i++) {
         $records = foreach ($fixture in @($native[$i].Keys | Sort-Object)) {
-            $levels = $native[$i][$fixture].TrimStart('!')
-            [ordered]@{ fixture = $fixture; ok = $levels -ceq $native[$i][$fixture]; levels = @($levels.Split(',')); seconds = 0.1; log = "$fixture.log" }
+            $levels = $native[$i][$fixture].TrimStart('!', '?')
+            [ordered]@{ fixture = $fixture; status = $(if ($native[$i][$fixture].StartsWith('?')) { 'incomplete' } elseif ($native[$i][$fixture].StartsWith('!')) { 'failed' } else { 'passed' }); levels = @($levels.Split(',')); seconds = 0.1; log = "$fixture.log" }
         }
         Put (Join-Path $directory "native-$i-fixtures/results.json") (ConvertTo-Json -InputObject @($records) -Depth 4)
     }
@@ -93,7 +93,7 @@ Reject { Read-KimiCodegenLedger (Join-Path $work 'nested') } 'holds only <group>
 # or at one level only.
 $tests = @('A.Same(x: 1)=Fail', 'A.Same(x: 2)=Fail', 'A.Fixed=Pass', 'A.Theory(x: 1)=Fail', 'A.Theory(x: 3)=Pass', 'A.Mixed(x: 1)=Pass',
     'A.Mixed(x: 2)=Fail', 'A.Renamed(x: 2)=Fail', "$text=Fail", 'A.Explicit=NotRun', 'A+AllocationTests.Warm=Skip', 'A.New=Fail', 'B.Ok=Pass')
-$native = @(@{ 'MainSame.ll' = '!O0'; 'MainFixed.ll' = 'O0,O2'; 'MainHalf.ll' = 'O0'; 'Twice.ll' = '!O0,O2' }, @{ 'Twice.ll' = 'O0,O2' })
+$native = @(@{ 'MainSame.ll' = '!O0'; 'MainFixed.ll' = 'O0,O2'; 'MainHalf.ll' = '!O0'; 'Twice.ll' = '!O0,O2' }, @{ 'Twice.ll' = 'O0,O2' })
 $all = @($tests | ForEach-Object { Method $_.Substring(0, $_.LastIndexOf('=')) } | Sort-Object -Unique)
 $session = New-Run 'session' $tests $native $all $all
 $summary = Write-KimiCodegenPending $session 'Session' 'Release' @('Main*.ll', 'Twice*.ll') $ledger
@@ -179,6 +179,34 @@ Expect (@(Update-KimiCodegenLedger $update $summary.report).Count -eq 0 -and
 # A case name that is not its type.method cannot become a row.
 Put (Join-Path $work 'custom/codegen-pending.json') (ConvertTo-Json -Depth 3 @{ entries = @(@{ kind = 'test'; key = 'XunitTest.A.B'; name = 'Custom'; state = 'added' }) })
 Reject { Update-KimiCodegenLedger (Join-Path $work 'custom-ledger') (Join-Path $work 'custom/codegen-pending.json') } 'cannot be a pending row'
+
+
+# Incomplete observations are neither codegen failures nor passing ledger rows, even beside another result.
+foreach ($known in @($false, $true)) {
+    foreach ($other in @('O0,O2', '!O0')) {
+        $label = "incomplete-$known-$($other.Replace(',', '-').Replace('!', 'fail'))"
+        $incompleteLedger = Join-Path $work "$label-ledger"
+        if ($known) { Put (Join-Path $incompleteLedger 'C-frame.tsv') ("fixture" + [char]9 + "Loop.ll" + [char]9 + "1" + [char]10) }
+        $run = New-Run $label @('B.Ok=Pass') @(@{ 'Loop.ll' = '?O0' }, @{ 'Loop.ll' = $other }) @('B.Ok') @('B.Ok')
+        $summary = Write-KimiCodegenPending $run 'Unit' 'Release' @('*.ll') $incompleteLedger
+        $report = Read-Report $run
+        States $report 'fixture' @('Loop.ll=incomplete')
+        Expect ($summary.differences -eq 1 -and $summary.totals.incomplete.fixtures -eq 1) 'Incomplete must fail the gate.'
+        Expect ($summary.totals.failing.fixtures -eq 0 -and $summary.totals.added.fixtures -eq 0 -and $summary.totals.passesNow.fixtures -eq 0) 'Incomplete entered the pending comparison.'
+        Expect ($summary.totals.ledger.fixtures -eq [int]$known) 'Incomplete invented a ledger row.'
+        Reject { Update-KimiCodegenLedger $incompleteLedger $summary.report } 'incomplete native observation'
+        Expect ((Read-KimiCodegenLedger $incompleteLedger).rows.Count -eq [int]$known) 'Incomplete changed the ledger.'
+    }
+}
+# Missing/unknown current status is invalid evidence, never an implicit pass or a pending failure.
+foreach ($status in @($null, 'other')) {
+    $run = New-Run "bad-status-$status" @('B.Ok=Pass') @(@{ 'Loop.ll' = 'O0,O2' }) @('B.Ok') @('B.Ok')
+    $path = Join-Path $run 'native-0-fixtures/results.json'
+    $record = (Get-Content $path -Raw | ConvertFrom-Json)[0]
+    if ($null -eq $status) { $record.PSObject.Properties.Remove('status') } else { $record.status = $status }
+    Put $path (ConvertTo-Json -InputObject @($record))
+    Reject { Write-KimiCodegenPending $run 'Unit' 'Release' @('*.ll') $ledger } 'Unknown native status'
+}
 
 # A name executed twice cannot identify a row; without a ledger every failure is added; missing evidence throws.
 $twice = New-Run 'twice-run' @('A.Same(x: 1)=Fail', 'A.Same(x: 1)=Pass')

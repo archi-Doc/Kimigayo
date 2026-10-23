@@ -21,7 +21,7 @@ public class NestedDefaultTest
     [InlineData("Supplied", "func inner(x: i32 = (loop => continue)) -> i32 => x\nfunc outer(x: i32 = inner()) -> i32 => x\nrequire outer(7) == 7 else => $abort(\"supplied\")", "")]
     [InlineData("Never", "func inner(x: i32 = (loop => continue)) -> i32 => x\nfunc outer(x: string = \"owned\", y: i32 = inner()) => Console.writeLine(x)\nConsole.writeLine(\"begin\")\nouter()", "begin\n")]
     public void NestedOmissionsExecute(string name, string source, string output)
-        => ScalarEmissionTest.EmitFixture("NestedDefault" + name, source, output, timeoutMilliseconds: name == "Never" ? 200 : 0);
+        => ScalarEmissionTest.EmitFixture("NestedDefault" + name, source, output, observationMilliseconds: name == "Never" ? 200 : 0);
 
     [Fact]
     public void EachCallDestroysOnlyItsDeliveredValues()

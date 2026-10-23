@@ -5,6 +5,7 @@ param(
     [string] $FixtureDirectory = '',
     [string] $OutputDirectory = '',
     [string] $LogDirectory = '',
+    [ValidateRange(1, 2147483647)] [int] $ExecutionDeadlineMilliseconds = 30000,
     [ValidateRange(1, 2147483647)] [int] $Parallel = [Math]::Min(4, [Environment]::ProcessorCount)
 )
 $ErrorActionPreference = 'Stop'
@@ -33,7 +34,7 @@ foreach ($line in ((Get-KimiKernel32Definition) -split "`n" | Select-Object -Ski
 }
 $logs = if ($LogDirectory) { [IO.Path]::GetFullPath($LogDirectory) } else { Join-Path $out 'logs' }
 New-Item -ItemType Directory -Force $logs | Out-Null
-$context = @{ tools = $tools; fixtures = $fixtures; output = $out; kernel = $kernel; archive = $archive; allowedSymbols = [string[]]@($allowedSymbols); logs = $logs }
+$context = @{ tools = $tools; fixtures = $fixtures; output = $out; kernel = $kernel; archive = $archive; allowedSymbols = [string[]]@($allowedSymbols); logs = $logs; executionDeadlineMilliseconds = $ExecutionDeadlineMilliseconds }
 $worker = Join-Path $PSScriptRoot 'test-scalar-fixture.ps1'
 if ($Parallel -eq 1) {
     $results = @($selectedFixtures | ForEach-Object { & $worker -Fixture $_ -Context $context })
@@ -44,12 +45,13 @@ else {
     } -ThrottleLimit $Parallel)
 }
 $results = @($results | Sort-Object fixture)
-$results | ConvertTo-Json -Depth 4 -AsArray | Set-Content -LiteralPath (Join-Path $logs 'results.json')
+$results | ConvertTo-Json -Depth 6 -AsArray | Set-Content -LiteralPath (Join-Path $logs 'results.json')
 $runs = 0
-$failures = @($results | Where-Object { -not $_.ok -or ($_.levels -join ',') -cne 'O0,O2' })
+$failures = @($results | Where-Object status -CNE 'passed')
+$incomplete = @($results | Where-Object status -CEQ 'incomplete').Count
 foreach ($result in $results) {
     $runs += $result.levels.Count
-    Write-Output "$($result.fixture): $(if ($result.ok) { 'PASS' } else { 'FAIL' }); $($result.log)"
+    Write-Output "$($result.fixture): $($result.status.ToUpperInvariant()); $($result.log)"
 }
-if ($results.Count -ne $selectedFixtures.Count -or $failures.Count -gt 0) { throw "Native fixture verification failed; see $logs" }
+if ($results.Count -ne $selectedFixtures.Count -or $failures.Count -gt 0) { throw "Native fixture verification failed ($incomplete incomplete); see $logs" }
 Write-Output "Passed $runs native scalar executions (O0/O2)."

@@ -123,6 +123,31 @@ rules that result from them.
   Rejected: growing process observation inside the compilation worker, or adding a general process framework. The
   following G138 unit replaces elapsed-time divergence observation and propagates incomplete verification through consumers.
 
+- **G138-2 Native observation and incomplete verification** (2026-10-24, planning session; owner request G138;
+  two independent designs and independent design review). A finite run cannot prove divergence. The fixture oracle's
+  observationMilliseconds / .observation is aggregate process CPU time in milliseconds, zero for expected completion.
+  It replaces timeoutMilliseconds / .timeout at the shared writer and every call site. The native runner's separate
+  ExecutionDeadlineMilliseconds defaults to 30000, measured before process launch. A late sample is insufficient;
+  CPU use is execution evidence, not proof that a particular instruction or loop was reached.
+  - test-scalar-process.ps1 returns passed, failed or incomplete and the CPU budget/sample, wall deadline/sample,
+    termination and streams. Observed natural exit fails a divergent oracle; sufficient live CPU observation permits
+    output comparison; reaching the deadline first is incomplete even with empty expected output. A deadline for
+    expected completion remains failed. Kill/reap and strict UTF-8 drains remain mandatory; no retries or CPU fallback.
+  - The fixture worker publishes one status plus completed levels and per-level executions. Consumers use that status,
+    replacing ok/levels inference. Missing or unknown status cannot pass. Only compare-fixtures reads archived ok records;
+    incomplete evidence cannot certify an unchanged run.
+  - This supersedes R5-M66/M81's classification of every unsuccessful native execution as a codegen failure: incomplete
+    dominates that fixture's other runs, remains outside failing/added/passesNow and fails both the native step and pending
+    gate. The report and summary count it separately; ledger update rejects it before any write, including a known row.
+    R5-M73's ban on recording load-dependent failures remains.
+  - TestProcessRecoveryTest uses 30s for normal completion/cancellation and recovery, retaining 2s only for intentional
+    timeout. Cancellation waits for a unique named ready event; a descendant signals readiness before its parent exits.
+    TestWorker's launch-to-exit contract (IMPL 20.6) is unchanged.
+  - Rejected: lengthening the short wall wait, retaining ok plus an independent incomplete flag, or inferring completion
+    separately in consumers. The process owner from G138-1 replaces the inline wait; no language/IR/runtime contract changes.
+    Tests use sleeping native probes with a test-only import library; production imports are unchanged.
+
+
 ## Code rules (2026-10-12)
 
 CR-R1 supersedes only the analyzer enforcement, Report and approval requirements in CR-A0–CR-A9b below.

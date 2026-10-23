@@ -316,9 +316,11 @@ if (-not $failed -and $Fixtures.Count -gt 0) {
         if ($Codegen -eq 'mir') {
             # Under sel the pending gate judges the fixtures' outcomes; the step needs a result for every fixture it selected.
             $records = Join-Path $evidence "native$suffix-fixtures/results.json"
-            $count = if (Test-Path -LiteralPath $records) { @(Get-Content -LiteralPath $records -Raw | ConvertFrom-Json).Count } else { 0 }
-            $ok = $count -gt 0 -and $count -eq $matched.Count
-            $detail = "results for $count of $($matched.Count) fixtures, judged by codegen pending; $log"
+            $results = @(if (Test-Path -LiteralPath $records) { Get-Content -LiteralPath $records -Raw | ConvertFrom-Json })
+            $count = $results.Count
+            $incomplete = @($results | Where-Object { $_.status -cnotin @('passed', 'failed') }).Count
+            $ok = $count -gt 0 -and $count -eq $matched.Count -and $incomplete -eq 0
+            $detail = "results for $count of $($matched.Count) fixtures, $incomplete incomplete; completed results judged by codegen pending; $log"
         }
         Add-Step "native $pattern" $ok $detail $timer.Elapsed.TotalSeconds
         $matched | Get-FileHash | ForEach-Object { $hashes.Add("$($_.Hash),$([IO.Path]::GetFileName($_.Path))") }
