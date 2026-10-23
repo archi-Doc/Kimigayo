@@ -68,7 +68,8 @@ public sealed partial class Binding
             // A captured binding initialized by a Borrow shows that Borrow (SPEC 15.6.5).
             var borrow = captures is not null && origin is not null && captures[i].Source.Declaration is VariableKoto { InitializerKoto: { } initializer } &&
                 KotoHelper.UnwrapParentheses(initializer) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } source && ReferenceEquals(source.BoundType?.Origin, origin) ? source : null;
-            var fact = new OwnedConversionFact(at, implementation, name, member, origin, closure is null ? null : CaptureEntryOf(closure, name), closure, borrow, origin is not null && BodyLocalOrigin(origin));
+            var local = origin is not null && BodyLocalIn(origin, this.formingBody);
+            var fact = new OwnedConversionFact(at, implementation, name, member, origin, closure is null ? null : CaptureEntryOf(closure, name), closure, borrow, local);
             if (fact.Refuted)
             {
                 unknown = fact;

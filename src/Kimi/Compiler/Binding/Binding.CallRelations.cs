@@ -311,14 +311,14 @@ public sealed partial class Binding
         // Complete initializer-owned holes before deferring finite constraints to the body graph.
         var forwardProven = this.FitOriginOutlives(longer, shorter, at, condition);
         var backwardProven = !equality || this.FitOriginOutlives(shorter, longer, at, condition);
-        if (BodyChain(longer, shorter))
+        if (BodyChain(longer, shorter, this.formingBody))
         {
             this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, longer, shorter, Equality: equality, Clause: declared ? clause : null, WellFormed: wellFormed, Condition: condition));
             return; // Local bounds are judged after every assignment and selected call has contributed its constraints.
         }
 
-        var forward = forwardProven ? OriginJudgment.Proven : this.JudgeOriginRelation(longer, shorter, at, condition);
-        var backward = backwardProven ? OriginJudgment.Proven : this.JudgeOriginRelation(shorter, longer, at, condition);
+        var forward = forwardProven ? OriginJudgment.Proven : this.JudgeOriginRelation(longer, shorter, at, this.formingBody, condition);
+        var backward = backwardProven ? OriginJudgment.Proven : this.JudgeOriginRelation(shorter, longer, at, this.formingBody, condition);
         if (forward is OriginJudgment.Refuted or OriginJudgment.Unknown || backward is OriginJudgment.Refuted or OriginJudgment.Unknown)
         {
             // An equality fails as one `==` record; a fresh Origin or a Type slot fixed by another input relates that input (SPEC 15.6.1,

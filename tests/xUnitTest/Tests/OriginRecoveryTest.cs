@@ -58,14 +58,14 @@ public class OriginRecoveryTest(ITestOutputHelper output)
         Assert.Equal(["OriginRelationOperator_Kd", "TypeMismatch_Kd"], errors.Select(static x => x.Code));
         var function = ParseTestHelper.GetChildren(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f");
         var clause = Assert.Single(OriginClauses.Get(function));
-        Assert.NotEqual(OriginJudgment.Proven, c.Binding.JudgeOriginRelation(function.Parameters[0].Type.TypeOf()!.Origin!, function.Parameters[1].Type.TypeOf()!.Origin!, function));
+        Assert.NotEqual(OriginJudgment.Proven, c.Binding.JudgeOriginRelation(function.Parameters[0].Type.TypeOf()!.Origin!, function.Parameters[1].Type.TypeOf()!.Origin!, function, default));
         Assert.NotEqual(BindingState.Resolved, clause.StateOf());
         Assert.NotNull(clause.CodeContext.RecoveryCause(clause));
         Assert.False(c.WriteIr(TextWriter.Null, out _));
         c.Bind();
         c.Binding.ReportDiagnostics();
         Assert.Equal(errors, c.Diagnostics.Finalize(rejected: true).Diagnostics);
-        Assert.NotEqual(OriginJudgment.Proven, c.Binding.JudgeOriginRelation(function.Parameters[0].Type.TypeOf()!.Origin!, function.Parameters[1].Type.TypeOf()!.Origin!, function));
+        Assert.NotEqual(OriginJudgment.Proven, c.Binding.JudgeOriginRelation(function.Parameters[0].Type.TypeOf()!.Origin!, function.Parameters[1].Type.TypeOf()!.Origin!, function, default));
     }
 
     [Fact]

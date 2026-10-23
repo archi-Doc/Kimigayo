@@ -4273,6 +4273,46 @@ resumed by R4-M86 (2026-10-20).
   Open: neither published pipeline marks a Copy-typed part Moved (`t.0@move` then `t.0`), so a missing restore after `b.data@move`
   goes unreported as for any Copy part (PLAN G228); whether a `during self` layer or such a Tuple is Copy and what reading an
   enclosing Place gives (`let t = b.pair` binds as a Copy read of `(raw/u8, isize)`) stay PLAN G212's.
+- **BU-28** (2026-10-23; the BU planning session after the full process: designs A and B, the design review's choice of B with A's
+  staging, display row and test owner; the owner's answer below; PLAN G227 (G65's remainder), unit bu29, 2a0-3b's prerequisite by the
+  owner's (iii)) SPEC 15.6.5, 15.3.4: in a Closure body the Origins of its captures are fixed. They are the atoms an enclosing body formed
+  that the environment bindings' Types name (a moved or copied value's regions, a captured reference's Origin, an entry's slot Borrow, a raw
+  layer's Origin), and the rule is the C1-F4 view's row 6, `Binding.EnclosingAtom` (an atom of a body B's evaluation reaches through
+  `EvaluatingBody`, by `RootOf`), which `ClassifyAtom` and the judge share. `Binding.OriginClasses.cs` holds SPEC 15.6.5's classes in a body:
+  `FixedOrigin` (by the contract), `FixedIn`, `RegionIn` and `HasRegionIn`, `SourcesIn`, `BoundableIn`, `BodyLocalIn`, `BodyChain(.., body)`
+  and `RefutesOriginRelation(.., body)`, with no context-free copy. The judge takes the body that formed the relation explicitly
+  (`JudgeOriginRelation(.., body, ..)`): an obligation's `Body`, the forming body while binding (`FailedDeclaredRelation`'s own obligation
+  carries it, and its gate classes both ends in it, so a local clause over a capture's Origin is Binding's record at the initializer),
+  none in `VerifiedRegionOutlives` (unchanged: its readers, lowering and the old analysis's `RecordCallInput`, run after Binding judged the
+  fit in its body). So in the body a store of the call's own input or of another capture's Origin
+  into the environment is Unknown (`UnprovenOriginRelation_Kd`, Binding's record, D1 being body-relative), a store of a borrow local to the
+  call is Refuted (`UnsatisfiedOriginRelation_Kd`), the body never bounds an environment region (`RecordLocalRegionBound`), and a region of
+  the body stops its source walk at an atom fixed in its body (`LocalRegionSources`). One display row shows a local's region as that local's
+  omitted Origin (`the omitted Origin of arr`). No new representation: an environment binding's Type stays its source's, R4-M99's Fields
+  of the call receiver's referent, whose one creation site makes their Origins the creation atoms, fixed in the body as a receiver's slots
+  are in a method; calls retain nothing new (15.6.4's contract), and A5 reads the same view (row 6 unchanged). The old analysis's reporter
+  passes `obligation.Body` (4 lines): a D5 wrong-code fix mirrored on the new path, whose view already has row 6; it accepts no form.
+  - Census (both pipelines agree): on dev only SPEC-invalid programs become rejected: B3's dead reads (v6b, v6c, v6g, natively `leak 41`
+    on dev), the generic and nested forms, the raw form storing the call's `y@follow@raw`, body-local stores (c3, h3, h5, y8, y9) and
+    class S; dev's other rejections take this record (c7, c8f, h5b lose their Loan conflict; c4, c8, c8a–c8i, d1, d9 their U). On 2a0-3b's
+    tree without its guard every B3 form is rejected (v6, v6a, v6d–v6j, h2, h2b, c2–c9, c8a–c8i, y1–y10, RawB3) and the valid twins are
+    accepted (g1, g5, g7, p9, p11, p12, n4, r2, d3, d4, d10, a two-level Closure, the guard's over-guard form storing nothing, `during
+    static`). The corpus snapshot, library, SPEC examples and generated IR are unchanged.
+  - The owner (2026-10-23, on the review's question, verbatim): 「SPEC のまま、(a) を予定に入れる (推奨)」. SPEC 15.6.5 stays, so this
+    unit rejects the memory-safe class S that dev accepted: p5 (`a2.append(a1[0])`), p6 and p8 (an enclosing parameter's borrow stored into
+    the region of `[var arr@move]`), g2c, g4c and d5 (an enclosing parameter's or local's borrow stored the same way) and e1, e2 (a captured
+    element returned as `ref/i32`, static). Open issue (a), their SPEC-valid rewrites over a written Origin (`during p`, `during r`,
+    `origin p outlives q`: p3, p3d, p3e, k5, r4, r6) being `CallActivationConflict_Kd`, goes to R4's 2c-D and G65; `during static` is
+    accepted now.
+  - Rejected: environment Origin slots restated in the body (a second representation that every outer reader of `Environment.Type`
+    and 2c-5's receiver substitution would carry); call-side retention of an Exclusive call's arguments (contradicts 15.6.4's contract and
+    leaves body-local stores accepted); dropping only the bounds (v6b stays Proven); the judge entering the obligation's body (`EnterBody`
+    outside a binding entry breaks Binding.ExecutableBodies.cs's contract and stamps what judgment forms); context-free overloads; the judge
+    reading `ClassifyAtom` (rows 1, 7 and 9 differ from the judge's classes); a static `BodyChain` (two paths for fixed-fixed relations).
+  - Open: d6, a named nested function's signature binds an enclosing local's set (`x.s`) as an unlinked variable (natively `leak 41`; SPEC
+    15.3.4): its fix extends `EnclosingAtom`'s chain to named nested functions, not a second rule. Row 5's call result is Fixed in the view
+    and finite in the judge (display only today; for 2c-D). PD21: the classes moved first (behavior-preserving) into
+    Binding.OriginClasses.cs; Binding.OriginProof.cs's count restarted at 2a0-4's split.
 
 ## R5 and R6 (adopted 2026-10-18)
 

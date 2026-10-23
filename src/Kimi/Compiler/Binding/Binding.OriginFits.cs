@@ -106,7 +106,7 @@ public sealed partial class Binding
         var rows = false;
         for (var i = 0; i < all.Count && failed; i++)
         {
-            rows |= BodyChain(this.OriginAtUse(all[i].Longer, node), this.OriginAtUse(all[i].Shorter, node));
+            rows |= BodyChain(this.OriginAtUse(all[i].Longer, node), this.OriginAtUse(all[i].Shorter, node), this.formingBody);
             if (!all[i].Equals(recorded))
             {
                 this.RecordMoreRelation(node, all[i] with { At = at, Destination = expected });
@@ -226,7 +226,7 @@ public sealed partial class Binding
             return null;
         }
 
-        OriginRelationFact equality = new(use, actual, expected, true, type, RefutesOriginRelation(actual, expected));
+        OriginRelationFact equality = new(use, actual, expected, true, type, RefutesOriginRelation(actual, expected, this.formingBody));
         all?.Add(equality);
         return equality;
 
@@ -241,7 +241,7 @@ public sealed partial class Binding
     private OriginRelationFact FailedChain(Koto use, BoundOrigin longer, BoundOrigin shorter, BoundType type, bool judged, List<OriginRelationFact>? all = null, ulong condition = 0)
     {
         var operand = this.FailingOperand(longer, shorter, use, judged, true, condition) ?? this.FailingOperand(longer, shorter, use, judged, false, condition) ?? longer;
-        OriginRelationFact chain = new(use, operand, shorter, false, type, RefutesOriginRelation(operand, shorter));
+        OriginRelationFact chain = new(use, operand, shorter, false, type, RefutesOriginRelation(operand, shorter, this.formingBody));
         if (all is not null && (ReferenceEquals(operand, longer) || !this.AddFailingChains(use, longer, shorter, type, judged, all, condition)))
         {
             all.Add(chain);
@@ -253,7 +253,7 @@ public sealed partial class Binding
     // Adds the chain of each failing operand of `origin`, nested meets flattened in order; whether any was added.
     private bool AddFailingChains(Koto use, BoundOrigin origin, BoundOrigin shorter, BoundType type, bool judged, List<OriginRelationFact> all, ulong condition = 0)
     {
-        if (IsLocalRegion(origin))
+        if (RegionIn(origin, this.formingBody))
         {
             var found = false;
             foreach (var source in this.LocalRegionSources(origin))
@@ -271,7 +271,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            all.Add(new(use, origin, shorter, false, type, RefutesOriginRelation(origin, shorter)));
+            all.Add(new(use, origin, shorter, false, type, RefutesOriginRelation(origin, shorter, this.formingBody)));
             return true;
         }
 
@@ -285,13 +285,14 @@ public sealed partial class Binding
     }
 
     private bool OriginPartFails(BoundOrigin longer, BoundOrigin shorter, Koto use, bool judged, ulong condition = 0)
-        => !this.ProvesOriginOutlives(longer, shorter, use, condition) && (!judged || this.OriginRelationFails(longer, shorter, use, condition));
+        => !this.ProvesOriginOutlives(longer, shorter, use, condition) &&
+            (!judged || this.OriginRelationFails(longer, shorter, use, this.formingBody, condition));
 
     // SPEC 15.6.5: the failing operand that the record names follows the judgment, a Refuted chain, which decides the record's code,
     // before an Unknown one, each first in the meet's order; with `refuted`, only a Refuted chain counts.
     private BoundOrigin? FailingOperand(BoundOrigin longer, BoundOrigin shorter, Koto use, bool judged, bool refuted, ulong condition = 0)
     {
-        if (IsLocalRegion(longer))
+        if (RegionIn(longer, this.formingBody))
         {
             foreach (var source in this.LocalRegionSources(longer))
             {
@@ -306,7 +307,8 @@ public sealed partial class Binding
 
         if (longer.Kind != OriginKind.Intersection)
         {
-            return (!refuted || RefutesOriginRelation(longer, shorter)) && this.OriginPartFails(longer, shorter, use, judged, condition) ? longer : null;
+            return (!refuted || RefutesOriginRelation(longer, shorter, this.formingBody)) && this.OriginPartFails(longer, shorter, use, judged, condition)
+                ? longer : null;
         }
 
         for (var i = 0; i < longer.Operands.Count; i++)
