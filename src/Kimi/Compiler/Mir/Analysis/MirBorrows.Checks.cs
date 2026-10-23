@@ -7,7 +7,7 @@ namespace Kimi.Compiler.Mir;
 // activates is unique at its effect rows, W6) and syntactically by Place prefix, with the route rule for a Loan in its reservation holder,
 // a Loan its template owns skipped (MirBorrows.Defaults' Covered, D11, R4-M97); and err(ended) (E7): at a guard candidate's EndBorrow, a
 // value live after it that keeps its guard-local Origin, but where the EndBorrow and the candidate lie in one inline default copy (D12).
-// Must not list or classify a location's accesses (MirBorrows.Locations) or record a problem (MirBorrows.Reports).
+// Must not list or classify a location's accesses (MirBorrows.Accesses) or record a problem (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
     /// <summary>What an access does (A3 5's access): read, borrow shared or exclusive, Move, write, destroy, or destroy observing what the

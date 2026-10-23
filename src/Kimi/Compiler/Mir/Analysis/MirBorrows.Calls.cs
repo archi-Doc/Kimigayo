@@ -3,7 +3,7 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's Call transfer (A3 5, Calls; E14, E16): a Call's rows (MirBorrows.CallRows) carry its inputs' values into its result or into every
-// holder an argument's store reaches (W, MirBorrows.Values), one W per output.
+// holder an argument's store reaches (W, MirBorrows.Reach), one W per output.
 // Input: the state before the Call, its inspection Loans ended (R-a, MirBorrows.Endings), its terminator and location, and whether the
 // checks replay runs; the Call's rows.
 // Output: the Call's entries: its arguments' Moves, each row's value into the result or into the holders its W reaches, and the result
@@ -12,7 +12,7 @@ namespace Kimi.Compiler.Mir;
 // R4-M73); in the checks replay, a default template's call whose slot holds raw authority beside a Loan is a located Unsupported_Kd (r3,
 // R4-M93).
 // Invariants: the forward solve holds the view, never the replay, which reports with the converged fact known.
-// Must not choose a Call's rows (MirBorrows.CallRows) or compute W (MirBorrows.Values).
+// Must not choose a Call's rows (MirBorrows.CallRows) or compute W (MirBorrows.Reach).
 internal sealed partial class MirBorrows
 {
     private int[] argValues = [];

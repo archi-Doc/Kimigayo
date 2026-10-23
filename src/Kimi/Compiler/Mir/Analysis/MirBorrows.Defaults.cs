@@ -12,7 +12,7 @@ namespace Kimi.Compiler.Mir;
 //   and storage the body does not own); each slot-rooted Loan it finds is DefaultArgumentBorrow_Kd at the Loan's site, once per Loan and
 //   view.
 // - R26-access: a write to a slot-rooted Place is DefaultArgumentAccess_Kd at the write, found where the location's accesses are listed
-//   (every destination, before the borrowed-root filter; MirBorrows.Locations); after the replay, each exclusive slot-rooted Loan R26-borrow
+//   (every destination, before the borrowed-root filter; MirBorrows.Accesses); after the replay, each exclusive slot-rooted Loan R26-borrow
 //   did not report is DefaultArgumentAccess_Kd at its site, one code per failure. The replay reaches every Loan's issue: MirValidator rejects
 //   a block runtime and check edges do not reach, so the forward solve reaches every head.
 // - The copy disposition (D11, D12): a failure found in an inline default copy is its template's when every event taking part lies in one
