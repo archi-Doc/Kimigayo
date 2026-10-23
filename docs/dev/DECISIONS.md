@@ -4622,6 +4622,20 @@ resumed by R4-M86 (2026-10-20).
     classification into `.Facts` (which must not choose an Op), `.Adjust` (acquisition), or `.Patterns` (Pattern acquisition); a split by
     line count would leave those contracts mixed. G141's call-publication change is a separate unit.
 
+- **BU-33 A macro publishes its selected call at the macro expression** (2026-10-24; the planning session after two independent
+  designs and design review; G141) SPEC 17.4.2 and 22.5.1 make `$abort(message)` one Never call whose location is the macro expression,
+  in a body, require failure, default or nested argument. Binding stored its plan on the inner invocation, but published that
+  invocation as Call and the macro as Group; MIR recovered the location from the parent. Binding owns this publication contract.
+  `CallPlan.Of` exposes the existing inner plan through its macro row, after the formatting-plan path (`$tryWrite`). The macro uses
+  the existing Unary Call classification; its inner invocation is Covered Syntax, and the usual call operations acquire its arguments.
+  - Inner storage stays for legacy ownership and lowering. No second plan, IR kind, table or state is introduced. Raw accessors retain
+    their existing lifetime; current semantic queries revoke invalidated facts and a new Bind replaces the published facts. The macro
+    view shares that same inner plan after rebind. This does not change Abort argument validation or the old lowering's source handling.
+  - Removes the macro Group classification and acquisition, the formatting-only Covered condition and MIR's Abort parent correction.
+    Rejected: moving or copying storage to the macro (breaks legacy readers or duplicates the decision), adding a source field to
+    CallPlan (extra state while retaining the redundant Group), or a new IR/table. The existing view row corrects the public subject
+    without another allocation; removing Group work is expected to preserve compilation and native costs.
+
 ## R5 and R6 (adopted 2026-10-18)
 
 The owner's answers to the plan's questions OQ1–OQ17, given on 2026-10-18 and relayed by the R4 planning session. "Plan"

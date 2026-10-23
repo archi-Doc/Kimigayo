@@ -97,8 +97,8 @@ public sealed partial class Binding
                 case InvocationKoto call: // A value call's callee is evaluated unless its receiver operation takes what the callee reaches.
                     return ReferenceEquals(node, call.Method) && (CallPlan.Of(call) is not { Kind: CalleeKind.Value } plan ||
                         (plan.ReceiverOperation.Source is { } source && !ReferenceEquals(source, node))) ? position | HirPosition.Covered : position;
-                case MacroKoto macro:
-                    return macro.Formatting is null ? position : position | HirPosition.Covered;
+                case MacroKoto:
+                    return position | HirPosition.Covered;
                 case GenericsKoto generics:
                     return ReferenceEquals(node, generics.Identifier) ? position | HirPosition.Covered : HirPosition.None;
                 case MemberAccessKoto or ConversionKoto or IsKoto:
@@ -180,7 +180,7 @@ public sealed partial class Binding
             UnaryKoto when KotoHelper.SignedNumber(node, out _) is not null && CallPlan.Of(node) is null => HirOp.Literal, // Binding fits a signed number once.
             InterpolatedStringKoto or MacroKoto when node.Formatting is not null => HirOp.Interpolation,
             InterpolatedStringKoto => HirOp.Syntax, // The text a $tryWrite writes: its segments and expressions are the macro's writes.
-            LabeledKoto or ParenthesizedKoto or MacroKoto or ConversionKoto { ConversionBinding: ConversionBinding.Identity or ConversionBinding.Transfer } => HirOp.Group,
+            LabeledKoto or ParenthesizedKoto or ConversionKoto { ConversionBinding: ConversionBinding.Identity or ConversionBinding.Transfer } => HirOp.Group,
             ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.Address } => HirOp.Borrow,
             DereferenceKoto or ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } => HirOp.Deref,
             ConversionKoto { ConversionBinding: ConversionBinding.ObjectCreation } => HirOp.Call,
