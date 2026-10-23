@@ -1,4 +1,6 @@
-// UTF-8 formatting declarations; physical operations are compiler implementations.
+// UTF-8 formatting declarations; physical operations are compiler implementations. The compiler constructs these
+// records (Text.fixed, Text.heap, reserve, limit, Text.writer) with each raw Field's storage where its Origin states
+// (SPEC 5.7).
 public struct BufferFull
     Self is Copy
     public init() => ()
@@ -12,7 +14,7 @@ public contract Utf8Format
 
 public struct WriteWindow {source}
     Self is not ObjectPayload
-    let state: raw/u8
+    let state: raw/u8 during source
     let start: isize
     public let written: isize
     public let remaining: isize
@@ -20,7 +22,7 @@ public struct WriteWindow {source}
 
 public struct Utf8Writer {target}
     Self is not ObjectPayload
-    let destination: raw/u8
+    let destination: raw/u8 during target
     let dispatch: raw/u8
     let kind: isize
     let failed: bool
@@ -38,7 +40,7 @@ public group Text
     public struct FixedBuffer {source}
         Self is BufferWriter
         Self is not ObjectPayload
-        let data: raw/u8
+        let data: raw/u8 during source
         public let capacity: isize
         public let length: isize
         let validated: isize
@@ -46,7 +48,7 @@ public group Text
 
     public struct HeapBuffer
         Self is BufferWriter
-        let data: raw/u8
+        let data: raw/u8 during self
         public let capacity: isize
         public let length: isize
         let validated: isize

@@ -4,8 +4,6 @@ test	XunitTest.AssociatedPairFormationTest.PairLayerFamiliesExecute	XunitTest.As
 test	XunitTest.FunctionCaptureTest.NestedHeapEnvironmentsReleaseTheirPayloadExactlyOnce	XunitTest.FunctionCaptureTest.NestedHeapEnvironmentsReleaseTheirPayloadExactlyOnce
 test	XunitTest.FunctionCaptureTest.ReplacingACapturedFunctionDropsTheOldEnvironment	XunitTest.FunctionCaptureTest.ReplacingACapturedFunctionDropsTheOldEnvironment
 test	XunitTest.FunctionDefaultTest.ACaptureOfAnotherPreparedArgumentFailsGeneration	XunitTest.FunctionDefaultTest.ACaptureOfAnotherPreparedArgumentFailsGeneration
-test	XunitTest.FunctionDefaultTest.CompilerFunctionDefaultsExecute	XunitTest.FunctionDefaultTest.CompilerFunctionDefaultsExecute(name: \"Default\", source: \"func both(text: string, show: (ref/string) -> () = Console.writeLine) -> () => show(text@ref)\\npublic func main() -> ()\\n    both(\\\"hi\\\")\\n\")
-test	XunitTest.FunctionDefaultTest.CompilerFunctionDefaultsExecute	XunitTest.FunctionDefaultTest.CompilerFunctionDefaultsExecute(name: \"Expression\", source: \"let show: (ref/string) -> () = Console.writeLine\\nshow(\\\"hi\\\")\")
 test	XunitTest.FunctionEmissionTest.MalformedFunctionPlansFailBeforeWritingAndRecover	XunitTest.FunctionEmissionTest.MalformedFunctionPlansFailBeforeWritingAndRecover(mutation: \"argument-value\")
 test	XunitTest.FunctionEmissionTest.MalformedFunctionPlansFailBeforeWritingAndRecover	XunitTest.FunctionEmissionTest.MalformedFunctionPlansFailBeforeWritingAndRecover(mutation: \"call-entry\")
 test	XunitTest.FunctionEmissionTest.MalformedFunctionPlansFailBeforeWritingAndRecover	XunitTest.FunctionEmissionTest.MalformedFunctionPlansFailBeforeWritingAndRecover(mutation: \"call-result\")

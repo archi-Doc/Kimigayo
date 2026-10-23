@@ -1,0 +1,3978 @@
+// G170 C1 prototype of C (PlanB §4.3): request-local demand evaluation over the existing clause templates.
+//
+// Contract (the design's ContractSolver entry operations, in prototype form):
+// - Supply(goal, view): the available evidence for a bound proposition and for its negation; Complete, Provisional or Resource.
+// - Enumerate(subject, view): the constraints available on a subject (with discovery: also through pending sources).
+// Inputs are the finite model (declared inputs, Contract clause templates, verified conformances and their bindings, each with
+// its published source state) and the evidence view; nothing writes the model. All rows are request-local: nothing semantic
+// survives the request.
+//
+// Algorithm: magic-set selection plus semi-naive firing, in Jacobi rounds (each round computes its effects from the previous
+// round's state only, so the state after round k, its size, its work and the round count are functions of the request: a
+// Resource outcome never depends on query or declaration order). Identity is an e-graph (EGraph); templates are selected by
+// e-matching their conclusion against a demanded class, through static indexes keyed by conclusion heads, so a request examines
+// only rows whose conclusion can meet a head in its classes. A demand is a (Contract declaration, subject class or star, argument
+// classes or star) row; a class demand collects what one class needs for its identity, and its classes' kids (upward congruence
+// makes a class depend on its kids' identities). One need-driven rule selects every identity row, whichever side mentions the
+// row's subject: a side matching a class makes the other side a virtual node of that class, never materialized per row, requested
+// only where (a) a pattern needs its head (and kids) at the class or a kid, (b) the class meets another class (a demand and the
+// classes of its Contract's facts, a bound variable and its class, an identity goal's two classes, same-head nodes' kids: a meeting
+// row per class pair, answered once per round when new or woken), or (c) a node of the other side's shape exists (bound
+// expansion); a side meeting a class only through a virtual node is a chain row. A virtual node matches as a node, modulo classes:
+// a subterm instantiated to a class matches by class, different classes meet there; two classes' nodes join through the index.
+// Static row indexes (heads per Contract position, which polarities a Contract can have) skip impossible expansions and settle
+// impossible polarities. Polarity tags, recomputed every round from the goal rows, say which goal polarity a row serves; a polarity
+// settles when its evidence is established or none of its rows has work left. A subscription whose conclusion is fixed by its
+// bindings retires after the round that found a witness. A selected source in Resource state makes an unsettled answer Resource.
+#pragma warning disable
+#nullable enable
+
+namespace G170C1;
+
+public sealed class Limits
+{
+    /// <summary>Gets the round limit (SPEC 8.3.3's proof-search depth).</summary>
+    public int Rounds { get; init; } = 4096;
+
+    /// <summary>Gets the item limit: rows (demands, class demands, subscriptions, chain rows), supports and identity nodes.</summary>
+    public long Items { get; init; } = 65_536;
+}
+
+public enum Outcome : byte { Complete, Provisional, Resource }
+
+public sealed class Answer
+{
+    public bool Positive { get; set; }
+
+    public bool Negative { get; set; }
+
+    public Outcome Outcome { get; set; }
+
+    public string Reason { get; set; } = string.Empty;
+
+    public int Rounds { get; set; }
+
+    /// <summary>Gets or sets V: requested rows (demands, class demands, subscriptions, chain rows).</summary>
+    public long V { get; set; }
+
+    /// <summary>Gets or sets E: support edges (one per support plus one per antecedent it names).</summary>
+    public long E { get; set; }
+
+    /// <summary>Gets or sets J: join work (matching steps, index entries and facts examined, congruence repairs), a function of each
+    /// round's starting state.</summary>
+    public long J { get; set; }
+
+    /// <summary>Gets or sets N: identity nodes materialized.</summary>
+    public long N { get; set; }
+
+    public long PeakItems { get; set; }
+
+    public List<string> Facts { get; set; } = new();
+
+    public List<string> Members { get; set; } = new();
+
+    public string Detail { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the goal polarities established (or impossible) when the request stopped (bit 1 positive, bit 2 negated).</summary>
+    public byte EstablishedAtStop { get; set; }
+
+    /// <summary>Gets the polarities established: at a limit, those established at the stop (B 3.10).</summary>
+    public string Verdict => (this.Positive ? "+" : "") + (this.Negative ? "-" : "") + (!this.Positive && !this.Negative ? "none" : string.Empty);
+
+    public override string ToString() => $"{this.Verdict} {this.Outcome}{(this.Reason.Length != 0 ? " (" + this.Reason + ")" : string.Empty)} rounds={this.Rounds} V={this.V} E={this.E} J={this.J} N={this.N}";
+}
+
+public sealed class Solver
+{
+    private const byte Pos = 1;
+    private const byte Neg = 2;
+    private const byte Both = 3;
+
+    private readonly ProgramModel m;
+    private readonly List<Template> inputs = new();
+    private readonly Dictionary<ContractDecl, List<Template>> isAll = new();
+    private readonly Dictionary<ContractDecl, List<Template>> isAnySubject = new();
+    private readonly Dictionary<(ContractDecl Decl, HeadKey Head), List<Template>> isBySubject = new();
+    private readonly Dictionary<HeadKey, List<Template>> compoundBySubject = new();
+
+    // One index over every positive identity side, whichever side mentions the row's subject: (other side's head, side's head),
+    // then the heads of (other kid0, other kid1, side kid0, side kid1), rows grouped by side Term. `chainable` holds the sides a
+    // virtual node can meet (a chain); `byShape` the bound-expansion entries; negated rows serve only an identity goal's negation.
+    private readonly Dictionary<(HeadKey Other, HeadKey Side), SideTrie> sides = new();
+    private readonly Dictionary<HeadKey, HashSet<HeadKey>> otherHeads = new();
+    private readonly Dictionary<(HeadKey Other, HeadKey Side), SideTrie> chainable = new();
+    private readonly Dictionary<HeadKey, HashSet<HeadKey>> chainOtherHeads = new();
+    private readonly Dictionary<(HeadKey Head, HeadKey Kid0, HeadKey Kid1), List<ShapeEntry>> byShape = new();
+    private readonly Dictionary<(HeadKey Side, HeadKey Kid0), List<EqSide>> negatedSides = new();
+    private readonly Dictionary<HeadKey, HashSet<HeadKey>> reach = new();
+    private readonly Dictionary<(HeadKey F, int I), HashSet<HeadKey>> kidHeads = new();
+    private readonly Dictionary<HeadKey, List<(EqSide E, Term Kid)>> constructorKids = new();
+    private readonly HashSet<HeadKey> aliasHeads = new();
+    private readonly HashSet<HeadKey> chainableAliasHeads = new();
+    private readonly HashSet<HeadKey> anyVirtualHeads = new();
+    private readonly Dictionary<int, bool> mayGain = new();
+    private readonly Dictionary<int, HashSet<HeadKey>> indexHeads = new();
+    private readonly HashSet<(int Class, HeadKey Need)> chainGuard = new();
+    private readonly Dictionary<int, (List<int> Visits, bool Resource)> produced = new();
+    private readonly Dictionary<(int, HeadKey, string), (HashSet<Promise> Own, List<int> Visits, List<(int, HeadKey)> Needs, bool Resource, bool Chains)> roundMemo = new();
+    private readonly Queue<(Promise W, Member M, Expansion X)> queue = new();
+    private bool draining;
+    private List<int>? visitLog;
+    private List<(int Class, HeadKey Need)>? needLog;
+    private bool chainSeen;
+    private readonly Dictionary<HeadKey, int> headIds = new();
+    private readonly Dictionary<int, HashSet<HeadKey>> virtualHeads = new();
+    private readonly HashSet<(int Class, int Shape, int Pattern, Row Owner, byte Sign)> expanded = new();
+    private readonly List<int> scratch = new();
+    private bool resourceSeen;
+    private readonly HashSet<ContractDecl> concludesPositive = new();
+    private readonly HashSet<ContractDecl> concludesNegated = new();
+    private readonly Dictionary<ContractDecl, (Term Subject, Term Ref)> antecedentPattern = new();
+    private readonly Dictionary<(ContractDecl Decl, int Position), HashSet<Head>> positionHeads = new();
+    private readonly HashSet<(ContractDecl Decl, int Position)> anyHead = new();
+
+    private View view = View.Ordinary;
+    private Limits limits = new();
+    private bool includePending;
+    private bool exhaustive;
+    private EGraph g = new();
+    private ShapeTable shapes = null!;
+    private List<Demand> demands = new();
+    private Dictionary<DemandKey, Demand> demandIndex = new();
+    private Dictionary<int, ClassDemand> idents = new();
+    private Dictionary<int, ClassDemand> compounds = new();
+    private List<Sub> subs = new();
+    private Dictionary<SubKey, Sub> subIndex = new();
+    private List<Fact> facts = new();
+    private List<int> factAlias = new();
+    private Dictionary<FactKey, int> factIndex = new();
+    private Dictionary<ContractDecl, List<int>> positiveIs = new();
+    private Dictionary<ContractDecl, List<int>> factsOf = new();
+    private HashSet<(int T, int Class, string Bind, Row Owner, byte Sign)> expansions = new();
+    private Dictionary<int, Dictionary<int, Promise>> promises = new();
+    private Dictionary<(int Class, HeadKey Need), NeedRow> needs = new();
+    private Dictionary<(int A, int B), MeetRow> meetings = new();
+    private List<MeetRow> meetQueue = new();
+    private Dictionary<HeadKey, List<(ShapeEntry Entry, int?[] Beta, int Scanned)>> waiting = new();
+    private bool provisional;
+    private byte resourceTags;
+    private string resourceSource = string.Empty;
+    private bool mergedSinceScan;
+    private int eagerScanned;
+    private long work;
+    private Goal goal = null!;
+
+    public Solver(ProgramModel model)
+    {
+        this.m = model;
+        foreach (var decl in model.Decls)
+        {
+            this.isAll[decl] = new();
+            this.isAnySubject[decl] = new();
+            this.antecedentPattern[decl] = (model.Terms.Var(0), model.SelfRef(decl));
+        }
+
+        // Rule 4: a row whose antecedent Contract can have no fact is not a row (a static row-index fact); dead rows enter no index.
+        this.SubjectHeads();
+        var positive = new List<EqSide>();
+        foreach (var t in model.Templates)
+        {
+            if (!this.Live(t))
+            {
+                continue;
+            }
+
+            if (t.Kind == TemplateKind.Input)
+            {
+                // An input fact can reach the goal through identity: its Contract and polarity can be concluded.
+                this.inputs.Add(t);
+                if (t.Conclusion.IsAtom && (t.Conclusion.Kind == FK.Not ? t.Conclusion.L! : t.Conclusion) is { Kind: FK.Is } input && model.DeclOf(input.B!) is { } concluded)
+                {
+                    (t.Conclusion.Kind == FK.Not ? this.concludesNegated : this.concludesPositive).Add(concluded);
+                }
+
+                continue;
+            }
+
+            var c = t.Conclusion;
+            var atom = c.Kind == FK.Not ? c.L! : c;
+            if (!c.IsAtom)
+            {
+                Add(this.compoundBySubject, HeadKey.Of(c.Subject), t);
+            }
+            else if (atom.Kind == FK.Eq && c.Kind == FK.Not)
+            {
+                for (var side = 0; side < 2; side++)
+                {
+                    var e = new EqSide(t, side);
+                    Add(this.negatedSides, (HeadKey.Of(e.Side), HeadKey.KidOf(e.Side)), e);
+                }
+            }
+            else if (atom.Kind == FK.Eq)
+            {
+                for (var side = 0; side < 2; side++)
+                {
+                    var e = new EqSide(t, side);
+                    positive.Add(e);
+                    if (e.Alias)
+                    {
+                        this.aliasHeads.Add(HeadKey.Of(e.Side)); // its virtual node is the class its variable binds: VirtualHeads
+                    }
+                    else
+                    {
+                        AddTo(this.reach, HeadKey.Of(e.Side), HeadKey.Of(e.Other));
+                    }
+                    Trie(this.sides, this.otherHeads, e).Add(e); // rows sharing a side (every binding whose value is i32) are one match
+                    this.IndexKids(e.Other);
+                    if (e.Side.Head is SymHead { Kind: SymKind.Con })
+                    {
+                        this.IndexConstructorKids(e, e.Side);
+                    }
+                }
+
+                this.AddShapeEntries(t, atom.A!, atom.B!);
+            }
+            else if (model.DeclOf(atom.B!) is { } decl)
+            {
+                this.isAll[decl].Add(t);
+                if (atom.A!.Head is VarHead)
+                {
+                    this.isAnySubject[decl].Add(t);
+                }
+                else
+                {
+                    Add(this.isBySubject, (decl, HeadKey.Of(atom.A!)), t);
+                }
+
+                (c.Kind == FK.Not ? this.concludesNegated : this.concludesPositive).Add(decl);
+            }
+        }
+
+        // A side is chainable when it can meet a virtual node: some row's other side unifies with it (variables of either row match
+        // anything), unless that other side is a variable its own side binds (an alias of an existing class, expanded where any
+        // need meets it) or is this row's other side and fixes nothing new (vars(other) ⊆ vars(side): the base instance itself).
+        var bases = positive.Where(b => !b.Alias).ToLookup(b => HeadKey.Of(b.Other));
+        foreach (var s in positive)
+        {
+            if (s.Side.Head is not VarHead && bases[HeadKey.Of(s.Side)].Concat(bases[HeadKey.Any]).Any(b => StaticUnify(b.Other, s.Side) && !(b.T == s.T && b.Index != s.Index && s.Trivial)))
+            {
+                Trie(this.chainable, this.chainOtherHeads, s).Add(s);
+                if (s.Alias)
+                {
+                    this.chainableAliasHeads.Add(HeadKey.Of(s.Side));
+                }
+            }
+        }
+
+        // The heads a virtual node can have, from a head a class holds: the other sides of identity rows whose side has that head
+        // (or is a variable), transitively (a chain row's other side, found through a virtual node, can be another row's side).
+        var changed = true;
+        while (changed)
+        {
+            changed = false;
+            foreach (var (head, heads) in this.reach)
+            {
+                foreach (var h in heads.Append(HeadKey.Any).ToArray())
+                {
+                    if (this.reach.TryGetValue(h, out var further) && h != head)
+                    {
+                        changed |= heads.UnionWithChanged(further);
+                    }
+                }
+            }
+        }
+
+        // The heads any virtual node can have: a class holding none of them, with no virtual node of its own and no kid that can
+        // change, never gains a node (§1 (b): same-head kids meet only where one of them can change).
+        foreach (var heads in this.reach.Values)
+        {
+            this.anyVirtualHeads.UnionWith(heads);
+        }
+
+        if (this.aliasHeads.Count != 0)
+        {
+            this.anyVirtualHeads.Add(HeadKey.Any);
+        }
+
+        static void Add<TKey, TValue>(Dictionary<TKey, List<TValue>> index, TKey key, TValue value)
+            where TKey : notnull
+        {
+            if (!index.TryGetValue(key, out var list))
+            {
+                index[key] = list = new();
+            }
+
+            list.Add(value);
+        }
+    }
+
+    private static void AddTo(Dictionary<HeadKey, HashSet<HeadKey>> index, HeadKey key, HeadKey value)
+    {
+        if (!index.TryGetValue(key, out var set))
+        {
+            index[key] = set = new();
+        }
+
+        set.Add(value);
+    }
+
+    private static SideTrie Trie(Dictionary<(HeadKey Other, HeadKey Side), SideTrie> index, Dictionary<HeadKey, HashSet<HeadKey>> heads, EqSide e)
+    {
+        var key = (HeadKey.Of(e.Other), HeadKey.Of(e.Side));
+        if (!index.TryGetValue(key, out var trie))
+        {
+            index[key] = trie = new();
+        }
+
+        AddTo(heads, key.Item2, key.Item1);
+        return trie;
+    }
+
+    // Whether two row terms can denote one Type: a variable of either row matches anything (rows are renamed apart).
+    private static bool StaticUnify(Term a, Term b)
+        => a.Head is VarHead || b.Head is VarHead || (a.Head.Equals(b.Head) && a.Kids.Length == b.Kids.Length && a.Kids.Zip(b.Kids).All(k => StaticUnify(k.First, k.Second)));
+
+    // Bound expansion entries (§1 (c)): an identity row is requested on behalf of a class demand matching one side when a node of the
+    // other, non-variable side exists. A row whose sides' variables are nested (one side's variables include the other's) is
+    // indexed once, by the shape of the side that fixes every variable (the more selective one when both do): scanning one of its
+    // nodes instantiates the other side, and the row serves the demands of both classes. Otherwise each non-variable side is scanned
+    // and the other side is matched against the active class demands.
+    private void AddShapeEntries(Template t, Term p, Term q)
+    {
+        var vp = new HashSet<int>();
+        var vq = new HashSet<int>();
+        p.Vars(vp);
+        q.Vars(vq);
+        var pKey = p.Head is not VarHead && vq.IsSubsetOf(vp);
+        var qKey = q.Head is not VarHead && vp.IsSubsetOf(vq);
+        if (pKey && qKey)
+        {
+            pKey = Selectivity(p) >= Selectivity(q);
+            qKey = !pKey;
+        }
+
+        if (pKey || qKey)
+        {
+            var (scan, side) = pKey ? (p, q) : (q, p);
+            Add(scan, new ShapeEntry(t, scan, side, true));
+            return;
+        }
+
+        if (q.Head is not VarHead)
+        {
+            Add(q, new ShapeEntry(t, q, p, false));
+        }
+
+        if (p.Head is not VarHead)
+        {
+            Add(p, new ShapeEntry(t, p, q, false));
+        }
+
+        void Add(Term scan, ShapeEntry entry)
+        {
+            var key = (HeadKey.Of(scan), KidAt(scan, 0), KidAt(scan, 1));
+            if (!this.byShape.TryGetValue(key, out var list))
+            {
+                this.byShape[key] = list = new();
+            }
+
+            list.Add(entry);
+        }
+
+        static int Selectivity(Term t) => (KidAt(t, 0).IsAny ? 0 : 1) + (KidAt(t, 1).IsAny ? 0 : 1);
+    }
+
+    private static HeadKey KidAt(Term t, int i) => t.Kids.Length > i ? HeadKey.Of(t.Kids[i]) : HeadKey.Any;
+
+    // Rule 8 down's static filter (rule 3): per constructor head and position, the heads an identity row's other side has there
+    // (every Con subterm at any depth; Any for a variable).
+    private void IndexKids(Term t)
+    {
+        if (t.Head is not SymHead { Kind: SymKind.Con })
+        {
+            return;
+        }
+
+        for (var i = 0; i < t.Kids.Length; i++)
+        {
+            if (!this.kidHeads.TryGetValue((HeadKey.Of(t), i), out var set))
+            {
+                this.kidHeads[(HeadKey.Of(t), i)] = set = new();
+            }
+
+            set.Add(HeadKey.Of(t.Kids[i]));
+            this.IndexKids(t.Kids[i]);
+        }
+    }
+
+    // Rule 8 up's index: a constructor side's kid patterns at any depth under Con heads, by head (Any for a variable). Beside
+    // byShape, which is keyed by the scanned side's own head and holds one side per row: it cannot answer a kid head at depth.
+    private void IndexConstructorKids(EqSide e, Term t)
+    {
+        foreach (var kid in t.Kids)
+        {
+            if (!this.constructorKids.TryGetValue(HeadKey.Of(kid), out var list))
+            {
+                this.constructorKids[HeadKey.Of(kid)] = list = new();
+            }
+
+            list.Add((e, kid));
+            if (kid.Head is SymHead { Kind: SymKind.Con })
+            {
+                this.IndexConstructorKids(e, kid);
+            }
+        }
+    }
+
+    public int TemplateCount => this.m.Templates.Count;
+
+    public Action<string>? Trace { get; set; }
+
+    // A row is live when its antecedent Contract can have a fact: some live row, input or conformance concludes `is K` (rule 4; an
+    // over-approximation computed with the position index below, never a filter on views).
+    private bool Live(Template t) => t.Antecedent is not { } k || this.anyHead.Contains((k, 0)) || this.positionHeads[(k, 0)].Count != 0;
+
+    // A static row index (request independent): the heads a fact of K can have at each position (0: the subject, i: the i-th
+    // argument), in its identity class. Refinement and clause rows inherit their antecedent's positions through variables; identity
+    // rows connect the heads of their two sides; a variable that no antecedent position fixes admits any head. Expansion skips a
+    // promise whose requester needs, at a variable's position, a head no fact of the antecedent Contract can have there. A joint
+    // fixpoint with liveness: only live rows contribute.
+    private void SubjectHeads()
+    {
+        foreach (var d in this.m.Decls)
+        {
+            for (var i = 0; i <= d.Arity; i++)
+            {
+                this.positionHeads[(d, i)] = new();
+            }
+        }
+
+        var changed = true;
+        while (changed)
+        {
+            changed = false;
+            foreach (var t in this.m.Templates)
+            {
+                if (!this.Live(t))
+                {
+                    continue;
+                }
+
+                var c = t.Conclusion;
+                if (c.Kind == FK.Is && this.m.DeclOf(c.B!) is { } k)
+                {
+                    for (var position = 0; position <= k.Arity; position++)
+                    {
+                        var pattern = position == 0 ? c.A! : c.B!.Kids[position - 1];
+                        var key = (k, position);
+                        if (pattern.Head is VarHead v)
+                        {
+                            if (t.Antecedent is { } a && v.Index <= a.Arity)
+                            {
+                                changed |= this.positionHeads[key].UnionWithChanged(this.positionHeads[(a, v.Index)]);
+                                if (this.anyHead.Contains((a, v.Index)))
+                                {
+                                    changed |= this.anyHead.Add(key);
+                                }
+                            }
+                            else
+                            {
+                                changed |= this.anyHead.Add(key);
+                            }
+                        }
+                        else
+                        {
+                            changed |= this.positionHeads[key].Add(pattern.Head);
+                        }
+                    }
+                }
+                else if (c.Kind == FK.Eq)
+                {
+                    var l = c.A!.Head is VarHead ? null : c.A!.Head;
+                    var r = c.B!.Head is VarHead ? null : c.B!.Head;
+                    foreach (var (key, heads) in this.positionHeads)
+                    {
+                        var any = this.anyHead.Contains(key);
+                        if (l is null || r is null)
+                        {
+                            if (any || (l is not null && heads.Contains(l)) || (r is not null && heads.Contains(r)))
+                            {
+                                changed |= this.anyHead.Add(key);
+                            }
+                        }
+                        else
+                        {
+                            if (heads.Contains(l) || any)
+                            {
+                                changed |= heads.Add(r);
+                            }
+
+                            if (heads.Contains(r) || any)
+                            {
+                                changed |= heads.Add(l);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>Entry 1: the available evidence for a bound proposition and for its negation.</summary>
+    public Answer Supply(Formula proposition, View view, Limits? limits = null)
+    {
+        this.Reset(view, limits, includePending: false, exhaustive: false);
+        this.goal = new Goal(proposition);
+        this.SeedGoal();
+        var answer = this.Run();
+        (answer.Positive, answer.Negative) = this.Holds(proposition); // at a limit the polarities established at the stop stand (B 3.10, D9)
+        return answer;
+    }
+
+    /// <summary>Entry 2: the constraints available on a subject; with discovery, those available through pending sources too.</summary>
+    public Answer Enumerate(Term subject, View view, Limits? limits = null, bool discovery = false)
+    {
+        this.Reset(view, limits, includePending: discovery, exhaustive: true);
+        this.goal = new Goal(subject);
+        this.SeedGoal();
+        var answer = this.Run();
+        if (answer.Outcome != Outcome.Resource)
+        {
+            var s = this.g.Find(this.goal.SubjectClass);
+            foreach (var f in this.CanonicalFacts())
+            {
+                if (f.Kind <= 1 && this.g.Find(f.A) == s)
+                {
+                    answer.Facts.Add((f.Kind == 0 ? "+" : "-") + this.g.Show(f.B));
+                }
+            }
+
+            answer.Facts.Sort(StringComparer.Ordinal);
+            foreach (var node in this.g.NodesOf(s))
+            {
+                answer.Members.Add(this.g.HeadOf(node).Show(Enumerable.Range(0, this.g.KidCount(node)).Select(i => this.g.Show(this.g.KidOf(node, i))).ToArray()));
+            }
+
+            answer.Members = answer.Members.Distinct().OrderBy(x => x, StringComparer.Ordinal).ToList();
+        }
+
+        return answer;
+    }
+
+    /// <summary>Gets the facts the last request established on a subject's class, as (positive, contract reference) pairs whose
+    /// reference is printed through a member of its class.</summary>
+    public IEnumerable<(bool Positive, ContractDecl Decl, int RefClass)> FactsOn(Term subject)
+    {
+        var s = this.g.LookupTerm(subject);
+        if (s < 0)
+        {
+            yield break;
+        }
+
+        s = this.g.Find(s);
+        foreach (var f in this.CanonicalFacts())
+        {
+            if (f.Kind <= 1 && this.g.Find(f.A) == s)
+            {
+                yield return (f.Kind == 0, f.Decl!, this.g.Find(f.B));
+            }
+        }
+    }
+
+    public string ShowClass(int c) => this.g.Show(c);
+
+    /// <summary>Debug: the subscriptions of the last request, as order-free text.</summary>
+    public List<string> DumpSubs() => this.subs.Select(x => $"#{x.T.Id} st{x.Stage} on {x.On.Decl}({(x.On.Subject >= 0 ? this.g.Show(x.On.Subject) : "*")};{string.Join(",", x.On.Args.Select(a => a >= 0 ? this.g.Show(a) : "*"))}) by [{string.Join(",", x.Owners.Select(o => o is Demand d ? "D:" + d.Decl + "(" + (d.Subject >= 0 ? this.g.Show(d.Subject) : "*") + ")" : o is ClassDemand c ? "C:" + this.g.Show(c.Class) : o.GetType().Name).OrderBy(o => o, StringComparer.Ordinal))}] beta [{string.Join(",", x.Beta.Select(b => b is int i ? this.g.Show(i) : "*"))}] sign {x.Sign} ants {x.Ants.Length}").OrderBy(x => x, StringComparer.Ordinal).ToList();
+
+    private void Reset(View view, Limits? limits, bool includePending, bool exhaustive)
+    {
+        this.view = view;
+        this.limits = limits ?? new();
+        this.includePending = includePending;
+        this.exhaustive = exhaustive;
+        this.g = new();
+        this.shapes = new(this.g);
+        this.demands = new();
+        this.demandIndex = new();
+        this.idents = new();
+        this.compounds = new();
+        this.subs = new();
+        this.subIndex = new();
+        this.facts = new();
+        this.factAlias = new();
+        this.factIndex = new();
+        this.positiveIs = new();
+        this.factsOf = new();
+        this.expansions = new();
+        this.promises = new();
+        this.expanded.Clear();
+        this.needs = new();
+        this.meetings = new();
+        this.meetQueue = new();
+        this.waiting = new();
+        this.provisional = false;
+        this.resourceTags = 0;
+        this.resourceSource = string.Empty;
+        this.mergedSinceScan = false;
+        this.eagerScanned = 0;
+        this.work = 0;
+    }
+
+    private void SeedGoal()
+    {
+        // Inputs: finite declared assumptions, seeded as facts (exact compounds stay as written) and identity unions. Nothing else
+        // is interned up front: a Type enters the request when a goal, an input, a fired row or a condition names it.
+        foreach (var t in this.inputs)
+        {
+            this.Fire(t, [], []);
+        }
+
+        var goal = this.goal;
+        if (goal.Proposition is { } p)
+        {
+            var terms = new List<Term>();
+            p.Terms(terms);
+            foreach (var t in terms)
+            {
+                this.g.AddTerm(t);
+            }
+
+            var atom = p.Kind == FK.Not ? p.L! : p;
+            var sign = p.Kind == FK.Not ? Neg : Pos;
+            goal.Impossible = 0;
+            if (!p.IsAtom)
+            {
+                goal.SubjectClass = this.g.AddTerm(p.Subject);
+                this.EnsureClassDemand(this.compounds, goal.SubjectClass).Root = Both;
+                this.EnsureClassDemand(this.idents, goal.SubjectClass).Root = Both;
+            }
+            else if (atom.Kind == FK.Is)
+            {
+                goal.SubjectClass = this.g.AddTerm(atom.A!);
+                var decl = this.m.DeclOf(atom.B!)!;
+                var d = this.EnsureDemand(decl, goal.SubjectClass, atom.B!.Kids.Select(this.g.AddTerm).ToArray());
+
+                // A polarity no row can conclude for this declaration is settled from the start (a static row-index fact).
+                d.RootPos = this.concludesPositive.Contains(decl) ? sign : (byte)0;
+                d.RootNeg = this.concludesNegated.Contains(decl) ? (byte)(Both & ~sign) : (byte)0;
+                this.EnsureClassDemand(this.idents, goal.SubjectClass).Root = (byte)(d.RootPos | d.RootNeg);
+                goal.Impossible = (byte)(Both & ~(d.RootPos | d.RootNeg));
+            }
+            else
+            {
+                goal.SubjectClass = this.g.AddTerm(atom.A!);
+                goal.OtherClass = this.g.AddTerm(atom.B!);
+                var a = this.EnsureClassDemand(this.idents, goal.SubjectClass);
+                var b = this.EnsureClassDemand(this.idents, goal.OtherClass);
+                a.Root = b.Root = Both;
+                a.NegatedFor = b.NegatedFor = (byte)(Both & ~sign);
+            }
+        }
+        else
+        {
+            goal.SubjectClass = this.g.AddTerm(goal.Subject!);
+            foreach (var decl in this.m.Decls)
+            {
+                var d = this.EnsureDemand(decl, goal.SubjectClass, Enumerable.Repeat(-1, decl.Arity).ToArray());
+                d.RootPos = d.RootNeg = Both;
+            }
+
+            this.EnsureClassDemand(this.idents, goal.SubjectClass).Root = Both;
+        }
+
+        this.AfterApply();
+    }
+
+    private Answer Run()
+    {
+        var answer = new Answer { PeakItems = this.Items() };
+        var rounds = 0;
+        if (answer.PeakItems > this.limits.Items)
+        {
+            answer.Outcome = Outcome.Resource; // the seeded state alone exceeds the item limit
+            answer.Reason = $"items {answer.PeakItems}>{this.limits.Items}";
+            return answer;
+        }
+
+        while (true)
+        {
+            this.Propagate();
+            var established = (byte)(this.Established() | this.goal.Impossible);
+            answer.EstablishedAtStop = established;
+            var active = this.exhaustive ? Both : (byte)(Both & ~established);
+            var fx = this.Compute(active);
+            this.Trace?.Invoke($"round {rounds}: established {established} active {active} effects subs {fx.Subs.Count} fires {fx.Fires.Count} idents {fx.Idents.Count} chains {fx.Chains.Count} needs {fx.Needs.Count} rows {this.demands.Count}/{this.idents.Count}/{this.subs.Count} nodes {this.g.Nodes}");
+            if (this.Trace is not null)
+            {
+                foreach (var f in fx.Fires)
+                {
+                    this.Trace($"  fire {f.T} with [{string.Join(", ", f.Beta.Select(x => x is int i ? this.g.Show(i) : "*"))}]");
+                }
+
+                foreach (var (p, m) in fx.Chains)
+                {
+                    this.Trace($"  chain at {this.g.Show(p.Class)}: {p.Other} via {m.Via.Other} at {this.g.Show(m.Via.Class)} pattern {m.Pattern}");
+                }
+
+                foreach (var s in fx.Subs)
+                {
+                    this.Trace($"  sub {s.Decl}({(s.Subject >= 0 ? this.g.Show(s.Subject) : "*")}) for {s.T} by {string.Join("+", s.Owners.Select(o => o.GetType().Name))}");
+                }
+            }
+
+            if (this.exhaustive && fx.Count == 0)
+            {
+                fx = this.Canonicalize();
+            }
+
+            var settled = this.exhaustive ? fx.Count == 0 : ((established | (byte)(~fx.Tags & Both)) & Both) == Both;
+            if (settled || fx.Count == 0)
+            {
+                answer.Outcome = this.provisional ? Outcome.Provisional : Outcome.Complete;
+                break;
+            }
+
+            if (++rounds > this.limits.Rounds)
+            {
+                answer.Outcome = Outcome.Resource;
+                answer.Reason = $"rounds>{this.limits.Rounds}";
+                break;
+            }
+
+            this.Apply(fx);
+            var items = this.Items();
+            answer.PeakItems = Math.Max(answer.PeakItems, items);
+            if (items > this.limits.Items)
+            {
+                answer.Outcome = Outcome.Resource;
+                answer.Reason = $"items {items}>{this.limits.Items}";
+                break;
+            }
+        }
+
+        // A selected source whose published state is Resource could still supply a polarity the request did not establish: the
+        // answer is Resource (the source's own record stands; this request adds none).
+        if (answer.Outcome != Outcome.Resource && (this.resourceTags & ~(this.exhaustive ? 0 : this.Established() | this.goal.Impossible) & Both) != 0)
+        {
+            answer.Outcome = Outcome.Resource;
+            answer.Reason = "source state Resource: " + this.resourceSource;
+        }
+
+        answer.Rounds = rounds;
+        answer.V = this.demands.Count + this.idents.Count + this.compounds.Count + this.subs.Count + this.Promises() + this.needs.Count + this.meetings.Count;
+        answer.Detail = $"demands {this.demands.Count} idents {this.idents.Count} compounds {this.compounds.Count} subs {this.subs.Count} chains {this.Promises()} meetings {this.meetings.Count}";
+        answer.E = this.facts.Sum(f => f.Supports.Sum(s => 1 + s.Ants.Length));
+        answer.N = this.g.Nodes;
+        answer.J = this.work + this.g.Work;
+        answer.PeakItems = Math.Max(answer.PeakItems, this.Items());
+        return answer;
+    }
+
+    // Enumerate lists facts modulo identity (SPEC 8.6.1: one instance per class): once no row has work, the facts of each
+    // declaration on the subject's class meet pairwise at their arguments, as an identity goal's two classes do (same polarity:
+    // `S1 is K3<S1.(K4<i64>).Y>` and `S1 is K3<i32>` with `S1.(K4<i64>).Y is i32` are one fact); what that requests re-enters the
+    // fixpoint. An unbounded enumeration never settles, so it never pays for the pairs.
+    private Effects Canonicalize()
+    {
+        var fx = new Effects();
+        var s = this.g.Find(this.goal.SubjectClass);
+        foreach (var d in this.demands.ToArray())
+        {
+            if (d.Subject != s || (d.RootPos | d.RootNeg) == 0)
+            {
+                continue;
+            }
+
+            var ctx = new MatchCtx(this, d, Both, fx) { Sign = Both, Mode = MatchMode.Expand };
+            var onSubject = this.FactsOf(d.Decl).Select(this.FactFind).Distinct().Select(id => this.facts[id])
+                .Where(f => this.g.Find(f.A) == s).Select(f => (f.Kind, Args: this.RefArgs(f.B, d.Decl)!)).ToList();
+            for (var i = 0; i < onSubject.Count; i++)
+            {
+                for (var j = i + 1; j < onSubject.Count; j++)
+                {
+                    for (var k = 0; k < d.Decl.Arity && onSubject[i].Kind == onSubject[j].Kind; k++)
+                    {
+                        this.work++;
+                        this.Meet(onSubject[i].Args[k], onSubject[j].Args[k], ctx);
+                    }
+                }
+            }
+        }
+
+        this.ProcessMeetings(fx, Both);
+        fx.Needs.RemoveWhere(n => this.needs.TryGetValue((this.g.Find(n.Class), n.Need), out var row) && row.Owners.Contains(n.Owner));
+        return fx;
+    }
+
+    // Items count stored chain promises (one item per promise, whatever its members): a promise re-found later adds nothing.
+    private long Items() => this.demands.Count + this.idents.Count + this.compounds.Count + this.subs.Count + this.Promises() + this.needs.Count + this.meetings.Count + this.facts.Sum(f => f.Supports.Count) + this.g.Nodes;
+
+    private int Promises() => this.promises.Values.Sum(t => t.Values.Count(p => p.Stored));
+
+    // Tags, recomputed from the goal rows every round: a row serves the polarities of the rows that requested it.
+    private void Propagate()
+    {
+        foreach (var d in this.demands)
+        {
+            d.PosServe = d.RootPos;
+            d.NegServe = d.RootNeg;
+        }
+
+        foreach (var c in this.idents.Values.Concat(this.compounds.Values))
+        {
+            c.TagsValue = c.Root;
+        }
+
+        foreach (var s in this.subs)
+        {
+            s.Tags = 0;
+        }
+
+        foreach (var n in this.needs.Values.Cast<OwnedRow>().Concat(this.meetings.Values))
+        {
+            n.TagsValue = 0;
+        }
+
+        var queue = new Queue<Row>(this.demands.Where(d => d.Tags != 0).Cast<Row>().Concat(this.idents.Values.Concat(this.compounds.Values).Where(c => c.Tags != 0)));
+        while (true)
+        {
+            this.Drain(queue);
+
+            // A need or meeting row serves what its requesters serve (requesters may be such rows: to a fixed point).
+            foreach (var n in this.needs.Values.Cast<OwnedRow>().Concat(this.meetings.Values))
+            {
+                var t = (byte)n.Owners.Aggregate(0, (a, o) => a | o.Tags);
+                if ((n.TagsValue | t) != n.TagsValue)
+                {
+                    n.TagsValue |= t;
+                    queue.Enqueue(n);
+                }
+            }
+
+            if (queue.Count == 0)
+            {
+                return;
+            }
+        }
+    }
+
+    private void Drain(Queue<Row> queue)
+    {
+        while (queue.Count != 0)
+        {
+            var row = queue.Dequeue();
+            foreach (var (v, sign) in row.VisitSigns)
+            {
+                var t = row is Demand vd ? (byte)(((sign & Pos) != 0 ? vd.PosServe : 0) | ((sign & Neg) != 0 ? vd.NegServe : 0)) : row.Tags;
+                if (this.idents.TryGetValue(this.g.Find(v), out var ident) && (ident.Tags | t) != ident.Tags)
+                {
+                    ident.TagsValue |= t;
+                    queue.Enqueue(ident);
+                }
+            }
+
+            foreach (var s in row.Requested)
+            {
+                // A subscription serves what its requesting match served: the positive or negated facts of a demand, or both
+                // (a meeting), or a class demand's or need row's tags.
+                var t = row is Demand d ? (s.Sign == Neg ? d.NegServe : s.Sign == Pos ? d.PosServe : d.Tags) : row.Tags;
+                if (s.Retired || (s.Tags | t) == s.Tags)
+                {
+                    continue;
+                }
+
+                s.Tags |= t;
+                var on = s.On;
+                if ((on.PosServe | s.Tags) != on.PosServe)
+                {
+                    on.PosServe |= s.Tags;
+                    queue.Enqueue(on);
+                }
+            }
+        }
+    }
+
+    private byte Established()
+    {
+        if (this.goal.Proposition is not { } p)
+        {
+            return 0;
+        }
+
+        var (pos, neg) = this.Holds(p);
+        return (byte)((pos ? Pos : 0) | (neg ? Neg : 0));
+    }
+
+    private (bool Pos, bool Neg) Holds(Formula p)
+    {
+        if (!p.IsAtom)
+        {
+            var key = this.Canon(p);
+            var negated = this.Canon(Formula.Negate(p));
+            var pos = false;
+            var neg = false;
+            foreach (var f in this.CanonicalFacts())
+            {
+                if (f.Kind == 4)
+                {
+                    var c = this.CanonOf(f);
+                    pos |= c == key;
+                    neg |= c == negated;
+                }
+            }
+
+            return (pos, neg);
+        }
+
+        var atom = p.Kind == FK.Not ? p.L! : p;
+        bool yes;
+        bool no;
+        if (atom.Kind == FK.Is)
+        {
+            var decl = this.m.DeclOf(atom.B!)!;
+            var s = this.g.Find(this.g.LookupTerm(atom.A!));
+            var r = this.g.Find(this.g.LookupTerm(atom.B!));
+            yes = this.factIndex.ContainsKey(new(0, decl, s, r, null));
+            no = this.factIndex.ContainsKey(new(1, decl, s, r, null));
+        }
+        else
+        {
+            var a = this.g.Find(this.g.LookupTerm(atom.A!));
+            var b = this.g.Find(this.g.LookupTerm(atom.B!));
+            yes = a == b;
+            no = this.Refuted(a, b, new());
+        }
+
+        return p.Kind == FK.Not ? (no, yes) : (yes, no);
+    }
+
+    // B 3.3's Refuted over the request's structure (rule 6; D7): a negated identity fact between the two classes; a conflicting class
+    // against any class, itself included; constructors of different heads; equal heads and a Refuted kid pair; one class a proper
+    // part of the other (B 3.6). Coinductive over class pairs (cyclic structures terminate); reads materialized constructors and
+    // facts only, so an identity goal's negative polarity needs its classes' structure (the structure need, rule 9).
+    private bool Refuted(int a, int b, HashSet<(int, int)> visited)
+    {
+        a = this.g.Find(a);
+        b = this.g.Find(b);
+        if (this.factIndex.ContainsKey(new(3, null, Math.Min(a, b), Math.Max(a, b), null)) || this.g.Conflict(a) || this.g.Conflict(b))
+        {
+            return true;
+        }
+
+        if (!visited.Add((Math.Min(a, b), Math.Max(a, b))))
+        {
+            return false;
+        }
+
+        var (n, o) = (this.g.Constructor(a), this.g.Constructor(b));
+        if (n >= 0 && o >= 0)
+        {
+            if (!this.g.HeadOf(n).Equals(this.g.HeadOf(o)) || this.g.KidCount(n) != this.g.KidCount(o))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < this.g.KidCount(n); i++)
+            {
+                if (this.Refuted(this.g.KidOf(n, i), this.g.KidOf(o, i), visited))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return this.g.ProperPart(a, b, new()) || this.g.ProperPart(b, a, new());
+    }
+
+    // ---- Rounds ----
+    private Effects Compute(byte active)
+    {
+        var fx = new Effects();
+        this.roundMemo.Clear(); // promises are a function of the round's starting state
+        this.produced.Clear();
+        this.expanded.Clear();
+        this.virtualHeads.Clear();
+        this.mayGain.Clear();
+        this.indexHeads.Clear();
+        foreach (var d in this.demands.ToArray())
+        {
+            if ((!d.Selected || d.Dirty) && (d.Tags & active) != 0)
+            {
+                d.Selected = true;
+                d.Dirty = false;
+                this.SelectDemand(d, fx, active);
+            }
+        }
+
+        foreach (var c in this.idents.Values.ToArray())
+        {
+            if ((!c.Selected || c.Dirty) && (c.Tags & active) != 0)
+            {
+                c.Selected = true;
+                c.Dirty = false;
+                this.SelectIdent(c, fx);
+            }
+        }
+
+        foreach (var c in this.compounds.Values.ToArray())
+        {
+            if ((!c.Selected || c.Dirty) && (c.Tags & active) != 0)
+            {
+                c.Selected = true;
+                c.Dirty = false;
+                this.SelectCompound(c, fx);
+            }
+        }
+
+        foreach (var s in this.subs.ToArray())
+        {
+            if (!s.Retired && (s.Tags & active) != 0)
+            {
+                this.Scan(s, fx);
+            }
+        }
+
+        // Need rows (a need met beyond the chain-detection depth) are answered as top-level lookups, which detect and store
+        // their chains: every need gets its chains, one level per round.
+        foreach (var n in this.needs.Values.ToArray())
+        {
+            if ((!n.Selected || n.Dirty) && (n.Tags & active) != 0)
+            {
+                n.Selected = true;
+                n.Dirty = false;
+                n.Visited.Clear();
+                n.VisitSigns.Clear();
+                this.Virtuals(n.Class, n.Need, new MatchCtx(this, n, (byte)(n.Tags & active), fx) { Sign = Both, Mode = MatchMode.Expand });
+            }
+        }
+
+        this.EagerExpand(fx, active);
+
+        // Meeting rows requested this round or woken since their last answer, each answered once (the queue grows as meetings
+        // request their kids' meetings).
+        foreach (var m in this.meetings.Values)
+        {
+            if ((!m.Selected || m.Dirty) && !m.Queued && (m.Tags & active) != 0)
+            {
+                m.Queued = true;
+                this.meetQueue.Add(m);
+            }
+        }
+
+        this.ProcessMeetings(fx, active);
+        return fx;
+    }
+
+    private void ProcessMeetings(Effects fx, byte active)
+    {
+        for (var i = 0; i < this.meetQueue.Count; i++)
+        {
+            var row = this.meetQueue[i];
+            row.Queued = false;
+            var tags = (byte)(row.Tags & active);
+            if (tags == 0)
+            {
+                continue;
+            }
+
+            row.Selected = true;
+            row.Dirty = false;
+            row.Visited.Clear();
+            row.VisitSigns.Clear();
+            this.MeetClasses(row, new MatchCtx(this, row, tags, fx) { Sign = Both, Mode = MatchMode.Expand });
+        }
+
+        this.meetQueue.Clear();
+    }
+
+    private HashSet<HeadKey> HeadsOf(int c)
+    {
+        var heads = new HashSet<HeadKey>();
+        foreach (var node in this.g.NodesOf(c))
+        {
+            heads.Add(new(this.g.HeadOf(node), this.g.KidCount(node)));
+        }
+
+        return heads;
+    }
+
+    // The heads a class's promises can have: VirtualHeads of its own heads and the heads of its decomposed promises (rule 8 down),
+    // once per round (the classes do not change within a round).
+    private HashSet<HeadKey> Shapes(int c)
+    {
+        c = this.g.Find(c);
+        if (!this.virtualHeads.TryGetValue(c, out var result))
+        {
+            result = this.VirtualHeads(this.HeadsOf(c));
+            result.UnionWith(this.DecompositionHeads(c));
+            this.virtualHeads[c] = result;
+        }
+
+        return result;
+    }
+
+    // Rule 3 for rule 8 down: the heads c's decomposed promises can have. Per constructor use F<…c at i…> in a class p, the kid-i
+    // heads of the F-headed subterms of identity rows' other sides (kidHeads; Any for a variable kid) and the heads they reach; Any
+    // when p can have an alias or bare-variable promise (its class may hold another F with any kids).
+    private HashSet<HeadKey> DecompositionHeads(int c)
+    {
+        c = this.g.Find(c);
+        var result = new HashSet<HeadKey>();
+        foreach (var n in this.g.UsesOf(c))
+        {
+            var p = this.g.ClassOfNode(n);
+            if (this.g.HeadOf(n) is not SymHead { Kind: SymKind.Con } || p == c)
+            {
+                continue;
+            }
+
+            if (this.VirtualHeads(this.HeadsOf(p)).Contains(HeadKey.Any))
+            {
+                result.Add(HeadKey.Any);
+            }
+
+            var f = new HeadKey(this.g.HeadOf(n), this.g.KidCount(n));
+            for (var i = 0; i < f.Arity; i++)
+            {
+                if (this.g.KidOf(n, i) == c && this.kidHeads.TryGetValue((f, i), out var heads))
+                {
+                    foreach (var h in heads)
+                    {
+                        result.Add(h);
+                        if (this.reach.TryGetValue(h, out var further))
+                        {
+                            result.UnionWith(further);
+                        }
+                    }
+                }
+            }
+        }
+
+        return result;
+    }
+
+    // The heads a virtual node of c can have (a static over-approximation from c's heads); HeadKey.Any means any head. An alias
+    // side (its other side a variable the side binds) that can match c, directly or through a virtual node, makes c possibly the
+    // class it binds: any head.
+    private HashSet<HeadKey> VirtualHeads(HashSet<HeadKey> heads)
+    {
+        var result = new HashSet<HeadKey>();
+        if (heads.Any(h => h.Head is SymHead { Kind: SymKind.Ref }))
+        {
+            return result; // D5: a reference class holds references of one declaration and gains no Type
+        }
+
+        foreach (var h in heads.Append(HeadKey.Any))
+        {
+            if (this.reach.TryGetValue(h, out var others))
+            {
+                result.UnionWith(others);
+            }
+        }
+
+        if (heads.Overlaps(this.aliasHeads) || result.Overlaps(this.chainableAliasHeads))
+        {
+            result.Add(HeadKey.Any);
+        }
+
+        return result;
+    }
+
+    // The promises of c that can have the needed head (HeadKey.Any: all) and kids the requester can meet (o0, o1: the heads its
+    // pattern's or node's kids 0 and 1 can have; null: any). One rule for every identity side, whichever side mentions the row's
+    // subject:
+    // - a direct row: a side whose head is a head of c (or a variable) e-matches c; its other side is a promise of c;
+    // - a chain row: a chainable side that meets c only through a promise of c (at the top, or at a kid of one of c's nodes) makes
+    //   its row's other side a promise of c too, forwarding to that promise (chains forward to promises, never to rows).
+    // A promise is identified by (c, shape) (rule 1): one object per round (`promises`), whose members are every row, chain and
+    // decomposition producing that shape, whichever lookup found them. Production (Produce) is per class, once per round: every
+    // direct row instantiation and every decomposition, whatever the need; chain detection (Detect) is per (need, kid filters),
+    // bounded as below. A lookup returns the promises that fit its need: the produced and the stored ones, and the chain-only
+    // ones its own detection reached this round (a chain is an effect of the round: other lookups see its promise once stored).
+    private List<Promise> VirtualsAt(int c, HeadKey need, MatchCtx requester, HashSet<HeadKey>? o0 = null, HashSet<HeadKey>? o1 = null)
+    {
+        c = this.g.Find(c);
+        this.Produce(c, requester);
+        return this.Fitting(c, need, o0, o1, this.Detect(c, need, requester, o0, o1));
+    }
+
+    private List<Promise> Fitting(int c, HeadKey need, HashSet<HeadKey>? o0, HashSet<HeadKey>? o1, HashSet<Promise> own)
+    {
+        var result = new List<Promise>();
+        if (this.promises.TryGetValue(c, out var table))
+        {
+            foreach (var p in table.Values)
+            {
+                if ((p.Stored || p.Produced || own.Contains(p)) && this.Fits(p.Shape, need, o0, o1))
+                {
+                    result.Add(p);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    // Production, once per class and round: c's direct promises (every side with a head of c, or a variable, grouped by side Term so
+    // rows sharing a side cost one match, e-matched against c's nodes: the row's other side under each binding is a row member) and
+    // its decomposed promises (rule 8 down: a promise F<s̄> of a parent class p holding a constructor F<…c at i…> — never a
+    // projection or a reference (B 3.5) — is a promise of c at kid i: a shape node at that shape, a class as an alias promise, a
+    // shape variable or an alias or bare-variable producer as the bare-variable promise (Shapes.Sub); a decomposition member,
+    // expanded by expanding the producer against the pattern lifted through i). A conflicting class (B 3.3) is not decomposed and
+    // a parent that is itself a proper part of c is not followed (B 3.6): premise errors, and the only cycles in the structure (a
+    // class without conflict has one constructor). The matches visit classes for the requester (so their merges wake
+    // it) without expanding anything; the visits and Resource reads are replayed for later requesters.
+    private void Produce(int c, MatchCtx requester)
+    {
+        c = this.g.Find(c);
+        if (!this.produced.TryGetValue(c, out var entry))
+        {
+            var outer = (this.visitLog, this.resourceSeen);
+            this.visitLog = new();
+            this.resourceSeen = false;
+            var ctx = requester.Derive(MatchMode.None);
+            var candidates = new Dictionary<Term, List<EqSide>>();
+            foreach (var h in this.HeadsOf(c).Append(HeadKey.Any))
+            {
+                // A side with a head of c meets one of c's nodes of that head: its kids can have those nodes' kids' heads.
+                if (this.otherHeads.TryGetValue(h, out var others))
+                {
+                    HashSet<HeadKey>?[] filters = [null, null, this.SideKids(c, h, 0), this.SideKids(c, h, 1)];
+                    foreach (var other in others)
+                    {
+                        this.sides[(other, h)].Find(filters, (side, entries) => Found(candidates, side, entries));
+                    }
+                }
+            }
+
+            foreach (var (side, entries) in candidates)
+            {
+                this.work++;
+                var results = new List<int?[]>();
+                this.Match(side, c, new int?[entries[0].SideVars], results, ctx);
+                var distinct = Distinct(results).ToList();
+                if (distinct.Count == 0)
+                {
+                    continue;
+                }
+
+                foreach (var e in entries)
+                {
+                    this.work++;
+                    if (!this.Usable(e.T, requester.Tags))
+                    {
+                        continue;
+                    }
+
+                    foreach (var r in distinct)
+                    {
+                        var beta = new int?[e.T.VarCount];
+                        Array.Copy(r, beta, r.Length);
+                        var varOf = new List<int>();
+                        this.Add(this.At(c, this.shapes.Of(e.Other, beta, varOf), e.Other, beta, []), new Direct(e, beta, varOf));
+                    }
+                }
+            }
+
+            foreach (var n in this.g.Conflict(c) ? [] : this.g.UsesOf(c).ToArray())
+            {
+                var p = this.g.ClassOfNode(n);
+                if (this.g.HeadOf(n) is not SymHead { Kind: SymKind.Con } || this.g.Conflict(p) || this.g.ProperPart(c, p, new()))
+                {
+                    continue;
+                }
+
+                var f = new HeadKey(this.g.HeadOf(n), this.g.KidCount(n));
+                this.Produce(p, requester);
+                foreach (var w in this.Fitting(p, f, null, null, []))
+                {
+                    for (var i = 0; i < f.Arity; i++)
+                    {
+                        if (this.g.KidOf(n, i) != c)
+                        {
+                            continue;
+                        }
+
+                        this.work++;
+                        var shape = this.shapes.Sub(w.Shape, i);
+                        if (shape != c)
+                        {
+                            this.Add(this.At(c, shape, w.Other, w.Beta, [.. w.Path, i]), new Part(w, f, i)); // kid c itself: nothing new for c
+                        }
+                    }
+                }
+            }
+
+            entry = (this.visitLog, this.resourceSeen);
+            this.produced[c] = entry;
+            (this.visitLog, this.resourceSeen) = outer;
+            this.visitLog?.AddRange(entry.Visits);
+        }
+        else
+        {
+            foreach (var v in entry.Visits)
+            {
+                requester.Visit(v);
+            }
+        }
+
+        if (entry.Resource)
+        {
+            this.resourceTags |= requester.Tags;
+            this.resourceSeen = true;
+        }
+    }
+
+    // Chain detection for a need: the sides whose row's other side can have the need's head (or is a variable) and whose head c or
+    // one of c's promises can have, matched against c recording where a kid meets a promise of c (a hit): the row's other
+    // side under the bindings above the hit is a promise of c forwarding to that promise. Chains are detected for the need and for
+    // the needs its candidates meet (two levels; deeper lookups return produced and stored promises only) and stored as need rows,
+    // so a chain through a chain through a chain appears a round later: bounded work per lookup, and every need a lookup meets gets
+    // its own chains. Returns the promises the detection reached (the lookup returns them, produced or not).
+    private HashSet<Promise> Detect(int c, HeadKey need, MatchCtx requester, HashSet<HeadKey>? o0, HashSet<HeadKey>? o1)
+    {
+        var own = new HashSet<Promise>();
+        if (this.chainGuard.Count >= 2 || !this.chainGuard.Add((c, need)))
+        {
+            if (this.chainGuard.Count >= 2)
+            {
+                this.needLog?.Add((c, need));
+                if (requester.Fx is { } pending && requester.Owner is { } owner)
+                {
+                    pending.Needs.Add((c, need, owner)); // a need row: answered as a top-level lookup next round
+                    pending.NeedTags |= requester.Tags;
+                }
+            }
+
+            return own;
+        }
+
+        try
+        {
+            // The need's candidates: the sides production matched against c (their kids can meet c's promises: a chain below the
+            // top) and the chainable sides with a head c's promises can have (a chain at the top).
+            var candidates = new Dictionary<Term, List<EqSide>>();
+            var heads = this.HeadsOf(c);
+            foreach (var h in heads.Append(HeadKey.Any))
+            {
+                if (this.otherHeads.TryGetValue(h, out var others))
+                {
+                    HashSet<HeadKey>?[] direct = [o0, o1, this.SideKids(c, h, 0), this.SideKids(c, h, 1)];
+                    foreach (var other in others)
+                    {
+                        if (need.IsAny || other == need || other.IsAny)
+                        {
+                            this.sides[(other, h)].Find(direct, (side, entries) => Found(candidates, side, entries));
+                        }
+                    }
+                }
+            }
+
+            HashSet<HeadKey>?[] filters = [o0, o1, null, null];
+            foreach (var h in heads.Append(HeadKey.Any).Concat(this.VirtualHeads(heads)).ToHashSet())
+            {
+                if (this.chainOtherHeads.TryGetValue(h, out var others))
+                {
+                    foreach (var other in others)
+                    {
+                        if (need.IsAny || other == need || other.IsAny)
+                        {
+                            this.chainable[(other, h)].Find(filters, (side, entries) => Found(candidates, side, entries));
+                        }
+                    }
+                }
+            }
+
+            // A chain probe asks the same (class, head, kid filters) for many candidates of one lookup: answered once per lookup.
+            var memo = new Dictionary<(int, HeadKey, string), List<Promise>>();
+            foreach (var (side, entries) in candidates)
+            {
+                this.work++;
+                var ctx = requester.Derive(MatchMode.Chain, memo);
+                this.Match(side, c, new int?[entries[0].SideVars], new List<int?[]>(), ctx);
+                if (ctx.Chain!.Count == 0)
+                {
+                    continue;
+                }
+
+                foreach (var e in entries)
+                {
+                    this.work++;
+                    if (!this.Usable(e.T, requester.Tags))
+                    {
+                        continue;
+                    }
+
+                    foreach (var (via, pattern, hitBeta) in ctx.Chain)
+                    {
+                        // The base may be another instance of this very row (its other side matched c): the chain bootstraps that
+                        // instance, after which this side matches c directly (`A.(K2).Y is List<i32>` joins T's and U's projections).
+                        // When matching this side fixes the other one and the hit is the side itself, that instance is the base
+                        // itself: no chain.
+                        if (e.Trivial && ReferenceEquals(pattern, e.Side) && via.Members.Values.Any(x => x is Direct d && d.E.T == e.T && d.E.Index != e.Index))
+                        {
+                            continue;
+                        }
+
+                        var beta = new int?[e.T.VarCount];
+                        Array.Copy(hitBeta, beta, hitBeta.Length);
+                        var w = this.At(c, this.ShapeOf(e.Other, beta), e.Other, beta, []);
+                        var m = new Chain(pattern, hitBeta, via);
+                        if (w.Members.TryGetValue(this.KeyOf(m), out var known))
+                        {
+                            m = (Chain)known;
+                        }
+                        else
+                        {
+                            this.Add(w, m);
+                            requester.Fx?.Chains.Add((w, m)); // an effect of the round: when applied, wakes the rows that visited c
+                        }
+
+                        if (!m.Stored && requester.Fx is { } fx)
+                        {
+                            fx.ChainTags |= requester.Tags; // a chain found this round carries every finder's tags (rule 5)
+                            this.chainSeen = true;
+                        }
+
+                        own.Add(w);
+                    }
+                }
+            }
+        }
+        finally
+        {
+            this.chainGuard.Remove((c, need));
+        }
+
+        return own;
+    }
+
+    // Rule 3: whether a promise's shape can have the needed head and kids the requester can meet. A promise whose shape is a
+    // bare shape variable or an existing class has no head and matches every need at its class.
+    private bool Fits(int shape, HeadKey need, HashSet<HeadKey>? o0, HashSet<HeadKey>? o1)
+    {
+        var head = this.HeadOfShape(shape);
+        return (need.IsAny || head.IsAny || head == need) && Overlaps(this.KidHeads(this.ShapeKid(shape, 0)), o0) && Overlaps(this.KidHeads(this.ShapeKid(shape, 1)), o1);
+    }
+
+    private static bool Overlaps(HashSet<HeadKey>? kid, HashSet<HeadKey>? filter)
+        => filter is null || kid is null || kid.Contains(HeadKey.Any) || filter.Contains(HeadKey.Any) || kid.Overlaps(filter);
+
+    private HeadKey HeadOfShape(int shape) => shape >= 0 || this.shapes.IsVar(shape) ? HeadKey.Any : new(this.shapes.HeadOf(shape), this.shapes.KidsOf(shape).Length);
+
+    // Kid i of a shape node (null: a class, a shape variable or no such kid).
+    private int? ShapeKid(int shape, int i) => shape >= 0 || this.shapes.IsVar(shape) || this.shapes.KidsOf(shape).Length <= i ? null : this.shapes.KidsOf(shape)[i];
+
+    // The heads a kid can meet (rule 3; null: any): a class has its own heads and the heads its promises can have; a kid that is a
+    // shape variable or holds one is not a Type yet and has any head; a ground kid that is not interned has its own head (its class,
+    // once interned, holds exactly that node) and the heads its promises can have.
+    private HashSet<HeadKey>? KidHeads(int? kid)
+    {
+        if (kid is not { } k)
+        {
+            return null;
+        }
+
+        if (k >= 0)
+        {
+            return this.KidShapes(k);
+        }
+
+        if (this.shapes.VarCount(k) != 0)
+        {
+            return null;
+        }
+
+        var heads = new HashSet<HeadKey> { this.HeadOfShape(k) };
+        heads.UnionWith(this.VirtualHeads(heads));
+        return heads;
+    }
+
+    // The heads kid i of a side with head h can have to meet one of c's nodes of that head: those of the nodes' kids and of their
+    // promises (null: any).
+    private HashSet<HeadKey>? SideKids(int c, HeadKey h, int i)
+    {
+        if (h.IsAny || h.Arity <= i)
+        {
+            return null;
+        }
+
+        var result = new HashSet<HeadKey>();
+        foreach (var node in this.g.NodesOf(c))
+        {
+            if (this.g.KidCount(node) == h.Arity && this.g.HeadOf(node).Equals(h.Head))
+            {
+                result.UnionWith(this.KidShapes(this.g.KidOf(node, i)));
+            }
+        }
+
+        return result.Contains(HeadKey.Any) ? null : result;
+    }
+
+    // The heads a class can have once its promises are expanded: its own and its promises', decomposed ones included (HeadKey.Any:
+    // any).
+    private HashSet<HeadKey> KidShapes(int c)
+    {
+        var heads = this.HeadsOf(c);
+        heads.UnionWith(this.Shapes(c));
+        return heads;
+    }
+
+    // VirtualsAt for a requester: production is per class (Produce); a chain detection outside any other lookup is a function of
+    // (class, need, kid filters) and the round's state, so it is done once per round and replayed (its visits, needs and Resource
+    // reads) for later requesters, its result read from the round's promises. Members and promises found by any lookup reach every
+    // expansion recorded before them (Drain): an expansion is a function of the round's state, not of the order of lookups.
+    private List<Promise> Virtuals(int c, HeadKey need, MatchCtx requester, HashSet<HeadKey>? o0 = null, HashSet<HeadKey>? o1 = null)
+    {
+        if (this.chainGuard.Count != 0)
+        {
+            return this.VirtualsAt(c, need, requester, o0, o1);
+        }
+
+        c = this.g.Find(c);
+        this.Produce(c, requester);
+        var key = (c, need, this.SetKey(o0) + "|" + this.SetKey(o1));
+        if (!this.roundMemo.TryGetValue(key, out var entry))
+        {
+            var outer = (this.visitLog, this.needLog, this.resourceSeen, this.chainSeen);
+            this.visitLog = new();
+            this.needLog = new();
+            this.resourceSeen = false;
+            this.chainSeen = false;
+            var own = this.Detect(c, need, requester, o0, o1);
+            entry = (own, this.visitLog, this.needLog, this.resourceSeen, this.chainSeen);
+            this.roundMemo[key] = entry;
+            (this.visitLog, this.needLog, this.resourceSeen, this.chainSeen) = outer;
+        }
+        else
+        {
+            // Replayed for a later requester: what the detection did on the first requester's behalf is done on this one's too.
+            foreach (var v in entry.Visits)
+            {
+                requester.Visit(v);
+            }
+
+            if (requester.Fx is { } fx && requester.Owner is { } owner)
+            {
+                foreach (var (nc, nn) in entry.Needs)
+                {
+                    fx.Needs.Add((nc, nn, owner));
+                    fx.NeedTags |= requester.Tags;
+                }
+
+                if (entry.Chains)
+                {
+                    fx.ChainTags |= requester.Tags;
+                }
+            }
+
+            if (entry.Resource)
+            {
+                this.resourceTags |= requester.Tags;
+            }
+        }
+
+        var result = this.Fitting(c, need, o0, o1, entry.Own);
+        this.Drain();
+        return result;
+    }
+
+    // An order-free text key for a set of heads (heads are numbered on first sight; the numbers only name them).
+    private string SetKey(HashSet<HeadKey>? heads)
+    {
+        if (heads is null)
+        {
+            return "*";
+        }
+
+        var ids = new int[heads.Count];
+        var i = 0;
+        foreach (var h in heads)
+        {
+            if (!this.headIds.TryGetValue(h, out var id))
+            {
+                this.headIds[h] = id = this.headIds.Count;
+            }
+
+            ids[i++] = id;
+        }
+
+        Array.Sort(ids);
+        return string.Join(",", ids);
+    }
+
+    // Rows sharing a side are matched once; a side that meets c neither directly nor through a promise costs one step.
+    // A member's identity: a row instantiation by (row, side, bindings); a chain by its pattern, the bindings above the hit and its
+    // base's (class, shape); a decomposition by its producer's (class, shape), head and position (canonical classes; a stored
+    // chain's is recomputed after merges).
+    private string KeyOf(Member m) => m switch
+    {
+        Direct d => "d" + d.E.T.Id + "/" + d.E.Index + "/" + this.BindKey(d.Beta),
+        Chain n => "c" + n.Pattern.Id + "/" + this.BindKey(n.HitBeta) + "/" + this.g.Find(n.Via.Class) + "/" + this.ShapeOfPromise(n.Via),
+        Part p => "p" + this.g.Find(p.Producer.Class) + "/" + p.Producer.Shape + "/" + p.F.Head + "/" + p.F.Arity + "/" + p.Position,
+    };
+
+    // The shape of a term under bindings where the shape variables' row variables are not needed.
+    private int ShapeOf(Term t, int?[] beta)
+    {
+        this.scratch.Clear();
+        return this.shapes.Of(t, beta, this.scratch);
+    }
+
+    // A promise's shape recomputed from its first producer (R2): the other side's shape under its bindings, taken at the promise's
+    // path of constructor positions (rule 8 down), as production computes it.
+    private int ShapeOfPromise(Promise p) => this.shapes.Sub(this.ShapeOf(p.Other, p.Beta), p.Path);
+
+    // The round's promise at (c, shape), created by its first producer.
+    private Promise At(int c, int shape, Term other, int?[] beta, int[] path)
+    {
+        if (!this.promises.TryGetValue(c, out var table))
+        {
+            this.promises[c] = table = new();
+        }
+
+        if (!table.TryGetValue(shape, out var p))
+        {
+            table[shape] = p = new Promise(c, shape, other, beta, path);
+        }
+
+        return p;
+    }
+
+    // A member joins its promise once; the expansions already recorded at the promise apply to it (Drain).
+    private void Add(Promise w, Member m)
+    {
+        if (!w.Members.TryAdd(this.KeyOf(m), m))
+        {
+            return;
+        }
+
+        w.Produced |= m is not Chain;
+        foreach (var x in w.Expansions)
+        {
+            this.queue.Enqueue((w, m, x));
+        }
+    }
+
+    // Each side lies in one leaf per (other head, path): finds under several keys add up (a side found by two indexes once).
+    private static void Found(Dictionary<Term, List<EqSide>> candidates, Term side, List<EqSide> entries)
+    {
+        if (!candidates.TryGetValue(side, out var known))
+        {
+            candidates[side] = known = new();
+        }
+
+        foreach (var e in entries)
+        {
+            if (!known.Contains(e))
+            {
+                known.Add(e);
+            }
+        }
+    }
+
+    // Bound expansion (§1 (c)): an existing node with the shape of an identity row's non-variable side binds the row; a side whose
+    // class has an active class demand gets the row requested on its behalf when the other side's node exists (finite: no
+    // enumeration). Found through the index by (head, kid0 head, kid1 head). New nodes are scanned each round, all nodes after a merge
+    // or when the active class demands change; an instance whose other side has no node yet waits for a node of that side's head.
+    private void EagerExpand(Effects fx, byte active)
+    {
+        var changed = this.mergedSinceScan;
+        foreach (var c in this.idents.Values)
+        {
+            var now = (byte)(c.Tags & active);
+            changed |= now != c.ScannedTags;
+            c.ScannedTags = now;
+        }
+
+        if (changed)
+        {
+            this.waiting.Clear();
+        }
+
+        var total = this.g.NodeTotal;
+        var probe = new MatchCtx(this, null, 0, null);
+        for (var node = changed ? 0 : this.eagerScanned; node < total; node++)
+        {
+            var nodeClass = this.g.ClassOfNode(node);
+            var head = new HeadKey(this.g.HeadOf(node), this.g.KidCount(node));
+            if (this.waiting.Remove(head, out var waiters))
+            {
+                // A waiter wakes for the Type it waits for, at that node's scan; another node of the head is not its work.
+                foreach (var (entry, beta, scanned) in waiters)
+                {
+                    if (this.OtherOf(entry, beta) is var other && other >= 0 && this.g.Find(other) == nodeClass)
+                    {
+                        this.work++;
+                        this.BindShape(entry, beta, scanned, fx, active, probe);
+                    }
+                    else
+                    {
+                        this.Wait(entry, beta, scanned);
+                    }
+                }
+            }
+
+            var kid0 = this.g.KidCount(node) > 0 ? this.HeadsOf(this.g.KidOf(node, 0)) : [];
+            var kid1 = this.g.KidCount(node) > 1 ? this.HeadsOf(this.g.KidOf(node, 1)) : [];
+            foreach (var k0 in kid0.Append(HeadKey.Any))
+            {
+                foreach (var k1 in kid1.Append(HeadKey.Any))
+                {
+                    if (!this.byShape.TryGetValue((head, k0, k1), out var entries))
+                    {
+                        continue;
+                    }
+
+                    foreach (var entry in entries)
+                    {
+                        // The scanned node itself binds the side (its class's other nodes are scanned in turn).
+                        this.work++;
+                        var results = new List<int?[]> { new int?[entry.T.VarCount] };
+                        for (var i = 0; i < entry.Scan.Kids.Length && results.Count != 0; i++)
+                        {
+                            var next = new List<int?[]>();
+                            foreach (var b in results)
+                            {
+                                this.Match(entry.Scan.Kids[i], this.g.KidOf(node, i), b, next, probe);
+                            }
+
+                            results = next;
+                        }
+
+                        foreach (var beta in Distinct(results))
+                        {
+                            this.BindShape(entry, beta, nodeClass, fx, active, probe);
+                        }
+                    }
+                }
+            }
+        }
+
+        this.eagerScanned = total;
+        this.mergedSinceScan = false;
+    }
+
+    // A bound-expansion instance: the scanned side's node exists. Both: the other side is fully bound; when its node exists, the row
+    // serves its class demand, and the scanned class's when that side is not a variable. Otherwise the other side is matched against
+    // each active class demand.
+    private void BindShape(ShapeEntry entry, int?[] beta, int scanned, Effects fx, byte active, MatchCtx probe)
+    {
+        scanned = this.g.Find(scanned);
+        if (entry.Both)
+        {
+            var other = this.OtherOf(entry, beta);
+            if (other < 0)
+            {
+                this.Wait(entry, beta, scanned);
+                return;
+            }
+
+            other = this.g.Find(other);
+            if (other != scanned)
+            {
+                Offer(this.idents.GetValueOrDefault(other), beta);
+                if (entry.Side.Head is not VarHead)
+                {
+                    Offer(this.idents.GetValueOrDefault(scanned), beta);
+                }
+            }
+
+            return;
+        }
+
+        foreach (var owner in this.idents.Values)
+        {
+            if ((owner.Tags & active) == 0 || this.g.Find(owner.Class) == scanned)
+            {
+                continue;
+            }
+
+            this.work++;
+            var bound = new List<int?[]>();
+            this.Match(entry.Side, owner.Class, beta, bound, probe);
+            foreach (var b in Distinct(bound))
+            {
+                Offer(owner, b);
+            }
+        }
+
+        void Offer(ClassDemand? owner, int?[] b)
+        {
+            var tags = (byte)((owner?.Tags ?? 0) & active);
+            if (tags == 0 || !this.Usable(entry.T, tags))
+            {
+                return;
+            }
+
+            var key = (entry.T.Id, this.g.Find(owner!.Class), BindKey(b), (Row)owner, Both);
+            if (this.expansions.Add(key))
+            {
+                this.Request(entry.T, b, tags, Both, owner, fx);
+            }
+        }
+    }
+
+    // The class of a bound-expansion instance's other side (-1: its Type has no node yet).
+    private int OtherOf(ShapeEntry entry, int?[] beta) => entry.Side.Head is VarHead v ? beta[v.Index] ?? -1 : this.ClassOf(entry.Side, beta);
+
+    // An instance whose other side has no node yet waits for a node of that side's head.
+    private void Wait(ShapeEntry entry, int?[] beta, int scanned)
+    {
+        var key = HeadKey.Of(entry.Side);
+        if (!this.waiting.TryGetValue(key, out var list))
+        {
+            this.waiting[key] = list = new();
+        }
+
+        list.Add((entry, beta, scanned));
+    }
+
+    private void SelectDemand(Demand d, Effects fx, byte active)
+    {
+        d.Visited.Clear();
+        d.VisitSigns.Clear();
+        IEnumerable<Template> candidates;
+        if (d.Subject < 0)
+        {
+            candidates = this.isAll[d.Decl];
+        }
+        else
+        {
+            var heads = this.HeadsOf(d.Subject);
+            var virtualHeads = this.VirtualHeads(heads);
+            candidates = virtualHeads.Contains(HeadKey.Any)
+                ? this.isAll[d.Decl]
+                : this.isAnySubject[d.Decl].Concat(heads.Concat(virtualHeads).Distinct().SelectMany(h => this.isBySubject.TryGetValue((d.Decl, h), out var list) ? list : []));
+        }
+
+        foreach (var t in candidates)
+        {
+            this.work++;
+            var negative = t.Conclusion.Kind == FK.Not;
+            var tags = (byte)((negative ? d.NegServe : d.PosServe) & active);
+            if (tags == 0 || !this.Usable(t, tags))
+            {
+                continue;
+            }
+
+            var atom = negative ? t.Conclusion.L! : t.Conclusion;
+            var ctx = new MatchCtx(this, d, tags, fx) { Sign = negative ? Neg : Pos, Mode = MatchMode.Expand };
+            // Bound arguments first: what they bind (often Self, as in D<Self>) narrows a virtual node's expansion at the subject.
+            var results = new List<int?[]> { new int?[t.VarCount] };
+            for (var i = 0; i < d.Args.Length && results.Count != 0; i++)
+            {
+                if (d.Args[i] < 0)
+                {
+                    continue;
+                }
+
+                var next = new List<int?[]>();
+                foreach (var b in results)
+                {
+                    this.Match(atom.B!.Kids[i], d.Args[i], b, next, ctx);
+                }
+
+                results = next;
+            }
+
+            if (d.Subject >= 0 && results.Count != 0)
+            {
+                var next = new List<int?[]>();
+                foreach (var b in results)
+                {
+                    this.Match(atom.A!, d.Subject, b, next, ctx);
+                }
+
+                results = next;
+            }
+
+            foreach (var beta in Distinct(results))
+            {
+                this.Request(t, beta, tags, negative ? Neg : Pos, d, fx);
+            }
+        }
+
+        // Facts of this declaration on other classes are relevant when identity connects their class with the subject: meet them
+        // (each needs its identity facts; a virtual node on one side expands against a real node, or a virtual node, on the other).
+        if ((d.Tags & active) != 0)
+        {
+            // Bound arguments are identity-saturated, and a fact's arguments meet the demand's: `U is K<i32>` answers
+            // `U is K<List<i32>>` when an identity row makes i32 and List<i32> one Type.
+            var ctx = new MatchCtx(this, d, (byte)(d.Tags & active), fx) { Sign = Both, Mode = MatchMode.Expand };
+            foreach (var a in d.Args)
+            {
+                if (a >= 0)
+                {
+                    ctx.Visit(this.g.Find(a));
+                }
+            }
+
+            foreach (var id in this.FactsOf(d.Decl).ToArray())
+            {
+                this.work++;
+                var f = this.facts[this.FactFind(id)];
+                if (d.Subject >= 0 && this.g.Find(f.A) != this.g.Find(d.Subject))
+                {
+                    this.Meet(this.g.Find(d.Subject), this.g.Find(f.A), ctx);
+                }
+
+                // A fact's arguments matter once its subject is the demand's (a merge of the subject wakes the demand).
+                if ((d.Subject < 0 || this.g.Find(f.A) == this.g.Find(d.Subject)) && d.Args.Any(a => a >= 0) && this.RefArgs(f.B, d.Decl) is { } args)
+                {
+                    for (var i = 0; i < d.Args.Length; i++)
+                    {
+                        if (d.Args[i] >= 0 && this.g.Find(args[i]) != this.g.Find(d.Args[i]))
+                        {
+                            this.Meet(this.g.Find(d.Args[i]), this.g.Find(args[i]), ctx);
+                        }
+                    }
+                }
+
+                if (d.Subject < 0 && f.Kind == 0)
+                {
+                    // A star demand's facts are on classes nobody else visits: each needs its identity facts, which may collapse
+                    // the enumeration (t.(K).Y is i32 makes t.(K).Y.(K).Y the same Type as i32.(K).Y).
+                    ctx.Visit(this.g.Find(f.A));
+                }
+            }
+        }
+    }
+
+    // The argument classes of a Contract reference class (its node with the declaration's head).
+    private int[]? RefArgs(int refClass, ContractDecl decl)
+    {
+        foreach (var node in this.g.NodesOf(refClass))
+        {
+            if (this.g.HeadOf(node).Equals(decl.RefHead) && this.g.KidCount(node) == decl.Arity)
+            {
+                return Enumerable.Range(0, decl.Arity).Select(i => this.g.KidOf(node, i)).ToArray();
+            }
+        }
+
+        return null;
+    }
+
+    // Two classes meet (§1 (b)) through a meeting row per class pair: the requester visits both classes (their merge wakes it) and
+    // joins the row's requesters, whose tags the row serves; the row is answered once per round when new or woken. A new requester
+    // or tag is work of the round. Two classes neither of which can gain a node need no row.
+    private void Meet(int c, int other, MatchCtx ctx)
+    {
+        c = this.g.Find(c);
+        other = this.g.Find(other);
+        if (c == other || ctx.Owner is not { } owner || ctx.Fx is not { } fx)
+        {
+            return;
+        }
+
+        ctx.Visit(c);
+        ctx.Visit(other);
+        if (this.Refused(c, other))
+        {
+            return; // D5: a reference meets only the same reference; rule 7: Refuted classes never meet
+        }
+
+        if (!this.MayGain(c) && !this.MayGain(other))
+        {
+            return; // neither class can gain a node: they never become one class
+        }
+
+        var key = (Math.Min(c, other), Math.Max(c, other));
+        if (!this.meetings.TryGetValue(key, out var row))
+        {
+            this.meetings[key] = row = new MeetRow(key.Item1, key.Item2);
+        }
+
+        if (row == owner)
+        {
+            return; // a pair that needs the meeting itself is that meeting's own row
+        }
+
+        if (row.Owners.Add(owner) | (row.TagsValue | ctx.Tags) != row.TagsValue)
+        {
+            row.TagsValue |= ctx.Tags;
+            fx.Meetings++;
+            fx.MeetTags |= ctx.Tags;
+        }
+
+        if (!row.Selected && !row.Queued)
+        {
+            row.Queued = true;
+            this.meetQueue.Add(row);
+        }
+    }
+
+    // Two classes that can never be one (rule 7, by the top-level head test over materialized constructors; D5: a reference against
+    // a Type or another reference) form no meeting.
+    private bool Refused(int c, int other)
+    {
+        var (rc, _) = this.Constructor(c);
+        var (ro, _) = this.Constructor(other);
+        if (rc is SymHead { Kind: SymKind.Ref } || ro is SymHead { Kind: SymKind.Ref })
+        {
+            return rc is null || ro is null || !rc.Equals(ro);
+        }
+
+        return this.g.Clash(c, other);
+    }
+
+    // A meeting row's answer: the nodes of the two classes, real or virtual, meet as nodes (§1): each node of one class probes the
+    // other's virtual nodes through the index by its head and kid heads and agrees with each found (Agree: one Type, or its kids
+    // meet); same-head real nodes meet at their kids (upward congruence), as kid meetings. A pair that became Refuted since the
+    // row was made (a constructor materialized) answers nothing.
+    private void MeetClasses(MeetRow row, MatchCtx ctx)
+    {
+        var c = this.g.Find(row.A);
+        var other = this.g.Find(row.B);
+        if (c == other || this.Refused(c, other))
+        {
+            return;
+        }
+
+        ctx.Visit(c);
+        ctx.Visit(other);
+        this.MeetOneWay(c, other, ctx);
+        this.MeetOneWay(other, c, ctx);
+
+        // Promises meet promises at the heads the index can give both classes' promises, in both directions.
+        var shared = this.IndexHeads(c);
+        shared.IntersectWith(this.IndexHeads(other));
+        this.MeetVirtuals(c, other, shared, ctx);
+        this.MeetVirtuals(other, c, shared, ctx);
+
+        foreach (var n in this.g.NodesOf(c).ToArray())
+        {
+            foreach (var o in this.g.NodesOf(other).ToArray())
+            {
+                if (this.g.KidCount(n) != 0 && this.g.KidCount(n) == this.g.KidCount(o) && this.g.HeadOf(n).Equals(this.g.HeadOf(o)))
+                {
+                    for (var i = 0; i < this.g.KidCount(n); i++)
+                    {
+                        this.work++;
+                        this.Meet(this.g.KidOf(n, i), this.g.KidOf(o, i), ctx);
+                    }
+                }
+            }
+        }
+    }
+
+    // Whether class c can gain a node in this request: it can have a virtual node, a virtual node can have one of its heads, or a
+    // kid of one of its nodes can gain one (upward congruence). Two classes neither of which can gain one never become one class.
+    // Once per round; a class reached again while in progress counts as changing (a cycle is never pruned).
+    private bool MayGain(int c)
+    {
+        c = this.g.Find(c);
+        if (this.mayGain.TryGetValue(c, out var known))
+        {
+            return known;
+        }
+
+        this.mayGain[c] = true;
+        var heads = this.HeadsOf(c);
+        var result = this.Shapes(c).Count != 0 || this.anyVirtualHeads.Contains(HeadKey.Any) || heads.Overlaps(this.anyVirtualHeads);
+        foreach (var node in this.g.NodesOf(c))
+        {
+            for (var i = 0; !result && i < this.g.KidCount(node); i++)
+            {
+                result = this.MayGain(this.g.KidOf(node, i));
+            }
+        }
+
+        return this.mayGain[c] = result;
+    }
+
+    // b's promises meet a's as nodes: each probes a's promises through the index by its head and kid heads (an index join, never a
+    // loop over both lists) and agrees with each found, both expanding when they are one Type: once per pair of promises. A promise
+    // whose shape is a bare variable or a class (an alias: an existing class; a free variable: any Type) meets real nodes only
+    // (MeetOneWay).
+    private void MeetVirtuals(int a, int b, HashSet<HeadKey> heads, MatchCtx ctx)
+    {
+        foreach (var w in heads.SelectMany(h => this.Virtuals(b, h, ctx)))
+        {
+            if (this.HeadOfShape(w.Shape).IsAny)
+            {
+                continue;
+            }
+
+            this.work++;
+            foreach (var u in this.Virtuals(a, this.HeadOfShape(w.Shape), ctx, this.KidHeads(this.ShapeKid(w.Shape, 0)), this.KidHeads(this.ShapeKid(w.Shape, 1))))
+            {
+                if (!this.HeadOfShape(u.Shape).IsAny)
+                {
+                    this.Expand(u, w.Shape, ctx);
+                    this.Expand(w, u.Shape, ctx);
+                }
+            }
+        }
+    }
+
+    // The heads the index can give c's promises whose shape is not a variable or a class: rows whose side can have a head of c (or
+    // is a variable), chainable rows whose side can have a head of c's promises, c's stored chain promises. Once per round.
+    private HashSet<HeadKey> IndexHeads(int c)
+    {
+        c = this.g.Find(c);
+        if (!this.indexHeads.TryGetValue(c, out var result))
+        {
+            var heads = this.HeadsOf(c);
+            result = new HashSet<HeadKey>();
+            foreach (var h in heads.Append(HeadKey.Any))
+            {
+                result.UnionWith(this.otherHeads.GetValueOrDefault(h) ?? []);
+            }
+
+            foreach (var h in heads.Append(HeadKey.Any).Concat(this.VirtualHeads(heads)))
+            {
+                result.UnionWith(this.chainOtherHeads.GetValueOrDefault(h) ?? []);
+            }
+
+            result.UnionWith(this.promises.GetValueOrDefault(c)?.Values.Where(p => p.Stored).Select(p => this.HeadOfShape(p.Shape)) ?? []);
+            result.UnionWith(this.DecompositionHeads(c));
+            result.Remove(HeadKey.Any);
+            this.indexHeads[c] = result;
+        }
+
+        return new HashSet<HeadKey>(result);
+    }
+
+    // A real node of one class meets the promises of the other whose shape has its head (and can meet its kids): the node as a
+    // shape node over its kid classes.
+    private void MeetOneWay(int withVirtual, int other, MatchCtx ctx)
+    {
+        var shapes = this.Shapes(withVirtual);
+        if (shapes.Count == 0)
+        {
+            return; // no row can give withVirtual a promise (a static index fact)
+        }
+
+        foreach (var node in this.g.NodesOf(other).ToArray())
+        {
+            if (!shapes.Contains(HeadKey.Any) && !shapes.Contains(new(this.g.HeadOf(node), this.g.KidCount(node))))
+            {
+                continue;
+            }
+
+            this.work++;
+            var kid0 = this.g.KidCount(node) > 0 ? this.KidShapes(this.g.KidOf(node, 0)) : null;
+            var kid1 = this.g.KidCount(node) > 1 ? this.KidShapes(this.g.KidOf(node, 1)) : null;
+            foreach (var w in this.Virtuals(withVirtual, new(this.g.HeadOf(node), this.g.KidCount(node)), ctx, kid0, kid1))
+            {
+                this.Expand(w, this.shapes.OfNode(node), ctx);
+            }
+        }
+    }
+
+    private void SelectIdent(ClassDemand c, Effects fx)
+    {
+        c.Visited.Clear();
+        c.VisitSigns.Clear();
+
+        // Upward congruence makes c's members depend on its nodes' kids: their identity facts are needed too.
+        var down = new MatchCtx(this, c, c.Tags, fx) { Sign = Both };
+        foreach (var node in this.g.NodesOf(c.Class).ToArray())
+        {
+            for (var i = 0; i < this.g.KidCount(node); i++)
+            {
+                this.work++;
+                down.Visit(this.g.KidOf(node, i));
+            }
+        }
+
+        // An identity goal's two classes meet (their virtual nodes expand against each other), as a demand meets the classes
+        // holding its Contract's facts.
+        if (this.goal.Proposition is { } p && p.IsAtom && (p.Kind == FK.Not ? p.L! : p).Kind == FK.Eq)
+        {
+            var other = this.g.Find(c.Class) == this.g.Find(this.goal.SubjectClass) ? this.goal.OtherClass : this.g.Find(c.Class) == this.g.Find(this.goal.OtherClass) ? this.goal.SubjectClass : -1;
+            if (other >= 0 && this.g.Find(other) != this.g.Find(c.Class))
+            {
+                this.Meet(this.g.Find(c.Class), this.g.Find(other), new MatchCtx(this, c, c.Tags, fx) { Sign = Both, Mode = MatchMode.Expand });
+            }
+        }
+
+        // Rule 8 up: when neither F<…c…> nor the other side's Type exists yet, the only link from c to a derivation is a row's
+        // constructor side: every live identity row whose constructor-kid pattern (any depth under Con heads) e-matches a member of
+        // c, modulo promises, is requested with the kid match's bindings (the antecedent supplies the rest; `expansions` dedupes).
+        // Other positive identity rows are never requested here: VirtualsAt finds them where a pattern needs a head (§1 (a)),
+        // classes meet (b) or a node of the other side's shape exists (c, EagerExpand).
+        var up = new MatchCtx(this, c, c.Tags, fx) { Sign = Both, Mode = MatchMode.Expand };
+        foreach (var head in this.HeadsOf(c.Class).Append(HeadKey.Any))
+        {
+            foreach (var (e, kid) in this.constructorKids.GetValueOrDefault(head) ?? [])
+            {
+                this.work++;
+                if (!this.Usable(e.T, c.Tags))
+                {
+                    continue;
+                }
+
+                var results = new List<int?[]>();
+                this.Match(kid, c.Class, new int?[e.T.VarCount], results, up);
+                foreach (var beta in Distinct(results))
+                {
+                    if (this.expansions.Add((e.T.Id, this.g.Find(c.Class), this.BindKey(beta), c, Both)))
+                    {
+                        this.Request(e.T, beta, c.Tags, Both, c, fx);
+                    }
+                }
+            }
+        }
+
+        var negated = (byte)(c.Tags & c.NegatedFor);
+        if (negated == 0)
+        {
+            return;
+        }
+
+        // The structure need (rule 9, D9): Refuted reads materialized constructors and negated facts, so every class an identity
+        // goal's negative polarity reaches — the goal's two and, recursively, their constructors' kid classes — requests every
+        // promise at it, served with the polarity that needs Refuted, carries NegatedFor to those kids (where the negated identity
+        // rows below are selected as at the goal pair) and asks again when a merge wakes it. The goal pair's meeting row (above)
+        // stays for the positive polarity and now overlaps this need.
+        var structure = new MatchCtx(this, c, negated, fx) { Sign = Both, Mode = MatchMode.Expand };
+        var all = this.Virtuals(c.Class, HeadKey.Any, structure);
+        this.Trace?.Invoke($"  structure need at {this.g.Show(c.Class)} (negated {negated}): {all.Count} promises [{string.Join(", ", all.Select(p => p.Shape >= 0 ? "alias " + this.g.Show(p.Shape) : this.shapes.HeadOf(p.Shape).Show(this.shapes.KidsOf(p.Shape).Select(k => k >= 0 ? this.g.Show(k) : "#").ToArray())).Take(8))}]");
+        foreach (var w in all)
+        {
+            this.Expand(w, this.shapes.Fresh(), structure);
+        }
+
+        foreach (var node in this.g.NodesOf(c.Class))
+        {
+            if (this.g.HeadOf(node) is not SymHead { Kind: SymKind.Con })
+            {
+                continue;
+            }
+
+            for (var i = 0; i < this.g.KidCount(node); i++)
+            {
+                var kid = this.g.KidOf(node, i);
+                if (!this.idents.TryGetValue(kid, out var d) || (d.NegatedFor & c.NegatedFor) != c.NegatedFor)
+                {
+                    fx.Negated[kid] = (byte)(fx.Negated.GetValueOrDefault(kid) | c.NegatedFor);
+                    fx.NegatedTags |= negated;
+                }
+            }
+        }
+
+        // Negated identity rows serve only an identity goal's negation: matched against the pair, by the side's head and its first
+        // kid's head.
+        var keys = new HashSet<(HeadKey, HeadKey)> { (HeadKey.Any, HeadKey.Any) };
+        foreach (var node in this.g.NodesOf(c.Class))
+        {
+            var head = new HeadKey(this.g.HeadOf(node), this.g.KidCount(node));
+            keys.Add((head, HeadKey.Any));
+            if (this.g.KidCount(node) != 0)
+            {
+                foreach (var kid in this.HeadsOf(this.g.KidOf(node, 0)))
+                {
+                    keys.Add((head, kid));
+                }
+            }
+        }
+
+        foreach (var key in keys)
+        {
+            foreach (var e in this.negatedSides.GetValueOrDefault(key) ?? [])
+            {
+                this.work++;
+                if (!this.Usable(e.T, negated))
+                {
+                    continue;
+                }
+
+                var results = new List<int?[]>();
+                this.Match(e.Side, c.Class, new int?[e.T.VarCount], results, new MatchCtx(this, c, negated, fx) { Sign = Both });
+                foreach (var beta in Distinct(results))
+                {
+                    this.Request(e.T, beta, negated, Pos, c, fx); // what the side's match leaves free, the antecedent binds
+                }
+            }
+        }
+    }
+
+    private void SelectCompound(ClassDemand c, Effects fx)
+    {
+        c.Visited.Clear();
+        c.VisitSigns.Clear();
+        var heads = this.HeadsOf(c.Class);
+        var virtualHeads = this.VirtualHeads(heads);
+        var keys = virtualHeads.Contains(HeadKey.Any) ? this.compoundBySubject.Keys.ToHashSet() : heads.Concat(virtualHeads).Append(HeadKey.Any).ToHashSet();
+        foreach (var key in keys)
+        {
+            if (!this.compoundBySubject.TryGetValue(key, out var list))
+            {
+                continue;
+            }
+
+            foreach (var t in list)
+            {
+                this.work++;
+                if (!this.Usable(t, c.Tags))
+                {
+                    continue;
+                }
+
+                var results = new List<int?[]>();
+                var ctx = new MatchCtx(this, c, c.Tags, fx) { Sign = Both, Mode = MatchMode.Expand };
+                this.Match(t.Conclusion.Subject, c.Class, new int?[t.VarCount], results, ctx);
+                foreach (var beta in Distinct(results))
+                {
+                    this.Request(t, beta, c.Tags, Pos, c, fx);
+                }
+            }
+        }
+    }
+
+    private void Request(Template t, int?[] beta, byte tags, byte sign, Row requester, Effects fx)
+    {
+        if (t.Antecedent is { } k)
+        {
+            fx.Subs.Add(new(k, beta[0] ?? -1, Enumerable.Range(1, k.Arity).Select(i => beta[i] ?? -1).ToArray(), null, tags, sign, [requester], t, beta, 0, []));
+        }
+        else if (t.Conditions.Count != 0)
+        {
+            if (this.Condition(t, 0) is { } c)
+            {
+                fx.Subs.Add(new(c, -1, [], t.Conditions[0], tags, sign, [requester], t, beta, 0, []));
+            }
+        }
+        else if (Unbound(t.Conclusion, beta).Count == 0)
+        {
+            fx.Fires.Add(new(t, beta, [], tags));
+        }
+    }
+
+    // A condition is a positive Contract atom (SPEC 8.8.1); its operands are resolved (and interned) when the round is applied.
+    private ContractDecl? Condition(Template t, int index)
+        => t.Conditions[index] is { Kind: FK.Is } cond ? this.m.DeclOf(cond.B!) : null;
+
+    // A condition operand: a bound variable's class, an instantiated Type when every variable in it is bound, or a star.
+    private int Operand(Term t, int?[] beta)
+        => t.Head is VarHead v ? beta[v.Index] ?? -1 : Unbound(t, beta).Count == 0 ? this.Inst(t, beta) : -1;
+
+    private void Scan(Sub s, Effects fx)
+    {
+        var d = s.On;
+        if (!this.positiveIs.TryGetValue(d.Decl, out var list))
+        {
+            return;
+        }
+
+        var conditionIndex = s.T.Antecedent is null ? s.Stage : s.Stage - 1;
+        var (subjectPattern, refPattern) = conditionIndex < 0 ? this.antecedentPattern[d.Decl] : (s.T.Conditions[conditionIndex].A!, s.T.Conditions[conditionIndex].B!);
+        var ctx = new MatchCtx(this, null, s.Tags, null);
+        var witnessed = false;
+        var from = s.Scanned;
+        s.Scanned = list.Count;
+        foreach (var id in list.Skip(from).ToArray())
+        {
+            this.work++;
+            var f = this.facts[this.FactFind(id)];
+            if (s.Fired.Contains(f.Id) || (d.Subject >= 0 && this.g.Find(f.A) != this.g.Find(d.Subject)))
+            {
+                continue;
+            }
+
+            var results = new List<int?[]>();
+            this.Match(subjectPattern, f.A, s.Beta, results, ctx);
+            var next = new List<int?[]>();
+            foreach (var b in results)
+            {
+                this.Match(refPattern, f.B, b, next, ctx);
+            }
+
+            if (next.Count == 0)
+            {
+                continue;
+            }
+
+            witnessed = true;
+            s.Fired.Add(f.Id);
+            var ants = s.Ants.Append(f.Id).ToArray();
+            foreach (var beta in Distinct(next))
+            {
+                var following = conditionIndex + 1;
+                if (following < s.T.Conditions.Count)
+                {
+                    if (this.Condition(s.T, following) is { } c)
+                    {
+                        fx.Subs.Add(new(c, -1, [], s.T.Conditions[following], s.Tags, Pos, s.Owners.ToArray(), s.T, beta, s.Stage + 1, ants));
+                    }
+                }
+                else if (Unbound(s.T.Conclusion, beta).Count == 0)
+                {
+                    fx.Fires.Add(new(s.T, beta, ants, s.Tags));
+                }
+            }
+        }
+
+        // Semi-naive: the facts appended since the last scan (all of them after a merge). Every such candidate is examined (the
+        // work is a function of the round's state); a subscription whose conclusion its bindings fix needs no further witness
+        // once a round found one.
+        if (witnessed && s.Existential)
+        {
+            s.Retired = true;
+        }
+    }
+
+    private bool Usable(Template t, byte tags)
+    {
+        if (t.BindingId >= 0 && this.view.Inadmissible.Contains(t.BindingId))
+        {
+            return false; // the inference owner's published admissibility for this view (final for the view)
+        }
+
+        if (t.Kind == TemplateKind.Conformance && this.view.UnderCheck.Contains(t.ConformanceId))
+        {
+            return false; // SPEC 8.3.3: the conformance under its own check supplies no evidence to it (Complete, not Pending)
+        }
+
+        switch (t.Source)
+        {
+            case Status.Valid:
+                return true;
+            case Status.Pending:
+                if (this.includePending)
+                {
+                    return true;
+                }
+
+                this.provisional = true; // a pending source could still supply: never a cached negative
+                return false;
+            case Status.Resource:
+                this.resourceTags |= tags; // the source's own check ended at a limit: what it could supply is unknown
+                this.resourceSeen = true;
+                if (this.resourceSource.Length == 0)
+                {
+                    this.resourceSource = t.Origin;
+                }
+
+                return false;
+            default:
+                return false; // Invalid: supplies nothing
+        }
+    }
+
+    // ---- Matching ----
+    private void Match(Term p, int c, int?[] beta, List<int?[]> results, MatchCtx ctx)
+    {
+        this.work++;
+        c = this.g.Find(c);
+        ctx.Visit(c);
+        if (p.Head is VarHead v)
+        {
+            if (beta[v.Index] is int bound)
+            {
+                if (this.g.Find(bound) == c)
+                {
+                    results.Add(beta);
+                }
+                else if (ctx.Mode == MatchMode.Expand)
+                {
+                    // A bound variable needs its class's members in c: the two classes meet, as an identity goal's do.
+                    this.Meet(c, this.g.Find(bound), ctx);
+                }
+            }
+            else
+            {
+                var nb = (int?[])beta.Clone();
+                nb[v.Index] = c;
+                results.Add(nb);
+            }
+
+            return;
+        }
+
+        if (!p.HasVar)
+        {
+            var gc = this.g.LookupTerm(p);
+            if (gc >= 0 && this.g.Find(gc) == c)
+            {
+                results.Add(beta);
+            }
+            else
+            {
+                // A ground Type joins c if a virtual node of c has its shape (the expansion is fully bound by the ground Type), or
+                // by upward congruence if a node of c with its head has kids that each join its kids: their needs go down.
+                this.ThroughVirtuals(p, c, beta, ctx);
+                if (ctx.Mode != MatchMode.None)
+                {
+                    foreach (var node in this.g.NodesOf(c).ToArray())
+                    {
+                        if (this.g.KidCount(node) == p.Kids.Length && p.Kids.Length != 0 && this.g.HeadOf(node).Equals(p.Head))
+                        {
+                            this.work++;
+                            for (var i = 0; i < p.Kids.Length; i++)
+                            {
+                                this.Match(p.Kids[i], this.g.KidOf(node, i), beta, new List<int?[]>(), ctx);
+                            }
+                        }
+                    }
+                }
+            }
+
+            return;
+        }
+
+        foreach (var node in this.g.NodesOf(c).ToArray())
+        {
+            this.work++;
+            if (this.g.KidCount(node) != p.Kids.Length || !this.g.HeadOf(node).Equals(p.Head))
+            {
+                continue;
+            }
+
+            var partial = new List<int?[]> { beta };
+            for (var i = 0; i < p.Kids.Length && partial.Count != 0; i++)
+            {
+                var next = new List<int?[]>();
+                foreach (var b in partial)
+                {
+                    this.Match(p.Kids[i], this.g.KidOf(node, i), b, next, ctx);
+                }
+
+                partial = next;
+            }
+
+            results.AddRange(partial);
+        }
+
+        this.ThroughVirtuals(p, c, beta, ctx);
+    }
+
+    // The pattern needs nodes of its head in c that only a promise of c can provide: a requester expands them; a chain probe
+    // records a hit wherever the promise agrees with the pattern (rule 2); a promise whose shape is a class is an existing class,
+    // not a node to meet (expanding it where a need meets it merges the classes, after which the side matches directly).
+    private void ThroughVirtuals(Term p, int c, int?[] beta, MatchCtx ctx)
+    {
+        if (ctx.Mode == MatchMode.None || this.Shapes(c) is var shapes && !shapes.Contains(HeadKey.Any) && !shapes.Contains(HeadKey.Of(p)))
+        {
+            return; // no row can give c a promise of p's head (a static index fact)
+        }
+
+        // A chain probe asks the same (class, head, kid filters) for many candidates of one lookup: answered once per lookup.
+        var pattern = this.ShapeOf(p, beta);
+        var kid0 = p.Kids.Length > 0 ? this.KidHeads(this.ShapeOf(p.Kids[0], beta)) : null;
+        var kid1 = p.Kids.Length > 1 ? this.KidHeads(this.ShapeOf(p.Kids[1], beta)) : null;
+        var key = (this.g.Find(c), HeadKey.Of(p), this.SetKey(kid0) + "|" + this.SetKey(kid1));
+        var promises = ctx.Memo is { } memo ? (memo.TryGetValue(key, out var known) ? known : memo[key] = this.VirtualsAt(c, key.Item2, ctx, kid0, kid1)) : this.Virtuals(c, key.Item2, ctx, kid0, kid1);
+        foreach (var w in promises)
+        {
+            if (ctx.Mode == MatchMode.Chain)
+            {
+                if (w.Shape < 0 && this.Agree(w.Shape, new int?[this.shapes.VarCount(w.Shape)], pattern, new int?[this.shapes.VarCount(pattern)], new(), new()))
+                {
+                    ctx.Chain!.Add((w, p, beta));
+                }
+            }
+            else
+            {
+                this.Expand(w, pattern, ctx);
+            }
+        }
+    }
+
+    // A pattern needs nodes of a promise's head in its class (or a meeting pairs two promises, or a real node meets one): the
+    // promise agrees with the pattern as a node (rule 2), its shape variables bound as far as the pattern resolves; agreement
+    // records the expansion at the promise and applies it to every member (ExpandMember), those present and those any later lookup
+    // adds. Kid classes that differ meet first (their merge wakes the requester, which matches again). A promise whose shape is a
+    // class is requested as an alias. An expansion is a function of (promise, pattern, requester) and the round's state: once per
+    // round (chains of chains return to promises already expanded).
+    private void Expand(Promise w, int pattern, MatchCtx ctx)
+    {
+        this.work++;
+        var c = this.g.Find(w.Class);
+        if (!this.expanded.Add((c, w.Shape, pattern, ctx.Owner!, ctx.Sign)))
+        {
+            return;
+        }
+
+        var bind = new int?[this.shapes.VarCount(w.Shape)];
+        var meets = new List<(int, int)>();
+        var needs = new Dictionary<int, Head>();
+        // A promise whose shape is a class is requested as an alias (no meeting) unless the kid rule refuses it (D5: a reference
+        // against a Type; rule 7: constructors of different heads).
+        if (w.Shape < 0 ? !this.Agree(w.Shape, bind, pattern, new int?[this.shapes.VarCount(pattern)], meets, needs) : !this.Kid(w.Shape, bind, pattern, new int?[this.shapes.VarCount(pattern)], new(), needs))
+        {
+            return;
+        }
+
+        if (meets.Count != 0)
+        {
+            foreach (var (a, b) in meets)
+            {
+                this.Meet(a, b, ctx);
+            }
+
+            return;
+        }
+
+        var x = new Expansion(pattern, bind, needs, ctx);
+        w.Expansions.Add(x);
+        foreach (var m in w.Members.Values)
+        {
+            this.queue.Enqueue((w, m, x));
+        }
+
+        this.Drain();
+    }
+
+    // Member expansions queue while a lookup runs (its logs are its own) and run once none does; each (member, expansion) pair once,
+    // in queue order.
+    private void Drain()
+    {
+        if (this.draining)
+        {
+            return;
+        }
+
+        this.draining = true;
+        while (this.queue.TryDequeue(out var item))
+        {
+            this.ExpandMember(item.W, item.M, item.X);
+        }
+
+        this.draining = false;
+    }
+
+    // A member under an expansion: a row member requests its row with its row variables bound through its map, unless no fact of its
+    // antecedent Contract can have the head the pattern needs at a free variable's position; a chain member expands its base,
+    // re-resolved to the round's promise at the base's (class, shape), against the member's pattern; a decomposition member (rule 8
+    // down) expands its producer, a promise of the parent class, against the pattern lifted through its position.
+    private void ExpandMember(Promise w, Member m, Expansion x)
+    {
+        switch (m)
+        {
+            case Direct d:
+                var rowBind = (int?[])d.Beta.Clone();
+                for (var n = 0; n < d.VarOf.Count; n++)
+                {
+                    rowBind[d.VarOf[n]] ??= x.Bind[n];
+                }
+
+                if (d.E.T.Antecedent is { } k && this.Pruned(k, d, rowBind, x.Needs))
+                {
+                    return;
+                }
+
+                if (this.expansions.Add((d.E.T.Id, this.g.Find(w.Class), this.BindKey(rowBind), x.Ctx.Owner!, x.Ctx.Sign)))
+                {
+                    this.Request(d.E.T, rowBind, x.Ctx.Tags, x.Ctx.Sign, x.Ctx.Owner!, x.Ctx.Fx!);
+                }
+
+                return;
+            case Chain n:
+                if (this.Resolve(n.Via, x.Ctx) is { } via)
+                {
+                    this.Expand(via, this.ShapeOf(n.Pattern, n.HitBeta), x.Ctx);
+                }
+
+                return;
+            case Part p:
+                this.Expand(p.Producer, this.shapes.Lift(p.F.Head!, p.F.Arity, p.Position, x.Pattern), x.Ctx);
+                return;
+        }
+    }
+
+    // The static prune: no fact of the row's antecedent Contract can have, at a free variable's position, the head the pattern
+    // needs there.
+    private bool Pruned(ContractDecl k, Direct d, int?[] rowBind, Dictionary<int, Head> needs)
+    {
+        foreach (var (n, head) in needs)
+        {
+            var v = d.VarOf[n];
+            if (rowBind[v] is null && v <= k.Arity && !this.anyHead.Contains((k, v)) && !this.positionHeads[(k, v)].Contains(head))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // The round's promise at a base's (class, shape): the lookup that finds it (answered once per round) holds every member the
+    // round can give it, so a chain forwards to the promise, never to the rows it was produced through.
+    private Promise? Resolve(Promise via, MatchCtx ctx)
+    {
+        var shape = this.ShapeOfPromise(via);
+        return this.Virtuals(via.Class, this.HeadOfShape(shape), ctx, this.KidHeads(this.ShapeKid(shape, 0)), this.KidHeads(this.ShapeKid(shape, 1))).FirstOrDefault(p => p.Shape == shape);
+    }
+
+    // Matching modulo classes (rules 2 and 7) over shapes: a (bound in bindA) and b (bound in bindB) can be one Type. Heads must be
+    // equal at the top (the need is for a head); every kid is decided by the kid rule. False when the top heads differ or a kid pair
+    // can never be one Type.
+    private bool Agree(int a, int?[] bindA, int b, int?[] bindB, List<(int, int)> meets, Dictionary<int, Head> needs)
+    {
+        if (a < 0 && b < 0 && !this.shapes.IsVar(a) && !this.shapes.IsVar(b))
+        {
+            return this.shapes.HeadOf(a).Equals(this.shapes.HeadOf(b)) && this.Kids(this.shapes.KidsOf(a), bindA, this.shapes.KidsOf(b), bindB, meets, needs);
+        }
+
+        return this.Kid(a, bindA, b, bindB, meets, needs);
+    }
+
+    // The kid rule (rule 7: unification against constructors, B 3.3). Two classes agree when equal, never when their materialized
+    // constructors have different heads (the top-level head test), and meet otherwise. A shape variable takes a class it meets (D3)
+    // and, against a shape node, records the head it needs there (the static prune). A shape node against a class recurses into the
+    // class's constructor of its head, is refused by a constructor of another head, and is deferred when the class has none
+    // (decided once built; the request still happens); two shape nodes recurse when their constructor heads are equal. A Contract
+    // reference (D5) agrees only with the same reference head, its arguments then by this rule, never with a Type. A projection or
+    // an abstract Type has no constructor head (B 3.2) and decides nothing.
+    private bool Kid(int a, int?[] bindA, int b, int?[] bindB, List<(int, int)> meets, Dictionary<int, Head> needs)
+    {
+        if ((a >= 0 && this.g.Conflict(a)) || (b >= 0 && this.g.Conflict(b)))
+        {
+            return false; // a conflicting class agrees with nothing (B 3.10: a premise error)
+        }
+
+        if (a >= 0 && b >= 0)
+        {
+            if (this.g.Find(a) == this.g.Find(b))
+            {
+                return true;
+            }
+
+            var (ra, na) = this.Constructor(a);
+            var (rb, nb) = this.Constructor(b);
+            if (ra is SymHead { Kind: SymKind.Ref } || rb is SymHead { Kind: SymKind.Ref })
+            {
+                return ra is not null && rb is not null && ra.Equals(rb) && this.Kids(this.KidClasses(na), bindA, this.KidClasses(nb), bindB, meets, needs);
+            }
+
+            if (this.g.Clash(a, b))
+            {
+                return false;
+            }
+
+            meets.Add((a, b));
+            return true;
+        }
+
+        if (this.IsVar(a) || this.IsVar(b))
+        {
+            if (b >= 0)
+            {
+                Bind(bindA, ((VarHead)this.shapes.HeadOf(a)).Index, b, meets);
+            }
+            else if (a >= 0)
+            {
+                Bind(bindB, ((VarHead)this.shapes.HeadOf(b)).Index, a, meets);
+            }
+            else if (this.IsVar(a) && !this.IsVar(b))
+            {
+                // A shape node that denotes an existing Type (its kids classes, interned since the shape was made) is that class.
+                if (this.shapes.ClassOf(b) is var cb && cb >= 0)
+                {
+                    Bind(bindA, ((VarHead)this.shapes.HeadOf(a)).Index, cb, meets);
+                }
+                else
+                {
+                    needs[((VarHead)this.shapes.HeadOf(a)).Index] = this.shapes.HeadOf(b);
+                }
+            }
+
+            return true;
+        }
+
+        var (ha, ia) = this.Constructor(a);
+        var (hb, ib) = this.Constructor(b);
+        if (ha is SymHead { Kind: SymKind.Ref } || hb is SymHead { Kind: SymKind.Ref })
+        {
+            return ha is not null && hb is not null && ha.Equals(hb) && this.Kids(this.ConstructorKids(a, ia), bindA, this.ConstructorKids(b, ib), bindB, meets, needs);
+        }
+
+        if (ha is null || hb is null)
+        {
+            return true;
+        }
+
+        return ha.Equals(hb) && this.Kids(this.ConstructorKids(a, ia), bindA, this.ConstructorKids(b, ib), bindB, meets, needs);
+    }
+
+    private bool Kids(int[] ka, int?[] bindA, int[] kb, int?[] bindB, List<(int, int)> meets, Dictionary<int, Head> needs)
+    {
+        if (ka.Length != kb.Length)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < ka.Length; i++)
+        {
+            if (!this.Kid(ka[i], bindA, kb[i], bindB, meets, needs))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private bool IsVar(int s) => s < 0 && this.shapes.IsVar(s);
+
+    // The constructor a class or shape node has, as (head, node): a class's Contract reference node (D5: one declaration per class)
+    // or its Prim/Con constructor (a real node id); a shape node with a Prim, Con or Ref head (itself). Null for a projection, an
+    // abstract Type or a class with neither (B 3.2: no head). The kids are read only where the heads are equal (ConstructorKids).
+    private (Head? Head, int Node) Constructor(int s)
+    {
+        if (s < 0)
+        {
+            var h = this.shapes.HeadOf(s);
+            return h is SymHead { Kind: SymKind.Prim or SymKind.Con or SymKind.Ref } ? (h, s) : (null, -1);
+        }
+
+        foreach (var node in this.g.NodesOf(s))
+        {
+            if (this.g.HeadOf(node) is SymHead { Kind: SymKind.Ref } head)
+            {
+                return (head, node);
+            }
+        }
+
+        var n = this.g.Constructor(s);
+        return n < 0 ? (null, -1) : (this.g.HeadOf(n), n);
+    }
+
+    private int[] ConstructorKids(int s, int node) => s < 0 ? this.shapes.KidsOf(s) : this.KidClasses(node);
+
+    private int[] KidClasses(int node)
+    {
+        var kids = new int[this.g.KidCount(node)];
+        for (var i = 0; i < kids.Length; i++)
+        {
+            kids[i] = this.g.KidOf(node, i);
+        }
+
+        return kids;
+    }
+
+    private void Bind(int?[] bind, int n, int c, List<(int, int)> meets)
+    {
+        if (bind[n] is int bound)
+        {
+            if (this.g.Find(bound) != this.g.Find(c))
+            {
+                meets.Add((bound, c));
+            }
+        }
+        else
+        {
+            bind[n] = c;
+        }
+    }
+
+    // ---- Applying a round ----
+    private void Apply(Effects fx)
+    {
+        var nodesBefore = this.g.NodeTotal;
+        foreach (var c in fx.Idents)
+        {
+            this.EnsureClassDemand(this.idents, c);
+        }
+
+        // The structure need reaches a constructor's kid classes (rule 9): they carry the goal's NegatedFor and are selected again.
+        foreach (var (kc, tags) in fx.Negated)
+        {
+            var d = this.EnsureClassDemand(this.idents, kc);
+            if ((d.NegatedFor | tags) != d.NegatedFor)
+            {
+                d.NegatedFor |= tags;
+                d.Dirty = true;
+            }
+        }
+
+        foreach (var (nc, nn, owner) in fx.Needs)
+        {
+            var key = (this.g.Find(nc), nn);
+            if (!this.needs.TryGetValue(key, out var row))
+            {
+                this.needs[key] = row = new NeedRow(key.Item1, nn);
+            }
+
+            row.Owners.Add(owner);
+        }
+
+        var woken = new HashSet<int>();
+        foreach (var (p, _) in fx.Chains)
+        {
+            woken.Add(this.g.Find(p.Class)); // a new promise, or a new member of a stored one
+        }
+
+        foreach (var s in fx.Subs)
+        {
+            var subject = s.Cond is { } cond ? this.Operand(cond.A!, s.Beta) : s.Subject;
+            var args = s.Cond is { } c2 ? c2.B!.Kids.Select(k => this.Operand(k, s.Beta)).ToArray() : s.Args;
+            var on = this.EnsureDemand(s.Decl, subject, args);
+            var key = new SubKey(s.T.Id, s.Stage, on, s.Sign, this.SubText(s.Beta, s.Ants));
+            if (!this.subIndex.TryGetValue(key, out var sub))
+            {
+                var conditionIndex = s.T.Antecedent is null ? s.Stage : s.Stage - 1;
+                sub = new Sub(this.subs.Count, s.T, s.Beta, s.Stage, on, s.Sign, s.Ants)
+                {
+                    Existential = conditionIndex + 1 >= s.T.Conditions.Count && Unbound(s.T.Conclusion, s.Beta).Count == 0,
+                };
+                this.subs.Add(sub);
+                this.subIndex.Add(key, sub);
+            }
+
+            // A subscription is identified by what it subscribes to; a row requesting it is one more owner (the owner's tags reach
+            // it through the owner's Requested list).
+            foreach (var owner in s.Owners)
+            {
+                if (sub.Owners.Add(owner))
+                {
+                    owner.Requested.Add(sub);
+                }
+            }
+        }
+
+        var before = this.facts.Count;
+        foreach (var f in fx.Fires)
+        {
+            this.Fire(f.T, f.Beta, f.Ants);
+        }
+
+        // A new constructor node gives its kids' classes a parent (rule 8 down): with a new chain promise, what a class can match
+        // changed, and the rows that visited it are selected again.
+        for (var node = nodesBefore; node < this.g.NodeTotal; node++)
+        {
+            if (this.g.HeadOf(node) is SymHead { Kind: SymKind.Con })
+            {
+                for (var i = 0; i < this.g.KidCount(node); i++)
+                {
+                    woken.Add(this.g.KidOf(node, i));
+                }
+            }
+        }
+
+        if (woken.Count != 0)
+        {
+            foreach (var row in this.demands.Cast<Row>().Concat(this.idents.Values).Concat(this.compounds.Values).Concat(this.needs.Values).Concat(this.meetings.Values))
+            {
+                row.Dirty |= row.Visited.Any(v => woken.Contains(this.g.Find(v)));
+            }
+        }
+
+        var gained = new HashSet<ContractDecl>();
+        for (var i = before; i < this.facts.Count; i++)
+        {
+            if (this.facts[i].Decl is { } decl)
+            {
+                gained.Add(decl);
+            }
+        }
+
+        if (gained.Count != 0)
+        {
+            foreach (var d in this.demands)
+            {
+                d.Dirty |= gained.Contains(d.Decl);
+            }
+        }
+
+        this.AfterApply();
+    }
+
+    private void AfterApply()
+    {
+        var merged = this.g.Rebuild();
+        if (merged.Count == 0)
+        {
+            this.RekeyPromises();
+            return;
+        }
+
+        this.mergedSinceScan = true;
+
+        // Wake-ups: every row whose last selection visited a merged class is selected again.
+        foreach (var d in this.demands)
+        {
+            d.Dirty |= d.Visited.Any(merged.Contains) || merged.Contains(d.Subject) || d.Args.Any(merged.Contains);
+        }
+
+        foreach (var c in this.idents.Values.Concat(this.compounds.Values))
+        {
+            c.Dirty |= c.Visited.Any(merged.Contains) || merged.Contains(c.Class);
+        }
+
+        foreach (var n in this.needs.Values)
+        {
+            n.Dirty |= n.Visited.Any(merged.Contains) || merged.Contains(n.Class);
+        }
+
+        // A meeting reads its classes' kids too: a merge below either class wakes it.
+        var below = this.meetings.Count == 0 ? new HashSet<int>() : this.g.Upward(merged);
+        foreach (var m in this.meetings.Values)
+        {
+            m.Dirty |= m.Visited.Any(merged.Contains) || below.Contains(this.g.Find(m.A)) || below.Contains(this.g.Find(m.B));
+        }
+
+        this.Rekey();
+        this.RekeyPromises();
+    }
+
+    // The round's promises are keyed by (canonical class, shape); after a round those with chain members are kept, stored for the
+    // next (their row and decomposition members, expansions and this round's finders end here): a stored promise's shape is
+    // recomputed from its first producer's other side and bindings through its path, its chain members' keys likewise, and promises
+    // or members that became equal are one.
+    private void RekeyPromises()
+    {
+        var old = this.promises;
+        this.promises = new();
+        foreach (var p in old.Values.SelectMany(t => t.Values))
+        {
+            if (!p.Members.Values.Any(m => m is Chain))
+            {
+                continue;
+            }
+
+            var into = this.At(this.g.Find(p.Class), this.ShapeOfPromise(p), p.Other, p.Beta, p.Path);
+            into.Stored = true;
+            foreach (var m in p.Members.Values)
+            {
+                if (m is Chain n)
+                {
+                    n.Stored = true;
+                    into.Members.TryAdd(this.KeyOf(n), n);
+                }
+            }
+        }
+    }
+
+    private void Rekey()
+    {
+        // Demands, class demands and facts are keyed by canonical classes; rows that became equal are merged.
+        var old = this.demands;
+        this.demands = new();
+        this.demandIndex = new();
+        var map = new Dictionary<Demand, Demand>();
+        foreach (var d in old)
+        {
+            var key = this.KeyOf(d.Decl, d.Subject, d.Args);
+            if (this.demandIndex.TryGetValue(key, out var into))
+            {
+                into.RootPos |= d.RootPos;
+                into.RootNeg |= d.RootNeg;
+                into.Dirty |= d.Dirty || !d.Selected;
+                into.Visited.UnionWith(d.Visited);
+                foreach (var (k, v) in d.VisitSigns)
+                {
+                    into.VisitSigns[k] = (byte)(into.VisitSigns.GetValueOrDefault(k) | v);
+                }
+
+                map[d] = into;
+                continue;
+            }
+
+            d.Subject = d.Subject >= 0 ? this.g.Find(d.Subject) : -1;
+            d.Args = d.Args.Select(a => a >= 0 ? this.g.Find(a) : -1).ToArray();
+            this.demandIndex.Add(key, d);
+            this.demands.Add(d);
+            map[d] = d;
+        }
+
+        foreach (var s in this.subs)
+        {
+            s.On = map[s.On];
+        }
+
+        var moved = new Dictionary<ClassDemand, ClassDemand>();
+        this.idents = RekeyClass(this.idents, moved);
+        this.compounds = RekeyClass(this.compounds, moved);
+
+        // Need rows of classes that became one are one row (their requesters, visits and subscriptions joined).
+        var needMoved = new Dictionary<NeedRow, NeedRow>();
+        var needs = new Dictionary<(int Class, HeadKey Need), NeedRow>();
+        foreach (var n in this.needs.Values)
+        {
+            var key = (this.g.Find(n.Class), n.Need);
+            if (needs.TryGetValue(key, out var into))
+            {
+                into.Owners.UnionWith(n.Owners);
+                into.Dirty |= n.Dirty || !n.Selected;
+                into.Visited.UnionWith(n.Visited);
+                foreach (var (k, v) in n.VisitSigns)
+                {
+                    into.VisitSigns[k] = (byte)(into.VisitSigns.GetValueOrDefault(k) | v);
+                }
+
+                needMoved[n] = into;
+                continue;
+            }
+
+            n.Class = key.Item1;
+            needs.Add(key, n);
+        }
+
+        this.needs = needs;
+
+        // Meeting rows of pairs that became one pair are one row.
+        var meetMoved = new Dictionary<MeetRow, MeetRow>();
+        var meetings = new Dictionary<(int A, int B), MeetRow>();
+        foreach (var m in this.meetings.Values)
+        {
+            var (a, b) = (this.g.Find(m.A), this.g.Find(m.B));
+            var key = (Math.Min(a, b), Math.Max(a, b));
+            if (meetings.TryGetValue(key, out var into))
+            {
+                into.Owners.UnionWith(m.Owners);
+                into.Dirty |= m.Dirty || !m.Selected;
+                into.Visited.UnionWith(m.Visited);
+                foreach (var (k, v) in m.VisitSigns)
+                {
+                    into.VisitSigns[k] = (byte)(into.VisitSigns.GetValueOrDefault(k) | v);
+                }
+
+                meetMoved[m] = into;
+                continue;
+            }
+
+            (m.A, m.B) = key;
+            meetings.Add(key, m);
+        }
+
+        this.meetings = meetings;
+        foreach (var n in this.needs.Values.Cast<OwnedRow>().Concat(this.meetings.Values))
+        {
+            var owners = n.Owners.Select(Owner).ToList();
+            n.Owners.Clear();
+            n.Owners.UnionWith(owners);
+        }
+
+        // Subscriptions and expansion records of rows that became one are one (otherwise which row survived, an accident of
+        // order, would change the counts the limits read); each surviving row's Requested list is rebuilt from its subscriptions.
+        var subs = new List<Sub>();
+        this.subIndex = new();
+        foreach (var s in this.subs)
+        {
+            var owners = s.Owners.Select(Owner).ToList();
+            s.Owners.Clear();
+            s.Owners.UnionWith(owners);
+            var key = new SubKey(s.T.Id, s.Stage, s.On, s.Sign, this.SubText(s.Beta, s.Ants));
+            if (this.subIndex.TryGetValue(key, out var existing))
+            {
+                existing.Fired.UnionWith(s.Fired);
+                existing.Retired |= s.Retired;
+                existing.Owners.UnionWith(s.Owners);
+                continue;
+            }
+
+            this.subIndex.Add(key, s);
+            subs.Add(s);
+        }
+
+        this.subs = subs;
+        foreach (var row in this.demands.Cast<Row>().Concat(this.idents.Values).Concat(this.compounds.Values).Concat(this.needs.Values).Concat(this.meetings.Values))
+        {
+            row.Requested.Clear();
+        }
+
+        foreach (var s in this.subs)
+        {
+            foreach (var owner in s.Owners)
+            {
+                owner.Requested.Add(s);
+            }
+        }
+
+        Row Owner(Row r) => r is Demand d && map.TryGetValue(d, out var dm) ? dm : r is ClassDemand c && moved.TryGetValue(c, out var cm) ? cm : r is NeedRow n && needMoved.TryGetValue(n, out var nm) ? nm : r is MeetRow m && meetMoved.TryGetValue(m, out var mm) ? mm : r;
+        this.expansions = new(this.expansions.Select(e => (e.T, this.g.Find(e.Class), e.Bind, Owner(e.Owner), e.Sign)));
+
+        this.factIndex.Clear();
+        this.positiveIs.Clear();
+        this.factsOf.Clear();
+        foreach (var s in this.subs)
+        {
+            s.Scanned = 0; // merged classes can make an earlier fact match
+        }
+
+        for (var i = 0; i < this.facts.Count; i++)
+        {
+            if (this.factAlias[i] != i)
+            {
+                continue;
+            }
+
+            var f = this.facts[i];
+            if (f.Kind is 2)
+            {
+                continue;
+            }
+
+            var key = this.KeyOf(f);
+            if (this.factIndex.TryGetValue(key, out var existing))
+            {
+                // Facts that became one: the supports move to the surviving row (each counted once by E and the item limit, whichever
+                // row survives — an accident of order otherwise).
+                this.facts[existing].Supports.AddRange(f.Supports);
+                f.Supports.Clear();
+                this.factAlias[i] = existing;
+                continue;
+            }
+
+            this.factIndex.Add(key, i);
+            this.Index(f);
+        }
+
+        Dictionary<int, ClassDemand> RekeyClass(Dictionary<int, ClassDemand> source, Dictionary<ClassDemand, ClassDemand> moved)
+        {
+            var result = new Dictionary<int, ClassDemand>();
+            foreach (var c in source.Values)
+            {
+                var root = this.g.Find(c.Class);
+                if (result.TryGetValue(root, out var into))
+                {
+                    into.Root |= c.Root;
+                    into.NegatedFor |= c.NegatedFor;
+                    into.Dirty |= c.Dirty || !c.Selected;
+                    into.Visited.UnionWith(c.Visited);
+                    foreach (var (k, v) in c.VisitSigns)
+                    {
+                        into.VisitSigns[k] = (byte)(into.VisitSigns.GetValueOrDefault(k) | v);
+                    }
+
+                    moved[c] = into;
+                    continue;
+                }
+
+                c.Class = root;
+                result.Add(root, c);
+            }
+
+            return result;
+        }
+    }
+
+    private string SubText(int?[] beta, int[] ants)
+        => string.Join(",", beta.Select(x => x is int i ? this.g.Find(i) : -1)) + "|" + string.Join(",", ants.Select(this.FactFind));
+
+    private string BindKey(int?[] bind) => string.Join(",", bind.Select(x => x is int i ? this.g.Find(i).ToString() : "*"));
+
+    private List<int> FactsOf(ContractDecl decl) => this.factsOf.TryGetValue(decl, out var list) ? list : [];
+
+    private void Index(Fact f)
+    {
+        if (f.Kind > 1)
+        {
+            return;
+        }
+
+        if (!this.factsOf.TryGetValue(f.Decl!, out var all))
+        {
+            this.factsOf[f.Decl!] = all = new();
+        }
+
+        all.Add(f.Id);
+        if (f.Kind == 0)
+        {
+            if (!this.positiveIs.TryGetValue(f.Decl!, out var list))
+            {
+                this.positiveIs[f.Decl!] = list = new();
+            }
+
+            list.Add(f.Id);
+        }
+    }
+
+    private void Fire(Template t, int?[] beta, int[] ants)
+    {
+        var c = t.Conclusion;
+        var support = new Support(t.Id, ants.Select(this.FactFind).ToArray());
+        if (!c.IsAtom)
+        {
+            var subject = this.Inst(c.Subject, beta);
+            this.InstAll(c, beta);
+            var compound = new Fact(this.facts.Count, 4, null, subject, -1) { Shape = c, Beta = beta.Select(x => x is int i ? (int?)this.g.Find(i) : null).ToArray() };
+            this.AddFact(compound, support);
+            return;
+        }
+
+        var negative = c.Kind == FK.Not;
+        var atom = negative ? c.L! : c;
+        var a = this.Inst(atom.A!, beta);
+        var b = this.Inst(atom.B!, beta);
+        if (atom.Kind == FK.Is)
+        {
+            this.AddFact(new Fact(this.facts.Count, (byte)(negative ? 1 : 0), this.m.DeclOf(atom.B!), a, b), support);
+        }
+        else if (negative)
+        {
+            this.AddFact(new Fact(this.facts.Count, 3, null, Math.Min(this.g.Find(a), this.g.Find(b)), Math.Max(this.g.Find(a), this.g.Find(b))), support);
+        }
+        else
+        {
+            // An identity fact: its own row (a support) and a union of the two classes.
+            var f = new Fact(this.facts.Count, 2, null, a, b);
+            f.Supports.Add(support);
+            this.facts.Add(f);
+            this.factAlias.Add(f.Id);
+            this.g.Union(a, b);
+        }
+    }
+
+    private void AddFact(Fact f, Support support)
+    {
+        var key = this.KeyOf(f);
+        if (this.factIndex.TryGetValue(key, out var existing))
+        {
+            var e = this.facts[existing];
+            if (!e.Supports.Any(x => x.Template == support.Template && x.Ants.SequenceEqual(support.Ants)))
+            {
+                e.Supports.Add(support);
+            }
+
+            return;
+        }
+
+        f.Supports.Add(support);
+        this.facts.Add(f);
+        this.factAlias.Add(f.Id);
+        this.factIndex.Add(key, f.Id);
+        this.Index(f);
+    }
+
+    private int Inst(Term p, int?[] beta)
+    {
+        if (p.Head is VarHead v)
+        {
+            return beta[v.Index] ?? throw new InvalidOperationException("unbound variable in a conclusion");
+        }
+
+        var kids = new int[p.Kids.Length];
+        for (var i = 0; i < kids.Length; i++)
+        {
+            kids[i] = this.Inst(p.Kids[i], beta);
+        }
+
+        return this.g.Add(p.Head, kids);
+    }
+
+    private void InstAll(Formula f, int?[] beta)
+    {
+        var terms = new List<Term>();
+        f.Terms(terms);
+        foreach (var t in terms)
+        {
+            this.Inst(t, beta);
+        }
+    }
+
+    // ---- Rows ----
+    private Demand EnsureDemand(ContractDecl decl, int subject, int[] args)
+    {
+        var key = this.KeyOf(decl, subject, args);
+        if (this.demandIndex.TryGetValue(key, out var d))
+        {
+            return d;
+        }
+
+        d = new Demand(this.demands.Count, decl, subject >= 0 ? this.g.Find(subject) : -1, args.Select(a => a >= 0 ? this.g.Find(a) : -1).ToArray());
+        this.demands.Add(d);
+        this.demandIndex.Add(key, d);
+        return d;
+    }
+
+    private ClassDemand EnsureClassDemand(Dictionary<int, ClassDemand> table, int c)
+    {
+        c = this.g.Find(c);
+        if (!table.TryGetValue(c, out var d))
+        {
+            d = new ClassDemand(c);
+            table.Add(c, d);
+        }
+
+        return d;
+    }
+
+    private DemandKey KeyOf(ContractDecl decl, int subject, int[] args)
+        => new(decl, subject >= 0 ? this.g.Find(subject) : -1, string.Join(",", args.Select(a => a >= 0 ? this.g.Find(a) : -1)));
+
+    private FactKey KeyOf(Fact f) => f.Kind switch
+    {
+        0 or 1 => new(f.Kind, f.Decl, this.g.Find(f.A), this.g.Find(f.B), null),
+        3 => new(3, null, Math.Min(this.g.Find(f.A), this.g.Find(f.B)), Math.Max(this.g.Find(f.A), this.g.Find(f.B)), null),
+        _ => new(4, null, this.g.Find(f.A), 0, this.CanonOf(f)),
+    };
+
+    private int FactFind(int id)
+    {
+        while (this.factAlias[id] != id)
+        {
+            id = this.factAlias[id];
+        }
+
+        return id;
+    }
+
+    private IEnumerable<Fact> CanonicalFacts()
+    {
+        for (var i = 0; i < this.facts.Count; i++)
+        {
+            if (this.factAlias[i] == i)
+            {
+                yield return this.facts[i];
+            }
+        }
+    }
+
+    private string CanonOf(Fact f) => this.Canon(f.Shape!, f.Beta!);
+
+    private string Canon(Formula f, int?[]? beta = null) => f.Kind switch
+    {
+        FK.Is => $"Is({this.ClassOf(f.A!, beta)},{this.ClassOf(f.B!, beta)})",
+        FK.Eq => $"Eq({this.ClassOf(f.A!, beta)},{this.ClassOf(f.B!, beta)})",
+        FK.Not => $"Not({this.Canon(f.L!, beta)})",
+        _ => $"{f.Kind}({this.Canon(f.L!, beta)},{this.Canon(f.R!, beta)})",
+    };
+
+    private int ClassOf(Term t, int?[]? beta)
+    {
+        if (t.Head is VarHead v)
+        {
+            return beta?[v.Index] is int b ? this.g.Find(b) : -1;
+        }
+
+        var kids = t.Kids.Select(k => this.ClassOf(k, beta)).ToArray();
+        if (kids.Any(k => k < 0))
+        {
+            return -1;
+        }
+
+        var c = this.g.Lookup(t.Head, kids);
+        return c < 0 ? -1 : this.g.Find(c);
+    }
+
+    private static List<int> Unbound(Formula f, int?[] beta)
+    {
+        var terms = new List<Term>();
+        f.Terms(terms);
+        var vars = new HashSet<int>();
+        foreach (var t in terms)
+        {
+            t.Vars(vars);
+        }
+
+        return vars.Where(v => beta[v] is null).ToList();
+    }
+
+    private static List<int> Unbound(Term t, int?[] beta)
+    {
+        var vars = new HashSet<int>();
+        t.Vars(vars);
+        return vars.Where(v => beta[v] is null).ToList();
+    }
+
+    private static IEnumerable<int?[]> Distinct(List<int?[]> results)
+    {
+        var seen = new HashSet<string>();
+        foreach (var r in results)
+        {
+            if (seen.Add(string.Join(",", r.Select(x => x?.ToString() ?? "*"))))
+            {
+                yield return r;
+            }
+        }
+    }
+
+    /// <summary>A conclusion head for the static indexes: a symbol head with its arity, or Any for a variable.</summary>
+    private readonly record struct HeadKey(Head? Head, int Arity)
+    {
+        public static readonly HeadKey Any = new(null, -1);
+
+        public bool IsAny => this.Head is null;
+
+        public static HeadKey Of(Term t) => t.Head is VarHead ? Any : new(t.Head, t.Kids.Length);
+
+        public static HeadKey KidOf(Term t) => t.Kids.Length == 0 ? Any : Of(t.Kids[0]);
+    }
+
+    /// <summary>One side of an identity row: the side a class is matched against and the other side, its virtual node there.</summary>
+    private sealed class EqSide
+    {
+        public EqSide(Template t, int side)
+        {
+            this.T = t;
+            this.Index = side;
+            var atom = t.Conclusion.Kind == FK.Not ? t.Conclusion.L! : t.Conclusion;
+            this.Side = side == 0 ? atom.A! : atom.B!;
+            this.Other = side == 0 ? atom.B! : atom.A!;
+            var vars = new HashSet<int>();
+            this.Side.Vars(vars);
+            this.SideVars = vars.Count == 0 ? 0 : vars.Max() + 1;
+            this.Alias = this.Other.Head is VarHead v && vars.Contains(v.Index);
+            var others = new HashSet<int>();
+            this.Other.Vars(others);
+            this.Trivial = others.IsSubsetOf(vars);
+            this.Path = [KidAt(this.Other, 0), KidAt(this.Other, 1), KidAt(this.Side, 0), KidAt(this.Side, 1)];
+        }
+
+        public int SideVars { get; }
+
+        public Template T { get; }
+
+        public int Index { get; }
+
+        public Term Side { get; }
+
+        public Term Other { get; }
+
+        /// <summary>Gets a value indicating whether the other side is a variable the side binds: its virtual node is an existing class.</summary>
+        public bool Alias { get; }
+
+        /// <summary>Gets a value indicating whether matching the side fixes the other side (vars(other) ⊆ vars(side)).</summary>
+        public bool Trivial { get; }
+
+        /// <summary>Gets the index path: heads of the other side's kids 0 and 1, then the side's (Any for a variable or none).</summary>
+        public HeadKey[] Path { get; }
+    }
+
+    /// <summary>Identity sides by (other kid0, other kid1, side kid0, side kid1) heads, then by side Term (rows sharing a side are one
+    /// match). A lookup takes a filter per level (null: all); Any (a variable or no kid) is always included.</summary>
+    private sealed class SideTrie
+    {
+        private readonly Dictionary<HeadKey, SideTrie> next = new();
+        private readonly Dictionary<Term, List<EqSide>> leaf = new();
+
+        public int Count { get; private set; }
+
+        public void Add(EqSide e)
+        {
+            this.Count++;
+            this.Add(e, 0);
+        }
+
+        public void Find(HashSet<HeadKey>?[] filters, Action<Term, List<EqSide>> found, int level = 0)
+        {
+            if (level == filters.Length)
+            {
+                foreach (var (side, entries) in this.leaf)
+                {
+                    found(side, entries);
+                }
+
+                return;
+            }
+
+            var filter = filters[level];
+            if (filter is null || filter.Contains(HeadKey.Any))
+            {
+                foreach (var child in this.next.Values)
+                {
+                    child.Find(filters, found, level + 1);
+                }
+
+                return;
+            }
+
+            foreach (var h in filter.Append(HeadKey.Any))
+            {
+                if (this.next.TryGetValue(h, out var child))
+                {
+                    child.Find(filters, found, level + 1);
+                }
+            }
+        }
+
+        private void Add(EqSide e, int level)
+        {
+            if (level == e.Path.Length)
+            {
+                if (!this.leaf.TryGetValue(e.Side, out var list))
+                {
+                    this.leaf[e.Side] = list = new();
+                }
+
+                list.Add(e);
+                return;
+            }
+
+            if (!this.next.TryGetValue(e.Path[level], out var child))
+            {
+                this.next[e.Path[level]] = child = new();
+            }
+
+            child.Add(e, level + 1);
+        }
+    }
+
+    /// <summary>A bound-expansion entry: nodes of Scan's shape bind the row; Both: Side is then fully bound and the row serves the
+    /// class demands of both sides; otherwise Side is matched against the active class demands.</summary>
+    private sealed record ShapeEntry(Template T, Term Scan, Term Side, bool Both);
+
+    private sealed class Goal
+    {
+        public Goal(Formula p) => this.Proposition = p;
+
+        public Goal(Term subject) => this.Subject = subject;
+
+        public Formula? Proposition { get; }
+
+        public Term? Subject { get; }
+
+        public int SubjectClass { get; set; }
+
+        /// <summary>Gets or sets an identity goal's other side.</summary>
+        public int OtherClass { get; set; } = -1;
+
+        /// <summary>Gets or sets the goal polarities no row can supply (settled without search).</summary>
+        public byte Impossible { get; set; }
+    }
+
+    private abstract class Row
+    {
+        public abstract byte Tags { get; }
+
+        public bool Selected { get; set; }
+
+        public bool Dirty { get; set; }
+
+        public HashSet<int> Visited { get; } = new();
+
+        public Dictionary<int, byte> VisitSigns { get; } = new();
+
+        public List<Sub> Requested { get; } = new();
+    }
+
+    private sealed class Demand : Row
+    {
+        public Demand(int id, ContractDecl decl, int subject, int[] args)
+        {
+            this.Id = id;
+            this.Decl = decl;
+            this.Subject = subject;
+            this.Args = args;
+        }
+
+        public int Id { get; }
+
+        public ContractDecl Decl { get; }
+
+        public int Subject { get; set; }
+
+        public int[] Args { get; set; }
+
+        /// <summary>Gets or sets the goal polarities positive facts of this row serve at the goal (or the requested antecedents).</summary>
+        public byte RootPos { get; set; }
+
+        /// <summary>Gets or sets the goal polarities negated facts of this row serve; only goal rows want negated facts.</summary>
+        public byte RootNeg { get; set; }
+
+        public byte PosServe { get; set; }
+
+        public byte NegServe { get; set; }
+
+        public override byte Tags => (byte)(this.PosServe | this.NegServe);
+    }
+
+    /// <summary>A row answered on its requesters' behalf: it serves what they serve.</summary>
+    private abstract class OwnedRow : Row
+    {
+        public HashSet<Row> Owners { get; } = new();
+
+        public byte TagsValue { get; set; }
+
+        public override byte Tags => this.TagsValue;
+    }
+
+    /// <summary>A need met beyond the chain-detection depth: (class, head), answered as a top-level lookup on its requesters'
+    /// behalf.</summary>
+    private sealed class NeedRow : OwnedRow
+    {
+        public NeedRow(int c, HeadKey need)
+        {
+            this.Class = c;
+            this.Need = need;
+        }
+
+        public int Class { get; set; }
+
+        public HeadKey Need { get; }
+    }
+
+    /// <summary>Two classes that must meet (§1 (b)), answered once per round when new or woken.</summary>
+    private sealed class MeetRow : OwnedRow
+    {
+        public MeetRow(int a, int b)
+        {
+            this.A = a;
+            this.B = b;
+        }
+
+        public int A { get; set; }
+
+        public int B { get; set; }
+
+        public bool Queued { get; set; }
+    }
+
+    private sealed class ClassDemand : Row
+    {
+        public ClassDemand(int c) => this.Class = c;
+
+        public int Class { get; set; }
+
+        public byte Root { get; set; }
+
+        public byte NegatedFor { get; set; }
+
+        public byte TagsValue { get; set; }
+
+        public byte ScannedTags { get; set; }
+
+        public override byte Tags => this.TagsValue;
+    }
+
+    /// <summary>A subscription: a row instance waiting for facts of its antecedent or condition, identified by what it subscribes
+    /// to; the rows that requested it are its owners (it serves what they serve).</summary>
+    private sealed class Sub
+    {
+        public Sub(int id, Template t, int?[] beta, int stage, Demand on, byte sign, int[] ants)
+        {
+            this.Id = id;
+            this.T = t;
+            this.Beta = beta;
+            this.Stage = stage;
+            this.On = on;
+            this.Sign = sign;
+            this.Ants = ants;
+        }
+
+        public int Id { get; }
+
+        public Template T { get; }
+
+        public int?[] Beta { get; }
+
+        public int Stage { get; }
+
+        public Demand On { get; set; }
+
+        public byte Sign { get; }
+
+        public HashSet<Row> Owners { get; } = new();
+
+        public byte Tags { get; set; }
+
+        /// <summary>Gets a value indicating whether the subscription is the template's last stage and its bindings fix the conclusion.</summary>
+        public bool Existential { get; init; }
+
+        public bool Retired { get; set; }
+
+        public int[] Ants { get; }
+
+        public HashSet<int> Fired { get; } = new();
+
+        /// <summary>Gets or sets how much of its Contract's fact list the subscription has scanned (reset when classes merge).</summary>
+        public int Scanned { get; set; }
+    }
+
+    /// <summary>A promise: a node of its class identified by (class, shape), one object per round, whose members are the rows,
+    /// chains and decompositions that produce it (rule 1). Other and Beta are the first producer's other side and bindings, Path its
+    /// constructor positions below them (rule 8 down): they recompute the shape after merges.</summary>
+    private sealed class Promise
+    {
+        public Promise(int c, int shape, Term other, int?[] beta, int[] path)
+        {
+            this.Class = c;
+            this.Shape = shape;
+            this.Other = other;
+            this.Beta = beta;
+            this.Path = path;
+        }
+
+        public int Class { get; }
+
+        public int Shape { get; }
+
+        public Term Other { get; }
+
+        public int?[] Beta { get; }
+
+        public int[] Path { get; }
+
+        /// <summary>Gets the members by their keys (KeyOf): each joins once.</summary>
+        public Dictionary<string, Member> Members { get; } = new();
+
+        /// <summary>Gets the expansions recorded this round: each applies to every member, present or later.</summary>
+        public List<Expansion> Expansions { get; } = new();
+
+        /// <summary>Gets or sets whether the promise was kept from an earlier round (it has chain members): every lookup returns
+        /// it; an item.</summary>
+        public bool Stored { get; set; }
+
+        /// <summary>Gets or sets whether a row or a decomposition produced it this round: every lookup returns it.</summary>
+        public bool Produced { get; set; }
+    }
+
+    private abstract record Member;
+
+    /// <summary>A row member: the matched side, its bindings and the row variable each shape variable stands for.</summary>
+    private sealed record Direct(EqSide E, int?[] Beta, List<int> VarOf) : Member;
+
+    /// <summary>A chain member: the hit's pattern subterm, the bindings the side's match had established above it, and the
+    /// base promise (its class, other side and bindings identify the round's promise it forwards to); Stored once a round applied
+    /// it.</summary>
+    private sealed record Chain(Term Pattern, int?[] HitBeta, Promise Via) : Member
+    {
+        public bool Stored { get; set; }
+    }
+
+    /// <summary>A decomposition member (rule 8 down): a promise of the parent class with head F, this promise its kid at
+    /// Position.</summary>
+    private sealed record Part(Promise Producer, HeadKey F, int Position) : Member;
+
+    /// <summary>An expansion recorded at a promise: the pattern, the promise's shape variables bound as far as the pattern resolves,
+    /// the heads the pattern needs at free positions (Agree) and the requester.</summary>
+    private sealed record Expansion(int Pattern, int?[] Bind, Dictionary<int, Head> Needs, MatchCtx Ctx);
+
+    private sealed class Support
+    {
+        public Support(int template, int[] ants)
+        {
+            this.Template = template;
+            this.Ants = ants;
+        }
+
+        public int Template { get; }
+
+        public int[] Ants { get; }
+    }
+
+    private sealed class Fact
+    {
+        public Fact(int id, byte kind, ContractDecl? decl, int a, int b)
+        {
+            this.Id = id;
+            this.Kind = kind;
+            this.Decl = decl;
+            this.A = a;
+            this.B = b;
+        }
+
+        public int Id { get; }
+
+        /// <summary>Gets the row kind: 0 Is, 1 not Is, 2 identity, 3 not identity, 4 exact compound.</summary>
+        public byte Kind { get; }
+
+        public ContractDecl? Decl { get; }
+
+        public int A { get; }
+
+        public int B { get; }
+
+        public Formula? Shape { get; init; }
+
+        public int?[]? Beta { get; init; }
+
+        public List<Support> Supports { get; } = new();
+    }
+
+    private readonly record struct DemandKey(ContractDecl Decl, int Subject, string Args);
+
+    private readonly record struct SubKey(int Template, int Stage, Demand On, byte Sign, string Beta);
+
+    private readonly record struct FactKey(byte Kind, ContractDecl? Decl, int A, int B, string? Text);
+
+    /// <summary>A subscription to create: an antecedent (subject and arguments as classes) or a condition (Cond's operands resolved
+    /// when the round is applied).</summary>
+    private sealed record SubRequest(ContractDecl Decl, int Subject, int[] Args, Formula? Cond, byte Tags, byte Sign, Row[] Owners, Template T, int?[] Beta, int Stage, int[] Ants);
+
+    private enum MatchMode : byte { None, Expand, Chain }
+
+    private sealed record FireRequest(Template T, int?[] Beta, int[] Ants, byte Tags);
+
+    private sealed class Effects
+    {
+        public List<SubRequest> Subs { get; } = new();
+
+        public List<FireRequest> Fires { get; } = new();
+
+        public HashSet<int> Idents { get; } = new();
+
+        /// <summary>Gets the chain members found this round with their promises: effects of the round; applying them wakes the rows
+        /// that visited the class.</summary>
+        public List<(Promise P, Chain M)> Chains { get; } = new();
+
+        public HashSet<(int Class, HeadKey Need, Row Owner)> Needs { get; } = new();
+
+        /// <summary>Gets the constructors' kid classes the structure need reaches this round, with the polarities that need Refuted
+        /// there (rule 9).</summary>
+        public Dictionary<int, byte> Negated { get; } = new();
+
+        public byte NegatedTags { get; set; }
+
+        public byte IdentTags { get; set; }
+
+        public byte ChainTags { get; set; }
+
+        /// <summary>Gets or sets the tags of the requesters whose lookups met a need beyond the chain-detection depth: need rows are
+        /// effects of the round like chains (rule 5), so a round whose only effects are need rows settles no polarity.</summary>
+        public byte NeedTags { get; set; }
+
+        /// <summary>Gets or sets the meeting requesters or tags added this round.</summary>
+        public int Meetings { get; set; }
+
+        public byte MeetTags { get; set; }
+
+        public int Count => this.Subs.Count + this.Fires.Count + this.Idents.Count + this.Chains.Count + this.Needs.Count + this.Meetings + this.Negated.Count;
+
+        public byte Tags => (byte)(this.Subs.Aggregate(0, (a, s) => a | s.Tags) | this.Fires.Aggregate(0, (a, s) => a | s.Tags) | this.IdentTags | this.ChainTags | this.MeetTags | this.NeedTags | this.NegatedTags);
+    }
+
+    private sealed class MatchCtx
+    {
+        private readonly Solver solver;
+
+        public MatchCtx(Solver solver, Row? owner, byte tags, Effects? fx)
+        {
+            this.solver = solver;
+            this.Owner = owner;
+            this.Tags = tags;
+            this.Fx = fx;
+        }
+
+        public Row? Owner { get; }
+
+        public byte Tags { get; }
+
+        public Effects? Fx { get; }
+
+        public byte Sign { get; init; } = Both;
+
+        /// <summary>Gets what a match does with a promise of the pattern's head: nothing, expand it, or record it (chains).</summary>
+        public MatchMode Mode { get; init; }
+
+        public List<(Promise Via, Term Pattern, int?[] Beta)>? Chain { get; init; }
+
+        public Dictionary<(int, HeadKey, string), List<Promise>>? Memo { get; init; }
+
+        public MatchCtx Derive(MatchMode mode, Dictionary<(int, HeadKey, string), List<Promise>>? memo = null) => new(this.solver, this.Owner, this.Tags, this.Fx) { Sign = this.Sign, Mode = mode, Chain = mode == MatchMode.Chain ? new() : null, Memo = memo };
+
+        // Every class a selection visits needs its identity facts: a class demand, which inherits the visitor's tags.
+        public void Visit(int c)
+        {
+            if (this.Owner is null || this.Fx is null)
+            {
+                return;
+            }
+
+            this.Owner.Visited.Add(c);
+            this.solver.visitLog?.Add(c);
+            this.Owner.VisitSigns[c] = (byte)(this.Owner.VisitSigns.GetValueOrDefault(c) | this.Sign);
+            if (!this.solver.idents.ContainsKey(c))
+            {
+                this.Fx.Idents.Add(c);
+                this.Fx.IdentTags |= this.Tags;
+            }
+        }
+    }
+}
+
+internal static class SetExtensions
+{
+    public static bool UnionWithChanged<T>(this HashSet<T> set, IEnumerable<T> other)
+    {
+        var before = set.Count;
+        set.UnionWith(other);
+        return set.Count != before;
+    }
+}
+

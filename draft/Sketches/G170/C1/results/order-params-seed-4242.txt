@@ -1,0 +1,2 @@
+== ORDER: 441 requests on 100 models and 1 fixed (templates and Contracts shuffled; ordinary and frozen views) and 1438 limit-boundary runs: 0 differ in verdict, outcome, reason, rounds, V, E, J, N or peak items; 0 boundary outcomes other than Complete/Provisional at the need and Resource below it
+FAILURES 0

@@ -2775,7 +2775,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (R4-M95, G160 §9.2 and D1): A5's address gains an own-step marker carrying the owning value's Place, which the Warning compares
     with the operation's Place by 15.6.2's steps (the Place or an ancestor); for Loan checking an address still conflicts with
     nothing. G160-4 designs it under the full process, with the Warning's sentence for 5.2.1 condition 3 and any closed-vocabulary
-    entry for the owner.
+    entry for the owner. (Scope superseded by R4-M116, OQ-1 (a): ancestors with no dereference between, every exclusive Borrow.)
   - OQ-R4 (a): an Information diagnostic for a raw Field in a struct's or enum's inline storage that the Type's `drop` releases
     without `during self`, repaired by stating `during self` and adding the claim at each constructor fill; not for unannotated raw
     Fields in general (G160 D3's canonical "unstated") and not on a constructor fill; for an enum's Case payload no repair candidate
@@ -3106,6 +3106,93 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: verifying an unbound inference without the region (round 1, B1); choosing the region at the first incomparable pair
     (round 1, B2); resolving the variables at the body's deadline (later uses already read the local's Type); one enumeration of the
     local's Type only (misses an initializer's Origin outside it, x1).
+- **R4-M115 Type identity by structural decomposition (proposal B) in SPEC** (owner, 2026-10-23, verbatim:
+  「proposal B を Q1〜Q7 の推奨どおり（Q1 本案、Q2 入れない（§8.5.5 の改訂として別に扱う）、Q3 採用、Q4 本案、Q5 採用、Q6 採用、
+  Q7 経路等式を残す）採択します。R4 で SPEC へ取り込んでください（独立レビューつき）。」; unit spec-tid, `draft/Changes/2026-10-22 Type Identity by Structural Decomposition B.md`, INTEGRATED
+  2026-10-23) SPEC §8.2.3 states B's section 3: Type identity is one relation from its grounds (premises, the Constraints `T is C` supplies
+  for every projection a query needs, completed bindings), closed under replacement and the decomposition of constructed Types with one
+  head and agreeing compared attributes (one structure table read by decomposition, Refuted, premise errors, cycles, collisions and
+  overlap); projections and Contract arguments never decompose; Origin, length and Semantics agreement is proven by its own rules, never
+  by identity; premise errors (Language: a Refuted identity of two Types the premises make identical, a proper-part cycle; Proof: unproven compared attributes, truth by
+  Semantics case) are reported once where their premises first meet.
+  - Rationale and Principles (B 1.2, 7.1): non-decomposition put `Option<U>` and `Option<i32>` in one class while keeping `U` and
+    `i32` apart. A class had no one form, plain mismatches such as `Array<V> is Option<i32>` stayed Unknown, and it was one cause of
+    G170 C1's failed reviews. One Concept, One Canonical Form: one identity relation and one structure table serve decomposition,
+    Refuted, premise errors, cycles, collisions and overlap. Local Reasoning: consequences follow from a declaration's premises and Type
+    structure, whatever their side, order or spelling, except whether a limit is reached (Q7); premise errors are reported once where
+    their premises meet. Explicit Semantics: decomposition invents no Origin, length or Semantics relation, and specifications assume
+    no input identity. Compiler Server Protocol: Language errors, unproven requirements and limits are distinct and show their linking
+    premises and sources, and the AddPremise repair has a precondition and guarantee.
+  - The answers: Q1, a conformance premise on a Type identical with a constructed Type is evidence (§8.2.3); Q3, "depends" means not
+    holding with the judgment, or the current definition's inferred values, held pending, whatever derivation is recorded (§8.3.3,
+    §8.5.5); Q4, only identity premise errors are reported at the declaration (§8.2.3, §8.8.2, §7.5), other contradictory evidence as
+    before; Q5, expanding recursion among Contracts is a Language error (§8.3.3, G′ 4.6's edges); Q6, a Type without finite expansion is
+    a premise error (§8.3.3, G′ 4.9's criterion stated declaratively); Q7, path equations stay and only whether a limit is reached may
+    depend on declaration names; Resource keeps the identities obtained (§8.3.3). Q2: §8.5.5's extraction still does not enter Function
+    Types.
+  - Supersedes: SPEC 8.2.3's non-decomposition and its "two different fully bound Types" error (now the structural conflict); PlanB §4.3
+    rule 6's "never decompose equality" for constructed Types (projections and Contract arguments still never decompose); the reading
+    "SPEC 8.5.5's 'depends' per derivation" of PLAN G170's 2026-10-21 owner item, by Q3 (whether C2–C4's implementation without read
+    sets meets Q3 is BU's planning).
+  - Examples and tests: the new SPEC blocks are registered in `spec-cases.json` with the implementation's records as (b) differences;
+    their expected codes use existing codes (InvalidConstraint_Kd for Language, UnprovenConstraint_Kd for Proof, `Pack` included), which
+    the implementing units may refine with their own codes. OldRule `B3.3`: NormalizedConstraintProofBindingTest's two Unknown rows
+    that B refutes; they become Refuted, and the trait is removed, in the G170 C2–C4 unit that implements B 3.3 (Binding decides
+    identity for both pipelines, so R4-M50's MIR/R6-check condition does not apply). No library or milestone program has an identity premise on a constructed Type or a growing Contract cycle.
+  - Repairs: `Repair.AddPremise` and `Repair.RemovePremise` join the schema's kinds (B 3.10); offering one stays implementation-defined
+    (§23.1.3). Open: the condition values for AddPremise's precondition (not Refuted, no premise error) and guarantee (the requirement
+    Proven, callers prove it) are added by the implementing unit before it offers the kind; added values keep `kimi.check/3`.
+  - Open: §8.5.5's Function-Type extraction (Q2), a separate revision; B 3.4's gap, an omitted Origin in a layer of a Constraint's
+    Type outside a Function Type, which §15.4.2 has no row for (not filled). Not implemented: PLAN G170's C2–C4 (BU); STATUS states it,
+    and that the implementation does not report SPEC 8.2.3's `cyclic` (an error before B too).
+  - Rejected (B 7.2): non-decomposition; decomposing projections or Contract arguments; deriving Origin, length or Semantics relations
+    from decomposition; Refuted by contradiction; constructed Constraint subjects; G′'s decision procedure in SPEC.
+- **R4-M116 G160-4's design (B′) and SPEC 15.6.4's raw arguments and 5.2.1's own-step Warning** (owner, 2026-10-23, choices
+  verbatim: OQ-3 「(a) 借用と同じに保持 (推奨)」, OQ-1 「(a) 逆参照を挟まない祖先 (推奨)」, OQ-2 「(a) OwnStepDeparture_Kd (推奨)」; full
+  process: designs A and B, the design review, B′, its re-review ACCEPT WITH FIXES; R4-M95, R4-M105, BU-24 and the owner's two caps
+  stay)
+  - SPEC 15.6.4 (OQ-3): a raw pointer argument is retained as a borrowed one, its pointee as the referent; its own value (its Loans and
+    the holders it addresses) only by a result or storage that can hold a value of its Type or by a result the call forms within its
+    storage, and never by storage the call writes through it; an untied raw result retains a raw argument with a read through it. Why:
+    once raw pointers carry Loans and addresses (G160), the letter retained a raw argument's own value wherever an Origin inside its
+    pointee may be retained, so `Raw.initialize(storage + i, x)` in `Array.initRepeating` kept the storage's `uniq` Loan in the Array,
+    making the library invalid, while a result holding a value read through a raw argument lost what the read carried. The
+    within-storage clause restates §5.2.2 and §5.6 (a borrow formed through a raw pointer, `Raw.slice`'s result included, carries what
+    the pointer reaches), and the untied clause applies "retained as a borrowed one" (§15.6's Holders); both are within OQ-3 (the
+    planning session's reading, confirmed by the re-review). One Concept, One Canonical Form: one retention rule for borrowed and raw
+    arguments; Local Reasoning: decided per argument from the contract's Types; Explicit Semantics: the self-store exception is stated.
+    Observation (re-review R-N2): a callee that stores a converted pointer where its contract's Type cannot hold the argument breaks
+    its contract (undefined behavior); no text change. Rejected: keeping the letter and having each library body avoid deriving raw
+    store targets from remainders (impractical: every library raw store does so); an A5-only reading without SPEC text (a departure
+    from SPEC, which AGENTS forbids).
+  - SPEC 5.2.1 condition 3 (OQ-1): after the own-step limit, a Warning is required where an operation may end the owning value's stay
+    in its holder while a pointer formed through that own step may still be used: a Move or Take of the Place or of an ancestor with no
+    dereference between, a replacing write, its destruction, or an exclusive Borrow of the Place or of any ancestor, calls by `uniq`
+    included. Reading for A5: access paths are a body's, so the pointer's formation is in the body. Rejected: every ancestor through
+    dereferences with calls only (it warns on a Move of a reference whose referent stays); calls by `uniq` only (it misses
+    `let r = b@uniq; r@follow = make()`).
+  - OQ-2: `OwnStepDeparture_Kd`, Warning, Language, requirement `Ownership.OwnStepDeparture`, facts Anchor (the pointer's formation),
+    Use (the witness) and Evaluated (inside an inline default copy), no repair; new closed-vocabulary entries, added with DIAGNOSTICS by
+    4c. Rejected: `OwnStepPointerOutlivesOwner_Kd` (the owner is not destroyed; the record locates the departure).
+  - Design (the planning session's rulings on the review's PQ-1 to PQ-13): B′ as amended by the re-review. R-B1: "only" restored in the
+    15.6.4 text, the existing rule cited (§5.2.2, §5.6). R-B2: G160-2c's untied rule also covers writable storage a call writes a pointer
+    into through an Unstated or Static raw layer, and A5 adds Φ_E to that input's write targets (`fill(h)` storing `Raw.allocate(1)` into
+    `h.p`, then `Raw.initialize(h.p, y@ref)`, a failing-first test). R-B3: a raw input's own-layer Origin atom yields no Value row of its
+    own. R-B4: "can hold a value of its Type" is normalized Type identity with Origins fitted. R-B5: G160-2c runs MirCensusTest and the
+    Text, Utf8Writer and interpolation classes with the untied rule before merging, and a new problem stops it. R-N1 amends PQ-3: the
+    guard's Exclusive row walks the pointee as a Type argument; where that is wider than the keepers it holds the view as a located
+    `Unsupported_Kd`.
+  - Owners and order: Binding's `RetentionInput` decides 15.6.4's row kinds, so raw arguments' rows are BU's G160-2c (B′ §3.2 as
+    amended; it starts on the owner's word for BU) and A5's `Retained` is unchanged. Order: 4a (behavior-preserving splits of the due
+    `MirBorrows.Values.cs`, `.Locations.cs`, `.Solve.cs` and `.Reports.cs`), BU's G160-2b (`RawStep` total), G160-2c, 4b (addresses;
+    an untracked Φ_E at raw formation and at call results that may hold a raw pointer, its false-error residual recorded; one located
+    `Unsupported_Kd` for a Borrow or read of a `during self` layer's Place or of an inline Place enclosing it, registered for X-2; r3
+    deleted), 4c (the Warning, which bypasses P13's hold), G160-5 (records, census; BU deletes `TyCtxt.RawMembers` without an instance
+    and `RawStep(raw)` if no reader remains, keeping `RawMembers(instance, …)` for P13's per-part guard, R4-M76); one final review.
+    A5's addresses read no Origin of a raw Type argument (BU's open item: Binding keeps one through a pair parameter where SPEC 8.1.1
+    drops it). The representation and its supersessions (R4-M36, R4-M73's Raw bullet, A3 E16, R4-M93's r3) are recorded with 4b.
+  - Not implemented (STATUS). Unverified until 4b: G160-2c's mechanism, the census and ledger beyond the prototypes, the Exclusive
+    guard row on a layer a Type argument supplies, the Warning, the located `Unsupported_Kd`'s census, cost and warm allocation.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -4243,6 +4330,69 @@ resumed by R4-M86 (2026-10-20).
   with C4, `b7123abf`; it is not on dev). Open: `TyCtxt.RawStep(function, …)` reads the declared signature, retention the call's
   instantiated inputs, which may read Exclusive where the view reads Shared (conservative); `keeperPath` makes a finite cycle that
   changes Type arguments once a Limit (accepted by the design); A5's record for a Limit call under sel is R4's.
+  G160-3's exception (unit bu23; the owner, 2026-10-22: 「認める」, the bu23 design's S5): G160-3's `dictionaryStorage` returns
+  `(raw/Dictionary<K, V> during value, isize)` and `placeEntry` takes `raw/Dictionary<K, V>` (R4-M95), so the old Emission's
+  Dictionary layout and placement shape checks (`BodyLowering.DictionaryStorage`, `BodyLowering.Dictionaries`) accept a Dictionary
+  pointee in place of `u8` until R6-gen; with R4's consent the MIR builder's literal handle temporary (`MirBuilder.Expansions`) is
+  the Tuple of a pointer to the literal's Dictionary Type, stating no raw Origin, and `isize`, in place of the declared result Type.
+  G212 (unit bu26, 2026-10-23; R4-M110, the planning session's rulings on `g212/design.md`, one design and one review): a Tuple or
+  fixed-array Place enclosing a `during self` layer in the same holding value is written and borrowed as the layer's Place is. One
+  verdict table in `HolderWriteFailure` decides the allowlist's accesses (`PathOrigin` publishes the whitelisted Place forms: a
+  stored Field, then Tuple and fixed-array elements): a write putting `null` in every layer and a Move of the layer's Place
+  (`b.data@move`, `b.pair.0@move`, `b.arr[0]@move`, a read whose restoring write the allowlist admits only as `null`) pass; a Move
+  of an enclosing Place (`b.pair@move`) stays the located `Unsupported_Kd`, since SPEC does not say what it gives (PLAN G212); every
+  other write, an update and an exclusive borrow of the layer's or an enclosing Place are the Origin relation error (the enclosing
+  borrow was the located U). A site sharing the cause had no check: a call receiver, the one implicit exclusive lending of an owned
+  Place (SPEC 7.3), so `var s = b.arr.sliceUniq()` then `s[0] = fresh` was accepted; `JudgeCallFit` asks `HolderPlaceFailure` for
+  every input's exclusive `Borrow` beside `FailStaticBorrow`, records at the operand and judges that fit no further (an explicit
+  `x@uniq` argument's source is the conversion, a path root, so it records once). PD21 (ruling (b)): `Binding.CallRelations.cs`
+  (due: bu20, 2a0-2, bu22) was split first, its records beyond the first in `Binding.CallRelations.Records.cs`; RawOrigins.cs and
+  Retention.cs, unchanged here, stay due. Measured: a pinned interleaved Bind A/B against a352ae27b over Milestones 1, 20 and 33
+  gave warm minima within 0.3% and equal cold bytes. Rejected: a check in `AdaptInput` or `LendsPlace` (selection may discard the
+  candidate; authority, not Origins); Holder kept on the read Type so that invariance fails (Holder would leave stored shapes).
+  Open: neither published pipeline marks a Copy-typed part Moved (`t.0@move` then `t.0`), so a missing restore after `b.data@move`
+  goes unreported as for any Copy part (PLAN G228); whether a `during self` layer or such a Tuple is Copy and what reading an
+  enclosing Place gives (`let t = b.pair` binds as a Copy read of `(raw/u8, isize)`) stay PLAN G212's.
+- **BU-28** (2026-10-23; the BU planning session after the full process: designs A and B, the design review's choice of B with A's
+  staging, display row and test owner; the owner's answer below; PLAN G227 (G65's remainder), unit bu29, 2a0-3b's prerequisite by the
+  owner's (iii)) SPEC 15.6.5, 15.3.4: in a Closure body the Origins of its captures are fixed. They are the atoms an enclosing body formed
+  that the environment bindings' Types name (a moved or copied value's regions, a captured reference's Origin, an entry's slot Borrow, a raw
+  layer's Origin), and the rule is the C1-F4 view's row 6, `Binding.EnclosingAtom` (an atom of a body B's evaluation reaches through
+  `EvaluatingBody`, by `RootOf`), which `ClassifyAtom` and the judge share. `Binding.OriginClasses.cs` holds SPEC 15.6.5's classes in a body:
+  `FixedOrigin` (by the contract), `FixedIn`, `RegionIn` and `HasRegionIn`, `SourcesIn`, `BoundableIn`, `BodyLocalIn`, `BodyChain(.., body)`
+  and `RefutesOriginRelation(.., body)`, with no context-free copy. The judge takes the body that formed the relation explicitly
+  (`JudgeOriginRelation(.., body, ..)`): an obligation's `Body`, the forming body while binding (`FailedDeclaredRelation`'s own obligation
+  carries it, and its gate classes both ends in it, so a local clause over a capture's Origin is Binding's record at the initializer),
+  none in `VerifiedRegionOutlives` (unchanged: its readers, lowering and the old analysis's `RecordCallInput`, run after Binding judged the
+  fit in its body). So in the body a store of the call's own input or of another capture's Origin
+  into the environment is Unknown (`UnprovenOriginRelation_Kd`, Binding's record, D1 being body-relative), a store of a borrow local to the
+  call is Refuted (`UnsatisfiedOriginRelation_Kd`), the body never bounds an environment region (`RecordLocalRegionBound`), and a region of
+  the body stops its source walk at an atom fixed in its body (`LocalRegionSources`). One display row shows a local's region as that local's
+  omitted Origin (`the omitted Origin of arr`). No new representation: an environment binding's Type stays its source's, R4-M99's Fields
+  of the call receiver's referent, whose one creation site makes their Origins the creation atoms, fixed in the body as a receiver's slots
+  are in a method; calls retain nothing new (15.6.4's contract), and A5 reads the same view (row 6 unchanged). The old analysis's reporter
+  passes `obligation.Body` (4 lines): a D5 wrong-code fix mirrored on the new path, whose view already has row 6; it accepts no form.
+  - Census (both pipelines agree): on dev only SPEC-invalid programs become rejected: B3's dead reads (v6b, v6c, v6g, natively `leak 41`
+    on dev), the generic and nested forms, the raw form storing the call's `y@follow@raw`, body-local stores (c3, h3, h5, y8, y9) and
+    class S; dev's other rejections take this record (c7, c8f, h5b lose their Loan conflict; c4, c8, c8a–c8i, d1, d9 their U). On 2a0-3b's
+    tree without its guard every B3 form is rejected (v6, v6a, v6d–v6j, h2, h2b, c2–c9, c8a–c8i, y1–y10, RawB3) and the valid twins are
+    accepted (g1, g5, g7, p9, p11, p12, n4, r2, d3, d4, d10, a two-level Closure, the guard's over-guard form storing nothing, `during
+    static`). The corpus snapshot, library, SPEC examples and generated IR are unchanged.
+  - The owner (2026-10-23, on the review's question, verbatim): 「SPEC のまま、(a) を予定に入れる (推奨)」. SPEC 15.6.5 stays, so this
+    unit rejects the memory-safe class S that dev accepted: p5 (`a2.append(a1[0])`), p6 and p8 (an enclosing parameter's borrow stored into
+    the region of `[var arr@move]`), g2c, g4c and d5 (an enclosing parameter's or local's borrow stored the same way) and e1, e2 (a captured
+    element returned as `ref/i32`, static). Open issue (a), their SPEC-valid rewrites over a written Origin (`during p`, `during r`,
+    `origin p outlives q`: p3, p3d, p3e, k5, r4, r6) being `CallActivationConflict_Kd`, goes to R4's 2c-D and G65; `during static` is
+    accepted now.
+  - Rejected: environment Origin slots restated in the body (a second representation that every outer reader of `Environment.Type`
+    and 2c-5's receiver substitution would carry); call-side retention of an Exclusive call's arguments (contradicts 15.6.4's contract and
+    leaves body-local stores accepted); dropping only the bounds (v6b stays Proven); the judge entering the obligation's body (`EnterBody`
+    outside a binding entry breaks Binding.ExecutableBodies.cs's contract and stamps what judgment forms); context-free overloads; the judge
+    reading `ClassifyAtom` (rows 1, 7 and 9 differ from the judge's classes); a static `BodyChain` (two paths for fixed-fixed relations).
+  - Open: d6, a named nested function's signature binds an enclosing local's set (`x.s`) as an unlinked variable (natively `leak 41`; SPEC
+    15.3.4): its fix extends `EnclosingAtom`'s chain to named nested functions, not a second rule. Row 5's call result is Fixed in the view
+    and finite in the judge (display only today; for 2c-D). PD21: the classes moved first (behavior-preserving) into
+    Binding.OriginClasses.cs; Binding.OriginProof.cs's count restarted at 2a0-4's split.
 
 ## R5 and R6 (adopted 2026-10-18)
 
@@ -5077,7 +5227,8 @@ structure is recorded here by the unit that first implements it.
   requirement call's until K6b (superseded by R5-M67, which moved it from K6). The collector's templates gain statement sites, in
   location order with the calls: an `Aggregate(Closure)`
   is the Closure's body (row 11), a `Use` of a `Const(FnItem)` (the builder's one form of that operand) the Item's (row 12), a
-  `Cast(Erasure)` a `ClosureErasure` or `ItemAdapter` item keyed by the erased Closure or Item Type (row 13); a Value callee's Closure or
+  `Cast(Erasure)` a `ClosureErasure` or `ItemAdapter` item keyed by the erased Closure or Item Type (row 13; superseded by R5-M108: also
+  by the erased target Function Type); a Value callee's Closure or
   Item in the item's instance (`Apply`) is its body (row 5). A Closure's body is keyed by its definition and the erased substitution of
   the instance that closed it (`SubstOfClosure`, exact since G142, R5-M36), an Item's by its function's implementation under the Item's
   substitution; the Item of a function whose calls dispatch (`TyCtxt.Dispatches`, new, over `CallPlan.KindOf`, the one rule that also
@@ -6472,7 +6623,8 @@ structure is recorded here by the unit that first implements it.
   - Value calls (`FunctionCodegen.Closures.cs`), by the callee value's Type below its reference layer, a closed vocabulary: a Closure's body
     by the collector's target, the environment a borrow's pointer or an owned operand's storage (a Move's Place; a Copy's copy slot, numbered
     after the body's operands by block, since a block's terminator is its one call); a function Item's body or a requirement Item's witness
-    directly; an Item without a body target the later unit's located `Unsupported_Kd` (a virtual slot's Item C6c, a compiler function's Item
+    directly (superseded by R5-M108: what an Item's call runs is decided by its function, a compiler function's by its direct call's row,
+    not by its target's kind); an Item without a body target the later unit's located `Unsupported_Kd` (a virtual slot's Item C6c, a compiler function's Item
     C5b, C6a or C8*, a Builtin shim C8f or C9b, a property witness C3c); a common Function value through its table `{entry, context, drop}`
     (offsets 0, 8, 16, the layout C5b's erasure writes) with its environment word, under `ModuleCodegen.Erased`, `Abi.Of(ErasedClosure |
     CallerLocation)` of the call's Callable signature (SPEC 22.5.1: the call's location), reused by `Abi.Matches`. The old generator writes
@@ -6575,6 +6727,8 @@ structure is recorded here by the unit that first implements it.
     environments whenever they need destruction (the old generator's; IMPL 21.1.3); an adapter per erasure site (the old generator's; one
     item per Type); value-based copies of the intrinsic writers for erased compiler Items (a second copy of each row); `MirBodyKind.Shim`
     bodies (PD3); a MIR box for large environments (held MIR; IMPL leaves layout to the backend); a `MonoKind` per runtime routine.
+  - Superseded by R5-M108 (C5c): the adapter entry under its source's own signature, ruling Q3's descriptor-arity test and the temporary
+    structure above (an adapter item is keyed also by its erased target Function Type and its entry defined under that Type's signature).
 - **R5-M105 The owner confirms C5b's departure** (owner, 2026-10-22, on the R5 planning session's explanation before C5b landed;
   verbatim 「C5b の逸脱（ErasedCalls の corpus O2 A/B を C8d と C9c の遅い方へ移し、C5b は固定配列版で参考測定する）を承認します。」;
   the consequences are the planning session's) The departure R5-M104 records is confirmed: plan row C5b's verification "the ErasedCalls
@@ -6656,3 +6810,57 @@ structure is recorded here by the unit that first implements it.
   (AGENTS: no speculative mechanism; no audit deviates in its output before then); and plan row C7's native run of `tests/mir/statics.kimi`
   is replaced by the `StaticRows` program and `StaticInitializationTest`'s fixtures, since that program declares `var` statics, which
   R5-M82's `StaticStorage` row rejects at check until P42. They leave the list.
+- **R5-M108 Adapter items keyed by the erased target Function Type (C5c)** (2026-10-23, C lane; R5-M104's removal condition, PLAN G157
+  (12) and (22); designs 1 and 2, one design review and the planning session's choice, `c5c-decision.md`, under the full process; SPEC
+  7.7.4, 10.7, 22.5.1, IMPL 21.1.3, 21.3.1)
+  - Key: SPEC 10.7 lets a source whose result is Never fit a Function Type of any result, and subtyping differs only in Origins (SPEC
+    3.8), so one source reaches Function Types of different erased signatures exactly then: a Never function Item into another result, a
+    requirement Item whose witness's result is Never at the requirement's own result, a Never Closure erased once stored. A ClosureErasure
+    or ItemAdapter item is keyed by the erased source Type and the erased target Function Type, the Cast's (`MonoKey.Function`, a
+    positional field; `MonoKey` has no default arguments). Raw count over the ledger's 300 classes under sel: 414 adapter items for 414
+    sources, so no source of the corpus has two.
+  - Layout (K 4.8): the target's inputs and result are by-value uses at the erasure, laid out by row 13's caller (`LaysOutSignature`);
+    one that does not lay out drops the edge with its record, so a body with an oversized result has `OversizedLayout_Kd` at its erasure
+    besides its own result local. An intrinsic row's `LaysOutType` also lays out its function Item's Type argument (`Bodyless`; G157 (12)).
+  - Entry: `ModuleCodegen.Adapter` is the erased signature of the item's target Function Type (`Erased`'s form, named by the item), the
+    one every erased call of that Type writes; Abi reads no Origin, so the erased Type serves.
+  - What a function Item's call runs (`FunctionCodegen.Runs`, for its Value call and its ItemAdapter's entry), decided by its function: a
+    compiler function's call is its direct call's row, whatever targets the row needs, written when it is one runtime routine (`Routine`
+    by disposition: an intrinsic's Routine, TryAllocate or Allocate row, the legacy writeLine row) with its slot-less values, else that
+    row's unit's located `Unsupported_Kd`; any other function's is its body target (its body, a requirement Item's witness). `Pass` and
+    `Forward` share `Given`. A Never callee leaves the entry's result slot unused and ends it `unreachable`.
+  - Defect fixed (sel, wrong code without a record): a Value call of `Text.toString<V>` with a user witness called the format witness, and
+    `Text.writer<Sink>`'s the reserve witness, with the function's own operands; both are C9a's located `Unsupported_Kd` now.
+  - Deleted: `ModuleCodegen.Fits`, `Adapter`'s body lookup, both temporary located `Unsupported_Kd` arms, the Value call's arity test (Fail
+    and Slice are no routine rows).
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M109): K package 4.3's `MonoKey` gains the erased target
+    Function Type, and its ClosureErasure and ItemAdapter rows are keyed by it beside the erased source Type.
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M109): R5-M43 row 13's "keyed by the erased Closure or Item
+    Type" reads "and the erased target Function Type".
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M109): K package 4.8's by-value list gains an adapter's target
+    inputs and result, laid out at the erasure.
+  - Supersedes R5-M104's entry rule ("under the erased signature of its source's own Callable signature"), its temporary structure and
+    ruling Q3's arity test, and R5-M102's reading of a function Item's Value call as its first target when that is a body.
+  - The old generator stays frozen (R5-M6): its adapter of a Never source is defined under the source's signature and called under the
+    target's, but natively at O0 and O2 it gives MIR code generation's outcome (a user function reads no received location or context); no
+    D5 exception, and G157 (22)'s old half closes.
+  - Restructured first, behavior unchanged: an item's targets in `InstanceCollector.Edges.cs`, `MonoKey` without default arguments,
+    ModuleCodegen's signatures split (`.Imports`, `.Erasures`), a routine row by one function.
+  - Verified: the sel ledger loses 12 rows (C-frame 10, call 2: Raw.allocate and Console.writeLine erased or as defaults), all this
+    unit's; their families `CompilerReference*` and `CompilerFunction*` and the new `ErasureTargets` run natively under sel at O0 and O2;
+    `InstanceCollectorTest` (the key's Function; a Never source's two items for three erasures; the oversized target, body result,
+    exchange and Raw.allocate erasures and Raw.allocate's Item call as located records, each failing before); `FunctionCodegenTest`
+    (entries per target signature for the three Never forms, the erased compiler Items' routines with the received location, the two
+    defects' regressions, M9's 0 B and I1 over the extended erasure source); `ErasureTargets` under both generators.
+  - Rejected: per-target entries inside code generation (functions no item names); a result-independent erased ABI (every erased call
+    changes, results through memory at O2); an adaptation in MIR (SPEC 10.7 inserts none; held MIR); re-keying only Never sources (a clause
+    for one form); keying by the physical signature (the collector keys by Types); one call writer with two input forms (a mode); row
+    writers over materialized inputs (no instruction writer is reachable from an Item: Raw.release, initialize, slice and transferBytes
+    are unsafe, never values; C8d keeps the adapters of instruction-shaped rows); a compiler-entry item per Item (one more item and call).
+- **R5-M109 The owner confirms C5c's departures** (owner, 2026-10-23, on the R5 planning session's explanation after C5c's design review
+  and before its behavior commit; verbatim 「C5c の逸脱 3 件（K package 4.3 の MonoKey に変換先の Function 型を加えること、R5-M43 の
+  13 行目のキーの書き方、K package 4.8 の by-value 一覧に adapter の変換先の入力と結果を加えること）を承認します。」; the consequences are
+  the planning session's) The three departures R5-M108 records are confirmed: the instance key `MonoKey` gains the erased target Function
+  Type, so ClosureErasure and ItemAdapter items are keyed by their erased source and target (against K package 4.3, R5-M18); R5-M43 row
+  13's "keyed by the erased Closure or Item Type" reads "and the erased target Function Type"; and K package 4.8's by-value list gains an
+  adapter's target inputs and result, laid out at the erasure. They leave the list.

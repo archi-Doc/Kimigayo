@@ -4,21 +4,21 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The value calls of FunctionCodegen (R5 plans C5a and C5b, package C 3.2 I8 and row 14; SPEC 7.7.3, 7.7.4, 8.10, IMPL 21.1.3; DECISIONS
-// R5-M102, R5-M104):
+// The value calls of FunctionCodegen (R5 plans C5a, C5b and C5c, package C 3.2 I8 and row 14; SPEC 7.7.3, 7.7.4, 8.10, IMPL 21.1.3;
+// DECISIONS R5-M102, R5-M104, R5-M108):
 // a Value callee by its value's Type in the item's instance below its reference layer (TyCtxt.Layer, the collector's Callable rule), a closed
 // vocabulary. A Closure calls its body, the collector's target, under its signature (Abi's ConcreteClosure: the environment pointer first, the
 // context last): the environment is the referent of a borrowed operand, or an owned operand's storage (a Move's Place, a Copy's copy slot), the
-// context null. A function Item calls its target, its function's body or a requirement Item's witness, directly; a compiler function's
-// Item without a body target calls what a direct call of the function calls (SPEC 7.7.4), its disposition's row (the intrinsic writer or
-// the legacy row) over the Value call's operands, a row not written yet being its unit's; any other Item without a body target is a later
-// unit's row (a virtual slot's Item C6c; a requirement witness without a body, PLAN G157 (10); a Builtin shim C8f or C9b). A common Function
-// value (IMPL 21.1.3: its environment word, then its table) calls its table's entry with its environment word and its table's context
-// under the erased signature (ModuleCodegen.Erased). A Value call's operands are its Callable signature's inputs in
-// order, so its own key places them (MirCallee.Position without a function, the builder's rule). After an owner call whose callee borrows its
-// environment, the call site's next target, the operand Type's glue, destroys the operand (SPEC 8.10: "destroys the rest after the call") at
-// the call's location; the collector decides which calls have it. A Closure environment's construction is FunctionCodegen.Aggregates', a
-// Closure body's environment parameter FunctionCodegen.Frame's.
+// context null. A function Item calls what its call runs (Runs, also an ItemAdapter's entry's callee), decided by its function: a compiler
+// function's its direct call's row (SPEC 7.7.4), whatever targets the row needs, written when it is one runtime routine (Routine) over the
+// Value call's operands, else the row's unit's; any other function's its body target, its function's body or a requirement Item's
+// witness, directly; without one a later unit's row (a virtual slot's Item C6c; a requirement witness without a body, PLAN G157 (10); a
+// Builtin shim C8f or C9b; a property witness C3c). A common Function value (IMPL 21.1.3: its environment word, then its table) calls its
+// table's entry with its environment word and its table's context under the erased signature (ModuleCodegen.Erased). A Value call's
+// operands are its Callable signature's inputs in order, so its own key places them (MirCallee.Position without a function, the builder's
+// rule). After an owner call whose callee borrows its environment, the call site's next target, the operand Type's glue, destroys the
+// operand (SPEC 8.10: "destroys the rest after the call") at the call's location; the collector decides which calls have it. A Closure
+// environment's construction is FunctionCodegen.Aggregates', a Closure body's environment parameter FunctionCodegen.Frame's.
 internal sealed partial class FunctionCodegen
 {
     // IMPL 21.1.3: a common function value's table, its entry, context and drop words at these offsets (FunctionCodegen.Erasures writes it).
@@ -94,39 +94,38 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // SPEC 7.7.4: a function Item's call is its target's, a body under its signature; the zero-sized callee value writes nothing. Without a
-    // body target, a compiler function's Item is its disposition's row (the file's contract): an intrinsic's by its row's writer, a Body
-    // disposition's by its legacy row, each placing the operands by the Value call's own key as a direct call does by its function's. A
-    // Value call carries only its Callable signature's inputs, so an intrinsic whose MIR row takes an operand beyond a written call's
-    // arguments (Fail's code, Raw.slice's backing; DECISIONS R4-M40) is not its Value call's: the descriptor's arity (MirDescriptors, the
-    // validator's row arity) is not the call's operand count. Any other is a later unit's row.
+    // SPEC 7.7.4: a function Item's call, what it runs (Runs) over the Value call's operands placed by its own key; the zero-sized callee
+    // value writes nothing.
     private void FunctionItem(in MirTerminator call, BoundType item)
     {
         var target = this.Target(new(this.at, this.body.Blocks[this.at].Count));
-        if (target >= 0 && this.collector.Set.Items[target].Key.Kind == MonoKind.Body)
+        if (this.Runs(item, target, this.InstanceType(call.Place), call.Source, out var given) is { } callee)
         {
-            if (this.module.Signature(target) is { } signature)
-            {
-                this.Invoke(call, signature, new(call.Callee.Symbol, MirBodyKind.Fn));
-            }
-
-            return;
+            this.Invoke(call, callee, new(call.Callee.Symbol, MirBodyKind.Fn), given);
         }
+    }
 
+    // SPEC 7.7.4 (DECISIONS R5-M108): what a call of a function Item runs, decided by its function, for its Value call and its adapter's
+    // entry: a compiler function's call is its direct call's row whatever targets the row needs (a format witness, a descriptor), written
+    // when it is one runtime routine (Routine, its slot-less values from the call's result Type into `given`); any other function's is its
+    // body target (the collector's: its function's body or a requirement Item's witness). Null after a record at the source (an adapter's:
+    // its site): a row not written yet, its unit's located Unsupported_Kd, or a broken contract.
+    private FunctionAbi? Runs(BoundType item, int target, BoundType? result, SourceInfo source, out ReadOnlySpan<Value> given)
+    {
+        given = default;
         var kind = item.Symbol?.CompilerFunction ?? CompilerFunctionKind.None;
-        var disposition = IntrinsicDisposition.Of(kind);
-        switch (disposition.Kind)
+        if (kind == CompilerFunctionKind.None && target >= 0 && this.collector.Set.Items[target].Key.Kind == MonoKind.Body)
         {
-            case DispositionKind.Intrinsic when MirDescriptors.Of(disposition.Id) is { Arity: var arity } && (arity < 0 || arity == call.Count):
-                this.Intrinsic(call, IntrinsicRows.Of(disposition.Id));
-                return;
-            case DispositionKind.Body when kind != CompilerFunctionKind.None:
-                this.Legacy(call, kind);
-                return;
-            default:
-                this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // A Builtin shim's, or an intrinsic of a builder-made operand (above).
-                return;
+            return this.module.Signature(target); // Null after a record.
         }
+
+        if (kind != CompilerFunctionKind.None && this.Routine(kind, result, out given) is { } routine)
+        {
+            return routine;
+        }
+
+        this.Report(DiagnosticCode.Unsupported_Kd, source); // A row not written yet (above).
+        return null;
     }
 
     // IMPL 21.1.3: a common Function value's call, through its table's entry with its environment word and its table's context, under the
