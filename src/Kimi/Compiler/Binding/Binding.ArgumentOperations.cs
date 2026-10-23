@@ -100,14 +100,14 @@ public sealed partial class Binding
     /// <returns>The shared reference Type, or null.</returns>
     internal BoundType? SharedReferenceThroughLayers(BoundType actual, BoundType referent, out int layers)
     {
-        BoundOrigin? origin = null;
         layers = 0;
         for (var type = actual; type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && layers < 64; type = type.Components[0])
         {
             layers++;
-            origin = type.Semantics == SemanticsKind.Ref || origin is null ? type.Origin ?? origin : type.Origin is null ? origin : this.Meet(origin, type.Origin);
             if (ReferenceEquals(type.Components[0], referent))
             {
+                BoundOrigin? origin = null;
+                this.MeetLayers(actual, layers, ref origin); // SPEC 15.6.3: the layers' Origins, up to the innermost shared one.
                 return this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [referent], origin: origin);
             }
         }
@@ -368,9 +368,10 @@ public sealed partial class Binding
             if (!explicitBorrow && !projected && target == SemanticsKind.Ref &&
                 this.SharedReferenceThroughLayers(actual, pattern.Components[0], out var layers) is { } shared && (layers > 1 || actual.Semantics == SemanticsKind.Uniq))
             {
-                // SPEC 10.2: several reference layers yield one shared reference to the parameter's referent.
-                adapted = actual.Semantics == SemanticsKind.Uniq && shared.Origin is { } origin
-                    ? this.types.Reference(SemanticsKind.Ref, pattern.Components[0], this.PathReborrowOrigin(source, origin)) : shared;
+                // SPEC 10.2, 15.6.3: several reference layers yield one shared reference to the parameter's referent, contained in the
+                // layers and, unless one is shared, in those that reach the source.
+                adapted = this.ReferentOrigin(source, actual, layers) is { } origin
+                    ? this.types.Reference(SemanticsKind.Ref, pattern.Components[0], origin) : shared;
                 quality = ArgumentAdaptation.CrossSemanticsBorrow;
                 kind = layers > 1 ? ArgumentOperationKind.ReferenceRead : ArgumentOperationKind.Reborrow;
                 return true;
@@ -505,7 +506,9 @@ public sealed partial class Binding
             return false;
         }
 
-        adapted = this.types.Intern(BoundTypeKind.Semantics, null, pattern.Semantics, [actual.Components[0]], origin: this.PlaceOrigin(source));
+        // SPEC 15.6.3: a Reborrow of an object view is contained in the view and the layers reaching it; a handle lends its object from its Place.
+        var origin = actual.IsObjectBorrow ? this.ReferentOrigin(source, actual)! : this.PlaceOrigin(source);
+        adapted = this.types.Intern(BoundTypeKind.Semantics, null, pattern.Semantics, [actual.Components[0]], origin: origin);
         return true;
     }
 }

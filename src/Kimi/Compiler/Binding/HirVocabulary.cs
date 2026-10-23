@@ -129,8 +129,9 @@ internal readonly record struct HirAdjust(HirAcquire Acquire, HirAdaptation Adap
         _ => new(HirAcquire.None, acquisition == CaptureAcquisition.SharedSlotBorrow ? HirAdaptation.SharedBorrow : HirAdaptation.ExclusiveBorrow),
     };
 
-    // A call's argument, receiver or payload operation (SPEC 7.3, 10.2); a Reborrow in the same mode keeps the Type, the bare acquisition,
-    // and an explicit borrow is the reference itself (SPEC 13.5.6), even the string borrow Binding records as the call's (SPEC 22.1).
+    // A call's argument, receiver or payload operation (SPEC 7.3, 10.2); a Reborrow in the same mode keeps the Semantics and the referent,
+    // the bare acquisition, its Origin being Binding's name, the Type the consumer expects (DECISIONS BU-27), and an explicit borrow is the
+    // reference itself (SPEC 13.5.6), even the string borrow Binding records as the call's (SPEC 22.1).
     internal static HirAdaptation Of(in BoundArgumentOperation operation) => operation.Kind switch
     {
         ArgumentOperationKind.Borrow when operation.Source is { } source && KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } => HirAdaptation.None,
@@ -145,7 +146,7 @@ internal readonly record struct HirAdjust(HirAcquire Acquire, HirAdaptation Adap
     };
 
     // An adaptation recorded at a node's fixed expected Type or for a receiver (SPEC 3.4.3, 3.5.3, 10.2); a Reborrow in the node's own mode
-    // keeps the Type, the bare acquisition.
+    // keeps the Semantics and the referent, the bare acquisition, its Origin the recorded Type's (DECISIONS BU-27).
     internal static HirAdaptation Of(in BoundAdaptation adaptation, BoundType? type) => adaptation.Kind switch
     {
         ExpectedAdaptationKind.ReferentRead => HirAdaptation.ReferentRead,
@@ -162,7 +163,7 @@ internal enum HirAcquire : byte
     None, // Used in place: a target, a projected, followed or borrowed Place, the Place its adaptation reads, or a group's operand.
     Copy,
     Move,
-    Reborrow, // The exclusive reference a Place stores, Reborrowed in its own mode.
+    Reborrow, // The exclusive reference a Place stores, Reborrowed in its own mode, of the Type its consumer expects (DECISIONS BU-27).
     ByCase, // As each Semantics case's Type acquires: a pair layer's Copy or Reborrow (SPEC 8.14).
     Temporary, // A value, not a Place, taken as it is.
 }

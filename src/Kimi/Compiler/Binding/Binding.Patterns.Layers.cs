@@ -35,7 +35,7 @@ public sealed partial class Binding
                 // is Reborrowed, so its Origin is met with the dependency reached so far.
                 var origin = reach.Origin;
                 var readOnly = type.Semantics == SemanticsKind.Ref || reach.Access == PatternAccessMode.Shared;
-                var restarted = type.Semantics == SemanticsKind.Ref || origin is null ? type.Origin ?? origin : type.Origin is { } layer ? this.Meet(origin, layer) : origin;
+                var restarted = this.MeetLayer(origin, type.Origin, shared: type.Semantics == SemanticsKind.Ref);
                 reach = new(readOnly ? PatternAccessMode.Shared : PatternAccessMode.Exclusive, restarted, OwnedPart: false);
                 type = type.Components[0];
                 layers++;

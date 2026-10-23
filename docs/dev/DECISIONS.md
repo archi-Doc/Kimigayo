@@ -1150,7 +1150,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   with a comment naming the affected rows. It marks what the default pipeline still decides; each such test migrates to the
   revised rule, dropping the trait, when MIR decides acceptance. Rejected: changing the expectations now (the default
   pipeline decides acceptance until R6-check); splitting mixed theories (churn for a marker); per-row markers (xUnit traits
-  are per method). Temporary: removed at R6-check.
+  are per method). Temporary: removed at R6-check. (Superseded in part by BU-27: tests whose S1 verdict the default pipeline now
+  gives through Binding's meet names drop OldRule now, not at R6-check.)
 - **R4-M51** (2026-10-17; design A3 §4.3's C1+C8 view and §4.1's In place row, owner approval of its §9 items 8 and 9 on
   2026-10-17; A5 step 1, unit 1a, redone after its review) Call retention, the Binding view A5's Loan flow reads for calls
   (SPEC 15.6.4). `TyCtxt.Retains(callee, Subst, definition)` and `TyCtxt.Retains(calleeType, signature, definition)` (a Value
@@ -4295,6 +4296,77 @@ resumed by R4-M86 (2026-10-20).
   whatever the program states — never Shared, not a regression (the reader threw), and G160-4 (B′ §4.4) reads Unstated as a concrete
   exclusive reference. Open (PLAN at merge): that nested case (nested paths in the reader, full process, or shapes that keep Type
   arguments' raw Origins); Binding keeps a pair argument's raw Origin, which SPEC 8.1.1's raw row drops.
+- **BU-27** (2026-10-23; the BU planning session after the full process: designs A and B, the design review with R4's A5 part, the
+  planning session's choice of B with A's `objuniq` Follow and A's residual issues; PLAN G226, G204, G192; unit bu27) A Borrow reached
+  through safe borrow layers (`ref`, `uniq`, `objref`, `objuniq`, a pair layer by its admitted cases) is contained in each from its
+  last dereference outward up to and including the first shared one, every one when none is shared (SPEC 15.6.3); its own Origin is
+  an inferred region (15.6.5), which Binding names by the meet of those Origins, fixed, finite or inferred (`Binding.Meet`'s
+  Intersection); one reached through no layer by its root's atom (bu18). Owner: `Binding.PlaceOrigins`, one walk `ContainedOrigin`
+  over `NextPathStep` (PlaceAuthority's one enumeration of a path's steps, which PathAuthority walks too; `MeetStep`): a follow
+  dereferences its operand's outer layer, a member or a borrowed element every layer of its receiver's own Type (`MeetLayers`, which
+  `SharedReferenceThroughLayers` reads too; its step `MeetLayer` is a Pattern position's in `SelectLayers` as well), a pair follow its
+  slot by its admitted cases, each going on unless shared; a user index's
+  published result, an Array or UniqSlice element's receiver Borrow (`PlaceOrigin` of the receiver), a Slice element's `source` and a
+  guard candidate's atom (`ref/T during g`, 14.8) end it, as a root, a special receiver and a raw dereference do (raw Origins stay
+  `Binding.RawOrigins`', G160-1). Entries: `PathReborrowOrigin(place, o)` and `ReferentOrigin(holder, reference, layers)` (the
+  reference's layers, then, unless one is shared, the holder's). Every naming site reads them: written Borrows; AdaptInput's
+  Reborrow and its read through several layers; AdaptObjectBorrow's view Reborrow (R4's C2); PairOrigin; PlaceOrigin's follow
+  branches and its exclusive-layer branch (G204: the layer met with the reaching ones, in place of the layer alone); AcquireSubject in
+  both modes (the exclusive Subject was `borrow = type`); SharedElement; the runtime Type test's shared view; a value call's
+  exclusive callee, whose Reborrow `AcquireValueCallee` publishes as the receiver operation's AdaptedType. PlaceOrigin keeps "a
+  reference read in place is its referent" and its other branches (the design review's B-2: only the walks are replaced). Deleted:
+  `SignatureOrigin` (0a106d62f's exemption of body-local and inferred layers, the rule before S1), PathReborrowOrigin's own walk,
+  FollowedOrigin, the copies `Meet(PlaceOrigin(x), stored)` (Patterns, SharedElement, RuntimeTypeTests).
+  HIR contract (`HirAdjust.Of`, `HirAcquire.Reborrow`; the review's N-B1/C5): a same-mode Reborrow keeps the stored Semantics and
+  referent, its Origin being Binding's name, the Type its consumer expects: a receiver's, argument's or payload's AdaptedType, a value
+  call's callee operation's, the Subject borrow (`Hir.Patterns.Subject` tests Semantics and referent, not Type identity), the `$tryWrite`
+  writer operation's (`MirBuilder.Formatting` now passes it), or the destination's Type at a bare `let`/`var`/`return`, a tuple or
+  array element, a Match binding or a capture (G227 states the capture's), and at an `if`, `match` or `do` result, whose common Type
+  (SPEC 14.9.2) is chosen from the Types its sources supply: a result source without a fixed Target Result Type (a selection's or
+  `do`'s body value, a jump's operand) is a bare acquisition position (SPEC 10.2; `Binding.BareAcquisition`'s
+  IsBareAcquisitionPosition), where `StoredReborrow`, the one rule for a stored `uniq/T` and `objuniq/T` (3.5.1) at every such
+  position, `var x = h.o` included, records the Reborrow whose named Type the join reads (the re-read's R1 deleted
+  `NamedReborrowType`, a second copy of that rule). `MirBuilder.Reborrowed` builds the Ref with that Type, as
+  `Acquired` types every other borrow by `expected`; a missing or disagreeing Type is a broken contract, `InternalInvariant_Kd` and a
+  derived Opaque, never the stored Type. The census (the suite, the library, milestones, goldens and the final review's probes) found
+  three positions without one: the value-call callee and the writer, both now published, and a jump Binding rejects (no target, an
+  unknown label, a `yield` outside a construct, an exit across a Closure), which no consumer takes, so the derived jump designates a
+  Place operand without acquiring it (`MirBuilder.Transfers.DerivedOperand`, R4 consenting); operator, index, compound-update and
+  Erasure operands take no bare Reborrow. Validator's view: MirValidator compares a Ref's referent and Place modulo Origins and its mode with its
+  Ref kind; only MirOrigins reads a Ref's Origin (its atom and Anchor; `Contain` reads the layers' stored Origins), so at a bare
+  acquisition into a destination the Ref's atom and Anchor are the destination's, as for every implicit borrow.
+  Departure from R4-M50 (R4 agreeing; G226 is a wrong-code fix D5 permits): the old analysis takes its Loans from Binding's names, so
+  the default pipeline gives SPEC 15.6.3's verdict on the S1 forms whose `found` is named through an index or `tryGet` result, and
+  their tests drop OldRule now: `DictionaryStoredReferenceTest`'s CompoundStoredReferences {OptionalTuple, GenericOptionalTuple},
+  DirectPlaceEntries {Shared, Exclusive}, ConstructionAndConditional {Conditional} and ExternalReborrows {Cleared, Removed}
+  (`ABorrowPastAResultKeepsTheContainersLoan`), and StoredInputAnalysisReusesItsStorage (valid twins); Tuple, Literal and
+  LocalInputs keep OldRule (the old analysis' S1 limit). PublicConflict gains the inner indexUniq receiver's record per call (15.6.2).
+  Census (on 5fca37089, with G160-1): every verdict change is a SPEC-invalid program newly rejected (the leak family of
+  `OriginRelationDiagnosticTest.ABorrowThroughLayersIsContainedInEach`, G192's p1 and `var cur = a@follow@uniq` returned as the inner
+  Origin, so G192 closes, and the S1 rows above); the diagnostic snapshot, the library, milestones, goldens and SPEC examples are
+  unchanged; on R4's held 2a-1b the MIR's containment family closes, the three pair-layer `x.item` rows (C1) included. R1 also
+  accepts the valid programs that read such a source as a Copy value before (`TransferRequired_Kd`: a stored `uniq` as an `if`,
+  `match`, `do` or `loop` result source or a jump's operand, a bare `objuniq` at any bare acquisition position) and names their
+  leaks; the diagnostic and semantic snapshots are unchanged.
+  Rejected: the outermost layer alone (equal under 15.6.1 only where well-formedness is a premise, which Binding has for signature
+  Types only; every existing meet renamed); a fresh region per Borrow with containment rows from Binding (a second copy of A5's E4
+  edges); MirOrigins skipping a containment edge whose head is Binding's name (R4's STOP option (B): a symptom fix that keeps `leak`
+  accepted); judging containment for Refuted only until G226 (STOP (C), temporary); A's generalized `ErasedTypes` column and a
+  Reborrow-only column (OQ-2: a closed column of a due file, two rules for a Ref's Type in one function). Open: R4's C3 (a Borrow
+  through a capture is not met with the Closure's call receiver, SPEC 15.6.3; G227); A's residuals (a finite source through a `var`
+  slot inside a meet, now Binding's Refuted for the probed forms; an inferred element Origin whose receiver Loan no pipeline carries,
+  `t2`/`t3`/LocalInputs); a discarded bare Reborrow (`_ = h.link`, and a bare Place alone in Discard Context, SPEC 14.2) has no
+  consumer Type: `MirBuilder.Discard`'s temporary takes the Place's stored Type through HIR Meaning, and a Place alone is read through
+  Into's by-case Ref of its stored Type, so A5 on R4's held 2a-1b judges a reaching layer's edge (`s -> a`) Unknown on a valid program
+  (no verdict changes on dev; the library and milestones are unaffected); no published channel carries Binding's name to a discard.
+  Options, none taken in this unit (the planning session's ruling, 2026-10-23): (a) a fact in the Discard node's plan row, a new HIR
+  fact for R4 and possibly the owner to decide; (b) publishing adaptation Types, A's rejected `ErasedTypes` column; (c) the builder
+  meeting the layers itself, a second copy of the rule. Not temporary. StoredReborrow is the one rule at bare acquisition
+  positions only: with a fixed expected Type, BindAndAdaptNode's clause (Binding.Expressions.cs:313) forces the Reborrow of a bare
+  stored reference whose expected Type equals its own for `uniq` alone, so `return h.o` with a fixed expected `objuniq` Type keeps
+  the stored Origin and the old analysis reports `TransferRequired_Kd` (no acceptance changes); that clause should read
+  StoredReborrow's predicate, with the re-read 2's w4 (`return h.o` from `h: uniq/(H2 during a) during s` as `objuniq/P during a`,
+  a leak) and w12v (the same under `origin s outlives a`, valid) as its failing-first rows (PLAN G232).
 - **BU-28** (2026-10-23; the BU planning session after the full process: designs A and B, the design review's choice of B with A's
   staging, display row and test owner; the owner's answer below; PLAN G227 (G65's remainder), unit bu29, 2a0-3b's prerequisite by the
   owner's (iii)) SPEC 15.6.5, 15.3.4: in a Closure body the Origins of its captures are fixed. They are the atoms an enclosing body formed

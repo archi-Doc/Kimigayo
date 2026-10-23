@@ -13,21 +13,42 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
 {
     private const string Header = "func change(value: uniq/i32) => value@follow = 99\nfunc run(value: uniq/i32 during a)\n    var entries: Dictionary<i32, uniq/i32 during a> = [:]\n    _ = entries.tryInsert(1, value@move)\n";
 
+    private const string Lookup = "func lookup<T>(entries: ref/Dictionary<i32, T>, key: ref/i32) -> Option<ref/T during entries> => entries.tryGet(key)\n";
+
+    private const string Compound = "func run(value: uniq/i32 during a)\n    var entries = [1: (value@move, 7)]\n    let found = ";
+
     // The `OldRule` tests below expect the rule before Loan identity by base (A5 S1). Now a Borrow carries the Loans of the
     // references it follows, from the last shared one on (SPEC 15.6.3), among them the Loan that the `index`, `indexUniq`
     // or `tryGet` result keeps on `entries`; clearing or removing from `entries` while `found` is live is then an error.
-    // The default pipeline keeps the old rule until R6-check.
+    // The default pipeline keeps the old rule for these forms until R6-check; the forms whose names Binding gives through the
+    // index result's layer (DECISIONS BU-27) have SPEC's verdict on it now (ABorrowPastAResultKeepsTheContainersLoan).
     [Theory]
     [Trait("OldRule", "S1")]
     [InlineData("Tuple", "entries[1].0@follow@ref")]
-    [InlineData("OptionalTuple", "match entries.tryGet(1)\n        .Some(let item) => item.0@follow@ref\n        .None => $abort(\"missing\")")]
-    [InlineData("GenericOptionalTuple", "match lookup(entries@ref, 1)\n        .Some(let item) => item.0@follow@ref\n        .None => $abort(\"missing\")")]
     public void CompoundStoredReferencesOutliveTheContainer(string name, string selection)
     {
-        var source = "func lookup<T>(entries: ref/Dictionary<i32, T>, key: ref/i32) -> Option<ref/T during entries> => entries.tryGet(key)\n" +
-            "func run(value: uniq/i32 during a)\n    var entries = [1: (value@move, 7)]\n    let found = " + selection +
-            "\n    entries.clear()\n    require found == 42 else => $abort(\"value\")\nvar value = 42\nrun(value@uniq)";
+        var source = Lookup + Compound + selection + "\n    entries.clear()\n    require found == 42 else => $abort(\"value\")\nvar value = 42\nrun(value@uniq)";
         ScalarEmissionTest.EmitFixture("DictionaryStoredReferenceCompound" + name, source, string.Empty);
+    }
+
+    // SPEC 15.6.3, 4.7.1 (DECISIONS BU-27; formerly OldRule S1 rows, R4-M50 superseded in part): `found` derives from the `index`,
+    // `indexUniq` or `tryGet` result and carries that call's Loan on `entries`, which Binding names in `found`'s Type, so clearing or
+    // removing from `entries` while `found` is live is a Loan conflict on the default pipeline too.
+    [Theory]
+    [InlineData("OptionalTuple", Lookup + Compound + "match entries.tryGet(1)\n        .Some(let item) => item.0@follow@ref\n        .None => $abort(\"missing\")\n    entries.clear()\n    require found == 42 else => $abort(\"value\")", "entries.clear()")]
+    [InlineData("GenericOptionalTuple", Lookup + Compound + "match lookup(entries@ref, 1)\n        .Some(let item) => item.0@follow@ref\n        .None => $abort(\"missing\")\n    entries.clear()\n    require found == 42 else => $abort(\"value\")", "entries.clear()")]
+    [InlineData("Shared", Header + "    let found = entries.index(1)@follow@follow@ref\n    entries.clear()\n    require found == 42 else => $abort(\"value\")", "entries.clear()")]
+    [InlineData("Exclusive", Header + "    let found = entries.indexUniq(1)@follow@follow@uniq\n    entries.clear()\n    found@follow = 99", "entries.clear()")]
+    [InlineData("Conditional", "func run(value: uniq/i32 during a, enabled: bool)\n    var entries: Dictionary<i32, uniq/i32 during a> = [:]\n    if enabled => _ = entries.tryInsert(1, value@move)\n    let found = entries[1]@follow@ref\n    entries.clear()\n    require found == 42 else => $abort(\"value\")", "entries.clear()")]
+    [InlineData("Cleared", Header + "    let view = entries@ref\n    let found = view[1]@follow@ref\n    entries.clear()\n    require found == 42 else => $abort(\"value\")", "entries.clear()")]
+    [InlineData("Removed", Header + "    let view = entries@ref\n    let found = view[1]@follow@ref\n    _ = entries.remove(1)\n    require found == 42 else => $abort(\"value\")", "entries.remove(1)")]
+    public void ABorrowPastAResultKeepsTheContainersLoan(string name, string source, string mutation)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, name + ": " + MinimalEmissionTest.Describe(c, null));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject).ToString() == mutation);
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -81,17 +102,6 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
     }
 
     [Theory]
-    [Trait("OldRule", "S1")]
-    [InlineData("Shared", "index", "ref", "require found == 42 else => $abort(\"value\")")]
-    [InlineData("Exclusive", "indexUniq", "uniq", "found@follow = 99")]
-    public void DirectPlaceEntriesPreserveTheStoredCapability(string name, string entry, string mode, string use)
-    {
-        var source = Header + "    let found = entries." + entry + "(1)@follow@follow@" + mode + "\n    entries.clear()\n    " + use +
-            "\nvar value = 42\nrun(value@uniq)\nrequire value == " + (mode == "uniq" ? "99" : "42") + " else => $abort(\"result\")";
-        ScalarEmissionTest.EmitFixture("DictionaryStoredReferenceDirect" + name, source, string.Empty);
-    }
-
-    [Theory]
     [InlineData("entries.index(1)@follow@follow@ref", "entries.indexUniq(1)@follow@follow = 99")]
     [InlineData("entries.indexUniq(1)@follow@follow@uniq", "let read: i32 = entries.index(1)@follow@follow")]
     public void DirectPlaceEntriesCannotBypassStoredChildren(string child, string access)
@@ -117,18 +127,15 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
         Assert.False(c.Validate(out _));
     }
 
-    // The Cleared and Removed rows follow the old rule, as above.
+    // The Cleared and Removed forms keep the index result's Loan (ABorrowPastAResultKeepsTheContainersLoan).
     [Theory]
     [Trait("Purpose", "Allocation")]
-    [Trait("OldRule", "S1")]
     [InlineData("Owned", "entries", "")]
     [InlineData("Shared", "view", "let view = entries@ref\n    ")]
     [InlineData("Exclusive", "view", "let view = entries@uniq\n    ")]
-    [InlineData("Cleared", "view", "let view = entries@ref\n    ", "entries.clear()")]
-    [InlineData("Removed", "view", "let view = entries@ref\n    ", "_ = entries.remove(1)")]
-    public void ExternalReborrowsDoNotDependOnTheReferenceSlot(string name, string receiver, string prefix, string after = "")
+    public void ExternalReborrowsDoNotDependOnTheReferenceSlot(string name, string receiver, string prefix)
     {
-        var source = Header + "    " + prefix + "let found = " + receiver + "[1]@follow@ref\n    " + after + "\n    require found == 42 else => $abort(\"value\")\nvar value = 42\nrun(value@uniq)";
+        var source = Header + "    " + prefix + "let found = " + receiver + "[1]@follow@ref\n    require found == 42 else => $abort(\"value\")\nvar value = 42\nrun(value@uniq)";
         NativeAllocationAudit.WriteFixture("DictionaryStoredReference" + name, source, 1, 1, 128);
     }
 
@@ -212,10 +219,10 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
         ScalarEmissionTest.EmitFixture("DictionaryStoredReferenceResume" + name, source, string.Empty);
     }
 
+    // The Conditional form is ABorrowPastAResultKeepsTheContainersLoan's.
     [Theory]
     [Trait("OldRule", "S1")]
     [InlineData("Literal", "var entries = [1: value@move]")]
-    [InlineData("Conditional", "var entries: Dictionary<i32, uniq/i32 during a> = [:]\n    if enabled => _ = entries.tryInsert(1, value@move)")]
     public void ConstructionAndConditionalStorageRetainTheInput(string name, string construction)
     {
         var source = "func run(value: uniq/i32 during a, enabled: bool)\n    " + construction + "\n    let found = entries[1]@follow@ref\n    entries.clear()\n    require found == 42 else => $abort(\"value\")\nvar value = 42\nrun(value@uniq, true)";
@@ -263,12 +270,15 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
         c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
-        Assert.Equal(independent ? 2 : 1, result.Diagnostics.Length);
-        foreach (var error in result.Diagnostics)
+        // SPEC 15.6.2, 15.6.3 (DECISIONS BU-27): each call conflicts with `found` at its argument's reservation and at its index's indexUniq
+        // receiver, an exclusive Borrow of `entries` while `found` keeps the index result's shared Loan on it.
+        Assert.Equal(independent ? 4 : 2, result.Diagnostics.Length);
+        for (var i = 0; i < result.Diagnostics.Length; i++)
         {
+            var error = result.Diagnostics[i];
             Assert.Equal("CallActivationConflict_Kd", error.Code);
             Assert.Equal(DiagnosticSeverity.Error, error.Severity);
-            Assert.Equal("change(entries[1])", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+            Assert.Equal(i % 2 == 0 ? "change(entries[1])" : "entries[1]", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
             var retained = Assert.Single(error.Related!);
             Assert.Equal("loan", retained.Role);
             Assert.Contains("found", source.Substring(retained.Span!.Value.Start, retained.Span.Value.Length), StringComparison.Ordinal);
@@ -300,16 +310,17 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
         }
     }
 
+    // The valid twins of ABorrowPastAResultKeepsTheContainersLoan's forms: `entries` is cleared after `found`'s last use, or not at all
+    // (DECISIONS BU-27).
     [Trait("Purpose", "Allocation")]
-    [Trait("OldRule", "S1")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void StoredInputAnalysisReusesItsStorage(bool optionalTuple)
     {
         var c = MinimalEmissionTest.Analyze(optionalTuple
-            ? "func run(value: uniq/i32 during a)\n    var entries = [1: (value@move, 7)]\n    let found = match entries.tryGet(1)\n        .Some(let item) => item.0@follow@ref\n        .None => $abort(\"missing\")\n    entries.clear()\n    require found == 42 else => $abort(\"value\")"
-            : Header + "    let found = entries[1]@follow@ref\n    entries.clear()\n    require found == 42 else => $abort(\"value\")");
+            ? "func run(value: uniq/i32 during a)\n    var entries = [1: (value@move, 7)]\n    let found = match entries.tryGet(1)\n        .Some(let item) => item.0@follow@ref\n        .None => $abort(\"missing\")\n    require found == 42 else => $abort(\"value\")"
+            : Header + "    let found = entries[1]@follow@ref\n    require found == 42 else => $abort(\"value\")\n    entries.clear()");
         Assert.True(c.Analyze().IsVerified);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
     }
