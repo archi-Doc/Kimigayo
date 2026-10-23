@@ -78,7 +78,7 @@ public class BorrowedDefaultTest
     public void ReferenceDefaultsAllocateNoRuntimeStorage()
         => NativeAllocationAudit.WriteFixture("BorrowedDefaultNoAllocation", Nested, 0, 0, 0);
 
-    [TestClass(DisableParallelization = true)]
+    [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]
     public class AllocationTests
     {

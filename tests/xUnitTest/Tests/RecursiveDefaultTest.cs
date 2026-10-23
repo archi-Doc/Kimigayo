@@ -123,7 +123,7 @@ public class RecursiveDefaultTest
         Assert.DoesNotContain("@__kimi_default1", ir, StringComparison.Ordinal);
     }
 
-    [TestClass(DisableParallelization = true)]
+    [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]
     public class AllocationTests
     {

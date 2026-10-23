@@ -60,7 +60,7 @@ public class DefaultInitializationTest
     private const string Prefix = "DefaultInitializationRelease";
 #endif
 
-    [TestClass(DisableParallelization = true)]
+    [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]
     public class AllocationTests
     {

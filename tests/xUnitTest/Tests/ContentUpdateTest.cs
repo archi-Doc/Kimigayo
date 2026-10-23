@@ -231,7 +231,7 @@ public class ContentUpdateTest
         Assert.All(result.Diagnostics, static record => Assert.True(record.Code is "ComparisonLoanConflict_Kd" or "CallActivationConflict_Kd"));
     }
 
-    [TestClass(DisableParallelization = true)]
+    [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]
     public class AllocationTests
     {

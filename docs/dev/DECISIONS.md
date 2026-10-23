@@ -88,6 +88,14 @@ rules that result from them.
     a responsibility boundary fails review (AGENTS).
   - Rejected: counting it, which forces a split or a ruling for files whose responsibility did not change.
 
+- **Q8 Allocation test isolation** (2026-10-23, planning session; G88). Formerly serial nested `AllocationTests`
+  join one `AllocationIsolationCollection`, declared with xUnit's `CollectionDefinition(DisableParallelization = true)`.
+  The existing `collections` runner mode ignores class-level `TestClass.DisableParallelization`; collection discovery
+  now publishes isolation where the scheduler consumes it. Replace all 24 ineffective class attributes. Functional
+  cases and allocation tests that already ran concurrently retain their collections. Rejected: removing isolation
+  (loses the documented measurement guarantee), or switching to `all` (changes every class's scheduling and needs an
+  unrelated fixture/static-state audit). No compiler representation changes; managed suite duration may increase.
+
 ## Code rules (2026-10-12)
 
 CR-R1 supersedes only the analyzer enforcement, Report and approval requirements in CR-A0–CR-A9b below.

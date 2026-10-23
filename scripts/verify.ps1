@@ -31,7 +31,7 @@
 #   ./scripts/verify.ps1 -Class XunitTest.PipelineSwitchTest -Pipeline mir -Codegen mir [-UpdatePending]
 #
 # Tests run up to -TestParallel collections at a time (default up to 8), respecting disabled
-# parallelization on test classes. Use -TestParallel 1 for serial execution.
+# parallelization on test collections. Use -TestParallel 1 for serial execution.
 # Unit -TestPurpose Functional/Allocation narrows a focused check; Session always runs both.
 # Native fixtures run up to -NativeParallel at a time (default up to 4), with individual logs.
 # Milestone harnesses run -Parallel at a time (default up to 8), each in its own process, work

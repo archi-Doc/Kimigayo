@@ -257,7 +257,7 @@ public class ContextualCaptureTest
         return TestDiagnostics.Of(c);
     }
 
-    [TestClass(DisableParallelization = true)]
+    [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]
     public sealed class AllocationTests
     {
