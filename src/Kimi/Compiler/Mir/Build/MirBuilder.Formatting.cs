@@ -36,7 +36,8 @@ internal sealed partial class MirBuilder
         if (first == 0)
         {
             var operand = ((InvocationKoto)((MacroKoto)node).Operand).ArgumentNodes[0];
-            var secured = this.Secure(this.Operand(operand, expected: null), operand).Place;
+            var input = HirTables.PlanOf(node).Formatting!.Acquisition!.BoundCall!.ArgumentOperations[0]; // The writer's, a Reborrow (BU-27).
+            var secured = this.Secure(this.Operand(operand, expected: input.AdaptedType ?? input.ParameterType), operand).Place;
             this.located.Add((storage, secured));
             if (this.IsNever(secured))
             {

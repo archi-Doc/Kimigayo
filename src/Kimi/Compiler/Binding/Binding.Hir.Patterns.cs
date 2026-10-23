@@ -11,8 +11,9 @@ public sealed partial class Binding
 {
     private sealed partial class HirPublisher
     {
-        // SPEC 15.1.6: a Subject is acquired as written, but a bare Place is borrowed in place: its stored exclusive reference Reborrowed, a
-        // stored exclusive reference reached through a shared layer read as one shared reference, and any other Place borrowed in its mode.
+        // SPEC 15.1.6: a Subject is acquired as written, but a bare Place is borrowed in place: its stored exclusive reference Reborrowed (the
+        // borrow keeps the stored Semantics and referent, its Origin Binding's name, DECISIONS BU-27), a stored exclusive reference reached
+        // through a shared layer read as one shared reference, and any other Place borrowed in its mode.
         private void Subject(Koto subject, BoundType? borrow)
         {
             if (borrow is null)
@@ -23,7 +24,9 @@ public sealed partial class Binding
 
             var mode = borrow.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? HirAdaptation.ExclusiveBorrow
                 : subject.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq } ? HirAdaptation.ReferenceRead : HirAdaptation.SharedBorrow;
-            this.Write(subject, ReferenceEquals(borrow, subject.BoundType) ? new(HirAcquire.Reborrow, HirAdaptation.None) : new(HirAcquire.None, mode));
+            var reborrow = subject.BoundType is { Kind: BoundTypeKind.Semantics, Components: [var stored] } own &&
+                borrow is { Kind: BoundTypeKind.Semantics, Components: [var lent] } && own.Semantics == borrow.Semantics && ReferenceEquals(lent, stored);
+            this.Write(subject, reborrow ? new(HirAcquire.Reborrow, HirAdaptation.None) : new(HirAcquire.None, mode));
         }
 
         // A Pattern binding its plan borrows, below a reference layer, designates the payload of its Case position or an element of its Tuple

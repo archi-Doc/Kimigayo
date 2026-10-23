@@ -299,6 +299,26 @@ public sealed partial class MirBuildTest
         Assert.True(deaths >= 2 && ends == deaths, $"{ends} EndBorrows, {deaths} StorageDeads");
     }
 
+    // SPEC 15.1.5, 15.6.3 (DECISIONS BU-27): a stored exclusive reference Reborrowed in its own mode, as an argument, a receiver and a
+    // Subject, is a Ref of the Type its consumer expects, Binding's name for the Reborrow: the meet of the stored layer and the parameter
+    // layer that reaches it, never the stored Type alone.
+    [Fact]
+    public void ABareReborrowIsARefOfItsNamedType()
+    {
+        const string Source = "func change(value: uniq/i32) => value@follow = 1\nstruct Counter\n    var count: i32\n    public init() => self.count = 0\n" +
+            "    public func bump(self: uniq/Self) => self.count = self.count + 1\nstruct Holder {a}\n    public var link: uniq/i32 during a\n" +
+            "    public var counter: uniq/Counter during a\n    public var o: uniq/Option<i32> during a\n" +
+            "func f(holder: uniq/(Holder during a) during h)\n    change(holder.link)\n    holder.counter.bump()\n    match holder.o\n" +
+            "        .Some(let v) => ()\n        .None => ()\npublic func main() => ()\n";
+        var program = Compile(Source).BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
+        var body = program.Bodies.ToArray().Single(x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        var refs = body.Statements.ToArray().Where(static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref }).Select(static x => x.Rvalue.Type!).ToArray();
+        Assert.True(refs.Length >= 3);
+        Assert.All(refs, static x => Assert.Equal(OriginKind.Intersection, x.Origin?.Kind));
+    }
+
     // SPEC 15.6.2: whether a Place is reached through a Deref of a shared reference or view, which grants Read only.
     private static bool BelowSharedDeref(MirBody body, MirPlace place)
     {

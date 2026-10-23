@@ -127,7 +127,7 @@ public sealed partial class Binding
         {
             var origin = this.PlaceOrigin(node);
             var referent = element.Semantics == SemanticsKind.Owner ? element : element.Components[0];
-            var dependency = element.Origin is { } stored ? this.Meet(origin, stored) : origin;
+            var dependency = element.Semantics == SemanticsKind.Owner ? origin : this.ReferentOrigin(node, element) ?? origin;
             var read = this.ElementRead(element, origin) ?? this.types.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: dependency);
             this.adaptations[node] = new(ExpectedAdaptationKind.SharedBorrow, read);
         }

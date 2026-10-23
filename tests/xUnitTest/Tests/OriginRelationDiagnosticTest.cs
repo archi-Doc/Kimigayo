@@ -30,6 +30,16 @@ public class OriginRelationDiagnosticTest
 
     private const string Cursor = "struct Cursor {source}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during source\n    let value: uniq/i32 during source\n";
 
+    private const string Entries = "    var entries: Dictionary<i32, uniq/i32 during a> = [1: value@move]\n";
+
+    private const string Holder2 = "struct Holder2 {a}\n    public var link: uniq/i32 during a\n";
+
+    private const string Box = "struct Box<T>\n    public var item: T\n";
+
+    private const string Optional = "struct H {a}\n    public var o: uniq/Option<string> during a\n";
+
+    private const string View = "struct P\n    public var x: i32 = 0\n    public init() => ()\nstruct H2 {a}\n    public var o: objuniq/P during a\n";
+
     [Theory]
     [InlineData(Bad, nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "r", "requires the borrow local@ref outlives x, which is false", "local@ref")]
     [InlineData("func pick(a: ref/i32, b: ref/i32) -> ref/i32 during a\n    return b\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "b", "requires b outlives a, which is not proven", null)]
@@ -78,6 +88,35 @@ public class OriginRelationDiagnosticTest
         }
     }
 
+    // SPEC 15.6.3, 4.7.1 (DECISIONS BU-27): a Borrow reached through safe borrow layers is contained in each, from its last dereference
+    // outward up to and including the first shared one: an index result's reference to a local Dictionary, Array or UniqSlice, a local's
+    // borrow, a Slice view, a stored reference reached through an exclusive parameter, local, object view or receiver. Binding names it by
+    // their meet, so returning it as one inner layer's Origin is Refuted (a body-local layer) or Unknown (a fixed one).
+    [Theory]
+    [InlineData("func leak(value: uniq/i32 during a) -> ref/i32 during a\n" + Entries + "    let found = entries[1]@follow@ref\n    return found\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "found", "requires the borrow entries[1]@follow@ref outlives a, which is false")]
+    [InlineData("func leak(value: uniq/i32 during a) -> ref/i32 during a\n" + Entries + "    return entries.index(1)@follow@follow@ref\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "entries.index(1)@follow@follow@ref", "requires the borrow entries.index(1)@follow@follow@ref outlives a, which is false")]
+    [InlineData("func leak(value: uniq/i32 during a) -> uniq/i32 during a\n" + Entries + "    return entries.indexUniq(1)@follow@follow@uniq\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "entries.indexUniq(1)@follow@follow@uniq", "requires the borrow entries.indexUniq(1)@follow@follow@uniq outlives a, which is false")]
+    [InlineData("func leak(value: uniq/i32 during a) -> ref/i32 during a\n    var entries: Array<uniq/i32 during a> = [value@move]\n    return entries[0]@follow@ref\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "entries[0]@follow@ref", "requires the borrow entries[0]@follow@ref outlives a, which is false")]
+    [InlineData("func leak(view: UniqSlice<uniq/i32 during a> during s) -> uniq/i32 during a\n    var v = view@move\n    return v[0]@follow@uniq\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "v[0]@follow@uniq", "requires the borrow v[0]@follow@uniq outlives a, which is false")]
+    [InlineData("func leak(value: uniq/i32 during a) -> uniq/i32 during a\n" + Entries + "    return entries[1]\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "entries[1]", "requires the borrow entries outlives a, which is false")]
+    [InlineData("func leak(value: uniq/i32 during a) -> uniq/i32 during a\n" + Entries + "    let c = entries[1]\n    return c\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "c", "requires the borrow entries outlives a, which is false")]
+    [InlineData("func keep(value: uniq/i32 during a) -> uniq/i32 during a => value\nfunc leak(value: uniq/i32 during a) -> uniq/i32 during a\n" + Entries + "    return keep(entries[1])\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "keep(entries[1])", "requires the borrow entries outlives a, which is false")]
+    [InlineData("func leak(value: uniq/i32 during a) -> ref/i32 during a\n    let slot = value@move\n    let r = slot@ref\n    return r@follow@follow@ref\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "r@follow@follow@ref", "requires the borrow r@follow@follow@ref outlives a, which is false")]
+    [InlineData("func leak(p: uniq/i32 during a) -> uniq/i32 during a\n    var slot = p\n    var rr = slot@uniq\n    return rr@follow@follow@uniq\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "rr@follow@follow@uniq", "requires the borrow slot outlives a, which is false")]
+    [InlineData("func leak(values: Slice<uniq/i32 during a> during s) -> ref/i32 during a\n    return values[0]@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "values[0]@follow@ref", "requires s outlives a, which is not proven")]
+    [InlineData("func leak(p: uniq/(uniq/i32 during a) during b) -> uniq/i32 during a\n    var q = p\n    return q@follow@follow@uniq\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "q@follow@follow@uniq", "requires b outlives a, which is not proven")]
+    [InlineData("func leak(a: uniq/(uniq/i32 during x) during y) -> uniq/i32 during x\n    var cur = a@follow@uniq\n    return cur@follow@follow@uniq\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "cur@follow@follow@uniq", "requires y outlives x, which is not proven")]
+    [InlineData(Holder2 + "func leak(holder: uniq/(Holder2 during a) during h) -> uniq/i32 during a\n    return holder.link\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "holder.link", "requires h outlives a, which is not proven")]
+    [InlineData(Box + "func leak(h: objref/Box<uniq/i32 during a> during o) -> ref/i32 during a\n    return h.item@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "h.item@follow@ref", "requires o outlives a, which is not proven")]
+    [InlineData(View + "func leak(h: uniq/(H2 during a) during s) -> uniq/i32 during a\n    return h.o@follow.x@uniq\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "h.o@follow.x@uniq", "requires s outlives a, which is not proven")]
+    [InlineData(Optional + "    public func get(self: uniq/Self during s) -> uniq/string during a\n        match self.o\n            .Some(let v) => return v\n            .None => $abort(\"none\")\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "v", "requires s outlives self.a, which is not proven")]
+    public void ABorrowThroughLayersIsContainedInEach(string body, string code, string text, string label)
+    {
+        var source = body + Main;
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((code, text, label), (error.Code, Text(source, error.Span), error.Label));
+    }
+
     // SPEC 15.6.1: a relation that a premise proves is no failure.
     [Theory]
     [InlineData("func f(x: ref/i32, y: ref/i32, c: bool) -> ref/i32 during x\n    origin y outlives x\n    return if c => x else => y\n")]
@@ -108,6 +147,21 @@ public class OriginRelationDiagnosticTest
     [InlineData("func first(view: ref/(Slice<i32> during s)) -> ref/i32 during s => view@follow[0]@ref\n")]
     [InlineData("func tail(view: ref/(Slice<i32> during s)) -> Slice<i32> during s => view@follow[1..]\n")]
     [InlineData("func first(p: ref/(ref/[3 of i32] during a) during b) -> ref/i32 during a => p@follow[0]@ref\n")]
+    // SPEC 15.6.3, 15.6.1 (DECISIONS BU-27): the valid twins of ABorrowThroughLayersIsContainedInEach: each layer outlives the declared
+    // Origin (a premise of a signature Type's well-formedness when it is an inner one), or the Borrow is not returned.
+    [InlineData("func run(value: uniq/i32 during a) -> i32\n" + Entries + "    let found = entries[1]@follow@ref\n    return found@follow\n")]
+    [InlineData("func run(left: uniq/i32 during a, right: uniq/i32 during a) -> i32\n    var first: Dictionary<i32, uniq/i32 during a> = [:]\n    var second: Dictionary<i32, uniq/i32 during a> = [:]\n    _ = first.tryInsert(1, left@move)\n    _ = second.tryInsert(1, right@move)\n    let found = first[1]@follow@ref\n    second[1]@follow = 99\n    return found@follow\n")]
+    [InlineData("func keep(value: uniq/i32 during a) -> ref/i32 during a\n    let entries: [1 of uniq/i32 during a] = [value@move]\n    return entries[0]@follow@ref\n")]
+    [InlineData("func get(entries: ref/Dictionary<i32, uniq/i32 during a> during e) -> ref/i32 during e\n    return entries[1]@follow@ref\n")]
+    [InlineData("func elem(values: Slice<uniq/i32 during a> during s) -> ref/i32 during s\n    return values[0]@follow@ref\n")]
+    [InlineData("func f(p: uniq/(uniq/i32 during a) during b) -> uniq/i32 during b\n    var q = p\n    return q@follow@follow@uniq\n")]
+    [InlineData("func f(a: uniq/(uniq/i32 during x) during y) -> uniq/i32 during y\n    var cur = a@follow@uniq\n    return cur@follow@follow@uniq\n")]
+    [InlineData(Holder2 + "func f(holder: uniq/(Holder2 during a) during h) -> uniq/i32 during h\n    return holder.link\n")]
+    [InlineData(Box + "func f(h: objref/Box<uniq/i32 during a> during o) -> ref/i32 during o\n    return h.item@follow@ref\n")]
+    [InlineData(Optional + "    public func get(self: uniq/Self during s) -> uniq/string during s\n        match self.o\n            .Some(let v) => return v\n            .None => $abort(\"none\")\n")]
+    [InlineData("func f(value: uniq/Option<i32> during a) -> i32\n    var entries: Dictionary<i32, uniq/Option<i32> during a> = [1: value@move]\n    match entries[1]\n        .Some(let x) => return x\n        .None => return 0\n")]
+    [InlineData("struct Borrowing<I> {source}\n    var iterator: uniq/I during source\n    public func next(self: uniq/Self during step) -> Option<I.(LendingIterator).LentItem(step)>\n        I is LendingIterator\n        return self.iterator.next()\n")]
+    [InlineData("func takeFirst<S>(h: uniq/(uniq/S during s, i32)) -> Option<S.Item>\n    S is Iterator\n    var r = h@follow@uniq\n    let first = r.0.next()\n    h.1 = 5\n    return first@move\n")]
     // SPEC 15.6.3, 22.2.1: a LendingIterator's item may name the receiver borrow `step` that contains the Reborrow.
     [InlineData("struct Cursor {source}\n    Self is LendingIterator\n    associate LentItem(step) is ref/i32 during step\n    let value: uniq/i32 during source\n    public func next(self: uniq/Self during step) -> Option<ref/i32 during step> => .Some(self.value)\n")]
     public void AProvenRelationIsAccepted(string body)

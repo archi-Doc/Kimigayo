@@ -193,7 +193,7 @@ public sealed partial class Binding
     }
 
     // SPEC 3.4.3, 4.7.1, 4.8.2, 5.2, 13.5.5: one step of a Place's path from the leaf toward its root, the one enumeration of a path's
-    // forms that PathAuthority and PathOrigin walk: what `source` selects, and next, the node it selects from (`source` itself at a
+    // forms that PathAuthority, PathOrigin and ContainedOrigin walk: what `source` selects, and next, the node it selects from (`source` itself at a
     // root, a guard candidate or a special receiver). Exception until R6-gen: PlaceOriginSource keeps its own walk, which the old
     // Emission reads and which also passes forms this treats as roots (an Array range selection).
     private static PathStep NextPathStep(Koto source, out Koto next)
