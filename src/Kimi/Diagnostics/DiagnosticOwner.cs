@@ -11,7 +11,7 @@ namespace Kimi.Diagnostics;
 /// Facts are recorded in partitions and aggregated by problem; recording an Error sets the error state before any
 /// suppression, and finalization forms explanations only for published records. Analysis is single-threaded, so nothing is locked.
 /// </summary>
-public sealed class DiagnosticOwner
+public sealed partial class DiagnosticOwner
 {
     private readonly List<SourceEntry> sources = [];
     private readonly Dictionary<SourceDocument, int> documentSources = new(ReferenceEqualityComparer.Instance);

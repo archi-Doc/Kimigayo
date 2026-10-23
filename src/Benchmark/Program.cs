@@ -147,6 +147,12 @@ public class Program
             return;
         }
 
+        if (args.Length > 0 && args[0] == "--syntax-edits")
+        {
+            SyntaxEditMeasurements.Run();
+            return;
+        }
+
         if (args.Length > 0 && args[0] == "--compiler-pipeline")
         {
             CompilerPipelineMeasurements.Run();

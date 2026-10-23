@@ -10,7 +10,7 @@ namespace XunitTest;
 
 // SPEC 23.2.2 and 23.1: one owner per check request, partitions with an error state independent of display,
 // records ordered by source table and span, one fault record, and a JSON form that keeps every field.
-public sealed class DiagnosticOwnerTest
+public sealed partial class DiagnosticOwnerTest
 {
     [Fact]
     public void RecordsFollowSourceTableThenSpanWithSourcelessLast()

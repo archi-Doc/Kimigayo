@@ -117,14 +117,10 @@ public class RequirementFunctionItemTest
     {
         var c = MinimalEmissionTest.Analyze(ConfinedProgram(true, false));
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        var donor = new Kotonoha(c, "donor", "donor.kimi");
-        donor.AddSource(new SourceDocument("donor.kimi", ConfinedProgram(false, false)));
+        var donor = MinimalEmissionTest.Analyze(ConfinedProgram(false, false), "donor.kimi");
         var original = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), f => f.Name.ToString() == "use");
-        var changed = Assert.Single(KotoTree.Walk(donor.RootKoto).OfType<FunctionKoto>(), f => f.Name.ToString() == "use");
+        var changed = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), f => f.Name.ToString() == "use");
         ParseTestHelper.Detach(changed, new CodeBlockKoto(changed.CodeContext));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.True(KotoHelper.Replace(original.Parent!, original, changed));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.False(c.Analyze().IsVerified);

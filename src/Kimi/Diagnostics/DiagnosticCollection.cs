@@ -112,6 +112,64 @@ public sealed class DiagnosticCollection
         return entry;
     }
 
+    // SPEC 23.1, 23.1.3: a candidate names a catalog kind with that kind's facts, has edits that do not overlap, judges each
+    // relevant condition exactly once, and never belongs to a derived record. Edits are ordered by position with insertions at one
+    // point joined, and the candidates by kind then first edit, so repeated reports and outputs compare one form.
+    internal static DiagnosticRepairFact[] ValidateRepairs(DiagnosticEntry entry, DiagnosticRepairFact[] repairs, bool derived)
+    {
+        if (RepairKinds.Anomalies.Count != 0)
+        {
+            throw new DiagnosticContractException(DiagnosticFault.Catalog, RepairKinds.Anomalies[0]);
+        }
+
+        if (derived)
+        {
+            throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{entry.Name} is derived and offers repair candidates.");
+        }
+
+        var candidates = new DiagnosticRepairFact[repairs.Length];
+        for (var i = 0; i < repairs.Length; i++)
+        {
+            var repair = repairs[i];
+            if (!RepairKinds.TryGet(repair.Kind, out var kind))
+            {
+                throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{entry.Name} offers a repair of the unknown kind {repair.Kind}.");
+            }
+
+            var facts = repair.Facts ?? [];
+            if (facts.Length != kind.FactSchema.Length)
+            {
+                throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{kind.Name} takes {kind.FactSchema.Length} facts, not {facts.Length}.");
+            }
+
+            for (var j = 0; j < facts.Length; j++)
+            {
+                DiagnosticEntry.ValidateValue(kind.Name, kind.FactSchema[j], facts[j]);
+            }
+
+            var judged = repair.Verified | repair.Required;
+            if ((repair.Verified & repair.Required) != 0 || (judged & ~kind.Relevant) != 0 || (judged | kind.Conditional) != kind.Relevant)
+            {
+                throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{kind.Name} judges each of its conditions ({kind.Conditions}) exactly once; verified {repair.Verified}, required {repair.Required}.");
+            }
+
+            if (repair.Edits is not { Length: > 0 })
+            {
+                throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{kind.Name} offers a repair without edits.");
+            }
+
+            candidates[i] = repair with { Facts = facts.Length == 0 ? null : DiagnosticOwner.Capture(facts), Edits = OrderEdits(kind.Name, repair.Edits) };
+        }
+
+        Array.Sort(candidates, static (x, y) =>
+        {
+            var order = x.Kind.CompareTo(y.Kind);
+            order = order != 0 ? order : x.Edits[0].Source.CompareTo(y.Edits[0].Source);
+            return order != 0 ? order : x.Edits[0].Start.CompareTo(y.Edits[0].Start);
+        });
+        return candidates;
+    }
+
     /// <summary>Records excluded syntax of this target's document (SPEC 19.4).</summary>
     /// <param name="range">The excluded syntax.</param>
     /// <param name="directive">The innermost excluding directive.</param>
@@ -319,63 +377,11 @@ public sealed class DiagnosticCollection
         return new(role, this.SourceOf(document), document is null ? 0 : span.Start, document is null ? -1 : span.Length, label);
     }
 
-    // SPEC 23.1, 23.1.3: a candidate names a catalog kind with that kind's facts, has edits that do not overlap, judges each
-    // relevant condition exactly once, and never belongs to a derived record. Edits are ordered by position with insertions at one
-    // point joined, and the candidates by kind then first edit, so repeated reports and outputs compare one form.
-    private static DiagnosticRepairFact[] ValidateRepairs(DiagnosticEntry entry, DiagnosticRepairFact[] repairs, bool derived)
-    {
-        if (RepairKinds.Anomalies.Count != 0)
-        {
-            throw new DiagnosticContractException(DiagnosticFault.Catalog, RepairKinds.Anomalies[0]);
-        }
+    internal bool HasSameTarget(DiagnosticCollection other)
+        => ReferenceEquals(this.Owner, other.Owner) && this.CurrentModule() == other.CurrentModule();
 
-        if (derived)
-        {
-            throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{entry.Name} is derived and offers repair candidates.");
-        }
-
-        var candidates = new DiagnosticRepairFact[repairs.Length];
-        for (var i = 0; i < repairs.Length; i++)
-        {
-            var repair = repairs[i];
-            if (!RepairKinds.TryGet(repair.Kind, out var kind))
-            {
-                throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{entry.Name} offers a repair of the unknown kind {repair.Kind}.");
-            }
-
-            var facts = repair.Facts ?? [];
-            if (facts.Length != kind.FactSchema.Length)
-            {
-                throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{kind.Name} takes {kind.FactSchema.Length} facts, not {facts.Length}.");
-            }
-
-            for (var j = 0; j < facts.Length; j++)
-            {
-                DiagnosticEntry.ValidateValue(kind.Name, kind.FactSchema[j], facts[j]);
-            }
-
-            var judged = repair.Verified | repair.Required;
-            if ((repair.Verified & repair.Required) != 0 || (judged & ~kind.Relevant) != 0 || (judged | kind.Conditional) != kind.Relevant)
-            {
-                throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{kind.Name} judges each of its conditions ({kind.Conditions}) exactly once; verified {repair.Verified}, required {repair.Required}.");
-            }
-
-            if (repair.Edits is not { Length: > 0 })
-            {
-                throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{kind.Name} offers a repair without edits.");
-            }
-
-            candidates[i] = repair with { Facts = facts.Length == 0 ? null : DiagnosticOwner.Capture(facts), Edits = OrderEdits(kind.Name, repair.Edits) };
-        }
-
-        Array.Sort(candidates, static (x, y) =>
-        {
-            var order = x.Kind.CompareTo(y.Kind);
-            order = order != 0 ? order : x.Edits[0].Source.CompareTo(y.Edits[0].Source);
-            return order != 0 ? order : x.Edits[0].Start.CompareTo(y.Edits[0].Start);
-        });
-        return candidates;
-    }
+    internal int CurrentModule()
+        => this.module >= 0 ? this.module : this.Owner.UnattributedModule();
 
     private static DiagnosticEditFact[] OrderEdits(string kind, DiagnosticEditFact[] edits)
     {
@@ -410,9 +416,6 @@ public sealed class DiagnosticCollection
 
         return count == ordered.Length ? ordered : ordered[..count];
     }
-
-    private int CurrentModule()
-        => this.module >= 0 ? this.module : this.Owner.UnattributedModule();
 
     private int SourceOf(SourceDocument? document)
         => document is null ? -1 : this.Owner.DocumentSource(document, this.CurrentModule());

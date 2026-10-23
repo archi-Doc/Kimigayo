@@ -280,7 +280,7 @@ public sealed partial class Binding
         void Consider(Koto candidate, SourceSpan? span, TypeSemanticsKoto? set, bool scalar)
         {
             var start = span?.Start ?? candidate.Span.Start;
-            if (!ReferenceEquals(candidate, annotation) && ReferenceEquals(candidate.CodeContext, annotation.CodeContext) &&
+            if (!ReferenceEquals(candidate, annotation) && candidate.CodeContext.HasSameSource(annotation.CodeContext) &&
                 start < annotation.Span.Start && (earlier is not { } found || start < (found.Span?.Start ?? found.At.Span.Start)))
             {
                 earlier = (candidate, span, set, scalar);
