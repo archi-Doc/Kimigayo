@@ -4611,6 +4611,17 @@ resumed by R4-M86 (2026-10-20).
     only (PlanB's C2 routing condition unmet); Invalid as both polarities (ProveProposition would skip its structural judgment where
     facts alone give both, changing EndProof's cause); the raw proposition at C2 (two normalizations per proof).
 
+- **BU-32 HIR publication separates evaluation and operation classification** (2026-10-23; the planning session after independent
+  design review; G141's prerequisite) The existing `HirPublisher` keeps its walk, publication version, reusable storage and column
+  writes in `Binding.Hir.cs`. Its evaluation-position and Op rules move together into `Binding.Hir.Operations.cs`: `HirPosition`,
+  `PartsPublished`, `Rejected`, `CompoundPlace`, `PositionOf`, `Keeps`, `Parts`, `OpOf`, `KindOp`, `HasBody` and `NameOp`. The rules
+  classify a node and its parts from the current walk and Binding's existing facts, including the children an Error keeps; the
+  publisher writes those results. Expressions, visibility, evaluation order, state and the R7 removal stage are unchanged.
+  - The split precedes G141: after `19d22214f`, Q16, 2x-E2 and 2x-E8 changed `Binding.Hir.cs`; `abe8299af` split Adjust, not this file.
+    It separates one existing responsibility within its owner, adding no component, representation or vocabulary. Rejected: moving
+    classification into `.Facts` (which must not choose an Op), `.Adjust` (acquisition), or `.Patterns` (Pattern acquisition); a split by
+    line count would leave those contracts mixed. G141's call-publication change is a separate unit.
+
 ## R5 and R6 (adopted 2026-10-18)
 
 The owner's answers to the plan's questions OQ1–OQ17, given on 2026-10-18 and relayed by the R4 planning session. "Plan"
