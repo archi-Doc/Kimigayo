@@ -3,7 +3,8 @@
 // Owns constructed Type interning and pure Type operations, and the lifetime of TyCtxt's views (ResetViews); substitutions are
 // TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's.
 // Input: immutable Type shapes. Output: canonical Types and derived views.
-// Interned identity is equality; values live with the compilation and survive warm rebinds.
+// Interned identity is equality; values live with the compilation and survive warm rebinds. No instance or Item states a raw Origin on
+// a pair slot's argument: Intern binds each by PairBinding (SPEC 8.1.1; DECISIONS BU-34).
 // Must not resolve source expressions or let consumers duplicate Type construction.
 
 using System.Runtime.CompilerServices;
@@ -18,6 +19,9 @@ namespace Kimi.Compiler;
 internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 {
     private readonly Dictionary<int, List<BoundType>> types = new();
+
+    // The Components PairBindings binds, reused by every Intern (nothing interned while it is filled reaches PairBindings).
+    private BoundType[] pairScratch = [];
 
     // SPEC 3.4.3, 13.5.5: the layer selection follows implicitly at a Type, a Deref of a reference or object handle or a PairLayer of a
     // pair layer, with the Type below it and the pair binder whose Semantics case decides the PairLayer (its SemanticsTarget, the
@@ -121,6 +125,11 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
             }
         }
 
+        if (kind is BoundTypeKind.Constructed or BoundTypeKind.FunctionItem && AnyCarriesRawOrigin(components))
+        {
+            components = this.PairBindings(kind, symbol, components);
+        }
+
         var hash = default(HashCode);
         hash.Add(kind);
         hash.Add(closureContext is null ? 0 : RuntimeHelpers.GetHashCode(closureContext));
@@ -189,6 +198,11 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     internal BoundType Pointer(BoundType referent, BoundOrigin? rawOrigin = null)
         => this.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Raw, [referent], origin: rawOrigin);
 
+    // SPEC 8.1.1, 8.1.2: the binding a pair slot holds for a Type argument, which the slot's original `s/T` denotes: a raw layer states no
+    // Origin in a pair (`raw/T during o` fits by dropping it), any other argument is itself, its components' Origins kept.
+    internal BoundType PairBinding(BoundType whole)
+        => whole is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, RawOrigin: not null } ? this.Pointer(whole.Components[0]) : whole;
+
     // The same Type with these components, Origin and Origin arguments, every other part kept, a raw layer's Origin included: the one form
     // of a rebuild that keeps a Type's shape (DECISIONS BU-24). A raw layer takes no `origin` (its role's getter gives none).
     internal BoundType Rebuild(BoundType type, ReadOnlySpan<BoundType> components, BoundOrigin? origin, ReadOnlySpan<BoundOrigin> originArguments)
@@ -213,5 +227,55 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
         this.ResetRetentions();
         this.ResetInstances();
         this.ResetDispatch();
+    }
+
+    // Intern's guard of PairBindings: whether a Component's subtree states a raw Origin (BoundType.CarriesRawOrigin), so any other instance
+    // or Item pays one summary bit per Component, inlined in Binding's hottest path.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool AnyCarriesRawOrigin(ReadOnlySpan<BoundType> components)
+    {
+        var carries = false;
+        for (var i = 0; i < components.Length; i++)
+        {
+            carries |= components[i].CarriesRawOrigin;
+        }
+
+        return carries;
+    }
+
+    // SPEC 8.1.1 (this file's invariant): an instance's (Constructed) or Item's (FunctionItem) Components, some carrying a raw Origin, with
+    // each pair slot's argument its PairBinding, in the reused scratch when one changes, else `components`. A Constructed's Component i
+    // holds its schema's slot i (an enclosing declaration's slots included), an Item's the Component Binding.ItemComponent gives.
+    // PairBinding interns a Semantics layer, which never comes here.
+    private ReadOnlySpan<BoundType> PairBindings(BoundTypeKind kind, BindingSymbol? symbol, ReadOnlySpan<BoundType> components)
+    {
+        if (symbol?.Schema is not { } schema)
+        {
+            return components;
+        }
+
+        var bound = Span<BoundType>.Empty;
+        for (var slot = 0; slot < schema.GenericSlots.Count; slot++)
+        {
+            if (schema.GenericSlots[slot].Kind != GenericSlotKind.Pair)
+            {
+                continue;
+            }
+
+            var at = kind == BoundTypeKind.Constructed ? slot : Binding.ItemComponent((FunctionKoto)symbol.Declaration, slot);
+            if (at < components.Length && this.PairBinding(components[at]) is var binding && !ReferenceEquals(binding, components[at]))
+            {
+                if (bound.IsEmpty)
+                {
+                    this.pairScratch = this.pairScratch.Length < components.Length ? new BoundType[components.Length] : this.pairScratch;
+                    bound = this.pairScratch.AsSpan(0, components.Length);
+                    components.CopyTo(bound);
+                }
+
+                bound[at] = binding;
+            }
+        }
+
+        return bound.IsEmpty ? components : bound;
     }
 }

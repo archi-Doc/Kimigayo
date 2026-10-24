@@ -4716,7 +4716,8 @@ resumed by R4-M86 (2026-10-20).
   is reached only through instance shapes, which state no raw Origin, so it reads Unstated with `RawMembers(instance)` complete and empty
   whatever the program states — never Shared, not a regression (the reader threw), and G160-4 (B′ §4.4) reads Unstated as a concrete
   exclusive reference. Open (PLAN at merge): that nested case (nested paths in the reader, full process, or shapes that keep Type
-  arguments' raw Origins); Binding keeps a pair argument's raw Origin, which SPEC 8.1.1's raw row drops.
+  arguments' raw Origins; for Type slots since BU-34); Binding keeps a pair argument's raw Origin, which SPEC 8.1.1's raw row drops:
+  superseded by BU-34.
 - **BU-27** (2026-10-23; the BU planning session after the full process: designs A and B, the design review with R4's A5 part, the
   planning session's choice of B with A's `objuniq` Follow and A's residual issues; PLAN G226, G204, G192; unit bu27) A Borrow reached
   through safe borrow layers (`ref`, `uniq`, `objref`, `objuniq`, a pair layer by its admitted cases) is contained in each from its
@@ -4947,7 +4948,7 @@ resumed by R4-M86 (2026-10-20).
     walk's own (a second copy of BU-12's limits).
   - Open: a raw layer a pair parameter supplies reads the Origin Binding keeps (`Holder<raw/i32 during x>`: Exclusive, not untied);
     SPEC 8.1.1 drops it (R4-M117 item 4 keeps that rule), and a later BU unit changes Binding's checking and these rows together (R4's
-    N1). The review's N2, for a later SPEC session before G160-5 (R4 puts it to the owner; its rows are a later BU unit): a raw layer that
+    N1): superseded by BU-34. The review's N2, for a later SPEC session before G160-5 (R4 puts it to the owner; its rows are a later BU unit): a raw layer that
     is not the argument gets no row of its own value, one inside a Tuple or Option argument (`f(t: (raw/i32, i32), slot: raw/(raw/i32))`)
     or a pointer read through a raw or borrowed argument (`p: raw/(raw/i32)` or `r: ref/(raw/i32)` into `slot`), since Content follows
     Origins and 15.6.4 names only a raw pointer argument. A result's holds include positions behind a borrow, as D6's raw layers do
@@ -4984,6 +4985,50 @@ resumed by R4-M86 (2026-10-20).
     Rejected: moving or copying storage to the macro (breaks legacy readers or duplicates the decision), adding a source field to
     CallPlan (extra state while retaining the redundant Group), or a new IR/table. The existing view row corrects the public subject
     without another allocation; removing Group work is expected to preserve compilation and native costs.
+
+- **BU-34 A pair slot binds a raw argument without its Origin** (2026-10-25; the BU planning session after the full process: designs A
+  and B, the design review's choice of B's structure with A's name; unit bu34; R4's A5-facing review: accepted with the two record
+  fixes below) SPEC 8.1.1's raw row, which the owner kept (R4-M117 item 4, 「推奨の通り、落とす規則を残します。SPEC は変えず、Binding を
+  SPEC に合わせます。」): a `raw/T during o` argument fits a pair by dropping its Origin, so the slot binds `raw/T`, which its original
+  `s/T` denotes (8.1.2). Binding kept the argument whole: it rejected valid forms (`Holder<raw/i32 during x>.init(v: q)`, `q` unstated),
+  accepted invalid ones (`id(p)` returned `during x`), and the raw steps and rows read the dropped Origin (BU-30's Open).
+  - One rule, `TyCtxt.PairBinding(W)`: a raw W stating an Origin gives `Pointer(target)`, any other W itself (a property pattern, so no
+    raw-role site is added). Its two callers are the two points that hold slot arguments: `TyCtxt.Intern`'s private pre-pass
+    `PairBindings`, before the hash and only when a Component's `CarriesRawOrigin` bit is set (an inlined guard; the unguarded call cost
+    about 0.5% warm Bind), for `Constructed` (Component i of a schema slot of Kind Pair, an enclosing declaration's slots and
+    Contract references included) and `FunctionItem` (the slot's Component by `Binding.ItemComponent`, the Item layout's one statement,
+    which `CopyItemArguments` and `ItemTypeArgumentCount` read since the restructuring commit), writing one reused TyCtxt scratch (0 B
+    warm); and `SubstituteTypeCore`'s pair arm, where an original `s/T` reads `PairBinding(arguments[slot])` before the unchanged
+    annotation branch. Invariant (TyCtxt.cs's head): no instance or Item states a raw Origin on a pair slot's argument. Neither point
+    suffices alone: Intern never sees a call's argument list (`id<raw/i32 during x>(q)`), the arm never a written instance.
+  - P1 (the planning session's SPEC reading): `Holder<raw/i32 during x>` and `Holder<raw/i32>` are one Type, and so are the Items
+    `id<raw/i32 during x>` and `id<raw/i32>`, and `Outer<raw/i32 during x>.Inner` and `K<raw/i32 during static>` with their unstated
+    spellings: the fit (5.7, 3.8) is what the slot receives; a Type parameter denotes the one Type its declaration binds (8.2.3); a
+    conformance's identity uses the normalized bindings of its Type arguments (8.6.1). A fit-only reading gives two Types with identical
+    members (Principle 1), which the duplicate checks already identified (two overloads, two `Self is` clauses).
+  - Consequences: an unstated value now fits a constructor, a Field write, a Case payload, an explicit or annotated call, an Item, a Type
+    slot forwarding the pair, a Contract's requirement (`Self is K<raw/i32 during static>`), an Origin slot's Field and an associated Type;
+    reading the slot's binding as stating the dropped Origin is now UnsatisfiedOriginRelation_Kd at the value, through each of those and
+    through nested instances, `Option<s/T>`, a generic caller and a Closure parameter. A pair-supplied raw layer steps Unstated with
+    complete, empty members, and its holders take D6's untied rows (`uniq/Holder<raw/i32 during x>` with `p`: `2 Value store 1, untied
+    store 1`). No library, milestone or SPEC example forms such a Type (the review's census of 536 programs; the diagnostic snapshot is
+    unchanged); the old analysis reads the same Types as the unstated spellings; diagnostics and Hover show `Holder<raw/i32>`.
+  - A5 (R4's review, probes in R4's `r4-notes\s2-bu-a5\`): A5 needs no change; with 4b (`claude/a5-g160-4b`), a stated spelling gets
+    exactly its unstated spelling's A5 records: Φ_E conflicts where the stated Origin tied the pointer, P13 holds on a pair-supplied
+    layer stepping Exclusive released, and conflicts that rested on rows naming the dropped Origin's input gone (SPEC 8.1.1, 5.7).
+  - Residual R1: `CallPlan.TypeArguments`, `Subst.Types` and closure contexts keep W, so one instance has two Substs and a call displays
+    `id<raw/i32 during x>` where its Item is `id<raw/i32>`. Rule: a reader takes a slot's binding only through `Apply` (the arm). It
+    governs A5's `MirBorrows.CallRows.Retaining` (`TyCtxt.Retains` over `MirCallee.Subst`, read only through `Apply`), A4's
+    `Apply(atom.Type, subst)` and `MirCases.Views`; an A5 change reading `Subst.Types` or `CallPlan.TypeArguments` as a binding departs
+    from it. Removal: canonical Substs once R7's CallPlan pipeline reads Substs only.
+  - Rejected: A's `PairArguments` in Binding.PairCases (the component walk and scratch outside the interner, one more raw-role site);
+    the arm alone (two Types for one instance, rows keeping the dropped Origin); the Intern pre-pass alone (a function's slots keep W);
+    canonical argument lists at every binding site (six or more copies, result Types formed before most); a split (s, T, o)
+    representation (a vocabulary entry; every reader of W changes); readers skipping the Origin (a copy per consumer, Types still state
+    it); rejecting a stated raw argument (SPEC says it fits); canonical Substs now (a third slot mapping; R1's removal instead); a
+    copying pre-pass (allocates at every warm hit; `RetentionTest.WarmRebindReusesRetentions` guards the scratch).
+  - Supersedes BU-24's G160-2b open item "Binding keeps a pair argument's raw Origin" and the first sentence of BU-30's Open; BU-24's
+    nested item narrows to Type slots (`Local<Local<raw/i32 during y>>`).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
