@@ -4953,6 +4953,25 @@ resumed by R4-M86 (2026-10-20).
   with no allocation; no speedup claimed. G100's bare initializer/discard and static `@move` legality remain: `OffersTake` still
   admits an Owner path without layers, and general bare-transfer legality stays with its recorded R6-check migration.
 
+- **G224 Expected result sources and Origin fits** (2026-10-24; planning session, independent designs A/B compared;
+  exact-target design reviewed before implementation and after the full-suite regressions exposed the missing source facts)
+  SPEC 12.3.1 and 14.9.2 pass the expected Type to every result source, even with omitted Origins. `ResultExpectation` no
+  longer drops that Type. `DecideResult` preserves the exact target: a target containing stable local regions uses
+  `CheckTypeUse` to publish source relations; other targets keep `FitsTypeAt`'s immediate or initializer-collecting fit.
+  `CheckTypeUseCore` runs the relation before its regional return guard, so omitted inner slots still acquire bounds beside
+  stable slots. This removes whole-selection Temporary borrows without losing reassigned references' helper dependencies.
+  - The solved annotation aliases expose an existing old-path miscompile: `NamesResultOrigin` compared a whole meet with each
+    input slot, dropping call-result Loans when local-region flow ran. Its ANY-dependency query now visits meet constituents;
+    Calls, Defaults and LocalRegions share it. The ALL-dependency query `ResultOriginsFromInput` stays separate. Graph sources
+    are already flattened and remain direct queries, avoiding recursive expansion of finite self sources. The regression
+    asserts matching rejection on MIR (D5); no old-path accepted form or generation feature is added.
+  - Rejected: replacing an expected Type with the sources' common Type (changes fixed nested positions); eagerly rewriting
+    initializer syntax or open replacements (cached aliases are intentional and later sources may still add bounds); broad
+    `CheckTypeUse` at fixed result targets (changes their immediate diagnostic contract); symmetric whole-meet containment
+    (misses overlapping constituents). No new representation, state or vocabulary; the extra walks use existing storage.
+    No speedup is claimed. The incorrect test rejecting an exclusive source at a shared expected result is retained as a
+    positive case under SPEC 10.2; the negative case now forbids strengthening a shared source to an exclusive result.
+
 ## R5 and R6 (adopted 2026-10-18)
 
 The owner's answers to the plan's questions OQ1–OQ17, given on 2026-10-18 and relayed by the R4 planning session. "Plan"
