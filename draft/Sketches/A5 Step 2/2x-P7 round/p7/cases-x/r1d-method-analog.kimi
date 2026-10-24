@@ -1,0 +1,12 @@
+struct H {p}
+    public let r: uniq/i32 during p
+    public init(r: uniq/i32 during p) => self.r = r@move
+    public func get(self: uniq/Self) -> uniq/i32 during p => self.r
+func use(q: uniq/i32) -> i32
+    var h = H.init(q@move)
+    let a = h.get()
+    let b = h.get()
+    a@follow = 1
+    b@follow = 2
+    return 0
+public func main() => ()

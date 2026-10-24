@@ -1,0 +1,10 @@
+func use(z: uniq/i32, x: ref/i32, w: uniq/i32) -> i32
+    origin z outlives x
+    let r: ref/i32 during x = x
+    var c = func [var r, w] (v: ref/i32 during x) -> i32
+        w@follow = v@follow
+        return r@follow
+    _ = c(z@follow@ref)
+    z@follow = 42
+    return c(x)
+public func main() => ()

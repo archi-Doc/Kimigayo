@@ -1,0 +1,8 @@
+func consumeText(value: string) => ()
+public func main()
+    var x: i32 = 1
+    let u = x@uniq
+    let t = "a"
+    let c = func [u@move, t@move] () -> uniq/i32 during u
+        consumeText(t@move)
+        return u
