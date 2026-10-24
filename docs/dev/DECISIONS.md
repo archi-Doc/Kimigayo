@@ -4944,7 +4944,8 @@ resumed by R4-M86 (2026-10-20).
   accepted invalid ones (`id(p)` returned `during x`), and the raw steps and rows read the dropped Origin (BU-30's Open).
   - One rule, `TyCtxt.PairBinding(W)`: a raw W stating an Origin gives `Pointer(target)`, any other W itself (a property pattern, so no
     raw-role site is added). Its two callers are the two points that hold slot arguments: `TyCtxt.Intern`'s private pre-pass
-    `PairBindings`, before the hash, for `Constructed` (Component i of a schema slot of Kind Pair, an enclosing declaration's slots and
+    `PairBindings`, before the hash and only when a Component's `CarriesRawOrigin` bit is set (an inlined guard; the unguarded call cost
+    about 0.5% warm Bind), for `Constructed` (Component i of a schema slot of Kind Pair, an enclosing declaration's slots and
     Contract references included) and `FunctionItem` (the slot's Component by `Binding.ItemComponent`, the Item layout's one statement,
     which `CopyItemArguments` and `ItemTypeArgumentCount` read since the restructuring commit), writing one reused TyCtxt scratch (0 B
     warm); and `SubstituteTypeCore`'s pair arm, where an original `s/T` reads `PairBinding(arguments[slot])` before the unchanged

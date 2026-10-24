@@ -125,7 +125,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
             }
         }
 
-        if (kind is BoundTypeKind.Constructed or BoundTypeKind.FunctionItem)
+        if (kind is BoundTypeKind.Constructed or BoundTypeKind.FunctionItem && AnyCarriesRawOrigin(components))
         {
             components = this.PairBindings(kind, symbol, components);
         }
@@ -229,19 +229,27 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
         this.ResetDispatch();
     }
 
-    // SPEC 8.1.1 (this file's invariant): an instance's (Constructed) or Item's (FunctionItem) Components with each pair slot's argument
-    // its PairBinding, in the reused scratch when one changes, else `components`. A Constructed's Component i holds its schema's slot i (an
-    // enclosing declaration's slots included), an Item's the Component Binding.ItemComponent gives. Only a raw layer stating an Origin
-    // changes, so any other instance or Item pays one test per Component; PairBinding interns a Semantics layer, which never comes here.
-    private ReadOnlySpan<BoundType> PairBindings(BoundTypeKind kind, BindingSymbol? symbol, ReadOnlySpan<BoundType> components)
+    // Intern's guard of PairBindings: whether a Component's subtree states a raw Origin (BoundType.CarriesRawOrigin), so any other instance
+    // or Item pays one summary bit per Component, inlined in Binding's hottest path.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool AnyCarriesRawOrigin(ReadOnlySpan<BoundType> components)
     {
-        var stated = false;
+        var carries = false;
         for (var i = 0; i < components.Length; i++)
         {
-            stated |= components[i] is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, RawOrigin: not null };
+            carries |= components[i].CarriesRawOrigin;
         }
 
-        if (!stated || symbol?.Schema is not { } schema)
+        return carries;
+    }
+
+    // SPEC 8.1.1 (this file's invariant): an instance's (Constructed) or Item's (FunctionItem) Components, some carrying a raw Origin, with
+    // each pair slot's argument its PairBinding, in the reused scratch when one changes, else `components`. A Constructed's Component i
+    // holds its schema's slot i (an enclosing declaration's slots included), an Item's the Component Binding.ItemComponent gives.
+    // PairBinding interns a Semantics layer, which never comes here.
+    private ReadOnlySpan<BoundType> PairBindings(BoundTypeKind kind, BindingSymbol? symbol, ReadOnlySpan<BoundType> components)
+    {
+        if (symbol?.Schema is not { } schema)
         {
             return components;
         }
