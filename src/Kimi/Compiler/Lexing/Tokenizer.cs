@@ -1581,17 +1581,17 @@ EndOfFile:
         var crossedLine = false;
         while (true)
         {
-            var length = this.span.IndexOf("*/");
+            var length = this.span[2..].IndexOf("*/");
             if (length < 0)
             {
-                var opening = this.NewRange(Math.Min(2, this.span.Length));
+                var opening = this.NewRange(2);
                 this.Report(opening, DiagnosticCode.MissingBlockCommentEnd_Kd);
                 this.RecoverLexicalToken(opening, this.span.Length);
                 return true;
             }
 
-            crossedLine |= this.span[..length].IndexOfAny('\r', '\n') >= 0;
-            this.Slice(length + 2);
+            crossedLine |= this.span.Slice(2, length).IndexOfAny('\r', '\n') >= 0;
+            this.Slice(length + 4);
             if (!crossedLine)
             {
                 return false;

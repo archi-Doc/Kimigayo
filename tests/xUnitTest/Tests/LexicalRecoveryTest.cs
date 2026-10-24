@@ -28,8 +28,23 @@ public class LexicalRecoveryTest(ITestOutputHelper output)
     [InlineData("func take(x: i32) => ()\ntake(/* tail)")]
     [InlineData("let n = /* tail")]
     [InlineData("/* tail")]
+    [InlineData("/*/")]
+    [InlineData("/*/ let leaked = 1")]
+    [InlineData("let n = (1 /*/)")]
     public void AnUnterminatedCommentOwnsItsEnclosingRecovery(string source)
         => AssertLexicalCause(source, "/*", "MissingBlockCommentEnd_Kd");
+
+    [Theory]
+    [InlineData("/*/ ignored */\nlet value = 1")]
+    [InlineData("let value = 1 /*/ ignored */ + 2")]
+    [InlineData("/* first\n*/ /*/ ignored */\nlet value = 1")]
+    public void ACommentTerminatorMustFollowItsWholeOpening(string source)
+    {
+        var c = Analyze(source);
+        Assert.Empty(TestDiagnostics.Of(c));
+        var field = Assert.IsType<FieldKoto>(Assert.Single(c.Kotonoha.GeneratedFunction!.Body!.Items));
+        Assert.Equal("value", field.NameKoto.IdentifierName);
+    }
 
     [Theory]
     [InlineData("\n")]

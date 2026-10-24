@@ -107,12 +107,14 @@ public class LexicalBoundaryTest(ITestOutputHelper output)
     public void OtherPunctuationBoundariesRemainValid(string source) => AssertValid(Parse(source));
 
     [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void NumericBoundariesReuseLexicalStorage()
+    [Theory]
+    [InlineData("let t = ((2, 3), 4)\nlet n = t.0.1\nlet a: Array<Array<i32>>= []\nlet c = n >= 0.1")]
+    [InlineData("let value = 1 /**/ /*/ ignored */ + 2\n/* comment\n*/ /*/ ignored */\nvalue")]
+    public void BoundariesReuseLexicalStorage(string text)
     {
         var c = Compilation.CreateForTest();
         var diagnostics = c.Diagnostics.GetOrAddCollection("boundaries");
-        var source = new SourceDocument("boundary.kimi", "let t = ((2, 3), 4)\nlet n = t.0.1\nlet a: Array<Array<i32>>= []\nlet c = n >= 0.1");
+        var source = new SourceDocument("boundary.kimi", text);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             var tokenizer = new Tokenizer(diagnostics, source);
