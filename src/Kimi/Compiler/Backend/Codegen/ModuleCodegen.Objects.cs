@@ -99,8 +99,8 @@ internal sealed partial class ModuleCodegen
             this.chain.Add(this.Token(layer));
         }
 
-        if (this.objects[item] is { } previous && previous.Payload == value && previous.Copy == copy && previous.TypeToken == token &&
-            previous.Destroy == destroy && (value.Layout.Size == 0 || previous.Abi.Parameters[1].Kind == kind) &&
+        if (this.objects[item] is { } previous && (previous.Payload, previous.Copy, previous.TypeToken, previous.Destroy) == (value, copy, token, destroy) &&
+            (value.Layout.Size == 0 || previous.Abi.Parameters[1].Kind == kind) &&
             previous.BaseTokens.AsSpan().SequenceEqual(CollectionsMarshal.AsSpan(this.chain)))
         {
             return previous;

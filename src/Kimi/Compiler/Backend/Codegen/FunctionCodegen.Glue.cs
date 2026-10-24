@@ -26,7 +26,7 @@ namespace Kimi.Compiler.Backend;
 // or left over, is a broken contract, InternalInvariant_Kd there.
 internal sealed partial class FunctionCodegen
 {
-    private static readonly Site Received = new(new('p', 1), new('p', 2)); // A glue function's location, its own parameters a1 and a2.
+    private static readonly Site Received = new(new('p', 1), new('p', 2)); // A glue function's location, its own parameters location and length.
     private readonly List<DropPart> parts = []; // DropGlue.Parts' scratch.
     private int glue; // The glue item whose level is being written, and its targets read.
     private int glued;
