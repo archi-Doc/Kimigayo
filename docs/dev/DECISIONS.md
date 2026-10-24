@@ -7781,3 +7781,69 @@ structure is recorded here by the unit that first implements it.
   Reading: 「同じ制約」 is R4-M119's rule, so 「実装者はレーンごとに最大 2」 is its "one per lane, at most two" (the planning session's
   wording of the owner's choice). Unchanged: the full process, R5-M18's one design and one review per unit under the packages (DEC Q6),
   merge windows announced to R4 and BU, and R5-M8's checks.
+- **R5-M114 VTables and virtual dispatch in MIR code generation (C6c)** (2026-10-25, C lane; plan C6c, package C 3.2 I8 and input 3, K
+  package 4.3's VTable row and 4.5 rows 3-5, package F 4.2-4.3, S2-S4 X5; SPEC 6.4.1-6.4.6, 7.3.1, 10.7, IMPL 21.1.3; the planning
+  session's go and rulings Q1-Q5 on C6c's design, `c6c-design.md`; under R5-M18 form 2 (G:object), R5-M62, R5-M69, R5-M74, R5-M108 and
+  R5-M110)
+  - Table (`ModuleCodegen.Objects`' Table): a VTable item's text is its descriptor's virtual table, `ObjectCreation.VirtualSlots`, which
+    `ObjectRuntime.WriteObject` writes (one per descriptor: both are keyed by the erased payload, the descriptor the VTable's one admitter),
+    so the VTable item writes nothing of its own. In slot order (`VTableDef.Implementations`), slot s runs the next of the VTable's targets
+    whose body's definition is `Implementations[s]` (R5-M74's pairing), called by that body's own signature `__kimi_f<item>`, which SPEC
+    6.4.1 makes the slot's (Abi reads no Origin); a slot without one has none (`ptr null`): a refuted slot (R4-M28), which no call reaches
+    (SPEC 6.4.3: a call and an Item acquisition need its premise), or a refused admission, whose collector record fails the check; a target
+    left unpaired is `InternalInvariant_Kd` at the VTable's site. Kept per item and Write, the previous array reused while equal.
+  - Slot (`VTableDef.SlotOf`, ruling Q4 (b), its own commit before the rows): the slot an original or an override runs is its index in its
+    owner's `VTableDef.Implementations`, the same in every table of its family; `InstanceCollector.Generates` reads it in place of its
+    inline copy. A call through a slot loads the slot's entry from the object its receiver argument borrows (`FunctionCodegen.Objects`'
+    EntryOf): the header `ObjectRuntime.PayloadOffset` before the borrow (R5-M110 Q2; C6a's proposed open issue closes), its descriptor,
+    the descriptor's table at the new `ObjectRuntime.TableOffset` (24), the slot's word.
+  - One callee value (ruling Q2 (a), the restructure before the rows): `WriteCall`'s callee is one value, the routine's symbol or an entry
+    pointer (an erased value's table entry, a slot's); `Runs` returns `Run(Signature, Slot)`, and `Invoke` and `Forward` take the slot,
+    which only makes that value (EntryOf), never how a call is written.
+  - Signature (ruling Q1 (a), `ModuleCodegen.Signatures`' Slot): a call through a slot takes, and every entry of the slot has, the
+    original's parameter and result Types (`TyCtxt.Signature`, package C 3.2's input for a virtual slot) under the dispatching
+    substitution, each in the item's instance by `InstanceCollector.TypeOf`, under the internal convention without flags (no virtual function
+    is a caller-location library function), unnamed and kept with the erased entries' signatures (`Unnamed`). The dispatching substitution is
+    a Virtual callee's own, or an Item's (`TyCtxt.SubstOfItem`, the pure substitution its Type makes, R5-M43): no substitution is composed in
+    code generation. So a Never result is exact where a diverging call's shared destination or an adapter's target result (SPEC 10.7) is not.
+  - Calls: a Virtual callee (no target, X5) is called through its original's slot under `Slot(original, Subst, item)`, the receiver first;
+    a virtual function's Item (no target, X5) runs its slot (`Runs`) under the Item's signature in its Value call and in its ItemAdapter's
+    entry, which is the erased virtual Item's thunk (no `__kimi_virtual_item` function); a body target runs at its signature and through the
+    slot its definition runs when it runs one (`FunctionCodegen.Calls`' BodyRun), the one rule of a requirement's witness (SPEC 6.4.6: a
+    virtual witness maps to its slot), which a Requirement call and `Runs` read (ruling Q3 (a)); a Fn callee calls the function it names,
+    a direct base call included (SPEC 6.4.4). Receivers reached through reference layers need nothing more: the builder borrows the
+    payload through them and upcasts it to the slot's view (`MirBuilder.Dispatched`).
+  - E9 (plan row E9, P34_REMAINING R1; ruling Q5 (a), its own commit, since it passes under sel before C6c's rows): the reproducer
+    `InheritedObjectCallTest.ReceiversThroughReferenceLayersReadTheirBaseSubobject`, a base getter and `ref/Self` method through
+    `ref/(ref/Leaf)`, `uniq/(uniq/Leaf)`, `ref/(obj/Leaf)`, `ref/(rc/Leaf)` and `uniq/(obj/Leaf)` (a virtual call too through the object
+    forms), each a fixture with the SPEC result; the old generator reads the reference's own slot, so its outcome is the deviation
+    `receiver-layers` (class (a), R5-M85's and R5-M106's form, `LegacyNative`): the first check's `KIMI_E_ABORT`, an address's low
+    bits never being 7. The old path's miscompile stays frozen (R5-M6; U7 or G7).
+  - Restructured first, behavior unchanged: the unnamed signatures' search in `ModuleCodegen.Signatures` (`Unnamed`); `VTableDef.SlotOf`
+    and the collector's use of it; the Run channel above.
+  - Departure (for the owner's departures list): the `VirtualDispatch` corpus kernel's O2 A/B (plan row C6c, R5-M8) moves to the later of
+    C8d and C9c, since the kernel needs `Array<objref/Shape>` (C8d) and the interpolated checksum (C9c) under MIR code generation, as R5-M105
+    and R5-M111 moved ErasedCalls' and SharedHandles'; C6c measures a fixed-array variant as information.
+  - Departure (for the owner's departures list): plan row C6c's Milestone 44 moves to C9c: the program interpolates in `describe` and in
+    `drop`, which are C9c's rows; with C6c its only records under sel are those interpolations, and an interpolation-free copy prints the
+    old generator's lines.
+  - Rejected: entries of a per-slot signature checked against each body as the old generator's `SameAbi` (the check needs the original's
+    substitution at its declaring layer composed in code generation, for an equality SPEC 6.4.1 and the validator give); a dispatch thunk per
+    original (a function no item names, R5-M108's rejected per-target entries, one call more at O0); the slot signature from the call's own
+    Types (wrong for a diverging call's shared destination, absent for a Never source's adapter); the callers of `Runs` re-deciding dispatch
+    (a second copy of R5-M108's decision); a slot or receiver field on the shared `FunctionAbi`, or a side table from signatures to slots;
+    pairing slots with targets by position or by recomputing `Applies`; an empty or partial table; dispatching every body target that runs
+    a slot (a direct base call is a Fn callee of an override's body); a collector target for a Virtual call or a virtual Item, the original's
+    body for its ABI (X5, R5-M74; a body no path runs); the VTable item writing a constant of its own that the descriptor names (the shared
+    text and the old `.ll` would change); the collector publishing a slot's Types (a wrapper over the same TyCtxt reads); a codegen copy of
+    the slot lookup beside the collector's (ruling Q4: a second copy of the rule).
+  - Verified: the sel ledger loses 44 rows (object 41, call 2, C-frame 1), every row the census reached but four other units hold (string
+    `==`, C8c: 2; interpolation and Builtin rows, C9: 2); the 36 `Virtual*` fixtures (the census's 35 new and `VirtualRows`),
+    `FunctionReferenceCondition*`, `OverrideResult*` and C6a's object and closure families run natively under sel at O0 and O2;
+    `FunctionCodegenTest` (C's table of an override, an inherited body and a base's slot, a refuted slot's null, one descriptor per erased
+    payload; Virtual calls at slots 0 to 2 from the receiver's header, a receiver behind a zero-sized parameter with a result slot, a borrow
+    result, a generic body; a virtual Item's Value call and adapter, a Never source's adapter under its own signature; a virtual witness;
+    a direct base call; `VirtualRows` natively under both generators; M9's 0 B and I1 over the `Virtuals` source), `VTableDefTest`'s
+    SlotOf. O2 (information, a `[4 of objref/Shape]` variant of `VirtualDispatch`, its checksum required against the kernel's legacy value):
+    old generator A against sel B at O2, 15 interleaved samples: CPU B/A median 1.000 (mean 0.985, 0.82-1.11 at the 16 ms tick), within A's
+    consecutive spread 0.82-1.44; 393 against 392 instructions, the same calls (three indirect slot calls).
