@@ -110,7 +110,7 @@ public class ElementMoveEmissionTest
     [InlineData("type")]
     public void CorruptedMovePlansFailAndReanalysisRecovers(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("let a: [2 of string] = [\"first\", \"last\"]\nlet taken = a[0]@move");
+        var c = MinimalEmissionTest.Analyze("let a: [2 of string] = [\"first\", \"last\"]\nlet taken = a[0]@move", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var plan = body.Projections[0];

@@ -191,7 +191,7 @@ public class ReferenceEmissionTest
     [InlineData("reference_value")]
     public void InvalidPlansNeverPublishIr(string defect)
     {
-        var c = MinimalEmissionTest.Analyze(Same + "let a = \"a\"\nsame(a, a)");
+        var c = MinimalEmissionTest.Analyze(Same + "let a = \"a\"\nsame(a, a)", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var loan = body.ComparisonLoans[0];

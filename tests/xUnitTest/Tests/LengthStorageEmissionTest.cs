@@ -91,7 +91,10 @@ public class LengthStorageEmissionTest
     {
         // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
         // the corrupt length-metadata plan is rejected on the ordinary body that owns it.
-        var c = MinimalEmissionTest.Analyze("func count(a: ref/[2 of i32], b: ref/[2 of i32]) -> isize\n    let ignored = b.length\n    return a.length\nlet a: [2 of i32] = [1, 2]\ncount(a@ref, a@ref)");
+        var c = MinimalEmissionTest.Analyze(
+            "func count(a: ref/[2 of i32], b: ref/[2 of i32]) -> isize\n    let ignored = b.length\n    return a.length\nlet a: [2 of i32] = [1, 2]\n" +
+            "count(a@ref, a@ref)",
+            codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "count");
         var index = body.Sequences.Count - 1;

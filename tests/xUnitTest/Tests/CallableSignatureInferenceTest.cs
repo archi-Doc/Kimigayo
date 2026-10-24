@@ -301,9 +301,11 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.NotSame(first.Origin, second.Origin); // Each call site has its own local region.
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
 
-        // SPEC 15.3.7, IMPL 21.3: Origin differences alone never duplicate generated code.
-        var ir = CompilationTestHelper.WriteIr(c);
-        Assert.Single(System.Text.RegularExpressions.Regex.Matches(ir, @"define internal \S+ @__kimi_generic_entry\d+\("));
+        // SPEC 15.3.7, IMPL 21.3: Origin differences alone never duplicate generated code: both calls call the one instance.
+        var startup = GeneratedIr.Parse(CompilationTestHelper.WriteIr(c)).Startup;
+        var entries = startup.Instructions.Where(static x => x.Callee?.Signature == "internal void (ptr, ptr)").ToArray();
+        Assert.Equal(2, entries.Length);
+        Assert.Same(entries[0].Callee, entries[1].Callee);
     }
 
     // Local-region inference keeps the actual Loan inserted after a result-only call or at a generic argument.

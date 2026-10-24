@@ -129,7 +129,7 @@ public class WideIntegerEmissionTest
     [InlineData("u128")]
     public void CorruptHighConstantBitsAreRejected(string type)
     {
-        var c = MinimalEmissionTest.Analyze($"let x: {type} = 1");
+        var c = MinimalEmissionTest.Analyze($"let x: {type} = 1", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Constant);
@@ -144,7 +144,7 @@ public class WideIntegerEmissionTest
     [Fact]
     public void CorruptParameterHighBitsCannotAliasAValidIndex()
     {
-        var c = MinimalEmissionTest.Analyze("func f(x: i128) -> i128 => x\nf(1)");
+        var c = MinimalEmissionTest.Analyze("func f(x: i128) -> i128 => x\nf(1)", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
         var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Parameter);
@@ -172,7 +172,7 @@ public class WideIntegerEmissionTest
     [Fact]
     public void CorruptWideDivisionCannotBypassProfileValidation()
     {
-        var c = MinimalEmissionTest.Analyze("var x: i128 = 1\nlet y = x + 1");
+        var c = MinimalEmissionTest.Analyze("var x: i128 = 1\nlet y = x + 1", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Binary);

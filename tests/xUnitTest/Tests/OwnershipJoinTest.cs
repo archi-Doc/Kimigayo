@@ -135,7 +135,9 @@ public class OwnershipJoinTest
     [Fact]
     public void CheckedValuesRejectLostOriginDependency()
     {
-        var c = MinimalEmissionTest.Analyze(Pair + "    let selected = if c => a@ref else => b@ref\n    let n = selected.value\ninspect(true)");
+        var c = MinimalEmissionTest.Analyze(
+            Pair + "    let selected = if c => a@ref else => b@ref\n    let n = selected.value\ninspect(true)",
+            codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
         var body = Assert.Single(c.Ownership.Bodies, b => b.Function.Name == "inspect");
         var phi = body.Values.FindIndex(value => value.Kind == OwnershipValueKind.Phi);

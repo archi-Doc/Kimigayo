@@ -21,10 +21,13 @@ public class VirtualEffectObligationTest(ITestOutputHelper output)
         var source = "group State\n    public var count: i32 = 0\nopen struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n        return " + (derived ? "1" : body) + "\n" + (derived ? "struct Derived : Base\n    override func read(self: objref/Self) -> i32 => " + body + "\n" : string.Empty) + "()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Equal(fails, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.UnsatisfiedEffectBound_Kd));
-        Assert.False(c.WriteIr(TextWriter.Null, out var failure));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
         if (!fails)
         {
-            // The unrelated mutable group storage is still outside generation (P42).
+            // The unrelated mutable group storage is still outside generation (P42): the old generator's refusal, on a compilation pinned
+            // to it (DECISIONS R5-M85; it goes by G4 at the latest).
+            var old = MinimalEmissionTest.Analyze(source, codegen: CompilerCodegen.Legacy);
+            Assert.False(old.WriteIr(TextWriter.Null, out var failure));
             Assert.Contains("declaration container", failure!, StringComparison.Ordinal);
         }
     }

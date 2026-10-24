@@ -86,13 +86,12 @@ public class WrapConversionTest
     public void WrappingConversionsEmitNoChecks()
     {
         var ir = ScalarEmissionTest.EmitFixture("WrapInstructions", "var x: u64 = 5\nlet a = x@wrap<u32>\nvar b: i8 = -1\nlet c = b@wrap<u64>\nvar d: u8 = 1\nlet e = d@wrap<u64>\nlet f = x@wrap<i64>\nlet g = 7@wrap<u8>\nConsole.writeLine(\"ok\")", "ok\n");
-        var start = ir.IndexOf("define internal void @__kimi_entry_body", StringComparison.Ordinal);
-        var body = ir[start..ir.IndexOf("\n}\n", start, StringComparison.Ordinal)];
-        Assert.Contains(" = trunc i64 ", body);
-        Assert.Contains(" = sext i8 ", body);
-        Assert.Contains(" = zext i8 ", body);
-        Assert.DoesNotContain("icmp", body);
-        Assert.DoesNotContain("br i1", body);
+        var body = GeneratedIr.Parse(ir).Startup.Instructions;
+        Assert.Contains(body, static x => x.Shape.StartsWith("trunc i64 ", StringComparison.Ordinal));
+        Assert.Contains(body, static x => x.Shape.StartsWith("sext i8 ", StringComparison.Ordinal));
+        Assert.Contains(body, static x => x.Shape.StartsWith("zext i8 ", StringComparison.Ordinal));
+        Assert.DoesNotContain(body, static x => x.Opcode == "icmp");
+        Assert.DoesNotContain(body, static x => x.Shape.StartsWith("br i1 ", StringComparison.Ordinal));
     }
 
     [Theory]

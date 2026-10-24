@@ -271,7 +271,7 @@ public class ElementUpdateEmissionTest
     [InlineData("parentLoan")]
     public void InvalidUpdatePlansFailBeforeWritingAndRecover(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("var a: [1 of i32] = [40]\nlet old = a[0]++");
+        var c = MinimalEmissionTest.Analyze("var a: [1 of i32] = [40]\nlet old = a[0]++", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var update = Assert.Single(body.ElementUpdates);

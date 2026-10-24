@@ -125,7 +125,9 @@ public class GuardEmissionTest
     [InlineData("boolean")]
     public void MalformedGuardPlansFailBeforeWriting(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("func echo(text: string) -> string => text@move\nmatch 1\n    let n if echo(\"a\") == \"a\" and n == 1 => ()\n    _ => ()");
+        var c = MinimalEmissionTest.Analyze(
+            "func echo(text: string) -> string => text@move\nmatch 1\n    let n if echo(\"a\") == \"a\" and n == 1 => ()\n    _ => ()",
+            codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Matches.Count != 0);
         var arm = body.MatchArms[0];

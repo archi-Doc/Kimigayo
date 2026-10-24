@@ -147,7 +147,7 @@ public class StringEmissionTest
     [InlineData("input")]
     public void InvalidStringPlansFailBeforeWritingAndRecover(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("var text = \"old\"\ntext = \"new\"\nConsole.writeLine(text)");
+        var c = MinimalEmissionTest.Analyze("var text = \"old\"\ntext = \"new\"\nConsole.writeLine(text)", codegen: CompilerCodegen.Legacy);
         var body = c.Ownership.Bodies[0];
         if (defect == "input")
         {

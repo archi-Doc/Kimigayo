@@ -114,7 +114,10 @@ public class GenericForwardingEmissionTest
     [InlineData("loan")]
     public void RejectsCorruptPlanAndRecovers(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("func weight(value: ref/i32) -> i32 => 2\nfunc total(values: ref/[1 of i32]) -> i32 => weight(values[0]@ref/i32)\nlet values: [1 of i32] = [7]\nlet result = total(values@ref)");
+        var c = MinimalEmissionTest.Analyze(
+            "func weight(value: ref/i32) -> i32 => 2\nfunc total(values: ref/[1 of i32]) -> i32 => weight(values[0]@ref/i32)\nlet values: [1 of i32] = [7]\n" +
+            "let result = total(values@ref)",
+            codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "total");
         var sequence = body.Sequences.FindIndex(x => x.Kind == SequenceOperation.Borrow);

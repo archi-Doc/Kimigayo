@@ -53,7 +53,9 @@ public class SiblingMoveBorrowTest
     [Fact]
     public void EmissionRechecksTheBorrowedSubtree()
     {
-        var c = MinimalEmissionTest.Analyze(Pair + "var pair = Pair.init()\nlet moved = pair.right@move\nlet a = pair.left@ref\nlet value = a.value");
+        var c = MinimalEmissionTest.Analyze(
+            Pair + "var pair = Pair.init()\nlet moved = pair.right@move\nlet a = pair.left@ref\nlet value = a.value",
+            codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var failure), failure);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.IsGenerated);
         var borrow = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Borrow);

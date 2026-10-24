@@ -223,7 +223,7 @@ public class CallbackEmissionTest
     [InlineData("loan")]
     public void CorruptCallbackPlansAreRejected(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("let n: i32 = 6\nlet f: (i32) -> bool = func [n] (v: i32) => v == n\nf(6)");
+        var c = MinimalEmissionTest.Analyze("let n: i32 = 6\nlet f: (i32) -> bool = func [n] (v: i32) => v == n\nf(6)", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var failure), failure);
         var body = c.Ownership.Bodies.Single(x => x.Values.Any(v => v.Kind == OwnershipValueKind.Closure));
         var create = body.OperationStorage.FindIndex(x => x.Source is FunctionKoto created && created.ClosureOf() is not null && x.Kind == OwnershipOperationKind.Produce);
