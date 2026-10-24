@@ -5,9 +5,9 @@
 // Callable signature it declares (CallPlan.DeclaredSignature, DECISIONS R4-M41); the calling definition (null: top-level statements).
 // Output: an immutable CallRetention, rows Retention(Input, Kind, Output), Untied and UntiedStores, one per callee or signature, Type
 // instantiation and the premise scope or declaration it reads, for the latest Binding pass and reused by later passes until an edit;
-// CallRetention.Limit where Binding's storage instantiation does not complete the contract (storage nested past its depth bound, which a
-// growing recursive Type of SPEC 15.3.5 always reaches) or a raw layer's member walk (a keeper cycle that changes its Type arguments;
-// Binding.RawMembers), never an exception.
+// CallRetention.Limit where Binding's storage instantiation does not complete the contract or a Type its hold walk reaches (storage
+// nested past its depth bound, which a growing recursive Type of SPEC 15.3.5 always reaches) or a raw layer's member walk (a keeper cycle
+// that changes its Type arguments; Binding.RawMembers), never an exception.
 // Invariants: an output retains an input exactly when the callee's body may move a value of the input there under the premises its
 // body is checked under: the instantiated contract (the Subst's Types, Self and declaring Type substituted, the callee's own Origins
 // left as the call's fresh regions, so retention is per argument) and the premises of its enclosing declarations; or when both name
@@ -20,9 +20,9 @@
 // what that Origin's borrows admit (their referents, a slot's Keepers) as that input's storage. A raw input is retained as a borrowed
 // one, its pointee as the referent: an Origin inside its pointee is Content, its own layer's Origin gives no row, and its own value is
 // a Value row only of an output that can hold a value of its Type (a raw layer agreeing with it, Origins fitted, or an abstract part)
-// where the call may write it: at a position of the output's Type or in a struct's or enum's stored content, through an exclusive borrow
-// or a raw layer stepping Unstated, Static or Own, never past a shared one; never of its own pointee, so a raw input may have both rows
-// to one output. A raw result layer with an Origin retains as that borrow would; one without, outside a nominal Type's Fields, retains
+// where the call may write it: at or below a position of the output's writable storage (a value stored there brings its whole Type:
+// every layer but a callable's, a struct's or enum's stored content included); never of its own pointee, so a raw input may have both
+// rows to one output. A raw result layer with an Origin retains as that borrow would; one without, outside a nominal Type's Fields, retains
 // every input, a raw one also as Content; a result the call forms within a raw parameter's storage (Raw.slice) retains its own value.
 // A result or input holding a raw layer stepping Unstated or Static there is untied (Untied, UntiedStores).
 // Files: this one (the contract and its records RetentionKind, Retention, CallRetention); TyCtxt.Retention.Calls.cs (TyCtxt.Retains
@@ -61,10 +61,10 @@ internal readonly record struct Retention(int Input, RetentionKind Kind, int Out
 /// may write a pointer tied to no input (DECISIONS R4-M116 R-B2, BU-30); or <see cref="Limit"/>, which has none of them.</summary>
 internal sealed class CallRetention(Retention[]? rows, bool untied, int[] untiedStores)
 {
-    /// <summary>The retention of a call whose contract Binding's storage instantiation does not complete under its Subst (storage nested
-    /// past its depth bound, which a growing recursive Type of SPEC 15.3.5 always reaches), or whose raw layer's member walk is incomplete
-    /// (a keeper cycle that changes its Type arguments), as A4's effects take it: no rows are computed, and A5 records a located
-    /// Unsupported_Kd at the call. Reading its rows, Untied or UntiedStores is a broken contract.</summary>
+    /// <summary>The retention of a call whose contract, or a Type its hold walk reaches, Binding's storage instantiation does not complete
+    /// under its Subst (storage nested past its depth bound, which a growing recursive Type of SPEC 15.3.5 always reaches), or whose raw
+    /// layer's member walk is incomplete (a keeper cycle that changes its Type arguments), as A4's effects take it: no rows are computed,
+    /// and A5 records a located Unsupported_Kd at the call. Reading its rows, Untied or UntiedStores is a broken contract.</summary>
     internal static readonly CallRetention Limit = new(null, untied: false, []);
 
     private readonly Retention[]? rows = rows;

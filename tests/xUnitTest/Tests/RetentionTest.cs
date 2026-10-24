@@ -38,6 +38,9 @@ public sealed class RetentionTest
     private const string Hid = "struct Hid {a}\n    public var r: ref/i32 during a\n    public var p: raw/(ref/i32 during a)\n" +
         "    public init(r: ref/i32 during a, p: raw/(ref/i32 during a))\n        self.r = r\n        self.p = p\n";
 
+    // A struct with an unstated raw Field, which a Field holds through an rc or arc handle (the G160-2c review's R2).
+    private const string Shared = "struct Bx\n    public var v: raw/i32\n    public init(v: raw/i32) => self.v = v\n";
+
     // A function whose body relies on its enclosing function's premise c outlives o (y's well-formedness), called while *q is written.
     private const string Enclosing = "func outer(y: ref/(ref/i32 during c) during o, q: uniq/i32 during c) -> i32\n";
 
@@ -500,23 +503,49 @@ public sealed class RetentionTest
         Assert.Equal("0 Value result", Declared(c, "lens"));
     }
 
-    // SPEC 15.6.4, 5.7 (DECISIONS R4-M116 items 2 and 5, R-B2; the G160-2c review's B1, R4's F1): one walk reaches the storage a call may
-    // write in an output, at a position or in a held struct's stored content, as the positional walk does: through an exclusive borrow
-    // (`S.r`, written as `s.r@follow = p`) and a raw layer stepping Unstated or Static (`R.q`, written by `Raw.initialize(r.q, p)`, formed
-    // by `f -> R`), never past a shared layer (`Sh.r`). A raw argument's own value is a Value row there, and a raw layer there stepping
-    // Unstated or Static unties the output: a direct referent (`uniq/(raw/i32)`, `static` alike) as an Option's payload.
+    // SPEC 15.6.4, 5.7 (DECISIONS R4-M116 items 2 and 5, R-B2, BU-30; the G160-2c reviews' B1, R2, R4's F1 and B2): a value a call stores
+    // at a writable position brings its whole Type (BU-1), so one walk reaches every layer below a hold, in a held struct's stored content
+    // as at a position: an exclusive borrow (`S.r`, written as `s.r@follow = p`), a raw layer stepping Unstated or Static (`R.q`, written
+    // by `Raw.initialize(r.q, p)`, formed by `f -> R`) or Exclusive (`Cell.at`, kept by a Loan), a shared one (`Sh.r`), an rc or arc
+    // handle the call forms (`S.x`, alone or in an Option). A raw argument's own value is a Value row there, and a raw layer there
+    // stepping Unstated or Static unties the output: a direct referent (`uniq/(raw/i32)`, `static` alike) as an Option's payload, an
+    // allocated pointer in an rc's payload, a regular recursive Type's own Field.
     [Theory]
     [InlineData("struct S {a}\n    public var r: uniq/(raw/i32) during a\nfunc f(s: uniq/S, p: raw/i32)\n    s.r@follow = p", "0 Content store 0, 1 Value store 0, untied store 0")]
     [InlineData("struct R\n    public var q: raw/(raw/i32)\nfunc f(r: uniq/R, p: raw/i32)\n    unsafe => Raw.initialize(r.q, p)", "1 Value store 0, untied store 0")]
     [InlineData(
         "struct R\n    public var q: raw/(raw/i32)\n    public init(q: raw/(raw/i32)) => self.q = q\nfunc f(p: raw/i32) -> R\n    let cell: raw/(raw/i32) = Raw.allocate(1)\n    return R.init(q: cell)",
         "0 Value result, untied")]
-    [InlineData("struct Sh {a}\n    public var r: ref/(raw/i32) during a\nfunc f(s: uniq/Sh, p: raw/i32) => ()", "0 Content store 0")]
+    [InlineData("struct Sh {a}\n    public var r: ref/(raw/i32) during a\nfunc f(s: uniq/Sh, p: raw/i32) => ()", "0 Content store 0, 1 Value store 0, untied store 0")]
+    [InlineData(
+        "struct Cell {a}\n    public var keep: Loan<uniq/(raw/i32) during a>\n    public var at: raw/(raw/i32) during a\nfunc f(c: uniq/Cell, p: raw/i32)\n    unsafe => Raw.initialize(c.at, p)",
+        "0 Content store 0, 1 Value store 0, untied store 0")]
+    [InlineData(Shared + "struct S\n    public var x: rc/Bx\nfunc f(s: uniq/S, p: raw/i32)\n    s.x = Bx.init(v: p)@rc", "1 Value store 0, untied store 0")]
+    [InlineData(Shared + "struct S\n    public var x: rc/Bx\nfunc f(s: uniq/S)\n    let q: raw/i32 = Raw.allocate(1)\n    s.x = Bx.init(v: q)@rc", "untied store 0")]
+    [InlineData(Shared + "struct S\n    public var x: rc/Bx\n    public init(x: rc/Bx) => self.x = x@move\nfunc f(p: raw/i32) -> S\n    return S.init(x: Bx.init(v: p)@rc)", "0 Value result, untied")]
+    [InlineData(
+        Shared + "struct S\n    public var x: rc/Bx\n    public init(x: rc/Bx) => self.x = x@move\nfunc f() -> S\n    let q: raw/i32 = Raw.allocate(1)\n    return S.init(x: Bx.init(v: q)@rc)",
+        "untied")]
+    [InlineData(Shared + "struct S\n    public var x: arc/Bx\nfunc f(s: uniq/S, p: raw/i32)\n    s.x = Bx.init(v: p)@arc", "1 Value store 0, untied store 0")]
+    [InlineData(Shared + "struct S\n    public var x: Option<rc/Bx>\nfunc f(s: uniq/S, p: raw/i32) => ()", "1 Value store 0, untied store 0")]
+    [InlineData("struct G<T>\n    public var v: T\n    public var next: raw/G<T>\nfunc f(g: uniq/G<raw/i32>, p: raw/i32) => ()", "1 Value store 0, untied store 0")]
     [InlineData("func f(p: uniq/(raw/i32))\n    p@follow = Raw.allocate(1)", "untied store 0")]
     [InlineData("func f(p: uniq/(raw/i32 during static)) => ()", "0 Content store 0, untied store 0")]
     [InlineData("func f(p: uniq/Option<raw/i32>) => ()", "untied store 0")]
     public void OneWalkReachesWhatACallMayWrite(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // SPEC 15.3.5, 15.6.4 (the G160-2c reviews' R1 and R4's B1): a Type whose storage grows through an indirection (a raw pointer, an
+    // exclusive borrow, an object handle) has storage no preparation completes (DECISIONS BU-12's limits), so a contract whose hold walk
+    // reaches it is CallRetention.Limit, for an input and a result alike, never an unbounded walk.
+    [Theory]
+    [InlineData("struct G<T>\n    public var v: T\n    public var next: raw/G<(T, T)>\nfunc f(g: uniq/G<i32>, p: raw/i32) => ()")]
+    [InlineData("struct G<T>\n    public var next: raw/G<Option<T>>\n    public var v: i32\nfunc f(g: uniq/G<i32>) => ()")]
+    [InlineData("struct G<T> {a}\n    public var next: uniq/(G<Option<T>> during a) during a\n    public var v: i32\nfunc f(g: uniq/G<i32>) => ()")]
+    [InlineData("struct G<T>\n    public var next: raw/G<Option<T>>\n    public var v: i32\n    public init(v: i32)\n        self.next = null\n        self.v = v\nfunc f() -> G<i32> => G<i32>.init(v: 1)")]
+    [InlineData("struct B<T>\n    public var v: T\n    public var next: Option<obj/B<(T, T)>>\nfunc f(g: uniq/B<i32>, p: raw/i32) => ()")]
+    public void AGrowingStoredTypeIsALimit(string function)
+        => Assert.Equal("limit", Declared(Bind(function + "\n"), "f"));
 
     // Every call of the Kimi library and the milestone programs, an intrinsic's included, has a retention under its substitution, for the
     // callee MIR names (a direct base call's implementation, an intrinsic's library declaration), or over its declared Callable signature,

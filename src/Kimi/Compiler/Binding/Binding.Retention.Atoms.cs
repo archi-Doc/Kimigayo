@@ -21,17 +21,8 @@ public sealed partial class Binding
     private static bool MayHold(BoundType type)
         => type.IsAbstract || type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } || AdtDef.IsStruct(type) || AdtDef.IsEnum(type);
 
-    // Whether the call may write below a layer of the Type that it reaches as writable storage past no shared layer, `step` being a raw
-    // layer's (RetentionParts' `through`, the hold walk's reach; DECISIONS BU-24 C4, BU-30): a raw layer's pointee when it steps Unstated
-    // or Static, or Own (a `during self` pointee, stored content); any other Type's components unless it is shared or callable, which
-    // stores nothing.
-    private static bool Opens(BoundType type, RawStep step)
-        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } ? step is RawStep.Unstated or RawStep.Static or RawStep.Own
-            : !IsShared(type) && type.Kind is not (BoundTypeKind.Function or BoundTypeKind.FunctionItem);
-
-    // A shared layer: a ref, objref, rc or arc layer or a Slice, whose referent or payload a call reads only (SPEC 15.6.2, 5.7).
-    private static bool IsShared(BoundType type) => type.Kind == BoundTypeKind.Slice ||
-        (type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc);
+    // A callable Type, which stores nothing (SPEC 15.2.3): no position below it is storage a call writes (RetentionParts, the hold walk).
+    private static bool IsCallable(BoundType type) => type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem;
 
     // A borrow of storage a value of the Type refers to, with its outer Origin and referent: a ref, uniq, objref or objuniq layer; a
     // pair layer whose binder admits only those, a borrow in each admitted case, its slot the outer Origin (SPEC 8.1.2) and exclusive when
@@ -149,12 +140,14 @@ public sealed partial class Binding
     {
         var writable = at.Writable && variance == OriginVariance.Invariant;
         var layer = this.BorrowReferent(type, out var outer, out _) is not null ? outer ?? at.Layer : at.Layer;
-        var inside = callable || type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem;
+        var inside = callable || IsCallable(type);
+        var shared = type.Kind == BoundTypeKind.Slice ||
+            (type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc);
         var raw = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
         var rawOrigin = type.RawOrigin;
         var step = raw && !inside ? this.SignatureStep(rawOrigin, CollectionsMarshal.AsSpan(this.retentionScope)[..this.retentionInputs]) : RawStep.Unstated;
-        var past = at.Shared || IsShared(type) || step == RawStep.Shared;
-        var through = (raw ? !past : at.Writable) && Opens(type, step);
+        var past = at.Shared || shared || step == RawStep.Shared;
+        var through = raw ? !past && step is RawStep.Unstated or RawStep.Static : at.Writable && !shared;
         var below = at with { Layer = layer, Writable = !inside && (through || writable), Shared = past };
         if (raw && !inside && !past && step == RawStep.Exclusive && at.Input >= 0)
         {

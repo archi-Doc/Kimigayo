@@ -143,18 +143,24 @@ public sealed partial class Binding
     }
 
     // SPEC 15.6.4, 5.7 Calls (DECISIONS R4-M116 items 2 and 5, R-B2, BU-30), the hold walk: a position of `output` the call may write,
-    // a hold (retentionHolds: a position of the result, or of input j's writable storage) or a part of a held struct's or enum's stored
-    // content (Field or Case `part` of `instance` on its inline path from `start`; -1 past it). Each raw input other than `output` whose
-    // Type the position can hold retains its own value there (R-B4: a raw layer agreeing with it, Origins fitted: their erasures,
-    // TyCtxt.Erase, are one Type, SPEC 3.8; or an abstract part, which an instance may make one); a pointer is never part of its own
-    // pointee. A raw layer stepping Unstated or Static (StoredStep on an instance's inline path, its Origin's kind elsewhere, DECISIONS
-    // BU-24) unties `output`, the result returned: a pointer the call forms there is tied to no argument. The walk goes below a position
-    // as RetentionParts' does (Opens: a raw layer's pointee by its step, an exclusive borrow's referent, never past a shared layer) and
-    // into a struct's or enum's stored content (SPEC 5.7 Slots and ownership: its base, Fields and Case payloads, their Tuple and
-    // fixed-array elements inline). A part Binding's storage instantiation does not complete makes the contract CallRetention.Limit.
+    // a hold (retentionHolds: a position of the result, or of input j's writable storage) or a position below one (`instance`'s Field or
+    // Case `part` on its inline path from `start`; -1 off it). Each raw input other than `output` whose Type the position can hold retains
+    // its own value there (R-B4: a raw layer agreeing with it, Origins fitted: their erasures, TyCtxt.Erase, are one Type, SPEC 3.8; or an
+    // abstract part, which an instance may make one); a pointer is never part of its own pointee. A raw layer stepping Unstated or Static
+    // (StoredStep on an instance's inline path, its Origin's kind elsewhere, DECISIONS BU-24) unties `output`, the result returned: a
+    // pointer the call forms there is tied to no argument. A value stored at a writable position brings its whole Type (BU-1), so the walk
+    // goes below every layer that stores (IsCallable), as RetentionParts' writable positions do, and into a struct's or enum's stored
+    // content, each once per output. A Type whose storage Binding does not complete, a growing one among them (PrepareTypeStorage's
+    // limits, DECISIONS BU-12), makes the contract CallRetention.Limit.
     private bool Held(BoundType? type, BoundType? instance, int part, int start, int output, bool[] owned)
     {
-        if (type is null)
+        var nominal = AdtDef.IsStruct(type) || AdtDef.IsEnum(type);
+        if (nominal && !this.retentionStored.Add(type!))
+        {
+            return false;
+        }
+
+        if (type is null || (nominal && !this.PrepareTypeStorage(type)))
         {
             this.retentionLimit = true;
             return false;
@@ -166,42 +172,45 @@ public sealed partial class Binding
             owned[input] |= input != output && (type.IsAbstract || (raw && ReferenceEquals(this.types.Erase(type), this.types.Erase(pointer))));
         }
 
-        if (AdtDef.IsStruct(type) || AdtDef.IsEnum(type))
-        {
-            if (!this.retentionStored.Add(type) || type.Symbol?.Adt is not { } adt)
-            {
-                return false;
-            }
-
-            var first = this.retentionPath.Count;
-            var stores = AdtDef.Base(type) is { } parent && this.Held(parent, null, -1, first, output, owned);
-            for (var i = 0; AdtDef.IsStruct(type) && i < adt.Fields.Length; i++)
-            {
-                stores |= this.Held(this.StoredType(adt.Fields[i], type), type, i, first, output, owned);
-            }
-
-            for (var i = 0; AdtDef.IsEnum(type) && i < adt.Cases.Length; i++)
-            {
-                for (var j = 0; adt.Cases[i] is { } selected && j < selected.Payload.Length; j++)
-                {
-                    this.retentionPath.Add(j);
-                    stores |= this.Held(this.StoredType(selected.Payload[j], type), type, i, first, output, owned);
-                    this.retentionPath.RemoveAt(first);
-                }
-            }
-
-            return stores;
-        }
-
         var step = !raw ? RawStep.Unstated
             : part >= 0 ? this.StoredStep(instance!, part, CollectionsMarshal.AsSpan(this.retentionPath)[start..]) : StepOf(type.RawOrigin);
         var untied = raw && step is RawStep.Unstated or RawStep.Static;
+        untied |= nominal && this.Stores(type, output, owned);
         var inline = type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray;
-        for (var i = 0; Opens(type, step) && i < type.Components.Count; i++)
+        for (var i = 0; !IsCallable(type) && i < type.Components.Count; i++)
         {
             this.retentionPath.Add(i);
             untied |= this.Held(type.Components[i], instance, inline ? part : -1, start, output, owned);
             this.retentionPath.RemoveAt(this.retentionPath.Count - 1);
+        }
+
+        return untied;
+    }
+
+    // The hold walk (Held) of a struct's or enum's stored content (SPEC 5.7 Slots and ownership): its base, Fields and Case payloads,
+    // each on its inline path; whether one unties `output`.
+    private bool Stores(BoundType instance, int output, bool[] owned)
+    {
+        if (instance.Symbol?.Adt is not { } adt)
+        {
+            return false;
+        }
+
+        var first = this.retentionPath.Count;
+        var untied = AdtDef.Base(instance) is { } parent && this.Held(parent, null, -1, first, output, owned);
+        for (var i = 0; AdtDef.IsStruct(instance) && i < adt.Fields.Length; i++)
+        {
+            untied |= this.Held(this.StoredType(adt.Fields[i], instance), instance, i, first, output, owned);
+        }
+
+        for (var i = 0; AdtDef.IsEnum(instance) && i < adt.Cases.Length; i++)
+        {
+            for (var j = 0; adt.Cases[i] is { } selected && j < selected.Payload.Length; j++)
+            {
+                this.retentionPath.Add(j);
+                untied |= this.Held(this.StoredType(selected.Payload[j], instance), instance, i, first, output, owned);
+                this.retentionPath.RemoveAt(first);
+            }
         }
 
         return untied;
