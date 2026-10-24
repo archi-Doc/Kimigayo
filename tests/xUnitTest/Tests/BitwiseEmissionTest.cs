@@ -83,8 +83,10 @@ public class BitwiseEmissionTest
         Assert.Contains(body, static x => x.Shape.StartsWith("ashr i32 ", StringComparison.Ordinal));
         Assert.Contains(body, static x => x.Shape.StartsWith("lshr i8 ", StringComparison.Ordinal));
         Assert.Contains(body, static x => x.Shape.StartsWith("shl i64 ", StringComparison.Ordinal));
-        var kept = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze("var x = 3\nvar y: u8 = 1\nlet a = x << 32\nlet b = y >> 8\nlet c = x << -1"));
-        Assert.Equal(3, System.Text.RegularExpressions.Regex.Matches(kept, @"%invalid\d+ = icmp uge i32 ").Count);
+        var kept = GeneratedIr.Parse(CompilationTestHelper.WriteIr(
+            MinimalEmissionTest.Analyze("var x = 3\nvar y: u8 = 1\nlet a = x << 32\nlet b = y >> 8\nlet c = x << -1")));
+        var abort = kept.Function("__kimi_abort");
+        Assert.Equal(3, kept.Startup.Blocks.Count(x => x.Successors.Any(s => s.Instructions.Any(i => i.Callee == abort))));
     }
 
     [Fact]
