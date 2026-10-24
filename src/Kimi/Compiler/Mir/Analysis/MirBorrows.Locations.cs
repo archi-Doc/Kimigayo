@@ -7,16 +7,16 @@ namespace Kimi.Compiler.Mir;
 // activates; one gather of their check sets (MirBorrows.CheckSets); each access compared with the Loans on its root by the conflicts
 // relation, its first conflict recorded by MirBorrows.Reports; then a guard candidate's EndBorrow (err(ended)), a call's retention Limit and
 // a Borrow or read the addresses do not classify (PQ-10, MirBorrows.Addresses), each a located Unsupported_Kd, the location's activations
-// (MirBorrows.Activations), its effects (MirBorrows.Effects, whose keys select other case views) and at a default template's Return
-// R26-borrow.
+// (MirBorrows.Activations), its own-step departures (MirBorrows.OwnSteps), its effects (MirBorrows.Effects, whose keys select other case
+// views) and at a default template's Return R26-borrow.
 // Must not decide whether an access meets a Loan (MirBorrows.Checks) or which problem a conflict becomes (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
     private MirStep[] accessSteps = [];
 
-    // The checks at a location (A3 5, E13 (1)): its accesses of borrowed roots, a guard candidate's EndBorrow, its activations and its
-    // effects, on the check sets of one gather; the first conflicting Loan of each access is its problem; at a Return, R26-borrow on its own
-    // gather.
+    // The checks at a location (A3 5, E13 (1)): its accesses of borrowed roots, a guard candidate's EndBorrow, its activations, its
+    // own-step departures and its effects, on the check sets of one gather; the first conflicting Loan of each access is its problem; at a
+    // Return, R26-borrow on its own gather.
     private void Check(ulong[] state, int block, int index, int location)
     {
         this.accessCount = 0;
@@ -60,6 +60,7 @@ internal sealed partial class MirBorrows
         }
 
         this.Activations(at);
+        this.Departures(at, accessed);
         if (accessed < this.accessCount)
         {
             this.Effects(at, this.accesses[accessed].Taking);

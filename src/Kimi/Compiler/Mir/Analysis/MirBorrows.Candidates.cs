@@ -4,8 +4,9 @@ namespace Kimi.Compiler.Mir;
 
 // A5's check-set candidates (A3 5's check sets and mode, E13 (1), (5)): each Loan an element of a gather's pass finds, once per mode (a
 // two-phase Loan is shared only in its reservation holder), tagged with the passes, operands and holders that reached it, and listed by its
-// Place's root, so an access scans only its root's; a marker found, the holder it was first seen in (E7's witness). Which check sets hold a
-// candidate is Tags.Takes; the passes and the closure are the gather's (MirBorrows.CheckSets).
+// Place's root, so an access scans only its root's; a marker found, the holder it was first seen in (E7's witness); an own-step entry
+// found, its tag (MirBorrows.OwnSteps). Which check sets hold a candidate is Tags.Takes; the passes and the closure are the gather's
+// (MirBorrows.CheckSets).
 // Must not compare Places or decide a conflict (MirBorrows.Checks), or read a holder's state itself.
 internal sealed partial class MirBorrows
 {
@@ -54,7 +55,12 @@ internal sealed partial class MirBorrows
         var index = element - this.loanBase;
         if (index >= this.loanCount)
         {
-            // An address never conflicts (D19): it reaches the holder it names.
+            // An address never conflicts (D19): it reaches the holder it names; an own-step entry is tagged for its departures.
+            if (this.loans[index].OwnStep)
+            {
+                this.Seen(index, via);
+            }
+
             if (this.loans[index] is { Direct: true, Named: >= 0 } address)
             {
                 this.Reach(address.Named, scan: true);

@@ -14,8 +14,9 @@ namespace Kimi.Compiler.Mir;
 // Origin. The untracked rule (PQ-2): a raw value formed with a direct address or exclusive Loan naming a local that is no holder also
 // carries Φ_E. A non-raw Borrow of a layer's Place or of a Tuple or fixed-array Place enclosing one inline, and a Copy or Move of such an
 // enclosing Place, mark its location for a located Unsupported_Kd and make the view a producer (PQ-10; registered for X-2, PD28; removal
-// stage: the Loan records the layer's own-step entry and positions). The pre-pass runs once per view, after the Loans and before the
-// holders.
+// stage: the Loan records the layer's own-step entry and positions). An own-step entry makes its root borrowed, so the root's accesses are
+// listed for its departures (MirBorrows.OwnSteps), and the view a producer (D5). The pre-pass runs once per view, after the Loans and
+// before the holders.
 // Must not issue a Loan, carry a value (MirBorrows.Values) or record a problem (MirBorrows.Locations records PQ-10's).
 internal sealed partial class MirBorrows
 {
@@ -31,7 +32,7 @@ internal sealed partial class MirBorrows
     private void Addresses()
     {
         var locations = this.body.Statements.Length + this.body.Blocks.Length;
-        (this.addressCount, this.ownCount) = (0, 0);
+        (this.addressCount, this.ownCount, this.ownEntries) = (0, 0, 0);
         this.addressOf.Clear();
         this.ownAt.Clear();
         MirDataflow.Grow(ref this.layerBorrowed, locations);
@@ -46,6 +47,7 @@ internal sealed partial class MirBorrows
             }
         }
 
+        this.producing |= this.ownEntries > 0; // The own-step Warning is a producer (D5).
         this.Work += locations;
     }
 
@@ -161,6 +163,12 @@ internal sealed partial class MirBorrows
         if (direct && root >= 0)
         {
             this.named[root] = true;
+        }
+
+        if (owner >= 0)
+        {
+            this.borrowed[this.Key(root)] = true; // Its root's accesses are listed for its departures (MirBorrows.OwnSteps).
+            this.ownEntries++;
         }
 
         this.addressOf.Add((root, owner), entry);

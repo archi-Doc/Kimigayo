@@ -2545,7 +2545,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     }
 
     // V16: A5 on a program version it checked before allocates nothing: its sets, tables, call rows (an intrinsic's too), addresses (a raw
-    // Ref's, a `during self` layer's) and the dataflow keep their storage.
+    // Ref's, a `during self` layer's), the own-step Warning's tags and the dataflow keep their storage.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmRunAllocatesNothing()
@@ -2559,11 +2559,13 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             "    var s = D.init(r: x@uniq)\n    let c = s.r@follow@uniq\n    s = D.init(r: y@uniq)\n    c@follow = 1\nfunc escaped()\n" +
             "    let fallback = Data.init()\n    let packet: Packet = .Data(Data.init())\n    var saved = fallback@ref\n    match packet\n" +
             "        .Data(let d) if save(saved@uniq, d) => ()\n        _ => ()\n    inspect(saved)\nfunc raw()\n    var x = 1\n" +
-            "    let p: raw/(ref/i32) = Raw.allocate(1)\n    unsafe => Raw.initialize(p, x@ref)\n    x = 2\n");
+            "    let p: raw/(ref/i32) = Raw.allocate(1)\n    unsafe => Raw.initialize(p, x@ref)\n    x = 2\nfunc departed()\n    var b = Buf<i32>.init(4)\n" +
+            "    let p = b.data\n    let c = b@move\n    _ = p == null\n");
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);
         Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
         Assert.Equal(9, program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code)));
+        Assert.Single(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.OwnStepDeparture_Kd && x.Subject.Module == 0);
     }
 
     // The Loan problems of a program's own bodies.

@@ -54,6 +54,7 @@ public sealed partial class MirDifferenceLedger
         (DiagnosticRequirement.Binding(BindingFailure.OriginRelation), DiagnosticCode.UnprovenOriginRelation_Kd, "A5",
             Ownership(OwnershipRequirement.UnprovenOrigin), Twin),
         Same(Ownership(OwnershipRequirement.StorageLimit), DiagnosticCode.OwnershipStorageLimit_Kd, "A5"),
+        Same(Ownership(OwnershipRequirement.OwnStepDeparture), DiagnosticCode.OwnStepDeparture_Kd, "A5"),
         Same(Ownership(OwnershipRequirement.Unsupported), DiagnosticCode.Unsupported_Kd, "U"),
         (Ownership(OwnershipRequirement.ExpansionLimit), DiagnosticCode.DeferredExpansionLimit_Kd, "-", null, null),
     ];

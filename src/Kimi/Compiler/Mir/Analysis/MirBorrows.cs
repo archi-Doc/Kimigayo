@@ -13,9 +13,12 @@
 // one evaluation of a copy left to its template; Unsupported_Kd at a destruction, a call or a Borrow or read it does not classify (a
 // destruction walk past its bound, and the cases of the rules below), a limit record at its operation also inside a copy, and in a view a
 // Call holds (its W stored a value past a holder that passes the guard only by argument, P13's interim, R4-M73) every other Loan problem
-// as Unsupported_Kd at its subject, through MirReport; and Work, the steps it took (A3 6.2).
+// as Unsupported_Kd at its subject, through MirReport; the own-step Warning OwnStepDeparture_Kd at an operation that may end an owning
+// value's stay in its holder while a pointer formed through its own step may still be used, with its anchor, witness and Evaluated facts,
+// in a held view too (SPEC 5.2.1 condition 3); and Work, the steps it took (A3 6.2).
 // Rules, each with its inputs, records and Unsupported_Kd cases in its owner's contract:
 // - a raw pointer's addresses and own-step entries, the untracked rule and PQ-10's Borrows and reads: MirBorrows.Addresses (R4-M116);
+// - the own-step entries' departures: MirBorrows.OwnSteps (R4-M116);
 // - a Call's contract rows, P9's and untied stores among them: MirBorrows.CallRows; their transfer: MirBorrows.Calls;
 // - the effect rule and its initialization proof: MirBorrows.Effects;
 // - a default template's slot-rooted test, R26-borrow and R26-access, and the copy disposition: MirBorrows.Defaults;
