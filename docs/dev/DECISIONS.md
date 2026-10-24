@@ -7472,5 +7472,6 @@ structure is recorded here by the unit that first implements it.
   representation at a time, and designers and reviewers at most two, under R4-M119's rule: heavy runs at most three at once across R4, BU
   and R5, each registered in `artifacts/heavy-runs/` while it runs; design and review probes run selected classes and reuse the full-suite
   bases kept once per dev sha in `artifacts/verify/shared-base/`; one plus one again when weekly usage passes 70% early in the week.
-  Unchanged: the full process, R5-M18's one design and one review per unit under the packages (DEC Q6), merge windows announced to R4 and
-  BU, and R5-M8's checks.
+  Reading: 「同じ制約」 is R4-M119's rule, so 「実装者はレーンごとに最大 2」 is its "one per lane, at most two" (the planning session's
+  wording of the owner's choice). Unchanged: the full process, R5-M18's one design and one review per unit under the packages (DEC Q6),
+  merge windows announced to R4 and BU, and R5-M8's checks.
