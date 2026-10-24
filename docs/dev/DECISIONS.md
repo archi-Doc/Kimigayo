@@ -126,7 +126,7 @@ rules that result from them.
     conditions, since a shared review must not let unreviewed code reach dev, and SPEC, IMPL, AGENTS, DECISIONS, SETTLED,
     STYLE and proposals are authority, not records.
 - **Q7 A mechanical one-argument propagation is not a change for the restructuring rule** (2026-10-19, owner; AGENTS
-  "Restructure a file changed by three consecutive units before its next change").
+  "Restructure a file changed by three consecutive units before its next change"; superseded by Q9).
   - Adopted: a unit that only adds one argument to a signature and passes it through, adding no branch, state or
     responsibility to the file, does not count as one of the three changes. Applied first to `MirInit.cs` and
     `MirBorrows.Activations.cs`, whose third change, 1c-1, only passed a problem's requirement (R4-M67): 1c-5 changes
@@ -142,6 +142,34 @@ rules that result from them.
   cases and allocation tests that already ran concurrently retain their collections. Rejected: removing isolation
   (loses the documented measurement guarantee), or switching to `all` (changes every class's scheduling and needs an
   unrelated fixture/static-state audit). No compiler representation changes; managed suite duration may increase.
+
+- **Q9 Restructuring is decided by responsibility, not by change count** (2026-10-24, owner; AGENTS "Performance and
+  Compiler Structure"; supersedes Q7).
+  - Adopted: AGENTS' "Restructure a file changed by three consecutive units before its next change" is removed; no count of
+    changing units makes a file due. Review checks on every change that a responsibility it adds lives in its owner's concern
+    file, split first where a file would hold two (AGENTS Structure, Separate commits), and that a file over a structure limit
+    does not grow (COMPILER_ARCHITECTURE). Change hotspots stay a measurement at milestone and stage exits, from which the
+    planning session schedules restructurings.
+  - Supersedes: Q7; the A5 step 2 plan's PD21 (R4-M74), its §3.7 schedule, its count-triggered units 2x-R4, 2x-R7 and 2d-1 and
+    the PD21 clauses of its design packages (2a0-D, 2b-D, 2e-D), except PD21's no-growth clause for Binding files over the
+    token limit with its counts in the commit, which applies COMPILER_ARCHITECTURE's limits; the R5 and R6 plan's count
+    trigger for G1 ("before its fourth change"), G1 staying a split by the responsibilities it names; and the due states and
+    next-change conditions in R4-M92, R4-M96, R4-M97 (with its refusal of a second no-split ruling and 2g-6's wait for 2x-R7
+    and a `MirDrops.cs` response), R4-M98, R4-M101, R4-M102, R4-M106, BU-24, R5-M63, R5-M92, R5-M93 and R5-M102, each marked
+    there. Landed splits and applied rulings stay; PLAN's due lists go. The R5 and R6 plan's PD21 (no new `IntrinsicId`,
+    `CompilerFunctionKind` or `BindingFailure`) is a different decision and stands. The open AGENTS Restructuring proposal's C4
+    moves only the stage-exit records.
+  - Reason: the count measured activity, not accumulated responsibility. Most rulings under it found one responsibility in
+    files below the 5,000-token limit (`MirProblem.cs` about 75 tokens, `MirBorrows.Reports.cs` about 590, `DropGlue.cs` about
+    680; `MirInit.cs` and `MirDrops.cs` about half the limit); seven exemption and counting rulings grew around it (Q7's
+    propagated argument, comment-only and deletion-only edits, edits adding no responsibility, a copy replaced by a call, a
+    data table, units in flight), each refining what counts or restating the responsibility test review already applies; and
+    a count reset only by a split kept active files due, so splits made for the count alone left `TyCtxt.Raw.cs` at about
+    150 tokens and `MirBorrows.Groups.cs` at about 350 (after a second no-split ruling was refused), and the five RawOrigins
+    files, about 4,450 tokens together, were listed due again.
+  - Rejected: keeping the count as a review prompt that a one-responsibility ruling resets (it keeps per-unit counting across
+    parallel lanes and rulings on small single-responsibility files to ask the question review already asks); a larger
+    count or a size floor (another proxy for the same test).
 
 - **G138-1 Native execution and verification evidence ownership** (2026-10-24; planning session, independent designs A/B and
   independent pre-code review). G138 needs execution progress distinguished from scheduling delay and missing observations
@@ -1920,7 +1948,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     order as A5's access scans on the states it reads (V16; MirBorrowsTest's shape: work 121596, 204840, 513216 at N = 32, 64, 128); a
     warm run allocates nothing.
   - Found, not this unit: rule G's raw clause misses Loans stored through raw pointers that W does not name (PLAN G160).
-- **R4-M74 A5 step 2 plan** (owner, 2026-10-19, relayed by the R4 planning session; plan unit 2x-A0) The owner's answers to all
+- **R4-M74 A5 step 2 plan** (owner, 2026-10-19, relayed by the R4 planning session; plan unit 2x-A0; its PD21 and §3.7
+  superseded by DEC Q9) The owner's answers to all
   thirteen questions of the [A5 Step 2 Implementation Plan](../../draft/Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md),
   packet 2 (OQ7–OQ10, OQ13) before its triggers. Its unit and decision names (2x-T1, PD18) are used as there; each
   planning-session decision PD1–PD31 is recorded by the unit that first implements it (plan §7).
@@ -2363,7 +2392,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     activation and observing-destruction checks of a location, and 2b-3's change is an argument at its two `Code`/`Report` call sites, so
     no split exists; 2x-R9 keeps its 2f-D condition (a split if 2f-D adds the caller relation there; superseded by R4-M106: no
     2f-D). `MirBorrows.Loans.cs`,
-    `MirBorrows.Values.cs` and `MirAnalysis.cs` reach their third change with 2b-3: their next editors split first (PLAN §3.7).
+    `MirBorrows.Values.cs` and `MirAnalysis.cs` reach their third change with 2b-3: their next editors split first (PLAN §3.7; superseded by DEC Q9).
   - Cost: per checked site one `Keys` query per view where an effect root has a candidate or R3 applies, Θ(effect roots + their
     candidates) tests and scans, and on a conflict Θ(the body's statics + their initializers' views × ⌈2F/64⌉) for the proof; `Work`
     counts the row's words, the bit tests, the reservations stamped and the statics the proof scans; Field numbers per view and the
@@ -2418,7 +2447,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M94 A5-F4's design package (2a0-D) approved** (owner, 2026-10-21, relayed by the R4 planning session, verbatim
   「推奨どおり承認 (推奨)」
   to the package with OQ-3 (a), and to the other questions verbatim: OQ-1 「(c) 別の BU 単位で後日 (推奨)」, OQ-2 「(a) R6-check で削除
-  (推奨)」, OQ-4 「(b) 条件を足す (推奨)」; R4-M74 OQ2) The package is `draft/Sketches/A5 Step 2/2a0-D-package.md` (design A as
+  (推奨)」, OQ-4 「(b) 条件を足す (推奨)」; R4-M74 OQ2; its PD21 clauses superseded by DEC Q9) The package is `draft/Sketches/A5 Step 2/2a0-D-package.md` (design A as
   the base with parts of B; the design review, with real-compiler probes, and the independent confirmation's two rounds, whose
   blocking items P-1 to P-7 were applied, are in `2a0-D-review.md`). Units: the Binding view units 2a0-2, 2a0-3a and 2a0-3b take
   DEC Q6 form 1 (one BU review each, PD6); G:A5-F4's 2a-1a, 2a-1b, 2a-2, 2a-4 and 2a-5 take form 2 (one group review; 2a-3 is
@@ -2568,7 +2597,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     calls); `R19InlinedDrop` (unsound on dc-j1, dc-joined, dc-copied); `R19NoEnding` (second records); a builder `EndBorrow` (E8 ends only
     Loans rooted at what is destroyed); reservation-holder roots (dead code).
   - PD21: `MirBorrows.Solve.cs` and `MirBorrows.Reports.cs` take their third changing unit (2b-3, 2e-2, 2e-3); Reports.cs's ruling or
-    split is due before 2e-4 (the package), Solve.cs's before its next change.
+    split is due before 2e-4 (the package), Solve.cs's before its next change (superseded by DEC Q9).
 - **R4-M97 A5-F9's copy disposition: a failure in an inline default copy is its template's only within one evaluation** (2026-10-21; unit
   2e-4 of G:A5-F9 under R4-M90, the package's §5 (D11–D14) with the planning session's rulings of 2026-10-21; supersedes R4-M69's
   Inlined rule and R4-M10's Inlined sentence for A5, R4-M73's sub-bullet "R4-M69 governs inline default copies" and R4-M92's G171
@@ -2600,7 +2629,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `SourceRef`); the anchor is its subject (`MirBorrows.Site`, unchanged), the issue scope its scope.
   - Two ownership forms until 2g-6 (D15 staged; planning session ruling, 2026-10-21: neither 2x-R7 nor a `MirDrops.cs` response had
     landed): A1 and A2 keep `MirFactKind.Inlined` and `MirReport.Add`'s drop; `Evaluated` is A5's only kind for the default's operation.
-    Removal condition: 2g-6, after 2x-R7 and a `MirDrops.cs` response; 2e-5 records it in PLAN.
+    Removal condition: 2g-6 (its wait for 2x-R7 and a `MirDrops.cs` response superseded by DEC Q9); 2e-5 records it in PLAN.
   - Deleted: `Reports.Report`'s `Inlining` call and A5's Inlined fact; `Record`'s held exception for it; `Loan.Site`; the vacuous "so a
     clean Loan is reported first (R4-M70)" in `MirBorrows.Activations.cs`; the Inlined clauses of `MirBorrows.cs` and `.Reports.cs`
     (`MirProblem.cs` names Inlined as A1's and A2's).
@@ -2639,7 +2668,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     responsibility; its next changing unit restructures it first; 2x-R9 keeps its 2f-D condition, superseded by R4-M106);
     `MirBorrows.Reports.cs` no split (one
     responsibility; its next changing unit restructures it first); `MirBorrows.Checks.cs` and `.Locations.cs` take their third change;
-    `MirProblem.cs` counted under R4-M91's ruling; `MirBody.cs` (R5's hold) gains only `Common` and `OmittingCall`.
+    `MirProblem.cs` counted under R4-M91's ruling; `MirBody.cs` (R5's hold) gains only `Common` and `OmittingCall`. The next-change
+    conditions and the refusal are superseded by DEC Q9.
 - **R4-M98 A5-F9's template rules: the slot step (A3 E17), R26-borrow and R26-access** (2026-10-21; unit 2e-2 of G:A5-F9 under R4-M90,
   the package's §2 (D1–D7) and its precedence table, with the planning session's rulings of 2026-10-21; supersedes R4-M72's Defaults
   bullet and its view skip's form)
@@ -2679,6 +2709,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     lines); each of the three added one fact of that pre-pass, and this unit's edit simplifies it (two flags become one, plus the
     slot-write term). Rejected: splitting the one pass mechanically; moving the effect rule's facts, which would set one flag in two files.
     Its next changing unit restructures it first. `MirBorrows.cs` has three changing units (2b-3, 2e-1, 2e-2): a response before 2e-3.
+    Both conditions are superseded by DEC Q9.
   - Ledger (mir Functional, against a base run at the unit's start): 4 of a5-old-default-access's 5 rows and 10 of
     a5-old-default-borrow's 11 pair (14 old rows become both, e0ffa5a60934, 9fcd0c360b5d, b29228117a54 and dc7ace954713 among them);
     the fifth access row, DefaultAccessTest :26 (6a5c8d8bb5e4), becomes a location row (the old path at `x`, the MIR at the write;
@@ -2760,7 +2791,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Departures from R4-M94: D2 without `ResultFit` until 2a-2; D3's owner by formation, with declaration rows outside every slice and
     the layer's rows in each constructor's; D8's oracle per layer for layer rows.
   - PD21 (the planning session's first ruling on `Binding.Origins.Model.cs`): one responsibility, the Origin model's records, so no
-    split exists; K1 moved the `OriginDeclaration` model into it; the next changing unit after 2a0-2 restructures it.
+    split exists; K1 moved the `OriginDeclaration` model into it; the next changing unit after 2a0-2 restructures it (superseded by DEC Q9).
   - Fix round (BU's review, ACCEPT WITH CHANGES, B1, B2, O3-O6). B1, a correction of the package's internal conflict (the planning
     session's ruling): 2a0-D §3's validation sentence ("a mutable-static `Projection` whose binder is a static Field declaration is
     `InternalInvariant_Kd`") is dropped, since row 7 classes that atom and SPEC 11.3.1 and 11.8 make an accessor's `storage` of a mutable
@@ -2799,7 +2830,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     and A2's end (C4a's fallback F2′, which misses a copy-only failure).
   - PD21 (R4, 2026-10-22, the first ruling on each): `MirInit.cs` (1c-1, 1c-6, 1c-8) and `MirDrops.cs` (1c-1, 1c-2, 1c-6, 1c-8) are due;
     each has one responsibility (A1's per-view initialization and Move dataflow; A2's drop verdicts and table) and no split exists, so
-    A-2b's lines go in without a restructure; the next changing unit of each restructures it first. DIAGNOSTICS is unchanged.
+    A-2b's lines go in without a restructure; the next changing unit of each restructures it first (superseded by DEC Q9). DIAGNOSTICS is unchanged.
 - **R4-M103 Static slots for P42, layout requirements kept, lifecycle receivers' Borrows body-local** (owner, 2026-10-22, on three R4
   proposals written at the owner's instruction 「この勢いで、先ほどの新しく挙げる候補 2、4、5、6の提案書も書いてください。」; answers
   OQ-S1 (a), OQ-S2 (a), OQ-Y1 (d), OQ-L1 (b); review `draft/Sketches/R4 Proposals 2026-10-21/review-3.md`)
@@ -2937,7 +2968,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the owner's option. PD21: U1's and U2's edits only delete (the frozen old Analysis, catalog rows, Binding's preserves half), so
     no restructure; `Binding.EffectBounds.cs`, `Binding.ArgumentOperations.cs` (BU's queue) and `HoverBuilder.Effects.cs` stay due
     before their next adding change; AC-U4's one Note string in the due `Binding.EffectDeclarations.cs` adds no responsibility and
-    follows the same rule (its review). `MirBuilder.Expansions.cs:172`'s getter Adjust, built from Binding's operation and open at the landing, is closed by
+    follows the same rule (its review). These due states are superseded by DEC Q9. `MirBuilder.Expansions.cs:172`'s getter Adjust, built from Binding's operation and open at the landing, is closed by
     R4-M109 (the getter takes the HIR's plan-row Adjust).
   - Rejected (its §9): A, S2 as revised by 2f-S1 (a receiver-Place relation between calls; it keeps the cause and adds the most
     mechanism); B, a separation guarantee for `preserves results` (a second copy of the ownership rule); keeping rule 1's Origin
@@ -4523,7 +4554,7 @@ resumed by R4-M86 (2026-10-20).
   every input's exclusive `Borrow` beside `FailStaticBorrow`, records at the operand and judges that fit no further (an explicit
   `x@uniq` argument's source is the conversion, a path root, so it records once). PD21 (ruling (b)): `Binding.CallRelations.cs`
   (due: bu20, 2a0-2, bu22) was split first, its records beyond the first in `Binding.CallRelations.Records.cs`; RawOrigins.cs and
-  Retention.cs, unchanged here, stay due. Measured: a pinned interleaved Bind A/B against a352ae27b over Milestones 1, 20 and 33
+  Retention.cs, unchanged here, stay due (superseded by DEC Q9). Measured: a pinned interleaved Bind A/B against a352ae27b over Milestones 1, 20 and 33
   gave warm minima within 0.3% and equal cold bytes. Rejected: a check in `AdaptInput` or `LendsPlace` (selection may discard the
   candidate; authority, not Origins); Holder kept on the read Type so that invariance fails (Holder would leave stored shapes).
   Open: neither published pipeline marks a Copy-typed part Moved (`t.0@move` then `t.0`), so a missing restore after `b.data@move`
@@ -6259,7 +6290,7 @@ structure is recorded here by the unit that first implements it.
   Opaque root's access kind at `MirBuilder.Root`, which the kept operands and the root collection use, and the completion-undecided
   flag at `Site`; it also routes the two producers that still write the roots directly (the derived jump, `MirBuilder.Control.cs`,
   and an omitted default's site, `MirBuilder.Defaults.cs`), files AGENTS' three-units rule makes due for restructuring before their
-  next change.
+  next change (superseded by DEC Q9).
   - R5-M84 extends the kept-operand rule: an Opaque site names a part already built by its Place's root, never by its syntax.
   - R4-M88 decides its deferred unresolved compound Places and amends its kept operands: an operation Binding left
     unresolved keeps every operand its form evaluates but an unresolved construct without a Type, also labeled.
@@ -6887,7 +6918,7 @@ structure is recorded here by the unit that first implements it.
     regression is `FunctionCodegenTest.CopySlotsAndCheckLabelsNeverShareAName`.
   - Restructures first, behavior unchanged: `IntrinsicRows.cs` as the indexed table, `LlvmModuleText.cs`' spellings split out,
     `LegacyRuntimeHelpers`' storage byte primitives moved to `.Storage.cs` (d063f5ad); `LlvmScalarText`'s conversions moved to
-    `.Conversions.cs` before its abort writer reads `RuntimeAbi.NoOsError`. `RuntimeAbi.cs`'s due restructure is a keep (the planning
+    `.Conversions.cs` before its abort writer reads `RuntimeAbi.NoOsError`. `RuntimeAbi.cs`'s due restructure (superseded by DEC Q9) is a keep (the planning
     session's ruling, as R4's 2x-R10 for `MirLoanSets.cs`): it has one responsibility, and its routines read its representations at
     static initialization, whose order a partial split would leave unspecified; it gains the routines' operand slots and Location kinds,
     which no generated text reads (e1025e1b and the review fold).
@@ -6920,7 +6951,7 @@ structure is recorded here by the unit that first implements it.
   - Restructure first (b2194242, behavior unchanged): `FunctionCodegen.Places.cs` keeps the place writer and `FunctionCodegen.Stores.cs`
     takes the loads, stores and copies through it; the parameter spelling. C3b does not change `ModuleCodegen.Frame.cs`. After C3b,
     `FunctionCodegen.cs`, `.Calls.cs`, `.Frame.cs`, `.Arithmetic.cs` and `.Casts.cs` have had three consecutive units, so the next unit
-    changing one restructures it first.
+    changing one restructures it first (superseded by DEC Q9).
   - MIR's Location constants are TestObserve's operands (C10a's row), not C3b's. Requirement calls use the copy slots (R5-M89's condition,
     met by R5-M92's narrowed scan).
   - Rejected: a "forwarded" sentinel that each location writer tests (a sentinel and a branch per consumer); hidden location operands
@@ -7138,7 +7169,7 @@ structure is recorded here by the unit that first implements it.
     since a concrete environment never allocates; C5a's own requirement test is that a 48-byte environment holding a string, a 4-byte
     drop-needing one and an empty one allocate nothing. E12's native half lands with C7b (within R5-M85).
   - Rulings: `DropGlue.cs`'s due restructure is a keep (one responsibility in 156 lines; a split would be mechanical, as R5-M92's
-    `RuntimeAbi.cs`), the file's first such ruling, so its next changing unit restructures it. Restructured first, behavior unchanged:
+    `RuntimeAbi.cs`), the file's first such ruling, so its next changing unit restructures it (superseded by DEC Q9). Restructured first, behavior unchanged:
     ModuleCodegen's item signatures in `ModuleCodegen.Signatures.cs`.
   - Verified: the sel ledger loses 368 rows (closure 89, C-frame 192, call 63, C-aggregate 19, object 5), all this unit's (at the merge
     base none passes); the 61 fixture families the flipped tests write run natively under sel (447 fixtures, O0 and O2); `FunctionCodegenTest`
