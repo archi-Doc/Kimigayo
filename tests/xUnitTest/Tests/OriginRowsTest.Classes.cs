@@ -80,8 +80,9 @@ public sealed partial class OriginRowsTest
     }
 
     // DECISIONS R4-M118's precedence: a meet with an Unclassed operand (row 9, a located limit) is Unclassed whatever its Dependent
-    // operands, so the limit stays when the failure is repaired. No program forms such a meet: it is built from FailedClause's Unbound end
-    // and `put`'s own Parameter atom (meet-trans) in one compilation.
+    // operands and their order, so the limit stays when the failure is repaired. No program forms such a meet: it is built in one
+    // compilation from FailedClause's Unbound end and an Unclassed atom that sorts before it (`put`'s own Parameter atom, meet-trans) or
+    // after it (an anchor formed in another body, `mt`), since a canonical meet orders its operands by kind.
     [Fact]
     public void AnUnclassedOperandDecidesBeforeADependentOne()
     {
@@ -89,12 +90,18 @@ public sealed partial class OriginRowsTest
         var f = Bodies(c).Single(static x => x.Key.Decl?.Name == "f").Key.Body;
         var slice = c.Types.OriginRows(f);
         var row = slice.Rows.First(x => Site(c, x) == "local@ref");
-        var unbound = slice.Atoms[row.Shorter];
-        var mt = c.Types.OriginRows(Bodies(c).Single(static x => x.Key.Decl?.Name == "mt").Key.Body);
+        var (unbound, site) = (slice.Atoms[row.Shorter].Atom, c.SyntaxOf(row.Site));
+        var mtBody = Bodies(c).Single(static x => x.Key.Decl?.Name == "mt").Key.Body;
+        var mt = c.Types.OriginRows(mtBody);
         var foreign = mt.Atoms.First(static x => x is { Kind: OriginAtomKind.Unclassed, Atom.Kind: OriginKind.Parameter }).Atom;
-        Assert.Equal((OriginKind.Unbound, OriginAtomKind.Dependent), (unbound.Atom.Kind, unbound.Kind));
-        var meet = new BoundOrigin(OriginKind.Intersection, operands: [unbound.Atom, foreign]);
-        Assert.Equal(OriginAtomKind.Unclassed, Atom(c, f, meet, c.SyntaxOf(row.Site)).Kind);
+        var anchor = new BoundOrigin(OriginKind.Anchor, c.SyntaxOf(mt.Rows[0].Site)) { Body = mtBody };
+        Assert.Equal(OriginKind.Unbound, unbound.Kind);
+        Assert.Equal(OriginAtomKind.Unclassed, Atom(c, f, anchor, site).Kind);
+        foreach (var (other, order) in new[] { (foreign, "Parameter Unbound"), (anchor, "Unbound Anchor") })
+        {
+            var meet = Atom(c, f, new BoundOrigin(OriginKind.Intersection, operands: [unbound, other]), site);
+            Assert.Equal((order, OriginAtomKind.Unclassed), (string.Join(' ', meet.Atom.Operands.Select(static x => x.Kind)), meet.Kind));
+        }
     }
 
     // Rows 6, 7 and 7': a mutable static's Borrow formed in B is Finite, an immutable one's Inferred, and the enclosing body's Borrow a

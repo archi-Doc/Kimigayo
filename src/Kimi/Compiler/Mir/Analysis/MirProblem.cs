@@ -6,9 +6,10 @@
 // views that have it and, for an Origin problem, its relation. Output: MirProblem values, which MirReport keeps (the Reason in its key) and
 // the difference ledger reads.
 // Invariants: a problem's requirement is the one its recording rule names (the Ownership partition's, or ControlFlow for A3, DIAGNOSTICS
-// rule 1); its views are bits of its body's MirCases views, and a problem no body describes (A4's obligation rows, at Binding's rows) has
-// NoBody, whose views name no body's cases (A4's codes take no case fact); a Reason's ends are the C1-F4 view's canonical atoms (its table's
-// entries), so one relation has one Reason, and every other problem has the default Reason.
+// rule 1); its views are bits of its body's MirCases views, and a problem no body describes (A4's obligation rows, at Binding's rows, and
+// the C1-F4 view's broken contracts, DECISIONS R4-M118) has NoBody, whose views name no body's cases (A4's codes take no case fact); a
+// Reason's ends are the C1-F4 view's canonical atoms (its table's entries), so one relation has one Reason, and every other problem has
+// the default Reason.
 // Must not derive a requirement from a code, carry message text, or merge or drop problems (MirReport's).
 
 #pragma warning disable SA1402 // The problem and its Reason belong together.
@@ -35,8 +36,8 @@ internal readonly record struct MirProblem(
     ulong Views,
     MirReason Reason = default)
 {
-    /// <summary>The body of a problem no body describes: A4's obligation rows, which lie at Binding's rows (R4-M71); its views name no
-    /// body's cases.</summary>
+    /// <summary>The body of a problem no body describes: A4's obligation rows, which lie at Binding's rows (R4-M71), and the C1-F4 view's
+    /// findings (R4-M118); its views name no body's cases.</summary>
     internal const int NoBody = -1;
 }
 

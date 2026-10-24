@@ -2,12 +2,14 @@
 
 // MirOrigins' judgment of one class (2a0-D §6.2-§6.4; D15-D17, D19, D20): its edges (each active row, Longer -> Shorter and back for an
 // equality, a meet expanded by MeetNode's rule; each containment edge); an edge between two Fixed Origins judged at once, one oracle test
-// (an Equality row failing both ways is one problem); Tarjan's components over the inner nodes (Finite and Inferred); finite-source and
-// then fixed-source bitsets propagated in topological order through one pooled arena that MirDataflow.Within admits; and at each edge into
-// a Fixed node a problem per finite source (Refuted) and per fixed source the oracle does not derive (Unknown), the oracle closed once per
-// target and part. An edge of the layer's part (a layer row, or an edge between a Field initializer's atoms) is judged with the layer's
-// oracle, the Type's public premises (DECISIONS R4-M101 E4, R4-M110 Q1 (a), R4-M114); a row or containment edge with an Unclassed end
-// forms nothing and is the located limit, decided first; an edge with a Dependent end forms nothing and records nothing (R4-M118).
+// (an Equality row failing both ways is one problem); Tarjan's components over the inner nodes (Finite, Inferred and Dependent);
+// finite-source and then fixed-source bitsets propagated in topological order through one pooled arena that MirDataflow.Within admits; and
+// at each edge into a Fixed node a problem per finite source (Refuted) and per fixed source the oracle does not derive (Unknown), the oracle
+// closed once per target and part. An edge of the layer's part (a layer row, or an edge between a Field initializer's atoms) is judged with
+// the layer's oracle, the Type's public premises (DECISIONS R4-M101 E4, R4-M110 Q1 (a), R4-M114); a row or containment edge with an
+// Unclassed end forms nothing and is the located limit. A Dependent node, an end a Binding failure left Unbound, is never a source or a
+// judged target: it passes on what reaches it, so a chain through it is judged between its ends and one ending at it records nothing
+// (SPEC 23.1.2; DECISIONS R4-M118).
 
 using System.Numerics;
 using Kimi.Diagnostics;
@@ -134,15 +136,14 @@ internal sealed partial class MirOrigins
     }
 
     // An edge of the graph; one between two Fixed Origins passes nothing on, so it is judged at once instead (SPEC 15.6.5; 2a0-D §6.3).
-    // One with a Dependent end rests on a Binding failure, so it is not formed and records nothing (SPEC 23.1.2; DECISIONS R4-M118); only
-    // that edge, so a meet's other operands at the longer end keep theirs (D15).
     private void Join(int tail, int head, SourceRef site, int row)
     {
-        var atoms = this.slice.Atoms;
-        if (tail == head || atoms[tail].Kind == OriginAtomKind.Dependent || atoms[head].Kind == OriginAtomKind.Dependent)
+        if (tail == head)
         {
             return;
         }
+
+        var atoms = this.slice.Atoms;
 
         if (atoms[tail].Kind == OriginAtomKind.Fixed && atoms[head].Kind == OriginAtomKind.Fixed)
         {
@@ -401,9 +402,9 @@ internal sealed partial class MirOrigins
         }
     }
 
-    // Tarjan's strongly connected components of the inner nodes (Finite, Inferred) over the edges between them, iteratively: component ids in
-    // completion order, so every edge between components goes from a higher id to a lower one; returns the count and fills the members by
-    // component. Other nodes keep component -1.
+    // Tarjan's strongly connected components of the inner nodes (Finite, Inferred, Dependent) over the edges between them, iteratively:
+    // component ids in completion order, so every edge between components goes from a higher id to a lower one; returns the count and fills
+    // the members by component. Other nodes keep component -1.
     private int Components(int nodes)
     {
         var atoms = this.slice.Atoms;
@@ -500,7 +501,7 @@ internal sealed partial class MirOrigins
 
         return components;
 
-        static bool Inner(OriginAtomKind kind) => kind is OriginAtomKind.Finite or OriginAtomKind.Inferred;
+        static bool Inner(OriginAtomKind kind) => kind is OriginAtomKind.Finite or OriginAtomKind.Inferred or OriginAtomKind.Dependent;
     }
 
     // An edge into a Fixed node with the finite sources reaching its tail: one problem per source, at the edge's site, with its facts.

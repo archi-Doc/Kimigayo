@@ -33,8 +33,9 @@ internal enum OriginRowSource : byte
 }
 
 /// <summary>SPEC 15.6.5's kinds of an Origin relative to the checked body (2a0-D D6); Unclassed, which forms no edge (§3 row 9: another
-/// declaration's or body's atom, a located limit); and Dependent, which forms no edge and no problem (SPEC 23.1.2, DECISIONS R4-M118): an
-/// end a Binding failure left Unbound, or a meet with such an operand and no Unclassed one, never in a complete compilation.</summary>
+/// declaration's or body's atom, a located limit); and Dependent (SPEC 23.1.2, DECISIONS R4-M118), an end a Binding failure left Unbound,
+/// or a meet with such an operand and no Unclassed one, never in a complete compilation: never a source or a judged target, it records
+/// nothing itself, and a chain through it is judged between its ends.</summary>
 internal enum OriginAtomKind : byte
 {
     Fixed,

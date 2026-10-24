@@ -11,11 +11,12 @@ namespace XunitTest;
 /// <summary>A5's Origin stratum, Refuted part (2a0-D §6; docs/dev/DECISIONS.md R4-M113): every row of a body's C1-F4 view and every
 /// containment edge of its Refs is an edge of one graph per class of views; a finite Origin reaching an edge into a fixed one is
 /// <c>UnsatisfiedOriginRelation_Kd</c> at that edge's site with its Reason and facts; an Unclassed end is the located limit (row 9); a
-/// Dependent end records nothing (R4-M118).</summary>
+/// Dependent node is never a source or a judged target, only passing on what reaches it (R4-M118).</summary>
 public sealed partial class MirOriginsTest
 {
-    // A local whose clause names `zz`, an unknown Origin: its pending slot stays Unbound (a Binding failure), so its rows have a Dependent
-    // end (DECISIONS R4-M118); ValidClause names `a` instead, and the same body is judged.
+    // A local whose clause names `zz`, an unknown Origin: its pending slot `x.s` stays Unbound (a Binding failure), a Dependent node
+    // (DECISIONS R4-M118), and the chain local -> x.s -> a passes through it; Binding records only the failed clause, and ValidClause, which
+    // names `a` instead, reports the escape at `local@ref`.
     internal const string FailedClause = ClauseHead + "zz" + ClauseTail;
 
     // A repeated binding set: `{x}` is already bound by the parameter's Type, so the local's slots stay Unbound and its row `k` meets two.
@@ -39,6 +40,18 @@ public sealed partial class MirOriginsTest
     // A holder of one shared reference and a callee whose result meets its two arguments' Origins (the 2a-1c design review's m7).
     private const string Held = "struct C {s}\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\n" +
         "func pick(x: ref/i32 during s, y: ref/i32 during s) -> ref/i32 during s => x\n";
+
+    // Beside Held, a function returning `during a` with a local `l` to borrow; Escape, a local's Borrow held in a C and returned (the 2a-1c
+    // final review's T1); Unordered, a parameter's Origin held and returned `during b`; Pair, a holder of two Origins (BU's review probes).
+    private const string HeldLocal = Held + "func f(a: ref/i32) -> ref/i32 during a\n    let l = 5\n";
+
+    private const string Escape = HeldLocal + "    let h0 = C.init(l@ref)\n";
+
+    private const string Unordered = Held + "func g(a: ref/i32, b: ref/i32) -> ref/i32 during b\n    let h0 = C.init(a)\n";
+
+    private const string Pair = "struct P {s, t}\n    public let r: ref/i32 during s\n    public let q: ref/i32 during t\n" +
+        "    public init(r: ref/i32 during s, q: ref/i32 during t)\n        self.r = r\n        self.q = q\n" +
+        "func f(a: ref/i32) -> ref/i32 during a\n    let l = 5\n";
 
     // The destruction receiver's part and its helper borrow (G161's two forms).
     private const string Destructors = "struct Buffer\n    public var n: i32 = 0\n    public init() => ()\n" +
@@ -70,7 +83,7 @@ public sealed partial class MirOriginsTest
     // site is reachable (j-unreach), through a local region (j-region, m-scope), a nested function's own body (n-inner), a guard candidate
     // and the subject it binds (rv/guard-annot), an environment slot (rv/env-store), the destruction receiver's part and its helper borrow
     // (G161), shared and exclusive layers a Ref is reached through (SPEC 15.6.3's containment), an object's own step, a mutable static's
-    // storage (row 7), and FailedClause's body with its clause valid (ADependentEndFormsNoEdgeAndNoProblem's counterpart).
+    // storage (row 7), and FailedClause's body with its clause valid (AChainThroughADependentNodeIsJudgedBetweenItsEnds' counterpart).
     [Theory]
     [InlineData("func bad(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 1\n    return local@ref\n", "return local@ref")]
     [InlineData("func bad(input: ref/i32) -> ref/i32 during input\n    var view = input\n    let local = 5\n    view = local@ref\n    return view\n", "view")]
@@ -149,12 +162,11 @@ public sealed partial class MirOriginsTest
     public void AnUnclassedEndIsTheLocatedLimit(string source, params string[] sites)
         => Assert.Equal([.. sites.Select(static x => $"{nameof(DiagnosticCode.Unsupported_Kd)} {x}")], Origins(MirBuildTest.Compile(source + Main)));
 
-    // SPEC 23.1.2 (DECISIONS R4-M118): an end a Binding failure left Unbound is Dependent, and an edge with a Dependent end forms nothing and
-    // records nothing, Binding's own record explaining the rejection: a local clause naming an unknown Origin, a repeated binding set and
-    // the meet of its slots, a `var`'s binding set with no initializer, a containment edge through a Dependent layer, and a Dependent meet
-    // at the shorter end whose slot's Type occurrence a later pass resolves.
+    // SPEC 23.1.2 (DECISIONS R4-M118): an end a Binding failure left Unbound is a Dependent node, never a source or a judged target, so a
+    // chain that starts or ends at it needs the unresolved Origin and records nothing, Binding's failure explaining the rejection: a
+    // repeated binding set and the meet of its slots, a `var`'s binding set with no initializer, a containment edge into a Dependent
+    // layer, and a Dependent meet at the shorter end whose slot's Type occurrence a later pass resolves.
     [Theory]
-    [InlineData(FailedClause)]
     [InlineData(RepeatedSet)]
     [InlineData("struct V<T> {source}\n    public let value: ref/T during source\n" +
         "func f(x: ref/i32)\n    var pending: V<i32>{p}\n        origin p.source outlives x\n")]
@@ -162,12 +174,34 @@ public sealed partial class MirOriginsTest
         "    let q = h.r@follow@ref\n    return q@follow\n")]
     [InlineData(Held + "func g(a: ref/i32, b: ref/i32) -> ref/i32 during a\n    let h0 = C.init(b)\n    let h: C{x} = h0@move\n" +
         "        origin x.s outlives zz\n    let m: ref/i32 during (x.s and b) = b\n    return m\n")]
-    public void ADependentEndFormsNoEdgeAndNoProblem(string source)
+    public void AChainThatStartsOrEndsAtADependentNodeRecordsNothing(string source)
     {
         var c = MirBuildTest.Compile(source + Main);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Empty(Origins(c));
     }
+
+    // SPEC 23.1.2 and 15.6.5 (DECISIONS R4-M118): a chain through a Dependent node holds whatever the unresolved Origin is, so it is judged
+    // between its ends at its last edge: T1's local Borrow returned `during a` (also with the clause omitted, and with a plain local), a
+    // fixed source the premises do not order, FailedClause's escape (its last edge at the failed `let h`), and BU's forms through a slot
+    // no failed clause names (one local's, a Tuple's second set, an assignment's).
+    [Theory]
+    [InlineData(Escape + "    let h: C{x} = h0@move\n        origin x.s outlives zz\n    return h.r\n", "Unsatisfied", "return h.r")]
+    [InlineData(Escape + "    let h: C{x} = h0@move\n    return h.r\n", "Unsatisfied", "return h.r")]
+    [InlineData(Escape + "    let h = h0@move\n    return h.r\n", "Unsatisfied", "return h.r")]
+    [InlineData(Unordered + "    let h: C{x} = h0@move\n        origin x.s outlives zz\n    return h.r\n", "Unproven", "return h.r")]
+    [InlineData(FailedClause, "Unsatisfied", "let h: C{x} = h0@move")]
+    [InlineData(Pair + "    let p: P{x} = P.init(a, l@ref)\n        origin x.s outlives zz\n    return p.q\n", "Unsatisfied", "return p.q")]
+    [InlineData(
+        HeldLocal + "    let h: (C{x}, C{y}) = (C.init(a), C.init(l@ref))\n        origin x.s == zz\n    return h.1.r\n",
+        "Unsatisfied",
+        "return h.1.r")]
+    [InlineData(
+        Pair + "    var p: P{x} = P.init(a, a)\n        origin x.s outlives zz\n    p = P.init(a, l@ref)\n    return p.q\n",
+        "Unsatisfied",
+        "return p.q")]
+    public void AChainThroughADependentNodeIsJudgedBetweenItsEnds(string source, string verdict, string site)
+        => Assert.Equal([$"{verdict}OriginRelation_Kd {site}"], Origins(MirBuildTest.Compile(source + Main)));
 
     // SPEC 23.1.2 and MeetNode's rule (2a0-D D15): at the longer end each operand of a meet must outlive the shorter end, so a classed
     // operand's edge beside a Dependent one is an independent judgment: a local's Borrow returned `during a` through `pick`'s meet with the

@@ -9,15 +9,16 @@
 //   fixed-fixed oracles (TyCtxt.UniversalRelations: the body's, and its layer's for the layer's part) and its findings
 //   (TyCtxt.OriginFindings).
 // - Outputs, which Record adds with each class's views: UnsatisfiedOriginRelation_Kd (Ownership.UnprovenOrigin) at a chain's last edge's
-//   site (a row's Site, or the Ref's statement for a containment edge), with Reason (finite source, fixed end, false) of the view's canonical
-//   atoms and the facts Relation (the edge's row, -1 for a containment edge) and Anchor (the first Ref whose Origin is the source);
-//   UnprovenOriginRelation_Kd (Ownership.UnprovenOrigin) where the oracle does not derive a chain or edge between fixed Origins, at its last
-//   edge's site with Reason (fixed source, fixed target, false), or (Longer, Shorter, true) for an Equality row failing both ways, and the
-//   fact Relation; Unsupported_Kd (Ownership.Unsupported) at a row or Ref with an Unclassed end (2a0-D §3 row 9, D19), whatever Binding's
-//   completeness (DECISIONS R4-M113), while an edge with a Dependent end, one a Binding failure left Unbound, records nothing (SPEC
-//   23.1.2, R4-M118); OwnershipStorageLimit_Kd once at a body whose arena MirDataflow.Within refuses, which the stratum then skips (D20);
-//   and, which Findings adds once per program after step 4, InternalInvariant_Kd (Ownership.Internal, NoBody, every view) at each of the
-//   view's findings, a broken view contract in a complete compilation (R4-M101 E2, E4).
+//   site (a row's Site, or the Ref's statement for a containment edge), with Reason (finite source, fixed end, false) of the view's
+//   canonical atoms and the facts Relation (the edge's row, -1 for a containment edge) and Anchor (the first Ref whose Origin is the
+//   source); UnprovenOriginRelation_Kd (Ownership.UnprovenOrigin) where the oracle does not derive a chain or edge between fixed Origins,
+//   at its last edge's site with Reason (fixed source, fixed target, false), or (Longer, Shorter, true) for an Equality row failing both
+//   ways, and the fact Relation; Unsupported_Kd (Ownership.Unsupported) at a row or Ref with an Unclassed end (2a0-D §3 row 9, D19),
+//   whatever Binding's completeness (DECISIONS R4-M113), while a Dependent node, an end a Binding failure left Unbound, is never a source
+//   or a judged target, so only a chain through it is judged, between its ends (SPEC 23.1.2, R4-M118); OwnershipStorageLimit_Kd once at a
+//   body whose arena MirDataflow.Within refuses, which the stratum then skips (D20); and, which Findings adds once per program after step
+//   4, InternalInvariant_Kd (Ownership.Internal, NoBody, every view) at each of the view's findings, a broken view contract in a complete
+//   compilation (R4-M101 E2, E4).
 // - Invariants: no liveness, CFG order, Loan set or syntax is read; every Origin comes through the view, a row's ends by index and a Ref's
 //   or a dereferenced layer's through OriginAtom at the Ref's site; a chain's verdict does not depend on reachability; views whose active
 //   rows and containment edges are equal form one class, judged once, under the borrow binders all its views share (SPEC 15.6.5); an edge

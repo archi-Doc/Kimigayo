@@ -186,8 +186,8 @@ public sealed partial class Binding
         return role == ProjectionRole.Storage || this.ReadsReferent(atom.Binder) ? OriginAtomKind.Inferred : OriginAtomKind.Finite;
     }
 
-    // Rows 2, 2' and 9: a meet is one Fixed node when every operand is Fixed, an Inferred meet node otherwise, and forms no edge when an
-    // operand forms none: Unclassed, a located limit, before Dependent, a failure's dependent (DECISIONS R4-M118).
+    // Rows 2, 2' and 9: a meet is one Fixed node when every operand is Fixed, a Dependent node when an operand is Dependent (DECISIONS
+    // R4-M118), an Inferred meet node otherwise, and forms no edge when an operand is Unclassed, a located limit that decides first.
     private OriginAtomEntry? ClassifyMeet(BoundOrigin meet, OriginRowSet slice)
     {
         var kind = OriginAtomKind.Fixed;

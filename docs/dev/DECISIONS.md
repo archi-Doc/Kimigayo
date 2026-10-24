@@ -2781,14 +2781,14 @@ and migration obligations remain in force; no numeric cap changes are authorized
     only (else `InternalInvariant_Kd`); layer rows are judged with the layer's oracle, the Type's public premises (Q1 (a): today's
     verdict; which premises judge a Field initializer is reported to the owner as a SPEC gap; answered (a), R4-M110). Recorded
     limit: a struct without a constructor keeps its layer rows in no slice (PLAN, STATUS).
-  - E5 classes: SPEC's three kinds and Unclassed (no edge; and Dependent since R4-M118) by 2a0-D §3's precedence, roots by the forming
-    body for non-declaration
-    binders and by slot role for declaration binders (parameters of f and of templates (f, i > j), `ReceiverSlot` and `HelperSlot`,
-    environment, `ClosureValueSlot`, `CallResultSlot`, accessor self/value, a Property's storage); "enclosing" is the chain of Closures'
-    evaluating bodies; only the view decodes slots (`ProjectionRole`). E6: no `ResultFit` in 2a0-2 (2a-2 decides W's fact, R4-M104).
-    E7: no raw guard (BU-24). E8: `ArchitectureRulesTest` rows: no Mir read of an Origin's slot, binder or forming body; one caller of
-    `OriginPremiseClosure.AddEdge`, the catalog's writer. E9: D1 (`BodyChain`, used by `JudgeCallPosition`), D2 but `ResultFit`, D4,
-    D5, D6, D8 (`UniversalRelations`, per body and per layer, agreeing with `ProvesOriginOutlives` on the census's fixed-fixed rows).
+  - E5 classes: SPEC's three kinds and Unclassed (no edge) by 2a0-D §3's precedence, and since R4-M118 Dependent (never a source or a judged
+    target, so a chain through it is judged between its ends), roots by the forming body for non-declaration binders and by slot role for
+    declaration binders (parameters of f and of templates (f, i > j), `ReceiverSlot` and `HelperSlot`, environment, `ClosureValueSlot`,
+    `CallResultSlot`, accessor self/value, a Property's storage); "enclosing" is the chain of Closures' evaluating bodies; only the view
+    decodes slots (`ProjectionRole`). E6: no `ResultFit` in 2a0-2 (2a-2 decides W's fact, R4-M104). E7: no raw guard (BU-24). E8:
+    `ArchitectureRulesTest` rows: no Mir read of an Origin's slot, binder or forming body; one caller of `OriginPremiseClosure.AddEdge`, the
+    catalog's writer. E9: D1 (`BodyChain`, used by `JudgeCallPosition`), D2 but `ResultFit`, D4, D5, D6, D8 (`UniversalRelations`, per body
+    and per layer, agreeing with `ProvesOriginOutlives` on the census's fixed-fixed rows).
   - Departures from R4-M94: D2 without `ResultFit` until 2a-2; D3's owner by formation, with declaration rows outside every slice and
     the layer's rows in each constructor's; D8's oracle per layer for layer rows.
   - PD21 (the planning session's first ruling on `Binding.Origins.Model.cs`): one responsibility, the Origin model's records, so no
@@ -3259,7 +3259,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (MirOrigins reads none; G216 and meet-trans keep their limits). Known residual until 2a-1c: an end a Binding failure left unresolved
     (a local clause naming an unknown Origin) is then a derived problem reported as direct (SPEC 23.1.2; unpublished until R6-check),
     pinned in `MirOriginsTest`; 2a-1c, under the full process, marks such ends (`OriginAtomKind.Dependent` as the direction to start from).
-    Superseded by R4-M118: such an end is Dependent and records nothing.
+    Superseded by R4-M118: such an end is Dependent, a node that is never a source or a judged target.
   - R4-M101's conditions: (a) `MirDefKey.Body` is Mir's one conversion to `ExecutableBody`, which the tests use (`OriginRowsTest.BodyOf`
     deleted); (b) by construction: a default's rows are its template's, a caller's Ref inside the inline copy adds no containment, and the
     copy programs form no node in a caller (`AnInlineDefaultCopyFormsNoNodeInItsCaller`).
@@ -3474,23 +3474,28 @@ and migration obligations remain in force; no numeric cap changes are authorized
     STATUS states the differences.
   - Later: the owner, 2026-10-23, verbatim 「RZ、G86、G159(2)、G158(3)、B 3.4 の §15.4.2 の穴は、分析してから別の SPEC セッションで
     決めます。今回は 11 項目だけ進めてください。」: these five points go to a later SPEC session after their analysis.
-- **R4-M118 Dependent ends: an Origin end a Binding failure left Unbound forms no edge and records nothing; the view's findings are
-  published** (2026-10-24; unit 2a-1c, the third of G:A5-F4, DEC Q6 form 2, under the full process: designs A and B, the design review's
-  merge M, adopted by the R4 planning session, `s2-2a-1c/final-design.md`; the vocabulary entry is the planning session's under the
-  owner's decision of 2026-10-24, verbatim 「(a) 計画セッションが決める (推奨)」)
+- **R4-M118 Dependent ends: an Origin end a Binding failure left Unbound is a pass-through node, never a source or a judged target;
+  the view's findings are published** (2026-10-24; unit 2a-1c, the third of G:A5-F4, DEC Q6 form 2, under the full process: designs A
+  and B, the design review's merge M, adopted by the R4 planning session, `s2-2a-1c/final-design.md`; the vocabulary entry is the planning
+  session's under the owner's decision of 2026-10-24, verbatim 「(a) 計画セッションが決める (推奨)」; the fix round after the A5-part
+  final review's F1, the owner's choice of 2026-10-24, verbatim 「(a) 通過点として扱う (推奨)」, and BU's Binding-part review W1-W3)
   - Rule (SPEC 23.1.2; DIAGNOSTICS "Later phases"; R4-M10; A4's `Derived` for `CompilerFunctionEffect.Dependent`, R4-M22, the
-    precedent): a fact a Binding view publishes to MIR that rests on a Binding failure (an `Unbound` Origin, a failed Type) is a
-    dependent; its consumer records nothing for it, and each view keeps its limit outcome for genuine limits only. The C1-F4 view is the
-    rule's first row; a later site adds a row under it, not a decision.
+    precedent): a fact a Binding view publishes to MIR that rests on a Binding failure (an `Unbound` Origin, a failed Type) is dependent:
+    its consumer records nothing for an edge or row whose own end is that fact, while a chain that passes through it is judged between its
+    ends, since it holds whatever the unresolved Origin is. Each view keeps its limit outcome for genuine limits only. The C1-F4 view is
+    the rule's first row; a later site adds a row under it, not a decision.
   - The class: `OriginAtomKind.Dependent` (the view's classifier, `ClassifyAtom`, `ClassifyMeet`): every `OriginKind.Unbound` atom, and
-    a meet with a Dependent operand and no Unclassed one. `Unbound` has one source (`PendingOrigin`) and survives a declaration's
-    completion only on failure paths, each leaving an Error (`BindingResult.IsComplete`, DIAGNOSTICS rule 8). Unclassed (row 9's genuine
-    limits: G195/I-1, G216, another body's root) takes precedence in a meet whatever the operands' order. A Dependent atom is an
-    `OriginFinding`, recorded only in a complete compilation.
-  - MirOrigins: `Join` forms no edge with a Dependent end and records nothing; the row-level Unclassed check stays first. So Unclassed
-    is per row (its located record covers the row's other edges) and Dependent per edge (it records nothing, so it drops only its own
-    edges): at the longer end a meet's other operands keep their edges (MeetNode, D15), at the shorter end a Dependent meet takes none.
-    MIR reads neither Binding's completeness nor an Origin's kind.
+    a meet with a Dependent operand and no Unclassed one. `Unbound` has one source (`PendingOrigin`); completion leaves it only on
+    failure paths a-c, each leaving an Error (`BindingResult.IsComplete`, DIAGNOSTICS rule 8), while path d (`PendingAssociatedType`'s
+    early return) and a use outside its owner's subtree that `OriginAtUse` cannot resolve are unverified and closed only by (F).
+    Unclassed (row 9's genuine limits: G195/I-1, G216, another body's root) takes precedence in a meet whatever the operands' order. A
+    Dependent atom is an `OriginFinding`, recorded only in a complete compilation.
+  - MirOrigins: a Dependent node is an inner node, like an Inferred one, that is never a source (only Finite is) and never a judged
+    target (only Fixed is): it passes on what reaches it. So a chain through it is judged between its ends (`l -> x.s -> a` is Refuted at
+    its last edge, as every repair of the failure reports it), and one that starts or ends at it records nothing. The row-level
+    Unclassed check stays first: a row with an Unclassed end is the located limit whatever its other end. MIR reads neither Binding's
+    completeness nor an Origin's kind. Open point: a chain's last edge can lie at a node Binding failed (FailedClause's record at `let
+    h`); whether A6 keeps it there or moves its subject is G213's (2g's) question; the record's existence does not depend on it.
   - The guard (F): `MirOrigins.Findings` publishes `TyCtxt.OriginFindings` once per program after step 4, each `InternalInvariant_Kd`
     (`Ownership.Internal`, `NoBody`, every view), unpublished like A5's problems until R6-check. It implements R4-M101 E2's and E4's
     promise (declaration rows with no body, parts sharing a non-Fixed atom, unclassifiable atoms, case-mask binders), which only tests read
@@ -3498,27 +3503,33 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Evidence: the mir Functional ledger (`KIMI_MIR_DIFF`, base 65be867e9, `artifacts/verify/shared-base/65be867e9`): raw rows
     3,172 -> 3,149, 23 removed and none added, every one a5-row9-incomplete's Unbound row in 9 programs (07bf49df3892's 7 Holder
     programs, 3e02f1e98a41, e13102c8c039); signatures 224 -> 220, open (b) 127 -> 123 (1,285 -> 1,253 rows), open blocking 102
-    unchanged; (F) alone moves no row. a5-row9-incomplete keeps G216's 7 rows. Tests: the view's classes (`OriginRowsTest.Classes`, the
-    precedence built from two programs' atoms), `MirOriginsTest`'s Dependent forms, the mixed-meet regressions m7 and m8 (each fails
-    under design A's rule), their counterparts, G216 beside an unrelated error, and the warm judgment (0 B).
-  - Sites sharing the cause, outside the unit (review §5): (1) Binding's fit judge (`RecordOriginFitFailure`; `FailedOriginEnvironment`
-    finds a failure only through the use's ancestors): derived records published as direct (`return w`, `return e.view@follow@uniq`,
-    `return q` beside a failed `let h: C{x}`; `m = l@ref`), a G206 item for BU, which finds the failure through the Unbound end by this
-    rule; (2) BU-26's `JudgeDeclarationRows`/`IsDerived`: a binder Resolved by a later pass and a failure at the Type, alias or payload
-    (path c), an open issue for BU; (3) A5's Loan stratum at a call (`CallRetention.Limit` in `MirBorrows.Locations.cs`): a failed
-    payload Type in the retention view, whose representation cannot carry the class, a PLAN row after BU's G160-2c. Not this cause: the
-    MIR's `ComparisonLoanConflict_Kd` at `h` in `let p = h@ref` beside the failed `let h` (R4 triage).
-  - Rejected: design A's row-level `Forms` (it drops a Dependent meet's independent operand edges at the longer end: m7 and m8 lose
-    `UnsatisfiedOriginRelation_Kd`); design B's guard without (F) (it assumed a publication that did not exist); a failure lookup per
-    binder (a failure is a node fact; a binder a later pass resolves, and path c, escape it); cause facts on `MirProblem` (G213's
-    representation, 2g-D's design; the class is the fact it would read); MIR reading completeness or the kind (R4-M113; ARCH rows 29, 90);
-    the producer dropping rows with an Unbound end (misses atoms MIR reads at Refs, drops independent edges, judges in the producer);
-    Binding resolving a failed declaration's slots to `static` or a region (fabricates relations); dropping `Unsupported_Kd` in `MirReport`
-    (suppressing reports afterwards).
+    unchanged; (F) alone, and the pass-through rule against the first rule, move no row (the corpus has no chain through a Dependent
+    node). Tests: the view's classes, the precedence in both operand orders; the forms whose chains only start or end at a Dependent
+    node; chains through one (T1 and its repairs, a fixed-source chain, FailedClause, BU's `i-unrelated-slot`, `i-two-sets`,
+    `i-unrelated-assign`); the mixed-meet regressions m7 and m8 with their counterpart; G216 beside an unrelated error; the warm
+    judgment (0 B).
+  - Sites sharing the cause, outside the unit (review §5), each to apply this rule: (1) PLAN G206 (6), Binding's fit judge
+    (`RecordOriginFitFailure`; `FailedOriginEnvironment` finds a failure only through the use's ancestors): derived records published as
+    direct (`return w`, `return e.view@follow@uniq`, `return q` beside a failed `let h: C{x}`; `m = l@ref`); the fix derives only a record
+    whose own relation has the failed end, never one whose chain fails between its non-Dependent ends (`i-unrelated-slot`'s
+    `UnprovenOriginRelation_Kd` at `return p.q` is the only record of a real error); (2) PLAN G206 (7), BU-26's
+    `JudgeDeclarationRows`/`IsDerived`: a binder Resolved by a later pass and a failure at the Type, alias or payload (path c); (3) PLAN
+    G240, A5's Loan stratum at a call (`CallRetention.Limit` in `MirBorrows.Locations.cs`): a failed payload Type in the retention view,
+    whose representation cannot carry the class, after BU's G160-2c. Not this cause: PLAN G241, the MIR's `ComparisonLoanConflict_Kd` at
+    `h` in `let p = h@ref` beside the failed `let h` (R4 triage).
+  - Rejected: dropping every edge with a Dependent end (2a-1c's first rule; the final review's F1: it also drops chains through the node,
+    T1's escape and FailedClause's, which every repair reports); option Q, the error-Origin reading that keeps that rule (once PLAN G206
+    (6) and H11 remove Binding's twin records, T1's escape would be reported nowhere); design A's row-level `Forms` (it drops a Dependent
+    meet's independent operand edges at the longer end: m7 and m8 lose `UnsatisfiedOriginRelation_Kd`); design B's guard without (F) (it
+    assumed a publication that did not exist); a failure lookup per binder (a failure is a node fact; a binder a later pass resolves, and
+    path c, escape it); cause facts on `MirProblem` (G213's representation, 2g-D's design; the class is the fact it would read); MIR
+    reading completeness or the kind (R4-M113; ARCH rows 29, 90); the producer dropping rows with an Unbound end (misses atoms MIR reads
+    at Refs, drops independent edges, judges in the producer); Binding resolving a failed declaration's slots to `static` or a region
+    (fabricates relations); dropping `Unsupported_Kd` in `MirReport` (suppressing reports afterwards).
   - Supersedes R4-M113's row-9 residual and R4-M101 E5's class list (now SPEC's three kinds, Unclassed and Dependent); both stay and name
     this entry.
-  - Unverified: path d (`PendingAssociatedType`'s early return) and a use outside its owner's subtree that `OriginAtUse` cannot resolve
-    are closed only by (F); (F) itself is reached by no source program (a finding needs a Binding defect).
+  - Unverified: path d and the `OriginAtUse` case above are closed only by (F); (F) itself is reached by no source program (a finding
+    needs a Binding defect).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
