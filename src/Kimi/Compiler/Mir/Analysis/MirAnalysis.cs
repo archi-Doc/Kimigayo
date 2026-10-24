@@ -7,7 +7,8 @@
 // 1. per body, A3;
 // 2. per body, per view A1, then A2, then A4's local facts;
 // 3. A4 over the program;
-// 4. per body, A5: the Origin stratum's judgment, then the Loan stratum per view, then the Origin stratum's problems;
+// 4. per body, A5: the Origin stratum's judgment, then the Loan stratum per view, then the Origin stratum's problems; then, once per
+//    program, the C1-F4 view's findings (MirOrigins.Findings);
 // 5. A6 inside MirReport.
 // Owns one instance of each analysis and their shared scratch for the compilation's lifetime, arrays reset by counts; each analysis unit
 // adds its field and its pass row at its step: steps 1 and 2 in Body, steps 3 and 4 in Run (A5 with its own loop over the bodies after
@@ -77,6 +78,7 @@ internal sealed class MirAnalysis
             this.Borrows(program, body); // 4. per body.
         }
 
+        this.origins.Findings(program.Problems); // 4. once per program.
         return program;
     }
 

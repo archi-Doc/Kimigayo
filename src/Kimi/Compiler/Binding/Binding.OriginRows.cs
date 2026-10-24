@@ -102,7 +102,7 @@ public sealed partial class Binding
     {
         if (this.Result.IsComplete)
         {
-            this.originFindings.Add(site); // A broken contract is InternalInvariant_Kd in a complete compilation only (R4-M10).
+            this.originFindings.Add(site); // InternalInvariant_Kd in a complete compilation only (R4-M10), from MirOrigins.Findings.
         }
     }
 

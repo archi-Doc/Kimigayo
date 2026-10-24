@@ -5,16 +5,19 @@
 // and the relations between two fixed Origins (MirOrigins.Chains.cs), and the located limit at an end the view leaves unclassed. The
 // merge's facts are 2a-2's.
 // - Inputs: a validated body and the views A1 and A2 completed (MirDropTable.ViewsOf); MirCases (a view's borrow binders and case Types);
-//   MirSteps (a Ref's classed steps); the C1-F4 view (TyCtxt.OriginRows, OriginAtom, an atom's part), keyed by MirDefKey.Body, and its
-//   fixed-fixed oracles (TyCtxt.UniversalRelations: the body's, and its layer's for the layer's part).
+//   MirSteps (a Ref's classed steps); the C1-F4 view (TyCtxt.OriginRows, OriginAtom, an atom's part), keyed by MirDefKey.Body, its
+//   fixed-fixed oracles (TyCtxt.UniversalRelations: the body's, and its layer's for the layer's part) and its findings
+//   (TyCtxt.OriginFindings).
 // - Outputs, which Record adds with each class's views: UnsatisfiedOriginRelation_Kd (Ownership.UnprovenOrigin) at a chain's last edge's
 //   site (a row's Site, or the Ref's statement for a containment edge), with Reason (finite source, fixed end, false) of the view's canonical
 //   atoms and the facts Relation (the edge's row, -1 for a containment edge) and Anchor (the first Ref whose Origin is the source);
 //   UnprovenOriginRelation_Kd (Ownership.UnprovenOrigin) where the oracle does not derive a chain or edge between fixed Origins, at its last
 //   edge's site with Reason (fixed source, fixed target, false), or (Longer, Shorter, true) for an Equality row failing both ways, and the
 //   fact Relation; Unsupported_Kd (Ownership.Unsupported) at a row or Ref with an Unclassed end (2a0-D §3 row 9, D19), whatever Binding's
-//   completeness (an end that a Binding failure caused is 2a-1c's, DECISIONS R4-M113); and OwnershipStorageLimit_Kd once at a body whose
-//   arena MirDataflow.Within refuses, which the stratum then skips (D20).
+//   completeness (an end that a Binding failure caused is 2a-1c's, DECISIONS R4-M113); OwnershipStorageLimit_Kd once at a body whose
+//   arena MirDataflow.Within refuses, which the stratum then skips (D20); and, which Findings adds once per program after step 4,
+//   InternalInvariant_Kd (Ownership.Internal, NoBody, every view) at each of the view's findings, a broken view contract in a complete
+//   compilation (R4-M101 E2, E4).
 // - Invariants: no liveness, CFG order, Loan set or syntax is read; every Origin comes through the view, a row's ends by index and a Ref's
 //   or a dereferenced layer's through OriginAtom at the Ref's site; a chain's verdict does not depend on reachability; views whose active
 //   rows and containment edges are equal form one class, judged once, under the borrow binders all its views share (SPEC 15.6.5); an edge
@@ -30,7 +33,7 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Mir;
 
 /// <summary>A5's Origin stratum (2a0-D §6): <see cref="Judge"/> judges a body's classes of views, then <see cref="Record"/> adds their
-/// problems.</summary>
+/// problems; <see cref="Findings"/> adds the view's broken contracts once per program.</summary>
 /// <param name="types">The Type context, whose C1-F4 view gives the rows and the atoms.</param>
 /// <param name="cases">The Semantics case views.</param>
 internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
@@ -119,6 +122,19 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
         {
             var problem = new MirProblem(found.Code, found.Requirement, found.Subject, this.body.Ordinal, found.Views, found.Reason);
             report.Add(problem, facts.Slice(found.FactStart, found.FactCount));
+        }
+    }
+
+    /// <summary>Adds the C1-F4 view's findings, each a broken view contract in a complete compilation, as one InternalInvariant_Kd at its
+    /// site in every view (R4-M101 E2, E4): once per program, after step 4's reads of the view.</summary>
+    /// <param name="report">The program's problems.</param>
+    internal void Findings(MirReport report)
+    {
+        var findings = types.OriginFindings;
+        var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal);
+        for (var i = 0; i < findings.Count; i++)
+        {
+            report.Add(new(DiagnosticCode.InternalInvariant_Kd, requirement, findings[i], MirProblem.NoBody, ulong.MaxValue));
         }
     }
 
