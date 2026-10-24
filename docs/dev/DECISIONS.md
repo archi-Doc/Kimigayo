@@ -2853,8 +2853,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     classification. Not adopted: a unified "lifecycle receiver" definition (editorial,
     with rule-drift risk the review found).
   - Numbering: R4-M101 is reserved for 2a0-2; R4-M102 is on R5's branch `claude/r5-a2b` (A-2b).
-- **R4-M104 A Loan conflict caused only by Refuted relations (W)** (owner, 2026-10-22, after two rounds of a general definition were
-  not accepted: 「P2は、W：個別規則に決定します」; the proposal `draft/Proposals/2026-10-21 Failures Caused Only by Other Failures.md`,
+- **R4-M104 A Loan conflict caused only by Refuted relations (W)** (integrated by R4-M122 with the owner's read-through clause) (owner,
+  2026-10-22, after two rounds of a general definition were
+  not accepted: 「P2は、W：個別規則に決定します」; the proposal `draft/Changes/2026-10-21 Failures Caused Only by Other Failures.md`,
   accepted in its round-3 review with fixes, a re-check and a confirmation, `draft/Sketches/R4 Proposals 2026-10-21/review-p2r3.md`)
   - Adopted for SPEC 15.6.5 (cited from 14.8.3 and 15.8.2), the proposal's sentence: "A Loan conflict on the Loan of a Borrow whose
     finite Origin Refuted chains carry to fixed Origins is caused only by the Refuted relations of those chains (23.1.2) when every
@@ -3425,6 +3426,47 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `hidden`'s `var v` (R-B2 through an untied holder, a5-new). Census: no problem. Rejected: B's W rule and the untracked rule as written
     (above); the untracked test on a layer's content (every read of `b.data` after `b.push(y@ref)` would carry Φ_E). Unverified: the
     Exclusive guard row on a Type-argument layer (no corpus program); cost beyond the V16 rows (measured in G160-5).
+- **R4-M122 Rule W in SPEC 15.6.5, a read through a reference counted as a Copy; 14.8.3 and 15.8.2 cite it** (owner, 2026-10-24,
+  verbatim answers to the R4 planning session's two questions: 「(a) 今、W だけで開く (推奨)」, this SPEC session holds W alone, and
+  「(a) SPEC の W の文に書く (推奨)」, the reading the prototype round needed is one clause of W's sentence; unit spec-w; R4-M104's proposal,
+  now `draft/Changes/2026-10-21 Failures Caused Only by Other Failures.md`, closed as 取り込み済み)
+  - SPEC 15.6.5, a paragraph after the sentence on locals: "A Loan conflict on the Loan of a Borrow whose finite Origin Refuted chains
+    carry to fixed Origins is caused only by the Refuted relations of those chains (23.1.2) when every value that carries the Loan and
+    may be used after the access is the result or storage the body does not own and received the Loan only as the borrow or a Copy or
+    Reborrow of it (15.6), stored into a part with a fixed Origin; a call's result, or storage the call writes, that may retain such a
+    value as an argument counts as a Copy of it (15.6.4), and a read through a reference to a whole value counts as a Copy of that
+    value." R4-M104's sentence is unchanged; the last clause is the owner's. 14.8.3: 15.6.5 "states when a Loan conflict at guard
+    cleanup is caused only by Refuted relations". 15.8.2's sentence on a returned body-local borrow cites 15.6.5. Example `store` and
+    `keep` in 15.6.5 (the proposal's m-write4 and m-write rows), registered as `15.6.5-derived-conflict` (F4): `store`'s write conflict
+    is Dependent; the old path's missing write conflict in `keep` is an (a) difference, since a Binding record stops that path.
+  - The clause: a guard's `v@ref` at `ref/T` is one shared reference through layers (10.2 Copies the innermost `ref`, v's value), which
+    the MIR lowers to `&*(*&v)`, a read through a reference to `v`. 15.6's "a read through a reference carries the Loans of what it
+    reaches" reads like the holder rule, so without the clause `rv-g-param`'s `v@ref` form could be read as independent: SPEC-legal, but
+    against the proposal's reading (the round's item 6). The clause is sound because the value read is the referenced value itself: a
+    part read, or a Loan the read carries only by the holder rule, is no Copy of the Borrow (`fT`, round 3's B1 (c) stay independent).
+  - Rationale and Principles (the proposal's §7). One Concept: one sentence replaces 2a0-D §7's two family rules; 15.6.5's sentence on
+    locals and 15.8.2's are its instances where the result is the only later carrier (in m-scope's shape both records stay). Local
+    Reasoning: whether a conflict is derived follows from the values that carry its Loan and the parts that received it, facts of the
+    body. Explicit Semantics: the derived case and the reading it needs are stated; elsewhere 23.1.2 applies unchanged, its general
+    term undefined. Compiler Server Protocol: an escape reports its relation, and the consequent conflict keeps it as its cause.
+    Relations are never derived; no verdict changes.
+  - R4-M104's supersessions. At integration: the SPEC reading itself, so an implementation may omit these conflicts (the default
+    pipeline's single relation record for `slot@follow = x@ref; x = 2` conforms); 2a0-D §5.1's m-write4 expectation, a conforming
+    result whose planned STATUS record and H11 item are not written; 2a0-D §9's planned records of N-6's residual and the DOUBLE, not
+    written. With 2a-2, which implements none of them yet: R4-M94's merge rules 1 and 2, OQ-4 (b), OQ-3 (2) and (9), PD11's two halves
+    and A3 E7's merge sentence, 2a0-D §10's 2a-2 done-condition exception and the listed expectations, DIAGNOSTICS §4.3's sentence and
+    invariant (R5's H3). With 2g-5: its A5-F4 and A5-F7 escape parts. PLAN G113's E12 sentence is gone already (G113 left PLAN with
+    R4-M106's landing records, "E12 replaced by W").
+  - The prototype round (2026-10-24, 113 programs on 2a-1b's head, labels only, no verdict changed; its record is
+    `draft/Sketches/A5 Step 2/W prototype round/proto-round.md`) corrects the proposal's §3 (frozen;
+    INTEGRATED records it): m-36f's row is vacuous (R4-M106 deleted P12; neither pipeline has its conflict); m-write3 has no storage-end
+    conflict, since its write ends x's Loans first (15.6.3), only the independent write conflict; keepA has one more record, derived,
+    at local's storage end (E receives v's value, a Copy of `local@ref`, into `p.*` at `a`). Without per-part facts m-pair's returned
+    Borrow and review-2's B1 (a) storage end read independent: SPEC-legal.
+  - Open, outside this unit: the twins' lost independent conflicts on the MIR until H11 (the round's §4 item 1); the default pipeline's
+    acceptances of repair variants (review-p2r3 N12, C7, `fT`), pre-existing ledger differences; 2a-2's facts (the result in transit,
+    a store's part class, a Loan's Borrow atom) and the bit's representation. The later SPEC session keeps RZ, G86, G159 (2), G158 (3),
+    B 3.4's 15.4.2 gap and PLAN G160's N2.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
