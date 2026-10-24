@@ -3556,7 +3556,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Vocabulary: `DiagnosticCode.OwnStepDeparture_Kd` (Warning, Language, `case:Text` evidence as every A5 code); the requirement kind
     `OwnStepDeparture`, added against R5-M24's "no member is added" by the owner's OQ-2 (the enumeration's prohibition now reads "without
     the owner's approval"); `OwnershipIssue.Code` maps it, the requirement's one code that the ledger's consistency set reads (the old
-    analysis records none); the ledger's compared pair (A5) and the (d) row `a5-own-step`.
+    analysis records none), a row of the old Analysis's `OwnershipModel.cs` that adds no accepted form or generation feature (D5); the
+    ledger's compared pair (A5) and the (d) row `a5-own-step`.
   - Observations: a copy reaches a pending slot only through a reference of its own, so a departure inside a copy of a pointer formed
     outside it needs a root the caller and the copy share (a static, where `Evaluated` arises); a Drop past the destruction walk's bound
     of a root only own-step entries make borrowed is the existing located `Unsupported_Kd` (no corpus program).
