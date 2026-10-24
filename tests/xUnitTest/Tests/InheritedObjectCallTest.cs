@@ -29,6 +29,29 @@ public class InheritedObjectCallTest(ITestOutputHelper output)
     public void SharedObjectBaseCallsUseTheOriginalHeaderAndLoan(string name, string body)
         => ScalarEmissionTest.EmitFixture("InheritedObject" + name, Types + body, string.Empty);
 
+    // SPEC 3.4.3, 9.6.1, 13.5.5 (E9, P34_REMAINING R1; DECISIONS R5-M114): an inherited base getter and ref/Self method reached through
+    // reference layers read the base subobject of the value or object below them, and a virtual call there dispatches on that object. The old
+    // generator reads the reference's own slot (R1, frozen on the old path): its outcome is the deviation's, the first check's Abort.
+    [Theory]
+    [InlineData("RefRef", "ref/(ref/Leaf during a)", "var owner = Leaf.init()\nlet view = owner@ref\n", "view@ref", false)]
+    [InlineData("UniqUniq", "uniq/(uniq/Leaf during a)", "var owner = Leaf.init()\nvar view = owner@uniq\n", "view@uniq", false)]
+    [InlineData("RefObj", "ref/(obj/Leaf)", "var owner = Leaf.init()@obj\n", "owner@ref", true)]
+    [InlineData("RefRc", "ref/(rc/Leaf)", "let owner = Leaf.init()@rc\n", "owner@ref", true)]
+    [InlineData("UniqObj", "uniq/(obj/Leaf)", "var owner = Leaf.init()@obj\n", "owner@uniq", true)]
+    public void ReceiversThroughReferenceLayersReadTheirBaseSubobject(string name, string parameter, string setup, string argument, bool objects)
+    {
+        var source = "open struct Base\n    public let n: i32 = 7\n    public computed twice: i32\n        get(self: ref/Self) -> i32 => self.n * 2\n" +
+            "    public init() => ()\n    public func read(self: ref/Self) -> i32 => self.n\n    public virtual func slot(self: objref/Self) -> i32 => 1\n" +
+            "struct Leaf : Base\n    public let m: i32 = 100\n    public init() : base() => ()\n    override func slot(self: objref/Self) -> i32 => self.m\n" +
+            $"func probe(r: {parameter}) -> i32\n    require r.read() == 7 else => $abort(\"read\")\n    require r.twice == 14 else => $abort(\"getter\")\n" +
+            (objects ? "    require r.slot() == 100 else => $abort(\"slot\")\n" : string.Empty) + "    return 0\n" +
+            setup + $"require probe({argument}) == 0 else => $abort(\"probe\")\nConsole.writeLine(\"layers\")\n";
+        var at = source.IndexOf("$abort(\"read\")", StringComparison.Ordinal);
+        var location = $"Hello.kimi:{source[..at].Count(static x => x == '\n') + 1}:{at - source.LastIndexOf('\n', at - 1)}";
+        var legacy = new LegacyNative(CodegenDeviations.ReceiverLayers, string.Empty, 1, $"{location}: abort KIMI_E_ABORT: read\n");
+        ScalarEmissionTest.EmitFixture("InheritedObjectReceiverLayers" + name, source, "layers\n", legacy: legacy);
+    }
+
     [Fact]
     public void DirectBaseCallsAndCapturesUseTheSameObjectProjection()
     {

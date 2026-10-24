@@ -7739,6 +7739,12 @@ structure is recorded here by the unit that first implements it.
     virtual witness maps to its slot), which a Requirement call and `Runs` read (ruling Q3 (a)); a Fn callee calls the function it names,
     a direct base call included (SPEC 6.4.4). Receivers reached through reference layers need nothing more: the builder borrows the
     payload through them and upcasts it to the slot's view (`MirBuilder.Dispatched`).
+  - E9 (plan row E9, P34_REMAINING R1; ruling Q5 (a), its own commit, since it passes under sel before C6c's rows): the reproducer
+    `InheritedObjectCallTest.ReceiversThroughReferenceLayersReadTheirBaseSubobject`, a base getter and `ref/Self` method through
+    `ref/(ref/Leaf)`, `uniq/(uniq/Leaf)`, `ref/(obj/Leaf)`, `ref/(rc/Leaf)` and `uniq/(obj/Leaf)` (a virtual call too through the object
+    forms), each a fixture with the SPEC result; the old generator reads the reference's own slot, so its outcome is the deviation
+    `receiver-layers` (class (a), R5-M85's and R5-M106's form, `LegacyNative`): the first check's `KIMI_E_ABORT`, an address's low
+    bits never being 7. The old path's miscompile stays frozen (R5-M6; U7 or G7).
   - Restructured first, behavior unchanged: the unnamed signatures' search in `ModuleCodegen.Signatures` (`Unnamed`); `VTableDef.SlotOf`
     and the collector's use of it; the Run channel above.
   - Departure (for the owner's departures list): the `VirtualDispatch` corpus kernel's O2 A/B (plan row C6c, R5-M8) moves to the later of

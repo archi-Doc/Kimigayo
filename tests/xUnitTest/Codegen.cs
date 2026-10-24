@@ -139,6 +139,16 @@ internal static class CodegenDeviations
         "8.15.3 23.2.2",
         "MIR code generation reports the Language error at check; the old generator accepts the program and reports its size limit at generation. Native outcomes stay equal (R5-M52: no R5-M6 row); this entry covers the diagnostic expectation R5-M85's form introduced.");
 
+    /// <summary>E9 (P34_REMAINING R1), landed with C6c: an inherited base getter or <c>ref/Self</c> method reached through reference layers
+    /// (<c>ref/(ref/T)</c>, <c>uniq/(uniq/T)</c>, <c>ref/(obj/T)</c>, <c>ref/(rc/T)</c>, <c>uniq/(obj/T)</c>) reads the base subobject under MIR
+    /// code generation; the old generator reads the reference's own slot.</summary>
+    internal static readonly Deviation ReceiverLayers = new(
+        "receiver-layers",
+        DeviationClass.A,
+        "R5-M114",
+        "3.4.3 7.3.1 9.6.1 13.5.5",
+        "Selection passes every reference layer to the object or the value whose base subobject the receiver projects (SPEC 3.4.3, 9.6.1); the old generator projects from the reference's slot, so the value it reads is an address's low bits and the program aborts at its first check (P34_REMAINING R1, frozen on the old path).");
+
     /// <summary>C7b: an access to a static slot that its own initialization is initializing Aborts with KIMI_E_STATIC_CYCLE at the accessing
     /// Place expression under MIR code generation (PD19); the old generator Aborts with KIMI_E_ABORT at the Field's declaration.</summary>
     internal static readonly Deviation StaticCycle = new(
