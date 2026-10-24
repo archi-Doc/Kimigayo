@@ -18,7 +18,7 @@ public sealed partial class FunctionCodegenTest
     // A Library of slot-bearing payloads made by each handle (A -> B -> C with an inherited slot and base calls; a receiver behind a zero-sized
     // parameter, an aggregate, a borrow and a Never result; a generic family with a conditional slot; a virtual witness) and of the calls
     // through their slots: Virtual calls, one in a generic body, a virtual Item called and erased, a Never-result one erased to another
-    // result, and a requirement call of the virtual witness.
+    // result, and a requirement call and a requirement Item, called and erased, of the virtual witness.
     private const string Virtuals =
         "open struct A\n    public let n: i32\n    public init(n: i32) => self.n = n\n" +
         "    public virtual func value(self: objref/Self, bias: i32 = 1) -> i32 => self.n + bias\n" +
@@ -46,7 +46,10 @@ public sealed partial class FunctionCodegenTest
         "func through<T>(v: objref/Box<T>) -> i32\n    T is Owned\n    return v.first()\nfunc boxes(v: objref/Box<i32>) -> i32 => through(v)\n" +
         "func item(v: objref/A) -> i32\n    let f = A.value\n    return f(v, 1)\nfunc erased() -> (objref/A, i32) -> i32 => A.value\n" +
         "func stopper() -> (objref/Pairs, i32) -> string => Pairs.stop\n" +
-        "func witness<T>(v: objref/T) -> i32\n    T is Reader\n    return v.score(1)\nfunc scores(v: objref/Scored) -> i32 => witness(v)\n";
+        "func witness<T>(v: objref/T) -> i32\n    T is Reader\n    return v.score(1)\nfunc scores(v: objref/Scored) -> i32 => witness(v)\n" +
+        "func witnessItem<T>(v: objref/T) -> i32\n    T is Reader\n    let f = T.score\n    return f(v, 1)\n" +
+        "func witnessErased<T>() -> (objref/T, i32) -> i32\n    T is Reader and Owned\n    return T.score\n" +
+        "func scoreItem(v: objref/Scored) -> i32 => witnessItem(v)\nfunc scoreErased() -> (objref/Scored, i32) -> i32 => witnessErased<Scored>()\n";
 
     // SPEC 6.4.3, 6.4.4, 6.4.6 (DECISIONS R5-M114): dispatch by the Dynamic Type through every form, natively under both generators: member,
     // nested, inherited and qualified calls, a call through a reference to a handle, an Item called, passed and erased, a receiver behind a
@@ -158,6 +161,22 @@ public sealed partial class FunctionCodegenTest
         var derived = FunctionOf(ir, c, "B", "value");
         Assert.Contains(FunctionOf(ir, c, "A", "value"), CalleesOf(derived));
         Assert.DoesNotContain(derived.Instructions, static x => x is { Opcode: "call", Callee: null });
+    }
+
+    // SPEC 6.4.3, 6.4.6, 7.7.4 (DECISIONS R5-M108, R5-M114): a requirement Item whose witness is a virtual function runs the witness's slot, as
+    // a requirement call does (BodyRun), whatever the Item does: its Value call loads the entry from the receiver's table, and so does its
+    // adapter's entry once the Item is erased into a Function value; neither calls the witness's body.
+    [Fact]
+    public void AVirtualWitnessItemRunsItsSlotCalledAndErased()
+    {
+        var (c, ir, text) = ParseVirtuals();
+        var item = Dispatched(FunctionOf(ir, c, null, "witnessItem"));
+        Assert.Equal("call i32 %(ptr %, i32 1)", item.Shape);
+        Assert.Equal((0, item.Operands[1]), Dispatch(item));
+        var entry = ir.Function(Adapter(c, text, "witnessErased"));
+        var forwarded = Dispatched(entry);
+        Assert.Equal("call i32 %(ptr %, i32 %)", forwarded.Shape);
+        Assert.Equal((0, entry.Parameters[1]), Dispatch(forwarded));
     }
 
     [Fact]
