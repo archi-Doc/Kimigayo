@@ -5,8 +5,8 @@ namespace Kimi.Compiler.Mir;
 // Calls (plan 5.4; A3 E14; DECISIONS R5-M38, R5-M71).
 // - Responsibility: a Call's operand range and its callee by kind (Call): a Fn, Requirement or Virtual callee's function, a Value
 //   callee's TypeToken constant, an intrinsic's row (defined, the library declaration of the compiler function it serves, its arity, no
-//   target when it diverges, staticEnsure's static slot by Ensures); and its destination: a diverging Call's write bit for G131, no
-//   Never value written by a returning Call.
+//   target when it diverges, staticEnsure's static slot by Ensures, MirValidator.Statics' Slot); and its destination: a diverging
+//   Call's write bit for G131, no Never value written by a returning Call.
 // - Inputs: a Call terminator. Outputs: OperandRange, Callee, UnknownKind, Arity, StaticSlot and NeverWrite findings; a callee with a
 //   signature goes to MirValidator.Signatures and the Call's inputs to MirValidator.Inputs (G136).
 // - Invariants: Call returns false when its arguments are out of range, and the location is then not walked.
@@ -15,10 +15,9 @@ internal sealed partial class MirValidator
 {
     private partial struct Checker
     {
-        // F10 (plan 5.6.6): a staticEnsure names its static by an Integer constant indexing the body's statics, the form
-        // MirProgram.StaticInit decodes; a constant id out of range is the walk's Const finding.
-        private readonly bool Ensures(in MirOperand operand) => operand.Kind == MirOperandKind.Const && ((uint)operand.Arg >= (uint)body.Consts.Length ||
-            (body.Consts[operand.Arg] is { Kind: MirConstKind.Integer, Bits: var slot } && slot >= 0 && slot < body.Statics.Length));
+        // F10 (plan 5.6.6): a staticEnsure names its static (Slot); a constant id out of range is the walk's Const finding.
+        private readonly bool Ensures(in MirTerminator call) => Slot(body, call) >= 0 ||
+            (body.Operands[call.Start] is { Kind: MirOperandKind.Const } operand && (uint)operand.Arg >= (uint)body.Consts.Length);
 
         // False when the arguments are out of range.
         private bool Call(in MirTerminator call)
@@ -54,7 +53,7 @@ internal sealed partial class MirValidator
                 case MirCalleeKind.Intrinsic when row.Diverges && call.Target >= 0:
                     this.Report(MirViolation.Callee);
                     break;
-                case MirCalleeKind.Intrinsic when (IntrinsicId)callee.Arg == IntrinsicId.StaticEnsure && !this.Ensures(body.Operands[call.Start]):
+                case MirCalleeKind.Intrinsic when (IntrinsicId)callee.Arg == IntrinsicId.StaticEnsure && !this.Ensures(call):
                     this.Report(MirViolation.StaticSlot); // DECISIONS R5-M71.
                     break;
             }
