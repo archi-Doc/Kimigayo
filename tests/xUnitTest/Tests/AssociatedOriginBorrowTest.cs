@@ -103,9 +103,9 @@ public class AssociatedOriginBorrowTest
         var original = application.ArgumentNodes.Single();
         var donor = ParseTestHelper.ParseSuccess(SharedFamily.Replace("Item(source)", "Item(static)", StringComparison.Ordinal));
         var replacement = KotoTree.Walk(donor.RootKoto).OfType<OriginApplicationKoto>().Single(x => x.Type is MemberAccessKoto).ArgumentNodes.Single();
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         if (indexed)
         {
-            replacement.Parent = null;
             application.ReplaceArgument(0, replacement);
         }
         else

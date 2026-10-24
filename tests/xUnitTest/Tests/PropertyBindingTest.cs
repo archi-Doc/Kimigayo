@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -346,6 +347,8 @@ public class PropertyBindingTest
         var fragment = CompilationTestHelper.ParseSuccess($"struct Replacement\n    public var item: i32\n        {replacement}");
         var newProperty = Container(fragment, "Replacement").Members.OfType<PropertyKoto>().Single();
         var newAccessor = newProperty.Accessors.Single();
+        var reader = new TokenReader(newAccessor.CodeContext, string.Empty, []);
+        ParseTestHelper.Detach(newAccessor, new PropertyAccessorKoto(ref reader, default, default, PropertyAccessorKind.Get, null));
         Assert.True(KotoHelper.Replace(property.Declaration, property.Getter.Declaration!, newAccessor));
         Assert.Equal(valid, c.Bind().IsComplete);
         Assert.Same(property, Property(c, "S", "item"));

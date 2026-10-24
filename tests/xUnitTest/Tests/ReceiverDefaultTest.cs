@@ -74,7 +74,7 @@ public class ReceiverDefaultTest
         StringEmissionTest.WriteAuditedFixture("ReceiverDefaultCleanup", ir, "prepared\ncallee\n", "prepared=1;callee=1", order: [1, 0]);
     }
 
-    [TestClass(DisableParallelization = true)]
+    [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]
     public class AllocationTests
     {

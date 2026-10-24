@@ -40,7 +40,7 @@ public class DefaultInitializationTest
             Prefix + "Never",
             "func f(y: i32 = (loop => continue), z: i32 = (2147483647 + 1)) => Console.writeLine(\"bad\")\nConsole.writeLine(\"begin\")\nf()",
             "begin\n",
-            timeoutMilliseconds: 200);
+            observationMilliseconds: 200);
 
     private static void AssertUninitialized(string source)
     {
@@ -60,7 +60,7 @@ public class DefaultInitializationTest
     private const string Prefix = "DefaultInitializationRelease";
 #endif
 
-    [TestClass(DisableParallelization = true)]
+    [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]
     public class AllocationTests
     {

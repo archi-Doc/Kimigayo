@@ -78,6 +78,7 @@ public class EnumProjectionAccessBindingTest
         var c = Check(Prefix + "public enum Api\n    Item(Source.C.Element)", false);
         var original = Payload(c).Operands[0];
         var replacement = Payload(Check("public enum Api\n    Item(i32)", true)).Operands[0];
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(Payload(c), original, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(KotoHelper.Replace(Payload(c), replacement, original));

@@ -90,6 +90,7 @@ public class ExpressionInputFormationBindingTest
         var owner = runtime ? (Koto)Test(c) : Assert.IsType<GenericsKoto>(Call(c).Method);
         var original = runtime ? Test(c).Right : Assert.Single(((GenericsKoto)owner).TypeArguments);
         var replacement = runtime ? Test(donor).Right : Assert.Single(Assert.IsType<GenericsKoto>(Call(donor).Method).TypeArguments);
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(owner, original, replacement));
         Assert.False(c.Bind().IsComplete);
         if (runtime)

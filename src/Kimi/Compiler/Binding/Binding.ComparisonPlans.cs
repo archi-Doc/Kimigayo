@@ -77,17 +77,34 @@ public sealed partial class Binding
         return plan;
     }
 
-    private ConstraintProof ComparisonProof(BoundType type, BindingSymbol contract, BindingScope scope, bool operators)
+    private ConstraintProof ComparisonProof(
+        BoundType type, BindingSymbol contract, BindingScope scope, bool operators, out BoundConstraint? failedRequirement)
     {
+        failedRequirement = null;
         if (!ComparisonTypes.IsComposite(type))
         {
-            return operators && type.IsNumeric ? ConstraintProof.Proven : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: contract)), scope);
+            if (operators && type.IsNumeric)
+            {
+                return ConstraintProof.Proven;
+            }
+
+            var requirement = this.InternConstraint(new(ConstraintKind.Contract, type, contract: contract));
+            var proof = this.ProveConstraint(requirement, scope);
+            failedRequirement = proof == ConstraintProof.Proven ? null : requirement;
+            return proof;
         }
 
         var result = ConstraintProof.Proven;
         for (var i = 0; i < type.Components.Count; i++)
         {
-            result = CombineProof(result, this.ComparisonProof(type.Components[i], contract, scope, operators), true);
+            var part = this.ComparisonProof(type.Components[i], contract, scope, operators, out var witness);
+            var combined = CombineProof(result, part, true);
+            if (combined != result)
+            {
+                failedRequirement = witness;
+            }
+
+            result = combined;
         }
 
         return result;

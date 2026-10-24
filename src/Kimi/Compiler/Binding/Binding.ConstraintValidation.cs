@@ -169,7 +169,7 @@ public sealed partial class Binding
 
     private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope)
     {
-        if (type.Symbol is { } symbol && InvalidDeclarationContext(symbol.Declaration))
+        if (type.Symbol is { } symbol && this.InvalidDeclarationContext(symbol.Declaration))
         {
             return ConstraintProof.Error;
         }
@@ -201,6 +201,67 @@ public sealed partial class Binding
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             proof = CombineProof(proof, function.Parameters[i].Type.BoundType is { } parameter ? this.CheckTypeConstraints(parameter, scope) : ConstraintProof.Unknown, true);
+        }
+
+        return proof;
+    }
+
+    private ConstraintProof CheckCallTypeConstraints(CallPlan call, BindingScope scope)
+    {
+        // A linked constructor is judged as the public declaration it selected (SPEC 22.1).
+        var target = this.Library.PresentedTarget(call.Target);
+        if (this.InvalidDeclarationContext(target.Declaration))
+        {
+            return ConstraintProof.Error;
+        }
+
+        var proof = this.CheckTypeConstraints(call.ReturnType, scope);
+        if (UnresolvedTypeDeclarationContext(target.Declaration))
+        {
+            proof = CombineProof(proof, ConstraintProof.Unknown, true);
+        }
+
+        if (call.DeclaringType is { } declaringType)
+        {
+            proof = CombineProof(proof, this.CheckTypeConstraints(declaringType, scope), true);
+        }
+
+        if (call.ConformingType is { } conformingType)
+        {
+            proof = CombineProof(proof, this.CheckTypeConstraints(conformingType, scope), true);
+        }
+
+        foreach (var argument in call.TypeArguments)
+        {
+            if (argument is not null)
+            {
+                proof = CombineProof(proof, this.CheckTypeConstraints(argument, scope), true);
+            }
+        }
+
+        if (target.Declaration is FunctionKoto function)
+        {
+            // Conditional evidence can fail after candidate selection. Recheck the committed
+            // candidate's constraints without reopening lookup or overload selection.
+            proof = CombineProof(proof, this.CheckConstraints(function.TypeConstraints, function, call.TypeArguments, scope, call.ConformingType, call.DeclaringType, call.LengthArguments), true);
+        }
+
+        proof = CombineProof(proof, this.ProveMemberConditions(target, call.DeclaringType, scope), true);
+        proof = CombineProof(proof, this.CheckOperationTypeConstraints(call.ReceiverOperation, scope), true);
+        foreach (var operation in call.ArgumentOperations)
+        {
+            proof = CombineProof(proof, this.CheckOperationTypeConstraints(operation, scope), true);
+        }
+
+        return proof;
+    }
+
+    private ConstraintProof CheckOperationTypeConstraints(in BoundArgumentOperation operation, BindingScope scope)
+    {
+        var proof = operation.SourceType is { } source ? this.CheckTypeConstraints(source, scope) : ConstraintProof.Proven;
+        if (operation.ParameterType is { } parameter && !ReferenceEquals(parameter, operation.SourceType))
+        {
+            proof = CombineProof(proof, this.CheckTypeConstraints(parameter, scope), true);
         }
 
         return proof;
@@ -347,7 +408,7 @@ public sealed partial class Binding
 
                 for (var a = 0; a < shape.Ancestors.Count; a++)
                 {
-                    if (InvalidDeclarationContext(shape.Ancestors[a].Declaration))
+                    if (this.InvalidDeclarationContext(shape.Ancestors[a].Declaration))
                     {
                         var previous = contract.BindingState;
                         this.Fail(contract, BindingFailure.UnsatisfiedConstraint);

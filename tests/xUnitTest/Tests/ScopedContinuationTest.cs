@@ -19,7 +19,11 @@ public class ScopedContinuationTest
 
     [Fact]
     public void OmittedScopedDefaultHasNoCallerSuccessor()
-        => ScalarEmissionTest.EmitFixture("NeverScope" + Configuration + "Default", Default + "Console.writeLine(\"begin\")\nvalue()\nConsole.writeLine(\"after\")", "begin\n", timeoutMilliseconds: 200);
+        => ScalarEmissionTest.EmitFixture(
+            "NeverScope" + Configuration + "Default",
+            Default + "Console.writeLine(\"begin\")\nvalue()\nConsole.writeLine(\"after\")",
+            "begin\n",
+            observationMilliseconds: 200);
 
     [Fact]
     public void OuterTransferDoesNotExecuteLaterArgumentEffects()

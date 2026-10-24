@@ -141,6 +141,7 @@ public class LengthCallBindingTest
         var original = generic.TypeArguments[0];
         var donor = MinimalEmissionTest.Analyze("3");
         var replacement = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<NumberLiteralKoto>());
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(generic, original, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.Null(call.CallOf());

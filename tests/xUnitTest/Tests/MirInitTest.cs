@@ -2,6 +2,7 @@
 
 using System.Runtime.CompilerServices;
 using System.Text;
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
@@ -63,6 +64,30 @@ public sealed class MirInitTest(ITestOutputHelper output)
             "    let age = pair.1\n";
         Assert.Empty(Problems(Pair + "    pair.0 = \"Bob\"\n    see(pair)\n"));
         Assert.Equal(["MovedPlace_Kd see(pair) 1"], Problems(Pair + "    see(pair)\n"));
+    }
+
+    // SPEC 13.5.3, 15.1.1-15.1.3 (PLAN G228): `@move` marks a Copy-typed part Moved like any part: a read, a second Move or a whole use
+    // after it is MovedPlace until the part is written again, also across a loop, and a Type with drop needs the part restored before
+    // the drop runs, a `during self` layer's Move restored by null included (SPEC 5.7, DECISIONS R4-M110); Copies of a part move nothing.
+    // The old analysis, which both published pipelines use until R6-check, accepts these forms (OwnershipAnalysis.AcquireElement ignores
+    // the explicit Move); the rows pin the verdicts R6-check publishes.
+    [Fact]
+    public void AMoveOfACopyTypedPartMarksItMoved()
+    {
+        const string Head = "func take(x: i32) => ()\nstruct D\n    public var n: i32 = 1\n    public init() => ()\n    drop => ()\n" +
+            "struct Block\n    internal var data: raw/u8 during self\n    public init() => self.data = null\n    drop => ()\n";
+        const string Tuple = "    var t: (i32, i32) = (1, 2)\n    take(t.0@move)\n";
+        const string Loop = "func cycle(n: i32)\n    var t: (i32, i32) = (1, 2)\n    var i = 0\n    while i < n\n        take(t.0@move)\n";
+        Assert.Equal(
+            ["MovedPlace_Kd t.0 1", "MovedPlace_Kd t.0 1", "MovedPlace_Kd t 1", "MovedPlace_Kd a[0] 1", "MovedPlace_Kd t.0 1",
+                "MovedPlace_Kd var d = D.init() 1", "MovedPlace_Kd var b = Block.init() 1"],
+            Problems(Head + "func read()\n" + Tuple + "    let b = t.0\nfunc twice()\n" + Tuple + "    take(t.0@move)\nfunc whole()\n" + Tuple +
+                "    let u = t@move\nfunc element()\n    var a: [2 of i32] = [1, 2]\n    take(a[0]@move)\n    let x = a[0]\n" + Loop +
+                "        i += 1\nfunc dropped()\n    var d = D.init()\n    take(d.n@move)\nfunc layer()\n    var b = Block.init()\n    let w = b.data@move\n"));
+        Assert.Empty(Problems(Head + "func restored()\n" + Tuple + "    t.0 = 5\n    let u = t@move\nfunc copies()\n    var t: (i32, i32) = (1, 2)\n" +
+            "    let a = t.0\n    let b = t.0\n    let u = t@move\nfunc elementRestored()\n    var a: [2 of i32] = [1, 2]\n    take(a[0]@move)\n" +
+            "    a[0] = 3\n    let x = a[0]\n" + Loop + "        t.0 = i\n        i += 1\n    let u = t@move\nfunc dropped()\n" +
+            "    var d = D.init()\n    take(d.n@move)\n    d.n = 3\nfunc layer()\n    var b = Block.init()\n    let w = b.data@move\n    b.data = null\n"));
     }
 
     // SPEC 6.3, 15.1.2: a constructor builds its object from fresh storage: a base and every own Field placed before it completes
@@ -410,7 +435,10 @@ public sealed class MirInitTest(ITestOutputHelper output)
         // (SPEC 7.2.3, R4-M69).
         string[] slot = ["DefaultArgumentMove_Kd s 1", "DefaultArgumentMove_Kd s 1"];
         Assert.Equal(slot, Problems(Take + "func g(s: string, x: i32 = (take(s@move, s@move)), y: i32 = 0) -> i32 => x\n"));
-        Assert.Equal(slot, Problems(Take + "func g(s: string, x: i32 = (take(s@move, s@move)) y: i32 = 0) -> i32 => x\n"));
+        var recovered = CompilationTestHelper.Parse(Take + "func g(s: string, x: i32 = (take(s@move, s@move)) y: i32 = 0) -> i32 => x\n");
+        Assert.Equal(nameof(DiagnosticCode.ExpectedSyntax_Kd), Assert.Single(TestDiagnostics.Of(recovered)).Code);
+        recovered.Bind();
+        Assert.Equal(slot, Problems(recovered));
     }
 
     // SPEC 23.1.2 (DECISIONS R4-M88): an operation Binding left unresolved evaluates every operand before its derived value, also inside
@@ -485,8 +513,10 @@ public sealed class MirInitTest(ITestOutputHelper output)
 
     // The problems of a source's own bodies: code, the first line of the subject, and the views.
     internal static string[] Problems(string source)
+        => Problems(MirBuildTest.Compile(source));
+
+    private static string[] Problems(Compilation c)
     {
-        var c = MirBuildTest.Compile(source);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         return [.. program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0)

@@ -106,6 +106,7 @@ public class ConditionalPremiseAccessBindingTest
         var original = condition.Right;
         var donor = MinimalEmissionTest.Analyze(Source("public", "public", "internal", "public", "i32"));
         var replacement = Condition(donor).Right;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(condition, original, replacement));
         Assert.True(c.Bind().IsComplete);
         Assert.True(Definition(c).IsVerified);

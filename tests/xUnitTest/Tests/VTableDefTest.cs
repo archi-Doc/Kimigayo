@@ -87,9 +87,11 @@ public sealed class VTableDefTest
         var donor = MinimalEmissionTest.Analyze(edited.Replace("when T is Copy", "when T is Owned", StringComparison.Ordinal));
         var leaf = Container(c, "Leaf");
         var replacement = Container(donor, "Leaf").Members.OfType<FunctionKoto>().Single(static x => x.Name == "last");
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(leaf, leaf.Members.OfType<FunctionKoto>().Single(static x => x.Name == "first"), replacement));
         var condition = Condition(c);
-        Assert.True(KotoHelper.Replace(condition.Parent!, condition, Condition(donor)));
+        var changed = ParseTestHelper.Detach(Condition(donor), new CodeBlockKoto(condition.CodeContext));
+        Assert.True(KotoHelper.Replace(condition.Parent!, condition, changed));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Equal("first=Base, pick=Base, last=Leaf, extra=Mid; base 4", Show(c, "Leaf"));
         Assert.Same(pick, Function(c, "pick"));

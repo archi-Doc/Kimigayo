@@ -72,6 +72,7 @@ public class PropertyRecoveryTest(ITestOutputHelper output)
         var original = property.Declaration.TypeKoto!;
         var donor = CompilationTestHelper.ParseSuccess("struct S\n    var item: i32");
         var replacement = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<PropertyKoto>().Single().TypeKoto!;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(property.Declaration, original, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(property.IsVerified);

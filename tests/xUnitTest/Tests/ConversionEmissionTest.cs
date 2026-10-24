@@ -100,7 +100,7 @@ public class ConversionEmissionTest
     [InlineData("(-129)@i8", "InvalidLiteral")]
     [InlineData("true@u8", "TypeMismatch")]
     [InlineData("'a'@u32", "TypeMismatch")]
-    [InlineData("let x: u8 = 1\n-x@u8", "TypeMismatch")]
+    [InlineData("let x: u8 = 1\n-x@u8", "OperatorNotDefined")]
     [InlineData("let x: i128 = 1\nx@f64", "Unsupported")]
     [InlineData("let x: u128 = 5000000000\nx@f64", "Unsupported")]
     [InlineData("let x = 1\nx@owner", "BareOwningShorthand")]
@@ -257,7 +257,7 @@ public class ConversionEmissionTest
             Assert.DoesNotContain(module.GetFunction(i).Instructions, x => x.Opcode == EmissionOpcode.Convert);
         }
 
-        ScalarEmissionTest.EmitFixture("ConversionNever", Source, string.Empty, timeoutMilliseconds: 500);
+        ScalarEmissionTest.EmitFixture("ConversionNever", Source, string.Empty, observationMilliseconds: 500);
     }
 
     [Theory]

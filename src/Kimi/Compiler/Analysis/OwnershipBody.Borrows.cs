@@ -1170,6 +1170,15 @@ public sealed partial class OwnershipBody
 
         bool Names(BoundOrigin origin)
         {
+            // A result may retain any constituent of a meet; the separate sole-input check requires the whole contract.
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (Names(origin.Operands[i]))
+                {
+                    return true;
+                }
+            }
+
             if (this.NamedOriginRequirement(input, origin) != LoanRequirement.None)
             {
                 return true;

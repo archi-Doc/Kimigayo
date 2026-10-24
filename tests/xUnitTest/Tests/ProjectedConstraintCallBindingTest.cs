@@ -104,6 +104,7 @@ public class ProjectedConstraintCallBindingTest
         var original = Assert.Single(generic.TypeArguments);
         var donor = MinimalEmissionTest.Analyze(Source("Source.Origin.Item", "string"));
         var replacement = Assert.Single(Assert.IsType<GenericsKoto>(Call(donor).Method).TypeArguments);
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(generic, original, replacement));
         Assert.False(c.Bind().IsComplete);
         AssertCall(c, false);

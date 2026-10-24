@@ -6,6 +6,7 @@ using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Xunit;
+using Xunit.Sdk;
 
 namespace XunitTest;
 
@@ -787,6 +788,18 @@ public sealed partial class MirBorrowsTest
         Assert.Contains("g171: State.add(sc@uniq) CallReservationConflict_Kd", Problems(c, Sound(program), DefaultCodes));
     }
 
+    // G136 N1: construction records must not hide an internal failure; an unsupported form is still an expected test outcome.
+    [Fact]
+    public void SoundRejectsInternalConstructionRecords()
+    {
+        var program = new MirProgram();
+        Assert.Same(program, Sound(program));
+        program.Report(default, DiagnosticCode.Unsupported_Kd);
+        Assert.Same(program, Sound(program));
+        program.Report(default, DiagnosticCode.InternalInvariant_Kd);
+        Assert.ThrowsAny<XunitException>(() => Sound(program));
+    }
+
     // The Loan problems and located Unsupported_Kd records of an effect program's rooted bodies: the prelude, the effect Types and group
     // State with the given members, the markers, then the given declarations.
     private static string[] RootedEffects(string members, string declarations = "")
@@ -818,11 +831,12 @@ public sealed partial class MirBorrowsTest
         return Sound(program);
     }
 
-    // A program after A5's runs over its rooted bodies: the build found nothing MirValidator rejects, and no rooted copy broke a contract A5
-    // checks (InternalInvariant_Kd, which the codes the tests read leave out).
+    // A program after A5's runs over its rooted bodies: no validator finding or internal failure in construction or analysis
+    // (InternalInvariant_Kd, which the codes the tests read leave out).
     private static MirProgram Sound(MirProgram program)
     {
         Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records, static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
         Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
         return program;
     }

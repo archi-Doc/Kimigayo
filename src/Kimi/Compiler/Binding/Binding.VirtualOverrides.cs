@@ -130,7 +130,42 @@ public sealed partial class Binding
         }
     }
 
-    private readonly record struct OverrideFailure(string Reason, FunctionKoto? First, FunctionKoto? Second = null, Koto? At = null, object? Required = null, object? Actual = null, SourceSpan? Span = null);
+    private enum OverrideFailureCause : byte
+    {
+        NoBase,
+        NoInheritedGroup,
+        NoMatchingInputs,
+        AmbiguousInputs,
+        DuplicateSlot,
+        ExternalName,
+        ResultType,
+        OriginBinders,
+        Condition,
+    }
+
+    // Check-time facts only (DECISIONS G89-2). ExternalName has both names, Parameter and Span; ResultType has both Types
+    // and its written result, if any; Condition has At and its Unknown/Refuted proof. First is the original or first candidate,
+    // when present; AmbiguousInputs/DuplicateSlot also have Second. Other payloads are unused, never substitute explanations.
+    private readonly record struct OverrideFailure(OverrideFailureCause Cause, FunctionKoto? First)
+    {
+        public FunctionKoto? Second { get; init; }
+
+        public Koto? At { get; init; }
+
+        public BoundType? ExpectedType { get; init; }
+
+        public BoundType? ActualType { get; init; }
+
+        public string? ExpectedName { get; init; }
+
+        public string? ActualName { get; init; }
+
+        public int Parameter { get; init; }
+
+        public ConstraintProof Proof { get; init; }
+
+        public SourceSpan? Span { get; init; }
+    }
 
     // Correspondence alone is not a verified implementation or permission to execute it.
     internal bool TryGetVirtualOverride(FunctionKoto function, out VirtualOverride result)
@@ -266,11 +301,13 @@ public sealed partial class Binding
 
             if (count != 1)
             {
-                var reason = count != 0 ? "multiple distinct virtual declarations have matching inputs after base binding; results, labels and effects do not disambiguate them"
-                    : baseType is null ? "this struct has no base from which to inherit a virtual slot"
-                    : selection.Member is null ? "no accessible inherited function group has this Name"
-                    : "the first accessible inherited group contains no virtual slot with the same receiver position, mode and input Types";
-                this.FailOverride(function, count == 0 ? BindingFailure.MissingOverrideTarget : BindingFailure.AmbiguousOverrideTarget, reason, first ?? selection.Member?.Declaration as FunctionKoto, second);
+                var cause = count != 0 ? OverrideFailureCause.AmbiguousInputs
+                    : baseType is null ? OverrideFailureCause.NoBase
+                    : selection.Member is null ? OverrideFailureCause.NoInheritedGroup : OverrideFailureCause.NoMatchingInputs;
+                this.FailOverride(
+                    function,
+                    count == 0 ? BindingFailure.MissingOverrideTarget : BindingFailure.AmbiguousOverrideTarget,
+                    new(cause, first ?? selection.Member?.Declaration as FunctionKoto) { Second = second });
                 continue;
             }
 
@@ -279,7 +316,7 @@ public sealed partial class Binding
             var key = (typeSymbol, slot.Original);
             if (this.overrideEntries.TryGetValue(key, out var previous))
             {
-                this.FailOverride(function, BindingFailure.DuplicateOverride, "this derived Type already supplies an implementation of the same bound slot", slot.Original, previous);
+                this.FailOverride(function, BindingFailure.DuplicateOverride, new(OverrideFailureCause.DuplicateSlot, slot.Original) { Second = previous });
                 continue;
             }
 
@@ -300,7 +337,7 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    this.FailOverride(function, BindingFailure.OverrideContractMismatch, "Origin binder names must belong to the original slot; omitted annotations inherit that contract", slot.Original);
+                    this.FailOverride(function, BindingFailure.OverrideContractMismatch, new(OverrideFailureCause.OriginBinders, slot.Original));
                 }
             }
         }
@@ -464,9 +501,10 @@ public sealed partial class Binding
                     }
                     else
                     {
-                        var reason = proof == ConstraintProof.Refuted ? "is refuted by the original slot and derived Type"
-                            : "is not implied by the original slot and derived Type";
-                        this.FailOverride(function, BindingFailure.UnprovenOverrideCondition, reason, implementation.Slot.Original, at: condition);
+                        this.FailOverride(
+                            function,
+                            BindingFailure.UnprovenOverrideCondition,
+                            new(OverrideFailureCause.Condition, implementation.Slot.Original) { At = condition, Proof = proof });
                     }
 
                     break;
@@ -516,7 +554,13 @@ public sealed partial class Binding
         {
             if (original.Parameters[i].ExternalName != implementation.Parameters[i].ExternalName)
             {
-                this.FailOverride(implementation, BindingFailure.OverrideContractMismatch, "external parameter names must match the original slot; only internal names may change", original, required: original.Parameters[i].ExternalName, actual: implementation.Parameters[i].ExternalName, span: implementation.Parameters[i].ExternalNameSpan);
+                this.FailOverride(implementation, BindingFailure.OverrideContractMismatch, new(OverrideFailureCause.ExternalName, original)
+                {
+                    ExpectedName = original.Parameters[i].ExternalName,
+                    ActualName = implementation.Parameters[i].ExternalName,
+                    Parameter = i,
+                    Span = implementation.Parameters[i].ExternalNameSpan,
+                });
                 return;
             }
         }
@@ -524,36 +568,18 @@ public sealed partial class Binding
         if (original.BoundSymbol!.Type is { } required && implementation.BoundSymbol!.Type is { } actual && this.MemberType(required, slot.DeclaringType) is { } bound &&
             !SignatureEquals(this.ContractType(bound, this.scopes[implementation]), this.ContractType(actual, this.scopes[implementation]), original, implementation))
         {
-            this.FailOverride(implementation, BindingFailure.OverrideContractMismatch, "the result Type must match the original slot; result covariance is not allowed", original, at: implementation.ReturnType, required: bound, actual: actual);
+            this.FailOverride(implementation, BindingFailure.OverrideContractMismatch, new(OverrideFailureCause.ResultType, original)
+            {
+                At = implementation.ReturnType,
+                ExpectedType = bound,
+                ActualType = actual,
+            });
         }
     }
 
-    private void FailOverride(FunctionKoto function, BindingFailure failure, string reason, FunctionKoto? original, FunctionKoto? other = null, Koto? at = null, object? required = null, object? actual = null, SourceSpan? span = null)
+    private void FailOverride(FunctionKoto function, BindingFailure failure, OverrideFailure facts)
     {
-        (this.overrideFailures ??= new(ReferenceEqualityComparer.Instance))[function] = new(reason, original, other, at, required, actual, span);
+        (this.overrideFailures ??= new(ReferenceEqualityComparer.Instance))[function] = facts;
         this.Fail(function, failure);
-    }
-
-    private void ReportOverrideFailure(FunctionKoto function, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        var failure = this.overrideFailures![function];
-        var related = failure.First is null ? null : failure.Second is null
-            ? new (string, Koto, string?)[] { ("declaration", failure.First, failure.First.IsVirtual ? "original virtual slot" : "inherited function") }
-            : [("declaration", failure.First, "original virtual slot"), ("declaration", failure.Second, "conflicting declaration")];
-        var reason = failure.Reason;
-        if (code == DiagnosticCode.UnprovenOverrideCondition_Kd)
-        {
-            reason = $"{failure.At} {reason}";
-        }
-        else if (failure.Required is BoundType required && failure.Actual is BoundType actual)
-        {
-            reason = $"expected {DiagnosticTypeName(required)}, found {DiagnosticTypeName(actual)}; {reason}";
-        }
-        else if (failure.Required is string requiredName && failure.Actual is string actualName)
-        {
-            reason = $"expected '{requiredName}', found '{actualName}'; {reason}";
-        }
-
-        function.Report(requirement, code, at: failure.At, span: failure.Span ?? (failure.At is null ? function.DispatchModifierSpan : null), evidence: [reason], related: related);
     }
 }

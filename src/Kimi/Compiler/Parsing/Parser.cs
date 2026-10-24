@@ -2714,17 +2714,9 @@ CloseParameters:
             return;
         }
 
-        // SPEC 8.11.1: an effect item belongs to a requirement's Constraint region. At a body's Constraint prefix it is
-        // kept for Binding to reject, never read as an expression.
-        if (function is not null && !state.SeenExecutableItem && IsEffectStart(ref reader, specification: false))
+        if (IsEffectStart(ref reader, specification: false))
         {
-            ReportPendingAttributes(ref reader);
-            var effect = ParseEffectBound(ref reader);
-            if (!excluded)
-            {
-                function.AddEffectBound(effect);
-            }
-
+            ParseBodyEffect(ref reader, state.SeenExecutableItem ? null : function);
             return;
         }
 
@@ -3666,17 +3658,7 @@ CloseParameters:
             }
             else if (token.Kind == TokenKind.Is && !reader.IsParsingCompileTimeCondition)
             {
-                var negated = reader.TryConsume(TokenKind.Not);
-                right = ParseConstraintSubject(ref reader);
-                if (OpensAdjacentTypeArguments(ref reader, right.Span))
-                {
-                    right = ParseGenericsPostfix(ref reader, right);
-                }
-
-                var test = (IsKoto)KotoHelper.NewBinaryKoto(ref reader, token, left, right);
-                test.IsRuntimeTest = true;
-                test.IsNegated = negated;
-                left = test;
+                left = ParseRuntimeTypeTest(ref reader, token, left);
             }
             else
             {

@@ -82,6 +82,7 @@ public class StaticOriginElisionTest(ITestOutputHelper output)
         var old = KotoTree.Walk(group).OfType<PropertyKoto>().Single();
         var donor = CompilationTestHelper.ParseSuccess("group Values\n    public let view: i32 = 7");
         var replacement = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<PropertyKoto>().Single();
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(group, old, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         c.Binding.ReportDiagnostics();

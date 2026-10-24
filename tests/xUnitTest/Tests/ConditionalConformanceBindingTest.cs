@@ -117,11 +117,18 @@ public class ConditionalConformanceBindingTest
         Assert.NotSame(identity.Paths[0].RootContract, identity.Paths[1].RootContract);
     }
 
-    [Fact]
-    public void InvalidConditionsAreCheckedEvenWithoutUses()
+    [Theory]
+    [InlineData("struct")]
+    [InlineData("enum")]
+    public void InvalidConditionsAreCheckedEvenWithoutUses(string kind)
     {
-        var c = CompilationTestHelper.ParseSuccess("contract C\nstruct S<T>\n    Self is C when T is Missing");
+        var source = $"contract C\n{kind} S<T>\n    Self is C when T is Missing" + (kind == "enum" ? "\n    None" : string.Empty);
+        var c = CompilationTestHelper.ParseSuccess(source, "ConditionalPremise.kimi");
         Assert.False(c.Bind().IsComplete);
+        // SPEC 23.1.2: an independent missing Name remains visible when its premise environment is invalid.
+        var diagnostic = Assert.Single(CompilationTestHelper.BindingErrors(c), x => x.Code == nameof(DiagnosticCode.UnresolvedBinding_Kd));
+        Assert.Equal("Missing", diagnostic.Text);
+        Assert.Equal(source.IndexOf("Missing", StringComparison.Ordinal), diagnostic.Span.Start);
     }
 
     [Theory]
@@ -286,6 +293,7 @@ public class ConditionalConformanceBindingTest
         var original = ((IsKoto)((SyntaxFormKoto)syntax.Operands[1]).Operands[0]).Right;
         var fragment = CompilationTestHelper.ParseSuccess("struct R<T>\n    Self is Copy when T is Owned");
         var replacement = ((IsKoto)((SyntaxFormKoto)Container(fragment, "R").Members.OfType<SyntaxFormKoto>().Single().Operands[1]).Operands[0]).Right;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         var parent = original.Parent!;
         var use = Function(c, "use");
         var type = use.Parameters[0].Type.TypeOf()!;
@@ -341,6 +349,7 @@ public class ConditionalConformanceBindingTest
         Koto replacement = condition
             ? ((IsKoto)((SyntaxFormKoto)KotoTree.Walk(fragment.Kotonoha.RootKoto).OfType<SyntaxFormKoto>().First(x => x.Akind == KotoKind.ConditionalConformance && x.Parent is DeclarationContainerKoto).Operands[1]).Operands[0]).Right
             : Function(fragment, "f");
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         var parent = original.Parent!;
         Assert.True(KotoHelper.Replace(parent, original, replacement));
         Assert.False(c.Binding.Bind(BindingMode.Final).IsComplete);
@@ -370,6 +379,32 @@ public class ConditionalConformanceBindingTest
         var allocated = AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final));
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
         Assert.Equal(0, allocated);
+    }
+
+    [Theory]
+    [InlineData("struct", "PrimitiveInteger", false, DiagnosticCode.ClosedContractConformance_Kd)]
+    [InlineData("struct", "PrimitiveInteger", true, DiagnosticCode.ClosedContractConformance_Kd)]
+    [InlineData("enum", "PrimitiveInteger", false, DiagnosticCode.ClosedContractConformance_Kd)]
+    [InlineData("enum", "PrimitiveInteger", true, DiagnosticCode.ClosedContractConformance_Kd)]
+    [InlineData("struct", "ObjectPayload", false, DiagnosticCode.InvalidSelfClause_Kd)]
+    [InlineData("struct", "ObjectPayload", true, DiagnosticCode.InvalidSelfClause_Kd)]
+    [InlineData("enum", "ObjectPayload", false, DiagnosticCode.InvalidSelfClause_Kd)]
+    [InlineData("enum", "ObjectPayload", true, DiagnosticCode.InvalidSelfClause_Kd)]
+    [InlineData("struct", "Sealed", false, DiagnosticCode.InvalidConstraint_Kd)]
+    [InlineData("struct", "Sealed", true, DiagnosticCode.InvalidConstraint_Kd)]
+    [InlineData("enum", "Sealed", false, DiagnosticCode.InvalidConstraint_Kd)]
+    [InlineData("enum", "Sealed", true, DiagnosticCode.InvalidConstraint_Kd)]
+    public void IntrinsicSelfClausesReportOneErrorAtTheClause(string kind, string contract, bool conditional, DiagnosticCode expected)
+    {
+        var clause = $"Self is {contract}";
+        var condition = conditional ? " when T is Copy" : string.Empty;
+        var source = $"{kind} S<T>\n    {clause}{condition}" + (kind == "enum" ? "\n    None" : string.Empty);
+        var c = CompilationTestHelper.ParseSuccess(source, "IntrinsicSelf.kimi");
+        Assert.False(c.Bind().IsComplete);
+        var diagnostic = Assert.Single(CompilationTestHelper.BindingErrors(c));
+        Assert.Equal(expected.ToString(), diagnostic.Code);
+        Assert.Equal(clause, diagnostic.Text);
+        Assert.Equal(source.IndexOf(clause, StringComparison.Ordinal), diagnostic.Span.Start);
     }
 
     private static DeclarationContainerKoto Container(Compilation c, string name) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<DeclarationContainerKoto>().Single(x => x.Name == name);

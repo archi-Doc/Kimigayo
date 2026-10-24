@@ -57,6 +57,7 @@ public sealed class StructKoto : DeclarationContainerKoto
         if (availability == ConstructorAvailability.Eligible)
         {
             this.SynthesizedConstructor = this.implicitConstructor ??= new(this);
+            this.Adopt(this.SynthesizedConstructor);
             this.ImplicitConstructorPending = this.Bases.Count != 0;
         }
     }

@@ -8,7 +8,7 @@ using Xunit;
 
 namespace XunitTest;
 
-public class OptionalTryDiscardTest
+public partial class OptionalTryDiscardTest
 {
     [Theory]
     [InlineData("let value: i32? = .None")]

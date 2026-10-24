@@ -19,11 +19,12 @@ internal static class FreshProcess
 
     /// <summary>Gets the environment of a child process.</summary>
     /// <param name="parent">The parent's environment.</param>
-    /// <returns>Every variable of the parent that is not in the KIMI_ namespace, and its pipeline selection.</returns>
+    /// <returns>Every variable of the parent that is not in the KIMI_ namespace, and its pipeline selection. Names keep the parent's
+    /// identity: distinct by case outside Windows (<c>HTTPS_PROXY</c> beside <c>https_proxy</c>), so they are compared ordinally.</returns>
     internal static Dictionary<string, string?> ChildEnvironment(IDictionary<string, string?> parent)
         => parent.Where(static x => !x.Key.StartsWith("KIMI_", StringComparison.OrdinalIgnoreCase)
                 || SelectionVariables.Contains(x.Key, StringComparer.OrdinalIgnoreCase))
-            .ToDictionary(static x => x.Key, static x => x.Value, StringComparer.OrdinalIgnoreCase);
+            .ToDictionary(static x => x.Key, static x => x.Value, StringComparer.Ordinal);
 
     /// <summary>Runs an Explicit test in a new process of the test apphost and asserts that the process ran that test as its only case
     /// and that it passed.</summary>
@@ -33,7 +34,8 @@ internal static class FreshProcess
     /// <returns>A task that completes when the process has exited.</returns>
     internal static async Task RunExplicit(Type test, string method, params (string Name, string Value)[] environment)
     {
-        var start = new ProcessStartInfo(Path.ChangeExtension(test.Assembly.Location, ".exe"), ["-method", $"{test.FullName}.{method}", "-explicit", "only"])
+        var apphost = Path.ChangeExtension(test.Assembly.Location, OperatingSystem.IsWindows() ? ".exe" : null);
+        var start = new ProcessStartInfo(apphost, ["-method", $"{test.FullName}.{method}", "-explicit", "only"])
         {
             UseShellExecute = false,
             CreateNoWindow = true,

@@ -78,6 +78,7 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
 
         Assert.Equal(expected, diagnostic.Span.Start);
         Assert.Contains(fact, diagnostic.Label!, StringComparison.Ordinal);
+        Assert.DoesNotContain("effects", diagnostic.Label!, StringComparison.Ordinal); // An override's effect item is its own record (DECISIONS G223).
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.Unsupported_Kd);
         Assert.False(c.WriteIr(TextWriter.Null, out _));
         output.WriteLine(diagnostic.Explanation + "\n" + diagnostic.Label);

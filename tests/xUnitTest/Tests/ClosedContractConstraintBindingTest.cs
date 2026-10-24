@@ -111,6 +111,7 @@ public class ClosedContractConstraintBindingTest
         var original = clause.Left;
         var donor = MinimalEmissionTest.Analyze(source.Replace("i32", "string", StringComparison.Ordinal));
         var replacement = donor.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "R").ConstraintNodes[0].Left;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         var implementation = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Impl");
         Assert.True(KotoHelper.Replace(clause, original, replacement));
         Assert.False(c.Bind().IsComplete);

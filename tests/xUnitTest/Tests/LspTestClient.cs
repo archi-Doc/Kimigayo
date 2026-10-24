@@ -54,6 +54,11 @@ internal sealed class LspTestClient : IAsyncDisposable
 
     public static string Full(string text) => $"{{\"text\":{JsonSerializer.Serialize(text)}}}";
 
+    /// <summary>Gets the text of a Hover's contents.</summary>
+    /// <param name="hover">The Hover.</param>
+    /// <returns>The contents' value.</returns>
+    public static string HoverText(JsonElement hover) => hover.GetProperty("contents").GetProperty("value").GetString()!;
+
     public static string Range(int startLine, int startCharacter, int endLine, int endCharacter, string text)
         => $"{{\"range\":{{\"start\":{{\"line\":{startLine},\"character\":{startCharacter}}},\"end\":{{\"line\":{endLine},\"character\":{endCharacter}}}}},\"text\":{JsonSerializer.Serialize(text)}}}";
 
@@ -72,6 +77,44 @@ internal sealed class LspTestClient : IAsyncDisposable
         var id = ++this.nextId;
         await this.SendAsync($"{{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"{method}\",\"params\":{parameters}}}");
         return await this.ReceiveAsync(x => x.TryGetProperty("id", out var value) && value.ValueKind == JsonValueKind.Number && value.GetInt32() == id);
+    }
+
+    /// <summary>Requests Hover at a position.</summary>
+    /// <param name="path">The file.</param>
+    /// <param name="line">The zero-based line.</param>
+    /// <param name="character">The zero-based character.</param>
+    /// <returns>The result: a Hover or a JSON null.</returns>
+    public async Task<JsonElement> HoverAsync(string path, int line, int character)
+    {
+        var response = await this.RequestAsync("textDocument/hover", $"{{\"textDocument\":{{\"uri\":\"{Uri(path)}\"}},\"position\":{{\"line\":{line},\"character\":{character}}}}}");
+        return response.GetProperty("result");
+    }
+
+    /// <summary>Requests Hover until it is current and asserts that its contents contain a text. The session adopts Hover on its own
+    /// state events, independently of diagnostic publication (docs/dev/HOVER.md), so published diagnostics do not yet mean a current
+    /// Hover; until it is adopted, the session answers only null or a Hover marked as previous.</summary>
+    /// <param name="path">The file.</param>
+    /// <param name="line">The zero-based line.</param>
+    /// <param name="character">The zero-based character.</param>
+    /// <param name="expected">The text the contents contain.</param>
+    /// <returns>The first current Hover.</returns>
+    public async Task<JsonElement> WaitForHoverAsync(string path, int line, int character, string expected)
+    {
+        JsonElement result = default;
+        for (var i = 0; i < 500; i++)
+        {
+            result = await this.HoverAsync(path, line, character);
+            if (result.ValueKind != JsonValueKind.Null && !HoverText(result).StartsWith(HoverRenderer.PreviousNotice, StringComparison.Ordinal))
+            {
+                Assert.Contains(expected, HoverText(result), StringComparison.Ordinal);
+                return result;
+            }
+
+            await Task.Delay(20, this.Token);
+        }
+
+        Assert.Fail("Expected a current Hover containing " + expected + "; last response: " + result);
+        return result;
     }
 
     /// <summary>Initializes the session; the quiet period defaults to zero so each event checks at once.</summary>

@@ -13,21 +13,6 @@ public sealed partial class Binding
 
     private const string SharedObjectAuthorityNote = "rc and arc provide shared payload access only; even a strong count of one does not grant objuniq or uniq/Self authority";
 
-    // SPEC 12.4.2, 13.3.1: string has no arithmetic; an interpolated literal is the one way to join strings, and a buffer builds text.
-    private const string StringOperatorNote = "string has no arithmetic operators; an interpolated literal creates an owning string and borrows the values it embeds (SPEC 12.4.2, 13.3.1)";
-
-    // SPEC 23.1.2: the operands a node consulted that did not resolve are its explicit prerequisites. They are recorded
-    // when consulted (BindNode, failures of other nodes, symbol uses), never searched in the tree afterwards. The storage is
-    // reused across passes, so neither resolving nodes nor a warm rebind of invalid code allocates.
-    private readonly List<Koto> consulted = [];
-    private readonly List<Koto> derivedIssues = [];
-    private readonly List<Koto> prerequisiteStore = [];
-    private readonly Dictionary<Koto, (int Start, int Count)> prerequisites = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<Koto, Koto> partPrerequisites = new(ReferenceEqualityComparer.Instance);
-    private readonly List<DiagnosticKey> prerequisiteKeys = [];
-    private readonly HashSet<Koto> prerequisiteVisited = new(ReferenceEqualityComparer.Instance);
-    private readonly Stack<Koto> prerequisitePending = new();
-
     // Keep proof failures intact. Only diagnostic publication follows these recorded
     // missing-name causes; later validators must still see an invalid declaration.
     private Dictionary<Koto, Koto>? constraintDiagnosticCauses;
@@ -35,8 +20,6 @@ public sealed partial class Binding
     private MissingConstraintNameVisitor? missingConstraintNameVisitor;
 
     private FailedSignaturePartVisitor? failedSignaturePartVisitor;
-    private int consultationStart = -1;
-    private Koto? consultationNode;
 
     // The expression being bound without its expected Type because the syntax that supplies it failed.
     private (Koto Expression, Koto Cause)? missingExpectation;
@@ -57,9 +40,6 @@ public sealed partial class Binding
 
     // SPEC 10.5: why a single generic reference's slots did not bind from its fixed expected call signature, for its Type-mismatch Note.
     private Dictionary<Koto, ReferenceSlotFact>? referenceSlotFacts;
-
-    // SPEC 13.2, 13.3.1: the operand Type an operator rejected, or the count Type a shift rejected, recorded only when the check fails.
-    private Dictionary<Koto, BoundType>? operatorOperands;
 
     // The selected iteration entry and the range whose boundary Types cannot supply it.
     private Dictionary<Koto, (BoundType Subject, BindingSymbol Entry)>? rangeIterationFailures;
@@ -208,9 +188,10 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 23.1: the Type occurrence that an omitted Origin end is related at.
+    // SPEC 23.1: an omitted Origin is related at its Type occurrence. Closed annotation atoms and open local-input atoms name
+    // such occurrences; open call/evidence atoms do not. A local region is shown by the local's name.
     private static Koto? OmittedAt(BoundOrigin origin)
-        => origin.Occurrence ?? OmittedInput(origin) ?? (origin is { Kind: OriginKind.Inference, Binder: TypeKoto occurrence } ? occurrence : null);
+        => origin.Occurrence ?? OmittedInput(origin) ?? (origin is { Kind: OriginKind.Inference, Binder: { } occurrence and not VariableKoto } && (!origin.Open || origin.IsLocalInput) ? occurrence : null);
 
     // SPEC 23.1: the input Type occurrence of a Function Type whose outer Origin is this per-call Origin; it has no name.
     private static Koto? OmittedInput(BoundOrigin origin)
@@ -237,104 +218,6 @@ public sealed partial class Binding
         return actual.Symbol?.LibraryDeclaration is KimiDeclarationId.Range or KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange &&
             expected.Symbol?.LibraryDeclaration is KimiDeclarationId.Range or KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange && actual.Symbol != expected.Symbol;
     }
-
-    // The call signature of a Function Item, closure or Function value.
-    private BoundType? ValueSignature(BoundType value) => value.Kind switch
-    {
-        BoundTypeKind.FunctionItem => this.FunctionItemSignature(value),
-        BoundTypeKind.Closure => this.ClosureSignature(value),
-        BoundTypeKind.Function => value,
-        _ => null,
-    };
-
-    private string? ClosureConversionNote(Koto node, object actual, object expected)
-    {
-        if (expected is not BoundType { Kind: BoundTypeKind.Function } signature)
-        {
-            return null;
-        }
-
-        // SPEC 10.5, 7.7.4: a generic reference binds its slots from the expected signature, and its Item converts only
-        // when its bound arguments are Owned.
-        if (actual is BoundType { Kind: BoundTypeKind.FunctionItem } item && (item.Components.Count != 0 || item.LengthArguments.Length != 0))
-        {
-            return this.FunctionItemSignature(item) is { } itemSignature && this.CallableSignatureFits(itemSignature, signature, SignatureOwner(item))
-                ? "Common Function conversion requires Owned bound generic arguments; this Item's arguments are not proven Owned"
-                : null;
-        }
-
-        if (actual is BoundType { Kind: BoundTypeKind.Function } && node.BoundSymbol is { Kind: BindingSymbolKind.Function, Next: null, Declaration: FunctionKoto { GenericArguments.Count: > 0 } })
-        {
-            return ReferenceSlotNote(this.referenceSlotFacts is { } facts && facts.TryGetValue(node, out var fact) ? fact : null);
-        }
-
-        // The closure plan, not BoundClosure: a closure that failed at a call argument or a default keeps its plan (SPEC 7.7.4).
-        if (actual is not BoundType { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { ClosureStorage: { Signature: not null } closure } declaration })
-        {
-            return null;
-        }
-
-        return closure.Receiver switch
-        {
-            SemanticsKind.Uniq => "This closure requires an Exclusive call; a common Function value permits Shared calls only",
-            SemanticsKind.Owner => "This closure requires a Consuming call; a common Function value permits Shared calls only",
-            _ => !this.CallableSignatureFits(closure.Signature, signature, declaration)
-                ? "The closure's parameter or result contract does not match the expected common Function signature"
-                : "Common Function conversion requires an Owned environment; captured non-static borrows cannot be erased",
-        };
-
-        // SPEC 10.5, 10.8: why the one generic candidate's slots did not bind from S, when the binding recorded it.
-        static string ReferenceSlotNote(ReferenceSlotFact? fact)
-        {
-            var prefix = fact is { } entry && ItemTypeArgumentCount(entry.Declaration) != entry.Declaration.GenericArguments.Count
-                ? "The generic function's Type and length parameters are bound from the expected signature without adaptations; "
-                : "The generic function's Type parameters are bound from the expected signature without adaptations; ";
-            var slot = fact is { Slot: >= 0 } known && known.Slot < known.Declaration.GenericArguments.Count
-                ? $"{(known.Declaration.GenericArguments[known.Slot] is LengthParameterKoto ? "length" : "Type")} parameter '{known.Declaration.GenericArguments[known.Slot].Identifier}'" : "a generic parameter";
-            return fact?.Failure switch
-            {
-                ReferenceSlotFailure.Structure when fact.Value.Slot >= 0 => prefix + $"the signature does not bind {slot}",
-                ReferenceSlotFailure.Structure => prefix + "no binding of them fits its structure",
-                ReferenceSlotFailure.Constraint => prefix + "the binding fits, but it is not proven to satisfy the declaration's Constraints or to form its signature Types",
-                ReferenceSlotFailure.OriginConflict when fact.Value.Explicit => prefix + $"the written Type arguments and the signature give {slot} Types that differ only in their Origins, " +
-                    "and a bound Type argument holds one Origin for every call",
-                ReferenceSlotFailure.OriginConflict => prefix + $"its parameters and result bind {slot} to Types that differ only in their Origins, " +
-                    "and a bound Type argument holds one Origin for every call",
-                ReferenceSlotFailure.InputOrigin => prefix + $"{slot} would hold an input Origin that is bound at each call, such as a per-call Origin of the signature, " +
-                    "which never becomes part of a bound Type argument (SPEC 10.5)",
-                _ => prefix + "no binding fits it, or a bound argument fails its Constraints",
-            };
-        }
-    }
-
-    /// <summary>Gets final failures that are explained by failed prerequisites; they are reported as derived problems.</summary>
-    internal IReadOnlyList<Koto> DerivedIssues => this.derivedIssues;
-
-    // A recovery node, an ErrorKoto or synthesized syntax kept in place of a rejected form, stands for its syntax error.
-    internal static bool IsRecovery(Koto node, out DiagnosticKey cause)
-    {
-        if (node is ErrorKoto error)
-        {
-            cause = error.Cause ?? DiagnosticKey.Unresolved;
-            return true;
-        }
-
-        if (node.CodeContext.RecoveryCause(node) is { } recorded)
-        {
-            cause = recorded;
-            return true;
-        }
-
-        cause = default;
-        return false;
-    }
-
-    /// <summary>Gets the Binding causes of a node that a later phase checks: none when Binding resolved it or recorded no cause.</summary>
-    /// <param name="node">The node.</param>
-    /// <returns>The check keys, or <see langword="null"/>.</returns>
-    internal DiagnosticKey[]? FailureCauses(Koto node)
-        => node.BindingState != BindingState.Resolved && (IsRecovery(node, out _) || node.BindingFailure != BindingFailure.None || this.HasUnresolvedPrerequisite(node))
-            ? this.CauseKeys(node) : null;
 
     // A + whose operands are strings or string joins, through parentheses; the depth bound keeps pathological chains cheap.
     private static bool IsStringJoin(Koto node, int depth)
@@ -514,27 +397,36 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.2.1: the omitted slot of a parameter's Type, written directly or under one borrow layer, is the projection `p.slot`;
-    // any other omitted slot has no name.
-    private static string? SlotProjection(BoundOrigin origin, Koto occurrence)
+    // SPEC 15.2.1: the omitted slot `slot` of a function parameter's Type, written directly or under one borrow layer, is the projection
+    // `p.slot`, whether a named function's input or an anonymous function's body inference variable (SPEC 15.3.4); any other omitted
+    // slot has no name.
+    private static string? SlotProjection(Koto occurrence, int slot)
     {
-        if (origin.Binder is not FunctionKoto function || origin.InputIndex < 0 || origin.InputIndex >= function.Parameters.Count)
+        var function = occurrence.Parent;
+        while (function is not null and not FunctionKoto)
+        {
+            function = function.Parent;
+        }
+
+        if (function is not FunctionKoto owner || occurrence.BoundType?.Symbol?.Schema?.Origins is not { } slots || (uint)slot >= (uint)slots.Count)
         {
             return null;
         }
 
-        var type = function.Parameters[origin.InputIndex].Type;
-        if (!ReferenceEquals(type, occurrence) && !(type is TypeSemanticsKoto { Type: { } target } && ReferenceEquals(target, occurrence)))
+        foreach (var parameter in owner.Parameters)
         {
-            return null;
+            if (ReferenceEquals(parameter.Type, occurrence) || (parameter.Type is TypeSemanticsKoto { Type: { } target } && ReferenceEquals(target, occurrence)))
+            {
+                return parameter.InternalName + "." + slots[slot].Name;
+            }
         }
 
-        return occurrence.BoundType?.Symbol?.Schema?.Origins is { } slots && origin.TargetSlot >= 0 && origin.TargetSlot < slots.Count
-            ? function.Parameters[origin.InputIndex].InternalName + "." + slots[origin.TargetSlot].Name : null;
+        return null;
     }
 
-    // SPEC 23.1: an Origin by its display kind and string: an Origin expression for static, a parameter or receiver, a slot or
-    // a meet; the source text of a Borrow, or of its Place, for a body-local finite Origin; the Type occurrence of an omitted slot.
+    // SPEC 23.1: an Origin by its display kind and string: an Origin expression for static, a parameter or receiver, a slot (a
+    // parameter's projection, SlotProjection) or a meet; the source text of a Borrow, or of its Place, for a body-local finite Origin;
+    // the Type occurrence of an omitted slot.
     private static DiagnosticOrigin OriginDisplay(BoundOrigin origin, Koto? value, bool typeLevel = false)
     {
         switch (origin.Kind)
@@ -552,18 +444,15 @@ public sealed partial class Binding
                 }
 
                 return new("expression", "(" + string.Join(" and ", parts) + ")");
-            case OriginKind.Input when origin.Occurrence is { } occurrence:
-                return SlotProjection(origin, occurrence) is { } projection ? new("expression", projection) : new("omitted", occurrence.ToString());
-            case OriginKind.Input when OmittedInput(origin) is { } input:
-                return new("omitted", input.ToString());
+            case OriginKind.Input or OriginKind.Inference when OmittedAt(origin) is { } occurrence:
+                return SlotProjection(occurrence, origin.Kind == OriginKind.Input ? origin.TargetSlot : origin.Slot) is { } projection
+                    ? new("expression", projection) : new("omitted", occurrence.ToString());
             case OriginKind.Input when origin.Binder is { } binder && origin.InputIndex >= 0 && origin.InputIndex < InputCount(binder):
                 return new("expression", InputName(binder, origin.InputIndex));
             case OriginKind.Parameter when origin.Occurrence is GenericParameterKoto declaration:
                 return new("omitted", declaration.ToString()); // SPEC 8.1.1, 23.1: the outer Origin `o` of a pair binder.
             case OriginKind.Parameter:
                 return new("expression", origin.Binder is DeclarationContainerKoto && !typeLevel ? "self." + origin.Name : origin.Name);
-            case OriginKind.Inference when origin.Occurrence is null && origin.Binder is TypeKoto occurrence:
-                return new("omitted", occurrence.ToString());
             case OriginKind.Inference when origin.Binder is VariableKoto local:
                 return new("omitted", local.NameKoto.IdentifierName); // A local's region (LocalRegionSlot), as a Closure body names it.
             case OriginKind.Holder:
@@ -626,6 +515,75 @@ public sealed partial class Binding
         }
 
         node.Report(requirement, code, note: note, related: [("declaration", arity.Declaration.Declaration, null)]);
+    }
+
+    // The call signature of a Function Item, closure or Function value.
+    private BoundType? ValueSignature(BoundType value) => value.Kind switch
+    {
+        BoundTypeKind.FunctionItem => this.FunctionItemSignature(value),
+        BoundTypeKind.Closure => this.ClosureSignature(value),
+        BoundTypeKind.Function => value,
+        _ => null,
+    };
+
+    private string? ClosureConversionNote(Koto node, object actual, object expected)
+    {
+        if (expected is not BoundType { Kind: BoundTypeKind.Function } signature)
+        {
+            return null;
+        }
+
+        // SPEC 10.5, 7.7.4: a generic reference binds its slots from the expected signature, and its Item converts only
+        // when its bound arguments are Owned.
+        if (actual is BoundType { Kind: BoundTypeKind.FunctionItem } item && (item.Components.Count != 0 || item.LengthArguments.Length != 0))
+        {
+            return this.FunctionItemSignature(item) is { } itemSignature && this.CallableSignatureFits(itemSignature, signature, SignatureOwner(item))
+                ? "Common Function conversion requires Owned bound generic arguments; this Item's arguments are not proven Owned"
+                : null;
+        }
+
+        if (actual is BoundType { Kind: BoundTypeKind.Function } && node.BoundSymbol is { Kind: BindingSymbolKind.Function, Next: null, Declaration: FunctionKoto { GenericArguments.Count: > 0 } })
+        {
+            return ReferenceSlotNote(this.referenceSlotFacts is { } facts && facts.TryGetValue(node, out var fact) ? fact : null);
+        }
+
+        // The closure plan, not BoundClosure: a closure that failed at a call argument or a default keeps its plan (SPEC 7.7.4).
+        if (actual is not BoundType { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { ClosureStorage: { Signature: not null } closure } declaration })
+        {
+            return null;
+        }
+
+        return closure.Receiver switch
+        {
+            SemanticsKind.Uniq => "This closure requires an Exclusive call; a common Function value permits Shared calls only",
+            SemanticsKind.Owner => "This closure requires a Consuming call; a common Function value permits Shared calls only",
+            _ => !this.CallableSignatureFits(closure.Signature, signature, declaration)
+                ? "The closure's parameter or result contract does not match the expected common Function signature"
+                : "Common Function conversion requires an Owned environment; captured non-static borrows cannot be erased",
+        };
+
+        // SPEC 10.5, 10.8: why the one generic candidate's slots did not bind from S, when the binding recorded it.
+        static string ReferenceSlotNote(ReferenceSlotFact? fact)
+        {
+            var prefix = fact is { } entry && ItemTypeArgumentCount(entry.Declaration) != entry.Declaration.GenericArguments.Count
+                ? "The generic function's Type and length parameters are bound from the expected signature without adaptations; "
+                : "The generic function's Type parameters are bound from the expected signature without adaptations; ";
+            var slot = fact is { Slot: >= 0 } known && known.Slot < known.Declaration.GenericArguments.Count
+                ? $"{(known.Declaration.GenericArguments[known.Slot] is LengthParameterKoto ? "length" : "Type")} parameter '{known.Declaration.GenericArguments[known.Slot].Identifier}'" : "a generic parameter";
+            return fact?.Failure switch
+            {
+                ReferenceSlotFailure.Structure when fact.Value.Slot >= 0 => prefix + $"the signature does not bind {slot}",
+                ReferenceSlotFailure.Structure => prefix + "no binding of them fits its structure",
+                ReferenceSlotFailure.Constraint => prefix + "the binding fits, but it is not proven to satisfy the declaration's Constraints or to form its signature Types",
+                ReferenceSlotFailure.OriginConflict when fact.Value.Explicit => prefix + $"the written Type arguments and the signature give {slot} Types that differ only in their Origins, " +
+                    "and a bound Type argument holds one Origin for every call",
+                ReferenceSlotFailure.OriginConflict => prefix + $"its parameters and result bind {slot} to Types that differ only in their Origins, " +
+                    "and a bound Type argument holds one Origin for every call",
+                ReferenceSlotFailure.InputOrigin => prefix + $"{slot} would hold an input Origin that is bound at each call, such as a per-call Origin of the signature, " +
+                    "which never becomes part of a bound Type argument (SPEC 10.5)",
+                _ => prefix + "no binding fits it, or a bound argument fails its Constraints",
+            };
+        }
     }
 
     // SPEC 15.2.3, 23.1: an Owned failure of a common Function conversion is a Constraint record whose Reason names the subject, the
@@ -700,13 +658,6 @@ public sealed partial class Binding
             "closure" => "the closure's " + origin.Text,
             _ => origin.Text,
         };
-    }
-
-    private BoundType? CompleteDependent(Koto node, Koto cause)
-    {
-        this.prerequisites[node] = (this.prerequisiteStore.Count, 1);
-        this.prerequisiteStore.Add(cause);
-        return Complete(node, null);
     }
 
     /// <summary>Binds an expression against the Type that a written syntax supplies; when that syntax failed, a check that
@@ -832,44 +783,6 @@ public sealed partial class Binding
         }
 
         return this.Fail(node, failure, unresolved);
-    }
-
-    /// <summary>Fails an operation whose operand Type has no such operator, or a shift whose count is not an integer Type
-    /// (SPEC 13.2, 13.3.1), recording that Type.</summary>
-    /// <param name="node">The operation.</param>
-    /// <param name="operand">The operand Type as compared, or the count Type.</param>
-    /// <param name="failure"><see cref="BindingFailure.NonNumericOperand"/>, <see cref="BindingFailure.NonIntegerOperand"/> or
-    /// <see cref="BindingFailure.InvalidShiftCount"/>.</param>
-    /// <returns><see langword="null"/>.</returns>
-    private BoundType? FailOperand(Koto node, BoundType operand, BindingFailure failure)
-        => this.FailExplained(ref this.operatorOperands, node, failure, operand);
-
-    // SPEC 13.2, 13.3.1: the operand Type and the operator are the facts. A string operand is told that interpolation joins strings;
-    // a shift count is located at the count, and a wrapping count is told to leave Wrapping<U> through U.
-    private void ReportOperatorOperand(Koto operation, BoundType operand, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        var symbol = operation is BinaryKoto binary ? binary.InfixText.Trim() : ((UnaryKoto)operation).OperatorText;
-        if (code == DiagnosticCode.NonNumericOperand_Kd)
-        {
-            var text = ReferenceTypes.EndsInString(operand);
-            operation.Report(requirement, code, DiagnosticTypeName(operand), symbol, note: text ? StringOperatorNote : null);
-        }
-        else if (code == DiagnosticCode.NonIntegerOperand_Kd)
-        {
-            operation.Report(requirement, code, DiagnosticTypeName(operand), symbol);
-        }
-        else
-        {
-            // SPEC 13.5.4: a numeric conversion leaves Wrapping<U> to U itself, which is always exact.
-            var integer = operand.IsWrappingInteger ? DiagnosticTypeName(operand.Underlying) : null;
-            operation.Report(
-                requirement,
-                code,
-                DiagnosticTypeName(operand),
-                symbol,
-                note: integer is not null ? "A wrapping integer Type is never a shift count (SPEC 13.3.1)" : null,
-                at: ((BinaryKoto)operation).Right);
-        }
     }
 
     /// <summary>Fails a write whose target's path denies it (SPEC 3.4, 15.1.5), recording the target.</summary>
@@ -1024,200 +937,6 @@ public sealed partial class Binding
         this.consultationStart = -1;
         this.consultationNode = null;
         this.missingExpectation = null;
-    }
-
-    private (int Start, Koto? Node) BeginConsultation(Koto node)
-    {
-        var parent = (this.consultationStart, this.consultationNode);
-        this.consultationStart = this.consulted.Count;
-        this.consultationNode = node;
-        return parent;
-    }
-
-    private void EndConsultation(Koto node, (int Start, Koto? Node) parent)
-    {
-        var start = this.consultationStart;
-        var count = this.consulted.Count - start;
-        if (count != 0)
-        {
-            if (node.BindingState != BindingState.Resolved)
-            {
-                this.prerequisites[node] = (this.prerequisiteStore.Count, count);
-                for (var i = start; i < start + count; i++)
-                {
-                    this.prerequisiteStore.Add(this.consulted[i]);
-                }
-            }
-
-            this.consulted.RemoveRange(start, count);
-        }
-
-        (this.consultationStart, this.consultationNode) = parent;
-    }
-
-    /// <summary>Records that the node being bound read the result of another node; one that did not resolve becomes a prerequisite, but for
-    /// a part that waits for the call reading it (SPEC 10.5.1), which depends on that call instead.</summary>
-    /// <param name="dependency">The node whose result was read.</param>
-    private void Consulted(Koto dependency)
-    {
-        if (this.consultationStart >= 0 && dependency.BindingState != BindingState.Resolved && !ReferenceEquals(dependency, this.consultationNode) &&
-            !this.IsWaitingPart(dependency))
-        {
-            this.consulted.Add(dependency);
-        }
-    }
-
-    // A recovery node derives from its syntax error, and so does every failure of a check that consulted a recovery node,
-    // directly or through unresolved operands: the parser's guess explains what the check combined (DIAGNOSTICS.md §4.3).
-    // A failure that reports missing information is derived when the check consulted prerequisites that stayed unresolved;
-    // a failure explained by the Origin rule, or any other definite failure, is direct.
-    // A constraint proof that a declaration-level check found failing because a part it read failed, such as the invalid
-    // declaration context of a Property (AddPrerequisite), is a consequence of that part.
-    private bool IsDerived(Koto node)
-        => IsRecovery(node, out _) || this.RestsOnRecovery(node) ||
-            (node.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported &&
-            this.HasUnresolvedPrerequisite(node)) ||
-            (node.BindingFailure == BindingFailure.InvalidOrigin && this.originDeclarations.TryGetValue(node, out var declaration) &&
-            declaration.Failure is { } clause && this.partPrerequisites.TryGetValue(node, out var cause) && ReferenceEquals(cause, clause)) ||
-            (node.BindingFailure is BindingFailure.InvalidConstraint or BindingFailure.Unsupported && this.partPrerequisites.TryGetValue(node, out var part) && part.BindingState == BindingState.Invalid) ||
-            (node.BindingFailure == BindingFailure.InvalidOrigin && node is IsKoto { IsAssociatedConstraint: true } && this.partPrerequisites.TryGetValue(node, out var occurrence) &&
-            this.formationCauses?.ContainsKey(occurrence) == true) ||
-            (node.BindingFailure == BindingFailure.InvalidAssociatedType && this.partPrerequisites.TryGetValue(node, out var specification) &&
-            (specification.BindingFailure != BindingFailure.None || specification.BindingState == BindingState.Invalid)) ||
-            (node.BindingFailure is BindingFailure.NoApplicableCandidate or BindingFailure.TypeMismatch && this.partPrerequisites.TryGetValue(node, out var read) &&
-            this.formationCauses?.ContainsKey(read) == true);
-
-    // The walk reuses the prerequisite storage of PrerequisiteKeys; both run only at publication.
-    private bool RestsOnRecovery(Koto node)
-    {
-        if (!this.prerequisites.ContainsKey(node) && !this.partPrerequisites.ContainsKey(node))
-        {
-            return false;
-        }
-
-        var visited = this.prerequisiteVisited;
-        var pending = this.prerequisitePending;
-        visited.Add(node);
-        this.PushPrerequisites(node, pending);
-        var found = false;
-        while (pending.TryPop(out var cause))
-        {
-            if (!visited.Add(cause))
-            {
-                continue;
-            }
-
-            if (IsRecovery(cause, out _))
-            {
-                found = true;
-                pending.Clear();
-                break;
-            }
-
-            this.PushPrerequisites(cause, pending);
-        }
-
-        visited.Clear();
-        return found;
-    }
-
-    /// <summary>Records that a declaration-level check read a part outside a consultation frame; the part explains the node's failure when it did not resolve.
-    /// The record belongs to the pass, like every other prerequisite.</summary>
-    /// <param name="node">The checked node.</param>
-    /// <param name="part">The part it read.</param>
-    private void AddPrerequisite(Koto node, Koto part)
-    {
-        // A recovery part explains the failure even when a Type was formed for it (a length slot binds as isize).
-        if (IsRecovery(part, out _) || (part.BindingState != BindingState.Resolved && !this.partPrerequisites.ContainsKey(node)))
-        {
-            this.partPrerequisites[node] = part;
-        }
-    }
-
-    // A consulted operand can resolve after it was consulted, such as a callee completed by overload selection; only
-    // operands still unresolved when Binding ends are prerequisites.
-    private bool HasUnresolvedPrerequisite(Koto node)
-    {
-        if (this.prerequisites.TryGetValue(node, out var range))
-        {
-            for (var i = range.Start; i < range.Start + range.Count; i++)
-            {
-                if (this.prerequisiteStore[i].BindingState != BindingState.Resolved)
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    /// <summary>Gets the check keys that explain why a node did not resolve: its own failure, or what it rests on.</summary>
-    /// <param name="node">The unresolved node.</param>
-    /// <returns>The keys; the unresolved mark when no cause was recorded.</returns>
-    private DiagnosticKey[] CauseKeys(Koto node)
-        => !IsRecovery(node, out _) && node.BindingFailure != BindingFailure.None ? [node.KeyOf(DiagnosticRequirement.Binding(node.BindingFailure))] : this.PrerequisiteKeys(node);
-
-    /// <summary>Gets the check keys a derived failure rests on; a skipped prerequisite contributes its own prerequisites.</summary>
-    /// <param name="node">The derived node.</param>
-    /// <returns>The keys; the unresolved mark when no cause was recorded.</returns>
-    private DiagnosticKey[] PrerequisiteKeys(Koto node)
-    {
-        if (IsRecovery(node, out var own))
-        {
-            return [own];
-        }
-
-        // The walk reuses its storage; only the published array is allocated.
-        var keys = this.prerequisiteKeys;
-        var visited = this.prerequisiteVisited;
-        var pending = this.prerequisitePending;
-        visited.Add(node);
-        this.PushPrerequisites(node, pending);
-        while (pending.TryPop(out var cause))
-        {
-            if (!visited.Add(cause))
-            {
-                continue;
-            }
-
-            var key = IsRecovery(cause, out var syntax) ? syntax
-                : cause.BindingFailure != BindingFailure.None ? cause.KeyOf(DiagnosticRequirement.Binding(cause.BindingFailure))
-                : this.PushPrerequisites(cause, pending) ? (DiagnosticKey?)null
-                : DiagnosticKey.Unresolved;
-            if (key is { } found && !keys.Contains(found))
-            {
-                keys.Add(found);
-            }
-        }
-
-        DiagnosticKey[] result = keys.Count == 0 ? [DiagnosticKey.Unresolved] : [.. keys];
-        keys.Clear();
-        visited.Clear();
-        return result;
-    }
-
-    private bool PushPrerequisites(Koto node, Stack<Koto> pending)
-    {
-        var count = pending.Count;
-        if (this.partPrerequisites.TryGetValue(node, out var part) && (part.BindingState != BindingState.Resolved || IsRecovery(part, out _)))
-        {
-            pending.Push(part);
-        }
-
-        if (this.prerequisites.TryGetValue(node, out var range))
-        {
-            for (var i = range.Start + range.Count - 1; i >= range.Start; i--)
-            {
-                var cause = this.prerequisiteStore[i];
-                if (cause.BindingState != BindingState.Resolved || IsRecovery(cause, out _))
-                {
-                    pending.Push(cause);
-                }
-            }
-        }
-
-        return pending.Count != count;
     }
 
     // A lookup that misses a Name the language defines but the implementation does not yet provide meets an implementation

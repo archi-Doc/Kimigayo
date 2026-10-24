@@ -107,9 +107,8 @@ public sealed partial class Binding
         return target;
     }
 
-    // The Target Result Type a position fixes for a result target (SPEC 14.9.2 step 1): Unit outside a value context and for while and
-    // for; none for an expectation whose Origin is still inferred, so that the result's actual dependency is inferred before a local
-    // annotation is completed.
+    // SPEC 12.3.1, 14.9.2: the position fixes every source's Target Result Type, even with omitted Origins; their fits collect
+    // the bounds resolved by LocalOrigins. A discard position and while/for fix Unit.
     private static BoundType? ResultExpectation(Koto target, BoundType? expected)
     {
         if ((target is not (TryKoto or FunctionKoto) && !KotoHelper.IsValueContext(target)) || target is WhileKoto or ForKoto)
@@ -117,7 +116,7 @@ public sealed partial class Binding
             return BoundType.Unit;
         }
 
-        return expected?.Origin?.Kind == OriginKind.Inference ? null : expected;
+        return expected;
     }
 
     private BoundType? CommonBorrowResult(BoundType left, BoundType right)
@@ -319,10 +318,10 @@ public sealed partial class Binding
         else
         {
             // SPEC 15.6.1, 14.9: each result source fits the expected Type under the premises in scope; the first that does not
-            // is the explained one, an Origin relation when only its Origin part fails.
+            // is the explained one. A regional target records source edges; fixed and omitted targets keep their immediate/collecting fit.
             for (var i = 0; i < types.Count; i++)
             {
-                if (!this.FitsTypeAt(types[i], common, node))
+                if (!(HasLocalRegion(common) ? this.CheckTypeUse(types[i], common, node) : this.FitsTypeAt(types[i], common, node)))
                 {
                     context.Invalid = true;
                     failed ??= types[i];

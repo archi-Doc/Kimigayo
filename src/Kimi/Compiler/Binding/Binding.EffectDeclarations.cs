@@ -8,10 +8,11 @@
 //   PrepareEffectBounds runs once per pass after them and before conformances are verified.
 // - Outputs: BoundContract.EffectBounds, boundedRequirements, callableEffectClauses, virtualEffectBounds, and one rejection
 //   fact per invalid item (EffectBoundRejection), published as InvalidEffectBound_Kd at the item (ReportEffectBound).
-// - Invariants: an item's position is decided by Misplaced alone, before its position's own checks; an item AppliesBound
+// - Invariants: the position of an item in the tree is decided by Misplaced alone, before its position's own checks (the parser
+//   reports and drops an item that starts a body item outside a leading region, DECISIONS G223); an item AppliesBound
 //   rejects supplies no bound (SPEC 8.11.3); every table is rebuilt per pass in reused storage; a rejection records facts,
 //   its text is formed at publication.
-// - Prohibitions: no bound is searched for in implementations; no other component decides an effect item.
+// - Prohibitions: no bound is searched for in implementations; no other component decides an effect item in the tree.
 
 using System.Diagnostics;
 using Kimi.Compiler.Parsing;
@@ -54,7 +55,6 @@ public sealed partial class Binding
         Duplicate,
         CallableForm,
         CallablePosition,
-        CallableDuplicate,
     }
 
     // The Contract whose bound an effect item declares: the Contract itself, or the Contract of the requirement whose
@@ -216,7 +216,7 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 8.11.1, F.6: the one rule for where an effect item stands. A specification is a Contract item; a clause stands in a
+    // SPEC 8.11.1, F.6: the one rule for where an effect item in the tree stands. A specification is a Contract item; a clause stands in a
     // requirement's Constraint region, a Callable Constraint's effect list or an original virtual function's leading region,
     // whose own checks follow; any other item declares no bound.
     private static EffectRejection? Misplaced(EffectBoundKoto effect) => effect.Parent switch
@@ -322,7 +322,7 @@ public sealed partial class Binding
             }
 
             this.callableEffectClauses.Add(clause);
-            var declared = false;
+            EffectBoundKoto? confined = null;
             for (var e = 0; e < clause.EffectBounds.Count; e++)
             {
                 var effect = clause.EffectBounds[e];
@@ -342,15 +342,14 @@ public sealed partial class Binding
                 {
                     rejection = EffectRejection.CallablePosition;
                 }
-                else if (declared)
-                {
-                    rejection = EffectRejection.CallableDuplicate;
-                }
 
-                declared = true;
                 if (rejection is { } invalid)
                 {
-                    this.RejectEffectBound(effect, new(invalid, Requirement: clause));
+                    this.RejectEffectBound(effect, new(invalid, Target: clause));
+                }
+                else if (this.ValidateDeclaredEffectBound(effect, clause, confined))
+                {
+                    confined = effect; // SPEC 8.11.4: confined appears at most once in one Constraint.
                 }
 
                 this.BindEffectBound(effect);
@@ -372,7 +371,7 @@ public sealed partial class Binding
             for (var i = 0; i < function.EffectBounds.Count; i++)
             {
                 var effect = function.EffectBounds[i];
-                if (this.AppliesBound(effect) && this.ValidateDeclaredEffectBound(effect, function.BoundSymbol!, confined))
+                if (this.AppliesBound(effect) && this.ValidateDeclaredEffectBound(effect, function, confined))
                 {
                     confined = effect;
                 }
@@ -385,7 +384,7 @@ public sealed partial class Binding
     private void DeclareEffectBound(BoundContract shape, EffectBoundKoto effect, BoundRequirement requirement)
     {
         // SPEC 8.11.1: a bound declared twice in one Contract is an error; restating an ancestor's bound forms one guarantee.
-        if (!this.ValidateDeclaredEffectBound(effect, requirement.Symbol, OwnEffectBound(shape, requirement)))
+        if (!this.ValidateDeclaredEffectBound(effect, requirement.Symbol.Declaration, OwnEffectBound(shape, requirement)))
         {
             return;
         }
@@ -395,11 +394,13 @@ public sealed partial class Binding
         this.boundedRequirements.Add(new(requirement, effect));
     }
 
-    private bool ValidateDeclaredEffectBound(EffectBoundKoto effect, BindingSymbol requirement, EffectBoundKoto? earlier)
+    // SPEC 8.11.1, 8.11.4: the one duplicate rule of every bound position; the target is the function requirement, the original
+    // virtual function or the Callable Constraint the item bounds, and the earlier item its valid bound there.
+    private bool ValidateDeclaredEffectBound(EffectBoundKoto effect, Koto target, EffectBoundKoto? earlier)
     {
         if (earlier is not null)
         {
-            this.RejectEffectBound(effect, new(EffectRejection.Duplicate, Requirement: requirement.Declaration, Earlier: earlier));
+            this.RejectEffectBound(effect, new(EffectRejection.Duplicate, Target: target, Earlier: earlier));
             return false;
         }
 
@@ -476,7 +477,7 @@ public sealed partial class Binding
 
         if (target is null || found > 1)
         {
-            this.RejectEffectBound(effect, new(target is null ? EffectRejection.NoRequirement : EffectRejection.OverloadedRequirement, Requirement: target?.Symbol.Declaration, Symbol: ancestor, Count: found));
+            this.RejectEffectBound(effect, new(target is null ? EffectRejection.NoRequirement : EffectRejection.OverloadedRequirement, Target: target?.Symbol.Declaration, Symbol: ancestor, Count: found));
             return null;
         }
 
@@ -515,8 +516,9 @@ public sealed partial class Binding
         return this.effectBoundRejections?.ContainsKey(effect) == true ? this.Fail(effect, BindingFailure.InvalidEffectBound) : Complete(effect, BoundType.Unit);
     }
 
-    // SPEC 8.11.1: the Reason names the cause, the Note its path and the related locations the target requirement and an
-    // earlier bound. The text is formed here, only for published records.
+    // SPEC 8.11.1: the Reason names the cause, the Note its path and the related locations the bounded declaration (a function
+    // requirement, an original virtual slot or the Constraint of a Callable effect list) and an earlier bound. The text is formed
+    // here, only for published records.
     private void ReportEffectBound(EffectBoundKoto effect, DiagnosticRequirement requirement)
     {
         if (this.effectBoundRejections?.TryGetValue(effect, out var rejection) != true)
@@ -526,9 +528,8 @@ public sealed partial class Binding
         }
 
         var selector = effect.Selector?.ToString();
-        var name = (rejection.Requirement as FunctionKoto)?.Name ?? effect.Name?.ToString();
+        var name = (rejection.Target as FunctionKoto)?.Name ?? effect.Name?.ToString();
         var spelling = Constants.ConfinedKeyword;
-        var earlierOwner = rejection.Earlier is { } previous ? DeclaringContract(previous)?.BoundSymbol?.Name ?? (previous.Parent as FunctionKoto)?.Name : null;
         var (cause, note) = rejection.Kind switch
         {
             EffectRejection.SpecificationOutsideContract => ("an effect specification outside a Contract's items",
@@ -537,7 +538,6 @@ public sealed partial class Binding
             EffectRejection.OutsideContract => ("an effect item outside a Contract, original virtual function or Callable Constraint", $"A Contract, original virtual function or Callable Constraint declares bounds; {EffectOwner(effect)} declares no bound of its own, and an implementation can neither add nor remove its public contract's bound"),
             EffectRejection.CallableForm => ("the effect list is not under a single Callable Constraint", "Write other requirements in separate clauses; parentheses and combined requirements accept no effect list"),
             EffectRejection.CallablePosition => ("a Callable effect bound in an excluded position", "Callable bounds belong to function, struct, enum or function-requirement Constraint regions"),
-            EffectRejection.CallableDuplicate => ($"the Callable Constraint already declares {spelling}", $"A Callable Constraint declares {spelling} at most once"),
             EffectRejection.NotContract => ($"{selector} names no Contract", "An effect specification names a requirement of an ancestor through the ancestor's Contract selector"),
             EffectRejection.NotReference => ($"{selector} is not a reference to {rejection.Symbol!.Name}", $"The Type arguments of {selector} do not form a reference to {rejection.Symbol!.Name}"),
             EffectRejection.OwnContract => ($"{selector} is this Contract", "A Contract bounds its own requirement with an effect clause in that requirement's Constraint region"),
@@ -545,14 +545,26 @@ public sealed partial class Binding
             EffectRejection.AmbiguousAncestor => ($"{selector} names {rejection.Count} ancestors", $"The Contract refines {rejection.Count} references of {rejection.Symbol!.Name}"),
             EffectRejection.NoRequirement => ($"{rejection.Symbol!.Name} has no function requirement {name}", null),
             EffectRejection.OverloadedRequirement => ($"{name} names {rejection.Count} function requirements of {rejection.Symbol!.Name}", "An effect specification bounds exactly one function requirement"),
-            EffectRejection.Duplicate => ($"{name} already has {spelling}", $"{earlierOwner} already declares {spelling} for {name}; each declaration supplies a bound once, though a Contract may restate a bound of an ancestor"),
+            EffectRejection.Duplicate => rejection.Target switch
+            {
+                IsKoto => ($"the Callable Constraint already declares {spelling}", $"A Callable Constraint declares {spelling} at most once"),
+                FunctionKoto { IsVirtual: true } => ($"{name} already has {spelling}",
+                    $"An original virtual function declares {spelling} for its slot at most once"),
+                _ => ($"{name} already has {spelling}", $"{DeclaringContract(rejection.Earlier!)?.BoundSymbol?.Name} already declares {spelling} for {name}; " +
+                    "each declaration supplies a bound once, though a Contract may restate a bound of an ancestor"),
+            },
             _ => throw new UnreachableException(),
         };
 
-        var related = rejection.Requirement is null && rejection.Earlier is null ? null : new (string Role, Koto At, string? Label)[(rejection.Requirement is null ? 0 : 1) + (rejection.Earlier is null ? 0 : 1)];
-        if (rejection.Requirement is { } target)
+        var related = rejection.Target is null && rejection.Earlier is null ? null : new (string Role, Koto At, string? Label)[(rejection.Target is null ? 0 : 1) + (rejection.Earlier is null ? 0 : 1)];
+        if (rejection.Target is { } target)
         {
-            related![0] = ("requirement", target, "the bounded requirement");
+            related![0] = target switch
+            {
+                IsKoto => ("constraint", target, "the Constraint of the effect list"),
+                FunctionKoto { IsVirtual: true } => ("declaration", target, "the original virtual slot"),
+                _ => ("requirement", target, "the bounded requirement"),
+            };
         }
 
         if (rejection.Earlier is { } earlier)
@@ -567,6 +579,7 @@ public sealed partial class Binding
             {
                 FunctionKoto { IsAnonymous: true } => "a function literal",
                 FunctionKoto function => $"the function {function.Name}",
+                CodeBlockKoto { Parent: SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } } => "a conditional conformance",
                 _ => effect.Parent?.BoundSymbol?.Name ?? "this declaration",
             };
     }
@@ -585,7 +598,8 @@ public sealed partial class Binding
         }
     }
 
-    private readonly record struct EffectBoundRejection(EffectRejection Kind, Koto? Requirement = null, EffectBoundKoto? Earlier = null, BindingSymbol? Symbol = null, int Count = 0);
+    // Target: the declaration the item bounds (a function requirement, an original virtual function or a Callable Constraint).
+    private readonly record struct EffectBoundRejection(EffectRejection Kind, Koto? Target = null, EffectBoundKoto? Earlier = null, BindingSymbol? Symbol = null, int Count = 0);
 }
 
 // One premise or public guarantee behind an available effect bound, collected only for Hover provenance.

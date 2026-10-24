@@ -186,6 +186,9 @@ public enum SyntaxForm : ushort
     /// <summary>An Origin annotation on the borrow layer of an adaptation target.</summary>
     AdaptationOrigin,
 
+    /// <summary>An Origin annotation anywhere in a runtime Type-test target.</summary>
+    RuntimeTypeTestOrigin,
+
     /// <summary>A 'during' annotation after an ungrouped adaptation target.</summary>
     AdaptationDuring,
 
@@ -269,4 +272,7 @@ public enum SyntaxForm : ushort
 
     /// <summary>An integer literal, constant Name or parenthesized integer expression used as an array length.</summary>
     ArrayLength,
+
+    /// <summary>An effect item in a body outside a function's leading region.</summary>
+    EffectItem,
 }

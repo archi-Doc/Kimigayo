@@ -81,6 +81,7 @@ public class TypeDagScalingTest
         Assert.Equal("i32", Binding.DiagnosticTypeName(Result(c)));
         var original = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "make");
         var replacement = KotoTree.Walk(ParseTestHelper.ParseSuccess(After + Main).RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "make");
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(original.Parent!, original, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Equal("(i32, i32)", Binding.DiagnosticTypeName(Result(c)));

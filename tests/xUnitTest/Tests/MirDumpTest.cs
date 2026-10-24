@@ -3,6 +3,7 @@
 using System.Text;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -21,6 +22,14 @@ public sealed class MirDumpTest
     public void ProgramDumpsItsGolden(string name)
         => Golden(name, Dump(Compile(name)));
 
+    // The corpus includes deliberate recovery witnesses; every other fixture must parse without an Error (G136 N2).
+    [Fact]
+    public void GoldenProgramsHaveOnlyExpectedSyntaxErrors()
+        => Assert.Equal(
+            ["rejected: MisplacedSyntax_Kd", "rejected: MissingSyntax_Kd", "rejected: InvalidEscape_Kd"],
+            Programs.SelectMany(program => TestDiagnostics.Of(Compile(program.Data))
+                .Where(static x => x.Severity == DiagnosticSeverity.Error).Select(x => $"{program.Data}: {x.Code}")));
+
     // The spellings of every form: Deref, Field, Base, Index, ConstIndex, Downcast and PairLayer projections, the borrows (a two-phase and a
     // raw one added to the validator's body), the operands, constants, rvalues, terminators, scopes, binders, statics and Opaque sites.
     [Fact]
@@ -36,11 +45,15 @@ public sealed class MirDumpTest
         Golden("every-form", text.ToString());
     }
 
-    // A golden's program, compiled as a test build when it has a #Test.
+    // A golden's program, including deliberate syntax recovery, compiled as a test build when it has a #Test.
     internal static Compilation Compile(string name)
     {
         var source = File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "mir", name + ".kimi"));
-        return MirBuildTest.Compile(source, source.Contains("#Test", StringComparison.Ordinal));
+        var c = CompilationTestHelper.Parse(source, "Program.kimi");
+        c.IsTestBuild = source.Contains("#Test", StringComparison.Ordinal);
+        c.Bind();
+        _ = c.IsTestBuild ? c.Binding.CheckTestStartup() : c.Binding.CheckStartup(OutputKind.Application);
+        return c;
     }
 
     // The dump of a compilation's first source module, as a golden holds it.

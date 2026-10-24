@@ -100,6 +100,7 @@ public class AssociatedSubjectConstraintBindingTest
         var original = function.Parameters[0].Type;
         var donor = MinimalEmissionTest.Analyze(source.Replace("Box<Source>", "Box<Other>", StringComparison.Ordinal));
         var replacement = Function(donor, "accept").Parameters[0].Type;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(function, original, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.True(KotoHelper.Replace(function, replacement, original));

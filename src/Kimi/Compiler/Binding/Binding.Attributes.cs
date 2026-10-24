@@ -64,6 +64,17 @@ public sealed partial class Binding
             _ => '?',
         };
 
+    // A rejected selected attribute is the declaration's failed prerequisite, not another failed requirement.
+    // These markers cannot resolve within this pass; removing or replacing them rebuilds the cause on the next Bind.
+    private void InvalidateAttributeTarget(AttributeKoto attribute)
+    {
+        if (AttributeTarget(attribute) is { } target)
+        {
+            target.BindingState = BindingState.Invalid;
+            this.AddPrerequisite(target, attribute);
+        }
+    }
+
     private void IndexLayoutAttribute(AttributeKoto attribute)
     {
         attribute.BindingFailure = BindingFailure.None;
@@ -75,10 +86,7 @@ public sealed partial class Binding
         if (target is not StructKoto || attribute.LayoutMode is null)
         {
             this.Fail(attribute, BindingFailure.InvalidLayoutAttribute);
-            if (target is not null)
-            {
-                this.Fail(target, BindingFailure.InvalidTypeFormation);
-            }
+            this.InvalidateAttributeTarget(attribute);
         }
         else
         {
@@ -356,7 +364,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (symbol.Declaration.BindingFailure != BindingFailure.None)
+        if (symbol.Declaration.BindingFailure != BindingFailure.None || this.InvalidDeclarationCause(symbol.Declaration) is not null)
         {
             return null;
         }
@@ -453,7 +461,11 @@ public sealed partial class Binding
                     this.Fail(attribute, BindingFailure.InvalidLayoutAttribute);
                 }
 
-                valid &= attribute.BindingState != BindingState.Invalid;
+                if (attribute.BindingState == BindingState.Invalid)
+                {
+                    this.InvalidateAttributeTarget(attribute);
+                    valid = false;
+                }
 
                 previousFragment = attribute.FragmentOrdinal;
                 if (attribute.LayoutMode is { } explicitMode)
@@ -461,6 +473,7 @@ public sealed partial class Binding
                     if (mode is not null && mode != explicitMode)
                     {
                         this.Fail(latestSpecification!, BindingFailure.ConflictingLayout);
+                        this.InvalidateAttributeTarget(latestSpecification!);
                         valid = false;
                     }
                     else if (mode is null)
@@ -480,6 +493,7 @@ public sealed partial class Binding
                     if (storageFragment >= 0 && storageFragment != field.FragmentOrdinal)
                     {
                         this.Fail(field, BindingFailure.SplitCLayoutStorage);
+                        this.Fail(container, BindingFailure.InvalidTypeFormation);
                         valid = false;
                     }
 
@@ -492,16 +506,12 @@ public sealed partial class Binding
             if (mode == "C" && ((container.Modifier & ModifierKind.Open) != 0 || container.Bases.Count != 0 || instanceFields == 0))
             {
                 this.Fail(latestSpecification!, BindingFailure.InvalidCLayout);
+                this.InvalidateAttributeTarget(latestSpecification!);
                 valid = false;
             }
 
             // The published fact, written for every struct in every pass; PrepareStorage reuses a shape created here on a first pass.
             (container.BoundSymbol!.Adt ??= new()).IsCLayout = mode == "C" && valid;
-
-            if (!valid)
-            {
-                this.Fail(container, BindingFailure.InvalidTypeFormation);
-            }
         }
     }
 }

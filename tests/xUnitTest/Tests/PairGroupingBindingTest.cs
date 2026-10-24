@@ -121,6 +121,7 @@ public class PairGroupingBindingTest
         var semantics = Assert.IsType<TypeSemanticsKoto>(Function(c, "f").Parameters[0].Type);
         var group = Assert.IsType<ParenthesizedTypeKoto>(semantics.Type);
         var replacement = Function(Parse("func f<U>(value: U) => ()"), "f").Parameters[0].Type;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(group, group.Type, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);

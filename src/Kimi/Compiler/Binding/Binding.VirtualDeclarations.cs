@@ -59,7 +59,7 @@ public sealed partial class Binding
             if (function.Modifier != ModifierKind.Override || function.AttributeChain is not null || function.NameBoundaryIndex >= 0 ||
                 function.TypeConstraints.Count != 0)
             {
-                return "an override inherits access, attributes, the named-argument boundary, constraints and effects; do not redeclare them";
+                return "an override inherits access, attributes, the named-argument boundary and constraints; do not redeclare them";
             }
 
             for (var i = 0; i < function.Parameters.Count; i++)
@@ -120,7 +120,7 @@ public sealed partial class Binding
             else if (function.BindingFailure == BindingFailure.Unsupported)
             {
                 // Binding a body can complete its result Type without discharging the earlier subset gate.
-                function.BindingState = BindingState.Unresolved;
+                this.MarkUnresolved(function);
             }
         }
     }

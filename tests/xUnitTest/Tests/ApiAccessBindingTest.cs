@@ -87,6 +87,7 @@ public class ApiAccessBindingTest
         var original = Assert.Single(group.Members.OfType<FunctionKoto>());
         var replacementSource = MinimalEmissionTest.Analyze("internal struct Value\npublic group Api\n    internal func use(value: Value) => ()");
         var replacement = Assert.Single(replacementSource.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api").Members.OfType<FunctionKoto>());
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(group, original, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
     }

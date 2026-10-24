@@ -250,6 +250,7 @@ internal enum BindingFailure : byte
     // wrapping integer operand, and a shift count an integer Type.
     NonNumericOperand,
     NonIntegerOperand,
+    OperatorNotDefined,
     InvalidShiftCount,
 
     // SPEC 13.5.4-4: @wrap converts integer and wrapping integer values only; @bits pairs a floating-point Type with a
@@ -273,7 +274,7 @@ internal enum BindingFailure : byte
     // SPEC 4.7.1: element indexing needs an Indexable conformance, and range indexing applies only to the sequence Types.
     NotIndexable,
 
-    // SPEC 8.11.1, 8.11.1: an effect item that declares no bound of its Contract.
+    // SPEC 8.11.1, 8.11.4: an effect item that declares no bound.
     InvalidEffectBound,
 
     // SPEC 4.3.1: an initialized local annotation obtains every written hole from consistent initializer evidence.
@@ -528,7 +529,7 @@ public sealed record BoundType
     /// <returns>The interned <c>Wrapping&lt;integer&gt;</c>.</returns>
     internal static BoundType WrappingOf(BoundType integer) => WrappingScalars[integer];
 
-    // A closure an instance closed keeps that instance's substitution (SPEC 8.2; DECISIONS R5-M36), interned and shared by the instance's
+    // A closure an instance closed keeps that instance's substitution (SPEC 6.1.3, 8.1.3; DECISIONS R5-M36), interned and shared by the instance's
     // closures, even when none of its slots occupy capture storage.
     internal Subst? ClosureContext { get; init; }
 

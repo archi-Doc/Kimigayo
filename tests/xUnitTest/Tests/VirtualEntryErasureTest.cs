@@ -104,6 +104,7 @@ public class VirtualEntryErasureTest(ITestOutputHelper output)
         Assert.True(c.Binding.TryGetObjectErasure(call, out _));
         var donor = MinimalEmissionTest.Analyze(Source(Body.Replace("= self", "= other", StringComparison.Ordinal)));
         var changed = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<VariableKoto>(), x => x.NameKoto.IdentifierName == "alias").InitializerKoto!;
+        ParseTestHelper.Detach(changed, new CodeBlockKoto(changed.CodeContext));
         Assert.True(KotoHelper.Replace(alias, original, changed));
         Assert.False(c.Binding.TryGetObjectErasure(call, out _));
         c.Bind();
@@ -161,6 +162,7 @@ public class VirtualEntryErasureTest(ITestOutputHelper output)
         Assert.True(c.Binding.TryGetObjectErasure(call, out var before));
         var donor = MinimalEmissionTest.Analyze(Source("        return other.ordinary()"));
         var changed = ((MemberAccessKoto)Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<InvocationKoto>()).Method).Left;
+        ParseTestHelper.Detach(changed, new CodeBlockKoto(changed.CodeContext));
         Assert.True(KotoHelper.Replace(member, original, changed));
         Assert.False(c.Binding.TryGetObjectErasure(call, out _));
         c.Bind();

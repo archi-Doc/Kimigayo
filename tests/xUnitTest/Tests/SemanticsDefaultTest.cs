@@ -59,7 +59,7 @@ public class SemanticsDefaultTest
         Assert.Equal(source.IndexOf("local = x@follow\n    exit", StringComparison.Ordinal), error.Span!.Value.Start);
     }
 
-    [TestClass(DisableParallelization = true)]
+    [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]
     public class AllocationTests
     {
