@@ -421,8 +421,9 @@ public sealed class RetentionTest
         => Assert.Equal([string.Empty], ValueCalls(Bind("func apply(g: (ref/(raw/(ref/i32 during q)), ref/i32 during q) -> (), s: ref/(raw/(ref/i32 during q)), v: ref/i32 during q) => g(s, v)\n")));
 
     // SPEC 15.6.4 (A3 E14): an intrinsic's call retains as its library declaration says, as any call does: an object creation its value,
-    // clone its handle's payload only (Content), Raw.initialize its value into the raw storage, also a raw pointer's own value (`c01`),
-    // and the storage a read through it (SPEC 15.6.4 as DECISIONS R4-M116 revised it: a pointer is never part of its own pointee);
+    // clone its handle's payload only (Content), Raw.initialize its value into the raw storage, also a raw pointer's own value (`c01`)
+    // into an unstated layer, which unties the storage (R-B2), and the storage a read through it (SPEC 15.6.4 as DECISIONS R4-M116
+    // revised it: a pointer is never part of its own pointee);
     // Text.writer its destination, its Utf8Writer untied by the unstated raw Fields it stores; Raw.slice's result, a fresh anchor, is
     // untied unless its pointee's Origins tie it, and lies within its storage, which it retains (D14, R4-M116 item 4) with a read through
     // it; Raw.allocate's, a raw pointer without an Origin, retains every argument and is untied (SPEC 5.7 Calls, D6). A raw input's
@@ -433,7 +434,7 @@ public sealed class RetentionTest
     [InlineData(Lent + "let h = Kimi.Intrinsics.makeArc(Lent.init(r: x@ref))\n", "makeArc", "0 Value result")]
     [InlineData(Lent + "let h = Kimi.Intrinsics.makeRc(Lent.init(r: x@ref))\nlet c = Kimi.Intrinsics.clone(h@ref)\n", "clone", "0 Content result")]
     [InlineData("var x = 1\nlet p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.initialize(p, x@ref)\n", "initialize", "0 Content store 0, 1 Value store 0")]
-    [InlineData("let slot: raw/(raw/i32) = Raw.allocate(1)\nlet p: raw/i32 = Raw.allocate(1)\nunsafe => Raw.initialize(slot, p)\n", "initialize", "1 Value store 0")]
+    [InlineData("let slot: raw/(raw/i32) = Raw.allocate(1)\nlet p: raw/i32 = Raw.allocate(1)\nunsafe => Raw.initialize(slot, p)\n", "initialize", "1 Value store 0, untied store 0")]
     [InlineData("let p: raw/i32 = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "0 Value result, untied")]
     [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "0 Value result, 0 Content result, 0 Content store 0")]
     [InlineData("var b = Text.heap(8)\nlet w = Text.writer(b@uniq)\n", "writer", "0 Value result, untied")]
@@ -458,12 +459,12 @@ public sealed class RetentionTest
     // inside its pointee is Content: the result keeps what a read through `p` carries (a Value row lost it once the addressed holder was
     // replaced: `snap`), and its own layer's Origin gives no row (R-B3: a `ref/i32 during b` result cannot hold the pointer). Its own
     // value is a Value row only of an output that can hold a value of its Type: a raw layer agreeing with it with Origins fitted (R-B4),
-    // at a position (`slot`'s pointee) or in a struct's stored content (Node's `next`, both ways), or an abstract part (Array's `T`);
-    // never its own pointee (no `head` row into `head`).
+    // at a position (`slot`'s pointee, whose unstated layer unties `slot`) or in a struct's stored content (Node's `next`, both ways),
+    // or an abstract part (Array's `T`); never its own pointee (no `head` row into `head`).
     [Theory]
     [InlineData("func f(p: raw/(ref/i32 during a)) -> ref/i32 during a\n    unsafe => return *p", "0 Content result, 0 Content store 0")]
     [InlineData("func f(b: ref/i32, p: raw/i32 during b) -> ref/i32 during b => b", "0 Value result")]
-    [InlineData("func f(slot: raw/(raw/i32), b: ref/i32, p: raw/i32 during b) => ()", "2 Value store 0")]
+    [InlineData("func f(slot: raw/(raw/i32), b: ref/i32, p: raw/i32 during b) => ()", "2 Value store 0, untied store 0")]
     [InlineData(
         "struct Node\n    public var next: raw/Node\n    public init(next: raw/Node) => self.next = next\nfunc f(head: raw/Node, n: raw/Node) => ()",
         "1 Value store 0, 0 Value store 1, untied store 0, untied store 1")]
@@ -498,6 +499,24 @@ public sealed class RetentionTest
         Assert.Equal("untied", Declared(c, "wrapped"));
         Assert.Equal("0 Value result", Declared(c, "lens"));
     }
+
+    // SPEC 15.6.4, 5.7 (DECISIONS R4-M116 items 2 and 5, R-B2; the G160-2c review's B1, R4's F1): one walk reaches the storage a call may
+    // write in an output, at a position or in a held struct's stored content, as the positional walk does: through an exclusive borrow
+    // (`S.r`, written as `s.r@follow = p`) and a raw layer stepping Unstated or Static (`R.q`, written by `Raw.initialize(r.q, p)`, formed
+    // by `f -> R`), never past a shared layer (`Sh.r`). A raw argument's own value is a Value row there, and a raw layer there stepping
+    // Unstated or Static unties the output: a direct referent (`uniq/(raw/i32)`, `static` alike) as an Option's payload.
+    [Theory]
+    [InlineData("struct S {a}\n    public var r: uniq/(raw/i32) during a\nfunc f(s: uniq/S, p: raw/i32)\n    s.r@follow = p", "0 Content store 0, 1 Value store 0, untied store 0")]
+    [InlineData("struct R\n    public var q: raw/(raw/i32)\nfunc f(r: uniq/R, p: raw/i32)\n    unsafe => Raw.initialize(r.q, p)", "1 Value store 0, untied store 0")]
+    [InlineData(
+        "struct R\n    public var q: raw/(raw/i32)\n    public init(q: raw/(raw/i32)) => self.q = q\nfunc f(p: raw/i32) -> R\n    let cell: raw/(raw/i32) = Raw.allocate(1)\n    return R.init(q: cell)",
+        "0 Value result, untied")]
+    [InlineData("struct Sh {a}\n    public var r: ref/(raw/i32) during a\nfunc f(s: uniq/Sh, p: raw/i32) => ()", "0 Content store 0")]
+    [InlineData("func f(p: uniq/(raw/i32))\n    p@follow = Raw.allocate(1)", "untied store 0")]
+    [InlineData("func f(p: uniq/(raw/i32 during static)) => ()", "0 Content store 0, untied store 0")]
+    [InlineData("func f(p: uniq/Option<raw/i32>) => ()", "untied store 0")]
+    public void OneWalkReachesWhatACallMayWrite(string function, string expected)
+        => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
     // Every call of the Kimi library and the milestone programs, an intrinsic's included, has a retention under its substitution, for the
     // callee MIR names (a direct base call's implementation, an intrinsic's library declaration), or over its declared Callable signature,

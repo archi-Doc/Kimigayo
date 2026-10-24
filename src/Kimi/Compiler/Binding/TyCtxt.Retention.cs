@@ -19,11 +19,12 @@
 // Shared; a raw parameter layer without an Origin, or with `static`, lets the call write its pointee, one whose Origin steps Exclusive
 // what that Origin's borrows admit (their referents, a slot's Keepers) as that input's storage. A raw input is retained as a borrowed
 // one, its pointee as the referent: an Origin inside its pointee is Content, its own layer's Origin gives no row, and its own value is
-// a Value row only of an output that can hold a value of its Type (a raw layer agreeing with it, Origins fitted, or an abstract part, at
-// a position or in a struct's or enum's stored content), never of its own pointee, so a raw input may have both rows to one output. A
-// raw result layer with an Origin retains as that borrow would; one without, outside a nominal Type's Fields, retains every input, a raw
-// one also as Content, and is untied; a result the call forms within a raw parameter's storage (Raw.slice) retains its own value. A
-// result or input whose struct or enum stores a raw layer stepping Unstated or Static is untied (Untied, UntiedStores).
+// a Value row only of an output that can hold a value of its Type (a raw layer agreeing with it, Origins fitted, or an abstract part)
+// where the call may write it: at a position of the output's Type or in a struct's or enum's stored content, through an exclusive borrow
+// or a raw layer stepping Unstated, Static or Own, never past a shared one; never of its own pointee, so a raw input may have both rows
+// to one output. A raw result layer with an Origin retains as that borrow would; one without, outside a nominal Type's Fields, retains
+// every input, a raw one also as Content; a result the call forms within a raw parameter's storage (Raw.slice) retains its own value.
+// A result or input holding a raw layer stepping Unstated or Static there is untied (Untied, UntiedStores).
 // Files: this one (the contract and its records RetentionKind, Retention, CallRetention); TyCtxt.Retention.Calls.cs (TyCtxt.Retains
 // and its memo); Binding.Retention.cs with .Atoms.cs and .Rows.cs (the computation).
 // Must not: read the call's solved Origins or its arguments, judge an Origin relation, cover unknown callees or the operands an intrinsic
@@ -55,10 +56,9 @@ internal readonly record struct Retention(int Input, RetentionKind Kind, int Out
 }
 
 /// <summary>A call's retention: its rows, by output (the result, then each written input) and input; whether the result is untied, so it
-/// may refer to storage the caller does not own (design A3's Φ_E): a result atom is reached from no input and is not <c>static</c>, a
-/// raw result layer states no Origin, or a struct or enum the result holds stores a raw layer stepping Unstated or Static; and the
-/// inputs whose writable storage holds such a struct or enum, where the call may write a pointer tied to no input (DECISIONS R4-M116
-/// R-B2); or <see cref="Limit"/>, which has none of them.</summary>
+/// may refer to storage the caller does not own (design A3's Φ_E): a result atom is reached from no input and is not <c>static</c>, or
+/// the result holds a raw layer stepping Unstated or Static; and the inputs whose writable storage holds such a layer, where the call
+/// may write a pointer tied to no input (DECISIONS R4-M116 R-B2, BU-30); or <see cref="Limit"/>, which has none of them.</summary>
 internal sealed class CallRetention(Retention[]? rows, bool untied, int[] untiedStores)
 {
     /// <summary>The retention of a call whose contract Binding's storage instantiation does not complete under its Subst (storage nested
@@ -77,8 +77,9 @@ internal sealed class CallRetention(Retention[]? rows, bool untied, int[] untied
 
     internal bool Untied => this.rows is null ? throw new InvalidOperationException("The Limit retention has no Untied.") : this.untied;
 
-    /// <summary>Gets the inputs, ascending, whose writable storage holds a struct or enum storing a raw layer that steps Unstated or Static
-    /// (Binding.StoredStep): the call may write there a pointer tied to no input, so A5 joins Φ_E into that input's write targets.</summary>
+    /// <summary>Gets the inputs, ascending, whose writable storage holds a raw layer that steps Unstated or Static, at a position or in a
+    /// struct's or enum's stored content (Binding.Held): the call may write there a pointer tied to no input, so A5 joins Φ_E into that
+    /// input's write targets.</summary>
     internal ReadOnlySpan<int> UntiedStores
         => this.rows is null ? throw new InvalidOperationException("The Limit retention has no UntiedStores.") : this.untiedStores;
 }
