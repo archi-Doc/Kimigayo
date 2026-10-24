@@ -701,7 +701,9 @@ public sealed partial class Binding
             }
         }
 
-        if (symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate or BindingSymbolKind.Capture && scope.Function != symbol.Scope.Function)
+        // SPEC 7.7.2: a static Property's storage there is a static access, never a capture (StaticStorageAccess).
+        if (symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate or BindingSymbolKind.Capture && scope.Function != symbol.Scope.Function &&
+            !StaticStorageAccess(symbol, scope))
         {
             if (this.CaptureOuterUse(node, symbol, scope) is not { } capture)
             {

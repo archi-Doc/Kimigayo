@@ -241,6 +241,23 @@ public class ContextualCaptureTest
         Assert.StartsWith(at, source[error.Span.Start..], StringComparison.Ordinal);
     }
 
+    // SPEC 7.7.2 (DECISIONS R4-M117, item 11): a static Property's storage is static storage, so a Closure or a nested function in its
+    // accessor reads and writes it as a static access, never a capture, which Binding accepts (the old analysis's located Unsupported_Kd
+    // at the storage Place is the accessor's own, P42); a Borrow of it there has a static root, Binding's located Unsupported_Kd until P42
+    // (only the accessor's own Borrow binds, DECISIONS BU-25); an instance Property's storage is never captured.
+    [Theory]
+    [InlineData("group Totals\n    public let limit: i32 = 5\n        get() -> i32\n            let read = func () -> i32 => storage\n            return read()\n", null, null)]
+    [InlineData("group Totals\n    public var level: i32 = 0\n        get() -> i32 => 1\n        set(value: i32) -> ()\n            var write = func [] () => storage = 3\n            write()\n", null, null)]
+    [InlineData("group Totals\n    public var count: i32 = 0\n        get() -> i32\n            func helper() -> i32 => storage\n            return helper()\n", null, null)]
+    [InlineData("group Totals\n    public var count: i32 = 0\n        get() -> i32\n            let read = func () -> i32\n                let r = storage@ref\n                return r@follow\n            return read()\n", nameof(BindingFailure.Unsupported), "storage@ref")]
+    [InlineData("struct S\n    public init() => ()\n    public var w: i32 = 0\n        get() -> i32\n            let read = func () -> i32 => storage\n            return read()\n", nameof(BindingFailure.Capture), "storage")]
+    public void AStaticPropertysStorageIsAStaticAccessInsideItsAccessor(string declarations, string? failure, string? at)
+    {
+        var c = CompilationTestHelper.ParseSuccess(declarations + "public func main() => ()\n", "Hello.kimi");
+        c.Bind();
+        Assert.Equal(failure is null ? [] : [(Enum.Parse<BindingFailure>(failure), at!)], c.Binding.Issues.Select(static x => (x.Node.FailureOf(), x.Node.ToString())));
+    }
+
     // The Binding and analysis records a pipeline publishes for a program, which records no internal fault.
     internal static TestDiagnostic[] PublishedRecords(string source, CompilerPipeline pipeline)
     {

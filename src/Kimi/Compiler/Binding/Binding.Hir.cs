@@ -216,7 +216,7 @@ public sealed partial class Binding
             {
                 HirRes.Local or HirRes.Param or HirRes.PreparedParam or HirRes.Capture => HirPlaceKind.Local,
                 HirRes.Static => HirPlaceKind.Static,
-                HirRes.Field => HirPlaceKind.Field, // An accessor's storage: Binding.StorageProjection, a Field of the implicit self.
+                HirRes.Field => HirPlaceKind.Field, // An accessor's storage (Binding.StorageProjection): the implicit self's Field, or static storage (MirBuilder.Places).
                 _ => HirPlaceKind.Value,
             },
             HirOp.Field => HirPlaceKind.Field,

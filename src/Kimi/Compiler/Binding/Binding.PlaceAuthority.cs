@@ -5,15 +5,15 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Place authority (SPEC 3.4, 3.4.3, 3.5, 3.6, 13.5.5, 15.1.5, 15.6.2): what an expression is as a Place and what its path grants.
-// - Responsibility: whether an expression is a bare Place (IsBarePlace), a static Field (IsStaticField) or a Temporary Value a borrow
-//   may materialize (BorrowableTemporary); the steps of a Place's path (NextPathStep, the one enumeration of their forms); the access a
-//   Place's path grants (PathAuthority: Owner, Uniq or Ref) and the one diagnostic for a capability it denies (AccessFailure), and
-//   continued through the Place's own layers (ReferentAuthority); whether a Place offers Write (Writable); whether a receiver can be
-//   exclusively acquired for indexUniq or an exclusive view (ExclusivelyAcquirable, SPEC 15.1.5); whether a Place offers Take
-//   (OffersTake, and TakeJudgment for a repair candidate) and may be borrowed in a mode (BorrowablePlace; as SPEC lends it: LendsPlace
-//   and, for a handle, LendsHandle, with the static Field at its root), with the one diagnostic for a written Borrow it may not
-//   (BorrowFailure) and for a final implicit Borrow of a static root (FailStaticBorrow). The in-place reads it decides the paths of
-//   are Binding.InPlaceReads'.
+// - Responsibility: whether an expression is a bare Place (IsBarePlace), a static Field (IsStaticField), static storage outside its
+//   accessor (StaticStorageAccess) or a Temporary Value a borrow may materialize (BorrowableTemporary); the steps of a Place's path
+//   (NextPathStep, the one enumeration of their forms); the access a Place's path grants (PathAuthority: Owner, Uniq or Ref) and the
+//   one diagnostic for a capability it denies (AccessFailure), and continued through the Place's own layers (ReferentAuthority);
+//   whether a Place offers Write (Writable); whether a receiver can be exclusively acquired for indexUniq or an exclusive view
+//   (ExclusivelyAcquirable, SPEC 15.1.5); whether a Place offers Take (OffersTake, and TakeJudgment for a repair candidate) and may be
+//   borrowed in a mode (BorrowablePlace; as SPEC lends it: LendsPlace and, for a handle, LendsHandle, with the static root), with the
+//   one diagnostic for a written Borrow it may not (BorrowFailure) and for a final implicit Borrow of a static root (FailStaticBorrow).
+//   The in-place reads it decides the paths of are Binding.InPlaceReads'.
 // - Inputs: the bound syntax (Types, symbols, conversions), the selected index and getter calls, the pair-layer facts (PairAdmitted,
 //   PairCapability), a named root's reassignability (Reassignable) and a special receiver's authority (Receiver).
 // - Outputs: the predicates above.
@@ -482,6 +482,12 @@ public sealed partial class Binding
     private static bool IsStaticField(Koto node)
         => KotoHelper.UnwrapParentheses(node).BoundSymbol?.Property is { Getter.IsStandard: true, Symbol.Scope.Owner: GroupKoto };
 
+    // SPEC 7.7.2, 11.8: whether `symbol`, named in `scope`, is a static Property's `storage` outside its accessor's own function (a
+    // Closure's or nested function's): a static access, neither a capture nor the accessor's binding, so a Borrow of it has a static
+    // root (LendsPlace; DECISIONS BU-25's exception binds only the accessor's own Borrow of its storage).
+    private static bool StaticStorageAccess(BindingSymbol symbol, BindingScope scope)
+        => symbol.Kind == BindingSymbolKind.Storage && IsStatic(symbol.Declaration.BoundSymbol) && scope.Function != symbol.Scope.Function;
+
     // SPEC 13.5.5, 13.5.6, 15.6.2: whether SPEC lends an owning handle's object or payload, from a Place it lends (LendsPlace, with the
     // static Field at the root of the handle Place's path) or from a Temporary Value materialized for the operation; the handle's own
     // authority (shared for rc/arc) is checked by the caller.
@@ -522,10 +528,10 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 3.4.3, 13.5.5, 15.1.5: whether SPEC lends a Place in a mode, and staticRoot, the static Field at the root of the path that lends
-    // it (SPEC 15.6.2: through inline parts, elements and an owning handle's payload, an own step), if any; a node, not a bool, as the
-    // structure limits leave this member one bool parameter, the mode. Below a pair layer the walk asks BorrowablePlace (PairCapability):
-    // no static's Type has one.
+    // SPEC 3.4.3, 13.5.5, 15.1.5: whether SPEC lends a Place in a mode, and staticRoot, the static Field or static storage at the root
+    // of the path that lends it (SPEC 15.6.2: through inline parts, elements and an owning handle's payload, an own step), if any; a
+    // node, not a bool, as the structure limits leave this member one bool parameter, the mode. Below a pair layer the walk asks
+    // BorrowablePlace (PairCapability): no static's Type has one.
     private bool LendsPlace(Koto source, BindingScope scope, bool exclusive, out Koto? staticRoot)
     {
         staticRoot = null;
@@ -631,8 +637,15 @@ public sealed partial class Binding
             return this.LendsPlace(part.Left, scope, exclusive, out staticRoot);
         }
 
-        // A closure environment binding is a Place of its own (SPEC 7.7.2), borrowable like a local.
-        return source is IdentifierNameKoto && IsBarePlace(source) && (!exclusive || Writable(source));
+        // A closure environment binding is a Place of its own (SPEC 7.7.2), borrowable like a local; a static Property's storage outside
+        // its accessor's function is a static root (StaticStorageAccess).
+        if (source is not IdentifierNameKoto || !IsBarePlace(source) || (exclusive && !Writable(source)))
+        {
+            return false;
+        }
+
+        staticRoot = source.BoundSymbol is { } symbol && StaticStorageAccess(symbol, scope) ? source : null;
+        return true;
     }
 
     // The forms of one path step (NextPathStep).
