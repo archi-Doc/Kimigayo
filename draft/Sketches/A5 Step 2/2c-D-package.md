@@ -358,10 +358,10 @@ Order: lane B 2c-0 → 2c-1 → 2c-2 → 2c-3B → (2c-5 after 2c-3); 2c-9 any t
 G216 before 2a-1a's exit, PLAN G216). Lane C, after G:A5-F4's merge: 2c-3 (after 2c-3B) → 2c-4 → [2c-5] → 2c-6 → 2c-7. The
 shared-representation sequence is 2c-2 → 2c-3B → 2c-3 → 2c-5; 2c-9 and 2c-4 may run beside one of them in the other lane.
 
-Implementers (as recommended, 「0c だけ BU (推奨)」; the owner's answer pending): R4 implements 2c-0, 2c-1, 2c-2, 2c-3B, 2c-5 and
+Implementers (the owner, 「0c だけ BU (推奨)」, confirmed): R4 implements 2c-0, 2c-1, 2c-2, 2c-3B, 2c-5 and
 2c-9 in lane B and 2c-3, 2c-6 and 2c-7 in lane C; BU implements only 0c (2c-4). Reviewers: BU for every Binding part (2c-0, 2c-1,
 2c-2, 2c-3B, 2c-9, 2c-3's Binding part, 2c-5) in parallel with R4's A5 reviewer (R4-M119); R5 (AR-2) for 2c-2 and 2c-3; no W1 slot
-(no `MirBuilder` or validator change). Review forms (DEC Q6, PD29; D-10 as recommended, the owner's answer pending): 2c-0, 2c-1, 2c-9
+(no `MirBuilder` or validator change). Review forms (DEC Q6, PD29; D-10, the owner: 「(a) 単独で入れる (推奨)」): 2c-0, 2c-1, 2c-9
 take one review (R); 2c-2, 2c-3B, 2c-3, 2c-5 one design and one review (D+R) each, and merge alone; 2c-4 is BU's, after 2c-3's merge
 and never before it; G:A5-F7 (one group review) is 2c-6 and 2c-7, whose closing review covers 2c-3–2c-6 end to end (§10 D-10).
 
@@ -428,7 +428,7 @@ No library or milestone program is expected to change (H; both prototypes passed
 
 ## 9. DECISIONS entry (R4-M126; free on dev and every remote and local branch, checked 2026-10-25)
 
-The two bracketed `[pending: …]` phrases are the owner's answers still awaited (written as recommended); the planning session
+The owner's answers are in place (2026-10-25; committed as DECISIONS R4-M126); the planning session
 replaces each with the verbatim answer, or revises the sentence if the owner differs, before committing.
 
 ```
@@ -497,7 +497,7 @@ replaces each with the verbatim answer, or revises the sentence if the owner dif
 | D-7 | Memo key `(instance Closure Type, null, signature)` | N6 asks for the instance Type; the owner is the Type's symbol, and a key without a boxed tuple keeps warm 0 B |
 | D-8 | `LocalBorrow`/`LocalBorrowFinder` move to `Binding.OriginDiagnostics.cs` in 2c-0 | Their only reader is `BorrowSource` (N8); `Binding.Diagnostics.cs` is over the token limit and may not grow |
 | D-9 | The `Classify` move is 2c-2's (bp), not 2c-3B's, on one condition: if 2c-2's bp triple is not byte-equal, the move is a behavior change and belongs to 2c-3B with its snapshot classified | Both `Classified` and N4 (a) need it before 2c-3B's pending atoms exist (AGENTS: Separate commits); but it now classifies failed Closures, whose receiver local the MIR builder types by `Receiver` (`MirBuilder.cs:220-223`), so a failed program's MIR dump may change |
-| D-10 | The package's option (the reviewer recommends it; the owner's answer pending): 2c-3 and 2c-5 take their own D+R reviews and merge alone; G:A5-F7 is 2c-6 and 2c-7. Conditions: BU confirms AB-2's adaptation (BU has); 0c lands only after 2c-3, never before (plan risk row 5: A3-closure would become unsound); 2c-7's closing review covers 2c-3–2c-6 end to end | PD29: a unit holding a W1, adv or BU file is outside its family's group; in the plan 2c-3 held no Binding file, now it holds adv and BU files, and the plan's 2c-5 row already held BU and D5 inside the group against PD29; R4-M119's serial order puts 2c-4 and 2c-5 between 2c-3 and the group's end, so a group hold would block BU's G160-2c, G240, G242 and G243 longest. Alternative (the review's first table, sound): keep 2c-3 and 2c-5 in G:A5-F7 with their holds in PLAN §3; the entry then lists them in the group and drops the AB-2 sentence |
+| D-10 | The package's option (the reviewer recommends it; the owner chose it, 「(a) 単独で入れる (推奨)」): 2c-3 and 2c-5 take their own D+R reviews and merge alone; G:A5-F7 is 2c-6 and 2c-7. Conditions: BU confirms AB-2's adaptation (BU has); 0c lands only after 2c-3, never before (plan risk row 5: A3-closure would become unsound); 2c-7's closing review covers 2c-3–2c-6 end to end | PD29: a unit holding a W1, adv or BU file is outside its family's group; in the plan 2c-3 held no Binding file, now it holds adv and BU files, and the plan's 2c-5 row already held BU and D5 inside the group against PD29; R4-M119's serial order puts 2c-4 and 2c-5 between 2c-3 and the group's end, so a group hold would block BU's G160-2c, G240, G242 and G243 longest. Alternative (the review's first table, sound): keep 2c-3 and 2c-5 in G:A5-F7 with their holds in PLAN §3; the entry then lists them in the group and drops the AB-2 sentence |
 | D-11 | 2c-9 after 2c-0 in lane B, first if G:A5-F4's exit needs it | It shares `Binding.Closures.cs` with 2c-0's move; PLAN G216 asks for it before 2a-1a's exit |
 | D-12 | Roles per site (§2.12) | `HasEnvironmentOrigin` must read ρ while R1 stands (2c-3B before 2c-5), else ρ would reach a caller unsubstituted; `CallLocalOrigin` must not read ρ as call-local |
 | D-13 | A's receiver well-formedness premise (2c-8: `OwnedOrigins(Env)` outlive ρ) is not built; 2c-3B probes three forms: (i) `[var a, var b]` holding `ref/i32 during o`, `swap(a@uniq, b@uniq)` for a generic `swap<T>(x: uniq/T, y: uniq/T)` (instantiated input `uniq/(ref/i32 during o) during ρ`); (ii) `let p = a@uniq; p@follow = r` with a captured `r`; (iii) the same through `Option<ref/i32>`; each under Shared and Exclusive receivers | Binding forms no well-formedness row for a Borrow's own Type ("the argument's own Type is well formed", `RequireInputPremises`), and no known form relates a capture Origin to ρ as the shorter end; a missing premise can only give a false Unknown, never an acceptance; if a probe shows one, the premise is a catalog row under the method receiver's rule (`Binding.OriginPremises`, a Closure body's R2), the planning session's before 2c-3B merges, not an owner question |
@@ -534,4 +534,4 @@ replaces each with the verbatim answer, or revises the sentence if the owner dif
 | D-13 | Three probe forms under 2c-3B, each under Shared and Exclusive | 2c-3B's row, D-13 |
 | Census | Nested forms P4 newly rejects beyond n2b, under 2c-3B | §5 |
 | D-10 | The package's option with its conditions (BU confirmed AB-2's adaptation; 0c only after 2c-3; 2c-7's closing review covers 2c-3–2c-6) | §4, 2c-4's and 2c-7's rows, D-10, §9 |
-| Implementers | R4 implements every unit but 0c (BU), as recommended (「0c だけ BU (推奨)」), pending the owner | §0, §4, 2c-2's, 2c-3B's and 2c-5's rows, §9 |
+| Implementers | R4 implements every unit but 0c (BU), as the owner answered (「0c だけ BU (推奨)」, confirmed) | §0, §4, 2c-2's, 2c-3B's and 2c-5's rows, §9 |
