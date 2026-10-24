@@ -29,8 +29,8 @@ public class ForeignEmissionTest
         var ir = ScalarEmissionTest.EmitFixture("ForeignLastError", LastError, "same\n");
         Assert.Single(Regex.Matches(ir, @"declare [^\n]*@GetLastError\("));
         Assert.Contains("declare dllimport i32 @GetLastError()\n", ir);
-        var body = ir[ir.IndexOf("define internal void @__kimi_f0(", StringComparison.Ordinal)..];
-        Assert.Equal(2, Regex.Matches(body[..body.IndexOf("\n}\n", StringComparison.Ordinal)], @"= call i32 @GetLastError\(\)").Count);
+        var module = GeneratedIr.Parse(ir);
+        Assert.Equal(2, module.Startup.Instructions.Count(x => x.Callee == module.Function("GetLastError")));
     }
 
     [Theory]
@@ -101,14 +101,19 @@ public class ForeignEmissionTest
     [Fact]
     public void PointerSignaturesDeclareOpaquePointers()
     {
-        var ir = Emit("group Native\n    #LibraryImport(\"codec\", \"touch\")\n    public unsafe func touch(value: raw/i32, other: raw/f64) -> raw/u8\npublic func main() => ()", "static");
+        var ir = Emit(
+            "group Native\n    #LibraryImport(\"codec\", \"touch\")\n    public unsafe func touch(value: raw/i32, other: raw/f64) -> raw/u8\n" +
+            "public func main()\n    unsafe => _ = Native.touch(null, null)",
+            "static");
         Assert.Contains("declare ptr @touch(ptr, ptr)\n", ir);
     }
 
     [Fact]
     public void RebindingWithoutTheImportForgetsItsDeclaration()
     {
-        var c = Analyze("group Native\n    #LibraryImport(\"codec\", \"gone\")\n    public unsafe func gone() -> i32\npublic func main() => ()", "static");
+        var c = Analyze(
+            "group Native\n    #LibraryImport(\"codec\", \"gone\")\n    public unsafe func gone() -> i32\npublic func main()\n    unsafe => _ = Native.gone()",
+            "static");
         using (var writer = new StringWriter())
         {
             Assert.True(c.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
@@ -149,8 +154,9 @@ public class ForeignEmissionTest
         Assert.Contains("declare dllimport ptr @VirtualAlloc(ptr, i64, i32, i32)\n", ir);
         Assert.Contains("declare dllimport i32 @VirtualFree(ptr, i64, i32)\n", ir);
         Assert.Matches(@"= call ptr @VirtualAlloc\(ptr null, i64 4096, i32 12288, i32 4\)", ir);
-        Assert.Matches(@"= icmp ne ptr %v\d+, null", ir);
-        Assert.Matches(@"= icmp eq ptr %v\d+, %v\d+", ir);
+        var body = GeneratedIr.Parse(ir).Startup.Instructions;
+        Assert.Contains(body, static x => x.Shape == "icmp ne ptr %, null");
+        Assert.Contains(body, static x => x.Shape == "icmp eq ptr %, %");
     }
 
     [Theory]
@@ -205,8 +211,9 @@ public class ForeignEmissionTest
                 Console.writeLine("cast ok")
             """;
         var ir = ScalarEmissionTest.EmitFixture("ForeignPointerCast", source, "cast ok\n");
-        Assert.Matches(@"= ptrtoint ptr %v\d+ to i64", ir);
-        Assert.Matches(@"= inttoptr i64 %v\d+ to ptr", ir);
+        var body = GeneratedIr.Parse(ir).Startup.Instructions;
+        Assert.Contains(body, static x => x.Shape == "ptrtoint ptr % to i64");
+        Assert.Contains(body, static x => x.Shape == "inttoptr i64 % to ptr");
         Assert.Matches(@"= inttoptr i64 0 to ptr", ir);
     }
 
@@ -260,7 +267,7 @@ public class ForeignEmissionTest
                 Console.writeLine("arithmetic ok")
             """;
         var ir = ScalarEmissionTest.EmitFixture("ForeignPointerArithmetic", source, "arithmetic ok\n");
-        Assert.Matches(@"= getelementptr i8, ptr %v\d+, i64 %", ir);
+        Assert.Contains(GeneratedIr.Parse(ir).Startup.Instructions, static x => x.Shape == "getelementptr i8, ptr %, i64 %");
         Assert.DoesNotContain("getelementptr inbounds i8", ir);
     }
 
@@ -338,9 +345,10 @@ public class ForeignEmissionTest
                 Console.writeLine("read ok")
             """;
         var ir = ScalarEmissionTest.EmitFixture("ForeignPointerRead", source, "read ok\n");
-        Assert.Matches(@"= load i64, ptr %v\d+, align 8\n", ir);
-        Assert.Matches(@"= load ptr, ptr %v\d+, align 8\n", ir);
-        Assert.Matches(@"\n  store i64 1234567890123, ptr %v\d+, align 8\n", ir);
+        var body = GeneratedIr.Parse(ir).Startup.Instructions;
+        Assert.Contains(body, static x => x.Shape == "load i64, ptr %, align 8");
+        Assert.Contains(body, static x => x.Shape == "load ptr, ptr %, align 8");
+        Assert.Contains(body, static x => x.Shape == "store i64 1234567890123, ptr %, align 8");
     }
 
     [Fact]
@@ -476,7 +484,7 @@ public class ForeignEmissionTest
                 Console.writeLine("bool ok")
             """;
         var ir = ScalarEmissionTest.EmitFixture("ForeignPointerBool", source, "bool ok\n");
-        Assert.Contains(" = trunc i8 %storage", ir);
+        Assert.Contains(GeneratedIr.Parse(ir).Startup.Instructions, static x => x.Shape == "trunc i8 % to i1");
         Assert.Contains(" = zext i1 ", ir);
         Assert.DoesNotContain("load i1,", ir);
     }
@@ -836,7 +844,7 @@ public class ForeignEmissionTest
                 Console.writeLine("subplace ok")
             """;
         var ir = ScalarEmissionTest.EmitFixture("ForeignPointerSubplace", source, "pick\nkept\nsubplace ok\n");
-        Assert.Matches(@"= getelementptr i8, ptr %v\d+, i64 8\n", ir);
+        Assert.Contains(GeneratedIr.Parse(ir).Startup.Instructions, static x => x.Shape == "getelementptr i8, ptr %, i64 8");
     }
 
     [Fact]
@@ -1405,7 +1413,9 @@ public class ForeignEmissionTest
     [Fact]
     public void PointerTransfersUseTheCLayoutRepresentation()
     {
-        var c = MinimalEmissionTest.Analyze("#Layout(\"C\")\nstruct Pair\n    Self is Copy\n    public var a: u8\n    public var b: u64\nfunc read(p: raw/Pair)\n    unsafe\n        let value = *p\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze(
+            "#Layout(\"C\")\nstruct Pair\n    Self is Copy\n    public var a: u8\n    public var b: u64\n" +
+            "func read(p: raw/Pair)\n    unsafe\n        let value = *p\npublic func main()\n    let p: raw/Pair = null\n    read(p)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var ir = CompilationTestHelper.WriteIr(c);

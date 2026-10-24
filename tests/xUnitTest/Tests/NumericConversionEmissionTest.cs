@@ -181,11 +181,10 @@ public class NumericConversionEmissionTest
     public void FoldedLiteralsEmitNoConversion()
     {
         var ir = ScalarEmissionTest.EmitFixture("NumericConvertLiteralFolded", "var a = 3.9@i32\nvar b = -1e3@i64\nvar c = 1e38@u128\nif a == 3 and b == -1000 and c > 0 => Console.writeLine(\"ok\")", "ok\n");
-        var start = ir.IndexOf("define internal void @__kimi_entry_body", StringComparison.Ordinal);
-        var body = ir[start..ir.IndexOf("\n}\n", start, StringComparison.Ordinal)];
-        Assert.DoesNotContain("fptosi", body);
-        Assert.DoesNotContain("fptoui", body);
-        Assert.DoesNotContain("fcmp", body);
+        var body = GeneratedIr.Parse(ir).Startup.Instructions;
+        Assert.DoesNotContain(body, static x => x.Opcode == "fptosi");
+        Assert.DoesNotContain(body, static x => x.Opcode == "fptoui");
+        Assert.DoesNotContain(body, static x => x.Opcode == "fcmp");
     }
 
     [Theory]

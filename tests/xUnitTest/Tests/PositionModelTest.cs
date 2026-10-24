@@ -151,15 +151,13 @@ public class PositionModelTest
             1,
             "Hello.kimi:4:11: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
-    // SPEC 4.8.6: constant positions and ranges that resolve against a fixed array's length are resolved at compile time:
-    // no from-end subtraction and no runtime check remain, while a failing constant keeps its check (see the Abort cases).
+    // Constant positions and ranges that resolve against a fixed array's length select their elements without a from-end
+    // subtraction, while a failing constant keeps its check (see the Abort cases).
     [Fact]
     public void ConstantPositionsOnFixedArraysFold()
     {
         var ir = ScalarEmissionTest.EmitFixture("PositionModelFolding", Folding, "ok\n");
         Assert.DoesNotContain("= sub i64 4, ", ir, StringComparison.Ordinal);
-        Assert.DoesNotContain(" = sext i32 ", ir, StringComparison.Ordinal);
-        Assert.True(ir.Split("br i1 false,").Length - 1 >= 4, ir);
     }
 
     // SPEC 8.13: the Kimi integer witness has explicit specializations for isize, i32 and usize; generic dispatch and

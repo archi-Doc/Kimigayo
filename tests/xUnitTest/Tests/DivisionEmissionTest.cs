@@ -97,16 +97,18 @@ public class DivisionEmissionTest
     public void LiteralDivisorsOmitTheirChecks()
     {
         var ir = ScalarEmissionTest.EmitFixture("DivisionLiteralDivisors", "var x: i32 = 7\nvar u: u32 = 7\nvar w: Wrapping<i32> = -2147483648\nlet a = x / 2\nlet b = x % 3\nlet c = u / 4\nlet d = u % 5\nlet e = x / -1\nlet f = x % -1\nlet g = w / -1\nlet h = w % -1\nx /= -2\nif a == 3 and b == 1 and c == 1 and d == 2 and e == -7 and f == 0 and g == -2147483648 and h == 0 and x == -3 => Console.writeLine(\"ok\")", "ok\n");
-        var start = ir.IndexOf("define internal void @__kimi_entry_body", StringComparison.Ordinal);
-        var body = ir[start..ir.IndexOf("\n}\n", start, StringComparison.Ordinal)];
-        Assert.DoesNotContain("select", body);
-        Assert.Single(System.Text.RegularExpressions.Regex.Matches(body, @"%minimum\d+ = icmp eq i32 "));
-        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(body, @" = sub i32 0, ").Count);
-        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(body, @" = srem i32 [^,]+, 1\n").Count);
-        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(body, @" = sdiv i32 ").Count);
-        Assert.DoesNotMatch(@"sdiv i32 [^,]+, -1\n", body);
-        Assert.Contains(" = udiv i32 ", body);
-        Assert.Contains(" = urem i32 ", body);
+        var module = GeneratedIr.Parse(ir);
+        var abort = module.Function("__kimi_abort");
+        var body = module.Startup;
+        Assert.DoesNotContain(body.Instructions, static x => x.Opcode == "select");
+        var check = Assert.Single(body.Blocks, x => x.Successors.Any(s => s.Instructions.Any(i => i.Callee == abort))).Terminator;
+        Assert.Equal("icmp eq i32 %, -2147483648", check.Operands[0].Shape);
+        Assert.Equal(2, body.Instructions.Count(static x => x.Shape.StartsWith("sub i32 0, ", StringComparison.Ordinal)));
+        Assert.Equal(2, body.Instructions.Count(static x => x.Shape == "srem i32 %, 1"));
+        Assert.Equal(2, body.Instructions.Count(static x => x.Shape.StartsWith("sdiv i32 ", StringComparison.Ordinal)));
+        Assert.DoesNotContain(body.Instructions, static x => x.Shape == "sdiv i32 %, -1");
+        Assert.Contains(body.Instructions, static x => x.Shape.StartsWith("udiv i32 ", StringComparison.Ordinal));
+        Assert.Contains(body.Instructions, static x => x.Shape.StartsWith("urem i32 ", StringComparison.Ordinal));
     }
 
     [Fact]

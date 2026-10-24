@@ -77,13 +77,12 @@ public class BitwiseEmissionTest
     public void LiteralInRangeCountsOmitTheCheck()
     {
         var ir = ScalarEmissionTest.EmitFixture("BitwiseLiteralCounts", "var x = 3\nvar y: u8 = 129\nvar z: u64 = 1\nlet a = x << 2\nlet b = x >> 31\nlet c = y >> 7\nlet d = y << 0\nlet e = z << 63\nx <<= 1\nif a == 12 and b == 0 and c == 1 and d == 129 and e == 9223372036854775808 and x == 6 => Console.writeLine(\"ok\")", "ok\n");
-        var start = ir.IndexOf("define internal void @__kimi_entry_body", StringComparison.Ordinal);
-        var body = ir[start..ir.IndexOf("\n}\n", start, StringComparison.Ordinal)];
-        Assert.DoesNotContain("icmp uge", body);
-        Assert.Contains(" = shl i32 ", body);
-        Assert.Contains(" = ashr i32 ", body);
-        Assert.Contains(" = lshr i8 ", body);
-        Assert.Contains(" = shl i64 ", body);
+        var body = GeneratedIr.Parse(ir).Startup.Instructions;
+        Assert.DoesNotContain(body, static x => x.Shape.StartsWith("icmp uge ", StringComparison.Ordinal));
+        Assert.Contains(body, static x => x.Shape.StartsWith("shl i32 ", StringComparison.Ordinal));
+        Assert.Contains(body, static x => x.Shape.StartsWith("ashr i32 ", StringComparison.Ordinal));
+        Assert.Contains(body, static x => x.Shape.StartsWith("lshr i8 ", StringComparison.Ordinal));
+        Assert.Contains(body, static x => x.Shape.StartsWith("shl i64 ", StringComparison.Ordinal));
         var kept = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze("var x = 3\nvar y: u8 = 1\nlet a = x << 32\nlet b = y >> 8\nlet c = x << -1"));
         Assert.Equal(3, System.Text.RegularExpressions.Regex.Matches(kept, @"%invalid\d+ = icmp uge i32 ").Count);
     }
