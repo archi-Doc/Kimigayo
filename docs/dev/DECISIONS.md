@@ -3467,6 +3467,36 @@ and migration obligations remain in force; no numeric cap changes are authorized
     acceptances of repair variants (review-p2r3 N12, C7, `fT`), pre-existing ledger differences; 2a-2's facts (the result in transit,
     a store's part class, a Loan's Borrow atom) and the bit's representation. The later SPEC session keeps RZ, G86, G159 (2), G158 (3),
     B 3.4's 15.4.2 gap and PLAN G160's N2.
+- **R4-M124 G160-4's 4c: the own-step Warning `OwnStepDeparture_Kd`** (2026-10-25; unit 4c of R4-M116's design B′ §5 on B §5.8, with
+  the owner's OQ-1 (a) and OQ-2 (a); the new code and requirement are the closed-vocabulary entries OQ-2 approved)
+  - Rule (`MirBorrows.OwnSteps`, SPEC 5.2.1 condition 3): at each location of the checks replay, after its activations, an access with
+    path S departs an own-step entry (R4-M120) with owning path O on its root when S prefixes O step by step (`Meets`) and it is a Move
+    (a raw Take included), a write or a destruction of any class (StorageDead, every Drop) with no borrow or raw Deref of O past S, or an
+    exclusive Borrow or a call's activation of a reservation across any steps; reads and shared Borrows never depart. "May still be
+    used": the check found the entry in its Based or Stored pass, for an activation also in its Valued pass. A departure whose operation
+    and formation lie in one inline default copy is its template's (`Covered(Common(scope, formation scope), -1, -1)`, as err(ended)).
+  - Record (`MirBorrows.Reports.Departure`): requirement `Ownership.OwnStepDeparture`; subject the operation, or the outermost omitting
+    call; the shared builder's facts: Anchor (the entry's first formation, the location that reads the layer or forms the address), the
+    witness (a holder's next use, or the call for an operand an activation takes, as Use; a transit value's or E's store as Store, as for
+    every A5 problem: OQ-2's "Use (the witness)" read as the witness fact) and Evaluated; never through P13's hold (PQ-8); at most one per
+    location, since every record there has one subject, which `MirReport` merges; a Move and a later destruction each warn while the
+    pointer may be used (B-N3).
+  - State: tags by own-step entry (found at the check, its first Based or Stored holder, the next entry found on its root) and a list
+    per root, so a departing access scans the entries found on its root (B §7: the conflict scan's density); an own-step entry makes its
+    root `borrowed`, so the root's accesses are listed, and its view a producer (D5).
+  - Vocabulary: `DiagnosticCode.OwnStepDeparture_Kd` (Warning, Language, `case:Text` evidence as every A5 code); the requirement kind
+    `OwnStepDeparture`, added against R5-M24's "no member is added" by the owner's OQ-2 (the enumeration's prohibition now reads "without
+    the owner's approval"); `OwnershipIssue.Code` maps it, the requirement's one code that the ledger's consistency set reads (the old
+    analysis records none); the ledger's compared pair (A5) and the (d) row `a5-own-step`.
+  - Observations: a copy reaches a pending slot only through a reference of its own, so a departure inside a copy of a pointer formed
+    outside it needs a root the caller and the copy share (a static, where `Evaluated` arises); a Drop past the destruction walk's bound
+    of a root only own-step entries make borrowed is the existing located `Unsupported_Kd` (no corpus program).
+  - Rejected: one tag table with err(ended)'s markers (they never read a root list or a Valued tag); a scan of every own-step entry of the
+    view per access (a term beyond the conflict scan's density); an E or transit witness as Use at the operation (a use it does not make).
+  - Ledger (mir Functional on ac0531fa8 against 4b's 18e2c2487): no row of the Warning, since no compilation of the corpus departs an
+    own step (the (d) row `a5-own-step` matches nothing yet; MirBorrowsTest's programs are no ledger compilations); the delta, +6 raw
+    rows (3,088 to 3,094), is dev's new SPEC case `15.6.5-derived-conflict` (R4-M122); blocking 195 unchanged. Census: no Warning or
+    problem in the library, the milestones, the goldens and the accepted SPEC variants. Unverified: corpus cost (G160-5).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
