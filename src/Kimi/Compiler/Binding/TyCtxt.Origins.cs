@@ -5,8 +5,9 @@
 // Input: a body as an ExecutableBody (MIR's key form, MirDefKey.Body; a Getter's or Setter's execution function names its accessor), after
 // Bind, and for an atom MIR reads the MIR site it is read at.
 // Output: OriginRows, OriginAtom (an atom's index in the body's table), UniversalRelations and OriginFindings, the sites of the broken
-// contracts the view's validation found, which MirOrigins.Findings publishes. Every site the view publishes or takes is a SourceRef, the one way MIR names syntax (ARCH rows 29
-// and 90; DECISIONS R4-M113): the view converts its rows' and findings' sites once and reads a MIR site's syntax itself.
+// contracts the view's validation found, which MirOrigins.Findings publishes. Every site the view publishes or takes is a SourceRef, the
+// one way MIR names syntax (ARCH rows 29 and 90; DECISIONS R4-M113): the view converts its rows' and findings' sites once and reads a MIR
+// site's syntax itself.
 // Invariants: built on a pass's first read and immutable after Bind but for the atoms MIR appends; every end and atom resolved at its use
 // (OriginAtUse) and meets canonical (Meet); no row from a Constraint proof (T1); a row formed with no body (a declaration's) is Binding's
 // to judge (DECISIONS BU-26) and in no slice; a constructor's own body's slice is its rows, then its layer's (the struct's Field
@@ -31,14 +32,16 @@ internal enum OriginRowSource : byte
     Contained,
 }
 
-/// <summary>SPEC 15.6.5's kinds of an Origin relative to the checked body (2a0-D D6), and Unclassed, which forms no edge (§3 row 9: an
-/// Unbound end or another declaration's or body's atom, a located limit).</summary>
+/// <summary>SPEC 15.6.5's kinds of an Origin relative to the checked body (2a0-D D6); Unclassed, which forms no edge (§3 row 9: another
+/// declaration's or body's atom, a located limit); and Dependent, which forms no edge and no problem (SPEC 23.1.2, DECISIONS R4-M118): an
+/// end a Binding failure left Unbound, or a meet with such an operand and no Unclassed one, never in a complete compilation.</summary>
 internal enum OriginAtomKind : byte
 {
     Fixed,
     Finite,
     Inferred,
     Unclassed,
+    Dependent,
 }
 
 /// <summary>The role of a Projection's slot, which only the view decodes (2a0-D D7); None for any other atom.</summary>

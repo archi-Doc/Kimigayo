@@ -6,8 +6,8 @@
 // then fixed-source bitsets propagated in topological order through one pooled arena that MirDataflow.Within admits; and at each edge into
 // a Fixed node a problem per finite source (Refuted) and per fixed source the oracle does not derive (Unknown), the oracle closed once per
 // target and part. An edge of the layer's part (a layer row, or an edge between a Field initializer's atoms) is judged with the layer's
-// oracle, the Type's public premises (DECISIONS R4-M101 E4, R4-M110 Q1 (a), R4-M114); an edge with an Unclassed end forms nothing and is
-// the located limit.
+// oracle, the Type's public premises (DECISIONS R4-M101 E4, R4-M110 Q1 (a), R4-M114); a row or containment edge with an Unclassed end
+// forms nothing and is the located limit, decided first; an edge with a Dependent end forms nothing and records nothing (R4-M118).
 
 using System.Numerics;
 using Kimi.Diagnostics;
@@ -134,14 +134,16 @@ internal sealed partial class MirOrigins
     }
 
     // An edge of the graph; one between two Fixed Origins passes nothing on, so it is judged at once instead (SPEC 15.6.5; 2a0-D §6.3).
+    // One with a Dependent end rests on a Binding failure, so it is not formed and records nothing (SPEC 23.1.2; DECISIONS R4-M118); only
+    // that edge, so a meet's other operands at the longer end keep theirs (D15).
     private void Join(int tail, int head, SourceRef site, int row)
     {
-        if (tail == head)
+        var atoms = this.slice.Atoms;
+        if (tail == head || atoms[tail].Kind == OriginAtomKind.Dependent || atoms[head].Kind == OriginAtomKind.Dependent)
         {
             return;
         }
 
-        var atoms = this.slice.Atoms;
         if (atoms[tail].Kind == OriginAtomKind.Fixed && atoms[head].Kind == OriginAtomKind.Fixed)
         {
             this.Direct(tail, head, site, row);

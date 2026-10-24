@@ -1,9 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns A5's Origin stratum (SPEC 15.6.1, 15.6.3, 15.6.5; 2a0-D §6, D13-D20; DECISIONS R4-M94, R4-M113, R4-M114), per body and per class
-// of its views: the graph of the body's rows (the C1-F4 view) with its Refs' containment edges, the Refuted and Unknown chains through it
-// and the relations between two fixed Origins (MirOrigins.Chains.cs), and the located limit at an end the view leaves unclassed. The
-// merge's facts are 2a-2's.
+// Owns A5's Origin stratum (SPEC 15.6.1, 15.6.3, 15.6.5; 2a0-D §6, D13-D20; DECISIONS R4-M94, R4-M113, R4-M114, R4-M118), per body and per
+// class of its views: the graph of the body's rows (the C1-F4 view) with its Refs' containment edges, the Refuted and Unknown chains
+// through it and the relations between two fixed Origins (MirOrigins.Chains.cs), and the located limit at an end the view leaves
+// unclassed. The merge's facts are 2a-2's.
 // - Inputs: a validated body and the views A1 and A2 completed (MirDropTable.ViewsOf); MirCases (a view's borrow binders and case Types);
 //   MirSteps (a Ref's classed steps); the C1-F4 view (TyCtxt.OriginRows, OriginAtom, an atom's part), keyed by MirDefKey.Body, its
 //   fixed-fixed oracles (TyCtxt.UniversalRelations: the body's, and its layer's for the layer's part) and its findings
@@ -14,10 +14,10 @@
 //   UnprovenOriginRelation_Kd (Ownership.UnprovenOrigin) where the oracle does not derive a chain or edge between fixed Origins, at its last
 //   edge's site with Reason (fixed source, fixed target, false), or (Longer, Shorter, true) for an Equality row failing both ways, and the
 //   fact Relation; Unsupported_Kd (Ownership.Unsupported) at a row or Ref with an Unclassed end (2a0-D §3 row 9, D19), whatever Binding's
-//   completeness (an end that a Binding failure caused is 2a-1c's, DECISIONS R4-M113); OwnershipStorageLimit_Kd once at a body whose
-//   arena MirDataflow.Within refuses, which the stratum then skips (D20); and, which Findings adds once per program after step 4,
-//   InternalInvariant_Kd (Ownership.Internal, NoBody, every view) at each of the view's findings, a broken view contract in a complete
-//   compilation (R4-M101 E2, E4).
+//   completeness (DECISIONS R4-M113), while an edge with a Dependent end, one a Binding failure left Unbound, records nothing (SPEC
+//   23.1.2, R4-M118); OwnershipStorageLimit_Kd once at a body whose arena MirDataflow.Within refuses, which the stratum then skips (D20);
+//   and, which Findings adds once per program after step 4, InternalInvariant_Kd (Ownership.Internal, NoBody, every view) at each of the
+//   view's findings, a broken view contract in a complete compilation (R4-M101 E2, E4).
 // - Invariants: no liveness, CFG order, Loan set or syntax is read; every Origin comes through the view, a row's ends by index and a Ref's
 //   or a dereferenced layer's through OriginAtom at the Ref's site; a chain's verdict does not depend on reachability; views whose active
 //   rows and containment edges are equal form one class, judged once, under the borrow binders all its views share (SPEC 15.6.5); an edge

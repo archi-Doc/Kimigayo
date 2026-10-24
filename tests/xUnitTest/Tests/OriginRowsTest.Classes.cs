@@ -45,7 +45,8 @@ public sealed partial class OriginRowsTest
         Assert.Equal(OriginAtomKind.Finite, Atom(c, new ExecutableBody(h.SymbolOf(), 1), input, h).Kind);
     }
 
-    // 2a0-D §3 with DECISIONS R4-M101 E5: one class per precedence row and slot role, on rows the programs form.
+    // 2a0-D §3 with DECISIONS R4-M101 E5: one class per precedence row and slot role, on rows the programs form; an end a Binding failure
+    // left Unbound (a repeated binding set's) is Dependent (R4-M118).
     [Theory]
     [InlineData(Destructors, "drop", "self.buffer@ref", "Finite", "Receiver")]
     [InlineData(Destructors, "drop", "whole.buffer@ref", "Finite", "Helper")]
@@ -54,6 +55,7 @@ public sealed partial class OriginRowsTest
     [InlineData(Pick + "func g(n: i32, r: i32 = pick(n@ref, 5@ref)) -> i32 => r\n", "g", "n@ref", "Finite", "Parameter")]
     [InlineData(Pick + "func g(n: i32, r: i32 = pick(n@ref, 5@ref)) -> i32 => r\n", "g", "5@ref", "Finite", "Place")]
     [InlineData("func total(values: Slice<i32>) -> i32\n    var sum = 0\n    for v in values\n        sum = sum + v@follow\n    return sum\n", "total", "$for.iterator", "Finite", "Place")]
+    [InlineData(MirOriginsTest.RepeatedSet, "run", "ref/Holder{x}", "Dependent", "None")]
     public void TheLongerEndOfARowTakesItsClass(string source, string body, string site, string kind, string role)
     {
         var (slice, row) = RowAt(source, body, site);
@@ -61,17 +63,38 @@ public sealed partial class OriginRowsTest
     }
 
     // Rows 1, 2', 8 and 9 on the shorter ends: B's contract and static are Fixed, a meet with a Finite operand an Inferred node, a local's
-    // inference Inferred, a callee's own meet of Parameter atoms forms no edge (Unclassed, PLAN G195's located limit).
+    // inference Inferred, a callee's own meet of Parameter atoms forms no edge (Unclassed, PLAN G195's located limit); an end a Binding
+    // failure left Unbound, and a meet of such ends, are Dependent (DECISIONS R4-M118).
     [Theory]
     [InlineData(EnvStore, "", "x@ref", "Fixed")]
     [InlineData(Pick + "func g(a: i32 = pick(3@ref, 4@ref)) -> i32 => a\n", "g", "3@ref", "Inferred")]
     [InlineData(MeetTrans, "mt", "x", "Inferred")]
     [InlineData(MeetTrans, "mt", "t@uniq", "Unclassed")]
     [InlineData("func needsStatic(x: ref/i32 during static) -> i32 => x@follow\nfunc caller() -> i32\n    let local = 3\n    return needsStatic(local@ref)\n", "caller", "local@ref", "Fixed")]
+    [InlineData(MirOriginsTest.FailedClause, "f", "local@ref", "Dependent")]
+    [InlineData(MirOriginsTest.RepeatedSet, "run", "k", "Dependent")]
     public void TheShorterEndOfARowTakesItsClass(string source, string body, string site, string kind)
     {
         var (slice, row) = RowAt(source, body, site);
         Assert.Equal(kind, slice.Atoms[row.Shorter].Kind.ToString());
+    }
+
+    // DECISIONS R4-M118's precedence: a meet with an Unclassed operand (row 9, a located limit) is Unclassed whatever its Dependent
+    // operands, so the limit stays when the failure is repaired. No program forms such a meet: it is built from FailedClause's Unbound end
+    // and `put`'s own Parameter atom (meet-trans) in one compilation.
+    [Fact]
+    public void AnUnclassedOperandDecidesBeforeADependentOne()
+    {
+        var c = MirBuildTest.Compile(MirOriginsTest.FailedClause + MeetTrans + Main);
+        var f = Bodies(c).Single(static x => x.Key.Decl?.Name == "f").Key.Body;
+        var slice = c.Types.OriginRows(f);
+        var row = slice.Rows.First(x => Site(c, x) == "local@ref");
+        var unbound = slice.Atoms[row.Shorter];
+        var mt = c.Types.OriginRows(Bodies(c).Single(static x => x.Key.Decl?.Name == "mt").Key.Body);
+        var foreign = mt.Atoms.First(static x => x is { Kind: OriginAtomKind.Unclassed, Atom.Kind: OriginKind.Parameter }).Atom;
+        Assert.Equal((OriginKind.Unbound, OriginAtomKind.Dependent), (unbound.Atom.Kind, unbound.Kind));
+        var meet = new BoundOrigin(OriginKind.Intersection, operands: [unbound.Atom, foreign]);
+        Assert.Equal(OriginAtomKind.Unclassed, Atom(c, f, meet, c.SyntaxOf(row.Site)).Kind);
     }
 
     // Rows 6, 7 and 7': a mutable static's Borrow formed in B is Finite, an immutable one's Inferred, and the enclosing body's Borrow a

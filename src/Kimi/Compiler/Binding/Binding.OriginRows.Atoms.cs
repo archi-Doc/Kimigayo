@@ -5,9 +5,10 @@
 // reads an atom by (OriginAtomIn, at a MIR site).
 // Input: an atom, the slice it is interned in and the use or MIR site it is resolved at. Output: the atom's index in the slice's table and
 // its part (OriginRowSet.InLayer).
-// Invariants: an atom is classed once, on its first appearance in a slice; a class no precedence row gives is a broken contract
-// (OriginFinding); roots by the forming body for non-declaration binders and by slot role for declaration binders; an atom's part is its
-// rows' part, or for an atom MIR reads its forming body's (DECISIONS R4-M114), and only a Fixed atom is in both parts (else a finding).
+// Invariants: an atom is classed once, on its first appearance in a slice; a class no precedence row gives, and a Dependent atom (an end a
+// Binding failure left Unbound, DECISIONS R4-M118), is a broken contract in a complete compilation (OriginFinding); roots by the forming
+// body for non-declaration binders and by slot role for declaration binders; an atom's part is its rows' part, or for an atom MIR reads
+// its forming body's (DECISIONS R4-M114), and only a Fixed atom is in both parts (else a finding).
 // Must not: let a slot or binder leave the view (only ProjectionRole does, D7).
 
 using Kimi.Compiler.Parsing;
@@ -91,7 +92,8 @@ public sealed partial class Binding
         return result;
     }
 
-    // An atom's index in the slice's table, classed on its first appearance; a class no precedence row gives is a broken contract.
+    // An atom's index in the slice's table, classed on its first appearance; a class no precedence row gives, or a Dependent one, is a
+    // broken contract (OriginFinding records it in a complete compilation only).
     private int InternAtom(OriginRowSet slice, BoundOrigin atom, Koto site, byte part)
     {
         IOriginRowSetBuilder builder = slice;
@@ -99,13 +101,13 @@ public sealed partial class Binding
         {
             index = builder.Atoms.Count;
             builder.Index.Add(atom, index);
-            if (this.ClassifyAtom(atom, slice) is not { } entry)
+            var entry = this.ClassifyAtom(atom, slice);
+            if (entry is null or { Kind: OriginAtomKind.Dependent })
             {
                 this.OriginFinding(SourceRef.Of(site));
-                entry = new(atom, OriginAtomKind.Unclassed, RoleOf(atom));
             }
 
-            builder.Atoms.Add(entry);
+            builder.Atoms.Add(entry ?? new(atom, OriginAtomKind.Unclassed, RoleOf(atom)));
             builder.Parts.Add(0);
         }
 
@@ -134,7 +136,7 @@ public sealed partial class Binding
             case OriginKind.Intersection:
                 return this.ClassifyMeet(atom, slice);
             case OriginKind.Unbound:
-                return new(atom, OriginAtomKind.Unclassed, ProjectionRole.None);
+                return new(atom, OriginAtomKind.Dependent, ProjectionRole.None); // Only a Binding failure leaves one (DECISIONS R4-M118).
         }
 
         var role = RoleOf(atom);
@@ -185,7 +187,7 @@ public sealed partial class Binding
     }
 
     // Rows 2, 2' and 9: a meet is one Fixed node when every operand is Fixed, an Inferred meet node otherwise, and forms no edge when an
-    // operand forms none.
+    // operand forms none: Unclassed, a located limit, before Dependent, a failure's dependent (DECISIONS R4-M118).
     private OriginAtomEntry? ClassifyMeet(BoundOrigin meet, OriginRowSet slice)
     {
         var kind = OriginAtomKind.Fixed;
@@ -201,7 +203,8 @@ public sealed partial class Binding
                 return new(meet, OriginAtomKind.Unclassed, ProjectionRole.None);
             }
 
-            kind = operand.Kind == OriginAtomKind.Fixed ? kind : OriginAtomKind.Inferred;
+            kind = kind == OriginAtomKind.Dependent || operand.Kind == OriginAtomKind.Dependent ? OriginAtomKind.Dependent
+                : operand.Kind == OriginAtomKind.Fixed ? kind : OriginAtomKind.Inferred;
         }
 
         return new(meet, kind, ProjectionRole.None);
