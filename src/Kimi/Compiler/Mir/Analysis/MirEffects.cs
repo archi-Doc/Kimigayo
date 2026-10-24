@@ -162,9 +162,9 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
                 this.Given(body, terminator);
             }
         }
-        else if (callee.Arg == (int)IntrinsicId.StaticEnsure && program.StaticInit(body, body.Operands[terminator.Start]) is { } initializer)
+        else if (callee.Arg == (int)IntrinsicId.StaticEnsure)
         {
-            this.AddEdge(initializer, null);
+            this.AddEdge(program.StaticInit(body, body.Operands[terminator.Start])!, null); // The validator checks it has one (G191).
         }
     }
 

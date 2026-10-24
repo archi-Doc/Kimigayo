@@ -1,0 +1,7 @@
+func inspect(value: ref/i32) => ()
+group Limits
+    public let max: i32 = 10
+public func main()
+    let c = func () => Limits.max@ref
+    let v = c()
+    inspect(v)

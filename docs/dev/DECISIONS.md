@@ -2724,9 +2724,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: slots as non-references in the builder (the package: a W1 change for an A5 classification); a mode on `Gather` seeding
     `_0`; reading `_0` through the live-before bits at the Return; a per-Loan replayed stamp (dead under the validator); a bool on `Record`
     for the Inlined exception.
-- **R4-M99 Closure calls follow the receiver rules** (owner, 2026-10-21, on the R4 planning session's proposal written at the
+- **R4-M99 Closure calls follow the receiver rules** (integrated by R4-M123 with the owner's D1, D2 and F3) (owner, 2026-10-21, on the R4 planning session's proposal written at the
   owner's instruction 「候補1（クロージャを受け手つき呼び出しとして定義）と候補3（派生失敗の定義）を、2c-D・2g-D の前に判断できるよう draft/Proposals に提案書として書いてください。」;
-  answers OQ-C1 (a) and OQ-C2 (a)) The proposal is `draft/Proposals/2026-10-21 Closure Calls as Receiver Calls.md`; its review is
+  answers OQ-C1 (a) and OQ-C2 (a)) The proposal is `draft/Changes/2026-10-21 Closure Calls as Receiver Calls.md`; its review is
   `draft/Sketches/R4 Proposals 2026-10-21/review-1.md`.
   - Adopted: a Closure body is checked against its call receiver (SPEC 7.7.3) as an instance function's body is against its
     receiver, its environment bindings being Fields of the receiver's referent (15.6.5), so result Origins, containment (15.6.3) and
@@ -3426,6 +3426,28 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `hidden`'s `var v` (R-B2 through an untied holder, a5-new). Census: no problem. Rejected: B's W rule and the untracked rule as written
     (above); the untracked test on a layer's content (every read of `b.data` after `b.push(y@ref)` would carry Φ_E). Unverified: the
     Exclusive guard row on a Type-argument layer (no corpus program); cost beyond the V16 rows (measured in G160-5).
+- **R4-M121 The MIR validator checks the builder's static contracts** (2026-10-24, R4 planning session; PLAN G191 and G157 (23)'s
+  validator half; supersedes R5-M71's "whether the program has the static's initializer stays `StaticInit`'s null, a consumer's broken
+  contract (F10), since the validator sees one body" and R5-M106's "a static Place its body ensures nowhere (the builder's contract,
+  `MirBuilder.Places`, which the validator does not check)": the validator now also sees the program, after the builder's last body)
+  - Rules (`MirValidator.Statics.cs`, AGENTS: one validator per IR, its consumers trust it): (1) over the program (`MirBuilder.Build`
+    calls `MirValidator.Validate(MirProgram)` after both passes), each staticEnsure of F10's form names a static whose StaticInit body
+    the program has, else `StaticSlot` at the call, the rule now "the staticEnsure does not resolve through `MirProgram.StaticInit`";
+    (2) in a body, each static root of a Place a location accesses is named by a staticEnsure of the body (any block: code generation
+    maps a body's slots per body), else `MirViolation.Unensured` at the access. An Opaque site's roots are left out: they name what
+    the replaced syntax may access, which never runs (its program has a record and is not generated), in a Binding-rejected program a static its body never ensures, possibly one without an initializer
+    (Milestone 43, three spec-case variants; 13 bodies in a 933-program probe, no real Place and no ensure breaking either rule).
+  - The responsibility moves from four consumers, each of which ran only on a program without findings (`MirAnalysis.Run`,
+    `InstanceCollector.Run`, `Compilation.Generate`'s `MirRecords`): A4's StaticEnsure edge (`MirEffects`), A5's InternalInvariant_Kd
+    record (`MirBorrows.Effects`' `Initializer`), the collector's (`InstanceCollector.Glue`'s `Static`) and code generation's
+    (`FunctionCodegen.Statics`' `StaticAddress`) read `MirProgram.StaticInit` and the body's slots unchecked. Kept: code generation's
+    two slots for one static (P42's keys) and `Ensure`'s "the collector targets every staticEnsure" (other contracts). Test MIR follows
+    the rules: A5's rooted bodies (`MirBorrowsTest.Rooted`) turn a stand-in's initializing call into its static's staticEnsure, the form
+    P42's source gives, every expectation unchanged.
+  - Not checked: that a staticEnsure precedes each access on every path (SPEC 22.4.3), which the builder gives by building it first
+    and no consumer guarded; a dominance rule is its own unit. Rejected: rule (2) over Opaque roots (InternalInvariant_Kd on
+    Binding-rejected programs); rule (2) as "each accessed static has an initializer" over the program (code generation's slot map is
+    per body, so its guard would stay).
 - **R4-M122 Rule W in SPEC 15.6.5, a read through a reference counted as a Copy; 14.8.3 and 15.8.2 cite it** (owner, 2026-10-24,
   verbatim answers to the R4 planning session's two questions: 「(a) 今、W だけで開く (推奨)」, this SPEC session holds W alone, and
   「(a) SPEC の W の文に書く (推奨)」, the reading the prototype round needed is one clause of W's sentence; unit spec-w; R4-M104's proposal,
@@ -3467,6 +3489,53 @@ and migration obligations remain in force; no numeric cap changes are authorized
     acceptances of repair variants (review-p2r3 N12, C7, `fT`), pre-existing ledger differences; 2a-2's facts (the result in transit,
     a store's part class, a Loan's Borrow atom) and the bit's representation. The later SPEC session keeps RZ, G86, G159 (2), G158 (3),
     B 3.4's 15.4.2 gap and PLAN G160's N2.
+- **R4-M123 Closure calls as receiver calls in SPEC (R4-M99), with retention by permissions, the derived catch-all and a bare entry's
+  Origin** (owner, 2026-10-25, verbatim answers to the R4 planning session's questions after 2x-P7: D1 「(a) §7.7.2 の許可で決める (推奨)」,
+  D2 「(a) 本体局所の源に限る (推奨)」, timing 「(a) 今開き、2c-D の設計と並行 (推奨)」, F3 「以下で決定します。(b) BU-28 を SPEC の読みにする（元の
+  Origin）: 借り直しの子が親と同じ長さを持てる、と SPEC を直します。」; unit spec-closure; R4-M99's proposal, now
+  `draft/Changes/2026-10-21 Closure Calls as Receiver Calls.md`, closed as 取り込み済み)
+  - SPEC 15.8.2, a paragraph before the table: R4-M99's sentence ("A Closure body is checked against its call receiver (7.7.3) as an
+    instance function's body is against its receiver: its environment bindings are Fields of the receiver's referent, so its result
+    Origins, containment (15.6.3) and retention (15.6.4) follow the receiver rules."), then "Each environment binding's permissions stay
+    those of 7.7.2, and retention into the environment follows them, since no Closure body can replace its environment: an Exclusive
+    call may retain an argument in its `var` bindings and in the referents of its captured exclusive references." (D1; 2x-P7's m-rc1
+    and m-rc2 show the permissions), and the table as a restatement. Second paragraph: "by the receiver rules"; the catch-all becomes D2's "a
+    source whose Origin is body-local, such as ..., is Refuted at the returned value, ... while a source of Origin `static`, such as a
+    Borrow of an immutable static Field, outlives it", merged into the sentence R4-M122 cites. Third paragraph: ordinary elision
+    (15.4.3) without the hidden receiver (OQ-C2 (a), t6b), with its reason (3.2.1, 8.10).
+  - 15.6.5: the fixed-Origin sentence for Closure bodies is deleted (the call receiver is the body's receiver, the captures' Origins its
+    referent's, the inferred result's Origin is fixed by 15.8.2); the body-local sentence cites 15.8.2 ("Fields of its call receiver's
+    referent"). 7.7.4: "its result contract does not depend on its receiver".
+  - F3: 3.5.1 "an outer Origin within the parent's, possibly the parent's own"; 7.7.2: a bare entry's child's Origin is "the meet of the
+    Origins that contain it (15.6.3)", the source's Origin for an enclosing local or parameter (BU-28's reading, both pipelines). Sound:
+    uniqueness comes from the conflict rules and Reborrow containment, not Origins (15.5), and Origins keep no Loan live (15.6); the
+    entry's child Loan, carried by the Closure and by what a call retains, keeps the parent suspended while any carrier may be used.
+    Rejected: the source's Origin through a borrowed outer receiver (an inner Closure holding `uniq` access could leave the outer call
+    without depending on its receiver, and a second outer call would give a second live path: probe n1, `Unsupported_Kd` today under
+    R1); the parent's Origin for every Reborrow (`var first = r; first = local@uniq` for a parameter `r` would become Refuted; reading).
+  - Examples (15.8.2): `update` (copyOut's `let` binding and `i32` referent keep nothing, remember's `var` binding does), registered as
+    `15.8.2-environment-retention` with the old path's conflict at `z@follow = 42` as (a); `take` (F3 and the table's third row in a
+    Consuming call), `15.8.2-bare-entry-origin`, with R1's `Unsupported_Kd`, Binding's on both paths, as (b) until 2c-5.
+  - Verdicts against the SPEC before: D1 none (f7o is valid by 7.7.2; the default pipeline's rejection is an old-path limit until
+    R6-check, STATUS); D2 `func () => Limits.max@ref` valid (P42's `Unsupported_Kd` on both pipelines); F3 t4a and t4e valid (Unknown
+    before): a relation between a bare-entry binding's Origin and its parent's through no borrowed receiver. t4g, r1a–r1f and nested
+    entries are unchanged (receiver containment, 15.6.3). No SPEC example, spec-cases, pair-cases or mutation row and no implementation
+    verdict changes.
+  - Rationale and Principles (the proposal's §7). One Concept: a closure call's results, containment and retention use the receiver
+    rules, and the table is a restatement; receiver selection (7.7.3), permissions (7.7.2) and elision (15.8.2) stay the closure's own,
+    each stated once. Local Reasoning: a Closure body's Origins read like a method body's, and what an Exclusive call may retain follows
+    from its binding list. Explicit Semantics: the retention rule, the catch-all and an entry's Origin are stated. Compiler Server
+    Protocol: closure results are reported with the receiver vocabulary methods use.
+  - Settles R4-M99's SPEC step. Supersedes the proposal's §6 reading of 2c-2's Exclusive row ("the environment and captured exclusive
+    referents"): `var` bindings and captured exclusive referents (D1). 2x-P7's record is `draft/Sketches/A5 Step 2/2x-P7 round/`.
+  - 2c-D implements (p7-round §7): per admitted case the receiver rules; C2's retention rows (Exclusive into `var` bindings, layer 1 of
+    the holder, and captured exclusive referents; Consuming into captured exclusive referents, a result naming a capture Origin
+    retaining the whole receiver argument, t5b; Shared none); result rows by 15.6.3's walk with the receiver up to the first shared layer
+    (G6); an inferred result's Refuted source at the returned value with the Closure typed (G7, F2) and a static source valid; elision
+    without the receiver; the entry's meet (n2b: both pipelines accept a nested entry's `during u` that SPEC rejects); 2c-5's receiver
+    substitution in place of R1's `Unsupported_Kd`.
+  - Open: p7-round's F1, F2 and G1–G13 stay with the planning session and 2c-D; `15.8.2-closure-dependencies` now classes the same R1
+    record (b), as Binding's record both paths publish (the review's ruling; its old-path-only Refuted code is named in the note). Numbering: R4-M123 is free on dev and every remote and local branch.
 - **R4-M124 G160-4's 4c: the own-step Warning `OwnStepDeparture_Kd`** (2026-10-25; unit 4c of R4-M116's design B′ §5 on B §5.8, with
   the owner's OQ-1 (a) and OQ-2 (a); the new code and requirement are the closed-vocabulary entries OQ-2 approved)
   - Rule (`MirBorrows.OwnSteps`, SPEC 5.2.1 condition 3): at each location of the checks replay, after its activations, an access with
@@ -4832,6 +4901,9 @@ resumed by R4-M86 (2026-10-20).
     15.3.4): its fix extends `EnclosingAtom`'s chain to named nested functions, not a second rule. Row 5's call result is Fixed in the view
     and finite in the judge (display only today; for 2c-D). PD21: the classes moved first (behavior-preserving) into
     Binding.OriginClasses.cs; Binding.OriginProof.cs's count restarted at 2a0-4's split.
+  - SPEC reading (R4-M123, F3, owner 2026-10-25): a bare entry's binding has "a captured reference's Origin" when no borrow lies
+    between it and the entry's parent (an enclosing local or parameter, or an outer environment binding in a Consuming outer call); SPEC 7.7.2 gives the meet of the Origins that contain the child, so a nested entry through a
+    borrowed outer receiver is also within that receiver, which `EnclosingAtom` does not give (n2b accepted on both pipelines; 2c-D).
 
 - **BU-29** (2026-10-23; the BU planning session; PLAN G170 unit C2, bu30, under PlanB C and C1's owner-approved contract,
   `draft/Sketches/G170/C1/C1-design.md` §5 and §8; one design, one review, Q6) `Binding.ContractSolver` owns premise derivation and
@@ -6615,7 +6687,8 @@ structure is recorded here by the unit that first implements it.
   collector reads (R5-M60); any other operand (another constant kind, an index outside `Statics`, a Place) is a validator finding,
   `InternalInvariant_Kd` at the access, so consumers read the slot unchecked. A constant id out of range stays the Const finding;
   whether the program has the static's initializer stays `StaticInit`'s null, a consumer's broken contract (F10), since the
-  validator sees one body. No library, corpus or mir-sweep body breaks it. AR-8's other two rules wait for a design with R4: a
+  validator sees one body (superseded by R4-M121: the validator checks it over the program). No library, corpus or mir-sweep body
+  breaks it. AR-8's other two rules wait for a design with R4: a
   write, Move or exclusive borrow past a shared Deref (G147 (2)) and one Ref per argument temp (G136) fail on valid programs today
   (G147 (3)'s `&uniq (*_1).0` past `ref/closure`; a conditional argument's two Refs in one argument temp, so
   `replace(if c => a@uniq else => b@uniq, with: 3)` gives A5 `lent = b` on both paths) and meet forms other components own (A1's
@@ -7538,7 +7611,8 @@ structure is recorded here by the unit that first implements it.
     ensure function with the access's location (SPEC 22.5.1: the start of the Place expression, its qualifier included; a caller-location
     body's received location, R5-M93). A static Place's root is the slot of its body's staticEnsures of that static, read from the item's
     targets (`StaticSlots`); a staticEnsure without a StaticInit target, a static Place its body ensures nowhere (the builder's contract,
-    `MirBuilder.Places`, which the validator does not check) and two slots for one static are `InternalInvariant_Kd`.
+    `MirBuilder.Places`, which the validator does not check; superseded by R4-M121, which the validator checks) and two slots for one
+    static are `InternalInvariant_Kd`.
   - Fold (package C 3.7, ruling Q6): a StaticInit whose block 0 holds only storage markers and one `_0 = Use(Const)`, then Return, is
     that constant: its slot an `internal unnamed_addr constant` spelled as an operand's constant (`Constant`, a float's exact double bits),
     with no state, ensure function or function, and its accesses test nothing. No kind list: a static's Type is a scalar (R5-M82), whose

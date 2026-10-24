@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns structural and Type validation of producer-owned MIR in every configuration.
-// Input: MIR bodies and published Type facts. Output: located invariant findings.
+// Input: MIR bodies, their program and published Type facts. Output: located invariant findings.
 // Every IR invariant is checked here; a broken producer contract is InternalInvariant_Kd.
 // Must not repair broken IR, recover silently or leave consumers to revalidate it.
 
@@ -40,7 +40,9 @@ internal enum MirViolation : byte
     Operation, // An operator's, a Cast's, a SwitchInt's or an Adapt's operand, a Ref's Type or an Adapt's case operation, that its kind does not admit;
     // a PairAcquire other than the operand of a Use assigned to a local's whole Place with the Uniq or TwoPhaseUniq it marks (A3 E13 (4)), a
     // marked Use of another operand, or a function item constant other than the operand of an Assign's Use, the collector's site (G154).
-    StaticSlot, // A staticEnsure's operand other than an Integer constant indexing the body's statics, which MirProgram.StaticInit decodes (F10).
+    StaticSlot, // A staticEnsure's operand other than an Integer constant indexing the body's statics, which MirProgram.StaticInit decodes (F10),
+    // or, over the program, its static without a StaticInit body (G191).
+    Unensured, // A static root of a Place a location accesses, other than an Opaque site's, that no staticEnsure of the body names (G191).
     Lent, // A Temp a Call takes as an input that reserves (MirCases.Reserves), written by a Ref or an Adapt and by another write (G136).
 }
 
@@ -53,8 +55,9 @@ internal readonly record struct MirFinding(MirViolation Rule, SourceRef Subject)
 /// <summary>The one structural verifier of MIR (plan 14-5): a body's structure, locals, projections against their base Types, operands,
 /// rvalues and arities, the Types values flow between (<see cref="MirTypes.Agree"/>, modulo Origins), each Adapt under every
 /// Semantics case view (<see cref="MirCases"/>), the blocks that read a Temp only diverging Calls write (G131), a Call's input temps
-/// (G136) and where each region, the body or a default's copy, is entered (DECISIONS R5-M90), before any analysis reads it. It keeps
-/// its scratch, so a warm run allocates nothing.</summary>
+/// (G136), where each region, the body or a default's copy, is entered (DECISIONS R5-M90) and the statics its Places access (G191); and
+/// over a program, the initializer each staticEnsure names (G191), before any analysis reads it. It keeps its scratch, so a warm run
+/// allocates nothing.</summary>
 /// <remarks>An intrinsic's operands are checked by its row's arity (its declaration's parameters come first, a fact of the table,
 /// MirValidatorTest) and staticEnsure's also as its static's slot (DECISIONS R5-M71), a Value callee's against its Type's signature where
 /// that Type is a Function Type, else by its declared signature's arity only, and every Call's whole-local inputs by one write of an input
@@ -85,7 +88,7 @@ internal sealed partial class MirValidator(TyCtxt types)
 
         Array.Clear(this.writes, 0, body.Locals.Length);
         this.adapts.Clear();
-        var checker = new Checker(body, findings, this.Unknown(body), this.adapts, this.writes);
+        var checker = new Checker(body, findings, this.Unknown(body), this.Ensured(body), this.adapts, this.writes);
         if (!checker.Tables())
         {
             return; // A chain or site out of order or range cannot be walked.
@@ -123,20 +126,18 @@ internal sealed partial class MirValidator(TyCtxt types)
         MirBody body,
         List<MirFinding> findings,
         bool[] unknown,
+        bool[] ensured,
         List<(MirRvalue Adapt, SourceInfo Source)> adapts,
         byte[] writes) : IMirUses
     {
         private SourceInfo at;
         private int opaqueValues;
+        private int named; // The roots of the Opaque site being walked that are still to come (MirValidator.Statics).
         private bool acquires; // Whether the operands walked are a marked Use's assigned to a local's whole Place, a PairAcquire's one position.
         private bool used; // Whether the operands walked are an Assign's Use's, a function item constant's one position.
 
         // Gets a value indicating whether the scope table or a location's scope cannot be walked, a Scope finding; only Entries needs them.
         internal bool Unscoped { get; private set; }
-
-        public readonly void Effect(MirEffect effects, int site)
-        {
-        }
 
         // An Opaque value exactly when the body has Opaque sites, and the writes of the Call inputs (G136).
         internal void Finish()

@@ -1,0 +1,14 @@
+struct S {x}
+    public var r: ref/i32 during x
+    public var w: i32 = 0
+    public init(r: ref/i32 during x) => self.r = r
+    public func m(self: uniq/Self, v: ref/i32 during x) -> i32
+        self.w = v@follow
+        return self.r@follow
+func use(z: uniq/i32, x: ref/i32) -> i32
+    origin z outlives x
+    var s = S.init(x)
+    _ = s.m(z@follow@ref)
+    z@follow = 42
+    return s.m(x)
+public func main() => ()
