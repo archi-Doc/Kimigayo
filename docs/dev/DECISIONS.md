@@ -3279,7 +3279,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the 2a-1c residual, I-1's shape in `$tryWrite`), each (b) (a5-new-origins, a5-row9, a5-row9-incomplete).
   - PD21: `MirProblem.cs` and `MirProgram.cs` were due and are split first, behavior-preserving (`MirFact.cs`, `MirDefKey.cs`);
     `MirReport.cs` reaches 3 with this unit, so 2a-2's design starts with its PD21 response (2a0-D §10); `TyCtxt.Origins.cs` and
-    `Binding.OriginRows.cs` reach 3, so they are due before 2a-1c's adding change.
+    `Binding.OriginRows.cs` reach 3, so they are due before 2a-1c's adding change. These due states are superseded by DEC Q9.
   - Rejected: (B) and (C) of the Site rule (a per-row value fact; moving the row Site now); reading Binding's completeness for row 9 (it
     also hides genuine limits in incomplete compilations, meet-trans); no row-9 report until the derived marking exists (it would accept
     uncovered forms silently); keeping appended atoms across passes (stale atoms after an edit, a second table).
@@ -3322,8 +3322,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     until R7.
   - PD21: `MirDataflow.cs` was due (0c, 1b-2, V1 since the owner's discard); the planning session's ruling: one responsibility (the
     analyses' bit-set dataflow and its arena: the solve, the state helpers, the byte limit), no split by responsibility exists, so `Within`
-    goes in and the next changing unit restructures the file first. `Binding.OriginRows.cs` was due (3): split first, behavior-preserving,
-    into `.Atoms.cs` (the atom table) and `.Oracle.cs` (the fixed-fixed oracle). `MirOrigins.cs` and `.Chains.cs` reach 2.
+    goes in and the next changing unit restructures the file first (superseded by DEC Q9). `Binding.OriginRows.cs` was due (3): split
+    first, behavior-preserving, into `.Atoms.cs` (the atom table) and `.Oracle.cs` (the fixed-fixed oracle). `MirOrigins.cs` and
+    `.Chains.cs` reach 2 (a count DEC Q9 no longer reads).
   - Held until G226 landed (the ruling on `stop-g226.md`, (A)); merged after it (dev ece46cfa5): judging Unknown over containment edges
     exposed PLAN G226's layer-dropping Reborrow names
     (widened on dev to exclusive receiver and local layers): a Reborrow named by its inner layer only gives a containment edge from an outer
@@ -3337,6 +3338,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     a library or milestone body. 2a0-3b's refuted capture stores pair: their 8 Unsatisfied rows through 2a-1a, their 2 Unproven rows
     here; the MIR's extra Loan conflict at `let local` in 6 of those programs stays a MIR-only row. After G226 the library row and the 44
     test rows are gone; p1 keeps one Unknown, at its return (`q@follow@follow@uniq: b > a`), and the default pipeline rejects it too.
+    Re-measured on the merge with dev 9f9e552c0 (base: that dev, so 2a-1a's rows count too): 65 complete old Unproven rows pair (74
+    blocking; 0c206ea83's four anonymous-function programs added), with 2a-1a's 41 complete Unsatisfied rows and 64 incomplete twins;
+    the same 7 MIR-only Unproven rows; 47 MIR-only row-9 limits (17 complete, 30 incomplete), two more of G216's form (0c206ea83's
+    `ref/Lens<i32>` parameters); signatures 237 → 224; open blocking rows from old rejections 194 → 102, none a library or milestone body.
   - Rejected: per-view masks (work per view); premise-keyed classes (a Binding member in a due file); a stored mask per target tested over
     every fixed source (Ft·F tests).
 - **R4-M115 Type identity by structural decomposition (proposal B) in SPEC** (owner, 2026-10-23, verbatim:
