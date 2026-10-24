@@ -4,12 +4,13 @@
 // P3b; DECISIONS R5-M69): the payload-independent runtime every module that uses objects holds once (the dynamic Type test through a
 // descriptor's base map, the descriptor's free entry, finalization, which destroys the payload through its metadata before the free,
 // and the rc and arc clone and drop with their release transitions, ObjectRuntime.Handles.cs), each object's private constants
-// (Runtime Type key, payload metadata, descriptor, virtual table, base map), its payload destructor and its factory, the factory's
-// signature (Factory), whose parameters its text names, and whether it copies its payload by memcpy (Copies), and a Sealed handle's
-// direct release (ObjectRuntime.Handles.cs). Both generators write objects through it (PD2: promoted, never copied).
-// Input: a writer; per object its ObjectCreation row and the module's LlvmConstantPool holding its key; for a factory's signature the
-// object's number, its payload's representation and the payload parameter's kind; for a Sealed handle's release its ObjectCountingStep
-// (BoundType.HandleMode's) and the symbol of the payload's drop routine.
+// (payload metadata, descriptor, virtual table, base map), its payload destructor and its factory, the factory's signature (Factory),
+// whose parameters its text names, and whether it copies its payload by memcpy (Copies), and a Sealed handle's direct release
+// (ObjectRuntime.Handles.cs). Both generators write objects through it (PD2: promoted, never copied). Runtime identity is the module's
+// Type token (PD17); no Runtime Type key text is written (DECISIONS R5-M110).
+// Input: a writer; per object its ObjectCreation row; for a factory's signature the object's number, its payload's representation and
+// the payload parameter's kind; for a Sealed handle's release its ObjectCountingStep (BoundType.HandleMode's) and the symbol of the
+// payload's drop routine.
 // Output: LLVM text written to the writer: the runtime, then per object its constants, its destructor and its factory; a factory's
 // signature.
 // Invariants: a release publishes the reduced count before any destruction, destroys the payload before the free and accesses the
@@ -26,11 +27,11 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 namespace Kimi.Compiler.Backend;
 
 /// <summary>
-/// The syntax-free physical row of one object payload: its number, the pooled Runtime Type key, the payload representation, Copy,
-/// the factory's ABI and the Runtime Type token; the payload destructor, the base tokens and the virtual table are the descriptor's
-/// optional entries, absent when null or empty.
+/// The syntax-free physical row of one object payload: its number, the payload representation, Copy, the factory's ABI and the
+/// Runtime Type token; the payload destructor, the base tokens and the virtual table are the descriptor's optional entries, absent when
+/// null or empty.
 /// </summary>
-internal sealed record ObjectCreation(int Id, int TypeKey, ValueLowering Payload, bool Copy, FunctionAbi Abi, int TypeToken)
+internal sealed record ObjectCreation(int Id, ValueLowering Payload, bool Copy, FunctionAbi Abi, int TypeToken)
 {
     internal string? Destroy { get; init; }
 
@@ -127,9 +128,9 @@ internal static partial class ObjectRuntime
     }
 
     // One object: its private constants, its payload destructor and its factory.
-    internal static void WriteObject(TextWriter output, LlvmConstantPool constants, ObjectCreation item)
+    internal static void WriteObject(TextWriter output, ObjectCreation item)
     {
-        WriteDescriptor(output, constants, item);
+        WriteDescriptor(output, item);
         WriteDestroyValues(output, item);
         WriteCreation(output, item);
     }
@@ -159,21 +160,12 @@ internal static partial class ObjectRuntime
     internal static bool Copies(ValueLowering payload)
         => payload.Layout.Size != 0 && payload.ArgumentType == "ptr" && payload.ComputationType != "ptr";
 
-    // An object's private constants: its Runtime Type key, the payload metadata (identity, layout, Copy and payload
-    // destructor), and the descriptor naming that metadata, the free entry, the base map and the virtual table.
-    private static void WriteDescriptor(TextWriter output, LlvmConstantPool constants, ObjectCreation item)
+    // An object's private constants: the payload metadata (identity, layout, Copy and payload destructor), and the descriptor naming
+    // that metadata, the free entry, the base map and the virtual table.
+    private static void WriteDescriptor(TextWriter output, ObjectCreation item)
     {
         var id = item.Id;
         var layout = item.Payload.Layout;
-        var key = constants[item.TypeKey];
-        Name(output, "@__kimi_object_type_key", id);
-        output.Write(" = private constant { i64, ptr, i64 } { i64 ");
-        WriteNumber(output, item.TypeToken);
-        output.Write(", ptr @");
-        output.Write(key.Name);
-        output.Write(", i64 ");
-        WriteNumber(output, key.ByteLength);
-        output.Write(" }, align 8\n");
         Name(output, "@__kimi_object_metadata", id);
         output.Write(" = private constant { i64, i64, i64, i64, ptr, ptr } { i64 ");
         WriteNumber(output, item.TypeToken);

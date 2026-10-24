@@ -199,18 +199,17 @@ internal sealed class ObjectGenerationPlan
                 this.bases.Add(this.runtimeTypes[parent]);
             }
 
-            var typeKey = module.Constants.Intern(key, LlvmConstantKind.Text);
             var token = this.runtimeTypes[payload];
             var parameterKind = SlotTypes.IsResult(payload) ? AbiParameterKind.OwnedSlot : AbiParameterKind.Value;
             entry = id < this.physical.Count ? this.physical[id].Entry : null;
             // Recompute every semantic decision; retain only matching syntax-free physical records.
-            if (entry is null || entry.TypeKey != typeKey || entry.TypeToken != token || entry.Payload != value || entry.Copy != (copy == ConstraintProof.Proven) ||
+            if (entry is null || entry.TypeToken != token || entry.Payload != value || entry.Copy != (copy == ConstraintProof.Proven) ||
                 !entry.BaseTokens.AsSpan().SequenceEqual(CollectionsMarshal.AsSpan(this.bases)) || !entry.VirtualSlots.AsSpan().SequenceEqual(slots) || this.physical[id].Drop != drop ||
                 (value.Layout.Size != 0 && entry.Abi.Parameters[1].Kind != parameterKind))
             {
                 var abi = ObjectRuntime.Factory(id, value, parameterKind);
                 var destroy = drop == -1 ? null : drop == -2 ? "__kimi_destroy_string" : "__kimi_drop_aggregate" + drop;
-                entry = new(id, typeKey, value, copy == ConstraintProof.Proven, abi, token)
+                entry = new(id, value, copy == ConstraintProof.Proven, abi, token)
                 {
                     Destroy = destroy,
                     BaseTokens = this.bases.ToArray(),
