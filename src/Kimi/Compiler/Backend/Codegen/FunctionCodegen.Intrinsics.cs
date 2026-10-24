@@ -4,12 +4,13 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The intrinsic rows of FunctionCodegen (R5 plans C8a and C5c, package C 3.2; DECISIONS R5-M92, R5-M108): a call of an intrinsic by its
-// row's writer (IntrinsicRows' writer column), over the closed IntrinsicWriter vocabulary: a routine row (Routine: a runtime routine through
-// the one call writer, Invoke, with its slot-less values; Raw.release, $abort, tryAllocateBytes, Raw.allocate with its element stride),
-// which a compiler function's Value call and adapter entry also call by its disposition (Routine by kind), a Fail's
-// Abort reason, Raw.initialize's copy, Raw.slice's record, transferBytes' memcpy and a staticEnsure's state test
-// (FunctionCodegen.Statics). Each takes its operands at its declaration's slots (ArgumentPosition) and ends through Finish; a call whose
+// The intrinsic rows of FunctionCodegen (R5 plans C8a, C5c and C6a, package C 3.2; DECISIONS R5-M92, R5-M108, R5-M110): a call of an
+// intrinsic by its row's writer (IntrinsicRows' writer column), over the closed IntrinsicWriter vocabulary: a routine row (Routine: a
+// runtime routine through the one call writer, Invoke, with its slot-less values; Raw.release, $abort, tryAllocateBytes, Raw.allocate with
+// its element stride, a creation's factory with its control value and a clone's retain, FunctionCodegen.Objects), which a compiler
+// function's Value call and adapter entry also call by its disposition (Routine by kind), a Fail's Abort reason, Raw.initialize's copy,
+// Raw.slice's record, transferBytes' memcpy, a staticEnsure's state test (FunctionCodegen.Statics) and a runtime Type test
+// (FunctionCodegen.Objects). Each takes its operands at its declaration's slots (ArgumentPosition) and ends through Finish; a call whose
 // row's Target column names an item carries the collector's target, read once by the cursor (I8) and given to the row's writer; a row not
 // written yet is one located Unsupported_Kd at the call, its owning unit named in IntrinsicRows. In a caller-location body a location is
 // C3b's row (Location).
@@ -43,6 +44,11 @@ internal sealed partial class FunctionCodegen
             case IntrinsicWriter.Ensure:
                 this.Ensure(call, target);
                 return;
+            case IntrinsicWriter.Test:
+                this.Test(call);
+                return;
+            case IntrinsicWriter.Create or IntrinsicWriter.Clone:
+                return; // A broken contract, recorded by Routine.
             case IntrinsicWriter.Unwritten:
                 this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // Its row's unit (IntrinsicRows).
                 return;
@@ -69,8 +75,9 @@ internal sealed partial class FunctionCodegen
     // A routine row, a call that is one runtime routine: its routine, after its module request (TryAllocate's), and its slot-less values in
     // order into `given`, from the call's result Type in the item's instance and the target it carries (-1: none). Raw.allocate<T>(count)
     // (SPEC 5.6) is __kimi_raw_allocate, which checks the count and the byte size and gives a nonnull aligned address for zero bytes, with
-    // T's stride; no Layout alignment exceeds the heap's 16 (DECISIONS R5-M92), so no T is refused. Null for any other writer. A result
-    // without its element's layout is a broken contract, recorded by Laid (its stride 0, in a module then not written).
+    // T's stride; no Layout alignment exceeds the heap's 16 (DECISIONS R5-M92), so no T is refused. A creation is its target descriptor's
+    // factory and a clone its handle's retain (FunctionCodegen.Objects). Null for any other writer, and after a broken contract's record. A
+    // result without its element's layout is a broken contract, recorded by Laid (its stride 0, in a module then not written).
     private FunctionAbi? Routine(IntrinsicRow row, BoundType? result, int target, out ReadOnlySpan<Value> given)
     {
         given = default;
@@ -85,6 +92,10 @@ internal sealed partial class FunctionCodegen
                 this.slotless[0] = new('\0', this.Laid(result is { Components: [var element] } ? element : null)?.Layout.Stride ?? 0);
                 given = this.slotless.AsSpan(0, 1);
                 return row.Routine;
+            case IntrinsicWriter.Create:
+                return this.Create(result, target, out given);
+            case IntrinsicWriter.Clone:
+                return this.Retain(result);
             default:
                 return null;
         }

@@ -7442,3 +7442,58 @@ structure is recorded here by the unit that first implements it.
   Type, so ClosureErasure and ItemAdapter items are keyed by their erased source and target (against K package 4.3, R5-M18); R5-M43 row
   13's "keyed by the erased Closure or Item Type" reads "and the erased target Function Type"; and K package 4.8's by-value list gains an
   adapter's target inputs and result, laid out at the erasure. They leave the list.
+- **R5-M110 Object descriptors and handle operations in MIR code generation (C6a)** (2026-10-24, C lane; plan C6a, package C 3.1, 3.2 X15
+  and 3.4, K package 4.3 and row 8, PD17; SPEC 3.3.1, 13.6.1-13.6.4, 16.3.3, 22.5.1, IMPL 21.1.3; the planning session's go and rulings
+  Q1-Q5 on C6a's design, `c6a-design.md`; under R5-M18 form 2 (G:object), R5-M69, R5-M74, R5-M92 and R5-M108)
+  - Identity (R5-M74, ruling Q5): code generation numbers the module's runtime identities once per Write, before the items: the erased
+    payload of each Generated ObjectDescriptor item in admission order, then each base on its chain (`AdtDef.Base`), each erased by
+    `TyCtxt.Erase`, the erasure `MonoKey.Type` uses, so equal Types share one number, from 1 at its first occurrence, a base no creation
+    makes included. The numbering is code generation's own module-local identity, not a collector key it re-derives to find an item (R5-M100's
+    ruling 1 stands). PD17's "ordinal of the erased payload Type" is this number.
+  - Descriptor item (`ModuleCodegen.Objects`): its row, `ObjectCreation(item, the representative's Layout, TyCtxt.Copy on the representative,
+    the factory's signature, its number)`, with its payload glue's symbol (its first target, when the payload may need a drop) and its
+    chain's numbers nearest first, computed once per Write and the previous Write's reused while it matches; `ObjectRuntime.WriteObject`
+    writes it into the function buffer; it requests the object runtime and, where the factory copies by memcpy (`ObjectRuntime.Copies`),
+    the memory declarations. A VTable target is C6c's: one located `Unsupported_Kd` at the descriptor's site (the creation, where the VTable
+    item's own record lies), no partial table. The frame writes `ObjectRuntime.WriteRuntime` once, after the definitions and the entry, on
+    request (`Needs.Objects`: a descriptor, a clone, a type test that calls the runtime).
+  - Rows (IntrinsicRows' writer column; PD21: no new IntrinsicId): Create (makeObj, makeRc, makeArc) is a routine row, the factory of the
+    call's target, the payload's descriptor (another target `InternalInvariant_Kd`), `__kimi_make_object<item>` `(ptr ret, [a0 at
+    Abi.Kind], i64 controlValue, ptr location, i64 length)`, its slot-less value `ObjectRuntime.InitialControl` of the result handle's
+    counting (0, 2, 2), the payload passed as a body callee's argument (a copy slot for a string constant or a Copy in memory), at the call's
+    location. Clone is a routine row, the runtime's `__kimi_clone_rc`/`__kimi_clone_arc` by the result's counting (`ObjectRuntime.Clone`), no
+    target and no allocation. Test calls `__kimi_object_supports` (`ObjectRuntime.Supports`) with the borrow's object, the payload address
+    less `ObjectRuntime.PayloadOffset`, and its target's number, `Erase(TypeOf(item, its token's Type))`; a target on no Generated chain is
+    false without a call: SPEC 13.6.4 admits only a struct target, which an object supports exactly when it is its Dynamic Type or a base on
+    that Type's chain, and every runtime object comes from a Generated creation. Items (R5-M108): a make* Item's Value call and adapter run
+    Create through `Runs` with their own descriptor target; a clone Item Clone's row.
+  - Representation (ruling Q2): an object borrow (objref, objuniq) is its payload's address, an owning handle its object's header, the
+    payload at `PayloadOffset` (16); a Deref of an object borrow is a reference's, of a handle the header's payload; an upcast is the Use row
+    (the complete base a prefix of the derived payload, X1). The old generator's object borrow is the header: an IR-only difference (PD9).
+  - Runtime Type key (ruling Q1 (b), R5-M69's separate unit, its own commit): the key constant, `ObjectCreation.TypeKey` and
+    `WriteObject`'s pool parameter are deleted; the old planner keeps its key text, which numbers its tokens and keys its entries, and stops
+    interning it. A declared old `.ll` change (plan 5.3 item 7, as C7a's reason row): every old object module loses its key constants and
+    their pooled texts, and the text constants pooled after them take the next lower suffix; compare-fixtures over the object families
+    shows exactly those differences (252 of 361 `.ll`, all explained), native outcomes are identical and the diagnostic snapshot 0
+    differences. `PipelineObjectTest`'s distinct metadata now asserts distinct tokens, and `StoredObjectViewTest`'s reuse the same text and
+    token after a package rename.
+  - Placement (the planning session): `ModuleCodegen.Objects` and `FunctionCodegen.Objects` (the precedent of R5-M104 and R5-M106), not the
+    plan row's `ObjectDescriptors.cs`; the factory's signature is `ObjectRuntime.Factory`, one copy both generators call (PD2), a refinement
+    of R5-M69's "the factory ABI with them".
+  - Unit split (ruling Q4): C6a and C6b are two units on one branch sharing one review (DEC Q6 form 2); C6a changes no ledger row, since every
+    ledger row reaching its rows also destroys a handle (C6b's glue; the census: none flips with C6a alone, at most 335 with both).
+  - Restructured first, behavior unchanged: the factory's signature and its memcpy predicate in `ObjectRuntime`; an intrinsic's target read
+    once by `Intrinsic` and given to its writer, `Routine` taking a target.
+  - Rejected: a descriptor's item index as its token (a base no creation makes has no item); numbering at the first type test (a later
+    descriptor's number would be missed, tokens following body order); numbers for test targets on no chain (the constant false calls
+    nothing); an object borrow as the header (Ref and Deref would need object arms, and `ref/T` and `objref/T` of one payload would differ);
+    the factory's signature built in code generation beside the old planner's (a second copy); an optional `TypeKey` (a mode of the shared
+    writer, ruling Q1); a key text for MIR (a constant nothing reads); an empty table for a slot-bearing payload (a partial table); a
+    factory per payload and mode (the control value distinguishes them); the control value by `IntrinsicId` (R5-M92); a TypeToken operand
+    column, a token column in the checked set or an identity `MonoKind` (R5-M74); a `MirBodyKind.Shim` factory (PD3); an
+    `ObjectDescriptors` class beside FunctionCodegen (copies of the call and store writers).
+  - Verified: `FunctionCodegenTest` (one descriptor per erased payload, its metadata and destroy entry, the factory's signature and calls
+    with 0, 2, 2 and the creation's location, a zero-sized and a Copy payload, an erased factory Item's entry; the numbering of a chain whose
+    base no creation makes, the tests' calls and the constant false, `is not`; the clones and an erased clone Item; an object borrow's
+    payload address and a handle's header; the runtime once and none without objects; a slot-bearing payload's one record; M9's 0 B and I1
+    over the `Objects` source; the `ObjectRows` program natively under both generators); the old generator's key deletion as above.

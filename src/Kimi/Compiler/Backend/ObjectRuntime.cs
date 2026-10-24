@@ -5,14 +5,16 @@
 // descriptor's base map, the descriptor's free entry, finalization, which destroys the payload through its metadata before the free,
 // and the rc and arc clone and drop with their release transitions, ObjectRuntime.Handles.cs), each object's private constants
 // (payload metadata, descriptor, virtual table, base map), its payload destructor and its factory, the factory's signature (Factory),
-// whose parameters its text names, and whether it copies its payload by memcpy (Copies), and a Sealed handle's direct release
-// (ObjectRuntime.Handles.cs). Both generators write objects through it (PD2: promoted, never copied). Runtime identity is the module's
-// Type token (PD17); no Runtime Type key text is written (DECISIONS R5-M110).
+// whose parameters its text names, and whether it copies its payload by memcpy (Copies), a Sealed handle's direct release
+// (ObjectRuntime.Handles.cs), and the facts a caller of the runtime reads: the signatures of its Type test (Supports) and its retains
+// (Clone), a factory's control value (InitialControl) and the payload's offset in an object (PayloadOffset). Both generators write
+// objects through it (PD2: promoted, never copied). Runtime identity is the module's Type token (PD17); no Runtime Type key text is
+// written (DECISIONS R5-M110).
 // Input: a writer; per object its ObjectCreation row; for a factory's signature the object's number, its payload's representation and
 // the payload parameter's kind; for a Sealed handle's release its ObjectCountingStep (BoundType.HandleMode's) and the symbol of the
-// payload's drop routine.
-// Output: LLVM text written to the writer: the runtime, then per object its constants, its destructor and its factory; a factory's
-// signature.
+// payload's drop routine; for a retain or a control value the handle's ObjectCountingStep.
+// Output: LLVM text written to the writer: the runtime, then per object its constants, its destructor and its factory; the signatures and
+// values above.
 // Invariants: a release publishes the reduced count before any destruction, destroys the payload before the free and accesses the
 // header after neither (SHARED_OBJECT_RUNTIME, Release); the legacy writer's .ll stays byte-identical while it shares this text;
 // warm writes allocate nothing.
@@ -43,6 +45,10 @@ internal sealed record ObjectCreation(int Id, ValueLowering Payload, bool Copy, 
 /// <summary>Writes the object runtime of the LLVM text that every generator shares.</summary>
 internal static partial class ObjectRuntime
 {
+    /// <summary>The offset of an object's payload from its header, after its descriptor and control words (IMPL 21.1.3), at which the
+    /// runtime's text reads and writes it.</summary>
+    internal const int PayloadOffset = 16;
+
     // IMPL 21.1.3: the payload-independent object runtime: the dynamic Type test through the descriptor's base map, the free
     // entry of every current descriptor, and finalization, which destroys the payload through its metadata before the free.
     private const string ObjectFunctions = """
@@ -118,6 +124,10 @@ internal static partial class ObjectRuntime
         }
 
         """;
+
+    /// <summary>Gets the runtime's dynamic Type test (SPEC 13.6.4): whether the object at a header supports a Type token, its
+    /// descriptor's own or one of its base map's.</summary>
+    internal static FunctionAbi Supports { get; } = new("__kimi_object_supports", "i1", [new("ptr", "header"), new("i64", "target")]);
 
     // The payload-independent runtime, once per module that uses objects, before its objects.
     internal static void WriteRuntime(TextWriter output)
