@@ -118,9 +118,8 @@ public class RecursiveDefaultTest
     public void UnboundedRuntimeRecursionHasFiniteGeneration()
     {
         var c = MinimalEmissionTest.Analyze("func f(value: i32 = f()) -> i32 => value\nif false => f()");
-        var ir = CompilationTestHelper.WriteIr(c);
-        Assert.Contains("@__kimi_default0", ir, StringComparison.Ordinal);
-        Assert.DoesNotContain("@__kimi_default1", ir, StringComparison.Ordinal);
+        var evaluator = GeneratedIr.Parse(CompilationTestHelper.WriteIr(c)).Single("internal i32 ()"); // The default's one evaluator.
+        Assert.NotEmpty(evaluator.Blocks);
     }
 
     [Collection<AllocationIsolationCollection>]

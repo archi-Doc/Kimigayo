@@ -2724,9 +2724,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: slots as non-references in the builder (the package: a W1 change for an A5 classification); a mode on `Gather` seeding
     `_0`; reading `_0` through the live-before bits at the Return; a per-Loan replayed stamp (dead under the validator); a bool on `Record`
     for the Inlined exception.
-- **R4-M99 Closure calls follow the receiver rules** (owner, 2026-10-21, on the R4 planning session's proposal written at the
+- **R4-M99 Closure calls follow the receiver rules** (integrated by R4-M123 with the owner's D1, D2 and F3) (owner, 2026-10-21, on the R4 planning session's proposal written at the
   owner's instruction 「候補1（クロージャを受け手つき呼び出しとして定義）と候補3（派生失敗の定義）を、2c-D・2g-D の前に判断できるよう draft/Proposals に提案書として書いてください。」;
-  answers OQ-C1 (a) and OQ-C2 (a)) The proposal is `draft/Proposals/2026-10-21 Closure Calls as Receiver Calls.md`; its review is
+  answers OQ-C1 (a) and OQ-C2 (a)) The proposal is `draft/Changes/2026-10-21 Closure Calls as Receiver Calls.md`; its review is
   `draft/Sketches/R4 Proposals 2026-10-21/review-1.md`.
   - Adopted: a Closure body is checked against its call receiver (SPEC 7.7.3) as an instance function's body is against its
     receiver, its environment bindings being Fields of the receiver's referent (15.6.5), so result Origins, containment (15.6.3) and
@@ -3447,6 +3447,53 @@ and migration obligations remain in force; no numeric cap changes are authorized
     acceptances of repair variants (review-p2r3 N12, C7, `fT`), pre-existing ledger differences; 2a-2's facts (the result in transit,
     a store's part class, a Loan's Borrow atom) and the bit's representation. The later SPEC session keeps RZ, G86, G159 (2), G158 (3),
     B 3.4's 15.4.2 gap and PLAN G160's N2.
+- **R4-M123 Closure calls as receiver calls in SPEC (R4-M99), with retention by permissions, the derived catch-all and a bare entry's
+  Origin** (owner, 2026-10-25, verbatim answers to the R4 planning session's questions after 2x-P7: D1 「(a) §7.7.2 の許可で決める (推奨)」,
+  D2 「(a) 本体局所の源に限る (推奨)」, timing 「(a) 今開き、2c-D の設計と並行 (推奨)」, F3 「以下で決定します。(b) BU-28 を SPEC の読みにする（元の
+  Origin）: 借り直しの子が親と同じ長さを持てる、と SPEC を直します。」; unit spec-closure; R4-M99's proposal, now
+  `draft/Changes/2026-10-21 Closure Calls as Receiver Calls.md`, closed as 取り込み済み)
+  - SPEC 15.8.2, a paragraph before the table: R4-M99's sentence ("A Closure body is checked against its call receiver (7.7.3) as an
+    instance function's body is against its receiver: its environment bindings are Fields of the receiver's referent, so its result
+    Origins, containment (15.6.3) and retention (15.6.4) follow the receiver rules."), then "Each environment binding's permissions stay
+    those of 7.7.2, and retention into the environment follows them, since no Closure body can replace its environment: an Exclusive
+    call may retain an argument in its `var` bindings and in the referents of its captured exclusive references." (D1; 2x-P7's m-rc1
+    and m-rc2 show the permissions), and the table as a restatement. Second paragraph: "by the receiver rules"; the catch-all becomes D2's "a
+    source whose Origin is body-local, such as ..., is Refuted at the returned value, ... while a source of Origin `static`, such as a
+    Borrow of an immutable static Field, outlives it", merged into the sentence R4-M122 cites. Third paragraph: ordinary elision
+    (15.4.3) without the hidden receiver (OQ-C2 (a), t6b), with its reason (3.2.1, 8.10).
+  - 15.6.5: the fixed-Origin sentence for Closure bodies is deleted (the call receiver is the body's receiver, the captures' Origins its
+    referent's, the inferred result's Origin is fixed by 15.8.2); the body-local sentence cites 15.8.2 ("Fields of its call receiver's
+    referent"). 7.7.4: "its result contract does not depend on its receiver".
+  - F3: 3.5.1 "an outer Origin within the parent's, possibly the parent's own"; 7.7.2: a bare entry's child's Origin is "the meet of the
+    Origins that contain it (15.6.3)", the source's Origin for an enclosing local or parameter (BU-28's reading, both pipelines). Sound:
+    uniqueness comes from the conflict rules and Reborrow containment, not Origins (15.5), and Origins keep no Loan live (15.6); the
+    entry's child Loan, carried by the Closure and by what a call retains, keeps the parent suspended while any carrier may be used.
+    Rejected: the source's Origin through a borrowed outer receiver (an inner Closure holding `uniq` access could leave the outer call
+    without depending on its receiver, and a second outer call would give a second live path: probe n1, `Unsupported_Kd` today under
+    R1); the parent's Origin for every Reborrow (`var first = r; first = local@uniq` for a parameter `r` would become Refuted; reading).
+  - Examples (15.8.2): `update` (copyOut's `let` binding and `i32` referent keep nothing, remember's `var` binding does), registered as
+    `15.8.2-environment-retention` with the old path's conflict at `z@follow = 42` as (a); `take` (F3 and the table's third row in a
+    Consuming call), `15.8.2-bare-entry-origin`, with R1's `Unsupported_Kd`, Binding's on both paths, as (b) until 2c-5.
+  - Verdicts against the SPEC before: D1 none (f7o is valid by 7.7.2; the default pipeline's rejection is an old-path limit until
+    R6-check, STATUS); D2 `func () => Limits.max@ref` valid (P42's `Unsupported_Kd` on both pipelines); F3 t4a and t4e valid (Unknown
+    before): a relation between a bare-entry binding's Origin and its parent's through no borrowed receiver. t4g, r1a–r1f and nested
+    entries are unchanged (receiver containment, 15.6.3). No SPEC example, spec-cases, pair-cases or mutation row and no implementation
+    verdict changes.
+  - Rationale and Principles (the proposal's §7). One Concept: a closure call's results, containment and retention use the receiver
+    rules, and the table is a restatement; receiver selection (7.7.3), permissions (7.7.2) and elision (15.8.2) stay the closure's own,
+    each stated once. Local Reasoning: a Closure body's Origins read like a method body's, and what an Exclusive call may retain follows
+    from its binding list. Explicit Semantics: the retention rule, the catch-all and an entry's Origin are stated. Compiler Server
+    Protocol: closure results are reported with the receiver vocabulary methods use.
+  - Settles R4-M99's SPEC step. Supersedes the proposal's §6 reading of 2c-2's Exclusive row ("the environment and captured exclusive
+    referents"): `var` bindings and captured exclusive referents (D1). 2x-P7's record is `draft/Sketches/A5 Step 2/2x-P7 round/`.
+  - 2c-D implements (p7-round §7): per admitted case the receiver rules; C2's retention rows (Exclusive into `var` bindings, layer 1 of
+    the holder, and captured exclusive referents; Consuming into captured exclusive referents, a result naming a capture Origin
+    retaining the whole receiver argument, t5b; Shared none); result rows by 15.6.3's walk with the receiver up to the first shared layer
+    (G6); an inferred result's Refuted source at the returned value with the Closure typed (G7, F2) and a static source valid; elision
+    without the receiver; the entry's meet (n2b: both pipelines accept a nested entry's `during u` that SPEC rejects); 2c-5's receiver
+    substitution in place of R1's `Unsupported_Kd`.
+  - Open: p7-round's F1, F2 and G1–G13 stay with the planning session and 2c-D; `15.8.2-closure-dependencies` now classes the same R1
+    record (b), as Binding's record both paths publish (the review's ruling; its old-path-only Refuted code is named in the note). Numbering: R4-M123 is free on dev and every remote and local branch.
 - **R4-M125 A local's declaration Binding rejected declares its local** (2026-10-25; unit G241, the R4 planning session's design B
   after R4's triage, R5 agreeing to the builder site; PLAN G241, G103's "a name of an Error local" term) SPEC 6.6, 3.6, 23.1.2.
   - Cause: the builder declared no local for a `let`/`var` Binding rejected (Op Error): `Statement` built its value into a statement
@@ -3479,6 +3526,56 @@ and migration obligations remain in force; no numeric cap changes are authorized
     unreachable for A1 and A5 until P42 (every static Borrow is Binding's `Unsupported_Kd`); its fix, a StaticInit body holding the
     derived value under R4-M121's rules, is P42's. A rejected assignment to an uninitialized local now reaches A1's reads of an Opaque
     site's roots (`UninitializedPlace_Kd` at the assignment and the next use), as with a valid declaration: PLAN G105's family.
+- **R4-M126 A5-F7's design package (2c-D) approved: Closure calls as receiver calls in the existing owners** (owner, 2026-10-25,
+  relayed by the R4 planning session, verbatim answers: OQ-F7-1 「(a) すべて承認 (推奨)」, OQ-F7-2 「(a) 削除する (推奨)」, OQ-F7-3
+  「(a) メソッドと同じ規則 (推奨)」, on the review groups 「(a) 単独で入れる (推奨)」 (D-10, with AB-2's adaptation), on the implementers 「0c だけ BU (推奨)」
+  (relayed by BU, confirmed in R4's dialog: 「はい、そのとおり」); R4-M74 OQ2, plan PD5) The package is `draft/Sketches/A5 Step 2/2c-D-package.md`
+  (design B as the base with parts of design A, merged by the full-process design review, whose blocking B1–B5 it resolves, and
+  cleared by the review's re-check, ACCEPT WITH FIXES, its F1–F6 applied; the designs and the review are beside it as `2c-D-design-A.md`, `2c-D-design-B.md` and `2c-D-review.md`).
+  Implementers: R4 for every unit but 0c (2c-4), which is BU's. Units and review forms (DEC Q6, PD29): 2c-0, 2c-1 and 2c-9 one
+  review each; 2c-2, 2c-3B, 2c-3 and 2c-5 one design and one review each, BU reviewing every Binding part beside R4's reviewer
+  (R4-M119) and R5 2c-2 and 2c-3 (AR-2), each merging alone; 2c-4 is BU's 0c (BU's review and R4's), after 2c-3's merge and never
+  before it; G:A5-F7, one group review, is 2c-6 and 2c-7, whose closing review covers 2c-3–2c-6 end to end. Order: 2c-0, 2c-1,
+  2c-2, 2c-3B in lane B; 2c-3 after 2c-3B and G:A5-F4's merge, then 2c-4; 2c-5 after 2c-3; 2c-6 and 2c-7 last; 2c-9 any time in
+  lane B. In short:
+  - Rule (R4-M99, R4-M123): a Closure body is checked against its call receiver ρ (`ClosureValueSlot`'s atom) as a method body is
+    against `self`. A walk that reaches an environment binding through a layer stored in it meets ρ (BU-27's C3, G6); a nested bare
+    entry of an outer binding takes `meet(o, ρ_outer)` (R4-M123's 7.7.2; an exception to BU-28's "source's Type"). Once a Closure is
+    classified, `OriginAtUse` resolves its environment atoms to ρ under a borrowed receiver and ρ to `static` under `owner/Self`;
+    before that both are pending, fitted as local regions and routed at the outermost pending Closure's classification as binding
+    time routes them (every path classifies; a binding's pending entries leave with it, entries whose obligation was removed are
+    skipped; unclassified atoms Dependent in the view).
+  - C2 is `BoundClosure`'s facts (the strongest receiver for acquisition, a per-capture bit and the case-free receiver for each
+    case, `Classified`); retention is `TyCtxt.Retains` with the receiver at input 0 (D1: a `let` binding is not written; the memo
+    key holds the instance Closure Type); MirBorrows maps input 0 to the callee operand and stores through W (rule G, P13);
+    `HoldsLoans` walks a concrete Closure's components.
+  - Results are formed after classification: each position the meet of its admissible sources, `static` with none, the CallResult
+    atom when every source is Refuted or failed; CallResult becomes `Unbound` at a call, an R4-M118 row ("a later site adds a row
+    under it"); one `ResultFit` row per returned value at the returned value. Value calls substitute ρ by the receiver acquisition's
+    Origin, a returned Closure value's call signature through its closure context with the same map. G216: h1 and h2 are valid
+    (SPEC 15.3.4).
+  - Departures approved (OQ-F7-1 (a)): (i) no `ClosureContract`, no `TyCtxt.Closure` view and no MIR-builder receiver Origin;
+    (ii) A3 P4's Closure clause retired (ER-closure-stores, an A3 erratum numbered by 2c-3); (iii) PD13's located `Unsupported_Kd` is
+    R4-M73's view hold whenever a call's acquired receiver is stronger than its view's case receiver; (iv) S3's result formals are not
+    built (S3-0's gate R moot); (v) the old Emission's element-borrow Origin check compares modulo ρ until R6-gen (D5); (vi) OQ4 (a)'s
+    gate is program-level in the old Analysis, reporting `Unsupported_Kd` at each call meeting R1's exact condition (a Transitional
+    fact on the value call's plan, read from the final binding) and analyzing nothing else, `ResultFixedForCall` kept as its input
+    until R6-check.
+  - OQ-F7-2 (a): `CallLocalOrigin` is deleted in 2c-5; Binding reports an inferred result's Refuted source at the returned value on
+    both pipelines (G7 closes on both), the Closure keeping its Type (F2). OQ-F7-3 (a): rule G's self-store row applies to Closures as
+    to methods (v4, c-f7c-ok, f7h2's uniq view rejected on the MIR; f7c, f7d get a second record); GXS stays unscheduled; 2c-3
+    reports the ledger count.
+  - Supersedes: the plan's 2c-2 row (`TyCtxt.Closure(k)`, `TyCtxt.Closures.cs`) and 2c-0's token reason (Q9); 2x-R11 (not needed);
+    R4-M99's proposal §6 on D14's walk and the MIR builder; 2a0-D §3 row 4's interim and D19's "Environment atoms are Finite until
+    2c-6"; PD13's "`CallLocalOrigin` stays until R6-check's H11"; the S3 plan's C2 formals; AB-2's "lands in G:A5-F7's dev merge"
+    (2c-4 follows 2c-3's merge, BU confirming); PD6's "BU implements Binding acceptance rules" for 2c-3B (R4 implements it).
+  - Rejected: design A's view row 4 per receiver with a builder receiver Origin and ρ judged before classification (two classes of
+    one atom; false errors on valid Consuming bodies); design B's §15.4.2 error for h1/h2 and its narrower gate (the default would
+    accept t5b and n1); rebinding a Closure body once its receiver is known; per-case callee acquisition (PLAN G13); the receiver at
+    input n; a per-call gate in `CallValue`; PD13's per-Loan witness fact (OQ-F7-1 (b)); `CallLocalOrigin` until H11 (OQ-F7-2 (b));
+    GXS before R4's exit or a hold for rule G's forms (OQ-F7-3 (b), (c)).
+  - Numbering: R4-M126 is free on dev and every remote and local branch (R4-M118 on 2a-1c; R4-M120 and R4-M124 on 4b; R4-M125 on
+    G241).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -4701,7 +4798,8 @@ resumed by R4-M86 (2026-10-20).
   is reached only through instance shapes, which state no raw Origin, so it reads Unstated with `RawMembers(instance)` complete and empty
   whatever the program states — never Shared, not a regression (the reader threw), and G160-4 (B′ §4.4) reads Unstated as a concrete
   exclusive reference. Open (PLAN at merge): that nested case (nested paths in the reader, full process, or shapes that keep Type
-  arguments' raw Origins); Binding keeps a pair argument's raw Origin, which SPEC 8.1.1's raw row drops.
+  arguments' raw Origins; for Type slots since BU-34); Binding keeps a pair argument's raw Origin, which SPEC 8.1.1's raw row drops:
+  superseded by BU-34.
 - **BU-27** (2026-10-23; the BU planning session after the full process: designs A and B, the design review with R4's A5 part, the
   planning session's choice of B with A's `objuniq` Follow and A's residual issues; PLAN G226, G204, G192; unit bu27) A Borrow reached
   through safe borrow layers (`ref`, `uniq`, `objref`, `objuniq`, a pair layer by its admitted cases) is contained in each from its
@@ -4814,6 +4912,9 @@ resumed by R4-M86 (2026-10-20).
     15.3.4): its fix extends `EnclosingAtom`'s chain to named nested functions, not a second rule. Row 5's call result is Fixed in the view
     and finite in the judge (display only today; for 2c-D). PD21: the classes moved first (behavior-preserving) into
     Binding.OriginClasses.cs; Binding.OriginProof.cs's count restarted at 2a0-4's split.
+  - SPEC reading (R4-M123, F3, owner 2026-10-25): a bare entry's binding has "a captured reference's Origin" when no borrow lies
+    between it and the entry's parent (an enclosing local or parameter, or an outer environment binding in a Consuming outer call); SPEC 7.7.2 gives the meet of the Origins that contain the child, so a nested entry through a
+    borrowed outer receiver is also within that receiver, which `EnclosingAtom` does not give (n2b accepted on both pipelines; 2c-D).
 
 - **BU-29** (2026-10-23; the BU planning session; PLAN G170 unit C2, bu30, under PlanB C and C1's owner-approved contract,
   `draft/Sketches/G170/C1/C1-design.md` §5 and §8; one design, one review, Q6) `Binding.ContractSolver` owns premise derivation and
@@ -4929,7 +5030,7 @@ resumed by R4-M86 (2026-10-20).
     walk's own (a second copy of BU-12's limits).
   - Open: a raw layer a pair parameter supplies reads the Origin Binding keeps (`Holder<raw/i32 during x>`: Exclusive, not untied);
     SPEC 8.1.1 drops it (R4-M117 item 4 keeps that rule), and a later BU unit changes Binding's checking and these rows together (R4's
-    N1). The review's N2, for a later SPEC session before G160-5 (R4 puts it to the owner; its rows are a later BU unit): a raw layer that
+    N1): superseded by BU-34. The review's N2, for a later SPEC session before G160-5 (R4 puts it to the owner; its rows are a later BU unit): a raw layer that
     is not the argument gets no row of its own value, one inside a Tuple or Option argument (`f(t: (raw/i32, i32), slot: raw/(raw/i32))`)
     or a pointer read through a raw or borrowed argument (`p: raw/(raw/i32)` or `r: ref/(raw/i32)` into `slot`), since Content follows
     Origins and 15.6.4 names only a raw pointer argument. A result's holds include positions behind a borrow, as D6's raw layers do
@@ -4966,6 +5067,50 @@ resumed by R4-M86 (2026-10-20).
     Rejected: moving or copying storage to the macro (breaks legacy readers or duplicates the decision), adding a source field to
     CallPlan (extra state while retaining the redundant Group), or a new IR/table. The existing view row corrects the public subject
     without another allocation; removing Group work is expected to preserve compilation and native costs.
+
+- **BU-34 A pair slot binds a raw argument without its Origin** (2026-10-25; the BU planning session after the full process: designs A
+  and B, the design review's choice of B's structure with A's name; unit bu34; R4's A5-facing review: accepted with the two record
+  fixes below) SPEC 8.1.1's raw row, which the owner kept (R4-M117 item 4, 「推奨の通り、落とす規則を残します。SPEC は変えず、Binding を
+  SPEC に合わせます。」): a `raw/T during o` argument fits a pair by dropping its Origin, so the slot binds `raw/T`, which its original
+  `s/T` denotes (8.1.2). Binding kept the argument whole: it rejected valid forms (`Holder<raw/i32 during x>.init(v: q)`, `q` unstated),
+  accepted invalid ones (`id(p)` returned `during x`), and the raw steps and rows read the dropped Origin (BU-30's Open).
+  - One rule, `TyCtxt.PairBinding(W)`: a raw W stating an Origin gives `Pointer(target)`, any other W itself (a property pattern, so no
+    raw-role site is added). Its two callers are the two points that hold slot arguments: `TyCtxt.Intern`'s private pre-pass
+    `PairBindings`, before the hash and only when a Component's `CarriesRawOrigin` bit is set (an inlined guard; the unguarded call cost
+    about 0.5% warm Bind), for `Constructed` (Component i of a schema slot of Kind Pair, an enclosing declaration's slots and
+    Contract references included) and `FunctionItem` (the slot's Component by `Binding.ItemComponent`, the Item layout's one statement,
+    which `CopyItemArguments` and `ItemTypeArgumentCount` read since the restructuring commit), writing one reused TyCtxt scratch (0 B
+    warm); and `SubstituteTypeCore`'s pair arm, where an original `s/T` reads `PairBinding(arguments[slot])` before the unchanged
+    annotation branch. Invariant (TyCtxt.cs's head): no instance or Item states a raw Origin on a pair slot's argument. Neither point
+    suffices alone: Intern never sees a call's argument list (`id<raw/i32 during x>(q)`), the arm never a written instance.
+  - P1 (the planning session's SPEC reading): `Holder<raw/i32 during x>` and `Holder<raw/i32>` are one Type, and so are the Items
+    `id<raw/i32 during x>` and `id<raw/i32>`, and `Outer<raw/i32 during x>.Inner` and `K<raw/i32 during static>` with their unstated
+    spellings: the fit (5.7, 3.8) is what the slot receives; a Type parameter denotes the one Type its declaration binds (8.2.3); a
+    conformance's identity uses the normalized bindings of its Type arguments (8.6.1). A fit-only reading gives two Types with identical
+    members (Principle 1), which the duplicate checks already identified (two overloads, two `Self is` clauses).
+  - Consequences: an unstated value now fits a constructor, a Field write, a Case payload, an explicit or annotated call, an Item, a Type
+    slot forwarding the pair, a Contract's requirement (`Self is K<raw/i32 during static>`), an Origin slot's Field and an associated Type;
+    reading the slot's binding as stating the dropped Origin is now UnsatisfiedOriginRelation_Kd at the value, through each of those and
+    through nested instances, `Option<s/T>`, a generic caller and a Closure parameter. A pair-supplied raw layer steps Unstated with
+    complete, empty members, and its holders take D6's untied rows (`uniq/Holder<raw/i32 during x>` with `p`: `2 Value store 1, untied
+    store 1`). No library, milestone or SPEC example forms such a Type (the review's census of 536 programs; the diagnostic snapshot is
+    unchanged); the old analysis reads the same Types as the unstated spellings; diagnostics and Hover show `Holder<raw/i32>`.
+  - A5 (R4's review, probes in R4's `r4-notes\s2-bu-a5\`): A5 needs no change; with 4b (`claude/a5-g160-4b`), a stated spelling gets
+    exactly its unstated spelling's A5 records: Φ_E conflicts where the stated Origin tied the pointer, P13 holds on a pair-supplied
+    layer stepping Exclusive released, and conflicts that rested on rows naming the dropped Origin's input gone (SPEC 8.1.1, 5.7).
+  - Residual R1: `CallPlan.TypeArguments`, `Subst.Types` and closure contexts keep W, so one instance has two Substs and a call displays
+    `id<raw/i32 during x>` where its Item is `id<raw/i32>`. Rule: a reader takes a slot's binding only through `Apply` (the arm). It
+    governs A5's `MirBorrows.CallRows.Retaining` (`TyCtxt.Retains` over `MirCallee.Subst`, read only through `Apply`), A4's
+    `Apply(atom.Type, subst)` and `MirCases.Views`; an A5 change reading `Subst.Types` or `CallPlan.TypeArguments` as a binding departs
+    from it. Removal: canonical Substs once R7's CallPlan pipeline reads Substs only.
+  - Rejected: A's `PairArguments` in Binding.PairCases (the component walk and scratch outside the interner, one more raw-role site);
+    the arm alone (two Types for one instance, rows keeping the dropped Origin); the Intern pre-pass alone (a function's slots keep W);
+    canonical argument lists at every binding site (six or more copies, result Types formed before most); a split (s, T, o)
+    representation (a vocabulary entry; every reader of W changes); readers skipping the Origin (a copy per consumer, Types still state
+    it); rejecting a stated raw argument (SPEC says it fits); canonical Substs now (a third slot mapping; R1's removal instead); a
+    copying pre-pass (allocates at every warm hit; `RetentionTest.WarmRebindReusesRetentions` guards the scratch).
+  - Supersedes BU-24's G160-2b open item "Binding keeps a pair argument's raw Origin" and the first sentence of BU-30's Open; BU-24's
+    nested item narrows to Type slots (`Local<Local<raw/i32 during y>>`).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
@@ -7763,3 +7908,78 @@ structure is recorded here by the unit that first implements it.
   Reading: 「同じ制約」 is R4-M119's rule, so 「実装者はレーンごとに最大 2」 is its "one per lane, at most two" (the planning session's
   wording of the owner's choice). Unchanged: the full process, R5-M18's one design and one review per unit under the packages (DEC Q6),
   merge windows announced to R4 and BU, and R5-M8's checks.
+- **R5-M114 VTables and virtual dispatch in MIR code generation (C6c)** (2026-10-25, C lane; plan C6c, package C 3.2 I8 and input 3, K
+  package 4.3's VTable row and 4.5 rows 3-5, package F 4.2-4.3, S2-S4 X5; SPEC 6.4.1-6.4.6, 7.3.1, 10.7, IMPL 21.1.3; the planning
+  session's go and rulings Q1-Q5 on C6c's design, `c6c-design.md`; under R5-M18 form 2 (G:object), R5-M62, R5-M69, R5-M74, R5-M108 and
+  R5-M110)
+  - Table (`ModuleCodegen.Objects`' Table): a VTable item's text is its descriptor's virtual table, `ObjectCreation.VirtualSlots`, which
+    `ObjectRuntime.WriteObject` writes (one per descriptor: both are keyed by the erased payload, the descriptor the VTable's one admitter),
+    so the VTable item writes nothing of its own. In slot order (`VTableDef.Implementations`), slot s runs the next of the VTable's targets
+    whose body's definition is `Implementations[s]` (R5-M74's pairing), called by that body's own signature `__kimi_f<item>`, which SPEC
+    6.4.1 makes the slot's (Abi reads no Origin); a slot without one has none (`ptr null`): a refuted slot (R4-M28), which no call reaches
+    (SPEC 6.4.3: a call and an Item acquisition need its premise), or a refused admission, whose collector record fails the check; a target
+    left unpaired is `InternalInvariant_Kd` at the VTable's site. Kept per item and Write, the previous array reused while equal.
+  - Slot (`VTableDef.SlotOf`, ruling Q4 (b), its own commit before the rows): the slot an original or an override runs is its index in its
+    owner's `VTableDef.Implementations`, the same in every table of its family; `InstanceCollector.Generates` reads it in place of its
+    inline copy. A call through a slot loads the slot's entry from the object its receiver argument borrows (`FunctionCodegen.Objects`'
+    EntryOf): the header `ObjectRuntime.PayloadOffset` before the borrow (R5-M110 Q2; C6a's proposed open issue closes), its descriptor,
+    the descriptor's table at the new `ObjectRuntime.TableOffset` (24), the slot's word.
+  - One callee value (ruling Q2 (a), the restructure before the rows): `WriteCall`'s callee is one value, the routine's symbol or an entry
+    pointer (an erased value's table entry, a slot's); `Runs` returns `Run(Signature, Slot)`, and `Invoke` and `Forward` take the slot,
+    which only makes that value (EntryOf), never how a call is written.
+  - Signature (ruling Q1 (a), `ModuleCodegen.Signatures`' Slot): a call through a slot takes, and every entry of the slot has, the
+    original's parameter and result Types (`TyCtxt.Signature`, package C 3.2's input for a virtual slot) under the dispatching
+    substitution, each in the item's instance by `InstanceCollector.TypeOf`, under the internal convention without flags (no virtual function
+    is a caller-location library function), unnamed and kept with the erased entries' signatures (`Unnamed`). The dispatching substitution is
+    a Virtual callee's own, or an Item's (`TyCtxt.SubstOfItem`, the pure substitution its Type makes, R5-M43): no substitution is composed in
+    code generation. So a Never result is exact where a diverging call's shared destination or an adapter's target result (SPEC 10.7) is not.
+  - Calls: a Virtual callee (no target, X5) is called through its original's slot under `Slot(original, Subst, item)`, the receiver first;
+    a virtual function's Item (no target, X5) runs its slot (`Runs`) under the Item's signature in its Value call and in its ItemAdapter's
+    entry, which is the erased virtual Item's thunk (no `__kimi_virtual_item` function); a body target runs at its signature and through the
+    slot its definition runs when it runs one (`FunctionCodegen.Calls`' BodyRun), the one rule of a requirement's witness (SPEC 6.4.6: a
+    virtual witness maps to its slot), which a Requirement call and `Runs` read (ruling Q3 (a)); a Fn callee calls the function it names,
+    a direct base call included (SPEC 6.4.4). Receivers reached through reference layers need nothing more: the builder borrows the
+    payload through them and upcasts it to the slot's view (`MirBuilder.Dispatched`).
+  - E9 (plan row E9, P34_REMAINING R1; ruling Q5 (a), its own commit, since it passes under sel before C6c's rows): the reproducer
+    `InheritedObjectCallTest.ReceiversThroughReferenceLayersReadTheirBaseSubobject`, a base getter and `ref/Self` method through
+    `ref/(ref/Leaf)`, `uniq/(uniq/Leaf)`, `ref/(obj/Leaf)`, `ref/(rc/Leaf)` and `uniq/(obj/Leaf)` (a virtual call too through the object
+    forms), each a fixture with the SPEC result; the old generator reads the reference's own slot, so its outcome is the deviation
+    `receiver-layers` (class (a), R5-M85's and R5-M106's form, `LegacyNative`): the first check's `KIMI_E_ABORT`, an address's low
+    bits never being 7. The old path's miscompile stays frozen (R5-M6; U7 or G7).
+  - Restructured first, behavior unchanged: the unnamed signatures' search in `ModuleCodegen.Signatures` (`Unnamed`); `VTableDef.SlotOf`
+    and the collector's use of it; the Run channel above.
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M115): the `VirtualDispatch` corpus kernel's O2 A/B (plan row
+    C6c, R5-M8) moves to the later of C8d and C9c, since the kernel needs `Array<objref/Shape>` (C8d) and the interpolated checksum (C9c)
+    under MIR code generation, as R5-M105 and R5-M111 moved ErasedCalls' and SharedHandles'; C6c measures a fixed-array variant as
+    information.
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M115): plan row C6c's Milestone 44 moves to C9c: the program
+    interpolates in `describe` and in `drop`, which are C9c's rows; with C6c its only records under sel are those interpolations, and an interpolation-free copy prints the
+    old generator's lines.
+  - Rejected: entries of a per-slot signature checked against each body as the old generator's `SameAbi` (the check needs the original's
+    substitution at its declaring layer composed in code generation, for an equality SPEC 6.4.1 and the validator give); a dispatch thunk per
+    original (a function no item names, R5-M108's rejected per-target entries, one call more at O0); the slot signature from the call's own
+    Types (wrong for a diverging call's shared destination, absent for a Never source's adapter); the callers of `Runs` re-deciding dispatch
+    (a second copy of R5-M108's decision); a slot or receiver field on the shared `FunctionAbi`, or a side table from signatures to slots;
+    pairing slots with targets by position or by recomputing `Applies`; an empty or partial table; dispatching every body target that runs
+    a slot (a direct base call is a Fn callee of an override's body); a collector target for a Virtual call or a virtual Item, the original's
+    body for its ABI (X5, R5-M74; a body no path runs); the VTable item writing a constant of its own that the descriptor names (the shared
+    text and the old `.ll` would change); the collector publishing a slot's Types (a wrapper over the same TyCtxt reads); a codegen copy of
+    the slot lookup beside the collector's (ruling Q4: a second copy of the rule).
+  - Verified: the sel ledger loses 44 rows (object 41, call 2, C-frame 1), every row the census reached but four other units hold (string
+    `==`, C8c: 2; interpolation and Builtin rows, C9: 2); the 36 `Virtual*` fixtures (the census's 35 new and `VirtualRows`),
+    `FunctionReferenceCondition*`, `OverrideResult*` and C6a's object and closure families run natively under sel at O0 and O2;
+    `FunctionCodegenTest` (C's table of an override, an inherited body and a base's slot, a refuted slot's null, one descriptor per erased
+    payload; Virtual calls at slots 0 to 2 from the receiver's header, a receiver behind a zero-sized parameter with a result slot, a borrow
+    result, a generic body; a virtual Item's Value call and adapter, a Never source's adapter under its own signature; a virtual witness;
+    a direct base call; `VirtualRows` natively under both generators; M9's 0 B and I1 over the `Virtuals` source), `VTableDefTest`'s
+    SlotOf. O2 (information, a `[4 of objref/Shape]` variant of `VirtualDispatch`, its checksum required against the kernel's legacy value):
+    old generator A against sel B at O2, 15 interleaved samples: CPU B/A median 1.000 (mean 0.985, 0.82-1.11 at the 16 ms tick), within A's
+    consecutive spread 0.82-1.44; 393 against 392 instructions, the same calls (three indirect slot calls).
+- **R5-M115 The owner confirms C6c's departures** (owner, 2026-10-25, on the R5 planning session's explanation after C6c's design and
+  its reviews, before its merge; verbatim 「4件の逸脱を承認します」, answering the four departures put to the owner together, C6c's two
+  and C8b's two (R5-M117); the consequences are the planning session's) The two departures R5-M114 records are confirmed: the
+  `VirtualDispatch` corpus kernel's O2 A/B (plan row C6c, R5-M8) moves to the later of C8d and C9c, since the kernel needs
+  `Array<objref/Shape>` (C8d) and string interpolation (C9c) under MIR code generation, as R5-M105 and R5-M111 moved ErasedCalls' and
+  SharedHandles'; C6c measured a fixed-array variant as information (B/A median 1.000); and plan row C6c's Milestone 44 moves to C9c,
+  since its program interpolates. The later of C8d and C9c runs the corpus A/B under R5-M8, and C9c runs Milestone 44 under MIR code
+  generation. They leave the list.

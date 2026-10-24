@@ -38,6 +38,18 @@ public sealed class VTableDefTest
         Assert.Equal([1, 3, 1], new[] { "pick", "extra", "again" }.Select(x => VTableDef.Slot(Function(c, x))));
     }
 
+    // SlotOf: the slot an original or an override runs, the index Implementations holds it at in its owner's table (and every table that
+    // inherits it); a function that runs no slot has none.
+    [Fact]
+    public void SlotOfIsTheSlotAnOriginalOrAnOverrideRuns()
+    {
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal([0, 1, 3, 1], new[] { "first", "pick", "extra", "again" }.Select(x => VTableDef.SlotOf(Function(c, x))));
+        Assert.Equal([2, 0, 1], new[] { ("Mid", "last"), ("Leaf", "first"), ("Part", "again") }.Select(x => VTableDef.SlotOf(Member(c, x.Item1, x.Item2))));
+        Assert.Equal(-1, VTableDef.SlotOf(KotoTree.Walk(Container(c, "Base")).OfType<FunctionKoto>().First(static x => x.IsConstructor).SymbolOf()!));
+    }
+
     // Milestone 44, the virtual kernel: DeskLamp replaces power and inherits Lamp's kind.
     [Fact]
     public void TheVirtualMilestoneHasItsTables()
@@ -134,6 +146,10 @@ public sealed class VTableDefTest
 
     private static BindingSymbol Function(Compilation c, string name)
         => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == name && x.IsVirtual).SymbolOf()!;
+
+    // A struct's own function of a name (its override).
+    private static BindingSymbol Member(Compilation c, string container, string name)
+        => KotoTree.Walk(Container(c, container)).OfType<FunctionKoto>().Single(x => x.Name == name).SymbolOf()!;
 
     // The condition of Base's conditional-conformance Block.
     private static IsKoto Condition(Compilation c) => KotoTree.Walk(Container(c, "Base")).OfType<IsKoto>()

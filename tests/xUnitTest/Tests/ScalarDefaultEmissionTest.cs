@@ -35,7 +35,9 @@ public class ScalarDefaultEmissionTest
     [Fact]
     public void PreparedElementReceiverCannotAliasAnotherArgument()
     {
-        var c = MinimalEmissionTest.Analyze("func f(x: (i32, i32), other: (i32, i32), y: i32 = x.0) -> i32 => y\nf((1, 2), (3, 4))");
+        var c = MinimalEmissionTest.Analyze(
+            "func f(x: (i32, i32), other: (i32, i32), y: i32 = x.0) -> i32 => y\nf((1, 2), (3, 4))",
+            codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f");
         var source = KotoTree.Walk(function.Parameters[2].DefaultValue!).Single(static x => x.SymbolOf()?.Kind == BindingSymbolKind.Parameter);
@@ -334,7 +336,7 @@ public class ScalarDefaultEmissionTest
     [Fact]
     public void PreparedReadCannotAliasAnotherAcquiredArgument()
     {
-        var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32, z: i32 = x + y) -> i32 => z\nf(2, 4)");
+        var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32, z: i32 = x + y) -> i32 => z\nf(2, 4)", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.IsGenerated);
         var read = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Read);
@@ -355,7 +357,7 @@ public class ScalarDefaultEmissionTest
     [InlineData("order")]
     public void CorruptDefaultPlansFailBeforeWritingAndRecover(string mutation)
     {
-        var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = x + 1, z: i32 = y + 2) -> i32 => z\nf(2)");
+        var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = x + 1, z: i32 = y + 2) -> i32 => z\nf(2)", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => x.CallOf()?.Target.Name == "f");
         var plan = call.CallOf()!;

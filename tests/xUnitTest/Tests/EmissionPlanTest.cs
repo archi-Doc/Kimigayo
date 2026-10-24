@@ -51,7 +51,7 @@ public class EmissionPlanTest
     [InlineData("conditional-cleanup")]
     public void UnsupportedOrIncompleteLoweringNeverWritesFallbackIr(string mutation)
     {
-        var c = MinimalEmissionTest.Analyze("Console.writeLine(\"a\")");
+        var c = MinimalEmissionTest.Analyze("Console.writeLine(\"a\")", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out _)); // Exercise reuse after a previously successful plan.
         var body = c.Ownership.Bodies.Single(x => ReferenceEquals(x.Function, c.Kotonoha.GeneratedFunction));
         var firstEdge = body.EdgeHeads[0];
@@ -125,10 +125,12 @@ public class EmissionPlanTest
     {
         var c = MinimalEmissionTest.Analyze("Console.writeLine(\"a\")");
         var ir = CompilationTestHelper.WriteIr(c);
-        foreach (var abi in new[] { RuntimeAbi.Entry, RuntimeAbi.Exit, RuntimeAbi.WriteLine, RuntimeAbi.DestroyString })
+        foreach (var abi in new[] { RuntimeAbi.Exit, RuntimeAbi.WriteLine, RuntimeAbi.DestroyString })
         {
             Assert.Equal(2, ir.Split(abi.GetDefinition(exported: false)).Length); // Exactly one definition, no same-name declare.
         }
+
+        Assert.NotEmpty(GeneratedIr.Parse(ir).Startup.Blocks); // The program body, defined once whatever its symbol (IMPL 21.3.1).
 
         Assert.Contains(RuntimeAbi.Start.GetDefinition(exported: true), ir);
 

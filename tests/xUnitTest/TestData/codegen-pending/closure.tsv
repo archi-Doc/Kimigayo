@@ -1,9 +1,4 @@
 test	XunitTest.CallableEffectBoundTest.FunctionItemsUseTheirTransitiveEffects	XunitTest.CallableEffectBoundTest.FunctionItemsUseTheirTransitiveEffects(body: \"42\", valid: True)
-test	XunitTest.CallableSignatureInferenceTest.APerCallOriginLeavesTheSlotOriginOpen	XunitTest.CallableSignatureInferenceTest.APerCallOriginLeavesTheSlotOriginOpen
-test	XunitTest.CallbackEmissionTest.CorruptCallbackPlansAreRejected	XunitTest.CallbackEmissionTest.CorruptCallbackPlansAreRejected(defect: \"argument\")
-test	XunitTest.CallbackEmissionTest.CorruptCallbackPlansAreRejected	XunitTest.CallbackEmissionTest.CorruptCallbackPlansAreRejected(defect: \"capture\")
-test	XunitTest.CallbackEmissionTest.CorruptCallbackPlansAreRejected	XunitTest.CallbackEmissionTest.CorruptCallbackPlansAreRejected(defect: \"loan\")
-test	XunitTest.CallbackEmissionTest.CorruptCallbackPlansAreRejected	XunitTest.CallbackEmissionTest.CorruptCallbackPlansAreRejected(defect: \"signature\")
 test	XunitTest.CallbackEmissionTest.Executes	XunitTest.CallbackEmissionTest.Executes(name: \"ArrayResult\", source: \"let n: i32 = 7\\nlet f: () -> Array<i32> = func [n] () -> Array<i32> => [n, n, n]\\nlet a = f()\\nrequire a.length == 3 and a[2] == 7 else => $abort(\\\"array\\\")\")
 test	XunitTest.CallbackEmissionTest.Executes	XunitTest.CallbackEmissionTest.Executes(name: \"DirectStringResult\", source: \"let n: i32 = 7\\nlet f = func [n] () -> Array<i32> => [n, n]\\nlet a = f()\\nrequire a.length == 2 and a[1] == 7 else => $abort(\\\"direct\\\")\")
 test	XunitTest.CallbackEmissionTest.Executes	XunitTest.CallbackEmissionTest.Executes(name: \"FunctionArrayIteration\", source: \"let n: i32 = 3\\nvar fs: Array<(i32) -> i32> = []\\nfs.append(func [n] (v) => v + n)\\nfs.append(func [] (v) => v * 10)\\nvar acc = 1\\nfor f in fs@move\\n    acc = f(acc)\\nrequire acc == 40 else => $abort(\\\"iteration\\\")\")

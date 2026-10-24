@@ -1,0 +1,16 @@
+struct Store {o, q}
+    origin o outlives q
+    public let holder: uniq/(ref/i32 during o) during q
+    public init(holder: uniq/(ref/i32 during o) during q) => self.holder = holder@move
+    public func call(self: uniq/Self, b: ref/i32 during o) -> i32
+        self.holder@follow = b
+        return 0
+func use(z: uniq/i32, x: ref/i32, slot: uniq/(ref/i32 during x)) -> i32
+    origin z outlives x
+    var store: Store{k} = Store.init(slot@move)
+        origin k.o == x
+        origin k.q == slot
+    store@move.call(z@follow@ref)
+    z@follow = 42
+    return 0
+public func main() => ()

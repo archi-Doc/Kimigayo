@@ -6,9 +6,9 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-/// <summary>Semantics cases of pair binders (SPEC 8.15): the outer Origin <c>o</c> of a pair's whole Type (SPEC 8.1.1), the
-/// complete Type every pair layer takes in one admitted case, the bare-acquisition plan per case (SPEC 8.14) and the binders in
-/// scope of a body.</summary>
+/// <summary>Semantics cases of pair binders (SPEC 8.15): the outer Origin <c>o</c> of a pair's whole Type (SPEC 8.1.1; a raw
+/// argument's binding states none, <c>TyCtxt.PairBinding</c>), the complete Type every pair layer takes in one admitted case, the
+/// bare-acquisition plan per case (SPEC 8.14) and the binders in scope of a body.</summary>
 public sealed partial class Binding
 {
     /// <summary>The Semantics in <see cref="SemanticsMask"/> bit order, the enumeration order of Semantics cases (SPEC 8.15).</summary>
@@ -333,7 +333,8 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 8.1.1 table: the complete Type of one case over the direct target; only a safe borrow keeps the outer-Origin slot.
+    // SPEC 8.1.1 table: the complete Type of one case over the direct target; only a safe borrow keeps the outer-Origin slot (so the raw
+    // case states none, as a raw argument's binding does, TyCtxt.PairBinding).
     private BoundType Form(SemanticsKind semantics, BoundType target, BoundOrigin? origin)
         => semantics == SemanticsKind.Owner ? target : this.types.Intern(BoundTypeKind.Semantics, null, semantics, [target], origin: IsBorrow(semantics) ? origin : null);
 

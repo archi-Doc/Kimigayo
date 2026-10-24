@@ -92,7 +92,7 @@ public class ElementParameterMoveEmissionTest
     [InlineData("duplicate")]
     public void ConditionalPathFlagsRequireParameterInitialization(string defect)
     {
-        var c = MinimalEmissionTest.Analyze(Conditional);
+        var c = MinimalEmissionTest.Analyze(Conditional, codegen: CompilerCodegen.Legacy);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var body = c.Ownership.Bodies[1];
         var function = module.GetFunction(1);
@@ -130,7 +130,7 @@ public class ElementParameterMoveEmissionTest
     [InlineData("acquisition")]
     public void InvalidParameterPlansPublishNoIrAndRecover(string defect)
     {
-        var c = MinimalEmissionTest.Analyze(Conditional);
+        var c = MinimalEmissionTest.Analyze(Conditional, codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[1];
         var projection = Assert.Single(body.Projections);

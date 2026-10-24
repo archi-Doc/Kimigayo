@@ -26,7 +26,7 @@ public class SharedAbortEmissionTest
     [Fact]
     public void RejectsInventedNormalContinuationAndRecovers()
     {
-        var c = MinimalEmissionTest.Analyze("func fail(value: ref/bool)\n    $abort(\"stop\")\nlet v = true\nfail(v)");
+        var c = MinimalEmissionTest.Analyze("func fail(value: ref/bool)\n    $abort(\"stop\")\nlet v = true\nfail(v)", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "fail");
         var edge = body.EdgeStorage.FindIndex(x => x.Kind == OwnershipEdgeKind.Abort);
@@ -42,7 +42,9 @@ public class SharedAbortEmissionTest
     [Fact]
     public void ChangedEntryCannotExecuteCheckingOnlyCode()
     {
-        var c = MinimalEmissionTest.Analyze("func fail(value: ref/bool)\n    $abort(\"stop\")\n    Console.writeLine(\"after\")\nlet v = true\nfail(v)");
+        var c = MinimalEmissionTest.Analyze(
+            "func fail(value: ref/bool)\n    $abort(\"stop\")\n    Console.writeLine(\"after\")\nlet v = true\nfail(v)",
+            codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "fail");
         var after = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Produce && x.Source is Kimi.Compiler.Parsing.StringLiteralKoto { Literal: "after" });

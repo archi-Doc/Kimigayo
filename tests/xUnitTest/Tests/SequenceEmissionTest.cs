@@ -98,7 +98,9 @@ public class SequenceEmissionTest
     [InlineData("index")]
     public void MalformedSequencePlansFailAndRecover(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("let a: [2 of i32] = [1, 2]\nlet b: [2 of i32] = [3, 4]\nlet s = a[..]\nfor i in s.indices => s[i]");
+        var c = MinimalEmissionTest.Analyze(
+            "let a: [2 of i32] = [1, 2]\nlet b: [2 of i32] = [3, 4]\nlet s = a[..]\nfor i in s.indices => s[i]",
+            codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var index = body.Sequences.FindIndex(x => x.Kind == (defect == "index" ? SequenceOperation.Read : SequenceOperation.Slice));

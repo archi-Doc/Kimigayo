@@ -192,7 +192,7 @@ public class StringResultEmissionTest
     [InlineData("dominance")]
     public void MalformedResultPlansAreRejectedAndRecover(string defect)
     {
-        var c = MinimalEmissionTest.Analyze(Choice);
+        var c = MinimalEmissionTest.Analyze(Choice, codegen: CompilerCodegen.Legacy);
         var body = c.Ownership.Bodies[0];
         var result = Assert.Single(body.SlotResults);
         switch (defect)

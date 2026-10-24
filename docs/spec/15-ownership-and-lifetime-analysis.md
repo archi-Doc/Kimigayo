@@ -656,9 +656,9 @@ func visitCopies<U>(node: U)
 
 A body must work for every caller of its universally quantified signature. An Origin relation is judged Proven, Refuted or Unknown ([§8.3](08-generics-constraints-and-contracts.md#83-constraint-proof)). Origins are of three kinds:
 
-- A **fixed Origin** is fixed by the body's contract: a universal Origin, a parameter or receiver Origin, a projection of one, or `static`. In a Closure body, the Origins of its captures, of its call receiver and of a whole result inferred from the body ([§15.8.2](#1582-closure-dependencies)) are fixed too. A fixed Origin contains every point of the body.
+- A **fixed Origin** is fixed by the body's contract: a universal Origin, a parameter or receiver Origin, a projection of one, or `static`. A fixed Origin contains every point of the body.
 - A **finite Origin** belongs to a Borrow with an upper bound; each such Borrow has its own.
-  - A **body-local Origin** belongs to a Borrow anchored in a local, parameter or temporary root of the body, or in the receiver of a constructor or `drop` ([§6.3.4](06-declarations-and-containers.md#634-the-construction-receiver), [§16.3.1](16-scope-exit-and-destruction.md#1631-destruction-receiver)), reached by Field, element or owning-layer projections, never through a borrow or raw pointer; its bound is the body. Implicit Borrows and capture-entry Borrows ([§7.7.2](07-functions-and-callable-values.md#772-captures)) are included. A Closure's environment bindings are Fields of its call receiver, so borrowing them through a borrowed receiver is not body-local; in a Consuming call it is.
+  - A **body-local Origin** belongs to a Borrow anchored in a local, parameter or temporary root of the body, or in the receiver of a constructor or `drop` ([§6.3.4](06-declarations-and-containers.md#634-the-construction-receiver), [§16.3.1](16-scope-exit-and-destruction.md#1631-destruction-receiver)), reached by Field, element or owning-layer projections, never through a borrow or raw pointer; its bound is the body. Implicit Borrows and capture-entry Borrows ([§7.7.2](07-functions-and-callable-values.md#772-captures)) are included. A Closure's environment bindings are Fields of its call receiver's referent ([§15.8.2](#1582-closure-dependencies)), so borrowing them through a borrowed receiver is not body-local; in a Consuming call it is.
   - A Borrow of mutable static storage, including an inline part, is bounded by the body too: a relation that carries it to a fixed Origin, such as returning it or storing it through a parameter or a capture, is Refuted ([§15.6.4](#1564-calls)).
 - An **inferred region** is any other local Origin, such as a slot of an unannotated local's Type. A Borrow of a raw Place ([§5.2.2](05-raw-pointers-and-unsafe-memory.md#522-borrowing-raw-places)) has no upper bound of its own (through a pointer that states an Origin it is contained in that Origin, [§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins)), so its Origin is not finite; it is an inferred region. So is the Origin of a Borrow reached through a borrow: it has no bound of its own, and its containment in the borrows it is reached through follows [§15.6.3](#1563-reborrowing-and-region-splitting).
 
@@ -820,6 +820,8 @@ Erasing a concrete payload behind a base or runtime-Contract view requires its c
 
 A Closure keeps every captured value's Origin and Loan dependencies, not merely the lifetime of its creation Block. Moving in an owned value without borrowed contents borrows nothing, and an entry that borrows an outer slot ([§7.7.2](07-functions-and-callable-values.md#772-captures)) keeps its Loan on that slot.
 
+A Closure body is checked against its call receiver ([§7.7.3](07-functions-and-callable-values.md#773-call-receiver)) as an instance function's body is against its receiver: its environment bindings are Fields of the receiver's referent, so its result Origins, containment ([§15.6.3](#1563-reborrowing-and-region-splitting)) and retention ([§15.6.4](#1564-calls)) follow the receiver rules. Each environment binding's permissions stay those of [§7.7.2](07-functions-and-callable-values.md#772-captures), and retention into the environment follows them, since no Closure body can replace its environment: an Exclusive call may retain an argument in its `var` bindings and in the referents of its captured exclusive references. The table restates the receiver rules for each source of a result:
+
 | Result source | Contract |
 | --- | --- |
 | Borrow of environment-owned data | Depends on the call receiver borrow |
@@ -828,9 +830,9 @@ A Closure keeps every captured value's Origin and Loan dependencies, not merely 
 | Reference moved out by a Consuming call | Transfers its Origin and capability |
 | Borrowed argument | Follows the parameter's Origin contract |
 
-When the result Type is omitted, each Origin in the inferred result is a per-call Origin of the internal call contract, outlived by every source of the returned values per the table. Several returned values give the meet of their sources at covariant positions and require equal Origins at invariant positions. Any other source, such as a Borrow of call-local storage or of an environment consumed by the call, is an error. The Origin of a whole result inferred from the body is a fixed Origin outside the body; each result source is judged against it, so returning a body-local borrow is an error at the returned value, not a Loan conflict at the storage's destruction ([§15.6.5](#1565-judging-origin-relations)).
+When the result Type is omitted, each Origin in the inferred result is a per-call Origin of the internal call contract, outlived by every source of the returned values by the receiver rules. Several returned values give the meet of their sources at covariant positions and require equal Origins at invariant positions. The Origin of a whole result inferred from the body is a fixed Origin outside the body; each result source is judged against it, so a source whose Origin is body-local, such as a Borrow of call-local storage or of an environment consumed by the call, is Refuted at the returned value, not a Loan conflict at the storage's destruction ([§15.6.5](#1565-judging-origin-relations)), while a source of Origin `static`, such as a Borrow of an immutable static Field, outlives it.
 
-An annotated result, or a fixed expected call signature ([§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries)), uses ordinary result elision: no Origin expression names the hidden receiver, and annotation names resolve among the parameters and enclosing scopes, never to environment bindings. Common Function Types and Callable Constraints never return results that depend on the hidden receiver ([§8.10](08-generics-constraints-and-contracts.md#810-callable-constraints)).
+An annotated result, or a fixed expected call signature ([§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries)), uses ordinary result elision ([§15.4.3](#1543-result-defaults)) without the hidden receiver, which no Origin expression names; annotation names resolve among the parameters and enclosing scopes, never to environment bindings. The receiver stays hidden because common Function Types and Callable Constraints never return results that depend on it ([§3.2.1](03-types-and-values.md#321-callable-value-types), [§8.10](08-generics-constraints-and-contracts.md#810-callable-constraints)).
 
 ```kimi
 let text = makeText()
@@ -842,6 +844,37 @@ inspectText(view)
 let other = makeText()
 let invalid = func [other@move] () -> ref/string => other@ref
 // Error: the annotated result defaults to static, not the environment borrow.
+```
+
+Retention into the environment follows the binding's permissions:
+
+```kimi
+func update(z: uniq/i32, x: ref/i32, out: uniq/i32)
+    origin z outlives x
+    let first: ref/i32 during x = x
+    var copyOut = func [first, out] (value: ref/i32 during x) => out@follow = value@follow + first@follow
+    copyOut(z@follow@ref)   // An Exclusive call; first is a let binding and out's referent an i32, so neither keeps value.
+    z@follow = 42           // Valid.
+    copyOut(x)
+
+    var last: ref/i32 during x = x
+    var remember = func [var last] (value: ref/i32 during x) => last = value
+    remember(z@follow@ref)  // last may keep value.
+    // z@follow = 43        // Error: remember is used below.
+    remember(x)
+```
+
+A bare entry naming an enclosing local Reborrows it with that local's Origin ([§7.7.2](07-functions-and-callable-values.md#772-captures)):
+
+```kimi
+var x: i32 = 1
+let u = x@uniq
+let t = makeText()
+let take = func [u, t@move] () -> uniq/i32 during u
+    consumeText(t@move)     // A Consuming call.
+    return u                // Valid: the binding has u's Origin, and a Reborrow through it may be returned (§15.6.3).
+let a = take@move()
+a@follow = 3
 ```
 
 ### 15.8.3. Escape and retention

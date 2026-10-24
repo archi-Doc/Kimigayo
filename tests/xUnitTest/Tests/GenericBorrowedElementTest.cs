@@ -99,7 +99,9 @@ public class GenericBorrowedElementTest
     [Fact]
     public void RejectsUncheckedElementProducerAndRecoversAfterReload()
     {
-        var c = MinimalEmissionTest.Analyze("func at(a: ref/[1 of i32], i: isize) -> i32 => a[i]\nlet a: [1 of i32] = [7]\nlet n = at(a@ref, 0)");
+        var c = MinimalEmissionTest.Analyze(
+            "func at(a: ref/[1 of i32], i: isize) -> i32 => a[i]\nlet a: [1 of i32] = [7]\nlet n = at(a@ref, 0)",
+            codegen: CompilerCodegen.Legacy);
         using var first = new StringWriter();
         Assert.True(c.WriteIr(first, out var error), error);
         var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);
@@ -109,6 +111,7 @@ public class GenericBorrowedElementTest
         Assert.False(c.WriteIr(invalid, out _));
         Assert.Empty(invalid.ToString());
         var restored = Compilation.CreateForTest();
+        restored.Codegen = CompilerCodegen.Legacy;
         Assert.True(restored.Prepare(WindowsProfile.Target));
         var tree = restored.Kotonoha;
         Tinyhand.TinyhandSerializer.DeserializeObject(bytes, ref tree);

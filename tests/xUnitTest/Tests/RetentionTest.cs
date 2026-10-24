@@ -532,8 +532,26 @@ public sealed class RetentionTest
     [InlineData("func f(p: uniq/(raw/i32))\n    p@follow = Raw.allocate(1)", "untied store 0")]
     [InlineData("func f(p: uniq/(raw/i32 during static)) => ()", "0 Content store 0, untied store 0")]
     [InlineData("func f(p: uniq/Option<raw/i32>) => ()", "untied store 0")]
+    [InlineData(RawPointerSyntaxTest.PairHolder + "func f(x: uniq/i32, h: uniq/Holder<raw/i32 during x>, p: raw/i32) => ()", "2 Value store 1, untied store 1")]
     public void OneWalkReachesWhatACallMayWrite(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // SPEC 15.6.4, 5.7, 8.1.1 (DECISIONS BU-34, BU-30): a raw layer a pair slot supplies states no Origin, so it is D6's unstated layer
+    // and its holder's hold walk unties it, as `Holder<raw/i32>`'s: a result instance written with the dropped Origin, a call whose
+    // result the pair's original `s/T` gives and a call storing through it. A Type slot keeps the argument's Origin and its row.
+    [Fact]
+    public void APairSuppliedRawLayerIsUnstated()
+    {
+        var c = Bind(RawPointerSyntaxTest.PairHolder + "func id<s/T>(v: s/T) -> s/T => v@move\nfunc idt<T>(v: T) -> T => v@move\n" +
+            "func fill<s/T>(h: uniq/Holder<s/T>, v: s/T) => h.value = v@move\n" +
+            "func make(x: uniq/i32, p: raw/i32 during x) -> Holder<raw/i32 during x> => Holder<raw/i32 during x>.init(v: p)\n" +
+            "func pass(x: ref/i32, p: raw/i32 during x) -> raw/i32 => id(p)\nfunc keep(x: ref/i32, p: raw/i32 during x) -> raw/i32 during x => idt(p)\n" +
+            "func store(x: uniq/i32, q: raw/i32)\n    var h = Holder<raw/i32 during x>.init(v: x@follow@raw)\n    fill(h@uniq, q)\n");
+        Assert.Equal("0 Value result, 1 Value result, 1 Content result, untied", Declared(c, "make"));
+        Assert.Equal(["0 Value result, 0 Content result, untied"], Calls(c, "id"));
+        Assert.Equal(["0 Value result"], Calls(c, "idt"));
+        Assert.Equal(["1 Value store 0, untied store 0"], Calls(c, "fill"));
+    }
 
     // SPEC 15.3.5, 15.6.4 (the G160-2c reviews' R1 and R4's B1): a Type whose storage grows through an indirection (a raw pointer, an
     // exclusive borrow, an object handle) has storage no preparation completes (DECISIONS BU-12's limits), so a contract whose hold walk
@@ -627,13 +645,16 @@ public sealed class RetentionTest
     }
 
     // A warm rebind that reads every call's retention again, C1 (also under a calling definition's premises) and C8, allocates nothing:
-    // an unchanged pass reuses the rows.
+    // an unchanged pass reuses the rows, and interning an instance and an Item whose pair argument states a raw Origin binds it in
+    // TyCtxt's reused scratch (DECISIONS BU-34).
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmRebindReusesRetentions()
     {
         var c = Bind(Erased + "func use(h: ref/H{s}, q: uniq/i32 during s.a) -> i32\n    let x = q@follow@ref\n    let r = apply(h.k@ref, x)\n    return h.k(r)@follow\n" +
-            "func first<T>(x: ref/T, y: ref/T) -> ref/T during x => x\nfunc both<T>(v: ref/T) -> ref/T => first(v, v)\nvar a = 1\nlet p = first(a@ref, a@ref)\n");
+            "func first<T>(x: ref/T, y: ref/T) -> ref/T during x => x\nfunc both<T>(v: ref/T) -> ref/T => first(v, v)\n" + RawPointerSyntaxTest.PairHolder +
+            "func id<s/T>(v: s/T) -> s/T => v@move\nfunc hold(x: ref/i32, q: raw/i32) -> raw/i32\n    let h = Holder<raw/i32 during x>.init(v: q)\n" +
+            "    let g = id<raw/i32 during x>\n    return g(h.value)\nvar a = 1\nlet p = first(a@ref, a@ref)\n");
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => (Node: x, Definition: Definition(x))).ToArray();
         Assert.True(calls.Length >= 4);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
