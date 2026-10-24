@@ -11,11 +11,13 @@ namespace Kimi.Compiler.Backend;
 // counting (ObjectRuntime.InitialControl: obj 0, rc and arc 2), and a clone the runtime's retain of the result handle's counting, which
 // allocates nothing; both are routine rows (FunctionCodegen.Intrinsics' Routine), at their call's location (SPEC 22.5.1: an allocation or a
 // count failure reports the invoking expression, through a function value that call). A runtime Type test compares the object of an object
-// borrow, the payload's address less ObjectRuntime.PayloadOffset, with its target's number in the module (ModuleCodegen.Token of the
-// target's identity in the item's instance); a target on no Generated descriptor's chain is false without a call: SPEC 13.6.4 admits a
-// struct target only, which an object supports exactly when it is its Dynamic Type or a base on that Type's chain, every runtime object
-// comes from a Generated creation, whose chain is numbered, and the tokens are module-local (IMPL 21.1.3). An object borrow is its
-// payload's address, so its Deref is a borrow's (FunctionCodegen.Places) and an upcast keeps its value (FunctionCodegen.Casts).
+// borrow, its header (Header), with its target's number in the module (ModuleCodegen.Token of the target's identity in the item's
+// instance); a target on no Generated descriptor's chain is false without a call: SPEC 13.6.4 admits a struct target only, which an
+// object supports exactly when it is its Dynamic Type or a base on that Type's chain, every runtime object comes from a Generated
+// creation, whose chain is numbered, and the tokens are module-local (IMPL 21.1.3). An object borrow is its payload's address, so its
+// Deref is a borrow's (FunctionCodegen.Places) and an upcast keeps its value (FunctionCodegen.Casts). A call through a virtual slot
+// (SPEC 6.4.3; DECISIONS R5-M114) calls the slot's entry in the virtual table of its receiver's object: the header, the descriptor
+// there, its table at ObjectRuntime.TableOffset (EntryOf), the one callee value the slot makes.
 internal sealed partial class FunctionCodegen
 {
     // SPEC 13.6.2: a creation's routine (above) and its slot-less value; null, with InternalInvariant_Kd, for a target that is no descriptor
@@ -114,6 +116,38 @@ internal sealed partial class FunctionCodegen
         ObjectRuntime.WriteSealedDrop(this.output, mode.Counting, targets.Length == 0 ? default : this.module.Glue(targets[0].Item).Name);
     }
 
+    // IMPL 21.1.3 (DECISIONS R5-M110, ruling Q2): the header of the object an object borrow borrows, the payload's address less
+    // ObjectRuntime.PayloadOffset; the one rule of a slot's descriptor load (EntryOf) and a runtime Type test (Test).
+    private Value Header(Value borrow) => this.Offset(borrow, -ObjectRuntime.PayloadOffset);
+
+    // SPEC 6.4.3, IMPL 21.1.3 (above): the callee value a call writes, the one thing the slot it runs through decides: none, its routine's
+    // symbol, without a slot; for the slot a function runs (VTableDef.SlotOf, the same in every table of its family), that slot's entry in
+    // the virtual table of the object its receiver argument borrows (the routine's parameter at the function's receiver slot). Null, with
+    // InternalInvariant_Kd, for a function that runs no slot or a routine without that parameter.
+    private Value? EntryOf(FunctionAbi routine, BindingSymbol? slot)
+    {
+        if (slot is null)
+        {
+            return null;
+        }
+
+        var (index, receiver) = (VTableDef.SlotOf(slot), -1);
+        for (var i = 0; i < routine.Parameters.Length; i++)
+        {
+            receiver = routine.Parameters[i] is { Kind: AbiParameterKind.Value } parameter && parameter.LogicalIndex == slot.ReceiverIndex ? i : receiver;
+        }
+
+        if (index < 0 || receiver < 0)
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, default); // A slot's call passes its receiver, an object borrow (SPEC 6.4.1).
+            return null;
+        }
+
+        var descriptor = this.LoadAt(this.Header(this.arguments[receiver]), PointerLayout);
+        var table = this.LoadAt(this.Offset(descriptor, ObjectRuntime.TableOffset), PointerLayout);
+        return this.LoadAt(this.Offset(table, (long)index * PointerLayout.Size), PointerLayout);
+    }
+
     // SPEC 13.6.4: a runtime Type test (above) of its operand, an object borrow, against its TypeToken constant's target, its value stored
     // into the call's destination; the operand was evaluated by its own statement, and the test acquires nothing.
     private void Test(in MirTerminator call)
@@ -139,6 +173,6 @@ internal sealed partial class FunctionCodegen
         }
 
         this.module.Request(ModuleCodegen.Needs.Objects);
-        this.Finish(call, this.WriteCall(ObjectRuntime.Supports, [this.Offset(borrow, -ObjectRuntime.PayloadOffset), new('\0', number)]));
+        this.Finish(call, this.WriteCall(ObjectRuntime.Supports, [this.Header(borrow), new('\0', number)]));
     }
 }

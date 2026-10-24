@@ -5,9 +5,9 @@ using System.Globalization;
 namespace Kimi.Compiler.Backend;
 
 // The common Function values' entries of ModuleCodegen (IMPL 21.1.3, 21.3.1; DECISIONS R5-M102, R5-M104, R5-M108), whose definitions
-// FunctionCodegen.Erasures writes: an entry under a Callable signature (Erased), an adapter item's entry under its target's (Adapter) and its heap
-// environment's release (Release); each kept, or computed once per Write through the per-index cache of ModuleCodegen.Signatures.cs,
-// and the previous one reused while it still matches.
+// FunctionCodegen.Erasures writes: an entry under a Callable signature (Erased, one of ModuleCodegen.Signatures.cs' unnamed signatures), an
+// adapter item's entry under its target's (Adapter) and its heap environment's release (Release); each kept, or computed once per Write
+// through the per-index cache of ModuleCodegen.Signatures.cs, and the previous one reused while it still matches.
 internal sealed partial class ModuleCodegen
 {
     /// <summary>The name of an adapter item's entry before its index; its table adds <see cref="TableSuffix"/>, its release <c>_drop</c>.</summary>
@@ -18,30 +18,14 @@ internal sealed partial class ModuleCodegen
 
     private const Abi.Flags ErasedFlags = Abi.Flags.ErasedClosure | Abi.Flags.CallerLocation; // A common Function value's entry (Erased).
 
-    private readonly List<FunctionAbi> erased = []; // The erased entries' signatures (Erased), kept across Writes.
-
     /// <summary>Gets the signature of a common Function value's entry under a Callable signature (IMPL 21.1.3, 21.3.1; DECISIONS R5-M102):
     /// Abi.Of's internal convention with an i64 environment word first and the context last (ErasedClosure), taking the call's location
     /// (SPEC 22.5.1: a Kimi operation called through a function value reports that call); unnamed, since a call reaches it through the
-    /// value's table, and kept across Writes, the previous one reused while it matches.</summary>
+    /// value's table, and kept across Writes (Unnamed).</summary>
     /// <param name="signature">The closed Callable signature, a Function Type: its inputs' Tuple (or Unit) and its result.</param>
     /// <returns>The signature.</returns>
     internal FunctionAbi Erased(BoundType signature)
-    {
-        ReadOnlySpan<BoundType> inputs = (BoundType[])signature.Components[0].Components;
-        var result = signature.Components[1];
-        foreach (var candidate in this.erased)
-        {
-            if (Abi.Matches(candidate, this.Layout, Abi.Convention.Internal, ErasedFlags, result, inputs))
-            {
-                return candidate;
-            }
-        }
-
-        var abi = Abi.Of(this.Layout, Abi.Convention.Internal, ErasedFlags, result, inputs);
-        this.erased.Add(abi);
-        return abi;
-    }
+        => this.Unnamed(ErasedFlags, signature.Components[1], (BoundType[])signature.Components[0].Components);
 
     /// <summary>Gets the entry signature of a ClosureErasure or ItemAdapter item (IMPL 21.1.3, 21.3.1; DECISIONS R5-M108): the erased
     /// signature (<see cref="Erased"/>'s form) of its target Function Type (its key's), the one every erased call of that Type writes, so a

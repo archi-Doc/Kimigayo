@@ -241,18 +241,6 @@ public sealed partial class FunctionCodegenTest
         Assert.DoesNotContain("__kimi_object_", Generate(Analyze(Arithmetic, OutputKind.Library)), StringComparison.Ordinal);
     }
 
-    // DECISIONS R5-M74, R5-M110: a payload whose struct has a slot names its VTable item, C6c's: one located Unsupported_Kd at its creation
-    // and no descriptor text.
-    [Fact]
-    public void ASlotBearingPayloadIsLeftToC6c()
-    {
-        const string Source = "open struct Shape\n    public virtual func area(self: objref/Self) -> i32 => 1\n    public init() => ()\n" +
-            "func make() -> obj/Shape => Kimi.Intrinsics.makeObj(Shape.init())\n";
-        var c = Analyze(Source, OutputKind.Library);
-        Assert.False(c.Generate(TextWriter.Null));
-        Assert.Equal([("Unsupported_Kd", (string?)"Kimi.Intrinsics.makeObj(Shape.init())")], Records(c));
-    }
-
     // A function's creation, its one call of a factory (ObjectRuntime.Factory: __kimi_make_object and its descriptor's number), and the
     // factory's name.
     private static (IrValue Call, string Factory) Creation(GeneratedIr ir, Compilation c, string function)

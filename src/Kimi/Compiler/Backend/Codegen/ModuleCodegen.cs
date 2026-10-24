@@ -13,7 +13,8 @@
 // ClosureErasure and ItemAdapter (__kimi_erase<item>, its entry under its target Function Type's erased signature, its table and its
 // heap environment's release, written by FunctionCodegen; R5-M108), the Builtin shims (C8f, C9b), the property witnesses (C3c), K8's
 // ObjectDescriptor items (the module's runtime identities, a descriptor's constants, payload destructor and factory through
-// ObjectRuntime, ModuleCodegen.Objects; R5-M110) and VTable items (C6c), a test build's TestEntry (C10a).
+// ObjectRuntime, ModuleCodegen.Objects; R5-M110) and VTable items, whose text is their descriptors' virtual tables (R5-M114), a test
+// build's TestEntry (C10a).
 // Inputs: the program the generation gate passed (validated, analyzed and accepted); the instance collector's checked set, marked from the
 // output roots the generation entry gives (K package 4.10), TypeOf and location rule (K package 4.9); the compilation's Layout and runtime
 // location texts (Compilation.Locations); the startup selection.
@@ -28,10 +29,10 @@
 // item) is a broken contract, InternalInvariant_Kd at the item's site.
 // Must not decide acceptance (the gate) or what is generated (the generation entry's mark), read syntax, HIR or the old Emission, write a
 // partial module, use LINQ, Supports* or catch-alls.
-// Files: the items and the records (this file); the body, glue and ensure signatures and the signature cache (ModuleCodegen.Signatures.cs),
-// the called imports' C signatures and declarations (ModuleCodegen.Imports.cs), the common Function values' entries
-// (ModuleCodegen.Erasures.cs) and the object descriptors (ModuleCodegen.Objects.cs); the module frame and the output form
-// (ModuleCodegen.Frame.cs).
+// Files: the items and the records (this file); the body, glue, ensure and virtual slot signatures and the signature caches
+// (ModuleCodegen.Signatures.cs), the called imports' C signatures and declarations (ModuleCodegen.Imports.cs), the common Function values'
+// entries (ModuleCodegen.Erasures.cs) and the object descriptors with their virtual tables (ModuleCodegen.Objects.cs); the module frame and
+// the output form (ModuleCodegen.Frame.cs).
 
 using System.Globalization;
 using Kimi.Compiler.Mir;
@@ -122,8 +123,8 @@ internal sealed partial class ModuleCodegen
         }
     }
 
-    // An item by its kind's row: a body item, a glue and an adapter through FunctionCodegen, a descriptor through ObjectRuntime; another
-    // type-driven item is a row not written yet, at the site that admitted it.
+    // An item by its kind's row: a body item, a glue and an adapter through FunctionCodegen, a descriptor through ObjectRuntime, a VTable as
+    // its descriptor's table; another type-driven item is a row not written yet, at the site that admitted it.
     private void Item(MirProgram program, InstanceCollector collector, int item)
     {
         var entry = collector.Set.Items[item];
@@ -145,8 +146,7 @@ internal sealed partial class ModuleCodegen
                 this.Descriptor(item);
                 return;
             case MonoKind.VTable:
-                this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // C6c writes the VTables (R5-M74).
-                return;
+                return; // Its text is its descriptor's virtual table (ModuleCodegen.Objects' Table; R5-M114).
             default:
                 throw new InvalidOperationException($"The mono item kind {entry.Key.Kind} has no code generation row.");
         }

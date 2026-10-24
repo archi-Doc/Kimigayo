@@ -7,9 +7,9 @@
 // (payload metadata, descriptor, virtual table, base map), its payload destructor and its factory, the factory's signature (Factory),
 // whose parameters its text names, and whether it copies its payload by memcpy (Copies), a Sealed handle's direct release
 // (ObjectRuntime.Handles.cs), and the facts a caller of the runtime reads: the signatures of its Type test (Supports), its retains
-// (Clone) and its releases (Release), a factory's control value (InitialControl) and the payload's offset in an object (PayloadOffset). Both generators write
-// objects through it (PD2: promoted, never copied). Runtime identity is the module's Type token (PD17); no Runtime Type key text is
-// written (DECISIONS R5-M110).
+// (Clone) and its releases (Release), a factory's control value (InitialControl), the payload's offset in an object (PayloadOffset) and the
+// virtual table's in a descriptor (TableOffset). Both generators write objects through it (PD2: promoted, never copied). Runtime
+// identity is the module's Type token (PD17); no Runtime Type key text is written (DECISIONS R5-M110).
 // Input: a writer; per object its ObjectCreation row; for a factory's signature the object's number, its payload's representation and
 // the payload parameter's kind; for a Sealed handle's release its ObjectCountingStep (BoundType.HandleMode's) and the symbol of the
 // payload's drop routine; for a retain or a control value the handle's ObjectCountingStep.
@@ -48,6 +48,10 @@ internal static partial class ObjectRuntime
     /// <summary>The offset of an object's payload from its header, after its descriptor and control words (IMPL 21.1.3), at which the
     /// runtime's text reads and writes it.</summary>
     internal const int PayloadOffset = 16;
+
+    /// <summary>The offset of a descriptor's virtual table, after its metadata, free entry and base map (IMPL 21.1.3), at which the
+    /// descriptor's text holds it.</summary>
+    internal const int TableOffset = 24;
 
     // IMPL 21.1.3: the payload-independent object runtime: the dynamic Type test through the descriptor's base map, the free
     // entry of every current descriptor, and finalization, which destroys the payload through its metadata before the free.
