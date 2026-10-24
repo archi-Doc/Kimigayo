@@ -4816,10 +4816,10 @@ resumed by R4-M86 (2026-10-20).
     (conservative). R4's N1, a (b) row for G160-5's classification: a `static` result layer unties the whole result (`useStatic2`: A5
     reports ComparisonLoanConflict_Kd where the old analysis accepts), whole-result Untied over-approximating 15.6's per-part reading
     (R4-M117 item 5), as D6's unstated layer does (`useUnstated2`).
-  - R-B5 (on f5f410698 against dev 1fc5a0731): the mir Functional suite passes, 22,204 tests against the base's 22,188 (MirCensusTest,
-    the Utf8* and InterpolationScanRecoveryTest classes among them); its MIR difference ledger keeps the base's 3,118 rows and adds 2,
-    both from this unit's RetentionTest program (`fill`, `hidden`), whose diagnostics the base compiler gives alike. MirCensusTest
-    passes on the default pipeline too. The untied results and stores change no verdict of today's A5; their Φ_E is 4b's.
+  - R-B5 (on 04d865038, round 3, against dev 1fc5a0731): the mir Functional suite passes, 22,217 tests against the base's 22,188
+    (MirCensusTest, the Utf8* and InterpolationScanRecoveryTest classes among them); its MIR difference ledger keeps the base's 3,118
+    rows and adds 2, both from this unit's RetentionTest program (`fill`, `hidden`), whose diagnostics the base compiler gives alike.
+    MirCensusTest passes on the default pipeline too. The untied results and stores change no verdict of today's A5; their Φ_E is 4b's.
 
 - **BU-32 HIR publication separates evaluation and operation classification** (2026-10-23; the planning session after independent
   design review; G141's prerequisite) The existing `HirPublisher` keeps its walk, publication version, reusable storage and column
