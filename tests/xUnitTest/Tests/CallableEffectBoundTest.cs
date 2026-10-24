@@ -32,18 +32,36 @@ public class CallableEffectBoundTest
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
-    [Fact]
-    public void ReportsTheViolatingCallableAfterSelection()
+    private static readonly string ApplyFromGroup = "group Callbacks\n    public " + Apply.TrimEnd('\n').Replace("\n", "\n    ", StringComparison.Ordinal) + "\n";
+
+    // SPEC 8.11.2, 7.7.2: mutable static storage is environmental through either its Property name or its accessor's storage name.
+    [Theory]
+    [InlineData("group State\n    public var count: i32 = 0\nfunc entry() -> i32\n    let f = func [] () -> i32 => State.count\n    return Callbacks.apply(f@ref)\n", "f@ref")]
+    [InlineData("group State\n    public var count: i32 = 0\n        get() -> i32\n            let f = func [] () -> i32 => storage\n            return Callbacks.apply(f@ref)\n", "f@ref")]
+    [InlineData("group State\n    public var count: i32 = 0\n        get() -> i32\n            let f = func [] () -> i32\n                storage = 3\n                return 0\n            return Callbacks.apply(f@ref)\n", "f@ref")]
+    [InlineData("group State\n    public var count: i32 = 0\n        get() -> i32\n            func f() -> i32 => storage\n            return Callbacks.apply(f)\n", "f")]
+    public void ReportsTheViolatingCallableAfterSelection(string declarations, string argument)
     {
-        var c = MinimalEmissionTest.Analyze(Apply + "group State\n    public var count: i32 = 0\npublic func main() => ()\nfunc entry() -> i32\n    let f = func [] () -> i32 => State.count\n    return apply(f@ref)\n");
+        var c = MinimalEmissionTest.Analyze(ApplyFromGroup + declarations + "public func main() => ()\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.False(c.Analyze().IsVerified);
         c.ReportAnalysis();
         var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Code == "UnsatisfiedEffectBound_Kd");
         Assert.Equal("UnsatisfiedEffectBound_Kd", error.Code);
-        Assert.Equal("f@ref", error.Text);
+        Assert.Equal(argument, error.Text);
         Assert.Contains("confined", error.Label);
         Assert.Contains("mutable static", error.Label);
+    }
+
+    // SPEC 8.11.2: immutable storage is not mutable-static; its custom getter retains the legacy initializer cleanup limit.
+    [Fact]
+    public void ImmutableStaticStorageKeepsItsInitializationLimit()
+    {
+        var c = MinimalEmissionTest.Analyze(ApplyFromGroup + "group State\n    public let count: i32 = 0\n        get() -> i32\n            let f = func [] () -> i32 => storage\n            return Callbacks.apply(f@ref)\npublic func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        c.Analyze();
+        c.ReportAnalysis();
+        Assert.Equal([("Unsupported_Kd", "storage"), ("Unsupported_Kd", "f@ref")], TestDiagnostics.Of(c).Select(static x => (x.Code, x.Text)));
     }
 
     // SPEC 8.11.4: the Reason names the cause and the Note the rule; `confined` appears at most once in one Constraint.

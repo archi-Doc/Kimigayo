@@ -197,9 +197,10 @@ public sealed partial class Binding
             this.Synthesized(node);
             this.Accesses(node);
 
-            if (node is IdentifierNameKoto or MemberAccessKoto && node.BoundSymbol is { Declaration: PropertyKoto property, Scope.Owner: GroupKoto })
+            if (node is IdentifierNameKoto or MemberAccessKoto && node.BoundSymbol?.Declaration is PropertyKoto { BoundSymbol: { } propertySymbol } property && IsStatic(propertySymbol))
             {
-                // Lazy initialization runs at the first read. SPEC 8.11.2: confined reaches no mutable static.
+                // SPEC 8.11.2, 7.7.2: the Property and its accessor's storage name the same static declaration, also in nested bodies.
+                // Lazy initialization runs at the first read; confined reaches no mutable static.
                 // Ownership analysis plans no cleanups for an initializer other than a constant scalar, so its destructions
                 // are unknown.
                 this.Queue(property.InitializerKoto);
@@ -211,13 +212,13 @@ public sealed partial class Binding
 
                 // SPEC 8.11.2: immutability does not protect a pointee, so a raw pointer read from an immutable static
                 // obtains authority from the environment.
-                if (node.BoundSymbol.Type is { } stored && this.ContainsRawPointer(this.Type(stored), 0))
+                if (propertySymbol.Type is { } stored && this.ContainsRawPointer(this.Type(stored), 0))
                 {
                     this.Violate(EffectViolation.StaticPointer, node);
                     return;
                 }
 
-                if (this.destructions && property.InitializerKoto is not null && !StaticScalar.TryGet(node.BoundSymbol.Property, out _))
+                if (this.destructions && property.InitializerKoto is not null && !StaticScalar.TryGet(propertySymbol.Property, out _))
                 {
                     this.DestructionLimit(node);
                     return;
@@ -606,7 +607,7 @@ public sealed partial class Binding
                 node = KotoHelper.UnwrapParentheses(node);
                 if (node is IdentifierNameKoto or MemberAccessKoto)
                 {
-                    if (node.BoundSymbol is { Declaration: PropertyKoto { VariableKind: VariableKind.Var }, Scope.Owner: GroupKoto })
+                    if (node.BoundSymbol?.Declaration is PropertyKoto { VariableKind: VariableKind.Var } property && IsStatic(property.BoundSymbol))
                     {
                         return;
                     }
