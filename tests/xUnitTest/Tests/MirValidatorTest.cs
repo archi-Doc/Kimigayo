@@ -449,7 +449,7 @@ public sealed class MirValidatorTest
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void AnEnsuresStaticHasItsInitializer(bool broken)
+    public void AnEnsuredStaticHasItsInitializer(bool broken)
     {
         var c = MirBuildTest.Compile("group Registry\n    public let total: i32 = 5\nfunc plain() -> i32 => 1\nfunc use() -> i32 => Registry.total\n");
         var program = c.BuildMir();

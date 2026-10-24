@@ -3391,8 +3391,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     calls `MirValidator.Validate(MirProgram)` after both passes), each staticEnsure of F10's form names a static whose StaticInit body
     the program has, else `StaticSlot` at the call, the rule now "the staticEnsure does not resolve through `MirProgram.StaticInit`";
     (2) in a body, each static root of a Place a location accesses is named by a staticEnsure of the body (any block: code generation
-    maps a body's slots per body), else `MirViolation.Unensured` at the access. An Opaque site's roots access nothing: they name what
-    the replaced syntax may access, in a Binding-rejected program a static its body never ensures, possibly one without an initializer
+    maps a body's slots per body), else `MirViolation.Unensured` at the access. An Opaque site's roots are left out: they name what
+    the replaced syntax may access, which never runs (its program has a record and is not generated), in a Binding-rejected program a static its body never ensures, possibly one without an initializer
     (Milestone 43, three spec-case variants; 13 bodies in a 933-program probe, no real Place and no ensure breaking either rule).
   - The responsibility moves from four consumers, each of which ran only on a program without findings (`MirAnalysis.Run`,
     `InstanceCollector.Run`, `Compilation.Generate`'s `MirRecords`): A4's StaticEnsure edge (`MirEffects`), A5's InternalInvariant_Kd

@@ -119,7 +119,8 @@ internal sealed partial class MirBorrows
             }
             else
             {
-                this.Report(this.Code(this.candidates[c], EffectRow(kind), DiagnosticCode.ComparisonLoanConflict_Kd), c, taking, at, -1, this.Effect(kind, root));
+                this.Report(
+                    this.Code(this.candidates[c], EffectRow(kind), DiagnosticCode.ComparisonLoanConflict_Kd), c, taking, at, -1, this.Effect(kind, root));
             }
         }
 
