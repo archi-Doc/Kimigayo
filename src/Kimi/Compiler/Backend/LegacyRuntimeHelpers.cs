@@ -34,7 +34,8 @@
 // address arithmetic in the caller's body, so it declares no callee and nothing is requested for it. The Raw.slice and capacity
 // kernels (P2b) are plain writers without a row: their calls are intrinsics, whose rows are IntrinsicRows'. The one map from a compiler
 // function of the Body disposition to how MIR code generation writes its call (Row, S2-S4 X39; DECISIONS R5-M116) names each kind's
-// writer: writeLine's runtime routine, every other kind its unit's row not written yet (C8b-C8e, C9a).
+// writer: writeLine's runtime routine, the whole-value updates, the fixed-array storage kernel, every other kind its unit's row not
+// written yet (C8d, C8e, C9a).
 // Invariants: a new helper kind adds a row; a kind without a row fails; a request's runtime flags come from its row; each
 // requested helper is written once (the planner requests each formatting wrapper once), in request order, after the runtimes its
 // row declares;
@@ -82,6 +83,18 @@ internal enum LegacyWriter : byte
 
     /// <summary>The row's runtime routine through the one call writer.</summary>
     Routine,
+
+    /// <summary>SPEC 15.7: the target's old value destroyed in place, then the new one put (FunctionCodegen.Updates).</summary>
+    Replace,
+
+    /// <summary>SPEC 15.7: the target's old value put at the result, then the new one at the target.</summary>
+    Exchange,
+
+    /// <summary>SPEC 15.7: the two targets' values exchanged.</summary>
+    Swap,
+
+    /// <summary>SPEC 22.2: a fixed array's remainder through the BorrowFixed kernel (FunctionCodegen.Storage).</summary>
+    FixedStorage,
 }
 
 /// <summary>The legacy row of a compiler function of the Body disposition (X39): its writer and a routine row's runtime routine.</summary>
@@ -176,9 +189,13 @@ internal sealed partial class LegacyRuntimeHelpers
     internal static LegacyRow Row(CompilerFunctionKind kind) => kind switch
     {
         CompilerFunctionKind.WriteLine => new(LegacyWriter.Routine, RuntimeAbi.WriteLine), // SPEC 22.1-22.5.5: it borrows its string.
+        CompilerFunctionKind.Replace => new(LegacyWriter.Replace),
+        CompilerFunctionKind.Exchange => new(LegacyWriter.Exchange),
+        CompilerFunctionKind.Swap => new(LegacyWriter.Swap),
+        CompilerFunctionKind.StorageBorrowFixedShared or CompilerFunctionKind.StorageBorrowFixedExclusive => new(LegacyWriter.FixedStorage),
 
-        // C8b: replace, exchange, swap and the fixed-array storage; C8d: the Array operations and the Array storage kinds; C8e: the
-        // Dictionary storage kinds; C9a: the text, buffer, window and writer rows and WriteLineUtf8.
+        // C8d: the Array operations and the Array storage kinds; C8e: the Dictionary storage kinds; C9a: the text, buffer, window and writer
+        // rows and WriteLineUtf8.
         not CompilerFunctionKind.None when IntrinsicDisposition.Of(kind).Kind == DispositionKind.Body => default,
         _ => throw new InvalidOperationException($"The compiler function {kind} has no legacy row."),
     };

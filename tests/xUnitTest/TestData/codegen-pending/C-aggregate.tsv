@@ -119,7 +119,6 @@ test	XunitTest.BorrowedFieldUpdateTest.OverflowAbortsWithoutCleanup	XunitTest.Bo
 test	XunitTest.BorrowedTupleEmissionTest.BorrowingDoesNotConsumeOwnedTupleElements	XunitTest.BorrowedTupleEmissionTest.BorrowingDoesNotConsumeOwnedTupleElements
 test	XunitTest.CompositeMatchTest.NativePatterns	XunitTest.CompositeMatchTest.NativePatterns(name: \"ArrayTuple\", source: \"let a: [2 of (i32, bool)] = [(2, true), (3, false)]\\nvar total = 0\\nfor item in a@move\\n    match item\\n        (let n, _) => total += n\\nrequire total == 5 else => $abort(\\\"bad\\\")\")
 test	XunitTest.CompositeMatchTest.NativePatterns	XunitTest.CompositeMatchTest.NativePatterns(name: \"ArrayUnit\", source: \"let a: [3 of ()] = [(), (), ()]\\nvar total = 0\\nfor item in a@move\\n    total += 1\\nrequire total == 3 else => $abort(\\\"bad\\\")\")
-test	XunitTest.CompositeMatchTest.NativePatterns	XunitTest.CompositeMatchTest.NativePatterns(name: \"EmptyArray\", source: \"let a: [0 of (i32, bool)] = []\\nfor item in a\\n    $abort(\\\"bad\\\")\")
 test	XunitTest.CompositeMatchTest.NativePatterns	XunitTest.CompositeMatchTest.NativePatterns(name: \"Snapshot\", source: \"var values: [2 of (i32, bool)] = [(2, true), (3, false)]\\nvar sum = 0\\nfor item in values@move\\n    values = [(9, false), (9, false)]\\n    match item\\n        (let n, _) => sum += n\\nrequire sum == 5 else => $abort(\\\"bad\\\")\")
 test	XunitTest.ElementAssignmentEmissionTest.AbortedLocationDoesNotDestroyTheParentOrStartCleanup	XunitTest.ElementAssignmentEmissionTest.AbortedLocationDoesNotDestroyTheParentOrStartCleanup
 test	XunitTest.ElementAssignmentEmissionTest.CopyElementsCanBeReplaced	XunitTest.ElementAssignmentEmissionTest.CopyElementsCanBeReplaced(name: \"Aggregate\", source: \"var a = ((1, false), \\\"held\\\")\\na.0 = (42, true)\\nif a.0.0 == 42 and a.0.1 => Console.writeLine(\\\"ok\\\")\")
@@ -385,12 +384,8 @@ test	XunitTest.FixedArrayCaptureTest.FixedArrayEnvironmentsPreserveElementAuthor
 test	XunitTest.FixedArrayCaptureTest.OwnedArrayErasureUsesOneEnvironmentAllocation	XunitTest.FixedArrayCaptureTest.OwnedArrayErasureUsesOneEnvironmentAllocation
 test	XunitTest.FixedArrayCaptureTest.WarmArrayCaptureEmissionAllocatesNothing	XunitTest.FixedArrayCaptureTest.WarmArrayCaptureEmissionAllocatesNothing
 test	XunitTest.FixedArrayEntryTest.EarlyExitDestroysTheUntakenElements	XunitTest.FixedArrayEntryTest.EarlyExitDestroysTheUntakenElements
-test	XunitTest.FixedArrayEntryTest.ExplicitExclusiveEntryUpdatesEachElement	XunitTest.FixedArrayEntryTest.ExplicitExclusiveEntryUpdatesEachElement
 test	XunitTest.FixedArrayEntryTest.ExplicitOwningEntryYieldsScalarsAndZeroSizedElements	XunitTest.FixedArrayEntryTest.ExplicitOwningEntryYieldsScalarsAndZeroSizedElements
-test	XunitTest.FixedArrayEntryTest.ExplicitSharedEntryLendsEachElement	XunitTest.FixedArrayEntryTest.ExplicitSharedEntryLendsEachElement
 test	XunitTest.FixedArrayEntryTest.GenericIterationReachesTheIteratorStep	XunitTest.FixedArrayEntryTest.GenericIterationReachesTheIteratorStep(name: \"Array\", type: \"Array<string>\")
 test	XunitTest.FixedArrayEntryTest.GenericIterationReachesTheIteratorStep	XunitTest.FixedArrayEntryTest.GenericIterationReachesTheIteratorStep(name: \"Fixed\", type: \"[4 of string]\")
 test	XunitTest.FixedArrayEntryTest.GenericOwningIterationReachesTheIteratorStep	XunitTest.FixedArrayEntryTest.GenericOwningIterationReachesTheIteratorStep
 test	XunitTest.FixedArrayEntryTest.OwningLoopMovesEachElement	XunitTest.FixedArrayEntryTest.OwningLoopMovesEachElement
-test	XunitTest.FixedArrayEntryTest.SharedAndExclusiveLoopsUseTheEntries	XunitTest.FixedArrayEntryTest.SharedAndExclusiveLoopsUseTheEntries
-test	XunitTest.FixedStorageTest.FixedArrayRemaindersTraverseEveryElementOnce	XunitTest.FixedStorageTest.FixedArrayRemaindersTraverseEveryElementOnce

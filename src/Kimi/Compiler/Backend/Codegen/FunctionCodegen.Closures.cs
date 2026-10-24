@@ -4,22 +4,22 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The value calls of FunctionCodegen (R5 plans C5a, C5b, C5c and C6c, package C 3.2 I8 and row 14; SPEC 6.4.3, 7.7.3, 7.7.4, 8.10, IMPL
-// 21.1.3; DECISIONS R5-M102, R5-M104, R5-M108, R5-M114):
+// The value calls of FunctionCodegen (R5 plans C5a, C5b, C5c, C6c and C8b, package C 3.2 I8 and row 14; SPEC 6.4.3, 7.7.3, 7.7.4, 8.10,
+// IMPL 21.1.3; DECISIONS R5-M102, R5-M104, R5-M108, R5-M114, R5-M116):
 // a Value callee by its value's Type in the item's instance below its reference layer (TyCtxt.Layer, the collector's Callable rule), a closed
 // vocabulary. A Closure calls its body, the collector's target, under its signature (Abi's ConcreteClosure: the environment pointer first, the
 // context last): the environment is the referent of a borrowed operand, or an owned operand's storage (a Move's Place, a Copy's copy slot), the
 // context null. A function Item calls what its call runs (Runs, also an ItemAdapter's entry's callee), decided by its function: a compiler
-// function's its direct call's row (SPEC 7.7.4), whatever targets the row needs, written when it is one runtime routine (Routine) over the
-// Value call's operands, else the row's unit's; any other function's its body target, its function's body or a requirement Item's
-// witness (through its slot when it implements one, BodyRun); a virtual function's Item, which has no target (X5), its slot (SPEC 6.4.3);
-// without one a later unit's row (a requirement witness without a body, PLAN G157 (10); a Builtin shim C8f or C9b; a property witness
-// C3c). The slot only makes the callee value the call writes (EntryOf), so an Item's call and its adapter's entry dispatch through the one
-// call writer, and the adapter's entry is the erased virtual Item's thunk. A common Function value (IMPL 21.1.3: its environment word,
-// then its table) calls its table's entry with its environment word and its table's context under the erased signature
-// (ModuleCodegen.Erased). A Value call's
-// operands are its Callable signature's inputs in order, so its own key places them (MirCallee.Position without a function, the builder's
-// rule). After an owner call whose callee borrows its environment, the call site's next target, the operand Type's glue, destroys the
+// function's its direct call's row (SPEC 7.7.4), whatever targets the row needs, a legacy row's by its writer over the Value call's
+// operands (FunctionCodegen.Calls' Legacy; DECISIONS R5-M116), an intrinsic's when it is one runtime routine (Routine), else the row's
+// unit's; any other function's its body target, its function's body or a requirement Item's witness (through its slot when it
+// implements one, BodyRun); a virtual function's Item, which has no target (X5), its slot (SPEC 6.4.3); without one a later unit's row (a
+// requirement witness without a body, PLAN G157 (10); a Builtin shim C8f or C9b; a property witness C3c). The slot only makes the callee
+// value the call writes (EntryOf), so an Item's call and its adapter's entry dispatch through the one call writer, and the adapter's entry
+// is the erased virtual Item's thunk. A common Function value (IMPL 21.1.3: its environment word, then its table) calls its table's entry
+// with its environment word and its table's context under the erased signature (ModuleCodegen.Erased). A Value call's operands are its
+// Callable signature's inputs in order, so its own key places them (MirCallee.Position without a function, the builder's rule). After an
+// owner call whose callee borrows its environment, the call site's next target, the operand Type's glue, destroys the
 // operand (SPEC 8.10: "destroys the rest after the call") at the call's location; the collector decides which calls have it. A Closure
 // environment's construction is FunctionCodegen.Aggregates', a Closure body's environment parameter FunctionCodegen.Frame's.
 internal sealed partial class FunctionCodegen
@@ -97,11 +97,17 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // SPEC 7.7.4: a function Item's call, what it runs (Runs) over the Value call's operands placed by its own key; the zero-sized callee
-    // value writes nothing.
+    // SPEC 7.7.4: a function Item's call, what it runs (Runs) over the Value call's operands placed by its own key; a compiler function's of
+    // the Body disposition its direct call's legacy row (Legacy; DECISIONS R5-M116); the zero-sized callee value writes nothing.
     private void FunctionItem(in MirTerminator call, BoundType item)
     {
         var target = this.Target(new(this.at, this.body.Blocks[this.at].Count));
+        if (item.Symbol?.CompilerFunction is not (null or CompilerFunctionKind.None) and { } kind && IntrinsicDisposition.Of(kind).Kind == DispositionKind.Body)
+        {
+            this.Legacy(call, kind, target);
+            return;
+        }
+
         if (this.Runs(item, target, this.InstanceType(call.Place), call.Source, out var given) is { } run)
         {
             this.Invoke(call, run.Signature, new(call.Callee.Symbol, MirBodyKind.Fn), given, run.Slot);

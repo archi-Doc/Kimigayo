@@ -57,10 +57,10 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // SPEC 7.7.4 (DECISIONS R5-M108): a compiler function's routine row by its disposition, what its Value call and its adapter's entry call
-    // (FunctionCodegen.Closures' Runs) with the target they carry: an intrinsic's routine row (below), a Body disposition's legacy routine
-    // (LegacyRuntimeHelpers.Row); null for any other row, which is not one routine call or not written yet (a Shim's, an instruction writer's, an
-    // unwritten row's).
+    // SPEC 7.7.4 (DECISIONS R5-M108, R5-M116): a compiler function's routine row by its disposition, what its adapter's entry calls
+    // (FunctionCodegen.Closures' Runs) with the target it carries, and an intrinsic's Value call: an intrinsic's routine row (below), a Body
+    // disposition's legacy routine (LegacyRuntimeHelpers.Row); null for any other row, which is not one routine call or not written yet (a
+    // Shim's, an instruction writer's, an unwritten row's).
     private FunctionAbi? Routine(CompilerFunctionKind kind, BoundType? result, int target, out ReadOnlySpan<Value> given)
     {
         given = default;

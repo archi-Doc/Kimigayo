@@ -4,14 +4,15 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The Call terminator of FunctionCodegen (R5 package C 3.2 I8, plan C3a, C3b, C8a, C5a, C6c; DECISIONS R5-M89, R5-M92, R5-M93, R5-M102,
-// R5-M114): a callee by its kind's row (a Value callee's in FunctionCodegen.Closures), the collector's targets read by one forward cursor,
-// each once in its site's order, and the one call writer, which the legacy rows, the intrinsic rows, the glue items and the module's entry
-// call too; each argument is FunctionCodegen.Arguments' (its parameter's kind, a copy slot). A call that dispatches (SPEC 6.4.3, 6.4.6) runs
-// through a virtual slot, which only makes the callee value it writes (EntryOf): a Virtual callee, without a target (X5), under its slot's
-// signature (ModuleCodegen.Slot); a body target that implements a slot, a requirement's virtual witness (BodyRun). Rows not written yet: a
-// Builtin shim (C8f, C9b), a property witness (C3c), a requirement whose witness has no body (PLAN G157 (10)), the other compiler functions'
-// legacy rows (C8b-C8e, C9a).
+// The Call terminator of FunctionCodegen (R5 package C 3.2 I8, plan C3a, C3b, C8a, C5a, C6c, C8b; DECISIONS R5-M89, R5-M92, R5-M93,
+// R5-M102, R5-M114, R5-M116): a callee by its kind's row (a Value callee's in FunctionCodegen.Closures, a compiler function's of the Body
+// disposition by its legacy row's writer, Legacy), the collector's targets read by one forward cursor, each once in its site's order, and
+// the one call writer, which the legacy rows, the intrinsic rows, the glue items and the module's entry call too; each argument is
+// FunctionCodegen.Arguments' (its parameter's kind, a copy slot). A call that dispatches (SPEC 6.4.3, 6.4.6) runs through a virtual slot,
+// which only makes the callee value it writes (EntryOf): a Virtual callee, without a target (X5), under its slot's signature
+// (ModuleCodegen.Slot); a body target that implements a slot, a requirement's virtual witness (BodyRun). Rows not written yet: a Builtin
+// shim (C8f, C9b), a property witness (C3c), a requirement whose witness has no body (PLAN G157 (10)), the other compiler functions' legacy
+// rows (C8d, C8e, C9a; LegacyRuntimeHelpers.Row).
 internal sealed partial class FunctionCodegen
 {
     private int cursor; // The item's first target not passed yet (I8).
@@ -35,7 +36,7 @@ internal sealed partial class FunctionCodegen
         {
             case MirCalleeKind.Fn when callee.Symbol!.CompilerFunction is not CompilerFunctionKind.None and var kind &&
                 IntrinsicDisposition.Of(kind).Kind == DispositionKind.Body:
-                this.Legacy(call, kind);
+                this.Legacy(call, kind, this.Target(new(this.at, this.body.Blocks[this.at].Count)));
                 return;
             case MirCalleeKind.Fn or MirCalleeKind.Requirement:
                 this.Function(call);
@@ -197,15 +198,23 @@ internal sealed partial class FunctionCodegen
     }
 
     // A compiler function the backend serves from its legacy row until R8 writes its body (the Body disposition; LegacyRuntimeHelpers.Row,
-    // DECISIONS R5-M116), by the row's writer: a runtime routine through the one call writer (Invoke), the call's operands at its parameters'
-    // slots placed by the call's own key and the call site's location; a row not written yet, its unit's located Unsupported_Kd.
-    private void Legacy(in MirTerminator call, CompilerFunctionKind kind)
+    // DECISIONS R5-M116), by the row's writer, at its direct call and at its Item's Value call (SPEC 7.7.4), with the target the call site
+    // carries: a runtime routine through the one call writer (Invoke), the call's operands at its parameters' slots placed by the call's own
+    // key and the call site's location; a whole-value update (FunctionCodegen.Updates); a fixed array's storage (FunctionCodegen.Storage);
+    // a row not written yet, its unit's located Unsupported_Kd.
+    private void Legacy(in MirTerminator call, CompilerFunctionKind kind, int target)
     {
         var row = LegacyRuntimeHelpers.Row(kind);
         switch (row.Writer)
         {
             case LegacyWriter.Routine:
                 this.Invoke(call, row.Routine!, new(call.Callee.Symbol, MirBodyKind.Fn));
+                return;
+            case LegacyWriter.Replace or LegacyWriter.Exchange or LegacyWriter.Swap:
+                this.Update(call, row.Writer, target);
+                return;
+            case LegacyWriter.FixedStorage:
+                this.FixedStorage(call);
                 return;
             case LegacyWriter.Unwritten:
                 this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // Its row's unit (LegacyRuntimeHelpers.Row).
