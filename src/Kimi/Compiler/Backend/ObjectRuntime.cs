@@ -6,8 +6,8 @@
 // and the rc and arc clone and drop with their release transitions, ObjectRuntime.Handles.cs), each object's private constants
 // (payload metadata, descriptor, virtual table, base map), its payload destructor and its factory, the factory's signature (Factory),
 // whose parameters its text names, and whether it copies its payload by memcpy (Copies), a Sealed handle's direct release
-// (ObjectRuntime.Handles.cs), and the facts a caller of the runtime reads: the signatures of its Type test (Supports) and its retains
-// (Clone), a factory's control value (InitialControl) and the payload's offset in an object (PayloadOffset). Both generators write
+// (ObjectRuntime.Handles.cs), and the facts a caller of the runtime reads: the signatures of its Type test (Supports), its retains
+// (Clone) and its releases (Release), a factory's control value (InitialControl) and the payload's offset in an object (PayloadOffset). Both generators write
 // objects through it (PD2: promoted, never copied). Runtime identity is the module's Type token (PD17); no Runtime Type key text is
 // written (DECISIONS R5-M110).
 // Input: a writer; per object its ObjectCreation row; for a factory's signature the object's number, its payload's representation and

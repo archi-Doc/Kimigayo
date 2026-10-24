@@ -45,9 +45,79 @@ public sealed partial class FunctionCodegenTest
         "require root.legs == 4 and view.id == 5 and root is Leaf and root is Base and not (root is Other) else => $abort(\"tests\")\n" +
         "Console.writeLine(\"objects\")\n$abort(\"end\")\n";
 
+    // A Library destroying owning handles (C6b; DECISIONS R5-M112): Sealed payloads with and without a drop by each handle, and an open
+    // payload's rc and obj.
+    private const string Releases =
+        "struct Tag\n    public let id: i32 = 1\n    drop => ()\nstruct Plain\n    public let id: i32 = 2\n" +
+        "open struct Shape\n    public let id: i32 = 3\n    protected init() => ()\n" +
+        "func dropObj(h: obj/Tag) => ()\nfunc dropRc(h: rc/Tag) => ()\nfunc dropArc(h: arc/Tag) => ()\nfunc dropPlain(h: rc/Plain) => ()\n" +
+        "func dropOpen(h: rc/Shape) => ()\nfunc dropOpenObj(h: obj/Shape) => ()\n";
+
+    // SPEC 16.3.3 (DECISIONS R5-M112): ObjectRows' forms destroyed at their scopes' ends, in reverse order: a clone's release keeps its
+    // object, an arc's last release and a Plain payload's free, a base view destroying its derived object; one allocation per object (each
+    // payload and its 16-byte header), each freed once, natively under both generators.
+    private const string ObjectRelease =
+        "struct Cell\n    public let value: i32\n    public init(value: i32) => self.value = value\n    drop => Console.writeLine(\"cell\")\n" +
+        "struct Plain\n    public let value: i32 = 9\nopen struct Base\n    public let legs: i32 = 4\n    protected init() => ()\n" +
+        "    drop => Console.writeLine(\"base\")\nstruct Leaf : Base\n    public let id: i32 = 5\n    public init() : base() => ()\n" +
+        "    drop => Console.writeLine(\"leaf\")\ndo\n    let a = Kimi.Intrinsics.makeObj(Cell.init(1))\n" +
+        "    let r = Kimi.Intrinsics.makeRc(Cell.init(2))\n    do\n        let s = Kimi.Intrinsics.clone(r@ref)\n" +
+        "        require s.value == 2 else => $abort(\"clone\")\n    Console.writeLine(\"clone released\")\n" +
+        "    let t = Kimi.Intrinsics.makeArc(Cell.init(3))\n    let u = Kimi.Intrinsics.clone(t@ref)\n" +
+        "    let p = Kimi.Intrinsics.makeRc(Plain.init())\n    let leaf = Kimi.Intrinsics.makeObj(Leaf.init())\n" +
+        "    let root = leaf@move@obj/Base\n" +
+        "    require a.value + r.value + t.value + u.value + p.value == 18 and root is Leaf else => $abort(\"values\")\n" +
+        "    Console.writeLine(\"end of scope\")\nConsole.writeLine(\"done\")\n";
+
     [Fact]
     public void ObjectProgramsRun()
         => ScalarEmissionTest.EmitFixture("ObjectRows", ObjectRows, "objects\n", 1, "Hello.kimi:25:1: abort KIMI_E_ABORT: end\n");
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void ObjectReleasesFreeEachObjectOnce()
+        => NativeAllocationAudit.WriteFixture(
+            "ObjectRelease", ObjectRelease, 5, 5, 104, "clone released\nend of scope\nleaf\nbase\ncell\ncell\ncell\ndone\n");
+
+    // SPEC 16.3.3, SHARED_OBJECT_RUNTIME, Release (DECISIONS R5-M112): a Sealed payload's handle glue releases directly, its counted
+    // transition (none for obj, a store of the reduced count for rc, a compare-exchange and an acquire fence for arc), then the payload's
+    // glue at the payload and the free, or the free alone for a payload without a drop; an open payload's glue is the runtime's release of
+    // its handle's counting, whose descriptor's finalizer destroys the actual Type. Each is a glue function of the handle slot and the
+    // location.
+    [Fact]
+    public void AHandlesGlueReleasesItsObject()
+    {
+        var c = Analyze(Releases, OutputKind.Library);
+        var ir = GeneratedIr.Parse(Generate(c));
+        var free = ir.Function("__kimi_free");
+        var sealedHandles = new[] { ("dropObj", 2, "none"), ("dropRc", 2, "store"), ("dropArc", 2, "cmpxchg"), ("dropPlain", 1, "store") };
+        foreach (var (name, callees, counted) in sealedHandles)
+        {
+            var glue = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, name)))).Callee!;
+            Assert.Equal("internal void (ptr, ptr, i64)", glue.Signature);
+            var calls = CallsOf(glue);
+            Assert.Equal(callees, calls.Length);
+            Assert.Same(free, calls[^1].Callee);
+            if (callees == 2)
+            {
+                Assert.Equal("internal void (ptr, ptr, i64)", calls[0].Callee!.Signature);
+                Assert.Equal("getelementptr i8, ptr %, i64 16", calls[0].Operands[0].Shape);
+                Assert.Same(calls[0].Operands[0].Operands[0], calls[1].Operands[0]);
+            }
+
+            var exchanges = glue.Instructions.Any(static x => x.Opcode == "cmpxchg");
+            Assert.Equal(counted == "store", glue.Instructions.Any(static x => x.Shape == "sub i64 %, 2") && !exchanges);
+            Assert.Equal(counted == "cmpxchg", exchanges && glue.Instructions.Any(static x => x.Shape == "fence acquire"));
+        }
+
+        foreach (var (name, release) in new[] { ("dropOpen", "__kimi_drop_rc"), ("dropOpenObj", "__kimi_drop_object") })
+        {
+            var glue = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, name)))).Callee!;
+            var call = Assert.Single(CallsOf(glue));
+            Assert.Same(ir.Function(release), call.Callee);
+            Assert.Equal(glue.Parameters, call.Operands);
+        }
+    }
 
     // IMPL 21.1.3, SHARED_OBJECT_RUNTIME (DECISIONS R5-M110): one descriptor per erased payload whatever the handle, its metadata the
     // payload's identity, layout, Copy and destroy entry, which calls the payload's glue; one factory serving obj, rc and arc, called with

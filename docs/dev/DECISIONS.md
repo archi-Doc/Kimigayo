@@ -7507,3 +7507,44 @@ structure is recorded here by the unit that first implements it.
   moves to the later of C8d and C9c, since the kernel needs `Array` of a handle Type (C8d) and string interpolation (C9c) under MIR code
   generation, as R5-M105 moved ErasedCalls'; C6b measures a fixed-array variant of the kernel as information, a B/A beyond the A=B
   variance stopping it (R5-M8's O2 rule). The later of C8d and C9c runs the corpus A/B under R5-M8. They leave the list.
+- **R5-M112 Handle glue in MIR code generation (C6b)** (2026-10-24, C lane; plan C6b, package C 3.6 "obj/rc/arc", design 2 2.7,
+  SHARED_OBJECT_RUNTIME, Release; SPEC 16.3.3, 22.5.1, IMPL 21.1.3; the planning session's go and rulings 1-6 on C6b's design,
+  `c6b-design.md`; under R5-M18 form 2 (G:object, one review with C6a), R5-M69, R5-M95, R5-M104 and R5-M110)
+  - Row (`DropGlueRow.Handle`, `FunctionCodegen.Objects`' Release): an owning handle's glue function releases its object. A Sealed
+    payload (`DropGlue.Parts` gives it) is released directly by `ObjectRuntime.WriteSealedDrop`: the counted transition of its mode, the
+    payload's glue at the payload (the glue item's one target, when the payload may need a drop; none, an empty symbol), then the free;
+    any other by the runtime's release of its counting (`ObjectRuntime.Release`: `__kimi_drop_object`, `__kimi_drop_rc`,
+    `__kimi_drop_arc`), whose descriptor's finalizer destroys the actual Type (SPEC 16.3.3). Both request the object runtime. A handle has
+    no part a move path opens, so its level runs only in its glue function; under an Open row it is `InternalInvariant_Kd`. A Sealed
+    payload without a drop takes the direct release where the old generator calls the dynamic one: IR only (PD9).
+  - Parameters (ruling 2, its own commit before the row): `DropGlue.Parameters` are named `slot`, `location` and `length`, the old
+    generator's glue names, which `WriteSealedDrop`'s text reads, so that text stays the one copy (PD2); every reader takes them by
+    position. Behavior unchanged: the old `.ll` identical, the MIR `.ll` differing only in those names (27 of 82, 52 functions, all
+    explained by a normalizing check), native outcomes, the snapshot and the gate unchanged.
+  - Deviation `inline-env` (R5-M104, class (a), PD19): the rows R5-M104 left to C6a and C6b take `Codegen.Expect(target, legacy,
+    CodegenDeviations.InlineEnvironment)` with their legacy bounds, verified natively under both generators: `ContextualClosureTest` and
+    `HeapClosureErasureTest`'s "Object" theory rows become the facts `AnObjectCaptureOfAnExpectedFunctionTypeIsReleasedOnce` and
+    `AnErasedObjectEnvironmentExecutesAndReleasesOnce` (1 allocation of 20 bytes against 2 of 28), `HeapClosureReplacement` (2|40 against
+    4|56), `HeapClosureAbandoned` (1|20 against 2|28), `FunctionCaptureNested` (2|36 against 3|44, the outer 16-byte environment still
+    allocated) and `FunctionCaptureReplacement` (1|20 against 2|28); none weakened.
+  - Type tests (ruling 4, the check on R5-M110's false): SPEC 13.6.4 admits one target form, a named struct Core (qualified or through an
+    alias, its Type arguments complete Types closed in each instance, its Origin bindings supplied by target completion and erased by the
+    numbering); a Type parameter, an associated Type, a non-struct Core (an enum, a Tuple, a Contract View, which has no test syntax,
+    13.6.5) or an unformable object form is rejected statically. Its test is `Supports(D, T)` over the single-inheritance base graph
+    (6.2.2), and the descriptors and tokens are module-local (IMPL 21.1.3), so with every runtime object from a Generated creation, its
+    chain numbered, and Weak and cyclic factories not executable, a target without a number is on no live object's chain: false is sound
+    for every admitted form, and none needs a located `Unsupported_Kd`.
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M111): the `SharedHandles` corpus O2 A/B moves to the later of
+    C8d and C9c (the kernel needs `Array` of a handle and interpolation under MIR code generation); C6b measures a fixed-array variant as
+    information.
+  - Rejected: `WriteSealedDrop` taking the parameters' spellings (a mode of the shared writer); inlining the release at each Drop (no function
+    per Type, X3); the dynamic release for a Sealed payload (a descriptor read where the Type is known); an Open level of a handle.
+  - Verified: the sel ledger loses 318 rows (object 205, C-frame 85, call 17, K-edges 6, closure 4, C-aggregate 1; 316 pass, the two
+    renamed theory rows are no longer executed), all of C6a's and C6b's census except the 17 rows of the case adaptation's creation
+    (R5-M111's commit); the 37 fixture families of the census and `ObjectRows*`, `ObjectRelease*` run natively under sel and the old
+    generator at O0 and O2; `FunctionCodegenTest` (each handle's glue: a Sealed payload's direct release by mode, its payload glue between
+    the transition and the free, the free alone without a drop, the runtime release of an open payload's rc and obj; `ObjectRelease` with
+    exact allocations and frees under both generators; M9's 0 B and I1 over the `Releases` source). O2 (information, a temp kernel: the
+    `SharedHandles` rounds with the four clones in a `[4 of rc/Payload]` read by index, its checksum required against the corpus value),
+    old generator A against sel B at O2, 15 interleaved samples: CPU B/A median 1.000 (mean 1.026, 0.77-1.23 at the 16 ms tick), within
+    A's consecutive spread 0.86-1.17; 549 against 556 instructions, the same calls, CAS loops and fences.
