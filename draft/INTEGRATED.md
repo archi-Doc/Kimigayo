@@ -980,14 +980,15 @@ Its independent review is `Sketches/R4 Proposals 2026-10-21/review-1.md`; the se
   D.2. Meant to change no verdict. The owner answered on the round-1 text; the review's narrower formulation, used now, keeps
   option A's intent and removes two verdict changes the round-1 definition had (its §9). Planned mapping (its §5): §15.8.2,
   §15.6.5, §7.7.4. The SPEC text lands only after 2x-P7's derivation column agrees (its §8), before 2c-D's design review.
-- [Failures Caused Only by Other Failures](Proposals/2026-10-21%20Failures%20Caused%20Only%20by%20Other%20Failures.md):
+- [Failures Caused Only by Other Failures](Changes/2026-10-21%20Failures%20Caused%20Only%20by%20Other%20Failures.md):
   一部取り込み (open, intake only), candidate 3. Round 1 ("Escapes and Derived Failures", not kept) and round 2 (a general
   definition of "caused only by" in §23.1.2) were not accepted by their reviews. After two rounds on one family the owner chooses
   between W, one concrete §15.6.5 sentence for a Loan conflict on the Loan of a Borrow refuted to a fixed Origin, R, the same rule
   as an implementation contract of A6, and H, 2a0-D §7 as approved; the owner chose W (2026-10-22, 「P2は、W：個別規則に決定します」).
   Round 3 writes W out; it passed its review with fixes, a re-check and a confirmation
   (`Sketches/R4 Proposals 2026-10-21/review-p2r3.md`), and DECISIONS R4-M104 adopts it. Planned mapping, after the prototype round
-  and a SPEC session: §15.6.5, §14.8.3, §15.8.2. The owner's answers to round 1 are not applied.
+  and a SPEC session: §15.6.5, §14.8.3, §15.8.2. The owner's answers to round 1 are not applied. (Superseded: integrated and closed
+  as 取り込み済み on 2026-10-24, below.)
 - Nothing is integrated into SPEC or IMPL, no text is frozen, and no support is claimed.
 
 ## 2026-10-22 — Static slots, layout requirements and lifecycle receivers (R4)
@@ -1185,3 +1186,27 @@ the current AGENTS (1 and 2 are the two corrections below).
     "(AGENTS, `8071549f`)" → DECISIONS Q3.
   - Correction (the file is frozen): after the move, its header link to the PLAN Size Budget proposal resolves at
     `../Proposals/2026-10-12%20PLAN%20Size%20Budget%20and%20Issue%20Register.md`. That proposal, this one's precondition, stays open.
+
+## 2026-10-24 — Failures caused only by other failures integrated (rule W; R4 unit spec-w)
+
+The owner, 2026-10-24, verbatim answers to the R4 planning session's questions after the prototype round that DECISIONS R4-M104
+ordered: 「(a) 今、W だけで開く (推奨)」 and 「(a) SPEC の W の文に書く (推奨)」 (DECISIONS R4-M122).
+
+- `Changes/2026-10-21 Failures Caused Only by Other Failures.md`: 取り込み済み (closed 2026-10-24); the file moved from `Proposals/`
+  with only its status sentence replaced. Mapping:
+  - §2's sentence → SPEC §15.6.5, a paragraph after the sentence on locals, unchanged, with the owner's clause appended ("and a read
+    through a reference to a whole value counts as a Copy of that value", the prototype round's item 6). §8's citations → §14.8.3 (one
+    sentence in Candidates) and §15.8.2 (its sentence on a returned body-local borrow). Example: §15.6.5's `store` and `keep` (§3's
+    m-write4 and m-write rows), registered in `tests/diagnostics/spec-cases.json` as `15.6.5-derived-conflict`.
+  - §1, §2's explanation and bullets, §5 and §7 → DECISIONS R4-M104 and R4-M122 (rationale, Principles, what the sentence leaves
+    unchanged, and which supersessions take effect now and which with 2a-2 and 2g-5).
+  - §3 and §6 item 1 → the prototype round of 2026-10-24 (every row that reaches a reading matches; no acceptance change). §4
+    (implementation direction, H), §6 item 3 (R5's review of the publication part) and §9 → 2a-2's full-process design and R5's H3
+    (R4-M104's order). Nothing is rejected and nothing stays open.
+  - Corrections (the file is frozen), from the prototype round: §3's m-36f row is vacuous (P12 was deleted by Abstract Calls Reach by
+    Paths, DECISIONS R4-M106, so the program has no conflict); the note after §3 expects m-write3's storage-end conflict to be derived,
+    but there is none (the write `x = 2` ends x's Loans first, SPEC §15.6.3), only the independent write conflict; round 3's B1 (b) row
+    (keepA) lists one conflict, but the program has a second, at local's storage end, derived from the relation at `v` (`p.*` receives
+    v's value, a Copy of `local@ref`, at `a`); §4 does not state the read-through rule SPEC now has.
+  - Not implemented: A5's derivation is 2a-2's. No verdict changes, so STATUS is unchanged (its Diagnostics row already states that a
+    Binding Origin failure stops ownership, the example's (a) difference). SPECJ and GUIDE are not refreshed.

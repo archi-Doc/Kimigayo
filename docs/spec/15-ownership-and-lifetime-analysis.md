@@ -670,6 +670,8 @@ Every relation the body checks is judged, including unreachable result sources (
 
 With pair binders, the well-formedness premises are those of each Semantics case's Types ([§8.15](08-generics-constraints-and-contracts.md#815-generic-body-checking)); a pair layer's outer-Origin slot exists only in cases that have an outer Origin ([§8.1.1](08-generics-constraints-and-contracts.md#811-type-slots-and-pair-parameters)), and a relation is Proven only from premises that hold in every case that requires it. A use beyond a local Place's lifetime is a Loan conflict at its destruction or Move ([§15.6.6](#1566-destruction-lifetime-checking)), never an Origin relation failure; returning a borrow of a local or temporary is the Refuted relation at the returned value.
 
+A Loan conflict on the Loan of a Borrow whose finite Origin Refuted chains carry to fixed Origins is caused only by the Refuted relations of those chains ([§23.1.2](23-compiler-services.md#2312-reporting)) when every value that carries the Loan and may be used after the access is the result or storage the body does not own and received the Loan only as the borrow or a Copy or Reborrow of it ([§15.6](#156-borrow-checking)), stored into a part with a fixed Origin; a call's result, or storage the call writes, that may retain such a value as an argument counts as a Copy of it ([§15.6.4](#1564-calls)), and a read through a reference to a whole value counts as a Copy of that value.
+
 ```kimi
 func bad(x: ref/i32) -> ref/i32 during x
     let local: i32 = 1
@@ -683,6 +685,19 @@ func f(x: ref/i32, y: ref/i32) -> ref/i32 during y
 func pick<s/T>(b: ref/Box<s/T during a> during c, x: ref/i32 during a) -> ref/i32 during c
     s is owner or ref
     return x              // Error: a outlives c holds only in the ref case.
+```
+
+```kimi
+func store(target: uniq/(ref/i32 during a))
+    var local: i32 = 1
+    target@follow = local@ref   // Error: the borrow of local cannot outlive a.
+    local = 2                   // Error: caused only by that relation, since only target.* keeps the Loan.
+
+func keep(x: ref/i32) -> ref/i32 during x
+    var value: i32 = 1
+    let r = value@ref
+    value = 2                   // Error: independent of the relation below, since r keeps the Loan and is used after.
+    return r                    // Error: the borrow of value cannot outlive x.
 ```
 
 ### 15.6.6. Destruction lifetime checking
@@ -813,7 +828,7 @@ A Closure keeps every captured value's Origin and Loan dependencies, not merely 
 | Reference moved out by a Consuming call | Transfers its Origin and capability |
 | Borrowed argument | Follows the parameter's Origin contract |
 
-When the result Type is omitted, each Origin in the inferred result is a per-call Origin of the internal call contract, outlived by every source of the returned values per the table. Several returned values give the meet of their sources at covariant positions and require equal Origins at invariant positions. Any other source, such as a Borrow of call-local storage or of an environment consumed by the call, is an error. The Origin of a whole result inferred from the body is a fixed Origin outside the body; each result source is judged against it, so returning a body-local borrow is an error at the returned value, not a Loan conflict at the storage's destruction.
+When the result Type is omitted, each Origin in the inferred result is a per-call Origin of the internal call contract, outlived by every source of the returned values per the table. Several returned values give the meet of their sources at covariant positions and require equal Origins at invariant positions. Any other source, such as a Borrow of call-local storage or of an environment consumed by the call, is an error. The Origin of a whole result inferred from the body is a fixed Origin outside the body; each result source is judged against it, so returning a body-local borrow is an error at the returned value, not a Loan conflict at the storage's destruction ([§15.6.5](#1565-judging-origin-relations)).
 
 An annotated result, or a fixed expected call signature ([§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries)), uses ordinary result elision: no Origin expression names the hidden receiver, and annotation names resolve among the parameters and enclosing scopes, never to environment bindings. Common Function Types and Callable Constraints never return results that depend on the hidden receiver ([§8.10](08-generics-constraints-and-contracts.md#810-callable-constraints)).
 
