@@ -9,6 +9,30 @@ namespace XunitTest;
 
 public class ConditionalMemberBindingTest
 {
+    // A signature-preserving independent failure still permits the old call only when no rejected declaration part exists.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ARejectedMarkerPreventsConditionalSelectionDespiteASignatureFailure(bool rejected)
+    {
+        var marker = rejected ? "        #Unknown\n" : string.Empty;
+        var c = Parse("contract C\nstruct S<T>\n    Self is C when T is Copy\n" + marker +
+            "        public func f<a/A, b/B>(p: a/A, q: b/B) -> ()\n            _ = p@move\n            _ = q@move\n" +
+            "func use() => S<i32>.f(1, 2)");
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
+        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single();
+        for (var pass = 0; pass < 2; pass++)
+        {
+            Assert.False(c.Bind().IsComplete);
+            Assert.Equal(BindingFailure.CaseLimit, function.FailureOf());
+            Assert.DoesNotContain(function, c.Binding.DerivedIssues);
+            Assert.Equal(!rejected, call.CallOf() is not null);
+            Assert.Equal(
+                rejected ? ["UnresolvedBinding_Kd", "OwnershipCaseLimit_Kd"] : ["OwnershipCaseLimit_Kd"],
+                CompilationTestHelper.BindingErrors(c).Select(x => x.Code));
+        }
+    }
+
     [Theory]
     [InlineData("i32", true)]
     [InlineData("string", false)]
@@ -361,6 +385,7 @@ public class ConditionalMemberBindingTest
         };
         var original = Select(c);
         var replacement = Select(fragment);
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         var parent = original.Parent!;
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         var retained = call.CallOf()!;

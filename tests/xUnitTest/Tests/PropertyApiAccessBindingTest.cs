@@ -96,6 +96,7 @@ public class PropertyApiAccessBindingTest
         var original = Assert.Single(container.Members.OfType<PropertyKoto>());
         var valid = MinimalEmissionTest.Analyze("struct Hidden\npublic struct Api\n    private let item: Hidden");
         var replacement = Assert.Single(valid.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api").Members.OfType<PropertyKoto>());
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(container, original, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(replacement.SymbolOf()!.Property!.IsVerified);

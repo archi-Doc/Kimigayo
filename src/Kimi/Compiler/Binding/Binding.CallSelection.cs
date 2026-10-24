@@ -143,7 +143,7 @@ public sealed partial class Binding
         }
 
         evaluation.Error |= state == CandidateApplicability.Error;
-        evaluation.InvalidDeclaration ??= state == CandidateApplicability.Error ? InvalidDeclarationContextCause(function) : null;
+        evaluation.InvalidDeclaration ??= state == CandidateApplicability.Error ? this.InvalidDeclarationContextCause(function) : null;
         if (state is not (CandidateApplicability.Applicable or CandidateApplicability.Waiting))
         {
             evaluation.IncompleteSignature ??= state == CandidateApplicability.Inapplicable ? IncompleteSignature(function) : null;

@@ -370,7 +370,7 @@ public class MatchOwnershipTest
     private static Compilation Parse(string source)
         => CompilationTestHelper.BindSuccess(source);
 
-    [TestClass(DisableParallelization = true)]
+    [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]
     public class AllocationTests
     {

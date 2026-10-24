@@ -184,6 +184,7 @@ public sealed class OriginSyntaxDiagnosticTest(ITestOutputHelper output)
     [InlineData("func f(x: ref/i32 during a?) => ()", "An optional suffix cannot follow an Origin annotation in the same Type", "optional suffix follows the annotation")]
     [InlineData("func f(x: ref/i32 during a and b) => ()", "An Origin intersection after 'during' requires parentheses", "intersection is outside parentheses")]
     [InlineData("func f(x: View<i32>{a, b}) => ()", "A Type binding-set suffix contains one new set Name, not Origin values, lists or mappings", "expected one binding-set Name in braces")]
+    [InlineData("func f(x: objref/Animal) -> bool => x is Slot<raw/i32 during static>", "Unexpected Origin annotation in a runtime Type-test target", "not permitted here")]
     public void CliAndLspExplainAnnotationOrder(string source, string message, string label)
     {
         var path = Path.GetFullPath("origin-syntax.kimi");
@@ -206,6 +207,27 @@ public sealed class OriginSyntaxDiagnosticTest(ITestOutputHelper output)
             Assert.Contains(error.Message, sent.Message, StringComparison.Ordinal);
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
+    }
+
+    [Theory]
+    [InlineData("Slot<ref/i32 during static>", "ref/i32 during static")]
+    [InlineData("Slot<raw/i32 during static>", "raw/i32 during static")]
+    [InlineData("Slot<Slot<ref/i32 during static>>", "ref/i32 during static")]
+    [InlineData("Slot<(i32, ref/i32 during static)>", "ref/i32 during static")]
+    [InlineData("Slot<[2 of ref/i32 during static]>", "ref/i32 during static")]
+    [InlineData("Slot<(ref/i32 during static) -> i32>", "ref/i32 during static")]
+    [InlineData("Slot<() -> ref/i32 during static>", "ref/i32 during static")]
+    [InlineData("Slot<View during static>", "View during static")]
+    [InlineData("Slot<View{v}>", "View{v}")]
+    [InlineData("Slot<S.Item(static)>", "S.Item(static)")]
+    public void RuntimeTypeTargetsRejectWrittenOriginsAtEveryDepth(string target, string marked)
+    {
+        var source = "func f(x: objref/Animal) -> bool => x is not " + target;
+        var error = Assert.Single(Parse(source).Diagnostics.Finalize(rejected: true).Diagnostics);
+        Assert.Equal("MisplacedSyntax_Kd", error.Code);
+        Assert.Equal("Unexpected Origin annotation in a runtime Type-test target", error.Message);
+        Assert.Equal("not permitted here", error.Label);
+        Assert.Equal(new SourceSpan(source.IndexOf(marked, StringComparison.Ordinal), marked.Length), error.Span);
     }
 
     private static Compilation Parse(string source, string path = "origin-syntax.kimi")

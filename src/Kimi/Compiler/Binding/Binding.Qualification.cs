@@ -241,7 +241,7 @@ public sealed partial class Binding
         {
             for (var i = 0; i < aliases.Count; i++)
             {
-                AddScope(this.AliasTarget(aliases[i]));
+                AddScope(this.AliasTarget(aliases[i].Declaration!));
             }
         }
 

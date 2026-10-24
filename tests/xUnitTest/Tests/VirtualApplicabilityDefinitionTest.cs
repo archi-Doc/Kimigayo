@@ -97,7 +97,7 @@ public class VirtualApplicabilityDefinitionTest(ITestOutputHelper output)
         var derived = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == "Derived");
         var donor = MinimalEmissionTest.Analyze(Program(false, "i32", "2"));
         var replacement = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == "Derived");
-        Assert.True(KotoHelper.Replace(derived, derived.Bases[0], replacement.Bases[0]));
+        Assert.True(KotoHelper.Replace(derived, derived.Bases[0], ParseTestHelper.Detach(replacement.Bases[0], new CodeBlockKoto(derived.CodeContext))));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         var implementation = derived.Members.OfType<FunctionKoto>().Single(x => x.IsOverride);
         Assert.True(c.Binding.TryGetVirtualOverride(implementation, out var mapping));

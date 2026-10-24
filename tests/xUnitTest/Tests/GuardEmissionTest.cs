@@ -180,7 +180,7 @@ public class GuardEmissionTest
     public void DivergentGuardHasNoSelectedBodyEdge()
     {
         const string Source = "func stop() -> Never\n    loop => ()\nmatch 1\n    _ if stop() => Console.writeLine(\"bad\")\n    _ => Console.writeLine(\"after\")";
-        var ir = ScalarEmissionTest.EmitFixture("GuardDivergent", Source, string.Empty, timeoutMilliseconds: 300);
+        var ir = ScalarEmissionTest.EmitFixture("GuardDivergent", Source, string.Empty, observationMilliseconds: 300);
         GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 
@@ -191,7 +191,10 @@ public class GuardEmissionTest
         var match = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MatchKoto>());
         var oldGuard = match.Arms[0].Guard!;
         match.Arms[0].Guard = null;
+        oldGuard.Parent = null;
+        ParseTestHelper.VerifyParents(c.Kotonoha.RootKoto);
         Assert.True(KotoHelper.Replace(match, match.Arms[0].Body, oldGuard));
+        ParseTestHelper.VerifyParents(c.Kotonoha.RootKoto);
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.TryGetMatch(match, out var plan));
         Assert.Null(plan!.Positions[0].CandidateSymbol);

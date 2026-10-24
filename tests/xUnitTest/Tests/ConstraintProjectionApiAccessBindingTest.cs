@@ -158,6 +158,7 @@ public class ConstraintProjectionApiAccessBindingTest
         var original = clause.Right;
         var valid = MinimalEmissionTest.Analyze(prefix + "i32\n        ()");
         var replacement = ((IsKoto)valid.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api").Members.OfType<FunctionKoto>().Single().TypeConstraints.Single()).Right;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(clause, original, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(KotoHelper.Replace(clause, replacement, original));

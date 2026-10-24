@@ -24,10 +24,23 @@ public sealed class LspHoverAdoptionTest
         h.Finish();
         var result = await h.Hover();
         Assert.Equal("markdown", result.GetProperty("contents").GetProperty("kind").GetString());
-        Assert.Contains("```kimi\nstruct Sample\n```", Body(result));
+        Assert.Contains("```kimi\nstruct Sample\n```", LspTestClient.HoverText(result));
         Assert.Equal(7, result.GetProperty("range").GetProperty("start").GetProperty("character").GetInt32());
         Assert.Equal(13, result.GetProperty("range").GetProperty("end").GetProperty("character").GetInt32());
         Assert.Equal(JsonValueKind.Null, (await h.Hover(0, 13)).ValueKind);
+    }
+
+    // A finished product result publishes its diagnostics, but adoption also waits for the owner's test-presence decision, which may
+    // add a required test unit (docs/dev/HOVER.md); the client therefore waits for Hover after a publication (LspTestClient).
+    [Fact]
+    public async Task AdoptionWaitsForTheTestPresenceDecision()
+    {
+        await using var h = new Harness();
+        h.Derive(1);
+        h.Complete(0);
+        Assert.Equal(JsonValueKind.Null, (await h.Hover()).ValueKind);
+        h.Decide();
+        Assert.NotEqual(JsonValueKind.Null, (await h.Hover()).ValueKind);
     }
 
     [Fact]
@@ -35,15 +48,15 @@ public sealed class LspHoverAdoptionTest
     {
         await using var h = new Harness();
         h.Adopt();
-        var first = Body(await h.Hover());
+        var first = LspTestClient.HoverText(await h.Hover());
         h.Edit(0, 0, 0, 0, "\n");
         var previous = await h.Hover(1, 8);
-        Assert.Equal(HoverRenderer.PreviousNotice + "\n\n" + first, Body(previous));
+        Assert.Equal(HoverRenderer.PreviousNotice + "\n\n" + first, LspTestClient.HoverText(previous));
         h.Begin("\nstruct Sample\n");
         h.Complete(0, span: new(8, 6), copy: ConstraintProof.Refuted);
         h.Decide();
         h.Finish();
-        var current = Body(await h.Hover(1, 8));
+        var current = LspTestClient.HoverText(await h.Hover(1, 8));
         Assert.DoesNotContain(HoverRenderer.PreviousNotice, current);
         Assert.Contains("Copy: No", current);
         Assert.Equal(JsonValueKind.Null, (await h.Hover(0, 8)).ValueKind);
@@ -57,9 +70,9 @@ public sealed class LspHoverAdoptionTest
         h.Edit(0, 8, 0, 9, "a");
         Assert.Equal(JsonValueKind.Null, (await h.Hover()).ValueKind); // Identical text still touched this historical token.
         h.Begin("struct Sample\n");
-        Assert.DoesNotContain(HoverRenderer.PreviousNotice, Body(await h.Hover()));
+        Assert.DoesNotContain(HoverRenderer.PreviousNotice, LspTestClient.HoverText(await h.Hover()));
         h.Finish();
-        Assert.Contains("Copy: Yes", Body(await h.Hover()));
+        Assert.Contains("Copy: Yes", LspTestClient.HoverText(await h.Hover()));
     }
 
     [Theory]
@@ -89,12 +102,12 @@ public sealed class LspHoverAdoptionTest
         h.Begin("\nstruct Sample\n");
         h.Edit(0, 0, 0, 0, "\n");
         h.Finish();
-        Assert.StartsWith(HoverRenderer.PreviousNotice, Body(await h.Hover(2, 8)));
+        Assert.StartsWith(HoverRenderer.PreviousNotice, LspTestClient.HoverText(await h.Hover(2, 8)));
         h.Begin("\n\nstruct Sample\n");
         h.Complete(0, span: new(9, 6));
         h.Decide();
         h.Finish();
-        Assert.DoesNotContain(HoverRenderer.PreviousNotice, Body(await h.Hover(2, 8)));
+        Assert.DoesNotContain(HoverRenderer.PreviousNotice, LspTestClient.HoverText(await h.Hover(2, 8)));
     }
 
     [Fact]
@@ -117,7 +130,7 @@ public sealed class LspHoverAdoptionTest
         await using var h = new Harness();
         h.Derive(1, testOnly: true);
         h.Complete(1);
-        Assert.Contains("Copy: Yes", Body(await h.Hover()));
+        Assert.Contains("Copy: Yes", LspTestClient.HoverText(await h.Hover()));
     }
 
     [Fact]
@@ -133,8 +146,6 @@ public sealed class LspHoverAdoptionTest
         h.Edit(99, 0, 99, 0, "x");
         Assert.Equal(JsonValueKind.Null, (await h.Hover()).ValueKind);
     }
-
-    private static string Body(JsonElement result) => result.GetProperty("contents").GetProperty("value").GetString()!;
 
     private sealed class Harness : IAsyncDisposable
     {

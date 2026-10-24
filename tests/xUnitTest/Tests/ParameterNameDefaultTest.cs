@@ -133,6 +133,7 @@ public class ParameterNameDefaultTest
         var original = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
         var donor = MinimalEmissionTest.Analyze("func f(! x: i32) => ()");
         var replacement = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         var parent = original.Parent!;
         Assert.True(KotoHelper.Replace(parent, original, replacement));
         Assert.False(c.Bind().IsComplete);

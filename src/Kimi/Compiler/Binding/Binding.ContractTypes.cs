@@ -41,7 +41,7 @@ public sealed partial class Binding
         type = this.ApplyContractEnvironment(type, scope);
         if (this.activeRequirementContract is { } bound)
         {
-            type = this.SubstituteContractReference(type, bound); // SPEC 8.4.3: the requirement of a bound reference.
+            type = this.SubstituteContractReference(type, bound); // SPEC 8.4.1, 8.6.4: the requirement of a bound reference.
         }
 
         // SPEC 8.4: Self of any Contract, including an ancestor whose requirement is read here, is the conforming Type. A

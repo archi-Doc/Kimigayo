@@ -9,6 +9,20 @@ namespace XunitTest;
 
 internal static class ParseTestHelper
 {
+    // Removes one donor through its owning slot. The caller supplies a detached placeholder of the slot's accepted type.
+    internal static T Detach<T>(T node, Koto placeholder)
+        where T : Koto
+    {
+        var parent = Assert.IsAssignableFrom<Koto>(node.Parent);
+        Assert.Null(placeholder.Parent);
+        Assert.True(KotoHelper.Replace(parent, node, placeholder));
+        Assert.Null(node.Parent);
+        Assert.Same(parent, placeholder.Parent);
+        Assert.Contains(placeholder, parent.ChildNodes);
+        Assert.DoesNotContain(node, parent.ChildNodes);
+        return node;
+    }
+
     internal static void VerifyParents(Koto parent)
     {
         foreach (var child in parent.ChildNodes)

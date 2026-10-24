@@ -182,7 +182,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     }
 
     [Fact]
-    public async Task ReplaceWaitsOutATransientHoldOnTheDestination()
+    public void ReplaceWaitsOutATransientHoldOnTheDestination()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows rename semantics test.");
         var destination = Path.Combine(this.directory, "Hello.link.build.json");
@@ -191,17 +191,24 @@ public sealed class EmissionArtifactsTest : IDisposable
         File.WriteAllText(source, "new");
 
         // A scanner's handle on a just-published record denies an immediate replacement (verify native parallel runs).
-        var hold = new FileStream(destination, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+        using var hold = new FileStream(destination, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
         Assert.Throws<UnauthorizedAccessException>(() => File.Move(source, destination, true));
-        var release = Task.Run(
-            async () =>
-            {
-                await Task.Delay(30, TestContext.Current.CancellationToken);
-                hold.Dispose();
-            },
-            TestContext.Current.CancellationToken);
-        ArtifactFiles.Replace(source, destination);
-        await release;
+        // Releasing the hold must not depend on the test runner's available thread-pool workers.
+        var release = new Thread(() =>
+        {
+            Thread.Sleep(30);
+            hold.Dispose();
+        });
+        release.Start();
+        try
+        {
+            ArtifactFiles.Replace(source, destination);
+        }
+        finally
+        {
+            release.Join();
+        }
+
         Assert.Equal("new", File.ReadAllText(destination));
         Assert.False(File.Exists(source));
     }

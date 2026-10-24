@@ -304,15 +304,18 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // virtual-dispatch 6, SPEC 8.11.4: a virtual witness and a virtual function item dispatch, so their slot's bound decides, never the
     // original's body.
     [Theory]
-    [InlineData("", "Self is Getter\n", "IncompatibleContractImplementation_Kd Self is Getter 18446744073709551615|IncompatibleContractImplementation_Kd Self is Reader 1")]
-    [InlineData("        effect confined\n", "Self is Getter\n", "")]
+    [InlineData(
+        "",
+        "    Self is Getter\n",
+        "IncompatibleContractImplementation_Kd Self is Getter 18446744073709551615|IncompatibleContractImplementation_Kd Self is Reader 1")]
+    [InlineData("        effect confined\n", "    Self is Getter\n", "")]
     [InlineData("", "", "IncompatibleContractImplementation_Kd Self is Reader 1")]
     [InlineData("        effect confined\n", "", "")]
     public void DispatchedCalleesUseTheirSlotsBound(string bound, string witness, string expected)
         => Assert.Equal(
             Expected(expected),
             Problems("contract Getter\n    func get(self: objref/Self) -> i32\n        effect confined\ncontract Reader\n    func read(self: ref/Self, value: objref/Base) -> i32\n" +
-                $"        effect confined\nopen struct Base\n    {witness}    public virtual func get(self: objref/Self) -> i32\n{bound}        return 1\n" +
+                $"        effect confined\nopen struct Base\n{witness}    public virtual func get(self: objref/Self) -> i32\n{bound}        return 1\n" +
                 "struct Probe\n    Self is Reader\n    public func read(self: ref/Self, value: objref/Base) -> i32\n        let operation = Base.get\n" +
                 "        return operation(value)\n"));
 

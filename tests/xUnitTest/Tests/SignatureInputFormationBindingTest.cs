@@ -90,6 +90,7 @@ public class SignatureInputFormationBindingTest
         var original = function.Parameters[0].Type;
         var donor = MinimalEmissionTest.Analyze(source.Replace("Source<i32>", "Source<string>", StringComparison.Ordinal));
         var replacement = donor.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single(x => x.Name == "take").Parameters[0].Type;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(function, original, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.Null(Call(c).CallOf());

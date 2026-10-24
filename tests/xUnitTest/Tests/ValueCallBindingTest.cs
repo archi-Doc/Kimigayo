@@ -18,7 +18,7 @@ public class ValueCallBindingTest
         var function = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.Name == "apply");
         var donor = MinimalEmissionTest.Analyze(Source.Replace("i32", "i64", StringComparison.Ordinal));
         var changed = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.Name == "apply").Parameters[0];
-        Assert.True(KotoHelper.Replace(function, function.Parameters[0].Type, changed.Type));
+        Assert.True(KotoHelper.Replace(function, function.Parameters[0].Type, ParseTestHelper.Detach(changed.Type, new CodeBlockKoto(function.CodeContext))));
         Assert.Null(call.ValueCallOf());
         Assert.True(c.Bind().IsComplete);
         Assert.NotNull(call.ValueCallOf());

@@ -78,6 +78,7 @@ public class BaseProjectionAccessBindingTest
         var api = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api");
         var original = api.Bases[0];
         var replacement = Check("public open struct Base\npublic struct Api: Base", true).Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api").Bases[0];
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(api, original, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(KotoHelper.Replace(api, replacement, original));

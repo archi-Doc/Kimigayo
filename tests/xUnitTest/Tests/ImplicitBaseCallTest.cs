@@ -9,7 +9,7 @@ using Xunit;
 
 namespace XunitTest;
 
-public class ImplicitBaseCallTest
+public partial class ImplicitBaseCallTest
 {
     private const string LimitedBumps = "contract Bumps\n    func bump(self: uniq/Self) -> ()\nopen struct Base0\n    Self is Bumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct Leaf: Base0\n";
 

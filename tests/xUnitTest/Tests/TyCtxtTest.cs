@@ -158,8 +158,8 @@ public sealed class TyCtxtTest
         "    override func pick(self: objref/Self, values: ref/[2 of i32] during s) -> ref/i32 during s => base.pick(values)\n" +
         "let r = R.init()@obj\nlet two: [2 of i32] = [4, 5]\nrequire r.pick(two@ref)@follow == 4 else => $abort(\"pick\")\n";
 
-    // SPEC 8.2, 8.10: the declared parameter and result Types of the function a call's substitution instantiates are the call's
-    // instantiation (SPEC 8.4.3: a requirement's under its conforming Self and the bound Contract reference it dispatches through, which
+    // SPEC 8.1.3, 8.15.1: the declared parameter and result Types of the function a call's substitution instantiates are the call's
+    // instantiation (SPEC 8.4.1, 8.6.4: a requirement's under its conforming Self and the bound Contract reference it dispatches through, which
     // SubstOf records as its declaring Type; SPEC 6.4.4: a direct base call's function is the implementation it runs, in the Type
     // implementing it), a closure in such a Type has its instance's signature, and a function item's substitution applies as its context
     // does.
@@ -188,7 +188,7 @@ public sealed class TyCtxtTest
         CheckInstantiations(c, c.Kotonoha.RootKoto);
     }
 
-    // SPEC 8.2: a closure an instance closed is in that instance's substitution and has its signature; a closure no instance closed is
+    // SPEC 6.1.3, 8.1.3: a closure an instance closed is in that instance's substitution and has its signature; a closure no instance closed is
     // in the identity of the function enclosing it, which keeps every Type.
     [Fact]
     public void AClosureIsInItsInstancesSubstitution()
@@ -209,7 +209,7 @@ public sealed class TyCtxtTest
         Assert.Same(closure.Signature, c.Types.Apply(closure.Signature, identity));
     }
 
-    // SPEC 8.2, PLAN G142: a closure's context is the whole substitution of the instance that closed it, its conforming Self included, so two
+    // SPEC 6.1.3, 8.1.3, PLAN G142: a closure's context is the whole substitution of the instance that closed it, its conforming Self included, so two
     // substitutions that differ only in Self close it twice. No source call gives a body with a closure a Self (a Contract declares no default
     // implementation, SPEC 8.6.1), so the test synthesizes the two calls.
     [Fact]
@@ -243,7 +243,7 @@ public sealed class TyCtxtTest
         }
     }
 
-    // SPEC 8.13.3: a substitution holds one length entry per slot whichever producer forms it, so a direct call, a function item and a
+    // SPEC 4.4: a substitution holds one length entry per slot whichever producer forms it, so a direct call, a function item and a
     // synthesized call of one instance are one substitution.
     [Fact]
     public void ASubstitutionHasOneLengthEntryPerSlot()

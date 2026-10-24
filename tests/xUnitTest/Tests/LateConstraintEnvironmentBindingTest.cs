@@ -70,6 +70,7 @@ public class LateConstraintEnvironmentBindingTest
         var original = clause.Right;
         var donor = MinimalEmissionTest.Analyze(source.Replace("string is Copy", "string is not Copy", StringComparison.Ordinal) + Consumers);
         var replacement = donor.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Marker").ConstraintNodes[0].Right;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(clause, original, replacement));
         Assert.True(c.Bind().IsComplete);
         AssertConsumers(c, true);

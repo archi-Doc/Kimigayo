@@ -82,7 +82,213 @@ internal static class DiagnosticMeasurements
             },
             32);
 
+        results["override-failure-binding"] = OverrideFailures();
+        results["operator-binding"] = OperatorBindings();
+        results["attribute-causes"] = AttributeCauses(directory);
+
         Console.WriteLine(JsonSerializer.Serialize(new { compiler = Compilation.CompilerVersion, runtime = Environment.Version.ToString(), results }, new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    // The same legal and rejected operations before and after applicability changes; diagnostics never enter the timed window.
+    private static object OperatorBindings()
+    {
+        const int Count = 128;
+        var accepted = new StringBuilder("public func main() => ()\n");
+        var rejected = new StringBuilder("struct S\n    public var value: i32 = 0\npublic func main() => ()\n");
+        for (var i = 0; i < Count; i++)
+        {
+            accepted.Append((i % 4) switch
+            {
+                0 => $"func operatorCase{i}(x: i32) -> i32 => (x + 2) << 1\n",
+                1 => $"func operatorCase{i}(x: f64) -> bool => -x < 2.0\n",
+                2 => $"func operatorCase{i}<T>(x: T) -> T\n    T is PrimitiveInteger\n    return x << 1\n",
+                _ => $"func operatorCase{i}(p: raw/i32) -> raw/i32\n    unsafe\n        return p + 2\n",
+            });
+            rejected.Append((i % 8) switch
+            {
+                0 => $"func operatorCase{i}(x: u32) => -x\n",
+                1 => $"func operatorCase{i}(p: raw/i32) => p * 2\n",
+                2 => $"func operatorCase{i}<T>(x: T) => x << 1\n",
+                3 => $"func operatorCase{i}(x: S) => x << 1\n",
+                4 => $"func operatorCase{i}(p: raw/i32, q: raw/i32) => p < q\n",
+                5 => $"func operatorCase{i}(x: bool, y: bool) => x < y\n",
+                6 => $"func operatorCase{i}<T>(x: T) => x & 2\n",
+                _ => $"func operatorCase{i}(x: S) => x & 2\n",
+            });
+        }
+
+        return new { accepted = MeasureOperatorBinding(accepted.ToString(), 0), rejected = MeasureOperatorBinding(rejected.ToString(), Count) };
+    }
+
+    private static object MeasureOperatorBinding(string source, int failures)
+    {
+        var retained = new long[7];
+        for (var sample = 0; sample < retained.Length; sample++)
+        {
+            retained[sample] = RetainedOperatorBinding(source, failures);
+        }
+
+        var cold = Measure(() => BindOperators(source, failures), 8);
+        var compilation = BindOperators(source, failures);
+        var warm = Measure(() => Require(compilation.Bind().IsComplete == (failures == 0)), 32);
+        GC.KeepAlive(compilation);
+        return new { source, failures, retainedBytes = retained, medianRetainedBytes = retained.Order().ElementAt(3), cold, warm };
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static long RetainedOperatorBinding(string source, int failures)
+    {
+        var before = GC.GetTotalMemory(true);
+        var compilation = BindOperators(source, failures);
+        var retained = GC.GetTotalMemory(true) - before;
+        GC.KeepAlive(compilation);
+        return retained;
+    }
+
+    private static Compilation BindOperators(string source, int failures)
+    {
+        var compilation = Compilation.CreateForTest();
+        Require(compilation.Prepare(Target));
+        compilation.Kotonoha.AddSource(new SourceDocument("operators.kimi", source));
+        Require(compilation.Bind().IsComplete == (failures == 0));
+        Require(compilation.Binding.Issues.Count == failures);
+        return compilation;
+    }
+
+    // Equivalent declaration workloads isolate retained rejection causes from normal Binding; publication is measured separately.
+    private static object AttributeCauses(string directory)
+    {
+        const int Count = 128;
+        var cases = new (string Name, string Attribute)[]
+        {
+            ("normal", string.Empty), ("test", "#Test"), ("layout", "#Layout(\"bad\")"),
+            ("unknown", "#Unknown"), ("import", "#LibraryImport(\"library\", \"symbol\")"),
+        };
+        var results = new Dictionary<string, object>();
+        foreach (var item in cases)
+        {
+            var source = new StringBuilder();
+            for (var i = 0; i < Count; i++)
+            {
+                if (item.Attribute.Length != 0)
+                {
+                    source.AppendLine(item.Attribute);
+                }
+
+                source.Append("struct Entry").Append(i).AppendLine("\n    let value: i32");
+            }
+
+            var text = source.ToString();
+            var sourcePath = Path.Combine(directory, "attribute-causes-" + item.Name + ".kimi");
+            File.WriteAllText(sourcePath, text);
+            var rejected = item.Attribute.Length != 0;
+            var retained = new long[7];
+            for (var sample = 0; sample < retained.Length; sample++)
+            {
+                retained[sample] = RetainedAttributeCauses(text, rejected, Count);
+            }
+
+            var cold = Measure(() => BindAttributeCauses(text, rejected, Count), 8);
+            var compilation = BindAttributeCauses(text, rejected, Count);
+            var warm = Measure(() => Require(compilation.Bind().IsComplete != rejected), 32);
+            var publication = Measure(
+                () =>
+                {
+                    Require(compilation.Bind().IsComplete != rejected);
+                    compilation.Binding.ReportDiagnostics();
+                    Require(compilation.Diagnostics.Finalize().Diagnostics.Any(x => x.Severity == DiagnosticSeverity.Error) == rejected);
+                },
+                32);
+            results[item.Name] = new
+            {
+                count = Count,
+                sourcePath,
+                sourceSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(text))),
+                pipeline = compilation.Pipeline.ToString(),
+                codegen = compilation.Codegen.ToString(),
+                retainedBytes = retained,
+                medianRetainedBytes = retained.Order().ElementAt(3),
+                cold,
+                warm,
+                publication,
+            };
+            GC.KeepAlive(compilation);
+        }
+
+        return new
+        {
+            gcServer = System.Runtime.GCSettings.IsServerGC,
+            gcLatencyMode = System.Runtime.GCSettings.LatencyMode.ToString(),
+            processorCount = Environment.ProcessorCount,
+            results,
+        };
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static long RetainedAttributeCauses(string source, bool rejected, int count)
+    {
+        var before = GC.GetTotalMemory(forceFullCollection: true);
+        var compilation = BindAttributeCauses(source, rejected, count);
+        var retained = GC.GetTotalMemory(forceFullCollection: true) - before;
+        GC.KeepAlive(compilation);
+        return retained;
+    }
+
+    private static Compilation BindAttributeCauses(string source, bool rejected, int count)
+    {
+        var compilation = Compilation.CreateForTest();
+        Require(compilation.Prepare(Target));
+        compilation.Kotonoha.AddSource(new SourceDocument("attribute-causes.kimi", source));
+        Require(compilation.Bind().IsComplete != rejected);
+        var declarations = compilation.Kotonoha.RootKoto.NestedContainers;
+        Require(declarations.Count == count);
+        Require(declarations.All(x => (x.BindingState == BindingState.Invalid) == rejected));
+        return compilation;
+    }
+
+    // Fixed failed programs measure warm Binding and the retained compilation, including its failure records.
+    private static object OverrideFailures()
+    {
+        const int Count = 128;
+        var source = new StringBuilder();
+        for (var i = 0; i < Count; i++)
+        {
+            source.Append($"open struct Base{i}\n    public virtual func read(self: objref/Self) -> i32 => 1\nstruct Derived{i} : Base{i}\n    override func read(self: objref/Self) -> i64 => 2\n");
+        }
+
+        var text = source.ToString();
+        var retained = new long[7];
+        for (var sample = 0; sample < retained.Length; sample++)
+        {
+            retained[sample] = RetainedOverrideFailures(text, Count);
+        }
+
+        var cold = Measure(() => BindOverrideFailures(text, Count), 8);
+        var compilation = BindOverrideFailures(text, Count);
+        var warm = Measure(() => Require(!compilation.Bind().IsComplete), 32);
+        GC.KeepAlive(compilation);
+        return new { count = Count, retainedBytes = retained, medianRetainedBytes = retained.Order().ElementAt(3), cold, warm };
+    }
+
+    // A separate stack frame retires the preceding sample before the next GC baseline.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static long RetainedOverrideFailures(string source, int count)
+    {
+        var before = GC.GetTotalMemory(true);
+        var compilation = BindOverrideFailures(source, count);
+        var retained = GC.GetTotalMemory(true) - before;
+        GC.KeepAlive(compilation);
+        return retained;
+    }
+
+    private static Compilation BindOverrideFailures(string source, int count)
+    {
+        var compilation = Compilation.CreateForTest();
+        Require(compilation.Prepare(Target));
+        compilation.Kotonoha.AddSource(new SourceDocument("override-failures.kimi", source));
+        Require(!compilation.Bind().IsComplete);
+        Require(compilation.Binding.Issues.Count(x => x.Code == DiagnosticCode.OverrideContractMismatch_Kd) == count);
+        return compilation;
     }
 
     private static CheckOutput Check(string project)
@@ -128,9 +334,14 @@ internal static class DiagnosticMeasurements
             allocations[sample] = (double)(GC.GetAllocatedBytesForCurrentThread() - bytes) / iterations;
         }
 
-        Array.Sort(nanoseconds);
-        Array.Sort(allocations);
-        return new { medianMicroseconds = Math.Round(nanoseconds[3] / 1000, 1), minimumMicroseconds = Math.Round(nanoseconds[0] / 1000, 1), medianBytes = allocations[3] };
+        return new
+        {
+            medianMicroseconds = Math.Round(nanoseconds.Order().ElementAt(3) / 1000, 1),
+            minimumMicroseconds = Math.Round(nanoseconds.Min() / 1000, 1),
+            medianBytes = allocations.Order().ElementAt(3),
+            nanoseconds,
+            allocations,
+        };
     }
 
     private static void Require(bool condition, string? message = null)

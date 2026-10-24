@@ -3,6 +3,7 @@
 using Kimi;
 using Kimi.Checking;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Kimi.Lsp;
 using Xunit;
@@ -25,7 +26,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(DiagnosticSeverity.Error, error.Severity);
         Assert.Equal(DiagnosticCategory.Language, error.Category);
         Assert.Equal("The operator %= requires integer operands, but this operand has Type f64", error.Message);
-        Assert.Equal("f64 has no %=", error.Label);
+        Assert.Equal("operator %= requires an integer operand", error.Label);
         Assert.Equal("x %= 2.0", Source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
         Assert.Equal(["operand", "operator"], error.Reason!.Select(static x => x.Name));
         Assert.Equal(["f64", "%="], error.Reason!.Select(static x => x.Value));
@@ -61,7 +62,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
         var error = Assert.Single(Errors(Analyze(source)));
         Assert.Equal(nameof(DiagnosticCode.NonIntegerOperand_Kd), error.Code);
         Assert.Equal($"The operator {op} requires integer operands, but this operand has Type {type}", error.Message);
-        Assert.Equal($"{type} has no {op}", error.Label);
+        Assert.Equal($"operator {op} requires an integer operand", error.Label);
         Assert.Equal(text, error.Text);
         Assert.Null(error.Note);
     }
@@ -148,6 +149,30 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     }
 
     [Fact]
+    public void ARefutedIntegerRequirementPublishesItsActualQuery()
+    {
+        const string Source = "func bits<T>(value: T)\n    T is not PrimitiveInteger\n    return value & 2\npublic func main() => ()";
+        var compilation = Analyze(Source);
+        var error = Assert.Single(compilation.Diagnostics.Finalize(rejected: true).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.NonIntegerOperand_Kd), error.Code);
+        Assert.Equal(DiagnosticCategory.Language, error.Category);
+        Assert.Equal(["operand", "operator", "subject", "member", "constraint"], error.Reason!.Select(static x => x.Name));
+        Assert.Equal(["T", "&", "T", "&", "T is PrimitiveInteger"], error.Reason!.Select(static x => x.Value));
+        Assert.Equal("Required condition is not satisfied: T is PrimitiveInteger", error.Note);
+    }
+
+    [Theory]
+    [InlineData("func f<T>(x: T) -> T\n    T is PrimitiveInteger\n    return 1 + x\npublic func main() => ()")]
+    [InlineData("func f<T>(x: Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    return 1 + x\npublic func main() => ()")]
+    [InlineData("func f(x: Wrapping<i32>) -> Wrapping<i32> => 1 + x\npublic func main() => ()")]
+    public void AProvenRightIntegerSuppliesTheLiteralExpectation(string source)
+    {
+        var compilation = CompilationTestHelper.ParseSuccess(source);
+        Assert.True(compilation.Bind().IsComplete, MinimalEmissionTest.Describe(compilation, null));
+        Assert.Empty(compilation.Binding.Issues);
+    }
+
+    [Fact]
     public void IndependentErrorsSurviveAndRebindingRepeatsNothing()
     {
         var compilation = CompilationTestHelper.ParseSuccess("var x = 1.0\nx %= 2.0\nlet n: i32 = 1\nlet v = n << 1.0\nlet y: i32 = true");
@@ -189,7 +214,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains("Hello.kimi:1:29", console.Text, StringComparison.Ordinal);
-        Assert.Contains("^^^^^ f64 has no &", console.Text, StringComparison.Ordinal);
+        Assert.Contains("^^^^^ operator & requires an integer operand", console.Text, StringComparison.Ordinal);
         Assert.Contains("Hello.kimi:2:49", console.Text, StringComparison.Ordinal);
         Assert.Contains("^ Wrapping<i32> is not an integer Type", console.Text, StringComparison.Ordinal);
         Assert.DoesNotContain("TypeMismatch", console.Text, StringComparison.Ordinal);
@@ -208,6 +233,249 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
 
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void LongOperandRequirementsSurviveCliAndLspRendering(bool refuted)
+    {
+        var type = "Operand" + new string('X', 140) + "Tail";
+        var condition = refuted ? $"\n    {type} is not PrimitiveInteger" : string.Empty;
+        var source = $"func bits<{type}>(value: {type}){condition}\n    return value & 2\npublic func main() => ()";
+        var path = Path.GetFullPath("operator.kimi");
+        var compilation = Analyze(source, path);
+        compilation.Diagnostics.AddInput(compilation.Diagnostics.FindDocument(path)!, compilation.Kotonoha);
+        var result = compilation.Diagnostics.Finalize(rejected: true);
+        var error = Assert.Single(result.Diagnostics);
+        Assert.Equal(refuted ? nameof(DiagnosticCode.NonIntegerOperand_Kd) : nameof(DiagnosticCode.UnprovenConstraint_Kd), error.Code);
+        var facts = refuted ? error.Reason!.Skip(2).ToArray() : error.Reason!.ToArray();
+        Assert.Equal(["subject", "member", "constraint"], facts.Select(static x => x.Name));
+        var subject = facts[0].Value;
+        Assert.True(subject.Length <= 96);
+        Assert.StartsWith("Operand", subject, StringComparison.Ordinal);
+        Assert.EndsWith("Tail", subject, StringComparison.Ordinal);
+        Assert.Equal("&", facts[1].Value);
+        Assert.EndsWith(" is PrimitiveInteger", facts[2].Value, StringComparison.Ordinal);
+        var verdict = refuted ? "not satisfied" : "not proven";
+        Assert.Equal($"Required condition is {verdict}: {subject} is PrimitiveInteger", error.Note);
+        var function = KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "bits");
+        Assert.Equal(type, function.Parameters[0].Type.TypeOf()!.Name);
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(result, string.Empty);
+        Assert.Contains("PrimitiveInteger", console.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("TypeMismatch", console.Text, StringComparison.Ordinal);
+        output.WriteLine(console.Text);
+        var identity = SourceIdentity.FromPath(path);
+        foreach (var related in new[] { false, true })
+        {
+            var placed = WorkspaceCheck.Place(
+                new(CheckOutcome.Completed, false, TestPresence.No, result),
+                [identity],
+                identity,
+                related);
+            var sent = Assert.Single(placed[identity]);
+            Assert.Equal(error.Code, sent.Code);
+            Assert.Equal(error.Display!.Range, sent.Range);
+            Assert.Contains("PrimitiveInteger", sent.Message, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void EditingAnOperatorReplacesItsTypedFailureFacts()
+    {
+        var compilation = CompilationTestHelper.ParseSuccess("func f(value: u32) => -value\npublic func main() => ()");
+        Assert.False(compilation.Bind().IsComplete);
+        compilation.Binding.ReportDiagnostics();
+        var original = Assert.Single(compilation.Diagnostics.Finalize(rejected: true).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.OperatorNotDefined_Kd), original.Code);
+        Assert.Equal(["u32", "-"], original.Reason!.Select(static x => x.Value));
+        ReplaceFunction(compilation, "func f(value: i32) => -value\npublic func main() => ()");
+        Assert.True(compilation.Bind().IsComplete);
+        compilation.Binding.ReportDiagnostics();
+        Assert.Empty(compilation.Diagnostics.Finalize(rejected: false).Diagnostics);
+        ReplaceFunction(compilation, "func f(value: bool) => value < false\npublic func main() => ()");
+        Assert.False(compilation.Bind().IsComplete);
+        compilation.Binding.ReportDiagnostics();
+        var replaced = Assert.Single(compilation.Diagnostics.Finalize(rejected: true).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.OperatorNotDefined_Kd), replaced.Code);
+        Assert.Equal(["bool", "<"], replaced.Reason!.Select(static x => x.Value));
+
+        static void ReplaceFunction(Compilation compilation, string source)
+        {
+            var root = compilation.Kotonoha.RootKoto;
+            var current = KotoTree.Walk(root).OfType<FunctionKoto>().Single(static x => x.Name == "f");
+            var donor = CompilationTestHelper.ParseSuccess(source);
+            var replacement = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f");
+            ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
+            Assert.True(KotoHelper.Replace(current.Parent!, current, replacement));
+        }
+    }
+
+    [Theory]
+    [InlineData(
+        "func f(x: u32) => -x\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "u32",
+        "-",
+        "-x",
+        null)]
+    [InlineData(
+        "func f(x: ref/u32) => -x\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "u32",
+        "-",
+        "-x",
+        null)]
+    [InlineData(
+        "let value = true < false",
+        "OperatorNotDefined_Kd",
+        "bool",
+        "<",
+        "true < false",
+        null)]
+    [InlineData(
+        "let value = () >= ()",
+        "OperatorNotDefined_Kd",
+        "()",
+        ">=",
+        "() >= ()",
+        null)]
+    [InlineData(
+        "let p: raw/i32 = null\nlet q: raw/i32 = null\nlet r = p < q",
+        "OperatorNotDefined_Kd",
+        "raw/i32",
+        "<",
+        "p < q",
+        null)]
+    [InlineData(
+        "func f(p: raw/i32) => p * 2\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "raw/i32",
+        "*",
+        "p * 2",
+        null)]
+    [InlineData(
+        "func f(p: raw/i32) => 2 * p\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "raw/i32",
+        "*",
+        "2 * p",
+        null)]
+    [InlineData(
+        "func f(p: raw/i32) => 2 + p\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "raw/i32",
+        "+",
+        "2 + p",
+        null)]
+    [InlineData(
+        "func f(p: raw/i32) => 2 - p\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "raw/i32",
+        "-",
+        "2 - p",
+        null)]
+    [InlineData(
+        "func f(p: raw/i32)\n    var q = p\n    q *= 2\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "raw/i32",
+        "*=",
+        "q *= 2",
+        null)]
+    [InlineData(
+        "func f(p: raw/i32)\n    var q = p\n    q <<= 1\npublic func main() => ()",
+        "NonIntegerOperand_Kd",
+        "raw/i32",
+        "<<=",
+        "q <<= 1",
+        null)]
+    [InlineData(
+        "func f(p: raw/i32)\n    var q = p\n    q++\npublic func main() => ()",
+        "NonIntegerOperand_Kd",
+        "raw/i32",
+        "++",
+        "q++",
+        null)]
+    [InlineData(
+        "struct S\nfunc f(x: S) => x << 1\npublic func main() => ()",
+        "NonIntegerOperand_Kd",
+        "S",
+        "<<",
+        "x << 1",
+        null)]
+    [InlineData(
+        "struct S\nfunc f(x: S) => x & 2\npublic func main() => ()",
+        "NonIntegerOperand_Kd",
+        "S",
+        "&",
+        "x & 2",
+        null)]
+    [InlineData(
+        "func f(p: raw/i32) => p & 2\npublic func main() => ()",
+        "NonIntegerOperand_Kd",
+        "raw/i32",
+        "&",
+        "p & 2",
+        null)]
+    [InlineData(
+        "func f<T>(x: T) => x << 1\npublic func main() => ()",
+        "UnprovenConstraint_Kd",
+        "T",
+        "<<",
+        "x << 1",
+        "PrimitiveInteger")]
+    [InlineData(
+        "func f<T>(x: T) => x & 2\npublic func main() => ()",
+        "UnprovenConstraint_Kd",
+        "T",
+        "&",
+        "x & 2",
+        "PrimitiveInteger")]
+    [InlineData(
+        "func f<T>(x: T) => -x\npublic func main() => ()",
+        "UnprovenConstraint_Kd",
+        "T",
+        "-",
+        "-x",
+        "Negatable")]
+    [InlineData(
+        "func f<T>(x: T)\n    T is PrimitiveInteger\n    return -x\npublic func main() => ()",
+        "UnprovenConstraint_Kd",
+        "T",
+        "-",
+        "-x",
+        "Negatable")]
+    [InlineData(
+        "func f<T>(x: T) => 1 << x\npublic func main() => ()",
+        "UnprovenConstraint_Kd",
+        "T",
+        "<<",
+        "x",
+        "PrimitiveInteger")]
+    public void ApplicabilityFailuresRetainFactsBeforeCounterpartFitting(
+        string source, string code, string type, string op, string at, string? contract)
+    {
+        var compilation = Analyze(source);
+        var error = Assert.Single(Errors(compilation));
+        Assert.Equal(code, error.Code);
+        Assert.Equal(at, error.Text);
+        var record = Assert.Single(compilation.Diagnostics.Finalize().Diagnostics);
+        Assert.Equal(code == "UnprovenConstraint_Kd" ? DiagnosticCategory.Proof : DiagnosticCategory.Language, record.Category);
+        var names = contract is null ? new[] { "operand", "operator" } : ["subject", "member", "constraint"];
+        Assert.Equal(names, record.Reason!.Select(static x => x.Name));
+        Assert.Equal(type, record.Reason![0].Value);
+        Assert.Equal(op, record.Reason[1].Value);
+        if (contract is not null)
+        {
+            Assert.Contains(contract, record.Reason[2].Value, StringComparison.Ordinal);
+        }
+
+        Assert.False(compilation.Binding.Result.IsComplete);
+        Assert.Empty(compilation.Problems);
+        using var output = new StringWriter();
+        Assert.False(compilation.WriteIr(output, out _));
+        Assert.Empty(output.ToString());
     }
 
     private static TestDiagnostic[] Errors(Compilation c)

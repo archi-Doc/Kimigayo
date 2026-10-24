@@ -14,7 +14,11 @@ public class ScopedConditionalContinuationTest
     [InlineData("true")]
     [InlineData("false")]
     public void OmittedDefaultDoesNotComplete(string condition)
-        => ScalarEmissionTest.EmitFixture("NeverScopedConditional" + Configuration + condition, Default + "Console.writeLine(\"begin\")\nvalue(" + condition + ")\nConsole.writeLine(\"after\")", "begin\n", timeoutMilliseconds: 200);
+        => ScalarEmissionTest.EmitFixture(
+            "NeverScopedConditional" + Configuration + condition,
+            Default + "Console.writeLine(\"begin\")\nvalue(" + condition + ")\nConsole.writeLine(\"after\")",
+            "begin\n",
+            observationMilliseconds: 200);
 
     [Theory]
     [InlineData("BothBranches", "do\n    if stop() => Console.writeLine(\"yes\") else => Console.writeLine(\"no\")\nConsole.writeLine(\"after\")")]
@@ -25,7 +29,11 @@ public class ScopedConditionalContinuationTest
 
     [Fact]
     public void ScopedDefaultConditionDoesNotInventACallerResult()
-        => ScalarEmissionTest.EmitFixture("NeverScopedCondition" + Configuration + "Default", MissingConditionDefault + "Console.writeLine(\"begin\")\nvalue(true)\nConsole.writeLine(\"after\")", "begin\n", timeoutMilliseconds: 200);
+        => ScalarEmissionTest.EmitFixture(
+            "NeverScopedCondition" + Configuration + "Default",
+            MissingConditionDefault + "Console.writeLine(\"begin\")\nvalue(true)\nConsole.writeLine(\"after\")",
+            "begin\n",
+            observationMilliseconds: 200);
 
 #if DEBUG
     private const string Configuration = "Debug";

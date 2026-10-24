@@ -49,8 +49,8 @@ public static partial class Parser
 
     /// <summary>Determines whether the reader stands at an effect item (SPEC 8.11.1).</summary>
     /// <param name="reader">The token reader.</param>
-    /// <param name="specification">Whether a Contract selector may follow <c>effect</c>, as among a container's items. A body's
-    /// Constraint prefix takes a Name only, so <c>effect(x)</c> stays a call there.</param>
+    /// <param name="specification">Whether a Contract selector may follow <c>effect</c>, as among a container's items. A body item
+    /// takes a Name only, so <c>effect(x)</c> stays a call there.</param>
     /// <returns><see langword="true"/> when <c>effect</c> starts an effect item rather than an expression or a Constraint.</returns>
     internal static bool IsEffectStart(ref TokenReader reader, bool specification)
     {
@@ -101,6 +101,25 @@ public static partial class Parser
 
         reader.ExpectLineEnd();
         return effect;
+    }
+
+    /// <summary>Parses an effect item that starts an item of an executable body (SPEC 8.11.1, 7.5, F.3), never read as an
+    /// expression: in a function's leading region it is kept for Binding to judge; anywhere else, including the top level, it is
+    /// misplaced and, as a misplaced <c>origin</c> clause, introduces nothing.</summary>
+    /// <param name="reader">The token reader, at <c>effect</c>.</param>
+    /// <param name="leading">The function whose leading region holds the item, or <see langword="null"/>.</param>
+    internal static void ParseBodyEffect(ref TokenReader reader, FunctionKoto? leading)
+    {
+        ReportPendingAttributes(ref reader);
+        var effect = ParseEffectBound(ref reader);
+        if (leading is null)
+        {
+            effect.Unexpected(SyntaxForm.EffectItem);
+        }
+        else if (!reader.InExcludedSyntax)
+        {
+            leading.AddEffectBound(effect);
+        }
     }
 
     // ContractSelector "." Name, where ContractSelector is a ContainerPath or "(" ContractReference ")" (Appendix F). The last

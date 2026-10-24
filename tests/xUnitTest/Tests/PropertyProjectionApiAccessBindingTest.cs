@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -166,6 +167,11 @@ public class PropertyProjectionApiAccessBindingTest
         var original = inAccessor ? (Koto)property.GetAccessor(PropertyAccessorKind.Get)! : property.TypeKoto!;
         var valid = MinimalEmissionTest.Analyze(prefix + (inAccessor ? "public computed item: i32\n        get() -> i32 => 1" : "public let item: i32"));
         var replacement = inAccessor ? (Koto)Property(valid).GetAccessor(PropertyAccessorKind.Get)! : Property(valid).TypeKoto!;
+        var reader = new TokenReader(replacement.CodeContext, string.Empty, []);
+        Koto placeholder = inAccessor
+            ? new PropertyAccessorKoto(ref reader, default, default, PropertyAccessorKind.Get, null)
+            : new CodeBlockKoto(replacement.CodeContext);
+        ParseTestHelper.Detach(replacement, placeholder);
         Assert.True(KotoHelper.Replace(property, original, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(property.SymbolOf()!.Property!.IsVerified);

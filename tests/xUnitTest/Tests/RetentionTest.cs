@@ -3,6 +3,7 @@
 using System.Reflection;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -502,7 +503,16 @@ public sealed class RetentionTest
 
         var relation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<OriginRelationKoto>().Single();
         var donor = Bind(source.Replace(clause, edited, StringComparison.Ordinal));
-        Assert.True(KotoHelper.Replace(relation.Parent!, relation, KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<OriginRelationKoto>().Single()));
+        var replacement = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<OriginRelationKoto>().Single();
+        var reader = new TokenReader(replacement.CodeContext, string.Empty, []);
+        var placeholder = new OriginRelationKoto(
+            ref reader,
+            default,
+            new CodeBlockKoto(replacement.CodeContext),
+            new CodeBlockKoto(replacement.CodeContext),
+            equality: true);
+        ParseTestHelper.Detach(replacement, placeholder);
+        Assert.True(KotoHelper.Replace(relation.Parent!, relation, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Equal([after], Calls(c, "f"));
     }

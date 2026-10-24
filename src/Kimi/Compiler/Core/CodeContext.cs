@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
@@ -11,15 +11,16 @@ namespace Kimi.Compiler;
 /// parsing, and generating Koto nodes.
 /// </summary>
 /// <remarks>
-/// A context belongs to exactly one <see cref="Kotonoha"/>. Every node created through
-/// the context is attached to that source unit, so parsing into a tree owned by another
-/// source unit is rejected even when both source units belong to the same compilation.
+/// A context belongs to exactly one <see cref="Kotonoha"/> and retains its immutable source snapshot.
+/// Cross-module attachment creates contexts for the destination module and diagnostic target, preserving snapshots.
+/// Parsing into a tree owned by another source unit is rejected even within the same compilation.
 /// </remarks>
 public sealed class CodeContext
 {
     // DIAGNOSTICS.md §4.3: synthesized syntax that parser recovery kept in place of a rejected form, with the key of the
     // syntax error it stands for. It lives with the nodes it maps and exists only after a recovery.
     private Dictionary<Koto, DiagnosticKey>? recoveries;
+    private object? sourceIdentity;
 
     /// <summary>
     /// Gets the diagnostic destination for this context.
@@ -30,7 +31,7 @@ public sealed class CodeContext
     public DiagnosticCollection DiagnosticCollection { get; }
 
     /// <summary>
-    /// Gets the source unit being parsed.
+    /// Gets the current source unit.
     /// </summary>
     public Kotonoha Kotonoha { get; }
 
@@ -141,6 +142,49 @@ public sealed class CodeContext
         finally
         {
             tokenizer.Dispose();
+        }
+    }
+
+    // A source-less parse entry has its own provenance identity. Only relocation needs a token that survives its owner.
+    internal CodeContext ForModule(CodeContext destination)
+        => new(destination.Kotonoha, destination.DiagnosticCollection, this.SourceDocument)
+        {
+            sourceIdentity = this.SourceDocument is null ? this.sourceIdentity ??= new object() : null,
+        };
+
+    internal bool HasSameSource(CodeContext other)
+        => ReferenceEquals(this.SourceDocument ?? this.sourceIdentity ?? this, other.SourceDocument ?? other.sourceIdentity ?? other);
+
+    // Root provenance replacement can select a custom diagnostic target in the same module.
+    internal void CopyRecoveryTo(Koto node, CodeContext destination)
+    {
+        var recovery = this.RecoveryCause(node);
+        var error = node as ErrorKoto;
+        var cause = error?.Cause;
+        if ((recovery is not null || cause is not null) && !this.DiagnosticCollection.HasSameTarget(destination.DiagnosticCollection))
+        {
+            var transfer = new DiagnosticOwner.SyntaxTransfer(this.DiagnosticCollection.Owner, destination.DiagnosticCollection);
+            if (recovery is { } recorded)
+            {
+                transfer.Include(recorded);
+            }
+
+            if (cause is { } missing)
+            {
+                transfer.Include(missing);
+            }
+
+            transfer.Copy();
+            recovery = recovery is { } original ? transfer.Key(original) : null;
+            if (cause is { } expression)
+            {
+                error!.Cause = transfer.Key(expression);
+            }
+        }
+
+        if (recovery is { } key)
+        {
+            destination.RecordRecovery(node, key);
         }
     }
 

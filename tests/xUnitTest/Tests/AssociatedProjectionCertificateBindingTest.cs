@@ -82,6 +82,7 @@ public class AssociatedProjectionCertificateBindingTest
         var original = function.Parameters[1].Type;
         var donor = MinimalEmissionTest.Analyze(source.Replace("x: Local.Hidden.Item", "x: i32", StringComparison.Ordinal));
         var replacement = donor.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Source").Members.OfType<FunctionKoto>().Single().Parameters[1].Type;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(function, original, replacement));
         Assert.True(c.Bind().IsComplete);
         Assert.All(Definition(c).Paths, path => Assert.True(path.IsVerified));

@@ -16,7 +16,7 @@ public class OwnedPatternVerificationTest
         // No handle is allowed: any destruction terminates immediately with 121.
         // An exit-only count check could never detect early cleanup before a loop.
         var audited = StringLifetimeAudit.Instrument(ir, []);
-        ScalarEmissionTest.WriteFixture("VerificationOwnedPatternDivergenceAudit", audited, string.Empty, timeoutMilliseconds: 300);
+        ScalarEmissionTest.WriteFixture("VerificationOwnedPatternDivergenceAudit", audited, string.Empty, observationMilliseconds: 300);
     }
 
     [Fact]

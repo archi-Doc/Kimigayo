@@ -114,6 +114,7 @@ public sealed class LengthFunctionReferenceTest
         var reference = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<GenericsKoto>().Single();
         var donor = MinimalEmissionTest.Analyze(Source.Replace("keep<2, i32>", "keep<3, i32>", StringComparison.Ordinal));
         var replacement = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<GenericsKoto>().Single();
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(reference.Parent!, reference, replacement));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Bind().IsComplete);

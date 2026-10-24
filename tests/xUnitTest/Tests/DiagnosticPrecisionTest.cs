@@ -66,7 +66,7 @@ public class DiagnosticPrecisionTest
     [Theory]
     [InlineData("func f() -> i32\n    return true\npublic func main() => ()", "true", "expected i32, found bool")]
     [InlineData("public func main()\n    let wrong: i32 = true", "true", "expected i32, found bool")]
-    [InlineData("public func main()\n    let sum = 1 + \"a\"", "1", "expected string, found integer literal")]
+    [InlineData("public func main()\n    let sum = 1 + \"a\"", "1 + \"a\"", "string has no +")]
     [InlineData("public func main()\n    if 1 and true\n        ()", "1", "expected bool, found integer literal")]
 
     // An untyped literal or an anonymous function at a Type it cannot have names that complete Type, Type arguments included.
@@ -280,6 +280,28 @@ public class DiagnosticPrecisionTest
         var c = MinimalEmissionTest.Analyze("func f(flag: bool) -> i32\n    if flag => return 1\n    missing()\npublic func main() => ()");
         Assert.Contains(c.Binding.LintErrorRecords, static x => x.Code == Kimi.DiagnosticCode.FunctionFallthrough_Kd);
         Assert.Equal(["UnresolvedBinding_Kd"], PublishedErrors(c).Select(static x => x.Code));
+    }
+
+    // SPEC 23.1.2: attribute legality and dependent declaration validity are one cause, in every attribute owner.
+    [Theory]
+    [InlineData("#Layout(\"bad\")", "InvalidLayoutAttribute_Kd", "#Layout(\"bad\")")]
+    [InlineData("#Unknown", "UnresolvedBinding_Kd", "Unknown")]
+    [InlineData("#LibraryImport(\"library\", \"symbol\")", "UnresolvedBinding_Kd", "LibraryImport")]
+    public void RejectedAttributesPublishOnlyTheirOwnFailure(string attribute, string code, string token)
+    {
+        foreach (var testBuild in new[] { false, true })
+        {
+            var c = CompilationTestHelper.ParseSuccess(attribute + "\nstruct S");
+            c.IsTestBuild = testBuild;
+            Assert.False(c.Bind().IsComplete);
+            var target = c.Kotonoha.RootKoto.NestedContainers.Single();
+            Assert.Equal(BindingState.Invalid, target.StateOf());
+            Assert.Equal(BindingFailure.None, target.FailureOf());
+            Assert.DoesNotContain(c.Binding.FailureCauses(target)!, key => ReferenceEquals(key.Subject, target));
+            var error = Assert.Single(CompilationTestHelper.BindingErrors(c));
+            Assert.Equal(code, error.Code);
+            Assert.Equal(token, error.Text);
+        }
     }
 
     private static TestDiagnostic[] PublishedErrors(Compilation c)

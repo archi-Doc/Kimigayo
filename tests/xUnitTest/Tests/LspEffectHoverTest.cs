@@ -34,8 +34,9 @@ public sealed class LspEffectHoverTest : IDisposable
     [Fact]
     public async Task HoverListsContributingPremisesAndNeverUsesAnInvalidatedSnapshot()
     {
-        // An independent diagnostic gives both document versions a publication to synchronize on. Hover still describes
-        // the checked call when another function is rejected, and never relies on a changed check outcome being logged.
+        // An independent diagnostic gives both document versions a publication that marks the product result; Hover is waited for, as
+        // its adoption follows the test-presence decision (docs/dev/HOVER.md). Hover still describes the checked call when another
+        // function is rejected, and never relies on a changed check outcome being logged.
         const string CheckedSource = Source + "func broken() -> i32 => true\n";
         Directory.CreateDirectory(this.directory);
         var main = Path.Combine(this.directory, "main.kimi");
@@ -45,23 +46,21 @@ public sealed class LspEffectHoverTest : IDisposable
         await client.InitializeAsync("{\"checkQuietPeriodMs\":1000}");
         await client.OpenAsync(main, CheckedSource);
         Assert.Equal("TypeMismatch_Kd", Assert.Single((await client.PublishAsync(main)).EnumerateArray()).GetProperty("code").GetString());
-        var hover = await Request(client, main, 5, 11);
+        var hover = await client.WaitForHoverAsync(main, 5, 11, "Available bound: confined");
         Assert.Equal("plaintext", hover.GetProperty("contents").GetProperty("kind").GetString());
-        var text = hover.GetProperty("contents").GetProperty("value").GetString();
+        var text = LspTestClient.HoverText(hover);
         Assert.Contains("Call: f()", text);
-        Assert.Contains("Available bound: confined", text);
         Assert.Contains("Declared by: App.apply", text);
         Assert.Contains("Premise: F is Callable<() -> i32> effect confined", text);
         Assert.Contains("uniq", text);
         Assert.Equal(5, hover.GetProperty("range").GetProperty("start").GetProperty("line").GetInt32());
-        Assert.Equal(JsonValueKind.Null, (await Request(client, main, 6, 1)).ValueKind);
+        Assert.Equal(JsonValueKind.Null, (await client.HoverAsync(main, 6, 1)).ValueKind);
 
         await client.ChangeAsync(main, 2, LspTestClient.Full(CheckedSource.Replace("        effect confined\n", string.Empty, StringComparison.Ordinal)));
-        Assert.Equal(JsonValueKind.Null, (await Request(client, main, 5, 11)).ValueKind);
+        Assert.Equal(JsonValueKind.Null, (await client.HoverAsync(main, 5, 11)).ValueKind);
         Assert.Equal("TypeMismatch_Kd", Assert.Single((await client.PublishAsync(main)).EnumerateArray()).GetProperty("code").GetString());
-        var updated = await Request(client, main, 3, 11);
-        Assert.DoesNotContain("Available bound: confined", updated.GetProperty("contents").GetProperty("value").GetString());
-        Assert.Contains("Available bound: none", updated.GetProperty("contents").GetProperty("value").GetString());
+        var updated = await client.WaitForHoverAsync(main, 3, 11, "Available bound: none");
+        Assert.DoesNotContain("Available bound: confined", LspTestClient.HoverText(updated));
     }
 
     [Fact]
@@ -77,18 +76,11 @@ public sealed class LspEffectHoverTest : IDisposable
         await client.OpenAsync(main, Text);
         Assert.Equal("TypeMismatch_Kd", Assert.Single((await client.PublishAsync(main)).EnumerateArray()).GetProperty("code").GetString());
         var offset = Text.Split('\n')[5].IndexOf("base.read", StringComparison.Ordinal) + 5;
-        var hover = await Request(client, main, 5, offset);
-        var body = hover.GetProperty("contents").GetProperty("value").GetString();
-        Assert.Contains("Dispatch: direct base", body);
+        var hover = await client.WaitForHoverAsync(main, 5, offset, "Dispatch: direct base");
+        var body = LspTestClient.HoverText(hover);
         Assert.Contains("Implementation: Base.read", body);
         Assert.Contains("Available bound: confined", body);
         Assert.Equal(5, hover.GetProperty("range").GetProperty("start").GetProperty("line").GetInt32());
         Assert.Equal(offset, hover.GetProperty("range").GetProperty("start").GetProperty("character").GetInt32());
-    }
-
-    private static async Task<JsonElement> Request(LspTestClient client, string path, int line, int character)
-    {
-        var result = await client.RequestAsync("textDocument/hover", $"{{\"textDocument\":{{\"uri\":\"{LspTestClient.Uri(path)}\"}},\"position\":{{\"line\":{line},\"character\":{character}}}}}");
-        return result.GetProperty("result");
     }
 }

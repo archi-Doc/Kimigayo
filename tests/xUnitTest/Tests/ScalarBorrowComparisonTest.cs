@@ -32,13 +32,13 @@ public class ScalarBorrowComparisonTest
     }
 
     [Theory]
-    [InlineData("func f(a: ref/i32, b: ref/i64) -> bool => a == b")]
-    [InlineData("func f(a: ref/bool, b: ref/bool) -> bool => a < b")]
-    [InlineData("func f(a: ref/string, b: ref/i32) -> bool => a == b")]
-    public void RejectsMismatchedOrUnorderedReferents(string source)
+    [InlineData("func f(a: ref/i32, b: ref/i64) -> bool => a == b", Kimi.DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("func f(a: ref/bool, b: ref/bool) -> bool => a < b", Kimi.DiagnosticCode.OperatorNotDefined_Kd)]
+    [InlineData("func f(a: ref/string, b: ref/i32) -> bool => a == b", Kimi.DiagnosticCode.TypeMismatch_Kd)]
+    public void RejectsMismatchedOrUnorderedReferents(string source, Kimi.DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.TypeMismatch_Kd);
+        Assert.Contains(c.Binding.Issues, x => x.Code == code);
     }
 }

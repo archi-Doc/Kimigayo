@@ -28,7 +28,7 @@ namespace Kimi.Compiler;
 /// Binding left unresolved has none), which for a node Binding resolved is a broken contract the publisher lists
 /// (<see cref="HirTables.Broken"/>); its value is derived, after the operands the HIR keeps (DECISIONS R5-M63, R4-M88). A construct, a
 /// statement, a call or a name Binding left unresolved keeps its Op where it has its facts. <see cref="Name"/>: its Res says what it reads.
-/// <see cref="Group"/>: evaluates its one operand (parentheses, a label, a macro, and <c>@move</c>, <c>@copy</c> or a same-Type
+/// <see cref="Group"/>: evaluates its one operand (parentheses, a label, and <c>@move</c>, <c>@copy</c> or a same-Type
 /// conversion, which acquire it). <see cref="Call"/>: the calls <see cref="CallPlan.Of"/> lists. <see cref="Jump"/> and
 /// <see cref="Continue"/>: the transfer to the target the node's plan row records. <see cref="For"/>, <see cref="Try"/>,
 /// <see cref="Interpolation"/>, <see cref="DictionaryLiteral"/>, <see cref="Range"/>, <see cref="Index"/>, <see cref="CompoundAssign"/> and a user

@@ -42,7 +42,7 @@ public class AggregateDefaultTest
     public void LocalMovedCaptureOwnsAndReleasesItsEnvironment()
         => NativeAllocationAudit.WriteFixture("AggregateDefaultLocalEnvironment", "func f(action: () -> () = label work: do\n    let text = \"captured\"\n    exit to work func [text@move] () => Console.writeLine(text)\n) => action()\nf()\nf()", 2, 2, 48, "captured\ncaptured\n");
 
-    [TestClass(DisableParallelization = true)]
+    [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]
     public class AllocationTests
     {

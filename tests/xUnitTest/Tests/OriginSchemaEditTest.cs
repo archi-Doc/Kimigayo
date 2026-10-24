@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -19,14 +20,16 @@ public class OriginSchemaEditTest
         var function = Function(c);
         var previous = Assert.Single(function.SymbolOf()!.Schema!.Origins);
         var donor = Function(MinimalEmissionTest.Analyze("\n" + Source(after)));
-        Assert.True(KotoHelper.Replace(function, function.ReturnType!, donor.ReturnType!));
+        var expectedSpan = Assert.Single(donor.SymbolOf()!.Schema!.Origins).Span;
+        var replacement = ParseTestHelper.Detach(donor.ReturnType!, new CodeBlockKoto(donor.CodeContext));
+        Assert.True(KotoHelper.Replace(function, function.ReturnType!, replacement));
         Assert.False(c.Binding.Result.IsComplete);
 
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         var current = Assert.Single(function.SymbolOf()!.Schema!.Origins);
         Assert.Equal(after, current.Name);
         Assert.Equal(after, current.Origin.Name);
-        Assert.Equal(Assert.Single(donor.SymbolOf()!.Schema!.Origins).Span, current.Span);
+        Assert.Equal(expectedSpan, current.Span);
         Assert.Same(function, current.Origin.Binder);
         Assert.Same(current.Origin, function.ReturnType!.TypeOf()!.Origin);
         Assert.Equal(before, previous.Name);
@@ -46,6 +49,8 @@ public class OriginSchemaEditTest
         var function = Function(c);
         var donor = Function(MinimalEmissionTest.Analyze($"func f<{parameter}>() => ()"));
         var replacement = donor.GenericArguments[0];
+        var reader = new TokenReader(replacement.CodeContext, string.Empty, []);
+        ParseTestHelper.Detach(replacement, new GenericParameterKoto(ref reader, default, "Placeholder", null));
         Assert.True(KotoHelper.Replace(function, function.GenericArguments[0], replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         var slot = Assert.Single(function.SymbolOf()!.Schema!.GenericSlots);
@@ -61,7 +66,8 @@ public class OriginSchemaEditTest
         var c = MinimalEmissionTest.Analyze(Source("before"));
         var function = Function(c);
         var donor = Function(MinimalEmissionTest.Analyze(Source("after")));
-        Assert.True(KotoHelper.Replace(function, function.ReturnType!, donor.ReturnType!));
+        var replacement = ParseTestHelper.Detach(donor.ReturnType!, new CodeBlockKoto(donor.CodeContext));
+        Assert.True(KotoHelper.Replace(function, function.ReturnType!, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         var schema = function.SymbolOf()!.Schema;
         var valid = true;
@@ -80,7 +86,9 @@ public class OriginSchemaEditTest
         var inner = outer.NestedContainers.Single();
         var previous = inner.SymbolOf()!.Schema!;
         var donor = MinimalEmissionTest.Analyze("struct Outer<s/U> {b, a}").Kotonoha.RootKoto.NestedContainers.Single();
-        Assert.True(KotoHelper.Replace(outer, outer.GenericParameterNodes[0], donor.GenericParameterNodes[0]));
+        var reader = new TokenReader(donor.CodeContext, string.Empty, []);
+        var replacement = ParseTestHelper.Detach(donor.GenericParameterNodes[0], new GenericParameterKoto(ref reader, default, "Placeholder", null));
+        Assert.True(KotoHelper.Replace(outer, outer.GenericParameterNodes[0], replacement));
         outer.Origins[0] = "b";
         outer.Origins[1] = "a";
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));

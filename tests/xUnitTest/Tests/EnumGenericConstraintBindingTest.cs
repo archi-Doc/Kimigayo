@@ -69,6 +69,7 @@ public class EnumGenericConstraintBindingTest
         var function = Function(c);
         var original = function.ReturnType!;
         var replacement = Function(MinimalEmissionTest.Analyze(source.Replace("Box<i32>", "Box<string>", StringComparison.Ordinal))).ReturnType!;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(function, original, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.False(c.Binding.TryGetEnumConstruction(Use(c), out _));

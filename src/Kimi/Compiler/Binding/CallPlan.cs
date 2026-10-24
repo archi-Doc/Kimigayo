@@ -142,7 +142,7 @@ public sealed class CallPlan
 
     internal bool VirtualIsDirect => this.Receiver is BaseReferenceKoto;
 
-    /// <summary>Gets a call of a node, the one way to reach one: an invocation's call, an operator's, an object creation, a
+    /// <summary>Gets a call of a node, the one way to reach one: an invocation's call, a macro's, an operator's, an object creation, a
     /// Property's getter and setter, an index expression's key resolution, indexer and view range, the construction of a range or
     /// <c>^</c> value, a for loop's iterator entry and step, a dictionary literal's key lookup, and the calls of a formatting plan
     /// (an interpolation's buffer and adapter, then its writes; a <c>$tryWrite</c>'s writes, then its status).</summary>
@@ -163,6 +163,7 @@ public sealed class CallPlan
         return node switch
         {
             InvocationKoto call => Nth(ordinal, Plan(call)),
+            MacroKoto { Operand: InvocationKoto call } => Nth(ordinal, Plan(call)),
             ConversionKoto conversion => Nth(ordinal, Plan(conversion.CreationCall)),
             IndexKoto index => Nth(ordinal, Plan(binding.ResolvedKeyCall(index)), Plan(binding.IndexerCall(index, false)), Plan(binding.IndexerCall(index, true)), Plan(binding.ViewRangeCall(index))),
             RangeKoto or FromEndIndexKoto => Nth(ordinal, Plan(binding.RangeValueCall(node))),

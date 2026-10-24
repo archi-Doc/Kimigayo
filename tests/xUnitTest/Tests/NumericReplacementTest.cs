@@ -20,14 +20,34 @@ public class NumericReplacementTest
         var old = variable.InitializerKoto!;
         var donor = MinimalEmissionTest.Analyze("let donor = " + literal);
         var number = Assert.IsType<NumberLiteralKoto>(Variable(donor).InitializerKoto);
+        ParseTestHelper.Detach(number, new CodeBlockKoto(number.CodeContext));
         Assert.True(KotoHelper.Replace(variable, old, number));
         Assert.Same(old.CodeContext, number.CodeContext);
         Assert.Equal(old.Span, number.Span);
         Assert.Equal(literal, number.SourceSpelling.ToString());
         var another = MinimalEmissionTest.Analyze("let value = 123456");
         var next = Variable(another);
+        ParseTestHelper.Detach(number, new CodeBlockKoto(number.CodeContext));
         Assert.True(KotoHelper.Replace(next, next.InitializerKoto!, number));
         Assert.Equal(literal, number.SourceSpelling.ToString());
+    }
+
+    [Fact]
+    public void ArgumentReplacementPreservesLazyDigitsAndDiagnosticLocation()
+    {
+        const string Literal = "2.5000000000000000001";
+        var recipient = CompilationTestHelper.BindSuccess("func take(value: f64) -> f64 => value\nlet result = take(0.0)");
+        var call = Assert.Single(KotoTree.Walk(recipient.Kotonoha.RootKoto).OfType<InvocationKoto>());
+        var old = call.ArgumentNodes[0];
+        var donor = ParseTestHelper.ParseSingleFunction("func donor() => " + Literal);
+        var number = Assert.IsType<NumberLiteralKoto>(donor.ExpressionBody);
+        ParseTestHelper.Detach(number, new CodeBlockKoto(number.CodeContext));
+        call.ReplaceArgument(0, number);
+        Assert.Same(old.CodeContext, number.CodeContext);
+        Assert.Equal(old.Span, number.Span);
+        Assert.Equal(Literal, number.SourceSpelling.ToString());
+        Assert.True(recipient.Bind().IsComplete, MinimalEmissionTest.Describe(recipient, null));
+        Assert.Equal(Literal, number.ToString());
     }
 
     [Fact]
@@ -38,6 +58,7 @@ public class NumericReplacementTest
         var property = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api").Members.OfType<PropertyKoto>().Single();
         var donor = MinimalEmissionTest.Analyze("let replacement = 1");
         var replacement = Variable(donor).InitializerKoto!;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(property, property.InitializerKoto!, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(property.SymbolOf()!.Property!.IsVerified);
@@ -55,6 +76,7 @@ public class NumericReplacementTest
         var variable = Variable(c);
         var donor = MinimalEmissionTest.Analyze("let donor = " + literal);
         var replacement = Variable(donor).InitializerKoto!;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         var conversion = Assert.IsType<ConversionKoto>(variable.InitializerKoto);
         Assert.True(KotoHelper.Replace(conversion, conversion.Left, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
@@ -78,7 +100,8 @@ public class NumericReplacementTest
         var variable = Variable(c);
         var old = variable.InitializerKoto!;
         var donor = MinimalEmissionTest.Analyze("let donor = " + literal);
-        Assert.True(KotoHelper.Replace(variable, old, Variable(donor).InitializerKoto!));
+        var replacement = ParseTestHelper.Detach(Variable(donor).InitializerKoto!, new CodeBlockKoto(variable.CodeContext));
+        Assert.True(KotoHelper.Replace(variable, old, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.InvalidLiteral && x.Node.Span == old.Span);
         Assert.False(c.Validate(out _));
@@ -91,6 +114,7 @@ public class NumericReplacementTest
         var variable = Variable(c);
         var parsed = ParseTestHelper.ParseSingleFunction("func donor() => 2.5000000000000000001");
         var number = Assert.IsType<NumberLiteralKoto>(parsed.ExpressionBody);
+        ParseTestHelper.Detach(number, new CodeBlockKoto(number.CodeContext));
         Assert.True(KotoHelper.Replace(variable, variable.InitializerKoto!, number));
         Assert.Equal("2.5000000000000000001", number.ToString());
         Assert.True(c.Bind().IsComplete);
@@ -104,7 +128,8 @@ public class NumericReplacementTest
         var c = MinimalEmissionTest.Analyze("let value = 0");
         var variable = Variable(c);
         var donor = MinimalEmissionTest.Analyze("let donor = 2");
-        Assert.True(KotoHelper.Replace(variable, variable.InitializerKoto!, Variable(donor).InitializerKoto!));
+        var replacement = ParseTestHelper.Detach(Variable(donor).InitializerKoto!, new CodeBlockKoto(variable.CodeContext));
+        Assert.True(KotoHelper.Replace(variable, variable.InitializerKoto!, replacement));
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

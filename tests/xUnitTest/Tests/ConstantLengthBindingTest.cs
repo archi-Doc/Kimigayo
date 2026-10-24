@@ -139,6 +139,7 @@ public class ConstantLengthBindingTest
         var oldType = array.TypeOf();
         var replacementSource = MinimalEmissionTest.Analyze("3");
         var replacement = Assert.Single(KotoTree.Walk(replacementSource.Kotonoha.RootKoto).OfType<NumberLiteralKoto>());
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(variable, variable.InitializerKoto!, replacement));
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(3, array.TypeOf()!.Length);

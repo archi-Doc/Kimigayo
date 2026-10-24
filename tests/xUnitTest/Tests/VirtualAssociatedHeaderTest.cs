@@ -128,6 +128,7 @@ public class VirtualAssociatedHeaderTest
         var original = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Base");
         var donor = MinimalEmissionTest.Analyze("open struct Base<T>\n    public virtual func read(self: objref/Self, value: i32) -> i32 => value\n()");
         var replacement = donor.Kotonoha.RootKoto.NestedContainers.Single();
+        ParseTestHelper.Detach(replacement, new GroupKoto(replacement.CodeContext, default, default));
         Assert.True(KotoHelper.Replace(c.Kotonoha.RootKoto, original, replacement));
         Assert.False(c.Bind().IsComplete);
         c.Binding.ReportDiagnostics();

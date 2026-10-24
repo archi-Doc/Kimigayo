@@ -90,6 +90,7 @@ public class ClosedProjectionConstraintBindingTest
         var original = clause.Right;
         var donor = MinimalEmissionTest.Analyze(Source("struct", "Source.Origin.Item is Copy").Replace("Item is i32", "Item is string", StringComparison.Ordinal));
         var replacement = donor.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Source").Members.OfType<IsKoto>().Single().Right;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(clause, original, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(BindingState.Invalid, Target(c).StateOf());

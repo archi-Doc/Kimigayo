@@ -52,7 +52,7 @@ public class DefaultCompletionTest
             Prefix + name,
             "func f(x: i32 = (loop => continue)) -> bool => true\nConsole.writeLine(\"begin\")\n" + use,
             "begin\n",
-            timeoutMilliseconds: 200);
+            observationMilliseconds: 200);
 
     [Fact]
     public void SuppliedDefaultsAndRequireSuccessStillExecute()
@@ -94,7 +94,7 @@ public class DefaultCompletionTest
     private const string Prefix = "DefaultCompletionRelease";
 #endif
 
-    [TestClass(DisableParallelization = true)]
+    [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]
     public class AllocationTests
     {

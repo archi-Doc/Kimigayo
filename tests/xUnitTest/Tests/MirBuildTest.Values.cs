@@ -25,10 +25,14 @@ public sealed partial class MirBuildTest
     [Fact]
     public void UnsupportedFormsAreOpaqueAtOneRecord()
     {
-        var c = Compile("struct Grid<length N>\n    public var cells: [N of i32] = [N of 7]\n    public init() => ()\n    public init(y: i32) => ()\n" +
+        var c = CompilationTestHelper.Parse(
+            "struct Grid<length N>\n    public var cells: [N of i32] = [N of 7]\n    public init() => ()\n    public init(y: i32) => ()\n" +
             "func f<I>(a: i32, values: [3 of i32], p: I) -> i32\n    I is PrimitiveInteger\n    let c = values[p]\n    return a\nfunc g() -> i32 => missing\n" +
             "func h<I>(a: i32, c: bool, values: [3 of i32], q: I) -> i32\n    I is PrimitiveInteger\n    defer\n        let d = values[q]\n" +
             "    if c => return 1\n    return a\nfunc k() -> i32\n    let x = missing\n    return x\n");
+        Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), Assert.Single(TestDiagnostics.Of(c)).Code);
+        c.Bind();
+        _ = c.Binding.CheckStartup(OutputKind.Application);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var bodies = program.Bodies.ToArray().Where(static x => x.Key.Decl?.Name is "f" or "g" or "h" or "k").ToDictionary(static x => x.Key.Decl!.Name);
