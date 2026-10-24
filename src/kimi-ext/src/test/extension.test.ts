@@ -1,5 +1,5 @@
 import * as assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
@@ -14,7 +14,9 @@ suite('Kimi extension integration', () => {
   let originalTrace: unknown;
 
   suiteSetup(async () => {
-    root = await mkdtemp(path.join(tmpdir(), 'kimi-ext-integration-'));
+    // The server names files by their full path, which on Windows expands 8.3 short names (C:\Users\RUNNER~1 on
+    // hosted runners); spell the root canonically so the expected paths below match it.
+    root = await realpath(await mkdtemp(path.join(tmpdir(), 'kimi-ext-integration-')));
     const extension = vscode.extensions.getExtension('archi-Doc.kimi-ext');
     assert.ok(extension, 'Kimi extension was not loaded');
     // VS Code scopes its API objects to the calling extension. Packaged smoke
@@ -39,7 +41,7 @@ suite('Kimi extension integration', () => {
       await vscode.workspace.getConfiguration('kimi').update('serverPath', originalPath, vscode.ConfigurationTarget.Global);
       await vscode.workspace.getConfiguration('kimi').update('trace.server', originalTrace, vscode.ConfigurationTarget.Global);
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-      assert.ok(path.resolve(root).startsWith(path.resolve(tmpdir()) + path.sep));
+      assert.ok(path.resolve(root).startsWith(path.resolve(await realpath(tmpdir())) + path.sep));
       await rm(root, { recursive: true, force: true });
     } finally {
       errorWindow.showErrorMessage = originalShowError;
