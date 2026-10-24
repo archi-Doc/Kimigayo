@@ -134,13 +134,16 @@ public class GenericStorageEmissionTest
         Assert.DoesNotContain(owned.Instructions, x => x.Opcode == EmissionOpcode.Phi);
     }
 
-    // SPEC 21.3.1, IMPL 21.3: a function Item and a direct call of the same instance share its one generic entry.
+    // SPEC 21.3.1, IMPL 21.3: a function Item and a direct call of the same instance call its one generated function.
     [Fact]
     public void AFunctionItemSharesTheInstanceOfADirectCall()
     {
         var c = MinimalEmissionTest.Analyze(Choose + "let pick = choose<i32>\nlet n = pick(1, 2, false)\nlet m = choose<i32>(3, 4, true)");
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.Single(System.Text.RegularExpressions.Regex.Matches(CompilationTestHelper.WriteIr(c), @"define internal \S+ @__kimi_generic_entry\d+\("));
+        var startup = GeneratedIr.Parse(CompilationTestHelper.WriteIr(c)).Startup;
+        var calls = startup.Instructions.Where(static x => x.Callee?.Signature == "internal i32 (i32, i32, i1)").ToArray();
+        Assert.Equal(2, calls.Length);
+        Assert.Same(calls[0].Callee, calls[1].Callee);
     }
 
     [Theory]
