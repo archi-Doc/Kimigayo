@@ -23,21 +23,21 @@ public sealed class LspHoverTest : IDisposable
         await using var client = new LspTestClient();
         await client.InitializeAsync(capabilities: "{\"textDocument\":{\"hover\":{\"contentFormat\":[\"html\",\"markdown\",\"plaintext\"]}}}");
         await client.OpenAsync(path, Text);
-        var type = await WaitFor(client, path, 1, 7, "A ");
+        var type = await client.WaitForHoverAsync(path, 1, 7, "A ");
         Assert.Equal("markdown", type.GetProperty("contents").GetProperty("kind").GetString());
-        var html = Markdig.Markdown.ToHtml(Body(type));
+        var html = Markdig.Markdown.ToHtml(LspTestClient.HoverText(type));
         Assert.Contains("struct Sample", html);
         Assert.Contains("Copy: No", html);
         Assert.Contains("href=\"" + new Uri(Path.Combine(this.directory, "guide.md")).AbsoluteUri + "#usage\"", html);
-        var property = Markdig.Markdown.ToHtml(Body(await Request(client, path, 3, 15)));
+        var property = Markdig.Markdown.ToHtml(LspTestClient.HoverText(await client.HoverAsync(path, 3, 15)));
         Assert.Contains("The count.", property);
         Assert.Contains("var count: i32", property);
         Assert.DoesNotContain("= 0", property);
-        var function = Markdig.Markdown.ToHtml(Body(await Request(client, path, 5, 6)));
+        var function = Markdig.Markdown.ToHtml(LspTestClient.HoverText(await client.HoverAsync(path, 5, 6)));
         Assert.Contains("Returns the input.", function);
         Assert.Contains("func value", function);
         Assert.DoesNotContain("=&gt; x", function);
-        Assert.Equal(JsonValueKind.Null, (await Request(client, path, 0, 6)).ValueKind);
+        Assert.Equal(JsonValueKind.Null, (await client.HoverAsync(path, 0, 6)).ValueKind);
     }
 
     [Fact]
@@ -49,17 +49,17 @@ public sealed class LspHoverTest : IDisposable
         await using var client = new LspTestClient(clock: () => Interlocked.Read(ref now));
         await client.InitializeAsync("{\"checkQuietPeriodMs\":1000}");
         await client.OpenAsync(path, Text);
-        Assert.Equal(JsonValueKind.Null, (await Request(client, path, 1, 8)).ValueKind);
+        Assert.Equal(JsonValueKind.Null, (await client.HoverAsync(path, 1, 8)).ValueKind);
         Interlocked.Exchange(ref now, 1000);
         await client.RequestAsync("custom/wake");
-        var original = Body(await WaitFor(client, path, 1, 8, "Original description."));
+        var original = LspTestClient.HoverText(await client.WaitForHoverAsync(path, 1, 8, "Original description."));
         await client.ChangeAsync(path, 2, LspTestClient.Range(0, 4, 0, 12, "Updated"));
-        Assert.Equal(HoverRenderer.PreviousNotice + "\n\n" + original, Body(await Request(client, path, 1, 8)));
+        Assert.Equal(HoverRenderer.PreviousNotice + "\n\n" + original, LspTestClient.HoverText(await client.HoverAsync(path, 1, 8)));
         Interlocked.Exchange(ref now, 1999);
-        Assert.StartsWith(HoverRenderer.PreviousNotice, Body(await Request(client, path, 1, 8)));
+        Assert.StartsWith(HoverRenderer.PreviousNotice, LspTestClient.HoverText(await client.HoverAsync(path, 1, 8)));
         Interlocked.Exchange(ref now, 2000);
         await client.RequestAsync("custom/wake");
-        var updated = Body(await WaitFor(client, path, 1, 8, "Updated description."));
+        var updated = LspTestClient.HoverText(await client.WaitForHoverAsync(path, 1, 8, "Updated description."));
         Assert.DoesNotContain(HoverRenderer.PreviousNotice, updated);
         Assert.DoesNotContain(client.Received, x => LspTestClient.IsPublish(x, LspTestClient.Uri(path)));
     }
@@ -76,9 +76,9 @@ public sealed class LspHoverTest : IDisposable
         await using var client = new LspTestClient();
         await client.InitializeAsync(capabilities: capabilities);
         await client.OpenAsync(path, Text);
-        var result = await WaitFor(client, path, 1, 8, "Description.");
+        var result = await client.WaitForHoverAsync(path, 1, 8, "Description.");
         Assert.Equal("plaintext", result.GetProperty("contents").GetProperty("kind").GetString());
-        Assert.DoesNotContain("```", Body(result));
+        Assert.DoesNotContain("```", LspTestClient.HoverText(result));
     }
 
     [Theory]
@@ -91,46 +91,20 @@ public sealed class LspHoverTest : IDisposable
         await using var client = new LspTestClient();
         await client.InitializeAsync(capabilities: "{\"textDocument\":{\"hover\":{\"contentFormat\":[\"" + format + "\"]}}}");
         await client.OpenAsync(path, Text);
-        var parameter = await WaitFor(client, path, 2, 10, "counter: ref/Counter");
-        var body = format == "markdown" ? Markdig.Markdown.ToHtml(Body(parameter)) : Body(parameter);
+        var parameter = await client.WaitForHoverAsync(path, 2, 10, "counter: ref/Counter");
+        var body = format == "markdown" ? Markdig.Markdown.ToHtml(LspTestClient.HoverText(parameter)) : LspTestClient.HoverText(parameter);
         Assert.Contains("counter: ref/Counter during ", body);
         Assert.Contains("Core: Counter", body);
         Assert.Contains("The counter.", body);
         Assert.Equal(format, parameter.GetProperty("contents").GetProperty("kind").GetString());
-        var at = await Request(client, path, 3, 15);
-        var name = await Request(client, path, 3, 16);
-        Assert.Equal(Body(at), Body(name));
-        Assert.Contains("Copies the operand", Body(at));
+        var at = await client.HoverAsync(path, 3, 15);
+        var name = await client.HoverAsync(path, 3, 16);
+        Assert.Equal(LspTestClient.HoverText(at), LspTestClient.HoverText(name));
+        Assert.Contains("Copies the operand", LspTestClient.HoverText(at));
         Assert.Equal(15, at.GetProperty("range").GetProperty("start").GetProperty("character").GetInt32());
         Assert.Equal(16, at.GetProperty("range").GetProperty("end").GetProperty("character").GetInt32());
         Assert.Equal(16, name.GetProperty("range").GetProperty("start").GetProperty("character").GetInt32());
         Assert.Equal(20, name.GetProperty("range").GetProperty("end").GetProperty("character").GetInt32());
-    }
-
-    private static string Body(JsonElement result) => result.GetProperty("contents").GetProperty("value").GetString()!;
-
-    private static async Task<JsonElement> Request(LspTestClient client, string path, int line, int character)
-    {
-        var response = await client.RequestAsync("textDocument/hover", $"{{\"textDocument\":{{\"uri\":\"{LspTestClient.Uri(path)}\"}},\"position\":{{\"line\":{line},\"character\":{character}}}}}");
-        return response.GetProperty("result");
-    }
-
-    private static async Task<JsonElement> WaitFor(LspTestClient client, string path, int line, int character, string expected)
-    {
-        JsonElement result = default;
-        for (var i = 0; i < 500; i++)
-        {
-            result = await Request(client, path, line, character);
-            if (result.ValueKind != JsonValueKind.Null && Body(result).Contains(expected, StringComparison.Ordinal))
-            {
-                return result;
-            }
-
-            await Task.Delay(20, client.Token);
-        }
-
-        Assert.Fail("Expected Hover containing " + expected + "; last response: " + result);
-        return result;
     }
 
     private string Write(string text)
