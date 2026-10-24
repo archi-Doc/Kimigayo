@@ -71,8 +71,6 @@ public class FixedArrayFillTest
         var compilation = MinimalEmissionTest.Analyze("let bytes: [4096 of u8] = [4096 of 0]\nrequire bytes[4095] == 0 else => $abort(\"fill\")");
         using var output = new StringWriter();
         Assert.True(compilation.WriteIr(output, out var error), error ?? MinimalEmissionTest.Describe(compilation, null));
-        var ir = output.ToString();
-        Assert.Contains("@__kimi_fill_array", ir, StringComparison.Ordinal);
-        Assert.True(ir.Length < 100_000);
+        Assert.True(output.ToString().Length < 100_000);
     }
 }

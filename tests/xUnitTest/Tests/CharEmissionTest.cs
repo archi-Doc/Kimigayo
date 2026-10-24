@@ -128,7 +128,7 @@ public class CharEmissionTest
     [InlineData(0x42L)]
     public void InvalidOrChangedConstantPlansFailBeforeWriting(long value)
     {
-        var c = MinimalEmissionTest.Analyze("let c = 'A'\nif c == 'A' => Console.writeLine(\"ok\")");
+        var c = MinimalEmissionTest.Analyze("let c = 'A'\nif c == 'A' => Console.writeLine(\"ok\")", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var index = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Constant && x.Constant == 'A');
@@ -147,7 +147,7 @@ public class CharEmissionTest
     [InlineData("operator")]
     public void CharacterPlansCannotMasqueradeAsIntegerPlans(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("let c = 'A'\nif c < 'B' => Console.writeLine(\"ok\")");
+        var c = MinimalEmissionTest.Analyze("let c = 'A'\nif c < 'B' => Console.writeLine(\"ok\")", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var index = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Constant && x.Constant == 'A');
@@ -179,7 +179,7 @@ public class CharEmissionTest
     [InlineData("type")]
     public void InvalidCharacterPatternPlansFailBeforeWriting(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("match 'A'\n    'B' => ()\n    _ => Console.writeLine(\"ok\")");
+        var c = MinimalEmissionTest.Analyze("match 'A'\n    'B' => ()\n    _ => Console.writeLine(\"ok\")", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var match = c.Ownership.Bodies[0].Matches[0].Binding;
         var pattern = match.PositionStorage[0];

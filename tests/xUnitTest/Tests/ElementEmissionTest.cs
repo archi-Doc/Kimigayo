@@ -104,7 +104,7 @@ public class ElementEmissionTest
     [InlineData("source")]
     public void MalformedPlansFailBeforeWritingAndRecover(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("let a: [1 of i32] = [42]\nlet n = a[0]");
+        var c = MinimalEmissionTest.Analyze("let a: [1 of i32] = [42]\nlet n = a[0]", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var plan = body.Projections[0];

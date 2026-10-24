@@ -106,10 +106,15 @@ public class BuiltinArithmeticContractTest
     public void NativeDivisionBoundaryDoesNotRemoveLanguageConformance(string type)
     {
         var declarations = Source[..Source.IndexOf("require sum", StringComparison.Ordinal)];
-        var c = MinimalEmissionTest.Analyze(declarations + "let value: " + type + " = 6\nlet result = quotient(value, 2)");
+        var source = declarations + "let value: " + type + " = 6\nlet result = quotient(value, 2)";
+        var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Analysis.IsVerified);
-        Assert.False(c.WriteIr(TextWriter.Null, out var failure));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
+
+        // The old generator's refusal, on a compilation pinned to it (DECISIONS R5-M85; it goes by G4 at the latest).
+        var old = MinimalEmissionTest.Analyze(source, codegen: CompilerCodegen.Legacy);
+        Assert.False(old.WriteIr(TextWriter.Null, out var failure));
         Assert.Contains("128-bit division", failure, StringComparison.Ordinal);
     }
 

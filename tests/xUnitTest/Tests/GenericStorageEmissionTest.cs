@@ -134,13 +134,16 @@ public class GenericStorageEmissionTest
         Assert.DoesNotContain(owned.Instructions, x => x.Opcode == EmissionOpcode.Phi);
     }
 
-    // SPEC 21.3.1, IMPL 21.3: a function Item and a direct call of the same instance share its one generic entry.
+    // SPEC 21.3.1, IMPL 21.3: a function Item and a direct call of the same instance call its one generated function.
     [Fact]
     public void AFunctionItemSharesTheInstanceOfADirectCall()
     {
         var c = MinimalEmissionTest.Analyze(Choose + "let pick = choose<i32>\nlet n = pick(1, 2, false)\nlet m = choose<i32>(3, 4, true)");
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.Single(System.Text.RegularExpressions.Regex.Matches(CompilationTestHelper.WriteIr(c), @"define internal \S+ @__kimi_generic_entry\d+\("));
+        var startup = GeneratedIr.Parse(CompilationTestHelper.WriteIr(c)).Startup;
+        var calls = startup.Instructions.Where(static x => x.Callee?.Signature == "internal i32 (i32, i32, i1)").ToArray();
+        Assert.Equal(2, calls.Length);
+        Assert.Same(calls[0].Callee, calls[1].Callee);
     }
 
     [Theory]
@@ -371,7 +374,10 @@ public class GenericStorageEmissionTest
     {
         // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
         // the corrupt projection, cleanup, parameter or acquisition plan is rejected on the ordinary body.
-        var c = MinimalEmissionTest.Analyze("struct Box\n    let value: string\n    public init(value: string) => self.value = value@move\n    public func take(self: Self) -> string => self.value@move\nlet b = Box.init(\"text\")\nConsole.writeLine(b@move.take())");
+        var c = MinimalEmissionTest.Analyze(
+            "struct Box\n    let value: string\n    public init(value: string) => self.value = value@move\n" +
+            "    public func take(self: Self) -> string => self.value@move\nlet b = Box.init(\"text\")\nConsole.writeLine(b@move.take())",
+            codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "take");
         if (defect == "projection")

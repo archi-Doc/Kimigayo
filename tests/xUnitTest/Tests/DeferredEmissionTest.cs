@@ -171,7 +171,7 @@ public class DeferredEmissionTest
     [InlineData("escape")]
     public void MalformedCleanupPlansFailBeforeWriting(string mutation)
     {
-        var c = MinimalEmissionTest.Analyze(Snapshot);
+        var c = MinimalEmissionTest.Analyze(Snapshot, codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var plan = body.DeferredPlans[0];

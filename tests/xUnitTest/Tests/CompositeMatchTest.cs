@@ -62,7 +62,7 @@ public class CompositeMatchTest
     public void CorruptCompositePlansAreRejected(string defect)
     {
         const string Source = "enum E<T>\n    A(T)\n    B\nlet x: E<(i32, bool)> = .A((7, true))\nlet y = match x@move\n    .A((let n, true)) if n > 0 => n\n    .A(_) => 0\n    .B => -1";
-        var c = MinimalEmissionTest.Analyze(Source);
+        var c = MinimalEmissionTest.Analyze(Source, codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Matches.Count != 0);
         var read = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Read && x.Source.SymbolOf()?.Kind == BindingSymbolKind.PatternCandidate);

@@ -67,7 +67,7 @@ public class StringComparisonEmissionTest
     [InlineData("type")]
     public void MissingLoanIsRejectedAndReanalysisRecovers(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("let text = \"a\"\ntext == text");
+        var c = MinimalEmissionTest.Analyze("let text = \"a\"\ntext == text", codegen: CompilerCodegen.Legacy);
         var body = c.Ownership.Bodies[0];
         Assert.Equal(2, body.ComparisonLoans.Count);
         Assert.True(c.Validate(out var error), error);

@@ -102,7 +102,9 @@ public class FunctionDefaultTest
     [Fact]
     public void ACaptureOfAnotherPreparedArgumentFailsGeneration()
     {
-        var c = MinimalEmissionTest.Analyze("func run(k: i32, j: i32, action: (i32) -> i32 = func [k] (x) => x + k) -> i32 => action(j)\nrequire run(1, 2) == 3 else => $abort(\"k\")");
+        var c = MinimalEmissionTest.Analyze(
+            "func run(k: i32, j: i32, action: (i32) -> i32 = func [k] (x) => x + k) -> i32 => action(j)\nrequire run(1, 2) == 3 else => $abort(\"k\")",
+            codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
         var body = c.Ownership.Bodies.Single(static x => x.Operations.Any(static o => o.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Consume && o.Source is FunctionKoto { IsAnonymous: true }));
         var capture = body.OperationStorage.FindIndex(static x => x.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Consume && x.Source is FunctionKoto { IsAnonymous: true });

@@ -78,7 +78,7 @@ public class GuardedDefaultContinuationTest
     public void PreparedTupleCopyCannotReadAnotherArgumentSlot()
     {
         const string Source = "func f(a: (i32, bool), b: (i32, bool), value: i32 = (match a\n    (let n, _) => n\n)) -> i32 => value\nf((1, true), (2, false))";
-        var c = MinimalEmissionTest.Analyze(Source);
+        var c = MinimalEmissionTest.Analyze(Source, codegen: CompilerCodegen.Legacy);
         Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         var source = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MatchKoto>()).Expression;
         var original = source.SymbolOf()!;

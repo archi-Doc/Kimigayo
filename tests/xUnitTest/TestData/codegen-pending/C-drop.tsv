@@ -37,7 +37,6 @@ test	XunitTest.OwnershipJoinTest.ALocalBorrowJoinsAFixedSourceThroughTheMeet	Xun
 test	XunitTest.OwnershipJoinTest.ALocalBorrowJoinsAFixedSourceThroughTheMeet	XunitTest.OwnershipJoinTest.ALocalBorrowJoinsAFixedSourceThroughTheMeet(name: \"IfLocalSecond\", join: \"let r = if c => z else => n@ref\", stdout: \"1\\n\")
 test	XunitTest.OwnershipJoinTest.ALocalBorrowJoinsAFixedSourceThroughTheMeet	XunitTest.OwnershipJoinTest.ALocalBorrowJoinsAFixedSourceThroughTheMeet(name: \"Label\", join: \"let r = label pick: do\\n        if c\\n            exit to pick n@ref\\n        exit to pick z\", stdout: \"5\\n\")
 test	XunitTest.OwnershipJoinTest.ALocalBorrowJoinsAFixedSourceThroughTheMeet	XunitTest.OwnershipJoinTest.ALocalBorrowJoinsAFixedSourceThroughTheMeet(name: \"Match\", join: \"let r = match c\\n        true => n@ref\\n        false => z\", stdout: \"5\\n\")
-test	XunitTest.OwnershipJoinTest.CheckedValuesRejectLostOriginDependency	XunitTest.OwnershipJoinTest.CheckedValuesRejectLostOriginDependency
 test	XunitTest.OwnershipPropertyEmissionTest.ComputedSetterAcceptsItsOwnNonCopyInputType	XunitTest.OwnershipPropertyEmissionTest.ComputedSetterAcceptsItsOwnNonCopyInputType
 test	XunitTest.OwnershipPropertyEmissionTest.NonCopySetterDiscardsInputAndPreservesStorage	XunitTest.OwnershipPropertyEmissionTest.NonCopySetterDiscardsInputAndPreservesStorage
 test	XunitTest.OwnershipPropertyEmissionTest.NonCopySetterTransfersInputAndReplacesStorageOnce	XunitTest.OwnershipPropertyEmissionTest.NonCopySetterTransfersInputAndReplacesStorageOnce

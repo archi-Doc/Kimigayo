@@ -119,7 +119,7 @@ public class CallReservationTest(ITestOutputHelper output)
     [InlineData("mode")]
     public void RejectsCorruptedReservationPlans(string mutation)
     {
-        var c = MinimalEmissionTest.Analyze(Cell + "var c = Cell.init()\nset(c@uniq, read(c))");
+        var c = MinimalEmissionTest.Analyze(Cell + "var c = Cell.init()\nset(c@uniq, read(c))", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = Assert.Single(c.Ownership.Bodies, x => x.CallReservations.Count != 0);
         var reservation = body.CallReservations[0];
