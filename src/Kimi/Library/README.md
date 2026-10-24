@@ -58,7 +58,7 @@ embedded and implemented.
   Array and fixed-array `tryGetPairUniq` share its ordinary Kimigayo position resolution
   and disjoint pair splitting, using logical positions even for zero-sized elements.
   Its owning remainder destroys unreturned elements in reverse order in a concrete
-  generic `drop`, then calls the internal unsafe `release` primitive. Only handle
+  generic `drop`, then calls `Raw.release`. Only handle
   construction, capability creation and raw region release remain compiler operations.
 - Register compiler-recognized identities in `KimiLibraryCatalog`; `KimiLibraryShapeTest` fixes the shapes the
   compiler and the runtime rely on, so a change to them updates that test with its compiler consumer. Append new
@@ -86,9 +86,11 @@ Binding, ownership analysis and generation. It implements initialization, ordere
 search, insertion links, free-slot reuse, unlinking, reverse cleanup, compaction
 and shrink-to-fit, reserve, checked capacity growth and append decisions, plus the literal's duplicate-key rejection. Its private `Handle` and `Links` records use explicit
 C layout to agree with the backend; they do not define a public collection ABI.
-Callbacks use the ordinary Function Type ABI with stack handles, without heap
-allocation. The compiler passes the selected equality witness and typed entry
-destruction, preserving comparison direction and value-before-key cleanup.
+Key search (`findEntry`, through `Storage.findDictionaryLink`) calls `stored.equals(search)` under `K`'s Equatable
+conformance, and `Storage.destroyDictionaryEntries` destroys entries in reverse insertion order, each value before its key;
+both are ordinary generic source. The only callback is `requireAbsent`'s duplicate-key callback, an ordinary Function Type
+value with a stack environment and no heap allocation, which keeps the later key's location; the MIR generator fails at
+that key directly.
 
 `Dictionary.tryGet` in [Dictionary.kimi](Dictionary.kimi) searches through the standard shared storage remainder and
 constructs its optional reference through ordinary generic source. `remove` shares that typed key search, unlinks one entry
@@ -118,9 +120,7 @@ Platform allocation/release, byte transfer, physical representation and verified
 typed ownership operations remain compiler responsibilities. Keep the original
 operation's Abort location when bridging platform failures. Nonempty literals initialize a live empty handle, acquire
 and check each key before acquiring its value, and transfer each completed pair through the same typed placement bridge
-as insertion. The partial handle and pending key use ordinary temporary cleanup on an early return. The duplicate-key
-Abort callback retains the later key's location; it and the equality adapter use stack handles only.
-Capacity callbacks provide checked allocation, release, byte transfer and source-located failure. Growth copies the high-water slot range,
+as insertion. The partial handle and pending key use ordinary temporary cleanup on an early return. Growth copies the high-water slot range,
 including free links, and publishes the new buffer only after allocation succeeds. Geometric rounding saturates at the representable
 entry count; it never rejects an otherwise representable minimum. The shrink path keeps its separate nullable-allocation contract.
 
