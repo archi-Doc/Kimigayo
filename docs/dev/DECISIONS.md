@@ -7821,11 +7821,12 @@ structure is recorded here by the unit that first implements it.
     bits never being 7. The old path's miscompile stays frozen (R5-M6; U7 or G7).
   - Restructured first, behavior unchanged: the unnamed signatures' search in `ModuleCodegen.Signatures` (`Unnamed`); `VTableDef.SlotOf`
     and the collector's use of it; the Run channel above.
-  - Departure (for the owner's departures list): the `VirtualDispatch` corpus kernel's O2 A/B (plan row C6c, R5-M8) moves to the later of
-    C8d and C9c, since the kernel needs `Array<objref/Shape>` (C8d) and the interpolated checksum (C9c) under MIR code generation, as R5-M105
-    and R5-M111 moved ErasedCalls' and SharedHandles'; C6c measures a fixed-array variant as information.
-  - Departure (for the owner's departures list): plan row C6c's Milestone 44 moves to C9c: the program interpolates in `describe` and in
-    `drop`, which are C9c's rows; with C6c its only records under sel are those interpolations, and an interpolation-free copy prints the
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M115): the `VirtualDispatch` corpus kernel's O2 A/B (plan row
+    C6c, R5-M8) moves to the later of C8d and C9c, since the kernel needs `Array<objref/Shape>` (C8d) and the interpolated checksum (C9c)
+    under MIR code generation, as R5-M105 and R5-M111 moved ErasedCalls' and SharedHandles'; C6c measures a fixed-array variant as
+    information.
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M115): plan row C6c's Milestone 44 moves to C9c: the program
+    interpolates in `describe` and in `drop`, which are C9c's rows; with C6c its only records under sel are those interpolations, and an interpolation-free copy prints the
     old generator's lines.
   - Rejected: entries of a per-slot signature checked against each body as the old generator's `SameAbi` (the check needs the original's
     substitution at its declaring layer composed in code generation, for an equality SPEC 6.4.1 and the validator give); a dispatch thunk per
@@ -7847,3 +7848,11 @@ structure is recorded here by the unit that first implements it.
     SlotOf. O2 (information, a `[4 of objref/Shape]` variant of `VirtualDispatch`, its checksum required against the kernel's legacy value):
     old generator A against sel B at O2, 15 interleaved samples: CPU B/A median 1.000 (mean 0.985, 0.82-1.11 at the 16 ms tick), within A's
     consecutive spread 0.82-1.44; 393 against 392 instructions, the same calls (three indirect slot calls).
+- **R5-M115 The owner confirms C6c's departures** (owner, 2026-10-25, on the R5 planning session's explanation after C6c's design and
+  its reviews, before its merge; verbatim 「4件の逸脱を承認します」, answering the four departures put to the owner together, C6c's two
+  and C8b's two (R5-M117); the consequences are the planning session's) The two departures R5-M114 records are confirmed: the
+  `VirtualDispatch` corpus kernel's O2 A/B (plan row C6c, R5-M8) moves to the later of C8d and C9c, since the kernel needs
+  `Array<objref/Shape>` (C8d) and string interpolation (C9c) under MIR code generation, as R5-M105 and R5-M111 moved ErasedCalls' and
+  SharedHandles'; C6c measured a fixed-array variant as information (B/A median 1.000); and plan row C6c's Milestone 44 moves to C9c,
+  since its program interpolates. The later of C8d and C9c runs the corpus A/B under R5-M8, and C9c runs Milestone 44 under MIR code
+  generation. They leave the list.
