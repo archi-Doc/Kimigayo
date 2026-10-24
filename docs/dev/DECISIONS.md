@@ -7470,13 +7470,25 @@ structure is recorded here by the unit that first implements it.
   - Representation (ruling Q2): an object borrow (objref, objuniq) is its payload's address, an owning handle its object's header, the
     payload at `PayloadOffset` (16); a Deref of an object borrow is a reference's, of a handle the header's payload; an upcast is the Use row
     (the complete base a prefix of the derived payload, X1). The old generator's object borrow is the header: an IR-only difference (PD9).
+  - Case adaptation (R5-M111, its own commit after C6b): an `Adapt` whose case operation in the item's instance is `ObjectCreation`
+    (`value@move@s`, `MirCases.Adapt`) is a creation. The collector's templates take every `Adapt` as a site; its edge
+    (`InstanceCollector.Edges`' Adaptation) admits the payload's descriptor, the target's first component, where `TyCtxt.Adaptation` of
+    the instance's source and target Types is `ObjectCreation`, and none otherwise; code generation (`FunctionCodegen.Objects`' Creation)
+    calls that descriptor's factory as Create does: the Place the result, the operand at the payload's kind, the control value of the
+    Place's handle and the statement's location. The intrinsic edge lays out its row's Type argument inside `Intrinsic`, one site for a
+    call and a bodyless callee's adapter (PLAN G157 (24)'s fold). Verified: the sel ledger loses its 17 rows (call 16, C-frame 1);
+    `FunctionCodegenTest.AnObjectCreationAdaptationCallsItsPayloadsFactory` (the obj instance's factory call),
+    `InstanceCollectorTest.ACaseAdaptationThatCreatesIsItsPayloadsDescriptor`.
+    Departure (for the owner's departures list), confirmed by the owner (R5-M111): K package 4.5 row 8 and R5-M74's creation list gain a
+    case adaptation's creation, an edge to its payload's `ObjectDescriptor` by the rule of every creation.
   - Runtime Type key (ruling Q1 (b), R5-M69's separate unit, its own commit): the key constant, `ObjectCreation.TypeKey` and
     `WriteObject`'s pool parameter are deleted; the old planner keeps its key text, which numbers its tokens and keys its entries, and stops
-    interning it. A declared old `.ll` change (plan 5.3 item 7, as C7a's reason row): every old object module loses its key constants and
-    their pooled texts, and the text constants pooled after them take the next lower suffix; compare-fixtures over the object families
-    shows exactly those differences (252 of 361 `.ll`, all explained), native outcomes are identical and the diagnostic snapshot 0
-    differences. `PipelineObjectTest`'s distinct metadata now asserts distinct tokens, and `StoredObjectViewTest`'s reuse the same text and
-    token after a package rename.
+    interning it. The whole declared old `.ll` change (plan 5.3 item 7, as C7a's reason row): every old object module loses its key
+    constants and their pooled texts, and the text constants pooled after them renumber (`@__kimi_text.2` becomes `@__kimi_text.1`);
+    compare-fixtures over the object families differs in 252 of 361 `.ll`, a normalizing check explaining all 252 by exactly those
+    changes; native outcomes are identical and the diagnostic snapshot 0 differences. Two tests asserted on the deleted key names and now
+    assert on the tokens they stood for, the runtime identity they checked: `PipelineObjectTest`'s distinct metadata (distinct tokens) and
+    `StoredObjectViewTest`'s reuse (the same text and token after a package rename).
   - Placement (the planning session): `ModuleCodegen.Objects` and `FunctionCodegen.Objects` (the precedent of R5-M104 and R5-M106), not the
     plan row's `ObjectDescriptors.cs`; the factory's signature is `ObjectRuntime.Factory`, one copy both generators call (PD2), a refinement
     of R5-M69's "the factory ABI with them".
