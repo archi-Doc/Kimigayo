@@ -64,10 +64,10 @@ internal sealed partial class FunctionCodegen
     // constant so passed is written into one as its record. One pass over the reached Calls' operands numbers the slots before the prologue
     // allocates them; the call writer finds an operand's by its index. The pass covers the operands a reached Call passes to an OwnedSlot
     // parameter (DECISIONS R5-M92 narrowed R5-M89's every operand): a body's callee takes a value in memory by pointer, so every in-memory
-    // operand of a Fn, Requirement, Value or Virtual call; an intrinsic only through its row's routine (Raw.release, $abort), so a Fail's
-    // code or Raw.initialize's value gets none. A Value call's callee operand passed by value is its environment, which a Consuming body
-    // owns (SPEC 7.7.3: a Consuming call Copies a Copy Closure; DECISIONS R5-M102): its slot is numbered after the body's operands by its
-    // block (CalleeCopy), since a block's terminator is its one call.
+    // operand of a Fn, Requirement, Value or Virtual call; an intrinsic only through its row's routine (Raw.release, $abort) or a creation's
+    // factory (its payload, DECISIONS R5-M110), so a Fail's code or Raw.initialize's value gets none. A Value call's callee operand passed
+    // by value is its environment, which a Consuming body owns (SPEC 7.7.3: a Consuming call Copies a Copy Closure; DECISIONS R5-M102): its
+    // slot is numbered after the body's operands by its block (CalleeCopy), since a block's terminator is its one call.
     private void Copies()
     {
         var count = this.body.Operands.Length + this.body.Blocks.Length;
@@ -105,7 +105,16 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        foreach (var parameter in IntrinsicRows.Of((IntrinsicId)call.Callee.Arg).Routine?.Parameters ?? [])
+        var row = IntrinsicRows.Of((IntrinsicId)call.Callee.Arg);
+        if (row.Writer == IntrinsicWriter.Create)
+        {
+            // A creation's factory takes its payload at its kind, as a body callee does (ModuleCodegen.Factory; DECISIONS R5-M110).
+            var payload = call.Start + ArgumentPosition(new(call.Callee.Symbol, MirBodyKind.Fn), 0);
+            this.CopySlot(this.body.Operands[payload], payload);
+            return;
+        }
+
+        foreach (var parameter in row.Routine?.Parameters ?? [])
         {
             if (parameter.Kind == AbiParameterKind.OwnedSlot)
             {

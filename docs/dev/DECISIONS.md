@@ -2853,8 +2853,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     classification. Not adopted: a unified "lifecycle receiver" definition (editorial,
     with rule-drift risk the review found).
   - Numbering: R4-M101 is reserved for 2a0-2; R4-M102 is on R5's branch `claude/r5-a2b` (A-2b).
-- **R4-M104 A Loan conflict caused only by Refuted relations (W)** (owner, 2026-10-22, after two rounds of a general definition were
-  not accepted: 「P2は、W：個別規則に決定します」; the proposal `draft/Proposals/2026-10-21 Failures Caused Only by Other Failures.md`,
+- **R4-M104 A Loan conflict caused only by Refuted relations (W)** (integrated by R4-M122 with the owner's read-through clause) (owner,
+  2026-10-22, after two rounds of a general definition were
+  not accepted: 「P2は、W：個別規則に決定します」; the proposal `draft/Changes/2026-10-21 Failures Caused Only by Other Failures.md`,
   accepted in its round-3 review with fixes, a re-check and a confirmation, `draft/Sketches/R4 Proposals 2026-10-21/review-p2r3.md`)
   - Adopted for SPEC 15.6.5 (cited from 14.8.3 and 15.8.2), the proposal's sentence: "A Loan conflict on the Loan of a Borrow whose
     finite Origin Refuted chains carry to fixed Origins is caused only by the Refuted relations of those chains (23.1.2) when every
@@ -3383,6 +3384,47 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: one implementer and one reviewer below the guard (the pace above; kept as the fallback above it); two implementers and
     one reviewer (two designs and a review still cannot overlap); counting agents without a cap on heavy runs (the load, not the count,
     slows the machine).
+- **R4-M122 Rule W in SPEC 15.6.5, a read through a reference counted as a Copy; 14.8.3 and 15.8.2 cite it** (owner, 2026-10-24,
+  verbatim answers to the R4 planning session's two questions: 「(a) 今、W だけで開く (推奨)」, this SPEC session holds W alone, and
+  「(a) SPEC の W の文に書く (推奨)」, the reading the prototype round needed is one clause of W's sentence; unit spec-w; R4-M104's proposal,
+  now `draft/Changes/2026-10-21 Failures Caused Only by Other Failures.md`, closed as 取り込み済み)
+  - SPEC 15.6.5, a paragraph after the sentence on locals: "A Loan conflict on the Loan of a Borrow whose finite Origin Refuted chains
+    carry to fixed Origins is caused only by the Refuted relations of those chains (23.1.2) when every value that carries the Loan and
+    may be used after the access is the result or storage the body does not own and received the Loan only as the borrow or a Copy or
+    Reborrow of it (15.6), stored into a part with a fixed Origin; a call's result, or storage the call writes, that may retain such a
+    value as an argument counts as a Copy of it (15.6.4), and a read through a reference to a whole value counts as a Copy of that
+    value." R4-M104's sentence is unchanged; the last clause is the owner's. 14.8.3: 15.6.5 "states when a Loan conflict at guard
+    cleanup is caused only by Refuted relations". 15.8.2's sentence on a returned body-local borrow cites 15.6.5. Example `store` and
+    `keep` in 15.6.5 (the proposal's m-write4 and m-write rows), registered as `15.6.5-derived-conflict` (F4): `store`'s write conflict
+    is Dependent; the old path's missing write conflict in `keep` is an (a) difference, since a Binding record stops that path.
+  - The clause: a guard's `v@ref` at `ref/T` is one shared reference through layers (10.2 Copies the innermost `ref`, v's value), which
+    the MIR lowers to `&*(*&v)`, a read through a reference to `v`. 15.6's "a read through a reference carries the Loans of what it
+    reaches" reads like the holder rule, so without the clause `rv-g-param`'s `v@ref` form could be read as independent: SPEC-legal, but
+    against the proposal's reading (the round's item 6). The clause is sound because the value read is the referenced value itself: a
+    part read, or a Loan the read carries only by the holder rule, is no Copy of the Borrow (`fT`, round 3's B1 (c) stay independent).
+  - Rationale and Principles (the proposal's §7). One Concept: one sentence replaces 2a0-D §7's two family rules; 15.6.5's sentence on
+    locals and 15.8.2's are its instances where the result is the only later carrier (in m-scope's shape both records stay). Local
+    Reasoning: whether a conflict is derived follows from the values that carry its Loan and the parts that received it, facts of the
+    body. Explicit Semantics: the derived case and the reading it needs are stated; elsewhere 23.1.2 applies unchanged, its general
+    term undefined. Compiler Server Protocol: an escape reports its relation, and the consequent conflict keeps it as its cause.
+    Relations are never derived; no verdict changes.
+  - R4-M104's supersessions. At integration: the SPEC reading itself, so an implementation may omit these conflicts (the default
+    pipeline's single relation record for `slot@follow = x@ref; x = 2` conforms); 2a0-D §5.1's m-write4 expectation, a conforming
+    result whose planned STATUS record and H11 item are not written; 2a0-D §9's planned records of N-6's residual and the DOUBLE, not
+    written. With 2a-2, which implements none of them yet: R4-M94's merge rules 1 and 2, OQ-4 (b), OQ-3 (2) and (9), PD11's two halves
+    and A3 E7's merge sentence, 2a0-D §10's 2a-2 done-condition exception and the listed expectations, DIAGNOSTICS §4.3's sentence and
+    invariant (R5's H3). With 2g-5: its A5-F4 and A5-F7 escape parts. PLAN G113's E12 sentence is gone already (G113 left PLAN with
+    R4-M106's landing records, "E12 replaced by W").
+  - The prototype round (2026-10-24, 113 programs on 2a-1b's head, labels only, no verdict changed; its record is
+    `draft/Sketches/A5 Step 2/W prototype round/proto-round.md`) corrects the proposal's §3 (frozen;
+    INTEGRATED records it): m-36f's row is vacuous (R4-M106 deleted P12; neither pipeline has its conflict); m-write3 has no storage-end
+    conflict, since its write ends x's Loans first (15.6.3), only the independent write conflict; keepA has one more record, derived,
+    at local's storage end (E receives v's value, a Copy of `local@ref`, into `p.*` at `a`). Without per-part facts m-pair's returned
+    Borrow and review-2's B1 (a) storage end read independent: SPEC-legal.
+  - Open, outside this unit: the twins' lost independent conflicts on the MIR until H11 (the round's §4 item 1); the default pipeline's
+    acceptances of repair variants (review-p2r3 N12, C7, `fT`), pre-existing ledger differences; 2a-2's facts (the result in transit,
+    a store's part class, a Loan's Borrow atom) and the bit's representation. The later SPEC session keeps RZ, G86, G159 (2), G158 (3),
+    B 3.4's 15.4.2 gap and PLAN G160's N2.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -4461,7 +4503,8 @@ resumed by R4-M86 (2026-10-20).
   accepted it, 2026-10-22): an Origin without a step gives Unstated, an erased instance answers with its erased arguments (`static`
   reads Static or Shared(static), as the user's `during static`, the same interned Type), and a path reaching no raw layer is
   `InternalInvariant`. `ArchitectureRulesTest`'s raw-role
-  sites keep Mir/ without a read of a raw Origin. `TyCtxt.Retains`' row shape is unchanged (A5's reader needs no edit).
+  sites keep Mir/ without a read of a raw Origin. `TyCtxt.Retains`' row shape is unchanged (A5's reader needs no edit). A raw input's kinds,
+  its own value's rows and C4's untied D6 clause: superseded by BU-30.
   Written raw Origins, one rule (the delta review's D1 and D2; design note `d1d2-design.md`, approved by the planning session
   2026-10-22 with four conditions; one level above `ab598420`, which covered declarations only): `WrittenRawOrigin`, the one
   formation site of every written raw Origin (declaration, body annotation, body Type argument, claim, closure parameter and
@@ -4773,6 +4816,77 @@ resumed by R4-M86 (2026-10-20).
     representation C3 deletes with `DerivedFacts`, whose order needs a sequence number to stay pure, with no measured need); a move
     only (PlanB's C2 routing condition unmet); Invalid as both polarities (ProveProposition would skip its structural judgment where
     facts alone give both, changing EndProof's cause); the raw proposition at C2 (two normalizations per proof).
+
+- **BU-30** (2026-10-23, redone 2026-10-24; the BU planning session; PLAN G160's G160-2c, unit bu32, under G160-4's owner-approved
+  design B′ §3.2 as its re-review amended it, R-B2 to R-B5 (DECISIONS R4-M116), one implementation and one review (DECISIONS Q6); the
+  owner's go relayed by R4 (「(a) はい」), confirmed in BU's dialog 2026-10-24 (「はい、進めて (推奨)」)) Binding publishes raw arguments'
+  retention rows by SPEC 15.6.4's kinds (OQ-3 (a)); `TyCtxt.Retains`' row shape is unchanged.
+  - Pointee (item 1, R-B3): an input whose instantiated Type is a raw layer is walked as a borrowed input's referent: `RetentionInput`
+    walks its parts as Content under the raw step rules (`RetentionParts`, the walk below a Type's own layer, split out of
+    `RetentionWalk`), so its self-store row is Content (`Raw.initialize`: `0 Content store 0`). Its own layer's Origin stays an atom of no
+    kind (`RetentionAtom.Kind` nullable): it places the input among the premises, and among an erased callable's fixed Origins (R4-M52), as
+    a borrow's outer Origin does, and gives no row.
+  - The hold walk (items 2 and 5, R-B2, R-B4; the reviews' B1 and R2, R4's F1 and B2): `RetentionInput` records each raw input with its
+    Type and `RetentionWalk` each hold of an output (a position of the result, or of input j's writable storage, whose Type is a raw
+    layer, an abstract part, a struct or an enum). One walk, `Binding.Held` (Binding.Retention.Rows.cs), goes from each hold through all
+    the call may write, by BU-1's one reach rule (a value stored at a writable position brings its whole Type), as `RetentionParts`'
+    writable positions do: every layer below but a callable's (`IsCallable`, which both read), a raw layer whatever its step, a shared
+    borrow or an rc or arc handle included, a nominal Type's Type arguments (as `RetentionParts` walks them: `Dictionary<K, V>`, which
+    declares no Fields, holds through `V`), and a struct's or enum's stored content (SPEC 5.7's inline storage: the base, Fields, Case
+    payloads and their Tuple and fixed-array elements), each struct or enum once per output. At each position, a raw input other than j
+    whose Type the position can hold (a raw layer agreeing with it with Origins fitted, their `TyCtxt.Erase` forms one Type, or an
+    abstract part) gets a Value row, never j itself; a raw layer stepping Unstated or Static (`StoredStep` on an instance's inline path,
+    its Origin's kind elsewhere, BU-24) unties the output: `CallRetention.Untied` for the result, `CallRetention.UntiedStores` (the
+    inputs ascending, beside `Untied`; A5's 4b joins Φ_E into their write targets) for input j. So `link(head: raw/Node, n: raw/Node)`
+    stores `n` into `head` through Node's `next`; `s.r@follow = p` through `S.r: uniq/(raw/i32) during a`, `Raw.initialize(r.q, p)`
+    through `R.q: raw/(raw/i32)`, `Raw.initialize(c.at, p)` through a Loan-kept `Cell.at: raw/(raw/i32) during a`, `s.x = Bx.init(v:
+    p)@rc` through `S.x: rc/Bx` (arc and `Option<rc/Bx>` alike) and a shared `Sh.r: ref/(raw/i32) during a` give `p`'s Value row, as
+    `g(p) -> R` does to the result; a direct `uniq/(raw/i32)` referent, `static` alike, is an untied store as `uniq/Option<raw/i32>` is,
+    and so are `Raw.initialize<raw/T>`'s `storage` and an input whose rc payload holds an allocated pointer. D6's unstated result layer
+    is one of the result's holds, so the walk decides its Untied too, and a `static` result layer now unties as a stored one does. A raw
+    input may have a Value and a Content row to one output. `Text.writer`'s Utf8Writer (`dispatch`, `pending`) is untied, and so is
+    every input storing one or a `DictionaryStorage.Handle` (`buffer`).
+  - The bound (the reviews' R1, R4's B1): a stored Type Binding does not instantiate, and a struct or enum the walk reaches whose storage
+    preparation does not complete (`PrepareTypeStorage`, BU-12's height and path limits, which a Type growing through an indirection
+    always reaches: `raw/G<(T, T)>`, `uniq/(G<Option<T>> during a)`, `Option<obj/B<(T, T)>>`), make the contract `CallRetention.Limit`,
+    as TyCtxt.Retention.cs states; a regular recursion (`raw/G<T>`, Node's `next`) ends at the struct already walked.
+  - The owner's decision (2026-10-24, the second round on B1's family, AGENTS "Independent review"), verbatim in BU's dialog:
+    「(a) 到達規則を1つに (推奨)」, and in R4's dialog: 「G160-2c は (a) で進める」. Rejected with it: (b) a whitelist (`Opens`
+    admitting rc and arc, which would also have to list `Loan<T>` keepers and shared Fields, R4's shapes); (c) a hold (these forms as
+    4b prerequisites).
+  - D6 and Within (items 3, 4): an unstated raw result layer outside a nominal Type's Fields retains every input as Value and a raw input
+    also as Content (`keyAt`); the result retains `KimiLibraryCatalog.Within`'s argument by Value (`Raw.slice`'s `storage`).
+  - Supersedes in BU-24's C4: a raw input walked whole as Value (its pointee's atoms and self-store row are now Content, its own layer's
+    Origin an atom of no row) and C4's D6 clause where it unties (now the hold walk's). The redos replaced the first version's
+    stored-content walk (`StoresUntied`, `StoredPart`), which stopped at a borrow, a handle or a raw layer not stating `self` (the
+    review's B1: rows missing where the positional walk and the Origin rule go), and its untied rule for structs and enums only (F1),
+    then the second version's `Opens`, which stopped at shared layers and Exclusive raw layers (R2, R4's B2).
+  - R4-M117 item 5 (15.6: storage the body does not own comes from a part of a call result that its contract ties to no argument) leaves
+    the contract unchanged: the whole-result `CallRetention.Untied` stays the conservative reading (B′ §2.3), a sound over-approximation.
+  - PD21: the split commit (1fb14f2e9, behavior-preserving) separated responsibilities: the atom walk (`Binding.Retention.Atoms.cs`) from
+    the premises (`Binding.Retention.cs`) and the rows, and TyCtxt's memo and per-call view (`TyCtxt.Retention.Calls.cs`) from the
+    contract (`TyCtxt.Retention.cs`); DECISIONS Q9 since decides restructuring by responsibility alone.
+  - Rejected: a sentinel input or output in `Retention` for an untied store (A5 maps every row's slots to operands); `Untied` turned
+    into a per-output set (a change of A5's reader in this unit); dropping the raw input's own-layer atom (it loses R4-M52's erased
+    relations and its premise node); the own value as an atom of `retentionAtoms` (every atom reader would skip it); the walk's Type
+    positions alone (a Field that can hold the pointer, Node's `next`, would retain nothing); a second structural identity beside `Erase`;
+    walking stored content with `RetentionWalk` (it would add the Fields' Origins as atoms and rows); a mode marking a hold as positional
+    so the walk skips the positions below it that `RetentionWalk` registers too (the re-read changes no row); a cycle bound of the
+    walk's own (a second copy of BU-12's limits).
+  - Open: a raw layer a pair parameter supplies reads the Origin Binding keeps (`Holder<raw/i32 during x>`: Exclusive, not untied);
+    SPEC 8.1.1 drops it (R4-M117 item 4 keeps that rule), and a later BU unit changes Binding's checking and these rows together (R4's
+    N1). The review's N2, for a later SPEC session before G160-5 (R4 puts it to the owner; its rows are a later BU unit): a raw layer that
+    is not the argument gets no row of its own value, one inside a Tuple or Option argument (`f(t: (raw/i32, i32), slot: raw/(raw/i32))`)
+    or a pointer read through a raw or borrowed argument (`p: raw/(raw/i32)` or `r: ref/(raw/i32)` into `slot`), since Content follows
+    Origins and 15.6.4 names only a raw pointer argument. A result's holds include positions behind a borrow, as D6's raw layers do
+    (conservative). R4's N1, a (b) row for G160-5's classification: a `static` result layer unties the whole result (`useStatic2`: A5
+    reports ComparisonLoanConflict_Kd where the old analysis accepts), whole-result Untied over-approximating 15.6's per-part reading
+    (R4-M117 item 5), as D6's unstated layer does (`useUnstated2`); R4's round-3 re-check adds `useRc2` (an rc payload's unstated raw
+    Field) and `usePhantom2` (a phantom `Ph<raw/u8>` Field) to that class.
+  - R-B5 (on 04d865038, round 3, against dev 1fc5a0731): the mir Functional suite passes, 22,217 tests against the base's 22,188
+    (MirCensusTest, the Utf8* and InterpolationScanRecoveryTest classes among them); its MIR difference ledger keeps the base's 3,118
+    rows and adds 2, both from this unit's RetentionTest program (`fill`, `hidden`), whose diagnostics the base compiler gives alike.
+    MirCensusTest passes on the default pipeline too. The untied results and stores change no verdict of today's A5; their Φ_E is 4b's.
 
 - **BU-32 HIR publication separates evaluation and operation classification** (2026-10-23; the planning session after independent
   design review; G141's prerequisite) The existing `HirPublisher` keeps its walk, publication version, reusable storage and column
@@ -7465,3 +7579,131 @@ structure is recorded here by the unit that first implements it.
   Type, so ClosureErasure and ItemAdapter items are keyed by their erased source and target (against K package 4.3, R5-M18); R5-M43 row
   13's "keyed by the erased Closure or Item Type" reads "and the erased target Function Type"; and K package 4.8's by-value list gains an
   adapter's target inputs and result, laid out at the erasure. They leave the list.
+- **R5-M110 Object descriptors and handle operations in MIR code generation (C6a)** (2026-10-24, C lane; plan C6a, package C 3.1, 3.2 X15
+  and 3.4, K package 4.3 and row 8, PD17; SPEC 3.3.1, 13.6.1-13.6.4, 16.3.3, 22.5.1, IMPL 21.1.3; the planning session's go and rulings
+  Q1-Q5 on C6a's design, `c6a-design.md`; under R5-M18 form 2 (G:object), R5-M69, R5-M74, R5-M92 and R5-M108)
+  - Identity (R5-M74, ruling Q5): code generation numbers the module's runtime identities once per Write, before the items: the erased
+    payload of each Generated ObjectDescriptor item in admission order, then each base on its chain (`AdtDef.Base`), each erased by
+    `TyCtxt.Erase`, the erasure `MonoKey.Type` uses, so equal Types share one number, from 1 at its first occurrence, a base no creation
+    makes included. The numbering is code generation's own module-local identity, not a collector key it re-derives to find an item (R5-M100's
+    ruling 1 stands). PD17's "ordinal of the erased payload Type" is this number.
+  - Descriptor item (`ModuleCodegen.Objects`): its row, `ObjectCreation(item, the representative's Layout, TyCtxt.Copy on the representative,
+    the factory's signature, its number)`, with its payload glue's symbol (its first target, when the payload may need a drop) and its
+    chain's numbers nearest first, computed once per Write and the previous Write's reused while it matches; `ObjectRuntime.WriteObject`
+    writes it into the function buffer; it requests the object runtime and, where the factory copies by memcpy (`ObjectRuntime.Copies`),
+    the memory declarations. A VTable target is C6c's: one located `Unsupported_Kd` at the descriptor's site (the creation, where the VTable
+    item's own record lies), no partial table. The frame writes `ObjectRuntime.WriteRuntime` once, after the definitions and the entry, on
+    request (`Needs.Objects`: a descriptor, a clone, a type test that calls the runtime).
+  - Rows (IntrinsicRows' writer column; PD21: no new IntrinsicId): Create (makeObj, makeRc, makeArc) is a routine row, the factory of the
+    call's target, the payload's descriptor (another target `InternalInvariant_Kd`), `__kimi_make_object<item>` `(ptr ret, [a0 at
+    Abi.Kind], i64 controlValue, ptr location, i64 length)`, its slot-less value `ObjectRuntime.InitialControl` of the result handle's
+    counting (0, 2, 2), the payload passed as a body callee's argument (a copy slot for a string constant or a Copy in memory), at the call's
+    location. Clone is a routine row, the runtime's `__kimi_clone_rc`/`__kimi_clone_arc` by the result's counting (`ObjectRuntime.Clone`), no
+    target and no allocation. Test calls `__kimi_object_supports` (`ObjectRuntime.Supports`) with the borrow's object, the payload address
+    less `ObjectRuntime.PayloadOffset`, and its target's number, `Erase(TypeOf(item, its token's Type))`; a target on no Generated chain is
+    false without a call: SPEC 13.6.4 admits only a struct target, which an object supports exactly when it is its Dynamic Type or a base on
+    that Type's chain, and every runtime object comes from a Generated creation. Items (R5-M108): a make* Item's Value call and adapter run
+    Create through `Runs` with their own descriptor target; a clone Item Clone's row.
+  - Representation (ruling Q2): an object borrow (objref, objuniq) is its payload's address, an owning handle its object's header, the
+    payload at `PayloadOffset` (16); a Deref of an object borrow is a reference's, of a handle the header's payload; an upcast is the Use row
+    (the complete base a prefix of the derived payload, X1). The old generator's object borrow is the header: an IR-only difference (PD9).
+  - Case adaptation (R5-M111, its own commit after C6b): an `Adapt` whose case operation in the item's instance is `ObjectCreation`
+    (`value@move@s`, `MirCases.Adapt`) is a creation. The collector's templates take every `Adapt` as a site; its edge
+    (`InstanceCollector.Edges`' Adaptation) admits the payload's descriptor, the target's first component, where `TyCtxt.Adaptation` of
+    the instance's source and target Types is `ObjectCreation`, and none otherwise; code generation (`FunctionCodegen.Objects`' Creation)
+    calls that descriptor's factory as Create does: the Place the result, the operand at the payload's kind, the control value of the
+    Place's handle and the statement's location. The intrinsic edge lays out its row's Type argument inside `Intrinsic`, one site for a
+    call and a bodyless callee's adapter (PLAN G157 (24)'s fold). Verified: the sel ledger loses its 17 rows (call 16, C-frame 1);
+    `FunctionCodegenTest.AnObjectCreationAdaptationCallsItsPayloadsFactory` (the obj instance's factory call),
+    `InstanceCollectorTest.ACaseAdaptationThatCreatesIsItsPayloadsDescriptor`.
+    Departure (for the owner's departures list), confirmed by the owner (R5-M111): K package 4.5 row 8 and R5-M74's creation list gain a
+    case adaptation's creation, an edge to its payload's `ObjectDescriptor` by the rule of every creation.
+  - Runtime Type key (ruling Q1 (b), R5-M69's separate unit, its own commit): the key constant, `ObjectCreation.TypeKey` and
+    `WriteObject`'s pool parameter are deleted; the old planner keeps its key text, which numbers its tokens and keys its entries, and stops
+    interning it. The whole declared old `.ll` change (plan 5.3 item 7, as C7a's reason row): every old object module loses its key
+    constants and their pooled texts, and the text constants pooled after them renumber (`@__kimi_text.2` becomes `@__kimi_text.1`);
+    compare-fixtures over the object families differs in 252 of 361 `.ll`, a normalizing check explaining all 252 by exactly those
+    changes; native outcomes are identical and the diagnostic snapshot 0 differences. Two tests asserted on the deleted key names and now
+    assert on the tokens they stood for, the runtime identity they checked: `PipelineObjectTest`'s distinct metadata (distinct tokens) and
+    `StoredObjectViewTest`'s reuse (the same text and token after a package rename).
+  - Placement (the planning session): `ModuleCodegen.Objects` and `FunctionCodegen.Objects` (the precedent of R5-M104 and R5-M106), not the
+    plan row's `ObjectDescriptors.cs`; the factory's signature is `ObjectRuntime.Factory`, one copy both generators call (PD2), a refinement
+    of R5-M69's "the factory ABI with them".
+  - Unit split (ruling Q4): C6a and C6b are two units on one branch sharing one review (DEC Q6 form 2); C6a changes no ledger row, since every
+    ledger row reaching its rows also destroys a handle (C6b's glue; the census: none flips with C6a alone, at most 335 with both).
+  - Restructured first, behavior unchanged: the factory's signature and its memcpy predicate in `ObjectRuntime`; an intrinsic's target read
+    once by `Intrinsic` and given to its writer, `Routine` taking a target.
+  - Rejected: a descriptor's item index as its token (a base no creation makes has no item); numbering at the first type test (a later
+    descriptor's number would be missed, tokens following body order); numbers for test targets on no chain (the constant false calls
+    nothing); an object borrow as the header (Ref and Deref would need object arms, and `ref/T` and `objref/T` of one payload would differ);
+    the factory's signature built in code generation beside the old planner's (a second copy); an optional `TypeKey` (a mode of the shared
+    writer, ruling Q1); a key text for MIR (a constant nothing reads); an empty table for a slot-bearing payload (a partial table); a
+    factory per payload and mode (the control value distinguishes them); the control value by `IntrinsicId` (R5-M92); a TypeToken operand
+    column, a token column in the checked set or an identity `MonoKind` (R5-M74); a `MirBodyKind.Shim` factory (PD3); an
+    `ObjectDescriptors` class beside FunctionCodegen (copies of the call and store writers).
+  - Verified: `FunctionCodegenTest` (one descriptor per erased payload, its metadata and destroy entry, the factory's signature and calls
+    with 0, 2, 2 and the creation's location, a zero-sized and a Copy payload, an erased factory Item's entry; the numbering of a chain whose
+    base no creation makes, the tests' calls and the constant false, `is not`; the clones and an erased clone Item; an object borrow's
+    payload address and a handle's header; the runtime once and none without objects; a slot-bearing payload's one record; M9's 0 B and I1
+    over the `Objects` source; the `ObjectRows` program natively under both generators); the old generator's key deletion as above.
+- **R5-M111 The owner confirms C6a's and C6b's departures** (owner, 2026-10-24, on the R5 planning session's explanation after C6a's
+  design and before the commits they govern; verbatim 「C6a/C6b の逸脱 2 件（ケース適応による生成 value@move@s に記述子の辺を加えて K package
+  4.5 の行 8 と R5-M74 の生成一覧を広げること、SharedHandles の corpus O2 A/B を C8d と C9c の遅い方へ移し C6b は固定配列版で参考測定すること）を承認します。」;
+  the consequences are the planning session's) The two departures C6a's and C6b's entries record are confirmed: a case adaptation that
+  creates an object (`value@move@s`, an `Adapt` whose selected case operation is `ObjectCreation`, `MirCases.Adapt`) is a creation site of
+  the instance collector, targeting its payload's `ObjectDescriptor` item by the rule of every creation (against K package 4.5 row 8 and
+  R5-M74's creation list, R5-M18); and the `SharedHandles` corpus kernel's O2 A/B, due at G:object's family review (plan 5.6, R5-M8),
+  moves to the later of C8d and C9c, since the kernel needs `Array` of a handle Type (C8d) and string interpolation (C9c) under MIR code
+  generation, as R5-M105 moved ErasedCalls'; C6b measures a fixed-array variant of the kernel as information, a B/A beyond the A=B
+  variance stopping it (R5-M8's O2 rule). The later of C8d and C9c runs the corpus A/B under R5-M8. They leave the list.
+- **R5-M112 Handle glue in MIR code generation (C6b)** (2026-10-24, C lane; plan C6b, package C 3.6 "obj/rc/arc", design 2 2.7,
+  SHARED_OBJECT_RUNTIME, Release; SPEC 16.3.3, 22.5.1, IMPL 21.1.3; the planning session's go and rulings 1-6 on C6b's design,
+  `c6b-design.md`; under R5-M18 form 2 (G:object, one review with C6a), R5-M69, R5-M95, R5-M104 and R5-M110)
+  - Row (`DropGlueRow.Handle`, `FunctionCodegen.Objects`' Release): an owning handle's glue function releases its object. A Sealed
+    payload (`DropGlue.Parts` gives it) is released directly by `ObjectRuntime.WriteSealedDrop`: the counted transition of its mode, the
+    payload's glue at the payload (the glue item's one target, when the payload may need a drop; none, an empty symbol), then the free;
+    any other by the runtime's release of its counting (`ObjectRuntime.Release`: `__kimi_drop_object`, `__kimi_drop_rc`,
+    `__kimi_drop_arc`), whose descriptor's finalizer destroys the actual Type (SPEC 16.3.3). Both request the object runtime. A handle has
+    no part a move path opens, so its level runs only in its glue function; under an Open row it is `InternalInvariant_Kd`. A Sealed
+    payload without a drop takes the direct release where the old generator calls the dynamic one: IR only (PD9).
+  - Parameters (ruling 2, its own commit before the row): `DropGlue.Parameters` are named `slot`, `location` and `length`, the old
+    generator's glue names, which `WriteSealedDrop`'s text reads, so that text stays the one copy (PD2); every reader takes them by
+    position. Behavior unchanged: the old `.ll` identical, the MIR `.ll` differing only in those names (27 of 82, 52 functions, all
+    explained by a normalizing check), native outcomes, the snapshot and the gate unchanged.
+  - Deviation `inline-env` (R5-M104, class (a), PD19): the rows R5-M104 left to C6a and C6b take `Codegen.Expect(target, legacy,
+    CodegenDeviations.InlineEnvironment)` with their legacy bounds, verified natively under both generators: `ContextualClosureTest` and
+    `HeapClosureErasureTest`'s "Object" theory rows become the facts `AnObjectCaptureOfAnExpectedFunctionTypeIsReleasedOnce` and
+    `AnErasedObjectEnvironmentExecutesAndReleasesOnce` (1 allocation of 20 bytes against 2 of 28), `HeapClosureReplacement` (2|40 against
+    4|56), `HeapClosureAbandoned` (1|20 against 2|28), `FunctionCaptureNested` (2|36 against 3|44, the outer 16-byte environment still
+    allocated) and `FunctionCaptureReplacement` (1|20 against 2|28); none weakened.
+  - Type tests (ruling 4, the check on R5-M110's false): SPEC 13.6.4 admits one target form, a named struct Core (qualified or through an
+    alias, its Type arguments complete Types closed in each instance, its Origin bindings supplied by target completion and erased by the
+    numbering); a Type parameter, an associated Type, a non-struct Core (an enum, a Tuple, a Contract View, which has no test syntax,
+    13.6.5) or an unformable object form is rejected statically. Its test is `Supports(D, T)` over the single-inheritance base graph
+    (6.2.2), and the descriptors and tokens are module-local (IMPL 21.1.3), so with every runtime object from a Generated creation, its
+    chain numbered, and Weak and cyclic factories not executable, a target without a number is on no live object's chain: false is sound
+    for every admitted form, and none needs a located `Unsupported_Kd`.
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M111): the `SharedHandles` corpus O2 A/B moves to the later of
+    C8d and C9c (the kernel needs `Array` of a handle and interpolation under MIR code generation); C6b measures a fixed-array variant as
+    information.
+  - Rejected: `WriteSealedDrop` taking the parameters' spellings (a mode of the shared writer); inlining the release at each Drop (no function
+    per Type, X3); the dynamic release for a Sealed payload (a descriptor read where the Type is known); an Open level of a handle.
+  - Verified: the sel ledger loses 318 rows (object 205, C-frame 85, call 17, K-edges 6, closure 4, C-aggregate 1; 316 pass, the two
+    renamed theory rows are no longer executed), all of C6a's and C6b's census except the 17 rows of the case adaptation's creation
+    (R5-M111's commit); the 37 fixture families of the census and `ObjectRows*`, `ObjectRelease*` run natively under sel and the old
+    generator at O0 and O2; `FunctionCodegenTest` (each handle's glue: a Sealed payload's direct release by mode, its payload glue between
+    the transition and the free, the free alone without a drop, the runtime release of an open payload's rc and obj; `ObjectRelease` with
+    exact allocations and frees under both generators; M9's 0 B and I1 over the `Releases` source). O2 (information, a temp kernel: the
+    `SharedHandles` rounds with the four clones in a `[4 of rc/Payload]` read by index, its checksum required against the corpus value),
+    old generator A against sel B at O2, 15 interleaved samples: CPU B/A median 1.000 (mean 1.026, 0.77-1.23 at the 16 ms tick), within
+    A's consecutive spread 0.86-1.17; 549 against 556 instructions, the same calls, CAS loops and fences.
+- **R5-M113 R5's concurrency follows R4-M119** (owner, 2026-10-24, to the R5 planning session directly, after R4 relayed R4-M119; verbatim
+  「R5 にも同じ制約を適用します。重い実行は R4・BU・R5 合わせて同時に 3 本まで（artifacts/heavy-runs/ に登録）、共有ベースを再利用し、R5
+  も実装者はレーンごとに最大 2、設計者・レビュアーは最大 2 までとします。」; supersedes the R5 resume prompt's one implementer and one
+  reviewer at a time) R5 runs implementers one per lane, at most two, their files disjoint and at most one unit changing a shared
+  representation at a time, and designers and reviewers at most two, under R4-M119's rule: heavy runs at most three at once across R4, BU
+  and R5, each registered in `artifacts/heavy-runs/` while it runs; design and review probes run selected classes and reuse the full-suite
+  bases kept once per dev sha in `artifacts/verify/shared-base/`; one plus one again when weekly usage passes 70% early in the week.
+  Reading: 「同じ制約」 is R4-M119's rule, so 「実装者はレーンごとに最大 2」 is its "one per lane, at most two" (the planning session's
+  wording of the owner's choice). Unchanged: the full process, R5-M18's one design and one review per unit under the packages (DEC Q6),
+  merge windows announced to R4 and BU, and R5-M8's checks.

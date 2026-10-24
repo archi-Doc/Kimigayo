@@ -1,24 +1,38 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 // The rows of TyCtxt.Retains (Binding.Retention.cs computes the atoms and premises they are read from).
 public sealed partial class Binding
 {
-    // The rows of the contract being computed, reused.
+    // The rows of the contract being computed, the inputs whose writable storage may receive a pointer tied to no input, the structs and
+    // enums the hold walk of an output has met (Held) and the inline path it is at (StoredStep's positions), reused.
     private readonly List<Retention> retentionRows = new();
+    private readonly List<int> retentionUntiedStores = new();
+    private readonly HashSet<BoundType> retentionStored = new(ReferenceEqualityComparer.Instance);
+    private readonly List<int> retentionPath = new();
 
-    // An input retained through one of its occurrences: Value over Content.
+    // An input retained through one of its occurrences: Value over Content; an atom of no kind gives none (a raw input's own layer).
     private static void Mark(RetentionKind?[] kinds, in RetentionAtom atom)
-        => kinds[atom.Input] = atom.Kind == RetentionKind.Value ? RetentionKind.Value : kinds[atom.Input] ?? RetentionKind.Content;
+    {
+        if (atom.Kind is { } kind)
+        {
+            kinds[atom.Input] = kind == RetentionKind.Value ? RetentionKind.Value : kinds[atom.Input] ?? RetentionKind.Content;
+        }
+    }
 
     // One closure from each output atom (OriginPremiseClosure, every Semantics case's premises followed) marks the inputs whose atoms it
     // reaches, Value over Content, a carrier's through its node. The result is untied when one of its non-static atoms marks no input. A
-    // result with a raw layer without an Origin retains every input as Value and is untied (SPEC 5.7 Calls, D6). The work is what the
-    // closures reach, each node with its incoming premises once per closure.
-    private CallRetention RetentionRows(OriginPremiseEnvironment environment, int[] nodes, int inputCount)
+    // result with a raw layer without an Origin retains every input as Value, a raw one also as Content (SPEC 5.7 Calls, D6); one the
+    // call forms within a raw parameter's storage (`within`) retains that argument's own value. A raw input's own value is a Value row of
+    // the outputs that can hold it, and an output whose hold walk meets a raw layer stepping Unstated or Static is untied (Held: Untied,
+    // UntiedStores; DECISIONS R4-M116). The work is what the closures reach, each node with its incoming premises once per closure, and
+    // each output's hold walk. CallRetention.Limit where a stored Type is not instantiated.
+    private CallRetention RetentionRows(OriginPremiseEnvironment environment, int[] nodes, int inputCount, int within)
     {
         // The sources at a node, linked atom indexes.
         var atoms = this.retentionAtoms;
@@ -35,15 +49,17 @@ public sealed partial class Binding
 
         var rows = this.retentionRows;
         rows.Clear();
+        this.retentionUntiedStores.Clear();
         var untied = false;
         var kinds = new RetentionKind?[inputCount];
+        var owned = new bool[inputCount];
         for (var output = Retention.Result; output < inputCount; output++)
         {
             Array.Clear(kinds);
-            if (output == Retention.Result && this.retentionUnstatedResult)
+            Array.Clear(owned);
+            if (output == Retention.Result)
             {
-                Array.Fill(kinds, RetentionKind.Value);
-                untied = true;
+                this.ResultRetains(kinds, owned, within);
             }
 
             for (var i = 0; i < atoms.Count; i++)
@@ -55,8 +71,27 @@ public sealed partial class Binding
                 }
             }
 
+            // The hold walk from each of the output's holds, each struct's or enum's stored content once.
+            this.retentionStored.Clear();
+            var held = false;
+            foreach (var (at, type) in this.retentionHolds)
+            {
+                held |= at == output && this.Held(type, null, -1, 0, output, owned);
+            }
+
+            untied |= held && output == Retention.Result;
+            if (held && output >= 0)
+            {
+                this.retentionUntiedStores.Add(output);
+            }
+
             for (var i = 0; i < inputCount; i++)
             {
+                if (owned[i])
+                {
+                    rows.Add(new(i, RetentionKind.Value, output));
+                }
+
                 if (kinds[i] is { } kind)
                 {
                     rows.Add(new(i, kind, output));
@@ -64,10 +99,31 @@ public sealed partial class Binding
             }
         }
 
-        return new(rows.ToArray(), untied);
+        return this.retentionLimit ? CallRetention.Limit : new(rows.ToArray(), untied, [.. this.retentionUntiedStores]);
     }
 
-    // The closure from one target node, marking the inputs whose atoms it reaches; whether it marked one.
+    // SPEC 5.7 Calls, 15.6.4 (D6; DECISIONS R4-M116 items 3 and 4): a result with a raw layer without an Origin, outside a nominal Type's
+    // Fields, retains every input as Value, a raw input also with a read through it (the layer, one of its holds, unties it: Held); a
+    // result the call forms within a raw parameter's storage (KimiLibraryCatalog.Within: Raw.slice's `storage`) retains that argument's
+    // own value.
+    private void ResultRetains(RetentionKind?[] kinds, bool[] owned, int within)
+    {
+        if (this.retentionUnstatedResult)
+        {
+            Array.Fill(kinds, RetentionKind.Value);
+            foreach (var (input, _) in this.retentionRawInputs)
+            {
+                (owned[input], kinds[input]) = (true, RetentionKind.Content);
+            }
+        }
+
+        if (within >= 0)
+        {
+            owned[within] = true;
+        }
+    }
+
+    // The closure from one target node, marking the inputs whose atoms it reaches; whether it reached one.
     private bool MarkClosure(OriginPremiseClosure closure, int target, int[] first, int[] next, RetentionKind?[] kinds)
     {
         var start = this.OriginProofMetrics is null ? 0 : Stopwatch.GetTimestamp();
@@ -84,5 +140,79 @@ public sealed partial class Binding
         }
 
         return tied;
+    }
+
+    // SPEC 15.6.4, 5.7 Calls (DECISIONS R4-M116 items 2 and 5, R-B2, BU-30), the hold walk: a position of `output` the call may write,
+    // a hold (retentionHolds: a position of the result, or of input j's writable storage) or a position below one (`instance`'s Field or
+    // Case `part` on its inline path from `start`; -1 off it). Each raw input other than `output` whose Type the position can hold retains
+    // its own value there (R-B4: a raw layer agreeing with it, Origins fitted: their erasures, TyCtxt.Erase, are one Type, SPEC 3.8; or an
+    // abstract part, which an instance may make one); a pointer is never part of its own pointee. A raw layer stepping Unstated or Static
+    // (StoredStep on an instance's inline path, its Origin's kind elsewhere, DECISIONS BU-24) unties `output`, the result returned: a
+    // pointer the call forms there is tied to no argument. A value stored at a writable position brings its whole Type (BU-1), so the walk
+    // goes below every layer that stores (IsCallable), as RetentionParts' writable positions do, and into a struct's or enum's stored
+    // content, each once per output. A Type whose storage Binding does not complete, a growing one among them (PrepareTypeStorage's
+    // limits, DECISIONS BU-12), makes the contract CallRetention.Limit.
+    private bool Held(BoundType? type, BoundType? instance, int part, int start, int output, bool[] owned)
+    {
+        var nominal = AdtDef.IsStruct(type) || AdtDef.IsEnum(type);
+        if (nominal && !this.retentionStored.Add(type!))
+        {
+            return false;
+        }
+
+        if (type is null || (nominal && !this.PrepareTypeStorage(type)))
+        {
+            this.retentionLimit = true;
+            return false;
+        }
+
+        var raw = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
+        foreach (var (input, pointer) in this.retentionRawInputs)
+        {
+            owned[input] |= input != output && (type.IsAbstract || (raw && ReferenceEquals(this.types.Erase(type), this.types.Erase(pointer))));
+        }
+
+        var step = !raw ? RawStep.Unstated
+            : part >= 0 ? this.StoredStep(instance!, part, CollectionsMarshal.AsSpan(this.retentionPath)[start..]) : StepOf(type.RawOrigin);
+        var untied = raw && step is RawStep.Unstated or RawStep.Static;
+        untied |= nominal && this.Stores(type, output, owned);
+        var inline = type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray;
+        for (var i = 0; !IsCallable(type) && i < type.Components.Count; i++)
+        {
+            this.retentionPath.Add(i);
+            untied |= this.Held(type.Components[i], instance, inline ? part : -1, start, output, owned);
+            this.retentionPath.RemoveAt(this.retentionPath.Count - 1);
+        }
+
+        return untied;
+    }
+
+    // The hold walk (Held) of a struct's or enum's stored content (SPEC 5.7 Slots and ownership): its base, Fields and Case payloads,
+    // each on its inline path; whether one unties `output`.
+    private bool Stores(BoundType instance, int output, bool[] owned)
+    {
+        if (instance.Symbol?.Adt is not { } adt)
+        {
+            return false;
+        }
+
+        var first = this.retentionPath.Count;
+        var untied = AdtDef.Base(instance) is { } parent && this.Held(parent, null, -1, first, output, owned);
+        for (var i = 0; AdtDef.IsStruct(instance) && i < adt.Fields.Length; i++)
+        {
+            untied |= this.Held(this.StoredType(adt.Fields[i], instance), instance, i, first, output, owned);
+        }
+
+        for (var i = 0; AdtDef.IsEnum(instance) && i < adt.Cases.Length; i++)
+        {
+            for (var j = 0; adt.Cases[i] is { } selected && j < selected.Payload.Length; j++)
+            {
+                this.retentionPath.Add(j);
+                untied |= this.Held(this.StoredType(selected.Payload[j], instance), instance, i, first, output, owned);
+                this.retentionPath.RemoveAt(first);
+            }
+        }
+
+        return untied;
     }
 }

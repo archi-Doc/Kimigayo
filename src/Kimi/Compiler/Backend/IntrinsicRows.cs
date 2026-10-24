@@ -33,6 +33,9 @@ internal enum IntrinsicWriter : byte
     Slice, // Raw.slice: the Slice record of the storage and the length.
     Copy, // transferBytes: llvm.memcpy of the byte count.
     Ensure, // staticEnsure: its slot's state tested inline, the slot's ensure function off the Initialized path (FunctionCodegen.Statics).
+    Create, // makeObj, makeRc, makeArc: Routine's, the factory of the call's target descriptor with its control value (FunctionCodegen.Objects).
+    Clone, // clone: Routine's, the runtime's retain of the result handle's counting (FunctionCodegen.Objects).
+    Test, // A runtime Type test: its target's number in the module through the runtime's test, or false (FunctionCodegen.Objects).
 }
 
 /// <summary>A row of the intrinsic table.</summary>
@@ -65,12 +68,12 @@ internal static class IntrinsicRows
         new(IntrinsicId.ErasedWriter, IntrinsicTarget.Witness, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9b.
         new(IntrinsicId.ErasedReserve, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9b.
         new(IntrinsicId.FormatInteger128, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9b.
-        new(IntrinsicId.MakeObj, IntrinsicTarget.Descriptor, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C6a.
-        new(IntrinsicId.MakeRc, IntrinsicTarget.Descriptor, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C6a.
-        new(IntrinsicId.MakeArc, IntrinsicTarget.Descriptor, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C6a.
-        new(IntrinsicId.Clone, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // Payload-independent (IMPL 21.1.3); C6a.
-        // TypeTest acquires nothing (SPEC 13.6.4); C6a numbers its target (R5-M74).
-        new(IntrinsicId.TypeTest, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C6a.
+        new(IntrinsicId.MakeObj, IntrinsicTarget.Descriptor, LaysOutType: false, IntrinsicWriter.Create, null),
+        new(IntrinsicId.MakeRc, IntrinsicTarget.Descriptor, LaysOutType: false, IntrinsicWriter.Create, null),
+        new(IntrinsicId.MakeArc, IntrinsicTarget.Descriptor, LaysOutType: false, IntrinsicWriter.Create, null),
+        new(IntrinsicId.Clone, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Clone, null), // Payload-independent (IMPL 21.1.3).
+        // TypeTest acquires nothing (SPEC 13.6.4); code generation numbers its target (R5-M74, R5-M110).
+        new(IntrinsicId.TypeTest, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Test, null),
         new(IntrinsicId.TestObserve, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10a.
         new(IntrinsicId.TestMessage, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10a.
         new(IntrinsicId.TestRequireAbort, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10a.

@@ -890,15 +890,19 @@ public sealed partial class FunctionCodegenTest
         Assert.Single(put, static x => Regex.IsMatch(x, @"store ptr %l2, ptr %l\d+, align 8\n"));
     }
 
-    // DECISIONS R5-M87 (SPEC 8.14, 13.5.3): an Adapt whose view selects an object creation, which allocates, is C6a's row: one located
-    // Unsupported_Kd at the adaptation, and the instance writes no Copy of the operand in place of the object.
+    // DECISIONS R5-M87, R5-M111 (SPEC 8.14, 13.5.3, 13.6.2): an Adapt whose view selects an object creation calls its payload's factory,
+    // the statement's target, with the operand at its kind, obj's control value and the adaptation's location, and copies nothing in
+    // place of the object.
     [Fact]
-    public void AnObjectCreationAdaptationIsLeftToC6a()
+    public void AnObjectCreationAdaptationCallsItsPayloadsFactory()
     {
         var c = Analyze(Creations, OutputKind.Library);
-        Assert.False(c.Generate(TextWriter.Null));
-        Assert.Contains(("Unsupported_Kd", (string?)"x@s"), Records(c));
-        Assert.DoesNotContain("load i32, ptr %l2", Assert.Single(ItemTexts(c, "put")), StringComparison.Ordinal);
+        var ir = GeneratedIr.Parse(Generate(c));
+        var put = Assert.Single(FunctionsOf(ir, c, "put"));
+        var create = Assert.Single(CallsOf(put), static x => x.Callee!.Signature == "internal void (ptr, i32, i64, ptr, i64)");
+        Assert.Matches(@"^call void @\(ptr %, i32 %, i64 0, ptr @, i64 \d+\)$", create.Shape);
+        Assert.Contains(Constant(LocationText(Creations, "x@s")), Generate(c));
+        Assert.DoesNotContain(put.Instructions, static x => x.Shape == "store i32 %, ptr %, align 4" && x.Operands[^1].Shape == "alloca [8 x i8], align 8");
     }
 
     // IMPL 21.3.1 (DECISIONS R5-M89): a call of a function's item passes each argument by its parameter's kind and puts its value into the
@@ -1267,7 +1271,7 @@ public sealed partial class FunctionCodegenTest
     // C7b (DECISIONS R5-M106), a constant one folded into its slot. The operator rows (DECISIONS R5-M76) leave checked 128-bit arithmetic to ModuleCodegen's wide overflow declarations and
     // have a raw pointer column since C8a (R5-M92), which writes null too; an erasure is written since C5b (DECISIONS R5-M104), into any
     // target since C5c (R5-M108); an intrinsic of a later unit is its row's (an Array's capacity, C8d), at its call; the place writer (DECISIONS R5-M83)
-    // leaves an object borrow's payload to C6a, at the Place read through it; the rvalue rows (DECISIONS R5-M87) write a Tuple aggregate
+    // reads an object borrow's payload since C6a (R5-M110); the rvalue rows (DECISIONS R5-M87) write a Tuple aggregate
     // and a zero-sized local's address and leave a Dictionary's length to C8e, at the member, and an Array from none to C8d, at the
     // literal. K11: an Application's function nothing calls is not generated, so its form records nothing; a Library generates it.
     [Theory]
@@ -1282,7 +1286,7 @@ public sealed partial class FunctionCodegenTest
     [InlineData("let u = ()\nlet r = u@ref\n", OutputKind.Application, new string[0])]
     [InlineData("func count(d: ref/Dictionary<i32, i32>) -> isize => d.length\n", OutputKind.Library, new[] { "d.length" })]
     [InlineData("func make() -> Array<i32> => []\n", OutputKind.Library, new[] { "[]" })]
-    [InlineData("struct Item\n    public var id: i32 = 7\nfunc take(v: objref/Item) -> i32 => v.id\n", OutputKind.Library, new[] { "v.id" })]
+    [InlineData("struct Item\n    public var id: i32 = 7\nfunc take(v: objref/Item) -> i32 => v.id\n", OutputKind.Library, new string[0])]
     [InlineData("func twice(a: Wrapping<i128>) -> Wrapping<i128> => a + a\n", OutputKind.Library, new string[0])]
     [InlineData("func twice(a: i32) -> i32 => a\nlet x = twice(1)\n", OutputKind.Application, new string[0])]
     [InlineData("let t = \"x\"\nlet u = t@move\n", OutputKind.Application, new string[0])]
@@ -1345,6 +1349,8 @@ public sealed partial class FunctionCodegenTest
     [InlineData(Owners, OutputKind.Library)]
     [InlineData(Erasures, OutputKind.Library)]
     [InlineData(Statics, OutputKind.Library)]
+    [InlineData(Objects, OutputKind.Library)]
+    [InlineData(Releases, OutputKind.Library)]
     public void GenerationIsDeterministic(string source, OutputKind output)
     {
         var first = Generate(Analyze(source, output));
@@ -1440,6 +1446,8 @@ public sealed partial class FunctionCodegenTest
     [InlineData(Owners, OutputKind.Library)]
     [InlineData(Erasures, OutputKind.Library)]
     [InlineData(Statics, OutputKind.Library)]
+    [InlineData(Objects, OutputKind.Library)]
+    [InlineData(Releases, OutputKind.Library)]
     public void WarmGenerationAllocatesNothing(string source, OutputKind output)
     {
         var c = Analyze(source, output);

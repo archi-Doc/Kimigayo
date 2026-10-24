@@ -70,12 +70,6 @@ internal sealed partial class InstanceCollector
             return -1;
         }
 
-        var row = IntrinsicRows.Of(id);
-        if (row.LaysOutType)
-        {
-            _ = this.LaysOut(subject, subst!.Types[0]!);
-        }
-
-        return row.Target is not IntrinsicTarget.None ? this.Intrinsic(program, item, subject, row.Target, subst!.Types[0]) : -1;
+        return this.Intrinsic(program, item, subject, IntrinsicRows.Of(id), subst!.Types[0]);
     }
 }

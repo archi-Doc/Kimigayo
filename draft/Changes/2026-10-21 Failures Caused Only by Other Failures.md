@@ -1,7 +1,7 @@
 # Failures Caused Only by Other Failures
 
-Status: adopted by the owner (2026-10-22, W; DECISIONS R4-M104); not integrated (the SPEC text follows the prototype round, §6),
-not implemented. The owner chose the whitelist W after two rounds were not accepted (verbatim 「P2は、W：個別規則に決定します」);
+Status: 取り込み済み (closed 2026-10-24): §2's sentence is in SPEC §15.6.5 with the owner's read-through clause, cited from §14.8.3 and
+§15.8.2 (DECISIONS R4-M104, R4-M122); not implemented (2a-2). The owner chose the whitelist W after two rounds were not accepted (verbatim 「P2は、W：個別規則に決定します」);
 round 3 passed its review with fixes, a re-check and a confirmation, all applied. Date: 2026-10-22. Written by the R4
 planning session on the owner's instruction (2026-10-21):
 「候補1（クロージャを受け手つき呼び出しとして定義）と候補3（派生失敗の定義）を、2c-D・2g-D の前に判断できるよう draft/Proposals に提案書として書いてください。」

@@ -32,7 +32,11 @@ public class FunctionCaptureTest(ITestOutputHelper output)
             let outer: () -> i32 = func [inner@move] () => inner() + 1
             require outer() == 8 and outer() == 8 else => $abort("nested")
             """;
-        NativeAllocationAudit.WriteFixture("FunctionCaptureNested", Source, 3, 3, 44, "drop\n");
+        // The object and outer's 16-byte environment; inner's erased 8-byte one is inline under MIR code generation (R5-M104's inline-env
+        // deviation).
+        var count = Codegen.Expect(2, 3, CodegenDeviations.InlineEnvironment);
+        var bytes = Codegen.Expect(36L, 44L, CodegenDeviations.InlineEnvironment);
+        NativeAllocationAudit.WriteFixture("FunctionCaptureNested", Source, count, count, bytes, "drop\n");
     }
 
     [Trait("Purpose", "Allocation")]
@@ -51,7 +55,10 @@ public class FunctionCaptureTest(ITestOutputHelper output)
             require outer() == 9 and outer() == 9 else => $abort("replacement")
             Console.writeLine("done")
             """;
-        NativeAllocationAudit.WriteFixture("FunctionCaptureReplacement", Source, 2, 2, 28, "drop\ndone\n");
+        // The object; inner's erased 8-byte environment is inline under MIR code generation (R5-M104's inline-env deviation).
+        var count = Codegen.Expect(1, 2, CodegenDeviations.InlineEnvironment);
+        NativeAllocationAudit.WriteFixture(
+            "FunctionCaptureReplacement", Source, count, count, Codegen.Expect(20L, 28L, CodegenDeviations.InlineEnvironment), "drop\ndone\n");
     }
 
     [Theory]

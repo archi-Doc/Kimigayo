@@ -1,8 +1,6 @@
 test	XunitTest.AssociatedCollectionFormationTest.ArrayFamilyKeepsElementLoan	XunitTest.AssociatedCollectionFormationTest.ArrayFamilyKeepsElementLoan(conflict: False)
 test	XunitTest.AssociatedCollectionFormationTest.DictionaryFamilyKeepsValueLoan	XunitTest.AssociatedCollectionFormationTest.DictionaryFamilyKeepsValueLoan(conflict: False)
 test	XunitTest.AssociatedPairFormationTest.PairLayerFamiliesExecute	XunitTest.AssociatedPairFormationTest.PairLayerFamiliesExecute
-test	XunitTest.FunctionCaptureTest.NestedHeapEnvironmentsReleaseTheirPayloadExactlyOnce	XunitTest.FunctionCaptureTest.NestedHeapEnvironmentsReleaseTheirPayloadExactlyOnce
-test	XunitTest.FunctionCaptureTest.ReplacingACapturedFunctionDropsTheOldEnvironment	XunitTest.FunctionCaptureTest.ReplacingACapturedFunctionDropsTheOldEnvironment
 test	XunitTest.FunctionDefaultTest.ACaptureOfAnotherPreparedArgumentFailsGeneration	XunitTest.FunctionDefaultTest.ACaptureOfAnotherPreparedArgumentFailsGeneration
 test	XunitTest.FunctionEmissionTest.MalformedFunctionPlansFailBeforeWritingAndRecover	XunitTest.FunctionEmissionTest.MalformedFunctionPlansFailBeforeWritingAndRecover(mutation: \"argument-value\")
 test	XunitTest.FunctionEmissionTest.MalformedFunctionPlansFailBeforeWritingAndRecover	XunitTest.FunctionEmissionTest.MalformedFunctionPlansFailBeforeWritingAndRecover(mutation: \"call-entry\")
@@ -16,34 +14,6 @@ test	XunitTest.FunctionItemTest.StoredItemsKeepTheirDeclarationAndCopySemantics	
 test	XunitTest.FunctionItemTest.StoredItemsKeepTheirDeclarationAndCopySemantics	XunitTest.FunctionItemTest.StoredItemsKeepTheirDeclarationAndCopySemantics(name: \"Iteration\", body: \"let items = [inc, inc]\\nvar total = 0\\nfor f in items@move\\n    total += f(20)\\nrequire total == 42 else => $abort(\\\"iteration\\\")\")
 test	XunitTest.FunctionReferenceConditionTest.ExpectedFunctionTypesKeepTheReferencedConditions	XunitTest.FunctionReferenceConditionTest.ExpectedFunctionTypesKeepTheReferencedConditions(block: False, virtualSlot: True)
 test	XunitTest.FunctionReferenceConditionTest.ExpectedFunctionTypesKeepTheReferencedConditions	XunitTest.FunctionReferenceConditionTest.ExpectedFunctionTypesKeepTheReferencedConditions(block: True, virtualSlot: True)
-test	XunitTest.GenericAdaptationContextTest.NestedDefaultUpcastsKeepTheirCalleeTypeArguments	XunitTest.GenericAdaptationContextTest.NestedDefaultUpcastsKeepTheirCalleeTypeArguments(mode: \"arc\")
-test	XunitTest.GenericAdaptationContextTest.NestedDefaultUpcastsKeepTheirCalleeTypeArguments	XunitTest.GenericAdaptationContextTest.NestedDefaultUpcastsKeepTheirCalleeTypeArguments(mode: \"obj\")
-test	XunitTest.GenericAdaptationContextTest.NestedDefaultUpcastsKeepTheirCalleeTypeArguments	XunitTest.GenericAdaptationContextTest.NestedDefaultUpcastsKeepTheirCalleeTypeArguments(mode: \"rc\")
-test	XunitTest.GenericAdaptationContextTest.NestedDefaultsSelectBorrowOrCreationWithoutKeepingPreparedLoans	XunitTest.GenericAdaptationContextTest.NestedDefaultsSelectBorrowOrCreationWithoutKeepingPreparedLoans
-test	XunitTest.GenericAdaptationContextTest.StoredGenericHandlesBorrowTheirConcreteSlot	XunitTest.GenericAdaptationContextTest.StoredGenericHandlesBorrowTheirConcreteSlot(mode: \"arc\")
-test	XunitTest.GenericAdaptationContextTest.StoredGenericHandlesBorrowTheirConcreteSlot	XunitTest.GenericAdaptationContextTest.StoredGenericHandlesBorrowTheirConcreteSlot(mode: \"obj\")
-test	XunitTest.GenericAdaptationContextTest.StoredGenericHandlesBorrowTheirConcreteSlot	XunitTest.GenericAdaptationContextTest.StoredGenericHandlesBorrowTheirConcreteSlot(mode: \"rc\")
-test	XunitTest.GenericAdaptationOriginTest.CreationPreservesTheCompletePayloadAndItsLoan	XunitTest.GenericAdaptationOriginTest.CreationPreservesTheCompletePayloadAndItsLoan(mode: \"arc\")
-test	XunitTest.GenericAdaptationOriginTest.CreationPreservesTheCompletePayloadAndItsLoan	XunitTest.GenericAdaptationOriginTest.CreationPreservesTheCompletePayloadAndItsLoan(mode: \"obj\")
-test	XunitTest.GenericAdaptationOriginTest.CreationPreservesTheCompletePayloadAndItsLoan	XunitTest.GenericAdaptationOriginTest.CreationPreservesTheCompletePayloadAndItsLoan(mode: \"rc\")
-test	XunitTest.GenericAdaptationTest.ClosureBodiesKeepTheEnclosingSemanticsSelection	XunitTest.GenericAdaptationTest.ClosureBodiesKeepTheEnclosingSemanticsSelection
-test	XunitTest.GenericAdaptationTest.CopyEvidenceAllowsBarePayloadAcquisitionInEveryCase	XunitTest.GenericAdaptationTest.CopyEvidenceAllowsBarePayloadAcquisitionInEveryCase
-test	XunitTest.GenericAdaptationTest.DefaultEvaluatorsSelectTheirOwnCreationCase	XunitTest.GenericAdaptationTest.DefaultEvaluatorsSelectTheirOwnCreationCase
-test	XunitTest.GenericAdaptationTest.DiscardedCasesSeparateOwnerBorrowAndCreation	XunitTest.GenericAdaptationTest.DiscardedCasesSeparateOwnerBorrowAndCreation
-test	XunitTest.GenericAdaptationTest.GenericOwningInputsBorrowTheirBaseWithoutCreatingAnotherObject	XunitTest.GenericAdaptationTest.GenericOwningInputsBorrowTheirBaseWithoutCreatingAnotherObject
-test	XunitTest.GenericAdaptationTest.GenericUpcastsKeepTheOriginalAllocationAndDynamicDestructor	XunitTest.GenericAdaptationTest.GenericUpcastsKeepTheOriginalAllocationAndDynamicDestructor(name: \"Complete\", target: \"s/Base\")
-test	XunitTest.GenericAdaptationTest.GenericUpcastsKeepTheOriginalAllocationAndDynamicDestructor	XunitTest.GenericAdaptationTest.GenericUpcastsKeepTheOriginalAllocationAndDynamicDestructor(name: \"Grouped\", target: \"(s/Base)\")
-test	XunitTest.GenericAdaptationTest.MixedObjectAndReferenceShorthandBorrowsTheWrittenReferenceSlot	XunitTest.GenericAdaptationTest.MixedObjectAndReferenceShorthandBorrowsTheWrittenReferenceSlot
-test	XunitTest.GenericAdaptationTest.ObjectCasesSelectTheExistingFactories	XunitTest.GenericAdaptationTest.ObjectCasesSelectTheExistingFactories(name: \"Complete\", target: \"s/T\")
-test	XunitTest.GenericAdaptationTest.ObjectCasesSelectTheExistingFactories	XunitTest.GenericAdaptationTest.ObjectCasesSelectTheExistingFactories(name: \"Grouped\", target: \"(s/T)\")
-test	XunitTest.GenericAdaptationTest.ObjectCasesSelectTheExistingFactories	XunitTest.GenericAdaptationTest.ObjectCasesSelectTheExistingFactories(name: \"Short\", target: \"s\")
-test	XunitTest.GenericAdaptationTest.OwnerAndObjectCasesShareTheFixedInputWithoutInventingAnObject	XunitTest.GenericAdaptationTest.OwnerAndObjectCasesShareTheFixedInputWithoutInventingAnObject
-test	XunitTest.GenericAdaptationTest.RawShorthandTakesAnAddressWhileObjectCaseCreates	XunitTest.GenericAdaptationTest.RawShorthandTakesAnAddressWhileObjectCaseCreates
-test	XunitTest.GenericAdaptationTest.RepeatedCaseBindingOwnershipAndGenerationAllocateNothing	XunitTest.GenericAdaptationTest.RepeatedCaseBindingOwnershipAndGenerationAllocateNothing
-test	XunitTest.GenericAdaptationTest.SameTypeMovesCreateNoAdditionalObjects	XunitTest.GenericAdaptationTest.SameTypeMovesCreateNoAdditionalObjects(target: \"s/T\")
-test	XunitTest.GenericAdaptationTest.SameTypeMovesCreateNoAdditionalObjects	XunitTest.GenericAdaptationTest.SameTypeMovesCreateNoAdditionalObjects(target: \"s\")
-test	XunitTest.GenericAdaptationTest.TargetEditsRevokeAndRebuildEverySelectedCase	XunitTest.GenericAdaptationTest.TargetEditsRevokeAndRebuildEverySelectedCase
-test	XunitTest.GenericAdaptationTest.TypeIdentityPremiseSelectsTheSameObjectAdaptation	XunitTest.GenericAdaptationTest.TypeIdentityPremiseSelectsTheSameObjectAdaptation
 test	XunitTest.GenericBorrowedElementTest.RejectsUncheckedElementProducerAndRecoversAfterReload	XunitTest.GenericBorrowedElementTest.RejectsUncheckedElementProducerAndRecoversAfterReload
 test	XunitTest.GenericCallbackEmissionTest.RejectsCorruptValueCallAndReanalysisRecovers	XunitTest.GenericCallbackEmissionTest.RejectsCorruptValueCallAndReanalysisRecovers(defect: \"argument\")
 test	XunitTest.GenericCallbackEmissionTest.RejectsCorruptValueCallAndReanalysisRecovers	XunitTest.GenericCallbackEmissionTest.RejectsCorruptValueCallAndReanalysisRecovers(defect: \"loan\")
@@ -55,9 +25,7 @@ test	XunitTest.GenericCallbackEmissionTest.SharedCallsPreserveBehavior	XunitTest
 test	XunitTest.GenericCaptureLifecycleTest.AbandonedGenericEnvironmentsDestroyCapturesInReverseOrder	XunitTest.GenericCaptureLifecycleTest.AbandonedGenericEnvironmentsDestroyCapturesInReverseOrder
 test	XunitTest.GenericCaptureLifecycleTest.ConcreteCaptureSubstitutionsPreserveOwningValues	XunitTest.GenericCaptureLifecycleTest.ConcreteCaptureSubstitutionsPreserveOwningValues(name: \"Dictionary\", body: \"let input = [1: \\\"owned\\\"]\\nlet result = take(input@move)\\nConsole.writeLine(result[1])\", output: \"owned\\n\")
 test	XunitTest.GenericCaptureLifecycleTest.ConcreteCaptureSubstitutionsPreserveOwningValues	XunitTest.GenericCaptureLifecycleTest.ConcreteCaptureSubstitutionsPreserveOwningValues(name: \"Function\", body: \"let text = \\\"owned\\\"\\nlet input: () -> bool = func [text@move] () => text == \\\"owned\\\"\\nlet result = take(input@move)\\nrequire result() and result() else => $abort(\\\"function\\\")\", output: \"\")
-test	XunitTest.GenericCaptureLifecycleTest.ConcreteCaptureSubstitutionsPreserveOwningValues	XunitTest.GenericCaptureLifecycleTest.ConcreteCaptureSubstitutionsPreserveOwningValues(name: \"Object\", body: \"struct Item\\n    public let id: i32\\n    public init(id: i32) => self.id = id\\n    drop\\n        if self.id == 1 => Console.writeLine(\\\"one\\\")\\n        else => Console.writeLine(\\\"two\\\")\\nlet result = take(Kimi.Intrinsics.makeObj(Item.init(1)))\\nrequire result.id == 1 else => $abort(\\\"object\\\")\", output: \"one\\n\")
 test	XunitTest.GenericCaptureLifecycleTest.ConcreteCaptureSubstitutionsPreserveOwningValues	XunitTest.GenericCaptureLifecycleTest.ConcreteCaptureSubstitutionsPreserveOwningValues(name: \"Option\", body: \"let input: Option<string> = .Some(\\\"owned\\\")\\nlet result = take(input@move)\\nmatch result@move\\n    .Some(let text) => Console.writeLine(text)\\n    .None => $abort(\\\"option\\\")\", output: \"owned\\n\")
-test	XunitTest.GenericCaptureLifecycleTest.RcCaptureTransfersTheCloneWithoutAnotherAllocation	XunitTest.GenericCaptureLifecycleTest.RcCaptureTransfersTheCloneWithoutAnotherAllocation
 test	XunitTest.GenericCaptureLifecycleTest.WarmCompoundGenericCapturePlansAllocateNothing	XunitTest.GenericCaptureLifecycleTest.WarmCompoundGenericCapturePlansAllocateNothing
 test	XunitTest.GenericCaptureStorageTest.LengthAndTypeSubstitutionsDetermineCaptureStorage	XunitTest.GenericCaptureStorageTest.LengthAndTypeSubstitutionsDetermineCaptureStorage(name: \"Strings\", body: \"let values = take([\\\"first\\\", \\\"second\\\"])\\nConsole.writeLine(values[1])\", output: \"second\\n\")
 test	XunitTest.GenericCaptureStorageTest.WarmLengthAndBorrowPlansAllocateNothing	XunitTest.GenericCaptureStorageTest.WarmLengthAndBorrowPlansAllocateNothing
@@ -93,7 +61,6 @@ test	XunitTest.GenericForwardingEmissionTest.ForwardsBorrowedStringReferences	Xu
 test	XunitTest.GenericForwardingEmissionTest.IndexedBorrowAddressesStringElements	XunitTest.GenericForwardingEmissionTest.IndexedBorrowAddressesStringElements
 test	XunitTest.GenericForwardingEmissionTest.RejectsCorruptPlanAndRecovers	XunitTest.GenericForwardingEmissionTest.RejectsCorruptPlanAndRecovers(defect: \"index\")
 test	XunitTest.GenericForwardingEmissionTest.RejectsCorruptPlanAndRecovers	XunitTest.GenericForwardingEmissionTest.RejectsCorruptPlanAndRecovers(defect: \"loan\")
-test	XunitTest.GenericIdentityAdaptationTest.ThePairsOwnOwnerCaseAcquiresAnOptedOutPayload	XunitTest.GenericIdentityAdaptationTest.ThePairsOwnOwnerCaseAcquiresAnOptedOutPayload
 test	XunitTest.GenericIterationEmissionTest.PairTupleItemsAreSelectedThroughTheirLayer	XunitTest.GenericIterationEmissionTest.PairTupleItemsAreSelectedThroughTheirLayer
 test	XunitTest.GenericIterationEmissionTest.RejectsCorruptIterationAndRecovers	XunitTest.GenericIterationEmissionTest.RejectsCorruptIterationAndRecovers(defect: \"endpoint\")
 test	XunitTest.GenericIterationEmissionTest.RejectsCorruptIterationAndRecovers	XunitTest.GenericIterationEmissionTest.RejectsCorruptIterationAndRecovers(defect: \"operand\")

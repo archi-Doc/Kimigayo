@@ -4,10 +4,11 @@
 // location order, each with whether a runtime path from the body's entry reaches it, which replaying an item's template resolves.
 // Input: a built, validated MirProgram; the number of root modules; the Target and LaysOutType columns of the intrinsic rows.
 // Output: each body's sites, `sites` from `starts[body.Ordinal]` to `starts[body.Ordinal + 1]`, which Replay reads.
-// Sites: a call whose callee may carry a target (a Fn, Requirement or Value callee, an intrinsic whose row names one; a Virtual call
-// none, X5) or whose intrinsic lays out its Type argument; a Drop; an aggregate; an erasure to a Function Type; a function item
-// constant; a cast or binary operation whose Types depend on slots (checked per instance, K 4.7). A root-module body's operations take
-// the definition-stage capability check on the way (A3b, InstanceCollector.Capabilities.cs).
+// Sites: a call whose callee may carry a target (a Fn, Requirement or Value callee, an intrinsic whose row names one; a Virtual call none,
+// X5) or whose intrinsic lays out its Type argument; a Drop; a case adaptation (an instance's creation, DECISIONS R5-M111); an aggregate;
+// an erasure to a Function Type; a function item constant; a cast or binary operation whose Types depend on slots (K 4.7, checked per
+// instance). A root-module body's operations take the definition-stage capability check on the way (A3b,
+// InstanceCollector.Capabilities.cs).
 // Invariants: built once per version, before any item is replayed; the runtime bit is one MirReach walk without CheckTarget edges; a
 // template holds locations only, no substitution or target.
 // Must not: resolve a target, read TyCtxt or an item, or record anything but A3b's capability gaps.
@@ -32,13 +33,14 @@ internal sealed partial class InstanceCollector
         _ => throw new InvalidOperationException($"A call has the callee kind {callee.Kind}."),
     };
 
-    // K 4.5 rows 11-13, K 4.7 and K 4.8: a statement is a site by its rvalue: an aggregate, a by-value use whose Closure environment also
-    // carries a target; an erasure to a Function Type; a function item constant; an operation whose Types depend on slots, which the
+    // K 4.5 rows 8 and 11-13, K 4.7 and K 4.8: a statement is a site by its rvalue: a case adaptation, which carries its payload's
+    // descriptor where its instance's case creates an object (DECISIONS R5-M111); an aggregate, a by-value use whose Closure environment
+    // also carries a target; an erasure to a Function Type; a function item constant; an operation whose Types depend on slots, which the
     // capability table checks per instance.
     private static bool IsSite(MirBody body, in MirStatement statement)
         => statement is { Kind: MirStatementKind.Assign, Rvalue: var rvalue } && rvalue.Kind switch
     {
-        MirRvalueKind.Aggregate => true,
+        MirRvalueKind.Adapt or MirRvalueKind.Aggregate => true,
         MirRvalueKind.Cast when (MirCastKind)rvalue.Op == MirCastKind.Erasure => true,
         MirRvalueKind.Cast or MirRvalueKind.BinaryOp => IsOpen(body, rvalue),
         MirRvalueKind.Use => body.Operands[rvalue.Start] is { Kind: MirOperandKind.Const } operand && body.Consts[operand.Arg].Kind == MirConstKind.FnItem,
