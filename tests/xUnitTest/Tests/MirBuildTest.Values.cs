@@ -335,7 +335,7 @@ public sealed partial class MirBuildTest
         Assert.Single(update.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "chosen" });
     }
 
-    // SPEC 6.5, 3.6, 23.1.2 (DECISIONS R4-M125): a local's declaration Binding rejected, whose symbol it typed, declares its local as a
+    // SPEC 6.6, 3.6, 23.1.2 (DECISIONS R4-M125): a local's declaration Binding rejected, whose symbol it typed, declares its local as a
     // valid one does, which holds the declaration's derived value, and every use of the name is that one storage: its Borrow, its write
     // and a capture's Borrow, with no record (fail-before: each use an Opaque in a temp of its own statement, the write derived whole and
     // the capture a located Unsupported_Kd record).

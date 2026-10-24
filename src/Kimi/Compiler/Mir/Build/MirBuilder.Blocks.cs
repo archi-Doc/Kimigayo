@@ -132,9 +132,10 @@ internal sealed partial class MirBuilder
         this.scope = outer;
     }
 
-    // SPEC 6.5: a local of its symbol's Type, visible after its declaration, initialized as its initializer's Adjust takes it. A
+    // SPEC 6.6: a local of its symbol's Type, visible after its declaration, initialized as its initializer's Adjust takes it. A
     // declaration Binding rejected, whose symbol it typed, declares its local too, so every use of the name is that one storage (SPEC
-    // 3.6), and its initializer, which the HIR replaced, gives the declaration's derived value (SPEC 23.1.2; DECISIONS R4-M125).
+    // 3.6), and its initializer, which the HIR replaced, gives the declaration's derived value (SPEC 23.1.2; DECISIONS R4-M125), whose
+    // site names no earlier build's local of the name (a defer body is built at each exit).
     private void Let(VariableKoto variable)
     {
         var symbol = HirTables.Symbol(variable)!;
@@ -150,6 +151,7 @@ internal sealed partial class MirBuilder
         var initializer = variable.InitializerKoto;
         if (initializer is not null && HirTables.Op(variable) == HirOp.Error)
         {
+            this.locals.Remove(symbol); // The name its site's syntax declares is bound to no earlier build's local (a defer body, at each exit).
             this.Opaque(variable, new(local));
         }
         else if (initializer is not null)
