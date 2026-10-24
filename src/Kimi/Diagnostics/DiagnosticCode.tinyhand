@@ -226,7 +226,7 @@
 
   + Name="InvalidEffectBound_Kd"
     Category="Language"
-    Message="The effect item declares no bound: a bound appears once, either in a Contract for one function requirement of that Contract or an ancestor, or indented under a single Callable Constraint"
+    Message="The effect item declares no bound: a bound appears once, in a Contract for one function requirement of that Contract or an ancestor, indented under a single Callable Constraint, or in the leading region of an original virtual function for its slot"
     Evidence="cause:Text"
     Label="{0}"
 

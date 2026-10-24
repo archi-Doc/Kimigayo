@@ -220,6 +220,12 @@ public sealed class GroupKoto : DeclarationContainerKoto
             return;
         }
 
+        if (Parser.IsEffectStart(ref reader, specification: false))
+        {
+            Parser.ParseBodyEffect(ref reader, null); // The top-level body has no leading region (SPEC 7.5).
+            return;
+        }
+
         var oldPosition = reader.Position;
         var item = Parser.ParseBlockItem(ref reader);
         reader.ExpectLineEnd();

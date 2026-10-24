@@ -338,6 +338,10 @@
     Description="an effect item names its bound"
     Phrase="'confined'"
 
+  + Name="Syntax.EffectItem"
+    Description="the effect items lead the body"
+    Phrase="effect item"
+
   + Name="Syntax.OriginSlotName"
     Description="an Origin header names each own slot"
     Phrase="Origin slot Name"
@@ -586,7 +590,7 @@
     Description="the receiver can be indexed by the key"
 
   + Name="Binding.InvalidEffectBound"
-    Description="the effect item declares a bound of its Contract"
+    Description="the effect item declares a bound"
 
   + Name="Startup"
     Description="the program has a valid startup"

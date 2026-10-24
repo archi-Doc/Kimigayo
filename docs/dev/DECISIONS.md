@@ -4915,6 +4915,33 @@ resumed by R4-M86 (2026-10-20).
   qualifiers, moving only the new test, copying fixture helpers, or relocating candidate evaluation into the already
   too-small remaining space of the selection entry file. The attribute-cause behavior correction remains a later unit.
 
+- **G223 Effect items after bu25** (2026-10-24; the planning session, one design and one review: by its judgement under Q5, one
+  `SyntaxForm` row and Binding's own checks change no shared representation and cross no phase; the owner
+  approved `SyntaxForm.EffectItem` on 2026-10-24: 「承認する」) SPEC 8.11.1, 8.11.4, 7.5 and F.3: `effect` that starts an item of an
+  indented body, of the top level or of a declaration container is an effect item, and each item gets one verdict
+  from its owner. Binding.EffectDeclarations decides every item in the tree (Misplaced, then its position's checks); the parser
+  decides leading-region membership, as for Constraint prefixes and `origin` clauses. Other indented lists (accessor lists, match
+  arms) keep reporting the form they expect; a single-item body is PLAN G238.
+  - p8: `BindClosure` binds a literal's items on entry, so every path binds them; Misplaced gives OutsideContract ("a function
+    literal declares no bound of its own").
+  - p11: an effect item that starts a body item outside a function's leading region (after an executable item, in a nested block,
+    in an accessor or at the top level; `Parser.ParseBodyEffect`) is read as an item, reported as `MisplacedSyntax_Kd` with the new
+    form `EffectItem` and dropped, as a misplaced `origin` clause is. Items in a leading region keep Binding's verdict.
+  - Duplicates: `ValidateDeclaredEffectBound(effect, target, earlier)` is the one rule for a Contract requirement, an original
+    virtual slot and a Callable Constraint; `CallableDuplicate` is deleted, so a Callable duplicate relates its earlier bound too.
+    The rejection's target is related by its kind (`requirement`, `declaration` "the original virtual slot", `constraint` "the
+    Constraint of the effect list"), and the duplicate Note names the position's rule, not "score already declares confined for
+    score".
+  - `ValidateConditionalBlock` and the enum member check (`PrepareStorage`) leave an effect item to its owner: one
+    `InvalidEffectBound_Kd` ("a conditional conformance declares no bound of its own"), not three `InvalidConstraint_Kd`, and no
+    `InvalidTypeFormation_Kd` in an enum. `InvalidEffectBound_Kd`'s Message names the virtual slot; the override
+    eligibility Reason no longer lists effects (an override's item is its own record since bu25).
+  - Not here: a single-item body (`=> effect confined`): `ParseEffectBound` expects the line's end, so the item would skip a
+    same-line closer, `,` or `else` the enclosing construct owns (the review's r1, r5); PLAN G238.
+  - Rejected: Binding deciding p11 (it would need a position column on `EffectBoundKoto`, bu25's rejected D, or items kept as
+    executable statements that every body consumer would meet); reusing `ConstraintPrefix` or `EffectBound` for p11 (their phrases
+    name other forms); keeping `CallableDuplicate` with its own Note (a second copy of the duplicate rule).
+
 ## R5 and R6 (adopted 2026-10-18)
 
 The owner's answers to the plan's questions OQ1–OQ17, given on 2026-10-18 and relayed by the R4 planning session. "Plan"

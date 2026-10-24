@@ -274,7 +274,7 @@ internal enum BindingFailure : byte
     // SPEC 4.7.1: element indexing needs an Indexable conformance, and range indexing applies only to the sequence Types.
     NotIndexable,
 
-    // SPEC 8.11.1, 8.11.1: an effect item that declares no bound of its Contract.
+    // SPEC 8.11.1, 8.11.4: an effect item that declares no bound.
     InvalidEffectBound,
 
     // SPEC 4.3.1: an initialized local annotation obtains every written hole from consistent initializer evidence.

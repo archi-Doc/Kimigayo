@@ -272,4 +272,7 @@ public enum SyntaxForm : ushort
 
     /// <summary>An integer literal, constant Name or parenthesized integer expression used as an array length.</summary>
     ArrayLength,
+
+    /// <summary>An effect item in a body outside a function's leading region.</summary>
+    EffectItem,
 }

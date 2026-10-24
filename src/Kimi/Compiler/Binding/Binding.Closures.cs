@@ -255,6 +255,13 @@ public sealed partial class Binding
 
     private BoundType? BindClosure(FunctionKoto function, BindingScope scope, BoundType? expected, bool openResult = false)
     {
+        // SPEC 8.11.1: a literal's effect items are judged as every function's are (BindEffectBound), on every path; a literal
+        // declares no bound.
+        for (var i = 0; i < function.EffectBounds.Count; i++)
+        {
+            this.BindNode(function.EffectBounds[i], scope);
+        }
+
         if (function.ClosureStorage is { } previous)
         {
             previous.Signature = null!; // BoundClosure.Of is this binding's definition, set once it is bound.
