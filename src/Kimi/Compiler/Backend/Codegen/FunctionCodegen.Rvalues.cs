@@ -12,12 +12,11 @@ namespace Kimi.Compiler.Backend;
 internal sealed partial class FunctionCodegen
 {
     // A Use: its operand put into the Place in its representation (a value in memory copied; nothing for a zero-sized Place); a string
-    // constant written whole.
+    // constant, which has nothing to evaluate, written whole once its Place is located.
     private void Use(in MirStatement statement)
     {
         var operand = this.body.Operands[statement.Rvalue.Start];
-        if (operand.Kind == MirOperandKind.Const && this.body.Consts[operand.Arg] is { Kind: MirConstKind.String, Value: string text } &&
-            ReferenceEquals(this.InstanceType(statement.Place), BoundType.String))
+        if (this.TextOf(operand) is { } text)
         {
             if (this.Destination(statement, out var address))
             {

@@ -136,10 +136,7 @@ internal sealed partial class FunctionCodegen
                 return;
             }
 
-            var type = operand.Kind == MirOperandKind.Const
-                ? this.collector.TypeOf(this.item, this.body.Consts[operand.Arg].Type)
-                : this.InstanceType(operand.Place);
-            this.Put(address, type!, lowering, value);
+            this.Put(address, this.InstanceType(operand)!, lowering, value);
         }
 
         this.Finish(call, null);

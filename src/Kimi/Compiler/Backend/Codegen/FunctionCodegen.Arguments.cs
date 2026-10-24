@@ -131,8 +131,7 @@ internal sealed partial class FunctionCodegen
     private void CopySlot(in MirOperand copy, int operand)
     {
         TypeLayout? layout = null;
-        if (copy.Kind == MirOperandKind.Const && this.body.Consts[copy.Arg] is { Kind: MirConstKind.String } constant &&
-            ReferenceEquals(constant.Type, BoundType.String))
+        if (this.TextOf(copy) is not null)
         {
             layout = RuntimeAbi.String.Layout;
         }
@@ -176,19 +175,9 @@ internal sealed partial class FunctionCodegen
                 }
 
                 return true;
-            case AbiParameterKind.OwnedSlot when copy >= 0 && operand.Kind == MirOperandKind.Const:
-                value = new('s', copy);
-                this.Text(value, (string)this.body.Consts[operand.Arg].Value!);
-                return true;
             case AbiParameterKind.OwnedSlot when copy >= 0:
-                if (!this.Read(operand.Place, out var source) || this.LoweringOf(operand.Place) is not { } copied)
-                {
-                    return false;
-                }
-
                 value = new('s', copy);
-                this.Put(value, this.InstanceType(operand.Place)!, copied, source);
-                return true;
+                return this.LoweringOf(operand) is { } copied && this.Put(value, this.InstanceType(operand)!, copied, operand);
             case AbiParameterKind.OwnedSlot:
                 return operand.Kind is MirOperandKind.Copy or MirOperandKind.Move && this.Address(operand.Place, out value);
             default:
