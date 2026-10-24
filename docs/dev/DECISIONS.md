@@ -3383,6 +3383,28 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: one implementer and one reviewer below the guard (the pace above; kept as the fallback above it); two implementers and
     one reviewer (two designs and a review still cannot overlap); counting agents without a cap on heavy runs (the load, not the count,
     slows the machine).
+- **R4-M121 The MIR validator checks the builder's static contracts** (2026-10-24, R4 planning session; PLAN G191 and G157 (23)'s
+  validator half; supersedes R5-M71's "whether the program has the static's initializer stays `StaticInit`'s null, a consumer's broken
+  contract (F10), since the validator sees one body" and R5-M106's "a static Place its body ensures nowhere (the builder's contract,
+  `MirBuilder.Places`, which the validator does not check)": the validator now also sees the program, after the builder's last body)
+  - Rules (`MirValidator.Statics.cs`, AGENTS: one validator per IR, its consumers trust it): (1) over the program (`MirBuilder.Build`
+    calls `MirValidator.Validate(MirProgram)` after both passes), each staticEnsure of F10's form names a static whose StaticInit body
+    the program has, else `StaticSlot` at the call, the rule now "the staticEnsure does not resolve through `MirProgram.StaticInit`";
+    (2) in a body, each static root of a Place a location accesses is named by a staticEnsure of the body (any block: code generation
+    maps a body's slots per body), else `MirViolation.Unensured` at the access. An Opaque site's roots access nothing: they name what
+    the replaced syntax may access, in a Binding-rejected program a static its body never ensures, possibly one without an initializer
+    (Milestone 43, three spec-case variants; 13 bodies in a 933-program probe, no real Place and no ensure breaking either rule).
+  - The responsibility moves from four consumers, each of which ran only on a program without findings (`MirAnalysis.Run`,
+    `InstanceCollector.Run`, `Compilation.Generate`'s `MirRecords`): A4's StaticEnsure edge (`MirEffects`), A5's InternalInvariant_Kd
+    record (`MirBorrows.Effects`' `Initializer`), the collector's (`InstanceCollector.Glue`'s `Static`) and code generation's
+    (`FunctionCodegen.Statics`' `StaticAddress`) read `MirProgram.StaticInit` and the body's slots unchecked. Kept: code generation's
+    two slots for one static (P42's keys) and `Ensure`'s "the collector targets every staticEnsure" (other contracts). Test MIR follows
+    the rules: A5's rooted bodies (`MirBorrowsTest.Rooted`) turn a stand-in's initializing call into its static's staticEnsure, the form
+    P42's source gives, every expectation unchanged.
+  - Not checked: that a staticEnsure precedes each access on every path (SPEC 22.4.3), which the builder gives by building it first
+    and no consumer guarded; a dominance rule is its own unit. Rejected: rule (2) over Opaque roots (InternalInvariant_Kd on
+    Binding-rejected programs); rule (2) as "each accessed static has an initializer" over the program (code generation's slot map is
+    per body, so its guard would stay).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -6429,7 +6451,8 @@ structure is recorded here by the unit that first implements it.
   collector reads (R5-M60); any other operand (another constant kind, an index outside `Statics`, a Place) is a validator finding,
   `InternalInvariant_Kd` at the access, so consumers read the slot unchecked. A constant id out of range stays the Const finding;
   whether the program has the static's initializer stays `StaticInit`'s null, a consumer's broken contract (F10), since the
-  validator sees one body. No library, corpus or mir-sweep body breaks it. AR-8's other two rules wait for a design with R4: a
+  validator sees one body (superseded by R4-M121: the validator checks it over the program). No library, corpus or mir-sweep body
+  breaks it. AR-8's other two rules wait for a design with R4: a
   write, Move or exclusive borrow past a shared Deref (G147 (2)) and one Ref per argument temp (G136) fail on valid programs today
   (G147 (3)'s `&uniq (*_1).0` past `ref/closure`; a conditional argument's two Refs in one argument temp, so
   `replace(if c => a@uniq else => b@uniq, with: 3)` gives A5 `lent = b` on both paths) and meet forms other components own (A1's
@@ -7352,7 +7375,8 @@ structure is recorded here by the unit that first implements it.
     ensure function with the access's location (SPEC 22.5.1: the start of the Place expression, its qualifier included; a caller-location
     body's received location, R5-M93). A static Place's root is the slot of its body's staticEnsures of that static, read from the item's
     targets (`StaticSlots`); a staticEnsure without a StaticInit target, a static Place its body ensures nowhere (the builder's contract,
-    `MirBuilder.Places`, which the validator does not check) and two slots for one static are `InternalInvariant_Kd`.
+    `MirBuilder.Places`, which the validator does not check; superseded by R4-M121, which the validator checks) and two slots for one
+    static are `InternalInvariant_Kd`.
   - Fold (package C 3.7, ruling Q6): a StaticInit whose block 0 holds only storage markers and one `_0 = Use(Const)`, then Return, is
     that constant: its slot an `internal unnamed_addr constant` spelled as an operand's constant (`Constant`, a float's exact double bits),
     with no state, ensure function or function, and its accesses test nothing. No kind list: a static's Type is a scalar (R5-M82), whose

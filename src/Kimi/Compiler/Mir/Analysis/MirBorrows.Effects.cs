@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Numerics;
-using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Mir;
 
@@ -22,8 +21,9 @@ namespace Kimi.Compiler.Mir;
 //   Loan proves initialized (Proved) is the located Unsupported_Kd at the location instead (PD12 (ii): liveness is a may-property);
 //   otherwise the first effect outside the proof decides the Language problem (Unproved).
 // Invariants: a Derived class reports nothing by itself (R4-M10); the case view Keys selects is the run's again when the rule returns.
-// Must not decide whether an access meets a Loan (MirBorrows.Checks), record other than through Report and Unsupported (and
-// InternalInvariant_Kd for a static without its initializer, a broken builder contract), or read keys outside a Call or a Drop.
+// Must not decide whether an access meets a Loan (MirBorrows.Checks), record other than through Report and Unsupported, or read keys
+// outside a Call or a Drop. A static a Loan or a Drop roots has its initializer: the validator checks that its body ensures it and that
+// each staticEnsure's static has one (G191).
 internal sealed partial class MirBorrows
 {
     private int[] activated = []; // By Loan: the effect rule's run whose location activates it (W6).
@@ -117,9 +117,9 @@ internal sealed partial class MirBorrows
             {
                 this.Unsupported(at); // Every effect that would decide it lies in a proved initializer.
             }
-            else if (this.Effect(kind, root, at) is { } met)
+            else
             {
-                this.Report(this.Code(this.candidates[c], EffectRow(kind), DiagnosticCode.ComparisonLoanConflict_Kd), c, taking, at, -1, met);
+                this.Report(this.Code(this.candidates[c], EffectRow(kind), DiagnosticCode.ComparisonLoanConflict_Kd), c, taking, at, -1, this.Effect(kind, root));
             }
         }
 
@@ -161,9 +161,9 @@ internal sealed partial class MirBorrows
         {
             this.Unsupported(at); // Every effect that would decide it lies in a proved initializer.
         }
-        else if (this.Effect(fact, this.Key(~destroyed), at) is { } met)
+        else
         {
-            this.Report(DiagnosticCode.ComparisonLoanConflict_Kd, this.Subject(at), None, at, -1, met);
+            this.Report(DiagnosticCode.ComparisonLoanConflict_Kd, this.Subject(at), None, at, -1, this.Effect(fact, this.Key(~destroyed)));
         }
     }
 
@@ -188,11 +188,12 @@ internal sealed partial class MirBorrows
         this.Work += this.body.Statics.Length;
         for (var d = 0; d < this.body.Statics.Length; d++)
         {
-            if (!this.Holds(this.Key(~d), taking) || this.Initializer(d, at) is not { } initializer)
+            if (!this.Holds(this.Key(~d), taking))
             {
                 continue;
             }
 
+            var initializer = this.program.StaticInit(this.body, d)!;
             var own = 2 * this.fields[d];
             if (this.body.Statics[d].Mutable && !Bit(row, own) && !Bit(row, own + 1) && !ReferenceEquals(initializer, ensured))
             {
@@ -253,20 +254,5 @@ internal sealed partial class MirBorrows
         => terminator is { Kind: MirTerminatorKind.Drop, Place: { IsStatic: true } place } && this.body.Statics[~place.Root].Mutable ? ~place.Root : -1;
 
     // An effect fact on a static root: what decided it, at its Field's declaration (its initializer's source).
-    private MirFact? Effect(MirFactKind kind, int root, MirLocation at)
-        => this.Initializer(root - this.body.Locals.Length, at) is { } initializer ? new(kind, initializer.Source) : null;
-
-    // A static's initializer (MirProgram.StaticInit): the builder builds one for every static a body accesses, so a missing one is a
-    // broken contract, InternalInvariant_Kd at the location, whose problem is then not recorded.
-    private MirBody? Initializer(int index, MirLocation at)
-    {
-        if (this.program.StaticInit(this.body, index) is { } initializer)
-        {
-            return initializer;
-        }
-
-        var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal);
-        this.program.Problems.Add(new(DiagnosticCode.InternalInvariant_Kd, requirement, this.Subject(at), this.body.Ordinal, this.views));
-        return null;
-    }
+    private MirFact Effect(MirFactKind kind, int root) => new(kind, this.program.StaticInit(this.body, root - this.body.Locals.Length)!.Source);
 }

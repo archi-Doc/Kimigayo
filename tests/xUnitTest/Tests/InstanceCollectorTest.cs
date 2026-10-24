@@ -1164,26 +1164,6 @@ public sealed class InstanceCollectorTest
             set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
     }
 
-    // F10's contract: the builder ensures only the statics whose initializers it builds, so a staticEnsure that names a static without one is
-    // a broken contract, InternalInvariant_Kd at the access and no target. Binding never gives one, so the test points the ensure at a
-    // function's symbol.
-    [Fact]
-    public void AnEnsureWithoutAnInitializerIsABrokenContract()
-    {
-        var c = MirBuildTest.Compile("group Registry\n    public let total: i32 = 5\nfunc plain() -> i32 => 1\nfunc use() -> i32 => Registry.total\n");
-        var program = c.BuildMir();
-        var use = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "use");
-        var plain = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "plain").Key.Decl!;
-        var block = Enumerable.Range(0, use.Blocks.Length).Single(b => use.Blocks[b].Terminator is
-            { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.StaticEnsure } });
-        var root = use.Static(new(plain, BoundType.Unit, false, false)).Root;
-        var operand = use.AddOperand(MirOperand.Const(use.Const(new(MirConstKind.Integer, BoundType.ISize, ~root))));
-        use.Terminate(block, use.Blocks[block].Terminator with { Start = operand });
-        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
-        Assert.Equal([(DiagnosticCode.InternalInvariant_Kd, "Registry.total")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
-        Assert.Empty(Targets(program, set, "Fn use"));
-    }
-
     // K 4.5 row 9: a DestroyValues call is its Type argument's glue in the item's instance when that Type needs a drop. No library call makes
     // one before R8 (PD21), so the test turns a Raw.allocate call into one.
     [Fact]

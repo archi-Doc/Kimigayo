@@ -85,7 +85,7 @@ public sealed class MirValidatorTest
         var value = MirModelTest.Local(body, payload!);
         PairBinder.Collect(types.Generic, body.Binders);
         var shared = body.Static(new(types.Function, BoundType.I32, false, true));
-        var (entry, abort, drop, exit) = (body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock());
+        var (entry, abort, drop, exit, ensure) = (body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock());
         var result = new MirPlace(0);
         void Assign(MirPlace place, MirRvalue rvalue) => body.Push(entry, MirStatement.Assign(place, rvalue, At));
         int Operands(params MirOperand[] operands) => AddOperands(body, operands);
@@ -103,8 +103,11 @@ public sealed class MirValidatorTest
         body.Terminate(entry, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.MakeObj), Operands(MirOperand.Copy(result)), 1, result, abort, At));
         var text = Operands(MirOperand.Const(body.Const(new(MirConstKind.String, BoundType.String, Value: "abort"))));
         body.Terminate(abort, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.Abort), text, 1, result, -1, At) with { CheckTarget = drop });
-        body.Terminate(drop, MirTerminator.Drop(array, exit, At));
+        body.Terminate(drop, MirTerminator.Drop(array, ensure, At));
         body.Terminate(exit, MirTerminator.Return(At));
+        var ensured = MirModelTest.Local(body, BoundType.Unit, MirLocalKind.Temp);
+        var slot = MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.ISize, 0)));
+        body.Terminate(ensure, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.StaticEnsure), Operands(slot), 1, ensured, exit, At));
         Assert.Empty(Validate(body));
 
         Assert.Equal(["Copy", "1* Reads", "Const", "Abort -1", "0 Writes, Defines"], Uses(body, entry, 0));
@@ -120,7 +123,8 @@ public sealed class MirValidatorTest
         Assert.Equal(["Const", "Abort -1"], Uses(body, abort, 0));
         Assert.Equal(["3 DropUse"], Uses(body, drop, 0));
         Assert.Equal(["0 Moves"], Uses(body, exit, 0));
-        Assert.Equal(new[] { 1, 0, 1, 0 }, body.Blocks.ToArray().Select(static x => MirUses.Successors(x.Terminator)));
+        Assert.Equal(["Const", "StaticInit, Abort -1", "8 Writes, Defines"], Uses(body, ensure, 0));
+        Assert.Equal(new[] { 1, 0, 1, 0, 1 }, body.Blocks.ToArray().Select(static x => MirUses.Successors(x.Terminator)));
 
         var cases = new MirCases(c.Types);
         cases.Select(body, 0);
@@ -381,7 +385,7 @@ public sealed class MirValidatorTest
 
     // F10 (plan 5.6.6, DECISIONS R5-M71): a staticEnsure names its static by an Integer constant indexing the calling body's statics, the
     // form MirProgram.StaticInit decodes; the built body is valid, and a slot past the statics, a Bool constant or a local's Copy as the
-    // operand is a StaticSlot finding at the access.
+    // operand is a StaticSlot finding at the access, which then names no static, so the static's read is an Unensured one (G191).
     [Theory]
     [InlineData(null)]
     [InlineData("range")]
@@ -405,7 +409,64 @@ public sealed class MirValidatorTest
             _ => body.Operands[ensure.Start],
         };
         body.Terminate(block, ensure with { Start = body.AddOperand(operand) });
-        Assert.Equal(broken is null ? [] : [(MirViolation.StaticSlot, body.Subject(ensure.Source))], Validate(body).Select(static x => (x.Rule, x.Subject)));
+        var read = body.Subject(body.Statements.ToArray().Single(static x => x.Kind == MirStatementKind.Assign && x.Place.Root == 0).Source);
+        Assert.Equal(
+            broken is null ? [] : [(MirViolation.StaticSlot, body.Subject(ensure.Source)), (MirViolation.Unensured, read)],
+            Validate(body).Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // G191 (K package 4.5 row 7, DECISIONS R4-M121): the builder builds a static's Place after its staticEnsure (MirBuilder.Places), so each
+    // static root of a Place a location accesses is named by a staticEnsure of the body: the built body is valid, and with its ensure turned
+    // into a Goto its read is an Unensured finding at the access. An Opaque site's root names a static the replaced syntax may access, with
+    // no staticEnsure (here a call Binding rejects), and is valid.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("goto")]
+    [InlineData("opaque")]
+    public void AStaticPlaceIsEnsuredByItsBody(string? form)
+    {
+        var c = MirBuildTest.Compile("group Registry\n    public let total: i32 = 5\nfunc use() -> i32 => " + (form == "opaque" ? "missing(Registry.total)\n" : "Registry.total\n"));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "use");
+        var block = Array.FindIndex(body.Blocks.ToArray(), static x => x.Terminator is
+            { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.StaticEnsure } });
+        Assert.Equal(form == "opaque", block < 0);
+        Assert.Equal(form == "opaque", body.OpaqueRoots.ToArray().Contains(-1));
+        if (form == "goto")
+        {
+            var ensure = body.Blocks[block].Terminator;
+            body.Terminate(block, MirTerminator.Goto(ensure.Target, ensure.Source));
+        }
+
+        var read = body.Statements.ToArray().Where(static x => x.Kind == MirStatementKind.Assign && x.Place.Root == 0).Select(x => body.Subject(x.Source));
+        Assert.Equal(form == "goto" ? read.Select(static x => (MirViolation.Unensured, x)) : [], Validate(body).Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // G191 (K package 4.5 row 7, DECISIONS R4-M121): the builder ensures only the statics whose initializers it builds, so over the program
+    // each staticEnsure names a static whose StaticInit body the program has: the built program is valid, and with the ensure pointed at a
+    // function's symbol (Binding never gives one) the program has a StaticSlot finding at the access.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AnEnsuresStaticHasItsInitializer(bool broken)
+    {
+        var c = MirBuildTest.Compile("group Registry\n    public let total: i32 = 5\nfunc plain() -> i32 => 1\nfunc use() -> i32 => Registry.total\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var use = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "use");
+        var plain = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "plain").Key.Decl!;
+        var block = Enumerable.Range(0, use.Blocks.Length).Single(b => use.Blocks[b].Terminator is
+            { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.StaticEnsure } });
+        if (broken)
+        {
+            var root = use.Static(new(plain, BoundType.Unit, false, false)).Root;
+            var operand = use.AddOperand(MirOperand.Const(use.Const(new(MirConstKind.Integer, BoundType.ISize, ~root))));
+            use.Terminate(block, use.Blocks[block].Terminator with { Start = operand });
+        }
+
+        new MirValidator(c.Types).Validate(program);
+        Assert.Equal(broken ? [(MirViolation.StaticSlot, "Registry.total")] : [], program.Findings.Select(x => (x.Rule, c.SyntaxOf(x.Subject).ToString())));
     }
 
     // G136 (DECISIONS R5-M72): A5 reads the Place a Ref lends into a Call's input temp flow-insensitively (MirBorrows.lent), so each body
@@ -720,7 +781,8 @@ public sealed class MirValidatorTest
             return body;
         }
 
-        var (entry, abort, call, drop, exit, done, check) = (body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock());
+        var (entry, abort, call, drop, exit, ensure, done) = (body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock());
+        var check = body.AddBlock();
         var result = new MirPlace(0);
         var x = body.Project(pairs, MirProjectionKind.Field, 0);
         void Push(MirStatementKind kind, MirPlace place, SourceInfo? source = null) => body.Push(entry, MirStatement.Of(kind, place, source ?? At));
@@ -808,6 +870,9 @@ public sealed class MirValidatorTest
                 Assign(input.Place, MirRvalue.Ref(MirRefKind.Uniq, x, exclusive));
                 Assign(input.Place, MirRvalue.Ref(MirRefKind.Uniq, x, exclusive));
                 break;
+            case MirViolation.Unensured: // G191: a static no staticEnsure of the body names.
+                Push(MirStatementKind.FakeRead, body.Static(new(types.Generic.SymbolOf()!, BoundType.I32, false, false)), Broken);
+                break;
         }
 
         body.AddCase(0, abort);
@@ -830,7 +895,9 @@ public sealed class MirValidatorTest
             body.Push(exit, MirStatement.Of(MirStatementKind.FakeRead, stopped, Broken)); // A runtime edge reaches exit.
         }
 
-        body.Terminate(exit, MirTerminator.Goto(done, At, check));
+        body.Terminate(exit, MirTerminator.Goto(ensure, At, check));
+        var ensured = MirModelTest.Local(body, BoundType.Unit, MirLocalKind.Temp); // G191: the static's staticEnsure.
+        body.Terminate(ensure, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.StaticEnsure), Operands(Const(MirConstKind.Integer, BoundType.ISize, 0)), 1, ensured, done, At));
         body.Terminate(done, MirTerminator.Return(At));
         body.Push(check, MirStatement.Of(MirStatementKind.FakeRead, stopped, At)); // Only a check edge reaches check.
         body.Terminate(check, MirTerminator.Unreachable(At));
