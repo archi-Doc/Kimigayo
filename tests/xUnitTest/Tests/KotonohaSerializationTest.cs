@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -70,6 +71,49 @@ public class KotonohaSerializationTest
         Assert.Empty(restored.SourceDocuments);
         Assert.Empty(restored.RootKoto.ChildNodes);
         Assert.Null(restored.GeneratedFunction);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("func helper() => ()")]
+    public void RestoringSourceReplacesOmittedDeclarationCauses(string source)
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare(WindowsProfile.Target));
+        var restored = compilation.Kotonoha;
+        restored.AddSource(new SourceDocument("old.kimi", "public 1"));
+        Assert.NotEmpty(restored.OmittedDeclarations!);
+
+        var original = new Kotonoha(compilation, restored.Name, restored.Url);
+        original.AddSource(new SourceDocument("new.kimi", source));
+        TinyhandSerializer.DeserializeObject(TinyhandSerializer.Serialize(original), ref restored);
+        Assert.NotNull(restored);
+        restored.OnDeserialized(compilation);
+
+        Assert.True(compilation.Bind().IsComplete);
+        Assert.False(compilation.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        compilation.Binding.ReportStartupDiagnostics();
+        Assert.Equal(nameof(DiagnosticCode.MissingStartupBody_Kd), Assert.Single(TestDiagnostics.Of(compilation)).Code);
+    }
+
+    [Fact]
+    public void RebuildingMalformedSourceDoesNotRetainOldOmissionCauses()
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare(WindowsProfile.Target));
+        var tree = compilation.Kotonoha;
+        tree.AddSource(new SourceDocument("invalid.kimi", "public 1"));
+        var expected = Assert.Single(TestDiagnostics.Of(compilation));
+
+        for (var i = 0; i < 3; i++)
+        {
+            tree.OnDeserialized(compilation);
+            compilation.Bind();
+            compilation.Binding.CheckStartup(OutputKind.Application);
+            compilation.Binding.ReportStartupDiagnostics();
+            Assert.Equal(expected, Assert.Single(TestDiagnostics.Of(compilation)));
+            Assert.Single(tree.OmittedDeclarations!);
+        }
     }
 
     [Fact]

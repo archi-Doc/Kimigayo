@@ -172,6 +172,7 @@ public sealed partial class Kotonoha
         this.Syntax = new();
         this.GeneratedFunction = null;
         this.documentationSources = null;
+        this.omittedDeclarations?.Clear();
 
         if (this.sourceFormat != 1 || this.sourceLanguageVersion != Compilation.CurrentLanguageVersion ||
             this.sourceCompilerVersion != Compilation.CompilerVersion)
