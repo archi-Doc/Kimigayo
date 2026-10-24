@@ -4461,7 +4461,8 @@ resumed by R4-M86 (2026-10-20).
   accepted it, 2026-10-22): an Origin without a step gives Unstated, an erased instance answers with its erased arguments (`static`
   reads Static or Shared(static), as the user's `during static`, the same interned Type), and a path reaching no raw layer is
   `InternalInvariant`. `ArchitectureRulesTest`'s raw-role
-  sites keep Mir/ without a read of a raw Origin. `TyCtxt.Retains`' row shape is unchanged (A5's reader needs no edit).
+  sites keep Mir/ without a read of a raw Origin. `TyCtxt.Retains`' row shape is unchanged (A5's reader needs no edit). A raw input's kinds,
+  its own value's rows and C4's untied D6 clause: superseded by BU-30.
   Written raw Origins, one rule (the delta review's D1 and D2; design note `d1d2-design.md`, approved by the planning session
   2026-10-22 with four conditions; one level above `ab598420`, which covered declarations only): `WrittenRawOrigin`, the one
   formation site of every written raw Origin (declaration, body annotation, body Type argument, claim, closure parameter and
@@ -4773,6 +4774,77 @@ resumed by R4-M86 (2026-10-20).
     representation C3 deletes with `DerivedFacts`, whose order needs a sequence number to stay pure, with no measured need); a move
     only (PlanB's C2 routing condition unmet); Invalid as both polarities (ProveProposition would skip its structural judgment where
     facts alone give both, changing EndProof's cause); the raw proposition at C2 (two normalizations per proof).
+
+- **BU-30** (2026-10-23, redone 2026-10-24; the BU planning session; PLAN G160's G160-2c, unit bu32, under G160-4's owner-approved
+  design B′ §3.2 as its re-review amended it, R-B2 to R-B5 (DECISIONS R4-M116), one implementation and one review (DECISIONS Q6); the
+  owner's go relayed by R4 (「(a) はい」), confirmed in BU's dialog 2026-10-24 (「はい、進めて (推奨)」)) Binding publishes raw arguments'
+  retention rows by SPEC 15.6.4's kinds (OQ-3 (a)); `TyCtxt.Retains`' row shape is unchanged.
+  - Pointee (item 1, R-B3): an input whose instantiated Type is a raw layer is walked as a borrowed input's referent: `RetentionInput`
+    walks its parts as Content under the raw step rules (`RetentionParts`, the walk below a Type's own layer, split out of
+    `RetentionWalk`), so its self-store row is Content (`Raw.initialize`: `0 Content store 0`). Its own layer's Origin stays an atom of no
+    kind (`RetentionAtom.Kind` nullable): it places the input among the premises, and among an erased callable's fixed Origins (R4-M52), as
+    a borrow's outer Origin does, and gives no row.
+  - The hold walk (items 2 and 5, R-B2, R-B4; the reviews' B1 and R2, R4's F1 and B2): `RetentionInput` records each raw input with its
+    Type and `RetentionWalk` each hold of an output (a position of the result, or of input j's writable storage, whose Type is a raw
+    layer, an abstract part, a struct or an enum). One walk, `Binding.Held` (Binding.Retention.Rows.cs), goes from each hold through all
+    the call may write, by BU-1's one reach rule (a value stored at a writable position brings its whole Type), as `RetentionParts`'
+    writable positions do: every layer below but a callable's (`IsCallable`, which both read), a raw layer whatever its step, a shared
+    borrow or an rc or arc handle included, a nominal Type's Type arguments (as `RetentionParts` walks them: `Dictionary<K, V>`, which
+    declares no Fields, holds through `V`), and a struct's or enum's stored content (SPEC 5.7's inline storage: the base, Fields, Case
+    payloads and their Tuple and fixed-array elements), each struct or enum once per output. At each position, a raw input other than j
+    whose Type the position can hold (a raw layer agreeing with it with Origins fitted, their `TyCtxt.Erase` forms one Type, or an
+    abstract part) gets a Value row, never j itself; a raw layer stepping Unstated or Static (`StoredStep` on an instance's inline path,
+    its Origin's kind elsewhere, BU-24) unties the output: `CallRetention.Untied` for the result, `CallRetention.UntiedStores` (the
+    inputs ascending, beside `Untied`; A5's 4b joins Φ_E into their write targets) for input j. So `link(head: raw/Node, n: raw/Node)`
+    stores `n` into `head` through Node's `next`; `s.r@follow = p` through `S.r: uniq/(raw/i32) during a`, `Raw.initialize(r.q, p)`
+    through `R.q: raw/(raw/i32)`, `Raw.initialize(c.at, p)` through a Loan-kept `Cell.at: raw/(raw/i32) during a`, `s.x = Bx.init(v:
+    p)@rc` through `S.x: rc/Bx` (arc and `Option<rc/Bx>` alike) and a shared `Sh.r: ref/(raw/i32) during a` give `p`'s Value row, as
+    `g(p) -> R` does to the result; a direct `uniq/(raw/i32)` referent, `static` alike, is an untied store as `uniq/Option<raw/i32>` is,
+    and so are `Raw.initialize<raw/T>`'s `storage` and an input whose rc payload holds an allocated pointer. D6's unstated result layer
+    is one of the result's holds, so the walk decides its Untied too, and a `static` result layer now unties as a stored one does. A raw
+    input may have a Value and a Content row to one output. `Text.writer`'s Utf8Writer (`dispatch`, `pending`) is untied, and so is
+    every input storing one or a `DictionaryStorage.Handle` (`buffer`).
+  - The bound (the reviews' R1, R4's B1): a stored Type Binding does not instantiate, and a struct or enum the walk reaches whose storage
+    preparation does not complete (`PrepareTypeStorage`, BU-12's height and path limits, which a Type growing through an indirection
+    always reaches: `raw/G<(T, T)>`, `uniq/(G<Option<T>> during a)`, `Option<obj/B<(T, T)>>`), make the contract `CallRetention.Limit`,
+    as TyCtxt.Retention.cs states; a regular recursion (`raw/G<T>`, Node's `next`) ends at the struct already walked.
+  - The owner's decision (2026-10-24, the second round on B1's family, AGENTS "Independent review"), verbatim in BU's dialog:
+    「(a) 到達規則を1つに (推奨)」, and in R4's dialog: 「G160-2c は (a) で進める」. Rejected with it: (b) a whitelist (`Opens`
+    admitting rc and arc, which would also have to list `Loan<T>` keepers and shared Fields, R4's shapes); (c) a hold (these forms as
+    4b prerequisites).
+  - D6 and Within (items 3, 4): an unstated raw result layer outside a nominal Type's Fields retains every input as Value and a raw input
+    also as Content (`keyAt`); the result retains `KimiLibraryCatalog.Within`'s argument by Value (`Raw.slice`'s `storage`).
+  - Supersedes in BU-24's C4: a raw input walked whole as Value (its pointee's atoms and self-store row are now Content, its own layer's
+    Origin an atom of no row) and C4's D6 clause where it unties (now the hold walk's). The redos replaced the first version's
+    stored-content walk (`StoresUntied`, `StoredPart`), which stopped at a borrow, a handle or a raw layer not stating `self` (the
+    review's B1: rows missing where the positional walk and the Origin rule go), and its untied rule for structs and enums only (F1),
+    then the second version's `Opens`, which stopped at shared layers and Exclusive raw layers (R2, R4's B2).
+  - R4-M117 item 5 (15.6: storage the body does not own comes from a part of a call result that its contract ties to no argument) leaves
+    the contract unchanged: the whole-result `CallRetention.Untied` stays the conservative reading (B′ §2.3), a sound over-approximation.
+  - PD21: the split commit (1fb14f2e9, behavior-preserving) separated responsibilities: the atom walk (`Binding.Retention.Atoms.cs`) from
+    the premises (`Binding.Retention.cs`) and the rows, and TyCtxt's memo and per-call view (`TyCtxt.Retention.Calls.cs`) from the
+    contract (`TyCtxt.Retention.cs`); DECISIONS Q9 since decides restructuring by responsibility alone.
+  - Rejected: a sentinel input or output in `Retention` for an untied store (A5 maps every row's slots to operands); `Untied` turned
+    into a per-output set (a change of A5's reader in this unit); dropping the raw input's own-layer atom (it loses R4-M52's erased
+    relations and its premise node); the own value as an atom of `retentionAtoms` (every atom reader would skip it); the walk's Type
+    positions alone (a Field that can hold the pointer, Node's `next`, would retain nothing); a second structural identity beside `Erase`;
+    walking stored content with `RetentionWalk` (it would add the Fields' Origins as atoms and rows); a mode marking a hold as positional
+    so the walk skips the positions below it that `RetentionWalk` registers too (the re-read changes no row); a cycle bound of the
+    walk's own (a second copy of BU-12's limits).
+  - Open: a raw layer a pair parameter supplies reads the Origin Binding keeps (`Holder<raw/i32 during x>`: Exclusive, not untied);
+    SPEC 8.1.1 drops it (R4-M117 item 4 keeps that rule), and a later BU unit changes Binding's checking and these rows together (R4's
+    N1). The review's N2, for a later SPEC session before G160-5 (R4 puts it to the owner; its rows are a later BU unit): a raw layer that
+    is not the argument gets no row of its own value, one inside a Tuple or Option argument (`f(t: (raw/i32, i32), slot: raw/(raw/i32))`)
+    or a pointer read through a raw or borrowed argument (`p: raw/(raw/i32)` or `r: ref/(raw/i32)` into `slot`), since Content follows
+    Origins and 15.6.4 names only a raw pointer argument. A result's holds include positions behind a borrow, as D6's raw layers do
+    (conservative). R4's N1, a (b) row for G160-5's classification: a `static` result layer unties the whole result (`useStatic2`: A5
+    reports ComparisonLoanConflict_Kd where the old analysis accepts), whole-result Untied over-approximating 15.6's per-part reading
+    (R4-M117 item 5), as D6's unstated layer does (`useUnstated2`); R4's round-3 re-check adds `useRc2` (an rc payload's unstated raw
+    Field) and `usePhantom2` (a phantom `Ph<raw/u8>` Field) to that class.
+  - R-B5 (on 04d865038, round 3, against dev 1fc5a0731): the mir Functional suite passes, 22,217 tests against the base's 22,188
+    (MirCensusTest, the Utf8* and InterpolationScanRecoveryTest classes among them); its MIR difference ledger keeps the base's 3,118
+    rows and adds 2, both from this unit's RetentionTest program (`fill`, `hidden`), whose diagnostics the base compiler gives alike.
+    MirCensusTest passes on the default pipeline too. The untied results and stores change no verdict of today's A5; their Φ_E is 4b's.
 
 - **BU-32 HIR publication separates evaluation and operation classification** (2026-10-23; the planning session after independent
   design review; G141's prerequisite) The existing `HirPublisher` keeps its walk, publication version, reusable storage and column
