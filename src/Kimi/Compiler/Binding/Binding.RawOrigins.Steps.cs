@@ -91,7 +91,8 @@ public sealed partial class Binding
     // its declaration, since an instance's stored Types state none: Shared when the declaration states the layer with a slot whose Loan
     // requirement is `ref`, since a pointer read from it has read authority only; any other is the kind of its Origin under the instance's
     // substitution (`self` the holder's own step, an Unbound slot argument Unstated). A layer a Type argument supplies is no layer the
-    // declaration states, so no cap reads it: it has the kind of the Origin the argument states, as any layer no declaration states.
+    // declaration states, so no cap reads it: it has the kind of the Origin the argument states, as any layer no declaration states (a
+    // pair slot's argument states none, TyCtxt.PairBinding).
     internal RawStep StoredStep(BoundType instance, int part, ReadOnlySpan<int> positions)
     {
         var layer = this.StoredLayer(instance, part, positions, out var declared);
@@ -101,8 +102,8 @@ public sealed partial class Binding
 
     // RawMembers of the raw layer an instance stores (StoredLayer): its Origin under the instance's substitution, within the instance, so
     // its members are the keepers of the slots the instance binds it to; `self`, `static` and an unstated layer have none. False when the
-    // walk is incomplete (RawMembers), and for a layer a Type argument supplies whose Origin steps Exclusive: that Origin belongs to the
-    // borrows of the scope that wrote the Type (an input's, a body local's), not to the instance's, and a call may store through it.
+    // walk is incomplete (RawMembers), and for a layer a Type slot's argument supplies whose Origin steps Exclusive: that Origin belongs to
+    // the borrows of the scope that wrote the Type (an input's, a body local's), not to the instance's, and a call may store through it.
     internal bool StoredMembers(BoundType instance, int part, ReadOnlySpan<int> positions, List<RawMember> members)
     {
         var layer = this.StoredLayer(instance, part, positions, out var declared);

@@ -15,6 +15,18 @@ public class RawPointerSyntaxTest
     // A view whose slot a shared Loan keeps (requirement `ref`), and a struct whose slot keeps no Loan (Phantom).
     internal const string KeptView = "struct View {source}\n    internal let r: ref/i32 during source\n    public init(r: ref/i32 during source) => self.r = r\n";
 
+    // A pair-parameterized struct (SPEC 8.1.1) and its Type-slot counterpart.
+    internal const string PairHolder = "struct Holder<s/T>\n    public var value: s/T\n    public init(v: s/T) => self.value = v@move\n";
+
+    internal const string SlotLocal = "struct Local<T>\n    public var value: T\n    public init(v: T) => self.value = v@move\n";
+
+    // A pair function's and a Type slot's identities, an enum over a pair, and a function whose annotation binds a pair's outer Origin.
+    private const string Identities = "func id<s/T>(v: s/T) -> s/T => v@move\nfunc idt<T>(v: T) -> T => v@move\n";
+
+    private const string PairChoice = "enum Choice<s/T>\n    First(s/T)\n    Second(i32)\n";
+
+    private const string Annotated = "func ann<s/T>(v: s/T during b, w: ref/i32 during b) -> s/T during b\n    s is ref or raw\n    return v\n";
+
     private const string PhantomW = "struct W {s}\n    public let n: i32\n    public init() => self.n = 0\n";
 
     // A struct whose slot an exclusive borrow keeps, with a raw Field stating it.
@@ -85,14 +97,16 @@ public class RawPointerSyntaxTest
         => Assert.Equal(records, string.Join(" | ", Records(declarations)));
 
     // SPEC 5.7 Origins (DECISIONS BU-24, the delta review's D1, the re-read's R2 (a)): a Phantom slot a raw layer states, also through
-    // a written projection, is one record in every position: a body annotation, a body Type argument, a closure parameter and a
-    // declaration, its explicit slot argument (`w: ref/(W during o)`) included.
+    // a written projection, is one record in every position: a body annotation, a body Type argument (a pair's too, judged as written
+    // though the slot binds it unstated, DECISIONS BU-34), a closure parameter and a declaration, its explicit slot argument
+    // (`w: ref/(W during o)`) included.
     [Theory]
     [InlineData(PhantomW + "func h<o>(a: ref/i32 during o, w: ref/(W during o), p: raw/i32 during w.s) => ()", "InvalidOriginBinding_Kd: raw/i32 during w.s")]
     [InlineData(PhantomW + "func f(v: ref/W)\n    let q: raw/i32 during v.s = null\n    unsafe => *q = 1", "InvalidOriginBinding_Kd: raw/i32 during v.s")]
     [InlineData(PhantomW + "func f(v: ref/W)\n    let q: raw/i32 during v.s = null\n    unsafe => q[0] = 2", "InvalidOriginBinding_Kd: raw/i32 during v.s")]
     [InlineData(PhantomW + "func f(v: ref/W)\n    let q: raw/i32 during v.s = null\n    let r = (q, 1)\n    unsafe => *r.0 = 1", "InvalidOriginBinding_Kd: raw/i32 during v.s")]
     [InlineData(PhantomW + "struct Box<T>\n    public var v: T\n    public init(v: T) => self.v = v\nfunc f(w: ref/W)\n    var b = Box<raw/i32 during w.s>.init(null)\n    unsafe => *b.v = 1", "InvalidOriginBinding_Kd: raw/i32 during w.s")]
+    [InlineData(PhantomW + PairHolder + "func f(w: ref/W)\n    var b = Holder<raw/i32 during w.s>.init(v: null)\n    unsafe => *b.value = 1", "InvalidOriginBinding_Kd: raw/i32 during w.s")]
     [InlineData(PhantomW + "func f(w: ref/W)\n    let g = func (l: ref/W, p: raw/i32 during l.s)\n        unsafe => *p = 1", "InvalidOriginBinding_Kd: raw/i32 during l.s")]
     public void APhantomRawOriginIsOneRecordInEveryPosition(string declarations, string record)
         => Assert.Equal([record], Records(declarations));
@@ -173,6 +187,61 @@ public class RawPointerSyntaxTest
     [InlineData("func f<s/T>(x: s/T, r: ref/i32, p: raw/i32 during r)\n    s is ref or uniq\n    var q = p\n    let u: uniq/(raw/i32) = q@uniq", "UnsatisfiedOriginRelation_Kd: q@uniq")]
     [InlineData("func id<T>(x: T) -> T => x@move\nfunc f(r: ref/i32, p: raw/i32 during r)\n    var q = id(p)\n    let u: uniq/(raw/i32 during r) = q@uniq", null)]
     public void InstancesClosuresAndCaseViewsKeepARawOrigin(string declarations, string? record)
+        => Assert.Equal(record is null ? [] : [record], Records(declarations));
+
+    // SPEC 8.1.1, 8.1.2, 5.7 (R4-M117 item 4; DECISIONS BU-34): a raw argument fits a pair by dropping its Origin, so the slot binds the
+    // unstated pointer and an unstated value fits every position the pair supplies: a constructor, a Field, a Case payload, an explicit
+    // or annotated call, an Item, a Type slot forwarding the pair, a Contract's requirement, an Origin slot's Field and an associated Type;
+    // an instance or Item is the same Type with or without the dropped Origin. A Type slot keeps its argument whole, so there the
+    // unstated value is a claim.
+    [Theory]
+    [InlineData(PairHolder + "func f(x: ref/i32, q: raw/i32)\n    let h = Holder<raw/i32 during x>.init(v: q)", null)]
+    [InlineData(PairHolder + "func f(q: raw/i32)\n    let h = Holder<raw/i32 during static>.init(v: q)", null)]
+    [InlineData(PairHolder + "func f(x: ref/i32, h: Holder<raw/i32>) -> Holder<raw/i32 during x> => h@move", null)]
+    [InlineData(PairHolder + "func f(x: ref/i32, q: raw/i32)\n    let k: Holder<raw/i32 during x> = Holder<raw/i32>.init(v: q)", null)]
+    [InlineData(PairHolder + "func f(x: ref/i32, h: uniq/Holder<raw/i32 during x>, q: raw/i32)\n    h.value = q", null)]
+    [InlineData(PairChoice + "func f(x: ref/i32, q: raw/i32) -> Choice<raw/i32 during x> => .First(q)", null)]
+    [InlineData(Identities + "func f(x: ref/i32, q: raw/i32)\n    let r = id<raw/i32 during x>(q)", null)]
+    [InlineData(Identities + "func f(x: ref/i32)\n    var g = id<raw/i32 during x>\n    g = id<raw/i32>", null)]
+    [InlineData(Identities + "func f(x: ref/i32, q: raw/i32)\n    let g = id<raw/i32 during x>\n    let r = g(q)", null)]
+    [InlineData(Annotated + "func g(x: ref/i32, y: ref/i32, q: raw/i32) -> raw/i32\n    return ann<raw/i32 during x>(q, y)", null)]
+    [InlineData(PairHolder + "struct Wrap<T>\n    public var h: Holder<T>\n    public init(h: Holder<T>) => self.h = h@move\nfunc f(x: ref/i32, q: raw/i32)\n    let w = Wrap<raw/i32 during x>.init(h: Holder<raw/i32>.init(v: q))", null)]
+    [InlineData(PairHolder + SlotLocal + "func f(x: ref/i32, q: raw/i32)\n    let l = Local<Holder<raw/i32 during x>>.init(v: Holder<raw/i32>.init(v: q))", null)]
+    [InlineData("contract K<s/T>\n    func get(self: ref/Self) -> s/T\nstruct S\n    Self is K<raw/i32 during static>\n    public func get(self: ref/Self) -> raw/i32 => null", null)]
+    [InlineData(PairHolder + "struct Box {a}\n    public var r: ref/i32 during a\n    public var h: Holder<raw/i32 during a>\n    public init(r: ref/i32 during a, q: raw/i32)\n        self.r = r\n        self.h = Holder<raw/i32>.init(v: q)", null)]
+    [InlineData(PairHolder + "contract C\n    associate Item\nstruct S\n    Self is C\n    associate C.Item is Holder<raw/i32 during static>\nfunc h(v: Holder<raw/i32>) -> S.(C).Item => v@move", null)]
+    [InlineData(SlotLocal + "func f(x: ref/i32, q: raw/i32)\n    let h = Local<raw/i32 during x>.init(v: q)", "UnsatisfiedOriginRelation_Kd: q")]
+    [InlineData(Identities + "func f(x: ref/i32)\n    var g = idt<raw/i32 during x>\n    g = idt<raw/i32>", "UnsatisfiedOriginRelation_Kd: idt<raw/i32>")]
+    public void APairParameterDropsARawArgumentsOrigin(string declarations, string? record)
+        => Assert.Equal(record is null ? [] : [record], Records(declarations));
+
+    // SPEC 8.1.1, 5.7 (DECISIONS BU-34): what a pair slot binds for a raw argument, the unstated pointer, is what each position the pair
+    // supplies reads, so returning it as stating the dropped Origin is a claim: an Origin relation error at the value, read through an
+    // inferred or explicit call, a Field, an annotated result, a Case payload, nested instances, a Type slot forwarding the pair, an Option
+    // of it, an inferred constructor, a binder with another slot, a nested Type, a generic caller, a Closure parameter, an Origin slot's
+    // Field or Case payload and an associated Type. A Type slot keeps the argument's Origin, and a borrow argument's inner layers keep
+    // theirs.
+    [Theory]
+    [InlineData(Identities + "func f(x: ref/i32, p: raw/i32 during x) -> raw/i32 during x => id(p)", "UnsatisfiedOriginRelation_Kd: id(p)")]
+    [InlineData(Identities + "func f(x: ref/i32, p: raw/i32 during x) -> raw/i32 during x => id<raw/i32 during x>(p)", "UnsatisfiedOriginRelation_Kd: id<raw/i32 during x>(p)")]
+    [InlineData(PairHolder + "func f(x: ref/i32, h: ref/Holder<raw/i32 during x>) -> raw/i32 during x => h.value", "UnsatisfiedOriginRelation_Kd: h.value")]
+    [InlineData(Annotated + "func g(x: ref/i32, y: ref/i32, p: raw/i32 during x) -> raw/i32 during x\n    return ann(p, y)", "UnsatisfiedOriginRelation_Kd: ann(p, y)")]
+    [InlineData(PairChoice + "func f(x: ref/i32, c: Choice<raw/i32 during x>) -> raw/i32 during x\n    match c@move\n        .First(let v) => return v\n        .Second(_) => return null", "UnsatisfiedOriginRelation_Kd: v")]
+    [InlineData(PairHolder + "func f(x: ref/i32, h: ref/Holder<Holder<raw/i32 during x>>) -> raw/i32 during x => h.value.value", "UnsatisfiedOriginRelation_Kd: h.value.value")]
+    [InlineData(PairHolder + SlotLocal + "func f(x: ref/i32, h: ref/Local<Holder<raw/i32 during x>>) -> raw/i32 during x => h.value.value", "UnsatisfiedOriginRelation_Kd: h.value.value")]
+    [InlineData(PairHolder + "func wrap<T>(v: T) -> Holder<T> => Holder<T>.init(v: v@move)\nfunc f(x: ref/i32, p: raw/i32 during x) -> raw/i32 during x\n    let h = wrap(p)\n    return h.value", "UnsatisfiedOriginRelation_Kd: h.value")]
+    [InlineData("func g<s/T>(a: s/T) -> Option<s/T> => .Some(a@move)\nfunc f(x: ref/i32, p: raw/i32 during x) -> Option<raw/i32 during x> => g(p)", "UnsatisfiedOriginRelation_Kd: g(p)")]
+    [InlineData(PairHolder + "func f(x: ref/i32) -> raw/i32 during x\n    let h = Holder.init(v: x@follow@raw)\n    return h.value", "UnsatisfiedOriginRelation_Kd: h.value")]
+    [InlineData("struct Anchored<s/T, U> {a}\n    s is owner or ref or uniq or raw\n    public var anchor: ref/i32 during a\n    public var value: s/T\n    public var other: s/U during a\nfunc f(x: ref/i32, h: ref/Anchored<raw/i32 during x, i64> during x) -> raw/i32 during x => h.value", "UnsatisfiedOriginRelation_Kd: h.value")]
+    [InlineData("struct Outer<s/T>\n    public struct Inner\n        public var v: s/T\nfunc f(x: ref/i32, i: ref/Outer<raw/i32 during x>.Inner) -> raw/i32 during x => i.v", "UnsatisfiedOriginRelation_Kd: i.v")]
+    [InlineData(PairHolder + "func g<U>(x: ref/i32, h: ref/Holder<raw/U during x>) -> raw/U during x => h.value", "UnsatisfiedOriginRelation_Kd: h.value")]
+    [InlineData("func call<s/T>(v: s/T, f: (s/T) -> s/T) -> s/T => f(v@move)\nfunc g(x: ref/i32, p: raw/i32 during x) -> raw/i32 during x => call(p, func (w) => w)", "UnsatisfiedOriginRelation_Kd: call(p, func (w) => w)")]
+    [InlineData(PairHolder + "struct Box {a}\n    public var r: ref/i32 during a\n    public var h: Holder<raw/i32 during a>\nfunc f(x: ref/i32, b: ref/Box during x) -> raw/i32 during x => b.h.value", "UnsatisfiedOriginRelation_Kd: b.h.value")]
+    [InlineData(PairHolder + "enum E {a}\n    Some(Holder<raw/i32 during a>, ref/i32 during a)\n    None\nfunc f(x: ref/i32, e: ref/E during x) -> raw/i32 during x\n    match e\n        .Some(let h, _) => return h.value\n        .None => return null", "UnsatisfiedOriginRelation_Kd: h.value")]
+    [InlineData(PairHolder + "contract C\n    associate Item\nstruct S\n    Self is C\n    associate C.Item is Holder<raw/i32 during static>\nfunc g(v: ref/S.(C).Item) -> raw/i32 during static => v.value", "UnsatisfiedOriginRelation_Kd: v.value")]
+    [InlineData(SlotLocal + "func f(x: ref/i32, h: ref/Local<raw/i32 during x>) -> raw/i32 during x => h.value", null)]
+    [InlineData(PairHolder + "func f(x: ref/i32, a: ref/i32, h: ref/Holder<ref/(raw/i32 during x) during a>) -> raw/i32 during x => h.value@follow", null)]
+    public void APairBindingStatesNoRawOrigin(string declarations, string? record)
         => Assert.Equal(record is null ? [] : [record], Records(declarations));
 
     // B′ §8 (design-final §14; DECISIONS BU-24): the census of published raw Origins. In every node's Type (signatures, Field and Case

@@ -389,7 +389,9 @@ public sealed partial class Binding
                 return null;
             }
 
-            var projected = type.Kind == BoundTypeKind.TargetProjection ? this.DirectTarget(whole) : whole;
+            // SPEC 8.1.2: an original `s/T` denotes the pair's binding (TyCtxt.PairBinding), its projection `T` the direct target.
+            var projected = type.Kind == BoundTypeKind.TargetProjection ? this.DirectTarget(whole)
+                : type.Symbol is { Kind: BindingSymbolKind.SemanticsTarget } ? this.types.PairBinding(whole) : whole;
             if (type.Origin is { } replacement && (IsBorrow(projected.Semantics) || projected.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation))
             {
                 // SPEC 8.1.2: the annotation binds the outer-Origin slot of a borrow binding; a value binding keeps no slot,
