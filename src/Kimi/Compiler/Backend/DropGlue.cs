@@ -58,10 +58,14 @@ internal readonly record struct DropPart(DropPartKind Kind, BoundType Type, int 
 /// <summary>The drop glue of the Backend (SPEC 16.3.2).</summary>
 internal static class DropGlue
 {
-    /// <summary>The parameters of a glue function (package C 3.6, as the old generator's glue), named as a function's arguments
-    /// (<c>%a</c> and the position): the value's address, then the location a failure inside a release reports (SPEC 22.5.1).</summary>
+    /// <summary>The parameters of a glue function (package C 3.6, as the old generator's glue), named as the old generator's glue names
+    /// them, <c>slot</c>, <c>location</c> and <c>length</c>, which ObjectRuntime's release text reads (DECISIONS R5-M112): the value's
+    /// address, then the location a failure inside a release reports (SPEC 22.5.1).</summary>
     internal static readonly AbiParameter[] Parameters =
-        [new("ptr", "a0", AbiParameterKind.OwnedSlot, 0), new("ptr", "a1", AbiParameterKind.Location), new("i64", "a2", AbiParameterKind.LocationLength)];
+    [
+        new("ptr", "slot", AbiParameterKind.OwnedSlot, 0), new("ptr", "location", AbiParameterKind.Location),
+        new("i64", "length", AbiParameterKind.LocationLength),
+    ];
 
     /// <summary>Gets the runtime routine of the string row (<see cref="DropGlueRow.Release"/>), which its glue calls with its own parameters
     /// (the string representation and its release kind, IMPL 21.1.3; PD18).</summary>
