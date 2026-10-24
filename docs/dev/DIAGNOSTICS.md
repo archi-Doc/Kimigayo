@@ -249,7 +249,7 @@ Historical structured-repair, check-JSON and LSP evaluation: [checkpoint record]
 
 ## 10. Diagnostic development workflow (detail)
 
-The full workflow is maintained in [DIAGNOSTIC_WORKFLOW.md](DIAGNOSTIC_WORKFLOW.md). Apply it only when the user explicitly requests that workflow or a detailed diagnostic review. Ordinary implementation uses the simple diagnostic guidance in [AGENTS.md](../../AGENTS.md#diagnostic-development); diagnostic changes and bug reports do not automatically start the full workflow. The internal model and diagnostic contracts in this document still apply.
+The full workflow is maintained in [DIAGNOSTIC_WORKFLOW.md](DIAGNOSTIC_WORKFLOW.md). Apply it only when the user explicitly requests that workflow or a detailed diagnostic review. Ordinary implementation uses the simple diagnostic guidance in [AGENTS.md](../../AGENTS.md#diagnostics); diagnostic changes and bug reports do not automatically start the full workflow. The internal model and diagnostic contracts in this document still apply.
 
 ## 11. Audit findings (D1)
 

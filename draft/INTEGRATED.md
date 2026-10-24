@@ -1162,3 +1162,26 @@ Q4 本案、Q5 採用、Q6 採用、Q7 経路等式を残す）採択します�
   rule, rejected by the owner's Q1; Q2's Function-Type extraction, transferred to a separate §8.5.5 revision (PLAN G170); Q4/Q9's
   declaration errors for unsatisfiable conditions, rejected by Q4; 4.7 and 4.10's representative order, completion and its limits, and
   the decision procedure (normal forms), not in SPEC (B 7.2). The file moved from `Proposals/` with only its status sentence replaced.
+
+## 2026-10-24 — AGENTS restructuring and workflow document closed
+
+The owner, 2026-10-24, verbatim: 「1と2の修正のみ行なって、廃案にして」, on the planning session's comparison of the proposal with
+the current AGENTS (1 and 2 are the two corrections below).
+
+- `Obsolete/2026-10-12 AGENTS Restructuring and Workflow Document.md`: 完了 (closed 2026-10-24); the file moved from `Proposals/`
+  with only its status sentence replaced. It was never applied. Dispositions:
+  - §3's allocation table and Appendix A: rejected. Their base (`ec7585f7`) and rewritten rows predate the owner's later AGENTS
+    revisions and carry rules since retired or replaced (KR rules as build errors, DECISIONS CR-R1; size caps, forecasts and the
+    net-size priority, DECISIONS Q5); AGENTS shrank from 20,861 to about 19,100 characters through those revisions. C4's
+    restructuring rule was removed by DECISIONS Q9, whose sentence on C4 is moot.
+  - §4 (`docs/dev/WORKFLOW.md`), §7's application and Appendix B: rejected; AGENTS' revisions since (DECISIONS Q4–Q6) keep the
+    design, delegation, review and commit-record rules in short rows, and no procedure document is added.
+  - §5 (prompts): rejected. Of the four statements its §1 cause 4 names, only the planning template's input "Minimize allocations as
+    much as possible" remains, and it stays the owner's input.
+  - Two defects its §7 references table lists were corrected in the closing commit as fixes of current documents, not as
+    adoption of its structure: links to removed AGENTS anchors in `docs/dev/DIAGNOSTIC_WORKFLOW.md` and
+    `docs/dev/DIAGNOSTICS.md` (`#diagnostic-development` → `#diagnostics`; `#implementation-workflow`, which the proposal
+    pointed at WORKFLOW, → `#verification-and-delivery`), and COMPILER_ARCHITECTURE's allocation citation
+    "(AGENTS, `8071549f`)" → DECISIONS Q3.
+  - Correction (the file is frozen): after the move, its header link to the PLAN Size Budget proposal resolves at
+    `../Proposals/2026-10-12%20PLAN%20Size%20Budget%20and%20Issue%20Register.md`. That proposal, this one's precondition, stays open.

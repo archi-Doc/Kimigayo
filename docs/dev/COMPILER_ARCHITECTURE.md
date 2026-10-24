@@ -243,8 +243,8 @@ first. IntrinsicId returns to 30 at R8.
   contract is unmarked; only its publisher walk and private state disappear at R7.
 - **Performance and allocation.** Generated native code may not regress in O2 run time or allocation counts (plan §18
   P1, P2); O0 run time and compiler processing time may, when recorded (P1, P3). A timing regression exceeds the
-  variation of repeated matched runs (P4). Compiler allocations follow the owner's decision of 2026-10-11 (AGENTS,
-  `8071549f`), which supersedes plan §18 P11 and §14-8: an allocation is allowed when it makes equivalent work faster or
+  variation of repeated matched runs (P4). Compiler allocations follow the owner's decision of 2026-10-11 (DECISIONS
+  Q3), which supersedes plan §18 P11 and §14-8: an allocation is allowed when it makes equivalent work faster or
   reduces compiler code with a reasonable increase in memory, with time, allocations and retained memory measured and
   recorded. Existing compiler allocation regressions hold until a measured change updates them.
 - **R4 and R5 in parallel (DECISIONS R4-M35, A5 plan §9.1).** R5 owns the files it creates and R4 the other files under
