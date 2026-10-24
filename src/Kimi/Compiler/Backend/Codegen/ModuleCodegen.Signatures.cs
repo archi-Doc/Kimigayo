@@ -9,8 +9,10 @@ namespace Kimi.Compiler.Backend;
 // its own body, the one its definition and every call write; a DropGlue item's; a StaticInit item's slot's ensure function; the
 // per-index cache they share with the called imports' C signatures (ModuleCodegen.Imports.cs) and the common Function values' entries
 // (ModuleCodegen.Erasures.cs); and the unnamed signatures of the calls that reach their callee through a pointer (Unnamed: a common
-// Function value's entry): each computed once per Write, or kept, and the previous one reused while it still matches, so a warm module
-// allocates nothing.
+// Function value's entry, a virtual slot's, Slot): each computed once per Write, or kept, and the previous one reused while it still
+// matches, so a warm module allocates nothing. A slot's signature reads TyCtxt.Signature, code generation's input for a virtual slot (package
+// C 3.2), under the call's substitution or an Item's own (TyCtxt.SubstOfItem, a function of its Type), each Type in the item's instance by
+// InstanceCollector.TypeOf: no substitution is composed here (DECISIONS R5-M114).
 internal sealed partial class ModuleCodegen
 {
     /// <summary>The name of a StaticInit item's slot before its index (SPEC 22.4.3); its state adds <see cref="StateSuffix"/>, its ensure
@@ -83,6 +85,40 @@ internal sealed partial class ModuleCodegen
 
         return this.signatures[item] = new("__kimi_drop" + item.ToString(CultureInfo.InvariantCulture), "void", DropGlue.Parameters);
     }
+
+    /// <summary>Gets the signature a call through a virtual slot takes and every entry of the slot has (SPEC 6.4.1: an override keeps its
+    /// original's inputs and result; IMPL 21.3.1; DECISIONS R5-M114): the internal convention, without flags (no virtual function is a
+    /// caller-location library function), over the original's parameter and result Types (TyCtxt.Signature, package C 3.2's input) under the
+    /// dispatching substitution, each in the item's instance (InstanceCollector.TypeOf); unnamed, since the call reaches an entry through its
+    /// receiver's table (Unnamed).</summary>
+    /// <param name="original">The slot's original.</param>
+    /// <param name="subst">The dispatching substitution: a Virtual callee's.</param>
+    /// <param name="item">The item whose instance the call is in.</param>
+    /// <returns>The signature; null, recorded at the item's site, where the instance does not make a Type of it.</returns>
+    internal FunctionAbi? Slot(BindingSymbol original, Subst? subst, int item)
+    {
+        _ = TyCtxt.Signature(original, null, int.MaxValue, out var count);
+        this.Reserve(count);
+        var result = this.InstanceOf(original, subst, -1, item);
+        for (var slot = 0; result is not null && slot < count; slot++)
+        {
+            if (this.InstanceOf(original, subst, slot, item) is not { } parameter)
+            {
+                return null; // Recorded.
+            }
+
+            this.parameters[slot] = parameter;
+        }
+
+        return result is null ? null : this.Unnamed(Abi.Flags.None, result, this.parameters.AsSpan(0, count));
+    }
+
+    /// <summary>Gets the signature a virtual function's Item's call takes (<see cref="Slot(BindingSymbol, Subst, int)"/>), under the Item's own
+    /// substitution, the pure one its Type makes (TyCtxt.SubstOfItem; DECISIONS R5-M43).</summary>
+    /// <param name="function">The Item's Type in the item's instance.</param>
+    /// <param name="item">The item whose instance the call is in.</param>
+    /// <returns>The signature, or null after a record.</returns>
+    internal FunctionAbi? Slot(BoundType function, int item) => this.Slot(function.Symbol!, this.types.SubstOfItem(function), item);
 
     /// <summary>Gets the ensure function of a StaticInit item's slot (SPEC 22.4.3; DECISIONS R5-M106): void, taking the access's location
     /// (SPEC 22.5.1), named after its slot with <c>_ensure</c>, kept across Writes.</summary>
@@ -158,8 +194,21 @@ internal sealed partial class ModuleCodegen
         return this.signatures[item] = Abi.Of(this.Layout, Abi.Convention.Internal, flags, result, types).Named(name);
     }
 
+    // A function's parameter Type at a slot (at -1 its result) under a substitution, in an item's instance (Slot); null, recorded at the
+    // item's site, where the instance does not make it.
+    private BoundType? InstanceOf(BindingSymbol function, Subst? subst, int slot, int item)
+    {
+        if (TyCtxt.Signature(function, subst, slot, out _) is { } declared && this.collector.TypeOf(item, declared) is { } type)
+        {
+            return type;
+        }
+
+        this.Report(DiagnosticCode.InternalInvariant_Kd, this.set.Items[item].Site); // The collector laid out the call's Types (K 4.8).
+        return null;
+    }
+
     // An unnamed signature under the internal convention, which its calls reach through a pointer (a common Function value's entry,
-    // ModuleCodegen.Erasures.cs): a kept one while Abi.Matches holds, else a new one, kept across Writes.
+    // ModuleCodegen.Erasures.cs; a virtual slot's, Slot): a kept one while Abi.Matches holds, else a new one, kept across Writes.
     private FunctionAbi Unnamed(Abi.Flags flags, BoundType result, ReadOnlySpan<BoundType> inputs)
     {
         foreach (var candidate in this.unnamed)

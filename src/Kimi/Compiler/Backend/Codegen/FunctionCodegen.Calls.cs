@@ -4,11 +4,13 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The Call terminator of FunctionCodegen (R5 package C 3.2 I8, plan C3a, C3b, C8a, C5a; DECISIONS R5-M89, R5-M92, R5-M93, R5-M102): a
-// callee by its kind's row (a Value callee's in FunctionCodegen.Closures), the collector's targets read by one forward cursor, each once
-// in its site's order, and the one call writer, which the legacy rows, the intrinsic rows, the glue items and the module's entry call too;
-// each argument is FunctionCodegen.Arguments' (its parameter's kind, a copy slot). Rows not written yet: a virtual slot (C6c), a Builtin
-// shim (C8f, C9b), a property witness (C3c), a requirement whose witness has no body (PLAN G157 (10)), the other compiler functions'
+// The Call terminator of FunctionCodegen (R5 package C 3.2 I8, plan C3a, C3b, C8a, C5a, C6c; DECISIONS R5-M89, R5-M92, R5-M93, R5-M102,
+// R5-M114): a callee by its kind's row (a Value callee's in FunctionCodegen.Closures), the collector's targets read by one forward cursor,
+// each once in its site's order, and the one call writer, which the legacy rows, the intrinsic rows, the glue items and the module's entry
+// call too; each argument is FunctionCodegen.Arguments' (its parameter's kind, a copy slot). A call that dispatches (SPEC 6.4.3, 6.4.6) runs
+// through a virtual slot, which only makes the callee value it writes (EntryOf): a Virtual callee, without a target (X5), under its slot's
+// signature (ModuleCodegen.Slot); a body target that implements a slot, a requirement's virtual witness (BodyRun). Rows not written yet: a
+// Builtin shim (C8f, C9b), a property witness (C3c), a requirement whose witness has no body (PLAN G157 (10)), the other compiler functions'
 // legacy rows (C8b-C8e, C9a).
 internal sealed partial class FunctionCodegen
 {
@@ -51,7 +53,7 @@ internal sealed partial class FunctionCodegen
                 this.ValueCall(call);
                 return;
             case MirCalleeKind.Virtual:
-                this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // C6c loads the virtual slot.
+                this.Virtual(call);
                 return;
             case MirCalleeKind.Intrinsic:
                 this.Intrinsic(call, IntrinsicRows.Of((IntrinsicId)callee.Arg));
@@ -62,10 +64,11 @@ internal sealed partial class FunctionCodegen
     }
 
     // A Fn or Requirement callee by the collector's target at the call (I8; a requirement's is the witness K6 resolved, SPEC 8.6.3-8.6.4,
-    // whose signature is the call's, since compatibility inserts no conversion): a body item is called by its signature
-    // (ModuleCodegen.Signature), a caller-location one given the call's location (Invoke); a Builtin shim is C8f's and C9b's, a property
-    // witness C3c's. Without a target, a #LibraryImport function is called by its C signature (SPEC 22.6), a requirement's witness has no
-    // body (R5-M67; a row not written yet, PLAN G157 (10)), and any other callee is a broken contract.
+    // whose signature is the call's, since compatibility inserts no conversion): a Fn callee's body item is called by its signature
+    // (ModuleCodegen.Signature), a caller-location one given the call's location (Invoke), whatever it implements (a direct base call, SPEC
+    // 6.4.4); a Requirement callee's runs as a witness does (BodyRun); a Builtin shim is C8f's and C9b's, a property witness C3c's. Without a
+    // target, a #LibraryImport function is called by its C signature (SPEC 22.6), a requirement's witness has no body (R5-M67; a row not
+    // written yet, PLAN G157 (10)), and any other callee is a broken contract.
     private void Function(in MirTerminator call)
     {
         var target = this.Target(new(this.at, this.body.Blocks[this.at].Count));
@@ -89,8 +92,9 @@ internal sealed partial class FunctionCodegen
 
         switch (this.collector.Set.Items[target].Key.Kind)
         {
-            case MonoKind.Body when this.module.Signature(target) is { } signature:
-                this.Invoke(call, signature, this.program.Bodies[this.collector.Set.Items[target].BodyOrdinal].Key);
+            case MonoKind.Body when this.BodyRun(target) is { } run:
+                var key = this.program.Bodies[this.collector.Set.Items[target].BodyOrdinal].Key;
+                this.Invoke(call, run.Signature, key, default, call.Callee.Kind == MirCalleeKind.Requirement ? run.Slot : null);
                 return;
             case MonoKind.Body:
                 return; // A broken contract, recorded.
@@ -100,6 +104,32 @@ internal sealed partial class FunctionCodegen
             default:
                 this.Report(DiagnosticCode.InternalInvariant_Kd, call.Source); // A Fn call targets a body, a shim or a witness (K package 4.5).
                 return;
+        }
+    }
+
+    // SPEC 6.4.6, 8.6.3 (DECISIONS R5-M114): what a call of a body target runs, the one rule of a requirement's witness: the body by its
+    // signature, through the virtual slot its definition runs when it runs one (VTableDef.SlotOf; a virtual witness maps to its slot). A
+    // Requirement call and a function Item's call and adapter (Runs) take it; a Fn callee calls the function it names (above). A virtual
+    // function's own call and Item have no body target (X5). Null after a record.
+    private Run? BodyRun(int target)
+    {
+        if (this.module.Signature(target) is not { } signature)
+        {
+            return null; // Recorded.
+        }
+
+        var function = this.program.Bodies[this.collector.Set.Items[target].BodyOrdinal].Key.Decl;
+        return new Run(signature, function is not null && VTableDef.SlotOf(function) >= 0 ? function : null);
+    }
+
+    // SPEC 6.4.3 (X5; DECISIONS R5-M114): a Virtual callee, which has no target: the original's slot under the call's substitution in the
+    // item's instance (ModuleCodegen.Slot), its operands the original's (the receiver first), called through the original's slot.
+    private void Virtual(in MirTerminator call)
+    {
+        var original = call.Callee.Symbol!;
+        if (this.module.Slot(original, call.Callee.Subst, this.item) is { } signature)
+        {
+            this.Invoke(call, signature, new(original, MirBodyKind.Fn), default, original);
         }
     }
 

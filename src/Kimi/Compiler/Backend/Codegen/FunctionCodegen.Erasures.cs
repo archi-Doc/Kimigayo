@@ -19,8 +19,9 @@ namespace Kimi.Compiler.Backend;
 // call of that Type writes (ModuleCodegen.Adapter) and calls what the source's call runs with its own parameters and the location it
 // received (Forward): a ClosureErasure's Shared Closure body with its environment (the word spilled for an inline one, the heap pointer) and
 // a null context; an ItemAdapter's what its Item's call runs (FunctionCodegen.Closures' Runs: a function's body, a requirement Item's
-// witness, a compiler function's routine row with its slot-less values, or that row's unit's located Unsupported_Kd at the adapter's site);
-// a Never-result callee leaves the entry's result unused and ends it unreachable (SPEC 10.7).
+// witness, a virtual function's slot through the receiver parameter's object, a compiler function's routine row with its slot-less values,
+// or that row's unit's located Unsupported_Kd at the adapter's site); a Never-result callee leaves the entry's result unused and ends it
+// unreachable (SPEC 10.7), also where the entry's own result is another (a slot's signature is its Item's own, ModuleCodegen.Slot).
 // A Function value's glue row (DestroyErased): its table's drop entry, when present, at its address.
 internal sealed partial class FunctionCodegen
 {

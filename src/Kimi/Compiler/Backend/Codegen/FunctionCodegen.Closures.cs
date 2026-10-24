@@ -4,17 +4,20 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The value calls of FunctionCodegen (R5 plans C5a, C5b and C5c, package C 3.2 I8 and row 14; SPEC 7.7.3, 7.7.4, 8.10, IMPL 21.1.3;
-// DECISIONS R5-M102, R5-M104, R5-M108):
+// The value calls of FunctionCodegen (R5 plans C5a, C5b, C5c and C6c, package C 3.2 I8 and row 14; SPEC 6.4.3, 7.7.3, 7.7.4, 8.10, IMPL
+// 21.1.3; DECISIONS R5-M102, R5-M104, R5-M108, R5-M114):
 // a Value callee by its value's Type in the item's instance below its reference layer (TyCtxt.Layer, the collector's Callable rule), a closed
 // vocabulary. A Closure calls its body, the collector's target, under its signature (Abi's ConcreteClosure: the environment pointer first, the
 // context last): the environment is the referent of a borrowed operand, or an owned operand's storage (a Move's Place, a Copy's copy slot), the
 // context null. A function Item calls what its call runs (Runs, also an ItemAdapter's entry's callee), decided by its function: a compiler
 // function's its direct call's row (SPEC 7.7.4), whatever targets the row needs, written when it is one runtime routine (Routine) over the
 // Value call's operands, else the row's unit's; any other function's its body target, its function's body or a requirement Item's
-// witness, directly; without one a later unit's row (a virtual slot's Item C6c; a requirement witness without a body, PLAN G157 (10); a
-// Builtin shim C8f or C9b; a property witness C3c). A common Function value (IMPL 21.1.3: its environment word, then its table) calls its
-// table's entry with its environment word and its table's context under the erased signature (ModuleCodegen.Erased). A Value call's
+// witness (through its slot when it implements one, BodyRun); a virtual function's Item, which has no target (X5), its slot (SPEC 6.4.3);
+// without one a later unit's row (a requirement witness without a body, PLAN G157 (10); a Builtin shim C8f or C9b; a property witness
+// C3c). The slot only makes the callee value the call writes (EntryOf), so an Item's call and its adapter's entry dispatch through the one
+// call writer, and the adapter's entry is the erased virtual Item's thunk. A common Function value (IMPL 21.1.3: its environment word,
+// then its table) calls its table's entry with its environment word and its table's context under the erased signature
+// (ModuleCodegen.Erased). A Value call's
 // operands are its Callable signature's inputs in order, so its own key places them (MirCallee.Position without a function, the builder's
 // rule). After an owner call whose callee borrows its environment, the call site's next target, the operand Type's glue, destroys the
 // operand (SPEC 8.10: "destroys the rest after the call") at the call's location; the collector decides which calls have it. A Closure
@@ -108,7 +111,8 @@ internal sealed partial class FunctionCodegen
     // SPEC 7.7.4 (DECISIONS R5-M108): what a call of a function Item runs, decided by its function, for its Value call and its adapter's
     // entry: a compiler function's call is its direct call's row whatever targets the row needs (a format witness, a descriptor), written
     // when it is one runtime routine (Routine, its slot-less values from the call's result Type into `given`); any other function's is its
-    // body target (the collector's: its function's body or a requirement Item's witness). Each is a Run, called by its signature's symbol.
+    // body target (the collector's: its function's body or a requirement Item's witness, BodyRun: a virtual witness through its slot); a
+    // virtual function's Item, which has no target (X5), runs its slot (SPEC 6.4.3) under the Item's own substitution (ModuleCodegen.Slot).
     // Null after a record at the source (an adapter's: its site): a row not written yet, its unit's located Unsupported_Kd, or a broken
     // contract.
     private Run? Runs(BoundType item, int target, BoundType? result, SourceInfo source, out ReadOnlySpan<Value> given)
@@ -117,7 +121,12 @@ internal sealed partial class FunctionCodegen
         var kind = item.Symbol?.CompilerFunction ?? CompilerFunctionKind.None;
         if (kind == CompilerFunctionKind.None && target >= 0 && this.collector.Set.Items[target].Key.Kind == MonoKind.Body)
         {
-            return this.module.Signature(target) is { } signature ? new Run(signature, null) : null; // Null after a record.
+            return this.BodyRun(target); // Null after a record.
+        }
+
+        if (kind == CompilerFunctionKind.None && item.Symbol is { } function && VTableDef.SlotOf(function) >= 0)
+        {
+            return this.module.Slot(item, this.item) is { } slot ? new Run(slot, function) : null; // Null after a record.
         }
 
         if (kind != CompilerFunctionKind.None && this.Routine(kind, result, target, out given) is { } routine)
