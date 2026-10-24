@@ -43,13 +43,16 @@ public sealed partial class Binding
 
     internal BoundType? StoredType(Koto syntax, BoundType owner)
     {
-        if ((syntax.BoundType ?? (syntax as PropertyKoto)?.BoundSymbol?.Type) is not { } field || owner.Symbol is null)
+        if (WrittenType(syntax) is not { } field || owner.Symbol is null)
         {
             return null;
         }
 
         return this.StoredType(field, owner);
     }
+
+    // The Type a Field or Case payload declaration writes, before any instance substitutes it; null for none.
+    private static BoundType? WrittenType(Koto? declaration) => declaration?.BoundType ?? (declaration as PropertyKoto)?.BoundSymbol?.Type;
 
     private static bool IsStoredVariable(Koto node)
         => node is VariableKoto && node is not PropertyKoto { DeclarationKind: PropertyDeclarationKind.Computed or PropertyDeclarationKind.Requirement };

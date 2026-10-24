@@ -565,6 +565,22 @@ public sealed class RetentionTest
     public void AGrowingStoredTypeIsALimit(string function)
         => Assert.Equal("limit", Declared(Bind(function + "\n"), "f"));
 
+    // SPEC 15.6.4, V16 (G243; DECISIONS BU-35): a row depends on the Type at a position and the Type its declaration writes there, not on
+    // the route to it through the interned Types, so the hold walk visits each position once per output. Chain's Types grow as trees
+    // eight wide (8^(n-1) leaves) but are 2n distinct Types, reached through rc handles, Tuples, fixed arrays and enum payloads, raw leaves
+    // included; walked as trees they take seconds to minutes, which the bound reports instead of hanging the run.
+    [Theory]
+    [InlineData("struct", 11, "")]
+    [InlineData("array", 11, "")]
+    [InlineData("enum", 11, "")]
+    [InlineData("raw", 10, "1 Value store 0, untied store 0")]
+    public async Task AHoldWalkVisitsEachPositionOnce(string form, int n, string expected)
+    {
+        var c = Bind(Chain(form, n));
+        var rows = Task.Run(() => Declared(c, "f"), TestContext.Current.CancellationToken);
+        Assert.Equal(expected, await rows.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+    }
+
     // Every call of the Kimi library and the milestone programs, an intrinsic's included, has a retention under its substitution, for the
     // callee MIR names (a direct base call's implementation, an intrinsic's library declaration), or over its declared Callable signature,
     // whose rows name its inputs: each call's Subst instantiates the contract.
@@ -703,6 +719,19 @@ public sealed class RetentionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         return c;
+    }
+
+    // D1 to Dn (structs, or enums whose Case A holds the part), each holding the next through an rc handle at a Type argument eight
+    // wide (a Tuple; for `array`, a fixed array and seven), the last holding the argument itself; f's input instantiates D1 at i32, or
+    // at `raw/i32` for `raw`.
+    private static string Chain(string form, int n)
+    {
+        var argument = form == "array" ? $"([2 of T], {string.Join(", ", Enumerable.Repeat("T", 7))})" : $"({string.Join(", ", Enumerable.Repeat("T", 8))})";
+        return string.Concat(Enumerable.Range(1, n).Select(i =>
+        {
+            var part = i < n ? $"rc/D{i + 1}<{argument}>" : form == "array" ? "[2 of T]" : "T";
+            return form == "enum" ? $"enum D{i}<T>\n    A({part})\n    B\n" : $"struct D{i}<T>\n    public var x: {part}\n";
+        })) + $"func f(d: uniq/D1<{(form == "raw" ? "raw/i32" : "i32")}>, p: raw/i32) => ()\n";
     }
 
     private static FunctionKoto Function(Compilation c, string name)

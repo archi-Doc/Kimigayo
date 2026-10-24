@@ -4906,7 +4906,8 @@ resumed by R4-M86 (2026-10-20).
     writable positions do: every layer below but a callable's (`IsCallable`, which both read), a raw layer whatever its step, a shared
     borrow or an rc or arc handle included, a nominal Type's Type arguments (as `RetentionParts` walks them: `Dictionary<K, V>`, which
     declares no Fields, holds through `V`), and a struct's or enum's stored content (SPEC 5.7's inline storage: the base, Fields, Case
-    payloads and their Tuple and fixed-array elements), each struct or enum once per output. At each position, a raw input other than j
+    payloads and their Tuple and fixed-array elements), each struct or enum once per output (superseded by BU-35: each position, a
+    Type with what its declaration writes there, once per output). At each position, a raw input other than j
     whose Type the position can hold (a raw layer agreeing with it with Origins fitted, their `TyCtxt.Erase` forms one Type, or an
     abstract part) gets a Value row, never j itself; a raw layer stepping Unstated or Static (`StoredStep` on an instance's inline path,
     its Origin's kind elsewhere, BU-24) unties the output: `CallRetention.Untied` for the result, `CallRetention.UntiedStores` (the
@@ -5029,6 +5030,34 @@ resumed by R4-M86 (2026-10-20).
     copying pre-pass (allocates at every warm hit; `RetentionTest.WarmRebindReusesRetentions` guards the scratch).
   - Supersedes BU-24's G160-2b open item "Binding keeps a pair argument's raw Origin" and the first sentence of BU-30's Open; BU-24's
     nested item narrows to Type slots (`Local<Local<raw/i32 during y>>`).
+- **BU-35 The hold walk visits each position once per output** (2026-10-25; the BU planning session's design, adopted as the
+  decision, option (a); PLAN G243, unit bu36; one design and one review) SPEC 15.6.4 decides retention by the instantiated contract: a
+  raw pointer argument is retained by a result or storage that can hold a value of its Type, and a raw layer steps by 5.2.1 condition
+  3 (its declaration's cap, BU-24). A row depends on the Type at a position and the Type its declaration writes there, not on the
+  route to it through the interned Types (SPEC 3.8); R4's V16 makes work beyond input and output size a defect. BU-30's hold walk
+  carried the route (`instance`, `part`, `start`, `retentionPath`) through every Tuple of a substituted Field, also below a written
+  Type parameter, and remembered only structs and enums: `D_i<T> { x: D_{i+1}<(T, T)> }` has 2n Types and cost 3·2^n − 3 visits
+  (n = 28: 10.8 s; 0 ms on `ece46cfa5`, before G160-2c).
+  - `Held(type, written, output, owned)`: `written` is the Type a Field or Case payload declaration writes at the position while it is
+    a Tuple, a fixed array or a raw layer (`WrittenType`, shared with `StoredType(Koto)` and `StoredLayer`; a child's is
+    `InlinePart(written, i)`), null elsewhere. A raw layer steps by `DeclaredStep(layer, declared)`, the one rule `StoredStep` (and so
+    `TyCtxt.RawStep`, unchanged) reads after `StoredLayer`. Below a written Type parameter `StoredLayer`'s `declared` was already null,
+    so the old on-path step there was `StepOf` too. `retentionMet` holds an output's (Type, written) positions: a position's
+    contribution depends on them alone (the raw inputs, `Erase`, AdtDef and PrepareTypeStorage are fixed during the output's walk) and
+    only accumulates (`owned`, `retentionLimit`, a result OR-ed into the output's `held`), so a revisit adds nothing, BU-30's argument
+    for its struct and enum memo, whose `written` is null. Supersedes BU-30's "each struct or enum once per output".
+  - Evidence (against `937fd8148`): every corpus call's and function's retention (4,197) and every retention A5 requests while MIR is
+    built (68,982) print identically; the diagnostic and semantic (HIR, MIR) snapshots show no difference;
+    `RetentionTest.AHoldWalkVisitsEachPositionOnce` (Tuples eight wide through rc handles, fixed arrays, enum payloads, raw leaves)
+    times out on the base and runs in ms. Milestones 1, 20 and 33 (pinned, full JIT, interleaved): Bind and BuildMir within noise
+    (BuildMir minimum +1%, median +0.4%), cold BuildMir +568 to +760 B (the set's capacity), warm unchanged. Deleted:
+    `retentionPath`, three parameters, the path bookkeeping and Held's re-substitution through `StoredLayer`.
+  - Rejected: (b) one shared structure for Held, RetentionWalk/RetentionParts and VisitInlineLayout (one shape, three contracts and
+    states; a generic walker over Types is a utility without semantics; a summary flag cached at interning prunes but does not bound:
+    raw leaves); (c) a memo keyed by the path (one per leaf).
+  - Open (BU; pre-existing on `ece46cfa5`): O1 `RetentionWalk`/`RetentionParts` walk a contract's instantiated Types as trees (a
+    generic callee at `D_n<T_{n-1}>`: 56 ms at n = 20, 2^n + 2 visits); O2 `VisitInlineLayout` recurses into Tuples unremembered (Bind
+    10 to 12 s at n = 28); O3 the other component-recursive Binding walks (about 60) have no V16 DAG probe.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
