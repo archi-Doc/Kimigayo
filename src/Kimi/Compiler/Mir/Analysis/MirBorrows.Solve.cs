@@ -64,11 +64,12 @@ internal sealed partial class MirBorrows
         this.Work += this.sets.Bytes + this.sets.Scanned;
     }
 
-    // σ at the entry: a Loan-capable argument refers to storage the body does not own (Φ_E); the forward solve starts with the view not
-    // held (R4-M73).
+    // σ at the entry: a Loan-capable argument, and what storage the body does not own holds, refer to such storage (Φ_E; SPEC 15.6), so
+    // every value read through E carries Φ_E (R4-M120, B1); the forward solve starts with the view not held (R4-M73).
     private void Initial(ulong[] state)
     {
         state.AsSpan(0, this.holderCount).Clear();
+        state[Escaped] = (ulong)this.escapedSet;
         this.held = false;
         for (var i = 1; i < this.body.Locals.Length && this.body.Locals[i].Kind == MirLocalKind.Arg; i++)
         {

@@ -282,6 +282,71 @@ public sealed partial class MirBorrowsTest
                     inspect(res)
                 """));
 
+    // SPEC 15.6 (a raw pointer that reaches no holder reaches only storage the body does not own, where what is stored may be used after
+    // every point; condition 5; DECISIONS R4-M120's departure 1, B1): what that storage holds may refer to it, so a pointer read through a
+    // parameter reaches it from any local holder that keeps it, and a call storing x's Loan through the holder keeps it there: a raw local,
+    // a Tuple, and a Tuple beside a direct part (whose own Loan the call may store there too, SPEC 15.6.4's per-argument letter). Valid
+    // twins: the same holders with the pointer formed to a local holder that is dead after the call, and a value with no Loan of the body
+    // stored through the pointer read.
+    [Fact]
+    public void APointerReadFromStorageTheBodyDoesNotOwnReachesIt()
+        => Assert.Equal(
+            ["viaUniqLocal: x = 5", "viaUniqTuple: x = 5", "viaUniqMixed: x = 5", "viaUniqMixed: var w: ref/i32 = y@ref"],
+            Problems(RawShapes + """
+                func storeThrough(c: uniq/(raw/(ref/i32 during a)), x: ref/i32 during a)
+                    unsafe => Raw.initialize(c@follow, x)
+                func storeT(t: uniq/((raw/(ref/i32 during a), i32)), x: ref/i32 during a)
+                    unsafe => Raw.initialize(t@follow.0, x)
+                func storeM(t: uniq/((raw/(ref/i32 during a), uniq/(ref/i32 during a) during c)), x: ref/i32 during a)
+                    unsafe => Raw.initialize(t@follow.0, x)
+                func viaUniqLocal(u: uniq/(raw/i64))
+                    var x: i32 = 1
+                    var c2: raw/(ref/i32) = (u@follow)@raw/(ref/i32)
+                    storeThrough(c2@uniq, x@ref)
+                    x = 5
+                func viaUniqTuple(u: uniq/(raw/i64))
+                    var x: i32 = 1
+                    let c2: raw/(ref/i32) = (u@follow)@raw/(ref/i32)
+                    var t = (c2, 0)
+                    storeT(t@uniq, x@ref)
+                    x = 5
+                func viaUniqMixed(u: uniq/(raw/i64))
+                    var x: i32 = 1
+                    var y: i32 = 2
+                    var w: ref/i32 = y@ref
+                    let c2: raw/(ref/i32) = (u@follow)@raw/(ref/i32)
+                    var t = (c2, w@uniq)
+                    storeM(t@uniq, x@ref)
+                    x = 5
+                func formedLocal()
+                    var x: i32 = 1
+                    var v: i32 = 2
+                    var cell: ref/i32 = v@ref
+                    var c2 = cell@raw
+                    storeThrough(c2@uniq, x@ref)
+                    x = 5
+                func formedTuple()
+                    var x: i32 = 1
+                    var v: i32 = 2
+                    var cell: ref/i32 = v@ref
+                    var t = (cell@raw, 0)
+                    storeT(t@uniq, x@ref)
+                    x = 5
+                func formedMixed()
+                    var x: i32 = 1
+                    var y: i32 = 2
+                    var v: i32 = 3
+                    var w: ref/i32 = y@ref
+                    var cell: ref/i32 = v@ref
+                    var t = (cell@raw, w@uniq)
+                    storeM(t@uniq, x@ref)
+                    x = 5
+                func noLoan(u: uniq/(raw/i64), k: ref/i32)
+                    let c2: raw/(ref/i32) = (u@follow)@raw/(ref/i32)
+                    var t = (c2, 0)
+                    storeT(t@uniq, k)
+                """));
+
     // DECISIONS R4-M116 PQ-10 (B′ §4.3; registered for X-2): a Borrow of a `during self` layer's Place, or of a Tuple Place enclosing one,
     // and a Copy read of such a Tuple, are located Unsupported_Kd until the Loan records the layer's own-step entry; a Borrow of the holder
     // and a read of the layer through it are precise.

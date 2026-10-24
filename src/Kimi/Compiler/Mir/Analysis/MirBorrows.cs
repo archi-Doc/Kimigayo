@@ -30,17 +30,17 @@
 // Opaque site's value is {Φ_E}: it rests on a recorded error, so it carries none of its roots' Loans (R4-M70). A Loan exists per non-raw
 // Ref site, and per PairAcquire the view makes a Reborrow, in its Use's marked mode (E13 (4)), whose Place passes no shared borrow Deref
 // (E3), named by its whole Place; an address, after the Loans, names the holder a raw pointer addresses (SPEC 15.6 Addresses, R4-M116), as
-// a direct Loan does, and a value that may refer to storage the body does not own carries Φ_E where it is formed; access is syntactic, by
-// Place prefix. A check reads holders, never Loan ids: the holders live after the access but those it overwrites, E, and the
-// values the access takes (E13 (1): an operand's, its operation's operands' values up to it and roots after it in evaluation order; a
-// borrow's R2 parents and E5's seed; an observing destruction's value; another access's, the values it stores into a live holder, transit,
-// and E5's seed), closed through the holders their direct Loans name; an activation the operation's operands' values and its reservation
-// holder's seed, that holder left out; all from one gather per location. A two-phase Loan is shared only in its reservation holder, where a
-// write or destruction of a prefix of its Place reaches it (E1). Destroying a Move Path in place ends every Loan whose path it exactly
-// prefixes (E8), a whole static's included, after the checks and the transfer: the Loans are ordered by the Move Path of their Places'
-// longest inline prefixes (MirMoveData's pre-order), so those of a path's subtree are one run of ids. A Call that moves a pending slot
-// ends the Loans of its Move Path's subtree, a default's inspection Loans, before its plan and checks (R-a, R4-M96). A holder a direct
-// Loan names keeps its state at every head.
+// a direct Loan does, and a value that may refer to storage the body does not own carries Φ_E where it is formed, E's own state from the
+// entry; access is syntactic, by Place prefix. A check reads holders, never Loan ids: the holders live after the access but those it
+// overwrites, E, and the values the access takes (E13 (1): an operand's, its operation's operands' values up to it and roots after it in
+// evaluation order; a borrow's R2 parents and E5's seed; an observing destruction's value; another access's, the values it stores into a
+// live holder, transit, and E5's seed), closed through the holders their direct Loans name; an activation the operation's operands' values
+// and its reservation holder's seed, that holder left out; all from one gather per location. A two-phase Loan is shared only in its
+// reservation holder, where a write or destruction of a prefix of its Place reaches it (E1). Destroying a Move Path in place ends every
+// Loan whose path it exactly prefixes (E8), a whole static's included, after the checks and the transfer: the Loans are ordered by the Move
+// Path of their Places' longest inline prefixes (MirMoveData's pre-order), so those of a path's subtree are one run of ids. A Call that
+// moves a pending slot ends the Loans of its Move Path's subtree, a default's inspection Loans, before its plan and checks (R-a, R4-M96). A
+// holder a direct Loan names keeps its state at every head.
 // Must not read syntax or HIR, judge Origins, re-derive retention or Move Paths, intern projections, or copy the body per view.
 
 namespace Kimi.Compiler.Mir;

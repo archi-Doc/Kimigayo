@@ -124,7 +124,7 @@ internal sealed partial class MirBorrows
 
     // A step of W from a set (Writes): E where it carries Φ_E, and the holder each direct Loan or address names. A value that may refer to
     // storage the body does not own carries Φ_E where it is formed (an untied result or store, a raw pointer formed untracked, an integer's
-    // pointer, a parameter at entry), so a set naming nothing writes nothing.
+    // pointer, a parameter and E's own content at entry), so a set naming nothing writes nothing.
     private void Write(int set)
     {
         this.Work += this.sets.Count(set);
