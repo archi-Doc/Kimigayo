@@ -1,6 +1,7 @@
 # Closure Calls as Receiver Calls
 
-Status: adopted by the owner (2026-10-21, OQ-C1 (a), OQ-C2 (a); DECISIONS R4-M99); not integrated, not implemented. Date:
+Status: 取り込み済み (closed 2026-10-25): §2's sentence is in SPEC §15.8.2 with the owner's answers D1 and D2, and §15.6.5 and §7.7.4
+follow §5 (DECISIONS R4-M123); adopted by the owner (2026-10-21, OQ-C1 (a), OQ-C2 (a); DECISIONS R4-M99); not implemented (2c-D). Date:
 2026-10-21. Base: `dev` `217139ae`. Written by the R4 planning session on the owner's instruction (2026-10-21):
 「候補1（クロージャを受け手つき呼び出しとして定義）と候補3（派生失敗の定義）を、2c-D・2g-D の前に判断できるよう draft/Proposals に提案書として書いてください。」
 Revised after its independent review (`proposals-review.md` in the R4 planning session's notes, round 1: ACCEPT WITH FIXES), which
