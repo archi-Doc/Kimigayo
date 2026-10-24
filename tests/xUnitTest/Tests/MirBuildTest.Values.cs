@@ -18,10 +18,10 @@ public sealed partial class MirBuildTest
 {
     // Plan 6.2: a form without a building rule is one record at its location, however many times a body meets it (a defer body, built at
     // each way out of its scope), and an Opaque value naming the locals its syntax touches. A node the lexer or Binding rejected is a derived
-    // Opaque without a record (SPEC 23.1.2): Binding's Error, a use of a local whose declaration is an Error, and the Field initializer of a
-    // declaration Binding did not bind (a struct with a misplaced `length` slot), in each constructor. Building goes on after each. The
-    // unbuilt form is a position of a Type parameter, which PLAN G167 builds; its Opaque names the root of the position's value, built
-    // already (DECISIONS R5-M84).
+    // Opaque without a record (SPEC 23.1.2): Binding's Error, a use of a local whose rejected declaration has no Type (one with a Type is
+    // its local's, ARejectedDeclarationsLocalIsItsNamesOneStorage), and the Field initializer of a declaration Binding did not bind (a
+    // struct with a misplaced `length` slot), in each constructor. Building goes on after each. The unbuilt form is a position of a Type
+    // parameter, which PLAN G167 builds; its Opaque names the root of the position's value, built already (DECISIONS R5-M84).
     [Fact]
     public void UnsupportedFormsAreOpaqueAtOneRecord()
     {
@@ -333,6 +333,28 @@ public sealed partial class MirBuildTest
         Assert.All(opaques.Skip(1), x => Assert.Equal([located], x.Roots));
         Assert.DoesNotContain(update.Statements.ToArray(), x => x.Rvalue.Kind == MirRvalueKind.Ref && x.Rvalue.Place.Root == located);
         Assert.Single(update.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "chosen" });
+    }
+
+    // SPEC 6.5, 3.6, 23.1.2 (DECISIONS R4-M125): a local's declaration Binding rejected, whose symbol it typed, declares its local as a
+    // valid one does, which holds the declaration's derived value, and every use of the name is that one storage: its Borrow, its write
+    // and a capture's Borrow, with no record (fail-before: each use an Opaque in a temp of its own statement, the write derived whole and
+    // the capture a located Unsupported_Kd record).
+    [Fact]
+    public void ARejectedDeclarationsLocalIsItsNamesOneStorage()
+    {
+        var c = Compile("func f() -> i32\n    var h: i32 = \"s\"\n    let p = h@ref\n    h = 3\n    let g = func [h@ref] () => h@follow\n    return p@follow\n");
+        Assert.Equal([DiagnosticCode.TypeMismatch_Kd], c.Binding.Issues.Select(static x => x.Code));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records, static x => x.Subject.Module == 0);
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        var h = new MirPlace(Array.FindIndex(body.Locals.ToArray(), static x => x.Name == "h"));
+        Assert.Equal((MirLocalKind.Var, true), (body.Locals[h.Root].Kind, body.Locals[h.Root].Mutable));
+        var opaque = Assert.Single(Opaques(body));
+        Assert.Equal(("i32", h.Root), (opaque.Type, opaque.Root));
+        var statements = body.Statements.ToArray();
+        Assert.Equal(2, statements.Count(x => x.Rvalue.Kind == MirRvalueKind.Ref && x.Rvalue.Place == h));
+        Assert.Equal(2, statements.Count(x => x.Kind == MirStatementKind.Assign && x.Place == h));
     }
 
     // A body's Opaque values in order: their destination's Type and root, and the roots their sites name.

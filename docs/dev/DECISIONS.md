@@ -3447,6 +3447,29 @@ and migration obligations remain in force; no numeric cap changes are authorized
     acceptances of repair variants (review-p2r3 N12, C7, `fT`), pre-existing ledger differences; 2a-2's facts (the result in transit,
     a store's part class, a Loan's Borrow atom) and the bit's representation. The later SPEC session keeps RZ, G86, G159 (2), G158 (3),
     B 3.4's 15.4.2 gap and PLAN G160's N2.
+- **R4-M125 A local's declaration Binding rejected declares its local** (2026-10-25; unit G241, the R4 planning session's design B
+  after R4's triage, R5 agreeing to the builder site; PLAN G241, G103's "a name of an Error local" term) SPEC 6.5, 3.6, 23.1.2.
+  - Cause: the builder declared no local for a `let`/`var` Binding rejected (Op Error): `Statement` built its value into a statement
+    temp, and `Rejected`'s third term ("a name of a local whose declaration is an Error") made each use of the name a derived Opaque in
+    a temp of its own statement. One source local was N storages, each dead at its statement's end: a Borrow of the name met its temp's
+    StorageDead (a `ComparisonLoanConflict_Kd` at the name beside Binding's record), a second move, a write or update while borrowed
+    and a use before initialization touched no common storage (the twin's records lost), and a capture of it was a located
+    `Unsupported_Kd` record (`Closure`'s `Bound` miss). A5 and A1 were right for that MIR.
+  - Rule (`MirBuilder.Let`): a local's declaration declares its local whatever its outcome, so every use of the name is that one
+    storage; where Binding rejected the declaration, its initializer, which the HIR replaced, gives the declaration's derived value
+    (the Opaque the temp held, same site and roots), and without one the local stays uninitialized, as the valid twin's. Only a symbol
+    Binding typed declares one (the local's Type is the symbol's): a name of a rejected declaration without a Type has no Meaning and
+    stays derived per use by `Rejected`'s second term. The HIR contract is unchanged.
+  - Deleted: `Rejected`'s third term; its reach through `Values.cs`' Assign/CompoundAssign clause (a write to such a name is an ordinary
+    write; the clause stays for an Error target or one without a Type). An Opaque site that names such a local now names its root.
+  - Rejected: the publisher publishing such a declaration as Op Let over a folded initializer (R4-M109's fold extended: a second
+    meaning of Op Let for one form, in Binding's HIR files, changing R5-M63's kept positions); A5 dropping Loans on Opaque temps
+    (R4-M109; the lost records stay lost); extending the derived temp's lifetime (each use still a fresh temp); folding the Borrow of a
+    rejected name (one more case of an open family).
+  - Remaining: a static whose declaration Binding rejected stays a derived temp per use (`MirBuilder.Static`), the same shape,
+    unreachable for A1 and A5 until P42 (every static Borrow is Binding's `Unsupported_Kd`); its fix, a StaticInit body holding the
+    derived value under R4-M121's rules, is P42's. A rejected assignment to an uninitialized local now reaches A1's reads of an Opaque
+    site's roots (`UninitializedPlace_Kd` at the assignment and the next use), as with a valid declaration: PLAN G105's family.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
