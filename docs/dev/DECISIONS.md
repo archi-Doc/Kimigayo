@@ -3385,7 +3385,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     one reviewer (two designs and a review still cannot overlap); counting agents without a cap on heavy runs (the load, not the count,
     slows the machine).
 - **R4-M120 G160-4's 4b: A5's raw addresses** (2026-10-25; unit 4b of R4-M116's design B′ as amended, the planning session's rulings
-  PQ-1 to PQ-13; two departures in its last two bullets await the planning session's ruling)
+  PQ-1 to PQ-13; its two departures, the last two bullets, are the planning session's rulings of 2026-10-25 amending B′: W keeps "E
+  where the set carries Φ_E", and the untracked rule is narrowed to addresses and exclusive Loans, sound by SPEC 5.2.1 condition 3's
+  first and second limits)
   - Representation: an address is an entry of A5's Loan table with mode `Raw` after the group-ordered Loans, so no Loan rule, ending,
     candidate or bucket meets it (D19): a root's plain address for `P@raw` through no borrow, raw or Own step; an own-step entry per
     owning Place (the prefix of the last Own step, or the value whose `during self` layer a Place uses), with that Place's steps for 4c's
@@ -3404,8 +3406,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     pointee. The walk keeps the stored part it is inside; a raw layer and its part's inline Tuples bypass the per-(Type, mode) memo.
   - Φ_E where a value may refer to storage the body does not own: G160-2c's untied results (S2), a row with no input per
     `CallRetention.UntiedStores` input whose W receives {Φ_E} (R-B2), and the untracked rule (S3, PQ-2) at raw formation, at a layer's
-    read (on what `@raw` forms) and at a call result that may hold a raw pointer (`MirTypes.HoldsRaw`). Residual: a punned Loan-carrying
-    value in a Loan-free local stays in E, a Language error where it outlives the local.
+    read (on what `@raw` forms) and at a call result that may hold a raw pointer (`MirTypes.HoldsRaw`); and E's own state from the entry
+    (`MirBorrows.Solve.Initial`: what storage the body does not own holds may refer to such storage, SPEC 15.6), so every value read
+    from E carries Φ_E (B1). Residual: a punned Loan-carrying value in a Loan-free local stays in E, a Language error where it outlives
+    the local.
   - PQ-10: a located `Unsupported_Kd` at a non-raw Borrow of a layer's Place or of a Tuple or fixed-array Place enclosing one inline, and
     at a Copy or Move read of such an enclosing Place; a mark makes the view a producer (D5). Registered for X-2 (PD28); removal stage: a
     Loan records the layer's own-step entry and positions (R4-M117 item 6 states the meaning), when a program needs the form.
@@ -3413,19 +3417,25 @@ and migration obligations remain in force; no numeric cap changes are authorized
     valid). No `Raw.slice` row and no `MirDescriptors` change (PQ-4); A5 reads neither `RawMembers` nor `RawStep(raw)` (PQ-7).
   - Supersedes R4-M36's "a raw pointer … hold[s] none", R4-M73's `Raw` bullet (`MirWrites.Raw`), A3 E16's raw clause, R4-M93's r3, and
     BU-24's consumer of `RawMembers` (A5 reads none; `RawMembers(instance, …)` stays for P13's per-part guard, R4-M76).
-  - Departure 1, W: W keeps "E where the set carries Φ_E" and loses only `MirWrites.Raw`; B §5.4's "or names no holder" is not
-    adopted. As written it sent a store past an empty holder that passes the guard to E (`sharedOverExclusiveTwin`, documented valid,
-    became three Language errors; no ledger row differs), and its reason, a raw-holding holder that names nothing, is served by B′'s Φ_E
-    producers above (A-B3: a value that must reach E carries Φ_E).
-  - Departure 2, the untracked rule counts only a direct address or exclusive Loan naming a local that is no holder: a pointer formed
-    through a shared borrow writes nothing (SPEC 5.2.1 condition 3). As written, a shared Loan a call result carries in its content
-    (`[first@ref: a@ref]`'s key, `values@ref` of an `Array<i32>`) gave a Dictionary handle, an iterator or a UniqSlice Φ_E, so 8 of
-    bu23's 54 Dictionary-literal rows stayed and valid `sliceUniq` and `iterate` programs (8ac3a677bc2d, SPEC 22's example 123) erred.
+  - Departure 1, W (ruling): W keeps "E where the set carries Φ_E" and loses only `MirWrites.Raw`; B §5.4's "or names no holder" is
+    not adopted. As written it sent a store past an empty holder that passes the guard to E (`sharedOverExclusiveTwin`, documented
+    valid, became three Language errors; no ledger row differs) and misses a holder with a second, direct part; its reason, a
+    raw-holding holder that names nothing, is served by the Φ_E producers above (A-B3: a value that must reach E carries Φ_E), E's
+    own state among them. The final review found that producer missing (B1: a raw pointer read through a parameter and kept in a raw
+    local or a Tuple, with or without a second, direct part, reached nowhere when a call stored through the holder; dev erred on the
+    first two; SPEC 15.6 and 5.2.1 condition 5 require the error); the owner, 2026-10-25: 「(a) 表現で直す (推奨)」 (E's state
+    carries Φ_E from the entry).
+  - Departure 2, the untracked rule (ruling) counts only a direct address or exclusive Loan naming a local that is no holder: a pointer
+    formed through a shared borrow writes nothing (SPEC 5.2.1 condition 3). As written, a shared Loan a call result carries in its
+    content (`[first@ref: a@ref]`'s key, `values@ref` of an `Array<i32>`) gave a Dictionary handle, an iterator or a UniqSlice Φ_E, so 8
+    of bu23's 54 Dictionary-literal rows stayed and valid `sliceUniq` and `iterate` programs (8ac3a677bc2d, SPEC 22's example 123)
+    erred.
   - Ledger (mir Functional against dev 699ed0b44): −54 (all bu23's Dictionary-literal rows), +22: 16 PQ-10 (a5-pq10 and a5-p13's
     ConversionKoto), 4 held ends (an exclusive iteration over `[1 of uniq/P]`, a5-p13), D6's Callable fixture (a5-d6-callable, (d)) and
-    `hidden`'s `var v` (R-B2 through an untied holder, a5-new). Census: no problem. Rejected: B's W rule and the untracked rule as written
-    (above); the untracked test on a layer's content (every read of `b.data` after `b.push(y@ref)` would carry Φ_E). Unverified: the
-    Exclusive guard row on a Type-argument layer (no corpus program); cost beyond the V16 rows (measured in G160-5).
+    `hidden`'s `var v` (R-B2 through an untied holder, a5-new). B1's producer (E's state) changes no row: the full mir ledger on the fix
+    against the pre-fix head is 3,116 = 3,116. Census: no problem. Rejected: B's W rule and the untracked rule as written (above); the
+    untracked test on a layer's content (every read of `b.data` after `b.push(y@ref)` would carry Φ_E). Unverified: the Exclusive guard
+    row on a Type-argument layer (no corpus program); cost beyond the V16 rows (measured in G160-5).
 - **R4-M121 The MIR validator checks the builder's static contracts** (2026-10-24, R4 planning session; PLAN G191 and G157 (23)'s
   validator half; supersedes R5-M71's "whether the program has the static's initializer stays `StaticInit`'s null, a consumer's broken
   contract (F10), since the validator sees one body" and R5-M106's "a static Place its body ensures nowhere (the builder's contract,
