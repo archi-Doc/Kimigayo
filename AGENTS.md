@@ -47,7 +47,7 @@ SPEC correctness and the native O2 run-time and allocation guarantees are constr
 
 - A compiler allocation is allowed when it makes equivalent work faster or removes code at a reasonable memory cost; measure time, allocations and retained memory, and update the affected allocation regressions in the same commit.
 - Follow [COMPILER_ARCHITECTURE](docs/dev/COMPILER_ARCHITECTURE.md) for dependencies, closed vocabularies, canonical components, structure limits, stage gates and the migration freeze; review enforces them (DECISIONS CR-R1). New vocabulary entries, new or larger exceptions and postponed removal stages need owner approval recorded in the commit. Mechanical splitting, argument-only bags and renaming to evade a limit fail review.
-- At each milestone and stage exit, record area sizes, change hotspots and duplication candidates in `artifacts/benchmarks/`. Restructure a file changed by three consecutive units before its next change.
+- At each milestone and stage exit, record area sizes, change hotspots and duplication candidates in `artifacts/benchmarks/`; the planning session schedules restructurings from them (DECISIONS Q9).
 - Timing-only benchmarks stay in `src/Benchmark`. Measure equivalent workloads under fixed conditions, keep failed evidence and never add warm-up or relax native allocation assertions to pass.
 
 # Documentation

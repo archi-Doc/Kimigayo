@@ -57,11 +57,14 @@ public class ExternalOriginForwardingTest
     [InlineData("        child.value =", "        target.value = 99\n        child.value =")]
     [InlineData("            exit to selection ", "            first.value = 99\n            exit to selection ")]
     [InlineData("            exit to selection ", "            second.value = 99\n            exit to selection ")]
+    [InlineData("            exit to selection ", "            var region = first@ref\n            first.value = 99\n            exit to selection ")]
+    [InlineData("            exit to selection ", "            var region = second@ref\n            second.value = 99\n            exit to selection ")]
     public void RejectsConflictingAccess(string before, string after)
     {
         var c = MinimalEmissionTest.Analyze(Source().Replace(before, after, StringComparison.Ordinal));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Problems, issue => issue.Code.IsLoanConflict());
+        Assert.Contains(c.BuildMir().Problems.All.ToArray(), static issue => issue.Code.IsLoanConflict());
         Assert.False(c.Validate(out _));
     }
 
@@ -76,6 +79,38 @@ public class ExternalOriginForwardingTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Problems, issue => issue.Code.IsLoanConflict());
         Assert.False(c.Validate(out _));
+    }
+
+    // SPEC 15.6.3: possible call provenance overlaps individual meet constituents; it does not require either whole meet.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CallResultsKeepEachMeetConstituent(bool reverse)
+    {
+        var source = "struct Cell\n    public var value: i32 = 1\n" +
+            "struct Holder {source}\n    public let item: ref/Cell during source\n    public init(item: ref/Cell during source) => self.item = item\n" +
+            "func choose(first: ref/Holder, second: ref/Holder, flag: bool) -> ref/Cell during (first.source and second.source)\n    if flag => return first.item\n    return second.item\n" +
+            "func run(flag: bool)\n    var a = Cell.init()\n    var b = Cell.init()\n    var c = Cell.init()\n    var d = Cell.init()\n" +
+            "    let x = if flag => a@ref else => b@ref\n    let y = if flag => b@ref else => c@ref\n    let left = Holder.init(x)\n    let right = Holder.init(y)\n    var region = d@ref\n" +
+            "    let result = choose(left@ref, right@ref, flag)\n    let n = result.value\nrun(true)\nrun(false)";
+        if (reverse)
+        {
+            source = source.Replace("choose(left@ref, right@ref, flag)", "choose(right@ref, left@ref, flag)", StringComparison.Ordinal);
+        }
+
+        foreach (var owner in new[] { "a", "b", "c", "d" })
+        {
+            var c = MinimalEmissionTest.Analyze(source.Replace("    let n =", "    " + owner + ".value = 99\n    let n =", StringComparison.Ordinal));
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+            Assert.Equal(owner != "d", c.Problems.Any(static issue => issue.Code.IsLoanConflict()));
+            var problems = c.BuildMir().Problems.All.ToArray();
+            Assert.Equal(owner != "d", problems.Any(static issue => issue.Code.IsLoanConflict()));
+            if (owner == "d")
+            {
+                Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+                Assert.Empty(problems);
+            }
+        }
     }
 
     private static string Source() => Repository.ReadText("tests", "milestones", "Milestone16.kimi");

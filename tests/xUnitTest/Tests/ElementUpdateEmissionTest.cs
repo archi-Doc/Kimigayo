@@ -208,7 +208,7 @@ public class ElementUpdateEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         Assert.DoesNotContain(module.GetFunction(0).Instructions, x => x.Opcode is EmissionOpcode.StoreElement or EmissionOpcode.DestroyAggregate);
-        ScalarEmissionTest.EmitFixture("ElementUpdateDivergent" + name, source, string.Empty, timeoutMilliseconds: 300);
+        ScalarEmissionTest.EmitFixture("ElementUpdateDivergent" + name, source, string.Empty, observationMilliseconds: 300);
     }
 
     [Fact]

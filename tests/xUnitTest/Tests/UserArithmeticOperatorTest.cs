@@ -12,6 +12,74 @@ namespace XunitTest;
 
 public class UserArithmeticOperatorTest
 {
+    [Theory]
+    [InlineData("*", 2)]
+    [InlineData("+", 1)]
+    public void AnIndependentPointerProhibitionKeepsTheUnresolvedCounterpart(string op, int count)
+    {
+        var source = $"func f(p: raw/i32) => p {op} missing\npublic func main() => ()";
+        var compilation = CompilationTestHelper.ParseSuccess(source);
+        Assert.False(compilation.Bind().IsComplete);
+        Assert.Equal(count, compilation.Binding.Issues.Count);
+        Assert.Single(compilation.Binding.Issues, x => x.Code == DiagnosticCode.UnresolvedBinding_Kd);
+        if (count == 2)
+        {
+            var prohibition = Assert.Single(compilation.Binding.Issues, x => x.Code.ToString() == "OperatorNotDefined_Kd");
+            Assert.Equal($"p {op} missing", prohibition.Node.ToString());
+        }
+    }
+
+    [Theory]
+    [InlineData("bool")]
+    [InlineData("()")]
+    [InlineData("char")]
+    [InlineData("raw/i32")]
+    public void ARightOperandCannotDisproveAnUnknownLeftProvider(string type)
+    {
+        var source = $"func f(value: {type}) => missing + value\npublic func main() => ()";
+        var compilation = CompilationTestHelper.ParseSuccess(source);
+        Assert.False(compilation.Bind().IsComplete);
+        Assert.Equal(DiagnosticCode.UnresolvedBinding_Kd, Assert.Single(compilation.Binding.Issues).Code);
+    }
+
+    [Theory]
+    [InlineData("bool", "true")]
+    [InlineData("()", "()")]
+    [InlineData("char", "'a'")]
+    public void AnOrdinaryProviderCanTakeANonNumericCounterpart(string type, string value)
+    {
+        var source = $$"""
+            struct Value
+                Self is Addable<{{type}}>
+                associate Output is i32
+                public func added(self: ref/Self, right: ref/{{type}}) -> i32 => 1
+            let result = Value.init() + {{value}}
+            """;
+        var compilation = CompilationTestHelper.ParseSuccess(source);
+        Assert.True(compilation.Bind().IsComplete, MinimalEmissionTest.Describe(compilation, null));
+        Assert.Empty(compilation.Binding.Issues);
+    }
+
+    [Theory]
+    [InlineData("Addable", "added", "+")]
+    [InlineData("RemainderProvider", "remainder", "%")]
+    public void SelectedProvidersKeepTheirOwnGenericRequirement(string contract, string method, string op)
+    {
+        var source = $$"""
+            struct Value
+                Self is {{contract}}<i32>
+                associate Output is i32
+                public func {{method}}(self: ref/Self, right: ref/i32) -> i32 => 1
+            func apply<T>(left: ref/T, right: ref/i32) -> T.({{contract}}<i32>).Output
+                T is {{contract}}<i32>
+                return left {{op}} right
+            let result = Value.init() {{op}} 2
+            """;
+        var compilation = CompilationTestHelper.ParseSuccess(source);
+        Assert.True(compilation.Bind().IsComplete, MinimalEmissionTest.Describe(compilation, null));
+        Assert.Empty(compilation.Binding.Issues);
+    }
+
     private const string Declarations = """
         struct Value
             Self is Addable<i32>
@@ -256,6 +324,7 @@ public class UserArithmeticOperatorTest
         var original = Assert.Single(c.Kotonoha.RootKoto.NestedContainers.OfType<StructKoto>());
         var donor = MinimalEmissionTest.Analyze("struct Value\n    public let value: i32 = 40\nlet value = Value.init()");
         var changed = Assert.Single(donor.Kotonoha.RootKoto.NestedContainers.OfType<StructKoto>());
+        ParseTestHelper.Detach(changed, new GroupKoto(changed.CodeContext, default, default));
         Assert.True(KotoHelper.Replace(original.Parent!, original, changed));
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.ArithmeticSelection_Kd);

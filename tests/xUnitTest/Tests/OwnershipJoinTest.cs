@@ -85,13 +85,22 @@ public class OwnershipJoinTest
 
     [Theory]
     [InlineData("ref/Cell during static", "a@ref", "b@ref")]
-    [InlineData("ref/Cell", "a@ref", "b@uniq")]
+    [InlineData("uniq/Cell", "a@uniq", "b@ref")]
     [InlineData("ref/Cell", "a@ref", "true")]
     public void BorrowJoinCannotChangeItsContract(string annotation, string first, string second)
     {
         var c = MinimalEmissionTest.Analyze(Pair + "    let selected: " + annotation + " = if c => " + first + " else => " + second + "\ninspect(true)");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Validate(out _));
+    }
+
+    // SPEC 10.2, 12.3.1: a fixed shared result adapts each source, including a written exclusive Borrow, without strengthening it.
+    [Fact]
+    public void ASharedExpectedResultReborrowsAnExclusiveSource()
+    {
+        var source = Pair + "    a.value = 1\n    b.value = 2\n    let selected: ref/Cell = if c => a@ref else => b@uniq\n" +
+            "    require selected.value == (if c => 1 else => 2) else => $abort(\"selection\")\ninspect(true)\ninspect(false)";
+        ScalarEmissionTest.EmitFixture("OwnershipJoinSharedExpected", source, string.Empty);
     }
 
     // SPEC 14.9.2, 15.6.1: a join of a body-local Borrow with a fixed source waits for every source and takes their meet, so
@@ -102,6 +111,13 @@ public class OwnershipJoinTest
     [InlineData("Annotated", "let r: ref/i32 = if c => n@ref else => z", "5\n")]
     [InlineData("Match", "let r = match c\n        true => n@ref\n        false => z", "5\n")]
     [InlineData("Label", "let r = label pick: do\n        if c\n            exit to pick n@ref\n        exit to pick z", "5\n")]
+    [InlineData("BareIf", "let r: ref/i32 = if c => n else => z", "5\n")]
+    [InlineData("BareIfReversed", "let r: ref/i32 = if c => z else => n", "1\n")]
+    [InlineData("BareMatch", "let r: ref/i32 = match c\n        true => n\n        false => z", "5\n")]
+    [InlineData("BareDo", "let r: ref/i32 = label pick: do\n        if c => exit to pick n\n        exit to pick z", "5\n")]
+    [InlineData("BareLoop", "let r: ref/i32 = loop\n        if c => exit n\n        exit z", "5\n")]
+    [InlineData("BareMutable", "var r: ref/i32 = if c => n else => z", "5\n")]
+    [InlineData("BareAssignment", "var r = z\n    r = if c => n else => z", "5\n")]
     public void ALocalBorrowJoinsAFixedSourceThroughTheMeet(string name, string join, string stdout)
     {
         var source = "func pick(c: bool, z: ref/i32) -> i32\n    let n = 5\n    " + join + "\n    return r@follow\nlet z = 1\nConsole.writeLine(\"\\(pick(true, z@ref))\")";

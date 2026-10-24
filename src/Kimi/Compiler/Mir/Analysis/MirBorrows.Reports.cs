@@ -5,8 +5,8 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Mir;
 
 // A5's problems (A3 5's A6 table, 6.4; DECISIONS R4-M57, R5-M23, R4-M92, R4-M97, R4-M98): each problem recorded through MirReport under
-// its requirement with its code and facts, whose codes and sites MirBorrows.Witnesses gives: the Loan's or candidate's anchor, its witness
-// (a holder's next use in its chain, the location for a value an access takes, a transit value's or E's store; none for a destruction's own
+// its requirement with its code and facts, which MirBorrows.Witnesses builds: the Loan's or candidate's anchor, its witness (a holder's
+// next use in its chain, the location for a value an access takes, a transit value's or E's store; none for a destruction's own
 // hold, R3), an activation's reservation, the static Field an effect met and, inside an inline default copy, the default's operation
 // (Evaluated) with the outermost omitting call as subject (D13); a located Unsupported_Kd where the stratum classifies nothing, and in a
 // held view at every Loan problem's subject (P13's interim, R4-M73, until the guard reads each part). Every Loan-problem producer records
@@ -15,8 +15,6 @@ namespace Kimi.Compiler.Mir;
 // Must not decide a conflict (MirBorrows.Checks), derive a requirement from a code, or apply a derived-problem rule (MirReport's).
 internal sealed partial class MirBorrows
 {
-    private readonly MirFact[] facts = new MirFact[5];
-
     // A conflicting candidate's problem: its Loan's anchor, and its witness (E13 (6)): a holder it was found live in (for an activation, other
     // than its own), else the location, whose operation uses the value that carries it; and the static Field an effect met (R4-M92).
     private void Report(DiagnosticCode code, int candidate, int taking, MirLocation at, int reservation, MirFact? effect)
@@ -27,43 +25,12 @@ internal sealed partial class MirBorrows
         this.Report(code, this.Site(found.Loan), live ? tags.Via : Taken, at, reservation, effect);
     }
 
-    // A Loan problem at a location with its facts (A3 6.4): the anchor of the Loan, guard candidate or destruction; its witness, a holder's
-    // next use (none when that lies in a later chain), from the location itself for a reservation's check set, the location for a value it
-    // takes, a transit value's or E's store, or none (None: a destruction's own hold, which no value carries); the reservation's anchor; the
-    // static Field an effect met (R4-M92); and last, inside an inline default copy, the default's operation, at the omitting call (D13).
+    // A Loan problem at a location (A3 6.4): its subject and facts as MirBorrows.Witnesses builds them, recorded under the four Loan codes'
+    // requirement.
     private void Report(DiagnosticCode code, SourceRef anchor, int via, MirLocation at, int reservation, MirFact? effect)
     {
-        var (operation, from) = (this.Subject(at), reservation >= 0 ? at : at with { Index = at.Index + 1 });
-        SourceRef? witness = via == None ? null : operation;
-        if (via > Escaped)
-        {
-            witness = this.NextUse(via, from);
-        }
-
-        var count = 0;
-        this.facts[count++] = new(MirFactKind.Anchor, anchor);
-        if (witness is { } site)
-        {
-            this.facts[count++] = new(via > Escaped || via == Taken ? MirFactKind.Use : MirFactKind.Store, site);
-        }
-
-        if (reservation >= 0)
-        {
-            this.facts[count++] = new(MirFactKind.Reservation, this.Site(reservation));
-        }
-
-        if (effect is { } met)
-        {
-            this.facts[count++] = met;
-        }
-
-        var call = this.body.OmittingCall(this.Source(at).Scope);
-        if (call is not null)
-        {
-            this.facts[count++] = new(MirFactKind.Evaluated, operation);
-        }
-
-        this.Record(code, OwnershipRequirement.ComparisonLoanConflict, call ?? operation, this.facts.AsSpan(0, count)); // The four Loan codes' requirement.
+        var (subject, count) = this.Facts(anchor, via, at, reservation, effect);
+        this.Record(code, OwnershipRequirement.ComparisonLoanConflict, subject, this.facts.AsSpan(0, count));
     }
 
     // A problem with its facts (D7, R4-M98): in a held view (R4-M73) the located Unsupported_Kd at its subject instead.

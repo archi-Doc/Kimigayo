@@ -98,6 +98,7 @@ public class FloatLiteralExpressionTest(ITestOutputHelper output)
         {
             var donor = MinimalEmissionTest.Analyze(Program.Replace("1.0 + 1.0", expression, StringComparison.Ordinal));
             var replacement = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<BinaryKoto>().Single();
+            ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
             Assert.True(KotoHelper.Replace(operation.Parent!, operation, replacement));
             Assert.Equal(expression == "1.0 + 1.0", c.Bind().IsComplete);
             operation = replacement;

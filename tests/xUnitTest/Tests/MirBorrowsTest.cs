@@ -2582,13 +2582,13 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     private static MirProgram Analyze(Compilation c) => AnalyzeUnsupported(c, []);
 
     // A5 over a program whose only Binding records are the located Unsupported_Kd of its Borrows of static Places, which Binding reports so
-    // until P42 (R4-M90 PQ-1, DECISIONS BU-25), at the Borrows (an implicit one's operand) whose texts the test lists once each.
+    // until P42 (R4-M90 PQ-1, DECISIONS BU-25), at the Borrows (an implicit one's operand) whose texts the test lists once per Borrow.
     private static MirProgram AnalyzeUnsupported(Compilation c, string[] borrows)
     {
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         Assert.All(c.Binding.Issues, static x => Assert.Equal(DiagnosticCode.Unsupported_Kd, x.Code));
-        Assert.Equal(borrows, c.Binding.Issues.Select(static x => $"{x.Node}").Distinct().Order(StringComparer.Ordinal));
+        Assert.Equal(borrows.Order(StringComparer.Ordinal), c.Binding.Issues.Select(static x => $"{x.Node}").Order(StringComparer.Ordinal));
         new Stratum(c.Types).Run(program);
         return program;
     }

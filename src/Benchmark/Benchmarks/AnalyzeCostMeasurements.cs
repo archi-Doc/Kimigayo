@@ -12,7 +12,7 @@ namespace Benchmark;
 // compiler pipeline's stages 2 to 4) and a warm Analyze, the same compilation rebound without an edit and analyzed again, as an LSP
 // server repeats it. MIR code generation ("sel") adds the instance collector to Analyze. Retained memory is the managed heap after full
 // collections with the compilation alive: after its first check, and the growth over its warm Analyzes.
-internal static class AnalyzeCostMeasurements
+internal static partial class AnalyzeCostMeasurements
 {
     private const int Warmups = 4;
     private const int Samples = 7;

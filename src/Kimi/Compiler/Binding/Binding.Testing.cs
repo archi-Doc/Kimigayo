@@ -51,6 +51,13 @@ public sealed partial class Binding
         return true;
     }
 
+    private void IndexInvalidTestAttribute(AttributeKoto attribute)
+    {
+        attribute.BindingFailure = BindingFailure.None;
+        this.Fail(attribute, BindingFailure.InvalidTestDefinition);
+        this.nodes.Add(attribute);
+    }
+
     private BoundType? BindVerification(TestVerificationKoto node, BindingScope scope)
     {
         var valid = TestDefinition.IsTestOnly(node) && scope.Function is { IsGenerated: false };

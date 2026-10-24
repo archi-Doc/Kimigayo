@@ -257,7 +257,7 @@ public class ReferenceEmissionTest
         var source = argument
             ? "func test(a: ref/string, flag: bool) -> bool => flag\nfunc forever() -> bool\n    loop => ()\nlet a = \"held\"\ntest(a, forever())"
             : "func forever(a: ref/string) -> Never\n    loop => ()\nlet a = \"held\"\nforever(a)";
-        var ir = ScalarEmissionTest.EmitFixture("ReferenceDivergent" + argument, source, string.Empty, timeoutMilliseconds: 300);
+        var ir = ScalarEmissionTest.EmitFixture("ReferenceDivergent" + argument, source, string.Empty, observationMilliseconds: 300);
         GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 

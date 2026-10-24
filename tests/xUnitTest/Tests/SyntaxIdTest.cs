@@ -8,7 +8,7 @@ namespace XunitTest;
 
 /// <summary>SyntaxIds: each module numbers the nodes reachable from its root densely in pre-order at the start of
 /// a pass that follows a parse or an edit, and a node outside the tree takes the next id at its first semantic write.</summary>
-public class SyntaxIdTest
+public partial class SyntaxIdTest
 {
     // A struct with a synthesized constructor, a try over an Option (selected while binding) and formatting, so Binding synthesizes nodes.
     private const string Source =
@@ -78,6 +78,7 @@ public class SyntaxIdTest
         var statement = Statement(c, "p");
         var removed = PreOrder(statement);
         var replacement = Statement(CompilationTestHelper.Parse(Source, "Program.kimi"), "p");
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.All(PreOrder(replacement), x => Assert.True(x.SyntaxOwner is null && x.SyntaxId == 0));
         Assert.True(KotoHelper.Replace(statement.Parent!, statement, replacement));
         Assert.NotEqual(version, table.Version);
@@ -122,16 +123,17 @@ public class SyntaxIdTest
     [Fact]
     public void RenumberingMovesEachRowWithItsNode()
     {
-        // A larger statement of another compilation replaces one: the nodes after it take new ids, the transplanted ones bring
-        // their rows from the donor's table, and a parsed node that left the tree loses its row; renumbering drops its plan row, so
+        // A larger statement from the same module replaces one: the nodes after it take new ids and keep their rows; a parsed
+        // node that left the tree loses its row. Renumbering drops its plan row, so
         // the plan rows are exactly those of the nodes that stay (the HIR publisher's rows, such as a number literal's Folded, included).
-        var c = MinimalEmissionTest.Analyze(Source);
+        var c = MinimalEmissionTest.Analyze(Source + "let replacement = (1 + 2) * 3\n");
         var table = c.Kotonoha.Syntax;
         var statement = Statement(c, "p");
         var removed = new HashSet<Koto>(PreOrder(statement), ReferenceEqualityComparer.Instance);
-        var donor = Statement(MinimalEmissionTest.Analyze("let p = (1 + 2) * 3\n"), "p");
+        var donor = Statement(c, "replacement");
+        ParseTestHelper.Detach(donor, new CodeBlockKoto(donor.CodeContext));
         Assert.True(KotoHelper.Replace(statement.Parent!, statement, donor));
-        var nodes = table.Nodes[1..].ToArray().Concat(PreOrder(donor)).Select(x => x!).ToArray();
+        var nodes = table.Nodes[1..].ToArray().Select(x => x!).ToArray();
         var (facts, ids) = (nodes.Select(Facts).ToArray(), nodes.Select(x => x.SyntaxId).ToArray());
         Assert.NotEqual(default, Facts(statement));
         Assert.NotEqual(default, Facts(donor));
@@ -170,6 +172,7 @@ public class SyntaxIdTest
         var donorCompilation = MinimalEmissionTest.Analyze(Source);
         var donorTable = donorCompilation.Kotonoha.Syntax;
         var donor = Statement(donorCompilation, "p");
+        ParseTestHelper.Detach(donor, new CodeBlockKoto(donor.CodeContext));
         var donorIds = PreOrder(donor).Select(x => x.SyntaxId).ToArray();
         Assert.All(PreOrder(donor), x => Assert.Same(donorTable, x.SyntaxOwner));
 

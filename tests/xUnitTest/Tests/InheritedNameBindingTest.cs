@@ -95,6 +95,7 @@ public class InheritedNameBindingTest
         var original = parent.Members.OfType<FunctionKoto>().Single();
         var donor = MinimalEmissionTest.Analyze(source.Replace("private func", "public func", StringComparison.Ordinal));
         var replacement = donor.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Base").Members.OfType<FunctionKoto>().Single();
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(parent, original, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.True(KotoHelper.Replace(parent, replacement, original));

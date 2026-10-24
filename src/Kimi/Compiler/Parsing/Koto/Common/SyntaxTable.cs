@@ -2,7 +2,7 @@
 
 // Owns module-local dense syntax identity and semantic-column capacity.
 // Input: parsed children and Binding's synthetic nodes. Output: SyntaxIds and their indexed storage.
-// Parsed nodes use pre-order ids; zero means no node; renumbering moves semantic rows with their nodes.
+// Parsed nodes use pre-order ids; zero means no node; renumbering moves only this module's semantic rows with their nodes.
 // Must not decide Binding facts or let consumers assign independent ids.
 
 using System.Buffers;
@@ -21,9 +21,9 @@ namespace Kimi.Compiler.Parsing;
 /// <remarks>
 /// Binding numbers the tree at the start of a pass, and only when <see cref="Version"/> changed: parsing into the module and
 /// every edit outside Binding change it, Binding's own normalization does not, so a warm rebind keeps every id. Renumbering keeps
-/// the ids of nodes outside the tree after the reachable range in their relative order, takes over the nodes of a subtree that
-/// another module numbered, and clears the id of a parsed node that left the tree; an id the table owns always names its node.
-/// Each node's row of <see cref="Hir"/> moves with it, from another module's table too, and a cleared node's row is dropped.
+/// the ids of nodes outside the tree after the reachable range in their relative order and clears the id of a parsed node that
+/// left the tree; an id the table owns always names its node. Attachment clears foreign ids before numbering.
+/// A node's row of <see cref="Hir"/> moves within this table only; another module's facts and plans are rebuilt by Binding.
 /// </remarks>
 public sealed class SyntaxTable
 {
@@ -57,7 +57,7 @@ public sealed class SyntaxTable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static int EnsureId(Koto node)
     {
-        if (node.SyntaxOwner is null)
+        if (!ReferenceEquals(node.SyntaxOwner, node.Kotonoha.Syntax))
         {
             node.Kotonoha.Syntax.Allocate(node);
         }
@@ -149,7 +149,7 @@ public sealed class SyntaxTable
         }
 
         // The walk fills a pooled buffer, so the table keeps one array per column: the tree, then room for the nodes outside it.
-        // Each row follows its node from the table that held it, this one before renumbering included.
+        // A row follows its node only within this table. Foreign semantic state cannot cross a module boundary.
         internal int Run(Koto root, int previousCount, int room)
         {
             this.walked = ArrayPool<Walked>.Shared.Rent(Math.Max(256, previousCount + 1));
@@ -163,7 +163,10 @@ public sealed class SyntaxTable
             {
                 var (node, owner, previous) = this.walked[id];
                 nodes[id] = node;
-                owner?.Hir.Move(previous, ref hir, id);
+                if (ReferenceEquals(owner, table))
+                {
+                    table.Hir.Move(previous, ref hir, id);
+                }
             }
 
             (table.nodes, table.Hir) = (nodes, hir);

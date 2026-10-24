@@ -4,6 +4,7 @@ using Kimi;
 using Kimi.Checking;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Kimi.Lsp;
 using Xunit;
 
@@ -12,15 +13,31 @@ namespace XunitTest;
 public class VirtualOverrideBindingTest(ITestOutputHelper output)
 {
     [Theory]
-    [InlineData("", "override func read(self: objref/Self) -> i32 => 2")]
-    [InlineData("public func read(self: objref/Self) -> i32 => 1", "override func read(self: objref/Self) -> i32 => 2")]
-    [InlineData("public virtual func read(self: objref/Self, n: i32) -> i32 => n", "override func read(self: objref/Self, n: bool) -> i32 => 2")]
-    public void AnOverrideNeedsOneMatchingVirtualTarget(string original, string implementation)
+    [InlineData("", "override func read(self: objref/Self) -> i32 => 2", "NoInheritedGroup")]
+    [InlineData("public func read(self: objref/Self) -> i32 => 1", "override func read(self: objref/Self) -> i32 => 2", "NoMatchingInputs")]
+    [InlineData("public virtual func read(self: objref/Self, n: i32) -> i32 => n", "override func read(self: objref/Self, n: bool) -> i32 => 2", "NoMatchingInputs")]
+    public void AnOverrideNeedsOneMatchingVirtualTarget(string original, string implementation, string cause)
     {
-        var c = MinimalEmissionTest.Analyze("open struct Base\n    " + (original.Length == 0 ? "public func other() => ()" : original) + "\nstruct Derived : Base\n    " + implementation + "\n()");
+        var source = "open struct Base\n    " + (original.Length == 0 ? "public func other() => ()" : original) + "\nstruct Derived : Base\n    " + implementation + "\n()";
+        var c = MinimalEmissionTest.Analyze(source);
         c.Binding.ReportDiagnostics();
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "MissingOverrideTarget_Kd");
+        var record = Assert.Single(c.Diagnostics.Finalize().Diagnostics, x => x.Code == "MissingOverrideTarget_Kd");
+        Assert.Equal(new DiagnosticValue("cause", DiagnosticValueKind.Enumeration, cause), Assert.Single(record.Reason!));
+        Assert.Equal(source.LastIndexOf("override", StringComparison.Ordinal), record.Span!.Value.Start);
         Assert.False(c.WriteIr(TextWriter.Null, out _));
+    }
+
+    [Fact]
+    public void AnOverrideWithoutABaseRetainsItsCauseAndLocation()
+    {
+        const string Source = "struct Derived\n    override func read(self: objref/Self) -> i32 => 2\n()";
+        var c = MinimalEmissionTest.Analyze(Source);
+        c.Binding.ReportDiagnostics();
+        var record = Assert.Single(c.Diagnostics.Finalize().Diagnostics, x => x.Code == "MissingOverrideTarget_Kd");
+        Assert.Equal(new DiagnosticValue("cause", DiagnosticValueKind.Enumeration, "NoBase"), Assert.Single(record.Reason!));
+        Assert.Equal(Source.IndexOf("override", StringComparison.Ordinal), record.Span!.Value.Start);
+        Assert.Contains("no base", record.Note!, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -29,7 +46,10 @@ public class VirtualOverrideBindingTest(ITestOutputHelper output)
         const string Source = "open struct Base<T>\n    public virtual func read(self: objref/Self, value: ref/T) -> i32 => 1\n    public virtual func read(self: objref/Self, value: ref/i32) -> i32 => 2\nstruct Derived : Base<i32>\n    override func read(self: objref/Self, value: ref/i32) -> i32 => 3\n()";
         var c = MinimalEmissionTest.Analyze(Source);
         c.Binding.ReportDiagnostics();
-        Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "AmbiguousOverrideTarget_Kd");
+        var record = Assert.Single(c.Diagnostics.Finalize().Diagnostics, x => x.Code == "AmbiguousOverrideTarget_Kd");
+        Assert.Equal(new DiagnosticValue("cause", DiagnosticValueKind.Enumeration, "AmbiguousInputs"), Assert.Single(record.Reason!));
+        Assert.Equal(2, record.Related!.Length);
+        Assert.Equal("override", Assert.Single(TestDiagnostics.Of(c), x => x.Code == record.Code).Text);
     }
 
     [Theory]
@@ -40,7 +60,10 @@ public class VirtualOverrideBindingTest(ITestOutputHelper output)
         const string Source = "open struct Base\n    public virtual func read(self: objref/Self) -> i32 => 1\nstruct Derived : Base\n    override func read(self: objref/Self) -> i32 => 2\nstruct Derived\n    override func read(self: objref/Self) -> i32 => 3\n()";
         var c = MinimalEmissionTest.Analyze(generic ? Source.Replace("struct Base", "struct Base<T>", StringComparison.Ordinal).Replace(": Base", ": Base<i32>", StringComparison.Ordinal) : Source);
         c.Binding.ReportDiagnostics();
-        Assert.Single(TestDiagnostics.Of(c), x => x.Code == "DuplicateOverride_Kd");
+        var record = Assert.Single(c.Diagnostics.Finalize().Diagnostics, x => x.Code == "DuplicateOverride_Kd");
+        Assert.Equal(new DiagnosticValue("cause", DiagnosticValueKind.Enumeration, "DuplicateSlot"), Assert.Single(record.Reason!));
+        Assert.Equal(2, record.Related!.Length);
+        Assert.Equal("override", Assert.Single(TestDiagnostics.Of(c), x => x.Code == record.Code).Text);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.DuplicateBinding_Kd);
     }
 
@@ -77,15 +100,17 @@ public class VirtualOverrideBindingTest(ITestOutputHelper output)
     }
 
     [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void MatchingReusesStorageWithoutRepeatedAllocation()
+    [Theory]
+    [InlineData("i32", true)]
+    [InlineData("i64", false)]
+    public void MatchingReusesStorageWithoutRepeatedAllocation(string result, bool accepted)
     {
         const string Source = "open struct Base<T>\n    public virtual func read(self: objref/Self, value: ref/T) -> i32 => 1\nstruct Derived : Base<i32>\n    override func read(self: objref/Self, value: ref/i32) -> i32 => 2\n()";
-        var c = MinimalEmissionTest.Analyze(Source);
+        var c = MinimalEmissionTest.Analyze(Source.Replace("-> i32 => 2", "-> " + result + " => 2", StringComparison.Ordinal));
         var complete = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete == accepted));
         Assert.True(complete);
-        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(accepted ? 0 : 1, c.Binding.Issues.Count);
     }
 
     [Fact]
@@ -95,14 +120,30 @@ public class VirtualOverrideBindingTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(Source);
         var implementation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsOverride);
         Assert.True(c.Binding.TryGetVirtualOverride(implementation, out _));
-        var donor = MinimalEmissionTest.Analyze(Source.Replace("-> i32 => 2", "-> i64 => 2", StringComparison.Ordinal));
-        var changed = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsOverride);
-        Assert.True(KotoHelper.Replace(implementation, implementation.ReturnType!, changed.ReturnType!));
-        Assert.False(c.Binding.TryGetVirtualOverride(implementation, out _));
-        Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.OverrideContractMismatch_Kd);
-        Assert.True(c.Binding.TryGetVirtualOverride(implementation, out var selection));
-        Assert.Same(BoundType.I32, selection.Slot.Original.SymbolOf()!.Type);
+        foreach (var type in new[] { "i64", "i16", "i32" })
+        {
+            var donor = MinimalEmissionTest.Analyze(Source.Replace("-> i32 => 2", "-> " + type + " => 2", StringComparison.Ordinal));
+            var changed = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsOverride);
+            var replacement = ParseTestHelper.Detach(changed.ReturnType!, new CodeBlockKoto(implementation.CodeContext));
+            Assert.True(KotoHelper.Replace(implementation, implementation.ReturnType!, replacement));
+            Assert.False(c.Binding.TryGetVirtualOverride(implementation, out _));
+            Assert.Equal(type == "i32", c.Bind().IsComplete);
+            c.Binding.ReportDiagnostics();
+            var records = c.Diagnostics.Finalize().Diagnostics.Where(x => x.Code == "OverrideContractMismatch_Kd");
+            if (type == "i32")
+            {
+                Assert.Empty(records);
+            }
+            else
+            {
+                var record = Assert.Single(records);
+                Assert.Equal(new DiagnosticValue("actual", DiagnosticValueKind.Text, type), record.Reason![1]);
+                Assert.Equal(new DiagnosticValue("cause", DiagnosticValueKind.Enumeration, "ResultType"), record.Reason[2]);
+            }
+
+            Assert.True(c.Binding.TryGetVirtualOverride(implementation, out var selection));
+            Assert.Same(BoundType.I32, selection.Slot.Original.SymbolOf()!.Type);
+        }
     }
 
     [Theory]
@@ -122,6 +163,18 @@ public class VirtualOverrideBindingTest(ITestOutputHelper output)
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var record = Assert.Single(result.Diagnostics, x => x.Code == diagnostic.Code);
+        Assert.Equal(new DiagnosticValue("expected", DiagnosticValueKind.Text, required), record.Reason![0]);
+        Assert.Equal(new DiagnosticValue("actual", DiagnosticValueKind.Text, actual), record.Reason[1]);
+        Assert.Equal(new DiagnosticValue("cause", DiagnosticValueKind.Enumeration, input.StartsWith("different", StringComparison.Ordinal) ? "ExternalName" : "ResultType"), record.Reason[2]);
+        if (input.StartsWith("different", StringComparison.Ordinal))
+        {
+            Assert.Equal(new DiagnosticValue("parameter", DiagnosticValueKind.Number, "1"), record.Reason[3]);
+        }
+        else
+        {
+            Assert.Equal(3, record.Reason.Length);
+        }
+
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains(required, console.Text, StringComparison.Ordinal);
@@ -135,6 +188,46 @@ public class VirtualOverrideBindingTest(ITestOutputHelper output)
             Assert.Contains(required, sent.Message, StringComparison.Ordinal);
             Assert.Contains(actual, sent.Message, StringComparison.Ordinal);
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
+        }
+    }
+
+    [Fact]
+    public void LongResultTypesKeepBothDifferencesInCliAndLsp()
+    {
+        var expected = "i32";
+        var actual = "i64";
+        for (var i = 0; i < 5; i++)
+        {
+            expected = "ContainerWithLongSharedName<" + expected + ">";
+            actual = "ContainerWithLongSharedName<" + actual + ">";
+        }
+
+        var source = "struct ContainerWithLongSharedName<T>\nopen struct Base\n    public virtual func read(self: objref/Self) -> " + expected + " => $abort(\"unreachable\")\nstruct Derived : Base\n    override func read(self: objref/Self) -> " + actual + " => $abort(\"unreachable\")\n()";
+        var path = Path.GetFullPath("long-override-types.kimi");
+        var c = MinimalEmissionTest.Analyze(source, path);
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
+        var result = c.Diagnostics.Finalize();
+        var record = Assert.Single(result.Diagnostics, x => x.Code == "OverrideContractMismatch_Kd");
+        Assert.Equal(["expected", "actual", "cause"], record.Reason!.Select(x => x.Name));
+        Assert.All(record.Reason!.Take(2), x => Assert.True(x.Elided));
+        Assert.Contains("i32", record.Reason![0].Value, StringComparison.Ordinal);
+        Assert.Contains("i64", record.Reason[1].Value, StringComparison.Ordinal);
+        Assert.Equal(source.LastIndexOf(actual, StringComparison.Ordinal), record.Span!.Value.Start);
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(result, string.Empty);
+        Assert.Contains(record.Label!, console.Text, StringComparison.Ordinal);
+        Assert.Contains("i32", console.Text, StringComparison.Ordinal);
+        Assert.Contains("i64", console.Text, StringComparison.Ordinal);
+        var identity = SourceIdentity.FromPath(path);
+        foreach (var related in new[] { false, true })
+        {
+            var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, related)[identity]);
+            Assert.Equal(record.Display!.Range, sent.Range);
+            Assert.Contains(record.Label!, sent.Message, StringComparison.Ordinal);
+            Assert.Contains("i32", sent.Message, StringComparison.Ordinal);
+            Assert.Contains("i64", sent.Message, StringComparison.Ordinal);
         }
     }
 }

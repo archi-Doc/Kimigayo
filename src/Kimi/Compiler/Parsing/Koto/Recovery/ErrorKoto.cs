@@ -13,8 +13,8 @@ public sealed class ErrorKoto : ExpressionKoto
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Error;
 
-    /// <summary>Gets the key of the syntax error this recovery stands for; a check that needs the missing syntax names it as its prerequisite.</summary>
-    internal DiagnosticKey? Cause { get; init; }
+    /// <summary>Gets or sets the key of the syntax error this recovery stands for; a check that needs the missing syntax names it as its prerequisite.</summary>
+    internal DiagnosticKey? Cause { get; set; }
 
     /// <summary>Initializes a new instance of the <see cref="ErrorKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>

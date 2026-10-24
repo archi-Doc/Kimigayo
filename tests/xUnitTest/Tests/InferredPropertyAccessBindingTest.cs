@@ -46,6 +46,7 @@ public class InferredPropertyAccessBindingTest
         var property = Property(c);
         var original = property.InitializerKoto!;
         var replacement = Property(Check("public group Api\n    public let item = true", true)).InitializerKoto!;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(property, original, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null) + string.Join(", ", c.Binding.Issues.Select(x => $"{x.Node.Akind}:{x.Node.FailureOf()}:{x.Node}")));
         Assert.True(property.SymbolOf()!.Property!.IsVerified);

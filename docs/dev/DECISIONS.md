@@ -14,6 +14,53 @@ rules that result from them.
   restating them; a decision recorded only there is not in force.
 - Open questions belong in PLAN until decided.
 
+## Syntax edits
+
+- **AST1 Detached child replacements** (2026-10-23, planning session, implementing the owner's G169 design).
+  Snapshot-based AST edits (SPEC §23.5) preserve one owning child slot and its `Parent` link. `Koto.ReplaceChild`
+  rejects an attached replacement before changing a slot, an attribute chain, source provenance or analysis state,
+  matching `ReplaceAt`'s detached precondition. `KotoHelper.Replace` transfers source metadata only after success.
+  Test donors are removed through `ParseTestHelper.Detach(node, placeholder)`: the caller supplies a detached node
+  accepted by the donor's slot; the helper replaces that slot and returns the original detached node. A swap uses
+  one detached placeholder and three replacements. This removes fake `Parent` resets and two-call swaps, without
+  compensating in the ledger. Rejected: a new general detachment API in `ChildSlots` (misses attribute ownership),
+  and automatic stealing in `KotoHelper` (implicitly changes another tree). The successful production path adds one null
+  check and no allocation; the test setup explicitly represents the same ownership rule.
+  Superseded for current ownership and root provenance transfer by AST2 below. Original scope: a correctly detached compound subtree from another compilation already fails reanalysis before this
+  guard (G235). Semantic readers, including `HirTables.HasCurrentBinding`, confuse source provenance with its
+  current semantic owner. Fixing that predicate alone would leave other readers and edit invalidation inconsistent;
+  a consistent owner-publication design is a separate unit. The iteration-body and requirement-premise editing
+  tests use a donor source unit in the recipient compilation, reestablish verified analysis after donor preparation,
+  then retain their original edit, reanalysis, generation and diagnostic assertions. Cross-compilation syntax-ID
+  relocation tests remain; their passing cases do not certify compound-subtree reanalysis.
+
+- **AST2 Current ownership of transplanted syntax** (2026-10-24, planning session; G235).
+  Attachment establishes the current module and diagnostic target for the whole reachable subtree. A node's
+  `CodeContext` carries that current ownership and its immutable source snapshot; descendants keep their documents
+  and spans. `Koto.Ownership` admits a replacement, transfers the old slot's root provenance, then attaches it,
+  before adopting retained children. `ReplaceChild` and `ReplaceAt` share this rule, including lazy numeric spelling;
+  `KotoHelper.Replace` remains the public facade. Constructors initialize context storage directly.
+  `Koto.Relocation` uses the canonical child walk and operation-local context, evidence and membership maps.
+  Relocation scans source/recipient documentation registries and indexes donor syntax facts only when recovery is moved.
+  Same-module attachment neither walks nor allocates and preserves custom diagnostic contexts. Cross-module
+  attachment copies contexts to the destination context's actual diagnostic target and immediately clears foreign
+  SyntaxIds. Binding rebuilds foreign HIR rows and opaque plans; renumbering preserves rows only within one table.
+  This supersedes AST1's G235 limitation and R2a's cross-module row preservation, which retained donor-owned plans.
+  DiagnosticOwner transfers only referenced syntax causes and their prerequisite closure, with source, related and
+  repair locations reindexed in source order. Context recovery and ErrorKoto causes both survive root provenance
+  replacement, including a custom diagnostic owner in the same module; missing known evidence is a contract fault.
+  DocumentationSource snapshots only moved declarations; the recipient registry replaces their previous associations,
+  retiring empty fragments. Mutable comments and optional-failure ownership are not shared across compilations.
+  Source identity compares immutable documents. Source-less contexts gain one lazy opaque token on first relocation;
+  initializing that token is monotonic and shared copies retain no donor context. CodeContext adds one reference;
+  Koto adds no storage. All transfer maps expire with the operation; none is a new persistent semantic table.
+  Hidden syntax reacquires ownership at activation through ordinary attachment; the implicit constructor now follows
+  that path. Parser-only DeclaringContainer provenance remains outside semantic ownership and can retain its source.
+  Independently compared: an explicit current-module field on every Koto versus rebased contexts. The latter keeps
+  existing semantic readers canonical without per-node storage or about a hundred reader changes. Rejected: repairing
+  only HasCurrentBinding, rebinding the donor, parent-chain lookup, per-plan transfer cases, copying unrelated errors
+  or comments, and replacing all descendant source metadata with the parent context.
+
 ## Build artifacts
 
 - **B1 Library build records** (2026-10-15, planning session; owner decision in IMPL §20.3.2). `Project.Build` selects product checks or Application emission by OutputKind. `NativeToolchain` owns invalidation and atomic record publication; Library success is `status: checked`, with input and selected compilation metadata, and invokes no native tools. All artifact-producing calls retain the single Windows x64 target rule. Library manifests are rejected because they cannot establish source-check success. Rejected: record writing in Project (duplicates publication ownership), and a new record component (moves an already shared responsibility without removing duplication). No compiler phase, IR or generation contract changes.
@@ -79,7 +126,7 @@ rules that result from them.
     conditions, since a shared review must not let unreviewed code reach dev, and SPEC, IMPL, AGENTS, DECISIONS, SETTLED,
     STYLE and proposals are authority, not records.
 - **Q7 A mechanical one-argument propagation is not a change for the restructuring rule** (2026-10-19, owner; AGENTS
-  "Restructure a file changed by three consecutive units before its next change").
+  "Restructure a file changed by three consecutive units before its next change"; superseded by Q9).
   - Adopted: a unit that only adds one argument to a signature and passes it through, adding no branch, state or
     responsibility to the file, does not count as one of the three changes. Applied first to `MirInit.cs` and
     `MirBorrows.Activations.cs`, whose third change, 1c-1, only passed a problem's requirement (R4-M67): 1c-5 changes
@@ -87,6 +134,84 @@ rules that result from them.
   - Reason: the rule catches a file that accumulates responsibilities; a propagated argument adds none, and a split without
     a responsibility boundary fails review (AGENTS).
   - Rejected: counting it, which forces a split or a ruling for files whose responsibility did not change.
+
+- **Q8 Allocation test isolation** (2026-10-23, planning session; G88). Formerly serial nested `AllocationTests`
+  join one `AllocationIsolationCollection`, declared with xUnit's `CollectionDefinition(DisableParallelization = true)`.
+  The existing `collections` runner mode ignores class-level `TestClass.DisableParallelization`; collection discovery
+  now publishes isolation where the scheduler consumes it. Replace all 24 ineffective class attributes. Functional
+  cases and allocation tests that already ran concurrently retain their collections. Rejected: removing isolation
+  (loses the documented measurement guarantee), or switching to `all` (changes every class's scheduling and needs an
+  unrelated fixture/static-state audit). No compiler representation changes; managed suite duration may increase.
+
+- **Q9 Restructuring is decided by responsibility, not by change count** (2026-10-24, owner; AGENTS "Performance and
+  Compiler Structure"; supersedes Q7).
+  - Adopted: AGENTS' "Restructure a file changed by three consecutive units before its next change" is removed; no count of
+    changing units makes a file due. Review checks on every change that a responsibility it adds lives in its owner's concern
+    file, split first where a file would hold two (AGENTS Structure, Separate commits), and that a file over a structure limit
+    does not grow (COMPILER_ARCHITECTURE). Change hotspots stay a measurement at milestone and stage exits, from which the
+    planning session schedules restructurings.
+  - Supersedes: Q7; the A5 step 2 plan's PD21 (R4-M74), its §3.7 schedule, its count-triggered units 2x-R4, 2x-R7 and 2d-1 and
+    the PD21 clauses of its design packages (2a0-D, 2b-D, 2e-D), except PD21's no-growth clause for Binding files over the
+    token limit with its counts in the commit, which applies COMPILER_ARCHITECTURE's limits; the R5 and R6 plan's count
+    trigger for G1 ("before its fourth change"), G1 staying a split by the responsibilities it names; and the due states and
+    next-change conditions in R4-M92, R4-M96, R4-M97 (with its refusal of a second no-split ruling and 2g-6's wait for 2x-R7
+    and a `MirDrops.cs` response), R4-M98, R4-M101, R4-M102, R4-M106, BU-24, R5-M63, R5-M92, R5-M93 and R5-M102, each marked
+    there. Landed splits and applied rulings stay; PLAN's due lists go. The R5 and R6 plan's PD21 (no new `IntrinsicId`,
+    `CompilerFunctionKind` or `BindingFailure`) is a different decision and stands. The open AGENTS Restructuring proposal's C4
+    moves only the stage-exit records.
+  - Reason: the count measured activity, not accumulated responsibility. Most rulings under it found one responsibility in
+    files below the 5,000-token limit (`MirProblem.cs` about 75 tokens, `MirBorrows.Reports.cs` about 590, `DropGlue.cs` about
+    680; `MirInit.cs` and `MirDrops.cs` about half the limit); seven exemption and counting rulings grew around it (Q7's
+    propagated argument, comment-only and deletion-only edits, edits adding no responsibility, a copy replaced by a call, a
+    data table, units in flight), each refining what counts or restating the responsibility test review already applies; and
+    a count reset only by a split kept active files due, so splits made for the count alone left `TyCtxt.Raw.cs` at about
+    150 tokens and `MirBorrows.Groups.cs` at about 350 (after a second no-split ruling was refused), and the five RawOrigins
+    files, about 4,450 tokens together, were listed due again.
+  - Rejected: keeping the count as a review prompt that a one-responsibility ruling resets (it keeps per-unit counting across
+    parallel lanes and rulings on small single-responsibility files to ask the question review already asks); a larger
+    count or a size floor (another proxy for the same test).
+
+- **G138-1 Native execution and verification evidence ownership** (2026-10-24; planning session, independent designs A/B and
+  independent pre-code review). G138 needs execution progress distinguished from scheduling delay and missing observations
+  distinguished from program failures. Before changing that representation, test-scalar-process.ps1 owns one executable's
+  launch, stream draining, oracle comparison and recovery; test-scalar-fixture.ps1 retains compilation and level aggregation.
+  verification-native.ps1 owns the native success-line and pending-coverage predicates and their detail text; verify.ps1
+  retains invocation, selection, step reporting and the default conjunction with invocation success. The pending gate still
+  owns failing-set comparison. This first unit preserves waits, output, result schema and missing-evidence decisions.
+  The process extraction reuses e3f7f35fa3348c7dcc8a49d529066ad6d0cc4ebb; verify's native evaluation is also split before its
+  next change after three consecutive units. Rejected: expanding inline lifecycle/evidence logic, a generic process framework,
+  new mode arguments or a build component without a new responsibility. The following G138 unit replaces wall-time
+  divergence observation and publishes incomplete verification through these existing owners; G138 remains open.
+
+- **G138-2 Observed execution and incomplete native verification** (2026-10-24; planning session, independent A/B designs
+  and pre-code review). A nonterminating fixture requires a finite process CPU observation budget, not a short wall-time
+  delay that may contain only launch or scheduling. The process owner publishes observed CPU, termination, output/exit
+  violations and operational problems, then chooses passed, failed or incomplete once recovery and capture finish.
+  The .observation sidecar and observationMilliseconds replace the elapsed-time .timeout oracle at every producer.
+  A separate 30-second default execution deadline begins before launch; CPU time is never evidence of infinite execution.
+  - Raw stdout/stderr capture is asynchronous; completed bytes are decoded as strict UTF-8. Invalid bytes, wrong output,
+    unexpected exit and a missed expected-completion deadline are observed violations. Start/CPU/wait/kill/capture I/O
+    errors are unavailable observations. Their operation, exception type and message remain facts; consumers never infer
+    classification from text. Unavailable measurements remain null and every native launch attempt retains an execution.
+  - Recovery has a fixed 5,000 ms grace, separate from the execution deadline: one absolute budget for kill, exit wait
+    and both streams, never restarted per operation. It records budget, elapsed time and an unrecovered PID when known.
+    Recovery/capture problems dominate a known violation as incomplete, while the violation remains available.
+  - The fixture owner keeps LLVM and dependency checks: observed LLVM nonzero/dependency violations fail; unavailable
+    input, tool launch or evidence is incomplete. Unwritable evidence propagates an incomplete step, never a replacement
+    failed fixture. Aggregate, verification evidence, comparison and pending consumers preserve that distinction.
+    Incomplete results fail verification and pending comparison, and prevent ledger updates.
+  - Recovery-test normal/cancel cases have 30 seconds; only intentional timeout uses two seconds. Cancellation follows
+    bounded child readiness, and descendant readiness precedes parent exit. The product TestWorker deadline is unchanged.
+    The native test helper accepts one directory-plus-glob selection, split syntactically with Join-Path/Split-Path:
+    six required inputs retain its expected result/count and deadline. The top-level PowerShell param block remains a CLI
+    schema, not a member exception; its execution-deadline option is not propagated as an excess internal parameter.
+  - Reused behavior from eb2d34be4261fda2d6997e632007d4b86bf1f7b9, adapted to G138-1's owners. Its catch converted a failed
+    executable launch into failed with no execution, letting a known pending row accept an unobserved program. A real
+    LLVM link followed by retaining our executable reproduces that gap; invalid UTF-8 is the definite-failure control.
+    Rejected: merely increasing 200 ms, all exceptions becoming failed or incomplete, consumer exception-text inference,
+    a generic process/build framework or test-only production mode. No compiler semantics or emitted instructions change.
+    CPU polling and byte buffers add bounded verification work; completion may wait longer under load. Physical high load
+    and CPU/kill/drain operational faults are not claimed reproduced by deterministic delay and launch-loss probes.
 
 ## Code rules (2026-10-12)
 
@@ -1823,7 +1948,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     order as A5's access scans on the states it reads (V16; MirBorrowsTest's shape: work 121596, 204840, 513216 at N = 32, 64, 128); a
     warm run allocates nothing.
   - Found, not this unit: rule G's raw clause misses Loans stored through raw pointers that W does not name (PLAN G160).
-- **R4-M74 A5 step 2 plan** (owner, 2026-10-19, relayed by the R4 planning session; plan unit 2x-A0) The owner's answers to all
+- **R4-M74 A5 step 2 plan** (owner, 2026-10-19, relayed by the R4 planning session; plan unit 2x-A0; its PD21 and §3.7
+  superseded by DEC Q9) The owner's answers to all
   thirteen questions of the [A5 Step 2 Implementation Plan](../../draft/Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md),
   packet 2 (OQ7–OQ10, OQ13) before its triggers. Its unit and decision names (2x-T1, PD18) are used as there; each
   planning-session decision PD1–PD31 is recorded by the unit that first implements it (plan §7).
@@ -2266,7 +2392,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     activation and observing-destruction checks of a location, and 2b-3's change is an argument at its two `Code`/`Report` call sites, so
     no split exists; 2x-R9 keeps its 2f-D condition (a split if 2f-D adds the caller relation there; superseded by R4-M106: no
     2f-D). `MirBorrows.Loans.cs`,
-    `MirBorrows.Values.cs` and `MirAnalysis.cs` reach their third change with 2b-3: their next editors split first (PLAN §3.7).
+    `MirBorrows.Values.cs` and `MirAnalysis.cs` reach their third change with 2b-3: their next editors split first (PLAN §3.7; superseded by DEC Q9).
   - Cost: per checked site one `Keys` query per view where an effect root has a candidate or R3 applies, Θ(effect roots + their
     candidates) tests and scans, and on a conflict Θ(the body's statics + their initializers' views × ⌈2F/64⌉) for the proof; `Work`
     counts the row's words, the bit tests, the reservations stamped and the statics the proof scans; Field numbers per view and the
@@ -2321,7 +2447,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M94 A5-F4's design package (2a0-D) approved** (owner, 2026-10-21, relayed by the R4 planning session, verbatim
   「推奨どおり承認 (推奨)」
   to the package with OQ-3 (a), and to the other questions verbatim: OQ-1 「(c) 別の BU 単位で後日 (推奨)」, OQ-2 「(a) R6-check で削除
-  (推奨)」, OQ-4 「(b) 条件を足す (推奨)」; R4-M74 OQ2) The package is `draft/Sketches/A5 Step 2/2a0-D-package.md` (design A as
+  (推奨)」, OQ-4 「(b) 条件を足す (推奨)」; R4-M74 OQ2; its PD21 clauses superseded by DEC Q9) The package is `draft/Sketches/A5 Step 2/2a0-D-package.md` (design A as
   the base with parts of B; the design review, with real-compiler probes, and the independent confirmation's two rounds, whose
   blocking items P-1 to P-7 were applied, are in `2a0-D-review.md`). Units: the Binding view units 2a0-2, 2a0-3a and 2a0-3b take
   DEC Q6 form 1 (one BU review each, PD6); G:A5-F4's 2a-1a, 2a-1b, 2a-2, 2a-4 and 2a-5 take form 2 (one group review; 2a-3 is
@@ -2471,7 +2597,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     calls); `R19InlinedDrop` (unsound on dc-j1, dc-joined, dc-copied); `R19NoEnding` (second records); a builder `EndBorrow` (E8 ends only
     Loans rooted at what is destroyed); reservation-holder roots (dead code).
   - PD21: `MirBorrows.Solve.cs` and `MirBorrows.Reports.cs` take their third changing unit (2b-3, 2e-2, 2e-3); Reports.cs's ruling or
-    split is due before 2e-4 (the package), Solve.cs's before its next change.
+    split is due before 2e-4 (the package), Solve.cs's before its next change (superseded by DEC Q9).
 - **R4-M97 A5-F9's copy disposition: a failure in an inline default copy is its template's only within one evaluation** (2026-10-21; unit
   2e-4 of G:A5-F9 under R4-M90, the package's §5 (D11–D14) with the planning session's rulings of 2026-10-21; supersedes R4-M69's
   Inlined rule and R4-M10's Inlined sentence for A5, R4-M73's sub-bullet "R4-M69 governs inline default copies" and R4-M92's G171
@@ -2503,7 +2629,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `SourceRef`); the anchor is its subject (`MirBorrows.Site`, unchanged), the issue scope its scope.
   - Two ownership forms until 2g-6 (D15 staged; planning session ruling, 2026-10-21: neither 2x-R7 nor a `MirDrops.cs` response had
     landed): A1 and A2 keep `MirFactKind.Inlined` and `MirReport.Add`'s drop; `Evaluated` is A5's only kind for the default's operation.
-    Removal condition: 2g-6, after 2x-R7 and a `MirDrops.cs` response; 2e-5 records it in PLAN.
+    Removal condition: 2g-6 (its wait for 2x-R7 and a `MirDrops.cs` response superseded by DEC Q9); 2e-5 records it in PLAN.
   - Deleted: `Reports.Report`'s `Inlining` call and A5's Inlined fact; `Record`'s held exception for it; `Loan.Site`; the vacuous "so a
     clean Loan is reported first (R4-M70)" in `MirBorrows.Activations.cs`; the Inlined clauses of `MirBorrows.cs` and `.Reports.cs`
     (`MirProblem.cs` names Inlined as A1's and A2's).
@@ -2542,7 +2668,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     responsibility; its next changing unit restructures it first; 2x-R9 keeps its 2f-D condition, superseded by R4-M106);
     `MirBorrows.Reports.cs` no split (one
     responsibility; its next changing unit restructures it first); `MirBorrows.Checks.cs` and `.Locations.cs` take their third change;
-    `MirProblem.cs` counted under R4-M91's ruling; `MirBody.cs` (R5's hold) gains only `Common` and `OmittingCall`.
+    `MirProblem.cs` counted under R4-M91's ruling; `MirBody.cs` (R5's hold) gains only `Common` and `OmittingCall`. The next-change
+    conditions and the refusal are superseded by DEC Q9.
 - **R4-M98 A5-F9's template rules: the slot step (A3 E17), R26-borrow and R26-access** (2026-10-21; unit 2e-2 of G:A5-F9 under R4-M90,
   the package's §2 (D1–D7) and its precedence table, with the planning session's rulings of 2026-10-21; supersedes R4-M72's Defaults
   bullet and its view skip's form)
@@ -2582,6 +2709,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     lines); each of the three added one fact of that pre-pass, and this unit's edit simplifies it (two flags become one, plus the
     slot-write term). Rejected: splitting the one pass mechanically; moving the effect rule's facts, which would set one flag in two files.
     Its next changing unit restructures it first. `MirBorrows.cs` has three changing units (2b-3, 2e-1, 2e-2): a response before 2e-3.
+    Both conditions are superseded by DEC Q9.
   - Ledger (mir Functional, against a base run at the unit's start): 4 of a5-old-default-access's 5 rows and 10 of
     a5-old-default-borrow's 11 pair (14 old rows become both, e0ffa5a60934, 9fcd0c360b5d, b29228117a54 and dc7ace954713 among them);
     the fifth access row, DefaultAccessTest :26 (6a5c8d8bb5e4), becomes a location row (the old path at `x`, the MIR at the write;
@@ -2663,7 +2791,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Departures from R4-M94: D2 without `ResultFit` until 2a-2; D3's owner by formation, with declaration rows outside every slice and
     the layer's rows in each constructor's; D8's oracle per layer for layer rows.
   - PD21 (the planning session's first ruling on `Binding.Origins.Model.cs`): one responsibility, the Origin model's records, so no
-    split exists; K1 moved the `OriginDeclaration` model into it; the next changing unit after 2a0-2 restructures it.
+    split exists; K1 moved the `OriginDeclaration` model into it; the next changing unit after 2a0-2 restructures it (superseded by DEC Q9).
   - Fix round (BU's review, ACCEPT WITH CHANGES, B1, B2, O3-O6). B1, a correction of the package's internal conflict (the planning
     session's ruling): 2a0-D §3's validation sentence ("a mutable-static `Projection` whose binder is a static Field declaration is
     `InternalInvariant_Kd`") is dropped, since row 7 classes that atom and SPEC 11.3.1 and 11.8 make an accessor's `storage` of a mutable
@@ -2702,7 +2830,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     and A2's end (C4a's fallback F2′, which misses a copy-only failure).
   - PD21 (R4, 2026-10-22, the first ruling on each): `MirInit.cs` (1c-1, 1c-6, 1c-8) and `MirDrops.cs` (1c-1, 1c-2, 1c-6, 1c-8) are due;
     each has one responsibility (A1's per-view initialization and Move dataflow; A2's drop verdicts and table) and no split exists, so
-    A-2b's lines go in without a restructure; the next changing unit of each restructures it first. DIAGNOSTICS is unchanged.
+    A-2b's lines go in without a restructure; the next changing unit of each restructures it first (superseded by DEC Q9). DIAGNOSTICS is unchanged.
 - **R4-M103 Static slots for P42, layout requirements kept, lifecycle receivers' Borrows body-local** (owner, 2026-10-22, on three R4
   proposals written at the owner's instruction 「この勢いで、先ほどの新しく挙げる候補 2、4、5、6の提案書も書いてください。」; answers
   OQ-S1 (a), OQ-S2 (a), OQ-Y1 (d), OQ-L1 (b); review `draft/Sketches/R4 Proposals 2026-10-21/review-3.md`)
@@ -2840,7 +2968,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the owner's option. PD21: U1's and U2's edits only delete (the frozen old Analysis, catalog rows, Binding's preserves half), so
     no restructure; `Binding.EffectBounds.cs`, `Binding.ArgumentOperations.cs` (BU's queue) and `HoverBuilder.Effects.cs` stay due
     before their next adding change; AC-U4's one Note string in the due `Binding.EffectDeclarations.cs` adds no responsibility and
-    follows the same rule (its review). `MirBuilder.Expansions.cs:172`'s getter Adjust, built from Binding's operation and open at the landing, is closed by
+    follows the same rule (its review). These due states are superseded by DEC Q9. `MirBuilder.Expansions.cs:172`'s getter Adjust, built from Binding's operation and open at the landing, is closed by
     R4-M109 (the getter takes the HIR's plan-row Adjust).
   - Rejected (its §9): A, S2 as revised by 2f-S1 (a receiver-Place relation between calls; it keeps the cause and adds the most
     mechanism); B, a separation guarantee for `preserves results` (a second copy of the ownership rule); keeping rule 1's Origin
@@ -3298,6 +3426,47 @@ and migration obligations remain in force; no numeric cap changes are authorized
     drops it). The representation and its supersessions (R4-M36, R4-M73's Raw bullet, A3 E16, R4-M93's r3) are recorded with 4b.
   - Not implemented (STATUS). Unverified until 4b: G160-2c's mechanism, the census and ledger beyond the prototypes, the Exclusive
     guard row on a layer a Type argument supplies, the Warning, the located `Unsupported_Kd`'s census, cost and warm allocation.
+- **R4-M117 The SPEC session of 2026-10-23: eleven raw-pointer, Tuple, retention and capture points** (owner, verbatim, the decision
+  lines: 「SPECセッションを始めて下さい。 / 事前の決断事項と決定は、以下の通りです。 / 他にありますか？ / なければ、修正・レビューを進めてください。 / A. raw ポインタの書き込み権限（SPEC 5.2.1 条件 3） / 1.
+  派生したポインタにも制限がかかるか / 第 1 の制限に「そこから派生したすべてのポインタ（コピー、変位、raw ポインタ型の間の変換、Origin を落とす fit）も」を加える / 2・3. 「Origin が属する
+  borrow」をどこまで見るか／本体の中で作った borrow を数えるか / 推奨の内容でOKです。 / Origin ごとに、それを束縛する宣言で判断します。 / 入力や slot の Origin は、シグネチャや型の宣言で判断します。 / 本体の中の局所の
+  borrow の Origin は、その borrow 自身で判断します。h は未定義動作になります。 / 呼び出し側の実際の borrow は見ません。 / B. raw の Origin の伝わり方 / 4. pair の引数を通った raw の Origin
+  を落とすか（SPEC 8.1.1、BU の項目） / 推奨の通り、落とす規則を残します。SPEC は変えず、Binding を SPEC に合わせます。 / 5. どの引数にも結びつかない call の結果を、部分ごとに読むか（SPEC 15.6） /
+  「結果の部分のうち、契約がどの引数にも結びつけないもの」 / C. during self の層 / 6. 層を含む Tuple の Place を読む・Move すると何が得られるか（G212） / 層の規則を、Tuple の要素ごとに当てはめます。 / 7.
+  raw/u8 during self と、それを含む Tuple は Copy か（G212） / 推奨の内容でOKです。 / D. 診断 / 8. claim を入れる修正候補を出すか（BU-24） / 推奨の内容でOKです。 / E.
+  文の整理と明確化（判定は変わりません） / 9. G221：§15.6.3 の文を参照に置き換える / 推奨の内容でOKです。 / 10. §15.6.7：再帰する default が運ぶ、自分自身の Loan / 推奨の内容でOKです。 / F. 静的な
+  Property / 11. Closure の中の storage は静的なアクセスか、禁止されたキャプチャか（SPEC 7.7.2、BU の項目） / 推奨の内容でOKです。」; the accepted recommendations
+  as the planning session showed them; unit spec-s1023) SPEC states:
+  - 5.2.1 condition 3: the first limit also binds every pointer derived from such a pointer (copies, displacements, conversions between
+    raw pointer Types, fits that drop the Origin), as the caps' sentence does (item 1). "Keeps only shared Loans" is judged where each
+    Origin is bound (5.7 Authority): an input's or slot's Origin by the signature or Type declaration, a body-local borrow's outer Origin
+    by that borrow, never the caller's actual borrow, so the dynamic limit and the two caps share one scope (items 2-3; `h` in 5.2.1).
+  - 8.1.1 unchanged: a pair parameter drops a raw argument's stated Origin (item 4). 15.6: storage the body does not own comes from a
+    part of a call result that its contract ties to no argument (item 5).
+  - 5.7: a Tuple or fixed-array Place enclosing a `during self` layer is read, Moved, written and borrowed element-wise by the layer's
+    rule: the layer's element reads as a pointer without an Origin reaching what `@raw` of its storage reaches, a Move reads it and Moves
+    the others, a restore writes `null` there (item 6, `Packet`); only the holding struct or enum is not Copy, the layer's Type and such a
+    Tuple stay Copy (3.5.2), their Places following "Writing a Field" and an explicit `@move` (item 7).
+  - No `Repair.*` kind inserts a claim, an unsafe promise only its author can make; a diagnostic's facts may say that a claim or a typed
+    path states the Origin (item 8; the schema is unchanged).
+  - 15.6.3's descent sentence is a cross-reference to 15.6.4's per-argument retention, keeping "published child Loans" (item 9, G221);
+    15.6.7: an activation does not conflict with its reservation's own Loan that a recursive default's value carries (item 10, R4-M90
+    D16); 7.7.2: a static Property's `storage` in a Closure is a static access, an instance Property's never captured (item 11,
+    `Totals`).
+  - Rationale and Principles: each item closes a point the raw-pointer and Closure work left open (BU-24, PLAN G212, G221, G136, G224).
+    One Concept, One Canonical Form: one authority scope (the binder) for the dynamic limit and both caps, one layer rule for a Place and
+    the Tuples holding it, one retention rule (15.6.4) cited instead of restated. Local Reasoning: an Origin's authority is read from its
+    binder, never from a caller. Explicit Semantics: undefined behavior is named; a claim stays the author's explicit promise.
+    Compiler Server Protocol: no repair asserts a promise the tool cannot verify.
+  - Settles: BU-24's three open SPEC points (the dynamic limit's scope, body-local borrows, the first limit for derived pointers); PLAN
+    G212's open points; G221; G136's 15.6.7 sentence; G224's 7.7.2 question; BU-24's claim-repair item; S2's 15.6 per-part observation.
+  - Implementing work: BU, Binding drops a pair-supplied raw Origin (8.1.1), reads a static `storage` in a Closure as a static access
+    (today `InvalidCaptureBinding_Kd`), and reads and Moves an enclosing Tuple element-wise (today a whole Copy and the located
+    `Unsupported_Kd`); unimplemented static-storage forms stay the located `Unsupported_Kd` (P42); R4, A5 assumes item 1 in G160-4's
+    4b. The `Packet` and `Totals` examples are registered in `spec-cases.json` with those records as (b) differences; `h` has none.
+    STATUS states the differences.
+  - Later: the owner, 2026-10-23, verbatim 「RZ、G86、G159(2)、G158(3)、B 3.4 の §15.4.2 の穴は、分析してから別の SPEC セッションで
+    決めます。今回は 11 項目だけ進めてください。」: these five points go to a later SPEC session after their analysis.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -3340,6 +3509,46 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (Copy, borrow or replace, as for Array) is what following the returned reference gives, and its §7 had already fixed
     the ABI to that of the reference result.
 
+## Diagnostic publication (2026-10-23)
+
+- **G89-1 Override and match facts** (planning session; the owner's G89 request, two independent designs and independent
+  design review). SPEC 6.4 and 14.8 keep their existing judgments; SPEC 23.1 and DIAGNOSTICS require retained facts and an
+  explanation owned by the diagnostic adapter. `Binding.Diagnostics.VirtualOverrides` and `Binding.Diagnostics.Match`
+  own their conversions; the semantic failure records never select wording or repeat a check during publication.
+  - First extract the conversions with every published fact, Note, Label and location unchanged. The existing string
+    override cause is removed by the following G89 behavior unit, which records cause, compared Types or names, the
+    violating parameter's declaration index, proof and locations. Match retains its existing reason and Case index.
+  - Rejected: leaving publication in semantic owners, or moving individual cause formatting into DiagnosticOwner.
+    The existing phase-specific adapters own these conversions; the common owner keeps schema and display limits.
+
+- **G89-2 Typed override and match diagnostics** (planning session; the owner's G89 request; two independent designs,
+  chosen design independently reviewed). The missing representation in G89-1 is the check's cause and compared values,
+  not another message. Binding keeps these in its existing `OverrideFailure` dictionary; the adapters alone turn them
+  into facts and Notes. Slot selection, signatures, condition proofs, match coverage and acceptance do not change.
+  - `OverrideFailureCause` closes the existing nine causes. `NoBase` and `NoInheritedGroup` need no extra payload;
+    `NoMatchingInputs` retains the first inherited function when one exists; `AmbiguousInputs` retains two candidates;
+    `DuplicateSlot` retains the original slot and preceding implementation. `ExternalName` requires both compared names,
+    the violating parameter's zero-based declaration index (including the receiver) and its name span. `ResultType`
+    requires both compared bound Types and the written return Type when present. `OriginBinders` requires the original
+    slot. `Condition` requires the original slot, condition node and the already computed `Unknown` or `Refuted` proof.
+    Other payload fields are unused. Primary and related location selection stays unchanged; publication never re-proves.
+  - `OverrideContractMismatch` publishes names as `expected:Text,actual:Text,cause:Enumeration,parameter:Number`, Types as
+    `expected:Type,actual:Type,cause:Enumeration`, or Origin binders as `cause:Enumeration`, in that order. The actual
+    parameter index makes the name schema distinct; the common `expected {0}, found {1}` Label applies to the first two.
+    The Type schema uses existing `BoundPair` so both differing Type fragments survive elision. Other override codes
+    publish `cause`; a condition also publishes the actual expression and proof. Explanation prose belongs only in Note.
+  - Match publishes its existing `coverage` enumeration, with a numeric `case` only for `MissingCase` and
+    `WholePayloadRequired`. Its four explanations stay in `Binding.Diagnostics.Match`; `MatchCoverage.Requirement`
+    and the coverage judgment are unchanged. `Reason` strings, concatenated Type pairs and semantic `Describe` are gone.
+  - Design A kept conversion in the phase adapters; independent B avoided redundant condition prose but put conversion
+    in `DiagnosticOwner`. Chosen: A's owner and the nonredundant schemas. Rejected: keeping strings; equal-arity Type/Text
+    alternatives (Type is Text plus its schema flag); a dummy discriminator; shared variant selection machinery;
+    cause paraphrases disguised as condition facts; individual cause rendering in `DiagnosticOwner`. No new IR,
+    failure code, table, component, migration exception or change to the shared diagnostic selector is needed.
+    `VirtualDeclarations` and `BaseCalls` retain separate eligibility/use contracts and remain follow-up issues.
+  - The change trades a larger value in the existing failure dictionary for direct typed data, removes the nine-argument
+    recorder and combined-string conversion, and keeps warm failure Binding allocation-free. Fixed 128-failure
+    cold/warm and retained-compilation measurements belong in `DiagnosticMeasurements`; evidence records the actual cost.
 ## Binding units (2026-10-18)
 
 Units of the BU planning session (PLAN G129, G130 and the retention gap found by R4's E14 implementer), run in parallel with R4
@@ -4078,7 +4287,7 @@ resumed by R4-M86 (2026-10-20).
   Rejected: a static Field in `IsBarePlace` (its Subject consumer would borrow `for v in State.values` in place, an implicit static
   Borrow that fails with `PrerequisiteUnavailable_Kd` until 2b-6 (b)); a declaration-symbol test (an open family; it rejected
   `(Color.Red)@ref`, B1). Open: `IsStaticField` joins `IsBarePlace` after 2b-6 (b), with a Non-Copy static's bare acquisition, which
-  binds as a transfer (PLAN G100).
+  binds as a transfer (PLAN G100; classification superseded by G224 Static Field classification, acquisition legality remains).
 - **BU-22** (2026-10-21; the BU planning session; A5 step 2 plan 2b-4a under R4-M89 (OQ-F5-2 (b), OQ-F5-3 (a)), the contract of
   `draft/Sketches/A5 Step 2/ComponentSummaryPrototype.md` revision 3; PLAN G174; DEC Q6 form 1, R4 reviewing) The per-declaration
   component summary is a canonical component (`Binding/Binding.ComponentSummaries.cs`, its contract at the file's head): for each
@@ -4161,7 +4370,7 @@ resumed by R4-M86 (2026-10-20).
   form a static Loan on `oc` (bu22's re-read 2, C5: the alternative chosen by the planning session).
   The consumer receives a derived value with no Loan (R4-M109). Out of scope (no lending judgment; A5 models their Loans, 2b-D §1.5):
   comparison inspections, `for`/`match` Subjects, writeback reservations, in-place element reads; `IsStaticField` stays out of
-  `IsBarePlace` (BU-21's open item). Exception (R4's answer, the planning session): an accessor's `storage` Borrow of a group Property's
+  `IsBarePlace` (superseded by G224 Static Field classification). Exception (R4's answer, the planning session): an accessor's `storage` Borrow of a group Property's
   static storage stays bound (a Storage symbol; its atom is R4-M101's row 7) until P42's static-Borrow unit. Residual (G197, not
   covered): a call result derived from a static receiver keeps its Origin relation judged, so `fixed.view()` of a `let` static returned
   `during static` (or kept by a default) is the U at `fixed` plus `UnsatisfiedOriginRelation_Kd` at the call, a Language error on a
@@ -4452,7 +4661,7 @@ resumed by R4-M86 (2026-10-20).
   every input's exclusive `Borrow` beside `FailStaticBorrow`, records at the operand and judges that fit no further (an explicit
   `x@uniq` argument's source is the conversion, a path root, so it records once). PD21 (ruling (b)): `Binding.CallRelations.cs`
   (due: bu20, 2a0-2, bu22) was split first, its records beyond the first in `Binding.CallRelations.Records.cs`; RawOrigins.cs and
-  Retention.cs, unchanged here, stay due. Measured: a pinned interleaved Bind A/B against a352ae27b over Milestones 1, 20 and 33
+  Retention.cs, unchanged here, stay due (superseded by DEC Q9). Measured: a pinned interleaved Bind A/B against a352ae27b over Milestones 1, 20 and 33
   gave warm minima within 0.3% and equal cold bytes. Rejected: a check in `AdaptInput` or `LendsPlace` (selection may discard the
   candidate; authority, not Origins); Holder kept on the read Type so that invariance fails (Holder would leave stored shapes).
   Open: neither published pipeline marks a Copy-typed part Moved (`t.0@move` then `t.0`), so a missing restore after `b.data@move`
@@ -4592,6 +4801,283 @@ resumed by R4-M86 (2026-10-20).
     15.3.4): its fix extends `EnclosingAtom`'s chain to named nested functions, not a second rule. Row 5's call result is Fixed in the view
     and finite in the judge (display only today; for 2c-D). PD21: the classes moved first (behavior-preserving) into
     Binding.OriginClasses.cs; Binding.OriginProof.cs's count restarted at 2a0-4's split.
+
+- **BU-29** (2026-10-23; the BU planning session; PLAN G170 unit C2, bu30, under PlanB C and C1's owner-approved contract,
+  `draft/Sketches/G170/C1/C1-design.md` §5 and §8; one design, one review, Q6) `Binding.ContractSolver` owns premise derivation and
+  evidence availability (SPEC 8.3, PlanB §4.1), R7's Contract-solver premise responsibility brought forward. `Supply(proposition,
+  view)` answers `Evidence` (`Positive`, `Negative`, `Invalid`) under the `EvidenceView` that `ViewOf(scope)`, the one derivation
+  point, gives; at C2 it is ProveProposition's walk over the existing environments, moved unchanged and read by ProveProposition with
+  its normalized proposition (normalizing twice costs warm time), behavior-preserving. The eager derivation (`ExpandContractPremises`,
+  `ExpandScopeContractPremises`, `AddContractPremises`) and availability (`AvailableConstraintFact`, `AvailableContractPremise`) move
+  in unchanged until C3 deletes or replaces them; unrouted consumers keep calling `AvailableConstraintFact`. Staged by C1 §5 to C3:
+  `Completion` (from today's facts every answer is final for its pass, so it would be a constant), `SourceState` (N6), `Inadmissible`
+  (G172), `UnderCheck` (N4), `declarations` and identity members (OQ5).
+  - `Evidence.Invalid` (the planning session's ruling 1): a temporary member, not a change of C1's contract. It carries
+    ProveProposition's early Error (an Invalid premise environment in the chain) so the move is pure; C1 does not model an Invalid
+    premise environment (its N7 is about the sources of rows). Removed at C3, when B 3.10's declaration validation answers a request
+    reaching a premise error by C1's model (the identities it touches `+-`), the Error kept where ProveConstraint reports it today.
+  - `EvidenceView` holds `Premises` only (ruling 2), a staging of PlanB §4.2's C2 sentence: no C2 answer reads the collection state
+    (the judgments depending on it, VerifyConformance's collecting gate, ResolveAssociated's withholding and ContractType's batch
+    memo, read `collectingAssociated` themselves and keep doing so, PlanB §4.2), and an unread field is a speculative mechanism.
+    `FrozenDefinition` joins it in `ViewOf` at C3 with its first reader, so C3 changes `ViewOf`, not the consumers.
+  - The owner's answers to C1 (2026-10-21, as C1 §9 states them): OQ1, one shared Binding analysis-limit diagnostic, the limit as an
+    argument, the last free `BindingFailure` entry (also G172's budget, G174's fixed points); OQ2, two per-request limits, rounds and
+    items (stored chain promises count), 4,096 and 65,536 provisional, confirmed by C3's gate, in IMPL 21.3.2/A.4 at C3, no work or
+    read-alternatives limit; OQ3, "depends" per derivation, no read sets in C0–C4, G172 decides the flow-back, a reading superseded by
+    R4-M115 (B's Q3: "depends" means not holding with the judgment, or the current definition's inferred values, held pending,
+    whatever derivation is recorded). C2 is unaffected: it changes no derivation, inference outcome or view-dependent answer; C3
+    shows Q3 with AssociatedInferenceTest cases in both declaration orders (an answer in a frozen view D equals the answer with D's
+    inferred values held pending; a value depending on D's pending values needs G172's flow-back, else C3 records it as G172's).
+    OQ4, where C3 shows that only the proof changes and the old Emission generates correctly, the default pipeline accepts,
+    otherwise a located `Unsupported_Kd` until R6-check (COMPILER_ARCHITECTURE's D5 list gains it at C3, when used). The planning
+    session's (C1 N10): `ConstraintProof.Resource` (Q2); TypeIdentity's classes in a separate unit (Q4, OQ5).
+  - PD21 (ruling 3): neither Binding.Constraints.cs nor Binding.ConstraintValidation.cs is due; the move restructures
+    Binding.Constraints.cs below the token limit, and Binding.Contracts.cs shrinks (still over, no growth).
+  - C2 is C2a (the planning session's ruling on the measurement, 2026-10-23): Supply, the evidence view and the moves. `Enumerate`,
+    `SubjectFact`, `SubjectEvidence` and `Available` are not at C2. The eight Enumerate routings (FindAssociated, RequirementMember's
+    scan, HasContractFact, SelectArithmetic, ValidateArithmeticDirections' inner loop, ContractTypeCore, HasValueRole and
+    AdmittedSemantics; each a pure move, its trio without differences) are held for C3 on `claude/bu30-g170-c2b-held`
+    (1bee3c89a): C3's evaluator replaces the answers behind Enumerate, and its performance gate measures the routing with it.
+    Measured (pinned, interleaved, median of run medians): warm Bind Milestone1 +1.1%, Milestone27 +0.9%, outside the A/A spread
+    (C2a inside it); cold bytes equal. Cause: the subject rule (`AssociatedIdentityMatches(ClauseSubject(fact), subject)`) runs on
+    every fact of the chain before each consumer's kind test. Rejected: accepting +1%; the `fact.Subject ?? ClauseSubject(fact)`
+    variant (+0.4%, still outside the spread, and resting on an unstated `BoundConstraint` invariant, that a composite carries no
+    Subject). The census `draft/Sketches/G170/C2/census-c2.tsv` (56 rows) gives each read's disposition and C3 change;
+    AdmittedSemantics corrects C1 §8 ("none: inputs"): it reads derived facts today (AddArithmeticPremises' Owner premise), so its
+    C3 operation is Enumerate's compound rows.
+  - Staged prohibitions (the review's N1): C1 §5's no Binding writes, syntax-triggered supply, `DerivedFacts` and fallback scan hold
+    from C3; until then the eager derivation and the presence-gated scan moved in break them, as the entry contract states. Holding
+    the eight routings stages C1 §8's "C2 routes each read" within PlanB §6's C2 condition (reads left unrouted are listed for C3); C1
+    §5's operations and representation are unchanged, so Q6's form stands without a further owner decision.
+  - Ruling 4: AvailableEffectBounds' `ReferenceEquals` match misses a universal family pattern's bounds, a wrong result reproduced on
+    the default pipeline (a valid program rejected; the census row), filed as PLAN G234 by the planning session; not changed here.
+  - Rejected: routing every read now (22 reads differ in subject relation, Invalid treatment, availability order or C3 operation, so
+    routing them is C3's behavior change or a consumer filter imitating the old narrowing, a second copy of a rule); Supply only (C3
+    would introduce Enumerate and rewrite every lookup reader with the evaluator); environments publishing facts by clause subject (a
+    representation C3 deletes with `DerivedFacts`, whose order needs a sequence number to stay pure, with no measured need); a move
+    only (PlanB's C2 routing condition unmet); Invalid as both polarities (ProveProposition would skip its structural judgment where
+    facts alone give both, changing EndProof's cause); the raw proposition at C2 (two normalizations per proof).
+
+- **BU-32 HIR publication separates evaluation and operation classification** (2026-10-23; the planning session after independent
+  design review; G141's prerequisite) The existing `HirPublisher` keeps its walk, publication version, reusable storage and column
+  writes in `Binding.Hir.cs`. Its evaluation-position and Op rules move together into `Binding.Hir.Operations.cs`: `HirPosition`,
+  `PartsPublished`, `Rejected`, `CompoundPlace`, `PositionOf`, `Keeps`, `Parts`, `OpOf`, `KindOp`, `HasBody` and `NameOp`. The rules
+  classify a node and its parts from the current walk and Binding's existing facts, including the children an Error keeps; the
+  publisher writes those results. Expressions, visibility, evaluation order, state and the R7 removal stage are unchanged.
+  - The split precedes G141: after `19d22214f`, Q16, 2x-E2 and 2x-E8 changed `Binding.Hir.cs`; `abe8299af` split Adjust, not this file.
+    It separates one existing responsibility within its owner, adding no component, representation or vocabulary. Rejected: moving
+    classification into `.Facts` (which must not choose an Op), `.Adjust` (acquisition), or `.Patterns` (Pattern acquisition); a split by
+    line count would leave those contracts mixed. G141's call-publication change is a separate unit.
+
+- **BU-33 A macro publishes its selected call at the macro expression** (2026-10-24; the planning session after two independent
+  designs and design review; G141) SPEC 17.4.2 and 22.5.1 make `$abort(message)` one Never call whose location is the macro expression,
+  in a body, require failure, default or nested argument. Binding stored its plan on the inner invocation, but published that
+  invocation as Call and the macro as Group; MIR recovered the location from the parent. Binding owns this publication contract.
+  `CallPlan.Of` exposes the existing inner plan through its macro row, after the formatting-plan path (`$tryWrite`). The macro uses
+  the existing Unary Call classification; its inner invocation is Covered Syntax, and the usual call operations acquire its arguments.
+  - Inner storage stays for legacy ownership and lowering. No second plan, IR kind, table or state is introduced. Raw accessors retain
+    their existing lifetime; current semantic queries revoke invalidated facts and a new Bind replaces the published facts. The macro
+    view shares that same inner plan after rebind. This does not change Abort argument validation or the old lowering's source handling.
+  - Removes the macro Group classification and acquisition, the formatting-only Covered condition and MIR's Abort parent correction.
+    Rejected: moving or copying storage to the macro (breaks legacy readers or duplicates the decision), adding a source field to
+    CallPlan (extra state while retaining the redundant Group), or a new IR/table. The existing view row corrects the public subject
+    without another allocation; removing Group work is expected to preserve compilation and native costs.
+
+- **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
+  unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
+  environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and
+  `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now builds the existing runtime-test
+  syntax; `Binding.Aliases.AliasTarget` resolves source aliases; `Binding.Imports.LookupImportedType` and `LookupImportedValue` select
+  their imported declarations. The Type path keeps the first populated stage even when no arity matches; the value path keeps its
+  overload merge and environment-conflict order. Local/inherited/module lookup and the alias-resolution gate remain in `Lookup`.
+  No grammar, diagnostic, Type identity, table or plan changes in this unit. The following G209 unit adds the written-Origin check
+  and selected-import provenance, replacing the outer-Origin shortcut; G209 remains open until then. Rejected: growing the oversized
+  parser and Type-formation file, a new lookup mode or argument bag, and sharing Type-arity selection with value-overload merging.
+- **G209-2** (2026-10-24; the planning session, independent designs A/B and independent pre-code review; owner explicitly approved
+  `SyntaxForm.RuntimeTypeTestOrigin` on 2026-10-24) SPEC 13.6.4's `NamedCoreType` forbids written Origins throughout complete Type
+  arguments and alias expansions. Ordinary Type parsing allowed them, while normalized `BoundType.Origin` cannot distinguish them
+  from implicit function Origins. `Parser.RuntimeTypeTests.ParseNamedCoreType` checks the whole owned syntax tree through the shared
+  `WrittenOrigin` query (`TypeSemanticsKoto.HasOrigin` and `OriginApplicationKoto`), records `MisplacedSyntax_Kd` at the first written
+  node and makes the target a recovery. Binding queries each successfully resolved alias target once during `PrepareAliases`.
+  Its existing alias lists, named entries, candidate summary and imported-container map retain one pass-local `AliasImport`: the
+  actual alias plus its first written-Origin witness. `Environment` reads that alias's stable `BoundType` after `AliasTarget` has
+  completed; no snapshot table or normalized-Type flag is needed. Original resolution, access, role and arity selection stay intact.
+  Same-candidate/environment imports keep the first selected declaration and union only the witness through AliasImport.MergeWitness,
+  retaining its first actual source; replacement candidates replace provenance.
+  Named equivalent aliases use the same rule. Unused, shadowed or eliminated aliases supply no witness. `ResetAliases` clears this
+  state before every pass and on invalidation; reusable query visitors clear their source reference after each query.
+  After Type formation succeeds, runtime-test Binding checks only the selected import facts in the target before the dependency
+  `Unsupported_Kd` boundary. A written alias Origin is `InvalidTypeFormation_Kd` and publishes no runtime-test plan. The former outer
+  Origin shortcut is removed. Ordinary Type declarations, implicit function Origins, lookup stages and generated-code rules stay
+  unchanged. A's selected-import provenance replaces the lost source information; B independently identified the same loss.
+  Rejected: normalized-Type provenance or recursive `BoundType.Origin` rejection, direct-syntax-only checking, a new side table,
+  rescanning all aliases, or an alias graph (SPEC 18.2 forbids alias chains). Syntax forms `OriginClause` and `AdaptationOrigin` have
+  different contracts; the approved new form is one row under the existing syntax diagnostic catalog. No new Binding/IR vocabulary.
+- **G51-1 Operator binding and diagnostic ownership** (2026-10-24; planning session, independent designs A/B and
+  independent pre-code review). SPEC 13.2–13.4 and 5.3 put operation legality before the expectation it gives an operand.
+  G51 needs that decision and its failed facts at the Binding owner; the oversized expression and diagnostic files
+  cannot coherently grow around the present late guards. First move operator binding and its existing integer
+  predicates to `Binding.Operators`, and operand-failure storage/publication to `Binding.Diagnostics.Operators`.
+  Every moved member retains its name, parameters and body. `BindBinary` keeps its existing 106 statements under the
+  architecture's no-growth rule; the behavior unit must split it by responsibility to at most 60 before it grows.
+  No new state, table or vocabulary is introduced. Arithmetic selection and comparison composition keep their owners.
+  Rejected: a preliminary stage split that copied syntax classifications; per-form guards in the old members;
+  an IR/operator framework without a new consumer fact; argument-only bags or mode parameters. The behavior unit
+  replaces the late applicability checks and inadequate operand facts; G51 remains open until it is verified.
+
+
+- **G51-2 Operator applicability and licensed expectations** (2026-10-24; planning session, independent designs A/B,
+  pre-code review and owner vocabulary approval). SPEC 13.2–13.4, 5.3 and 12.3 require an operator's applicability
+  before its operand can license a counterpart Type. Fact-free failures and late checks lost that distinction.
+  `Binding.OperatorApplicability` receives the written operation and ordered, successfully obtained operand Types;
+  its short-lived decision carries the expected operand, counterpart Type, failure, actual requirement/proof and failed Operand/Terminal.
+  Every failure has both Types: Operand is the successful original fact used for display, Terminal the already judged Type;
+  the actual queried leaf remains Requirement.Subject. Success needs neither failure Type. The existing failure store retains
+  these Types, location and query; its operation key owns the written operator for the same pass and reset/rebind lifetime.
+  Remove the unread duplicate operator kind; no second operator-text table is introduced.
+  `Binding.Operators` uses that decision for fitting and completion; a failed fit supplies no Type for another judgment.
+  The adapter renders these facts without proof; its Note exposes the same real condition and verdict in CLI/LSP text. Unary,
+  binary, compound, increment and comparison paths share this rule. Shift counts
+  retain their separate integer requirement; destination authority and ordinary/reverse provider selection stay unchanged.
+  Unknown actual proofs are `UnprovenConstraint`, Refuted proofs the relevant Language failure, Error the existing
+  invalid-constraint path. Tuple comparison retains its aggregate verdict and first decisive actual leaf witness;
+  numeric operator leaves make no Contract query. Valid unimplemented forms remain location-only `Unsupported`.
+  Never is not numeric capability (SPEC 3.1.3). Ordinary same-Type arithmetic and comparison publish the actual
+  counterpart fit before applicability; unary operators, shift subjects and update destinations have no such fit.
+  A missing counterpart supplies neither expectation nor proof; completion uses the published direction rather than
+  reselecting the other operand. Remove IntegerApplicability's unconditional Never success and the caller's late
+  left/right reassignment. Shift counts, logical bool contexts, pointer displacement and provider selection stay separate.
+  This corrects a limited acceptance boundary: without an outer context, `1 & stop()` and `1 % stop()` with
+  `stop() -> Never` are valid. SPEC 12.3.1 defaults the literal to i32; 13.3.1 defines that operation; 3.8 fits the Never
+  value to i32. Never itself supplies no counterpart (13.3.4). The old direct Never expectation incorrectly rejected
+  those literals. Reject retaining that error with an Unsupported or per-form exception. The existing failure to
+  propagate an outer i64 result context to these operands remains a separate G51 follow-up, not a specification rule.
+  The owner approved `BindingFailure.OperatorNotDefined`, `OperatorNotDefined_Kd` and public requirement
+  `Binding.OperatorNotDefined` (description: “The operator must be defined for the operand Type.”) on 2026-10-24.
+  The vocabulary grows from 88 to 89 entries including `None`; the existing limit of 89 does not change.
+  SPEC 13.3.2, 12.3 and 23.1.2 supersede G49's operand-priority/grouping choice in commit `652ac2103`:
+  a string cannot fit a numeric literal, and a failed inner join cannot erase an outer prohibition established by
+  another string operand. Both associations and compound forms preserve each independent prohibition, like `p * missing`.
+  A known numeric Type still licenses its numeric expectation, so `n + "text"` and integer/float fitting keep their mismatch.
+  A right bool, Unit, char or raw Type alone cannot disprove an unknown left provider; no missing proof is invented.
+  The private arithmetic-pair decision shares only the string prohibition between built-in applicability and the existing
+  provider gate; selected Addable/RemainderProvider paths never rerun built-in requirements. It receives original and already
+  normalized left/right Types. Reject the original-Type-only predicate: an admitted s/string reaches string through a pair,
+  while EndsInString on s/string alone is false. Retain Terminal for the interpolation Note and Operand for ref/string or
+  s/string display; neither the adapter nor a failure caller rediscovers that meaning. A full applicability call after provider
+  selection would impose the wrong integer requirement on a legitimate remainder provider and is rejected.
+  Interpolation guidance, recovery prerequisites, acceptance and generation rules remain intact.
+  Remove the duplicate late operator guards, invalid expectations and fact-free mismatches; split the former
+  106-statement `BindBinary` by operand binding, destination authority and completion. Rejected: code-only diagnostic
+  replacement, per-code cascade exceptions, re-proving in the adapter, another failure map, and role/mode switches.
+  `ArithmeticSelection.Condition` belongs to the existing selection contract and is not reorganized by this unit.
+
+- **G52-1 Binding prerequisite ownership** (2026-10-24; planning session, independent designs A/B and
+  independent pre-code review). SPEC 23.1.2 makes a declaration rejected because a part failed depend on that part;
+  it does not invent another independent failure. G52 needs the existing prerequisite storage and readers together
+  before correcting attribute-target causality. Move consultation recording, declaration-part dependencies,
+  derived-failure classification and cause-key publication unchanged to `Binding.Diagnostics.Prerequisites`.
+  Their fields and `DerivedIssues` move with them; `ResetPrerequisites` keeps the same clearing order.
+  This separates dependency lifetime and traversal from diagnostic facts/rendering in the oversized entry file.
+  It is one Binding responsibility, not a line-count split or a new component, state, table or vocabulary.
+  Rejected: growing the mixed file, an argument-only wrapper or a merged prerequisite representation before its need
+  is established. Attribute legality and the behavior change remain with their existing owners in the next unit.
+
+- **G52-2 Rejected attributes retain their declaration cause** (2026-10-24; planning session, independent
+  designs A/B and independent pre-code review, including the base/Layout aggregate correction). SPEC 23.1.2
+  makes an invalid selected Attribute the cause of its target's rejection, not a second failed requirement.
+  Test, Layout, unknown markers and non-function LibraryImport share the existing target/part registration:
+  keep target Invalid and any independent Failure, and retain the rejected attribute in AddPrerequisite.
+  Test's direct registration is shared by the selected and excluded visitors; exclusion membership stays unchanged.
+  Consultation frames and declaration parts use the same live predicate: not Resolved, or syntax recovery.
+  Presence and traversal read both stores. The existing first non-recovery part and recovery replacement stay;
+  rejected attributes and any earlier retained struct part cannot resolve within that pass. Reset/rebind reconstructs
+  them. This does not establish that arbitrary pending base or field causes have the same lifetime.
+  Only Invalid with a live declaration part resists a pending transition; ordinary retries remain unchanged.
+  Declaration-context queries return that part before the independent Failure's signature-preservation rule.
+  Stored InvalidConstraint/Unsupported keys still close through their existing derived records; definite failures
+  remain direct. No diagnostic adapter filters duplicates.
+  Base validation separates its own rule result from the declaration's prior rejection before caching availability.
+  Layout fragment failures use the rejected-attribute path; the aggregate validity bit only decides IsCLayout.
+  Split-storage and R5-M55's zero-sized Field/struct diagnostics stay with their existing checks.
+  C-exchangeability retains its three outcomes: eligible, unsupported, or dependent on a failed Type. Its own-declaration
+  query includes the retained part cause beside the existing direct-Failure guard; a failed Type is not another ABI error.
+  Pending regressions use the public Binding producers and semantic queries; arbitrary injected states are not evidence
+  of source reachability. Product exclusion and Test-mode virtual pending retain their distinct raw failures.
+  Deleted: independent attribute-target Fail registrations, fragment aggregate-to-Fail copying and divergent
+  prerequisite/pending/context decisions. Rejected: blanket derived InvalidTypeFormation, global Invalid absorption,
+  a new cause collection, and extending persistent causes to pending bases. Existing enum/pattern and invalid-parent
+  consumers, and resolved unknown-marker classification, remain G52 follow-ups in PLAN.
+
+- **G52-3 Call and diagnostic publication concerns** (2026-10-24; planning session, independent pre-code review).
+  Binding's declaration-cause query must be read by candidate evaluation, committed-call constraint validation and
+  function-reference formation. Growing their already oversized mixed files, even by call-site qualification, is not
+  permitted. First move candidate evaluation and its saved inference fields to `Binding.CallSelection.Candidates`,
+  call and argument-operation constraint checks to the existing `Binding.ConstraintValidation`, and reference
+  selection/inference plus its two per-candidate fields to `Binding.FunctionReferences`. Function Type structure and
+  the shared signature contract comparison remain in `Binding.FunctionTypes`. Move CheckService's existing diagnostic
+  ownership/publication tests together to `CheckServiceTest.Diagnostics`, sharing its original project/input fixture.
+  All member bodies, signatures, field initialization, state save/restore and reset order remain unchanged. These are
+  concerns of the same owners, with no new representation, API, state or vocabulary. Rejected: a size exception for
+  qualifiers, moving only the new test, copying fixture helpers, or relocating candidate evaluation into the already
+  too-small remaining space of the selection entry file. The attribute-cause behavior correction remains a later unit.
+
+- **G223 Effect items after bu25** (2026-10-24; the planning session, one design and one review: by its judgement under Q5, one
+  `SyntaxForm` row and Binding's own checks change no shared representation and cross no phase; the owner
+  approved `SyntaxForm.EffectItem` on 2026-10-24: 「承認する」) SPEC 8.11.1, 8.11.4, 7.5 and F.3: `effect` that starts an item of an
+  indented body, of the top level or of a declaration container is an effect item, and each item gets one verdict
+  from its owner. Binding.EffectDeclarations decides every item in the tree (Misplaced, then its position's checks); the parser
+  decides leading-region membership, as for Constraint prefixes and `origin` clauses. Other indented lists (accessor lists, match
+  arms) keep reporting the form they expect; a single-item body is PLAN G238.
+  - p8: `BindClosure` binds a literal's items on entry, so every path binds them; Misplaced gives OutsideContract ("a function
+    literal declares no bound of its own").
+  - p11: an effect item that starts a body item outside a function's leading region (after an executable item, in a nested block,
+    in an accessor or at the top level; `Parser.ParseBodyEffect`) is read as an item, reported as `MisplacedSyntax_Kd` with the new
+    form `EffectItem` and dropped, as a misplaced `origin` clause is. Items in a leading region keep Binding's verdict.
+  - Duplicates: `ValidateDeclaredEffectBound(effect, target, earlier)` is the one rule for a Contract requirement, an original
+    virtual slot and a Callable Constraint; `CallableDuplicate` is deleted, so a Callable duplicate relates its earlier bound too.
+    The rejection's target is related by its kind (`requirement`, `declaration` "the original virtual slot", `constraint` "the
+    Constraint of the effect list"), and the duplicate Note names the position's rule, not "score already declares confined for
+    score".
+  - `ValidateConditionalBlock` and the enum member check (`PrepareStorage`) leave an effect item to its owner: one
+    `InvalidEffectBound_Kd` ("a conditional conformance declares no bound of its own"), not three `InvalidConstraint_Kd`, and no
+    `InvalidTypeFormation_Kd` in an enum. `InvalidEffectBound_Kd`'s Message names the virtual slot; the override
+    eligibility Reason no longer lists effects (an override's item is its own record since bu25).
+  - Not here: a single-item body (`=> effect confined`): `ParseEffectBound` expects the line's end, so the item would skip a
+    same-line closer, `,` or `else` the enclosing construct owns (the review's r1, r5); PLAN G238.
+  - Rejected: Binding deciding p11 (it would need a position column on `EffectBoundKoto`, bu25's rejected D, or items kept as
+    executable statements that every body consumer would meet); reusing `ConstraintPrefix` or `EffectBound` for p11 (their phrases
+    name other forms); keeping `CallableDuplicate` with its own Note (a second copy of the duplicate rule).
+
+- **G224 Static Field classification** (2026-10-24; planning session, independent designs A/B compared, B selected and reviewed)
+  SPEC 3.4 and 15.1.6 make standard static Fields bare Places. `Binding.PlaceAuthority.IsBarePlace` includes `IsStaticField`;
+  existing callee acquisition checks then reject an Exclusive call through a static `let`, and Subject acquisition borrows static
+  Fields Shared. An iteration entry's implicit static receiver Borrow retains BU-25's located Unsupported. `BorrowableTemporary` no longer repeats the static exclusion. This supersedes BU-21's postponed inclusion and
+  BU-25's continued exclusion: 2b-6 (b) is complete, and BU-25 explicitly leaves Subject Loans to A5 rather than `FailStaticBorrow`.
+  Both independent designs preferred the existing owner fix over a new shared path-result structure. Rejected: consumer-specific
+  static clauses; a new Subject Unsupported gate; deleting HIR publication's `Res.Static` clause, which also covers computed/custom
+  getters and is a different contract. No new representation or vocabulary. The classifier adds one constant-time property check,
+  with no allocation; no speedup claimed. G100's bare initializer/discard and static `@move` legality remain: `OffersTake` still
+  admits an Owner path without layers, and general bare-transfer legality stays with its recorded R6-check migration.
+
+- **G224 Expected result sources and Origin fits** (2026-10-24; planning session, independent designs A/B compared;
+  exact-target design reviewed before implementation and after the full-suite regressions exposed the missing source facts)
+  SPEC 12.3.1 and 14.9.2 pass the expected Type to every result source, even with omitted Origins. `ResultExpectation` no
+  longer drops that Type. `DecideResult` preserves the exact target: a target containing stable local regions uses
+  `CheckTypeUse` to publish source relations; other targets keep `FitsTypeAt`'s immediate or initializer-collecting fit.
+  `CheckTypeUseCore` runs the relation before its regional return guard, so omitted inner slots still acquire bounds beside
+  stable slots. This removes whole-selection Temporary borrows without losing reassigned references' helper dependencies.
+  - The solved annotation aliases expose an existing old-path miscompile: `NamesResultOrigin` compared a whole meet with each
+    input slot, dropping call-result Loans when local-region flow ran. Its ANY-dependency query now visits meet constituents;
+    Calls, Defaults and LocalRegions share it. The ALL-dependency query `ResultOriginsFromInput` stays separate. Graph sources
+    are already flattened and remain direct queries, avoiding recursive expansion of finite self sources. The regression
+    asserts matching rejection on MIR (D5); no old-path accepted form or generation feature is added.
+  - Rejected: replacing an expected Type with the sources' common Type (changes fixed nested positions); eagerly rewriting
+    initializer syntax or open replacements (cached aliases are intentional and later sources may still add bounds); broad
+    `CheckTypeUse` at fixed result targets (changes their immediate diagnostic contract); symmetric whole-meet containment
+    (misses overlapping constituents). No new representation, state or vocabulary; the extra walks use existing storage.
+    No speedup is claimed. The incorrect test rejecting an exclusive source at a shared expected result is retained as a
+    positive case under SPEC 10.2; the negative case now forbids strengthening a shared source to an exclusive result.
 
 ## R5 and R6 (adopted 2026-10-18)
 
@@ -5968,7 +6454,7 @@ structure is recorded here by the unit that first implements it.
   Opaque root's access kind at `MirBuilder.Root`, which the kept operands and the root collection use, and the completion-undecided
   flag at `Site`; it also routes the two producers that still write the roots directly (the derived jump, `MirBuilder.Control.cs`,
   and an omitted default's site, `MirBuilder.Defaults.cs`), files AGENTS' three-units rule makes due for restructuring before their
-  next change.
+  next change (superseded by DEC Q9).
   - R5-M84 extends the kept-operand rule: an Opaque site names a part already built by its Place's root, never by its syntax.
   - R4-M88 decides its deferred unresolved compound Places and amends its kept operands: an operation Binding left
     unresolved keeps every operand its form evaluates but an unresolved construct without a Type, also labeled.
@@ -6596,7 +7082,7 @@ structure is recorded here by the unit that first implements it.
     regression is `FunctionCodegenTest.CopySlotsAndCheckLabelsNeverShareAName`.
   - Restructures first, behavior unchanged: `IntrinsicRows.cs` as the indexed table, `LlvmModuleText.cs`' spellings split out,
     `LegacyRuntimeHelpers`' storage byte primitives moved to `.Storage.cs` (d063f5ad); `LlvmScalarText`'s conversions moved to
-    `.Conversions.cs` before its abort writer reads `RuntimeAbi.NoOsError`. `RuntimeAbi.cs`'s due restructure is a keep (the planning
+    `.Conversions.cs` before its abort writer reads `RuntimeAbi.NoOsError`. `RuntimeAbi.cs`'s due restructure (superseded by DEC Q9) is a keep (the planning
     session's ruling, as R4's 2x-R10 for `MirLoanSets.cs`): it has one responsibility, and its routines read its representations at
     static initialization, whose order a partial split would leave unspecified; it gains the routines' operand slots and Location kinds,
     which no generated text reads (e1025e1b and the review fold).
@@ -6629,7 +7115,7 @@ structure is recorded here by the unit that first implements it.
   - Restructure first (b2194242, behavior unchanged): `FunctionCodegen.Places.cs` keeps the place writer and `FunctionCodegen.Stores.cs`
     takes the loads, stores and copies through it; the parameter spelling. C3b does not change `ModuleCodegen.Frame.cs`. After C3b,
     `FunctionCodegen.cs`, `.Calls.cs`, `.Frame.cs`, `.Arithmetic.cs` and `.Casts.cs` have had three consecutive units, so the next unit
-    changing one restructures it first.
+    changing one restructures it first (superseded by DEC Q9).
   - MIR's Location constants are TestObserve's operands (C10a's row), not C3b's. Requirement calls use the copy slots (R5-M89's condition,
     met by R5-M92's narrowed scan).
   - Rejected: a "forwarded" sentinel that each location writer tests (a sentinel and a branch per consumer); hidden location operands
@@ -6847,7 +7333,7 @@ structure is recorded here by the unit that first implements it.
     since a concrete environment never allocates; C5a's own requirement test is that a 48-byte environment holding a string, a 4-byte
     drop-needing one and an empty one allocate nothing. E12's native half lands with C7b (within R5-M85).
   - Rulings: `DropGlue.cs`'s due restructure is a keep (one responsibility in 156 lines; a split would be mechanical, as R5-M92's
-    `RuntimeAbi.cs`), the file's first such ruling, so its next changing unit restructures it. Restructured first, behavior unchanged:
+    `RuntimeAbi.cs`), the file's first such ruling, so its next changing unit restructures it (superseded by DEC Q9). Restructured first, behavior unchanged:
     ModuleCodegen's item signatures in `ModuleCodegen.Signatures.cs`.
   - Verified: the sel ledger loses 368 rows (closure 89, C-frame 192, call 63, C-aggregate 19, object 5), all this unit's (at the merge
     base none passes); the 61 fixture families the flipped tests write run natively under sel (447 fixtures, O0 and O2); `FunctionCodegenTest`

@@ -220,7 +220,7 @@ public class MatchEmissionTest
     [InlineData("Cleanup", "Console.writeLine(match \"subject\"@move\n    _\n        defer => loop => ()\n        yield \"secured\"\n)")]
     public void DivergenceHasNoResultDelivery(string name, string source)
     {
-        var ir = ScalarEmissionTest.EmitFixture("MatchDivergent" + name, source, string.Empty, timeoutMilliseconds: 300);
+        var ir = ScalarEmissionTest.EmitFixture("MatchDivergent" + name, source, string.Empty, observationMilliseconds: 300);
         GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 

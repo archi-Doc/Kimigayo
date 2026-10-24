@@ -17,7 +17,7 @@ public sealed class MirDataflowTest
         var bodies = 0;
         foreach (var path in Directory.GetFiles(DiagnosticCorpus.RepositoryPath("tests", "mir"), "*.kimi"))
         {
-            foreach (var body in MirBuildTest.Compile(File.ReadAllText(path)).BuildMir().Bodies)
+            foreach (var body in MirDumpTest.Compile(Path.GetFileNameWithoutExtension(path)).BuildMir().Bodies)
             {
                 var (_, entries) = Solve(body);
                 Assert.True(entries.SequenceEqual(FixedPoint(body)), $"{Path.GetFileName(path)}: {body.Key}");

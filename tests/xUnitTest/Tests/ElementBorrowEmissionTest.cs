@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -324,7 +325,7 @@ public class ElementBorrowEmissionTest
     [InlineData("Call", "func forever(a: ref/string) -> Never\n    loop => ()\nlet a = (\"held\", 0)\nforever(a.0)")]
     [InlineData("Cleanup", "func f() -> string\n    let a = (\"held\", 0)\n    defer => loop => ()\n    a.0 == (return \"ok\")\n    return \"bad\"\nConsole.writeLine(f())")]
     public void NonterminationCannotReleaseOrDeliverNormally(string name, string source)
-        => ScalarEmissionTest.EmitFixture("ElementBorrowDivergent" + name, source, string.Empty, timeoutMilliseconds: 300);
+        => ScalarEmissionTest.EmitFixture("ElementBorrowDivergent" + name, source, string.Empty, observationMilliseconds: 300);
 
     // SPEC 3.4.3, 4.7.1: emission accepts a part borrow only through its element's own borrow of the element's stored Type, and an
     // exclusive fixed-array element only in exclusive mode; a corrupted route record fails before output and a fresh analysis recovers.
@@ -368,15 +369,26 @@ public class ElementBorrowEmissionTest
         var borrowed = conversion.Left;
         var read = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.MemberAccessKoto>().Single(static x => x.ToString() == "ys[0].n");
         var declaration = read.Parent!;
+        var placeholder = new CodeBlockKoto(read.CodeContext);
         for (var i = 0; i < 3; i++)
         {
             // Swap the borrowed part with the other Array's read: the exclusive borrow then names ys, and the Loan on xs no longer meets it.
-            Assert.True(KotoHelper.Replace(conversion, borrowed, read) && KotoHelper.Replace(declaration, read, borrowed));
+            Assert.True(KotoHelper.Replace(conversion, borrowed, placeholder));
+            ParseTestHelper.VerifyParents(c.Kotonoha.RootKoto);
+            Assert.True(KotoHelper.Replace(declaration, read, borrowed));
+            ParseTestHelper.VerifyParents(c.Kotonoha.RootKoto);
+            Assert.True(KotoHelper.Replace(conversion, placeholder, read));
+            ParseTestHelper.VerifyParents(c.Kotonoha.RootKoto);
             Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
             c.Binding.CheckStartup(OutputKind.Application);
             Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
             Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-            Assert.True(KotoHelper.Replace(conversion, read, borrowed) && KotoHelper.Replace(declaration, borrowed, read));
+            Assert.True(KotoHelper.Replace(conversion, read, placeholder));
+            ParseTestHelper.VerifyParents(c.Kotonoha.RootKoto);
+            Assert.True(KotoHelper.Replace(declaration, borrowed, read));
+            ParseTestHelper.VerifyParents(c.Kotonoha.RootKoto);
+            Assert.True(KotoHelper.Replace(conversion, placeholder, borrowed));
+            ParseTestHelper.VerifyParents(c.Kotonoha.RootKoto);
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
             Assert.False(c.Analyze().IsVerified);

@@ -209,8 +209,13 @@ public sealed partial class MirBuildTest
     [Fact]
     public void ADefaultBeyondTheCaseBoundHasNoTemplate()
     {
-        var c = Compile("contract C\n    func need<a/A, b/B, c/C, d/D, e/E, g/G, h/H>(self: ref/Self, p: a/A, q: b/B, r: c/C, u: d/D, v: e/E, w: g/G, y: h/H, k: i32 = 1 + 2) -> ()\n" +
+        var c = CompilationTestHelper.Parse(
+            "contract C\n    func need<a/A, b/B, c/C, d/D, e/E, g/G, h/H>(self: ref/Self, p: a/A, q: b/B, r: c/C, " +
+            "u: d/D, v: e/E, w: g/G, y: h/H, k: i32 = 1 + 2) -> ()\n" +
             "public func main() -> ()\n    ()\n");
+        Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), Assert.Single(TestDiagnostics.Of(c)).Code);
+        c.Bind();
+        _ = c.Binding.CheckStartup(OutputKind.Application);
         Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.OwnershipCaseLimit_Kd);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);

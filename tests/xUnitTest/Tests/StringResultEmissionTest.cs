@@ -76,7 +76,7 @@ public class StringResultEmissionTest
         Assert.False(body.IsReachable(result.Join));
         Assert.Single(body.ResultWrites);
         Assert.DoesNotContain(module.GetFunction(0).Instructions, x => x.Callee == RuntimeAbi.DestroyString);
-        ScalarEmissionTest.EmitFixture("StringResultDivergent", Source, string.Empty, timeoutMilliseconds: 300);
+        ScalarEmissionTest.EmitFixture("StringResultDivergent", Source, string.Empty, observationMilliseconds: 300);
     }
 
     [Fact]

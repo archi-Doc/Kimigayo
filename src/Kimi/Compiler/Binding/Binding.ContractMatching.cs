@@ -164,7 +164,9 @@ public sealed partial class Binding
             return this.VerifyInheritedConformance(conformance);
         }
 
-        if (conformance.Identity.Invalid || conformance.Invalid || conformance.Declaration.BindingState == BindingState.Invalid || conformance.Scope.Parent?.Constraints?.Invalid == true || InvalidDeclarationContext(conformance.Contract.Declaration) || InvalidDeclarationContext(conformance.Type.Declaration))
+        if (conformance.Identity.Invalid || conformance.Invalid || conformance.Declaration.BindingState == BindingState.Invalid ||
+            conformance.Scope.Parent?.Constraints?.Invalid == true || this.InvalidDeclarationContext(conformance.Contract.Declaration) ||
+            this.InvalidDeclarationContext(conformance.Type.Declaration))
         {
             conformance.IsVerified = false;
             if (conformance.Invalid && this.partPrerequisites.ContainsKey(conformance.Use))

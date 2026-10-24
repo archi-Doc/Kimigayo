@@ -3,6 +3,7 @@
 using System.Text.Json;
 using Kimi;
 using Kimi.Checking;
+using Kimi.Compiler;
 using Kimi.Diagnostics;
 using Kimi.Lsp;
 using Xunit;
@@ -462,6 +463,24 @@ public class LocalOriginClauseTest
     {
         var source = "func f(c: bool, a: ref/i32, b: ref/i32) -> ref/i32 during " + result + "\n    let k: ref/i32 = if c => " + first + " else => " + second + "\n    return k\n" + Main;
         Assert.Equal(code is null ? [] : [code], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+    }
+
+    // A fixed aggregate expectation still infers its omitted inner Origins when a source carries a mutable local's region.
+    [Theory]
+    [InlineData("(a and b)", null)]
+    [InlineData("a", "UnprovenOriginRelation_Kd")]
+    public void AnExpectedAggregateCollectsRegionalSourceBounds(string result, string? code)
+    {
+        var source = "func f(c: bool, a: ref/i32, b: ref/i32) -> ref/i32 during " + result +
+            "\n    var p = a\n    let pair: (ref/i32 during p, ref/i32) = if c => (p, p) else => (p, b)\n    return pair.1\n" + Main;
+        Assert.Equal(code is null ? [] : [code], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+        if (code is null)
+        {
+            var c = MinimalEmissionTest.Analyze(source);
+            var body = Assert.Single(c.BuildMir().Bodies.ToArray(), static x => x.Key.Decl?.Name == "f");
+            var pair = Assert.Single(body.Locals.ToArray(), static x => x.Name == "pair");
+            Assert.Equal(OriginKind.Intersection, pair.Type.Components[1].Origin!.Kind);
+        }
     }
 
     // SPEC 10.1, 15.4.4: only the selected candidate's fits bound a local's omitted Origin, whatever the declaration order.

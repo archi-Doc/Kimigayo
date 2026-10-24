@@ -162,7 +162,7 @@ public class GenericAdaptationTest
         var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>());
         var invalid = MinimalEmissionTest.Analyze(Source.Replace("7@s", "7@s/i64", StringComparison.Ordinal));
         var donor = Assert.Single(KotoTree.Walk(invalid.Kotonoha.RootKoto).OfType<ConversionKoto>());
-        Assert.True(KotoHelper.Replace(conversion, conversion.Right, donor.Right));
+        Assert.True(KotoHelper.Replace(conversion, conversion.Right, ParseTestHelper.Detach(donor.Right, new CodeBlockKoto(donor.CodeContext))));
         Assert.Null(conversion.ConversionOf().Adaptation);
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
@@ -170,7 +170,7 @@ public class GenericAdaptationTest
 
         var restored = MinimalEmissionTest.Analyze(Source);
         donor = Assert.Single(KotoTree.Walk(restored.Kotonoha.RootKoto).OfType<ConversionKoto>());
-        Assert.True(KotoHelper.Replace(conversion, conversion.Right, donor.Right));
+        Assert.True(KotoHelper.Replace(conversion, conversion.Right, ParseTestHelper.Detach(donor.Right, new CodeBlockKoto(donor.CodeContext))));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));

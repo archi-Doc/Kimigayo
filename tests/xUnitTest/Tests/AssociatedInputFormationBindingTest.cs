@@ -72,6 +72,7 @@ public class AssociatedInputFormationBindingTest
         var original = clause.Right;
         var donor = MinimalEmissionTest.Analyze(source.Replace("Source<i32>", "Source<string>", StringComparison.Ordinal));
         var replacement = donor.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").Members.OfType<IsKoto>().Single(x => x.IsAssociatedConstraint).Right;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(clause, original, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.False(definition.IsVerified);

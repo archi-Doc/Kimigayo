@@ -124,10 +124,12 @@ public class ParserOptimizationTest
         var firstGeneric = Assert.IsType<GenericsKoto>(first.Method);
         var secondGeneric = Assert.IsType<GenericsKoto>(second.Method);
 
-        Assert.True(KotoHelper.Replace(firstGeneric, firstGeneric.TypeArguments[0], secondGeneric.TypeArguments[0]));
+        var type = ParseTestHelper.Detach(secondGeneric.TypeArguments[0], new CodeBlockKoto(secondGeneric.CodeContext));
+        Assert.True(KotoHelper.Replace(firstGeneric, firstGeneric.TypeArguments[0], type));
         Assert.Equal("call<B>(1)", first.ToString());
         var oldArgument = first.ChildNodes.Last();
         var replacementArgument = second.ChildNodes.Last();
+        ParseTestHelper.Detach(replacementArgument, new CodeBlockKoto(replacementArgument.CodeContext));
         Assert.True(KotoHelper.Replace(first, oldArgument, replacementArgument));
         Assert.Null(oldArgument.Parent);
         Assert.Same(first, replacementArgument.Parent);
@@ -136,9 +138,11 @@ public class ParserOptimizationTest
         var mutableArguments = first.Arguments;
         Assert.True(KotoHelper.Replace(first, mutableArguments[0], oldArgument));
         Assert.Same(oldArgument, mutableArguments[0]);
+        ParseTestHelper.Detach(second, new CodeBlockKoto(second.CodeContext));
         Assert.True(KotoHelper.Replace(body, first, second));
         Assert.Same(second, body.Items[0]);
         Assert.Same(body, second.Parent);
+        ParseTestHelper.VerifyParents(kotonoha.RootKoto);
     }
 
     [Fact]
@@ -151,6 +155,7 @@ public class ParserOptimizationTest
         var functions = kotonoha.GeneratedFunction!.Body!.Items.Cast<FunctionKoto>().ToArray();
         var attribute = functions[0].AttributeChain!;
         var replacement = functions[1].AttributeChain!.Operand;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.Equal("First", attribute.IdentifierKoto.ToString());
         Assert.Equal("1", Assert.Single(attribute.Arguments).ToString());
         Assert.True(KotoHelper.Replace(attribute, attribute.Operand, replacement));
@@ -178,5 +183,64 @@ public class ParserOptimizationTest
         Assert.Same(functions[0], replacement.Parent);
         Assert.Null(head.Parent);
         Assert.Null(head.AttributeChain);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AttachedReplacementLeavesBothSlotsAndSourceMetadataUnchanged(bool sameParent)
+    {
+        var tree = ParseTestHelper.ParseSuccess("func Run() => call(1, 22)");
+        var other = sameParent ? tree : ParseTestHelper.ParseSuccess("func Other() => call(333)");
+        var target = Assert.IsType<InvocationKoto>(Assert.IsType<FunctionKoto>(tree.GeneratedFunction!.Body!.Items[0]).ExpressionBody);
+        var donor = Assert.IsType<InvocationKoto>(Assert.IsType<FunctionKoto>(other.GeneratedFunction!.Body!.Items[0]).ExpressionBody);
+        var old = target.ArgumentNodes[0];
+        var replacement = donor.ArgumentNodes[^1];
+        var context = replacement.CodeContext;
+        var span = replacement.Span;
+        var version = tree.Syntax.Version;
+        var donorVersion = other.Syntax.Version;
+        var source = ParseTestHelper.Unparse(tree);
+        var donorSource = ParseTestHelper.Unparse(other);
+
+        Assert.Throws<InvalidOperationException>(() => KotoHelper.Replace(target, old, replacement));
+
+        Assert.Same(old, target.ArgumentNodes[0]);
+        Assert.Same(replacement, donor.ArgumentNodes[^1]);
+        Assert.Same(target, old.Parent);
+        Assert.Same(donor, replacement.Parent);
+        Assert.Same(context, replacement.CodeContext);
+        Assert.Equal(span, replacement.Span);
+        Assert.Equal(version, tree.Syntax.Version);
+        Assert.Equal(donorVersion, other.Syntax.Version);
+        Assert.Equal(source, ParseTestHelper.Unparse(tree));
+        Assert.Equal(donorSource, ParseTestHelper.Unparse(other));
+        ParseTestHelper.VerifyParents(tree.RootKoto);
+        ParseTestHelper.VerifyParents(other.RootKoto);
+    }
+
+    [Fact]
+    public void AttachedAttributeReplacementLeavesBothChainsUnchanged()
+    {
+        var tree = ParseTestHelper.ParseSuccess("#First #Second func Run() => ()\n#Third func Other() => ()");
+        var functions = tree.GeneratedFunction!.Body!.Items.Cast<FunctionKoto>().ToArray();
+        var old = functions[0].AttributeChain!;
+        var rest = old.AttributeChain!;
+        var replacement = functions[1].AttributeChain!;
+        var context = replacement.CodeContext;
+        var span = replacement.Span;
+        var version = tree.Syntax.Version;
+
+        Assert.Throws<InvalidOperationException>(() => KotoHelper.Replace(functions[0], old, replacement));
+
+        Assert.Same(old, functions[0].AttributeChain);
+        Assert.Same(rest, old.AttributeChain);
+        Assert.Same(old, rest.Parent);
+        Assert.Same(replacement, functions[1].AttributeChain);
+        Assert.Null(replacement.AttributeChain);
+        Assert.Same(context, replacement.CodeContext);
+        Assert.Equal(span, replacement.Span);
+        Assert.Equal(version, tree.Syntax.Version);
+        ParseTestHelper.VerifyParents(tree.RootKoto);
     }
 }

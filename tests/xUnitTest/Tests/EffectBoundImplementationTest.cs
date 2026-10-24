@@ -187,6 +187,7 @@ public class EffectBoundImplementationTest
         var original = function.ExpressionBody!;
         var donor = ParseTestHelper.ParseSuccess(source.Replace("=> self.count += 1", "=> Console.writeLine(\"step\")", StringComparison.Ordinal));
         var replacement = KotoTree.Walk(donor.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "update" && x.IsSpecialization == (kind == 2)).ExpressionBody!;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         for (var i = 0; i < 3; i++)
         {
             Assert.True(KotoHelper.Replace(function, original, replacement));

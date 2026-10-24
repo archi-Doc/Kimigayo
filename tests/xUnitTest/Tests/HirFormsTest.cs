@@ -48,6 +48,33 @@ public sealed partial class HirFormsTest
         Assert.Equal(HirRes.PreparedParam, HirTables.ResOf(((InvocationKoto)declaration.Expression).ArgumentNodes[0]));
     }
 
+    // SPEC 17.4.2, 22.5.1: the macro owns the call and its message acquisition; its inner invocation is covered syntax.
+    [Theory]
+    [InlineData("$abort(\"body\")")]
+    [InlineData("require false else => $abort(\"require\")")]
+    [InlineData("func f(message: string = $abort(\"default\")) => ()\nf()")]
+    [InlineData("$abort($abort(\"inner\"))")]
+    public void AbortCallsArePublishedAtTheirMacros(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        HirTables.Publish(c);
+        Assert.Empty(Problems(c.Kotonoha));
+        var macros = Reachable(c.Kotonoha).OfType<MacroKoto>().ToArray();
+        Assert.NotEmpty(macros);
+        foreach (var macro in macros)
+        {
+            var invocation = Assert.IsType<InvocationKoto>(macro.Operand);
+            Assert.Equal((HirOp.Call, HirOp.Syntax), (HirTables.Op(macro), HirTables.Op(invocation)));
+            Assert.Same(invocation.CallOf(), CallPlan.Of(macro));
+            Assert.Null(CallPlan.Of(macro, 1));
+            Assert.Equal(HirCompletion.Diverges, HirTables.CompletionOf(macro));
+            Assert.Equal(HirCompletion.Unset, HirTables.CompletionOf(invocation));
+            Assert.Equal(HirAcquire.Unset, HirTables.AdjustOf(invocation).Acquire);
+            Assert.NotEqual(HirAcquire.Unset, HirTables.AdjustOf(invocation.ArgumentNodes[0]).Acquire);
+        }
+    }
+
     // A virtual or override body Binding bound is built, the conditional one too; the corpus has none.
     [Fact]
     public void VirtualBodiesArePublished()
@@ -82,7 +109,7 @@ public sealed partial class HirFormsTest
         Assert.Equal(HirCompletion.Diverges, First<IfKoto>("choose"));
         Assert.Equal(HirCompletion.Diverges, First<JumpKoto>("choose"));
         Assert.Equal(HirCompletion.Diverges, First<MatchKoto>("pick"));
-        Assert.Equal(HirCompletion.Diverges, First<InvocationKoto>("pick"));
+        Assert.Equal(HirCompletion.Diverges, First<MacroKoto>("pick"));
         Assert.Equal(HirCompletion.Diverges, First<LoopKoto>("spin"));
         Assert.Equal(HirCompletion.Completes, First<LoopKoto>("count"));
         Assert.Equal(HirCompletion.Diverges, First<JumpKoto>("count"));
@@ -157,7 +184,7 @@ public sealed partial class HirFormsTest
         Assert.Empty(Problems(c.Kotonoha));
         var adjusted = Reachable(c.Kotonoha).Where(static x => HirTables.AdjustOf(x).Acquire != HirAcquire.Unset)
             .Select(x => $"{Source.Substring(x.Span.Start, x.Span.Length)} {HirTables.AdjustOf(x).Acquire}/{HirTables.AdjustOf(x).Adaptation}");
-        // The require's condition operands are Temporaries, and the callee of $abort a group's operand, which the group acquires.
+        // The require's condition operands and the abort message are Temporaries.
         string[] expected =
         [
             "p@follow Copy/None", "p None/None", "target@follow None/None", "target None/None", "1 Temporary/None", "1 Temporary/None",
@@ -168,7 +195,7 @@ public sealed partial class HirFormsTest
             "read(number) == 2 Temporary/None", "read(number) Temporary/None", "number None/SharedBorrow", "2 Temporary/None",
             "count(owned@move) == 1 Temporary/None", "count(owned@move) Temporary/None", "owned@move Temporary/None", "owned Move/None",
             "1 Temporary/None", "copied == 2 Temporary/None", "copied Copy/None", "2 Temporary/None", "pick(.Some(5)) == 5 Temporary/None",
-            "pick(.Some(5)) Temporary/None", ".Some(5) Temporary/None", "5 Temporary/None", "5 Temporary/None", "abort(\"adjust\") None/None",
+            "pick(.Some(5)) Temporary/None", ".Some(5) Temporary/None", "5 Temporary/None", "5 Temporary/None",
             "\"adjust\" Temporary/None",
         ];
         Assert.Equal(expected, adjusted);

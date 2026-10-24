@@ -160,6 +160,7 @@ public class AssociatedInferenceBoundaryTest
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var explicitClause = type.Members.OfType<IsKoto>().Single(x => x.IsAssociatedConstraint);
         var replacement = CompilationTestHelper.ParseSuccess("struct R\n    let unrelated: i32 = 1").Kotonoha.RootKoto.NestedContainers.Single().Members.OfType<VariableKoto>().Single();
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(type, explicitClause, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.False(Definition(c, "D").IsVerified);

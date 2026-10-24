@@ -339,8 +339,8 @@ public partial class Compilation
             return;
         }
 
-        // The table that numbered the parent holds it, also after a transplant re-homed it from its source module.
-        (parent.SyntaxOwner ?? parent.Kotonoha.Syntax).Edit();
+        // Structural ownership, established on attachment, decides which source analysis and numbering an edit revokes.
+        parent.Kotonoha.Syntax.Edit();
         this.InvalidateSourceAnalysis();
     }
 

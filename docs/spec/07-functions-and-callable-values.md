@@ -323,7 +323,15 @@ Captures resolve by Binding Identity. Without a list, no Move, Borrow, Reborrow 
 
 An explicit entry names one binding and acquires it at creation exactly as its initialization would ([§3.5](03-types-and-values.md#35-copy-and-move), [§13.5](13-operators-and-assignment.md#135-explicit-operations), [§8.14](08-generics-constraints-and-contracts.md#814-generic-access-effects)): a bare entry Reborrows a binding holding `uniq/T` or `objuniq/T` and rejects other Non-Copy bindings, and `x@ref` or `x@uniq` borrows the outer slot, on which the Closure then depends ([§15.8](15-ownership-and-lifetime-analysis.md#158-captured-and-erased-dependencies)).
 
-Only outer runtime locals and parameters are captured. Type names, Containers, static storage (static Fields and Properties, whose direct use is a static access, [§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)) and named functions, including local named functions, are not captures. Top-level locals are ordinary locals and are captured like any other. Contextual `self` and a setter's `value` are never captured implicitly; explicit captures of them obey the receiver and accessor rules. In a constructor or `drop`, no entry captures `self` ([§6.3.4](06-declarations-and-containers.md#634-the-construction-receiver), [§16.3.1](16-scope-exit-and-destruction.md#1631-destruction-receiver)). The contextual `storage` binding cannot be captured by name.
+Only outer runtime locals and parameters are captured. Type names, Containers, static storage (static Fields and Properties, whose direct use is a static access, [§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)) and named functions, including local named functions, are not captures. Top-level locals are ordinary locals and are captured like any other. Contextual `self` and a setter's `value` are never captured implicitly; explicit captures of them obey the receiver and accessor rules. In a constructor or `drop`, no entry captures `self` ([§6.3.4](06-declarations-and-containers.md#634-the-construction-receiver), [§16.3.1](16-scope-exit-and-destruction.md#1631-destruction-receiver)). The contextual `storage` binding cannot be captured by name. A static Property's `storage` is static storage, so a Closure in its accessor uses it as a static access; an instance Property's `storage` is never captured.
+
+```kimi
+group Totals
+    public var count: i32 = 0
+        get() -> i32
+            let read = func () -> i32 => storage   // Valid: a static Property's storage is a static access.
+            return read()
+```
 
 Explicit entries execute left to right, unused ones included; duplicates and names of parameters are errors. Inferred captures execute once each, in order of first occurrence in selected source.
 

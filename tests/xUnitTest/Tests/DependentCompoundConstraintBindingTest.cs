@@ -116,6 +116,7 @@ public class DependentCompoundConstraintBindingTest
         var original = clause.Right;
         var donor = MinimalEmissionTest.Analyze(source.Replace("is Copy", "is not Copy", StringComparison.Ordinal));
         var replacement = donor.Kotonoha.RootKoto.NestedContainers.Single().ConstraintNodes[0].Right;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(clause, original, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.True(KotoHelper.Replace(clause, replacement, original));

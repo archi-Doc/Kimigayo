@@ -184,6 +184,7 @@ public class RuntimeTypeTest
         var oldTarget = test.Right;
         var fragment = CompilationTestHelper.ParseSuccess(Source.Replace("is not Dog", "is not Missing", StringComparison.Ordinal));
         var newTarget = Test(fragment).Right;
+        ParseTestHelper.Detach(newTarget, new CodeBlockKoto(newTarget.CodeContext));
         Assert.True(KotoHelper.Replace(test, oldTarget, newTarget));
         Assert.False(c.Bind().IsComplete);
         Assert.Null(test.RuntimeTestOf());
@@ -383,6 +384,145 @@ public class RuntimeTypeTest
             flow.Reanalyze(c.Kotonoha.RootKoto);
         }));
         AssertBound(c);
+    }
+
+    [Theory]
+    [InlineData("ref/i32 during static", false)]
+    [InlineData("raw/i32 during static", false)]
+    [InlineData("raw/i32", true)]
+    [InlineData("(ref/i32) -> ref/i32", true)]
+    public void SelectedAliasEnvironmentPreservesWrittenOriginProvenance(string argument, bool valid)
+    {
+        var c = CompilationTestHelper.ParseSuccess($"alias Box<{argument}>\nstruct Box<T>\n    public struct Inner\nstruct Animal\nfunc f(x: objref/Animal) -> bool => x is Inner");
+        Assert.Equal(valid, c.Bind().IsComplete);
+        Assert.Equal(valid, Test(c).RuntimeTestOf().HasValue);
+        if (!valid)
+        {
+            var issue = Assert.Single(c.Binding.Issues);
+            Assert.Equal(DiagnosticCode.InvalidTypeFormation_Kd, issue.Code);
+            Assert.Same(Test(c), issue.Node);
+        }
+    }
+
+    [Theory]
+    [InlineData("alias H => Box<raw/i32 during static>.Helpers", "H.Inner")]
+    [InlineData("alias Box<raw/i32 during static>.Helpers", "Slot<Inner>")]
+    [InlineData("alias Box<raw/i32 during static>.Helpers\nalias Box<raw/i32 during static>.Helpers", "Inner")]
+    [InlineData("alias H => Box<raw/i32 during static>.Helpers\nalias H => Box<raw/i32 during static>.Helpers", "H.Inner")]
+    public void NamedNestedAndMergedAliasTargetsKeepTheSelectedWitness(string aliases, string target)
+    {
+        var c = CompilationTestHelper.ParseSuccess($"{aliases}\nstruct Box<T>\n    public group Helpers\n        public struct Inner\nstruct Slot<T>\nstruct Animal\nfunc f(x: objref/Animal) -> bool => x is not {target}");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Null(Test(c).RuntimeTestOf());
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal(DiagnosticCode.InvalidTypeFormation_Kd, issue.Code);
+        Assert.Same(Test(c), issue.Node);
+    }
+
+    [Theory]
+    [InlineData("raw/i32 during static", DiagnosticCode.InvalidTypeFormation_Kd)]
+    [InlineData("raw/i32", DiagnosticCode.Unsupported_Kd)]
+    public void AliasOriginViolationPrecedesTheDependentTargetBoundary(string argument, DiagnosticCode expected)
+    {
+        var c = CompilationTestHelper.ParseSuccess($"alias Box<{argument}>\nstruct Box<A>\n    public struct Inner<B>\nstruct Animal\nfunc f<T>(x: objref/Animal) -> bool => x is Inner<T>");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Null(Test(c).RuntimeTestOf());
+        Assert.Equal(expected, Assert.Single(c.Binding.Issues).Code);
+    }
+
+    [Fact]
+    public void RuntimeOriginRecoveryKeepsIndependentBindingErrorsAndNoPlan()
+    {
+        const string Source = "struct Animal\nstruct Slot<T>\nfunc f(x: objref/Animal) -> bool => x is Slot<raw/i32 during static>\nlet n: i32 = true";
+        var c = CompilationTestHelper.Parse(Source);
+        c.Bind();
+        c.Binding.ReportDiagnostics();
+        var result = c.Diagnostics.Finalize(rejected: true);
+        Assert.Equal(["MisplacedSyntax_Kd", "TypeMismatch_Kd"], result.Diagnostics.Select(static x => x.Code));
+        Assert.Null(Test(c).RuntimeTestOf());
+        c.Bind();
+        c.Binding.ReportDiagnostics();
+        Assert.Equal(result, c.Diagnostics.Finalize(rejected: true));
+        Assert.Null(Test(c).RuntimeTestOf());
+    }
+
+    [Theory]
+    [InlineData("Animal")]
+    [InlineData("Inner")]
+    public void UnselectedAliasOriginsDoNotContaminateLocalTargets(string target)
+    {
+        var c = CompilationTestHelper.ParseSuccess($"alias Box<raw/i32 during static>\nstruct Box<T>\n    public struct Inner\nstruct Animal\nstruct Inner\nfunc f(x: objref/Animal) -> bool => x is {target}");
+        AssertBound(c);
+        Assert.NotNull(Test(c).RuntimeTestOf());
+    }
+
+    [Theory]
+    [InlineData("raw/i32")]
+    [InlineData("(ref/i32) -> ref/i32")]
+    public void UnannotatedNestedTypesAndOrdinaryAnnotatedDeclarationsRemainValid(string argument)
+    {
+        var c = CompilationTestHelper.ParseSuccess($"struct Animal\nstruct Slot<T>\nfunc ordinary(x: Slot<ref/i32 during static>) => ()\nfunc f(x: objref/Animal) -> bool => x is Slot<{argument}>");
+        AssertBound(c);
+        Assert.NotNull(Test(c).RuntimeTestOf());
+        Assert.True(c.Analyze().IsVerified);
+    }
+
+    [Fact]
+    public void EditingAliasTypeArgumentsRefreshesTheWitnessAndPlan()
+    {
+        const string Source = "alias Box<raw/i32>\nstruct Box<T>\n    public struct Inner\nstruct Animal\nfunc f(x: objref/Animal) -> bool => x is Inner";
+        var c = CompilationTestHelper.ParseSuccess(Source);
+        AssertBound(c);
+        var test = Test(c);
+        var target = test.RuntimeTestOf()!.Value.TargetType;
+        var alias = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<AliasKoto>());
+        var arguments = Assert.Single(KotoTree.Walk(alias).OfType<GenericsKoto>());
+        var original = arguments.TypeArguments[0];
+        var donor = CompilationTestHelper.ParseSuccess(Source.Replace("Box<raw/i32>", "Box<raw/i32 during static>", StringComparison.Ordinal));
+        var replacement = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<AliasKoto>());
+        var written = Assert.Single(KotoTree.Walk(replacement).OfType<GenericsKoto>()).TypeArguments[0];
+        ParseTestHelper.Detach(written, new CodeBlockKoto(written.CodeContext));
+        Assert.True(KotoHelper.Replace(arguments, original, written));
+        Assert.False(c.Semantics.IsCurrent(test));
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(DiagnosticCode.InvalidTypeFormation_Kd, Assert.Single(c.Binding.Issues).Code);
+        Assert.Null(test.RuntimeTestOf());
+        Assert.True(KotoHelper.Replace(arguments, written, original));
+        AssertBound(c);
+        Assert.Same(target, test.RuntimeTestOf()!.Value.TargetType);
+    }
+
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData(1)]
+    [InlineData(128)]
+    public void WarmAliasTargetChecksReuseTheirWitnessStorage(int count)
+    {
+        var source = new StringBuilder("alias Box<(ref/i32) -> ref/i32>\nstruct Box<T>\n    public struct Inner\nstruct Animal\nfunc f(x: objref/Animal)\n");
+        for (var i = 0; i < count; i++)
+        {
+            source.Append("    let b").Append(i).Append(" = x is Inner\n");
+        }
+
+        var c = CompilationTestHelper.ParseSuccess(source.ToString());
+        AssertBound(c);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
+    }
+
+    [Theory]
+    [InlineData(false, "public", "<U>")]
+    [InlineData(true, "public", "<U>")]
+    [InlineData(false, "private", "")]
+    [InlineData(true, "private", "")]
+    public void EliminatedImportCandidatesDoNotSupplyOriginWitnesses(bool reverse, string access, string parameters)
+    {
+        const string Bad = "alias Bad<raw/i32 during static>\n";
+        const string Good = "alias Good<i32>\n";
+        var source = (reverse ? Good + Bad : Bad + Good) +
+            $"struct Bad<T>\n    {access} struct Inner{parameters}\nstruct Good<T>\n    public struct Inner\nstruct Animal\nfunc f(x: objref/Animal) -> bool => x is Inner";
+        var c = CompilationTestHelper.ParseSuccess(source);
+        AssertBound(c);
+        Assert.Equal("Good", Test(c).RuntimeTestOf()!.Value.TargetType.Symbol!.Scope.Owner.SymbolOf()!.Name);
     }
 
     private static IsKoto Test(Compilation c)

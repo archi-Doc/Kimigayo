@@ -86,6 +86,7 @@ public class ImplementationResultOriginTest(ITestOutputHelper output)
         var previous = implementation.SymbolOf()!.Type!.Components[0].Origin!;
         var donor = MinimalEmissionTest.Analyze(Empty.Replace("fresh", "updated", StringComparison.Ordinal) + "()");
         var replacement = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "empty").ReturnType!;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(original, original.ReturnType!, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         var current = implementation.SymbolOf()!.Type!.Components[0].Origin!;

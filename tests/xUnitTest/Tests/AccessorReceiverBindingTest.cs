@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -100,6 +101,8 @@ public class AccessorReceiverBindingTest
         var original = property.GetAccessor(PropertyAccessorKind.Get)!;
         var valid = MinimalEmissionTest.Analyze("group Api\n    computed item: i32\n        get() -> i32 => 1");
         var replacement = Property(valid).GetAccessor(PropertyAccessorKind.Get)!;
+        var reader = new TokenReader(replacement.CodeContext, string.Empty, []);
+        ParseTestHelper.Detach(replacement, new PropertyAccessorKoto(ref reader, default, default, PropertyAccessorKind.Get, null));
         Assert.True(KotoHelper.Replace(property, original, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Null(property.SymbolOf()!.Property!.Getter.Receiver);

@@ -35,6 +35,15 @@ public class VirtualOverrideContractTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Original + "override func choose(self: objref/Self, value: ref/i32" + input + ") -> ref/i32" + result + " => value\n()");
         Assert.Contains(c.Binding.Issues, x => x.Code == expected);
+        if (expected == DiagnosticCode.OverrideContractMismatch_Kd)
+        {
+            c.Binding.ReportDiagnostics();
+            var record = Assert.Single(c.Diagnostics.Finalize().Diagnostics, x => x.Code == expected.ToString());
+            Assert.Equal(new DiagnosticValue("cause", DiagnosticValueKind.Enumeration, "OriginBinders"), Assert.Single(record.Reason!));
+            Assert.Null(record.Label);
+            Assert.Equal("override", Assert.Single(TestDiagnostics.Of(c), x => x.Code == record.Code).Text);
+            Assert.Contains("Origin binder names", record.Note!, StringComparison.Ordinal);
+        }
     }
 
     [Trait("Purpose", "Allocation")]

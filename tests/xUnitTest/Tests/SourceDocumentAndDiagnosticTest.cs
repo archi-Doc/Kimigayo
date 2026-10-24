@@ -9,7 +9,7 @@ using Xunit;
 
 namespace XunitTest;
 
-public class SourceDocumentAndDiagnosticTest
+public partial class SourceDocumentAndDiagnosticTest
 {
     [Fact]
     public void GetsLinesWithoutLineBreaks()

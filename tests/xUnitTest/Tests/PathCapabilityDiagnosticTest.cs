@@ -89,6 +89,8 @@ public class PathCapabilityDiagnosticTest
         "    public var h: obj/Holder = Holder.init()@obj\n    public var fns: Array<() -> i32> = [func [] () => 3]\n" +
         "    public var oc: obj/((i32) -> i32) = Kimi.Intrinsics.makeObj<(i32) -> i32>(func [] (k: i32) => k)\n" +
         "    public var rcf: rc/((i32) -> i32) = Kimi.Intrinsics.makeRc<(i32) -> i32>(func [] (k: i32) => k)\n" +
+        "    public var ex = (func [] (k: i32) => func [var k] () -> i32 => ++k)(0)\n" +
+        "    public let fixedEx = (func [] (k: i32) => func [var k] () -> i32 => ++k)(0)\n" +
         "    public var exs = [(func [] (k: i32) => func [var k] () -> i32 => ++k)(0)]\n" +
         "    public let fixedExs = [(func [] (k: i32) => func [var k] () -> i32 => ++k)(0)]\n" +
         "    public var guarded: i32 = 0\n        private set\n    public var custom: i32 = 0\n" +
@@ -196,6 +198,11 @@ public class PathCapabilityDiagnosticTest
     [InlineData("        _ = h.fn()", "h.fn", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f() -> i32 => State.fns[0]()", "State.fns[0]", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        _ = fns[0]()", "fns[0]", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f() -> i32 => State.fixedEx()", "State.fixedEx", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("        _ = fixedEx()", "fixedEx", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("        ()\nfunc f() -> i32 => (State.fixedEx)()", "(State.fixedEx)", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("        ()\nfunc f() -> i32 => State.ex()", "State.ex", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        _ = ex()", "ex", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f() -> i32 => State.exs[0]()", "State.exs[0]", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        _ = exs[0]()", "exs[0]", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        _ = fixedExs[0]()", "fixedExs[0]", DiagnosticCode.InvalidAssignment_Kd)]

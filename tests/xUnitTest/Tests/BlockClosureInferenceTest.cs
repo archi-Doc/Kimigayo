@@ -166,7 +166,7 @@ public sealed class BlockClosureInferenceTest
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous);
         var donor = MinimalEmissionTest.Analyze("let f = func [] ()\n    return \"s\"");
         var replacement = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous);
-        Assert.True(KotoHelper.Replace(closure, closure.Body!, replacement.Body!));
+        Assert.True(KotoHelper.Replace(closure, closure.Body!, ParseTestHelper.Detach(replacement.Body!, new CodeBlockKoto(closure.CodeContext))));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Bind().IsComplete);
         Assert.Same(BoundType.String, closure.SymbolOf()!.Type);

@@ -33,7 +33,7 @@ public sealed partial class Binding
         }
 
         if (declaration.BindingState == BindingState.Invalid ||
-            (member.Declaration.BindingState == BindingState.Invalid && !KeepsSignature(member.Declaration)) ||
+            this.InvalidDeclarationCause(member.Declaration) is not null ||
             this.scopes[declaration].Constraints?.Invalid == true)
         {
             return ConstraintProof.Error;
@@ -59,6 +59,7 @@ public sealed partial class Binding
                 FunctionKoto f => !f.IsConstructor && !f.IsDestructor && !f.IsSpecialization,
                 PropertyKoto p => owner is StructKoto && p.DeclarationKind == PropertyDeclarationKind.Computed,
                 IsKoto { IsAssociatedConstraint: true } => true,
+                EffectBoundKoto => true, // SPEC 8.11.1: judged by its owner alone (Binding.Misplaced); it leaves the block valid.
                 _ => false,
             };
             if (!allowed)

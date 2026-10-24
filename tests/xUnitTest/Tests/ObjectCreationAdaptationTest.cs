@@ -196,7 +196,7 @@ public class ObjectCreationAdaptationTest(ITestOutputHelper output)
         var original = Assert.IsType<InvocationKoto>(conversion.ConversionOf().Creation);
         Assert.Equal(CompilerFunctionKind.MakeObj, original.CallOf()!.Target.CompilerFunction);
         var donor = KotoTree.Walk(MinimalEmissionTest.Analyze("let n = 7@rc").Kotonoha.RootKoto).OfType<ConversionKoto>().Single();
-        Assert.True(KotoHelper.Replace(conversion, conversion.Right, donor.Right));
+        Assert.True(KotoHelper.Replace(conversion, conversion.Right, ParseTestHelper.Detach(donor.Right, new CodeBlockKoto(conversion.CodeContext))));
         Assert.Null(conversion.ConversionOf().Creation);
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(CompilerFunctionKind.MakeRc, conversion.ConversionOf().Creation!.CallOf()!.Target.CompilerFunction);

@@ -99,6 +99,7 @@ public class FunctionParameterIdentityBindingTest
         var original = function.Parameters;
         var donor = MinimalEmissionTest.Analyze(source.Replace("() -> bool is", "(()) -> bool is", StringComparison.Ordinal));
         var replacement = Assert.IsType<FunctionTypeKoto>(donor.Kotonoha.RootKoto.NestedContainers.Single().ConstraintNodes[0].Left).Parameters;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(function, original, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.True(KotoHelper.Replace(function, replacement, original));

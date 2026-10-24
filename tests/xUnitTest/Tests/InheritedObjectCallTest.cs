@@ -99,6 +99,7 @@ public class InheritedObjectCallTest(ITestOutputHelper output)
         var original = clause.Right;
         var donor = MinimalEmissionTest.Analyze(Types + Operation.Replace("T is Owned", "T is Copy", StringComparison.Ordinal));
         var changed = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<IsKoto>()).Right;
+        ParseTestHelper.Detach(changed, new CodeBlockKoto(changed.CodeContext));
         Assert.True(KotoHelper.Replace(clause, original, changed));
         Assert.Null(call.CallOf());
         Assert.False(c.Bind().IsComplete);

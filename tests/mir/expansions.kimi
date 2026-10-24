@@ -1,8 +1,8 @@
 struct Counter
     public var stored: i32
     public var count: i32
-        get => self.stored
-        set => self.stored = value
+        get() -> i32 => self.stored
+        set(value: i32) -> () => self.stored = value
 
 func bump(counter: uniq/Counter, step: i32)
     counter.count += step

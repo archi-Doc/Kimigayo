@@ -133,7 +133,7 @@ internal sealed partial class MirBuilder
             destination,
             callee,
             start,
-            disposition.Id == IntrinsicId.Abort ? node.Parent! : node, // SPEC 22.5.1: the $abort expression, the Group of its invocation.
+            node,
             ReferenceEquals(call.ReturnType, BoundType.Never) || MirDescriptors.Of(disposition.Id).Diverges,
             function is null ? this.arguments[pending] : default);
         this.arguments.RemoveRange(pending, start - pending);

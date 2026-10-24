@@ -117,7 +117,7 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
         {
             var argument = i % 2 == 0 ? "i64" : "i32";
             var donor = CompilationTestHelper.ParseSuccess("struct Derived: Base<" + argument + ">").Kotonoha.RootKoto.NestedDeclarationContainers.OfType<StructKoto>().Single();
-            Assert.True(KotoHelper.Replace(derived, derived.Bases[0], donor.Bases[0]));
+            Assert.True(KotoHelper.Replace(derived, derived.Bases[0], ParseTestHelper.Detach(donor.Bases[0], new CodeBlockKoto(derived.CodeContext))));
             Assert.False(mapping.IsVerified);
             Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
             Assert.Same(mapping, c.Binding.GetConformance(derived.TypeOf()!, p));

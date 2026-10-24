@@ -1,6 +1,6 @@
 # AGENTS Restructuring and the Workflow Document
 
-Date: 2026-10-12. Status: to be applied after the R4 exit while no unit is running (owner, 2026-10-12); not yet applied. Owner decisions of 2026-10-12: the session templates follow option A (§5); no size budgets are added (§6). Changes AGENTS.md, adds `docs/dev/WORKFLOW.md`, moves rows into COMPILER_ARCHITECTURE, VERIFICATION and `draft/INTEGRATED.md`, and revises `docs/dev/prompts` (§5). No SPEC, compiler, test or tooling change.
+Date: 2026-10-12. Status: 完了 (closed by the owner on 2026-10-24 without being applied; `draft/INTEGRATED.md` records the dispositions). Owner decisions of 2026-10-12: the session templates follow option A (§5); no size budgets are added (§6). Changes AGENTS.md, adds `docs/dev/WORKFLOW.md`, moves rows into COMPILER_ARCHITECTURE, VERIFICATION and `draft/INTEGRATED.md`, and revises `docs/dev/prompts` (§5). No SPEC, compiler, test or tooling change.
 
 Base: `ec7585f7` (`dev`). Line numbers refer to AGENTS.md at that commit. Apply by anchor (bullet title or quoted phrase): the [PLAN Size Budget](<2026-10-12 PLAN Size Budget and Issue Register.md>) proposal edits some of the same lines. Sizes are counted with `wc -m`, as in that proposal.
 

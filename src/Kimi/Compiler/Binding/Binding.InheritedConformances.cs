@@ -111,7 +111,7 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
-        if (path.Invalid || path.Identity.Invalid || InvalidDeclarationContext(path.Type.Declaration))
+        if (path.Invalid || path.Identity.Invalid || this.InvalidDeclarationContext(path.Type.Declaration))
         {
             return ConstraintProof.Error;
         }

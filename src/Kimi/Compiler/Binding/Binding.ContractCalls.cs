@@ -8,7 +8,7 @@ public sealed partial class Binding
 {
     private readonly Dictionary<MemberAccessKoto, RequirementGroup> requirementGroups = new(ReferenceEqualityComparer.Instance);
 
-    // SPEC 8.4.3: the bound Contract reference whose requirement is the candidate under evaluation or the selected
+    // SPEC 8.4.1, 8.6.4: the bound Contract reference whose requirement is the candidate under evaluation or the selected
     // callee; its Type arguments substitute the requirement's signature (Key of Indexable<isize>) in ContractType.
     private BindingSymbol? activeRequirementContract;
 
@@ -88,13 +88,15 @@ public sealed partial class Binding
         }
 
         if (this.Library.GetSymbol(KimiDeclarationId.Equatable) is { Contract: { } equality } equatable &&
-            (ComparisonTypes.IsBuiltin(type, KimiDeclarationId.Equatable) || (ComparisonTypes.IsComposite(type) && this.ComparisonProof(type, equatable, scope, false) == ConstraintProof.Proven)))
+            (ComparisonTypes.IsBuiltin(type, KimiDeclarationId.Equatable) ||
+                (ComparisonTypes.IsComposite(type) && this.ComparisonProof(type, equatable, scope, false, out _) == ConstraintProof.Proven)))
         {
             Add(equality);
         }
 
         if (this.Library.GetSymbol(KimiDeclarationId.Comparable) is { Contract: { } ordering } comparable &&
-            (ComparisonTypes.IsBuiltin(type, KimiDeclarationId.Comparable) || (ComparisonTypes.IsComposite(type) && this.ComparisonProof(type, comparable, scope, false) == ConstraintProof.Proven)))
+            (ComparisonTypes.IsBuiltin(type, KimiDeclarationId.Comparable) ||
+                (ComparisonTypes.IsComposite(type) && this.ComparisonProof(type, comparable, scope, false, out _) == ConstraintProof.Proven)))
         {
             Add(ordering);
         }

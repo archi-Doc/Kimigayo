@@ -225,7 +225,7 @@ public class ElementMoveEmissionTest
     public void NonterminatingDeferPreventsLaterPartialCleanup()
     {
         const string Source = "func f()\n    let a = (\"first\", \"last\")\n    let taken = a.0@move\n    defer => loop => ()\n    return\nf()";
-        ScalarEmissionTest.EmitFixture("ElementMoveDivergent", Source, string.Empty, timeoutMilliseconds: 300);
+        ScalarEmissionTest.EmitFixture("ElementMoveDivergent", Source, string.Empty, observationMilliseconds: 300);
     }
 
     [Trait("Purpose", "Allocation")]

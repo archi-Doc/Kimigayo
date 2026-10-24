@@ -138,8 +138,19 @@ public class AbortEmissionTest
     public void RebindReloadAndWarmPassesPreserveTheBuiltin()
     {
         var c = MinimalEmissionTest.Analyze("let text = \"x\"\n$abort(text@move)");
+        var macro = Abort(c);
+        var invocation = Assert.IsType<InvocationKoto>(macro.Operand);
+        var call = Assert.IsType<CallPlan>(CallPlan.Of(macro));
+        var version = HirTables.Publish(c);
+        c.InvalidateSourceAnalysis();
+        Assert.Null(invocation.CallOf()); // The current query revokes the call; raw views retain the preceding pass.
+        Assert.True(c.Bind().IsComplete);
+        Assert.Same(call, CallPlan.Of(macro));
+        Assert.Same(call, invocation.CallOf());
+        Assert.True(HirTables.Publish(c) > version);
         c = CompilationTestHelper.Reload(c);
         Assert.True(c.Bind().IsComplete);
+        Assert.Same(Assert.IsType<InvocationKoto>(Abort(c).Operand).CallOf(), CallPlan.Of(Abort(c)));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(c.Analyze().IsVerified);
         Assert.True(c.WriteIr(TextWriter.Null, out _));
@@ -152,6 +163,24 @@ public class AbortEmissionTest
         });
         Assert.True(success);
         Assert.Equal(0, allocated);
+
+        c.Kotonoha.RootKoto.Clear();
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "$abort(1)");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Null(CallPlan.Of(Abort(c)));
+        Assert.Null(Assert.IsType<InvocationKoto>(Abort(c).Operand).CallOf());
+        version = HirTables.Publish(c);
+        c.Kotonoha.RootKoto.Clear();
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "$abort(\"after\")");
+        Assert.True(c.Bind().IsComplete);
+        macro = Abort(c);
+        invocation = Assert.IsType<InvocationKoto>(macro.Operand);
+        call = Assert.IsType<CallPlan>(CallPlan.Of(macro));
+        Assert.Same(invocation.CallOf(), call);
+        Assert.Same(invocation.ArgumentNodes[0], call.ArgumentOperations[0].Source);
+        Assert.Equal("\"after\"", call.ArgumentOperations[0].Source!.ToString());
+        Assert.True(HirTables.Publish(c) > version);
+        Assert.Equal((HirOp.Call, HirOp.Syntax), (HirTables.Op(macro), HirTables.Op(invocation)));
     }
 
     private static MacroKoto Abort(Compilation c) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MacroKoto>().Single();

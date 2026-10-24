@@ -132,6 +132,7 @@ public class CallableSignatureSelectionTest
         var clause = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IsKoto>().Last();
         var donor = MinimalEmissionTest.Analyze("func other<F>(f: ref/F)\n    F is Callable<(i64) -> i32>\n    return\n" + Main);
         var replacement = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<IsKoto>().Last();
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(clause.Parent!, clause, replacement));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Bind().IsComplete);

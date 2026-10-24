@@ -53,6 +53,7 @@ public class FunctionApiCertificateBindingTest
         var original = function.ReturnType!;
         var donor = MinimalEmissionTest.Analyze(source.Replace("-> Source.Hidden.Element", "-> i32", StringComparison.Ordinal));
         var replacement = donor.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").Members.OfType<FunctionKoto>().Single().ReturnType!;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(function, original, replacement));
         Assert.True(c.Bind().IsComplete);
         var definition = Definition(c);

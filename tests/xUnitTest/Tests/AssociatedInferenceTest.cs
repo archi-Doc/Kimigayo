@@ -173,6 +173,7 @@ public class AssociatedInferenceTest
         var function = type.Members.OfType<FunctionKoto>().First(x => x.Name == "other");
         var original = function.ReturnType!;
         var donor = KotoTree.Walk(CompilationTestHelper.ParseSuccess("func other() -> f32 => 1.0").Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "other").ReturnType!;
+        ParseTestHelper.Detach(donor, new CodeBlockKoto(donor.CodeContext));
         AssociatedInferenceMetrics? recovered = null;
         for (var i = 0; i < 3; i++)
         {

@@ -31,7 +31,7 @@
 #   ./scripts/verify.ps1 -Class XunitTest.PipelineSwitchTest -Pipeline mir -Codegen mir [-UpdatePending]
 #
 # Tests run up to -TestParallel collections at a time (default up to 8), respecting disabled
-# parallelization on test classes. Use -TestParallel 1 for serial execution.
+# parallelization on test collections. Use -TestParallel 1 for serial execution.
 # Unit -TestPurpose Functional/Allocation narrows a focused check; Session always runs both.
 # Native fixtures run up to -NativeParallel at a time (default up to 4), with individual logs.
 # Milestone harnesses run -Parallel at a time (default up to 8), each in its own process, work
@@ -67,6 +67,7 @@ if ($Mode -eq 'Session' -and $Class.Count + $Method.Count -gt 0) { throw 'Sessio
 if ($UpdatePending -and $Codegen -ne 'mir') { throw '-UpdatePending writes the pending ledger of a -Codegen mir run.' }
 . (Join-Path $PSScriptRoot 'verification-selection.ps1')
 . (Join-Path $PSScriptRoot 'verification-inputs.ps1')
+. (Join-Path $PSScriptRoot 'verification-native.ps1')
 . (Join-Path $PSScriptRoot 'codegen-pending.ps1')
 $requestedClass = @($Class | ForEach-Object { ConvertTo-KimiTestPattern $_ })
 $requestedMethod = @($Method | ForEach-Object { ConvertTo-KimiTestPattern $_ -Method })
@@ -309,16 +310,16 @@ if (-not $failed -and $Fixtures.Count -gt 0) {
         $suffix = if ($Fixtures.Count -eq 1) { '' } else { "-$i" }
         $log = Join-Path $evidence "native$suffix.log"
         $ok = Invoke-Script { & (Join-Path $repo 'src/backend/windows-x64/test-scalars.ps1') -FixturePattern $pattern -FixtureDirectory $fixtureDirectory -OutputDirectory (Join-Path $work "native$suffix") -LogDirectory (Join-Path $evidence "native$suffix-fixtures") -Parallel $NativeParallel } $log
-        $line = Select-String -LiteralPath $log -Pattern 'Passed [1-9]\d* native' | Select-Object -Last 1
-        $ok = $ok -and $null -ne $line
-        $detail = "$(if ($line) { $line.Line.Trim() } else { 'see log' }); $log"
+        $result = Get-KimiNativeLogResult $log
+        $ok = $ok -and $result.hasSuccessLine
+        $detail = $result.detail
         $matched = @(if (Test-Path -LiteralPath $fixtureDirectory) { Get-ChildItem -LiteralPath $fixtureDirectory -Filter $pattern -File | Where-Object Extension -EQ '.ll' })
         if ($Codegen -eq 'mir') {
             # Under sel the pending gate judges the fixtures' outcomes; the step needs a result for every fixture it selected.
             $records = Join-Path $evidence "native$suffix-fixtures/results.json"
-            $count = if (Test-Path -LiteralPath $records) { @(Get-Content -LiteralPath $records -Raw | ConvertFrom-Json).Count } else { 0 }
-            $ok = $count -gt 0 -and $count -eq $matched.Count
-            $detail = "results for $count of $($matched.Count) fixtures, judged by codegen pending; $log"
+            $result = Get-KimiNativePendingResult $records $matched.Count $log
+            $ok = $result.passed
+            $detail = $result.detail
         }
         Add-Step "native $pattern" $ok $detail $timer.Elapsed.TotalSeconds
         $matched | Get-FileHash | ForEach-Object { $hashes.Add("$($_.Hash),$([IO.Path]::GetFileName($_.Path))") }

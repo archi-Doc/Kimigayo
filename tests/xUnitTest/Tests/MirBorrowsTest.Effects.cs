@@ -164,7 +164,7 @@ public sealed partial class MirBorrowsTest
                         counter.add(sink(x))
 
                 """,
-                ["count", "counter", "limits", "list"]));
+                ["count", .. Enumerable.Repeat("counter", 13), "limits", "limits", "list", "list"]));
 
     // SPEC 16.4 with 16.3.1, 16.3.3 (R3) and 15.6.4: destroying a mutable static's old value holds an exclusive Loan on it until it
     // completes, so its own effects on that static conflict, a read (e8) or an erased destruction's unknown effects (e9), at the
@@ -247,7 +247,7 @@ public sealed partial class MirBorrowsTest
                         inspect(ll)
 
                 """,
-                ["log", "x"],
+                [.. Enumerable.Repeat("log", 5), .. Enumerable.Repeat("x", 5)],
                 Cache));
     }
 
@@ -301,7 +301,7 @@ public sealed partial class MirBorrowsTest
                         inspect(ll)
 
                 """,
-                ["d", "lim2", "log", "x"]));
+                ["d", "d", "lim2", .. Enumerable.Repeat("log", 7), "x", "x"]));
 
     // SPEC 15.6.4, PD12 (ii) (R4-M92, the group review's R2-B1; AnUnprovedEffectStillDecidesRooted): the proof makes a conflict U only where
     // every effect that would decide it lies in a proved initializer; the first effect outside it decides the Language problem. R4-M90
@@ -380,7 +380,7 @@ public sealed partial class MirBorrowsTest
                         inspect(c)
 
                 """,
-                ["counter"]));
+                ["counter", "counter", "counter"]));
         const string Derived = """
                     public func opaque() => _ = missing
                     public func opaqueWrite()
@@ -428,7 +428,7 @@ public sealed partial class MirBorrowsTest
                         y = 2
 
                 """,
-                ["counter", "refs"]));
+                ["counter", "counter", "counter", "refs"]));
 
     // R4-M73 (with R4-M92; AHeldEffectIsUnsupportedRooted): an effect conflict is a Loan problem, so in a view a call's by-argument store
     // holds it is the located Unsupported_Kd at its call; the `var xs` record is the held view's own, with or without the static Loan.
@@ -455,7 +455,7 @@ public sealed partial class MirBorrowsTest
                         inspect(r)
 
                 """,
-                ["counter"]));
+                ["counter", "counter"]));
 
     // SPEC 15.6.4's widened effects (tests/diagnostics/spec-cases.json 15.6.4-widened-effects, its Borrow implicit; R4-M87;
     // AWidenedEffectMeetsTheLiveStaticLoansRooted): a summary that would keep an effect on a projection with a recursive base has unknown
@@ -515,7 +515,7 @@ public sealed partial class MirBorrowsTest
                 public func e8() => watch = Watch.init()
 
             """);
-        var program = AnalyzeUnsupported(c, ["counter"]);
+        var program = AnalyzeUnsupported(c, ["counter", "counter", "counter"]);
         Assert.Equal(
             ["watch = Watch.init(): Anchor watch = Watch.init(), EffectRead public var watch: Watch = Watch.init()"],
             program.Problems.All.ToArray().Select((x, i) => (x, i)).Where(static x => LoanCodes.Contains(x.x.Code) && x.x.Subject.Module == 0).Select(x =>
@@ -641,8 +641,8 @@ public sealed partial class MirBorrowsTest
 
             """);
         string[] borrows = ["(Held.fn)", "(counter)", "(fn)", "Held.exs[0]", "Held.f1", "Held.fixedFn", "Held.fn", "Held.fns[0]", "Held.h.fn", "Held.oc",
-            "Held.rcf", "Held.rec.fn", "count", "counter", "counter@ref", "exs[0]", "f1", "fixedFn", "fn", "fns[0]", "h.fn", "handle", "leaf", "oc",
-            "rcf", "rec.fn"];
+            "Held.rcf", "Held.rec.fn", "count", "count", .. Enumerable.Repeat("counter", 5), "counter@ref", "exs[0]", "f1", "fixedFn", "fn", "fns[0]",
+            "h.fn", "handle", "leaf", "oc", "oc", "rcf", "rec.fn"];
         Assert.Empty(Problems(c, AnalyzeUnsupported(c, borrows), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 

@@ -112,7 +112,7 @@ public class VirtualCallSelectionTest
         var derived = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == "C");
         var donor = MinimalEmissionTest.Analyze(Other + Types.Replace("C : B", "C : Other", StringComparison.Ordinal) + "()");
         var changed = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == "C");
-        Assert.True(KotoHelper.Replace(derived, derived.Bases[0], changed.Bases[0]));
+        Assert.True(KotoHelper.Replace(derived, derived.Bases[0], ParseTestHelper.Detach(changed.Bases[0], new CodeBlockKoto(derived.CodeContext))));
         Assert.Null(call.CallOf());
         c.Bind();
         Assert.Same(previous, call.CallOf());

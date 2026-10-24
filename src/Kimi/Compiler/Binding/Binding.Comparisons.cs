@@ -36,17 +36,54 @@ public sealed partial class Binding
         return type;
     }
 
+    private BoundType? CompleteComparison(
+        BinaryKoto binary, BoundType left, BoundType right, BindingScope scope, OperatorApplicability decision)
+    {
+        if ((ReferenceTypes.EndsInString(left) || ReferenceEquals(left, BoundType.Never)) &&
+            (ReferenceTypes.EndsInString(right) || ReferenceEquals(right, BoundType.Never)))
+        {
+            this.CompareInPlace(binary.Left);
+            this.CompareInPlace(binary.Right);
+            this.StringThroughLayers(binary.Left, left);
+            this.StringThroughLayers(binary.Right, right);
+            return Complete(binary, BoundType.Boolean);
+        }
+
+        left = this.ComparisonThroughPairs(binary.Left, left);
+        right = this.ComparisonThroughPairs(binary.Right, right);
+        if (!ReferenceEquals(left, BoundType.Unit) && ReferenceEquals(ComparisonReferent(left), BoundType.Unit))
+        {
+            this.adaptations[binary.Left] = new(ExpectedAdaptationKind.ReferentRead, BoundType.Unit);
+        }
+
+        if (!ReferenceEquals(right, BoundType.Unit) && ReferenceEquals(ComparisonReferent(right), BoundType.Unit))
+        {
+            this.adaptations[binary.Right] = new(ExpectedAdaptationKind.ReferentRead, BoundType.Unit);
+        }
+
+        left = ComparisonReferent(left);
+        right = ComparisonReferent(right);
+        if (!Compatible(right, left))
+        {
+            if (this.CommonOriginType(left, right) is not { } common)
+            {
+                return this.FailMismatch(binary, binary.Right, right, left);
+            }
+
+            left = common;
+        }
+
+        var integer = decision.Requirement?.Contract == this.Library.PrimitiveInteger && decision.Proof == ConstraintProof.Proven;
+        return left.Kind == BoundTypeKind.Primitive || ReferenceTypes.IsPointer(left) || integer
+            ? Complete(binary, BoundType.Boolean) : this.BindContractComparison(binary, left, scope);
+    }
+
+    // Applicability has already performed the exact proof; this owner now constructs only the selected comparison call.
     private BoundType? BindContractComparison(BinaryKoto binary, BoundType self, BindingScope scope)
     {
         var equality = binary.Akind is KotoKind.EqualsEquals or KotoKind.ExclamationEquals;
         var contract = this.Library.GetSymbol(equality ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable)!;
         var tupleOperator = self.Kind == BoundTypeKind.Tuple;
-        var proof = tupleOperator ? this.ComparisonProof(self, contract, scope, true) : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, self, contract: contract)), scope);
-        if (proof != ConstraintProof.Proven)
-        {
-            return this.Fail(binary, proof == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : proof == ConstraintProof.Error ? BindingFailure.InvalidConstraint : BindingFailure.UnprovenConstraint, proof == ConstraintProof.Unknown);
-        }
-
         var name = equality ? "equals" : "compare";
         if (contract.Contract is not { } shape || !shape.MembersByName.TryGetValue(name, out var members) || members.Count != 1)
         {

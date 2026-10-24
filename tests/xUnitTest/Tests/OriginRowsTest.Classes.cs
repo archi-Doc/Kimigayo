@@ -105,8 +105,9 @@ public sealed partial class OriginRowsTest
 
     // Row 6's Closure case through an accessor's storage (DECISIONS BU-25's exception): the getter's Borrow of its Property's storage is
     // classed by mutability there (rows 7 and 7'), and a Closure the getter evaluates sees it, through its capture of that Borrow, as a root
-    // of its evaluating body, Fixed (row 6). A Closure cannot form its own Borrow of `storage`, an accessor binding (InvalidCaptureBinding_Kd),
-    // and an accessor's storage is one atom per Property, so rv/st-both's per-Borrow-site pair waits for P42's static Borrows.
+    // of its evaluating body, Fixed (row 6). A Closure's own Borrow of `storage` has a static root, Binding's located Unsupported_Kd
+    // (StaticStorageAccess, SPEC 7.7.2), and an accessor's storage is one atom per Property, so rv/st-both's per-Borrow-site pair waits
+    // for P42's static Borrows.
     [Theory]
     [InlineData("var", "Finite")]
     [InlineData("let", "Inferred")]
