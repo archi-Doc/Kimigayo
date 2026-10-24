@@ -92,7 +92,7 @@ public class IdentityAcquisitionEmissionTest
     [InlineData("place")]
     public void CorruptIdentityPlansAreRejectedAndRebindingRestoresThem(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("let value = \"value\"\nlet taken = value@move");
+        var c = MinimalEmissionTest.Analyze("let value = \"value\"\nlet taken = value@move", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var identities = c.Ownership.Bodies[0].Identities!;
         var identity = Assert.Single(identities);

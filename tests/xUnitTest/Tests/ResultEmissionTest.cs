@@ -111,7 +111,9 @@ public class ResultEmissionTest
     [InlineData("missing-terminator")]
     public void MalformedResultPlansNeverWriteIr(string mutation)
     {
-        var c = MinimalEmissionTest.Analyze("var c = true\nlet x = if c => 1 + 2 else => 4 + 5\nif x == 3 => Console.writeLine(\"ok\")");
+        var c = MinimalEmissionTest.Analyze(
+            "var c = true\nlet x = if c => 1 + 2 else => 4 + 5\nif x == 3 => Console.writeLine(\"ok\")",
+            codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var phi = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Phi);

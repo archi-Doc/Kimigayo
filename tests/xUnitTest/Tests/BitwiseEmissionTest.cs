@@ -147,7 +147,7 @@ public class BitwiseEmissionTest
     [InlineData(KotoKind.Or, false)]
     public void InvalidOperatorPlansFailBeforeWritingAndRecover(KotoKind op, bool boolean)
     {
-        var c = MinimalEmissionTest.Analyze("let b = true\nlet x = 1 << 2");
+        var c = MinimalEmissionTest.Analyze("let b = true\nlet x = 1 << 2", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var id = body.Values.FindIndex(x => x.Operator == KotoKind.LessThanLessThan);

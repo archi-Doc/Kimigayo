@@ -933,7 +933,9 @@ public class ForeignEmissionTest
     public void IncompletePointerProjectionPlansRejectBeforeWriting(string mutation, bool computed)
     {
         var place = computed ? "(*p).1[i]" : "(*p).1[1]";
-        var c = MinimalEmissionTest.Analyze($"func update(p: raw/(u8, [2 of i16]), i: isize)\n    unsafe => {place} = 1\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze(
+            $"func update(p: raw/(u8, [2 of i16]), i: isize)\n    unsafe => {place} = 1\npublic func main() => ()",
+            codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "update");
         var projection = body.Values.FindLastIndex(x => x.Kind == OwnershipValueKind.PointerProject);
@@ -1371,7 +1373,9 @@ public class ForeignEmissionTest
     [InlineData("operation")]
     public void IncompletePointerAggregatePlansRejectBeforeWriting(string mutation)
     {
-        var c = MinimalEmissionTest.Analyze("func update(p: raw/(i32, i64))\n    unsafe => *p = (1, 2)\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze(
+            "func update(p: raw/(i32, i64))\n    unsafe => *p = (1, 2)\npublic func main() => ()",
+            codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "update");
         var store = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.PointerStore);

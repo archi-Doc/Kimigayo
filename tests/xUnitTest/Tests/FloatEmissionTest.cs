@@ -150,7 +150,7 @@ public class FloatEmissionTest
     [InlineData("operator")]
     public void CorruptFloatPlansFailBeforeWriting(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("var a: f32 = 1.25\nlet b = a * 2.0\nif b == 2.5 => Console.writeLine(\"ok\")");
+        var c = MinimalEmissionTest.Analyze("var a: f32 = 1.25\nlet b = a * 2.0\nif b == 2.5 => Console.writeLine(\"ok\")", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var index = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Constant && x.Constant == 0x3FA00000L);

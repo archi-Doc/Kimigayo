@@ -51,7 +51,7 @@ public class EmissionPlanTest
     [InlineData("conditional-cleanup")]
     public void UnsupportedOrIncompleteLoweringNeverWritesFallbackIr(string mutation)
     {
-        var c = MinimalEmissionTest.Analyze("Console.writeLine(\"a\")");
+        var c = MinimalEmissionTest.Analyze("Console.writeLine(\"a\")", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out _)); // Exercise reuse after a previously successful plan.
         var body = c.Ownership.Bodies.Single(x => ReferenceEquals(x.Function, c.Kotonoha.GeneratedFunction));
         var firstEdge = body.EdgeHeads[0];

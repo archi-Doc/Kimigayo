@@ -32,7 +32,7 @@ public class ProjectedBorrowEmissionTest
     public void RejectsCorruptProjectedAddressAndReanalysisRecovers()
     {
         var source = Batch + "let values: [2 of i32] = [6, 7]\nlet b = Batch.init(values)\nlet r = b.view()\nlet n = r[1]";
-        var c = MinimalEmissionTest.Analyze(source);
+        var c = MinimalEmissionTest.Analyze(source, codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Function.SymbolOf()?.Name == "view");
         var address = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Borrow);

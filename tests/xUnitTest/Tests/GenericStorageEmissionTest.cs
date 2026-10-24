@@ -371,7 +371,10 @@ public class GenericStorageEmissionTest
     {
         // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
         // the corrupt projection, cleanup, parameter or acquisition plan is rejected on the ordinary body.
-        var c = MinimalEmissionTest.Analyze("struct Box\n    let value: string\n    public init(value: string) => self.value = value@move\n    public func take(self: Self) -> string => self.value@move\nlet b = Box.init(\"text\")\nConsole.writeLine(b@move.take())");
+        var c = MinimalEmissionTest.Analyze(
+            "struct Box\n    let value: string\n    public init(value: string) => self.value = value@move\n" +
+            "    public func take(self: Self) -> string => self.value@move\nlet b = Box.init(\"text\")\nConsole.writeLine(b@move.take())",
+            codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "take");
         if (defect == "projection")

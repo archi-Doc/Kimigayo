@@ -220,14 +220,24 @@ public class NumericConversionEmissionTest
     [InlineData("FromInteger", "u64", "f32", "16777217")]
     public void ConversionPlansAreRevalidatedAndSurviveReload(string name, string sourceType, string targetType, string value)
     {
-        var c = MinimalEmissionTest.Analyze($"let x: {sourceType} = {value}\nlet y = x@{targetType}\nConsole.writeLine(\"ok\")");
+        var source = $"let x: {sourceType} = {value}\nlet y = x@{targetType}\nConsole.writeLine(\"ok\")";
+        var c = MinimalEmissionTest.Analyze(source);
         using var original = new StringWriter();
         Assert.True(c.WriteIr(original, out var error), error);
-        var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>());
-        conversion.SetConversion(ConversionBinding.Integer);
+
+        // The old generator revalidates the conversion slot it lowers, on a compilation pinned to it (DECISIONS R5-M85; it goes by G4 at
+        // the latest).
+        var old = MinimalEmissionTest.Analyze(source, codegen: CompilerCodegen.Legacy);
+        var oldOriginal = CompilationTestHelper.WriteIr(old);
+        Assert.Single(KotoTree.Walk(old.Kotonoha.RootKoto).OfType<ConversionKoto>()).SetConversion(ConversionBinding.Integer);
         using var failed = new StringWriter();
-        Assert.False(c.WriteIr(failed, out _));
+        Assert.False(old.WriteIr(failed, out _));
         Assert.Empty(failed.ToString());
+        old.Bind();
+        old.Binding.CheckStartup(OutputKind.Application);
+        old.Analyze();
+        Assert.Equal(oldOriginal, CompilationTestHelper.WriteIr(old));
+
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();

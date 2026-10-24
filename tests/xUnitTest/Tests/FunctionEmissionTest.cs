@@ -123,7 +123,9 @@ public class FunctionEmissionTest
     [InlineData("mapping")]
     public void MalformedFunctionPlansFailBeforeWritingAndRecover(string mutation)
     {
-        var c = MinimalEmissionTest.Analyze("func f(x: i32) -> i32\n    var y = x\n    defer => y = 9\n    return y\nif f(3) == 3 => Console.writeLine(\"ok\")");
+        var c = MinimalEmissionTest.Analyze(
+            "func f(x: i32) -> i32\n    var y = x\n    defer => y = 9\n    return y\nif f(3) == 3 => Console.writeLine(\"ok\")",
+            codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var f = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "f");
         var caller = Assert.Single(c.Ownership.Bodies, x => x.Function.IsGenerated);

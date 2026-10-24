@@ -37,7 +37,7 @@ public class EnumEmissionTest
     [InlineData(false)]
     public void ConstructionPlanMustMatchItsCaseAndPayload(bool wrongCase)
     {
-        var c = MinimalEmissionTest.Analyze("enum E\n    A(i32)\n    B(i32)\nlet a: E = .A(1)\nlet b: E = .B(2)");
+        var c = MinimalEmissionTest.Analyze("enum E\n    A(i32)\n    B(i32)\nlet a: E = .A(1)\nlet b: E = .B(2)", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Constructions.Count == 2);
         var first = body.Constructions[0];

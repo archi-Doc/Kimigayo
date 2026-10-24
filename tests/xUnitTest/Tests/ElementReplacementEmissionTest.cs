@@ -168,7 +168,7 @@ public class ElementReplacementEmissionTest
     [InlineData("output")]
     public void CorruptedReplacementPlansFailBeforeOutputAndRecover(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("var a = ((\"old\", 0), 1)\na.0 = (\"new\", 42)");
+        var c = MinimalEmissionTest.Analyze("var a = ((\"old\", 0), 1)\na.0 = (\"new\", 42)", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var plan = body.Projections[0];

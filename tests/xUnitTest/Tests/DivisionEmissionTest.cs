@@ -164,7 +164,7 @@ public class DivisionEmissionTest
     [InlineData(true)]
     public void MismatchedDivisionPlansFailBeforeWriting(bool wrongKind)
     {
-        var c = MinimalEmissionTest.Analyze("let b = true\nvar x = 7\nlet y = x / 2");
+        var c = MinimalEmissionTest.Analyze("let b = true\nvar x = 7\nlet y = x / 2", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var id = body.Values.FindIndex(x => x.Operator == KotoKind.Slash);

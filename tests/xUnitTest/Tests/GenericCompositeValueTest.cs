@@ -96,7 +96,7 @@ public class GenericCompositeValueTest
     [InlineData("cleanup")]
     public void RejectsCorruptOwnershipPlansAndRecovers(string defect)
     {
-        var c = MinimalEmissionTest.Analyze(Fixtures.First().Data.Item2);
+        var c = MinimalEmissionTest.Analyze(Fixtures.First().Data.Item2, codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Matches.Count != 0);
         if (defect == "acquisition")
