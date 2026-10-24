@@ -4787,6 +4787,53 @@ resumed by R4-M86 (2026-10-20).
   an IR/operator framework without a new consumer fact; argument-only bags or mode parameters. The behavior unit
   replaces the late applicability checks and inadequate operand facts; G51 remains open until it is verified.
 
+
+- **G51-2 Operator applicability and licensed expectations** (2026-10-24; planning session, independent designs A/B,
+  pre-code review and owner vocabulary approval). SPEC 13.2–13.4, 5.3 and 12.3 require an operator's applicability
+  before its operand can license a counterpart Type. Fact-free failures and late checks lost that distinction.
+  `Binding.OperatorApplicability` receives the written operation and ordered, successfully obtained operand Types;
+  its short-lived decision carries the expected operand, counterpart Type, failure, actual requirement/proof and failed Operand/Terminal.
+  Every failure has both Types: Operand is the successful original fact used for display, Terminal the already judged Type;
+  the actual queried leaf remains Requirement.Subject. Success needs neither failure Type. The existing failure store retains
+  these Types, location and query; its operation key owns the written operator for the same pass and reset/rebind lifetime.
+  Remove the unread duplicate operator kind; no second operator-text table is introduced.
+  `Binding.Operators` uses that decision for fitting and completion; a failed fit supplies no Type for another judgment.
+  The adapter renders these facts without proof; its Note exposes the same real condition and verdict in CLI/LSP text. Unary,
+  binary, compound, increment and comparison paths share this rule. Shift counts
+  retain their separate integer requirement; destination authority and ordinary/reverse provider selection stay unchanged.
+  Unknown actual proofs are `UnprovenConstraint`, Refuted proofs the relevant Language failure, Error the existing
+  invalid-constraint path. Tuple comparison retains its aggregate verdict and first decisive actual leaf witness;
+  numeric operator leaves make no Contract query. Valid unimplemented forms remain location-only `Unsupported`.
+  Never is not numeric capability (SPEC 3.1.3). Ordinary same-Type arithmetic and comparison publish the actual
+  counterpart fit before applicability; unary operators, shift subjects and update destinations have no such fit.
+  A missing counterpart supplies neither expectation nor proof; completion uses the published direction rather than
+  reselecting the other operand. Remove IntegerApplicability's unconditional Never success and the caller's late
+  left/right reassignment. Shift counts, logical bool contexts, pointer displacement and provider selection stay separate.
+  This corrects a limited acceptance boundary: without an outer context, `1 & stop()` and `1 % stop()` with
+  `stop() -> Never` are valid. SPEC 12.3.1 defaults the literal to i32; 13.3.1 defines that operation; 3.8 fits the Never
+  value to i32. Never itself supplies no counterpart (13.3.4). The old direct Never expectation incorrectly rejected
+  those literals. Reject retaining that error with an Unsupported or per-form exception. The existing failure to
+  propagate an outer i64 result context to these operands remains a separate G51 follow-up, not a specification rule.
+  The owner approved `BindingFailure.OperatorNotDefined`, `OperatorNotDefined_Kd` and public requirement
+  `Binding.OperatorNotDefined` (description: “The operator must be defined for the operand Type.”) on 2026-10-24.
+  The vocabulary grows from 88 to 89 entries including `None`; the existing limit of 89 does not change.
+  SPEC 13.3.2, 12.3 and 23.1.2 supersede G49's operand-priority/grouping choice in commit `652ac2103`:
+  a string cannot fit a numeric literal, and a failed inner join cannot erase an outer prohibition established by
+  another string operand. Both associations and compound forms preserve each independent prohibition, like `p * missing`.
+  A known numeric Type still licenses its numeric expectation, so `n + "text"` and integer/float fitting keep their mismatch.
+  A right bool, Unit, char or raw Type alone cannot disprove an unknown left provider; no missing proof is invented.
+  The private arithmetic-pair decision shares only the string prohibition between built-in applicability and the existing
+  provider gate; selected Addable/RemainderProvider paths never rerun built-in requirements. It receives original and already
+  normalized left/right Types. Reject the original-Type-only predicate: an admitted s/string reaches string through a pair,
+  while EndsInString on s/string alone is false. Retain Terminal for the interpolation Note and Operand for ref/string or
+  s/string display; neither the adapter nor a failure caller rediscovers that meaning. A full applicability call after provider
+  selection would impose the wrong integer requirement on a legitimate remainder provider and is rejected.
+  Interpolation guidance, recovery prerequisites, acceptance and generation rules remain intact.
+  Remove the duplicate late operator guards, invalid expectations and fact-free mismatches; split the former
+  106-statement `BindBinary` by operand binding, destination authority and completion. Rejected: code-only diagnostic
+  replacement, per-code cascade exceptions, re-proving in the adapter, another failure map, and role/mode switches.
+  `ArithmeticSelection.Condition` belongs to the existing selection contract and is not reorganized by this unit.
+
 ## R5 and R6 (adopted 2026-10-18)
 
 The owner's answers to the plan's questions OQ1–OQ17, given on 2026-10-18 and relayed by the R4 planning session. "Plan"

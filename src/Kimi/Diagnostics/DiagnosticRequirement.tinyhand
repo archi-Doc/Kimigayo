@@ -543,6 +543,9 @@
   + Name="Binding.NonIntegerOperand"
     Description="the operand of %, a bitwise or shift operator, increment or decrement is an integer or wrapping integer"
 
+  + Name="Binding.OperatorNotDefined"
+    Description="The operator must be defined for the operand Type."
+
   + Name="Binding.InvalidShiftCount"
     Description="the count of a shift is an integer Type"
 

@@ -106,31 +106,81 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
         Assert.Equal($"{type} has no +", error.Label);
     }
 
-    // A chain reports once, at its innermost join, with literal, interpolated and other operands, in a compound update and in a defer.
     [Theory]
-    [InlineData("let v = first + \" and \" + second + \"!\"", "first + \" and \"")]
-    [InlineData("let v = first + (second + \"!\")", "second + \"!\"")]
+    [InlineData("ref/string", "provider + text", "ref/string")]
+    [InlineData("ref/string", "text + provider", "ref/string")]
+    [InlineData("s/string during a", "provider + text", "s/string")]
+    [InlineData("s/string during a", "text + provider", "s/string")]
+    public void AProviderCannotEraseTheOriginalStringOperand(string type, string expression, string shown)
+    {
+        var source = $$"""
+            struct Value
+                Self is Addable<i32>
+                associate Output is i32
+                public func added(self: ref/Self, right: ref/i32) -> i32 => 1
+            func f<s/T>(marker: s/T, provider: Value, text: {{type}}) -> i32
+                s is owner or ref
+                return {{expression}}
+            public func main() => ()
+            """;
+        var error = Assert.Single(Analyze(source).Diagnostics.Finalize(rejected: true).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.NonNumericOperand_Kd), error.Code);
+        Assert.Equal(expression, source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+        Assert.Equal($"{shown} has no +", error.Label);
+        Assert.Equal([shown, "+"], error.Reason!.Select(static fact => fact.Value));
+        Assert.Equal(Note, error.Note);
+    }
+
+    // Each successful string operand independently prohibits its own join; no missing result Type erases another prohibition.
+    [Theory]
+    [InlineData(
+        "let v = first + \" and \" + second + \"!\"",
+        "first + \" and \"|first + \" and \" + second|first + \" and \" + second + \"!\"")]
+    [InlineData("let v = first + (second + \"!\")", "second + \"!\"|first + (second + \"!\")")]
     [InlineData("let v = \"x\\(first)\" + second", "\"x\\(first)\" + second")]
     [InlineData("let v = \"\"\"raw\"\"\" + second", "\"\"\"raw\"\"\" + second")]
     [InlineData("let v = \"a\" + \"b\"", "\"a\" + \"b\"")]
-    [InlineData("var log = \"start\"\nlog += first + second", "first + second")]
+    [InlineData("var log = \"start\"\nlog += first + second", "first + second|log += first + second")]
     [InlineData("var flag = true\nloop\n    defer => first + second\n    if flag => exit\n    continue", "first + second")]
-    public void ChainsReportOnce(string source, string text)
+    public void IndependentStringProhibitionsKeepTheirOperationLocations(string source, string texts)
     {
-        var error = Assert.Single(Errors(Analyze(Strings + source)));
-        Assert.Equal(nameof(DiagnosticCode.NonNumericOperand_Kd), error.Code);
-        Assert.Equal(text, error.Text);
+        var errors = Errors(Analyze(Strings + source));
+        Assert.Equal(texts.Split('|').Order(), errors.Select(static x => x.Text).Order());
+        Assert.All(errors, x => Assert.Equal(nameof(DiagnosticCode.NonNumericOperand_Kd), x.Code));
     }
 
-    // A numeric left operand keeps the operand mismatch: the Types differ, and that is the fact.
     [Theory]
-    [InlineData("let v = 1 + \"a\"", "expected string, found integer literal")]
+    [InlineData("let v = 1 + \"a\"")]
+    [InlineData("let v = \"a\" + 1")]
+    public void AStringCannotSupplyAnExpectedTypeToANumericLiteral(string source)
+    {
+        var error = Assert.Single(Errors(Analyze(source)));
+        Assert.Equal(nameof(DiagnosticCode.NonNumericOperand_Kd), error.Code);
+        Assert.Equal("string has no +", error.Label);
+        Assert.Equal(Note, error.Note);
+    }
+
+    // A known numeric Type licenses a numeric expectation; a failed fit supplies no new operand fact.
+    [Theory]
     [InlineData("let n: i32 = 1\nlet v = n + \"a\"", "expected i32, found string")]
-    public void ANumericOperandWithAStringKeepsTheMismatch(string source, string label)
+    [InlineData("let n: i32 = 1\nlet v = n + 1.0", "expected i32, found floating-point literal")]
+    public void AKnownNumericOperandKeepsTheFailedFit(string source, string label)
     {
         var error = Assert.Single(Errors(Analyze(source)));
         Assert.Equal(nameof(DiagnosticCode.TypeMismatch_Kd), error.Code);
         Assert.Equal(label, error.Label);
+    }
+
+    [Fact]
+    public void ARightStringProhibitionDoesNotRequireTheMissingLeftType()
+    {
+        const string Source = "let result = missing + \"value\"";
+        var errors = Errors(Analyze(Source));
+        Assert.Equal(2, errors.Length);
+        Assert.Single(errors, x => x.Code == nameof(DiagnosticCode.UnresolvedBinding_Kd));
+        var prohibition = Assert.Single(errors, x => x.Code == nameof(DiagnosticCode.NonNumericOperand_Kd));
+        Assert.Equal("missing + \"value\"", prohibition.Text);
+        Assert.Equal(Note, prohibition.Note);
     }
 
     [Fact]

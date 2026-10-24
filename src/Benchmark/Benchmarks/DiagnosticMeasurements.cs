@@ -83,8 +83,75 @@ internal static class DiagnosticMeasurements
             32);
 
         results["override-failure-binding"] = OverrideFailures();
+        results["operator-binding"] = OperatorBindings();
 
         Console.WriteLine(JsonSerializer.Serialize(new { compiler = Compilation.CompilerVersion, runtime = Environment.Version.ToString(), results }, new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    // The same legal and rejected operations before and after applicability changes; diagnostics never enter the timed window.
+    private static object OperatorBindings()
+    {
+        const int Count = 128;
+        var accepted = new StringBuilder("public func main() => ()\n");
+        var rejected = new StringBuilder("struct S\n    public var value: i32 = 0\npublic func main() => ()\n");
+        for (var i = 0; i < Count; i++)
+        {
+            accepted.Append((i % 4) switch
+            {
+                0 => $"func operatorCase{i}(x: i32) -> i32 => (x + 2) << 1\n",
+                1 => $"func operatorCase{i}(x: f64) -> bool => -x < 2.0\n",
+                2 => $"func operatorCase{i}<T>(x: T) -> T\n    T is PrimitiveInteger\n    return x << 1\n",
+                _ => $"func operatorCase{i}(p: raw/i32) -> raw/i32\n    unsafe\n        return p + 2\n",
+            });
+            rejected.Append((i % 8) switch
+            {
+                0 => $"func operatorCase{i}(x: u32) => -x\n",
+                1 => $"func operatorCase{i}(p: raw/i32) => p * 2\n",
+                2 => $"func operatorCase{i}<T>(x: T) => x << 1\n",
+                3 => $"func operatorCase{i}(x: S) => x << 1\n",
+                4 => $"func operatorCase{i}(p: raw/i32, q: raw/i32) => p < q\n",
+                5 => $"func operatorCase{i}(x: bool, y: bool) => x < y\n",
+                6 => $"func operatorCase{i}<T>(x: T) => x & 2\n",
+                _ => $"func operatorCase{i}(x: S) => x & 2\n",
+            });
+        }
+
+        return new { accepted = MeasureOperatorBinding(accepted.ToString(), 0), rejected = MeasureOperatorBinding(rejected.ToString(), Count) };
+    }
+
+    private static object MeasureOperatorBinding(string source, int failures)
+    {
+        var retained = new long[7];
+        for (var sample = 0; sample < retained.Length; sample++)
+        {
+            retained[sample] = RetainedOperatorBinding(source, failures);
+        }
+
+        var cold = Measure(() => BindOperators(source, failures), 8);
+        var compilation = BindOperators(source, failures);
+        var warm = Measure(() => Require(compilation.Bind().IsComplete == (failures == 0)), 32);
+        GC.KeepAlive(compilation);
+        return new { source, failures, retainedBytes = retained, medianRetainedBytes = retained.Order().ElementAt(3), cold, warm };
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static long RetainedOperatorBinding(string source, int failures)
+    {
+        var before = GC.GetTotalMemory(true);
+        var compilation = BindOperators(source, failures);
+        var retained = GC.GetTotalMemory(true) - before;
+        GC.KeepAlive(compilation);
+        return retained;
+    }
+
+    private static Compilation BindOperators(string source, int failures)
+    {
+        var compilation = Compilation.CreateForTest();
+        Require(compilation.Prepare(Target));
+        compilation.Kotonoha.AddSource(new SourceDocument("operators.kimi", source));
+        Require(compilation.Bind().IsComplete == (failures == 0));
+        Require(compilation.Binding.Issues.Count == failures);
+        return compilation;
     }
 
     // Fixed failed programs measure warm Binding and the retained compilation, including its failure records.
@@ -175,9 +242,14 @@ internal static class DiagnosticMeasurements
             allocations[sample] = (double)(GC.GetAllocatedBytesForCurrentThread() - bytes) / iterations;
         }
 
-        Array.Sort(nanoseconds);
-        Array.Sort(allocations);
-        return new { medianMicroseconds = Math.Round(nanoseconds[3] / 1000, 1), minimumMicroseconds = Math.Round(nanoseconds[0] / 1000, 1), medianBytes = allocations[3] };
+        return new
+        {
+            medianMicroseconds = Math.Round(nanoseconds.Order().ElementAt(3) / 1000, 1),
+            minimumMicroseconds = Math.Round(nanoseconds.Min() / 1000, 1),
+            medianBytes = allocations.Order().ElementAt(3),
+            nanoseconds,
+            allocations,
+        };
     }
 
     private static void Require(bool condition, string? message = null)

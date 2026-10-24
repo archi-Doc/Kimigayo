@@ -84,7 +84,10 @@ public sealed partial class Binding
         if ((!leftLiteral && left is null && !this.IsWaitingPart(binary.Left) && !IsWaitingCallable(binary.Left)) ||
             (!rightLiteral && right is null && !this.IsWaitingPart(binary.Right) && !IsWaitingCallable(binary.Right)))
         {
-            result = Complete(binary, null); // A failed input is not evidence of a missing arithmetic conformance.
+            // Missing inputs defer provider selection, while successful operand facts retain independent prohibitions.
+            var decision = this.OperatorApplicabilityOf(binary, left, right, scope);
+            result = decision.Failure == BindingFailure.None ? Complete(binary, null)
+                : this.FailOperator(binary, binary, decision);
             return true;
         }
 
@@ -104,9 +107,10 @@ public sealed partial class Binding
             return false;
         }
 
-        if (ReferenceTypes.EndsInString(leftCore) || ReferenceTypes.EndsInString(rightCore))
+        var restriction = ArithmeticPairApplicability(left, leftCore, right, rightCore);
+        if (restriction.Failure != BindingFailure.None)
         {
-            this.FailOperand(binary, ReferenceTypes.EndsInString(leftCore) ? leftCore! : rightCore!, BindingFailure.NonNumericOperand);
+            this.FailOperator(binary, binary, restriction);
             return true;
         }
 

@@ -154,16 +154,15 @@ public class ForeignEmissionTest
     }
 
     [Theory]
-    [InlineData("let p: raw/i32 = null\nlet q: raw/i32 = null\nlet r = p < q", true)]
-    [InlineData("let p: raw/i32 = null\nlet q: raw/u32 = null\nlet r = p == q", true)]
-    [InlineData("let r = null == null", false)]
-    [InlineData("let p: raw/i32 = null\nlet r = p == null", false)]
-    public void PointerEqualityRequiresOneKnownPointerType(string body, bool mismatch)
+    [InlineData("let p: raw/i32 = null\nlet q: raw/u32 = null\nlet r = p == q", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("let r = null == null", DiagnosticCode.UnresolvedBinding_Kd, DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("let p: raw/i32 = null\nlet r = p == null")]
+    public void PointerEqualityRequiresOneKnownPointerType(string body, params DiagnosticCode[] codes)
     {
         var c = MinimalEmissionTest.Analyze(body);
-        Assert.Equal(mismatch, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.TypeMismatch_Kd));
+        Assert.Equal(codes, c.Binding.Issues.Select(static x => x.Code));
         using var writer = new StringWriter();
-        Assert.Equal(!mismatch && body.Contains("p ==", StringComparison.Ordinal), c.WriteIr(writer, out _));
+        Assert.Equal(codes.Length == 0, c.WriteIr(writer, out _));
     }
 
     [Theory]
@@ -268,8 +267,8 @@ public class ForeignEmissionTest
     [Theory]
     [InlineData("let p: raw/i32 = null\nlet n: i32 = 1\nlet q = unsafe => p + n", DiagnosticCode.TypeMismatch_Kd)]
     [InlineData("var p: raw/i32 = null\nlet n: i32 = 1\nunsafe => p += n", DiagnosticCode.TypeMismatch_Kd)]
-    [InlineData("var p: raw/i32 = null\nunsafe => p *= 2", DiagnosticCode.TypeMismatch_Kd)]
-    [InlineData("let p: raw/i32 = null\nlet q = unsafe => 1 + p", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("var p: raw/i32 = null\nunsafe => p *= 2", DiagnosticCode.OperatorNotDefined_Kd)]
+    [InlineData("let p: raw/i32 = null\nlet q = unsafe => 1 + p", DiagnosticCode.OperatorNotDefined_Kd)]
     [InlineData("let p: raw/i32 = null\nlet q: raw/i32 = null\nlet d = unsafe => p - q", DiagnosticCode.TypeMismatch_Kd)]
     public void InvalidPointerArithmeticIsRejected(string body, DiagnosticCode code)
     {
@@ -687,7 +686,7 @@ public class ForeignEmissionTest
 
     // SPEC 13.2, 13.3.1: a pointer itself has no increment; a float pointee needs an integer operand and a bool pointee a numeric one.
     [Theory]
-    [InlineData("i32", "p++", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("i32", "p++", DiagnosticCode.NonIntegerOperand_Kd)]
     [InlineData("f64", "(*p)++", DiagnosticCode.NonIntegerOperand_Kd)]
     [InlineData("bool", "++p[0]", DiagnosticCode.NonNumericOperand_Kd)]
     public void PointerIncrementsRequireIntegerPointees(string type, string operation, DiagnosticCode code)

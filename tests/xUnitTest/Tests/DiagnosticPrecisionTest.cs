@@ -66,7 +66,7 @@ public class DiagnosticPrecisionTest
     [Theory]
     [InlineData("func f() -> i32\n    return true\npublic func main() => ()", "true", "expected i32, found bool")]
     [InlineData("public func main()\n    let wrong: i32 = true", "true", "expected i32, found bool")]
-    [InlineData("public func main()\n    let sum = 1 + \"a\"", "1", "expected string, found integer literal")]
+    [InlineData("public func main()\n    let sum = 1 + \"a\"", "1 + \"a\"", "string has no +")]
     [InlineData("public func main()\n    if 1 and true\n        ()", "1", "expected bool, found integer literal")]
 
     // An untyped literal or an anonymous function at a Type it cannot have names that complete Type, Type arguments included.

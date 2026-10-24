@@ -59,6 +59,58 @@ public class NeverContinuationTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
+    // SPEC 3.8 and 12.3.1: Never supplies no numeric Type; a legitimate counterpart or literal default supplies it.
+    [Theory]
+    [InlineData("let n = stop() & 1")]
+    [InlineData("let n = stop() % 1")]
+    [InlineData("let n = 1 & stop()")]
+    [InlineData("let n = 1 % stop()")]
+    [InlineData("let wide: i64 = 2\nlet n = wide & stop()")]
+    [InlineData("let wide: i64 = 2\nlet n = wide % stop()")]
+    [InlineData("let n = 1.5 + stop()")]
+    [InlineData("let n = (1 + 2) & stop()")]
+    [InlineData("let n = stop() < stop()")]
+    [InlineData("let n = stop() and true")]
+    [InlineData("let n = true and stop()")]
+    [InlineData("let n = 1 << stop()")]
+    [InlineData("let p: raw/i32 = null\nunsafe\n    let n = p + stop()")]
+    public void TheOperatorTypeComesFromTheCompletingOperand(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(Stop + source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Empty(c.Binding.Issues);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+    }
+
+    [Theory]
+    [InlineData("func f() -> i32\n    +(return 1)", DiagnosticCode.OperatorNotDefined_Kd)]
+    [InlineData("func f() -> Never => +stop()", DiagnosticCode.OperatorNotDefined_Kd)]
+    [InlineData("func f() -> i32\n    -(return 1)", DiagnosticCode.OperatorNotDefined_Kd)]
+    [InlineData("func f() -> i32\n    (return 1) << 1", DiagnosticCode.NonIntegerOperand_Kd)]
+    [InlineData("func f() -> i32\n    (return 1) >> 1", DiagnosticCode.NonIntegerOperand_Kd)]
+    [InlineData("func f(x: Never)\n    var y = x\n    y++", DiagnosticCode.NonIntegerOperand_Kd)]
+    [InlineData("func f(x: Never)\n    var y = x\n    ++y", DiagnosticCode.NonIntegerOperand_Kd)]
+    [InlineData("func f(x: Never)\n    var y = x\n    y--", DiagnosticCode.NonIntegerOperand_Kd)]
+    [InlineData("func f(x: Never)\n    var y = x\n    --y", DiagnosticCode.NonIntegerOperand_Kd)]
+    [InlineData("func f(x: Never)\n    var y = x\n    y <<= 1", DiagnosticCode.NonIntegerOperand_Kd)]
+    [InlineData("func f(x: Never)\n    var y = x\n    y &= 1", DiagnosticCode.NonIntegerOperand_Kd)]
+    [InlineData("let n = stop() & stop()", DiagnosticCode.NonIntegerOperand_Kd)]
+    [InlineData("let n = stop() + stop()", DiagnosticCode.ArithmeticSelection_Kd)]
+    [InlineData("let n = stop() & true", DiagnosticCode.NonNumericOperand_Kd)]
+    [InlineData("let n = stop() & missing", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("let n = 2147483648 & stop()", DiagnosticCode.InvalidNumericLiteral_Kd)]
+    [InlineData("let n = 1.5 & stop()", DiagnosticCode.NonIntegerOperand_Kd)]
+    [InlineData("let p: raw/i32 = null\nunsafe\n    let n = stop() + p", DiagnosticCode.TypeMismatch_Kd)]
+    public void NeverDoesNotProveAnOtherwiseInvalidOperator(string source, DiagnosticCode code)
+    {
+        var c = MinimalEmissionTest.Analyze(Stop + source);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Equal(code, Assert.Single(c.Binding.Issues).Code);
+        using var output = new StringWriter();
+        Assert.False(c.WriteIr(output, out _));
+        Assert.Empty(output.ToString());
+    }
+
     // SPEC 3.8: a Never element of a Tuple literal fits its expected element Type, which the literal's Type takes, so the literal fits its
     // expected Type, also as an enum Case's payload.
     [Theory]
@@ -262,6 +314,17 @@ public class NeverContinuationTest
     [Fact]
     public void ANonCompletingLeftOperandSkipsTheOperation()
         => ScalarEmissionTest.EmitFixture("NeverOperand" + Configuration + "Left", Stop + "Console.writeLine(\"begin\")\nlet n: i32 = stop() + 1\nConsole.writeLine(\"after\")", "begin\n", 1, "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
+
+    [Theory]
+    [InlineData("BitwiseRight", "1 & stop()")]
+    [InlineData("RemainderRight", "1 % stop()")]
+    public void ANonCompletingRightOperandSkipsTheOperation(string name, string expression)
+        => ScalarEmissionTest.EmitFixture(
+            "NeverOperand" + Configuration + name,
+            Stop + "Console.writeLine(\"begin\")\nlet n = " + expression + "\nConsole.writeLine(\"after\")",
+            "begin\n",
+            1,
+            "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
 
     [Fact]
     public void DivergentOperatorSkipsCalleeAndLaterOutput()

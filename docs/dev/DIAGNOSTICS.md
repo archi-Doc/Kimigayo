@@ -17,6 +17,8 @@ Developer notes for the compiler's diagnostics. SPEC [§23.2.2](../spec/23-compi
 
 Arithmetic selection and declaration failures follow [SPEC arithmetic Contracts §6](../spec/13-operators-and-assignment.md). Retain selected facts and candidate evidence; a missing user conformance is not a blanket nonnumeric-operand error. Origin, Loan, effects and setter failures keep their existing cause-specific paths.
 
+Operator checks retain the actual operand Type, written operator and failure location, with a requirement/proof only when Binding queried it. Applicability licenses the directional expectation before fitting; a failed fit supplies no operand fact. Unknown is a Proof diagnostic, Refuted the relevant Language diagnostic; a tuple comparison names its decisive queried leaf, never a fabricated whole-tuple query. A known independent prohibition survives a missing counterpart, including string joins in either association and `p * missing`; a missing Type needed by provider selection defers that judgment. `Binding.Diagnostics.Operators` formats the retained facts without re-proving them; its Note displays the same real condition as unproven or unsatisfied in CLI/LSP text, bounding each displayed Type before composing the Note (DECISIONS G51-2).
+
 Each rule replaces a family of special cases. A change that needs an exception to one of them first revisits the rule.
 
 1. **One requirement, one phase.** A requirement is judged by the phase of its owning partition. A later phase that depends on it names it as a prerequisite and never reports it again.

@@ -250,6 +250,7 @@ internal enum BindingFailure : byte
     // wrapping integer operand, and a shift count an integer Type.
     NonNumericOperand,
     NonIntegerOperand,
+    OperatorNotDefined,
     InvalidShiftCount,
 
     // SPEC 13.5.4-4: @wrap converts integer and wrapping integer values only; @bits pairs a floating-point Type with a

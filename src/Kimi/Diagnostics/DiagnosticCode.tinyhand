@@ -878,6 +878,13 @@
     Category="Language"
     Message="The operator {1} requires integer operands, but this operand has Type {0}"
     Arguments="operand:Type,operator:Text"
+    Label="operator {1} requires an integer operand"
+    Evidence="subject:Type,member:Text,constraint:Text"
+
+  + Name="OperatorNotDefined_Kd"
+    Category="Language"
+    Message="The operator {1} is not defined for Type {0}"
+    Arguments="operand:Type,operator:Text"
     Label="{0} has no {1}"
 
   + Name="InvalidShiftCount_Kd"

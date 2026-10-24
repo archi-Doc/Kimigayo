@@ -208,6 +208,7 @@ public enum DiagnosticCode
     OverlappingLabel_Kd,
     NonNumericOperand_Kd,
     NonIntegerOperand_Kd,
+    OperatorNotDefined_Kd,
     InvalidShiftCount_Kd,
     UnsafeBlockRequired_Kd,
     UnnecessaryUnsafeBlock_Kd,

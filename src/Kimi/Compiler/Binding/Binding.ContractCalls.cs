@@ -88,13 +88,15 @@ public sealed partial class Binding
         }
 
         if (this.Library.GetSymbol(KimiDeclarationId.Equatable) is { Contract: { } equality } equatable &&
-            (ComparisonTypes.IsBuiltin(type, KimiDeclarationId.Equatable) || (ComparisonTypes.IsComposite(type) && this.ComparisonProof(type, equatable, scope, false) == ConstraintProof.Proven)))
+            (ComparisonTypes.IsBuiltin(type, KimiDeclarationId.Equatable) ||
+                (ComparisonTypes.IsComposite(type) && this.ComparisonProof(type, equatable, scope, false, out _) == ConstraintProof.Proven)))
         {
             Add(equality);
         }
 
         if (this.Library.GetSymbol(KimiDeclarationId.Comparable) is { Contract: { } ordering } comparable &&
-            (ComparisonTypes.IsBuiltin(type, KimiDeclarationId.Comparable) || (ComparisonTypes.IsComposite(type) && this.ComparisonProof(type, comparable, scope, false) == ConstraintProof.Proven)))
+            (ComparisonTypes.IsBuiltin(type, KimiDeclarationId.Comparable) ||
+                (ComparisonTypes.IsComposite(type) && this.ComparisonProof(type, comparable, scope, false, out _) == ConstraintProof.Proven)))
         {
             Add(ordering);
         }

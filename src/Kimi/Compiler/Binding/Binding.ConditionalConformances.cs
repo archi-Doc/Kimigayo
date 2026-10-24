@@ -297,7 +297,8 @@ public sealed partial class Binding
 
         if (this.contractHeadersReady && contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && ComparisonTypes.IsComposite(type))
         {
-            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : this.ComparisonProof(type, contract, scope, false);
+            return contract.Declaration.BindingState == BindingState.Invalid
+                ? ConstraintProof.Error : this.ComparisonProof(type, contract, scope, false, out _);
         }
 
         // SPEC 4.6.1, 8.7: every integer Type conforms to the closed Contract Position through the Kimi integer witness.

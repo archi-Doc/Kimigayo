@@ -1,13 +1,68 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
 
 public class ComparisonCompositionTest
 {
+    [Theory]
+    [InlineData("T, f64", "UnprovenConstraint_Kd", "T")]
+    [InlineData("f64, T", "UnprovenConstraint_Kd", "T")]
+    [InlineData("T, bool", "UnsatisfiedConstraint_Kd", "bool")]
+    [InlineData("bool, T", "UnsatisfiedConstraint_Kd", "bool")]
+    public void CompositeFailureKeepsTheDecisiveQueriedLeaf(string elements, string code, string subject)
+    {
+        var source = $"func before<T>(left: ({elements}), right: ({elements})) -> bool => left < right\npublic func main() => ()";
+        var compilation = CompilationTestHelper.ParseSuccess(source);
+        Assert.False(compilation.Bind().IsComplete);
+        compilation.Binding.ReportDiagnostics();
+        var error = Assert.Single(compilation.Diagnostics.Finalize(rejected: true).Diagnostics);
+        Assert.Equal(code, error.Code);
+        Assert.Equal(code == nameof(DiagnosticCode.UnprovenConstraint_Kd) ? DiagnosticCategory.Proof : DiagnosticCategory.Language, error.Category);
+        Assert.Equal(["subject", "member", "constraint"], error.Reason!.Select(static x => x.Name));
+        Assert.Equal([subject, "<", $"{subject} is Comparable"], error.Reason!.Select(static x => x.Value));
+        var verdict = code == nameof(DiagnosticCode.UnprovenConstraint_Kd) ? "not proven" : "not satisfied";
+        Assert.Equal($"Required condition is {verdict}: {subject} is Comparable", error.Note);
+        Assert.Equal("left < right", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+    }
+
+    [Theory]
+    [InlineData("U, bool, Broken<i32>", 0, 1, 2)]
+    [InlineData("Broken<i32>, U, bool", 1, 2, 0)]
+    [InlineData("U, Broken<i32>, bool", 0, 2, 1)]
+    public void AnInvalidQueriedLeafDominatesUnknownAndRefuted(string elements, int unknown, int refuted, int invalid)
+    {
+        var source = $$"""
+            struct Broken<T>
+                Self is Comparable when T is Missing
+                public func equals(self: ref/Self, other: ref/Self) -> bool => true
+                public func compare(self: ref/Self, other: ref/Self) -> i32 => 0
+            func before<U>(left: ({{elements}}), right: ({{elements}})) -> bool => left < right
+            public func main() => ()
+            """;
+        var compilation = CompilationTestHelper.ParseSuccess(source);
+        Assert.False(compilation.Bind().IsComplete);
+        var function = KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "before");
+        var tuple = function.Parameters[0].Type.TypeOf()!;
+        var comparable = compilation.Library.GetSymbol(KimiDeclarationId.Comparable)!;
+        Assert.Equal(ConstraintProof.Unknown, compilation.Binding.ResolveConformance(tuple.Components[unknown], comparable, function, out _));
+        Assert.Equal(ConstraintProof.Refuted, compilation.Binding.ResolveConformance(tuple.Components[refuted], comparable, function, out _));
+        Assert.Equal(ConstraintProof.Error, compilation.Binding.ResolveConformance(tuple.Components[invalid], comparable, function, out _));
+        Assert.Equal(ConstraintProof.Error, compilation.Binding.ResolveConformance(tuple, comparable, function, out _));
+        var issue = Assert.Single(compilation.Binding.Issues, static x => x.Node is BinaryKoto { Akind: KotoKind.LessThan });
+        Assert.Equal(DiagnosticCode.InvalidConstraint_Kd, issue.Code);
+        compilation.Binding.ReportDiagnostics();
+        var errors = compilation.Diagnostics.Finalize(rejected: true).Diagnostics;
+        var error = Assert.Single(errors, x => x.Span is { } span && source.Substring(span.Start, span.Length) == "left < right");
+        Assert.Equal(nameof(DiagnosticCode.InvalidConstraint_Kd), error.Code);
+        Assert.Null(error.Reason);
+    }
+
     // A generic struct whose witness compares a tuple of its own borrowed instances.
     private const string RecursiveSource = """
         struct Key<T>
