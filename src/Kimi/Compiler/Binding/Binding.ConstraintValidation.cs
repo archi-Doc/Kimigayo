@@ -206,6 +206,67 @@ public sealed partial class Binding
         return proof;
     }
 
+    private ConstraintProof CheckCallTypeConstraints(CallPlan call, BindingScope scope)
+    {
+        // A linked constructor is judged as the public declaration it selected (SPEC 22.1).
+        var target = this.Library.PresentedTarget(call.Target);
+        if (InvalidDeclarationContext(target.Declaration))
+        {
+            return ConstraintProof.Error;
+        }
+
+        var proof = this.CheckTypeConstraints(call.ReturnType, scope);
+        if (UnresolvedTypeDeclarationContext(target.Declaration))
+        {
+            proof = CombineProof(proof, ConstraintProof.Unknown, true);
+        }
+
+        if (call.DeclaringType is { } declaringType)
+        {
+            proof = CombineProof(proof, this.CheckTypeConstraints(declaringType, scope), true);
+        }
+
+        if (call.ConformingType is { } conformingType)
+        {
+            proof = CombineProof(proof, this.CheckTypeConstraints(conformingType, scope), true);
+        }
+
+        foreach (var argument in call.TypeArguments)
+        {
+            if (argument is not null)
+            {
+                proof = CombineProof(proof, this.CheckTypeConstraints(argument, scope), true);
+            }
+        }
+
+        if (target.Declaration is FunctionKoto function)
+        {
+            // Conditional evidence can fail after candidate selection. Recheck the committed
+            // candidate's constraints without reopening lookup or overload selection.
+            proof = CombineProof(proof, this.CheckConstraints(function.TypeConstraints, function, call.TypeArguments, scope, call.ConformingType, call.DeclaringType, call.LengthArguments), true);
+        }
+
+        proof = CombineProof(proof, this.ProveMemberConditions(target, call.DeclaringType, scope), true);
+        proof = CombineProof(proof, this.CheckOperationTypeConstraints(call.ReceiverOperation, scope), true);
+        foreach (var operation in call.ArgumentOperations)
+        {
+            proof = CombineProof(proof, this.CheckOperationTypeConstraints(operation, scope), true);
+        }
+
+        return proof;
+    }
+
+    private ConstraintProof CheckOperationTypeConstraints(in BoundArgumentOperation operation, BindingScope scope)
+    {
+        var proof = operation.SourceType is { } source ? this.CheckTypeConstraints(source, scope) : ConstraintProof.Proven;
+        if (operation.ParameterType is { } parameter && !ReferenceEquals(parameter, operation.SourceType))
+        {
+            proof = CombineProof(proof, this.CheckTypeConstraints(parameter, scope), true);
+        }
+
+        return proof;
+    }
+
     // Late witness/Effect failures invalidate declarations even when normalization already erased
     // their projections. Reuse the ordinary validation until declaration states stop changing.
     private void InvalidateProjectionCertificates(BindingMode mode)

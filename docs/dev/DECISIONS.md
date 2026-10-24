@@ -4798,6 +4798,19 @@ resumed by R4-M86 (2026-10-20).
   Rejected: growing the mixed file, an argument-only wrapper or a merged prerequisite representation before its need
   is established. Attribute legality and the behavior change remain with their existing owners in the next unit.
 
+- **G52-3 Call and diagnostic publication concerns** (2026-10-24; planning session, independent pre-code review).
+  Binding's declaration-cause query must be read by candidate evaluation, committed-call constraint validation and
+  function-reference formation. Growing their already oversized mixed files, even by call-site qualification, is not
+  permitted. First move candidate evaluation and its saved inference fields to `Binding.CallSelection.Candidates`,
+  call and argument-operation constraint checks to the existing `Binding.ConstraintValidation`, and reference
+  selection/inference plus its two per-candidate fields to `Binding.FunctionReferences`. Function Type structure and
+  the shared signature contract comparison remain in `Binding.FunctionTypes`. Move CheckService's existing diagnostic
+  ownership/publication tests together to `CheckServiceTest.Diagnostics`, sharing its original project/input fixture.
+  All member bodies, signatures, field initialization, state save/restore and reset order remain unchanged. These are
+  concerns of the same owners, with no new representation, API, state or vocabulary. Rejected: a size exception for
+  qualifiers, moving only the new test, copying fixture helpers, or relocating candidate evaluation into the already
+  too-small remaining space of the selection entry file. The attribute-cause behavior correction remains a later unit.
+
 ## R5 and R6 (adopted 2026-10-18)
 
 The owner's answers to the plan's questions OQ1–OQ17, given on 2026-10-18 and relayed by the R4 planning session. "Plan"
