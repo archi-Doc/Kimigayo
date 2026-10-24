@@ -42,8 +42,6 @@ embedded and implemented.
   and follow normal Binding, ownership analysis and lowering. Only reachable library imports
   are emitted. The private `counterFrequency` is initialized by the ordinary first-access static
   protocol; it has no compiler-recognized name or special startup hook.
-  `Storage.addressOfI64` is the sole new compiler operation: it exposes the existing exclusive
-  argument's address for the synchronous native output call, without a copy or allocation.
 - `Iteration.kimi` declares the public `Kimi.Iteration` adapters (`owning`, `borrowing`, `OwningIterator<I>`, `BorrowingIterator<I>`) as ordinary Kimigayo.
 - `Intrinsics.kimi`, `Console.kimi`, `Test.kimi`, `ArrayOperations.kimi`, `StorageOperations.kimi` and `RawOperations.kimi` contain signatures without source bodies.
   Their private loader supplies the owning container (a group, the `Array` struct for its constructor and mutation operations, the
@@ -105,8 +103,9 @@ iteration entries and their `starting` helpers, and Array `truncate`. Their Kimi
 `Storage.argumentOutOfRange` only reports its canonical code at the forwarded location. Ordinary user `$abort` is unchanged.
 `tryInsert` and `insertOrReplace` search through the shared storage remainder in ordinary source. The private
 `Storage.placeEntry` appends one slot and places the acquired pair, carrying the standard operation's caller location
-for growth failure; `Storage.placeValue` refills a live slot after `valueAt` moved its value out, so replacement secures
-the old value before placing the new one and destroys the unused input key through ordinary cleanup.
+for growth failure; `DictionaryStorage.replaceValue` moves a live entry's value out through `Storage.valueAt` and
+initializes the vacated value Place with the replacement (`Raw.initialize`), so replacement secures the old value before
+placing the new one. `insertOrReplace` destroys the unused input key through ordinary cleanup.
 `reserve` and `shrinkToFit` call `DictionaryStorage.reserveEntries`/`shrinkEntries`, caller-location source bodies like
 `resolve`: growth, append and compaction call `Raw.allocate`/`Raw.release`, which report the forwarded location inside
 such bodies, and the private `Storage.countOverflow`, `allocationSizeExceeded`, `tryAllocateBytes` and `transferBytes`

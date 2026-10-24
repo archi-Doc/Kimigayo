@@ -811,7 +811,8 @@ public sealed partial class MirBorrowsTest
                     while c
                         _ = State.effOwn()
             """);
-        var program = AnalyzeUnsupported(c, ["counter", "counter@ref", "counter@uniq", "other@uniq"]);
+        var program = AnalyzeUnsupported(
+            c, [.. Enumerable.Repeat("counter", 4), .. Enumerable.Repeat("counter@ref", 6), .. Enumerable.Repeat("counter@uniq", 18), "other@uniq"]);
         Assert.Equal(
             ["local3: t = 2", "setd: watch = Watch.init()", "gd: let d", "held: y0 = 2", "limit: y0 = 2", "guardAcross: let d"],
             Problems(c, program, DefaultCodes));
