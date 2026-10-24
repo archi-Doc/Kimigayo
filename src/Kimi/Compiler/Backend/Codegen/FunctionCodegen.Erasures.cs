@@ -43,10 +43,10 @@ internal sealed partial class FunctionCodegen
         var (key, represented) = (collector.Set.Items[item].Key, collector.Set.Items[item].RepresentativeType!);
         var closure = key.Kind == MonoKind.ClosureErasure;
         var given = default(ReadOnlySpan<Value>);
-        var callee = closure
-            ? this.module.Signature(targets[0].Item)
+        var run = closure
+            ? (this.module.Signature(targets[0].Item) is { } body ? new Run(body, null) : null)
             : this.Runs(represented, targets.Length > 0 ? targets[0].Item : -1, key.Function!.Components[1], default, out given);
-        if (callee is null || this.Laid(represented) is not { } source)
+        if (run is not { Signature: var callee, Slot: var slot } || this.Laid(represented) is not { } source)
         {
             return; // Recorded: a row not written yet, or a broken contract.
         }
@@ -57,7 +57,9 @@ internal sealed partial class FunctionCodegen
         this.abi = entry;
         output.Write(entry.GetDefinition(exported: false));
         output.Write("entry:\n");
-        var forwarded = closure ? this.Forward(callee, [this.Environment(heap), new('n', 0)], out var result) : this.Forward(callee, given, out result);
+        var forwarded = closure
+            ? this.Forward(callee, [this.Environment(heap), new('n', 0)], null, out var result)
+            : this.Forward(callee, given, slot, out result);
         if (!forwarded)
         {
             return; // A broken contract, recorded.
@@ -172,8 +174,9 @@ internal sealed partial class FunctionCodegen
 
     // An adapter's call of its callee (PD3): each callee parameter takes the adapter's own of its kind and logical index (a value, the
     // result slot, the location the erased call passed, SPEC 22.5.1), a parameter without an operand (Given: an environment or a context)
-    // the next given value; its value (none for a void callee). False, with InternalInvariant_Kd, where the adapter has no such parameter.
-    private bool Forward(FunctionAbi callee, ReadOnlySpan<Value> given, out Value? result)
+    // the next given value, then the call of its callee value, which the slot it runs through, if any, makes (EntryOf); its value (none for a
+    // void callee). False, with InternalInvariant_Kd, where the adapter has no such parameter.
+    private bool Forward(FunctionAbi callee, ReadOnlySpan<Value> given, BindingSymbol? slot, out Value? result)
     {
         result = null;
         var parameters = callee.Parameters;
@@ -197,7 +200,8 @@ internal sealed partial class FunctionCodegen
             this.arguments[i] = new('p', own);
         }
 
-        result = this.WriteCall(callee, this.arguments.AsSpan(0, parameters.Length));
+        var arguments = this.arguments.AsSpan(0, parameters.Length);
+        result = this.WriteCall(callee, arguments, this.EntryOf(callee, slot));
         return true;
     }
 

@@ -99,29 +99,30 @@ internal sealed partial class FunctionCodegen
     private void FunctionItem(in MirTerminator call, BoundType item)
     {
         var target = this.Target(new(this.at, this.body.Blocks[this.at].Count));
-        if (this.Runs(item, target, this.InstanceType(call.Place), call.Source, out var given) is { } callee)
+        if (this.Runs(item, target, this.InstanceType(call.Place), call.Source, out var given) is { } run)
         {
-            this.Invoke(call, callee, new(call.Callee.Symbol, MirBodyKind.Fn), given);
+            this.Invoke(call, run.Signature, new(call.Callee.Symbol, MirBodyKind.Fn), given, run.Slot);
         }
     }
 
     // SPEC 7.7.4 (DECISIONS R5-M108): what a call of a function Item runs, decided by its function, for its Value call and its adapter's
     // entry: a compiler function's call is its direct call's row whatever targets the row needs (a format witness, a descriptor), written
     // when it is one runtime routine (Routine, its slot-less values from the call's result Type into `given`); any other function's is its
-    // body target (the collector's: its function's body or a requirement Item's witness). Null after a record at the source (an adapter's:
-    // its site): a row not written yet, its unit's located Unsupported_Kd, or a broken contract.
-    private FunctionAbi? Runs(BoundType item, int target, BoundType? result, SourceInfo source, out ReadOnlySpan<Value> given)
+    // body target (the collector's: its function's body or a requirement Item's witness). Each is a Run, called by its signature's symbol.
+    // Null after a record at the source (an adapter's: its site): a row not written yet, its unit's located Unsupported_Kd, or a broken
+    // contract.
+    private Run? Runs(BoundType item, int target, BoundType? result, SourceInfo source, out ReadOnlySpan<Value> given)
     {
         given = default;
         var kind = item.Symbol?.CompilerFunction ?? CompilerFunctionKind.None;
         if (kind == CompilerFunctionKind.None && target >= 0 && this.collector.Set.Items[target].Key.Kind == MonoKind.Body)
         {
-            return this.module.Signature(target); // Null after a record.
+            return this.module.Signature(target) is { } signature ? new Run(signature, null) : null; // Null after a record.
         }
 
         if (kind != CompilerFunctionKind.None && this.Routine(kind, result, target, out given) is { } routine)
         {
-            return routine;
+            return new Run(routine, null);
         }
 
         this.Report(DiagnosticCode.Unsupported_Kd, source); // A row not written yet (above).
@@ -186,4 +187,8 @@ internal sealed partial class FunctionCodegen
         this.Destroy(this.module.Glue(rest), address, site);
         return true;
     }
+
+    // What a call runs (Runs): its signature, and the function whose virtual slot it runs through (null: none), which only makes the callee
+    // value the call writes (EntryOf), never how it writes the call.
+    private readonly record struct Run(FunctionAbi Signature, BindingSymbol? Slot);
 }

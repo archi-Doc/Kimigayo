@@ -103,12 +103,14 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // A call by its signature (IMPL 21.3.1, SPEC 22.6): its arguments (Pass), then the call and its end (Finish).
-    private void Invoke(in MirTerminator call, FunctionAbi signature, MirDefKey callee, ReadOnlySpan<Value> given = default)
+    // A call by its signature (IMPL 21.3.1, SPEC 22.6): its arguments (Pass), then the call of its callee value, which the slot it runs
+    // through, if any, makes (EntryOf), and its end (Finish).
+    private void Invoke(in MirTerminator call, FunctionAbi signature, MirDefKey callee, ReadOnlySpan<Value> given = default, BindingSymbol? slot = null)
     {
         if (this.Pass(call, signature, callee, given))
         {
-            this.Finish(call, this.WriteCall(signature, this.arguments.AsSpan(0, signature.Parameters.Length)));
+            var arguments = this.arguments.AsSpan(0, signature.Parameters.Length);
+            this.Finish(call, this.WriteCall(signature, arguments, this.EntryOf(signature, slot)));
         }
     }
 
@@ -188,9 +190,9 @@ internal sealed partial class FunctionCodegen
         this.Invoke(call, routine, new(call.Callee.Symbol, MirBodyKind.Fn));
     }
 
-    // A call of a routine, its symbol or an entry pointer (an erased value's, FunctionCodegen.Closures), each argument with its parameter's
-    // Type and attributes (the O2 parity list's `noundef nonnull ...` at every call, value calls included, package C row 14); its value, or
-    // null for a void result.
+    // A call of a routine, each argument with its parameter's Type and attributes (the O2 parity list's `noundef nonnull ...` at every call,
+    // value calls included, package C row 14); its value, or null for a void result. Its callee is one value: the routine's symbol, or an
+    // entry pointer (an erased value's table entry, FunctionCodegen.Closures; a virtual slot's, EntryOf); nothing else decides how it calls.
     private Value? WriteCall(FunctionAbi routine, ReadOnlySpan<Value> arguments, Value? entry = null)
     {
         var output = this.output;
