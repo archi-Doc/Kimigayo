@@ -6,10 +6,11 @@ using Kimi.Compiler.Mir;
 namespace Kimi.Compiler.Backend;
 
 // The item signatures of ModuleCodegen (R5 package C 3.3, IMPL 21.3.1; DECISIONS R5-M65, R5-M89, R5-M102, R5-M106): a body item's from
-// its own body, the one its definition and every call write; a DropGlue item's; a StaticInit item's slot's ensure function; and the
+// its own body, the one its definition and every call write; a DropGlue item's; a StaticInit item's slot's ensure function; the
 // per-index cache they share with the called imports' C signatures (ModuleCodegen.Imports.cs) and the common Function values' entries
-// (ModuleCodegen.Erasures.cs): each computed once per Write, or kept, and the previous one reused while it still matches, so a warm
-// module allocates nothing.
+// (ModuleCodegen.Erasures.cs); and the unnamed signatures of the calls that reach their callee through a pointer (Unnamed: a common
+// Function value's entry): each computed once per Write, or kept, and the previous one reused while it still matches, so a warm module
+// allocates nothing.
 internal sealed partial class ModuleCodegen
 {
     /// <summary>The name of a StaticInit item's slot before its index (SPEC 22.4.3); its state adds <see cref="StateSuffix"/>, its ensure
@@ -19,6 +20,7 @@ internal sealed partial class ModuleCodegen
     /// <summary>The name of a static slot's state after its slot's.</summary>
     internal const string StateSuffix = "_state";
 
+    private readonly List<FunctionAbi> unnamed = []; // The unnamed signatures (Unnamed), kept across Writes.
     private FunctionAbi?[] helpers = []; // By adapter or StaticInit item, its helper function (Release, Ensure), kept across Writes.
     private FunctionAbi?[] signatures = []; // By item.
     private int[] signed = []; // By item, the Write whose signature signatures holds (0: none).
@@ -154,6 +156,23 @@ internal sealed partial class ModuleCodegen
 
         var name = prefix + item.ToString(CultureInfo.InvariantCulture);
         return this.signatures[item] = Abi.Of(this.Layout, Abi.Convention.Internal, flags, result, types).Named(name);
+    }
+
+    // An unnamed signature under the internal convention, which its calls reach through a pointer (a common Function value's entry,
+    // ModuleCodegen.Erasures.cs): a kept one while Abi.Matches holds, else a new one, kept across Writes.
+    private FunctionAbi Unnamed(Abi.Flags flags, BoundType result, ReadOnlySpan<BoundType> inputs)
+    {
+        foreach (var candidate in this.unnamed)
+        {
+            if (Abi.Matches(candidate, this.Layout, Abi.Convention.Internal, flags, result, inputs))
+            {
+                return candidate;
+            }
+        }
+
+        var abi = Abi.Of(this.Layout, Abi.Convention.Internal, flags, result, inputs);
+        this.unnamed.Add(abi);
+        return abi;
     }
 
     // The kept helper function of an item (Release, Ensure: an item is an adapter or a StaticInit, never both), its array grown to hold it.
