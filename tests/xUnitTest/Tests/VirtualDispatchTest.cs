@@ -20,6 +20,33 @@ public class VirtualDispatchTest
         NativeAllocationAudit.WriteFixture("VirtualDispatch" + mode, source, 1, 1, 20, string.Empty);
     }
 
+    [Theory]
+    [InlineData("obj")]
+    [InlineData("rc")]
+    public void ReferenceHeldHandlesDispatchThroughInheritedMembers(string mode)
+    {
+        const string Types =
+            "open struct Device\n" +
+            "    public let id: i32\n" +
+            "    public init(id: i32) => self.id = id\n" +
+            "    public virtual func power(self: objref/Self, level: i32 = 1) -> i32 => level\n" +
+            "    public virtual func kind(self: objref/Self) -> i32 => 0\n" +
+            "    public func report(self: objref/Self) -> i32 => self.power() + self.kind() * 1000\n" +
+            "open struct Lamp : Device\n" +
+            "    public init(id: i32) : base(id) => ()\n" +
+            "    override func power(self: objref/Self, level: i32) -> i32 => base.power(level) * 40\n" +
+            "    override func kind(self: objref/Self) -> i32 => 1\n" +
+            "struct DeskLamp : Lamp\n" +
+            "    public init(id: i32) : base(id) => ()\n" +
+            "    override func power(self: objref/Self, level: i32) -> i32 => base.power(level) + 5\n";
+        // report is nonvirtual; its slot calls still use the complete object's Dynamic Type.
+        var source = Types + "let owner = DeskLamp.init(3)@" + mode + "\n" +
+            "let r = owner@ref\n" +
+            "require r.report() == 1045 else => $abort(\"inherited report\")\n" +
+            "require r.power(2) == 85 else => $abort(\"virtual power\")";
+        ScalarEmissionTest.EmitFixture("VirtualDispatchReferenceHandle" + mode, source, string.Empty);
+    }
+
     [Fact]
     public void FunctionItemsAndErasedValuesDispatchOnEveryReceiver()
     {
