@@ -143,7 +143,9 @@ public class MatchEmissionTest
     [InlineData("arrival")]
     public void MalformedPlansFailBeforeWriting(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("let result = match \"a\"@move\n    \"b\" => \"other\"\n    let text => text@move\nConsole.writeLine(result)");
+        var c = MinimalEmissionTest.Analyze(
+            "let result = match \"a\"@move\n    \"b\" => \"other\"\n    let text => text@move\nConsole.writeLine(result)",
+            codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var match = body.Matches[0];
@@ -250,7 +252,9 @@ public class MatchEmissionTest
     [InlineData("binding")]
     public void ScalarSnapshotPlansAreValidated(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("let unrelated = 123\nlet result = match 7@move\n    let n => n\nif result == 7 => ()");
+        var c = MinimalEmissionTest.Analyze(
+            "let unrelated = 123\nlet result = match 7@move\n    let n => n\nif result == 7 => ()",
+            codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var id = body.OperationStorage.FindIndex(x => x.Kind == (defect == "binding" ? OwnershipOperationKind.AcquirePattern : OwnershipOperationKind.InitializeSubject));

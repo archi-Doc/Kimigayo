@@ -89,7 +89,9 @@ public class GenericCallbackEmissionTest
     {
         // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
         // the corrupt value call is rejected on the ordinary body that owns it.
-        var c = MinimalEmissionTest.Analyze("func invoke(x: i32, f: (i32) -> bool) -> bool => f(x)\nlet result = invoke(7, func (x: i32) => true)");
+        var c = MinimalEmissionTest.Analyze(
+            "func invoke(x: i32, f: (i32) -> bool) -> bool => f(x)\nlet result = invoke(7, func (x: i32) => true)",
+            codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "invoke");
         var call = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call);

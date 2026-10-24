@@ -180,7 +180,7 @@ public class ElementAssignmentEmissionTest
     [InlineData("value")]
     public void InvalidWritePlansAreRejectedAndReanalysisRecovers(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("var a: [1 of i32] = [0]\na[0] = 42");
+        var c = MinimalEmissionTest.Analyze("var a: [1 of i32] = [0]\na[0] = 42", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var plan = body.Projections[0];

@@ -125,7 +125,7 @@ public class StringFunctionEmissionTest
     [InlineData("return_write")]
     public void MalformedStringFunctionPlansPublishNoIrAndRecover(string defect)
     {
-        var c = MinimalEmissionTest.Analyze(Echo + "Console.writeLine(echo(\"text\"))");
+        var c = MinimalEmissionTest.Analyze(Echo + "Console.writeLine(echo(\"text\"))", codegen: CompilerCodegen.Legacy);
         var body = c.Ownership.Bodies.Single(x => x.Function.Parameters.Count == 0);
         var call = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call && ReferenceEquals(x.Source.TypeOf(), BoundType.String));
         if (defect is "parameter" or "return_write")
@@ -164,7 +164,7 @@ public class StringFunctionEmissionTest
     [Fact]
     public void ACallCannotOverwriteAnAlreadyInitializedResult()
     {
-        var c = MinimalEmissionTest.Analyze(Echo + "let unit = ()\necho(\"text\")");
+        var c = MinimalEmissionTest.Analyze(Echo + "let unit = ()\necho(\"text\")", codegen: CompilerCodegen.Legacy);
         var body = c.Ownership.Bodies.Single(x => x.Function.Parameters.Count == 0);
         var call = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call);
         var earlier = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Declare && ReferenceEquals(body.Places[x.Place].Type, BoundType.Unit));

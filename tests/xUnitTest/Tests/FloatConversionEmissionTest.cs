@@ -80,7 +80,7 @@ public class FloatConversionEmissionTest
     [InlineData("target")]
     public void CorruptWideningPlansFailBeforeWriting(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("var x: f32 = 1.25\nlet y = x@f64");
+        var c = MinimalEmissionTest.Analyze("var x: f32 = 1.25\nlet y = x@f64", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Convert);

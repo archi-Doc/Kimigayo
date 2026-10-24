@@ -100,7 +100,7 @@ public class ScalarEmissionTest
     [InlineData("phi-input")]
     public void IncompleteScalarPlansFailBeforeWriting(string mutation)
     {
-        var c = MinimalEmissionTest.Analyze("var x = 1\nif x > 0 and true => x = 2");
+        var c = MinimalEmissionTest.Analyze("var x = 1\nif x > 0 and true => x = 2", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var write = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Write);

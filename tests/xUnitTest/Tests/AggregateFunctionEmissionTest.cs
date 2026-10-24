@@ -191,7 +191,7 @@ public class AggregateFunctionEmissionTest
     public void MissingNormalInitializationIsRejectedEvenForZeroByteResults(bool zero)
     {
         var source = zero ? "func echo(value: [0 of string]) -> [0 of string] => value@move\nlet empty: [0 of string] = []\necho(empty@move)" : Echo + "echo((\"a\", 1))";
-        var c = MinimalEmissionTest.Analyze(source);
+        var c = MinimalEmissionTest.Analyze(source, codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var call = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call);
@@ -210,7 +210,7 @@ public class AggregateFunctionEmissionTest
     [InlineData("return")]
     public void InconsistentFunctionPlansAreRejectedAndRecover(string defect)
     {
-        var c = MinimalEmissionTest.Analyze(Echo + "echo((\"a\", 1))");
+        var c = MinimalEmissionTest.Analyze(Echo + "echo((\"a\", 1))", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var call = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call);

@@ -77,7 +77,7 @@ public class BorrowedArrayEmissionTest
     [Fact]
     public void RejectsDifferentReferenceProducerAndReanalysisRecovers()
     {
-        var c = MinimalEmissionTest.Analyze("let a: [1 of i32] = [42]\nlet r = a@ref\nlet n = r.length");
+        var c = MinimalEmissionTest.Analyze("let a: [1 of i32] = [42]\nlet r = a@ref\nlet n = r.length", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single();
         var sequence = body.Sequences.Single();

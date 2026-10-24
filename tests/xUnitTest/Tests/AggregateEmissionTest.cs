@@ -70,7 +70,7 @@ public class AggregateEmissionTest
     [InlineData("flag")]
     public void InvalidAggregatePlansDoNotWriteIr(string mutation)
     {
-        var c = MinimalEmissionTest.Analyze("var value = (\"a\", 1)\nif true => value@move\nvalue = (\"b\", 2)");
+        var c = MinimalEmissionTest.Analyze("var value = (\"a\", 1)\nif true => value@move\nvalue = (\"b\", 2)", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var construction = body.ConstructionStorage[0];

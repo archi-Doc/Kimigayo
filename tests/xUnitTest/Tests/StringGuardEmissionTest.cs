@@ -89,7 +89,9 @@ public class StringGuardEmissionTest
     [InlineData("read_move")]
     public void InvalidLoanPlansAreRejected(string defect)
     {
-        var c = MinimalEmissionTest.Analyze(Same + "match \"a\"@move\n    let s if same(s, s) => Console.writeLine(s)\n    _ => ()");
+        var c = MinimalEmissionTest.Analyze(
+            Same + "match \"a\"@move\n    let s if same(s, s) => Console.writeLine(s)\n    _ => ()",
+            codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var arm = body.MatchArms[0];

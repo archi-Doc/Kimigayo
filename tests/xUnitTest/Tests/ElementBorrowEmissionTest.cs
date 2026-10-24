@@ -257,7 +257,7 @@ public class ElementBorrowEmissionTest
     [InlineData(LoanRequirement.Uniq)]
     public void ABorrowOfATemporaryReadOfItsSelectionFailsBeforeOutputAndRecovers(LoanRequirement mode)
     {
-        var c = MinimalEmissionTest.Analyze(SharedCopyPart);
+        var c = MinimalEmissionTest.Analyze(SharedCopyPart, codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(static x => x.Operations.Any(static o => o.Kind == OwnershipOperationKind.Borrow && o.Source is Kimi.Compiler.Parsing.MemberAccessKoto));
         var borrow = Enumerable.Range(0, body.Operations.Count).Single(i => body.Operations[i] is { Kind: OwnershipOperationKind.Borrow, Source: Kimi.Compiler.Parsing.MemberAccessKoto });
@@ -335,7 +335,9 @@ public class ElementBorrowEmissionTest
     [InlineData("mode")]
     public void CorruptedElementRoutesFailBeforeOutputAndRecover(string defect)
     {
-        var c = MinimalEmissionTest.Analyze(Item + Bump + "var xs: Array<Item> = [Item.init(\"a\", 41)]\nbump(xs[0].n@uniq)\nvar ys: [2 of i32] = [1, 2]\nlet i: isize = 0\nbump(ys[i]@uniq)");
+        var c = MinimalEmissionTest.Analyze(
+            Item + Bump + "var xs: Array<Item> = [Item.init(\"a\", 41)]\nbump(xs[0].n@uniq)\nvar ys: [2 of i32] = [1, 2]\nlet i: isize = 0\nbump(ys[i]@uniq)",
+            codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(static x => x.Operations.Any(static o => o is { Kind: OwnershipOperationKind.Borrow, Source: Kimi.Compiler.Parsing.MemberAccessKoto }));
         var part = Enumerable.Range(0, body.Operations.Count).Single(i => body.Operations[i] is { Kind: OwnershipOperationKind.Borrow, Source: Kimi.Compiler.Parsing.MemberAccessKoto });
@@ -411,7 +413,9 @@ public class ElementBorrowEmissionTest
     [InlineData("inspection")]
     public void CorruptedBorrowPlansFailBeforeOutputAndRecover(string defect)
     {
-        var c = MinimalEmissionTest.Analyze(Same + "let a: [2 of string] = [\"held\", \"sibling\"]\nlet equal = same(a[0], a[0])\nlet inspected = a[1] == a[1]");
+        var c = MinimalEmissionTest.Analyze(
+            Same + "let a: [2 of string] = [\"held\", \"sibling\"]\nlet equal = same(a[0], a[0])\nlet inspected = a[1] == a[1]",
+            codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var plan = body.Projections[0];

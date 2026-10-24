@@ -140,7 +140,7 @@ public class AggregateResultEmissionTest
     [InlineData("dominance")]
     public void MalformedPlansPublishNoIrAndRecover(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("let pair = if true => (\"a\", 1) else => (\"b\", 2)");
+        var c = MinimalEmissionTest.Analyze("let pair = if true => (\"a\", 1) else => (\"b\", 2)", codegen: CompilerCodegen.Legacy);
         var body = c.Ownership.Bodies[0];
         var result = Assert.Single(body.SlotResults);
         switch (defect)
@@ -176,7 +176,7 @@ public class AggregateResultEmissionTest
             source = source.Replace("(\"old\", 1)", "\"old\"").Replace("(\"init\", 1)", "\"init\"").Replace("(\"cleanup\", 1)", "\"cleanup\"");
         }
 
-        var c = MinimalEmissionTest.Analyze(source);
+        var c = MinimalEmissionTest.Analyze(source, codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var result = Assert.Single(body.SlotResults);

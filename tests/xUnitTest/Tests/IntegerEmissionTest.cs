@@ -125,7 +125,7 @@ public class IntegerEmissionTest
     [InlineData("u32", 4294967296L)]
     public void NoncanonicalConstantPlansAreRejectedBeforeLlvmCanTruncate(string type, long bits)
     {
-        var c = MinimalEmissionTest.Analyze($"let x: {type} = 1");
+        var c = MinimalEmissionTest.Analyze($"let x: {type} = 1", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Constant);
@@ -194,7 +194,7 @@ public class IntegerEmissionTest
     [Fact]
     public void SameLlvmWidthDoesNotPermitMixedLanguageTypesInPhi()
     {
-        var c = MinimalEmissionTest.Analyze("let u: u8 = 1\nlet y: i8 = if true => 1 else => 2");
+        var c = MinimalEmissionTest.Analyze("let u: u8 = 1\nlet y: i8 = if true => 1 else => 2", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var phi = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Phi);
@@ -209,7 +209,7 @@ public class IntegerEmissionTest
     [Fact]
     public void PointerWidthMustMatchTheEmissionProfile()
     {
-        var c = MinimalEmissionTest.Analyze("let n: usize = 1");
+        var c = MinimalEmissionTest.Analyze("let n: usize = 1", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var property = typeof(Compilation).GetProperty(nameof(Compilation.IrTarget))!;
         var original = c.IrTarget;

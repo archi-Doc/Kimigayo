@@ -46,7 +46,11 @@ public class PipelineCallableTest
     {
         // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
         // the corrupt match plan is rejected on the ordinary body that owns it.
-        var c = MinimalEmissionTest.Analyze("func present(items: Slice<i32>{source}) -> isize\n    var cursor = items.iterate()\n    var count: isize = 0\n    loop\n        match cursor@uniq.next()@move\n            .Some(let item) => count = count + 1\n            .None => exit\n    return count\nlet values: [1 of i32] = [4]\nrequire present(values[..]) == 1 else => $abort(\"match\")");
+        var c = MinimalEmissionTest.Analyze(
+            "func present(items: Slice<i32>{source}) -> isize\n    var cursor = items.iterate()\n    var count: isize = 0\n    loop\n" +
+            "        match cursor@uniq.next()@move\n            .Some(let item) => count = count + 1\n            .None => exit\n    return count\n" +
+            "let values: [1 of i32] = [4]\nrequire present(values[..]) == 1 else => $abort(\"match\")",
+            codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var failure), MinimalEmissionTest.Describe(c, failure));
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "present");
         var match = Assert.Single(body.Matches);
