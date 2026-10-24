@@ -1,0 +1,4 @@
+public func main()
+    var x: i32 = 1
+    let u = x@uniq
+    let c = func [u] () -> ref/i32 during u => u@follow@ref

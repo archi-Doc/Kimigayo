@@ -17,19 +17,13 @@ internal sealed partial class InstanceCollector
     private int GlueOf(int item, SourceRef subject, BoundType closed)
         => MirTypes.MayNeedDrop(closed, this.seen) ? this.AdmitType(item, subject, new(MonoKind.DropGlue, default, null, null, 0, null), closed) : -1;
 
-    // K 4.5 row 7: the StaticInit body a staticEnsure names (MirProgram.StaticInit, F10); none is a broken contract, since the builder
-    // ensures only the statics whose initializers it builds. A static of a generic container's group, whose storage the MIR keys by its
-    // symbol alone (SPEC 22.4.4), has no instance to admit: its declaration is the static-storage gap once (DECISIONS R5-M82, which
-    // supersedes R5-M60's record at each access; the bundled library declares none, as its rooted check shows).
+    // K 4.5 row 7: the StaticInit body a staticEnsure names (MirProgram.StaticInit, F10), which the validator checks the program has (G191).
+    // A static of a generic container's group, whose storage the MIR keys by its symbol alone (SPEC 22.4.4), has no instance to admit: its
+    // declaration is the static-storage gap once (DECISIONS R5-M82, which supersedes R5-M60's record at each access; the bundled library
+    // declares none, as its rooted check shows).
     private int Static(MirProgram program, int item, MirBody body, SourceRef subject, in MirTerminator ensure)
     {
-        var initializer = program.StaticInit(body, body.Operands[ensure.Start]);
-        if (initializer is null)
-        {
-            this.Set.Report(DiagnosticCode.InternalInvariant_Kd, subject);
-            return -1;
-        }
-
+        var initializer = program.StaticInit(body, body.Operands[ensure.Start])!;
         return this.types.Instantiates(initializer.Key.Decl!) ? -1 : this.Admit(item, subject, initializer, null);
     }
 
