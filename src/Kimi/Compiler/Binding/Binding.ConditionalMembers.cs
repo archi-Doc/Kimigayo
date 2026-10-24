@@ -33,7 +33,7 @@ public sealed partial class Binding
         }
 
         if (declaration.BindingState == BindingState.Invalid ||
-            (member.Declaration.BindingState == BindingState.Invalid && !KeepsSignature(member.Declaration)) ||
+            this.InvalidDeclarationCause(member.Declaration) is not null ||
             this.scopes[declaration].Constraints?.Invalid == true)
         {
             return ConstraintProof.Error;

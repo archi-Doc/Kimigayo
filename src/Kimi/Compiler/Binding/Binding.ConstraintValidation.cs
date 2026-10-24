@@ -169,7 +169,7 @@ public sealed partial class Binding
 
     private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope)
     {
-        if (type.Symbol is { } symbol && InvalidDeclarationContext(symbol.Declaration))
+        if (type.Symbol is { } symbol && this.InvalidDeclarationContext(symbol.Declaration))
         {
             return ConstraintProof.Error;
         }
@@ -210,7 +210,7 @@ public sealed partial class Binding
     {
         // A linked constructor is judged as the public declaration it selected (SPEC 22.1).
         var target = this.Library.PresentedTarget(call.Target);
-        if (InvalidDeclarationContext(target.Declaration))
+        if (this.InvalidDeclarationContext(target.Declaration))
         {
             return ConstraintProof.Error;
         }
@@ -408,7 +408,7 @@ public sealed partial class Binding
 
                 for (var a = 0; a < shape.Ancestors.Count; a++)
                 {
-                    if (InvalidDeclarationContext(shape.Ancestors[a].Declaration))
+                    if (this.InvalidDeclarationContext(shape.Ancestors[a].Declaration))
                     {
                         var previous = contract.BindingState;
                         this.Fail(contract, BindingFailure.UnsatisfiedConstraint);

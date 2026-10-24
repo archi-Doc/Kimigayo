@@ -4798,6 +4798,32 @@ resumed by R4-M86 (2026-10-20).
   Rejected: growing the mixed file, an argument-only wrapper or a merged prerequisite representation before its need
   is established. Attribute legality and the behavior change remain with their existing owners in the next unit.
 
+- **G52-2 Rejected attributes retain their declaration cause** (2026-10-24; planning session, independent
+  designs A/B and independent pre-code review, including the base/Layout aggregate correction). SPEC 23.1.2
+  makes an invalid selected Attribute the cause of its target's rejection, not a second failed requirement.
+  Test, Layout, unknown markers and non-function LibraryImport share the existing target/part registration:
+  keep target Invalid and any independent Failure, and retain the rejected attribute in AddPrerequisite.
+  Test's direct registration is shared by the selected and excluded visitors; exclusion membership stays unchanged.
+  Consultation frames and declaration parts use the same live predicate: not Resolved, or syntax recovery.
+  Presence and traversal read both stores. The existing first non-recovery part and recovery replacement stay;
+  rejected attributes and any earlier retained struct part cannot resolve within that pass. Reset/rebind reconstructs
+  them. This does not establish that arbitrary pending base or field causes have the same lifetime.
+  Only Invalid with a live declaration part resists a pending transition; ordinary retries remain unchanged.
+  Declaration-context queries return that part before the independent Failure's signature-preservation rule.
+  Stored InvalidConstraint/Unsupported keys still close through their existing derived records; definite failures
+  remain direct. No diagnostic adapter filters duplicates.
+  Base validation separates its own rule result from the declaration's prior rejection before caching availability.
+  Layout fragment failures use the rejected-attribute path; the aggregate validity bit only decides IsCLayout.
+  Split-storage and R5-M55's zero-sized Field/struct diagnostics stay with their existing checks.
+  C-exchangeability retains its three outcomes: eligible, unsupported, or dependent on a failed Type. Its own-declaration
+  query includes the retained part cause beside the existing direct-Failure guard; a failed Type is not another ABI error.
+  Pending regressions use the public Binding producers and semantic queries; arbitrary injected states are not evidence
+  of source reachability. Product exclusion and Test-mode virtual pending retain their distinct raw failures.
+  Deleted: independent attribute-target Fail registrations, fragment aggregate-to-Fail copying and divergent
+  prerequisite/pending/context decisions. Rejected: blanket derived InvalidTypeFormation, global Invalid absorption,
+  a new cause collection, and extending persistent causes to pending bases. Existing enum/pattern and invalid-parent
+  consumers, and resolved unknown-marker classification, remain G52 follow-ups in PLAN.
+
 - **G52-3 Call and diagnostic publication concerns** (2026-10-24; planning session, independent pre-code review).
   Binding's declaration-cause query must be read by candidate evaluation, committed-call constraint validation and
   function-reference formation. Growing their already oversized mixed files, even by call-site qualification, is not

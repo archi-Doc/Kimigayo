@@ -87,7 +87,7 @@ public sealed partial class Binding
                 if (state == CandidateApplicability.Error)
                 {
                     error = true;
-                    invalid ??= InvalidDeclarationContextCause(function) ?? this.FailedSignaturePart(function);
+                    invalid ??= this.InvalidDeclarationContextCause(function) ?? this.FailedSignaturePart(function);
                 }
 
                 if (state == CandidateApplicability.Applicable)

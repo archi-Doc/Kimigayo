@@ -83,8 +83,100 @@ internal static class DiagnosticMeasurements
             32);
 
         results["override-failure-binding"] = OverrideFailures();
+        results["attribute-causes"] = AttributeCauses(directory);
 
         Console.WriteLine(JsonSerializer.Serialize(new { compiler = Compilation.CompilerVersion, runtime = Environment.Version.ToString(), results }, new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    // Equivalent declaration workloads isolate retained rejection causes from normal Binding; publication is measured separately.
+    private static object AttributeCauses(string directory)
+    {
+        const int Count = 128;
+        var cases = new (string Name, string Attribute)[]
+        {
+            ("normal", string.Empty), ("test", "#Test"), ("layout", "#Layout(\"bad\")"),
+            ("unknown", "#Unknown"), ("import", "#LibraryImport(\"library\", \"symbol\")"),
+        };
+        var results = new Dictionary<string, object>();
+        foreach (var item in cases)
+        {
+            var source = new StringBuilder();
+            for (var i = 0; i < Count; i++)
+            {
+                if (item.Attribute.Length != 0)
+                {
+                    source.AppendLine(item.Attribute);
+                }
+
+                source.Append("struct Entry").Append(i).AppendLine("\n    let value: i32");
+            }
+
+            var text = source.ToString();
+            var sourcePath = Path.Combine(directory, "attribute-causes-" + item.Name + ".kimi");
+            File.WriteAllText(sourcePath, text);
+            var rejected = item.Attribute.Length != 0;
+            var retained = new long[7];
+            for (var sample = 0; sample < retained.Length; sample++)
+            {
+                retained[sample] = RetainedAttributeCauses(text, rejected, Count);
+            }
+
+            var cold = Measure(() => BindAttributeCauses(text, rejected, Count), 8);
+            var compilation = BindAttributeCauses(text, rejected, Count);
+            var warm = Measure(() => Require(compilation.Bind().IsComplete != rejected), 32);
+            var publication = Measure(
+                () =>
+                {
+                    Require(compilation.Bind().IsComplete != rejected);
+                    compilation.Binding.ReportDiagnostics();
+                    Require(compilation.Diagnostics.Finalize().Diagnostics.Any(x => x.Severity == DiagnosticSeverity.Error) == rejected);
+                },
+                32);
+            results[item.Name] = new
+            {
+                count = Count,
+                sourcePath,
+                sourceSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(text))),
+                pipeline = compilation.Pipeline.ToString(),
+                codegen = compilation.Codegen.ToString(),
+                retainedBytes = retained,
+                medianRetainedBytes = retained.Order().ElementAt(3),
+                cold,
+                warm,
+                publication,
+            };
+            GC.KeepAlive(compilation);
+        }
+
+        return new
+        {
+            gcServer = System.Runtime.GCSettings.IsServerGC,
+            gcLatencyMode = System.Runtime.GCSettings.LatencyMode.ToString(),
+            processorCount = Environment.ProcessorCount,
+            results,
+        };
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static long RetainedAttributeCauses(string source, bool rejected, int count)
+    {
+        var before = GC.GetTotalMemory(forceFullCollection: true);
+        var compilation = BindAttributeCauses(source, rejected, count);
+        var retained = GC.GetTotalMemory(forceFullCollection: true) - before;
+        GC.KeepAlive(compilation);
+        return retained;
+    }
+
+    private static Compilation BindAttributeCauses(string source, bool rejected, int count)
+    {
+        var compilation = Compilation.CreateForTest();
+        Require(compilation.Prepare(Target));
+        compilation.Kotonoha.AddSource(new SourceDocument("attribute-causes.kimi", source));
+        Require(compilation.Bind().IsComplete != rejected);
+        var declarations = compilation.Kotonoha.RootKoto.NestedContainers;
+        Require(declarations.Count == count);
+        Require(declarations.All(x => (x.BindingState == BindingState.Invalid) == rejected));
+        return compilation;
     }
 
     // Fixed failed programs measure warm Binding and the retained compilation, including its failure records.

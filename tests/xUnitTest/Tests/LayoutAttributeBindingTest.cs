@@ -10,6 +10,59 @@ namespace XunitTest;
 public class LayoutAttributeBindingTest
 {
     [Theory]
+    [InlineData("#Layout(\"bad\")\nstruct S", "InvalidLayoutAttribute_Kd")]
+    [InlineData("#Layout(\"Kimigayo\")\n#Layout(\"Kimigayo\")\nstruct S", "InvalidLayoutAttribute_Kd")]
+    [InlineData("#Layout(\"C\")\nstruct S\n    var x: i32\n#Layout(\"Kimigayo\")\nstruct S", "ConflictingLayout_Kd")]
+    [InlineData("#Layout(\"C\")\nstruct S", "InvalidCLayout_Kd")]
+    [InlineData("#Layout(\"C\")\nopen struct S\n    var x: i32", "InvalidCLayout_Kd")]
+    [InlineData("open struct B\n#Layout(\"C\")\nstruct S: B\n    var x: i32", "InvalidCLayout_Kd")]
+    public void FailedLayoutSpecificationsInvalidateThroughTheirAttribute(string source, string code)
+    {
+        foreach (var testBuild in new[] { false, true })
+        {
+            var c = CompilationTestHelper.ParseSuccess(source);
+            c.IsTestBuild = testBuild;
+            var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
+            for (var pass = 0; pass < 2; pass++)
+            {
+                Assert.False(c.Bind().IsComplete);
+                Assert.Equal(BindingState.Invalid, type.StateOf());
+                Assert.Equal(BindingFailure.None, type.FailureOf());
+                var marker = Assert.IsType<AttributeKoto>(Assert.Single(c.Binding.FailureCauses(type)!).Subject);
+                Assert.Equal(BindingState.Invalid, marker.StateOf());
+                Assert.False(type.SymbolOf()!.Adt!.IsCLayout);
+                var error = Assert.Single(CompilationTestHelper.BindingErrors(c));
+                Assert.Equal(code, error.Code);
+                Assert.Equal(marker.Span, error.Span);
+            }
+        }
+    }
+
+    [Fact]
+    public void ALayoutRejectionPreservesAnEarlierOriginCause()
+    {
+        var c = CompilationTestHelper.ParseSuccess("#Layout(\"C\")\nstruct S {a}\n    origin missing outlives a");
+        var type = c.Kotonoha.RootKoto.NestedContainers.Single();
+        var relation = KotoTree.Walk(type).OfType<OriginRelationKoto>().Single();
+        for (var pass = 0; pass < 2; pass++)
+        {
+            Assert.False(c.Bind().IsComplete);
+            Assert.Equal(BindingState.Invalid, type.StateOf());
+            Assert.Equal(BindingFailure.InvalidOrigin, type.FailureOf());
+            Assert.Equal(BindingState.Unresolved, relation.StateOf());
+            Assert.Contains(type, c.Binding.DerivedIssues);
+            var key = Assert.Single(c.Binding.FailureCauses(type)!);
+            Assert.Equal(type.KeyOf(Kimi.Diagnostics.DiagnosticRequirement.Binding(BindingFailure.InvalidOrigin)), key);
+            type.ReportDerived(Kimi.Diagnostics.DiagnosticRequirement.Startup, [key]);
+            Assert.Equal(["InvalidCLayout_Kd", "MissingOriginBinding_Kd"], CompilationTestHelper.BindingErrors(c).Select(x => x.Code));
+        }
+
+        Assert.True(type.RemoveAttribute(Assert.IsType<AttributeKoto>(type.AttributeChain)));
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal("MissingOriginBinding_Kd", Assert.Single(CompilationTestHelper.BindingErrors(c)).Code);
+    }
+
+    [Theory]
     [InlineData("#Layout(\"C\")\nstruct S\n    var a: i32\n    var b: u8")]
     [InlineData("#Layout(\"Kimigayo\",)\nstruct S")]
     [InlineData("struct S\n    var a: i32\n#Layout(\"C\")\nstruct S")]

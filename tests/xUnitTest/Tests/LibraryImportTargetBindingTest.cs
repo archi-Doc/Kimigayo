@@ -244,6 +244,49 @@ public class LibraryImportTargetBindingTest
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ImportEligibilityReadsTheTypesRejectedAttribute(bool testBuild)
+    {
+        const string Declaration = "#Layout(\"C\")\nstruct S\n    public var value: i32\n";
+        const string Use = "group Native\n    " + Import + "\n    public unsafe func imported(value: ref/S) -> i32";
+        foreach (var marker in new[] { string.Empty, "#Test\n" })
+        {
+            var c = Compilation.CreateForTest();
+            c.IsTestBuild = testBuild;
+            c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal)
+            {
+                ["codec"] = new() { Kind = "import" },
+            };
+            Assert.True(c.Prepare(WindowsProfile.Target));
+            c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", marker + Declaration + Use));
+            for (var pass = 0; pass < 2; pass++)
+            {
+                Assert.Equal(marker.Length == 0, c.Bind().IsComplete);
+                var imports = c.Binding.LibraryImports.Where(x => x.Decl.Declaration.CodeContext.Kotonoha == c.Kotonoha).ToArray();
+                var errors = CompilationTestHelper.BindingErrors(c);
+                if (marker.Length == 0)
+                {
+                    Assert.Single(imports);
+                    Assert.Empty(errors);
+                }
+                else
+                {
+                    Assert.Empty(imports);
+                    var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
+                    Assert.Equal(BindingState.Invalid, type.StateOf());
+                    Assert.Equal(BindingFailure.None, type.FailureOf());
+                    var cause = Assert.IsType<AttributeKoto>(Assert.Single(c.Binding.FailureCauses(type)!).Subject);
+                    var error = Assert.Single(errors);
+                    Assert.Equal("InvalidTestDefinition_Kd", error.Code);
+                    Assert.Equal(cause.Span, error.Span);
+                    Assert.Equal("#Test", error.Text);
+                }
+            }
+        }
+    }
+
+    [Theory]
     [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> i32", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: u32) -> u32", false)]
     [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: raw/i8) -> ()", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: raw/f64) -> ()", false)]
     [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> i32", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i64) -> i32", true)]

@@ -54,6 +54,21 @@ public sealed partial class Binding
         => node.BindingState != BindingState.Resolved && (IsRecovery(node, out _) || node.BindingFailure != BindingFailure.None || this.HasUnresolvedPrerequisite(node))
             ? this.CauseKeys(node) : null;
 
+    private static bool IsUnresolvedPrerequisite(Koto node)
+        => node.BindingState != BindingState.Resolved || IsRecovery(node, out _);
+
+    // An invalid node with a failed part remains rejected while another check is pending; ordinary retries remain pending.
+    private void MarkUnresolved(Koto node)
+    {
+        if (node.BindingState != BindingState.Invalid || this.UnresolvedPart(node) is null)
+        {
+            node.BindingState = BindingState.Unresolved;
+        }
+    }
+
+    private Koto? UnresolvedPart(Koto node)
+        => this.partPrerequisites.TryGetValue(node, out var part) && IsUnresolvedPrerequisite(part) ? part : null;
+
     private BoundType? CompleteDependent(Koto node, Koto cause)
     {
         this.prerequisites[node] = (this.prerequisiteStore.Count, 1);
@@ -173,11 +188,16 @@ public sealed partial class Binding
     // operands still unresolved when Binding ends are prerequisites.
     private bool HasUnresolvedPrerequisite(Koto node)
     {
+        if (this.UnresolvedPart(node) is not null)
+        {
+            return true;
+        }
+
         if (this.prerequisites.TryGetValue(node, out var range))
         {
             for (var i = range.Start; i < range.Start + range.Count; i++)
             {
-                if (this.prerequisiteStore[i].BindingState != BindingState.Resolved)
+                if (IsUnresolvedPrerequisite(this.prerequisiteStore[i]))
                 {
                     return true;
                 }
@@ -235,7 +255,7 @@ public sealed partial class Binding
     private bool PushPrerequisites(Koto node, Stack<Koto> pending)
     {
         var count = pending.Count;
-        if (this.partPrerequisites.TryGetValue(node, out var part) && (part.BindingState != BindingState.Resolved || IsRecovery(part, out _)))
+        if (this.UnresolvedPart(node) is { } part)
         {
             pending.Push(part);
         }
@@ -245,7 +265,7 @@ public sealed partial class Binding
             for (var i = range.Start + range.Count - 1; i >= range.Start; i--)
             {
                 var cause = this.prerequisiteStore[i];
-                if (cause.BindingState != BindingState.Resolved || IsRecovery(cause, out _))
+                if (IsUnresolvedPrerequisite(cause))
                 {
                     pending.Push(cause);
                 }

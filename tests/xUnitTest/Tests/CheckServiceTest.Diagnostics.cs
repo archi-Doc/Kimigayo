@@ -4,6 +4,7 @@ using Kimi;
 using Kimi.Checking;
 using Kimi.Compiler;
 using Kimi.Diagnostics;
+using Kimi.Lsp;
 using Xunit;
 
 namespace XunitTest;
@@ -108,5 +109,27 @@ public sealed partial class CheckServiceTest
         var unlocated = Assert.Single(CheckOutput.Blocked(DiagnosticCode.TargetSelectionRequired_Kd, default).Diagnostics);
         Assert.Equal(-1, unlocated.Source);
         Assert.Null(unlocated.Note);
+    }
+
+    // SPEC 23.1/23.2: all adapters publish the attribute's one direct failure at its own span.
+    [Theory]
+    [InlineData(CheckMode.Product)]
+    [InlineData(CheckMode.Test)]
+    public void AnInvalidTestAttributeHasOnePublishedLocation(CheckMode mode)
+    {
+        const string Source = "func e(#Test x: i32) => ()";
+        var project = this.WriteProject("Attribute", ("main.kimi", Source));
+        var output = this.Run(project, mode);
+        Assert.False(output.Accepted);
+        var error = Assert.Single(output.Diagnostics, x => x.Severity == DiagnosticSeverity.Error);
+        Assert.Equal(nameof(DiagnosticCode.InvalidTestDefinition_Kd), error.Code);
+        Assert.Equal(new SourceSpan(Source.IndexOf("#Test", StringComparison.Ordinal), 5), error.Span);
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(new(output.Diagnostics, output.Sources), string.Empty);
+        Assert.Equal(1, console.Text.Split(nameof(DiagnosticCode.InvalidTestDefinition_Kd), StringSplitOptions.None).Length - 1);
+        var identity = SourceIdentity.FromPath(this.PathOf("Attribute", "main.kimi"));
+        var sent = Assert.Single(WorkspaceCheck.Place(output, [identity], identity)[identity]);
+        Assert.Equal(error.Display!.Range, sent.Range);
+        Assert.Equal(error.Code, sent.Code);
     }
 }

@@ -133,7 +133,7 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
 
-            if (InvalidDeclarationContext(function))
+            if (this.InvalidDeclarationContext(function))
             {
                 return CandidateApplicability.Error;
             }

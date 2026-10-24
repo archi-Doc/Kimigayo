@@ -9,6 +9,26 @@ namespace XunitTest;
 public class BaseTypeFormationBindingTest
 {
     [Theory]
+    [InlineData("open struct B\n#Test\nstruct S: B", "InvalidTestDefinition_Kd")]
+    [InlineData("struct B\n#Test\nstruct S: B", "InvalidTestDefinition_Kd,InvalidTypeFormation_Kd,InvalidTypeFormation_Kd")]
+    [InlineData("open struct B\nopen struct C\n#Test\nstruct S: B\nstruct S: C", "InvalidTestDefinition_Kd,DuplicateBinding_Kd")]
+    public void AttributeRejectionDoesNotInventOrHideABaseViolation(string source, string codes)
+    {
+        var c = CompilationTestHelper.ParseSuccess(source);
+        for (var pass = 0; pass < 2; pass++)
+        {
+            Assert.False(c.Bind().IsComplete);
+            Assert.Equal(BindingState.Invalid, Type(c).StateOf());
+            Assert.Equal(codes.Split(','), CompilationTestHelper.BindingErrors(c).Select(x => x.Code));
+            Assert.False(c.Binding.CheckBound().IsComplete);
+        }
+
+        var restored = CompilationTestHelper.Reload(c);
+        Assert.False(restored.Bind().IsComplete);
+        Assert.Equal(codes.Split(','), CompilationTestHelper.BindingErrors(restored).Select(x => x.Code));
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void InvalidBaseInputCannotCertifyDerivedConformance(bool reverseOrder)

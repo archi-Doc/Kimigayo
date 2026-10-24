@@ -508,7 +508,8 @@ public sealed partial class Binding
 
             this.CompleteEnumOrigins(entry.Key, plan);
 
-            if (plan.Case.Symbol.Declaration.BindingState != BindingState.Resolved || plan.Case.Owner.Declaration.BindingState != BindingState.Resolved || InvalidDeclarationContext(plan.Case.Owner.Declaration))
+            if (plan.Case.Symbol.Declaration.BindingState != BindingState.Resolved ||
+                plan.Case.Owner.Declaration.BindingState != BindingState.Resolved || this.InvalidDeclarationContext(plan.Case.Owner.Declaration))
             {
                 plan.IsValid = false;
                 this.Fail(entry.Key, BindingFailure.InvalidTypeFormation);
