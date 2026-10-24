@@ -16,13 +16,26 @@ public sealed partial class Binding
     internal static BoundType? ItemDeclaringType(BoundType item, FunctionKoto function)
         => !function.IsRequirement && item.Components.Count > ItemTypeArgumentCount(function) ? item.Components[^1] : null;
 
+    // The Item layout (SPEC 7.3, 10.5; FunctionItemType forms it): an Item's first Components are its function's own Type arguments, one
+    // per generic slot that is no length slot, in slot order, and a generic member's declaring Type follows them (ItemDeclaringType). The
+    // Component holding the argument of the Type or pair slot `slot`; at the slot count, the number of own Type arguments.
+    internal static int ItemComponent(FunctionKoto function, int slot)
+    {
+        var component = 0;
+        for (var i = 0; i < slot; i++)
+        {
+            component += function.GenericArguments[i] is LengthParameterKoto ? 0 : 1;
+        }
+
+        return component;
+    }
+
     // An Item's own Type arguments in its function's generic-slot order (a length slot's entry is null), its first Components.
     internal static void CopyItemArguments(BoundType item, FunctionKoto function, BoundType?[] arguments)
     {
-        var component = 0;
         for (var i = 0; i < function.GenericArguments.Count; i++)
         {
-            arguments[i] = function.GenericArguments[i] is LengthParameterKoto ? null : item.Components[component++];
+            arguments[i] = function.GenericArguments[i] is LengthParameterKoto ? null : item.Components[ItemComponent(function, i)];
         }
     }
 
@@ -151,16 +164,7 @@ public sealed partial class Binding
     private static bool ContainerBound(BindingSymbol symbol, BoundType? declaringType)
         => declaringType is not null && ReferenceEquals(declaringType.Symbol, symbol.Scope.Owner.BoundSymbol);
 
-    private static int ItemTypeArgumentCount(FunctionKoto function)
-    {
-        var count = 0;
-        for (var i = 0; i < function.GenericArguments.Count; i++)
-        {
-            count += function.GenericArguments[i] is LengthParameterKoto ? 0 : 1;
-        }
-
-        return count;
-    }
+    private static int ItemTypeArgumentCount(FunctionKoto function) => ItemComponent(function, function.GenericArguments.Count);
 
     private static bool ReferenceSlotsComplete(FunctionKoto function, BoundType?[] arguments, BoundLength?[] lengths)
     {
