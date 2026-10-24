@@ -5,15 +5,16 @@
 // Input: Binding's slot selection at the end of PrepareVirtualOverrides (each override's original) and the struct's merged members in
 // logical declaration order (SPEC 6.2.1), a conditional-conformance Block's members in its place.
 // Output: Of(struct), the table or null; Originals[slot]; Implementations[slot], the struct's own override, else its base's entry, else
-// the original; BaseCount; Slot(original), the original's index in its owner's own range, the same in every table of the family.
+// the original; BaseCount; Slot(original), the original's index in its owner's own range, the same in every table of the family;
+// SlotOf(function), the slot an original or an override runs in its owner's table, the same in every table of the family.
 // Invariants: a struct's table starts with its base's table; own slots follow member order; a table exists only for a struct whose
 // declaration, base table, virtuals and overrides resolved through slot selection, none failed or a dependent of a failed part (R4-M18;
 // a failure later in the pass keeps the table and leaves Binding's result incomplete); refilled per pass into the same arrays.
 // Must not: sort by path or span, or decide applicability (TyCtxt.Applies), ABI, receiver adaptation or a CallPlan.
 // Consumer rule (K8, C6c): slot i of a closed T runs Implementations[i] in the first layer on T's AdtDef.Base chain that declares it, under
 // TyCtxt.Synthesized(implementation, layer, []) (a virtual function has no own generic parameters); where TyCtxt.Applies of the slot's
-// original at the layer that declares the original is false, the entry is null and the body is checked only (R4-M28); a Virtual callee
-// names the original and loads Slot(original).
+// original at the layer that declares the original is false, the entry is null and the body is checked only (R4-M28); a call that
+// dispatches loads SlotOf of the function it runs (a Virtual callee names the original, X5; a virtual witness, SPEC 6.4.6).
 
 namespace Kimi.Compiler;
 
@@ -53,6 +54,10 @@ internal sealed class VTableDef
 
         return -1;
     }
+
+    // The slot a function runs in its owner's table, an original's own or an override's (one function per slot), or -1 when it runs none.
+    internal static int SlotOf(BindingSymbol function)
+        => function.Scope.Owner.BoundSymbol is { } owner && Of(owner) is { } table ? Array.IndexOf(table.Implementations, function) : -1;
 
     // Starts a pass's table with the base's slots and room for `own` more, reusing the arrays while the count is unchanged.
     internal void Refill(VTableDef? inherited, int own)

@@ -31,15 +31,14 @@ internal sealed partial class InstanceCollector
     internal bool? Generates(int root)
     {
         var function = this.Set.Items[root].Key.Body.Def.Decl;
-        var table = function?.Scope.Owner.BoundSymbol is { } owner ? VTableDef.Of(owner) : null;
-        var slot = table is null ? -1 : Array.IndexOf(table.Implementations, function);
+        var slot = function is null ? -1 : VTableDef.SlotOf(function);
         if (slot < 0)
         {
             return true;
         }
 
         _ = TyCtxt.Layer(TyCtxt.Signature(function!, null, function!.ReceiverIndex, out _), out var self, out _);
-        return self is null ? null : this.Applies(self, table!, slot, out _);
+        return self is null ? null : this.Applies(self, VTableDef.Of(function.Scope.Owner.BoundSymbol!)!, slot, out _);
     }
 
     // The first layer on a Type's base chain whose struct owns a function (F 4.2's consumer rule), or null off the chain.
