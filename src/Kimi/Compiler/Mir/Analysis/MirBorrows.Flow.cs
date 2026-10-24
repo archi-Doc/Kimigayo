@@ -110,18 +110,7 @@ internal sealed partial class MirBorrows
             return;
         }
 
-        var (layer, raw) = (this.Root(state, place.Root), this.walk[last].Class == MirStepClass.Raw);
-        for (var i = 0; i < last; i++)
-        {
-            layer = this.walk[i].Class switch
-            {
-                MirStepClass.Shared or MirStepClass.Uniq => this.Content(state, layer),
-                MirStepClass.Raw => this.escapedSet,
-                _ => layer,
-            };
-        }
-
-        this.Refs(raw ? this.escapedSet : layer);
+        this.Refs(this.PointerOf(this.Prefix(state, place.Root, last).Layer, last)); // What its last Deref goes through.
         foreach (var target in this.targets)
         {
             this.AddSlot(target, value, own, Joined, issue);

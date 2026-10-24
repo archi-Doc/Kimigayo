@@ -3,8 +3,8 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's values on a state (A3 5's val and issued, with E3): what an rvalue, an operand or a Place carries, a root's state, and a borrow's
-// parents and Loan, over the one step walk (MirSteps). Must not decide which holders a set reaches or a call's store writes
-// (MirBorrows.Reach).
+// parents and Loan, over the one step walk of MirSteps' steps (Prefix), which a store's destination also reads (MirBorrows.Flow), and the
+// value a Deref goes through (PointerOf). Must not decide which holders a set reaches or a call's store writes (MirBorrows.Reach).
 internal sealed partial class MirBorrows
 {
     // val(rv) (A3 5) and the Loans it issues: an operand's, a Ref's, the union of an aggregate's or a value-keeping Cast's operands, an Opaque
@@ -50,45 +50,39 @@ internal sealed partial class MirBorrows
         return this.slots[root] >= 0 ? (int)state[this.slots[root]] : 0;
     }
 
-    // val(X) = content^k(σ(root(X))) over its k borrow Derefs; a raw pointer's referent is {Φ_E}.
+    // val(X) = content^k(σ(root(X))) over its k borrow Derefs, a raw pointer's referent {Φ_E}: the step walk's layer over all its steps.
     private int Read(ulong[] state, MirPlace place)
+        => this.Prefix(state, place.Root, this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk)).Layer;
+
+    // A borrow's value (A3 5 issued, E3): its Loan with the parents of every borrow layer it follows, from the last shared layer on (the
+    // step walk's parents).
+    private (int Value, int Own) Issued(ulong[] state, MirPlace place, bool reborrow, int loan)
     {
-        var value = this.Root(state, place.Root);
-        var count = this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk);
-        for (var i = 0; i < count; i++)
+        var parents = this.Prefix(state, place.Root, this.placeSteps.Walk(this.body, place, reborrow, ref this.walk)).Parents;
+        return (parents, loan >= 0 ? this.sets.Add(0, this.loanBase + loan) : 0);
+    }
+
+    // The one step walk (A3 5, E3) over a Place's first end steps in the walk buffer: val of that prefix (its layer) and the parents a
+    // borrow of it follows, from the last shared layer on the values its Derefs go through. Read, Issued and Store's prefix read it.
+    private (int Layer, int Parents) Prefix(ulong[] state, int root, int end)
+    {
+        var (layer, parents) = (this.Root(state, root), 0);
+        for (var i = 0; i < end; i++)
         {
-            value = this.walk[i].Class switch
+            var pointer = this.PointerOf(layer, i);
+            (parents, layer) = this.walk[i].Class switch
             {
-                MirStepClass.Shared or MirStepClass.Uniq => this.Content(state, value),
-                MirStepClass.Raw => this.escapedSet,
-                _ => value,
+                MirStepClass.Shared => (pointer, this.Content(state, pointer)),
+                MirStepClass.Uniq => (this.sets.Union(parents, pointer), this.Content(state, pointer)),
+                MirStepClass.Raw => (this.sets.Union(parents, pointer), pointer), // What is read through it is its value.
+                _ => (parents, layer),
             };
         }
 
-        return value;
+        return (layer, parents);
     }
 
-    // A borrow's value (A3 5 issued, E3): its Loan with the parents of every borrow layer it follows, from the last shared layer on.
-    private (int Value, int Own) Issued(ulong[] state, MirPlace place, bool reborrow, int loan)
-    {
-        var (layer, parents) = (this.Root(state, place.Root), 0);
-        var count = this.placeSteps.Walk(this.body, place, reborrow, ref this.walk);
-        for (var i = 0; i < count; i++)
-        {
-            switch (this.walk[i].Class)
-            {
-                case MirStepClass.Shared:
-                    (parents, layer) = (layer, this.Content(state, layer));
-                    break;
-                case MirStepClass.Uniq:
-                    (parents, layer) = (this.sets.Union(parents, layer), this.Content(state, layer));
-                    break;
-                case MirStepClass.Raw:
-                    (parents, layer) = (this.sets.Union(parents, this.escapedSet), this.escapedSet);
-                    break;
-            }
-        }
-
-        return (parents, loan >= 0 ? this.sets.Add(0, this.loanBase + loan) : 0);
-    }
+    // The value a Deref step of the walk buffer goes through, on the layer it applies to: a borrow's, that layer; a raw pointer's, {Φ_E}
+    // (A5 traces no raw value).
+    private int PointerOf(int layer, int step) => this.walk[step].Class == MirStepClass.Raw ? this.escapedSet : layer;
 }
