@@ -7,7 +7,8 @@ namespace Kimi.Compiler.Backend;
 
 // The rvalues of FunctionCodegen (R5 package C 3.2, plan C2b; DECISIONS R5-M78, R5-M83, R5-M87), each computed from its operands, then put
 // into its Place through the place writer (SPEC 13.7.1): a Use, a Ref, a Discriminant, a Len and an Adapt; the aggregates are in
-// FunctionCodegen.Aggregates.cs. Rows not written yet: a Dictionary's (C8e) and a string's (C8c) Len, an Adapt's object creation (C6a).
+// FunctionCodegen.Aggregates.cs, an Adapt's object creation in FunctionCodegen.Objects. Rows not written yet: a Dictionary's (C8e) and a
+// string's (C8c) Len.
 internal sealed partial class FunctionCodegen
 {
     // A Use: its operand put into the Place in its representation (a value in memory copied; nothing for a zero-sized Place); a string
@@ -84,8 +85,8 @@ internal sealed partial class FunctionCodegen
     }
 
     // An Adapt (SPEC 8.14, 13.5.3): the ordinary rvalue of the operation the item's view selects (MirCases.Adapt), written by that rvalue's
-    // row: an Identity its operand, a pointer conversion or a non-exclusive upcast a Proven Cast, a borrow or an address a Ref. An object
-    // creation allocates, C6a's row; a view that selects none is a broken contract (Binding admitted each case).
+    // row: an Identity its operand, a pointer conversion or a non-exclusive upcast a Proven Cast, a borrow or an address a Ref, an object
+    // creation its payload's factory (Creation); a view that selects none is a broken contract (Binding admitted each case).
     private void Adapt(in MirStatement statement)
     {
         var rvalue = this.cases.Adapt(statement.Rvalue, out var operation);
@@ -95,7 +96,7 @@ internal sealed partial class FunctionCodegen
                 this.Report(DiagnosticCode.InternalInvariant_Kd, statement.Source);
                 return;
             case ConversionBinding.ObjectCreation:
-                this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // C6a creates the object.
+                this.Creation(statement, rvalue); // FunctionCodegen.Objects (DECISIONS R5-M111).
                 return;
             default:
                 this.Assign(statement with { Rvalue = rvalue });

@@ -24,7 +24,7 @@ internal static partial class LlvmModuleWriter
         ObjectRuntime.WriteRuntime(output);
         foreach (var item in module.Objects)
         {
-            ObjectRuntime.WriteObject(output, module.Constants, item);
+            ObjectRuntime.WriteObject(output, item);
         }
     }
 }

@@ -1,12 +1,12 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns an item's targets (R5 package K 4.3, K 4.5 rows 1-3 and 5-13, K 4.7, K 4.8; DECISIONS R5-M102): a body item's template replayed
-// under its representative (Replay), each site's edge row in the item's instance: for a call, a Drop or a statement of the item's body, the
-// row its form selects (a Fn callee's implementation or bodyless row, a Requirement callee's witness, a Value callee's body, an intrinsic's
-// target column, a dropped value's glue; an aggregate's, a function item constant's or an erasure's) and its target under the item's
-// representative; a Virtual call has none (X5: its receiver's VTable holds the entries); after an owner Value call's body, the operand's
-// glue where its callee borrows its environment (Rest, SPEC 8.10); a type-driven item's targets from its representative Type by its kind's
-// row (Expand).
+// Owns an item's targets (R5 package K 4.3, K 4.5 rows 1-3 and 5-13, K 4.7, K 4.8; DECISIONS R5-M102, R5-M111): a body item's template
+// replayed under its representative (Replay), each site's edge row in the item's instance: for a call, a Drop or a statement of the item's
+// body, the row its form selects (a Fn callee's implementation or bodyless row, a Requirement callee's witness, a Value callee's body, an
+// intrinsic's target column, a dropped value's glue; a case adaptation's creation, an aggregate's, a function item constant's or an
+// erasure's) and its target under the item's representative; a Virtual call has none (X5: its receiver's VTable holds the entries); after
+// an owner Value call's body, the operand's glue where its callee borrows its environment (Rest, SPEC 8.10); a type-driven item's targets
+// from its representative Type by its kind's row (Expand).
 // Input: an admitted item; a body item's template (InstanceCollector.Templates.cs); TyCtxt (Compose, Implementation, Witness,
 // OwnRequirement); the intrinsic rows.
 // Output: the item's targets in the checked set, each with its site and runtime bit: a site's admitted target item (none for a site
@@ -132,18 +132,9 @@ internal sealed partial class InstanceCollector
         if (callee.Kind == MirCalleeKind.Intrinsic)
         {
             var row = IntrinsicRows.Of((IntrinsicId)callee.Arg);
-            if (row.Target == IntrinsicTarget.StaticInit)
-            {
-                return this.Static(program, item, body, subject, call);
-            }
-
-            var argument = this.In(item, subject, callee.Subst!.Types[0]!);
-            if (row.LaysOutType && argument is not null)
-            {
-                _ = this.LaysOut(subject, argument);
-            }
-
-            return this.Intrinsic(program, item, subject, row.Target, argument);
+            return row.Target == IntrinsicTarget.StaticInit
+                ? this.Static(program, item, body, subject, call)
+                : this.Intrinsic(program, item, subject, row, this.In(item, subject, callee.Subst!.Types[0]!));
         }
 
         var representative = this.Set.Items[item].Representative;
@@ -186,21 +177,54 @@ internal sealed partial class InstanceCollector
     }
 
     // K 4.5 rows 6, 8 and 9 (DECISIONS R5-M74): the target an intrinsic's row names, for its call or for an Item of its function, from the
-    // substitution's Type argument in the item's instance (the one operand form the rows read): an erased writer's reserve witness on its
-    // destination (SPEC 22.10.1), a creation's payload descriptor, admitted with the payload's layout verdict (InstanceCollector.Objects.cs),
-    // a DestroyValues' element glue. -1 for a row without a target or a Type TyCtxt could not make, whose gap the caller recorded; a
-    // staticEnsure's initializer is its call's operand row (Static), so it never reaches here.
-    private int Intrinsic(MirProgram program, int item, SourceRef subject, IntrinsicTarget target, BoundType? argument) => target switch
+    // substitution's Type argument in the item's instance (the one operand form the rows read), which is a by-value use where the row says
+    // so (K 4.8, IntrinsicRows.LaysOutType): an erased writer's reserve witness on its destination (SPEC 22.10.1), a creation's payload
+    // descriptor (Descriptor), a DestroyValues' element glue. -1 for a row without a target or a Type TyCtxt could not make, whose gap the
+    // caller recorded; a staticEnsure's initializer is its call's operand row (Static), so it never reaches here.
+    private int Intrinsic(MirProgram program, int item, SourceRef subject, in IntrinsicRow row, BoundType? argument)
     {
-        _ when argument is null => -1,
-        IntrinsicTarget.None => -1,
-        IntrinsicTarget.Witness => this.Runs(program, item, subject, this.types.OwnRequirement(KimiDeclarationId.BufferWriter)!, argument),
-        IntrinsicTarget.Descriptor => this.AdmitType(item, subject, new(MonoKind.ObjectDescriptor, default, null, null, 0, null), argument),
-        IntrinsicTarget.Glue => this.GlueOf(item, subject, argument),
-        _ => throw new InvalidOperationException($"The intrinsic target {target} has no Type argument row."),
-    };
+        if (argument is null)
+        {
+            return -1;
+        }
 
-    // K 4.5 rows 11-13, K 4.7 and K 4.8, in the item's instance: an aggregate's Type a by-value use, a Closure environment's also its body;
+        if (row.LaysOutType)
+        {
+            _ = this.LaysOut(subject, argument);
+        }
+
+        return row.Target switch
+        {
+            IntrinsicTarget.None => -1,
+            IntrinsicTarget.Witness => this.Runs(program, item, subject, this.types.OwnRequirement(KimiDeclarationId.BufferWriter)!, argument),
+            IntrinsicTarget.Descriptor => this.Descriptor(item, subject, argument),
+            IntrinsicTarget.Glue => this.GlueOf(item, subject, argument),
+            _ => throw new InvalidOperationException($"The intrinsic target {row.Target} has no Type argument row."),
+        };
+    }
+
+    // K 4.5 row 8 (DECISIONS R5-M74, R5-M111): a creation's target, its payload's object descriptor, admitted with the payload's layout
+    // verdict (InstanceCollector.Objects.cs): a creation intrinsic's, an Item of its function's, a case adaptation's that creates.
+    private int Descriptor(int item, SourceRef subject, BoundType payload)
+        => this.AdmitType(item, subject, new(MonoKind.ObjectDescriptor, default, null, null, 0, null), payload);
+
+    // SPEC 13.6.2, 8.14 (DECISIONS R5-M111): an Adapt whose operation in the item's instance (TyCtxt.Adaptation from its source token's
+    // Type to its target, the rule MirCases.Adapt reads under the item's view) creates an object targets its payload's descriptor, as every
+    // creation does; any other operation none.
+    private int Adaptation(int item, SourceRef subject, MirBody body, in MirRvalue adapt)
+    {
+        var token = body.Operands[adapt.Start + 1];
+        if (this.In(item, subject, body.Consts[token.Arg].Type) is not { } source || this.In(item, subject, adapt.Type!) is not { } target)
+        {
+            return -1;
+        }
+
+        var operation = TyCtxt.Adaptation(source, target, (adapt.Op & MirRvalue.AdaptShorthand) != 0);
+        return operation == ConversionBinding.ObjectCreation ? this.Descriptor(item, subject, target.Components[0]) : -1;
+    }
+
+    // K 4.5 rows 8 and 11-13, K 4.7 and K 4.8, in the item's instance: a case adaptation that creates an object its payload's descriptor
+    // (Adaptation; DECISIONS R5-M111); an aggregate's Type a by-value use, a Closure environment's also its body;
     // a function item constant's body (as row 5); an erasure's ClosureErasure or ItemAdapter item, keyed by the erased Closure or Item Type
     // and the erased target Function Type, the Cast's, whose inputs and result are by-value uses at the erasure (its entry takes and gives
     // them; a Never-result source fits Function Types of other results, SPEC 10.7), a target that does not lay out dropping the edge
@@ -213,6 +237,11 @@ internal sealed partial class InstanceCollector
         {
             this.CheckOperation(item, subject, body, rvalue);
             return -1;
+        }
+
+        if (rvalue.Kind == MirRvalueKind.Adapt)
+        {
+            return this.Adaptation(item, subject, body, rvalue);
         }
 
         var aggregate = rvalue.Kind == MirRvalueKind.Aggregate;

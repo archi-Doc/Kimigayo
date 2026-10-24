@@ -12,7 +12,8 @@ namespace Kimi.Compiler.Backend;
 // interned projection chain, root first, by one row per MirProjectionKind, in the Layout of the prefix's Type in the item's instance (IMPL
 // 21.1): a Field at its Field offset; a Base at the derived struct's own address, its complete base being a prefix (X1); a ConstIndex at
 // its position times the element's stride, which the validator proved below the length; a Downcast at the enum's payload offset; a Deref of
-// a reference or raw pointer the address it stores (IMPL 21.1.3), of an object handle or borrow the payload, C6a's row; a PairLayer the
+// a reference, raw pointer or object borrow the address it stores (IMPL 21.1.3; an object borrow's is its payload's, DECISIONS R5-M110),
+// of an owning handle its object's payload; a PairLayer the
 // Place itself in the owner case, else the referent of its case Type by the Deref row (MirCases.Layer under the item's view, SPEC 13.5.5);
 // an Index its isize position checked against the length, a fixed array's closed length or an Array's or Slice's length word, unsigned, so
 // a negative position fails, Aborting with KIMI_E_INDEX_BOUNDS (SPEC 4.7.4, 22.5.2) at its position local's location, which the builder
@@ -82,16 +83,23 @@ internal sealed partial class FunctionCodegen
     private Value Part(MirPlace place, Value start, int index)
         => this.LoweringOf(place) is { } whole ? this.Offset(start, whole.Layout.FieldOffsets.Span[index]) : start;
 
-    // A Deref by its Type: a reference or raw pointer stores its referent's address; an object handle's or borrow's payload is C6a's row.
+    // A Deref by its Type (IMPL 21.1.3; DECISIONS R5-M110): one stored pointer, a reference's, a raw pointer's or an object borrow's the
+    // address of its referent, an object borrow's its object's payload; an owning handle's its object's header, the payload
+    // ObjectRuntime.PayloadOffset bytes after it.
     private bool Referent(BoundType pointer, Value start, out Value address)
     {
         address = start;
-        if (pointer is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.Raw })
+        if (pointer is not { Kind: BoundTypeKind.Semantics, Semantics: not SemanticsKind.Owner })
         {
             return false;
         }
 
-        address = this.LoadAt(start, Layout.Row(pointer).Layout);
+        address = this.LoadAt(start, PointerLayout);
+        if (pointer.HandleMode is not null)
+        {
+            address = this.Offset(address, ObjectRuntime.PayloadOffset);
+        }
+
         return true;
     }
 

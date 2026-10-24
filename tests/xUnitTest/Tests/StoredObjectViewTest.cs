@@ -65,20 +65,25 @@ public class StoredObjectViewTest
         Assert.True(valid);
     }
 
+    // PD17 (DECISIONS R5-M110): runtime identity is the Origin-erased Type numbered in the module, and no package-qualified key text is
+    // written, so a changed package identity rebinds to the same module text and the old planner's rechecked row to the same token.
     [Fact]
     public void PhysicalReuseRechecksTheCurrentRuntimeIdentity()
     {
         var c = MinimalEmissionTest.Analyze(Item + "let owner = Kimi.Intrinsics.makeObj(Item.init())\nlet stored = (owner@move, 1)\nrequire stored.0.id == 7 else => $abort(\"read\")");
         var initial = CompilationTestHelper.WriteIr(c);
+        Assert.True(c.Emission.TryPrepare(out var module, out _));
+        var token = Assert.Single(module.Objects).TypeToken;
         c.Project.ProjectFile.PackageId = "changed.identity";
         Assert.True(c.Bind().IsComplete);
         Assert.False(c.Validate(out _));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(c.Analyze().IsVerified);
         var changed = CompilationTestHelper.WriteIr(c);
-        Assert.NotEqual(initial, changed);
-        Assert.True(c.Emission.TryPrepare(out var module, out _));
-        Assert.Contains("changed.identity", module.Constants[Assert.Single(module.Objects).TypeKey].Value, StringComparison.Ordinal);
+        Assert.Equal(initial, changed);
+        Assert.DoesNotContain("changed.identity", changed, StringComparison.Ordinal);
+        Assert.True(c.Emission.TryPrepare(out module, out _));
+        Assert.Equal(token, Assert.Single(module.Objects).TypeToken);
         Assert.Equal(changed, CompilationTestHelper.WriteIr(c));
     }
 }

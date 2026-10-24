@@ -123,9 +123,11 @@ internal sealed partial class ModuleCodegen
         return result;
     }
 
-    // The head of the by-index signature cache of Signature, Adapter and ImportSignature: the arrays grown to hold the index, and the
-    // signature stamped in this Write (null: the caller computes it, then stamps it: Define for an item's).
-    private FunctionAbi? Stamped(ref FunctionAbi?[] kept, ref int[] stamps, int index)
+    // The head of the by-index caches of Signature, Adapter, ImportSignature and a descriptor's row (ModuleCodegen.Objects): the arrays
+    // grown to hold the index, and the entry stamped in this Write (null: the caller computes it, then stamps it: Define for an item's
+    // signature).
+    private T? Stamped<T>(ref T?[] kept, ref int[] stamps, int index)
+        where T : class
     {
         if (index >= kept.Length)
         {
