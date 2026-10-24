@@ -609,6 +609,19 @@ public sealed class InstanceCollectorTest
         Assert.Equal(["Fn read [Leaf<string>]", "Fn nested [Base<string>]"], Targets(program, set, "VTable Leaf<string>"));
     }
 
+    // K 4.5 row 8, SPEC 13.6.2, 8.14 (DECISIONS R5-M111): a case adaptation whose instance's case creates an object is a creation, its
+    // payload's descriptor, one for the obj and rc instances; its owner instance, an identity, has none.
+    [Fact]
+    public void ACaseAdaptationThatCreatesIsItsPayloadsDescriptor()
+    {
+        var (program, set) = Collect("func box<s/T>(value: T) -> s/T\n    s is owner or object\n    T is ObjectPayload\n    return value@move@s\n" +
+            "let a = box<i32>(6)\nlet b = box<obj/i32>(7)\nlet c = box<rc/i32>(8)\n");
+        Assert.Empty(set.Records);
+        var boxes = Enumerable.Range(0, set.Items.Length).Select(x => Label(program, set.Items[x])).Where(static x => x.StartsWith("Fn box", StringComparison.Ordinal));
+        Assert.Equal([0, 1, 1], boxes.Select(x => Calls(program, set, x).Count(static y => y == "ObjectDescriptor i32")));
+        Assert.Single(set.Items.ToArray(), x => Label(program, x) == "ObjectDescriptor i32");
+    }
+
     // SPEC 13.6.4, 8.15.3 (DECISIONS R5-M74): a runtime Type test and a clone acquire nothing and need no layout, so neither has a target:
     // a test of a struct no creation makes, oversized or with a table, collects nothing of it, and a clone of a handle to an oversized
     // payload records nothing; only creations are descriptors.

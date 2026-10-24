@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text.RegularExpressions;
 using Kimi.Compiler;
 using Xunit;
 
@@ -23,14 +24,17 @@ public class PipelineObjectTest
     public void ZeroSizedPayloadStillDestroys()
         => ScalarEmissionTest.EmitFixture("PipelineObjectZero", "struct Empty\n    drop => Console.writeLine(\"empty\")\nlet value = Kimi.Intrinsics.makeObj(Empty.init())", "empty\n");
 
+    // SPEC 3.3.1, PD17 (DECISIONS R5-M110): two payloads of one layout are two runtime identities, two metadata constants of the same
+    // layout with distinct Type tokens; no Runtime Type key text is written.
     [Fact]
     public void DistinctTypesWithIdenticalLayoutsHaveDistinctMetadata()
     {
         var ir = ScalarEmissionTest.EmitFixture("PipelineObjectTypes", "struct First\n    public let n: i32 = 1\nstruct Second\n    public let n: i32 = 2\nlet first = Kimi.Intrinsics.makeObj(First.init())\nlet second = Kimi.Intrinsics.makeObj(Second.init())", string.Empty);
-        Assert.Contains("@__kimi_object_metadata0", ir);
-        Assert.Contains("@__kimi_object_metadata1", ir);
-        Assert.Contains("@__kimi_object_type_key0", ir);
-        Assert.Contains("@__kimi_object_type_key1", ir);
+        var tokens = Regex.Matches(ir, @"(?m)^@__kimi_object_metadata\d+ = private constant \{ i64, i64, i64, i64, ptr, ptr \} \{ i64 (\d+), i64 4, i64 4, ")
+            .Select(static x => x.Groups[1].Value).ToArray();
+        Assert.Equal(2, tokens.Length);
+        Assert.NotEqual(tokens[0], tokens[1]);
+        Assert.DoesNotContain("__kimi_object_type_key", ir, StringComparison.Ordinal);
     }
 
     [Theory]

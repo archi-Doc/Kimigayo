@@ -7621,3 +7621,131 @@ structure is recorded here by the unit that first implements it.
   Type, so ClosureErasure and ItemAdapter items are keyed by their erased source and target (against K package 4.3, R5-M18); R5-M43 row
   13's "keyed by the erased Closure or Item Type" reads "and the erased target Function Type"; and K package 4.8's by-value list gains an
   adapter's target inputs and result, laid out at the erasure. They leave the list.
+- **R5-M110 Object descriptors and handle operations in MIR code generation (C6a)** (2026-10-24, C lane; plan C6a, package C 3.1, 3.2 X15
+  and 3.4, K package 4.3 and row 8, PD17; SPEC 3.3.1, 13.6.1-13.6.4, 16.3.3, 22.5.1, IMPL 21.1.3; the planning session's go and rulings
+  Q1-Q5 on C6a's design, `c6a-design.md`; under R5-M18 form 2 (G:object), R5-M69, R5-M74, R5-M92 and R5-M108)
+  - Identity (R5-M74, ruling Q5): code generation numbers the module's runtime identities once per Write, before the items: the erased
+    payload of each Generated ObjectDescriptor item in admission order, then each base on its chain (`AdtDef.Base`), each erased by
+    `TyCtxt.Erase`, the erasure `MonoKey.Type` uses, so equal Types share one number, from 1 at its first occurrence, a base no creation
+    makes included. The numbering is code generation's own module-local identity, not a collector key it re-derives to find an item (R5-M100's
+    ruling 1 stands). PD17's "ordinal of the erased payload Type" is this number.
+  - Descriptor item (`ModuleCodegen.Objects`): its row, `ObjectCreation(item, the representative's Layout, TyCtxt.Copy on the representative,
+    the factory's signature, its number)`, with its payload glue's symbol (its first target, when the payload may need a drop) and its
+    chain's numbers nearest first, computed once per Write and the previous Write's reused while it matches; `ObjectRuntime.WriteObject`
+    writes it into the function buffer; it requests the object runtime and, where the factory copies by memcpy (`ObjectRuntime.Copies`),
+    the memory declarations. A VTable target is C6c's: one located `Unsupported_Kd` at the descriptor's site (the creation, where the VTable
+    item's own record lies), no partial table. The frame writes `ObjectRuntime.WriteRuntime` once, after the definitions and the entry, on
+    request (`Needs.Objects`: a descriptor, a clone, a type test that calls the runtime).
+  - Rows (IntrinsicRows' writer column; PD21: no new IntrinsicId): Create (makeObj, makeRc, makeArc) is a routine row, the factory of the
+    call's target, the payload's descriptor (another target `InternalInvariant_Kd`), `__kimi_make_object<item>` `(ptr ret, [a0 at
+    Abi.Kind], i64 controlValue, ptr location, i64 length)`, its slot-less value `ObjectRuntime.InitialControl` of the result handle's
+    counting (0, 2, 2), the payload passed as a body callee's argument (a copy slot for a string constant or a Copy in memory), at the call's
+    location. Clone is a routine row, the runtime's `__kimi_clone_rc`/`__kimi_clone_arc` by the result's counting (`ObjectRuntime.Clone`), no
+    target and no allocation. Test calls `__kimi_object_supports` (`ObjectRuntime.Supports`) with the borrow's object, the payload address
+    less `ObjectRuntime.PayloadOffset`, and its target's number, `Erase(TypeOf(item, its token's Type))`; a target on no Generated chain is
+    false without a call: SPEC 13.6.4 admits only a struct target, which an object supports exactly when it is its Dynamic Type or a base on
+    that Type's chain, and every runtime object comes from a Generated creation. Items (R5-M108): a make* Item's Value call and adapter run
+    Create through `Runs` with their own descriptor target; a clone Item Clone's row.
+  - Representation (ruling Q2): an object borrow (objref, objuniq) is its payload's address, an owning handle its object's header, the
+    payload at `PayloadOffset` (16); a Deref of an object borrow is a reference's, of a handle the header's payload; an upcast is the Use row
+    (the complete base a prefix of the derived payload, X1). The old generator's object borrow is the header: an IR-only difference (PD9).
+  - Case adaptation (R5-M111, its own commit after C6b): an `Adapt` whose case operation in the item's instance is `ObjectCreation`
+    (`value@move@s`, `MirCases.Adapt`) is a creation. The collector's templates take every `Adapt` as a site; its edge
+    (`InstanceCollector.Edges`' Adaptation) admits the payload's descriptor, the target's first component, where `TyCtxt.Adaptation` of
+    the instance's source and target Types is `ObjectCreation`, and none otherwise; code generation (`FunctionCodegen.Objects`' Creation)
+    calls that descriptor's factory as Create does: the Place the result, the operand at the payload's kind, the control value of the
+    Place's handle and the statement's location. The intrinsic edge lays out its row's Type argument inside `Intrinsic`, one site for a
+    call and a bodyless callee's adapter (PLAN G157 (24)'s fold). Verified: the sel ledger loses its 17 rows (call 16, C-frame 1);
+    `FunctionCodegenTest.AnObjectCreationAdaptationCallsItsPayloadsFactory` (the obj instance's factory call),
+    `InstanceCollectorTest.ACaseAdaptationThatCreatesIsItsPayloadsDescriptor`.
+    Departure (for the owner's departures list), confirmed by the owner (R5-M111): K package 4.5 row 8 and R5-M74's creation list gain a
+    case adaptation's creation, an edge to its payload's `ObjectDescriptor` by the rule of every creation.
+  - Runtime Type key (ruling Q1 (b), R5-M69's separate unit, its own commit): the key constant, `ObjectCreation.TypeKey` and
+    `WriteObject`'s pool parameter are deleted; the old planner keeps its key text, which numbers its tokens and keys its entries, and stops
+    interning it. The whole declared old `.ll` change (plan 5.3 item 7, as C7a's reason row): every old object module loses its key
+    constants and their pooled texts, and the text constants pooled after them renumber (`@__kimi_text.2` becomes `@__kimi_text.1`);
+    compare-fixtures over the object families differs in 252 of 361 `.ll`, a normalizing check explaining all 252 by exactly those
+    changes; native outcomes are identical and the diagnostic snapshot 0 differences. Two tests asserted on the deleted key names and now
+    assert on the tokens they stood for, the runtime identity they checked: `PipelineObjectTest`'s distinct metadata (distinct tokens) and
+    `StoredObjectViewTest`'s reuse (the same text and token after a package rename).
+  - Placement (the planning session): `ModuleCodegen.Objects` and `FunctionCodegen.Objects` (the precedent of R5-M104 and R5-M106), not the
+    plan row's `ObjectDescriptors.cs`; the factory's signature is `ObjectRuntime.Factory`, one copy both generators call (PD2), a refinement
+    of R5-M69's "the factory ABI with them".
+  - Unit split (ruling Q4): C6a and C6b are two units on one branch sharing one review (DEC Q6 form 2); C6a changes no ledger row, since every
+    ledger row reaching its rows also destroys a handle (C6b's glue; the census: none flips with C6a alone, at most 335 with both).
+  - Restructured first, behavior unchanged: the factory's signature and its memcpy predicate in `ObjectRuntime`; an intrinsic's target read
+    once by `Intrinsic` and given to its writer, `Routine` taking a target.
+  - Rejected: a descriptor's item index as its token (a base no creation makes has no item); numbering at the first type test (a later
+    descriptor's number would be missed, tokens following body order); numbers for test targets on no chain (the constant false calls
+    nothing); an object borrow as the header (Ref and Deref would need object arms, and `ref/T` and `objref/T` of one payload would differ);
+    the factory's signature built in code generation beside the old planner's (a second copy); an optional `TypeKey` (a mode of the shared
+    writer, ruling Q1); a key text for MIR (a constant nothing reads); an empty table for a slot-bearing payload (a partial table); a
+    factory per payload and mode (the control value distinguishes them); the control value by `IntrinsicId` (R5-M92); a TypeToken operand
+    column, a token column in the checked set or an identity `MonoKind` (R5-M74); a `MirBodyKind.Shim` factory (PD3); an
+    `ObjectDescriptors` class beside FunctionCodegen (copies of the call and store writers).
+  - Verified: `FunctionCodegenTest` (one descriptor per erased payload, its metadata and destroy entry, the factory's signature and calls
+    with 0, 2, 2 and the creation's location, a zero-sized and a Copy payload, an erased factory Item's entry; the numbering of a chain whose
+    base no creation makes, the tests' calls and the constant false, `is not`; the clones and an erased clone Item; an object borrow's
+    payload address and a handle's header; the runtime once and none without objects; a slot-bearing payload's one record; M9's 0 B and I1
+    over the `Objects` source; the `ObjectRows` program natively under both generators); the old generator's key deletion as above.
+- **R5-M111 The owner confirms C6a's and C6b's departures** (owner, 2026-10-24, on the R5 planning session's explanation after C6a's
+  design and before the commits they govern; verbatim 「C6a/C6b の逸脱 2 件（ケース適応による生成 value@move@s に記述子の辺を加えて K package
+  4.5 の行 8 と R5-M74 の生成一覧を広げること、SharedHandles の corpus O2 A/B を C8d と C9c の遅い方へ移し C6b は固定配列版で参考測定すること）を承認します。」;
+  the consequences are the planning session's) The two departures C6a's and C6b's entries record are confirmed: a case adaptation that
+  creates an object (`value@move@s`, an `Adapt` whose selected case operation is `ObjectCreation`, `MirCases.Adapt`) is a creation site of
+  the instance collector, targeting its payload's `ObjectDescriptor` item by the rule of every creation (against K package 4.5 row 8 and
+  R5-M74's creation list, R5-M18); and the `SharedHandles` corpus kernel's O2 A/B, due at G:object's family review (plan 5.6, R5-M8),
+  moves to the later of C8d and C9c, since the kernel needs `Array` of a handle Type (C8d) and string interpolation (C9c) under MIR code
+  generation, as R5-M105 moved ErasedCalls'; C6b measures a fixed-array variant of the kernel as information, a B/A beyond the A=B
+  variance stopping it (R5-M8's O2 rule). The later of C8d and C9c runs the corpus A/B under R5-M8. They leave the list.
+- **R5-M112 Handle glue in MIR code generation (C6b)** (2026-10-24, C lane; plan C6b, package C 3.6 "obj/rc/arc", design 2 2.7,
+  SHARED_OBJECT_RUNTIME, Release; SPEC 16.3.3, 22.5.1, IMPL 21.1.3; the planning session's go and rulings 1-6 on C6b's design,
+  `c6b-design.md`; under R5-M18 form 2 (G:object, one review with C6a), R5-M69, R5-M95, R5-M104 and R5-M110)
+  - Row (`DropGlueRow.Handle`, `FunctionCodegen.Objects`' Release): an owning handle's glue function releases its object. A Sealed
+    payload (`DropGlue.Parts` gives it) is released directly by `ObjectRuntime.WriteSealedDrop`: the counted transition of its mode, the
+    payload's glue at the payload (the glue item's one target, when the payload may need a drop; none, an empty symbol), then the free;
+    any other by the runtime's release of its counting (`ObjectRuntime.Release`: `__kimi_drop_object`, `__kimi_drop_rc`,
+    `__kimi_drop_arc`), whose descriptor's finalizer destroys the actual Type (SPEC 16.3.3). Both request the object runtime. A handle has
+    no part a move path opens, so its level runs only in its glue function; under an Open row it is `InternalInvariant_Kd`. A Sealed
+    payload without a drop takes the direct release where the old generator calls the dynamic one: IR only (PD9).
+  - Parameters (ruling 2, its own commit before the row): `DropGlue.Parameters` are named `slot`, `location` and `length`, the old
+    generator's glue names, which `WriteSealedDrop`'s text reads, so that text stays the one copy (PD2); every reader takes them by
+    position. Behavior unchanged: the old `.ll` identical, the MIR `.ll` differing only in those names (27 of 82, 52 functions, all
+    explained by a normalizing check), native outcomes, the snapshot and the gate unchanged.
+  - Deviation `inline-env` (R5-M104, class (a), PD19): the rows R5-M104 left to C6a and C6b take `Codegen.Expect(target, legacy,
+    CodegenDeviations.InlineEnvironment)` with their legacy bounds, verified natively under both generators: `ContextualClosureTest` and
+    `HeapClosureErasureTest`'s "Object" theory rows become the facts `AnObjectCaptureOfAnExpectedFunctionTypeIsReleasedOnce` and
+    `AnErasedObjectEnvironmentExecutesAndReleasesOnce` (1 allocation of 20 bytes against 2 of 28), `HeapClosureReplacement` (2|40 against
+    4|56), `HeapClosureAbandoned` (1|20 against 2|28), `FunctionCaptureNested` (2|36 against 3|44, the outer 16-byte environment still
+    allocated) and `FunctionCaptureReplacement` (1|20 against 2|28); none weakened.
+  - Type tests (ruling 4, the check on R5-M110's false): SPEC 13.6.4 admits one target form, a named struct Core (qualified or through an
+    alias, its Type arguments complete Types closed in each instance, its Origin bindings supplied by target completion and erased by the
+    numbering); a Type parameter, an associated Type, a non-struct Core (an enum, a Tuple, a Contract View, which has no test syntax,
+    13.6.5) or an unformable object form is rejected statically. Its test is `Supports(D, T)` over the single-inheritance base graph
+    (6.2.2), and the descriptors and tokens are module-local (IMPL 21.1.3), so with every runtime object from a Generated creation, its
+    chain numbered, and Weak and cyclic factories not executable, a target without a number is on no live object's chain: false is sound
+    for every admitted form, and none needs a located `Unsupported_Kd`.
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M111): the `SharedHandles` corpus O2 A/B moves to the later of
+    C8d and C9c (the kernel needs `Array` of a handle and interpolation under MIR code generation); C6b measures a fixed-array variant as
+    information.
+  - Rejected: `WriteSealedDrop` taking the parameters' spellings (a mode of the shared writer); inlining the release at each Drop (no function
+    per Type, X3); the dynamic release for a Sealed payload (a descriptor read where the Type is known); an Open level of a handle.
+  - Verified: the sel ledger loses 318 rows (object 205, C-frame 85, call 17, K-edges 6, closure 4, C-aggregate 1; 316 pass, the two
+    renamed theory rows are no longer executed), all of C6a's and C6b's census except the 17 rows of the case adaptation's creation
+    (R5-M111's commit); the 37 fixture families of the census and `ObjectRows*`, `ObjectRelease*` run natively under sel and the old
+    generator at O0 and O2; `FunctionCodegenTest` (each handle's glue: a Sealed payload's direct release by mode, its payload glue between
+    the transition and the free, the free alone without a drop, the runtime release of an open payload's rc and obj; `ObjectRelease` with
+    exact allocations and frees under both generators; M9's 0 B and I1 over the `Releases` source). O2 (information, a temp kernel: the
+    `SharedHandles` rounds with the four clones in a `[4 of rc/Payload]` read by index, its checksum required against the corpus value),
+    old generator A against sel B at O2, 15 interleaved samples: CPU B/A median 1.000 (mean 1.026, 0.77-1.23 at the 16 ms tick), within
+    A's consecutive spread 0.86-1.17; 549 against 556 instructions, the same calls, CAS loops and fences.
+- **R5-M113 R5's concurrency follows R4-M119** (owner, 2026-10-24, to the R5 planning session directly, after R4 relayed R4-M119; verbatim
+  「R5 にも同じ制約を適用します。重い実行は R4・BU・R5 合わせて同時に 3 本まで（artifacts/heavy-runs/ に登録）、共有ベースを再利用し、R5
+  も実装者はレーンごとに最大 2、設計者・レビュアーは最大 2 までとします。」; supersedes the R5 resume prompt's one implementer and one
+  reviewer at a time) R5 runs implementers one per lane, at most two, their files disjoint and at most one unit changing a shared
+  representation at a time, and designers and reviewers at most two, under R4-M119's rule: heavy runs at most three at once across R4, BU
+  and R5, each registered in `artifacts/heavy-runs/` while it runs; design and review probes run selected classes and reuse the full-suite
+  bases kept once per dev sha in `artifacts/verify/shared-base/`; one plus one again when weekly usage passes 70% early in the week.
+  Reading: 「同じ制約」 is R4-M119's rule, so 「実装者はレーンごとに最大 2」 is its "one per lane, at most two" (the planning session's
+  wording of the owner's choice). Unchanged: the full process, R5-M18's one design and one review per unit under the packages (DEC Q6),
+  merge windows announced to R4 and BU, and R5-M8's checks.

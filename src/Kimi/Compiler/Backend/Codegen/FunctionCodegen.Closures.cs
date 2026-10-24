@@ -119,7 +119,7 @@ internal sealed partial class FunctionCodegen
             return this.module.Signature(target); // Null after a record.
         }
 
-        if (kind != CompilerFunctionKind.None && this.Routine(kind, result, out given) is { } routine)
+        if (kind != CompilerFunctionKind.None && this.Routine(kind, result, target, out given) is { } routine)
         {
             return routine;
         }
