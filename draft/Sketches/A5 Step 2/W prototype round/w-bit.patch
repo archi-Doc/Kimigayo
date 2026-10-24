@@ -1,0 +1,760 @@
+diff --git a/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Activations.cs b/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Activations.cs
+index f71f3c22c..ac31a4149 100644
+--- a/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Activations.cs
++++ b/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Activations.cs
+@@ -53,7 +53,7 @@ internal sealed partial class MirBorrows
+         this.Work += this.sets.Count(held);
+         foreach (var element in this.sets.Elements(held))
+         {
+-            if (element >= this.loanBase && this.loans[element - this.loanBase] is { Mode: MirRefKind.TwoPhaseUniq } loan && loan.Holder == slot)
++            if (element >= this.loanBase && this.IsElement(element) && this.loans[element - this.loanBase] is { Mode: MirRefKind.TwoPhaseUniq } loan && loan.Holder == slot)
+             {
+                 this.reserving.Add((local, element - this.loanBase, code));
+             }
+@@ -72,6 +72,7 @@ internal sealed partial class MirBorrows
+             var (taking, kind) = (Activation(this.slots[local]), loan.Destroying ? AccessKind.ActivateInPlace : AccessKind.Activate);
+             if (this.Conflict(loan.Root, steps, kind, taking, this.Source(at).Scope, reservation) is var c and not None)
+             {
++                this.WAccess(loan.Root, steps, kind, taking, this.Source(at).Scope, reservation);
+                 this.Report(this.Code(this.candidates[c], kind, code), c, taking, at, reservation, null);
+             }
+ 
+diff --git a/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Calls.cs b/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Calls.cs
+index 7121df7c7..1fec2d147 100644
+--- a/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Calls.cs
++++ b/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Calls.cs
+@@ -39,6 +39,7 @@ internal sealed partial class MirBorrows
+         var callee = call.Callee;
+         var result = callee.Kind == MirCalleeKind.Value && call.Operand.Kind != MirOperandKind.Const ? this.Read(state, call.Operand.Place) : 0;
+         result = result != 0 && MirTypes.IsReference(this.TypeOf(call.Operand)) ? this.Content(state, result) : result;
++        result = this.Indirect(result); // W: a Value callee's environment is read, never the borrow itself.
+         this.Moves(call.Start, call.Count);
+         if (callee.Kind == MirCalleeKind.Value && call.Operand is { Kind: MirOperandKind.Move, Place: { Projection: 0 } moved })
+         {
+@@ -66,7 +67,10 @@ internal sealed partial class MirBorrows
+             this.held |= !checks && value != 0 && clean < this.targets.Count;
+             foreach (var target in this.targets)
+             {
+-                this.AddSlot(target, value, 0, Joined, issue: false);
++                // W's call clause: storage the call writes that may retain a whole-value argument counts as a Copy of it, into E only
++                // where the written part's Origin is fixed; a local the call writes takes it indirectly (conservative).
++                var arrived = target == Escaped && this.FixedReferent(call.Start + row.Output) ? value : this.Indirect(value);
++                this.AddSlot(target, arrived, 0, Joined, issue: false);
+             }
+         }
+ 
+@@ -89,10 +93,10 @@ internal sealed partial class MirBorrows
+         var value = this.argValues[position];
+         if (kind == RetentionKind.Content)
+         {
+-            return this.Content(state, value);
++            return this.Indirect(this.Content(state, value)); // W: a read through the argument.
+         }
+ 
+-        return Borrows(this.TypeOf(operand)) ? this.sets.Union(value, this.Content(state, value)) : value;
++        return Borrows(this.TypeOf(operand)) ? this.sets.Union(value, this.Indirect(this.Content(state, value))) : value;
+     }
+ 
+     // r3 (R4-M93; registered for X-2, PD28, until G160's representation): whether a default template's call, whose inputs' Contents hold a
+@@ -101,7 +105,13 @@ internal sealed partial class MirBorrows
+     // whose referent the walk reaches.
+     private bool RawBesideLoan(in MirTerminator call, int contents)
+     {
+-        if (this.sets.Elements(contents) is not [.., var last] || last < this.loanBase)
++        var anyLoan = false;
++        foreach (var element in this.sets.Elements(contents))
++        {
++            anyLoan |= element >= this.loanBase && this.IsElement(element);
++        }
++
++        if (!anyLoan)
+         {
+             return false;
+         }
+diff --git a/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Candidates.cs b/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Candidates.cs
+index 277ef3f24..9cf80b33f 100644
+--- a/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Candidates.cs
++++ b/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Candidates.cs
+@@ -25,6 +25,12 @@ internal sealed partial class MirBorrows
+         this.Work += this.sets.Count(set);
+         foreach (var element in this.sets.Elements(set))
+         {
++            if (!this.IsElement(element))
++            {
++                continue; // W's shadow elements are no Loans.
++            }
++
++            this.Carrier(set, element, via);
+             this.Consider(element, via);
+         }
+     }
+diff --git a/src/Kimi/Compiler/Mir/Analysis/MirBorrows.CheckSets.cs b/src/Kimi/Compiler/Mir/Analysis/MirBorrows.CheckSets.cs
+index 672906906..46f4b7ecd 100644
+--- a/src/Kimi/Compiler/Mir/Analysis/MirBorrows.CheckSets.cs
++++ b/src/Kimi/Compiler/Mir/Analysis/MirBorrows.CheckSets.cs
+@@ -325,7 +325,9 @@ internal sealed partial class MirBorrows
+     {
+         if (!entry.Issue && !this.Took(entry.Value, -1))
+         {
++            this.wTransit = entry.Slot;
+             this.Scan(entry.Value, -1);
++            this.wTransit = -1;
+         }
+ 
+         this.Seed(entry.Issue ? this.sets.Union(entry.Value, entry.Own) : entry.Own);
+@@ -337,7 +339,7 @@ internal sealed partial class MirBorrows
+         this.Work += this.sets.Count(set);
+         foreach (var element in this.sets.Elements(set))
+         {
+-            if (element == Escaped || (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true, Named: >= 0 }))
++            if (element == Escaped || (element >= this.loanBase && this.IsElement(element) && this.loans[element - this.loanBase] is { Direct: true, Named: >= 0 }))
+             {
+                 this.Reach(element == Escaped ? Escaped : this.loans[element - this.loanBase].Named, scan: true);
+             }
+diff --git a/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Checks.cs b/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Checks.cs
+index eeca30496..bfd0c2dcf 100644
+--- a/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Checks.cs
++++ b/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Checks.cs
+@@ -131,6 +131,7 @@ internal sealed partial class MirBorrows
+         if (this.markSeen[mark] == this.stamp && !this.Covered(this.body.Common(this.Source(at).Scope, this.body.Locals[candidate].Source.Scope), -1, -1))
+         {
+             var anchor = this.body.Subject(this.body.Locals[candidate].Source);
++            this.WEnded(candidate);
+             this.Report(DiagnosticCode.ComparisonLoanConflict_Kd, anchor, this.markVia[mark], at, -1, null);
+         }
+     }
+diff --git a/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Flow.cs b/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Flow.cs
+index 7a17e1d08..9988eabd4 100644
+--- a/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Flow.cs
++++ b/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Flow.cs
+@@ -20,6 +20,7 @@ internal sealed partial class MirBorrows
+     private void Plan(ulong[] state, int block, int index, bool checks)
+     {
+         this.entryCount = 0;
++        this.wLocation = this.Location(block, index);
+         foreach (var set in this.contentsRead)
+         {
+             this.contents[set] = 0;
+@@ -103,10 +104,15 @@ internal sealed partial class MirBorrows
+         {
+             if (place.Root < 0)
+             {
+-                this.AddSlot(Escaped, value, own, Joined, issue);
++                var (v, o) = this.Arrive(Escaped, place, value, own, whole: false);
++                this.AddSlot(Escaped, v, o, Joined, issue);
++            }
++            else if (this.slots[place.Root] >= 0)
++            {
++                var (v, o) = this.Arrive(this.slots[place.Root], place, value, own, whole: count == 0);
++                this.Add(place.Root, v, o, count == 0 ? Replaced : Joined, issue);
+             }
+ 
+-            this.Add(place.Root, value, own, count == 0 ? Replaced : Joined, issue);
+             return;
+         }
+ 
+@@ -124,7 +130,8 @@ internal sealed partial class MirBorrows
+         this.Refs(raw ? this.escapedSet : layer);
+         foreach (var target in this.targets)
+         {
+-            this.AddSlot(target, value, own, Joined, issue);
++            var (v, o) = this.Arrive(target, place, value, own, whole: false);
++            this.AddSlot(target, v, o, Joined, issue);
+         }
+     }
+ 
+diff --git a/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Locations.cs b/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Locations.cs
+index 6ab210ce7..db76d3de0 100644
+--- a/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Locations.cs
++++ b/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Locations.cs
+@@ -44,6 +44,7 @@ internal sealed partial class MirBorrows
+             var count = this.placeSteps.Walk(this.body, access.Place, access.Reborrow, ref this.accessSteps);
+             if (this.Conflict(this.Key(access.Place.Root), this.accessSteps.AsSpan(0, count), access.Kind, access.Taking, scope, -1) is var c and not None)
+             {
++                this.WAccess(this.Key(access.Place.Root), this.accessSteps.AsSpan(0, count), access.Kind, access.Taking, scope, -1);
+                 this.Report(this.Code(this.candidates[c], access.Kind, DiagnosticCode.ComparisonLoanConflict_Kd), c, access.Taking, at, -1, null);
+             }
+         }
+diff --git a/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Reach.cs b/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Reach.cs
+index 15a08a144..18206d385 100644
+--- a/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Reach.cs
++++ b/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Reach.cs
+@@ -30,7 +30,7 @@ internal sealed partial class MirBorrows
+         foreach (var element in this.sets.Elements(set))
+         {
+             escaped |= element == Escaped;
+-            if (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true } loan)
++            if (element >= this.loanBase && this.IsElement(element) && this.loans[element - this.loanBase] is { Direct: true } loan)
+             {
+                 direct = true;
+                 content = loan.Named >= 0 ? this.sets.Union(content, (int)state[loan.Named]) : content;
+@@ -53,7 +53,7 @@ internal sealed partial class MirBorrows
+         foreach (var element in this.sets.Elements(set))
+         {
+             escaped |= element == Escaped;
+-            if (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true } loan)
++            if (element >= this.loanBase && this.IsElement(element) && this.loans[element - this.loanBase] is { Direct: true } loan)
+             {
+                 direct = true;
+                 if (loan.Named >= 0)
+@@ -133,7 +133,7 @@ internal sealed partial class MirBorrows
+             {
+                 this.Written(Escaped, MirWrites.None);
+             }
+-            else if (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true } loan)
++            else if (element >= this.loanBase && this.IsElement(element) && this.loans[element - this.loanBase] is { Direct: true } loan)
+             {
+                 if (loan.Named >= 0)
+                 {
+diff --git a/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Reports.cs b/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Reports.cs
+index 19d518ac9..f7f44f2df 100644
+--- a/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Reports.cs
++++ b/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Reports.cs
+@@ -39,10 +39,12 @@ internal sealed partial class MirBorrows
+         if (this.held)
+         {
+             this.Unsupported(subject);
++            this.WRecord(DiagnosticCode.Unsupported_Kd, subject);
+             return;
+         }
+ 
+         this.program.Problems.Add(new(code, DiagnosticRequirement.Ownership(requirement), subject, this.body.Ordinal, this.views), facts);
++        this.WRecord(code, subject);
+     }
+ 
+     // A located Unsupported_Kd at a location whose access or call the stratum does not classify; a limit record, which depends on the
+diff --git a/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Solve.cs b/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Solve.cs
+index 253713eb9..310f328e3 100644
+--- a/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Solve.cs
++++ b/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Solve.cs
+@@ -31,6 +31,11 @@ internal sealed partial class MirBorrows
+         this.sets.Clear();
+         (this.loanBase, this.escapedSet) = (Markers + body.Locals.Length, this.sets.Add(0, Escaped));
+         this.Loans();
++        (this.shadowBase, this.indirectMemo) = (WProto.Enabled ? this.loanBase + this.loanCount : int.MaxValue, []);
++        if (WProto.Enabled)
++        {
++            this.Transit();
++        }
+         if (!this.producing)
+         {
+             return; // No input of a Loan-stratum producer, no problem (A3 6.1, D5; E7's γ, R3 and a slot write need no Loan).
+@@ -123,6 +128,7 @@ internal sealed partial class MirBorrows
+             return;
+         }
+ 
++        ended = this.Indirect(ended); // W: an ended Loan's bit goes with it.
+         for (var s = 0; s < this.holderCount; s++)
+         {
+             state[s] = (ulong)this.sets.Remove((int)state[s], ended);
+diff --git a/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Values.cs b/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Values.cs
+index f95399d02..681bad131 100644
+--- a/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Values.cs
++++ b/src/Kimi/Compiler/Mir/Analysis/MirBorrows.Values.cs
+@@ -27,7 +27,7 @@ internal sealed partial class MirBorrows
+                     value = this.sets.Union(value, this.Operand(state, o));
+                 }
+ 
+-                return (value, 0);
++                return (this.Indirect(value), 0); // W: an aggregate holding a Copy is not itself a Copy.
+             case MirRvalueKind.Opaque:
+                 return (this.escapedSet, 0);
+             default:
+@@ -55,8 +55,10 @@ internal sealed partial class MirBorrows
+     {
+         var value = this.Root(state, place.Root);
+         var count = this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk);
++        var whole = true; // W: a read through references to whole roots is a Copy of a root's whole value; a part read is not.
+         for (var i = 0; i < count; i++)
+         {
++            whole &= this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq && this.WholeContent(value);
+             value = this.walk[i].Class switch
+             {
+                 MirStepClass.Shared or MirStepClass.Uniq => this.Content(state, value),
+@@ -65,7 +67,7 @@ internal sealed partial class MirBorrows
+             };
+         }
+ 
+-        return value;
++        return whole ? value : this.Indirect(value);
+     }
+ 
+     // A borrow's value (A3 5 issued, E3): its Loan with the parents of every borrow layer it follows, from the last shared layer on.
+@@ -73,20 +75,25 @@ internal sealed partial class MirBorrows
+     {
+         var (layer, parents) = (this.Root(state, place.Root), 0);
+         var count = this.placeSteps.Walk(this.body, place, reborrow, ref this.walk);
++        var whole = true; // W: only the root's whole value, reborrowed at the first Deref, passes its Loans on directly.
+         for (var i = 0; i < count; i++)
+         {
++            var from = whole ? layer : this.Indirect(layer);
++            var through = this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq && this.WholeContent(layer);
+             switch (this.walk[i].Class)
+             {
+                 case MirStepClass.Shared:
+-                    (parents, layer) = (layer, this.Content(state, layer));
++                    (parents, layer) = (from, this.Content(state, layer));
+                     break;
+                 case MirStepClass.Uniq:
+-                    (parents, layer) = (this.sets.Union(parents, layer), this.Content(state, layer));
++                    (parents, layer) = (this.sets.Union(parents, from), this.Content(state, layer));
+                     break;
+                 case MirStepClass.Raw:
+                     (parents, layer) = (this.sets.Union(parents, this.escapedSet), this.escapedSet);
+                     break;
+             }
++
++            whole &= through; // The next layer is a root's whole value only through references to whole roots.
+         }
+ 
+         return (parents, loan >= 0 ? this.sets.Add(0, this.loanBase + loan) : 0);
+diff --git a/src/Kimi/Compiler/Mir/Analysis/MirBorrows.WProto.cs b/src/Kimi/Compiler/Mir/Analysis/MirBorrows.WProto.cs
+new file mode 100644
+index 000000000..f9ccfd0ad
+--- /dev/null
++++ b/src/Kimi/Compiler/Mir/Analysis/MirBorrows.WProto.cs
+@@ -0,0 +1,378 @@
++// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
++
++#pragma warning disable SA1401, SA1402, SA1600, SA1201, SA1202, SA1204, SA1513, SA1515, SA1116, SA1117, SA1118
++
++// THROWAWAY (2a-2 prototype round for rule W, R4-M104; never committed): the per-(Loan, holder) direct bit of the proposal's §4, held as a
++// shadow element per Loan or marker (shadowBase + element) that marks the element indirect in a set, so the dataflow's union join is the
++// bit's AND; the per-store fixed-part check for _0 and E; and each Loan problem's W reading over the carriers its check set found.
++using System.Text;
++using Kimi.Diagnostics;
++
++namespace Kimi.Compiler.Mir;
++
++internal sealed partial class MirBorrows
++{
++    private readonly List<(int Element, int Via, bool Indirect)> wCarriers = [];
++    private Dictionary<int, int> indirectMemo = [];
++    private int shadowBase = int.MaxValue;
++    private int wLocation;
++    private int wTransit = -1;
++    private int wStamp = -1;
++    private (bool Derived, string Loans, List<(SourceRef, BoundOrigin, BoundOrigin)> Causes)? wNote;
++
++    // Whether an element is a Loan, a marker or Φ_E (not a shadow).
++    private bool IsElement(int element) => element < this.shadowBase;
++
++    // A set with every Loan and marker it holds marked indirect.
++    private int Indirect(int set)
++    {
++        if (this.shadowBase == int.MaxValue || set == 0)
++        {
++            return set;
++        }
++
++        if (this.indirectMemo.TryGetValue(set, out var known))
++        {
++            return known;
++        }
++
++        // The shadows by runs of consecutive elements: one Range and one Union per run.
++        var result = set;
++        var count = this.sets.Count(set);
++        for (var i = 0; i < count;)
++        {
++            var element = this.sets.Elements(set)[i];
++            if (element < Markers || element >= this.shadowBase)
++            {
++                i++;
++                continue;
++            }
++
++            var end = i + 1;
++            while (end < count && this.sets.Elements(set)[end] == element + (end - i) && this.sets.Elements(set)[end] < this.shadowBase)
++            {
++                end++;
++            }
++
++            result = this.sets.Union(result, this.sets.Range(this.shadowBase + element, end - i));
++            i = end;
++        }
++
++        this.indirectMemo[set] = result;
++        this.indirectMemo[result] = result;
++        return result;
++    }
++
++    // A store's arrival into a holder: into _0 or E the bit holds only where the receiving part's Origin is fixed; into a local, only for a
++    // whole-root replacement.
++    private (int Value, int Own) Arrive(int slot, MirPlace place, int value, int own, bool whole)
++    {
++        if (this.shadowBase == int.MaxValue)
++        {
++            return (value, own);
++        }
++
++        var keep = slot == Escaped || this.IsResult(slot) ? this.FixedPart(place) : whole;
++        return keep ? (value, own) : (this.Indirect(value), this.Indirect(own));
++    }
++
++    private bool IsResult(int slot) => this.body.Locals.Length > 0 && this.slots[0] == slot && slot >= 0;
++
++    private bool[] transit = [];
++
++    // Whether a set's direct Loans all name whole roots (a borrow of a root's storage itself) and it carries no Φ_E: its content is
++    // the whole values of those roots.
++    private bool WholeContent(int set)
++    {
++        var any = false;
++        foreach (var element in this.sets.Elements(set))
++        {
++            if (element == Escaped)
++            {
++                return false;
++            }
++
++            if (element >= this.loanBase && this.IsElement(element) && this.loans[element - this.loanBase] is { Direct: true } loan)
++            {
++                if (loan.Count != 0 || loan.Named < 0)
++                {
++                    return false;
++                }
++
++                any = true;
++            }
++        }
++
++        return any;
++    }
++
++    // THE MISSING FACT, emulated: a local the builder uses only to carry the returned value into _0 (every read of it a whole-value
++    // Copy or Move into _0 or another such local), so its value is the result in transit across the body's cleanup.
++    private void Transit()
++    {
++        var locals = this.body.Locals.Length;
++        MirDataflow.Grow(ref this.transit, locals);
++        var bad = new bool[locals];
++        var edges = new List<(int From, int To)>();
++        void Bad(MirPlace place)
++        {
++            if (place.Root >= 0)
++            {
++                bad[place.Root] = true;
++            }
++        }
++
++        foreach (var statement in this.body.Statements)
++        {
++            if (statement.Kind == MirStatementKind.Assign)
++            {
++                var rvalue = statement.Rvalue;
++                if (rvalue is { Kind: MirRvalueKind.Use, Count: 1 } && this.body.Operands[rvalue.Start] is { Kind: MirOperandKind.Copy or MirOperandKind.Move, Place: { Projection: 0, Root: >= 1 } from } &&
++                    statement.Place is { Projection: 0, Root: >= 0 } to)
++                {
++                    edges.Add((from.Root, to.Root));
++                    continue;
++                }
++
++                for (var o = rvalue.Start; o < rvalue.Start + rvalue.Count; o++)
++                {
++                    Bad(this.body.Operands[o].Place);
++                }
++
++                if (rvalue.Kind == MirRvalueKind.Ref)
++                {
++                    Bad(rvalue.Place);
++                }
++
++                if (statement.Place.Projection != 0)
++                {
++                    Bad(statement.Place);
++                }
++            }
++            else if (statement.Kind is not (MirStatementKind.StorageLive or MirStatementKind.StorageDead))
++            {
++                Bad(statement.Place);
++            }
++        }
++
++        foreach (var block in this.body.Blocks)
++        {
++            var terminator = block.Terminator;
++            if (terminator.Operand.Kind != MirOperandKind.Const)
++            {
++                Bad(terminator.Operand.Place);
++            }
++
++            for (var o = terminator.Start; o < terminator.Start + terminator.Count; o++)
++            {
++                Bad(this.body.Operands[o].Place);
++            }
++
++            if (terminator.Place.Projection != 0)
++            {
++                Bad(terminator.Place);
++            }
++        }
++
++        var has = new bool[locals];
++        foreach (var (from, _) in edges)
++        {
++            has[from] = true;
++        }
++
++        for (var i = 0; i < locals; i++)
++        {
++            this.transit[i] = i > 0 && has[i] && !bad[i] && this.body.Locals[i].Kind == MirLocalKind.Temp; // A builder temp: a user local is never the result.
++        }
++
++        for (var changed = true; changed;)
++        {
++            changed = false;
++            foreach (var (from, to) in edges)
++            {
++                if (this.transit[from] && to != 0 && !this.transit[to])
++                {
++                    (this.transit[from], changed) = (false, true);
++                }
++            }
++        }
++    }
++
++    // A carrier that is the result: _0, or a local carrying the returned value into it, where _0's Origin is fixed.
++    private bool ResultLike(int slot)
++    {
++        if (this.IsResult(slot))
++        {
++            return true;
++        }
++
++        for (var i = 1; i < this.body.Locals.Length; i++)
++        {
++            if (this.slots[i] == slot && slot >= 0)
++            {
++                return this.transit[i] && this.FixedPart(new MirPlace(0));
++            }
++        }
++
++        return false;
++    }
++
++    // Whether a Place's case Type has an outer Origin the C1-F4 view classes Fixed at the location.
++    private bool FixedPart(MirPlace place)
++    {
++        var type = this.body.TypeOf(place) is { } t ? cases.Type(t) : null;
++        return this.FixedOrigin(type?.Origin);
++    }
++
++    // Whether a written argument's referent part has a fixed Origin (the call clause's store into E).
++    private bool FixedReferent(int operand)
++    {
++        var type = this.TypeOf(operand);
++        return type is { Components.Count: > 0 } && this.FixedOrigin(type.Components[0].Origin);
++    }
++
++    private bool FixedOrigin(BoundOrigin? origin)
++    {
++        if (origin is null || this.shadowBase == int.MaxValue)
++        {
++            return false;
++        }
++
++        var site = this.body.Subject(this.Source(this.wLocation));
++        var index = types.OriginAtom(this.body.Key.Body, origin, site);
++        return types.OriginRows(this.body.Key.Body).Atoms[index].Kind == OriginAtomKind.Fixed;
++    }
++
++    // A Loan or marker found in a holder (-1: a transit value, whose destination wTransit names) at the check.
++    private void Carrier(int set, int element, int via)
++    {
++        if (this.shadowBase == int.MaxValue || element < Markers)
++        {
++            return;
++        }
++
++        if (this.wStamp != this.stamp)
++        {
++            (this.wStamp, _) = (this.stamp, 0);
++            this.wCarriers.Clear();
++        }
++
++        var holder = via == -1 ? this.wTransit : via;
++        this.wCarriers.Add((element, holder, this.sets.Contains(set, this.shadowBase + element)));
++    }
++
++    // The W reading of an access's conflicts: every Loan of its root's check set it conflicts with.
++    private void WAccess(int root, ReadOnlySpan<MirStep> steps, AccessKind kind, int taking, int scope, int reservation)
++    {
++        if (this.shadowBase == int.MaxValue)
++        {
++            return;
++        }
++
++        var elements = new List<int>();
++        for (var c = this.First(root); c != None; c = this.candidates[c].Next)
++        {
++            if (this.Conflicts(c, root, steps, kind, taking) && !this.Covered(scope, this.candidates[c].Loan, reservation))
++            {
++                elements.Add(this.loanBase + this.candidates[c].Loan);
++            }
++        }
++
++        this.WRead(elements);
++    }
++
++    // The W reading of err(ended): the candidate's marker.
++    private void WEnded(int candidate)
++    {
++        if (this.shadowBase != int.MaxValue)
++        {
++            this.WRead([Markers + candidate]);
++        }
++    }
++
++    // Per element: its Borrow's atom (a Loan's Ref statement; a marker's Ref into its candidate), the Refuted problems from that atom in this
++    // view, and its carriers at the check: derived when the atom is Finite, refuted, and every carrier is _0 or E with the bit set.
++    private void WRead(List<int> elements)
++    {
++        var text = new StringBuilder();
++        var causes = new List<(SourceRef, BoundOrigin, BoundOrigin)>();
++        var derived = elements.Count > 0;
++        WProto.RefAtoms.TryGetValue(this.body.Ordinal, out var atoms);
++        WProto.Refuted.TryGetValue(this.body.Ordinal, out var refuted);
++        foreach (var element in elements)
++        {
++            var statement = this.BorrowOf(element);
++            var atom = statement >= 0 && atoms is not null && atoms.TryGetValue(statement, out var a) ? a : default;
++            var mine = new List<(SourceRef, BoundOrigin, BoundOrigin)>();
++            foreach (var (source, target, views, subject) in refuted ?? [])
++            {
++                if (atom.Atom is not null && ReferenceEquals(source, atom.Atom) && (views & this.views) != 0)
++                {
++                    mine.Add((subject, source, target));
++                }
++            }
++
++            var carriers = new StringBuilder();
++            var escapeOnly = true;
++            var any = false;
++            foreach (var (found, via, indirect) in this.wCarriers)
++            {
++                if (found != element || this.wStamp != this.stamp)
++                {
++                    continue;
++                }
++
++                any = true;
++                var name = via == Escaped ? "E" : this.IsResult(via) ? "_0" : this.ResultLike(via) ? $"_0'(slot{via})" : via < 0 ? "transit?" : $"slot{via}";
++                carriers.Append($" {name}{(indirect ? "~" : string.Empty)}");
++                escapeOnly &= (via == Escaped || this.ResultLike(via)) && !indirect;
++            }
++
++            var mineDerived = atom.Kind == OriginAtomKind.Finite && atom.Atom is not null && mine.Count > 0 && any && escapeOnly;
++            derived &= mineDerived;
++            if (mineDerived)
++            {
++                causes.AddRange(mine);
++            }
++
++            var label = element < this.loanBase ? $"marker{element - Markers}" : $"loan{element - this.loanBase}@s{statement}";
++            text.Append($"[{label} atom={atom.Kind}{(atom.Atom is null ? "-none" : string.Empty)} refuted={mine.Count} carriers={carriers.ToString().Trim()} -> {(mineDerived ? "derived" : "independent")}] ");
++        }
++
++        this.wNote = (derived, text.ToString().Trim(), derived ? causes : []);
++    }
++
++    // The statement of an element's Borrow: a Loan's issuing statement, a marker's Ref into its guard candidate (the first in body order).
++    private int BorrowOf(int element)
++    {
++        if (element >= this.loanBase)
++        {
++            var location = this.loans[element - this.loanBase].Location;
++            return location < this.body.Statements.Length ? location : -1;
++        }
++
++        var candidate = element - Markers;
++        for (var s = 0; s < this.body.Statements.Length; s++)
++        {
++            if (this.body.Statements[s] is { Kind: MirStatementKind.Assign, Place: { Projection: 0, Root: var root }, Rvalue.Kind: MirRvalueKind.Ref } && root == candidate)
++            {
++                return s;
++            }
++        }
++
++        return -1;
++    }
++
++    // Records the W reading of the problem just recorded (none read: "n/a").
++    private void WRecord(DiagnosticCode code, SourceRef subject)
++    {
++        if (this.shadowBase == int.MaxValue)
++        {
++            return;
++        }
++
++        var note = this.wNote ?? (false, "n/a", []);
++        WProto.Records.Add(new(this.body.Ordinal, this.view, code, subject, note.Derived, note.Loans, note.Causes));
++        this.wNote = null;
++    }
++}
+diff --git a/src/Kimi/Compiler/Mir/Analysis/MirOrigins.cs b/src/Kimi/Compiler/Mir/Analysis/MirOrigins.cs
+index 5d696a104..580540fd9 100644
+--- a/src/Kimi/Compiler/Mir/Analysis/MirOrigins.cs
++++ b/src/Kimi/Compiler/Mir/Analysis/MirOrigins.cs
+@@ -108,6 +108,22 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
+             first?.Dispose();
+             (this.ownOracle, this.layerOracle, this.layerFirst) = (null, null, false);
+         }
++
++        // THROWAWAY (W prototype): each Ref statement's atom and class, and the Refuted problems, for MirBorrows' bit.
++        var atomsOf = WProto.RefAtoms[body.Ordinal] = [];
++        for (var r = 0; r < this.refCount; r++)
++        {
++            atomsOf[this.refs[r].Statement] = (this.slice.Atoms[this.refs[r].Own].Atom, this.slice.Atoms[this.refs[r].Own].Kind);
++        }
++
++        var refuted = WProto.Refuted[body.Ordinal] = [];
++        foreach (var found in this.pending)
++        {
++            if (found.Code == DiagnosticCode.UnsatisfiedOriginRelation_Kd)
++            {
++                refuted.Add((found.Reason.Longer!, found.Reason.Shorter!, found.Views, found.Subject));
++            }
++        }
+     }
+ 
+     /// <summary>Adds the problems the last <see cref="Judge"/> found, after MirBorrows' (step 4).</summary>
+diff --git a/src/Kimi/Compiler/Mir/Analysis/WProto.cs b/src/Kimi/Compiler/Mir/Analysis/WProto.cs
+new file mode 100644
+index 000000000..f639c5054
+--- /dev/null
++++ b/src/Kimi/Compiler/Mir/Analysis/WProto.cs
+@@ -0,0 +1,33 @@
++// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
++
++#pragma warning disable SA1401, SA1402, SA1600, SA1649, SA1201, SA1202, SA1204, SA1214, CS1591
++
++// THROWAWAY (2a-2 prototype round for rule W, R4-M104; never committed): the channel between MirOrigins' Refuted chains and MirBorrows'
++// per-(Loan, holder) direct bit, and the records the probe reads.
++using Kimi.Diagnostics;
++
++namespace Kimi.Compiler.Mir;
++
++internal static class WProto
++{
++    // Whether the bit runs (the probe sets it; off gives the unmodified stratum's work).
++    internal static bool Enabled = Environment.GetEnvironmentVariable("KIMI_W_OFF") is null;
++
++    // The records of the last program: one per Loan problem recorded by MirBorrows (its W status) and the Origin context per body.
++    internal static readonly List<WRecord> Records = [];
++
++    // Per body ordinal: each Ref statement's atom (canonical BoundOrigin) and class; and the Refuted problems Judge found.
++    internal static readonly Dictionary<int, Dictionary<int, (BoundOrigin Atom, OriginAtomKind Kind)>> RefAtoms = [];
++    internal static readonly Dictionary<int, List<(BoundOrigin Source, BoundOrigin Target, ulong Views, SourceRef Subject)>> Refuted = [];
++
++    internal static void Clear()
++    {
++        Records.Clear();
++        RefAtoms.Clear();
++        Refuted.Clear();
++    }
++}
++
++// One Loan problem's W reading in one view: Derived when every conflicting Loan's conflict is derived; Loans: per conflicting element its
++// reading; Causes: the Refuted problems (subject, source, target) named.
++internal sealed record WRecord(int Body, long View, DiagnosticCode Code, SourceRef Subject, bool Derived, string Loans, List<(SourceRef Subject, BoundOrigin Source, BoundOrigin Target)> Causes);
