@@ -172,6 +172,10 @@ internal sealed partial class MirBorrows
         /// <summary>Gets or sets a value indicating whether it is a destroying reservation: its call destroys its target in place.</summary>
         internal bool Destroying { get; set; }
 
+        /// <summary>Gets or sets a value indicating whether it is an address's own-step entry (MirBorrows.Addresses): its steps are its
+        /// owning Place's.</summary>
+        internal bool OwnStep { get; set; }
+
         /// <summary>Gets or sets its issuing statement's or terminator's location (Location's index), whose subject is its anchor and whose
         /// scope its issue's (D14).</summary>
         internal int Location { get; set; }

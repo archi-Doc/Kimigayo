@@ -4,7 +4,7 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Mir;
 
-// A5's view loop (A3 5, Carrying, with E8): Run checks a body under the selected view: its Loans, its holders' slots (Holders), endings,
+// A5's view loop (A3 5, Carrying, with E8): Run checks a body under the selected view: its Loans, addresses, its holders' slots (Holders), endings,
 // touches and the copies' entries, then holder liveness backward and carrying forward over the dataflow's chains, each holder's set joined
 // by node union, then the checks replay and R26-access's pass (MirBorrows.Defaults). A block's locations are carried in order, each planned
 // on the state before it (MirBorrows.Flow), checked in the replay, then committed; at a destruction in place the Loans it ends are then
@@ -31,9 +31,10 @@ internal sealed partial class MirBorrows
         this.sets.Clear();
         (this.loanBase, this.escapedSet) = (Markers + body.Locals.Length, this.sets.Add(0, Escaped));
         this.Loans();
+        this.Addresses();
         if (!this.producing)
         {
-            return; // No input of a Loan-stratum producer, no problem (A3 6.1, D5; E7's γ, R3 and a slot write need no Loan).
+            return; // No input of a Loan-stratum producer, no problem (A3 6.1, D5; E7's γ, R3, a slot write and PQ-10 need no Loan).
         }
 
         this.Holders();

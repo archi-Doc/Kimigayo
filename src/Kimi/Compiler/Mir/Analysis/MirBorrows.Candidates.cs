@@ -30,8 +30,8 @@ internal sealed partial class MirBorrows
     }
 
     // An element found in a holder (-1: a transit value) by the pass: a Loan once per mode (A3 5's mode: a two-phase Loan is shared only in
-    // its reservation holder), its candidate tagged with the pass, whose named holder the closure reads; Φ_E makes E live. An activation
-    // keeps the first two holders the Based, Seeded and Valued passes find it in.
+    // its reservation holder), its candidate tagged with the pass, whose named holder the closure reads; an address only its named holder;
+    // Φ_E makes E live. An activation keeps the first two holders the Based, Seeded and Valued passes find it in.
     private void Consider(int element, int via)
     {
         if (element == Escaped)
@@ -52,6 +52,17 @@ internal sealed partial class MirBorrows
         }
 
         var index = element - this.loanBase;
+        if (index >= this.loanCount)
+        {
+            // An address never conflicts (D19): it reaches the holder it names.
+            if (this.loans[index] is { Direct: true, Named: >= 0 } address)
+            {
+                this.Reach(address.Named, scan: true);
+            }
+
+            return;
+        }
+
         ref readonly var loan = ref this.loans[index];
         var unique = loan.Mode == MirRefKind.Uniq || (loan.Mode == MirRefKind.TwoPhaseUniq && via != loan.Holder);
         var key = (2 * index) + (unique ? 1 : 0);
