@@ -86,7 +86,8 @@ public sealed partial class Binding
         for (var i = -1; i < (ancestors?.Count ?? 0); i++)
         {
             var source = i < 0 ? contract : ancestors![i];
-            if (InvalidDeclarationContext(source.Declaration) || UnresolvedTypeDeclarationContext(source.Declaration) || !this.contractPremiseQueries.Add(source))
+            if (this.InvalidDeclarationContext(source.Declaration) || UnresolvedTypeDeclarationContext(source.Declaration) ||
+                !this.contractPremiseQueries.Add(source))
             {
                 return false;
             }

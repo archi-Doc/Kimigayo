@@ -57,7 +57,7 @@ public sealed partial class Binding
         }
 
         this.inheritanceStates.Add(symbol, 1);
-        var valid = structure.BindingState != BindingState.Invalid && structure.Bases.Count <= 1;
+        var valid = structure.Bases.Count <= 1;
         var scope = this.scopes[structure];
         for (var i = 0; i < structure.Bases.Count; i++)
         {
@@ -68,19 +68,21 @@ public sealed partial class Binding
                 this.Fail(syntax, BindingFailure.InvalidTypeFormation);
                 valid = false;
             }
-            else if (valid && !this.ValidateInheritedNames(structure, type, scope))
+            else if (valid && structure.BindingState != BindingState.Invalid && !this.ValidateInheritedNames(structure, type, scope))
             {
                 valid = false;
             }
         }
 
-        this.inheritanceStates[symbol] = valid ? (byte)2 : (byte)3;
+        // An earlier rejection prevents use of the declaration; it does not fail a base rule.
+        var available = valid && structure.BindingState != BindingState.Invalid;
+        this.inheritanceStates[symbol] = available ? (byte)2 : (byte)3;
         if (!valid)
         {
             this.Fail(structure, BindingFailure.InvalidTypeFormation);
         }
 
-        return valid;
+        return available;
     }
 
     private bool ValidateInheritedNames(StructKoto structure, BoundType baseType, BindingScope scope)

@@ -547,7 +547,15 @@ public sealed partial class Binding
             return null;
         }
 
-        node.BindingState = unresolved ? BindingState.Unresolved : BindingState.Invalid;
+        if (unresolved)
+        {
+            this.MarkUnresolved(node);
+        }
+        else
+        {
+            node.BindingState = BindingState.Invalid;
+        }
+
         node.BindingFailure = failure;
         return null;
     }
@@ -984,7 +992,8 @@ public sealed partial class Binding
             // failed leaves the call resting on that failure (SPEC 23.1.2).
             if (node is InvocationKoto { BoundCall: { } call })
             {
-                if (node.BindingFailure == BindingFailure.None && InvalidDeclarationContextCause(this.Library.PresentedTarget(call.Target).Declaration) is { } invalidTarget)
+                if (node.BindingFailure == BindingFailure.None &&
+                    this.InvalidDeclarationContextCause(this.Library.PresentedTarget(call.Target).Declaration) is { } invalidTarget)
                 {
                     this.CompleteDependent(node, invalidTarget);
                 }
@@ -1358,9 +1367,7 @@ public sealed partial class Binding
 
             if (marker is not null)
             {
-                marker.BindingFailure = BindingFailure.None;
-                binding.Fail(marker, BindingFailure.InvalidTestDefinition);
-                binding.nodes.Add(marker);
+                binding.IndexInvalidTestAttribute(marker);
             }
 
             node.VisitChildren(this);
@@ -1469,10 +1476,8 @@ public sealed partial class Binding
                 test.BindingState = BindingState.Resolved;
                 if (!TestDefinition.IsValidSyntax(test))
                 {
-                    marker.BindingFailure = BindingFailure.None;
-                    binding.Fail(marker, BindingFailure.InvalidTestDefinition);
-                    binding.nodes.Add(marker);
-                    binding.Fail(test, BindingFailure.InvalidTestDefinition);
+                    binding.IndexInvalidTestAttribute(marker);
+                    binding.InvalidateAttributeTarget(marker);
                 }
                 else
                 {
@@ -1526,12 +1531,8 @@ public sealed partial class Binding
                     return;
                 }
 
-                binding.Fail(node, BindingFailure.InvalidTestDefinition);
-                binding.nodes.Add(node);
-                if (AttributeTarget(invalidTest) is { } invalidTarget)
-                {
-                    binding.Fail(invalidTarget, BindingFailure.InvalidTestDefinition);
-                }
+                binding.IndexInvalidTestAttribute(invalidTest);
+                binding.InvalidateAttributeTarget(invalidTest);
 
                 if (invalidTest.AttributeChain is { } precedingMarker)
                 {
@@ -1567,12 +1568,10 @@ public sealed partial class Binding
                 return;
             }
 
-            if (node is AttributeKoto selectedAttribute && AttributeTarget(selectedAttribute) is { } target &&
-                (selectedAttribute.IdentifierKoto is not IdentifierNameKoto { IdentifierName: "LibraryImport" } || target is not FunctionKoto))
+            if (node is AttributeKoto selectedAttribute)
             {
-                // Layout/Test are handled above. Unrecognized markers and non-function
-                // LibraryImport targets cannot certify; retain syntax and diagnostics.
-                binding.Fail(target, BindingFailure.InvalidTypeFormation);
+                // Handled attributes returned above. Other selected attributes still bind their own lookup failure.
+                binding.InvalidateAttributeTarget(selectedAttribute);
             }
 
             if (node is EffectBoundKoto)

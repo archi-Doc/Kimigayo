@@ -4834,6 +4834,56 @@ resumed by R4-M86 (2026-10-20).
   replacement, per-code cascade exceptions, re-proving in the adapter, another failure map, and role/mode switches.
   `ArithmeticSelection.Condition` belongs to the existing selection contract and is not reorganized by this unit.
 
+- **G52-1 Binding prerequisite ownership** (2026-10-24; planning session, independent designs A/B and
+  independent pre-code review). SPEC 23.1.2 makes a declaration rejected because a part failed depend on that part;
+  it does not invent another independent failure. G52 needs the existing prerequisite storage and readers together
+  before correcting attribute-target causality. Move consultation recording, declaration-part dependencies,
+  derived-failure classification and cause-key publication unchanged to `Binding.Diagnostics.Prerequisites`.
+  Their fields and `DerivedIssues` move with them; `ResetPrerequisites` keeps the same clearing order.
+  This separates dependency lifetime and traversal from diagnostic facts/rendering in the oversized entry file.
+  It is one Binding responsibility, not a line-count split or a new component, state, table or vocabulary.
+  Rejected: growing the mixed file, an argument-only wrapper or a merged prerequisite representation before its need
+  is established. Attribute legality and the behavior change remain with their existing owners in the next unit.
+
+- **G52-2 Rejected attributes retain their declaration cause** (2026-10-24; planning session, independent
+  designs A/B and independent pre-code review, including the base/Layout aggregate correction). SPEC 23.1.2
+  makes an invalid selected Attribute the cause of its target's rejection, not a second failed requirement.
+  Test, Layout, unknown markers and non-function LibraryImport share the existing target/part registration:
+  keep target Invalid and any independent Failure, and retain the rejected attribute in AddPrerequisite.
+  Test's direct registration is shared by the selected and excluded visitors; exclusion membership stays unchanged.
+  Consultation frames and declaration parts use the same live predicate: not Resolved, or syntax recovery.
+  Presence and traversal read both stores. The existing first non-recovery part and recovery replacement stay;
+  rejected attributes and any earlier retained struct part cannot resolve within that pass. Reset/rebind reconstructs
+  them. This does not establish that arbitrary pending base or field causes have the same lifetime.
+  Only Invalid with a live declaration part resists a pending transition; ordinary retries remain unchanged.
+  Declaration-context queries return that part before the independent Failure's signature-preservation rule.
+  Stored InvalidConstraint/Unsupported keys still close through their existing derived records; definite failures
+  remain direct. No diagnostic adapter filters duplicates.
+  Base validation separates its own rule result from the declaration's prior rejection before caching availability.
+  Layout fragment failures use the rejected-attribute path; the aggregate validity bit only decides IsCLayout.
+  Split-storage and R5-M55's zero-sized Field/struct diagnostics stay with their existing checks.
+  C-exchangeability retains its three outcomes: eligible, unsupported, or dependent on a failed Type. Its own-declaration
+  query includes the retained part cause beside the existing direct-Failure guard; a failed Type is not another ABI error.
+  Pending regressions use the public Binding producers and semantic queries; arbitrary injected states are not evidence
+  of source reachability. Product exclusion and Test-mode virtual pending retain their distinct raw failures.
+  Deleted: independent attribute-target Fail registrations, fragment aggregate-to-Fail copying and divergent
+  prerequisite/pending/context decisions. Rejected: blanket derived InvalidTypeFormation, global Invalid absorption,
+  a new cause collection, and extending persistent causes to pending bases. Existing enum/pattern and invalid-parent
+  consumers, and resolved unknown-marker classification, remain G52 follow-ups in PLAN.
+
+- **G52-3 Call and diagnostic publication concerns** (2026-10-24; planning session, independent pre-code review).
+  Binding's declaration-cause query must be read by candidate evaluation, committed-call constraint validation and
+  function-reference formation. Growing their already oversized mixed files, even by call-site qualification, is not
+  permitted. First move candidate evaluation and its saved inference fields to `Binding.CallSelection.Candidates`,
+  call and argument-operation constraint checks to the existing `Binding.ConstraintValidation`, and reference
+  selection/inference plus its two per-candidate fields to `Binding.FunctionReferences`. Function Type structure and
+  the shared signature contract comparison remain in `Binding.FunctionTypes`. Move CheckService's existing diagnostic
+  ownership/publication tests together to `CheckServiceTest.Diagnostics`, sharing its original project/input fixture.
+  All member bodies, signatures, field initialization, state save/restore and reset order remain unchanged. These are
+  concerns of the same owners, with no new representation, API, state or vocabulary. Rejected: a size exception for
+  qualifiers, moving only the new test, copying fixture helpers, or relocating candidate evaluation into the already
+  too-small remaining space of the selection entry file. The attribute-cause behavior correction remains a later unit.
+
 ## R5 and R6 (adopted 2026-10-18)
 
 The owner's answers to the plan's questions OQ1–OQ17, given on 2026-10-18 and relayed by the R4 planning session. "Plan"
