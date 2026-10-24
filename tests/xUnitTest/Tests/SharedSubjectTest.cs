@@ -222,5 +222,52 @@ public class SharedSubjectTest
         Assert.Same(FindIterable(c), issue.Node);
     }
 
+    // SPEC 15.1.6, 11.5: standard static Fields are borrowed in place; copied values and computed getter results stay ByValue.
+    private const string StaticSubjects = "group State\n    public var opt: Option<i32> = .Some(1)\n    public let fixed: Option<i32> = .Some(2)\n" +
+        "    public var values: [2 of i32] = [1, 2]\n    public computed copied: Option<i32>\n        get() -> Option<i32> => .Some(3)\n";
+
+    [Theory]
+    [InlineData("func f() -> i32 => match State.opt\n    .Some(let v) => v@follow\n    .None => 0", SubjectMode.Shared)]
+    [InlineData("    public func f() -> i32 => match (opt)\n        .Some(let v) => v@follow\n        .None => 0", SubjectMode.Shared)]
+    [InlineData("func f() -> i32 => match State.fixed\n    .Some(let v) => v@follow\n    .None => 0", SubjectMode.Shared)]
+    [InlineData("func f() -> i32 => match State.copied\n    .Some(let v) => v\n    .None => 0", SubjectMode.ByValue)]
+    [InlineData("func f() -> i32 => match State.opt@copy\n    .Some(let v) => v\n    .None => 0", SubjectMode.ByValue)]
+    public void StaticSubjectsUseTheirAcquisition(string body, SubjectMode mode)
+    {
+        var c = MinimalEmissionTest.Analyze(StaticSubjects + body + "\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        foreach (var match in KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MatchKoto>())
+        {
+            Assert.True(c.Binding.TryGetMatch(match, out var plan));
+            Assert.Equal(mode, plan!.Mode);
+        }
+
+        Assert.Empty(c.BuildMir().Findings);
+    }
+
+    // SPEC 15.1.6: iteration borrows a static Subject Shared. Its entry call still has BU-25's static receiver Borrow limit.
+    [Theory]
+    [InlineData("func f()\n    for v in State.values\n        let n: i32 = v@follow", "State.values")]
+    [InlineData("    public func f()\n        for v in (values)\n            let n: i32 = v@follow", "(values)")]
+    public void StaticIterationKeepsItsBorrowedItemAtTheEntryLimit(string body, string subject)
+    {
+        var c = MinimalEmissionTest.Analyze(StaticSubjects + body + "\n");
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal((DiagnosticCode.Unsupported_Kd, subject), (issue.Code, issue.Node.ToString()));
+        var loop = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>());
+        Assert.Equal(SemanticsKind.Ref, Assert.Single(loop.Bindings).TypeOf()!.Semantics);
+        Assert.Empty(c.BuildMir().Findings);
+    }
+
+    // SPEC 15.1.6: bare Subjects share their storage even when the static Field itself is writable.
+    [Theory]
+    [InlineData("func f()\n    match State.opt\n        .Some(let v) => v@follow = 2\n        .None => ()", new[] { DiagnosticCode.SharedPathAccess_Kd })]
+    [InlineData("func f()\n    for v in State.values\n        v@follow = 2", new[] { DiagnosticCode.Unsupported_Kd, DiagnosticCode.SharedPathAccess_Kd })]
+    public void StaticSubjectsDenyWrites(string body, DiagnosticCode[] codes)
+    {
+        var c = MinimalEmissionTest.Analyze(StaticSubjects + body + "\n");
+        Assert.Equal(codes, c.Binding.Issues.Select(static x => x.Code));
+    }
+
     private static Koto FindIterable(Compilation c) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>().Single().Iterable;
 }

@@ -51,9 +51,10 @@ public sealed partial class Binding
     // such as the slots of a Type argument stored through `uniq/T` or read by `(T) -> i32`.
     private bool CheckTypeUseCore(BoundType actual, BoundType expected, Koto use, OriginVariance polarity)
     {
-        if (!HasLocalRegion(actual) && !HasLocalRegion(expected) &&
-            (polarity == OriginVariance.Contravariant ?
-                FitsTypeCore(expected, actual, this, use) : FitsTypeCore(actual, expected, this, use, polarity == OriginVariance.Invariant)))
+        // The relation collects open initializer bounds even beside a local region; regional fits also publish their source edges.
+        if ((polarity == OriginVariance.Contravariant ?
+                FitsTypeCore(expected, actual, this, use) : FitsTypeCore(actual, expected, this, use, polarity == OriginVariance.Invariant)) &&
+            !HasLocalRegion(actual) && !HasLocalRegion(expected))
         {
             return true;
         }

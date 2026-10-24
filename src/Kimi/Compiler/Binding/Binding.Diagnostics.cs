@@ -188,9 +188,10 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 23.1: the Type occurrence that an omitted Origin end is related at.
+    // SPEC 23.1: an omitted Origin is related at its Type occurrence. Closed annotation atoms and open local-input atoms name
+    // such occurrences; open call/evidence atoms do not. A local region is shown by the local's name.
     private static Koto? OmittedAt(BoundOrigin origin)
-        => origin.Occurrence ?? OmittedInput(origin) ?? (origin is { Kind: OriginKind.Inference, Binder: TypeKoto occurrence } ? occurrence : null);
+        => origin.Occurrence ?? OmittedInput(origin) ?? (origin is { Kind: OriginKind.Inference, Binder: { } occurrence and not VariableKoto } && (!origin.Open || origin.IsLocalInput) ? occurrence : null);
 
     // SPEC 23.1: the input Type occurrence of a Function Type whose outer Origin is this per-call Origin; it has no name.
     private static Koto? OmittedInput(BoundOrigin origin)
@@ -396,27 +397,36 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.2.1: the omitted slot of a parameter's Type, written directly or under one borrow layer, is the projection `p.slot`;
-    // any other omitted slot has no name.
-    private static string? SlotProjection(BoundOrigin origin, Koto occurrence)
+    // SPEC 15.2.1: the omitted slot `slot` of a function parameter's Type, written directly or under one borrow layer, is the projection
+    // `p.slot`, whether a named function's input or an anonymous function's body inference variable (SPEC 15.3.4); any other omitted
+    // slot has no name.
+    private static string? SlotProjection(Koto occurrence, int slot)
     {
-        if (origin.Binder is not FunctionKoto function || origin.InputIndex < 0 || origin.InputIndex >= function.Parameters.Count)
+        var function = occurrence.Parent;
+        while (function is not null and not FunctionKoto)
+        {
+            function = function.Parent;
+        }
+
+        if (function is not FunctionKoto owner || occurrence.BoundType?.Symbol?.Schema?.Origins is not { } slots || (uint)slot >= (uint)slots.Count)
         {
             return null;
         }
 
-        var type = function.Parameters[origin.InputIndex].Type;
-        if (!ReferenceEquals(type, occurrence) && !(type is TypeSemanticsKoto { Type: { } target } && ReferenceEquals(target, occurrence)))
+        foreach (var parameter in owner.Parameters)
         {
-            return null;
+            if (ReferenceEquals(parameter.Type, occurrence) || (parameter.Type is TypeSemanticsKoto { Type: { } target } && ReferenceEquals(target, occurrence)))
+            {
+                return parameter.InternalName + "." + slots[slot].Name;
+            }
         }
 
-        return occurrence.BoundType?.Symbol?.Schema?.Origins is { } slots && origin.TargetSlot >= 0 && origin.TargetSlot < slots.Count
-            ? function.Parameters[origin.InputIndex].InternalName + "." + slots[origin.TargetSlot].Name : null;
+        return null;
     }
 
-    // SPEC 23.1: an Origin by its display kind and string: an Origin expression for static, a parameter or receiver, a slot or
-    // a meet; the source text of a Borrow, or of its Place, for a body-local finite Origin; the Type occurrence of an omitted slot.
+    // SPEC 23.1: an Origin by its display kind and string: an Origin expression for static, a parameter or receiver, a slot (a
+    // parameter's projection, SlotProjection) or a meet; the source text of a Borrow, or of its Place, for a body-local finite Origin;
+    // the Type occurrence of an omitted slot.
     private static DiagnosticOrigin OriginDisplay(BoundOrigin origin, Koto? value, bool typeLevel = false)
     {
         switch (origin.Kind)
@@ -434,18 +444,15 @@ public sealed partial class Binding
                 }
 
                 return new("expression", "(" + string.Join(" and ", parts) + ")");
-            case OriginKind.Input when origin.Occurrence is { } occurrence:
-                return SlotProjection(origin, occurrence) is { } projection ? new("expression", projection) : new("omitted", occurrence.ToString());
-            case OriginKind.Input when OmittedInput(origin) is { } input:
-                return new("omitted", input.ToString());
+            case OriginKind.Input or OriginKind.Inference when OmittedAt(origin) is { } occurrence:
+                return SlotProjection(occurrence, origin.Kind == OriginKind.Input ? origin.TargetSlot : origin.Slot) is { } projection
+                    ? new("expression", projection) : new("omitted", occurrence.ToString());
             case OriginKind.Input when origin.Binder is { } binder && origin.InputIndex >= 0 && origin.InputIndex < InputCount(binder):
                 return new("expression", InputName(binder, origin.InputIndex));
             case OriginKind.Parameter when origin.Occurrence is GenericParameterKoto declaration:
                 return new("omitted", declaration.ToString()); // SPEC 8.1.1, 23.1: the outer Origin `o` of a pair binder.
             case OriginKind.Parameter:
                 return new("expression", origin.Binder is DeclarationContainerKoto && !typeLevel ? "self." + origin.Name : origin.Name);
-            case OriginKind.Inference when origin.Occurrence is null && origin.Binder is TypeKoto occurrence:
-                return new("omitted", occurrence.ToString());
             case OriginKind.Inference when origin.Binder is VariableKoto local:
                 return new("omitted", local.NameKoto.IdentifierName); // A local's region (LocalRegionSlot), as a Closure body names it.
             case OriginKind.Holder:

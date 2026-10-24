@@ -427,7 +427,7 @@ public sealed partial class Binding
     private static bool IsBarePlace(Koto source)
     {
         source = KotoHelper.UnwrapParentheses(source);
-        return source switch
+        return IsStaticField(source) || source switch
         {
             IdentifierNameKoto => source.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.Capture or BindingSymbolKind.PatternCandidate,
             ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } => true, // SPEC 13.5.5: a selected referent is a Place.
@@ -456,7 +456,7 @@ public sealed partial class Binding
 
     // SPEC 3.4, 3.6, 10.2: a Temporary Value, which a borrow materializes once in a Temporary Place with the ordinary temporary
     // lifetime: an operand whose root, through parentheses and inline parts (both keep a Place's classification, SPEC 3.4, 4.7.1), is
-    // no Place (IsBarePlace, or a static Field, IsStaticField), such as a call result, a Case construction, a callable value or a getter
+    // no Place (IsBarePlace), such as a call result, a Case construction, a callable value or a getter
     // result; a part of it is lent with it. A newly owned temporary has exclusive writable capability, lent exclusively only when
     // spelled or as a Receiver Expression (SPEC 7.3, 15.1.5) and not through an inline part here, and a getter result only shared
     // (SPEC 11.5).
@@ -471,14 +471,13 @@ public sealed partial class Binding
 
         // SPEC 15.6.2, 5.7: as for a Place, a shared layer on the path, a raw pointer's included, denies an exclusive borrow.
         var inline = unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored);
-        return !IsBarePlace(root) && !IsStaticField(root) &&
+        return !IsBarePlace(root) &&
             (!exclusive || (spelled && !IsGetterResult(root) && !inline && !ReachedThroughShared(unwrapped))) &&
             (fixedExpectation || (source.BoundType is { } temporary && !ReferenceEquals(temporary, BoundType.Never)));
     }
 
     // SPEC 15.6.2, 22.4.4: a static Field, the root Place of a path through the keys of its group's storage: a group's Property read
-    // through its standard getter, named qualified or in its group. Not yet a bare Place (IsBarePlace): a Subject borrowed in place
-    // would then need an implicit static Borrow, unsupported until P42 (FailStaticBorrow; PLAN G100).
+    // through its standard getter, named qualified or in its group. IsBarePlace includes it; lending and Take keep their own rules.
     private static bool IsStaticField(Koto node)
         => KotoHelper.UnwrapParentheses(node).BoundSymbol?.Property is { Getter.IsStandard: true, Symbol.Scope.Owner: GroupKoto };
 

@@ -38,6 +38,8 @@ public class OriginRelationDiagnosticTest
 
     private const string Optional = "struct H {a}\n    public var o: uniq/Option<string> during a\n";
 
+    private const string Lens = "struct Lens<T> {source}\n    internal let at: ref/T during source\n";
+
     private const string View = "struct P\n    public var x: i32 = 0\n    public init() => ()\nstruct H2 {a}\n    public var o: objuniq/P during a\n";
 
     [Theory]
@@ -61,6 +63,10 @@ public class OriginRelationDiagnosticTest
     // SPEC 15.6.3, 22.2.3: an Iterator's item Reborrowed through `self` from an exclusive Field is contained in the receiver's Origin;
     // no effect bound exempts it (the adopted proposal Abstract Calls Reach by Paths removed `preserves results`' exemption, PLAN G193).
     [InlineData(Cursor + "    public func next(self: uniq/Self) -> Option<ref/i32 during source> => .Some(self.value)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "self.value", "requires self outlives self.source, which is not proven", null)]
+    // SPEC 15.2.1, 15.3.4, 15.6.5: an anonymous function's omitted parameter slot is a body inference variable of its evaluating body,
+    // fixed in the Closure body, and is shown by its projection as a named function's input slot is.
+    [InlineData(Lens + "func g() -> i32\n    let f = func (l: ref/Lens<i32>, p: ref/i32 during l.source) -> ref/i32 during static => p\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "p", "requires l.source outlives static, which is not proven", null)]
+    [InlineData(Lens + "func g() -> i32\n    let f = func (l: Lens<i32>, p: ref/i32 during l.source) -> ref/i32 during static => p\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "p", "requires l.source outlives static, which is not proven", null)]
     public void AnOriginOnlyFailureIsOneRelationRecord(string body, string code, string text, string label, string? origin)
     {
         var source = body + Main;
@@ -86,6 +92,20 @@ public class OriginRelationDiagnosticTest
             var related = Assert.Single(error.Related!);
             Assert.Equal(("origin", origin), (related.Role, Text(source, related.Span)));
         }
+    }
+
+    // SPEC 15.2.1, 23.1: an omitted slot that no parameter projection names, here a Tuple element's of an anonymous function's input, is
+    // shown and related at its Type occurrence.
+    [Fact]
+    public void AnUnnamedOmittedSlotIsShownAtItsTypeOccurrence()
+    {
+        var source = Lens + "func g() -> i32\n    let f = func (t: ref/(Lens<i32>, i32)) -> ref/i32 during static => t.0.at\n    return 0\n" + Main;
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "t.0.at"), (error.Code, Text(source, error.Span)));
+        Assert.Equal("requires the omitted Origin of Lens<i32> outlives static, which is not proven", error.Label);
+        Assert.Equal(("omitted", "Lens<i32>"), (error.Reason![1].Origin, error.Reason[1].Value));
+        var related = Assert.Single(error.Related!);
+        Assert.Equal(("origin", "Lens<i32>"), (related.Role, Text(source, related.Span)));
     }
 
     // SPEC 15.6.3, 4.7.1 (DECISIONS BU-27): a Borrow reached through safe borrow layers is contained in each, from its last dereference

@@ -4180,7 +4180,7 @@ resumed by R4-M86 (2026-10-20).
   Rejected: a static Field in `IsBarePlace` (its Subject consumer would borrow `for v in State.values` in place, an implicit static
   Borrow that fails with `PrerequisiteUnavailable_Kd` until 2b-6 (b)); a declaration-symbol test (an open family; it rejected
   `(Color.Red)@ref`, B1). Open: `IsStaticField` joins `IsBarePlace` after 2b-6 (b), with a Non-Copy static's bare acquisition, which
-  binds as a transfer (PLAN G100).
+  binds as a transfer (PLAN G100; classification superseded by G224 Static Field classification, acquisition legality remains).
 - **BU-22** (2026-10-21; the BU planning session; A5 step 2 plan 2b-4a under R4-M89 (OQ-F5-2 (b), OQ-F5-3 (a)), the contract of
   `draft/Sketches/A5 Step 2/ComponentSummaryPrototype.md` revision 3; PLAN G174; DEC Q6 form 1, R4 reviewing) The per-declaration
   component summary is a canonical component (`Binding/Binding.ComponentSummaries.cs`, its contract at the file's head): for each
@@ -4263,7 +4263,7 @@ resumed by R4-M86 (2026-10-20).
   form a static Loan on `oc` (bu22's re-read 2, C5: the alternative chosen by the planning session).
   The consumer receives a derived value with no Loan (R4-M109). Out of scope (no lending judgment; A5 models their Loans, 2b-D §1.5):
   comparison inspections, `for`/`match` Subjects, writeback reservations, in-place element reads; `IsStaticField` stays out of
-  `IsBarePlace` (BU-21's open item). Exception (R4's answer, the planning session): an accessor's `storage` Borrow of a group Property's
+  `IsBarePlace` (superseded by G224 Static Field classification). Exception (R4's answer, the planning session): an accessor's `storage` Borrow of a group Property's
   static storage stays bound (a Storage symbol; its atom is R4-M101's row 7) until P42's static-Borrow unit. Residual (G197, not
   covered): a call result derived from a static receiver keeps its Origin relation judged, so `fixed.view()` of a `let` static returned
   `during static` (or kept by a default) is the U at `fixed` plus `UnsatisfiedOriginRelation_Kd` at the call, a Language error on a
@@ -4941,6 +4941,36 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: Binding deciding p11 (it would need a position column on `EffectBoundKoto`, bu25's rejected D, or items kept as
     executable statements that every body consumer would meet); reusing `ConstraintPrefix` or `EffectBound` for p11 (their phrases
     name other forms); keeping `CallableDuplicate` with its own Note (a second copy of the duplicate rule).
+
+- **G224 Static Field classification** (2026-10-24; planning session, independent designs A/B compared, B selected and reviewed)
+  SPEC 3.4 and 15.1.6 make standard static Fields bare Places. `Binding.PlaceAuthority.IsBarePlace` includes `IsStaticField`;
+  existing callee acquisition checks then reject an Exclusive call through a static `let`, and Subject acquisition borrows static
+  Fields Shared. An iteration entry's implicit static receiver Borrow retains BU-25's located Unsupported. `BorrowableTemporary` no longer repeats the static exclusion. This supersedes BU-21's postponed inclusion and
+  BU-25's continued exclusion: 2b-6 (b) is complete, and BU-25 explicitly leaves Subject Loans to A5 rather than `FailStaticBorrow`.
+  Both independent designs preferred the existing owner fix over a new shared path-result structure. Rejected: consumer-specific
+  static clauses; a new Subject Unsupported gate; deleting HIR publication's `Res.Static` clause, which also covers computed/custom
+  getters and is a different contract. No new representation or vocabulary. The classifier adds one constant-time property check,
+  with no allocation; no speedup claimed. G100's bare initializer/discard and static `@move` legality remain: `OffersTake` still
+  admits an Owner path without layers, and general bare-transfer legality stays with its recorded R6-check migration.
+
+- **G224 Expected result sources and Origin fits** (2026-10-24; planning session, independent designs A/B compared;
+  exact-target design reviewed before implementation and after the full-suite regressions exposed the missing source facts)
+  SPEC 12.3.1 and 14.9.2 pass the expected Type to every result source, even with omitted Origins. `ResultExpectation` no
+  longer drops that Type. `DecideResult` preserves the exact target: a target containing stable local regions uses
+  `CheckTypeUse` to publish source relations; other targets keep `FitsTypeAt`'s immediate or initializer-collecting fit.
+  `CheckTypeUseCore` runs the relation before its regional return guard, so omitted inner slots still acquire bounds beside
+  stable slots. This removes whole-selection Temporary borrows without losing reassigned references' helper dependencies.
+  - The solved annotation aliases expose an existing old-path miscompile: `NamesResultOrigin` compared a whole meet with each
+    input slot, dropping call-result Loans when local-region flow ran. Its ANY-dependency query now visits meet constituents;
+    Calls, Defaults and LocalRegions share it. The ALL-dependency query `ResultOriginsFromInput` stays separate. Graph sources
+    are already flattened and remain direct queries, avoiding recursive expansion of finite self sources. The regression
+    asserts matching rejection on MIR (D5); no old-path accepted form or generation feature is added.
+  - Rejected: replacing an expected Type with the sources' common Type (changes fixed nested positions); eagerly rewriting
+    initializer syntax or open replacements (cached aliases are intentional and later sources may still add bounds); broad
+    `CheckTypeUse` at fixed result targets (changes their immediate diagnostic contract); symmetric whole-meet containment
+    (misses overlapping constituents). No new representation, state or vocabulary; the extra walks use existing storage.
+    No speedup is claimed. The incorrect test rejecting an exclusive source at a shared expected result is retained as a
+    positive case under SPEC 10.2; the negative case now forbids strengthening a shared source to an exclusive result.
 
 ## R5 and R6 (adopted 2026-10-18)
 
