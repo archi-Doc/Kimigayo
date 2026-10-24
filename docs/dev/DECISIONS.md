@@ -7856,3 +7856,11 @@ structure is recorded here by the unit that first implements it.
   SharedHandles'; C6c measured a fixed-array variant as information (B/A median 1.000); and plan row C6c's Milestone 44 moves to C9c,
   since its program interpolates. The later of C8d and C9c runs the corpus A/B under R5-M8, and C9c runs Milestone 44 under MIR code
   generation. They leave the list.
+- **R5-M117 The owner confirms C8b's departures** (owner, 2026-10-25, on the R5 planning session's explanation after C8b's design and
+  before its behavior commit; verbatim 「4件の逸脱を承認します」, answering the four departures put to the owner together, C6c's two
+  (R5-M115) and C8b's two; the consequences are the planning session's) The two departures R5-M116 records are confirmed: an inline
+  Body-disposition row (the updates `replace`, `exchange` and `swap`, as R5-M45's storage kernels) has no `LegacyRow` item, and
+  `replace`'s glue target, the Type below its target that it destroys in place, comes from Binding's published in-place row
+  (`KimiLibraryCatalog`, `TyCtxt.Published`), which the instance collector reads, rather than from a need the legacy row declares
+  (against K package 4.5 row 2 and S2-S4 X4, R5-M18); and the fixed-array storage borrows (StorageBorrowFixedShared and
+  StorageBorrowFixedExclusive) move from plan row C8d's storage-boundary kinds to C8b, so C8d keeps six. They leave the list.
