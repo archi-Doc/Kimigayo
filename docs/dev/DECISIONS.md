@@ -3117,7 +3117,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     rejects a harmless restore); keeping the question for a later SPEC session.
   - PLAN G221 (SPEC 15.6.3's descent sentence restating 15.6.4): edited in the SPEC session R4-M104 orders before 2a-2's design review.
     Rejected: a separate SPEC unit now; leaving it unscheduled.
-  - Process: R4 runs at most one implementer and one reviewer at a time; reviewers of R4's Binding-touching units stay BU's (the
+  - Process (superseded by R4-M119): R4 runs at most one implementer and one reviewer at a time; reviewers of R4's Binding-touching units stay BU's (the
     2026-10-22 question; the handoff's 2 + 1 applies again only on the owner's word). Rejected: 2 + 1; 2 + 1 with non-BU reviewers for
     Binding-touching units.
 - **R4-M111 The ledger compares Binding's Origin relation records only where they are twins** (2026-10-22; unit 2a0-4 under R4-M94's
@@ -3360,6 +3360,26 @@ and migration obligations remain in force; no numeric cap changes are authorized
     STATUS states the differences.
   - Later: the owner, 2026-10-23, verbatim 「RZ、G86、G159(2)、G158(3)、B 3.4 の §15.4.2 の穴は、分析してから別の SPEC セッションで
     決めます。今回は 11 項目だけ進めてください。」: these five points go to a later SPEC session after their analysis.
+- **R4-M119 R4's concurrency by lane, and heavy runs capped across sessions** (owner, 2026-10-24, verbatim 「先ほどの推奨の制約に変更してください。」,
+  adopting the R4 planning session's recommended rule; supersedes R4-M110's process bullet and the owner's 「1+1 のまま続けてください。」 of the
+  same day)
+  - R4 runs implementers one per lane, at most two, their code files disjoint and at most one unit changing a shared representation at a
+    time; designers and reviewers at most two (two designs in parallel, or a review beside the next design).
+  - Heavy runs (full Sessions default, mir or sel; full Functional runs, ledger runs included; native fixture and milestone sweeps) are at
+    most three at once across R4, BU and R5, registered in `artifacts/heavy-runs/` (its README: a file per running run, none started
+    while three are registered). Design and review probes run selected classes and reuse full-suite bases (diagnostic snapshot, mir
+    ledger, semantic snapshot) kept once per commit in `artifacts/verify/shared-base/`.
+  - A Binding-touching R4 unit is reviewed in parallel: its A5 part by R4's reviewer, its Binding part by BU (R4-M110 had BU review the
+    whole unit serially).
+  - Back to one implementer and one reviewer when weekly usage passes 70% early in the week.
+  - Unchanged: the full process, the owner's choice after two rounds on one family, SPEC's authority, soundness, and no input-changing
+    push inside an announced merge window. BU's and R5's parts (the cap, the bases) are confirmed by each with the owner.
+  - Reason: under one plus one each full-process unit (two designs, a design review, implementation, a review) occupied both slots, so
+    independent lanes waited (G160-4's step-walk merge, A5-F7's prototype); reviews of Binding-touching units waited for BU's capacity;
+    and several sessions' agents running full suites at once slowed runs and caused timeouts (G138), while one design's probes ran the
+    full suite four or five times. This machine (24 cores, 64 GB) runs a full Session in about 7–8 minutes alone.
+  - Rejected: one implementer and one reviewer (the pace above); two implementers and one reviewer (two designs and a review still
+    cannot overlap); counting agents without a cap on heavy runs (the load, not the count, slows the machine).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
