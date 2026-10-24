@@ -32,7 +32,9 @@
 // published library rows state (Formats, SPEC 4.9.6), which the collector reads there. Each inline storage kernel's row
 // (StorageRow; P2a) holds its writer over StorageKernelInput and HelperNeeds, which are none: its text is loads, stores and
 // address arithmetic in the caller's body, so it declares no callee and nothing is requested for it. The Raw.slice and capacity
-// kernels (P2b) are plain writers without a row: their calls are intrinsics, whose rows are IntrinsicRows'.
+// kernels (P2b) are plain writers without a row: their calls are intrinsics, whose rows are IntrinsicRows'. The one map from a compiler
+// function of the Body disposition to how MIR code generation writes its call (Row, S2-S4 X39; DECISIONS R5-M116) names each kind's
+// writer: writeLine's runtime routine, every other kind its unit's row not written yet (C8b-C8e, C9a).
 // Invariants: a new helper kind adds a row; a kind without a row fails; a request's runtime flags come from its row; each
 // requested helper is written once (the planner requests each formatting wrapper once), in request order, after the runtimes its
 // row declares;
@@ -70,6 +72,23 @@ internal enum HelperNeeds : byte
     /// declarations (SPEC 22.7, 22.9, 22.10).</summary>
     FormattingRuntime = 8,
 }
+
+/// <summary>How MIR code generation writes a call of a compiler function of the Body disposition (S2-S4 X39; DECISIONS R5-M116).</summary>
+[Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
+internal enum LegacyWriter : byte
+{
+    /// <summary>A later unit's row (<see cref="LegacyRuntimeHelpers.Row"/> names it): one located Unsupported_Kd at the call.</summary>
+    Unwritten,
+
+    /// <summary>The row's runtime routine through the one call writer.</summary>
+    Routine,
+}
+
+/// <summary>The legacy row of a compiler function of the Body disposition (X39): its writer and a routine row's runtime routine.</summary>
+/// <param name="Writer">How MIR code generation writes a call.</param>
+/// <param name="Routine">The runtime routine of a <see cref="LegacyWriter.Routine"/> row.</param>
+[Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
+internal readonly record struct LegacyRow(LegacyWriter Writer, FunctionAbi? Routine = null);
 
 /// <summary>The element descriptor of a stored collection value (SPEC 4.5, 16.3.2, 21.3.1): its representation, the name of the
 /// routine that destroys it when it is an aggregate needing destruction (otherwise null), and whether it is a string.</summary>
@@ -148,6 +167,21 @@ internal sealed partial class LegacyRuntimeHelpers
     internal bool NeedsArrayRuntime { get; set; }
 
     internal bool NeedsStringComparison { get; set; }
+
+    /// <summary>Gets the legacy row of a compiler function of the Body disposition (S2-S4 X39; DECISIONS R5-M116), the one map from such a
+    /// kind to how MIR code generation writes its call, by the row's writer; a kind of another disposition, None included, is a broken
+    /// contract.</summary>
+    /// <param name="kind">The compiler function.</param>
+    /// <returns>Its row.</returns>
+    internal static LegacyRow Row(CompilerFunctionKind kind) => kind switch
+    {
+        CompilerFunctionKind.WriteLine => new(LegacyWriter.Routine, RuntimeAbi.WriteLine), // SPEC 22.1-22.5.5: it borrows its string.
+
+        // C8b: replace, exchange, swap and the fixed-array storage; C8d: the Array operations and the Array storage kinds; C8e: the
+        // Dictionary storage kinds; C9a: the text, buffer, window and writer rows and WriteLineUtf8.
+        not CompilerFunctionKind.None when IntrinsicDisposition.Of(kind).Kind == DispositionKind.Body => default,
+        _ => throw new InvalidOperationException($"The compiler function {kind} has no legacy row."),
+    };
 
     internal static void WriteStoredCopy(TextWriter output, string destination, string source, long size)
     {

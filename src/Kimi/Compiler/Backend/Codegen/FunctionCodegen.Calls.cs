@@ -25,15 +25,6 @@ internal sealed partial class FunctionCodegen
         _ = this.WriteCall(startup, default);
     }
 
-    // The legacy runtime row of a compiler function of the Body disposition, by its kind: the console writeLine (RuntimeAbi.WriteLine, SPEC
-    // 22.1-22.5.5: it borrows its string); C8b-C8e add theirs, and C9a's formatting rows come from one Backend table beside
-    // LegacyRuntimeHelpers.FormattingRow, not from more arms here. Null for a row not written yet.
-    private static FunctionAbi? LegacyRoutine(CompilerFunctionKind kind) => kind switch
-    {
-        CompilerFunctionKind.WriteLine => RuntimeAbi.WriteLine,
-        _ => null,
-    };
-
     // A Call by its callee's row: a compiler function of the Body disposition (KimiLibraryKinds' published IntrinsicDisposition) by its
     // legacy row, any other Fn callee and a Requirement by its target (Function), an intrinsic by its row's writer
     // (FunctionCodegen.Intrinsics); the other rows are not written yet, each at the call.
@@ -205,19 +196,23 @@ internal sealed partial class FunctionCodegen
         this.Branch(call.Target);
     }
 
-    // A compiler function the backend serves from a legacy runtime row until R8 writes its body (the Body disposition), by its kind's
-    // routine (LegacyRoutine), called through the one call writer (Invoke): the call's operands at its parameters' slots, placed by the
-    // call's own key, and the call site's location; its result is Unit.
+    // A compiler function the backend serves from its legacy row until R8 writes its body (the Body disposition; LegacyRuntimeHelpers.Row,
+    // DECISIONS R5-M116), by the row's writer: a runtime routine through the one call writer (Invoke), the call's operands at its parameters'
+    // slots placed by the call's own key and the call site's location; a row not written yet, its unit's located Unsupported_Kd.
     private void Legacy(in MirTerminator call, CompilerFunctionKind kind)
     {
-        var routine = LegacyRoutine(kind);
-        if (routine is null)
+        var row = LegacyRuntimeHelpers.Row(kind);
+        switch (row.Writer)
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-            return;
+            case LegacyWriter.Routine:
+                this.Invoke(call, row.Routine!, new(call.Callee.Symbol, MirBodyKind.Fn));
+                return;
+            case LegacyWriter.Unwritten:
+                this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // Its row's unit (LegacyRuntimeHelpers.Row).
+                return;
+            default:
+                throw new InvalidOperationException($"The legacy writer {row.Writer} has no code generation row.");
         }
-
-        this.Invoke(call, routine, new(call.Callee.Symbol, MirBodyKind.Fn));
     }
 
     // A call of a routine, each argument with its parameter's Type and attributes (the O2 parity list's `noundef nonnull ...` at every call,

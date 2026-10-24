@@ -59,7 +59,7 @@ internal sealed partial class FunctionCodegen
 
     // SPEC 7.7.4 (DECISIONS R5-M108): a compiler function's routine row by its disposition, what its Value call and its adapter's entry call
     // (FunctionCodegen.Closures' Runs) with the target they carry: an intrinsic's routine row (below), a Body disposition's legacy routine
-    // (LegacyRoutine); null for any other row, which is not one routine call or not written yet (a Shim's, an instruction writer's, an
+    // (LegacyRuntimeHelpers.Row); null for any other row, which is not one routine call or not written yet (a Shim's, an instruction writer's, an
     // unwritten row's).
     private FunctionAbi? Routine(CompilerFunctionKind kind, BoundType? result, int target, out ReadOnlySpan<Value> given)
     {
@@ -67,7 +67,7 @@ internal sealed partial class FunctionCodegen
         return IntrinsicDisposition.Of(kind) switch
         {
             { Kind: DispositionKind.Intrinsic, Id: var id } => this.Routine(IntrinsicRows.Of(id), result, target, out given),
-            { Kind: DispositionKind.Body } => LegacyRoutine(kind),
+            { Kind: DispositionKind.Body } => LegacyRuntimeHelpers.Row(kind).Routine,
             _ => null,
         };
     }
