@@ -3117,9 +3117,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     rejects a harmless restore); keeping the question for a later SPEC session.
   - PLAN G221 (SPEC 15.6.3's descent sentence restating 15.6.4): edited in the SPEC session R4-M104 orders before 2a-2's design review.
     Rejected: a separate SPEC unit now; leaving it unscheduled.
-  - Process: R4 runs at most one implementer and one reviewer at a time; reviewers of R4's Binding-touching units stay BU's (the
-    2026-10-22 question; the handoff's 2 + 1 applies again only on the owner's word). Rejected: 2 + 1; 2 + 1 with non-BU reviewers for
-    Binding-touching units.
+  - Process (superseded by R4-M119): R4 runs at most one implementer and one reviewer at a time; reviewers of R4's Binding-touching
+    units stay BU's (the 2026-10-22 question; the handoff's 2 + 1 applies again only on the owner's word). Rejected: 2 + 1; 2 + 1 with
+    non-BU reviewers for Binding-touching units.
 - **R4-M111 The ledger compares Binding's Origin relation records only where they are twins** (2026-10-22; unit 2a0-4 under R4-M94's
   package; the R4 planning session's rulings on its design, options A, reset (ii) and L2; one BU review, DEC Q6 form 1)
   - Rule (R4-M4 and R4-M17 as R4-M108 narrows A5's old records): Binding's `Binding.OriginRelation` records are A5's only where they are
@@ -3360,6 +3360,29 @@ and migration obligations remain in force; no numeric cap changes are authorized
     STATUS states the differences.
   - Later: the owner, 2026-10-23, verbatim 「RZ、G86、G159(2)、G158(3)、B 3.4 の §15.4.2 の穴は、分析してから別の SPEC セッションで
     決めます。今回は 11 項目だけ進めてください。」: these five points go to a later SPEC session after their analysis.
+- **R4-M119 R4's concurrency by lane, and heavy runs capped across sessions** (owner, 2026-10-24, verbatim 「先ほどの推奨の制約に変更してください。」,
+  adopting the R4 planning session's recommended rule; supersedes R4-M110's process bullet and the owner's 「1+1 のまま続けてください。」 of the
+  same day)
+  - R4 runs implementers one per lane, at most two, their files disjoint and at most one unit changing a shared representation at a
+    time; designers and reviewers at most two (two designs in parallel, or a review beside the next design).
+  - Heavy runs (full Sessions (default, mir or sel); full Functional runs, ledger runs included; native fixture and milestone sweeps) are
+    at most three at once across R4, BU and R5, registered in `artifacts/heavy-runs/` (a file per running run); a session whose run
+    would exceed three announces it and waits. Design and review probes run selected classes and reuse full-suite bases (diagnostic
+    snapshot, mir ledger, semantic snapshot) kept once per dev sha and shared across sessions in `artifacts/verify/shared-base/` (the
+    planning session also keeps one per branch head other units build on).
+  - A Binding-touching R4 unit is reviewed in parallel: its A5 part by R4's reviewer, its Binding part by BU (R4-M110 had BU review the
+    whole unit serially).
+  - Back to one implementer and one reviewer when weekly usage passes 70% early in the week.
+  - Unchanged: the full process, the owner's choice after two rounds on one family, SPEC's authority, soundness, and no input-changing
+    push inside an announced merge window. BU and R5 confirm the relayed rule once with the owner; the cap binds them as stated.
+  - Reason: under one plus one each full-process unit (two designs, a design review, implementation, a review) occupied both slots, so
+    independent lanes waited (G160-4's step-walk merge, A5-F7's prototype); reviews of Binding-touching units waited for BU's capacity;
+    and several sessions' agents running full suites at once slowed runs and caused timeouts (G138), while one design's probes ran the
+    full suite four or five times. R4-M110 kept one plus one for tight usage limits (R4's handoff of 2026-10-22: "with tight session
+    limits 1 + 1"); the 70% guard now carries that reason, so one plus one no longer applies below it.
+  - Rejected: one implementer and one reviewer below the guard (the pace above; kept as the fallback above it); two implementers and
+    one reviewer (two designs and a review still cannot overlap); counting agents without a cap on heavy runs (the load, not the count,
+    slows the machine).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -4766,7 +4789,8 @@ resumed by R4-M86 (2026-10-20).
     layer, an abstract part, a struct or an enum). One walk, `Binding.Held` (Binding.Retention.Rows.cs), goes from each hold through all
     the call may write, by BU-1's one reach rule (a value stored at a writable position brings its whole Type), as `RetentionParts`'
     writable positions do: every layer below but a callable's (`IsCallable`, which both read), a raw layer whatever its step, a shared
-    borrow or an rc or arc handle included, and a struct's or enum's stored content (SPEC 5.7's inline storage: the base, Fields, Case
+    borrow or an rc or arc handle included, a nominal Type's Type arguments (as `RetentionParts` walks them: `Dictionary<K, V>`, which
+    declares no Fields, holds through `V`), and a struct's or enum's stored content (SPEC 5.7's inline storage: the base, Fields, Case
     payloads and their Tuple and fixed-array elements), each struct or enum once per output. At each position, a raw input other than j
     whose Type the position can hold (a raw layer agreeing with it with Origins fitted, their `TyCtxt.Erase` forms one Type, or an
     abstract part) gets a Value row, never j itself; a raw layer stepping Unstated or Static (`StoredStep` on an instance's inline path,
@@ -4815,7 +4839,8 @@ resumed by R4-M86 (2026-10-20).
     Origins and 15.6.4 names only a raw pointer argument. A result's holds include positions behind a borrow, as D6's raw layers do
     (conservative). R4's N1, a (b) row for G160-5's classification: a `static` result layer unties the whole result (`useStatic2`: A5
     reports ComparisonLoanConflict_Kd where the old analysis accepts), whole-result Untied over-approximating 15.6's per-part reading
-    (R4-M117 item 5), as D6's unstated layer does (`useUnstated2`).
+    (R4-M117 item 5), as D6's unstated layer does (`useUnstated2`); R4's round-3 re-check adds `useRc2` (an rc payload's unstated raw
+    Field) and `usePhantom2` (a phantom `Ph<raw/u8>` Field) to that class.
   - R-B5 (on 04d865038, round 3, against dev 1fc5a0731): the mir Functional suite passes, 22,217 tests against the base's 22,188
     (MirCensusTest, the Utf8* and InterpolationScanRecoveryTest classes among them); its MIR difference ledger keeps the base's 3,118
     rows and adds 2, both from this unit's RetentionTest program (`fill`, `hidden`), whose diagnostics the base compiler gives alike.
