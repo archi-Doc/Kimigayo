@@ -208,16 +208,7 @@ internal sealed class ObjectGenerationPlan
                 !entry.BaseTokens.AsSpan().SequenceEqual(CollectionsMarshal.AsSpan(this.bases)) || !entry.VirtualSlots.AsSpan().SequenceEqual(slots) || this.physical[id].Drop != drop ||
                 (value.Layout.Size != 0 && entry.Abi.Parameters[1].Kind != parameterKind))
             {
-                var parameters = new List<AbiParameter> { new("ptr", "ret", AbiParameterKind.ResultSlot) };
-                if (value.Layout.Size != 0)
-                {
-                    parameters.Add(new(value.ArgumentType!, "a0", parameterKind, 0));
-                }
-
-                parameters.Add(new("i64", "controlValue", AbiParameterKind.Context));
-                parameters.Add(new("ptr", "location", AbiParameterKind.Location));
-                parameters.Add(new("i64", "length", AbiParameterKind.LocationLength));
-                var abi = new FunctionAbi("__kimi_make_object" + id, "void", parameters.ToArray()) { ResultSlot = true };
+                var abi = ObjectRuntime.Factory(id, value, parameterKind);
                 var destroy = drop == -1 ? null : drop == -2 ? "__kimi_destroy_string" : "__kimi_drop_aggregate" + drop;
                 entry = new(id, typeKey, value, copy == ConstraintProof.Proven, abi, token)
                 {
