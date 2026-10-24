@@ -200,9 +200,8 @@ internal sealed partial class FunctionCodegen
     // SPEC 22.4.3: a staticEnsure, its target the static's StaticInit item (InstanceCollector.Static): nothing for a folded slot; else, after
     // the call's flag points, the slot's state read, the access proceeding when it is Initialized and otherwise after the ensure function,
     // given the access's location (SPEC 22.5.1); its Unit result has no storage.
-    private void Ensure(in MirTerminator call)
+    private void Ensure(in MirTerminator call, int target)
     {
-        var target = this.Target(new(this.at, this.body.Blocks[this.at].Count));
         if (target < 0 || this.collector.Set.Items[target] is not { Key.Kind: MonoKind.Body } entry)
         {
             this.Report(DiagnosticCode.InternalInvariant_Kd, call.Source); // The collector targets every staticEnsure of a checked program.
