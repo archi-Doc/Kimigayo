@@ -333,51 +333,34 @@ public sealed partial class Binding
         this.pendingRelations.RemoveRange(kept, this.pendingRelations.Count - kept);
     }
 
-    // DECISIONS R4-M126 F3: a pending relation, its ends resolved, routed as a binding-time fit routes one: fixed-fixed or Refuted, it is
-    // judged by a fit's position judge in the body that formed it, every failing chain recorded at its use as RecordOriginFitFailure records
-    // a fit's (a Refuted body chain also a twin, R4-M108, R4-M111); any other body chain stays a row for A5 and the old reporter, unjudged
-    // here. The obligation stays either way: a recorded failure leaves Binding incomplete, so the old reporter never judges it again.
+    // DECISIONS R4-M126 F3 (R4-M133): a pending relation, its ends resolved, routed as a binding-time fit is: fixed-fixed or Refuted, its
+    // chains are found by the fit's position search in the body that formed it, passed explicitly, and recorded as a fit's are
+    // (RecordOriginChains: at RelationAt, a failed Origin environment's dependent, a body chain a twin); any other body chain stays a row
+    // for A5 and the old reporter, unjudged here. The obligation stays either way: a recorded failure leaves Binding incomplete, so the
+    // old reporter never judges it again.
     private void RoutePendingRelation(in BindingObligation obligation)
     {
         var (use, body) = (obligation.Use, obligation.Body);
         var longer = this.OriginAtUse(obligation.Longer!, use);
         var shorter = this.OriginAtUse(obligation.Shorter!, use);
-        var chain = BodyChain(longer, shorter, body);
-        if ((chain && !RefutesOriginRelation(longer, shorter, body) && !(obligation.Equality && RefutesOriginRelation(shorter, longer, body))) ||
-            use.BindingFailure != BindingFailure.None)
+        var refuted = RefutesOriginRelation(longer, shorter, body) || (obligation.Equality && RefutesOriginRelation(shorter, longer, body));
+        if ((BodyChain(longer, shorter, body) && !refuted) || use.BindingFailure != BindingFailure.None)
         {
             return;
         }
 
         var all = this.relationScratch;
         all.Clear();
-        var saved = this.EnterBody(body);
-        try
+        var variance = obligation.Equality ? OriginVariance.Invariant : OriginVariance.Covariant;
+        if (new OriginFitSearch(this, use, body, OriginFitMode.Judged, all).FailedOriginPart(longer, shorter, variance, obligation.Condition) is { } first)
         {
-            // The destination is the obligation's Type, which a clause's or a Within row's relation leaves null (the fact's is nullable).
-            var variance = obligation.Equality ? OriginVariance.Invariant : OriginVariance.Covariant;
-            var search = new OriginFitSearch(this, use, this.formingBody, OriginFitMode.Judged, all);
-            if (search.FailedOriginPart(longer, shorter, obligation.Type!, variance, obligation.Condition) is { } first)
+            for (var i = 0; i < all.Count; i++)
             {
-                for (var i = 0; i < all.Count; i++)
-                {
-                    if (!all[i].Equals(first))
-                    {
-                        this.RecordMoreRelation(use, all[i] with { Clause = obligation.Clause, WellFormed = obligation.WellFormed });
-                    }
-                }
-
-                this.FailExplained(ref this.originRelations, use, BindingFailure.OriginRelation, first with { Clause = obligation.Clause, WellFormed = obligation.WellFormed });
-                if (chain)
-                {
-                    (this.originTwins ??= new(ReferenceEqualityComparer.Instance)).Add(use);
-                }
+                all[i] = all[i] with { Clause = obligation.Clause, WellFormed = obligation.WellFormed };
             }
-        }
-        finally
-        {
-            this.formingBody = saved;
-            all.Clear();
+
+            var recorded = first with { Clause = obligation.Clause, WellFormed = obligation.WellFormed };
+            _ = this.RecordOriginChains(use, RelationAt(obligation), body, obligation.Type, recorded);
         }
     }
 

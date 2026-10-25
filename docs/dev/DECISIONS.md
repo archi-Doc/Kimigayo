@@ -3611,8 +3611,18 @@ and migration obligations remain in force; no numeric cap changes are authorized
     obligation naming one, once per formation (no deduplication, PLAN V16; a relation formed twice is judged twice, the second finding
     its use failed or proving it again; 2c-3B review B3), to one reused list keyed by the outermost unclassified Closure whose atoms it
     names; `Classify(k)` is followed by `JudgePendingRelations(k)`: an entry whose obligation left `obligationSet` is skipped
-    (F2), each other is routed as a binding-time fit is (F3): resolved fixed-fixed or Refuted, judged by the fit's position judge in
-    its body and recorded at its use (a Refuted body chain also a twin), any other body chain stays a row; the obligations stay. (a) is
+    (F2), each other is routed as a binding-time fit is (F3): resolved fixed-fixed or Refuted, its chains are found by the fit's
+    position search in the body that formed it, passed explicitly, and recorded by the one recording a binding-time fit uses
+    (`Binding.OriginFits.RecordOriginChains`: at `RelationAt`, a local annotation's fit at its initializer as DIAGNOSTICS and the old
+    reporter locate it; a failure no chain refutes in a failed Origin environment a dependent of it; the other chains through
+    `RecordMoreRelation`; the destination the obligation's Type, `BoundType?`; a body chain a twin), any other body chain stays a row;
+    the obligations stay (reviews B1, F3, O5: the first version re-implemented the recording, recorded at the obligation's use and
+    entered the body with `EnterBody`, against BU-28). The component it adds (planning session's choice (b), 2026-10-25):
+    `OriginFitSearch`, OriginFits' position search as one non-allocating value (its contract in the file) whose constant context is the
+    use, the body, the mode `OriginFitMode` (Proof, Judged, Verified; the two former mode bools) and the chain list, and whose members
+    take only the varying inputs, every member within the parameter limit; it was a behavior-preserving commit first, and the search
+    no longer carries the destination Type, which the recording names. Rejected: the body threaded through the search's members (two
+    already over the 6-parameter limit grow; an owner exception); `EnterBody` (BU-28). (a) is
     2c-2's `Classify` placement; (c) a pending atom is Unclassed in the view until R4-M118's Dependent row (D-3); (d) `BindClosure(k)`
     removes the entries formed in k's body or a body nested in it. No program found rebinds a Closure while entries are open, and none
     removes a pending obligation in place before classification: (d)'s removal and F2's skip are guards.
@@ -3628,7 +3638,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `UnprovenOriginRelation_Kd` on both pipelines (the default's conservative Loan records of g6a-g6e become Binding's); g65a, r1g,
     15.8.2's `invalid` Unproven (Refuted before); r1a-r1c add the body's record beside R1's call U; t4e, t4f, f7j1, rc4, s773, D-13's
     three forms under Shared and Exclusive receivers (no missing receiver premise, D-13) and g6c stay valid (g6c and D-13's Option form
-    keep the old analysis's conservative Loan record). Rejected: a `reached` flag on
+    keep the old analysis's conservative Loan record). Not covered (BU's review F2, PLAN G254, the planning session's (c)): a captured
+    pair layer's bare use that Reborrows by case records no same-Semantics Reborrow (BU-27 covers `uniq/T` and `objuniq/T`), so it
+    keeps `s/T during a` and is never contained in ρ (`q@follow = value` with `s is uniq` is accepted, its concrete twin Unproven; base
+    too); BU-27's extension to a pair layer acquired by case is the next unit under the full process. Rejected: a `reached` flag on
     the walk (a mode parameter); routing by `JudgeCallPosition` (it re-adds a meet's operand rows and leaves a Refuted body chain
     unrecorded); the lists on `BoundClosure` (a field on the published definition for one list); a pass reset in `ResetPass`.
     Numbering: R4-M133 is free on dev and every branch (R4-M131 on `claude/r4-spec-n2`, R4-M132 on `claude/a5-2a-2`).

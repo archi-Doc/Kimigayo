@@ -131,7 +131,12 @@ public class ClosureEnvironmentOriginTest
 
     // The forms whose records name the call receiver ρ or a Borrow resolved to it (ARecordNamingTheCallReceiverShowsTheClosure).
     private const string EnvBorrow = "func use(p: ref/i32) -> i32\n    let n: i32 = 1\n";
+    private const string LocalAnnotated = EnvBorrow + "    let c = func [n] () -> i32\n        let r: ref/i32 during p = n@ref\n        return 0\n    return 0\n";
     private const string G6bStore = G6Single + "    var c = func [p@move, q@move] () -> i32\n        q@follow = p\n        return 0\n    return 0\n";
+    private const string FailedClauseStore = G6Single + "    origin p outlives zz\n    var c = func [p@move, q@move] () -> i32\n        q@follow = p\n        return 0\n    return 0\n";
+
+    private const string LocalAnnotatedConsuming = Consume + EnvBorrow + "    let t = \"a\"\n    let c = func [n, t@move] () -> i32\n        consumeText(t@move)\n" +
+        "        let r: ref/i32 during p = n@ref\n        return 0\n    return 0\n";
 
     private const string SpecInvalid = "func makeText() -> string => \"a\"\nfunc use() -> i32\n    let other = makeText()\n" +
         "    let invalid = func [other@move] () -> ref/string => other@ref\n    return 0\n";
@@ -353,10 +358,12 @@ public class ClosureEnvironmentOriginTest
 
     // SPEC 23.1 (DECISIONS R4-M126 §8; 2c-3B reviews B2, F1): a record's end ρ shows as the closure's call receiver, related at the
     // Closure literal; a Borrow of an environment binding, whose Origin resolves to ρ at its use, stays the shown and related borrow (g65a,
-    // SPEC 15.8.2's `invalid`); G6's store (g6b) and n2b name ρ. Each was the Closure literal's text.
+    // SPEC 15.8.2's `invalid`, a local annotation's fit at its initializer, d1); G6's store (g6b) and n2b name ρ. Each was the Closure
+    // literal's text.
     [Theory]
     [InlineData(EnvBorrow + "    let c = func [n] () -> ref/i32 during p => n@ref\n    return 0\n", "n@ref", "the borrow n@ref outlives p", "n@ref")]
     [InlineData(SpecInvalid, "other@ref", "the borrow other@ref outlives static", "other@ref")]
+    [InlineData(LocalAnnotated, "n@ref", "the borrow n@ref outlives p", "n@ref")]
     [InlineData(G6bStore, "p\n", "the closure's call receiver outlives p", "func [p@move, q@move]")]
     [InlineData(N2bStore, "u@move", "the closure's call receiver outlives the borrow x", "func [u] () -> i32")]
     public void ARecordNamingTheCallReceiverShowsTheClosure(string function, string at, string relation, string related)
@@ -368,6 +375,21 @@ public class ClosureEnvironmentOriginTest
         Assert.StartsWith(related, From(Assert.Single(error.Related!).Span), StringComparison.Ordinal);
 
         string From(SourceSpan? span) => span is { } value ? source[value.Start..] : string.Empty;
+    }
+
+    // SPEC 23.1.2, DIAGNOSTICS (DECISIONS R4-M133; reviews B1, F3): a pending relation is recorded as a binding-time fit is: a local
+    // annotation's fit at its initializer, under a Consuming receiver too (d3, Refuted; and d1 above), and a failure that no chain refutes
+    // in a failed Origin environment a dependent of that failure (b1: the clause's record alone, as the same Unknown formed in the
+    // function body). They were at the whole declaration and an independent record.
+    [Theory]
+    [InlineData(LocalAnnotatedConsuming, "UnsatisfiedOriginRelation_Kd n@ref")]
+    [InlineData(FailedClauseStore, "MissingOriginBinding_Kd zz")]
+    public void APendingRelationIsRecordedAsABindingTimeFit(string function, string records)
+    {
+        var source = function + "public func main() => ()\n";
+        Assert.Equal(records, string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {Text(x.Span)}")));
+
+        string Text(SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;
     }
 
     // SPEC 15.6.3, 23.1.2 (the package's r1a–r1c; R4's 2c-3B review O2): a result `during p` through the environment is Unknown in the
