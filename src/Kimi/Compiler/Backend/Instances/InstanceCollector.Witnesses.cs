@@ -46,15 +46,10 @@ internal sealed partial class InstanceCollector
     }
 
     // K 4.5 rows 2 and 6, F 4.5: a compiler function's call of a requirement on a Type of the item's instance, through the requirement's own
-    // Contract under the Self-bearing factory (TyCtxt.Synthesized); a Type TyCtxt cannot make is the storage-nesting gap at the call.
-    private int Runs(MirProgram program, int item, SourceRef subject, BindingSymbol requirement, BoundType? self)
+    // Contract under the Self-bearing factory (TyCtxt.Synthesized), a Type whose verdict its caller read (Below; an intrinsic's argument In
+    // or Edge's Compose).
+    private int Runs(MirProgram program, int item, SourceRef subject, BindingSymbol requirement, BoundType self)
     {
-        if (self is null)
-        {
-            this.Set.Report(Capability.Code(CapabilityGap.StorageNesting), subject);
-            return -1;
-        }
-
         var contract = requirement.Scope.Owner.BoundSymbol!;
         var call = this.types.Synthesized(requirement, self, contract.Type!);
         return this.Requirement(program, item, subject, requirement, this.types.Witness(requirement, contract, call));
