@@ -622,6 +622,28 @@ public sealed class InstanceCollectorTest
         Assert.Single(set.Items.ToArray(), x => Label(program, x) == "ObjectDescriptor i32");
     }
 
+    // SPEC 15.7.1, 4.9.6 (DECISIONS R5-M116): replace destroys its target's old value in place, Binding's published row, so its call
+    // targets the glue of that Type when it may need a drop, as its Item's Value call and its adapter do; an i32 needs none, and exchange
+    // and swap destroy nothing.
+    [Fact]
+    public void AReplaceTargetsTheGlueOfTheValueItDestroysInPlace()
+    {
+        var (program, set) = Collect("struct Res\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n" +
+            "func r(t: uniq/Res, v: Res) => Kimi.Intrinsics.replace(t, with: v@move)\nfunc n(t: uniq/i32) => Kimi.Intrinsics.replace(t, with: 2)\n" +
+            "func e(t: uniq/Res, v: Res) -> Res => Kimi.Intrinsics.exchange(t, with: v@move)\n" +
+            "func s(a: uniq/Res, b: uniq/Res) => Kimi.Intrinsics.swap(a, b)\n" +
+            "func v(t: uniq/Res, w: Res)\n    let f = Kimi.Intrinsics.replace<Res>\n    f(t, w@move)\n" +
+            "func a() -> (uniq/Res, Res) -> () => Kimi.Intrinsics.replace\n");
+        Assert.Empty(set.Records);
+        Assert.Equal(["DropGlue Res"], AtCalls(program, set, "Fn r"));
+        Assert.Equal([string.Empty], AtCalls(program, set, "Fn n"));
+        Assert.Equal([string.Empty], AtCalls(program, set, "Fn e"));
+        Assert.Equal([string.Empty], AtCalls(program, set, "Fn s"));
+        Assert.Equal(["DropGlue Res"], AtCalls(program, set, "Fn v"));
+        var adapter = Assert.Single(Enumerable.Range(0, set.Items.Length), x => set.Items[x].Key.Kind == MonoKind.ItemAdapter);
+        Assert.Equal(["DropGlue Res"], set.Targets(adapter).ToArray().Select(x => Label(program, set.Items[x.Item])));
+    }
+
     // SPEC 13.6.4, 8.15.3 (DECISIONS R5-M74): a runtime Type test and a clone acquire nothing and need no layout, so neither has a target:
     // a test of a struct no creation makes, oversized or with a table, collects nothing of it, and a clone of a handle to an oversized
     // payload records nothing; only creations are descriptors.
@@ -1653,6 +1675,25 @@ public sealed class InstanceCollectorTest
 
     private static string[] Targets(MirProgram program, CheckedSet set, string label)
         => set.Targets(Item(program, set, label)).ToArray().Select(x => Label(program, set.Items[x.Item]) + (x.Runtime ? string.Empty : " (check)")).ToArray();
+
+    // The targets at each call site of an item's body whose callee is a compiler function or a value, joined (empty: none).
+    private static string[] AtCalls(MirProgram program, CheckedSet set, string label)
+    {
+        var item = Item(program, set, label);
+        var body = program.Bodies[set.Items[item].BodyOrdinal];
+        var sites = new List<string>();
+        for (var b = 0; b < body.Blocks.Length; b++)
+        {
+            if (body.Blocks[b].Terminator is { Kind: MirTerminatorKind.Call } call &&
+                (call.Callee.Kind == MirCalleeKind.Value || call.Callee.Symbol?.CompilerFunction is not (null or CompilerFunctionKind.None)))
+            {
+                var at = new MirLocation(b, body.Blocks[b].Count);
+                sites.Add(string.Join(", ", set.Targets(item).ToArray().Where(x => x.At == at).Select(x => Label(program, set.Items[x.Item]))));
+            }
+        }
+
+        return [.. sites];
+    }
 
     // An item's targets but the glue of the values its body drops.
     private static string[] Calls(MirProgram program, CheckedSet set, string label)

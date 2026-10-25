@@ -7951,3 +7951,74 @@ structure is recorded here by the unit that first implements it.
   SharedHandles'; C6c measured a fixed-array variant as information (B/A median 1.000); and plan row C6c's Milestone 44 moves to C9c,
   since its program interpolates. The later of C8d and C9c runs the corpus A/B under R5-M8, and C9c runs Milestone 44 under MIR code
   generation. They leave the list.
+- **R5-M116 Whole-value updates, the fixed-array storage and the legacy row map in MIR code generation (C8b)** (2026-10-25, C lane;
+  plan C8b, package C 3.2 and 3.4, S2-S4 X4 and X39, K package 4.5 row 2, PD2, PD3, PD21; SPEC 7.7.4, 15.7, 15.7.1-15.7.3, 16.3.2,
+  22.2, 22.5.1; the planning session's go and rulings Q1-Q5 on C8b's design, `c8b-design.md`; under R5-M18 form 2 (G:library-1),
+  R5-M45, R5-M87, R5-M89, R5-M92, R5-M95 and R5-M108)
+  - Map (ruling Q1, X39): `LegacyRuntimeHelpers.Row(CompilerFunctionKind)` is the one map from a compiler function of the Body disposition
+    to how MIR code generation writes its call, `LegacyRow(Writer, Routine)` with the closed `LegacyWriter` (Unwritten, Routine, Replace,
+    Exchange, Swap, FixedStorage), `[Transitional("R8")]`; another kind is a broken contract. Code generation switches over the writer,
+    never over the kind (R5-M92); `LegacyRoutine` is deleted. Rows: writeLine's routine; the three updates; FixedStorage for
+    StorageBorrowFixedShared and Exclusive; every other Body-disposition kind Unwritten, its unit's located `Unsupported_Kd` (C8d the Array
+    operations and Array storage kinds, C8e the Dictionary storage kinds, C9a the formatting and writer rows). Refinement of the design
+    (the planning session, accepted): no Kernel column; a kernel's input decoding belongs to its writer, so a kernel is a writer
+    (FixedStorage) and the map keeps one closed writer column. The old lowering keeps its own dispatch (D5).
+  - Dispatch: a Body-disposition compiler function's direct call and its Item's Value call go through one `Legacy` with the target their
+    site carries (SPEC 7.7.4, R5-M108: an Item's call is its direct call's row); their operands are slot-ordered under both keys.
+  - Updates (`FunctionCodegen.Updates`; SPEC 15.7): the target is the first input's reference value, T its referent. Replace: T's glue, the
+    site's target, at the site's location when T may need a drop (SPEC 16.3.2, 22.5.1), then the new value put (a string constant written
+    whole); exchange: the old value kept at its result (a call's destination, a fresh temp, R5-M89; an entry's result slot, or the value
+    it returns), then the new one put; swap: the first value held (a value in memory in a slot of the entry block), the second put at the
+    first, the held one at the second (disjoint, SPEC 15.7.2). A call and an update Item's adapter entry take the same steps
+    (`DestroyOld`, `Keep`, `SwapValues`), the entry over its own parameters (ruling Q3 (a): G157 (22)'s "C8d keeps the adapters of
+    instruction-shaped rows" narrows to C8d's own rows). A Copy of the target's own referent (`exchange(p@uniq, with: p)`) is read before
+    the target changes, or copied with equal ranges, which memcpy admits. Exchange and swap report nothing. Statics: never a target
+    (R5-M82; an immutable static is not lent exclusively); a Copy of one as the incoming value reads its ensured slot (R5-M106).
+  - Glue target (ruling Q2): a bodyless callee whose published row (`KimiLibraryCatalog`, `TyCtxt.Published`) destroys the Type below a
+    parameter in place targets that Type's glue when it may need a drop, at its call, its Item's Value call and its adapter
+    (`InstanceCollector.Callees`' `Bodyless`; a Type the substitution cannot make is the storage-nesting gap, `InstanceCollector.Glue`'s
+    record); Binding's fact has one owner, which A3's borrows and the effect summary read.
+    Departure (for the owner's departures list), confirmed by the owner (R5-M117): K package 4.5 row 2 and S2-S4 X4 give a
+    Body-disposition callee a `LegacyRow` item whose legacy row declares its needs; an inline Body-disposition row (the updates, as
+    R5-M45's kernels) has no `LegacyRow` item, and replace's glue is its call's own target, from Binding's published row rather than the
+    legacy row's declared needs.
+  - Copy slots (supersedes R5-M89's and R5-M92's scan for these calls): a call of a Body-disposition compiler function, direct or an
+    Item's Value call, takes slots by its row as an intrinsic does: a routine row its OwnedSlot parameters, a swap of a value in memory
+    one held slot numbered at its first operand (a reference, which has none of its own); the updates and the storage writer read their
+    operands in place, no callee seeing them.
+  - Storage (`FunctionCodegen.Storage`; SPEC 22.2, P2a's row, R5-M45): FixedStorage writes the BorrowFixed kernel's text, the one copy both
+    generators write (PD2): the remainder {first element, 0, N} at the result's Fields 0-2 (RefRemainder's and UniqRemainder's order), N
+    the array's closed length. Boundary: the Dictionary kernels C8e's; StorageBorrowShared/Exclusive, StorageOwn, StorageOwnFixed,
+    StorageBorrowUniqSlice, StorageSetArrayLength and Capacity C8d's; RawSlice C8a's Slice row.
+    Departure (for the owner's departures list), confirmed by the owner (R5-M117): plan rows C8b and C8d — the S1 audit (`audit.md`,
+    StorageBorrowFixedShared :86 and Exclusive :87) counts the fixed pair among C8d's "8 storage-boundary kinds"; C8b writes it (40
+    ledger rows need nothing else), so C8d keeps 6.
+  - Restructured first, behavior unchanged (20a1f774a): an operand put at an address, a string constant, the one Value-less operand,
+    written whole as its record (`FunctionCodegen.Stores`; the copy-slot argument through it, one string-constant test, one operand
+    Type, the value an address holds); a local's home spelled into a span (`FunctionCodegen.Spelling`); then the map with writeLine's row
+    (f391deedd).
+  - Verified: the sel ledger loses 132 rows (C-frame 101, object 13, C7b 12, all of it, so its file goes, C-aggregate 5, library-2 1),
+    each passing, none renamed (the census's 92 update and 40 fixed-storage rows); the 3 rows reaching update adapters wait for C8c's
+    string `==`; the 25 fixture families the flipped tests write (among them `StaticElement*`, `WholeValue*`, `UserIteration*`,
+    `UniqSlice*` and the new `UpdateRows`, `UpdateItems`) natively under sel and the old generator at O0 and O2; milestones 17 and 29
+    print the old generator's output under sel at O0 and O2; `FunctionCodegenTest` (replace's glue before its put at the call's
+    location, also through an Item's Value call; exchange's kept value before its put; swap's held slot; an erased update Item's entry;
+    the fixed-array remainder; the copy slots by row; M9's 0 B and I1 over the `Updates` source) and `InstanceCollectorTest` (replace's
+    glue target at its call, Value call and adapter, none for an i32, exchange or swap). O2 (information; no corpus kernel uses these):
+    a temp kernel of scalar and 32-byte swaps and exchanges, a replace and a fixed-array loop, old generator A against sel B at O2, 15
+    interleaved samples: B/A median 0.97 (0.94-0.99) against A/A 0.96-1.02, the same optimized loop but for registers.
+  - Rejected: arms by `CompilerFunctionKind` in `Legacy` (a second table of the vocabulary); finding the glue by key in code generation
+    (R5-M100 ruling 1); whole-aggregate first-class loads and stores (R5-M87's copy form); a non-entry alloca for swap's held value;
+    BorrowFixed's stores re-spelled with `StoreAt` (a second copy of P2a's kernel); copy slots for update operands; `MonoKind.LegacyRow`
+    function items for the updates (a call per update at O0 and an item key C8d would inherit before its first helper row); the updates
+    as Kimigayo bodies now (R8's stage; a library, disposition and declared legacy `.ll` change); new IntrinsicIds (PD21); a Needs column
+    for replace's glue (a second statement of Binding's published row); the general rule "Destroys ≥ 0 → glue" (Array.clear's row stands
+    for its elements, C8d's ElementGlue); a Kernel column (above); re-pointing the old lowering to the map now (D5, no consumer in C8b).
+- **R5-M117 The owner confirms C8b's departures** (owner, 2026-10-25, on the R5 planning session's explanation after C8b's design and
+  before its behavior commit; verbatim 「4件の逸脱を承認します」, answering the four departures put to the owner together, C6c's two
+  (R5-M115) and C8b's two; the consequences are the planning session's) The two departures R5-M116 records are confirmed: an inline
+  Body-disposition row (the updates `replace`, `exchange` and `swap`, as R5-M45's storage kernels) has no `LegacyRow` item, and
+  `replace`'s glue target, the Type below its target that it destroys in place, comes from Binding's published in-place row
+  (`KimiLibraryCatalog`, `TyCtxt.Published`), which the instance collector reads, rather than from a need the legacy row declares
+  (against K package 4.5 row 2 and S2-S4 X4, R5-M18); and the fixed-array storage borrows (StorageBorrowFixedShared and
+  StorageBorrowFixedExclusive) move from plan row C8d's storage-boundary kinds to C8b, so C8d keeps six. They leave the list.
