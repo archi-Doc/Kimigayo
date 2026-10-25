@@ -26,8 +26,9 @@ internal sealed partial class MirBuilder
         }
 
         var scope = this.OpenScope(block: false);
-        var subject = this.Temp(plan.SubjectBorrow ?? TypeOf(match.Expression), match.Expression, MirLocalRole.Subject);
+        var subject = this.Hold(plan.SubjectBorrow ?? TypeOf(match.Expression), match.Expression, MirLocalRole.Subject);
         this.Assign(subject, match.Expression);
+        this.Made(subject);
         var after = this.Open(match, destination);
         var start = this.selected.Count;
         CollectionsMarshal.SetCount(this.selected, start + plan.Positions.Count);
@@ -75,7 +76,7 @@ internal sealed partial class MirBuilder
     private MirPlace Guard(Koto condition, int whenFalse, int whenTrue, BoundMatch plan, int pattern, int start)
     {
         var tested = this.OpenScope(block: false);
-        var test = this.Temp(BoundType.Boolean, condition);
+        var test = this.Hold(BoundType.Boolean, condition);
         var temporaries = this.OpenScope(block: false);
         for (var i = pattern; i < plan.Positions[pattern].End; i++)
         {
@@ -90,6 +91,7 @@ internal sealed partial class MirBuilder
 
         this.Assign(test, condition);
         this.CloseScope(temporaries);
+        this.Made(test);
         this.body.Push(this.current, MirStatement.Of(MirStatementKind.FakeRead, this.selected[start + pattern], this.Info(condition)));
         this.Branch(test, condition, whenFalse, whenTrue);
         this.CloseScope(tested, clean: false);
@@ -131,7 +133,7 @@ internal sealed partial class MirBuilder
     private void LiteralTest(in BoundPattern position, MirPlace place, int next)
     {
         var literal = position.Literal;
-        var value = this.Temp(BoundType.Boolean, position.Source);
+        var value = this.Hold(BoundType.Boolean, position.Source);
         var operand = MirOperand.Copy(place);
         if (literal.Kind == PatternLiteralKind.String)
         {
@@ -150,7 +152,7 @@ internal sealed partial class MirBuilder
             _ => new(MirConstKind.Integer, this.body.TypeOf(place)!, literal.Negative ? -magnitude : magnitude),
         })));
         this.Set(value, MirRvalue.Binary(MirBinaryOp.Eq, operands, proven: true), position.Source);
-        this.Pass(MirOperand.Copy(value), 1, next, position.Source);
+        this.Pass(MirOperand.Copy(this.Made(value)), 1, next, position.Source);
     }
 
     // A test's branch: on in a new block where the value is the expected one, else to the next arm.

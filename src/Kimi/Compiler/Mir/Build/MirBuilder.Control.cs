@@ -101,12 +101,13 @@ internal sealed partial class MirBuilder
     private MirPlace Test(Koto condition, int whenFalse, int whenTrue)
     {
         var tested = this.OpenScope(block: false);
-        var test = this.Temp(BoundType.Boolean, condition);
+        var test = this.Hold(BoundType.Boolean, condition);
         var temporaries = this.OpenScope(block: false);
         var mark = this.arguments.Count;
         this.Assign(test, condition);
         this.arguments.RemoveRange(mark, this.arguments.Count - mark);
         this.CloseScope(temporaries);
+        this.Made(test);
         this.Branch(test, condition, whenFalse, whenTrue);
         this.CloseScope(tested, clean: false);
         return test;
@@ -122,10 +123,14 @@ internal sealed partial class MirBuilder
         this.body.Terminate(this.current, terminator);
     }
 
-    // A body whose value its construct takes, as a call's input as Result places it (input), then the join after the construct.
+    // An if clause's or a do's body whose value its construct takes, as a call's input as Result places it (input), in a scope of its
+    // own, as a match arm's: the body is its own Body, so the temporaries of its result end with it (SPEC 14.2.1, 16.2.2 step 3); then the
+    // join after the construct.
     private void Arm(MirPlace destination, Koto body, int after, bool input)
     {
+        var scope = this.temporaries = this.OpenScope(block: true);
         this.Result(destination, body, body, input);
+        this.CloseScope(scope);
         this.Join(after, body);
     }
 

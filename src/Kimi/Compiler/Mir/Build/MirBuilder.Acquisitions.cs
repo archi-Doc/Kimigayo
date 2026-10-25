@@ -29,10 +29,10 @@ internal sealed partial class MirBuilder
             return this.Acquired(adjust, place, expected, input, node, into);
         }
 
-        var value = this.Temp(BoundType.Never, node);
+        var value = this.Hold(BoundType.Never, node);
         var acquired = this.body.AddOperand(this.Acquired(adjust, place, expected, input, node));
         this.body.Push(this.current, MirStatement.Assign(value, MirRvalue.Use(acquired), this.Info(node)));
-        return MirOperand.Move(value);
+        return MirOperand.Move(this.Made(value));
     }
 
     // A Place other than the Never value as an acquisition and an adaptation take it (Acquire).

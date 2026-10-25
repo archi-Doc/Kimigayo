@@ -108,6 +108,24 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         Assert.True(views.Keys.Max() <= 64, $"{views.Keys.Max()} views");
     }
 
+    // SPEC 3.6, 16.2.1 (DECISIONS R4-M129): every temp with storage of its own, of a Type that may need drop and written whole, is made, so
+    // its body drops it (a held temp that no Made registered has no Drop, and its value would leak), over the goldens, the library and the
+    // milestone programs. A transfer's result temp has no storage of its own (DECISIONS R5-M50).
+    [Fact]
+    public void EveryWrittenTempIsMade()
+    {
+        var programs = MirDumpTest.Programs.Select(static x => ("golden/" + x.Data, MirDumpTest.Compile(x.Data)))
+            .Concat(HirColumnsTest.Corpus.Select(static x => (x.Data, SemanticSnapshotTest.Bind(x.Data).Compilation)));
+        foreach (var (name, c) in programs)
+        {
+            foreach (var body in c.BuildMir().Bodies)
+            {
+                var unmade = Unmade(body);
+                Assert.True(unmade is null, $"{name}: {body.Key.Decl?.Name}'s _{unmade} is never dropped");
+            }
+        }
+    }
+
     // The same compilation builds the same MIR, fresh or after a warm rebind, and a fresh compilation of the same source does too; Milestone43
     // keeps Opaque values where Binding rejected it.
     [Fact]
@@ -313,6 +331,42 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         var adjust = HirTables.AdjustOf(node);
         return adjust.Adaptation == HirAdaptation.None && adjust.Acquire is HirAcquire.Unset or HirAcquire.Copy or HirAcquire.Move or HirAcquire.Temporary or HirAcquire.None
             ? key : $"{key} {adjust.Acquire}/{adjust.Adaptation}";
+    }
+
+    // The first temp of a body with storage of its own, of a Type that may need drop, written whole and never dropped, or null.
+    private static int? Unmade(MirBody body)
+    {
+        var (live, written, dropped) = (new HashSet<int>(), new HashSet<int>(), new HashSet<int>());
+        foreach (var statement in body.Statements)
+        {
+            if (statement.Kind == MirStatementKind.StorageLive)
+            {
+                live.Add(statement.Place.Root);
+            }
+            else if (statement is { Kind: MirStatementKind.Assign, Place.Projection: 0 })
+            {
+                written.Add(statement.Place.Root);
+            }
+        }
+
+        foreach (var block in body.Blocks)
+        {
+            if (block.Terminator is { Kind: MirTerminatorKind.Call or MirTerminatorKind.Drop, Place.Projection: 0 } terminator)
+            {
+                (terminator.Kind == MirTerminatorKind.Call ? written : dropped).Add(terminator.Place.Root);
+            }
+        }
+
+        for (var local = 0; local < body.Locals.Length; local++)
+        {
+            if (body.Locals[local].Kind == MirLocalKind.Temp && live.Contains(local) && written.Contains(local) && !dropped.Contains(local) &&
+                MirTypes.MayNeedDrop(body.Locals[local].Type, []))
+            {
+                return local;
+            }
+        }
+
+        return null;
     }
 
     private static string Dump(Compilation c)
