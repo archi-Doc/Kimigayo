@@ -142,7 +142,7 @@ public sealed partial class OriginRowsTest
     // its evaluating body, a getter's and a `for` in it, a default as its template, a static initializer, a Field initializer as its layer,
     // a module's top-level statements, a user loop's parentless `$for.iterator` Use.
     [Theory]
-    [InlineData(EnvStore, "x@ref", "Closure")]
+    [InlineData(EnvStoreConsuming, "x@ref", "Closure")]
     [InlineData(EnvStore, "func [x, target]() => store(target, value: x@ref)", "Fn:g")]
     [InlineData(Getter, "$for.iterator", "Accessor")]
     [InlineData(Pick + "func g(a: i32 = pick(3@ref, 4@ref)) -> i32 => a\n", "3@ref", "Default:g:0")]

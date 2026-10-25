@@ -349,9 +349,10 @@ public sealed partial class Binding
     // DECISIONS R4-M126 F3 (R4-M133): a pending relation, its ends resolved, routed as a binding-time fit is: fixed-fixed or Refuted, its
     // chains are found by the fit's position search in the body that formed it, passed explicitly, and recorded as a fit's are
     // (RecordOriginChains: at RelationAt, a failed Origin environment's dependent, a body chain a twin); any other body chain stays a row
-    // for A5 and the old reporter, unjudged here. The obligation stays either way: a recorded failure leaves Binding incomplete, so the
-    // old reporter never judges it again. Each chain records as its Supplier the part of the obligation's longer end, as it supplies the
-    // end at the use (SuppliedAtUse), that holds the chain's end, and the entry's destination (DECISIONS R4-M133).
+    // for A5 and the old reporter, unjudged here. A relation Binding judges is no row (2a0-D D1): its obligation leaves, as one judged at
+    // binding time is never formed (AddObligation's callers route by BodyChain), unless a recorded chain is a body chain, whose obligation
+    // stays the twin's row (R4-M108, R4-M111). Each chain records as its Supplier the part of the obligation's longer end, as it supplies
+    // the end at the use (SuppliedAtUse), that holds the chain's end, and the entry's destination (DECISIONS R4-M133).
     private void RoutePendingRelation(in BindingObligation obligation, BoundType? destination)
     {
         var (use, body) = (obligation.Use, obligation.Body);
@@ -376,8 +377,16 @@ public sealed partial class Binding
 
             var firstSupplier = this.SuppliedBy(this.SuppliedAtUse(obligation.Longer!, use), first.Longer, use);
             var recorded = first with { Supplier = firstSupplier, Clause = obligation.Clause, WellFormed = obligation.WellFormed };
-            _ = this.RecordOriginChains(use, RelationAt(obligation), body, destination, recorded);
+            if (this.RecordOriginChains(use, RelationAt(obligation), body, destination, recorded))
+            {
+                return;
+            }
         }
+
+        // Formed late in the list (the Closure is classified once its body is bound), so it is found from the end.
+        this.obligationSet.Remove(obligation);
+        this.obligations.RemoveAt(this.obligations.LastIndexOf(obligation));
+        this.originStateVersion++;
     }
 
     // The part of `supplied`, a relation's end as it supplies it at `use` (SuppliedAtUse), that supplied `resolved`, a record's end there
