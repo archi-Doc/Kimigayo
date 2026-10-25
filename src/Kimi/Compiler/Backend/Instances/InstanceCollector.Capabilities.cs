@@ -4,8 +4,9 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The capability check of operations and declarations (K package 4.7; DECISIONS R4-M8, R5-M53, R5-M54, R5-M82): the capability table read
-// for the operations of a body, at the definition stage (A3b) and in each instance, and for a root-module static's declaration.
+// The capability check of operations and declarations (K package 4.7; DECISIONS R4-M8, R5-M53, R5-M54, R5-M82, R5-M126): the capability
+// table read for the operations of a body, at the definition stage (A3b) and in each instance, for an arithmetic shim's operation and for a
+// root-module static's declaration.
 internal sealed partial class InstanceCollector
 {
     // Whether an operation's Types depend on slots: its first operand's or its result's.
@@ -35,6 +36,18 @@ internal sealed partial class InstanceCollector
         if (operand is not null && (rvalue.Type is null || result is not null) && Capability.Of(rvalue with { Type = result }, operand) is { } gap)
         {
             this.Set.Report(Capability.Code(gap), subject);
+        }
+    }
+
+    // IMPL 21.3.3 (DECISIONS R5-M126): an arithmetic shim's operation, its Contract's MIR operator (BuiltinArithmetic, SPEC 13.3.3) on its
+    // closed Self, checked with the item and reported at its site (K 4.9: the root-module site its admission chain first reached), as a
+    // statement's operation is in its instance; a gap is the checked set's record, so the shim is never generated.
+    private void CheckArithmetic(SourceRef site, BindingSymbol function, BoundType self)
+    {
+        var (kind, op) = BuiltinArithmetic.Operation(TyCtxt.Contract(function).LibraryDeclaration);
+        if (Capability.Of(kind, op, self, null) is { } gap)
+        {
+            this.Set.Report(Capability.Code(gap), site);
         }
     }
 

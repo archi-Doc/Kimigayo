@@ -9360,8 +9360,9 @@ structure is recorded here by the unit that first implements it.
   body. Both leave the list.
 - **R5-M126 Comparison and arithmetic shims in MIR code generation: one function per Builtin item (C8f)** (2026-10-26, C lane; plan C8f,
   package C 3.2, PD3, PD21, K package 4.3 and 4.5 rows 3 and 5, F package 4.6; SPEC 12.4.3, 13.3.1, 13.3.3, 13.4, 13.4.1, 22.5.1, IMPL
-  21.3.3; the planning session's go and rulings Q1-Q11 on C8f's design, `c8f-design.md`, and BU's review of `TyCtxt.Contract`; under R5-M18
-  form 2 (G:library-2), R5-M61, R5-M67, R5-M68, R5-M70, R5-M75, R5-M93, R5-M108 and R5-M119)
+  21.3.3; the planning session's go and rulings Q1-Q11 on C8f's design, `c8f-design.md`, BU's review of `TyCtxt.Contract` and design
+  revision R-1 after implementation review 1's B1, K package 4.7 and 4.9; under R5-M18 form 2 (G:library-2), R5-M37, R5-M41, R5-M54,
+  R5-M61, R5-M67, R5-M68, R5-M70, R5-M75, R5-M85, R5-M93, R5-M108 and R5-M119)
   - Form (rulings Q1 (a), Q3 (a), PD3): a Builtin item (R5-M70's key: the Contract's built-in target and the erased Self) is one function,
     `__kimi_builtin<item>`, under its requirement's signature in its instance and the internal convention, caller-location (SPEC 22.5.1: a
     failure inside the Kimi operation reports its invoking expression; one ABI rule for every shim), `ModuleCodegen.Shim`, written once per
@@ -9385,23 +9386,31 @@ structure is recorded here by the unit that first implements it.
     unequal to itself (SPEC 13.4), so all NaNs are one value and +0.0 == -0.0 (SPEC 12.4.3; the second term is constant for a non-float and
     folds at O2), compare is `zext Gt - zext Lt`, a string's the row's routine on the records' bytes (C8c's `Record`; compare's i32 itself,
     one pass), a zero-sized one the rows' Reflexive constants; a Witness leaf its body on the two leaf addresses.
-  - Arithmetic shims (ruling Q5 (a)): the operator table's `Contract` column (Add Addable, Sub Subtractable, Mul Multipliable, Div Dividable,
-    Rem RemainderProvider, Neg Negatable) names the row of the shim's Contract (`ArithmeticRow`), applied to the loaded operands by `Apply`
-    (restructured first) with its check, which Aborts at the location the shim received. SPEC 13.3.3's table has two statements: Binding's
-    `ArithmeticContracts.Operator`, Contract to operator token, the route selection's, a syntax `KotoKind` that the Backend may not read
-    (ARCH's dependency table), composed with the MIR builder's operator for that token; and the column, Contract to MIR operator, the
-    shim's. `TheArithmeticContractColumnIsTheBuildersOperator` ties them.
-  - Capability (found in implementation; planning session to rule at review): the collector checks the MIR statements it replays, never a
-    shim's operation, so `Apply` refuses an operation the capability table names (IMPL 21.3.3's 128-bit division) with its gap's record at
-    the source; a statement's never reaches it. `quotient<i128>` through `Dividable` is the WideDivision gap at the shim's admitting call, as
-    the old generator refuses it at generation. Open (for PLAN): `check` accepts such a program; the collector would need the shim's
-    operation. Checked 128-bit addition, subtraction, multiplication and negation in a shim keep G157 (14)'s located record (ruling Q8 (a)).
+  - Arithmetic shims (R-1, superseding ruling Q5 (a)'s Contract column of the operator table): the Backend states SPEC 13.3.3's
+    table once, `BuiltinArithmetic.Operation` (`Backend/BuiltinArithmetic.cs`): a Contract with a built-in witness to its MIR operator
+    (Addable Add, Subtractable Sub, Multipliable Mul, Dividable Div, RemainderProvider Rem, Negatable Neg), any other a broken contract.
+    Its home, by responsibility: a relation the instance collector and code generation both read and neither owns, so a Backend table beside
+    `Capability`; Instances may not read Codegen, `Capability` states what the backend does not generate, not what an operation is, and
+    `IntrinsicRows` is keyed by IntrinsicId, where a shim is no intrinsic call. The shim writer maps its Contract to the MIR operator by it
+    and takes the operator table's row as a statement does (`RowOf`), applied to the loaded operands by `Apply` (restructured first) with
+    its check, which Aborts at the location the shim received. The other statement is Binding's `ArithmeticContracts.Operator`, Contract to
+    operator token (the route selection's, a syntax `KotoKind` the Backend may not read), composed with the MIR builder's operator for that
+    token; `TheBuiltinArithmeticRowsAreTheBuildersOperators` ties them for every Contract `ArithmeticContracts.Supports` on i32.
+  - Capability (R-1, review 1's B1): `Capability.Of(kind, op, operand, target)` is the table's check by operation, which the rvalue form
+    calls (one rule). The collector's BuiltinArithmetic shim row (`CheckArithmetic`) reads its Contract's operation and checks it on the
+    closed Self when it expands the item, a gap recorded at the item's site (K 4.9: the root-module site its admission chain first reached)
+    as an instance-stage record (IMPL 21.3.3, R5-M54: every instance of the checked set; R5-M41, R5-M85: `check` reports it under MIR code
+    generation), so the shim is never generated. Code generation decides no capability: a gap reaching it is a broken contract (R5-M37's
+    rule). `quotient<i128>` through `Dividable` is the WideDivision gap at `left.divided(right)`, also when only an unused function reaches
+    the instance. Checked 128-bit addition, subtraction, multiplication and negation in a shim keep G157 (14)'s located record (ruling Q8
+    (a)).
   - `TyCtxt.Contract(requirement)` (ruling Q6 (a), BU's review): SPEC 8.6.1's declaring Contract, also of a built-in target, which keeps its
     requirement's scope; a symbol outside a Contract is a broken contract (`InvalidOperationException`). The collector's two
     `Scope.Owner` reads go through it: G157 (16)'s first half closes.
   - Deviations: none in native outcomes; IR only (PD9): a Requirement call on a built-in Type, an Item call and an adapter call one
     function per (function, erased Self) where the old generator inlines a scalar leaf and writes one `__kimi_comparison<N>` per plan node;
-    every shim receives the caller's location; a non-float equality leaf's constant term at O0.
+    every shim receives the caller's location; a non-float equality leaf's constant term at O0. A shim's 128-bit division is rejected at
+    check under MIR code generation and at generation by the old generator, the catalog's `checked-set-at-check` (R5-M41).
   - Restructured first, behavior unchanged: an operator row's operation apart from its statement, `Apply` (307f0ca2e); one target rule
     `Witness` and a function's declared signature in an item's instance, `Declared` (5a07f9ecf).
   - Facts: the sel ledger loses 302 test rows (library-2 160, C-frame 108, C-aggregate 14, call 9, object 5, C-drop 4, C-scalar 1, closure
@@ -9409,33 +9418,39 @@ structure is recorded here by the unit that first implements it.
     `IntegerWitnessesUseEveryWidthAndWrappingRepresentation` rows of i128 and u128 stay (G157 (14)). The plan row's classes
     `ComparisonContractTest`, `ComparisonCompositionTest`, `BuiltinComparisonTest`, `ElementComparisonTest` and `ComparisonOperatorTest`
     pass whole under sel, and milestones 25, 32 and 37 under sel at O0 and O2. The NaN and signed-zero tuple fixture
-    (`ComparisonCompositionContractFloating`: generic equality over float Tuples, nested, through a ref layer and at f32, a deciding
-    part's later witness not called, a compare, and Dictionary keys of NaN and both zeros) runs under both generators beside F7's operator
-    fixture. The flipped tests' families (the census's C8f-alone and joint ones) pass natively under both generators at O0 and O2 but 13
-    fixtures that sel generates for the first time, which become fixture rows, none caused by the shims: 8 transfer audits
+    (`ComparisonCompositionContractFloating`: generic equality over float Tuples, nested, through a ref layer and at f32, a deciding part's
+    later witness not called, a compare, and Dictionary keys of NaN and both zeros) runs under both generators beside F7's operator fixture.
+    R-1's rows fail at `752625010`: the collector's `AnArithmeticShimsOperationOfTheTableIsAGapAtItsSite` (i128 and Wrapping<u128> division
+    and u128 remainder at the requirement call, an unused function's included; none for i128 addition or i64 division) and
+    `NativeDivisionBoundaryDoesNotRemoveLanguageConformance`'s check under MIR code generation (an unused function's row added). The flipped
+    tests' families (the census's C8f-alone and joint ones) pass natively under both generators at O0 and O2 but 13 fixtures that sel
+    generates for the first time, which become fixture rows, none caused by the shims. 12 are harness causes: 8 transfer audits
     (`DictionaryCostGrowth*` 5, `DictionaryCapacityHoles`, `NativeAllocationAuditTransfer`, `NativeAllocationAuditUnanchored`), whose
     allocation, release and byte counts are equal and whose transferred bytes count nothing, since `NativeAllocationAudit` counts
-    `__kimi_transfer_bytes`'s copy and MIR code generation writes MoveBytes inline (R5-M92); 4 `DictionaryCapacity` probes
-    (`Rounding16`, `Rounding24`, `Rounding2147483647`, `AllocationFailure`), which splice a call of the old generator's reserve symbol
-    into sel's IR; and `DictionaryLibraryAllocationLiteral`, an Alloc failure in a literal reported at the entry's value (2:19) where the
-    old generator and the test report its key (2:16), since the MIR builder locates placeEntry at the value (`MirBuilder.Expansions.cs`).
-    Open (for PLAN): the three causes (the audit harness, the probes' symbol, the literal's placeEntry location). O2 (information; the
-    `Dictionary`
-    corpus A/B is C8e's departure, R5-M125): the corpus kernel with its `i64` table restored and its checksum line a `require`, old
-    generator A against sel B, 15 interleaved samples, B/A median 0.97 (0.84-1.10) against A/A 0.80-1.25, 568 against 569 optimized
-    generated instructions; a shim kernel (a generic sort of `Array<i32>`, a generic `(i32, f64)` equality, a generic `i64` addition) B/A
-    1.03 (0.73-1.11) against A/A 0.83-1.35, 207 against 206; no shim call survives at O2.
-  - Size: code +350 lines (+404/-54: Codegen +336, the collector +8, TyCtxt +6), tests +288, the ledger -302 rows, documents.
+    `__kimi_transfer_bytes`'s copy and MIR code generation writes MoveBytes inline (R5-M92); 4 `DictionaryCapacity` probes (`Rounding16`,
+    `Rounding24`, `Rounding2147483647`, `AllocationFailure`), which splice a call of the old generator's reserve symbol into sel's IR. The
+    13th, `DictionaryLibraryAllocationLiteral`, is a defect of the MIR builder (W1's window), not of the harness: SPEC 22.5.1 reports an
+    Alloc failure inside a literal at its invoking expression (the old generator and the test: the entry's key, 2:16), and sel reports the
+    value (2:19), since `MirBuilder.Expansions.cs:341` places placeEntry at `entry.Value`; its fixture row stays until the builder's fix.
+    Open (for PLAN): the audit harness, the probes' symbol and that builder defect. O2 (information; the `Dictionary` corpus A/B is C8e's
+    departure, R5-M125): the corpus kernel with its `i64` table restored and its checksum line a `require`, old generator A against sel B,
+    15 interleaved samples, B/A median 0.97 (0.84-1.10) against A/A 0.80-1.25, 568 against 569 optimized generated instructions; a shim
+    kernel (a generic sort of `Array<i32>`, a generic `(i32, f64)` equality, a generic `i64` addition) B/A 1.03 (0.73-1.11) against A/A
+    0.83-1.35, 207 against 206; no shim call survives at O2.
+  - Size, over the unit's four commits (bp1, bp2, the behavior and R-1): code +384 lines (+582/-198: Codegen +312, the Backend's table and
+    `Capability` +41, the collector +25, TyCtxt +6), tests +357, the ledger -302 test and +13 fixture rows, documents.
   - Deleted: the located `Unsupported_Kd` records of a Builtin target at a Requirement call, at a requirement Item's Value call and adapter,
     and of the Builtin item (Equals, Compare, Arithmetic); the collector's two `Scope.Owner` reads; the `same(1, 2)` and Dictionary
-    `tryInsert` coverage records.
+    `tryInsert` coverage records. By R-1: the operator table's Contract column and `ArithmeticRow`, `Apply`'s capability refusal and the
+    `quotient<i128>` coverage row (a collector record now).
   - Speed: one call per shim use at O0, inlined at O2; operands read in place; one routine call per string leaf; the signature kept per item
     and the comparison tree memoized, so a warm Write allocates nothing; no pass over MIR.
   - Rejected: a leaf inlined at each call (the old form; an Item and an adapter need a callee anyway, and trees repeat per site); one
     function per tree node (more functions and calls); Type arms for leaves or a floating-column arm for the NaN term (a clause for one
-    form); compare as equality then ordering (two string passes, G157 (16)'s form); a Contract-to-operator map beside the table, or the
-    Backend reading Binding's token map (a syntax kind); the shim's signature synthesized in code generation (FunctionCodegen composes no
-    Subst); a TyCtxt factory of a built-in conformance's reference (a second statement of Binding's built-in conformance); promoting the old
-    writer's `WriteBuiltinComparison` text (per-instruction text C8c left in D5, R5-M118); `MirBodyKind.Shim` bodies (PD3); the builder
-    expanding generic comparisons per instance (MIR is per template; held); new IntrinsicIds or catalog rows (PD21); Kimigayo bodies for
-    built-in witnesses now (R8).
+    form); compare as equality then ordering (two string passes, G157 (16)'s form); the Contract as a column of FunctionCodegen's operator
+    table (ruling Q5 (a): the collector may not read code generation), or the Backend reading Binding's token map (a syntax kind); the
+    capability check in `Apply` (a second owner of IMPL 21.3.3's rule, at generation only: B1); the shim's signature synthesized in code
+    generation (FunctionCodegen composes no Subst); a TyCtxt factory of a built-in conformance's reference (a second statement of Binding's
+    built-in conformance); promoting the old writer's `WriteBuiltinComparison` text (per-instruction text C8c left in D5, R5-M118);
+    `MirBodyKind.Shim` bodies (PD3); the builder expanding generic comparisons per instance (MIR is per template; held); new IntrinsicIds or
+    catalog rows (PD21); Kimigayo bodies for built-in witnesses now (R8).

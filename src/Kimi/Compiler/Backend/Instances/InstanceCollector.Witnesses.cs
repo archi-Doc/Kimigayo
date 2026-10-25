@@ -91,8 +91,9 @@ internal sealed partial class InstanceCollector
 
     // K 4.3: a shim's targets, at its default site: a comparison shim's are its leaf witnesses (SPEC 13.4) by TyCtxt.Comparison of its
     // Contract, the scope owner of its compiler function (F 4.6), on the representative Self under the Contract's mapping; a formatting or
-    // arithmetic shim's scalar Self calls no witness (FormattingTypes.IsBuiltin, ArithmeticContracts.Supports); a setter's property witness
-    // drops the Field's old value (its glue), the Field Agrees found in the representative Self at admission.
+    // arithmetic shim's scalar Self calls no witness (FormattingTypes.IsBuiltin, ArithmeticContracts.Supports), an arithmetic one's operation
+    // checked against the capability table (CheckArithmetic, K 4.7); a setter's property witness drops the Field's old value (its glue), the
+    // Field Agrees found in the representative Self at admission.
     private void Shim(MirProgram program, int item, SourceRef site, in MonoKey key, BoundType self)
     {
         if (key.Kind == MonoKind.PropertyWitness)
@@ -116,7 +117,10 @@ internal sealed partial class InstanceCollector
             case CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare:
                 this.Leaves(program, item, site, this.types.Comparison(TyCtxt.Contract(key.Symbol), self, operators: false));
                 return;
-            case CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinArithmetic:
+            case CompilerFunctionKind.BuiltinArithmetic:
+                this.CheckArithmetic(site, key.Symbol, self);
+                return;
+            case CompilerFunctionKind.BuiltinFormat:
                 return;
             default:
                 throw new InvalidOperationException($"The shim {key.Symbol.CompilerFunction} has no target row.");

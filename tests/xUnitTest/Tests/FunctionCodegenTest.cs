@@ -1266,9 +1266,8 @@ public sealed partial class FunctionCodegenTest
     // PD11: a form the frame does not cover yet is one Unsupported_Kd in the Emission partition at its location, and no module is written;
     // its valid counterpart is. A string's Move into another local is written since C2b (DECISIONS R5-M87), a function's call since C3a, a
     // generic callee's instance whose Keep of a T instanced at i32 needs no drop included (R5-M78, R5-M89), a requirement's since C3b
-    // (R5-M93), a Builtin shim's since C8f (R5-M126), but an arithmetic shim's operation the capability table refuses (i128 division) is its
-    // gap's record at the shim's admitting call, and a requirement whose witness a property witness (C3c) or one without a body (PLAN G157
-    // (10)) is one record at the call; a Fn call whose target is a Builtin shim (Text.toString of an i32, BuiltinFormat, R5-M70) is
+    // (R5-M93), a Builtin shim's since C8f (R5-M126), and a requirement whose witness a property witness (C3c) or one without a body (PLAN
+    // G157 (10)) is one record at the call; a Fn call whose target is a Builtin shim (Text.toString of an i32, BuiltinFormat, R5-M70) is
     // its compiler function's legacy row (C9a), at the call, as the Utf8Slice overload of writeLine is; the records of a for loop's
     // statement and of the siblings its expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location
     // (DECISIONS R5-M65), which the diagnostics could not order when each was keyed by its node. A static's initializer is written since
@@ -1301,11 +1300,6 @@ public sealed partial class FunctionCodegenTest
         "func same<T>(a: T, b: T) -> bool\n    T is Equatable\n    return a == b\nfunc use() -> bool => same(1, 2)\n",
         OutputKind.Library,
         new string[0])]
-    [InlineData(
-        "func quotient<T>(left: ref/T, right: ref/T) -> T\n    T is Dividable<T>\n    T.(Dividable<T>).Output is T\n    return left.divided(right)\n" +
-        "func use(a: ref/i128, b: ref/i128) -> i128 => quotient(a, b)\n",
-        OutputKind.Library,
-        new[] { "left.divided(right)" })]
     [InlineData(
         "contract Counted\n    property count: i32 has get, set\nstruct Tally\n    Self is Counted\n    public var count: i32 = 1\n    public init() => ()\n" +
         "func read<T>(x: ref/T) -> i32\n    T is Counted\n    return x.count\nfunc use(t: ref/Tally) -> i32 => read(t)\n",

@@ -15,10 +15,11 @@ namespace Kimi.Compiler.Backend;
 //   but the last deciding when it is not equal (equals' false, compare's non-zero i32; SPEC 13.4.1), its value then returned; a ref
 //   layer's referent; a Builtin leaf through the operator table's column of its Type (Leaf); a Witness leaf its target's call (BodyRun,
 //   its virtual slot included) on the two leaf addresses.
-// - BuiltinArithmetic: the table's row of its Contract (SPEC 13.3.3, the table's Contract column) on the loaded operands with its check,
-//   which Aborts at the location the shim received (SPEC 22.5.1).
+// - BuiltinArithmetic: its Contract's MIR operator (BuiltinArithmetic, SPEC 13.3.3) through the operator table's row, as a statement's, on
+//   the loaded operands with its check, which Aborts at the location the shim received (SPEC 22.5.1).
 // - BuiltinFormat: C9b's row, one located Unsupported_Kd at the item's site.
-// A node the collector refuses (Requirement, None, no tree) is its record at the item's admission, which stops generation.
+// A node the collector refuses (Requirement, None, no tree) and an arithmetic operation the capability table refuses are its records at the
+// item's admission, which stop generation.
 internal sealed partial class FunctionCodegen
 {
     private int leaf; // The shim's next Witness leaf target.
@@ -196,19 +197,20 @@ internal sealed partial class FunctionCodegen
         return this.WriteCall(callee, this.arguments.AsSpan(0, parameters.Length), this.EntryOf(callee, run.Slot));
     }
 
-    // SPEC 13.3.3: the built-in operation of an arithmetic shim's Contract, the operator table's row its Contract column names, on its
-    // loaded operands (a unary one's on both sides), with its check, which Aborts at the location the shim received (Apply, Location).
+    // SPEC 13.3.3: the built-in operation of an arithmetic shim's Contract, its MIR operator (BuiltinArithmetic) through the operator
+    // table's row (RowOf), on its loaded operands (a unary one's on both sides), with its check, which Aborts at the location the shim
+    // received (Apply, Location).
     private Value? Arithmetic(BindingSymbol contract, BoundType self)
     {
-        var row = ArithmeticRow(contract.LibraryDeclaration);
-        if (row < 0 || this.Laid(self) is not { } lowering)
+        if (this.Laid(self) is not { } lowering)
         {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, default); // A Builtin arithmetic item's Contract has a row, its Self a layout.
-            return null;
+            return null; // A broken contract, recorded.
         }
 
+        var (kind, op) = BuiltinArithmetic.Operation(contract.LibraryDeclaration);
         var left = this.Loaded(self, lowering, new('p', 0));
-        return this.Apply(row, Column(self), left, row < UnaryRows ? this.Loaded(self, lowering, new('p', 1)) : left, false, default);
+        var right = kind == MirRvalueKind.BinaryOp ? this.Loaded(self, lowering, new('p', 1)) : left;
+        return this.Apply(RowOf(kind, op), Column(self), left, right, false, default);
     }
 
     // A value of a Type at an address in its computation representation (bool narrowed), nothing for a zero-sized one.

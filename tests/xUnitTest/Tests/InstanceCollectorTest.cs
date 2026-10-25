@@ -1080,7 +1080,8 @@ public sealed class InstanceCollectorTest
         var set = collector.Run(program, 1);
         Assert.Empty(set.Records);
         var shims = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.Builtin).ToArray();
-        Assert.Equal(["Builtin i32 BuiltinArithmetic", "Builtin i32 BuiltinEquals"], shims.Select(x => Label(program, set.Items[x])).Order(StringComparer.Ordinal));
+        var labels = shims.Select(x => Label(program, set.Items[x])).Order(StringComparer.Ordinal);
+        Assert.Equal(["Builtin i32 BuiltinArithmetic", "Builtin i32 BuiltinEquals"], labels);
         foreach (var shim in shims)
         {
             var (function, representative) = (set.Items[shim].Key.Symbol!, set.Items[shim].Representative);
@@ -1588,6 +1589,29 @@ public sealed class InstanceCollectorTest
         Assert.Equal(expected, set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
     }
 
+    // K 4.7 instance stage, IMPL 21.3.3 (DECISIONS R5-M54, R5-M126): an arithmetic shim's operation, its Contract's MIR operator
+    // (BuiltinArithmetic) on its Self, is checked with the item: a division or remainder of an i128, u128 or Wrapping<u128> Self is
+    // Unsupported_Kd at the shim's site (K 4.9: the root-module requirement call that first admits it), also when only an unused function
+    // reaches it; an addition of i128 and a division of i64 have none (fail-before: the collector checked no shim).
+    [Theory]
+    [InlineData("Dividable", "divided", "func unused(a: ref/i128, b: ref/i128) -> i128 => apply(a, b)\n", "left.divided(right)")]
+    [InlineData("RemainderProvider", "remainder", "let a: u128 = 7\nlet b: u128 = 2\nlet r = apply(a@ref, b@ref)\n", "left.remainder(right)")]
+    [InlineData("Dividable", "divided", "let a: Wrapping<u128> = 7\nlet r = apply(a@ref, a@ref)\n", "left.divided(right)")]
+    [InlineData("Addable", "added", "func unused(a: ref/i128, b: ref/i128) -> i128 => apply(a, b)\n", "")]
+    [InlineData("Dividable", "divided", "func unused(a: ref/i64, b: ref/i64) -> i64 => apply(a, b)\n", "")]
+    public void AnArithmeticShimsOperationOfTheTableIsAGapAtItsSite(string contract, string requirement, string uses, string refused)
+    {
+        var c = MirBuildTest.Compile(
+            "func apply<T>(left: ref/T, right: ref/T) -> T\n    T is " + contract + "<T>\n    T.(" + contract + "<T>).Output is T\n" +
+            "    return left." + requirement + "(right)\n" + uses);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Contains(set.Items.ToArray(), static x => x.Key.Kind == MonoKind.Builtin);
+        var expected = refused.Length == 0 ? [] : new[] { (DiagnosticCode.Unsupported_Kd, refused) };
+        Assert.Equal(expected, set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+    }
+
     // K 4.8, SPEC 6.7.1, 8.15.3, DECISIONS R5-M55: a by-value use whose Type places a C-layout instance storing a zero-sized Field, at any
     // depth, is InvalidCLayout_Kd at each such use (one record per subject): an inferred instance in a generic body (make(())) and at the
     // top level (P.init(1, ()), P.init(1, Q.init()) for a zero-sized struct Q), with the instance's constructor, a written parameter of an
@@ -1917,6 +1941,37 @@ public sealed class InstanceCollectorTest
             [IntrinsicId.DestroyValues, IntrinsicId.ErasedWriter, IntrinsicId.MakeObj, IntrinsicId.MakeRc, IntrinsicId.MakeArc, IntrinsicId.StaticEnsure],
             targets);
         Assert.Throws<InvalidOperationException>(static () => IntrinsicRows.Of(IntrinsicId.None));
+    }
+
+    // SPEC 13.3.3 (DECISIONS R5-M126): the Backend's statement of the table (BuiltinArithmetic) and Binding's ArithmeticContracts.Operator,
+    // composed with the MIR builder's operator for that token, agree: each Contract with a built-in witness on i32 has the MIR operation the
+    // builder writes for its operator on i32 operands, one each; any other Contract, a comparison or a Left one, has none.
+    [Fact]
+    public void TheBuiltinArithmeticRowsAreTheBuildersOperators()
+    {
+        var contracts = Enum.GetValues<KimiDeclarationId>().Where(static x => ArithmeticContracts.Supports(BoundType.Primitives["i32"], x)).ToArray();
+        Assert.Equal(6, contracts.Length);
+        foreach (var contract in contracts)
+        {
+            var token = ArithmeticContracts.Operator(contract);
+            var spelling = token switch
+            {
+                KotoKind.Plus => "+",
+                KotoKind.Minus or KotoKind.PrefixMinus => "-",
+                KotoKind.Asterisk => "*",
+                KotoKind.Slash => "/",
+                KotoKind.Percent => "%",
+                _ => throw new InvalidOperationException($"{contract} has no operator."),
+            };
+            var source = token == KotoKind.PrefixMinus ? $"func f(a: i32) -> i32 => {spelling}a\n" : $"func f(a: i32, b: i32) -> i32 => a {spelling} b\n";
+            var body = Assert.Single(MirBuildTest.Compile(source).BuildMir().Bodies.ToArray(), static x => x.Key.Decl?.Name == "f");
+            var rvalue = Assert.Single(body.Statements.ToArray(), static x => x.Rvalue.Kind is MirRvalueKind.BinaryOp or MirRvalueKind.UnaryOp).Rvalue;
+            Assert.Equal((rvalue.Kind, rvalue.Op), BuiltinArithmetic.Operation(contract));
+        }
+
+        Assert.Equal(contracts.Length, contracts.Select(static x => BuiltinArithmetic.Operation(x)).Distinct().Count());
+        var others = Enum.GetValues<KimiDeclarationId>().Except(contracts);
+        Assert.All(others, static x => Assert.Throws<InvalidOperationException>(() => BuiltinArithmetic.Operation(x)));
     }
 
     // R5-M39 (DECISIONS BU-24): a raw Origin enters no instance key, so variants of a generic callee that differ in raw Origins alone are
