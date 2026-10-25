@@ -47,6 +47,48 @@ public class ClosureReceiverClassificationTest
         Assert.Equal(nameof(DiagnosticCode.InvalidAssignment_Kd), Assert.Single(TestDiagnostics.Of(c)).Code);
     }
 
+    private const string Places = "func bump(x: uniq/i32) => x@follow += 50\nstruct Counter\n    public var value: i32 = 0\n" +
+        "    public func add(self: uniq/Self, n: i32) => self.value = self.value + n\n    public func read(self: ref/Self) -> i32 => self.value\n" +
+        "struct ObjCell\n    public var value: i32 = 1\n    public func put(self: objuniq/Self, n: i32)\n        let p = self@follow@uniq\n        p.value = n\n" +
+        "public func main() -> ()\n    let n = 7\n    let t = (1, 2)\n    let fa: [2 of i32] = [1, 2]\n    var c = Counter.init()\n    let r = c@uniq\n" +
+        "    var a: Array<Counter> = []\n    var x = 1\n    var u: Array<uniq/i32> = []\n    u.append(x@uniq)\n    var o = Kimi.Intrinsics.makeObj(ObjCell.init())\n" +
+        "    let f = func [var n, var t, var fa, r, var a@move, var u@move, var o@move] () -> i32\n";
+
+    // SPEC 7.7.3, 7.7.2 (PLAN G147 (3)): a Place reached from a capture, the capture itself, a part of it or a captured referent, that
+    // the body writes, borrows exclusively or lends to an exclusive parameter as an argument or receiver makes the call Exclusive, so
+    // a call of a `let` Closure is invalid; the Shared twins read or borrow shared. Each Exclusive row was classed Shared.
+    [Theory]
+    [InlineData("        let s = n@uniq\n        s@follow = 3\n", true)]
+    [InlineData("        let s = (n)@uniq\n        s@follow = 3\n", true)]
+    [InlineData("        let s = t.0@uniq\n        s@follow = 3\n", true)]
+    [InlineData("        let s = fa[0]@uniq\n        s@follow = 3\n", true)]
+    [InlineData("        r@follow.add(1)\n", true)]
+    [InlineData("        a[0].add(1)\n", true)]
+    [InlineData("        bump(u[0])\n", true)]
+    [InlineData("        let s = o@objuniq\n        s.put(2)\n", true)]
+    [InlineData("        o.put(2)\n", true)]
+    [InlineData("        let s = n@ref\n        let k = s@follow\n", false)]
+    [InlineData("        let k = t.0@ref\n", false)]
+    [InlineData("        let k = r@follow.read()\n", false)]
+    [InlineData("        let k = a[0].read()\n", false)]
+    public void AnExclusiveUseOfAPlaceReachedFromACaptureIsAnExclusiveCall(string body, bool exclusive)
+    {
+        var source = Places + body + "        return 0\n    let v = f()\n";
+        var c = MinimalEmissionTest.Analyze(source);
+        var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous);
+        Assert.Equal(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, closure.ClosureOf()!.Receiver);
+        var errors = DiagnosticCorpus.Check(source).Diagnostics;
+        if (!exclusive)
+        {
+            Assert.Empty(errors);
+            return;
+        }
+
+        var error = Assert.Single(errors);
+        Assert.Equal((nameof(DiagnosticCode.InvalidAssignment_Kd), "f"), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
+        Assert.Equal("The call is Exclusive (SPEC 7.7.3): it borrows the callee exclusively, because the callee changes its environment or a captured referent", error.Note);
+    }
+
     private const string CapturedView = "public func main() -> ()\n    var n = 7\n    let view = n@uniq\n";
 
     // SPEC 3.5, 7.7.3, 14.9.2: an expression body without a written or expected result Type is a result source acquired by bare
