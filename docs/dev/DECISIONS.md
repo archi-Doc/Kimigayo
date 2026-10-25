@@ -3961,6 +3961,19 @@ and migration obligations remain in force; no numeric cap changes are authorized
     a Unit temp, has none, B-B1); a default's copy keeps no Result role, since the copy maps the template's `_0` to the caller's slot
     (`MirBuilder.Defaults.Copies`). MirValidator: a Result local is a Temp of local 0's Type, read only by the whole Move into `_0`
     that delivers it, else `MirViolation.Local` (no new violation, the planning session's approval). Code generation reads no role.
+  - U3 (rule W): MirOrigins publishes, for the body Judge last judged, each Ref's recorded Refuted problems whose `Reason.Longer` is
+    its own atom (`Causes`, a counting sort by atom; `Refutes`, the gate) and whether a receiving Type holds an Origin and every Origin
+    it holds is Fixed (`Fixed`; a raw layer, a Type parameter, a projection or a Callable fails). MirBorrows (`MirBorrows.Causes.cs`):
+    where `Refutes` is false nothing is set up; else the Loans and guard markers whose Refs' causes cover the run's views are W
+    elements, each with an indirect marker below the Loans (`Indirect`, its markers interned in one pass, `MirLoanSets.Of`); aggregates,
+    part steps, a raw Deref, a Value callee's environment and a read through a part's or E's reference mark; a read through a
+    reference to a whole holder keeps; an arrival into E, `_0` or a Result temp is kept only where `Fixed` holds, into a local only
+    whole or written through a reference to its whole root; joins union; endings remove markers with their Loans. A conflict is
+    derived exactly when every conflicting candidate the check set takes is a W element no carrier keeps (a transit value, a holder
+    other than an escape holder, an escape holder holding its marker), its causes appended as `Cause` facts; err(ended) likewise for
+    γ_H. `MirReport` merges derivedness (direct wins, causes unioned); the ledger leaves derived problems off the MIR side. Readings
+    (probes): the 2a-2 round's 113 programs as before, the six A/B differences as the review chose, 16 derived on the 65be867e9
+    ledger's 23 programs and 16 on its 1,240 sources, problem keys unchanged on all of them.
   - U4 (G213): one record of the analyses' storage limit, `MirDataflow.StorageLimit(report, body, views, table, words)`:
     `OwnershipStorageLimit_Kd` at the body with the facts `Required` (the arena's bytes), `Limit` (the byte limit) and `Table` (a
     `MirStorageTable`: Initialization for A1, Loans and Origins for A5's two arenas), each at the body, the catalog's `requiredBytes`,

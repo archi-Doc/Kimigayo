@@ -39,6 +39,7 @@ internal sealed partial class MirBorrows
         var callee = call.Callee;
         var result = callee.Kind == MirCalleeKind.Value && call.Operand.Kind != MirOperandKind.Const ? this.Read(state, call.Operand.Place) : 0;
         result = result != 0 && MirTypes.IsReference(this.TypeOf(call.Operand)) ? this.Content(state, result) : result;
+        result = this.Indirect(result); // Rule W: a Value callee's environment is no Copy of an argument.
         this.Moves(call.Start, call.Count);
         if (callee.Kind == MirCalleeKind.Value && call.Operand is { Kind: MirOperandKind.Move, Place: { Projection: 0 } moved })
         {
@@ -48,6 +49,7 @@ internal sealed partial class MirBorrows
         var retained = this.Rows(call, out var untied);
         var writesOf = Retention.Result; // The output whose writable holders the targets are.
         var clean = 0; // The first target W reaches only past a by-argument holder.
+        BoundType? referent = null; // Rule W: the Type the written argument refers to, every part of which may receive the value.
         foreach (var row in retained)
         {
             var value = row.Input == NoInput ? this.escapedSet : this.Retained(state, call.Start + row.Input, row.Input, row.Kind);
@@ -61,12 +63,13 @@ internal sealed partial class MirBorrows
             {
                 clean = this.Writes(state, this.argValues[row.Output]);
                 writesOf = row.Output;
+                referent = this.wCount > 0 && this.TypeOf(call.Start + row.Output) is { Kind: BoundTypeKind.Semantics, Components: [var to, ..] } ? to : null;
             }
 
             this.held |= !checks && value != 0 && clean < this.targets.Count;
             foreach (var target in this.targets)
             {
-                this.AddSlot(target, value, 0, Joined, issue: false);
+                this.AddSlot(target, this.Arrive(target, referent, false, this.argValues[row.Output], value), 0, Joined, issue: false);
             }
         }
 

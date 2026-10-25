@@ -177,6 +177,32 @@ public sealed class MirAnalysisTest
         Assert.Equal([new MirFact(MirFactKind.Anchor, new(0, 4))], report.Facts(1).ToArray());
     }
 
+    // DECISIONS R4-M132 (rule W; R4-M96 per report, DIAGNOSTICS §4.3): a merged problem is derived exactly when every report of it is, its
+    // Cause facts (their tail) the union of the reports' causes: a derived problem meeting a direct report becomes direct and stays so, two
+    // derived reports keep their causes once each, the first's span moved after another problem's facts, so the other problem keeps its own.
+    [Fact]
+    public void AMergeIsDerivedOnlyWhenEveryReportIs()
+    {
+        var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.ComparisonLoanConflict);
+        var (loan, other) = (new MirProblem(DiagnosticCode.ComparisonLoanConflict_Kd, requirement, new(0, 5), 0, 0b01), new MirProblem(
+            DiagnosticCode.ComparisonLoanConflict_Kd, requirement, new(0, 6), 0, 0b01));
+        var (anchor, first, second) = (new MirFact(MirFactKind.Anchor, new(0, 4)), new MirFact(MirFactKind.Cause, new(0, 1), 7), new MirFact(
+            MirFactKind.Cause, new(0, 2), 8));
+        var report = new MirReport();
+        Assert.Equal([0, 1, 0, 0, 0], new[]
+        {
+            report.Add(loan, [anchor, first]), report.Add(other, [anchor]), report.Add(loan with { Views = 0b10 }, [anchor, second]),
+            report.Add(loan, [anchor, first, second]), report.Add(loan, [anchor, second]),
+        });
+        Assert.Equal([anchor, first, second], report.Facts(0).ToArray());
+        Assert.Equal([anchor], report.Facts(1).ToArray());
+        Assert.Equal(0b11UL, report.All[0].Views);
+        Assert.Equal(0, report.Add(loan, [anchor]));
+        Assert.Equal([anchor], report.Facts(0).ToArray());
+        Assert.Equal(0, report.Add(loan, [anchor, first]));
+        Assert.Equal([anchor], report.Facts(0).ToArray());
+    }
+
     // R4-M69 (G125): the Language problems of a default's inline copies are its template's: A5's conflict in the default of the 1c design's
     // p11 and A1's and A2's in another keep the template's one view, though a caller of two views and another caller call both; a limit
     // record a copy finds stays (SPEC 23.1.1): A5's at a call whose contract Binding does not instantiate, one problem in the template and

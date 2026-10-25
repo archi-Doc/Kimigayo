@@ -3,13 +3,14 @@
 // Owns A5's Origin stratum (SPEC 15.6.1, 15.6.3, 15.6.5; 2a0-D §6, D13-D20; DECISIONS R4-M94, R4-M113, R4-M114, R4-M118), per body and per
 // class of its views: the graph of the body's rows (the C1-F4 view) with its Refs' containment edges, the Refuted and Unknown chains
 // through it and the relations between two fixed Origins (MirOrigins.Chains.cs), and the located limit at an end the view leaves
-// unclassed. The merge's facts are 2a-2's.
+// unclassed; and, for the Loan stratum's rule W, each Ref's causes and a receiving Type's class (MirOrigins.Causes.cs, R4-M132).
 // - Inputs: a validated body and the views A1 and A2 completed (MirDropTable.ViewsOf); MirCases (a view's borrow binders and case Types);
 //   MirSteps (a Ref's classed steps); the C1-F4 view (TyCtxt.OriginRows, OriginAtom, an atom's part), keyed by MirDefKey.Body, its
 //   fixed-fixed oracles (TyCtxt.UniversalRelations: the body's, and its layer's for the layer's part) and its findings
 //   (TyCtxt.OriginFindings).
-// - Outputs, which Judge adds at its end with each class's views, before the Loan stratum (R4-M132): UnsatisfiedOriginRelation_Kd (Ownership.UnprovenOrigin) at a chain's last edge's
-//   site (a row's Site, or the Ref's statement for a containment edge), with Reason (finite source, fixed end, false) of the view's
+// - Outputs, which Judge adds at its end with each class's views, before the Loan stratum (R4-M132): UnsatisfiedOriginRelation_Kd
+//   (Ownership.UnprovenOrigin) at a chain's last edge's site (a row's Site, or the Ref's statement for a containment edge), with Reason
+//   (finite source, fixed end, false) of the view's
 //   canonical atoms and the facts Relation (the edge's row, -1 for a containment edge) and Anchor (the first Ref whose Origin is the
 //   source); UnprovenOriginRelation_Kd (Ownership.UnprovenOrigin) where the oracle does not derive a chain or edge between fixed Origins,
 //   at its last edge's site with Reason (fixed source, fixed target, false), or (Longer, Shorter, true) for an Equality row failing both
@@ -77,7 +78,7 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
     /// <param name="report">The program's problems.</param>
     internal void Judge(MirBody body, long views, MirReport report)
     {
-        (this.body, this.classCount, this.containedCount, this.Work) = (body, 0, 0, 0);
+        (this.body, this.classCount, this.containedCount, this.Work, this.refCount, this.causeCount) = (body, 0, 0, 0, 0, 0);
         this.pending.Clear();
         this.pendingFacts.Clear();
         if (views == 0)
@@ -114,11 +115,14 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
         }
 
         var facts = CollectionsMarshal.AsSpan(this.pendingFacts);
+        this.recorded.Clear();
         foreach (var found in this.pending)
         {
             var problem = new MirProblem(found.Code, found.Requirement, found.Subject, this.body.Ordinal, found.Views, found.Reason);
-            report.Add(problem, facts.Slice(found.FactStart, found.FactCount));
+            this.recorded.Add(report.Add(problem, facts.Slice(found.FactStart, found.FactCount)));
         }
+
+        this.IndexCauses();
     }
 
     /// <summary>Adds the C1-F4 view's findings, each a broken view contract in a complete compilation, as one InternalInvariant_Kd at its

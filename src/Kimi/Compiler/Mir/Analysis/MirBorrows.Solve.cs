@@ -35,7 +35,9 @@ internal sealed partial class MirBorrows
             return; // No input of a Loan-stratum producer, no problem (A3 6.1, D5; E7's γ, R3, a slot write and PQ-10 need no Loan).
         }
 
+        this.Caused(); // Rule W's elements (MirBorrows.Causes), before any set holds a Loan.
         this.Holders();
+        this.Escapes();
         this.Endings();
         this.Touches();
         this.Entries();
@@ -114,13 +116,15 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // Ended Loans removed from every holder (E8, R-a).
+    // Ended Loans removed from every holder (E8, R-a), with their indirect markers (rule W).
     private void End(ulong[] state, int ended)
     {
         if (ended == 0)
         {
             return;
         }
+
+        ended = this.Indirect(ended);
 
         for (var s = 0; s < this.holderCount; s++)
         {

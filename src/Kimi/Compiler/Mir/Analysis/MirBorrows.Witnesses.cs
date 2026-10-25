@@ -11,7 +11,7 @@ namespace Kimi.Compiler.Mir;
 // Must not record a problem or decide which problem a conflict becomes (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
-    private readonly MirFact[] facts = new MirFact[5]; // The facts Facts builds for one problem.
+    private MirFact[] facts = new MirFact[5]; // The facts Facts builds for one problem, then its causes (MirBorrows.Causes' CauseFacts).
 
     // A conflict's code (A3 5's A6 table, row 1 for every access): a Loan found in its reservation holder, as the access sees it (a call's
     // effect rows see a reservation it activates unique, W6, R4-M92), is a reservation conflict, else the check's code.

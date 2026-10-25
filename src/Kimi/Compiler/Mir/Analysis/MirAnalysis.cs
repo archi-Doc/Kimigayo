@@ -44,8 +44,8 @@ internal sealed class MirAnalysis
         this.drops = new(this.moves, this.cases);
         this.init = new(this.flow, this.moves, this.cases, this.drops);
         this.effects = new(types, this.cases, this.flow);
-        this.borrows = new(types, this.flow, this.moves, this.cases, this.effects); // A5 reads A4's keys (R4-M92).
         this.origins = new(types, this.cases); // A5's Origin stratum (2a0-D D13).
+        this.borrows = new(types, this.flow, this.moves, this.cases, this.effects, this.origins); // A4's keys (R4-M92), rule W's causes (R4-M132).
     }
 
     /// <summary>Analyzes a program unless this version already was: a new version starts without problems, and one with validator
