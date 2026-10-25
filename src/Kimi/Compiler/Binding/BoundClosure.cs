@@ -14,7 +14,7 @@
 //   case Type, else Shared.
 // - Invariants: Receiver is CaseFreeReceiver raised to Exclusive when a capture has BareReborrows, so Consuming never depends on a
 //   case; the receiver facts are the current binding's exactly when Classified; Of is the definition once the signature is bound.
-// - Prohibitions: only ClosureEffects writes the receiver facts; no reader re-derives a receiver from the body.
+// - Prohibitions: only ClosureEffects classifies the receiver facts, which the binding resets; no reader re-derives a receiver from the body.
 
 using Kimi.Compiler.Parsing;
 
@@ -27,9 +27,9 @@ public readonly record struct BoundCapture(BindingSymbol Source, BindingSymbol E
     // How the entry initializes its environment binding (SPEC 7.7.2), as the HIR Adjust column states acquisitions.
     internal HirAdjust Adjust => HirAdjust.Of(this.Environment.CaptureAcquisition);
 
-    // SPEC 7.7.3, 8.14: an acquisition of the environment binding itself by value without an operator, in the body (bare, or an
-    // argument taken by value) or by a nested Closure's bare entry, Reborrows in some admitted case, so the call is
-    // Exclusive exactly in the cases where the binding's case Type is exclusive.
+    // SPEC 7.7.3, 8.14: an acquisition of the environment binding itself by value without an operator, in the body (at a value
+    // position its consumer takes it by value, Binding.AcquiredByValue) or by a nested Closure's bare entry, Reborrows in some admitted
+    // case, so the call is Exclusive exactly in the cases where the binding's case Type is exclusive.
     internal bool BareReborrows { get; init; }
 }
 

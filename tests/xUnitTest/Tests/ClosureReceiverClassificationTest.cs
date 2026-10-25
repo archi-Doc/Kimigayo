@@ -184,8 +184,9 @@ public class ClosureReceiverClassificationTest
     // so the call is Exclusive there. A Closure publishes the receiver every case has and marks such captures; a case's receiver is
     // the case-free one, raised to Exclusive where a marked capture's case Type is an exclusive layer, and Receiver is the strongest
     // over the cases. Each row: per Closure in source order, the case-free receiver, the owner and uniq cases' receivers and the
-    // marked captures. An argument taken by value acquires as a bare use does; a Reborrow of a Place reached through a capture, and an
-    // explicit case adaptation of a capture that is no pair layer, count in every case.
+    // marked captures. A value position its consumer takes by value (Binding.AcquiredByValue: an argument of a call or a value call, an
+    // assignment's source, a Dictionary entry, through parentheses too) acquires as a bare use does; a Reborrow of a Place reached
+    // through a capture, and an explicit case adaptation of a capture that is no pair layer, count in every case.
     [Theory]
     [InlineData("    var h = func [value] () -> ()\n        let local = value\n        _ = local\n    h()\n    h()\n", "Ref Ref Uniq [value]")]
     [InlineData("    let h = func [value] () -> ()\n        let local = value\n        _ = local\n    h()\n    h()\n", "Ref Ref Uniq [value]")]
@@ -194,6 +195,10 @@ public class ClosureReceiverClassificationTest
     [InlineData("    var k: i32 = 0\n    var h = func [value, var k] () -> ()\n        let local = value\n        k += 1\n", "Uniq Uniq Uniq [value]")]
     [InlineData("    let text = \"abc\"\n    let h = func [value, text@move] () -> ()\n        let local = value\n        let t = text@move\n", "Owner Owner Owner [value]")]
     [InlineData("    var h = func [value] () -> ()\n        take(value)\n", "Ref Ref Uniq [value]")]
+    [InlineData("    var h = func [value] (q: s/T) -> ()\n        var local = q\n        local = value\n        _ = local\n", "Ref Ref Uniq [value]")]
+    [InlineData("    let g = func (y: s/T) -> () => ()\n    var h = func [value, g@ref] () -> ()\n        g(value)\n", "Ref Ref Ref [] | Ref Ref Uniq [value]")]
+    [InlineData("    var h = func [value] () -> ()\n        let d: Dictionary<i32, s/T> = [1: value]\n", "Ref Ref Uniq [value]")]
+    [InlineData("    var h = func [value] () -> ()\n        take((value))\n", "Ref Ref Uniq [value]")]
     [InlineData("    var h = func [value] () -> ()\n        _ = 1\n", "Ref Ref Ref []")]
     [InlineData("    let pair = (value, 1)\n    var h = func [pair@move] () -> ()\n        let local = pair.0\n        _ = local\n", "Uniq Uniq Uniq []")]
     [InlineData("    var local: i32 = 1\n    var h = func [var local] () -> ()\n        let k = local@s/i32\n", "Uniq Uniq Uniq []")]
@@ -215,16 +220,24 @@ public class ClosureReceiverClassificationTest
         Assert.Equal(expected, string.Join(" | ", facts));
     }
 
-    // SPEC 3.5, 8.14, 7.7.3: an argument a call takes by value acquires a captured pair layer as each case's Type does, so it Reborrows
-    // in the exclusive cases and the call is Exclusive there: the strongest receiver is Exclusive, and a `let` Closure's call is
-    // invalid; under admitted cases that only Copy it stays Shared.
+    // SPEC 3.5, 8.14, 7.7.3: a value position its consumer takes by value (an argument of a call or a value call, an assignment's
+    // source, a Dictionary entry) acquires a captured pair layer as each case's Type does, so it Reborrows in the exclusive cases and
+    // the call is Exclusive there: the strongest receiver is Exclusive, and a `let` Closure's call is invalid; under admitted cases that
+    // only Copy it stays Shared. The value call, the assignment and the Dictionary entry were Shared in every case (2c-2 review B1).
     [Theory]
-    [InlineData("owner or uniq", true)]
-    [InlineData("owner or ref", false)]
-    public void AByValueArgumentOfAPairLayerCaptureIsExclusiveInItsReborrowCases(string admitted, bool exclusive)
+    [InlineData("        take(x)\n", "owner or uniq", true)]
+    [InlineData("        take(x)\n", "owner or ref", false)]
+    [InlineData("        var local = q\n        local = x\n        _ = local\n", "owner or uniq", true)]
+    [InlineData("        var local = q\n        local = x\n        _ = local\n", "owner or ref", false)]
+    [InlineData("        g(x)\n", "owner or uniq", true)]
+    [InlineData("        g(x)\n", "owner or ref", false)]
+    [InlineData("        let d: Dictionary<i32, s/T> = [1: x]\n        let k = d.length\n", "owner or uniq", true)]
+    [InlineData("        let d: Dictionary<i32, s/T> = [1: x]\n        let k = d.length\n", "owner or ref", false)]
+    public void AByValueUseOfAPairLayerCaptureIsExclusiveInItsReborrowCases(string use, string admitted, bool exclusive)
         => AssertCallReceiver(
-            "func take<t/U>(y: t/U)\n    t is " + admitted + "\n    U is Copy\n    return\nfunc outer<s/T>(x: s/T)\n    s is " + admitted + "\n    T is Copy\n" +
-                "    let f = func [x] () -> i32\n        take(x)\n        return 0\n    let v = f()\npublic func main() -> ()\n    var n = 1\n    outer(n)\n",
+            "func take<t/U>(y: t/U)\n    t is " + admitted + "\n    U is Copy\n    return\nfunc outer<s/T>(x: s/T, y: s/T)\n    s is " + admitted + "\n" +
+                "    T is Copy\n    let g = func (z: s/T) -> () => ()\n    let f = func [x, g@ref] (q: s/T) -> i32\n" + use + "        return 0\n    let v = f(y)\n" +
+                "public func main() -> ()\n    var n = 1\n    var m = 2\n    outer(n, m)\n",
             exclusive);
 
     // DECISIONS R4-M126 (N4 (a)): each binding of a Closure classifies its receiver once its body is bound, also when the Closure then
@@ -289,7 +302,7 @@ public class ClosureReceiverClassificationTest
     private static void AssertCallReceiver(string source, bool exclusive)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous);
+        var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous && x.Parent is VariableKoto { NameKoto: var name } && name.ToString() == "f");
         Assert.Equal(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, closure.ClosureOf()!.Receiver);
         Assert.Empty(DiagnosticCorpus.Check(source.Replace("    let f = func", "    var f = func", StringComparison.Ordinal)).Diagnostics);
         var errors = DiagnosticCorpus.Check(source).Diagnostics;

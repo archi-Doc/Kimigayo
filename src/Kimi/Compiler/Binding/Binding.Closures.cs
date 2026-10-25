@@ -10,7 +10,7 @@
 //   formation (Binding.Captures.cs), the receiver classification (Binding.ClosureReceivers.cs) and the call-local result test
 //   (Binding.ClosureResults.cs).
 // - Outputs: the literal's Type (its EnvironmentType) or its failure; BoundClosure's Storage, Signature, EnvironmentType and
-//   EvaluatingBody; a ClosureReceiverRefutation.
+//   EvaluatingBody; a ClosureReceiverRefutation; the located Unsupported_Kd of each use the classification leaves unlisted.
 // - Invariants: BindClosure clears the published Signature and Classified before a binding, and BindConcreteClosure starts from
 //   reset receiver facts (empty Storage, Shared, no exclusive cause) and has them classified right after the body is bound, before
 //   a failed result or parameter Type returns; a header probe binds no parameter, visits no body and restores the enclosing probe
@@ -344,8 +344,15 @@ public sealed partial class Binding
         }
 
         // SPEC 7.7.3: the receiver is classified from the bound body on every path that bound it, a failed result or parameter
-        // included; classification reads neither the signature nor the environment Type.
-        (this.closureEffects ??= new(this)).Classify(function, plan);
+        // included; classification reads neither the signature nor the environment Type. A by-value use of a pair-layer capture the
+        // list does not decide, which could leave a case Shared, is a located Unsupported_Kd (the owner's net, DECISIONS R4-M128).
+        var effects = this.closureEffects ??= new(this);
+        effects.Classify(function, plan);
+        foreach (var (use, _) in effects.Unlisted)
+        {
+            this.Fail(use, BindingFailure.Unsupported);
+        }
+
         if (symbol.Type is null)
         {
             return Complete(function, null);
