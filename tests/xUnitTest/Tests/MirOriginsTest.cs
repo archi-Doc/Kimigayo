@@ -236,7 +236,8 @@ public sealed partial class MirOriginsTest
     // binder, a Reborrow through shared and exclusive layers whose Origins the result names, a Slice element's Borrow (E6), a raw Deref,
     // which stops containment (a-wf), a local region holding only a local's Borrow, an immutable static's storage passed to a
     // `during static` parameter (row 7', Inferred; SPEC 11.8), which the default pipeline rejects (PLAN G197's residual, ledger (a)),
-    // and the destruction receiver's view exchanged with itself (d-g161-ok).
+    // the destruction receiver's view exchanged with itself (d-g161-ok), and a Closure header's omitted inner Origin, whose
+    // well-formedness is its signature's premise, proven at the call, so no row of the evaluating body (PLAN G216, DECISIONS R4-M137).
     [Theory]
     [InlineData("func pass(x: ref/i32) -> ref/i32 during x\n    let y = x\n    return y\n")]
     [InlineData("struct P {a}\n    public let r: ref/i32 during a\n    public init(r: ref/i32 during a) => self.r = r\nfunc get(p: ref/P) -> ref/i32 during p.a\n    return p.r\n")]
@@ -247,6 +248,7 @@ public sealed partial class MirOriginsTest
     [InlineData("func ok() -> i32\n    let a = 1\n    var r = a@ref\n    return r@follow\n")]
     [InlineData(Storage + "    public let item: i32 = 0\n        get() -> i32 => Util.keepStatic(storage@ref)\n")]
     [InlineData(ValidDestructor)]
+    [InlineData(ClosureHeader + "    return h(x@ref@ref)\n")]
     public void AValidChainHasNoOriginProblem(string source)
     {
         var c = MirBuildTest.Compile(source + Main);
@@ -269,12 +271,9 @@ public sealed partial class MirOriginsTest
 
     // 2a0-D §3 row 9 and D19: a row with an Unclassed end forms no edge and is the located limit at its Site, whatever Binding's
     // completeness (DECISIONS R4-M113): a callee's own Parameter atoms in a caller's rows (I-1, PLAN G195; meet-trans, which Binding rejects
-    // by its own relation record), and a Closure header's omitted inner Origin (PLAN G216, decided by 2c-D), also beside an unrelated
-    // Binding error, which leaves the limit independent. An end a Binding failure left Unbound is Dependent instead (R4-M118).
+    // by its own relation record). An end a Binding failure left Unbound is Dependent instead (R4-M118).
     [Theory]
     [InlineData(MeetTrans, "t@uniq")]
-    [InlineData(ClosureHeader + "    return h(x@ref@ref)\n", "ref/(ref/i32)")]
-    [InlineData(ClosureHeader + "    let m: bool = 3\n    return h(x@ref@ref)\n", "ref/(ref/i32)")]
     public void AnUnclassedEndIsTheLocatedLimit(string source, params string[] sites)
         => Assert.Equal([.. sites.Select(static x => $"{nameof(DiagnosticCode.Unsupported_Kd)} {x}")], Origins(MirBuildTest.Compile(source + Main)));
 
