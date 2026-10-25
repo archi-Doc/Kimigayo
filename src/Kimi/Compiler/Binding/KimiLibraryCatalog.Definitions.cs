@@ -228,6 +228,9 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.SliceToArray, "toArray", SourceFunction: true, CallerLocation: true, Owner: "Slice"),
         new(KimiDeclarationId.ArrayAppendCopies, "appendCopies", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.ArrayTruncate, "truncate", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true),
+        // SPEC 4.9.6, 15.6.4: the public position insert and appendAll, which add inputs to the element storage (AddedRows).
+        new(KimiDeclarationId.ArrayInsertPosition, "insert", KimiLibraryContainer.Array, SourceFunction: true),
+        new(KimiDeclarationId.ArrayAppendAll, "appendAll", KimiLibraryContainer.Array, SourceFunction: true),
     ];
 
     private static readonly int[] Indices = CreateIndices();

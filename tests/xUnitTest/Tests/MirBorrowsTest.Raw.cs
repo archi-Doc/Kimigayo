@@ -347,6 +347,96 @@ public sealed partial class MirBorrowsTest
                     storeT(t@uniq, k)
                 """));
 
+    // SPEC 15.6.4's transfer rule (DECISIONS R4-M131, BU-40): a Chain row is a read through the argument, never its own Loans, so a
+    // popped or iterated raw item, an exchanged raw pointer's old contents and a user Iterator's item keep no Loan of their receiver or
+    // target, while a swapped pointer keeps what a read through the other argument carries (`y`'s Loan through `w`). A5 reads Chain as
+    // one read until its Chain closure (R4-M131 Order 3).
+    [Fact]
+    public void AChainRowIsAReadThroughTheArgument()
+        => Assert.Equal(
+            ["swapRawBad: y = 5", "swapRawOwnBad: y = 5"],
+            Problems("""
+                func usep<T>(p: raw/T) => ()
+                struct RawIter
+                    Self is Iterator
+                    associate Iterator.Item is raw/u8
+                    var items: Array<raw/u8>
+                    public init(items: Array<raw/u8>) => self.items = items@move
+                    public func next(self: uniq/Self) -> Option<raw/u8> => self.items.pop()
+                func popRaw()
+                    var a: Array<raw/u8> = [null, null]
+                    let x = a.pop()
+                    a.append(null)
+                    inspect(x)
+                func exchangeRawOwnResultOk()
+                    var y: i32 = 1
+                    let r = y@ref
+                    let p = r@follow@raw
+                    var x: raw/i32 = null
+                    let old = Kimi.Intrinsics.exchange(x@uniq, with: p)
+                    x = null
+                    y = 5
+                    usep(old)
+                func iterRaw()
+                    let a: Array<raw/u8> = [null, null]
+                    var it = a.iterate()
+                    let first = it.next()
+                    let second = it.next()
+                    inspect(first)
+                    inspect(second)
+                func userIter()
+                    var it = RawIter.init([null, null])
+                    let first = it.next()
+                    let second = it.next()
+                    inspect(first)
+                    inspect(second)
+                func swapRawBad()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    var x: raw/u8 = w@raw@raw/u8
+                    var z: raw/u8 = null
+                    Kimi.Intrinsics.swap(x@uniq, z@uniq)
+                    y = 5
+                    usep(z)
+                func swapRawOwnBad()
+                    var y: i32 = 1
+                    let r = y@ref
+                    var x: raw/i32 = r@follow@raw
+                    var z: raw/i32 = null
+                    Kimi.Intrinsics.swap(x@uniq, z@uniq)
+                    y = 5
+                    usep(z)
+                """));
+
+    // SPEC 15.6.4, 15.7 (DECISIONS BU-40; PLAN G255's C4): `exchange` writes its result and its target, never through `with` (its rows,
+    // RetentionTest), so `g`, used after `y = 5` once `h` is replaced, keeps nothing of the target, while the old contents keep `h`'s
+    // address of `w` while `h` still holds it.
+    [Fact]
+    public void AnExchangeWritesNothingThroughItsValue()
+        => Assert.Equal(
+            ["exchangeWithBad: y = 5"],
+            Problems("""
+                func exchangeWithOk()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    var h: raw/u8 = w@raw@raw/u8
+                    var x: raw/(raw/u8) = h@raw
+                    var g: raw/u8 = null
+                    let old = Kimi.Intrinsics.exchange(x@uniq, with: g@raw)
+                    h = null
+                    y = 5
+                    let used = g == null
+                func exchangeWithBad()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    var h: raw/u8 = w@raw@raw/u8
+                    var x: raw/(raw/u8) = h@raw
+                    var g: raw/u8 = null
+                    let old = Kimi.Intrinsics.exchange(x@uniq, with: g@raw)
+                    y = 5
+                    let used = old == null
+                """));
+
     // DECISIONS R4-M116 PQ-10 (B′ §4.3; registered for X-2): a Borrow of a `during self` layer's Place, or of a Tuple Place enclosing one,
     // and a Copy read of such a Tuple, are located Unsupported_Kd until the Loan records the layer's own-step entry; a Borrow of the holder
     // and a read of the layer through it are precise.

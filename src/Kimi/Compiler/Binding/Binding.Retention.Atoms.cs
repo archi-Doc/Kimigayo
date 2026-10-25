@@ -10,9 +10,10 @@ namespace Kimi.Compiler;
 // refers through (BorrowReferent); Binding.Retention.cs reads them into premises, Binding.Retention.Rows.cs into rows.
 public sealed partial class Binding
 {
-    // SPEC 15.6.4 (DECISIONS R4-M116): the raw inputs of the contract being computed with their Types, and the positions of its outputs
-    // whose Type a raw input's own value may reach (a raw layer, an abstract part, or a struct or enum whose stored content may hold one),
-    // each with its output (Retention.Result, or the input whose writable storage it is), in walk order; reused.
+    // SPEC 15.6.4 (DECISIONS R4-M116, BU-40): the raw inputs of the contract being computed with their Types, and the holds of its outputs,
+    // each with its output, in walk order: the result's whole Type (Retention.Result), and each position of input j's writable storage
+    // whose Type a raw input's own value or a raw layer may reach (a raw layer, an abstract part, or a struct or enum whose stored content
+    // may hold one); reused.
     private readonly List<(int Input, BoundType Type)> retentionRawInputs = new();
     private readonly List<(int Output, BoundType Type)> retentionHolds = new();
 
@@ -93,13 +94,14 @@ public sealed partial class Binding
     // the callee's own signature makes Shared (`at.Shared`; SignatureStep: only shared input borrows state its Origin there, so a pointer
     // read from it has read authority only, SPEC 5.2.1 condition 3, 8.11.4 rule 1; D10, superseding R4-M51's raw clause), nor past a
     // pair layer whose binder admits no exclusive Semantics. A raw layer with another Origin addresses what each borrow its Origin
-    // belongs to admits (RawContent), and its atom is that Origin, as a borrow's; a raw result layer without one reaches every input (D6).
-    // A callable Type stores nothing, and its per-call Origins belong to no value of it (SPEC 15.2.3). A position of the result, or of an
-    // input's writable storage, whose Type is a raw layer, an abstract part, a struct or an enum is one of that output's holds.
+    // belongs to admits (RawContent), and its atom is that Origin, as a borrow's; what a raw layer without one retains is the hold walk's
+    // (Binding.Retention.Rows.cs). A callable Type stores nothing, and its per-call Origins belong to no value of it (SPEC 15.2.3). A
+    // position of an input's writable storage whose Type is a raw layer, an abstract part, a struct or an enum is one of that input's
+    // holds; the result's one hold is its whole Type (RetentionOf).
     private void RetentionWalk(BoundType type, RetentionAtom at, OriginVariance variance, bool callable)
     {
         var here = at with { Writable = at.Writable && variance == OriginVariance.Invariant };
-        if (!callable && (here.Input == Retention.Result || here.Writable) && MayHold(type))
+        if (!callable && here.Writable && MayHold(type))
         {
             this.retentionHolds.Add((here.Input, type));
         }
@@ -154,7 +156,6 @@ public sealed partial class Binding
             this.RawContent(rawOrigin!, at.Input);
         }
 
-        this.retentionUnstatedResult |= raw && !inside && rawOrigin is null && at.Input == Retention.Result;
         for (var i = 0; i < type.Components.Count; i++)
         {
             this.RetentionWalk(type.Components[i], below, ComposeVariance(variance, this.ComponentVariance(type, i)), inside);

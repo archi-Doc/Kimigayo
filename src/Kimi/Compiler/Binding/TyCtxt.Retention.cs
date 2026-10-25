@@ -22,14 +22,22 @@
 // Shared; a raw parameter layer without an Origin, or with `static`, lets the call write its pointee, one whose Origin steps Exclusive
 // what that Origin's borrows admit (their referents, a slot's Keepers) as that input's storage. A raw input is retained as a borrowed
 // one, its pointee as the referent: an Origin inside its pointee is Content, its own layer's Origin gives no row, and its own value is
-// a Value row only of an output that can hold a value of its Type (a raw layer agreeing with it, Origins fitted, or an abstract part)
-// where the call may write it: at or below a position of the output's writable storage (a value stored there brings its whole Type:
-// every layer but a callable's, a struct's or enum's stored content included); never of its own pointee, so a raw input may have both
-// rows to one output. A raw result layer with an Origin retains as that borrow would; one without, outside a nominal Type's Fields, retains
-// every input, a raw one also as Content; a result the call forms within a raw parameter's storage (Raw.slice) retains its own value.
-// A result or input holding a raw layer stepping Unstated or Static there is untied (Untied, UntiedStores).
+// a Value row only of an output that can hold a value of its Type where the call may write it (a raw layer stating an Origin or
+// `static` that agrees with it, Origins fitted, or an abstract part, at or below a position of the output's writable storage: a value
+// stored there brings its whole Type, every layer but a callable's, a struct's or enum's stored content included), of a result the call
+// forms within its storage (Raw.slice), or by the rules below; never of its own pointee, so a raw input may have both rows to one
+// output. A raw result layer with an Origin retains as that borrow would. A raw layer without an Origin that the call may write (SPEC
+// 15.6.4 as DECISIONS R4-M131 states it; BU-40), in the result (a nominal Type's Fields included) or in input j's writable storage,
+// retains every input by what any chain of reads through it carries (Chain) and every input but j by its own value (Value), and unties
+// that output (Untied, UntiedStores), as a `static` layer does without these rows; one behind a borrow in the result (a Slice's or
+// UniqSlice's elements included, and a result raw layer stating a borrow's Origin, which retains as that borrow would) is lent, not
+// written: it retains only the raw inputs, by Value and Chain, and unties nothing (R′). A
+// published operation that transfers values (an Iterator's `next`, `exchange`, `swap`, an operation of SPEC 4.6 to 4.9, keyed by
+// declaring identity in Binding.Retention.Transfers.cs) retains there a borrowed input by its Chain only, `exchange`'s result only its
+// target's Chain, and a 4.9 operation's receiver storage, of the other inputs, only its added ones (KimiLibraryCatalog.Added).
+// Content and Chain are two measures: Content what one read through the input carries (premises, step 4), Chain any chain of reads.
 // Files: this one (the contract and its records RetentionKind, Retention, CallRetention); TyCtxt.Retention.Calls.cs (TyCtxt.Retains
-// and its memo); Binding.Retention.cs with .Atoms.cs and .Rows.cs (the computation).
+// and its memo); Binding.Retention.cs with .Atoms.cs, .Rows.cs and .Transfers.cs (the computation).
 // Must not: read the call's solved Origins or its arguments, judge an Origin relation, cover unknown callees or the operands an intrinsic
 // takes beyond its library declaration (A5's; an intrinsic's declaration is a callee like any other, A3 E14), or expose its premise walk as
 // a view of its own (A3 9, item 9).
@@ -47,6 +55,11 @@ internal enum RetentionKind : byte
     /// <summary>Only Origins inside a borrowed input's referent Type, or a raw input's pointee Type, reach the output (step 4: its
     /// OwnedOrigins), which carries the Loans a read through the argument carries.</summary>
     Content,
+
+    /// <summary>The output carries what any chain of reads through the argument carries (SPEC 15.6.4: through a raw or borrowed layer
+    /// anywhere in its value, then in each value read): a raw layer without an Origin the call writes or lends (DECISIONS R4-M131,
+    /// BU-40). A5 reads it as Content until R4's closure follows the chain.</summary>
+    Chain,
 }
 
 /// <summary>One retention of a call: <see cref="Output"/>, the result (<see cref="Result"/>) or the writable storage of input j (j: its
@@ -60,8 +73,9 @@ internal readonly record struct Retention(int Input, RetentionKind Kind, int Out
 
 /// <summary>A call's retention: its rows, by output (the result, then each written input) and input; whether the result is untied, so it
 /// may refer to storage the caller does not own (design A3's Φ_E): a result atom is reached from no input and is not <c>static</c>, or
-/// the result holds a raw layer stepping Unstated or Static; and the inputs whose writable storage holds such a layer, where the call
-/// may write a pointer tied to no input (DECISIONS R4-M116 R-B2, BU-30); or <see cref="Limit"/>, which has none of them.</summary>
+/// the result holds a raw layer stepping Static, or one stepping Unstated that is not lent (behind a borrow in the result, R′); and the
+/// inputs whose writable storage holds such a layer, where the call may write a pointer tied to no input (DECISIONS R4-M116 R-B2, BU-30, BU-40); or
+/// <see cref="Limit"/>, which has none of them.</summary>
 internal sealed class CallRetention(Retention[]? rows, bool untied, int[] untiedStores)
 {
     /// <summary>A genuine limit: the retention of a call whose contract, or a Type its hold walk reaches, has storage past Binding's limits

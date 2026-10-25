@@ -131,7 +131,7 @@ public class KimiLibraryShapeTest
         var c = Library.Value;
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
-        Assert.Equal(184, KimiLibraryCatalog.Entries.Length);
+        Assert.Equal(186, KimiLibraryCatalog.Entries.Length);
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
@@ -340,6 +340,44 @@ public class KimiLibraryShapeTest
                 "DictionaryIndexUniq equals 1 -1 False", "DictionaryStorageFindEntry equals 1 -1 False",
             ],
             rows);
+    }
+
+    // SPEC 4.9.6, 15.6.4 (DECISIONS BU-40): a 4.9 operation's added and replacing inputs (KimiLibraryCatalog.Added) are exactly its inputs,
+    // other than the receiver and not borrowed (a borrowed key is read, never stored), that its declared contract retains in the
+    // receiver's storage, so an Array or Dictionary member that adds an input cannot miss its row and a row names no input it does not
+    // store.
+    [Fact]
+    public void AddedInputsAreTheInputsStoredInTheReceiver()
+    {
+        var c = Library.Value;
+        var added = new List<string>();
+        foreach (var id in new[] { KimiDeclarationId.Array, KimiDeclarationId.Dictionary })
+        {
+            var container = Assert.IsAssignableFrom<DeclarationContainerKoto>(c.Library.GetSymbol(id)!.Declaration);
+            foreach (var function in container.Members.OfType<FunctionKoto>())
+            {
+                if (function.SymbolOf() is not { ReceiverIndex: >= 0 } symbol)
+                {
+                    continue;
+                }
+
+                var rows = c.Types.Retains(symbol, null, null).Rows.ToArray();
+                for (var i = 0; i < function.Parameters.Count; i++)
+                {
+                    var stored = i != symbol.ReceiverIndex && !Borrowed(TyCtxt.Signature(symbol, null, i, out _)!) &&
+                        rows.Any(x => x.Input == i && x.Output == symbol.ReceiverIndex);
+                    Assert.True(stored == KimiLibraryCatalog.Added(symbol, i), $"{Line(function)}: input {i}");
+                    if (stored)
+                    {
+                        added.Add($"{function.Name} {i}");
+                    }
+                }
+            }
+        }
+
+        Assert.Equal(["insert 2", "appendAll 1", "appendCopies 1", "append 1", "insertAt 2", "tryInsert 1", "tryInsert 2", "insertOrReplace 1", "insertOrReplace 2"], added);
+
+        static bool Borrowed(BoundType type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq };
     }
 
     [Theory]

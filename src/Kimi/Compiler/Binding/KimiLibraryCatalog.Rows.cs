@@ -11,12 +11,25 @@ internal readonly record struct PublishedRow(KimiDeclarationId? Runs = null, sby
 // that the argument of parameter Within states before its fit to that parameter (Raw.slice's storage).
 internal readonly record struct WithinRow(KimiDeclarationId Id, sbyte Within);
 
+// SPEC 4.9.6, 15.6.4: the added and replacing inputs of a 4.9 operation, by parameter slot (bit i: slot i), the only arguments other
+// than its receiver that its element storage retains at a raw layer without an Origin (the transfer rule, Binding.Retention.Transfers.cs).
+internal readonly record struct AddedRow(KimiDeclarationId Id, byte Mask);
+
 // The rows a library operation publishes beyond its signature, by its catalog ID (the recognition entries,
 // KimiLibraryCatalog.Definitions.cs, name the operations and carry their PublishedRow).
 internal static partial class KimiLibraryCatalog
 {
     // The operations' Origin relations beyond their signatures (WithinRow), apart from their recognition entries.
     private static readonly WithinRow[] WithinRows = [new(KimiDeclarationId.RawSlice, 0)];
+
+    // The 4.9 operations' added and replacing inputs (AddedRow); an Array or Dictionary member without a row adds none (KimiLibraryShapeTest
+    // pins the rows against the members' declared retentions into their receivers).
+    private static readonly AddedRow[] AddedRows =
+    [
+        new(KimiDeclarationId.ArrayAppend, 0b10), new(KimiDeclarationId.ArrayInsert, 0b100), new(KimiDeclarationId.ArrayInsertPosition, 0b100),
+        new(KimiDeclarationId.ArrayAppendAll, 0b10), new(KimiDeclarationId.ArrayAppendCopies, 0b10), new(KimiDeclarationId.DictionaryTryInsert, 0b110),
+        new(KimiDeclarationId.DictionaryInsertOrReplace, 0b110),
+    ];
 
     // SPEC 4.9.6, 12.4.3: the user-code effects an operation publishes, a bodiless constructor its linked implementation's; null for none.
     // The row, dependency rules, allocation, Abort and input accesses form its published summary; callers and bound verification use
@@ -37,5 +50,19 @@ internal static partial class KimiLibraryCatalog
         }
 
         return -1;
+    }
+
+    // SPEC 4.9.6: whether parameter slot `input` of a 4.9 operation is one of its added or replacing inputs (AddedRows).
+    internal static bool Added(BindingSymbol? symbol, int input)
+    {
+        foreach (var row in AddedRows)
+        {
+            if (symbol?.LibraryDeclaration == row.Id)
+            {
+                return (row.Mask & (1 << input)) != 0;
+            }
+        }
+
+        return false;
     }
 }
