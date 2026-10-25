@@ -4079,7 +4079,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
        part by BU-40); results
        under the same flag, without `retentionUnstatedResult`; R′'s split of holds behind a result borrow; the transfer rule's three
        keys; failing-first RetentionTest rows.
-    3. A5's Content closure at untied outputs, in G160-5's follow-up, with V16 scaling rows (superseded in part by BU-40).
+    3. A5's Content closure at untied outputs, in G160-5's follow-up, with V16 scaling rows (superseded in part by BU-40; the closure:
+       R4-M138).
   - Open, now that the transfer class (the review's F1: SPEC's `swap`/`exchange`, the 4.9 removals and rejections, Dictionary key
     borrows, the cost class) is answered by the transfer rule:
     - user functions keep A's cost: two exclusive out-parameters (`twoOut`: each keeps the other's Loan, and no Origin can be
@@ -4460,6 +4461,49 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the helper); comparing by line as the SPEC-example oracle does (R5's condition: the exact record at its subject).
   - Numbering: R4-M136 is free on dev and every branch (R4-M133 2c-3B, R4-M134 the spec-rest session, R4-M135 the owner's withdrawal of
     the 70% rule).
+- **R4-M138 A5's Chain closure (R4-M131 Order 3 as BU-40 restated it); G255's C3 apart** (2026-10-26; R4's lane A under the R4
+  review of BU's N2 rows, §8; the R4 planning session's decision on the unit's stop: the closure lands now, C3 becomes its own Full
+  change with BU) SPEC 15.6.4 (Q4 (a), R′, the transfer rule). Supersedes R4-M131 Order 3 as BU-40 restated it, and bu41's interim
+  (A5 read a Chain row as Content, one read).
+  - Rule: a Chain row's value is chain(S) of the argument's value, the least fixed point of a read: the states of the holders content(S)
+    reads, then of each holder a state read names by a direct Loan or address, and E's where a state carries Φ_E; each holder is queued
+    once per closure (a pointer cycle ends) and its state read through rule W's read-through clause, the one `ReadThrough` content uses
+    (R4-M132; the landing review's L1): a Copy only where every reach of the holder in the closure was through its whole value, marked
+    where one was through a part or E (a may-fact, joined); the states are joined by one n-ary union, and the result is memoized at the
+    location beside content (E13 (5)); a warm run allocates nothing. Content rows stay one read and Value is unchanged; `Retained` keys on
+    the row's kind only (no Type, Untied or callee test; review §8).
+  - `MirLoanSets.Union` over any number of sets (the planning session's V16 decision): each element of each set is set once in a reused
+    bit marker, and each word it sets is listed once in a reused list as it is first set; the list is sorted, and its words are read
+    back in ascending order and cleared, then the run is interned. Its work is the elements read plus the set made, with at most a log
+    factor on the distinct words touched (each at most the elements read), never a term in the range between its least and greatest
+    element (the planning session's bound after the landing review 2's B1). Not memoized; its caller memoizes.
+  - On the MIR the two-read forms err at their SPEC point (getRRRRepl, getRFRRepl, fRRRRepl, unlinkRBad, lend3Repl, popLateBad,
+    popLateBadX, exchangeTwoBadX, swapTwoBad; the probes' swap2Bad), their twins stay valid (getRRROk, getRFROk, fRRROk, unlinkROk,
+    lend3Ok, exchangeTwoOk, swapTwoOk), and a Tuple's borrow storing through a pointer read from storage the body does not own keeps the
+    Loan two reads through it (y's storage end in `viaUniqMixed`). A helper with an unstated raw parameter (`usep`) applies its own Chain
+    row, so unlinkROk's use of h1 goes through a comparison, as the probes' second set does.
+  - C3 apart (the planning session's decision): rule G's W second pass at a 4.9 operation's receiver element storage needs the outputs a
+    published operation writes only at its own element storage, Binding's fact (`TransferWrites`, `ReceiverStorage`) that A5 is not
+    given; a callee-keyed rule is the test review §8 forbids, and dropping a 4.9 receiver's untied store is partial. C3 is a Full change
+    with BU (Binding publishes those outputs; A5's W there is refs(S)). Until it lands, popLateOk is a pinned shadow false error (the
+    closure reads pop's chain through the E an earlier receiver store reached; the default pipeline accepts it), named with C3 as its
+    removal unit beside appendNullOk and appendIntoOk; C3's rows (arrNode1Ok, arrNodeAppendOk, rawPairOk, arrNode2Ok, appendNullOk,
+    appendIntoOk, the probes' pop2Ok) are unchanged; dictNodeOk is C2's (the literal's internal `placeEntry`), not C3's.
+  - V16: the Work Chain rows add beside the same body without them is linear for N calls over a depth-K pointer chain, a K-cycle, N
+    vacuous rows (`Raw.allocate`'s count) after E holds M addresses, an M-way fan-out and N sparse rows, each joining {Φ_E} with one of
+    N Loans: each step's growth at most 2.1 times the one before (2.00 to 2.05 measured; balanced unions measured 2.14 to 2.25 and fail
+    it on the cycle and E rows; a read-back over the range 2.69 and 3.03 on the sparse rows).
+  - Rule W's facts on Chain rows (G263's item): a Chain row's conflict is derived where every read on the way was of a whole holder, as
+    a Content row's, and independent where the chain read the Loan through E (chain-retention, chain-through-e beside
+    content-through-e); a chain through E at a later step reaches what an earlier store left there (viaEBad, viaEOk).
+  - Rejected: closing Content rows at untied outputs (BU-40's reason); one union per state read (a set per prefix, quadratic in a
+    chain's length, measured in the V16 rows); pairwise unions in balanced rounds (a log factor, K·log K for K holders; the planning
+    session's V16 decision); a marker read back over the words from the least element to the greatest (B1: a sparse union, Φ_E with
+    one Loan, costs the body's numbering / 64); Chain reading states unmarked or by a rule of its own (a second copy of rule W's clause; L1); a Type skip
+    of vacuous Chain rows in A5 (review §4); C3 keyed by callee identity; C3 by dropping a 4.9 receiver's untied store. No valid form
+    tells Content from Chain keying: under an Origin-stated premise the content holds a Loan on each holder a second read passes (a
+    `raw/T during source` Field needs its `Loan` Field), so replacing it, or writing what it refers to, conflicts either way. Numbering: R4-M138
+    is free on dev and every open R4 branch (R4-M137 is 2c-9's).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -6212,7 +6256,7 @@ resumed by R4-M86 (2026-10-20).
     FIXES) is R4's agreement to this edit of R4-M131. A5's `Retained` reads Chain as one read until that closure (one line, R4's
     file). The interim stays unsound beyond one read, as dev is: popLateBadX and exchangeTwoBadX are newly accepted (dev rejected them
     only through the own Loan SPEC removes), and popLateBad, swapTwoBad, the two-read forms and lend3Repl stay accepted, until Order
-    3.
+    3 (replaced by R4-M138, A5's Chain closure, which rejects them).
   - Transfer keys (`Binding.Retention.Transfers.cs`), read once per contract at the first output meeting Unstated, never by name:
     Iterator's `next` (`SelectsWitness(callee, Self, Iterator)` and `ResolveConformance(Self, Iterator)` Proven under TyCtxt's premise
     scope for an instance with an abstract part, passed to `Binding.Retains` and from it, as `RetentionRows`' parameter, to

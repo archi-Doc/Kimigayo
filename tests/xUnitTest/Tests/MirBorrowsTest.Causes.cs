@@ -15,6 +15,11 @@ namespace XunitTest;
 /// Cause facts. Nothing is dropped and no verdict changes.</summary>
 public sealed partial class MirBorrowsTest
 {
+    // A result with an unstated raw Field and Fixed Origins (MirOrigins.Fixed reads no Field), so mkE's rule-A rows are Value and Chain
+    // (SPEC 15.6.4; DECISIONS BU-40), whose arrival in _0 rule W keeps as it is; only its innermost layer's Origin is the result's.
+    private const string ChainHolder = "struct Holder {a}\n    public var p: raw/u8\n    public var r: ref/i32 during a\n" +
+        "func mkE(x: ref/(ref/(ref/i32 during a) during b) during c) -> Holder during a\n    loop => ()\n";
+
     // The rows' sources (the 2a-2 round's programs, the 65be867e9 ledger's and the design review's), each with a `public func main`.
     private static readonly Dictionary<string, string> CausedSources = new()
     {
@@ -77,6 +82,8 @@ public sealed partial class MirBorrowsTest
             "    var r = local@ref\n    p@follow = r@ref\n",
         ["merge-two-paths-v"] = "func f(x: ref/i32, p: uniq/(ref/i32 during x), c: bool) -> ref/i32 during x\n    let local = 1\n" +
             "    var r = local@ref\n    var q = local@ref\n    if c\n        return r\n    p@follow = q\n    return x\n",
+        ["chain-retention"] = ChainHolder + "func chainKept(q: ref/i32) -> Holder during q\n    let local = 1\n    var h = local@ref\n    var h2 = h@ref\n" +
+            "    return mkE(h2@ref)\n",
         ["two-views"] = "func pp<s/T>(target: uniq/(ref/i32 during a), x: s/T)\n    s is owner or ref\n    let local = 1\n    var r = local@ref\n" +
             "    target@follow = r\n",
         // pins
@@ -141,18 +148,25 @@ public sealed partial class MirBorrowsTest
         ["m-write4"] = "func w4(slot: uniq/(ref/i32 during a))\n    var x = 1\n    slot@follow = x@ref\n    x = 2\n",
         ["j-bad-v.r1"] = "func inspect<T>(value: ref/T) => ()\nfunc bad(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 1\n" +
             "    var r = local@ref\n    inspect(r)\n    return x\n",
+        ["chain-through-e"] = ChainHolder + "func chainViaE(q: ref/i32, slot: uniq/(ref/i32 during q)) -> Holder during q\n    let local = 1\n" +
+            "    var h = local@ref\n    slot@follow = h\n    var r = slot@follow@ref\n    return mkE(r@ref)\n",
+        ["content-through-e"] = "func firstE(r: ref/(ref/i32 during a)) -> ref/i32 during a => r@follow\n" +
+            "func contentViaE(q: ref/i32, slot: uniq/(ref/i32 during q)) -> ref/i32 during q\n    let local = 1\n    var h = local@ref\n" +
+            "    slot@follow = h\n    return firstE(slot@follow@ref)\n",
         ["m-store-v.r1"] = "func inspect<T>(value: ref/T) => ()\nfunc leakL(target: uniq/(ref/i32 during a))\n    let local = 1\n" +
             "    var r = local@ref\n    inspect(r)\n",
     };
 
-    // SPEC 15.6.5 (R4-M122's text; DECISIONS R4-M132): a conflict whose Loan every carrier past the access keeps only in the result in transit
-    // (a Result temp, _0) or storage the body does not own (E), received as the borrow or a Copy or Reborrow of it into a part every Origin
-    // of which is Fixed, is derived from the Refuted problems of its Borrow's Origin: a return through locals, a Reborrow and a Slice
-    // handle, a generic call's result (the call clause), a store through a parameter, through two paths (both causes), in a loop, through a
-    // guard candidate's call (err(ended)), a read through a reference to a whole value (B's read-through clause, Content retention), a write
-    // through a reference to a whole local (B's write-through row), a container's or a closure environment's append (A's receiving check over
-    // every Origin of the receiving Type), a candidate the access does not conflict with (R4-M96's exact scan, B), a pair binder's view, and
-    // a conflict-free branch's write beside a derived end (keepA). Fail-before: no Cause fact exists.
+    // SPEC 15.6.5 (R4-M122's text; DECISIONS R4-M132): a conflict whose Loan every carrier past the access keeps only in the result in
+    // transit (a Result temp, _0) or storage the body does not own (E), received as the borrow or a Copy or Reborrow of it into a part
+    // every Origin of which is Fixed, is derived from the Refuted problems of its Borrow's Origin: a return through locals, a Reborrow and
+    // a Slice handle, a generic call's result (the call clause), a store through a parameter, through two paths (both causes), in a loop,
+    // through a guard candidate's call (err(ended)), a read through a reference to a whole value (B's read-through clause, Content
+    // retention, and a Chain row's reads of whole holders, R4-M138; the outer layers' Loans, whose Origins mkE leaves free, have no Refuted
+    // relation), a write through a reference to a whole local (B's write-through row), a container's or a closure environment's append (A's
+    // receiving check over every Origin of the receiving Type), a candidate the access does not conflict with (R4-M96's exact scan, B), a
+    // pair binder's view, and a conflict-free branch's write beside a derived end (keepA). Fail-before: no Cause fact exists
+    // (chain-retention: no conflict at `local`, a Chain row read as one read).
     [Theory]
     [InlineData("j-region", "bad: let local = 5 <- view")]
     [InlineData("j-bad-v", "bad: let local: i32 = 1 <- r")]
@@ -176,6 +190,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("d4a09871a00b", "g: let local: i32 = 1 <- x")]
     [InlineData("write-through-store", "w: let local = 1 <- x")]
     [InlineData("content-retention", "cr: let local = 1 <- first(h@ref)")]
+    [InlineData("chain-retention", "chainKept: var h2 = h@ref | chainKept: var h = local@ref | chainKept: let local = 1 <- mkE(h2@ref)")]
     [InlineData("f02fb5c218bc", "store: let local: i32 = 1 <- local@ref")]
     [InlineData("container-deep", "deep: let local: i32 = 1 <- local@ref")]
     [InlineData("3c4ffb8ea44b", ": let local: i32 = 1 <- local@ref")]
@@ -189,8 +204,10 @@ public sealed partial class MirBorrowsTest
     // SPEC 15.6.5, 23.1.2 (DECISIONS R4-M132): a conflict some carrier keeps otherwise stays independent: a local live past the write (SPEC's
     // `keep`), a part read (m-twice, a Field's Loan, a pair), an aggregate stored, a write through a part, a guard's candidate stored where
     // its Origin is not Fixed, a local a call writes that is read later, a call result read by part, a conflict with no Refuted relation, a
-    // report of one key both derived and direct (one direct problem, R4-M96 per report); the twins' literal forms report the relation only
-    // (H11, R4-M122) and a repair loses the conflict. Pins: each passes before.
+    // report of one key both derived and direct (one direct problem, R4-M96 per report), a Content or a Chain row's read through E, the
+    // storage the body does not own (B's read-through clause; one rule for both, R4-M138: Chain's read of E's state unmarked fails
+    // chain-through-e); the twins' literal forms report the relation only (H11, R4-M122) and a repair loses the conflict. Pins: each passes
+    // before.
     [Theory]
     [InlineData("m-write", "w: x = 1")]
     [InlineData("m-write-var", "w: x = 1")]
@@ -216,6 +233,8 @@ public sealed partial class MirBorrowsTest
     [InlineData("6227f1ba89a2", "use: let local: i32 = 5")]
     [InlineData("6d75d7b343f0", "g: let local: i32 = 5")]
     [InlineData("merge-derived-direct-v", "g: let local = 1")]
+    [InlineData("content-through-e", "contentViaE: let local = 1")]
+    [InlineData("chain-through-e", "chainViaE: var r = slot@follow@ref | chainViaE: let local = 1")]
     [InlineData("rv-guard-annot", "")]
     [InlineData("j-bad", "")]
     [InlineData("m-write4", "")]
@@ -254,7 +273,7 @@ public sealed partial class MirBorrowsTest
         }
 
         Assert.Equal(["noncfl-candidate-v"], shared);
-        Assert.Equal(33, causes);
+        Assert.Equal(34, causes);
     }
 
     // SPEC 7.2.3 (R26; 2g-5's PreparedInput grouping): a default template's Borrow its result keeps is DefaultArgumentBorrow_Kd, a
@@ -323,12 +342,14 @@ public sealed partial class MirBorrowsTest
     }
 
     // V16: rule W on a program version it checked before allocates nothing: its elements, markers, memo and causes keep their storage,
-    // over derived conflicts of every kind of carrier (a return, two paths, a loop, err(ended), a read-through, a container, a write-through).
+    // over derived conflicts of every kind of carrier (a return, two paths, a loop, err(ended), a read-through, a container, a write-through)
+    // and a Chain row's read through E.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmRuleWAllocatesNothing()
     {
-        string[] names = ["j-region", "two-flows-v", "loop-store-v", "rv-g-param-i", "content-retention", "f02fb5c218bc", "d4a09871a00b", "merge-two-paths-v"];
+        string[] names = ["j-region", "two-flows-v", "loop-store-v", "rv-g-param-i", "content-retention", "f02fb5c218bc", "d4a09871a00b", "merge-two-paths-v",
+            "chain-through-e"];
         var c = MirBuildTest.Compile(string.Concat(names.Select(static x => CausedSources[x])) + "public func main() => ()\n");
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);
