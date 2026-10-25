@@ -1,0 +1,164 @@
+diff --git a/src/Kimi/Compiler/Binding/Binding.Retention.Atoms.cs b/src/Kimi/Compiler/Binding/Binding.Retention.Atoms.cs
+index 281269592..628d4b48a 100644
+--- a/src/Kimi/Compiler/Binding/Binding.Retention.Atoms.cs
++++ b/src/Kimi/Compiler/Binding/Binding.Retention.Atoms.cs
+@@ -99,7 +99,9 @@ public sealed partial class Binding
+     private void RetentionWalk(BoundType type, RetentionAtom at, OriginVariance variance, bool callable)
+     {
+         var here = at with { Writable = at.Writable && variance == OriginVariance.Invariant };
+-        if (!callable && (here.Input == Retention.Result || here.Writable) && MayHold(type))
++        if (!callable && (here.Input == Retention.Result || here.Writable) &&
++            (MayHold(type) || (System.Environment.GetEnvironmentVariable("KIMI_N2_PROTO") == "CP" && type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray)) &&
++            !(System.Environment.GetEnvironmentVariable("KIMI_N2_PROTO") is "AR" or "R" or "AR2" && here.Input == Retention.Result && at.Layer is not null))
+         {
+             this.retentionHolds.Add((here.Input, type));
+         }
+@@ -154,7 +156,9 @@ public sealed partial class Binding
+             this.RawContent(rawOrigin!, at.Input);
+         }
+ 
+-        this.retentionUnstatedResult |= raw && !inside && rawOrigin is null && at.Input == Retention.Result;
++        this.retentionUnstatedResult |= raw && !inside && rawOrigin is null && at.Input == Retention.Result &&
++            !(System.Environment.GetEnvironmentVariable("KIMI_N2_PROTO") is "AR" or "R" or "AR2" && at.Layer is not null);
++        this.ProtoBehind |= raw && !inside && rawOrigin is null && at.Input == Retention.Result && at.Layer is not null;
+         for (var i = 0; i < type.Components.Count; i++)
+         {
+             this.RetentionWalk(type.Components[i], below, ComposeVariance(variance, this.ComponentVariance(type, i)), inside);
+diff --git a/src/Kimi/Compiler/Binding/Binding.Retention.Rows.cs b/src/Kimi/Compiler/Binding/Binding.Retention.Rows.cs
+index 9b2cd9652..24bd07342 100644
+--- a/src/Kimi/Compiler/Binding/Binding.Retention.Rows.cs
++++ b/src/Kimi/Compiler/Binding/Binding.Retention.Rows.cs
+@@ -15,6 +15,10 @@ public sealed partial class Binding
+     private readonly List<int> retentionUntiedStores = new();
+     private readonly HashSet<(BoundType Type, BoundType? Written)> retentionMet = new();
+ 
++    internal bool ProtoUnstated { get; set; }
++
++    internal bool ProtoBehind { get; set; }
++
+     // Whether a retention reads a Type whose storage has this verdict (SPEC 23.1.2; DECISIONS BU-36): Prepared, and Rejected, whose parts
+     // that do not substitute hold nothing, so the rows that hold whatever they are stay; a Limit gives CallRetention.Limit. Rejected
+     // storage rests on a Binding failure (DIAGNOSTICS rule 8: a part Binding did not bind makes it incomplete), so in a complete
+@@ -87,11 +91,40 @@ public sealed partial class Binding
+             // The hold walk from each of the output's holds, each position once.
+             this.retentionMet.Clear();
+             var held = false;
++            this.ProtoUnstated = false;
+             foreach (var (at, type) in this.retentionHolds)
+             {
+                 held |= at == output && this.Held(type, null, output, owned);
+             }
+ 
++            // THROWAWAY reviewer prototype (spec-n2-rev): option A2's rows at a written Unstated layer; AC adds Content from every input.
++            var protoMode = System.Environment.GetEnvironmentVariable("KIMI_N2_PROTO");
++            if (protoMode is "A" or "AC" or "AH" or "AR2" or "AJ" && ((protoMode == "AH" ? held : this.ProtoUnstated) || (protoMode == "AC" && output == Retention.Result && this.retentionUnstatedResult)))
++            {
++                for (var i = 0; i < inputCount; i++)
++                {
++                    if (i == output && protoMode != "AJ")
++                    {
++                        continue;
++                    }
++
++                    var isRaw = false;
++                    foreach (var (input, _) in this.retentionRawInputs)
++                    {
++                        isRaw |= input == i;
++                    }
++
++                    if (isRaw || protoMode == "AC")
++                    {
++                        (owned[i], kinds[i]) = (true, RetentionKind.Content);
++                    }
++                    else if (kinds[i] != RetentionKind.Content || !owned[i])
++                    {
++                        kinds[i] = RetentionKind.Value;
++                    }
++                }
++            }
++
+             untied |= held && output == Retention.Result;
+             if (held && output >= 0)
+             {
+@@ -130,6 +163,14 @@ public sealed partial class Binding
+             }
+         }
+ 
++        if (!this.retentionUnstatedResult && this.ProtoBehind && System.Environment.GetEnvironmentVariable("KIMI_N2_PROTO") == "AR2")
++        {
++            foreach (var (input, _) in this.retentionRawInputs)
++            {
++                (owned[input], kinds[input]) = (true, RetentionKind.Content);
++            }
++        }
++
+         if (within >= 0)
+         {
+             owned[within] = true;
+@@ -182,6 +223,13 @@ public sealed partial class Binding
+             return false;
+         }
+ 
++        // THROWAWAY reviewer prototype R: a layer behind a borrow (or a Slice) is the referent's content, which the call lends, not writes.
++        if (System.Environment.GetEnvironmentVariable("KIMI_N2_PROTO") is "AR" or "R" or "AR2" &&
++            ((type.Kind == BoundTypeKind.Semantics && IsBorrow(type.Semantics)) || type.Kind == BoundTypeKind.Slice || type.Symbol?.LibraryDeclaration == KimiDeclarationId.UniqSlice))
++        {
++            return false;
++        }
++
+         var nominal = AdtDef.IsStruct(type) || AdtDef.IsEnum(type);
+         if (nominal && !this.Retained(type, this.PrepareTypeStorage(type)))
+         {
+@@ -190,12 +238,22 @@ public sealed partial class Binding
+         }
+ 
+         var raw = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
++        if (System.Environment.GetEnvironmentVariable("KIMI_N2_PROTO") == "CP")
++        {
++            // THROWAWAY prototype C': every input's own value is retained where the position can hold a value of its Type.
++            for (var i = 0; i < this.retentionInputs && i < this.retentionScope.Count; i++)
++            {
++                owned[i] |= i != output && ReferenceEquals(this.types.Erase(type), this.types.Erase(this.retentionScope[i]));
++            }
++        }
++
+         foreach (var (input, pointer) in this.retentionRawInputs)
+         {
+             owned[input] |= input != output && (type.IsAbstract || (raw && ReferenceEquals(this.types.Erase(type), this.types.Erase(pointer))));
+         }
+ 
+         var untied = raw && DeclaredStep(type, written) is RawStep.Unstated or RawStep.Static;
++        this.ProtoUnstated |= raw && DeclaredStep(type, written) == RawStep.Unstated;
+         untied |= nominal && this.Stores(type, output, owned);
+         for (var i = 0; !IsCallable(type) && i < type.Components.Count; i++)
+         {
+diff --git a/src/Kimi/Compiler/Binding/Binding.Retention.cs b/src/Kimi/Compiler/Binding/Binding.Retention.cs
+index a78b7fb19..a290ef68d 100644
+--- a/src/Kimi/Compiler/Binding/Binding.Retention.cs
++++ b/src/Kimi/Compiler/Binding/Binding.Retention.cs
+@@ -91,6 +91,7 @@ public sealed partial class Binding
+         this.retentionRawVisits.Clear();
+         this.retentionLimit = false;
+         this.retentionUnstatedResult = false;
++        this.ProtoBehind = false;
+         for (var i = 0; i < inputs.Length; i++)
+         {
+             this.RetentionInput(inputs[i], i);
+diff --git a/src/Kimi/Library/Formatting.kimi b/src/Kimi/Library/Formatting.kimi
+index bc943cd57..1a4d472b9 100644
+--- a/src/Kimi/Library/Formatting.kimi
++++ b/src/Kimi/Library/Formatting.kimi
+@@ -23,11 +23,11 @@ public struct WriteWindow {source}
+ public struct Utf8Writer {target}
+     Self is not ObjectPayload
+     let destination: raw/u8 during target
+-    let dispatch: raw/u8
++    let dispatch: raw/u8 during static
+     let kind: isize
+     let failed: bool
+     let hint: isize
+-    let pending: raw/u8
++    let pending: raw/u8 during static
+     let pendingLength: isize
+     let logicalLength: isize
+     let loan: Loan<uniq/u8 during target>

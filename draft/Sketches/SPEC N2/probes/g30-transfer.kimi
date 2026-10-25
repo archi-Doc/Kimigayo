@@ -1,0 +1,69 @@
+// SPEC N2 review probes: transfer operations and two exclusive out-parameters over unstated raw layers (all valid by intent).
+func swapRaw()
+    var x: raw/u8 = null
+    var y: raw/u8 = null
+    Kimi.Intrinsics.swap(x@uniq, y@uniq)
+    usep(x)
+    usep(y)
+func swapI32()
+    var x: i32 = 1
+    var y: i32 = 2
+    Kimi.Intrinsics.swap(x@uniq, y@uniq)
+    inspect(x)
+    inspect(y)
+func swapRef()
+    var a: i32 = 1
+    var b: i32 = 2
+    var x = a@ref
+    var y = b@ref
+    Kimi.Intrinsics.swap(x@uniq, y@uniq)
+    inspect(x)
+    inspect(y)
+func swapBox()
+    var x = Box.init(p: null)
+    var y = Box.init(p: null)
+    Kimi.Intrinsics.swap(x@uniq, y@uniq)
+    inspect(x)
+    inspect(y)
+func exchangeRaw()
+    var x: raw/u8 = null
+    let old = Kimi.Intrinsics.exchange(x@uniq, with: null)
+    usep(x)
+    usep(old)
+func exchangeBox()
+    var x = Box.init(p: null)
+    let old = Kimi.Intrinsics.exchange(x@uniq, with: Box.init(p: null))
+    inspect(x)
+    inspect(old)
+func split(src: raw/u8, a: uniq/(raw/u8), b: uniq/(raw/u8))
+    a@follow = src
+    b@follow = src
+func twoOut()
+    var x: raw/u8 = null
+    var y: raw/u8 = null
+    split(null, x@uniq, y@uniq)
+    usep(x)
+    usep(y)
+func popRaw()
+    var a: Array<raw/u8> = [null, null]
+    let x = a.pop()
+    a.append(null)
+    inspect(x)
+func dictRemoveKey()
+    var d: Dictionary<i32, raw/u8> = [:]
+    var k: i32 = 1
+    let e = d.remove(k)
+    k = 2
+    inspect(e)
+func dictRemoveStore()
+    var d: Dictionary<i32, raw/u8> = [:]
+    var k: i32 = 1
+    _ = d.remove(k)
+    k = 2
+    inspect(d)
+func dictRemoveStoreI32()
+    var d: Dictionary<i32, i32> = [:]
+    var k: i32 = 1
+    _ = d.remove(k)
+    k = 2
+    inspect(d)

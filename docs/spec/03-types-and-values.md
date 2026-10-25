@@ -59,7 +59,7 @@ describe(5@Wrapping<u32>)
 
 `char` is one Unicode scalar value, U+0000..U+D7FF or U+E000..U+10FFFF, stored in 32 bits. Every value in these ranges is valid, assigned or not; character literals ([§2.8](02-source-and-lexical-structure.md#28-character-literals)) restrict only spelling. `char` need not share the representation of `u32`, and it is not a UTF-8 code unit (`u8` stores bytes). Every scalar value decoded from UTF-8 is a valid `char`.
 
-`string` is the built-in Core for UTF-8 text. Its storage layout is implementation-defined, and `owner/string` is Non-Copy.
+`string` is the built-in Core for UTF-8 text. Its storage layout is implementation-defined, and `owner/string` is Non-Copy. The bytes of the text a string literal spells outside its interpolations are immutable static storage ([§11.8](11-properties.md#118-static-storage)) for the whole execution, owned by no value (an interpolated literal still produces an owning `string`, [§12.4.2](12-expressions.md#1242-interpolated-strings)), so a raw pointer to them may state `static` ([§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins)).
 
 ```kimi
 let euro: char = '€'          // One scalar value, three UTF-8 bytes.

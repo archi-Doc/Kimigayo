@@ -1,0 +1,63 @@
+// SPEC session probe: the argument written through, read two reads deep through itself (unlink), and a deeper write of its one-read content.
+struct Node
+    public var next: raw/Node
+    public var data: raw/u8
+    public init(next: raw/Node, data: raw/u8)
+        self.next = next
+        self.data = data
+func unlink(head: raw/Node)
+    unsafe => (*head).next = (*(*head).next).next
+func unlinkR(p: raw/(raw/(raw/u8)))
+    unsafe => *p = (**p)@raw/(raw/u8)
+func unlinkU(head: uniq/Node)
+    unsafe => head.next = (*head.next).next
+func copyDown(head: raw/Node)
+    unsafe => (*(*head).next).data = (*head).data
+func unlinkBad()
+    var y: i32 = 1
+    var w: ref/i32 = y@ref
+    var n3 = Node.init(next: null, data: w@raw@raw/u8)
+    var n2 = Node.init(next: n3@raw, data: null)
+    var n1 = Node.init(next: n2@raw, data: null)
+    unlink(n1@raw)
+    n2 = Node.init(next: null, data: null)
+    y = 5
+    usep(n1.next)
+func unlinkOk()
+    var y: i32 = 1
+    var w: ref/i32 = y@ref
+    var n3 = Node.init(next: null, data: w@raw@raw/u8)
+    var n2 = Node.init(next: n3@raw, data: null)
+    var n1 = Node.init(next: n2@raw, data: null)
+    unlink(n1@raw)
+    n2 = Node.init(next: null, data: null)
+    usep(n1.next)
+    y = 5
+func unlinkRBad()
+    var y: i32 = 1
+    var w: ref/i32 = y@ref
+    var h2: raw/u8 = w@raw@raw/u8
+    var h1: raw/(raw/u8) = h2@raw
+    unlinkR(h1@raw)
+    h2 = null
+    y = 5
+    usep(h1)
+func unlinkUBad()
+    var y: i32 = 1
+    var w: ref/i32 = y@ref
+    var n3 = Node.init(next: null, data: w@raw@raw/u8)
+    var n2 = Node.init(next: n3@raw, data: null)
+    var n1 = Node.init(next: n2@raw, data: null)
+    unlinkU(n1@uniq)
+    n2 = Node.init(next: null, data: null)
+    y = 5
+    usep(n1.next)
+func copyDownBad()
+    var y: i32 = 1
+    var w: ref/i32 = y@ref
+    var n2 = Node.init(next: null, data: null)
+    var n1 = Node.init(next: n2@raw, data: w@raw@raw/u8)
+    copyDown(n1@raw)
+    n1 = Node.init(next: null, data: null)
+    y = 5
+    usep(n2.data)

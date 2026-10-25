@@ -1,0 +1,19 @@
+// SPEC session probes: exchange's result keeps only its target's chain (N1); a removed or exchanged pointer keeps its address.
+func exchangeTargetBad()
+    var y: i32 = 1
+    var w: ref/i32 = y@ref
+    let q = w@raw@raw/u8
+    var x: raw/u8 = q
+    let old = Kimi.Intrinsics.exchange(x@uniq, with: null)
+    x = null
+    y = 5
+    usep(old)
+func exchangeStoreBad()
+    var y: i32 = 1
+    var w: ref/i32 = y@ref
+    let q = w@raw@raw/u8
+    var x: raw/u8 = null
+    let old = Kimi.Intrinsics.exchange(x@uniq, with: q)
+    y = 5
+    usep(x)
+    usep(old)
