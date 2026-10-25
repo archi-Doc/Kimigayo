@@ -23,11 +23,13 @@ public struct WriteWindow {source}
 public struct Utf8Writer {target}
     Self is not ObjectPayload
     let destination: raw/u8 during target
-    let dispatch: raw/u8
+    // The selected `reserve` implementation's code, or null: nothing reads or writes through it.
+    let dispatch: raw/u8 during static
     let kind: isize
     let failed: bool
     let hint: isize
-    let pending: raw/u8
+    // A deferred string literal's bytes, which are static storage (SPEC 3.1.2).
+    let pending: raw/u8 during static
     let pendingLength: isize
     let logicalLength: isize
     let loan: Loan<uniq/u8 during target>
