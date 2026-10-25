@@ -619,11 +619,14 @@ public sealed class RetentionTest
 
     // SPEC 23.1.2, 15.6.4 (G240; DECISIONS BU-36): storage whose part Binding did not bind (a Field or Case payload Type that failed,
     // inline, through a handle, in an instance or a Type argument, or an Origin that did not bind) is Rejected storage, no limit: the part
-    // holds nothing, and the call keeps the rows that hold whatever it is, its repaired program's (fail-before: CallRetention.Limit).
+    // holds nothing, and the call keeps the rows that hold whatever it is, its repaired program's (fail-before: CallRetention.Limit). An
+    // enum's other Cases are such rows' storage, also inside a struct (G242, DECISIONS BU-37; fail-before: no row).
     [Theory]
     [InlineData(Handle, "Missing", "i32", "f", "")]
     [InlineData(Bad + "func f(b: uniq/Bad, p: raw/i32) => ()\nfunc g(b: uniq/Bad) => f(b, null)\n", "Missing", "i32", "f", "")]
     [InlineData("enum E\n    A(MISSING)\n    C\nfunc f(e: uniq/E, p: raw/i32) => ()\nfunc g(e: uniq/E) => f(e, null)\n", "Missing", "i32", "f", "")]
+    [InlineData("enum E\n    A(MISSING)\n    B(raw/i32)\nfunc f(e: uniq/E, p: raw/i32) => ()\nfunc g(e: uniq/E) => f(e, null)\n", "Missing", "i32", "f", "1 Value store 0, untied store 0")]
+    [InlineData("enum E\n    A(MISSING)\n    B(raw/i32)\nstruct H\n    public var e: E\nfunc f(h: uniq/H, p: raw/i32) => ()\nfunc g(h: uniq/H) => f(h, null)\n", "Missing", "i32", "f", "1 Value store 0, untied store 0")]
     [InlineData("struct Bad<T>\n    public var v: T\n    public var m: MISSING\nfunc f<T>(b: uniq/Bad<T>, p: raw/i32) => ()\nfunc g(b: uniq/Bad<i32>) => f(b, null)\n", "Missing", "i32", "f", "")]
     [InlineData("struct Bad<T>\n    public var v: T\n    public var m: MISSING\nfunc id<T>(x: ref/T) -> ref/T during x => x\nfunc g(b: Bad<i32>)\n    let r = id(b@ref)\n", "Missing", "i32", "id", "0 Value result")]
     [InlineData("struct Sx\n    public var m: MISSING\n    public var p: raw/i32\nfunc f(s: uniq/Sx, q: raw/i32) => ()\nfunc g(s: uniq/Sx) => f(s, null)\n", "Missing", "i32", "f", "1 Value store 0, untied store 0")]
@@ -643,9 +646,12 @@ public sealed class RetentionTest
 
     // SPEC 23.1.1, 15.3.5 (DECISIONS BU-12, BU-36): a genuine limit stays CallRetention.Limit beside a part Binding did not bind, which
     // ends no storage walk, so the limit is met in either Field order and either query order: a Field of height 65 before or after the
-    // failed Field, a growing Field beside it, a growing Type in a program failing elsewhere, and X and T, which reach T's Box^64 Field.
+    // failed Field, a growing Field beside it, a growing Type in a program failing elsewhere, and X and T, which reach T's Box^64 Field;
+    // and growth through an enum's Case beside its failed Case, the repair's limit (G242, DECISIONS BU-37; before: no row, BU-36's
+    // residual).
     [Theory]
     [InlineData(Tall, "f")]
+    [InlineData("enum E<T>\n    A(Missing)\n    B(rc/E<(T, T)>)\nfunc f(e: uniq/E<i32>, p: raw/i32) => ()\nfunc g(e: uniq/E<i32>) => f(e, null)\n", "f")]
     [InlineData(Box + "struct Bad\n    public var big: " + Box65 + "\n    public var m: Missing\nfunc f(b: uniq/Bad, p: raw/i32) => ()\nfunc g(b: uniq/Bad) => f(b, null)\n", "f")]
     [InlineData(Growing, "f")]
     [InlineData("func inspect<T>(value: ref/T) => ()\nstruct Nest<T>\n    public var value: T\n    public var next: Option<rc/Nest<(T, T)>> = .None\nfunc h(n: ref/Nest<i32>) => inspect(n)\nfunc other() => missing\n", "inspect")]
@@ -658,13 +664,14 @@ public sealed class RetentionTest
         Assert.All(callees.Split(' '), x => Assert.Equal(["limit"], Calls(c, x)));
     }
 
-    // DECISIONS BU-36: the hold walk walks an enum's Cases only where its instance substituted them, the storage its verdict covered, so
-    // an enum whose failed payload leaves E<(T, T)> unsubstituted ends (an unbounded walk before the rule) with no row. Its growth through
-    // Case B is not seen (InstanceStorage.Cases holds no per-case parts; PLAN G242), while its repair's is the limit.
+    // DECISIONS BU-37 (G242): the hold walk walks a Case's payloads only where the instance substituted that Case, the part its storage
+    // verdict walked, which bounds it: Case A, failed beside two growing payloads, is not walked, so the walk ends with no row (walked by
+    // its elements it does not end), while its repair's growth is the limit. The failed Case's other payloads hold nothing, the residual
+    // at the element grain (PLAN G242).
     [Fact]
-    public async Task AnEnumWithAFailedPayloadIsWalkedAsFarAsItSubstitutes()
+    public async Task AFailedCaseIsWalkedNoFurther()
     {
-        const string Source = "enum E<T>\n    A(MISSING)\n    B(rc/E<(T, T)>)\nfunc f(e: uniq/E<i32>, p: raw/i32) => ()\nfunc g(e: uniq/E<i32>) => f(e, null)\n";
+        const string Source = "enum E<T>\n    A(MISSING, rc/E<(T, T)>, rc/E<Option<T>>)\n    B(i32)\nfunc f(e: uniq/E<i32>, p: raw/i32) => ()\nfunc g(e: uniq/E<i32>) => f(e, null)\n";
         var c = MinimalEmissionTest.Analyze(Source.Replace("MISSING", "Missing", StringComparison.Ordinal));
         var rows = Task.Run(() => Calls(c, "f"), TestContext.Current.CancellationToken);
         Assert.Equal([string.Empty], await rows.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));

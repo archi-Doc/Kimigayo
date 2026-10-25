@@ -1447,6 +1447,19 @@ public sealed class InstanceCollectorTest
         Assert.Equal(records, string.Join("|", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
     }
 
+    // IMPL 21.1.1, SPEC 23.1.2 (G242; DECISIONS R5-M52, BU-37): an oversized Case beside a Case whose payload Binding did not bind is the
+    // use's OversizedLayout_Kd, as in its repair: it rests on the oversized Case alone (fail-before: no record, the enum Rejected).
+    [Theory]
+    [InlineData("Missing")]
+    [InlineData("i32")]
+    public void AnOversizedCaseBesideAFailedOneIsARecord(string payload)
+    {
+        var c = MirBuildTest.Compile("enum E\n    A(" + payload + ")\n    B(" + Huge + ")\nfunc h(e: E) => ()\n");
+        Assert.Equal(payload == "i32", c.Binding.Result.IsComplete);
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        Assert.Equal("OversizedLayout_Kd func h(e: E) => ()", string.Join("|", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
+    }
+
     // SPEC 8.15.3, DECISIONS R5-M52: a Type formed only behind a borrow or a raw pointer, or by a struct nothing uses by value, is no use.
     [Theory]
     [InlineData("func r(value: ref/(" + Big + ", u8)) => ()\n")]
@@ -1769,7 +1782,7 @@ public sealed class InstanceCollectorTest
 
         if (AdtDef.IsEnum(type))
         {
-            return AdtDef.CaseTypes(type)![part.Ordinal].Components[part.Index];
+            return AdtDef.CaseTypes(type)![part.Ordinal]!.Components[part.Index];
         }
 
         if (!AdtDef.IsStruct(type))

@@ -17,6 +17,11 @@ public sealed partial class MirBorrowsTest
         "func st(c: uniq/Ph<uniq/(ref/i32 during a) during e>, v: ref/i32 during a, b: uniq/Bad) => ()\nfunc g(b: uniq/Bad)\n    var x = 1\n" +
         "    var y = 2\n    let r = y@ref\n    var c = Ph<uniq/(ref/i32)>.init()\n    st(c@uniq, x@ref, b)\n    y = 3\n    let k = r@follow\n";
 
+    // R4's G244 probes: v lent before a form, then written while the borrow lives; S, a struct a Case payload moves.
+    private const string Lent = "    var v = 1\n    let r = v@ref\n";
+    private const string Written = "    v = 2\n    let k = r@follow\n";
+    private const string Moved = "struct S\n    public var n: i32\n    public init(n: i32) => self.n = n\n";
+
     // SPEC 23.1.2 (DECISIONS R4-M109): an argument Binding rejects after selection (an Origin relation it cannot prove) is an Opaque of the
     // reference the call takes, so a result kept past the statement carries no Loan on a temporary: no ComparisonLoanConflict_Kd beside
     // Binding's record, also where the rejected argument keeps a call that moves twice (A1's MovedPlace_Kd stays), while the true conflict of
@@ -103,8 +108,51 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(twin ?? expected, CallRecords(source.Replace("MISSING", repaired, StringComparison.Ordinal), complete: true));
     }
 
-    // A5's Loan conflicts and located Unsupported_Kd over a program (with an `inspect` of its own), which Binding completes or rejects,
-    // whose build has no validator finding (InternalInvariant_Kd under the mir pipeline) and no record of construction.
+    // SPEC 6.5.1, 23.1.2 (G242, G245's enum half; DECISIONS BU-37): an enum whose Case A Binding did not bind publishes its other Cases, so
+    // MIR built over them (a payload-free and a payload construction, a borrowed and a moved payload, inside an Option, as a default and as
+    // a Field initializer, a generic instance's, a move out of a payload, a call's result, matches over B) has no validator finding and no
+    // record of construction, and A5 and A1 report the valid twin's records (fail-before: an Arity or Projection finding, InternalInvariant_Kd
+    // under the mir pipeline, nothing analyzed). A conflict that rests on the failed Case is its dependent and goes (Sel's Loan of v is
+    // held only through the failed Found, its repair's conflict).
+    [Theory]
+    [InlineData("enum E\n    A(MISSING)\n    B\nfunc g()\n" + Lent + "    let e: E = .B\n" + Written, "Missing", "i32", "g: v = 2")]
+    [InlineData("enum E\n    A(MISSING)\n    B(i32)\nfunc g()\n" + Lent + "    let e: E = .B(1)\n" + Written, "Missing", "i32", "g: v = 2")]
+    [InlineData("enum E {s}\n    A(MISSING)\n    B(ref/i32 during s)\nfunc g()\n    var v = 1\n    let e: E = .B(v@ref)\n    v = 2\n    inspect(e@ref)\n", "Missing", "i32", "g: v = 2")]
+    [InlineData("enum E\n    A(MISSING)\n    B\nfunc g()\n" + Lent + "    let o: Option<E> = .Some(.B)\n" + Written, "Missing", "i32", "g: v = 2")]
+    [InlineData("enum E\n    A(MISSING)\n    B\nfunc f(k: E = .B) => ()\nfunc g()\n" + Lent + "    f()\n" + Written, "Missing", "i32", "g: v = 2")]
+    [InlineData("enum E\n    A(MISSING)\n    B\nstruct H\n    public var e: E = .B\n    public init() => ()\nfunc g()\n" + Lent + "    let h = H.init()\n" + Written, "Missing", "i32", "g: v = 2")]
+    [InlineData("enum E<T>\n    A(MISSING)\n    B(T)\nfunc g()\n" + Lent + "    let e: E<i32> = .B(1)\n    match e\n        .B(let y) => ()\n        _ => ()\n" + Written, "Missing", "i32", "g: v = 2")]
+    [InlineData("enum E\n    A(MISSING)\n    B(i32, string)\nfunc take(s: string) => ()\nfunc g()\n" + Lent + "    let e: E = .B(1, \"a\")\n    match e@move\n        .B(_, let s) => take(s@move)\n        _ => ()\n" + Written, "Missing", "i32", "g: v = 2")]
+    [InlineData(Moved + "enum E\n    A(MISSING)\n    B(S)\nfunc g()\n    let s = S.init(1)\n    let e: E = .B(s@move)\n    let t = s@move\n", "Missing", "i32", "g: s MovedPlace_Kd")]
+    [InlineData("enum Sel {s}\n    Found(ref/i32 during MISSING)\n    None\nfunc pick(x: ref/i32) -> Sel during x => .None\nfunc g()\n    var v = 1\n    let s = pick(v@ref)\n    v = 2\n    inspect(s@ref)\n", "missing", "s", "", "g: v = 2")]
+    [InlineData("enum Pick {s}\n    First(ref/i32 during MISSING)\n    Second(ref/i32 during s)\n    public func choose(self: ref/Self, useFirst: bool) -> i32 => 0\nfunc g(useFirst: bool) -> i32\n    var x = 1\n    let pair: Pick = .Second(x@ref)\n    return pair.choose(useFirst)\n", "missing", "s", "")]
+    [InlineData("enum E\n    A(MISSING)\n    B(i32)\nfunc g(e: E) -> i32 => match e\n    .B(let y) => y\n    _ => 0\n", "Missing", "i32", "")]
+    [InlineData("enum E\n    A(MISSING)\n    B\nfunc g(e: E) -> i32 => match e\n    .B => 1\n    _ => 0\n", "Missing", "i32", "")]
+    [InlineData("enum E {s}\n    A(ref/i32 during MISSING)\n    B(i32)\nfunc g(e: E) -> i32 => match e\n    .B(let y) => y\n    _ => 0\n", "missing", "s", "")]
+    public void AnEnumsOtherCasesBuildBesideItsFailedCase(string source, string failed, string repaired, string expected, string? twin = null)
+    {
+        Assert.Equal(expected, CallRecords(source.Replace("MISSING", failed, StringComparison.Ordinal), complete: false));
+        Assert.Equal(twin ?? expected, CallRecords(source.Replace("MISSING", repaired, StringComparison.Ordinal), complete: true));
+    }
+
+    // SPEC 6.5.2, 14.8.1 (G242; DECISIONS BU-37): a form over the Case whose payload Binding did not bind stays Binding's record, a
+    // construction's TypeMismatch_Kd and a pattern's InvalidPattern_Kd, and the MIR never projects that Case: no validator finding, and A5
+    // reports the twin's conflict only where it does not rest on the failed construction (`.A(v@ref)`'s Loan is held only through it).
+    [Theory]
+    [InlineData("enum E\n    A(MISSING)\n    B\nfunc g()\n" + Lent + "    let e: E = .A(1)\n" + Written, "Missing", "i32", "TypeMismatch_Kd .A(1)", "g: v = 2", "g: v = 2")]
+    [InlineData("enum E {s}\n    A(ref/i32 during MISSING)\n    B\nfunc g()\n    var v = 1\n    let e: E = .A(v@ref)\n    v = 2\n    inspect(e@ref)\n", "missing", "s", "TypeMismatch_Kd .A(v@ref)", "", "g: v = 2")]
+    [InlineData("enum E\n    A(MISSING)\n    B(i32)\nfunc g(e: E) -> i32 => match e\n    .A(let x) => 1\n    .B(let y) => y\n", "Missing", "i32", "InvalidPattern_Kd let x", "", "")]
+    [InlineData("enum E {s}\n    A(ref/i32 during MISSING)\n    B(i32)\nfunc g(e: E) -> i32 => match e\n    .A(let r) => r@follow\n    .B(let y) => y\n", "missing", "s", "InvalidPattern_Kd let r", "", "")]
+    public void AFormOverAFailedCaseStaysBindingsRecord(string source, string failed, string repaired, string record, string expected, string twin)
+    {
+        var c = MirBuildTest.Compile("func inspect<T>(value: ref/T) => ()\n" + source.Replace("MISSING", failed, StringComparison.Ordinal));
+        Assert.Contains(record, c.Binding.Issues.Select(static x => $"{x.Code} {x.Node.ToString().Split('\n')[0]}"));
+        Assert.Equal(expected, CallRecords(source.Replace("MISSING", failed, StringComparison.Ordinal), complete: false));
+        Assert.Equal(twin, CallRecords(source.Replace("MISSING", repaired, StringComparison.Ordinal), complete: true));
+    }
+
+    // A5's Loan conflicts, A1's MovedPlace_Kd and located Unsupported_Kd over a program (with an `inspect` of its own), which Binding
+    // completes or rejects, whose build has no validator finding (InternalInvariant_Kd under the mir pipeline) and no record of construction.
     private static string CallRecords(string source, bool complete)
     {
         var c = MirBuildTest.Compile("func inspect<T>(value: ref/T) => ()\n" + source);
@@ -113,6 +161,6 @@ public sealed partial class MirBorrowsTest
         Assert.Empty(program.Findings);
         Assert.Empty(program.Records);
         new Stratum(c.Types).Run(program);
-        return string.Join(" | ", Problems(c, program, [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+        return string.Join(" | ", Problems(c, program, [.. LoanCodes, DiagnosticCode.MovedPlace_Kd, DiagnosticCode.Unsupported_Kd]));
     }
 }
