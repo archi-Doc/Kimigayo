@@ -8,7 +8,9 @@ namespace Kimi.Compiler.Mir;
 // Scopes and drop trees (SPEC 16, plan 5.6.4). A Var or Temp local lives from its StorageLive to its StorageDead, a value whose Type may
 // need drop (MirTypes.MayNeedDrop) is dropped first, and a defer runs where its scope is left. Each open scope keeps its registrations in
 // order: a block its locals and defers, a statement or a condition its temporaries (a guard candidate also its EndBorrow), the body its
-// parameters, a destructor's self as its layer's parts (SPEC 16.3.2). The normal end of a scope cleans them up in reverse order; a
+// parameters, a destructor's self as its layer's parts (SPEC 16.3.2). A local's StorageDead registers where its storage begins; a
+// binding's Drop with it, in declaration order (SPEC 16.2.1), a temp's where its value is created (Hold, Made), so temporaries are
+// destroyed in reverse creation order (SPEC 3.6, DECISIONS R4-M129). The normal end of a scope cleans them up in reverse order; a
 // transfer leaves through the drop tree of its target, whose node for a scope's first registrations and the rest of the tree is built
 // once and shared by every exit that reaches it (rustc's drop tree), a defer body included.
 internal sealed partial class MirBuilder
@@ -68,17 +70,43 @@ internal sealed partial class MirBuilder
         (scope.Last, scope.Count) = (this.registrations.Count - 1, scope.Count + 1);
     }
 
-    // A Var or Temp local whose storage begins here and ends with the scope at an index, which drops its value first where it may need drop.
+    // A Var local whose storage begins here and ends with the scope at an index, which drops its value first where it may need drop: a
+    // binding's cleanup is ordered by its declaration, which a later initialization does not move (SPEC 16.2.1).
     private int Live(int local, int index)
+    {
+        this.Storage(local, index);
+        this.Created(local, index);
+        return local;
+    }
+
+    // SPEC 3.6, 16.2.1, 7.2.3: a temp of the innermost scope of temporaries whose value its caller builds after it: its storage begins here,
+    // and Made, once the value is complete, registers its Drop after the temporaries created while it was evaluated, so they are destroyed
+    // after it; an exit that interrupts the build only ends its storage. Temp holds and makes a temp written from operands evaluated before.
+    private MirPlace Hold(BoundType type, Koto node, MirLocalRole role = MirLocalRole.None, string? name = null)
+        => new(this.Storage(this.body.AddLocal(new(type, MirLocalKind.Temp, this.Info(node, local: true), Name: name, Role: role)), this.temporaries));
+
+    // A held temp's value complete (Hold), in the scope of temporaries it was held in.
+    private MirPlace Made(MirPlace temp)
+    {
+        this.Created(temp.Root, this.temporaries);
+        return temp;
+    }
+
+    // A local's storage beginning here and ending with the scope at an index.
+    private int Storage(int local, int index)
     {
         this.body.Push(this.current, MirStatement.Of(MirStatementKind.StorageLive, new(local), this.body.Locals[local].Source));
         this.Register(Cleanup.StorageDead, local, null, index);
+        return local;
+    }
+
+    // A local's value created, dropped with the scope at an index, before what the scope registered earlier, where its Type may need drop.
+    private void Created(int local, int index)
+    {
         if (MirTypes.MayNeedDrop(this.body.Locals[local].Type, this.walked))
         {
             this.Register(Cleanup.Drop, local, null, index);
         }
-
-        return local;
     }
 
     // The entry of the drop tree from the open scopes above a depth to a target: each scope's registrations in reverse, the innermost scope
@@ -180,9 +208,10 @@ internal sealed partial class MirBuilder
         (this.scope, this.statementStart) = (registration.Scope, false);
         var depth = this.scopes.Count;
         var temporaries = this.OpenScope(block: false);
-        var result = this.Temp(BoundType.Unit, defer);
+        var result = this.Hold(BoundType.Unit, defer);
         this.targets.Add(new(defer, result, next, -1, new(this.arguments.Count, depth, this.scope), Reached: false));
         this.Block(result, defer.Body, MirScopeKind.Deferred);
+        this.Made(result);
         this.targets.RemoveAt(this.targets.Count - 1);
         this.CloseScope(temporaries);
         this.Join(next, defer.Body);

@@ -498,96 +498,102 @@ fn make @154
       return @160
 fn table @163
   _0: Dictionary<i32, bool> return @163
-  _1: i32 temp @170
-  _2: bool temp @171
-  _3: isize temp @170
-  _4: bool temp @170
-  _5: ref/Dictionary<i32, bool> temp @170
-  _6: ref/i32 temp @170
-  _7: Never temp @170
-  _8: (raw/Dictionary<i32, bool>, isize) temp @171
-  _9: uniq/Dictionary<i32, bool> temp @171
-  _10: () temp @171
-  _11: i32 temp @172
-  _12: bool temp @173
-  _13: isize temp @172
-  _14: bool temp @172
-  _15: ref/Dictionary<i32, bool> temp @172
-  _16: ref/i32 temp @172
-  _17: Never temp @172
-  _18: (raw/Dictionary<i32, bool>, isize) temp @173
-  _19: uniq/Dictionary<i32, bool> temp @173
-  _20: () temp @173
+  _1: Dictionary<i32, bool> temp @169
+  _2: i32 temp @170
+  _3: bool temp @171
+  _4: isize temp @170
+  _5: bool temp @170
+  _6: ref/Dictionary<i32, bool> temp @170
+  _7: ref/i32 temp @170
+  _8: Never temp @170
+  _9: (raw/Dictionary<i32, bool>, isize) temp @171
+  _10: uniq/Dictionary<i32, bool> temp @171
+  _11: () temp @171
+  _12: i32 temp @172
+  _13: bool temp @173
+  _14: isize temp @172
+  _15: bool temp @172
+  _16: ref/Dictionary<i32, bool> temp @172
+  _17: ref/i32 temp @172
+  _18: Never temp @172
+  _19: (raw/Dictionary<i32, bool>, isize) temp @173
+  _20: uniq/Dictionary<i32, bool> temp @173
+  _21: () temp @173
   bb0:
-    * _0 = FixedArray(): Dictionary<i32, bool> @169
-      StorageLive(_1) @170
-      StorageLive(_2) @171
-      StorageLive(_3) @170
+      StorageLive(_1) @169
+    * _1 = FixedArray(): Dictionary<i32, bool> @169
+      StorageLive(_2) @170
+      StorageLive(_3) @171
       StorageLive(_4) @170
-      _1 = const 1_i32 @170
       StorageLive(_5) @170
-      _5 = &_0: ref/Dictionary<i32, bool> @170
+      _2 = const 1_i32 @170
       StorageLive(_6) @170
-      _6 = &_1: ref/i32 @170
-      _3 = findEntry<i32, bool>(move _5, move _6) -> bb2 @170
+      _6 = &_1: ref/Dictionary<i32, bool> @170
+      StorageLive(_7) @170
+      _7 = &_2: ref/i32 @170
+      _4 = findEntry<i32, bool>(move _6, move _7) -> bb2 @170
   bb1:
-      _7 = intrinsic Fail(const "KIMI_E_DUPLICATE_KEY") -> ! @170
+      _8 = intrinsic Fail(const "KIMI_E_DUPLICATE_KEY") -> ! @170
   bb2:
-      _4 = Eq(copy _3, const 0_isize) proven @170
-      switch copy _4 [1: bb3, otherwise: bb1] @170
+      _5 = Eq(copy _4, const 0_isize) proven @170
+      switch copy _5 [1: bb3, otherwise: bb1] @170
   bb3:
-      _2 = const true @171
-      StorageLive(_8) @171
+      _3 = const true @171
       StorageLive(_9) @171
-      _9 = &uniq two-phase _0: uniq/Dictionary<i32, bool> @171
-      _8 = dictionaryStorage<i32, bool>(move _9) -> bb4 @171
-  bb4:
       StorageLive(_10) @171
-      _10 = placeEntry<i32, bool>(copy _8.0, move _1, move _2) -> bb5 @171
+      _10 = &uniq two-phase _1: uniq/Dictionary<i32, bool> @171
+      _9 = dictionaryStorage<i32, bool>(move _10) -> bb4 @171
+  bb4:
+      StorageLive(_11) @171
+      _11 = placeEntry<i32, bool>(copy _9.0, move _2, move _3) -> bb5 @171
   bb5:
-      StorageLive(_11) @172
-      StorageLive(_12) @173
-      StorageLive(_13) @172
+      StorageLive(_12) @172
+      StorageLive(_13) @173
       StorageLive(_14) @172
-      _11 = const 2_i32 @172
       StorageLive(_15) @172
-      _15 = &_0: ref/Dictionary<i32, bool> @172
+      _12 = const 2_i32 @172
       StorageLive(_16) @172
-      _16 = &_11: ref/i32 @172
-      _13 = findEntry<i32, bool>(move _15, move _16) -> bb7 @172
+      _16 = &_1: ref/Dictionary<i32, bool> @172
+      StorageLive(_17) @172
+      _17 = &_12: ref/i32 @172
+      _14 = findEntry<i32, bool>(move _16, move _17) -> bb7 @172
   bb6:
-      _17 = intrinsic Fail(const "KIMI_E_DUPLICATE_KEY") -> ! @172
+      _18 = intrinsic Fail(const "KIMI_E_DUPLICATE_KEY") -> ! @172
   bb7:
-      _14 = Eq(copy _13, const 0_isize) proven @172
-      switch copy _14 [1: bb8, otherwise: bb6] @172
+      _15 = Eq(copy _14, const 0_isize) proven @172
+      switch copy _15 [1: bb8, otherwise: bb6] @172
   bb8:
-      _12 = const false @173
-      StorageLive(_18) @173
+      _13 = const false @173
       StorageLive(_19) @173
-      _19 = &uniq two-phase _0: uniq/Dictionary<i32, bool> @173
-      _18 = dictionaryStorage<i32, bool>(move _19) -> bb9 @173
-  bb9:
       StorageLive(_20) @173
-      _20 = placeEntry<i32, bool>(copy _18.0, move _11, move _12) -> bb10 @173
+      _20 = &uniq two-phase _1: uniq/Dictionary<i32, bool> @173
+      _19 = dictionaryStorage<i32, bool>(move _20) -> bb9 @173
+  bb9:
+      StorageLive(_21) @173
+      _21 = placeEntry<i32, bool>(copy _19.0, move _12, move _13) -> bb10 @173
   bb10:
+      _0 = move _1 @169
+      StorageDead(_21) @173
       StorageDead(_20) @173
       StorageDead(_19) @173
-      StorageDead(_18) @173
+      StorageDead(_17) @172
       StorageDead(_16) @172
       StorageDead(_15) @172
       StorageDead(_14) @172
-      StorageDead(_13) @172
-      StorageDead(_12) @173
-      StorageDead(_11) @172
+      StorageDead(_13) @173
+      StorageDead(_12) @172
+      StorageDead(_11) @171
       StorageDead(_10) @171
       StorageDead(_9) @171
-      StorageDead(_8) @171
+      StorageDead(_7) @170
       StorageDead(_6) @170
       StorageDead(_5) @170
       StorageDead(_4) @170
-      StorageDead(_3) @170
-      StorageDead(_2) @171
-      StorageDead(_1) @170
+      StorageDead(_3) @171
+      StorageDead(_2) @170
+      drop _1 -> bb11 [elide] @169
+  bb11:
+      StorageDead(_1) @169
       return @169
 fn room @174
   _0: isize return @174

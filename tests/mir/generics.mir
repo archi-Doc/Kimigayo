@@ -193,7 +193,7 @@ fn unwrapTry @61
   bb1:
       StorageDead(_6) @113
       StorageDead(_4) @74
-      drop _3 -> bb20 [open ((_ as case 0) open (.0 elide))] @71
+      drop _3 -> bb19 [open ((_ as case 0) open (.0 elide))] @71
   bb2:
       StorageLive(_6) @113
       _6 = discriminant(_3) @113
@@ -211,7 +211,7 @@ fn unwrapTry @61
   bb6:
       StorageLive(_7) @115 s2
     * _7 = Adt case 1(): Option<T> @115 s2
-      goto bb17 check bb18 @89 s2
+      goto bb16 check bb17 @89 s2
   bb7:
       return @61
   bb8:
@@ -222,36 +222,34 @@ fn unwrapTry @61
   bb10:
       goto bb8 @61
   bb11:
-      drop _2 -> bb12 [elide] @70
-  bb12:
       StorageDead(_2) @70
       goto bb9 @61
-  bb13:
+  bb12:
       StorageDead(_6) @113
       StorageDead(_4) @74
-      drop _3 -> bb14 [keep] @71
-  bb14:
+      drop _3 -> bb13 [keep] @71
+  bb13:
       StorageDead(_3) @71
       goto bb11 @61
+  bb14:
+      drop _7 -> bb15 [elide] @115 s2
   bb15:
-      drop _7 -> bb16 [elide] @115 s2
-  bb16:
       StorageDead(_7) @115 s2
-      goto bb13 @61
-  bb17:
+      goto bb12 @61
+  bb16:
       _8 = move _7 @89 s2
-      goto bb15 @89 s2
+      goto bb14 @89 s2
+  bb17:
+      drop _7 -> bb18 @115 s2
   bb18:
-      drop _7 -> bb19 @115 s2
-  bb19:
       StorageDead(_7) @115 s2
       unreachable check bb1 @89
-  bb20:
+  bb19:
       StorageDead(_3) @71
       _0 = Adt case 0(move _2): Option<T> @67
-      drop _2 -> bb21 [elide] @70
-  bb21:
+      drop _2 -> bb20 [elide] @70
+  bb20:
       StorageDead(_2) @70
-      drop _1 -> bb22 [elide] @61
-  bb22:
+      drop _1 -> bb21 [elide] @61
+  bb21:
       return @67

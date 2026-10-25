@@ -148,14 +148,16 @@ fn format @9
       StorageDead(_32) @21 s1
       StorageDead(_31) @21 s1
       StorageDead(_30) @27 s1
+      drop _13 -> bb23 [flag f0] [clear f0] @27 s1
+  bb23:
       StorageDead(_28) @29 s1
       StorageDead(_27) @27 s1
       StorageDead(_26) @27 s1
       StorageDead(_25) @27 s1
       StorageDead(_24) @27 s1
       StorageDead(_23) @28 s1
-      drop _22 -> bb23 [flag f2] [clear f2] @28 s1
-  bb23:
+      drop _22 -> bb24 [flag f2] [clear f2] @28 s1
+  bb24:
       StorageDead(_22) [clear f2] @28 s1
       StorageDead(_21) @27 s1
       StorageDead(_20) @27 s1
@@ -164,11 +166,9 @@ fn format @9
       StorageDead(_17) @27 s1
       StorageDead(_16) @27 s1
       StorageDead(_15) @27 s1
-      drop _14 -> bb24 [flag f1] [clear f1] @27 s1
-  bb24:
-      StorageDead(_14) [clear f1] @27 s1
-      drop _13 -> bb25 [flag f0] [clear f0] @27 s1
+      drop _14 -> bb25 [flag f1] [clear f1] @27 s1
   bb25:
+      StorageDead(_14) [clear f1] @27 s1
       StorageDead(_13) [clear f0] @27 s1
       StorageDead(_12) @121 s1
       StorageDead(_11) @21 s1
@@ -196,14 +196,16 @@ fn format @9
       StorageDead(_32) @21 s1
       StorageDead(_31) @21 s1
       StorageDead(_30) @27 s1
+      drop _13 -> bb30 @27 s1
+  bb30:
       StorageDead(_28) @29 s1
       StorageDead(_27) @27 s1
       StorageDead(_26) @27 s1
       StorageDead(_25) @27 s1
       StorageDead(_24) @27 s1
       StorageDead(_23) @28 s1
-      drop _22 -> bb30 @28 s1
-  bb30:
+      drop _22 -> bb31 @28 s1
+  bb31:
       StorageDead(_22) @28 s1
       StorageDead(_21) @27 s1
       StorageDead(_20) @27 s1
@@ -212,11 +214,9 @@ fn format @9
       StorageDead(_17) @27 s1
       StorageDead(_16) @27 s1
       StorageDead(_15) @27 s1
-      drop _14 -> bb31 @27 s1
-  bb31:
-      StorageDead(_14) @27 s1
-      drop _13 -> bb32 @27 s1
+      drop _14 -> bb32 @27 s1
   bb32:
+      StorageDead(_14) @27 s1
       StorageDead(_13) @27 s1
       StorageDead(_12) @121 s1
       StorageDead(_11) @21 s1
@@ -502,9 +502,11 @@ fn show @47
       _0 = move _24 @56 s1
       goto bb14 @56 s1
   bb16:
-      StorageDead(_22) @60 s1
-      drop _21 -> bb17 [keep] @60 s1
+      drop _2 -> bb17 [elide] @57 s1
   bb17:
+      StorageDead(_22) @60 s1
+      drop _21 -> bb18 [keep] @60 s1
+  bb18:
       StorageDead(_21) @60 s1
       StorageDead(_20) @57 s1
       StorageDead(_19) @57 s1
@@ -515,8 +517,8 @@ fn show @47
       StorageDead(_14) @57 s1
       StorageDead(_13) @57 s1
       StorageDead(_12) @58 s1
-      drop _11 -> bb18 [keep] @58 s1
-  bb18:
+      drop _11 -> bb19 [keep] @58 s1
+  bb19:
       StorageDead(_11) @58 s1
       StorageDead(_10) @57 s1
       StorageDead(_9) @57 s1
@@ -525,20 +527,20 @@ fn show @47
       StorageDead(_6) @57 s1
       StorageDead(_5) @57 s1
       StorageDead(_4) @57 s1
-      drop _3 -> bb19 [keep] @57 s1
-  bb19:
-      StorageDead(_3) @57 s1
-      drop _2 -> bb20 [elide] @57 s1
+      drop _3 -> bb20 [keep] @57 s1
   bb20:
+      StorageDead(_3) @57 s1
       StorageDead(_2) @57 s1
       goto bb15 @47
   bb21:
       _24 = move _2 @56 s1
       goto bb16 @56 s1
   bb22:
-      StorageDead(_22) @60 s1
-      drop _21 -> bb23 @60 s1
+      drop _2 -> bb23 @57 s1
   bb23:
+      StorageDead(_22) @60 s1
+      drop _21 -> bb24 @60 s1
+  bb24:
       StorageDead(_21) @60 s1
       StorageDead(_20) @57 s1
       StorageDead(_19) @57 s1
@@ -549,8 +551,8 @@ fn show @47
       StorageDead(_14) @57 s1
       StorageDead(_13) @57 s1
       StorageDead(_12) @58 s1
-      drop _11 -> bb24 @58 s1
-  bb24:
+      drop _11 -> bb25 @58 s1
+  bb25:
       StorageDead(_11) @58 s1
       StorageDead(_10) @57 s1
       StorageDead(_9) @57 s1
@@ -559,11 +561,9 @@ fn show @47
       StorageDead(_6) @57 s1
       StorageDead(_5) @57 s1
       StorageDead(_4) @57 s1
-      drop _3 -> bb25 @57 s1
-  bb25:
-      StorageDead(_3) @57 s1
-      drop _2 -> bb26 @57 s1
+      drop _3 -> bb26 @57 s1
   bb26:
+      StorageDead(_3) @57 s1
       StorageDead(_2) @57 s1
       unreachable @55
 fn print @61
@@ -641,14 +641,16 @@ fn print @61
       _2 = writeLine(move _20) -> bb11 @63
   bb11:
       StorageDead(_20) @67
+      drop _3 -> bb12 [keep] @67
+  bb12:
       StorageDead(_18) @69
       StorageDead(_17) @67
       StorageDead(_16) @67
       StorageDead(_15) @67
       StorageDead(_14) @67
       StorageDead(_13) @68
-      drop _12 -> bb12 [keep] @68
-  bb12:
+      drop _12 -> bb13 [keep] @68
+  bb13:
       StorageDead(_12) @68
       StorageDead(_11) @67
       StorageDead(_10) @67
@@ -657,11 +659,9 @@ fn print @61
       StorageDead(_7) @67
       StorageDead(_6) @67
       StorageDead(_5) @67
-      drop _4 -> bb13 [keep] @67
-  bb13:
-      StorageDead(_4) @67
-      drop _3 -> bb14 [keep] @67
+      drop _4 -> bb14 [keep] @67
   bb14:
+      StorageDead(_4) @67
       StorageDead(_3) @67
       StorageDead(_2) @63
       _0 = const () @63
@@ -891,9 +891,11 @@ fn forms @79
       _25 = keep(move _49) -> bb30 @88 s1
   bb30:
       StorageDead(_49) @90 s1
-      StorageDead(_47) @93 s1
-      drop _46 -> bb31 [keep] @93 s1
+      drop _26 -> bb31 [keep] @90 s1
   bb31:
+      StorageDead(_47) @93 s1
+      drop _46 -> bb32 [keep] @93 s1
+  bb32:
       StorageDead(_46) @93 s1
       StorageDead(_45) @90 s1
       StorageDead(_44) @90 s1
@@ -905,8 +907,8 @@ fn forms @79
       StorageDead(_38) @90 s1
       StorageDead(_37) @90 s1
       StorageDead(_36) @91 s1
-      drop _35 -> bb32 [keep] @91 s1
-  bb32:
+      drop _35 -> bb33 [keep] @91 s1
+  bb33:
       StorageDead(_35) @91 s1
       StorageDead(_34) @90 s1
       StorageDead(_33) @90 s1
@@ -915,11 +917,9 @@ fn forms @79
       StorageDead(_30) @90 s1
       StorageDead(_29) @90 s1
       StorageDead(_28) @90 s1
-      drop _27 -> bb33 [keep] @90 s1
-  bb33:
-      StorageDead(_27) @90 s1
-      drop _26 -> bb34 [keep] @90 s1
+      drop _27 -> bb34 [keep] @90 s1
   bb34:
+      StorageDead(_27) @90 s1
       StorageDead(_26) @90 s1
       StorageDead(_25) @88 s1
       StorageLive(_50) @94 s1
@@ -1001,9 +1001,9 @@ fn early @97
       StorageLive(_15) @101 s1
       _15 = &uniq two-phase _3: uniq/Utf8Writer @101 s1
       StorageLive(_16) @103 s1
-    * goto bb15 check bb16 @105 s2
+    * goto bb14 check bb15 @105 s2
   bb8:
-      _13 = write<()>(move _15, move _16) -> bb17 @101 s1
+      _13 = write<()>(move _15, move _16) -> bb16 @101 s1
   bb9:
       return @97
   bb10:
@@ -1029,24 +1029,22 @@ fn early @97
       drop _2 -> bb13 [keep] @101 s1
   bb13:
       StorageDead(_2) @101 s1
-      drop _1 -> bb14 [elide] @101 s1
-  bb14:
       StorageDead(_1) @101 s1
       goto bb10 @97
-  bb15:
+  bb14:
       EndBorrow(_15) @105 s2
       _17 = const "early" @105 s2
       goto bb11 @105 s2
-  bb16:
+  bb15:
       unreachable check bb8 @104 s1
-  bb17:
+  bb16:
       _14 = discriminant(_13) @101 s1
-      switch copy _14 [0: bb18, otherwise: bb1] @101 s1
-  bb18:
+      switch copy _14 [0: bb17, otherwise: bb1] @101 s1
+  bb17:
       StorageLive(_18) @101 s1
       _18 = &uniq two-phase _3: uniq/Utf8Writer @101 s1
-      _4 = intrinsic FormatHint(move _18, const 0_isize, const type ()) -> bb19 @101 s1
-  bb19:
+      _4 = intrinsic FormatHint(move _18, const 0_isize, const type ()) -> bb18 @101 s1
+  bb18:
       StorageLive(_19) @101 s1
       StorageLive(_20) @101 s1
       StorageLive(_21) @101 s1
@@ -1055,12 +1053,14 @@ fn early @97
       _22 = const "suffix" @107 s1
       StorageLive(_23) @107 s1
       _23 = &_22: ref/string @107 s1
-      _19 = write<string>(move _21, move _23) -> bb20 @101 s1
-  bb20:
+      _19 = write<string>(move _21, move _23) -> bb19 @101 s1
+  bb19:
       _20 = discriminant(_19) @101 s1
-      switch copy _20 [0: bb21, otherwise: bb1] @101 s1
+      switch copy _20 [0: bb20, otherwise: bb1] @101 s1
+  bb20:
+      _1 = intrinsic FormatFinish(move _3, const 12_isize, const type (()), const false) -> bb21 @101 s1
   bb21:
-      _1 = intrinsic FormatFinish(move _3, const 12_isize, const type (()), const false) -> bb22 @101 s1
+      drop _1 -> bb22 @101 s1
   bb22:
       StorageDead(_23) @107 s1
       drop _22 -> bb23 @107 s1
@@ -1089,14 +1089,12 @@ fn early @97
       drop _2 -> bb25 @101 s1
   bb25:
       StorageDead(_2) @101 s1
-      drop _1 -> bb26 @101 s1
-  bb26:
       StorageDead(_1) @101 s1
-    * goto bb27 check bb28 @108 s1
-  bb27:
+    * goto bb26 check bb27 @108 s1
+  bb26:
       _17 = const "late" @108 s1
       goto bb10 @108 s1
-  bb28:
+  bb27:
       unreachable @99
 fn pair @110
   _0: string return @110

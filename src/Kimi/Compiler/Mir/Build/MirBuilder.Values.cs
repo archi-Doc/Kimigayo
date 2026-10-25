@@ -315,8 +315,10 @@ internal sealed partial class MirBuilder
         }
 
         // Of the Type it is placed at, or the Never value of a right side of Type Never, which is not placed (Overwrite).
-        var value = this.Temp(ReferenceEquals(TypeOf(assignment.Right), BoundType.Never) ? assignment.Right : assignment.Left);
+        var source = ReferenceEquals(TypeOf(assignment.Right), BoundType.Never) ? assignment.Right : assignment.Left;
+        var value = this.Hold(TypeOf(source), source);
         this.Assign(value, assignment.Right);
+        this.Made(value);
         this.Overwrite(this.Place(assignment.Left), value, assignment);
         this.Unit(destination, assignment);
     }
@@ -409,7 +411,7 @@ internal sealed partial class MirBuilder
     private MirPlace Temp(Koto node) => this.Temp(TypeOf(node), node);
 
     private MirPlace Temp(BoundType type, Koto node, MirLocalRole role = MirLocalRole.None, string? name = null)
-        => new(this.Live(this.body.AddLocal(new(type, MirLocalKind.Temp, this.Info(node, local: true), Name: name, Role: role)), this.temporaries));
+        => this.Made(this.Hold(type, node, role, name));
 
     // The place given where it has the Type, else a new temp of it.
     private MirPlace Temp(BoundType type, Koto node, MirPlace? into) => into is { } place && ReferenceEquals(this.body.TypeOf(place), type) ? place

@@ -205,9 +205,9 @@ internal sealed partial class MirBuilder
     private MirPlace Referent(Koto node)
     {
         var call = ExpansionPlan.Of(node)!.Value.Second!;
-        var result = this.Temp(call.ReturnType, node);
+        var result = this.Hold(call.ReturnType, node);
         this.Call(result, call, node, first: null);
-        return this.body.Project(result, MirProjectionKind.Deref, 0);
+        return this.body.Project(this.Made(result), MirProjectionKind.Deref, 0);
     }
 
     // A value held in a temp of its Type where its consumer needs a Place, or in the place given where that has its Type, unless an expansion
@@ -224,8 +224,15 @@ internal sealed partial class MirBuilder
             return located;
         }
 
-        var temp = this.Temp((derived ? expected : null) ?? HirTables.Meaning(node) as BoundType ?? expected ?? BoundType.Unit, node, into);
+        var type = (derived ? expected : null) ?? HirTables.Meaning(node) as BoundType ?? expected ?? BoundType.Unit;
+        if (into is { } place && ReferenceEquals(this.body.TypeOf(place), type))
+        {
+            this.Into(place, node, input); // The place given is its holder's to make.
+            return place;
+        }
+
+        var temp = this.Hold(type, node);
         this.Into(temp, node, input);
-        return temp;
+        return this.Made(temp);
     }
 }

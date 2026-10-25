@@ -37,7 +37,9 @@ internal sealed partial class MirBuilder
                 this.Transfer((JumpKoto)item);
                 break;
             default:
-                this.Into(this.Temp(item), item);
+                var value = this.Hold(TypeOf(item), item);
+                this.Into(value, item);
+                this.Made(value);
                 break;
         }
 
@@ -46,7 +48,12 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 14.2.4: bare acquisition of a discarded operand into a temp destroyed with the statement's temporaries.
-    private void Discard(DiscardKoto discard) => this.Assign(this.Temp(discard.Operand), discard.Operand);
+    private void Discard(DiscardKoto discard)
+    {
+        var value = this.Hold(TypeOf(discard.Operand), discard.Operand);
+        this.Assign(value, discard.Operand);
+        this.Made(value);
+    }
 
     // The value a body or a block's last item leaves in the destination: the item as its consumer takes it, a block's own result, or the
     // container's Unit after the item as a statement where the container completes (SPEC 7.1, 14.2). As a call's input that reserves
@@ -56,8 +63,9 @@ internal sealed partial class MirBuilder
     {
         if (input)
         {
-            var value = this.Temp(this.body.TypeOf(destination)!, item);
+            var value = this.Hold(this.body.TypeOf(destination)!, item);
             this.Result(value, item, container, input: false);
+            this.Made(value);
             if (Completes(container))
             {
                 this.Use(destination, MirOperand.Move(value), item);

@@ -369,9 +369,9 @@ fn use @79
   bb9:
       _18 = run(move _19, move _20) -> bb10 @105 s1
   bb10:
-      StorageDead(_21) @105 s1
       drop _20 -> bb11 [elide] @105 s1
   bb11:
+      StorageDead(_21) @105 s1
       StorageDead(_20) @105 s1
       StorageDead(_19) @107 s1
       StorageLive(_23) @109 s1

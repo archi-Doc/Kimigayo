@@ -101,12 +101,13 @@ internal sealed partial class MirBuilder
     private MirPlace Test(Koto condition, int whenFalse, int whenTrue)
     {
         var tested = this.OpenScope(block: false);
-        var test = this.Temp(BoundType.Boolean, condition);
+        var test = this.Hold(BoundType.Boolean, condition);
         var temporaries = this.OpenScope(block: false);
         var mark = this.arguments.Count;
         this.Assign(test, condition);
         this.arguments.RemoveRange(mark, this.arguments.Count - mark);
         this.CloseScope(temporaries);
+        this.Made(test);
         this.Branch(test, condition, whenFalse, whenTrue);
         this.CloseScope(tested, clean: false);
         return test;

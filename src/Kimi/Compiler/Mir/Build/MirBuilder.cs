@@ -235,7 +235,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
 
         this.current = body.AddBlock();
         var temporaries = this.OpenScope(block: false);
-        var done = self is null ? new MirPlace(0) : this.Temp(BoundType.Unit, value);
+        var done = self is null ? new MirPlace(0) : this.Hold(BoundType.Unit, value);
         this.constructed = self is null ? null : value;
         this.targets.Add(new(declaration, done, -1, -1, At: default, Reached: false)); // A return's target, opened at the body's scope.
         if (self is not null)
@@ -244,6 +244,11 @@ internal sealed partial class MirBuilder(Compilation compilation)
         }
 
         this.Result(done, value, value, input: false);
+        if (self is not null)
+        {
+            this.Made(done); // A constructor's body value, set aside.
+        }
+
         this.CloseScope(temporaries);
         this.CloseScope(parameters);
         // A default's value that does not complete goes on to its return, the call that takes it, for the checks only (SPEC 14.10.3).

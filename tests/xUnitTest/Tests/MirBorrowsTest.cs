@@ -1494,6 +1494,13 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     p@follow = D.init(r: p.r@follow@uniq)
                 """));
 
+    // SPEC 3.6, 15.6.6 (DECISIONS R4-M129): a call's result that borrows its argument's temporary and observes it in its destruction is
+    // destroyed before that temporary, so the Loan its destruction observes is still valid (fail-before: the argument's storage ended first,
+    // a conflict at each argument).
+    [Fact]
+    public void AResultIsDestroyedBeforeTheTemporaryItBorrows()
+        => Assert.Empty(Problems("func lend(value: ref/i32) -> R => R.init(r: value)\nfunc t()\n    inspect(lend(1 + 1))\n    inspect(lend(size(3)))\n"));
+
     // SPEC 8.15.1, 15.6, 15.6.6, 3.6 (PLAN10-X1 and abstract temporaries; the R5 plan's Q1 programs, its Q5 and ask A-3): a generic body is
     // checked for every instance, so a holder of an abstract Type may observe its Loans when it is destroyed: replacing `local` while the
     // iterator it lent is live conflicts in `hold<C>`, as in its twin over a Bin whose iterator's drop observes the source, while the twin
