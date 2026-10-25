@@ -12,7 +12,7 @@
 //   while binding; no body after binding); the formation context (BoundOrigin.Body, BoundClosure.EvaluatingBody, Binding.ExecutableBodies.cs)
 //   and whether a Closure is classified (BoundClosure.Classified).
 // - Outputs: the class, read by the judge (Binding.OriginProof.cs, Binding.LocalRegions.cs), the records (Binding.OriginFits.cs,
-//   Binding.OriginClauses.cs, Binding.CallRelations.cs), the old analysis's reporter and the view (Binding.OriginRows.cs, ClassifyAtom).
+//   Binding.OriginClauses.cs, Binding.CallRelations.cs), the old analysis's reporter and the view (Binding.OriginRows.Atoms.cs, ClassifyAtom).
 // - Invariants: each class is decided here once, by one predicate that every reader shares; only SourcesIn reads state, the region graph's;
 //   a pending atom is tested before any other class.
 // - Prohibitions: no proof, judgment, record or state; no class derived from syntax.

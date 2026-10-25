@@ -161,7 +161,7 @@ internal enum MirLocalKind : byte
 }
 
 /// <summary>Why a local exists, which maps a finding to its diagnostic code; a guard candidate's role also decides A5's guard-local
-/// Origin (design A3 E7).</summary>
+/// Origin (design A3 E7), and a Result local is the body's result in transit, one of A5's escape holders (DECISIONS R4-M132).</summary>
 internal enum MirLocalRole : byte
 {
     None,
@@ -169,6 +169,7 @@ internal enum MirLocalRole : byte
     PendingSlot, // A prepared argument slot of an inline default.
     GuardCandidate, // A match guard's candidate binding: its value carries γ, which its EndBorrow ends (SPEC 14.8.3, err(ended)).
     Subject, // A match subject.
+    Result, // The body's result in transit: the temp a transfer delivers whole into _0 after the Scope Exit (SPEC 16.2.2, R5-M50).
 }
 
 internal enum MirScopeKind : byte

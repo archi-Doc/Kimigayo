@@ -3,9 +3,10 @@
 // Owns initialization and moves (A1; SPEC 15.1, 14.10.3, 7.2.3; DECISIONS R4-M21, R4-M6a, R4-M69) per body and Semantics case view.
 // Input: a validated body, its move paths (MirMoveData), its dataflow (MirDataflow) and the selected view (MirCases). Output: the
 // problems UninitializedPlace_Kd, MovedPlace_Kd, ReassignedLet_Kd, StaticMovePathRequired_Kd and DefaultArgumentMove_Kd through MirReport,
-// each inside an inline default copy with the copy's call as its Inlined fact, and to A2 (MirDrops) the code and subject of each problem it
-// records, before MirReport.Add (R4-M102), the paths its entry initializes (the arguments'; a constructing _0's own bit has no subtree
-// event) and, in its checks replay, the state before each Drop the runtime edges reach and each state event there.
+// each inside an inline default copy with the copy's call as its Inlined fact, and the arena limit through MirDataflow.StorageLimit; to
+// A2 (MirDrops) the code, subject (in the location's scope) and MirReport.Add's index of each problem it records (R4-M102, R4-M132), the
+// paths its entry initializes (the arguments'; a constructing _0's own bit has no subtree event) and, in its checks replay, the state
+// before each Drop the runtime edges reach and each state event there.
 // Five lanes per path, joined by union: MaybeUninit, MaybeMoved, EverInit, and for A2 MaybeInit and MaybePartial (a non-root path a Move or
 // a Drop took out of its parent, cleared with the subtree by any event of an ancestor-or-self). A definition initializes a path's subtree, a
 // Move or a Drop uninitializes it, StorageLive and StorageDead start a fresh binding lifetime; a use needs its whole subtree initialized on
@@ -59,12 +60,11 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         }
 
         var all = ulong.MaxValue >> (64 - (int)MirCases.Count(body));
-        var state = flow.Prepare(0, Lanes * ((moves.FlowCount + 63) >> 6), Lanes * ((moves.Paths.Length + 63) >> 6));
+        var state = flow.Prepare(0, Lanes * ((moves.FlowCount + 63) >> 6), Lanes * ((moves.Paths.Length + 63) >> 6), out var words);
         if (state is null)
         {
-            var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.StorageLimit);
-            drops.Incomplete(DiagnosticCode.OwnershipStorageLimit_Kd, body.Source);
-            report.Add(new(DiagnosticCode.OwnershipStorageLimit_Kd, requirement, body.Source, body.Ordinal, all)); // R4-M15a: the driver stops the body's views.
+            var limit = MirDataflow.StorageLimit(report, body, all, MirStorageTable.Initialization, words); // R4-M15a: the driver stops the views.
+            drops.Incomplete(DiagnosticCode.OwnershipStorageLimit_Kd, default, limit);
             return false;
         }
 
@@ -79,7 +79,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
     private struct Transfer(MirBody body, MirMoveData moves, MirCases cases, MirDataflow flow, ulong[] state, MirDrops drops) : IMirFlow, IMirUses
     {
         private SourceRef subject;
-        private int scope; // The location's scope.
+        private ushort scope; // The location's scope.
         private MirLocation at;
         private bool runtime; // Whether the runtime edges reach the block applied.
 
@@ -327,13 +327,13 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             subject);
 
         // A problem at the location, with the call of the inline default copy it lies in, whose template's check it is (R4-M69); A2's table
-        // records it first, a copy's included (R4-M102).
+        // records it first, a copy's included (R4-M102), at its subject in the location's scope with its index.
         private readonly void Add(DiagnosticCode code, OwnershipRequirement requirement, SourceRef subject)
         {
             var problem = new MirProblem(code, DiagnosticRequirement.Ownership(requirement), subject, body.Ordinal, this.Views);
             var inlined = body.Inlining(this.scope);
-            drops.Incomplete(code, subject);
-            this.Report.Add(problem, inlined < 0 ? default : [new(MirFactKind.Inlined, body.Scopes[inlined].Source)]);
+            var index = this.Report.Add(problem, inlined < 0 ? default : [new(MirFactKind.Inlined, body.Scopes[inlined].Source)]);
+            drops.Incomplete(code, new(subject, this.scope, StatementStart: false), index);
         }
     }
 }

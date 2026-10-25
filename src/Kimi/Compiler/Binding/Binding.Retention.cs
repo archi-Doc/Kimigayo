@@ -7,7 +7,8 @@ namespace Kimi.Compiler;
 // The computation behind TyCtxt.Retains, under its contract (TyCtxt.Retention.cs): a contract's Origin atoms and carriers
 // (Binding.Retention.Atoms.cs), the premises its callee's body is checked under in one premise environment (its instantiated own part,
 // then the premise catalog's walk outward from its binder's parent), the relations of its erased callables, and the rows
-// (Binding.Retention.Rows.cs).
+// (Binding.Retention.Rows.cs). Each entry point, Retains for a callee's contract and RetainsErased for an erased callable's, runs its
+// own steps between BeginRetention and EndRetention; the premise scope TyCtxt read an instance under is RetentionRows' parameter.
 public sealed partial class Binding
 {
     // The occurrences in the contract being computed (RetentionAtom), the erased callable Types it names and each carrier's node,
@@ -19,27 +20,71 @@ public sealed partial class Binding
     // The inputs (and declaring Type) of the contract or erased signature being walked, whose borrows a raw layer's Origin belongs to
     // (RawContent), reused, and how many of them are a callee's own signature inputs, which the signature cap reads (SignatureStep; none
     // for an erased signature, a Function Type's or a Callable bound's, whose raw layers read their kind: SPEC 5.2.1 caps a layer written
-    // in a function's own signature); the (Origin, input) pairs whose content that walk has added, so each is walked once; whether a member
-    // walk was incomplete (CallRetention.Limit); and whether its result has a raw layer without an Origin (SPEC 5.7 Calls, D6).
+    // in a function's own signature); the (Origin, input) pairs whose content that walk has added, so each is walked once; and whether a
+    // member walk was incomplete (CallRetention.Limit).
     private readonly List<BoundType> retentionScope = new();
     private readonly HashSet<(BoundOrigin Origin, int Input)> retentionRawVisits = new();
     private int retentionInputs;
     private bool retentionLimit;
-    private bool retentionUnstatedResult;
 
     // SPEC 15.6.4: the retention of a callee's contract whose inputs and result are instantiated (a function, or the closure or item a
     // Value call names), under the premises its body is checked under: its own part, its clauses substituted under the declaring Type,
     // and the catalog's walk from its binder's parent outward. An output retains an input when the premises entail that an atom of the
     // input outlives an atom of the output, or when both name one carrier. Its Callable bounds (CallableBoundSignatures), instantiated as its
-    // inputs, are erased callables its body may call.
-    internal CallRetention Retains(FunctionKoto callee, ReadOnlySpan<BoundType> inputs, BoundType result, BoundType? declaring, ReadOnlySpan<BoundType> bounds)
-        => this.RetentionOf(callee.Accessor?.Binder ?? callee, callee, inputs, result, declaring, bounds);
+    // inputs, are erased callables its body may call. `premises`: the scope TyCtxt read an instance with an abstract part under (null:
+    // none), which the transfer rule's Iterator key reads (Binding.Retention.Transfers.cs).
+    internal CallRetention Retains(
+        FunctionKoto callee,
+        ReadOnlySpan<BoundType> inputs,
+        BoundType result,
+        BoundType? declaring,
+        ReadOnlySpan<BoundType> bounds,
+        BindingScope? premises)
+    {
+        var use = callee.Accessor?.Binder ?? callee;
+        var environment = this.BeginRetention(use, inputs, result, declaring, inputs.Length);
+        try
+        {
+            this.CollectOriginResolvers(environment);
+            this.RetentionPremises(environment, callee, inputs, result, declaring, bounds);
+            if (this.retentionLimit)
+            {
+                return CallRetention.Limit;
+            }
+
+            var nodes = this.RetentionNodes(environment);
+            this.ExtractOriginPremises(environment, use.Parent);
+            return this.RetentionRows(environment, nodes, inputs, callee, premises);
+        }
+        finally
+        {
+            this.EndRetention(environment);
+        }
+    }
 
     // An erased callable's retention, one whose implementation the call cannot see (a Function Type value, or a value of a Callable-bounded
     // Type parameter): it reads no declaration's premises, only its own well-formedness and the relations of its fixed Origins
     // (AddErasedRelations), which make the premises of `use`, the calling definition, redundant except for its pair layers' admitted cases.
     internal CallRetention RetainsErased(Koto use, ReadOnlySpan<BoundType> inputs, BoundType result)
-        => this.RetentionOf(use, null, inputs, result, null, default);
+    {
+        var environment = this.BeginRetention(use, inputs, result, null, 0);
+        try
+        {
+            this.RetentionPremises(environment, null, inputs, result, null, default);
+            if (this.retentionLimit)
+            {
+                return CallRetention.Limit;
+            }
+
+            var nodes = this.RetentionNodes(environment);
+            this.AddErasedRelations(environment, 0);
+            return this.RetentionRows(environment, nodes, inputs, null, null);
+        }
+        finally
+        {
+            this.EndRetention(environment);
+        }
+    }
 
     // SPEC 8.10: the signatures of the Callable bounds among the premises at `use`, in its constraint scope and those enclosing it.
     internal void CallableBoundSignatures(Koto use, List<BoundType> bounds)
@@ -67,13 +112,11 @@ public sealed partial class Binding
     private static bool IsFixed(in RetentionAtom atom)
         => atom.Carrier is not null || atom.Origin is { Kind: not OriginKind.Static } and not { Kind: OriginKind.Input, Binder: FunctionTypeKoto };
 
-    private CallRetention RetentionOf(
-        Koto use,
-        FunctionKoto? callee,
-        ReadOnlySpan<BoundType> inputs,
-        BoundType result,
-        BoundType? declaring,
-        ReadOnlySpan<BoundType> bounds)
+    // Begins a retention computation at `use`: resets the per-computation fields, registers each input's atoms and holds and the result's
+    // atoms and its one hold, its whole Type (Held walks what lies behind its borrows as lent, DECISIONS BU-40), over the scope of the
+    // inputs and declaring Type, of which `signatureInputs` are a callee's own signature inputs (none for an erased signature), then rents
+    // the premise environment, which EndRetention returns.
+    private OriginPremiseEnvironment BeginRetention(Koto use, ReadOnlySpan<BoundType> inputs, BoundType result, BoundType? declaring, int signatureInputs)
     {
         this.retentionAtoms.Clear();
         this.retentionCallables.Clear();
@@ -82,7 +125,7 @@ public sealed partial class Binding
         this.retentionHolds.Clear();
         this.retentionScope.Clear();
         this.retentionScope.AddRange(inputs);
-        this.retentionInputs = callee is null ? 0 : inputs.Length;
+        this.retentionInputs = signatureInputs;
         if (declaring is not null)
         {
             this.retentionScope.Add(declaring);
@@ -90,49 +133,26 @@ public sealed partial class Binding
 
         this.retentionRawVisits.Clear();
         this.retentionLimit = false;
-        this.retentionUnstatedResult = false;
         for (var i = 0; i < inputs.Length; i++)
         {
             this.RetentionInput(inputs[i], i);
         }
 
         this.RetentionWalk(result, new(Retention.Result, RetentionKind.Value, Writable: false, null, null, null), OriginVariance.Covariant, callable: false);
-        var environment = this.RentPremises(use) ??
+        this.retentionHolds.Add((Retention.Result, result));
+        return this.RentPremises(use) ??
             throw new InvalidOperationException($"The premise environment of a retention at `{use}` is not ready: it depends on itself (PLAN G74).");
-        try
-        {
-            if (callee is not null)
-            {
-                this.CollectOriginResolvers(environment);
-            }
+    }
 
-            this.RetentionPremises(environment, callee, inputs, result, declaring, bounds);
-            if (this.retentionLimit)
-            {
-                return CallRetention.Limit;
-            }
-
-            var nodes = this.RetentionNodes(environment);
-            if (callee is null)
-            {
-                this.AddErasedRelations(environment, 0);
-            }
-            else
-            {
-                this.ExtractOriginPremises(environment, use.Parent);
-            }
-
-            return this.RetentionRows(environment, nodes, inputs.Length, KimiLibraryCatalog.Within(callee?.BoundSymbol));
-        }
-        finally
-        {
-            this.ReturnPremises(environment);
-            this.retentionAtoms.Clear();
-            this.retentionCallables.Clear();
-            this.retentionCarriers.Clear();
-            this.retentionRawInputs.Clear();
-            this.retentionHolds.Clear();
-        }
+    // Ends a retention computation, from each entry point's `finally`: returns its premise environment and clears what it registered.
+    private void EndRetention(OriginPremiseEnvironment environment)
+    {
+        this.ReturnPremises(environment);
+        this.retentionAtoms.Clear();
+        this.retentionCallables.Clear();
+        this.retentionCarriers.Clear();
+        this.retentionRawInputs.Clear();
+        this.retentionHolds.Clear();
     }
 
     // The contract's own premises (SPEC 15.6.4 step 3): each input's well-formedness and Types' relations (R2), the declaring Type's
@@ -187,7 +207,6 @@ public sealed partial class Binding
         var atoms = this.retentionAtoms;
         var (start, raws, holds) = (atoms.Count, this.retentionRawInputs.Count, this.retentionHolds.Count);
         var inputs = signature.Components[0];
-        var unstated = this.retentionUnstatedResult;
         this.retentionScope.Clear();
         if (!ReferenceEquals(inputs, BoundType.Unit))
         {
@@ -208,7 +227,6 @@ public sealed partial class Binding
         atoms.RemoveRange(start, atoms.Count - start);
         this.retentionRawInputs.RemoveRange(raws, this.retentionRawInputs.Count - raws);
         this.retentionHolds.RemoveRange(holds, this.retentionHolds.Count - holds);
-        this.retentionUnstatedResult = unstated;
     }
 
     // An erased callable's relations (owner decision 2026-10-17, DECISIONS R4-M52): its implementation was compared where it was

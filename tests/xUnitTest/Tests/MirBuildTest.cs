@@ -126,6 +126,45 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         }
     }
 
+    // SPEC 16.2.2 (DECISIONS R5-M50, R4-M132): the temp a transfer delivers whole into _0 after the Scope Exit is the body's result in
+    // transit (MirLocalRole.Result): a return leaving a scope with a cleanup has one, a body's tail value writes _0 and has none, a
+    // constructor's return none (its target is a Unit temp), a default template whose tail construct a transfer leaves one, at the
+    // construct, and that template's copy in a caller none (it delivers into the caller's slot). Each is valid MIR.
+    [Fact]
+    public void TheResultInTransitIsTheTempDeliveredIntoTheResult()
+    {
+        var c = Compile("""
+            func leave(x: ref/i32, c: bool) -> ref/i32 during x
+                if c
+                    let local = 1
+                    var r = local@ref
+                    return r
+                return x
+            func plain(x: i32) -> i32 => x
+            struct Res
+                public var v: i32 = 0
+                public init(c: bool)
+                    if c
+                        let t = 1
+                        return
+                    self.v = 2
+            func evaluate<T>(sample: T, marker: i32 = label result: do
+                let pending: Option<T> = .None
+                match pending@move
+                    .Some(let value) => exit to result 1
+                    .None => exit to result 0
+            ) -> i32 => marker
+            func caller() -> i32 => evaluate("held")
+            """);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Equal(
+            "DefaultTemplate evaluate 1, Fn caller 0, Fn evaluate 0, Fn init 0, Fn leave 1, Fn plain 0",
+            string.Join(", ", program.Bodies.ToArray().Where(static x => x.Source.Module == 0 && x.Key.Decl is not null)
+                .Select(static x => $"{x.Key.Kind} {x.Key.Decl!.Name} {x.Locals.ToArray().Count(static y => y.Role == MirLocalRole.Result)}")
+                .Order(StringComparer.Ordinal)));
+    }
+
     // The same compilation builds the same MIR, fresh or after a warm rebind, and a fresh compilation of the same source does too; Milestone43
     // keeps Opaque values where Binding rejected it.
     [Fact]

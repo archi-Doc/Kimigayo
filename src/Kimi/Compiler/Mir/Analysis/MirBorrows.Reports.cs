@@ -31,7 +31,7 @@ internal sealed partial class MirBorrows
     private void Report(DiagnosticCode code, SourceRef anchor, int via, MirLocation at, int reservation, MirFact? effect)
     {
         var (subject, count) = this.Facts(anchor, via, at, reservation, effect);
-        this.Record(code, OwnershipRequirement.ComparisonLoanConflict, subject, this.facts.AsSpan(0, count));
+        this.Record(code, OwnershipRequirement.ComparisonLoanConflict, subject, this.facts.AsSpan(0, this.CauseFacts(count)));
     }
 
     // A problem with its facts (D7, R4-M98): in a held view (R4-M73) the located Unsupported_Kd at its subject instead.
@@ -60,9 +60,10 @@ internal sealed partial class MirBorrows
     // concrete instantiation, so an inline default copy's stays at its operation (SPEC 23.1.1, R4-M69, R4-M71).
     private void Unsupported(MirLocation at) => this.Unsupported(this.Subject(at));
 
-    // A located Unsupported_Kd at a subject, with no fact.
+    // A located Unsupported_Kd at a subject, with no fact, a conflict's causes (rule W) dropped with it.
     private void Unsupported(SourceRef subject)
     {
+        this.causes.Clear();
         var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
         this.program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, requirement, subject, this.body.Ordinal, this.views));
     }

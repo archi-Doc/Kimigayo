@@ -30,7 +30,8 @@ public sealed partial class Binding
     private ulong storageVersion;
 
     /// <summary>Storage preparation's verdict on a Type (DECISIONS BU-12, BU-36); a limit takes precedence, and the verdict depends on the
-    /// Type alone. Layout's Rejected (R5-M37) names the same fact over the parts it places.</summary>
+    /// Type alone. The order is the precedence, so the verdict of several parts is the greatest (TyCtxt.Compose, BU-38). Layout's Rejected
+    /// (R5-M37) names the same fact over the parts it places.</summary>
     internal enum StorageOutcome : byte
     {
         /// <summary>Every part the storage reaches substitutes, within PLAN G128's limits.</summary>

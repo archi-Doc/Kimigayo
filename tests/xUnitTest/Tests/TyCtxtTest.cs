@@ -604,7 +604,7 @@ public sealed class TyCtxtTest
 
         // copy, count, first, same (a requirement, so the forwarding resolves its witness) and get bind a Type, a length, an Origin, Self and
         // a declaring Type of the instance.
-        var composed = NestedCalls(direct.Kotonoha).Select(x => (x.Inner.Target.Name, Subst: direct.Types.Compose(direct.Types.SubstOf(x.Inner)!, direct.Types.SubstOf(x.Outer)!)!)).ToArray();
+        var composed = NestedCalls(direct.Kotonoha).Select(x => (x.Inner.Target.Name, Subst: direct.Types.Compose(direct.Types.SubstOf(x.Inner)!, direct.Types.SubstOf(x.Outer)!).Subst!)).ToArray();
         Assert.Equal(["i32", "bool"], composed.Where(static x => x.Name == "copy").Select(static x => x.Subst.Types[0]!.Name));
         Assert.Equal(3, composed.Single(static x => x.Name == "count").Subst.Lengths[0]!.Value);
         Assert.Contains(composed.Single(static x => x.Name == "first").Subst.Origins.ToArray().Concat(composed.Single(static x => x.Name == "first").Subst.Inputs.ToArray()), static x => x is not null);
@@ -670,7 +670,7 @@ public sealed class TyCtxtTest
 
         var instance = new CallPlan();
         instance.Set(outer.Target, outer.ReturnType, null, [], [nested]);
-        Assert.Null(c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(instance)!));
+        Assert.Equal((null, Binding.StorageOutcome.Limit), c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(instance)!));
         Assert.Null(c.Binding.InstantiateForwardedCall(inner, instance));
     }
 
@@ -727,6 +727,26 @@ public sealed class TyCtxtTest
         Assert.Equal(expected, c.Types.Witness(requirement, zero, c.Types.Synthesized(requirement, bad, zero.Type!)).Kind.ToString());
     }
 
+    // DECISIONS BU-38: Compose carries the worst verdict of its parts' storage in the outer instance. inner's call in outer's instance at
+    // Bad<i32>, whose Field m did not bind, is Rejected with the substitution of Binding's forwarded call; beside a Type argument nested past
+    // the bound it is a Limit without a substitution in either order, as its repair's is (before: null for each, which the collector
+    // published as the storage-nesting gap).
+    [Theory]
+    [InlineData("i32", "i32", "Prepared")]
+    [InlineData("Bad<i32>", "i32", "Rejected")]
+    [InlineData("Bad<i32>", RetentionTest.Box65, "Limit")]
+    [InlineData(RetentionTest.Box65, "Bad<i32>", "Limit")]
+    public void ComposeHasTheWorstVerdictOfItsParts(string first, string second, string expected)
+    {
+        var c = MirBuildTest.Compile(RetentionTest.Box + "struct Bad<T>\n    public var v: T\n    public var m: Missing\nfunc inner<A, B>(a: uniq/A, b: uniq/B) => ()\n" +
+            $"func outer<A, B>(a: uniq/A, b: uniq/B) => inner(a, b)\nfunc g(x: uniq/{first}, y: uniq/{second}) => outer(x, y)\n");
+        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf()!).ToDictionary(static x => x.Target.Name);
+        var (subst, storage) = c.Types.Compose(c.Types.SubstOf(calls["inner"])!, c.Types.SubstOf(calls["outer"])!);
+        Assert.Equal(expected, storage.ToString());
+        Assert.Same(subst is null ? null : c.Types.SubstOf(c.Binding.InstantiateForwardedCall(calls["inner"], calls["outer"])!), subst);
+        Assert.Equal(storage == Binding.StorageOutcome.Limit, subst is null);
+    }
+
     // SPEC 6.5.1, 23.1.2 (G242; DECISIONS BU-37): an enum instance publishes each Case its substitution forms, and a Case whose payload
     // does not substitute is null, as a Field is: E's B and C beside its failed A, and G<i32>'s B, whose growth the storage verdict then
     // meets beside the failed A (fail-before: no Case published, and G<i32> Rejected).
@@ -770,14 +790,14 @@ public sealed class TyCtxtTest
     {
         var c = MinimalEmissionTest.Analyze(ComposeSource);
         var pairs = NestedCalls(c.Kotonoha).ToArray();
-        var composed = pairs.Select(x => c.Types.Compose(c.Types.SubstOf(x.Inner)!, c.Types.SubstOf(x.Outer)!)).ToArray();
+        var composed = pairs.Select(x => c.Types.Compose(c.Types.SubstOf(x.Inner)!, c.Types.SubstOf(x.Outer)!).Subst).ToArray();
         var changed = 0;
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             c.Binding.Bind(BindingMode.Final);
             for (var i = 0; i < pairs.Length; i++)
             {
-                changed += ReferenceEquals(c.Types.Compose(c.Types.SubstOf(pairs[i].Inner)!, c.Types.SubstOf(pairs[i].Outer)!), composed[i]) ? 0 : 1;
+                changed += ReferenceEquals(c.Types.Compose(c.Types.SubstOf(pairs[i].Inner)!, c.Types.SubstOf(pairs[i].Outer)!).Subst, composed[i]) ? 0 : 1;
             }
         }));
         Assert.Equal(0, changed);
@@ -943,7 +963,7 @@ public sealed class TyCtxtTest
         foreach (var (inner, outer) in NestedCalls(module))
         {
             count++;
-            var composed = c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(outer)!);
+            var composed = c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(outer)!).Subst;
             var forwarded = inner.Kind == CalleeKind.Requirement ? null : c.Binding.InstantiateForwardedCall(inner, outer);
             var where = $"{module.Compilation.Kotonoha.Name} {outer.Target.Name} > {inner.Target.Name}";
             if (inner.Kind != CalleeKind.Requirement && (forwarded is null || !ReferenceEquals(c.Types.SubstOf(forwarded), composed)))
@@ -1096,7 +1116,7 @@ public sealed class TyCtxtTest
 
     // A requirement call's substitution in its caller's instance, and its target there.
     private static Subst? Composed(Compilation c, (CallPlan Inner, CallPlan Outer) call)
-        => c.Types.Compose(c.Types.SubstOf(call.Inner)!, c.Types.SubstOf(call.Outer)!);
+        => c.Types.Compose(c.Types.SubstOf(call.Inner)!, c.Types.SubstOf(call.Outer)!).Subst;
 
     private static RequirementTarget Witness(Compilation c, (CallPlan Inner, CallPlan Outer) call)
         => c.Types.Witness(call.Inner.Target, call.Inner.RequirementContract, Composed(c, call)!);

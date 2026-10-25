@@ -64,11 +64,12 @@ public sealed partial class MirBorrowsTest
 
     // SPEC 15.6 Addresses and reach (G184, G160 (b), D2): `w@raw` addresses w's holder, so a read through it carries what w holds and a
     // write through it adds to w, also through a raw chain; a pointer keeps the holders it addresses used (D2) though nothing reads
-    // through it; a Raw Place borrow of w's referent carries what the pointer reaches (5.2.2); the dead twins are valid.
+    // through it; a Raw Place borrow of w's referent carries what the pointer reaches (5.2.2); an Adapt the view resolves to a raw Ref
+    // (`w@s` under `s is raw`, SPEC 8.14) addresses w's holder as `w@raw` does; the dead twins are valid.
     [Fact]
     public void ARawPointerCarriesTheHoldersItAddresses()
         => Assert.Equal(
-            ["readThrough: y = 5", "chain: x = 5", "compared: y = 5", "sliced: y = 5"],
+            ["readThrough: y = 5", "chain: x = 5", "compared: y = 5", "sliced: y = 5", "adapted: y = 5"],
             Problems(RawShapes + """
                 func readThrough()
                     var y: i32 = 1
@@ -110,6 +111,19 @@ public sealed partial class MirBorrowsTest
                         let first = s[0]
                         y = 5
                         inspect(first)
+                func adapted<s/T>()
+                    s is raw
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    let p = w@s
+                    y = 5
+                    let q = p@move
+                func adaptedDead<s/T>()
+                    s is raw
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    let p = w@s
+                    y = 5
                 """));
 
     // SPEC 5.7 Calls, 15.6, 15.6.4 (G160 (a), (c), (d); D6, D10; DECISIONS R4-M116 S2): a call stores through a raw Field what its contract
@@ -347,13 +361,115 @@ public sealed partial class MirBorrowsTest
                     storeT(t@uniq, k)
                 """));
 
-    // DECISIONS R4-M116 PQ-10 (B′ §4.3; registered for X-2): a Borrow of a `during self` layer's Place, or of a Tuple Place enclosing one,
-    // and a Copy read of such a Tuple, are located Unsupported_Kd until the Loan records the layer's own-step entry; a Borrow of the holder
-    // and a read of the layer through it are precise.
+    // SPEC 15.6.4's transfer rule (DECISIONS R4-M131, BU-40): a Chain row is a read through the argument, never its own Loans, so a popped
+    // or iterated raw item, an exchanged raw pointer's old contents and a user Iterator's item keep no Loan of their receiver or target,
+    // while a swapped pointer keeps what a read through the other argument carries (`y`'s Loan through `w`), and an Array constructed from
+    // a raw value, alone or in a Tuple, or from a pointer to a replaced one keeps that value and what a read through it carries
+    // (`repeating`, the input construction adds, SPEC 4.9.6). A5 reads Chain as one read until its Chain closure (R4-M131 Order 3).
+    [Fact]
+    public void AChainRowIsAReadThroughTheArgument()
+        => Assert.Equal(
+            ["swapRawBad: y = 5", "swapRawOwnBad: y = 5", "repRawBad: y = 5", "repTupBad: y = 5", "repTupRepl: y = 5"],
+            Problems("""
+                func usep<T>(p: raw/T) => ()
+                struct RawIter
+                    Self is Iterator
+                    associate Iterator.Item is raw/u8
+                    var items: Array<raw/u8>
+                    public init(items: Array<raw/u8>) => self.items = items@move
+                    public func next(self: uniq/Self) -> Option<raw/u8> => self.items.pop()
+                func popRaw()
+                    var a: Array<raw/u8> = [null, null]
+                    let x = a.pop()
+                    a.append(null)
+                    inspect(x)
+                func exchangeRawOwnResultOk()
+                    var y: i32 = 1
+                    let r = y@ref
+                    let p = r@follow@raw
+                    var x: raw/i32 = null
+                    let old = Kimi.Intrinsics.exchange(x@uniq, with: p)
+                    x = null
+                    y = 5
+                    usep(old)
+                func iterRaw()
+                    let a: Array<raw/u8> = [null, null]
+                    var it = a.iterate()
+                    let first = it.next()
+                    let second = it.next()
+                    inspect(first)
+                    inspect(second)
+                func userIter()
+                    var it = RawIter.init([null, null])
+                    let first = it.next()
+                    let second = it.next()
+                    inspect(first)
+                    inspect(second)
+                func swapRawBad()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    var x: raw/u8 = w@raw@raw/u8
+                    var z: raw/u8 = null
+                    Kimi.Intrinsics.swap(x@uniq, z@uniq)
+                    y = 5
+                    usep(z)
+                func swapRawOwnBad()
+                    var y: i32 = 1
+                    let r = y@ref
+                    var x: raw/i32 = r@follow@raw
+                    var z: raw/i32 = null
+                    Kimi.Intrinsics.swap(x@uniq, z@uniq)
+                    y = 5
+                    usep(z)
+                func repRawBad()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    let q = w@raw@raw/u8
+                    let a = Array<raw/u8>.init(repeating: q, count: 2)
+                    y = 5
+                    inspect(a)
+                func repRawOk()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    let q = w@raw@raw/u8
+                    let a = Array<raw/u8>.init(repeating: q, count: 2)
+                    inspect(a)
+                    y = 5
+                func repTupBad()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    let q = w@raw@raw/u8
+                    let a = Array<(raw/u8, i32)>.init(repeating: (q, 1), count: 2)
+                    y = 5
+                    inspect(a)
+                func repTupRepl()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    var h: raw/u8 = w@raw@raw/u8
+                    let a = Array<raw/(raw/u8)>.init(repeating: h@raw, count: 2)
+                    h = null
+                    y = 5
+                    inspect(a)
+                """));
+
+    // DECISIONS R4-M116 PQ-10 (B′ §4.3; registered for X-2): a Borrow of a `during self` layer's Place, or of a Tuple or fixed-array Place
+    // enclosing one inline (also inside a nested Tuple), and a Copy read of such a Place, are located Unsupported_Kd until the Loan records
+    // the layer's own-step entry; a Borrow of the holder, a read of the layer through it, a read of an element and of a scalar beside the
+    // layer are precise.
     [Fact]
     public void ABorrowOfADuringSelfLayerIsUnsupported()
     {
         var c = MirBuildTest.Compile(Prelude + RawShapes + """
+            struct Arrs
+                internal var arr: [2 of raw/u8 during self]
+                internal var n: i32
+                public init()
+                    self.arr = [null, null]
+                    self.n = 0
+            struct Nest
+                internal var nest: ((raw/u8 during self, i32), i32)
+                public init()
+                    self.nest = ((null, 1), 2)
             func layerRef()
                 var y: i32 = 1
                 var b = Buf<ref/i32>.init(4)
@@ -374,9 +490,47 @@ public sealed partial class MirBorrowsTest
                 b.push(y@ref)
                 let r = b@ref
                 let p = r.data
+            func enclosingOnly()
+                let s = Pairs.init()
+                let t = s.pair
+            func arrayCopy()
+                let a = Arrs.init()
+                let t = a.arr
+            func arrayRef()
+                let a = Arrs.init()
+                let r = a.arr@ref
+            func arrayElement() -> bool
+                let a = Arrs.init()
+                let p = a.arr[1]
+                return p == null
+            func arrayScalar() -> i32
+                let a = Arrs.init()
+                return a.n
+            func nestedCopy()
+                let s = Nest.init()
+                let t = s.nest
+            func nestedScalar() -> i32
+                let s = Nest.init()
+                return s.nest.1
             """);
         Assert.Equal(
-            ["layerRef: b.data@ref Unsupported_Kd", "enclosingRef: s.pair@ref Unsupported_Kd", "enclosingCopy: s.pair Unsupported_Kd"],
+            ["layerRef: b.data@ref Unsupported_Kd", "enclosingRef: s.pair@ref Unsupported_Kd", "enclosingCopy: s.pair Unsupported_Kd",
+                "enclosingOnly: s.pair Unsupported_Kd", "arrayCopy: a.arr Unsupported_Kd", "arrayRef: a.arr@ref Unsupported_Kd",
+                "nestedCopy: s.nest Unsupported_Kd"],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+    }
+
+    // V16 (SPEC 15.6 Addresses; DECISIONS R4-M116): the address pre-pass walks a view's uses only where a raw Ref was issued or a projection
+    // row may be or enclose a `during self` layer, so a body with neither takes no step per location beyond its Loans' scan: 32 more
+    // statements cost at least 32 steps fewer than beside a raw Ref, whose view the walk visits.
+    [Fact]
+    public void AViewWithNothingToAddressIsNotWalked()
+    {
+        const string Plain = "func shape()\n    var x = 0\n«N:    x = {0}\n»";
+        const string Addressed = "func shape()\n    var x = 0\n    let p = x@raw\n«N:    x = {0}\n»    _ = p == null\n";
+        long[] plain = [.. new[] { 32, 64 }.Select(n => this.Measured(Prelude + Expand(Plain, n, 0)).Work)];
+        long[] addressed = [.. new[] { 32, 64 }.Select(n => this.Measured(Prelude + Expand(Addressed, n, 0)).Work)];
+        output.WriteLine($"N 32, 64: plain {string.Join(", ", plain)}, addressed {string.Join(", ", addressed)}");
+        Assert.True(addressed[1] - addressed[0] - (plain[1] - plain[0]) >= 32, $"plain {string.Join(", ", plain)}, addressed {string.Join(", ", addressed)}");
     }
 }

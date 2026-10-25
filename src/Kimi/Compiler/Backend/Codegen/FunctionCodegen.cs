@@ -81,11 +81,12 @@ internal sealed partial class FunctionCodegen
         {
             // Gate step 2 (PD12, package C 3.8; DECISIONS R5-M96): A2's verdicts are exact only for a body A1 accepts (R4-M6a), so a body
             // A1 or A2 left inexact (R4-M102: an inline copy's problem marks its caller) is not written; its refusal is that problem's own
-            // code at its subject, by the location rule, and every other item is still written, so its gaps are recorded too. Interim: a
-            // body A1 skipped at the arena limit (ViewsOf 0, R4-M15a) is one located Unsupported_Kd at the body, since its problem carries
-            // no arguments for OwnershipStorageLimit_Kd; removed once A1's arena problem publishes requiredBytes, limitBytes and the table.
-            var (code, subject) = program.Drops.ViewsOf(body.Ordinal) == 0 ? (DiagnosticCode.Unsupported_Kd, body.Source) : refusal;
-            this.module.Report(code, collector.Subject(item, subject));
+            // code at its subject, by the location rule (K 4.9: out of an inline default outside the root modules, R4-M132), and every
+            // other item is still written, so its gaps are recorded too. Interim: a body A1 skipped at the arena limit (ViewsOf 0,
+            // R4-M15a) is one located Unsupported_Kd at the body, since a generation record is location-only; removed once a record
+            // carries the arena problem's Required, Limit and Table facts (refusal.Problem's) as requiredBytes, limitBytes and table.
+            var code = program.Drops.ViewsOf(body.Ordinal) == 0 ? DiagnosticCode.Unsupported_Kd : refusal.Code;
+            this.module.Report(code, collector.Subject(item, body, refusal.Source));
             return;
         }
 

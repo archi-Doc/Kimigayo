@@ -12,14 +12,25 @@
 // first in its direction's order, reverse postorder forward and postorder backward, so growth along a loop's back edge settles the loop
 // before the code after it is applied again (R4-M65). States are word-major (the lanes of 64 paths per word group), and only a problem's
 // first words are stored; the scratch holds the rest. One arena stores both problems' words; its byte size is the one Resource limit of the
-// analyses (OwnershipStorageLimit_Kd). Storage is pooled and reset by counts.
+// analyses (OwnershipStorageLimit_Kd), which StorageLimit records for every arena with its arguments as facts (G213, DECISIONS R4-M132).
+// Storage is pooled and reset by counts.
 // Must not interpret statements, read syntax or HIR, merge a P2 state into a P1 head, or walk all edges in one pass.
 
-#pragma warning disable SA1402 // The transfer's interface belongs to the dataflow.
+#pragma warning disable SA1402 // The transfer's interface and the arenas of the limit belong to the dataflow.
 
 using System.Numerics;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Mir;
+
+/// <summary>An analysis arena the analyses' byte limit admits (R4-M15a, 2a0-D D20), the Table fact of its OwnershipStorageLimit_Kd, which
+/// publication renders as the catalog's <c>table</c> (DECISIONS R4-M132).</summary>
+internal enum MirStorageTable : byte
+{
+    Initialization, // A1's states (MirInit).
+    Loans, // A5's Loan stratum's states (MirBorrows).
+    Origins, // A5's Origin stratum's source bitsets (MirOrigins).
+}
 
 /// <summary>A problem of <see cref="MirDataflow"/>: its boundary state, how a block changes a state and how two states join, all on the
 /// scratch that <see cref="MirDataflow.Prepare"/> returned. A backward problem's least state is zero.</summary>
@@ -151,6 +162,33 @@ internal sealed class MirDataflow(MirReach reach)
         }
     }
 
+    /// <summary>Gets whether an analysis arena of a count of words is within the analyses' byte limit (R4-M15a), the one decision that
+    /// <see cref="Prepare"/> and MirOrigins share (2a0-D D20); above it the body is not analyzed (OwnershipStorageLimit_Kd).</summary>
+    /// <param name="words">The arena's words.</param>
+    /// <returns>Whether the arena is within the limit.</returns>
+    internal static bool Within(long words) => words <= ByteLimit / sizeof(ulong);
+
+    /// <summary>Records the one problem of an arena over the analyses' byte limit (R4-M15a): OwnershipStorageLimit_Kd
+    /// (Ownership.StorageLimit) at the body in the views it stops, with the facts Required (the arena's bytes), Limit (the byte limit) and
+    /// Table (the arena), each at the body, the catalog's requiredBytes, limitBytes and table (G213, DECISIONS R4-M132).</summary>
+    /// <param name="report">The program's problems.</param>
+    /// <param name="body">The body.</param>
+    /// <param name="views">The views the limit stops.</param>
+    /// <param name="table">The arena.</param>
+    /// <param name="words">The words the arena needs, which <see cref="Within"/> refused.</param>
+    /// <returns>The problem's index in the report.</returns>
+    internal static int StorageLimit(MirReport report, MirBody body, ulong views, MirStorageTable table, long words)
+    {
+        var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.StorageLimit);
+        ReadOnlySpan<MirFact> facts =
+        [
+            new(MirFactKind.Required, body.Source, words * sizeof(ulong)),
+            new(MirFactKind.Limit, body.Source, ByteLimit),
+            new(MirFactKind.Table, body.Source, (long)table),
+        ];
+        return report.Add(new(DiagnosticCode.OwnershipStorageLimit_Kd, requirement, body.Source, body.Ordinal, views), facts);
+    }
+
     /// <summary>Gets whether the runtime edges from the entry reach a block (P1); every other block only the checks reach (P2).</summary>
     /// <param name="block">A block of the body.</param>
     /// <returns>Whether it is in P1.</returns>
@@ -225,10 +263,12 @@ internal sealed class MirDataflow(MirReach reach)
     /// <param name="backward">The words a head stores for the backward problem, the first words of its state.</param>
     /// <param name="forward">The words a head stores for the forward problem, the first words of its state.</param>
     /// <param name="width">The words of the scratch, the widest whole state.</param>
+    /// <param name="words">The arena's words, which <see cref="StorageLimit"/> records when they are over the limit.</param>
     /// <returns>The scratch, or null when the arena would exceed the analyses' byte limit (R4-M15a).</returns>
-    internal ulong[]? Prepare(int backward, int forward, int width)
+    internal ulong[]? Prepare(int backward, int forward, int width, out long words)
     {
-        if ((long)this.headCount * (backward + forward) * sizeof(ulong) > ByteLimit)
+        words = (long)this.headCount * (backward + forward);
+        if (!Within(words))
         {
             return null;
         }

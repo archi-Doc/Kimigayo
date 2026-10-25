@@ -13,8 +13,7 @@
 // without one or a refused edge) and an owner Value call's second target (Rest); a type-driven item's at the default site; on the way the
 // site's by-value uses take their layout verdict (K 4.8) and an operation whose Types depend on slots its capability check (K 4.7).
 // Invariants: one target per site, plus the operand's glue at a borrowing callee's owner Value call, after its body (DECISIONS R5-M102: a
-// departure from package C 3.2 I8); a substitution TyCtxt cannot compose is the storage-nesting gap at the site; a kind without a row is a
-// fault.
+// departure from package C 3.2 I8); a composed substitution's storage verdict is read at the site (Made); a kind without a row is a fault.
 // Must not: resolve a callable value's body or a bodyless callee's row (InstanceCollector.Callees.cs) or a requirement's witness
 // (InstanceCollector.Witnesses.cs) itself.
 
@@ -142,10 +141,10 @@ internal sealed partial class InstanceCollector
         }
 
         var representative = this.Set.Items[item].Representative;
-        var subst = callee.Subst is { } inner && representative is not null ? this.types.Compose(inner, representative) : callee.Subst;
-        if (subst is null && callee.Subst is not null)
+        var (subst, storage) = callee.Subst is { } inner && representative is not null
+            ? this.types.Compose(inner, representative) : (callee.Subst, Binding.StorageOutcome.Prepared);
+        if (!this.Made(storage, subject))
         {
-            this.Set.Report(Capability.Code(CapabilityGap.StorageNesting), subject);
             return -1;
         }
 
@@ -183,8 +182,8 @@ internal sealed partial class InstanceCollector
     // K 4.5 rows 6, 8 and 9 (DECISIONS R5-M74): the target an intrinsic's row names, for its call or for an Item of its function, from the
     // substitution's Type argument in the item's instance (the one operand form the rows read), which is a by-value use where the row says
     // so (K 4.8, IntrinsicRows.LaysOutType): an erased writer's reserve witness on its destination (SPEC 22.10.1), a creation's payload
-    // descriptor (Descriptor), a DestroyValues' element glue. -1 for a row without a target or a Type TyCtxt could not make, whose gap the
-    // caller recorded; a staticEnsure's initializer is its call's operand row (Static), so it never reaches here.
+    // descriptor (Descriptor), a DestroyValues' element glue. -1 for a row without a target or a Type not made, whose verdict the caller
+    // read (In); a staticEnsure's initializer is its call's operand row (Static), so it never reaches here.
     private int Intrinsic(MirProgram program, int item, SourceRef subject, in IntrinsicRow row, BoundType? argument)
     {
         if (argument is null)

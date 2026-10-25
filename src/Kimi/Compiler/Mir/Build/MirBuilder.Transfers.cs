@@ -91,9 +91,11 @@ internal sealed partial class MirBuilder
         {
             // SPEC 16.2.2: the secured result is delivered after the Scope Exit of the scopes left: the target's Destination becomes a
             // result temp in the target's scope, with no storage of its own, and its Break the block that delivers that temp to the old
-            // Destination, which every later transfer to it takes, as they share its drop tree (DECISIONS R5-M50).
+            // Destination, which every later transfer to it takes, as they share its drop tree (DECISIONS R5-M50); delivered into _0, it
+            // is the body's result in transit (MirLocalRole.Result, DECISIONS R4-M132).
             var at = new SourceInfo(SourceRef.Of(target.Node), target.At.Scope, StatementStart: false);
-            var result = new MirPlace(this.body.AddLocal(new(this.body.TypeOf(target.Destination)!, MirLocalKind.Temp, at)));
+            var role = target.Destination is { Root: 0, Projection: 0 } ? MirLocalRole.Result : MirLocalRole.None;
+            var result = new MirPlace(this.body.AddLocal(new(this.body.TypeOf(target.Destination)!, MirLocalKind.Temp, at, Role: role)));
             var deliver = this.body.AddBlock();
             this.body.Push(deliver, MirStatement.Assign(target.Destination, MirRvalue.Use(this.body.AddOperand(MirOperand.Move(result))), inner));
             this.body.Terminate(deliver, MirTerminator.Goto(target.Break, inner));
