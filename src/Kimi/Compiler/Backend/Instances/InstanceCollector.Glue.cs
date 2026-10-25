@@ -4,8 +4,8 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// Destruction and static edges (K package 4.5 rows 7, 9 and 10, "DropGlue"; S2-S4 X3, X6, X23, X33 (a), X34; DECISIONS R5-M60, R5-M116),
-// the glue of what a call destroys in place and a DropGlue item's targets.
+// Destruction and static edges (K package 4.5 rows 7, 9 and 10, "DropGlue"; S2-S4 X3, X4, X6, X23, X33 (a), X34; DECISIONS R5-M60, R5-M116,
+// R5-M121), the glue of what a call destroys in place, a DropGlue item's targets and a LegacyRow item's.
 internal sealed partial class InstanceCollector
 {
     // K 4.5 rows 9 and 10: the DropGlue item of a Type an item's instance destroys (GlueOf). -1 for a Type TyCtxt cannot make there.
@@ -51,6 +51,30 @@ internal sealed partial class InstanceCollector
         {
             var part = parts[i];
             this.Target(item, part.Kind == DropPartKind.Destructor ? this.Destructor(program, item, site, part.Type) : this.Glue(item, site, part.Type));
+        }
+
+        parts.RemoveRange(start, parts.Count - start);
+    }
+
+    // X4 (DECISIONS R5-M121): a LegacyRow item's targets, at its default site, the needs its row declares: for ElementGlue (clear), the glue
+    // its helper destroys each element by, of each Element part of its representative Type (DropGlue.Parts) that may need a drop; no Array
+    // row declares a library callee.
+    private void RowTargets(int item, SourceRef site, BoundType collection)
+    {
+        if ((LegacyRuntimeHelpers.Row(this.Set.Items[item].Key.Body.Def.Decl!.CompilerFunction)!.Value.Needs & HelperNeeds.ElementGlue) == 0)
+        {
+            return;
+        }
+
+        var parts = this.parts;
+        var start = parts.Count;
+        DropGlue.Parts(this.types, collection, parts);
+        for (var i = start; i < parts.Count; i++)
+        {
+            if (parts[i].Kind == DropPartKind.Element)
+            {
+                this.Target(item, this.Glue(item, site, parts[i].Type));
+            }
         }
 
         parts.RemoveRange(start, parts.Count - start);

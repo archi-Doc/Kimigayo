@@ -328,6 +328,11 @@ internal sealed partial class LegacyRuntimeHelpers
             ? ArrayRows[(int)kind]
             : throw new InvalidOperationException("An Array helper kind has no row.");
 
+    /// <summary>Writes the Array runtime, the capacity routines (SPEC 4.9.5, 4.9.8), which a module holds once when a helper or call of it
+    /// declares it.</summary>
+    /// <param name="output">The module text.</param>
+    internal static void WriteArrayRuntime(TextWriter output) => output.Write(ArrayRuntime);
+
     /// <summary>Writes one Array helper's definition: its ABI, its kind row's prologue and writer, the one text both generators write
     /// (PD2).</summary>
     /// <param name="output">The module text.</param>
@@ -359,7 +364,7 @@ internal sealed partial class LegacyRuntimeHelpers
     {
         if (this.NeedsArrayRuntime)
         {
-            output.Write(ArrayRuntime);
+            WriteArrayRuntime(output);
         }
 
         foreach (var helper in this.arrayHelpers)

@@ -36,6 +36,7 @@ internal enum IntrinsicWriter : byte
     Create, // makeObj, makeRc, makeArc: Routine's, the factory of the call's target descriptor with its control value (FunctionCodegen.Objects).
     Clone, // clone: Routine's, the runtime's retain of the result handle's counting (FunctionCodegen.Objects).
     Test, // A runtime Type test: its target's number in the module through the runtime's test, or false (FunctionCodegen.Objects).
+    Capacity, // capacity: the legacy handle's capacity word through P2b's kernel (FunctionCodegen.Arrays; DECISIONS R5-M121).
 }
 
 /// <summary>A row of the intrinsic table.</summary>
@@ -82,7 +83,7 @@ internal static class IntrinsicRows
         new(IntrinsicId.TestPhaseLeave, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10b.
         new(IntrinsicId.TestTempDirectory, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10a.
         new(IntrinsicId.StaticEnsure, IntrinsicTarget.StaticInit, LaysOutType: false, IntrinsicWriter.Ensure, null),
-        new(IntrinsicId.Capacity, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C8d.
+        new(IntrinsicId.Capacity, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Capacity, null),
         new(IntrinsicId.FormatBuffer, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9c.
         new(IntrinsicId.FormatHint, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9c.
         new(IntrinsicId.FormatFinish, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9c.

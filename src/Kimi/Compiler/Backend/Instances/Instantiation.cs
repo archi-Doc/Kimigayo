@@ -24,6 +24,11 @@ internal enum MonoKind : byte
     PropertyWitness, // A standard property witness (SPEC 11.9.2, S2-S4 X14): its Field, the erased Self and the PropertyWitnessKind.
     ObjectDescriptor, // The runtime descriptor of an object payload (IMPL 21.1.3, SPEC 13.6): its erased payload Type.
     VTable, // The virtual table of a struct with a slot (SPEC 6.4, F package 4.2): its erased struct Type.
+
+    // A compiler function of the Body disposition whose legacy row writes its call in its instance (K package 4.3, 4.5 row 2; DECISIONS
+    // R5-M121): its function and erased substitution, represented by the substitution and the Type below its parameter 0.
+    [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
+    LegacyRow,
 }
 
 /// <summary>The key of a mono item; the checked set holds one item per key.</summary>
