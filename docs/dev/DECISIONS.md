@@ -8699,3 +8699,63 @@ structure is recorded here by the unit that first implements it.
   since the kernel's checksum line needs interpolation (C9c) under MIR code generation; C8c measures a temporary kernel as information,
   a B/A beyond the A=B variance stopping it (R5-M8's O2 rule). The later of E7 and C9c runs the corpus A/B under R5-M8. They leave the
   list.
+- **R5-M120 R5 keeps its concurrency above 70% weekly usage** (owner, 2026-10-25, to the R5 planning session directly; verbatim
+  「70%を超えても、今の実装者・レビュアー体制で作業を継続してください」, replacing the same day's
+  「C8d の設計（第 1 段）を始めてください。使用量が 70% を超えたら 1 + 1 に絞ってください。」 in its second sentence; supersedes
+  R5-M113's "one plus one again when weekly usage passes 70% early in the week" for R5) Above 70% weekly usage R5 keeps R5-M113's
+  limits: implementers one per lane, at most two, and designers and reviewers at most two. Unchanged: heavy runs at most three at once
+  across R4, BU and R5 (R4-M119), the shared bases, and every other R5-M113 rule; R4's and BU's own limits are theirs.
+- **R5-M121 The Array family in MIR code generation: LegacyRow items and the Array rows (C8d)** (2026-10-25, C lane; plan C8d, package C
+  3.2, 3.4 and 3.6, K package 4.3 and 4.5 row 2, S2-S4 X4, X34 and X39, PD2, PD3, PD21; SPEC 4.3, 4.5, 4.9.1-4.9.8, 7.6, 7.7.4, 16.3.2, 22.2;
+  the planning session's go and rulings Q1-Q8 on C8d's design, `c8d-design.md`; under R5-M18 form 2 (G:library-2), R5-M45, R5-M46,
+  R5-M92, R5-M104, R5-M108 and R5-M116)
+  - LegacyRow items (ruling Q1 (a); K 4.3's key, R5-M18's ninth `MonoKind`, `[Transitional("R8")]`, first implemented here): a bodyless
+    compiler function whose legacy row writes its call in its instance (`LegacyWriter.Instance`) targets, at its direct call, its Item's
+    Value call and its ItemAdapter (all three reach `Bodyless`), the item keyed `((function, Fn), erased Subst)` (`AdmitRow`), represented by
+    the Subst, whose Types `TyCtxt.Signature` gives, and by the Type below parameter 0 (an Array, a UniqSlice or a fixed array), whose
+    element it lays out (K 4.8, X34). Its targets are the needs its row declares (X4, ruling Q3 (a)): ElementGlue (clear) the glue of each
+    Element part of that Type that may need a drop; no Array row declares a library callee. Reserve and shrinkToFit have text-less items
+    that carry the stride (ruling Q7 (a)). The collector's sites that tell a body item from another read `BodyOrdinal` (published once per
+    item), none a kind arm.
+  - Map (X39): `LegacyRow(Writer, Routine?, Helper?)` gains the `ArrayHelperKind` column and `Needs` (a helper's `ArrayRow` needs, the Array
+    runtime for a capacity routine, R5-M46's need the old lowering still sets by hand, D5); `LegacyWriter` gains `Instance` (the eight
+    operations and five storage kinds: reserve and shrinkToFit their capacity routine, append, insert, pop, remove, clear and swap the
+    helper of their kind, borrowStorage and borrowStorageUniq over an Array or a UniqSlice BorrowStorage, ownStorage OwnStorage, a fixed
+    array's ownStorage OwnFixedStorage) and `Length` (setArrayLength).
+  - One routine path: `Routine(LegacyRow, target, out given)` gives a Routine row's routine (writeLine) and an Instance row's item's
+    (`ModuleCodegen.Row`: its helper or its capacity routine, given its element's stride or a fixed array's length); `Legacy` and
+    `Routine(kind)`, so `Runs`, read it, so a direct call, a Value call and an adapter entry write one call (SPEC 7.7.4, R5-M108). The
+    helpers' parameters carry the internal convention's kinds and logical indices (restructured first, behavior unchanged), so the one call
+    writer places the operands, the result slot and the location; an Instance row takes copy slots as a body callee does (its helper copies
+    its element after growing: `values.append(values[0])`). G157 (22)'s C8d part closes: setArrayLength is unsafe (SPEC 7.6) and capacity a
+    member, so no C8d instruction row is a value.
+  - Helpers (`ModuleCodegen.Arrays`, PD2): P1b's row text (`LegacyRuntimeHelpers.WriteArray`, the one copy), named after the item by its
+    kind's prefix (ruling Q2 (a): `__kimi_array_append_<item>`), over the element's Layout record, the name of the element glue its text
+    destroys by (a string element by its glue), Pop's Option payload (the Some Case's element at Field 1) and a remainder's Fields in
+    declaration order with Field 0's size; made once per Write and kept while its descriptor matches (warm 0 B), its text written before the
+    definitions (PD8) with the Array runtime its row declares (`ModuleCodegen.Needs.Arrays`), after the memory declarations and before the
+    nullable Alloc, the old generator's order.
+  - In place (`FunctionCodegen.Arrays`): an Array from none is `__kimi_array_init` at its Place and location (the runtime's empty handle);
+    setArrayLength stores the length at the handle's Field 1, the word `Length` reads; capacity is P2b's kernel (`WriteCapacity`, the legacy
+    handle's capacity word, an Array's or a Dictionary's); an Array's glue calls its glue item's own Drop helper `__kimi_array_drop_<item>`
+    with the glue's parameters (ruling Q4 (a); the string row's form, R5-M78). G157 (6) closes for arrays: the rows that declare ElementGlue
+    (clear, the Drop row) target exactly their Element parts' glue. A Dictionary from none and its glue stay C8e's.
+  - Adapters (ruling Q6 (a)): `Forward`'s `Own` matches a callee parameter by logical index and passing (`FunctionCodegen.Passes`): the same
+    kind, or a SharedReference and a Value of the same pointer Type (a SharedReference is a Value with attributes), so an erased Item over
+    `ref/string` elements reaches its helper's by-value pointer input.
+  - Departure (for the owner's departures list): plan row C8d's "Array kernel O2" (ruling Q5 (a)): the `Array` corpus kernel's A/B moves to
+    the later of C8d and C9c, since its checksum line needs interpolation (C9c) under MIR code generation; C8d measures a temporary variant
+    as information, a B/A beyond the A=B variance stopping it (R5-M8).
+  - Deviations: none in native outcomes; IR only (PD9): a literal reserves then appends (the builder's form), one helper per function
+    instance, an Array's glue one call above its Drop helper, a string element destroyed by its glue.
+  - Restructured first, behavior unchanged: the helper shapes' and capacity routines' parameter kinds and logical indices, `WriteArray`
+    (fe9c23247); the legacy routine path (b28f256de).
+  - Open (for PLAN): `TyCtxt.Erase` keeps a Subst's count of input Origins, so a direct call's Subst and its Item's (`SubstOfItem`) or a
+    literal's (`Synthesized`) erase to two keys and one function instance has two LegacyRow items with the same helper text (static size
+    only; TyCtxt is held). Unverified: whether a body callee reached both ways has two items.
+  - Rejected: inlining the operations from FunctionCodegen primitives (a second copy of P1b's text); module requests keyed by the element
+    descriptor without an item (Q1 (b): the adapter lacks the call's Types; a table beside the checked set); names by representation (Q2
+    (b): two naming rules); the glue under the Drop shape (a second glue signature, R5-M104); capacity at Layout's Field 2 (a second
+    statement of the legacy capacity word); `[]` as three stores; clear's glue from Binding's published row (Q3 (b)); the builder writing
+    grow and place (held, R3 decision 5); new IntrinsicIds (PD21); a `DropGlueRow` per collection (no consumer before C8e); re-pointing the
+    old lowering to the map (D5).

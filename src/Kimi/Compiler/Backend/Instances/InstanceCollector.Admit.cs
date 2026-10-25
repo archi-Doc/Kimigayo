@@ -130,6 +130,50 @@ internal sealed partial class InstanceCollector
         return set.Add(new() { Key = key, RepresentativeType = type, BodyOrdinal = -1, Parent = parent, Depth = (ushort)depth, Site = site });
     }
 
+    // K 4.3, 4.5 row 2 (DECISIONS R5-M121): the LegacyRow item of a bodyless compiler function whose legacy row writes its call in its
+    // instance, requested at a site, admitted once per key: its function and its erased substitution (as a body instance's, null exactly when
+    // the function does not instantiate), represented by the substitution, under which TyCtxt.Signature gives its Types, and by the Type
+    // below its parameter 0 (an Array, a UniqSlice or a fixed array), whose element its helper stores, a by-value use (K 4.8, X34); past the
+    // depth limit GenerationResourceLimit_Kd; an open or missing instance is a broken contract. -1 when refused.
+    private int AdmitRow(int parent, SourceRef site, BindingSymbol function, Subst? subst)
+    {
+        var set = this.Set;
+        Subst? erased = null;
+        var instantiates = this.types.Instantiates(function);
+        _ = TyCtxt.Layer(TyCtxt.Signature(function, subst, 0, out _), out var collection, out _);
+        if ((instantiates && (subst is null || (erased = this.types.Erase(subst)) is null)) ||
+            collection is not { ContainsParameter: false, Components: [var element, ..] })
+        {
+            set.Report(DiagnosticCode.InternalInvariant_Kd, site);
+            return -1;
+        }
+
+        var key = new MonoKey(MonoKind.LegacyRow, new(new(function, MirBodyKind.Fn), erased), null, null, 0, null);
+        if (set.Find(key) is >= 0 and var found)
+        {
+            return found;
+        }
+
+        if (!this.LaysOut(site, element))
+        {
+            return -1;
+        }
+
+        var depth = set.Items[parent].Depth + 1;
+        if (depth > DepthLimit)
+        {
+            set.Report(DiagnosticCode.GenerationResourceLimit_Kd, site);
+            return -1;
+        }
+
+        this.Work++;
+        return set.Add(new()
+        {
+            Key = key, Representative = erased is null ? null : subst, RepresentativeType = collection, BodyOrdinal = -1, Parent = parent,
+            Depth = (ushort)depth, Site = site,
+        });
+    }
+
     // Whether a representative is closed and TyCtxt makes every local Type of its body in its instance, closed: Missing, a Type TyCtxt cannot
     // make (PD30: PLAN G128), Open, a Type left open, which K 4.3's closed representatives exclude.
     private Instance Instantiable(MirBody body, Subst representative)

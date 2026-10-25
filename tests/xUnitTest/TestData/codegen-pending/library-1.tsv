@@ -10,4 +10,3 @@ fixture	StringComparisonUnicodeAudit.ll	1
 fixture	StringFunctionCallerOrderAudit.ll	1
 fixture	StringFunctionCallerOrderWrongOrderAudit.ll	1
 fixture	StringFunctionEarlyArgumentAudit.ll	1
-test	XunitTest.RawStorageTest.ZeroSizedValuesOccupyTheirOwnPlaces	XunitTest.RawStorageTest.ZeroSizedValuesOccupyTheirOwnPlaces
