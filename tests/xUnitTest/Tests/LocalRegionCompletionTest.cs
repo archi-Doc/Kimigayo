@@ -56,9 +56,10 @@ public class LocalRegionCompletionTest
 
     // SPEC 15.3.6, 15.4.4 (DECISIONS R4-M112 (c)): a variable of the local's Type that no fit reaches, here the slot of a projection
     // base that the projection's normalization drops (`Item` is i32), has no candidate and is the local's region; no Inference atom of
-    // the local stays unresolved, on either pipeline.
+    // the local stays unresolved, on either pipeline. The unqualified spelling forms the same variable (SPEC 15.4.2).
     [Theory]
     [InlineData("S.(Src).Item")]
+    [InlineData("S.Item")]
     public void AnAnnotationVariableTheDeclaredTypeDropsIsTheLocalsRegion(string written)
     {
         var source = "contract Src\n    associate Item\n    func read(self: ref/Self) -> Self.Item\nstruct S {s}\n    Self is Src\n    public let v: ref/i32 during s\n" +
