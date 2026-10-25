@@ -9,8 +9,7 @@
 // Its concerns: the destruction walk and the facts over it (MirTypes.Destruction.cs), what a value may hold (MirTypes.Holding.cs), and
 // here the reference, view, shared-layer, selection, borrow-kind, pointer-cast and agreement facts.
 
-using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
-using SemanticsMask = Kimi.Compiler.Parsing.SemanticsMask;
+using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
 
@@ -53,10 +52,10 @@ internal static partial class MirTypes
     internal static bool IsSharedLayer(BoundType? type, MirProjectionKind step, SemanticsMask admitted)
     {
         const SemanticsMask shared = SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Rc | SemanticsMask.Arc;
-        var cases = step switch // A Semantics' mask bit is its SemanticsKind's (MirCases).
+        var cases = step switch
         {
-            MirProjectionKind.Deref when type is { Kind: BoundTypeKind.Semantics } => (SemanticsMask)(1 << (int)type.Semantics),
-            MirProjectionKind.Index when View(type) is { } view => (SemanticsMask)(1 << (int)view),
+            MirProjectionKind.Deref when type is { Kind: BoundTypeKind.Semantics } => type.Semantics.ToMask(),
+            MirProjectionKind.Index when View(type) is { } view => view.ToMask(),
             MirProjectionKind.PairLayer => admitted,
             _ => SemanticsMask.None,
         };

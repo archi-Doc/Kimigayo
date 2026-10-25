@@ -553,6 +553,7 @@ public sealed class MirValidatorTest
     [InlineData("slice", true)]
     [InlineData("slice drop", true)]
     [InlineData("ref drop", true)]
+    [InlineData("call", true)]
     [InlineData("pair ref", true)]
     [InlineData("slot ref", true)]
     [InlineData("uniq", false)]
@@ -597,7 +598,7 @@ public sealed class MirValidatorTest
         MirPlace Payload(SemanticsKind semantics) => body.Project(Deref(Local(Layer(semantics, types.Point))), MirProjectionKind.Field, 0); // x
         var place = form switch
         {
-            "ref" or "ref drop" or "move" or "shared borrow" or "address" or "inlined" or "unscoped" => Deref(reference),
+            "ref" or "ref drop" or "call" or "move" or "shared borrow" or "address" or "inlined" or "unscoped" => Deref(reference),
             "ref uniq" => Deref(Deref(Local(Layer(SemanticsKind.Ref, Layer(SemanticsKind.Uniq, BoundType.I32))))),
             "uniq ref" => Deref(Deref(Local(Layer(SemanticsKind.Uniq, Layer(SemanticsKind.Ref, BoundType.I32))))),
             "raw ref" => Deref(Deref(Local(c.Types.Pointer(Layer(SemanticsKind.Ref, BoundType.I32))))),
@@ -625,6 +626,11 @@ public sealed class MirValidatorTest
         if (form.EndsWith("drop", StringComparison.Ordinal))
         {
             body.Terminate(entry, MirTerminator.Drop(place, exit, at));
+        }
+        else if (form == "call")
+        {
+            // A returning Call's destination: f() -> i32.
+            body.Terminate(entry, MirTerminator.Call(new(MirCalleeKind.Fn, types.Function), body.Operands.Length, 0, place, exit, at));
         }
         else
         {
