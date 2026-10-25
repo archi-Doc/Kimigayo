@@ -211,10 +211,14 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     }
 
     // SPEC 4.9.6: the Type below a callee's parameter under the call's substitution in the view, what a published row runs on or
-    // destroys; null where the substitution does not instantiate it.
+    // destroys: the declared Type's instance as every reader reads one (TyCtxt.Readable, DECISIONS R4-M139), Rejected storage included;
+    // null where the substitution does not instantiate it or its storage is a Limit.
     private BoundType? Below(BindingSymbol callee, Subst? subst, int slot)
     {
-        _ = TyCtxt.Layer(TyCtxt.Signature(callee, subst, slot, out _) is { } parameter ? cases.Type(parameter) : null, out var below, out _);
+        var declared = TyCtxt.Signature(callee, null, slot, out _);
+        var parameter = declared is null || subst is null ? declared
+            : types.Instance(declared, subst) is ({ } instance, var storage) && types.Readable(instance, storage) ? instance : null;
+        _ = TyCtxt.Layer(parameter is null ? null : cases.Type(parameter), out var below, out _);
         return below;
     }
 
@@ -236,12 +240,13 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
 
     // A verdict row and its subtree: Elide destroys nothing, Keep and Flag the node's Type, Open no own layer (one that declares a drop is
     // A2's MovedPlace_Kd) but each child row and each part without one, which follows the own bit; a part is covered by a direct child row
-    // of its argument (a mask below 64 parts, past them the rows themselves). Returns the row after the subtree.
+    // of its argument (a mask below 64 parts, past them the rows themselves). A part Binding rejected (a null Field or Case, DECISIONS
+    // BU-37) destroys nothing, as MirTypes.Destruction reads it, never a limit (R4-M139). Returns the row after the subtree.
     private int Destroyed(ReadOnlySpan<MirDropRow> rows, int row, MirBody body, BoundType? type)
     {
         var node = rows[row];
         var next = row + 1;
-        if (node.Verdict is MirDropVerdict.Keep or MirDropVerdict.Flag)
+        if (node.Verdict is MirDropVerdict.Keep or MirDropVerdict.Flag && type is not null)
         {
             this.Item(type, Drop);
         }
@@ -273,7 +278,11 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         {
             if (i > 63 ? !Covers(rows, row, next, i) : (covered & (1UL << i)) == 0)
             {
-                this.Item(body.ProjectedType(type, kind, i), Drop);
+                if (body.ProjectedType(type, kind, i) is { } part)
+                {
+                    this.Item(part, Drop);
+                }
+
                 if (kind == MirProjectionKind.ConstIndex)
                 {
                     break; // A fixed array's elements share one Type.
