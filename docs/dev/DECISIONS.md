@@ -8220,6 +8220,75 @@ structure is recorded here by the unit that first implements it.
   (`KimiLibraryCatalog`, `TyCtxt.Published`), which the instance collector reads, rather than from a need the legacy row declares
   (against K package 4.5 row 2 and S2-S4 X4, R5-M18); and the fixed-array storage borrows (StorageBorrowFixedShared and
   StorageBorrowFixedExclusive) move from plan row C8d's storage-boundary kinds to C8b, so C8d keeps six. They leave the list.
+- **R5-M118 Strings in MIR code generation: the string column and string constants put whole (C8c)** (2026-10-25, C lane; plan C8c,
+  package C 3.2 and 3.4, audit rows Const String and Rvalue BinaryOp, PD2, PD21; SPEC 3.4.3, 13.3.2, 13.4, 13.4.1, 13.7.1, 14.8.1, IMPL
+  21.1.3; the planning session's go and rulings Q1-Q6 on C8c's design, `c8c-design.md`; under R5-M18 form 2 (G:library-1), R5-M16, R5-M75,
+  R5-M76, R5-M92 and R5-M116)
+  - Form: every string comparison MIR builds is one form, a `BinaryOp` of `Eq` to `Ge` whose operands are a string constant (Type
+    `string`) or a value of one or more `ref`/`uniq` layers over `string`, which the validator agrees at their terminals: a direct
+    operator (`a == "x"` is `Eq(ref/string, const)`, `"a" < "b"` `Lt(const, const)`, a `uniq/string` operand `ref/uniq/string`), a literal
+    Pattern's test (`MirBuilder.Match`) and a tuple's string leaf (R5-M75). No compiler function of the Body disposition compares strings,
+    so X39's map gains no row; no intrinsic does (PD21).
+  - String column (R5-M76: a new Type class adds a column): the operator table's seventh column, taken by an operand whose terminal below
+    its safe value-reference layers (ref, uniq, pair layers; `FunctionCodegen.Strings`' `Terminal`) is string; its entries, the six
+    comparison rows' only, are the predicate on the row's string routine's i32 against 0 (SPEC 13.4.1: "the i32 compared with zero");
+    `Row.Routine`, a comparison row's second optional column, names the routine: `LegacyRuntimeHelpers.StringEqual` for `==` and `!=`,
+    `StringCompare` for the orderings, as the old generator uses them. `Operator` takes its column before it reads an operand (bp3), and the
+    string column's arm (`CompareStrings`) inspects its operands instead of computing them: each operand's bytes (a constant's pooled
+    text and count, `""` null and 0, the rule `Text` writes, bp2; else its value, the referent of its outer layer, through the pointer
+    each further `ref`/`uniq` layer stores, then the record's Fields 0 and 1, `Record`), the routine through the one call writer, the
+    predicate through `LlvmScalarText`, the bool widened. Nothing is checked, located or destroyed. Broken contracts, `InternalInvariant_Kd`:
+    a string Place as an operand (MIR inspects strings through shared borrows); an arithmetic row on strings (SPEC 13.3.2; a refinement of
+    the design, which kept the table's located record); a pair layer in an operand (ruling Q5, by reachability: no valid program reaches
+    it: Binding rejects the built-in comparison through a pair target, `a == b` and `a == "x"` with `a, b: s/T` and `T is string` and through
+    `ref/(s/T)` being `UnprovenConstraint_Kd`, and MIR is built per body, so an abstract target compares by a requirement call).
+  - Routines (P1a, PD2): `StringEqual` and `StringCompare` are the routines' signatures, and `LegacyRuntimeHelpers.StringComparisons` is
+    their text spliced from them (`LlvmModuleText.ExpandRuntime`, bp1, the old `.ll` byte-identical); MIR code generation requests it
+    (`ModuleCodegen.Needs.Strings`), written once after the nullable Alloc and before the definitions, the old generator's order; the old
+    writer's call text stays (D5).
+  - String constants put whole (the Use row's rule): a constant has nothing to evaluate, so an aggregate (Tuple, struct, enum Case, fixed
+    array) skips it while it reads its operands and writes it whole at its component once its Place is located; `Raw.initialize` puts its
+    operand through the operand `Put` (R5-M116's bp1). A string constant has no Value (`FunctionCodegen.Values`).
+  - Not rows: a literal Pattern has no writer of its own (the comparison row, then the SwitchInt); a string has no Len (Binding's sequence
+    members take none); a Fill's element is Copy, never a string.
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M119): ruling Q1 (a), `BuiltinEquals` and `BuiltinCompare` on
+    strings, a string Self's shim included, move from plan row C8c (and audit rows :102-103) to C8f, which owns the one shim writer over
+    F6's tree (G157 (28)), since a string-Self shim flips no ledger row alone; C8f's string leaf reads `Record` and the row's routine.
+    `a.equals("b")` and a generic `T == T` at `string` stay C8f's located `Unsupported_Kd`.
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M119): ruling Q4 (a), plan row C8c's Strings kernel O2, with its
+    prerequisite E7 (the `Strings` corpus kernel, not landed), moves to the later of E7 and C9c, since a corpus kernel's checksum line needs
+    interpolation (C9c) under MIR code generation; C8c measures a temporary kernel as information, a B/A beyond the A=B variance stopping it.
+  - Fixture rows (ruling Q2 (a)): 26 audit fixtures of G188's class become fixture rows with its cause: a constant has no
+    destruction obligation in MIR, so a literal comparison operand or a constant a transfer abandons is never materialized and the audit
+    counts no Static destruction the old generator made (`StringComparison*Audit` 9, `ElementBorrowOwnerLifetime*Audit` 8,
+    `ForeignPointerString*Audit` 3, `FixedArrayCapture*Audit` 2, `GuardCleanup*Audit` 2 and `ElementReplacementTransfer*Audit` 2, the last two
+    a constant abandoned by a transfer). G188's owner (R5's W1 or E lane) decides the builder or the audits before R5's exit. No R5-M85
+    deviation now.
+  - Fixture row (ruling Q3 (a)): `ElementBorrowOwnerLifetimeCalleeCleanupAudit`, under PLAN G248 (R4's builder unit): a
+    call's destination temporary registers its cleanup before its arguments' (`Console.writeLine(inspect(("head", "tail").0))` destroys the
+    tuple before `inspect`'s result), against SPEC 3.6's reverse creation order, natively observable with user destructors (sel prints
+    `one two` where the old generator prints `two one`). Not C8c's: MIR's drop order (A2) and the builder.
+  - Restructured first, behavior unchanged (ae0c21647): the routines' signatures and the text spliced from them; a string constant's bytes
+    in one member, which `Text` writes; the operator's column decided before its operands are read.
+  - Verified: the sel ledger loses 505 test rows (C-aggregate 303, C-frame 102, library-1 38, object 17, library-2 14, C-drop 10,
+    call 9, closure 7, C-scalar 3, K-edges 2), all this unit's, each failing at its base: the census's 481 comparison and constant rows
+    (C8b's three update-adapter rows and G:object's two string `==` rows among them) and 24 warm-allocation rows that now reach 0 B;
+    `StringComparisonEmissionTest` and `StringGuardEmissionTest` leave it whole; the 27 fixture rows above join it. The flipped tests' 41
+    fixture families (1,863 fixtures, the new `StringRows` among them) run natively under sel at O0 and O2, every fixture but those 27
+    passing, and `StringRows` also under the old generator; `FunctionCodegenTest` (the six operators' routines on the records' bytes and
+    their predicates, constants' bytes with `""` null and 0 and no record stored, a uniq layer's extra load, literal Patterns, a tuple's
+    string leaf by equality then order, string constants written whole into a Tuple, a fixed array, an enum Case and raw storage, no
+    routines in a module without a comparison, M9's 0 B and I1 over the `Comparisons` source). O2 (information; no corpus kernel): a
+    temporary kernel (4M rounds over an `[8 of string]` of `==` and `<` through borrows, `!=` with a literal, a four-arm literal match and
+    a tuple ordering with a string leaf), old generator A against sel B at O2, 15 interleaved samples: B/A median 0.94 (0.85-1.04) against
+    A/A 0.88-1.17, both routines inlined and the same memcmp calls but one, the tuple leaf's second pass (PLAN G157 (16)).
+  - Rejected: arms per operator in place of the table (R5-M76); `__kimi_string_compare` for `==` too (slower than the old generator where
+    lengths differ); the routine chosen by a bool parameter or by `op is Eq or Ne` beside the table (a second statement of SPEC 13.4.1's
+    partition); an inline length test for `""` (a clause for one form); materializing constant operands to match the old audits; string
+    constants read at put time for every operand (SPEC 13.7.1's order for the others); string comparisons as Calls of BuiltinEquals/Compare
+    (R5-M75: a second form of one comparison); a string-comparison IntrinsicId (PD21); a second copy of the routine text (PD2); the shim in
+    C8c (Q1 (b), its frame for one leaf Type); a located `Unsupported_Kd` for a pair-layer operand (ruling Q5: the symptom G:closure's
+    review flagged in `Closures.cs`' PairLayer arm).
 - **R5-M119 The owner confirms C8c's departures** (owner, 2026-10-25, on the R5 planning session's explanation after C8c's design and
   before its behavior commit; verbatim 「C8c の逸脱 2 件（文字列の BuiltinEquals/Compare シムを C8f へ移すこと、Strings カーネルの O2 と前提 E7 を E7 と
   C9c の遅い方へ移し C8c は一時カーネルで参考測定すること）を承認します。」; the consequences are the planning session's) The two
