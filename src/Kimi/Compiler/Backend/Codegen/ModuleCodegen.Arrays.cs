@@ -12,9 +12,10 @@ namespace Kimi.Compiler.Backend;
 // the element glue its text destroys by (its item's target, so a string element dies by its glue) and, by its kind, the Option payload's
 // offset (Pop: the Some Case's element at the Option record's Field 1) or the remainder record's Fields in declaration order (storage,
 // position, count, and OwnedRemainder's capacity) with Field 0's size; an Array's glue calls its glue item's Drop helper (ArrayDrop). Each
-// helper is made once per Write, its text then written to the helper buffer the frame writes before the definitions (PD8), and the Array
-// runtime its row declares requested (Needs.Arrays); a kept helper is reused while its descriptor matches, so a warm module allocates
-// nothing. An element or a record without its layout is a broken contract at the item's site (the collector laid them out).
+// helper is made once per Write, its text then written to the helper buffer the frame writes before the definitions (PD8); Row requests the
+// Array runtime its row declares (LegacyRow.Needs, R5-M46: Needs.Arrays), for a helper and a capacity routine alike; a kept helper is reused
+// while its descriptor matches, so a warm module allocates nothing. An element or a record without its layout is a broken contract at the
+// item's site (the collector laid them out).
 internal sealed partial class ModuleCodegen
 {
     private readonly StringWriter helperText = new(CultureInfo.InvariantCulture); // The helpers of the latest Write, before the definitions.
@@ -81,11 +82,6 @@ internal sealed partial class ModuleCodegen
         var helper = this.arrays[item] is { } kept && (kept.Kind, kept.Element, kept.OptionPayload, kept.Fields) == (kind, stored, payload, fields)
             ? kept : ArrayHelper.Create(kind, stored, item.ToString(CultureInfo.InvariantCulture), string.Empty, payload, fields);
         (this.arrays[item], this.arranged[item]) = (helper, this.writes);
-        if ((LegacyRuntimeHelpers.ArrayRow(kind).Needs & HelperNeeds.ArrayRuntime) != 0)
-        {
-            this.Request(Needs.Arrays | Needs.Memory);
-        }
-
         LegacyRuntimeHelpers.WriteArray(this.helperText, helper);
         return helper;
     }

@@ -684,6 +684,21 @@ public sealed class InstanceCollectorTest
         Assert.True((LegacyRuntimeHelpers.ArrayRow(ArrayHelperKind.Drop).Needs & HelperNeeds.ElementGlue) != 0);
     }
 
+    // K 4.8, X34 (DECISIONS R5-M121): a LegacyRow item lays out its collection's element, as the Array's glue does: an element whose layout is
+    // oversized (OversizedLayout_Kd), rejected (InvalidCLayout_Kd) or over a limit (the erased Type's one GenerationResourceLimit_Kd) is the
+    // record at the call and no item; the row itself admits (the counterpart, AnArrayOperationIsItsFunctionInstancesLegacyRow).
+    [Theory]
+    [InlineData(Huge, "OversizedLayout_Kd values.clear()")]
+    [InlineData("P<()>", "InvalidCLayout_Kd values.clear()")]
+    [InlineData("[2147483648 of u8]", "GenerationResourceLimit_Kd values.clear()")]
+    public void ALegacyRowLaysOutItsElement(string element, string records)
+    {
+        var c = MirBuildTest.Compile(CLayoutP + $"func c(values: uniq/Array<{element}>) => values.clear()\n");
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        Assert.Equal(records, string.Join("|", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
+        Assert.DoesNotContain(set.Items.ToArray(), static x => x.Key.Kind == MonoKind.LegacyRow);
+    }
+
     // SPEC 13.6.4, 8.15.3 (DECISIONS R5-M74): a runtime Type test and a clone acquire nothing and need no layout, so neither has a target:
     // a test of a struct no creation makes, oversized or with a table, collects nothing of it, and a clone of a handle to an oversized
     // payload records nothing; only creations are descriptors.
@@ -1772,12 +1787,12 @@ public sealed class InstanceCollectorTest
     private static string[] Calls(MirProgram program, CheckedSet set, string label)
         => Targets(program, set, label).Where(static x => !x.StartsWith("DropGlue ", StringComparison.Ordinal)).ToArray();
 
-    // A body's kind and definition, a closure by the named function enclosing it, a module's top-level statements as top, a library body with
     // Whether an item's representative closes its body (Closes), a body item's being the one that has a body (BodyOrdinal; a LegacyRow item's
     // representative has none, DECISIONS R5-M121).
     private static bool Closed(Compilation c, MirProgram program, in MonoItem item)
         => item.Representative is not { } representative || item.BodyOrdinal < 0 || Closes(c.Types, program.Bodies[item.BodyOrdinal], representative);
 
+    // A body's kind and definition, a closure by the named function enclosing it, a module's top-level statements as top, a library body with
     // the declaration it is in, an instance with its representative's declaring Type and Type arguments; a type-driven item's kind and Type.
     private static string Label(MirProgram program, in MonoItem item)
     {

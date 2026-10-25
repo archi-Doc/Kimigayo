@@ -227,11 +227,61 @@ public sealed partial class FunctionCodegenTest
         Assert.NotEmpty(helpers);
         Assert.All(helpers, x => Assert.True(x.Index < first, x.Value));
         Assert.Equal(helpers.Length, helpers.Select(static x => x.Groups[1].Value).Distinct().Count());
-        Assert.True(Regex.Match(text, @"define internal void @__kimi_array_grow\(").Index < first);
+        var grow = Regex.Match(text, @"define internal void @__kimi_array_grow\(");
+        Assert.True(grow.Success && grow.Index < first);
 
         var cleared = Generate(Analyze("func arEmptyInts(values: uniq/Array<i32>) => values.clear()\n", OutputKind.Library));
         Assert.Matches(@"define internal void @__kimi_array_clear_\d+\(", cleared);
         Assert.DoesNotContain("@__kimi_array_grow", cleared, StringComparison.Ordinal);
+    }
+
+    // R5-M46 (DECISIONS R5-M121): borrow and own declare no Array runtime, since they only load and store the handle's words, so a module whose
+    // only Array calls are an iteration's borrowStorage or ownStorage defines their helper and none of the capacity routines.
+    [Theory]
+    [InlineData("func arTotal(values: ref/Array<i32>) -> i32\n    var sum: i32 = 0\n    for v in values => sum += v\n    return sum\n", "borrow")]
+    [InlineData("func arDrain(values: Array<i32>) -> i32\n    var sum: i32 = 0\n    for v in values@move => sum += v\n    return sum\n", "own")]
+    public void BorrowAndOwnWriteNoArrayRuntime(string source, string helper)
+    {
+        var text = Generate(Analyze(source, OutputKind.Library));
+        Assert.Matches($@"define internal \S+ @__kimi_array_{helper}_\d+\(", text);
+        Assert.DoesNotMatch(@"@__kimi_array_(grow|reserve|shrink)\b", text);
+    }
+
+    // SPEC 22.2, IMPL 21.1.1 (DECISIONS R5-M121): a consumed fixed array whose storage has no bytes, of a zero-sized element or of no element,
+    // moves in by its length alone: its helper takes no value, so the call passes the length and the result slot.
+    [Theory]
+    [InlineData("[2 of Token]", 2)]
+    [InlineData("[0 of Res]", 0)]
+    public void AZeroSizedConsumedFixedArrayIsOwnedByItsLengthAlone(string array, int length)
+    {
+        var c = Analyze(
+            "struct Token\n    public init() => ()\n    drop => Console.writeLine(\"token\")\n" +
+            "struct Res\n    public let id: i64\n    public init(id: i64) => self.id = id\n    drop => Console.writeLine(\"res\")\n" +
+            $"func drain(values: {array}) -> i64\n    var n: i64 = 0\n    for v in values@move => n += 1\n    return n\n",
+            OutputKind.Library);
+        var ir = GeneratedIr.Parse(Generate(c));
+        var calls = FunctionsOf(ir, c, "intoIterator").SelectMany(CallsOf).Where(static x => x.Callee!.Signature == "internal void (i64, ptr)").ToArray();
+        Assert.Equal($"call void @(i64 {length}, ptr %)", Assert.Single(calls.Select(static x => x.Shape).Distinct()));
+    }
+
+    // SPEC 7.7.4, 4.9.3 (DECISIONS R5-M121, ruling Q6): an erased append over an element in memory (a struct) or over a reference (ref/string)
+    // is an entry that forwards its handle, its element and its location, as received, to the helper of its instance: the entry's input of a
+    // reference is a SharedReference where the helper's is a Value of the same pointer Type.
+    [Theory]
+    [InlineData("Pair")]
+    [InlineData("ref/string during static")]
+    public void AnErasedAppendForwardsItsElementToTheHelper(string element)
+    {
+        var text = Generate(Analyze(
+            "struct Pair\n    public let a: i64\n    public let b: i64\n    public init(a: i64, b: i64)\n        self.a = a\n        self.b = b\n" +
+            $"func erased() -> (uniq/Array<{element}>, {element}) -> () => Array<{element}>.append\n",
+            OutputKind.Library));
+        var ir = GeneratedIr.Parse(text);
+        var helper = ir.Function(Regex.Match(text, @"define internal \S+ @(__kimi_array_append_\d+)\(").Groups[1].Value);
+        var entry = Assert.Single(ir.Functions, x => x.Blocks.Count > 0 && CallsOf(x) is [{ } only] && only.Callee == helper);
+        var forward = Assert.Single(CallsOf(entry));
+        Assert.Equal(4, forward.Operands.Count); // The handle, the element, and the caller's location and its length.
+        Assert.Equal(entry.Parameters.Where(forward.Operands.Contains), forward.Operands);
     }
 
     // DECISIONS R5-M121 (ruling Q6): an adapter passes a callee's parameter by its own of the same logical index and passing: the same kind, or a
