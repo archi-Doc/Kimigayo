@@ -108,6 +108,26 @@ public class OriginRelationDiagnosticTest
         Assert.Equal(("origin", "Lens<i32>"), (related.Role, Text(source, related.Span)));
     }
 
+    // SPEC 15.3.4, 15.6.1 (PLAN G216): an omitted Origin of a borrow layer nested in an anonymous function's or a local Function Type's
+    // parameter is a body variable, and that input's well-formedness is a premise of the signature and an obligation of each call, never
+    // of the evaluating body: G216's h1 and h2, a Closure body that needs the premise, a Function Type annotation and a named function's
+    // Function Type parameter writing the Origin, each called, are valid. In a named signature the omission is MissingOriginBinding_Kd
+    // (15.4.2). Beside an unrelated Binding error each keeps only its own record (SPEC 23.1.2).
+    [Theory]
+    [InlineData("func g() -> i32\n    let h = func [] (p: ref/(ref/i32)) -> i32 => 1\n    return 0\n", "")]
+    [InlineData("func k(q: ref/i32) -> i32\n    let h = func [] (p: ref/(ref/i32)) -> i32 => p@follow@follow\n    let x = 5\n    return h(x@ref@ref)\n", "")]
+    [InlineData("func g() -> i32\n    let h = func [] (p: ref/(ref/i32)) -> ref/i32 => p@follow\n    let x = 5\n    let y = x@ref\n    return h(y@ref)@follow\n", "")]
+    [InlineData("func g() -> i32\n    let f: (ref/(ref/i32)) -> i32 = func (value) => value@follow@follow\n    let n = 7\n    let view = n@ref\n    return f(view@ref)\n", "")]
+    [InlineData("func g(a: ref/i32, cb: (ref/(ref/i32 during a)) -> i32) -> i32 => cb(a@ref)\n", "")]
+    [InlineData("func g(p: ref/(ref/i32)) -> i32 => 0\n", "MissingOriginBinding_Kd ref/i32")]
+    [InlineData("func g(p: ref/(ref/i32)) -> i32 => 0\nfunc m() -> i32\n    let b: bool = 3\n    return 0\n", "MissingOriginBinding_Kd ref/i32; TypeMismatch_Kd 3")]
+    [InlineData("func g() -> i32\n    let h = func [] (p: ref/(ref/i32)) -> i32 => 1\n    let b: bool = 3\n    return 0\n", "TypeMismatch_Kd 3")]
+    public void ANestedSignaturesInputIsWellFormedByPremiseAndAtEachCall(string body, string records)
+    {
+        var source = body + Main;
+        Assert.Equal(records, string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {Text(source, x.Span)}")));
+    }
+
     // SPEC 15.6.3, 4.7.1 (DECISIONS BU-27): a Borrow reached through safe borrow layers is contained in each, from its last dereference
     // outward up to and including the first shared one: an index result's reference to a local Dictionary, Array or UniqSlice, a local's
     // borrow, a Slice view, a stored reference reached through an exclusive parameter, local, object view or receiver. Binding names it by
