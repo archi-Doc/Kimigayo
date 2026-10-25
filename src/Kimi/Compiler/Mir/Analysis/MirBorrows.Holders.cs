@@ -14,8 +14,9 @@ internal sealed partial class MirBorrows
     private int flowCount; // The slots a head stores: E and the flow holders.
 
     // The holders of the view (A3 3): E in slot 0, then the flow holders, whose states cross heads (MirMoveData's flow roots and the roots a
-    // direct Loan names, whose states the closure and the Loans' content read anywhere), then the chain-local ones; then each Loan's
-    // reservation holder and named holder as slots, E for a direct Loan on a static (storage the body does not own, SPEC 15.6; G136 (i)).
+    // direct Loan or address names, whose states the closure and the Loans' content read anywhere), then the chain-local ones; then each
+    // Loan's reservation holder and each Loan's and address's named holder as slots, E for a direct one on a static (storage the body does
+    // not own, SPEC 15.6; G136 (i)).
     private void Holders()
     {
         var locals = this.body.Locals;
@@ -41,7 +42,7 @@ internal sealed partial class MirBorrows
 
         MirDataflow.Grow(ref this.reserves, this.holderCount);
         Array.Clear(this.reserves, 0, this.holderCount);
-        for (var l = 0; l < this.loanCount; l++)
+        for (var l = 0; l < this.loanCount + this.addressCount; l++)
         {
             ref var loan = ref this.loans[l];
             loan.Holder = loan.Holder >= 0 ? this.slots[loan.Holder] : -1;
@@ -60,6 +61,6 @@ internal sealed partial class MirBorrows
             }
         }
 
-        this.Work += (2 * locals.Length) + this.loanCount + this.holderCount;
+        this.Work += (2 * locals.Length) + this.loanCount + this.addressCount + this.holderCount;
     }
 }
