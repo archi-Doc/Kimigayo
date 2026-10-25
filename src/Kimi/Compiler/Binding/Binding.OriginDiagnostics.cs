@@ -4,8 +4,9 @@
 // typed facts its check records.
 // - Responsibility: the records of a per-call slot (ReportPerCallSlot), an undeclared storage Origin name
 //   (ReportUndeclaredStorageOrigin, StorageOriginType, TypeNameSpan), an absent slot (RecordAbsentSlot, ReportAbsentSlot) and an
-//   invalid slot (ReportInvalidOriginSlot); the omitted-result Note (OmittedResultNote); the Borrow in a value whose Origin contains
-//   an atom (LocalBorrow), which BorrowSource (Binding.Diagnostics.cs) relates.
+//   invalid slot (ReportInvalidOriginSlot); the omitted-result Note (OmittedResultNote); an Origin relation record's end displays
+//   (OriginDisplay, SlotProjection, OriginIncludes) and the Borrow that supplies an end (BorrowSource, LocalBorrow), which the
+//   records of Binding.Diagnostics.cs show and relate.
 // - Inputs: the failing node and the facts its check recorded (absentSlotProjections, invalidStaticOriginSlots, phantomRawOrigins,
 //   PerCallSlotFact), the result contexts, the bound syntax.
 // - Outputs: the records with their Notes, evidence and related locations; the Borrow node.
@@ -157,6 +158,185 @@ public sealed partial class Binding
         var finder = new LocalBorrowFinder(origin);
         finder.Visit(value);
         return finder.Found;
+    }
+
+    // The Borrow that supplies a body-local Origin: the value itself, or the initializer of the local it names. For a meet, it is the
+    // Borrow of its first body-local operand, which the meet's display shows (SPEC 23.1).
+    private static Koto? BorrowSource(Koto value, BoundOrigin origin)
+    {
+        var unwrapped = KotoHelper.UnwrapParentheses(value);
+        if (unwrapped.BoundType?.Origin is { } region && IsLocalRegion(region) &&
+            value.CodeContext.Compilation.Binding.LocalRegionSourceUse(region, origin) is { } evidence && !ReferenceEquals(evidence, value))
+        {
+            return BorrowSource(evidence, origin);
+        }
+
+        if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrowValue)
+        {
+            // SPEC 23.1: at an inner position of a Borrow, such as the stored `local@ref` of `y@uniq` after `var y = local@ref`, the
+            // failing Origin is not the Borrow's own: it is found through the borrowed Place.
+            if (borrowValue.BoundType?.Origin is not { } own || OriginIncludes(own, origin) || OriginIncludes(origin, own))
+            {
+                return unwrapped;
+            }
+        }
+
+        if (origin.Kind == OriginKind.Intersection)
+        {
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (origin.Operands[i].Kind is OriginKind.Projection or OriginKind.Anchor && BorrowSource(value, origin.Operands[i]) is { } operand)
+                {
+                    return operand;
+                }
+            }
+
+            return null;
+        }
+
+        if (origin.Kind == OriginKind.Projection && unwrapped is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: VariableKoto { InitializerKoto: { } initializer } } } &&
+            KotoHelper.UnwrapParentheses(initializer) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } source && ReferenceEquals(source.BoundType?.Origin, origin))
+        {
+            return source;
+        }
+
+        // A call whose result takes an argument's implicit Borrow names that argument (SPEC 15.6.1: `take(local)`).
+        if (origin.Kind is OriginKind.Projection or OriginKind.Anchor && unwrapped is InvocationKoto { BoundCall: { } call })
+        {
+            foreach (var operation in call.ArgumentOperations)
+            {
+                if (operation is { Kind: ArgumentOperationKind.Borrow, Source: { } argument, AdaptedType.Origin: { } borrowed } && ReferenceEquals(borrowed, origin))
+                {
+                    return argument;
+                }
+            }
+        }
+
+        // A value that contains the Borrow, such as a call or Tuple over it, names that Borrow; so does the initializer of the local
+        // whose Place the value reads or moves, such as `h0@move` or `h0.item` after `let h0 = H.init(a@ref)`.
+        if (origin.Kind is not (OriginKind.Projection or OriginKind.Anchor))
+        {
+            return null;
+        }
+
+        return LocalBorrow(value, origin) ?? (RootLocal(unwrapped) is { InitializerKoto: { } rootValue } ? LocalBorrow(rootValue, origin) : null);
+
+        static VariableKoto? RootLocal(Koto value)
+        {
+            for (var depth = 0; depth < 64; depth++)
+            {
+                switch (value)
+                {
+                    case ConversionKoto { ConversionBinding: ConversionBinding.Transfer or ConversionBinding.Borrow } transfer:
+                        value = KotoHelper.UnwrapParentheses(transfer.Left);
+                        continue;
+                    case MemberAccessKoto access:
+                        value = KotoHelper.UnwrapParentheses(access.Left);
+                        continue;
+                    case IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: VariableKoto local } }:
+                        return local;
+                    default:
+                        return null;
+                }
+            }
+
+            return null;
+        }
+    }
+
+    // SPEC 15.2.1: the omitted slot `slot` of a function parameter's Type, written directly or under one borrow layer, is the projection
+    // `p.slot`, whether a named function's input or an anonymous function's body inference variable (SPEC 15.3.4); any other omitted
+    // slot has no name.
+    private static string? SlotProjection(Koto occurrence, int slot)
+    {
+        var function = occurrence.Parent;
+        while (function is not null and not FunctionKoto)
+        {
+            function = function.Parent;
+        }
+
+        if (function is not FunctionKoto owner || occurrence.BoundType?.Symbol?.Schema?.Origins is not { } slots || (uint)slot >= (uint)slots.Count)
+        {
+            return null;
+        }
+
+        foreach (var parameter in owner.Parameters)
+        {
+            if (ReferenceEquals(parameter.Type, occurrence) || (parameter.Type is TypeSemanticsKoto { Type: { } target } && ReferenceEquals(target, occurrence)))
+            {
+                return parameter.InternalName + "." + slots[slot].Name;
+            }
+        }
+
+        return null;
+    }
+
+    // SPEC 23.1: an Origin by its display kind and string: an Origin expression for static, a parameter or receiver, a slot (a
+    // parameter's projection, SlotProjection) or a meet; the source text of a Borrow, or of its Place, for a body-local finite Origin;
+    // the Type occurrence of an omitted slot.
+    private static DiagnosticOrigin OriginDisplay(BoundOrigin origin, Koto? value, bool typeLevel = false)
+    {
+        switch (origin.Kind)
+        {
+            case OriginKind.Static:
+                return new("expression", "static");
+            case OriginKind.Intersection:
+                // A body-local operand shows the Borrow that supplies it, never the text of its binder.
+                var parts = new string[origin.Operands.Count];
+                for (var i = 0; i < parts.Length; i++)
+                {
+                    var supplied = value is not null && KotoHelper.UnwrapParentheses(value) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Origin: { } borrowed } &&
+                        OriginIncludes(borrowed, origin.Operands[i]) ? value : null;
+                    parts[i] = OriginDisplay(origin.Operands[i], supplied, typeLevel).Text;
+                }
+
+                return new("expression", "(" + string.Join(" and ", parts) + ")");
+            case OriginKind.Input or OriginKind.Inference when OmittedAt(origin) is { } occurrence:
+                return SlotProjection(occurrence, origin.Kind == OriginKind.Input ? origin.TargetSlot : origin.Slot) is { } projection
+                    ? new("expression", projection) : new("omitted", occurrence.ToString());
+            case OriginKind.Input when origin.Binder is { } binder && origin.InputIndex >= 0 && origin.InputIndex < InputCount(binder):
+                return new("expression", InputName(binder, origin.InputIndex));
+            case OriginKind.Parameter when origin.Occurrence is GenericParameterKoto declaration:
+                return new("omitted", declaration.ToString()); // SPEC 8.1.1, 23.1: the outer Origin `o` of a pair binder.
+            case OriginKind.Parameter:
+                return new("expression", origin.Binder is DeclarationContainerKoto && !typeLevel ? "self." + origin.Name : origin.Name);
+            case OriginKind.Inference when origin.Binder is VariableKoto local:
+                return new("omitted", local.NameKoto.IdentifierName); // A local's region (LocalRegionSlot), as a Closure body names it.
+            case OriginKind.Holder:
+                return new("expression", "self"); // SPEC 5.7: `during self`.
+            case OriginKind.Projection when origin.Slot == CallResultSlot && origin.Binder is FunctionKoto { IsAnonymous: true }:
+                return new("closure", "call result");
+            case OriginKind.Projection or OriginKind.Anchor:
+                // Without its Borrow, the Place: a local or a parameter by name, a constructor's or destructor's receiver (and its helper
+                // borrow) as self, and a temporary by its text.
+                var text = value is not null && KotoHelper.UnwrapParentheses(value) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow ? borrow.ToString()
+                    : origin.Slot is HelperSlot or ReceiverSlot ? "self"
+                    : origin.Binder is VariableKoto variable ? variable.NameKoto.IdentifierName
+                    : origin.Binder is FunctionKoto function && origin.Slot >= 0 && origin.Slot < function.Parameters.Count ? function.Parameters[origin.Slot].InternalName
+                    : origin.Binder!.ToString(); // OriginAtom gives every Projection and Anchor its binder.
+                return new("borrow", text);
+            default:
+                return new("omitted", origin.Occurrence?.ToString() ?? origin.Name);
+        }
+    }
+
+    // Whether `atom` is `whole` or one of the operands of its meet, at any depth.
+    private static bool OriginIncludes(BoundOrigin whole, BoundOrigin atom)
+    {
+        if (ReferenceEquals(whole, atom))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < whole.Operands.Count; i++)
+        {
+            if (OriginIncludes(whole.Operands[i], atom))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // SPEC 15.4.3, 15.6.1: a result fitting or Origin failure whose omitted result Origin defaulted to static because the only
