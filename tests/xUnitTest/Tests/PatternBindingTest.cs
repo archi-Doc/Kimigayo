@@ -262,6 +262,20 @@ public class PatternBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
     }
 
+    // SPEC 14.8.3, 23.1.2 (PLAN G259): a failed arm makes no pattern unreachable. A use of a local whose Type its failed match left
+    // unknown binds the declaration again, and the match rebuilds its plan each time it is bound, so no arm is counted twice.
+    [Theory]
+    [InlineData("    return h(k)")]
+    [InlineData("    return h(k) + h(k)")]
+    [InlineData("    let z = k\n    return z")]
+    [InlineData("    let z = (k, k)\n    return z.0")]
+    public void ARebindOfAFailedMatchCountsEachArmOnce(string use)
+    {
+        const string Head = "func h(v: i32) -> i32 => v\nfunc g(c: bool) -> i32\n    let k = match c\n        true => 1\n        false => MISSING\n";
+        Assert.Equal("UnresolvedBinding_Kd missing", Records(Head.Replace("MISSING", "missing", StringComparison.Ordinal) + use));
+        Assert.Equal(string.Empty, Records(Head.Replace("MISSING", "2", StringComparison.Ordinal) + use));
+    }
+
     [Fact]
     public void SharedAccessBindsAReferenceToTheCopyPayload()
     {
@@ -415,6 +429,15 @@ public class PatternBindingTest
     }
 
     private static string Describe(Compilation c) => string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"));
+
+    // The records a Final Binding publishes for a program, as code and source text in result order.
+    private static string Records(string source)
+    {
+        var c = Parse(source);
+        c.Bind();
+        c.Binding.ReportDiagnostics();
+        return string.Join(" | ", TestDiagnostics.Of(c).Select(static x => $"{x.Code} {x.Text}"));
+    }
 
     [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]

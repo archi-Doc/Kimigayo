@@ -195,7 +195,9 @@ public sealed partial class Binding
 
     private BoundType? BindMatch(MatchKoto match, BindingScope scope, BoundType? expected)
     {
+        // An Unresolved match is bound again, such as when a use rebinds the declaration it initializes: the plan is this binding's.
         var plan = this.matches[match];
+        plan.Reset(match);
         var subject = this.BindNode(match.Expression, scope);
         if (match is TryKoto propagation)
         {
