@@ -860,6 +860,11 @@ public sealed partial class Binding
             var annotation = ReferenceEquals(symbol, accessor.SelfSymbol) ? accessorSyntax.ReceiverType : accessorSyntax.ValueType;
             this.Consulted(annotation ?? accessor.Property.Declaration.TypeKoto ?? accessor.Property.Declaration);
         }
+        else if (type is null && symbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.PatternCandidate, Declaration: not VariableKoto })
+        {
+            // A Pattern's or loop's binding has its Type from its declaration, which rests on a failed Subject (SPEC 23.1.2).
+            this.Consulted(symbol.Declaration);
+        }
 
         return Complete(node, node is MemberAccessKoto && type is not null ? this.ReadHolder(type, node, node) : type);
     }

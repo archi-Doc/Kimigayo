@@ -201,7 +201,13 @@ public sealed partial class Binding
         var subject = this.BindNode(match.Expression, scope);
         if (match is TryKoto propagation)
         {
-            if (subject?.Kind != BoundTypeKind.Constructed || subject.Semantics != SemanticsKind.Owner || (subject.Symbol != this.Library.Option && subject.Symbol != this.Library.Result))
+            if (subject is null)
+            {
+                // SPEC 23.1.2: a failed operand is the try's prerequisite; its Type selects the try's arms.
+                return this.Fail(match, BindingFailure.Unsupported, true);
+            }
+
+            if (subject.Kind != BoundTypeKind.Constructed || subject.Semantics != SemanticsKind.Owner || (subject.Symbol != this.Library.Option && subject.Symbol != this.Library.Result))
             {
                 return this.Fail(match, BindingFailure.TypeMismatch);
             }
@@ -223,15 +229,15 @@ public sealed partial class Binding
         }
 
         var resultContext = this.BeginResult(match, scope, expected, deferEvidence: true);
-        if (subject is null)
-        {
-            plan.Pending = true;
-            return this.Fail(match, BindingFailure.Unsupported, true);
-        }
-
         for (var i = 0; i < match.Arms.Count; i++)
         {
             var arm = match.Arms[i];
+            if (subject is null)
+            {
+                this.RestOnSubject(arm, match.Expression);
+                continue;
+            }
+
             // SPEC 15.1.6: the Subject Place of a ByValue Subject is owned by the match; a bare Place's is a borrow of it.
             var reach = new PatternReach(PatternAccessMode.Owned, null, OwnedPart: plan.Mode == SubjectMode.ByValue);
             var root = this.BindPattern(arm.Pattern, subject, scope, plan, -1, 0, reach);
@@ -290,13 +296,34 @@ public sealed partial class Binding
             return Complete(match, null);
         }
 
-        // SPEC 23.1.2: an invalid plan's located failures, at a position or a guard, were consulted; the match rests on them.
-        if (plan.Invalid || plan.Pending || pendingBody)
+        // SPEC 23.1.2: a failed Subject, and an invalid plan's located failures at a position or a guard, were consulted; the match
+        // rests on them.
+        if (subject is null || plan.Invalid || plan.Pending || pendingBody)
         {
             return this.Fail(match, BindingFailure.Unsupported, true);
         }
 
         return this.FinishResult(match, resultContext);
+    }
+
+    // SPEC 23.1.2: a failed Subject is the prerequisite of an arm's positions and bindings, never of its guard or body. Each binding
+    // its pattern declares, for the body and as a guard candidate, has no Type and rests on the Subject, as a local rests on a failed
+    // initializer, so a use of it consults that declaration (BindReference); the rest of the pattern stays unknown.
+    private void RestOnSubject(MatchArmKoto arm, Koto subject)
+    {
+        foreach (var declared in arm.Guard is { } guard ? [arm.Pattern, guard] : (ReadOnlySpan<Koto>)[arm.Pattern])
+        {
+            foreach (var symbol in this.scopes[declared].Values.Values)
+            {
+                if (symbol.Declaration is SyntaxFormKoto { Akind: KotoKind.BindingPattern } binding)
+                {
+                    symbol.Type = null;
+                    this.CompleteDependent(binding, subject);
+                }
+            }
+        }
+
+        this.MarkUnsupportedTree(arm.Pattern);
     }
 
     // SPEC 15.1.6 subject rule: the Subject is acquired as written, except that a bare Place is borrowed in place: a
@@ -635,9 +662,10 @@ public sealed partial class Binding
         }
     }
 
-    private void CalculateMatchCoverage(BoundMatch plan, BoundType subject)
+    private void CalculateMatchCoverage(BoundMatch plan, BoundType? subject)
     {
-        if (plan.Invalid || plan.Pending)
+        // A failed Subject leaves the coverage Pending, as an unproven position does.
+        if (subject is null || plan.Invalid || plan.Pending)
         {
             plan.Coverage = new(plan.Invalid ? MatchCoverageState.Invalid : MatchCoverageState.Pending);
             return;

@@ -12,6 +12,9 @@ namespace XunitTest;
 
 public class PatternBindingTest
 {
+    private const string Selecting = "func g(o: Option<i32>, c: bool, v: i32) -> i32\n";
+    private const string BothMissing = "UnresolvedBinding_Kd missing | UnresolvedBinding_Kd missing2";
+
     [Theory]
     [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(let n) => n\n    .None => 0")]
     [InlineData("func f(x: Option<i32>) -> i32 => match x\n    Option<i32>.Some(let n,) => n\n    Option<i32>.None => 0")]
@@ -290,6 +293,30 @@ public class PatternBindingTest
     {
         Assert.Equal(records, Records(source));
         Assert.Equal(string.Empty, Records(source.Replace(written, valid, StringComparison.Ordinal)));
+    }
+
+    // SPEC 23.1.2 (PLAN G260): a failed Subject, of a match or a try, is the prerequisite of its positions, bindings, coverage and
+    // result only. Guards and bodies are bound, so their own failures (`missing2`) are reported, and a use of a binding rests on it
+    // through the binding's declaration, as a use of a local rests on a failed initializer. Each row's twin writes `subject` for
+    // SUBJECT and `other` for OTHER and reports `twin`.
+    [Theory]
+    [InlineData(Selecting + "    match SUBJECT\n        _ => OTHER\n    return 0", BothMissing, "o", "()", "")]
+    [InlineData(Selecting + "    let k: i32 = match SUBJECT\n        _ => OTHER\n    return k", BothMissing, "o", "1", "")]
+    [InlineData(Selecting + "    let k: i32 = match SUBJECT\n        .Some(let x) => x + OTHER\n        .None => 0\n    return k", BothMissing, "o", "1", "")]
+    [InlineData(Selecting + "    let k: i32 = match SUBJECT\n        .Some(let x) if x > 0 => x\n        _ if OTHER => 1\n        _ => 0\n    return k", BothMissing, "o", "c", "")]
+    [InlineData(Selecting + "    match SUBJECT\n        .Some(let x) => match x\n            0 => ()\n            _ => OTHER\n        .None => ()\n    return 0", BothMissing, "o", "()", "")]
+    [InlineData(Selecting + "    let k: i32 = match f(SUBJECT)\n        .Some(let x) => x + OTHER\n        .None => 0\n    return k", BothMissing, "v", "1", "")]
+    [InlineData(Selecting + "    match SUBJECT\n        .Some(let x) => OTHER\n    return 0", BothMissing, "o", "()", "NonExhaustiveMatch_Kd match o\n        .Some(let x) => ()")]
+    [InlineData(Selecting + "    match SUBJECT\n        .Some(let x) => x.foo()\n        _ => ()\n    return 0", "UnresolvedBinding_Kd missing", "o", "", "UnresolvedBinding_Kd x.foo")]
+    [InlineData(Selecting + "    let k: i32 = match SUBJECT\n        .Some(let x) if x.foo() => 1\n        _ => 0\n    return k", "UnresolvedBinding_Kd missing", "o", "", "UnresolvedBinding_Kd x.foo")]
+    [InlineData(Selecting + "    match SUBJECT\n        .Some(let x)\n            let w = func () -> i32 => x\n            h(w())\n        _ => ()\n    return 0", "UnresolvedBinding_Kd missing", "o", "", "")]
+    [InlineData("func t(v: i32) -> Option<i32>\n    let r = try f(SUBJECT)\n    return .Some(r + OTHER)", BothMissing, "v", "1", "")]
+    [InlineData("func t(v: i32) -> Option<i32>\n    let r = try SUBJECT\n    return .Some(r.foo())", "UnresolvedBinding_Kd missing", "f(v)", "", "UnresolvedBinding_Kd r.foo")]
+    public void AFailedSubjectLeavesItsGuardsAndBodiesIndependent(string body, string records, string subject, string other, string twin)
+    {
+        const string Head = "func f(v: i32) -> Option<i32> => .Some(v)\nfunc h(v: i32) -> i32 => v\n";
+        Assert.Equal(records, Records(Head + body.Replace("SUBJECT", "missing", StringComparison.Ordinal).Replace("OTHER", "missing2", StringComparison.Ordinal)));
+        Assert.Equal(twin, Records(Head + body.Replace("SUBJECT", subject, StringComparison.Ordinal).Replace("OTHER", other, StringComparison.Ordinal)));
     }
 
     [Fact]
