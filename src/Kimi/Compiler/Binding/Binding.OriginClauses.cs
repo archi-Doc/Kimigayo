@@ -179,9 +179,11 @@ public sealed partial class Binding
             return null;
         }
 
-        var longer = this.OriginAtUse(reversed ? relation.Shorter : relation.Longer, use);
+        var written = reversed ? relation.Shorter : relation.Longer;
+        var longer = this.OriginAtUse(written, use);
         var shorter = this.OriginAtUse(reversed ? relation.Longer : relation.Shorter, use);
-        return new OriginRelationFact(use, longer, longer, shorter, relation.Equality, null, RefutesOriginRelation(longer, shorter, this.formingBody), use);
+        var refuted = RefutesOriginRelation(longer, shorter, this.formingBody);
+        return new OriginRelationFact(use, longer, this.SuppliedAtUse(written, use), shorter, relation.Equality, null, refuted, use);
     }
 
     // The declaration part: a Field's, Case's, alias's or associated formation's own clause, which Binding alone judges, is recorded

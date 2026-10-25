@@ -398,7 +398,8 @@ public sealed partial class Binding
             // SPEC 15.8.2, 15.6.1: a result inferred from the body that borrows the call's own storage (a parameter, a body local,
             // or an environment binding the call consumes) cannot outlive the call; the relation is Refuted at that Borrow.
             var at = function.ExpressionBody ?? function.Body ?? (Koto)function;
-            return this.FailExplained(ref this.originRelations, function, BindingFailure.OriginRelation, new(at, local, local, this.CallResultOrigin(function), false, null, true));
+            var fact = new OriginRelationFact(at, local, this.SuppliedAtUse(local, at), this.CallResultOrigin(function), false, null, true);
+            return this.FailExplained(ref this.originRelations, function, BindingFailure.OriginRelation, fact);
         }
 
         return Complete(function, plan.EnvironmentType);

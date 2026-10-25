@@ -4113,21 +4113,29 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the same ρ, so the first one in the value was named (`second(n@ref, m@ref)` named `n@ref`). Cause: the fact kept only the ends
     resolved at the use, so the adapter re-derived the supplier. The owner's revised rule (2026-10-25, verbatim 「2c-3B は (a) で：検査
     が失敗の事実に「供給した（解決前の）原子」を記録し、BorrowSource は4つの比較すべてでそれを同一性で比べる。B3 と R2 も同じ修正回で
-    直してください。」): `OriginRelationFact.Supplier` is the longer end as the failing check formed it, before a classified Closure's
-    receiver resolution (a pending relation's routing maps each chain to the operand of the obligation's end whose resolution holds it,
-    `SuppliedBy`; every other record, the old reporter's at `OwnershipAnalysis.cs` included, passes the end it compared), and
-    BorrowSource compares it by identity at the four comparisons (the value's own Borrow, a local's Borrow initializer, a call's
-    implicit Borrow argument and the search inside a value, the last two one finder reading the call's plan as the pass recorded it,
-    also at a value its record failed). A local region's source is found through the bound that brought it in, by that bound's parent
-    as written, which `LocalRegionSourceUse` now returns with the value (the planning session's R-a, `Binding.LocalRegions.cs`). B3: a
-    pending entry carries its record's destination, the obligation's Type, which `CheckTypeUse` stamps with the fit's whole Type, as
-    the binding-time fit records it. Deleted: `SuppliesEnd`'s resolution, `IsBorrowValue`, BorrowSource's separate implicit-argument
-    branch. Rejected: one OriginAtUse check (the first rule); a position re-search in the adapter; a shape guard; R-b, a written
-    supplier carried through `LocalRegionSources` and the old analysis's region loop (`BindingObligation` or `OwnershipIssue`, Full);
-    R-c, resolution kept in the region branch (the first rule's cause again). Open: BorrowSource searches one local level (BU's
-    re-check 2). `OriginDisplay` and `BorrowSource` moved to `Binding.OriginDiagnostics` first (behavior unchanged), since
-    `Binding.Diagnostics.cs` is over the token limit. P11 (D5's follow-up, removal R6-gen): the old Emission's element Borrow
-    compares its Origin with the receiver's modulo ClosureValue operands (`BodyLowering.SameOriginModuloReceiver`).
+    直してください。」): `OriginRelationFact.Supplier` is the atom that supplies the longer end at the use, the end after the Origin
+    declarations and local initializers and before any classified Closure's receiver resolution, which alone turns an environment
+    Borrow's atom into ρ. One function gives it, `SuppliedAtUse`, and `OriginAtUse` is its composition with the receiver resolutions
+    (the two commute: no declaration or initializer maps an environment atom or ρ; checked at every resolution over the Functional suite
+    and BU's harnesses before the split). Every record takes it there: a pending relation maps each chain to the operand of its supplied
+    end whose resolution holds it (`SuppliedBy`); the binding-time fit, the declared relation, a selected call's positions, the old
+    reporter (`OwnershipAnalysis.cs`) and the rest record `SuppliedAtUse` of the end they compared. Fix part 4 took two points (the
+    declared relation the end after `OriginAtUse`, the pending route the end as formed, a clause's `x.s` that no Borrow carries), so a
+    local clause in a Closure over an environment Borrow showed the call receiver (BU's re-check 3, N1); the one function replaces the
+    declared path's special case. BorrowSource compares it by identity at the four comparisons (the value's own Borrow, a local's
+    Borrow initializer, a named call's implicit Borrow argument and the search inside a value, the last two one finder reading the
+    call's plan as the pass recorded it, also at a value its record failed; a Field's implicit Borrow shows its Place, `s.f`). A local
+    region's source is found through the bound that brought it in, by that bound's parent as written, which `LocalRegionSourceUse` now
+    returns with the value (the planning session's R-a, `Binding.LocalRegions.cs`). B3: a pending entry carries its record's
+    destination, the obligation's Type, which `CheckTypeUse` stamps with the fit's whole Type, as the binding-time fit records it (it
+    is the one entry to a fit's position obligations, so the entries appended during it are exactly its own). Deleted: `SuppliesEnd`'s
+    resolution, `IsBorrowValue`, BorrowSource's separate implicit-argument branch. Rejected: one OriginAtUse check (the first rule); a
+    position re-search in the adapter; a shape guard; R-b, a written supplier carried through `LocalRegionSources` and the old
+    analysis's region loop (`BindingObligation` or `OwnershipIssue`, Full); R-c, resolution kept in the region branch (the first rule's
+    cause again); a mode parameter on `OriginAtUse`. Open: BorrowSource searches one local level (BU's re-check 2); a value call's
+    implicit Borrow is not found (`f(n)`; base too). `OriginDisplay` and `BorrowSource` moved to `Binding.OriginDiagnostics` first
+    (behavior unchanged), since `Binding.Diagnostics.cs` is over the token limit. P11 (D5's follow-up, removal R6-gen): the old
+    Emission's element Borrow compares its Origin with the receiver's modulo ClosureValue operands (`BodyLowering.SameOriginModuloReceiver`).
   - Verdicts (SPEC 15.6.3, 15.6.5, 7.7.2): g6a (the MIR's use-after-free), g6b, g6d, g6e, r1e, r1f, t4g, n2b
     `UnprovenOriginRelation_Kd` on both pipelines (the default's conservative Loan records of g6a-g6e become Binding's); g65a, r1g,
     15.8.2's `invalid` Unproven (Refuted before); r1a-r1c add the body's record beside R1's call U; t4e, t4f, f7j1, rc4, s773, D-13's
