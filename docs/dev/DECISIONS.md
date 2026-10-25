@@ -2483,7 +2483,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     template by Binding's default index, static initializer), recorded at formation, never from `Use.Parent` (the parentless
     `$for.iterator` Use); resolution at use instead of alias rows, meets keyed by their canonical operand set; T1 by construction.
   - `OriginAtom.Of`: SPEC's three kinds by a first-match precedence table (the package's §3): the body's contract → Fixed; meets
-    by operands; the body's roots, default templates' prepared inputs included → Finite; environment bindings Finite until 2c-6;
+    by operands; the body's roots, default templates' prepared inputs included → Finite; environment bindings Finite until 2c-6
+    (superseded by R4-M126 P5 and R4-M133: resolved to the call receiver Origin under a borrowed receiver, Finite under `owner/Self`);
     binders in an enclosing body → Fixed; static Borrows formed in the body by mutability; `Inference`, `Anchor` → Inferred; an
     `Unbound` end or another declaration's universal atom (PLAN G195) → a located `Unsupported_Kd`. Slots are decoded only by the
     view (an `ArchitectureRulesTest` row, G163). One owner of fixed–fixed entailment: the premise catalog and
@@ -4356,9 +4357,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
     position search in the body that formed it, passed explicitly, and recorded by the one recording a binding-time fit uses
     (`Binding.OriginFits.RecordOriginChains`: at `RelationAt`, a local annotation's fit at its initializer as DIAGNOSTICS and the old
     reporter locate it; a failure no chain refutes in a failed Origin environment a dependent of it; the other chains through
-    `RecordMoreRelation`; the destination the obligation's Type, `BoundType?`; a body chain a twin), any other body chain stays a row;
-    the obligations stay (reviews B1, F3, O5: the first version re-implemented the recording, recorded at the obligation's use and
-    entered the body with `EnterBody`, against BU-28). The component it adds (planning session's choice (b), 2026-10-25):
+    `RecordMoreRelation`; the destination the obligation's Type, `BoundType?`; a body chain a twin), any other body chain stays a row
+    (reviews B1, F3, O5: the first version re-implemented the recording, recorded at the obligation's use and entered the body with
+    `EnterBody`, against BU-28). A relation Binding so judges is no row (2a0-D D1; the package's "g65a: Binding's one record on mir"):
+    its obligation leaves, as one judged at binding time is never formed, unless a recorded chain is a body chain, the twin's row
+    (R4-M108, R4-M111). The old reporter is unaffected: a recorded failure leaves Binding incomplete, and a proven relation judges
+    nothing (the 2c-3B landing prep's review B1: the merged MirOrigins judged the kept row again, two records of one failure). The component it adds (planning session's choice (b), 2026-10-25):
     `OriginFitSearch`, OriginFits' position search as one non-allocating value (its contract in the file) whose constant context is the
     use, the body, the mode `OriginFitMode` (Proof, Judged, Verified; the two former mode bools) and the chain list, and whose members
     take only the varying inputs, every member within the parameter limit; it was a behavior-preserving commit first, and the search
