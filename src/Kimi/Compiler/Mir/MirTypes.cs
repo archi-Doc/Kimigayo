@@ -21,12 +21,14 @@ internal static partial class MirTypes
     /// <param name="type">The Type.</param>
     /// <returns>Whether the value is a reference.</returns>
     internal static bool IsReference(BoundType? type)
-        => (type is { Kind: BoundTypeKind.Semantics } && IsBorrow(type.Semantics)) || (TyCtxt.Layer(type, out _, out var binder) is var _ && binder is not null);
+        => (type is { Kind: BoundTypeKind.Semantics } && IsBorrow(type.Semantics)) ||
+            (TyCtxt.Layer(type, out _, out var binder) is var _ && binder is not null);
 
     /// <summary>Gets whether a Semantics is a borrow's: ref, uniq, objref or objuniq (SPEC 15.6.5's borrow cases).</summary>
     /// <param name="semantics">The Semantics.</param>
     /// <returns>Whether it is a borrow's.</returns>
-    internal static bool IsBorrow(SemanticsKind semantics) => semantics is SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq;
+    internal static bool IsBorrow(SemanticsKind semantics)
+        => semantics is SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq;
 
     /// <summary>Gets the borrow a view handle is (SPEC 4.8.1, 4.8.2): a Slice's elements are its handle's referent, shared, and a UniqSlice's,
     /// exclusive, so a read through the handle reaches its backing as a read through a reference does; null for another Type.</summary>

@@ -55,7 +55,8 @@ internal sealed class MirReport
             }
         }
 
-        ref var slot = ref CollectionsMarshal.GetValueRefOrAddDefault(this.index, (problem.Code, problem.Subject, problem.Body, problem.Reason), out var exists);
+        ref var slot = ref CollectionsMarshal.GetValueRefOrAddDefault(
+            this.index, (problem.Code, problem.Subject, problem.Body, problem.Reason), out var exists);
         if (exists)
         {
             ref var first = ref CollectionsMarshal.AsSpan(this.problems)[slot];

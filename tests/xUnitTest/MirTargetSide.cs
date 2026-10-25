@@ -70,11 +70,13 @@ internal static class MirTargetSide
 
     // The expected records as code, offset and length.
     private static string[] Rows(string source, (DiagnosticCode Code, SyntaxLocation At)[] mir)
-        => [.. mir.Select(x => (x.Code, Span: x.At.Resolve(source))).Select(static x => $"{x.Code} {x.Span.Start}+{x.Span.Length}").Order(StringComparer.Ordinal)];
+        => [.. mir.Select(x => (x.Code, Span: x.At.Resolve(source))).Select(static x => $"{x.Code} {x.Span.Start}+{x.Span.Length}")
+            .Order(StringComparer.Ordinal)];
 
     // A side's Error records as code, offset and length; a record outside the program's document as code and location.
     private static string[] Observed(IEnumerable<MirDifferenceLedger.Entry> side)
-        => [.. Errors(side).Select(static x => InProgram(x) ? $"{x.Code} {x.Node.Span.Start}+{x.Node.Span.Length}" : $"{x.Code} {LegacyRecords.Location(x.Node)}")
+        => [.. Errors(side).Select(static x => InProgram(x)
+                ? $"{x.Code} {x.Node.Span.Start}+{x.Node.Span.Length}" : $"{x.Code} {LegacyRecords.Location(x.Node)}")
             .Order(StringComparer.Ordinal)];
 
     // The 1-based lines of a side's Error records in the program's document.
