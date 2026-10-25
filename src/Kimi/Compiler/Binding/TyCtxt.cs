@@ -1,7 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns constructed Type interning and pure Type operations, and the lifetime of TyCtxt's views (ResetViews); substitutions are
-// TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's.
+// TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's, the DictionaryStorage symbol view the instance collector reads (F2c, until
+// R8) TyCtxt.DictionaryStorage.cs's.
 // Input: immutable Type shapes. Output: canonical Types and derived views.
 // Interned identity is equality; values live with the compilation and survive warm rebinds. No instance or Item states a raw Origin on
 // a pair slot's argument: Intern binds each by PairBinding (SPEC 8.1.1; DECISIONS BU-34).

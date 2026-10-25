@@ -13,17 +13,18 @@ namespace Kimi.Compiler.Backend;
 // offset (Pop: the Some Case's element at the Option record's Field 1) or the remainder record's Fields in declaration order (storage,
 // position, count, and OwnedRemainder's capacity) with Field 0's size; an Array's glue calls its glue item's Drop helper (ArrayDrop). Each
 // helper is made once per Write, its text then written to the helper buffer the frame writes before the definitions (PD8); Row requests the
-// Array runtime its row declares (LegacyRow.Needs, R5-M46: Needs.Arrays), for a helper and a capacity routine alike; a kept helper is reused
-// while its descriptor matches, so a warm module allocates nothing. An element or a record without its layout is a broken contract at the
-// item's site (the collector laid them out).
+// Array runtime its row declares (LegacyRow.Needs, R5-M46: Needs.Arrays), for a helper, a capacity routine and placeEntry's Place helper
+// alike, whose routine is ModuleCodegen.Dictionaries' (DECISIONS R5-M124); a kept helper is reused while its descriptor matches, so a warm
+// module allocates nothing. An element or a record without its layout is a broken contract at the item's site (the collector laid them out).
 internal sealed partial class ModuleCodegen
 {
     private readonly StringWriter helperText = new(CultureInfo.InvariantCulture); // The helpers of the latest Write, before the definitions.
     private ArrayHelper?[] arrays = []; // By LegacyRow or Array DropGlue item, its helper, kept across Writes.
     private int[] arranged = []; // By item, the Write whose helper `arrays` holds (0: none).
 
-    /// <summary>Gets the routine of a LegacyRow item (DECISIONS R5-M121), which its calls and its function's Item's adapter call: its helper,
-    /// or the capacity routine its row names, and the number the routine is given, its element's stride or a fixed array's length.</summary>
+    /// <summary>Gets the routine of a LegacyRow item (DECISIONS R5-M121, R5-M124), which its calls and its function's Item's adapter call: its
+    /// Array helper, or the capacity routine its row names, and the number the routine is given, its element's stride or a fixed array's
+    /// length; or placeEntry's Place helper (ModuleCodegen.Dictionaries), which is given none.</summary>
     /// <param name="item">The LegacyRow item.</param>
     /// <param name="given">The routine's given number.</param>
     /// <returns>The routine; null after a record at the item's site.</returns>
@@ -32,20 +33,25 @@ internal sealed partial class ModuleCodegen
         given = 0;
         var entry = this.set.Items[item];
         var collection = entry.RepresentativeType!;
-        if (LegacyRuntimeHelpers.Row(entry.Key.Body.Def.Decl!.CompilerFunction) is not { Writer: LegacyWriter.Instance } row)
+        if (LegacyRuntimeHelpers.Row(entry.Key.Body.Def.Decl!.CompilerFunction) is not { InInstance: true } row)
         {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, entry.Site); // A LegacyRow item's function has an Instance row (the collector's).
+            this.Report(DiagnosticCode.InternalInvariant_Kd, entry.Site); // A LegacyRow item's function runs in its instance (the collector's).
             return null;
-        }
-
-        if (this.Element(item, collection) is not { } element)
-        {
-            return null; // Recorded.
         }
 
         if ((row.Needs & HelperNeeds.ArrayRuntime) != 0)
         {
             this.Request(Needs.Arrays | Needs.Memory);
+        }
+
+        if (row.Writer == LegacyWriter.Place)
+        {
+            return this.Dictionary(item, DictionaryHelperKind.Place)?.Abi;
+        }
+
+        if (this.Element(item, collection) is not { } element)
+        {
+            return null; // Recorded.
         }
 
         given = row.Helper == ArrayHelperKind.OwnFixedStorage ? collection.Length : element.Layout.Stride;

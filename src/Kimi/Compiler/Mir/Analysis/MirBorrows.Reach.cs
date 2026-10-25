@@ -17,8 +17,8 @@ internal sealed partial class MirBorrows
     private MirWrites[] writingKind = []; // By slot: its local's MirWrites, at that walk.
     private int walks; // The W walks made.
 
-    // content(S) (A3 5): the states of the holders its direct Loans name, and E's where it carries Φ_E or no direct Loan; memoized at the
-    // location.
+    // content(S) (A3 5): the states of the holders its direct Loans name, and E's where it carries Φ_E or no direct Loan, each but a whole
+    // holder's marked by rule W (ReadThrough, MirBorrows.Causes); memoized at the location.
     private int Content(ulong[] state, int set)
     {
         if (set < this.contents.Length && this.contents[set] != 0)
@@ -34,16 +34,20 @@ internal sealed partial class MirBorrows
             if (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true } loan)
             {
                 direct = true;
-                content = loan.Named >= 0 ? this.sets.Union(content, (int)state[loan.Named]) : content;
+                content = loan.Named >= 0 ? this.sets.Union(content, this.ReadThrough(loan, (int)state[loan.Named])) : content;
             }
         }
 
-        content = escaped || !direct ? this.sets.Union(content, (int)state[Escaped]) : content;
+        content = escaped || !direct ? this.sets.Union(content, this.Indirect((int)state[Escaped])) : content;
         MirDataflow.Grow(ref this.contents, set + 1);
         this.contents[set] = content + 1;
         this.contentsRead.Add(set);
         return content;
     }
+
+    // Rule W's read-through clause (SPEC 15.6.5): a read through a reference to a holder's whole value is a Copy of it, through one to a part
+    // of it not.
+    private int ReadThrough(in Loan loan, int held) => loan.Count == 0 ? held : this.Indirect(held);
 
     // refs(S) (A3 5) into the targets: the holders its direct Loans name, and E where it carries Φ_E or no direct Loan.
     private void Refs(int set)

@@ -16,17 +16,6 @@ internal sealed partial class BodyLowering
 
     internal Func<DictionaryCallee, BoundType, BoundType, int>? RequireDictionaryOperation { get; set; }
 
-    private static long AlignDictionary(long size, int alignment) => (size + alignment - 1) & -(long)alignment;
-
-    // Physical entry metadata is independent of the operations that acquire or destroy its stored values.
-    private static DictionaryEntryLayout GetDictionaryEntryLayout(in ArrayElement key, in ArrayElement value)
-    {
-        var alignment = Math.Max(8, Math.Max(key.Value.Layout.Alignment, value.Value.Layout.Alignment));
-        var keyOffset = AlignDictionary(16, key.Value.Layout.Alignment);
-        var valueOffset = AlignDictionary(keyOffset + key.Value.Layout.Size, value.Value.Layout.Alignment);
-        return new(keyOffset, valueOffset, AlignDictionary(valueOffset + value.Value.Layout.Size, alignment));
-    }
-
     // The kind's row declares the generic DictionaryStorage function its helpers call over the entry Types and names and shapes
     // the helper; the name ends with this pool's helper count.
     private DictionaryHelper GetDictionaryHelper(DictionaryHelperKind kind, in ArrayElement key, in ArrayElement value)
@@ -43,7 +32,8 @@ internal sealed partial class BodyLowering
         if (!this.dictionaryHelperCache.TryGetValue(cacheKey, out helper))
         {
             var suffix = this.dictionaryHelperCache.Count.ToString(CultureInfo.InvariantCulture);
-            helper = DictionaryHelper.Create(kind, key.ToStored(), value.ToStored(), GetDictionaryEntryLayout(key, value), related, suffix);
+            var entry = DictionaryEntryLayout.Of(key.Value.Layout, value.Value.Layout); // Independent of what acquires or destroys the values.
+            helper = DictionaryHelper.Create(kind, key.ToStored(), value.ToStored(), entry, related, suffix);
             this.dictionaryHelperCache.Add(cacheKey, helper);
         }
 

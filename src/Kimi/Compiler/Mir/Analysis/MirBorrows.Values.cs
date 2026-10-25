@@ -38,7 +38,7 @@ internal sealed partial class MirBorrows
                     value = this.sets.Union(value, this.Operand(state, o));
                 }
 
-                return (value, 0);
+                return (this.Indirect(value), 0); // Rule W: an aggregate holding a borrow is not the borrow.
             case MirRvalueKind.Opaque:
                 return (this.escapedSet, 0);
             default:
@@ -86,9 +86,10 @@ internal sealed partial class MirBorrows
             var pointer = this.PointerOf(root, layer, parents, i);
             (parents, layer) = this.walk[i].Class switch
             {
-                MirStepClass.Shared or MirStepClass.Raw => (pointer, this.Content(state, pointer)), // A raw one's a fresh anchor (5.2.2).
+                MirStepClass.Shared => (pointer, this.Content(state, pointer)),
+                MirStepClass.Raw => (pointer, this.Indirect(this.Content(state, pointer))), // A fresh anchor (5.2.2); no reference (rule W).
                 MirStepClass.Uniq => (this.sets.Union(parents, pointer), this.Content(state, pointer)),
-                _ => (parents, layer),
+                _ => (parents, this.Indirect(layer)), // Rule W: a part of a holder is no Copy of a borrow it holds.
             };
         }
 
@@ -106,6 +107,6 @@ internal sealed partial class MirBorrows
     private int Layered(int root, int projection, int layer, int parents)
     {
         var entry = this.OwnStepAt(root, projection);
-        return entry < 0 ? layer : this.sets.Union(layer, this.Formed(this.sets.Add(parents, this.loanBase + entry)));
+        return entry < 0 ? layer : this.sets.Union(layer, this.Indirect(this.Formed(this.sets.Add(parents, this.loanBase + entry))));
     }
 }

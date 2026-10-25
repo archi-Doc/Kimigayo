@@ -66,6 +66,10 @@ public sealed class InstanceCollectorTest
     private const string CLayoutP = "#Layout(\"C\")\nstruct P<T>\n    public var n: i32\n    public var value: T\n" +
         "    public init(n: i32, value: T)\n        self.n = n\n        self.value = value@move\n";
 
+    // A user Dictionary key (a built-in key's equality is C8f's shim).
+    private const string DictionaryKey = "struct Key\n    Self is Equatable\n    public let code: i64\n    public init(code: i64) => self.code = code\n" +
+        "    public func equals(self: ref/Self, other: ref/Self) -> bool => self.code == other.code\n";
+
     // A Contract property a standard witness implements by a shared borrow and a set of a Field that needs a drop, and a generic function
     // using both.
     private const string HeldSource = "contract Held\n    property items: ref/Array<i32>\n        get() -> ref/Array<i32>\n" +
@@ -211,6 +215,48 @@ public sealed class InstanceCollectorTest
         { InSpecialization, "inner", 0, "inner(2)" },
         { InClosed, "pick", 1, null },
     };
+
+    // DECISIONS BU-38 (PLAN G242; designs A and B, the review's combination C): programs whose instance (a local, a Type argument, a
+    // requirement Item or a LegacyRow's collection), composed substitution (Self or a Type argument) or bodyless callee's parameter rests on
+    // storage Binding rejected, with Binding's records and the collector's; and their genuine-limit twins, which keep the storage-nesting gap,
+    // beside a failed part in either order too, and C8d's LegacyRow over a Type nested past the bound (before: InternalInvariant_Kd).
+    public static TheoryData<string, string, string, string> RejectedCases
+    {
+        get
+        {
+            const string Inspect = "func inspect<T>(value: ref/T) => ()\n";
+            const string Bad = "struct Bad\n    public var m: Missing\n";
+            const string Box = "struct B<T>\n    public var v: T\n";
+            const string Zero = "contract Zero\n    func zero() -> i32\nfunc call<T>() -> i32\n    T is Zero\n    return T.zero()\nstruct Bad\n    Self is Zero\n    public var m: Missing\n";
+            const string Format = "    Self is Utf8Format\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write(1)\n";
+            const string Named = "contract Named\n    func name(self: ref/Self) -> i32\nfunc call<T>(x: ref/T) -> i32\n    T is Named\n    return x.name()\nstruct Bad\n    Self is Named\n";
+            var b65 = Nest("B", 65, "i32");
+            return new()
+            {
+                { "enum", Inspect + "enum E {s}\n    A(Missing)\n    B(ref/i32 during s)\nfunc g()\n    var v = 1\n    let e: E = .B(v@ref)\n    v = 2\n    inspect(e@ref)\n", "UnresolvedBinding_Kd", string.Empty },
+                { "witness", Named + "    public var m: Missing\n    public func name(self: ref/Self) -> i32 => 1\nfunc g(b: ref/Bad) -> i32 => call(b)\n", "UnresolvedBinding_Kd", string.Empty },
+                { "local", "struct Bad<T>\n    public var v: T\n    public var m: Missing\nfunc make<T>() -> i32\n    let v: Option<T> = .None\n    return 0\nfunc g() -> i32 => make<Bad<i32>>()\n", "UnresolvedBinding_Kd", string.Empty },
+                { "handle", Inspect + Bad + "struct Sx\n    public var x: rc/Bad\nfunc h(s: ref/Sx) => inspect(s)\n", "UnresolvedBinding_Kd", string.Empty },
+                { "static", Zero + "    public func zero() -> i32 => 1\nfunc g() -> i32 => call<Bad>()\n", "UnresolvedBinding_Kd", string.Empty },
+                { "item", Zero.Replace("    return T.zero()", "    let f = T.zero\n    return f()", StringComparison.Ordinal) + "    public func zero() -> i32 => 1\nfunc g() -> i32 => call<Bad>()\n", "UnresolvedBinding_Kd", string.Empty },
+                { "compose", "struct Bad<T>\n    public var v: T\n    public var m: Missing\nfunc make<T>() -> i32 => 0\nfunc outer<T>() -> i32 => make<Bad<T>>()\nfunc g() -> i32 => outer<i32>()\n", "UnresolvedBinding_Kd", string.Empty },
+                { "outer", Bad + "func inner<T>() => ()\nfunc outer<T>() => inner<T>()\nfunc g() => outer<Bad>()\n", "UnresolvedBinding_Kd", string.Empty },
+                { "toString", "struct Bad\n" + Format + "    public var m: Missing\nfunc g(b: ref/Bad) -> string => Text.toString(b)\n", "UnresolvedBinding_Kd", string.Empty },
+                { "write", "struct Bad\n" + Format + "    public var m: Missing\nfunc g(w: uniq/Utf8Writer, b: ref/Bad) -> Result<(), BufferFull> => w.write(b)\n", "UnresolvedBinding_Kd", string.Empty },
+                { "replace", Bad + "func g(slot: uniq/Option<Bad>) => Kimi.Intrinsics.replace(slot, with: .None)\n", "UnresolvedBinding_Kd", string.Empty },
+                { "replaceGeneric", Bad + "func put<T>(slot: uniq/Option<T>) => Kimi.Intrinsics.replace(slot, with: .None)\nfunc g(slot: uniq/Option<Bad>) => put(slot)\n", "UnresolvedBinding_Kd", string.Empty },
+                { "row", Bad + "struct Sx\n    public var x: Array<Bad>\nfunc g(s: uniq/Sx) => s.x.reserve(1)\n", "UnresolvedBinding_Kd", string.Empty },
+                { "limitBesideError", Inspect + Box + $"func h(b: ref/{b65}) => inspect(b)\nfunc other() -> i32 => missing\n", "UnresolvedBinding_Kd", "Unsupported_Kd inspect(b)" },
+                { "limitBesideField", Inspect + Box + $"struct Bad\n    public var m: Missing\n    public var big: {b65}\nfunc h(b: ref/Bad) => inspect(b)\n", "UnresolvedBinding_Kd", "Unsupported_Kd inspect(b)" },
+                { "limitAfterLocal", Box + $"struct Bad<T>\n    public var v: T\n    public var m: Missing\nfunc two<T>(a: ref/Bad<T>, b: ref/{Nest("B", 65, "T")}) => ()\nfunc g(x: ref/Bad<i32>, y: ref/{b65}) => two(x, y)\n", "UnresolvedBinding_Kd", "Unsupported_Kd two(x, y)" },
+                { "limitBeforeLocal", Box + $"struct Bad<T>\n    public var v: T\n    public var m: Missing\nfunc two<T>(b: ref/{Nest("B", 65, "T")}, a: ref/Bad<T>) => ()\nfunc g(x: ref/Bad<i32>, y: ref/{b65}) => two(y, x)\n", "UnresolvedBinding_Kd", "Unsupported_Kd two(y, x)" },
+                { "staticLimit", Box + Zero + $"    public var b: {Nest("B", 64, "i32")}\n    public func zero() -> i32 => 1\nfunc g() -> i32 => call<Bad>()\n", "UnresolvedBinding_Kd", "Unsupported_Kd T.zero()" },
+                { "outerLimit", Box + $"func inner<T>() => ()\nfunc outer<T>() => inner<T>()\nfunc g() => outer<{b65}>()\n", string.Empty, "Unsupported_Kd inner<T>()" },
+                { "toStringLimit", "struct B<T>\n" + Format + $"    public var v: T\nfunc g(b: ref/{b65}) -> string => Text.toString(b)\n", string.Empty, "Unsupported_Kd Text.toString(b)" },
+                { "rowLimit", Box + $"func g(a: uniq/Array<{b65}>) => a.reserve(1)\n", string.Empty, "Unsupported_Kd a.reserve(1)" },
+            };
+        }
+    }
 
     // K 4.4: every body of the root module whose definition does not instantiate, the top-level statements, the closure of a closed
     // function, both accessors of a closed struct and the default templates among them; generic bodies and library bodies only as the
@@ -475,6 +521,41 @@ public sealed class InstanceCollectorTest
         Assert.Equal(records, string.Join(" | ", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}")));
     }
 
+    // DECISIONS BU-38 (R5's guard): the collector's one reading of a storage verdict at a site (Made) and Layout's Rejected row read Binding's
+    // completeness through TyCtxt.BindingComplete. A part Binding rejected exists only in an incomplete compilation, where Rejected is a
+    // dependent without a record; in a complete one, which no source reaches, it is InternalInvariant_Kd at the site. Prepared makes the
+    // instance and Limit is the storage-nesting gap in both.
+    [Theory]
+    [InlineData(false, "Unsupported_Kd")]
+    [InlineData(true, "InternalInvariant_Kd Unsupported_Kd")]
+    public void ARejectedVerdictIsABrokenContractInACompleteCompilation(bool complete, string records)
+    {
+        var c = MirBuildTest.Compile((complete ? string.Empty : "struct Bad\n    public var m: Missing\n") + "public func main() -> () => ()\n");
+        Assert.Equal(complete, c.Binding.Result.IsComplete);
+        var collector = new InstanceCollector(c.Types, c.Layout);
+        var site = SourceRef.Of(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "main"));
+        var verdicts = new[] { Binding.StorageOutcome.Prepared, Binding.StorageOutcome.Rejected, Binding.StorageOutcome.Limit };
+        Assert.Equal([true, false, false], verdicts.Select(x => collector.Made(x, site)));
+        Assert.Equal(records, string.Join(' ', collector.Set.Records.Select(static x => x.Code)));
+        Assert.Equal(complete ? DiagnosticCode.InternalInvariant_Kd : null, collector.RecordOf(Layout.Outcome.Rejected));
+    }
+
+    // SPEC 23.1.2, 23.1.1 (DECISIONS BU-38): a part Binding rejected is a dependent, never a limit. A program whose instance, composed
+    // substitution or bodyless callee's parameter rests on storage Binding rejected keeps exactly its Binding record and gains no generation
+    // record (before: the storage-nesting gap at the requesting call, C8d's LegacyRow item InternalInvariant_Kd), while a Type nested past the
+    // bound keeps the gap at its site, beside a failed part in either order too: the limit wins.
+    [Theory]
+    [MemberData(nameof(RejectedCases))]
+    public void APartBindingRejectedIsNoGenerationRecord(string name, string source, string issues, string records)
+    {
+        var c = MirBuildTest.Compile(source + "public func main() -> () => ()\n");
+        Assert.Equal(issues, string.Join(' ', c.Binding.Issues.Select(static x => x.Code)));
+        var program = c.BuildMir();
+        Assert.True(program.Findings.Count == 0, name); // A program with findings has an empty checked set.
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal(records, string.Join(" | ", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}")));
+    }
+
     // SPEC 6.1.3, 8.13.3, DECISIONS R5-M40 (the F3 reproducers, X40): an instance of a nested function holds its enclosing instance. A call
     // one level into a generic function carries it, so each instance of the enclosing function has its own item; a call two levels in,
     // from a block, in a generic struct's method or in a specialization inside a generic struct does not, so the edge is the
@@ -697,6 +778,24 @@ public sealed class InstanceCollectorTest
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         Assert.Equal(records, string.Join("|", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
         Assert.DoesNotContain(set.Items.ToArray(), static x => x.Key.Kind == MonoKind.LegacyRow);
+    }
+
+    // K 4.8, X34 (DECISIONS R5-M124): placeEntry's LegacyRow item lays out each component of the Dictionary its handle designates, the value
+    // too: a literal's oversized or rejected value refuses the item at the literal (the records of its other uses are at the same sites);
+    // an i64 value admits it (the counterpart).
+    [Theory]
+    [InlineData(Huge, "OversizedLayout_Kd")]
+    [InlineData("P<()>", "InvalidCLayout_Kd")]
+    [InlineData("i64", null)]
+    public void ALegacyRowLaysOutADictionarysValue(string value, string? code)
+    {
+        var c = MirBuildTest.Compile(CLayoutP + DictionaryKey + $"func put(v: {value})\n    let d: Dictionary<Key, {value}> = [Key.init(1): v@move]\n");
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        var records = code is null ? Array.Empty<string>()
+            : [$"{code} func put(v: {value})", $"{code} v@move", $"{code} [Key.init(1): v@move]",
+                $"{code} let d: Dictionary<Key, {value}> = [Key.init(1): v@move]"];
+        Assert.Equal(records, set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}"));
+        Assert.Equal(code is null ? 1 : 0, set.Items.ToArray().Count(static x => x.Key.Kind == MonoKind.LegacyRow));
     }
 
     // SPEC 13.6.4, 8.15.3 (DECISIONS R5-M74): a runtime Type test and a clone acquire nothing and need no layout, so neither has a target:
@@ -1182,7 +1281,8 @@ public sealed class InstanceCollectorTest
         }
     }
 
-    // K 4.5 "DropGlue" (X4): an Array's or Dictionary's glue targets the glues of its element Types that need a drop.
+    // K 4.5 "DropGlue" (X4; DECISIONS R5-M124, the owner's R5-M125): an Array's glue targets the glues of its element Types that need a drop;
+    // a Dictionary's the clearEntries instance its Drop row declares, whose body reaches the entries' glues (their destroyDictionaryEntries).
     [Fact]
     public void ACollectionsGlueDestroysItsElements()
     {
@@ -1190,7 +1290,46 @@ public sealed class InstanceCollectorTest
             "    let table: Dictionary<string, Array<i32>> = [:]\n    return\n");
         Assert.Equal(["DropGlue string"], Targets(program, set, "DropGlue Array<string>"));
         Assert.Empty(Targets(program, set, "DropGlue Array<i32>"));
-        Assert.Equal(["DropGlue Array<i32>", "DropGlue string"], Targets(program, set, "DropGlue Dictionary<string, Array<i32>>"));
+        const string Clear = "library Fn clearEntries in group DictionaryStorage [string, Array<i32>]";
+        Assert.Equal([Clear], Targets(program, set, "DropGlue Dictionary<string, Array<i32>>"));
+        Assert.Contains(Calls(program, set, Clear), static x => x.StartsWith("library Fn destroyDictionaryEntries", StringComparison.Ordinal));
+    }
+
+    // G157 (6), SPEC 4.9.7, X4 (DECISIONS R5-M27, R5-M124, the owner's R5-M125): a Dictionary's glue targets exactly the instance of the Entries
+    // callee its Drop row declares, clearEntries over its entry Types, when an entry may need a drop (CallsEntries), else nothing; a value or a
+    // key that needs one is enough.
+    [Theory]
+    [InlineData("i32, Res", true)]
+    [InlineData("string, i32", true)]
+    [InlineData("i32, i64", false)]
+    public void ADictionarysGlueTargetsTheClearEntriesItsDropRowDeclares(string entry, bool clears)
+    {
+        var (program, set) = Collect("struct Res\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n" +
+            $"func d(values: Dictionary<{entry}>) => ()\n");
+        Assert.Empty(set.Records);
+        var glue = Targets(program, set, $"DropGlue Dictionary<{entry}>");
+        Assert.Equal(clears ? new[] { $"library Fn clearEntries in group DictionaryStorage [{entry}]" } : Array.Empty<string>(), glue);
+        var row = LegacyRuntimeHelpers.DictionaryRow(DictionaryHelperKind.Drop);
+        Assert.Equal((DictionaryCallee.ClearEntries, HelperNeeds.ElementGlue), (row.Entries, row.Needs));
+    }
+
+    // K 4.3, 4.5 rows 2 and 11, X4, F2c (DECISIONS R5-M124): placeEntry's call targets the LegacyRow item of its function's instance,
+    // represented by the Dictionary its raw handle designates, whose target is the body its row declares, append; a Dictionary from none
+    // targets the body of the function the Dictionary runtime declares for construction, initialize; neither instantiates, so each has one
+    // item.
+    [Fact]
+    public void PlaceEntryAndADictionaryFromNoneTargetTheirDeclaredBodies()
+    {
+        var (program, set) = Collect(DictionaryKey + "func put(d: uniq/Dictionary<Key, i64>)\n    _ = d.tryInsert(Key.init(1), 2)\n" +
+            "func text(d: uniq/Dictionary<Key, string>)\n    _ = d.tryInsert(Key.init(1), \"a\")\n" +
+            "func make() -> Dictionary<Key, i64> => [:]\n");
+        Assert.Empty(set.Records);
+        const string Append = "library Fn append in group DictionaryStorage";
+        Assert.Equal(new[] { Append }, Assert.Single(RowTargets(program, set, "LegacyRow Dictionary<Key, i64> StoragePlaceDictionaryEntry")));
+        Assert.Equal(new[] { Append }, Assert.Single(RowTargets(program, set, "LegacyRow Dictionary<Key, string> StoragePlaceDictionaryEntry")));
+        Assert.Equal(["library Fn initialize in group DictionaryStorage"], Calls(program, set, "Fn make"));
+        Assert.Single(set.Items.ToArray(), x => Label(program, x) == Append);
+        Assert.Equal(DictionaryCallee.Append, LegacyRuntimeHelpers.Row(CompilerFunctionKind.StoragePlaceDictionaryEntry)!.Value.Callee);
     }
 
     // K 4.8, S2-S4 X34: a collection's own layout is its handle words, but its glue lays out its element Types, also those that need no drop,
@@ -1702,6 +1841,42 @@ public sealed class InstanceCollectorTest
         }));
         Assert.Equal(2, tables);
         Assert.Equal(tables, set.Items.ToArray().Count(static x => x.Key.Kind is MonoKind.ObjectDescriptor or MonoKind.VTable));
+    }
+
+    // A warm rebind collects a program's Dictionary paths again (DECISIONS R5-M124): placeEntry's LegacyRow items and the append their rows
+    // declare, a Dictionary from none's initialize and the clearEntries a glue's Drop row declares, with no allocation.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmRunOfDictionariesAllocatesNothing()
+    {
+        var c = MirBuildTest.Compile(DictionaryKey + "struct Res\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n" +
+            "func put(d: uniq/Dictionary<Key, Res>)\n    _ = d.tryInsert(Key.init(1), Res.init(2))\nfunc make() -> Dictionary<Key, Res> => [:]\n" +
+            "func keep(d: Dictionary<Key, Res>) => ()\nlet table: Dictionary<Key, i64> = [Key.init(1): 2]\n");
+        var collector = new InstanceCollector(c.Types, c.Layout);
+        var program = c.BuildMir();
+        var set = collector.Run(program, 1);
+        var reached = Reached();
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Binding.Bind(BindingMode.Final);
+            collector.Run(c.BuildMir(), 1);
+        }));
+        Assert.Equal(
+            ["LegacyRow Dictionary<Key, Res> StoragePlaceDictionaryEntry", "LegacyRow Dictionary<Key, i64> StoragePlaceDictionaryEntry",
+                "library Fn append in group DictionaryStorage", "library Fn clearEntries in group DictionaryStorage [Key, Res]",
+                "library Fn initialize in group DictionaryStorage"],
+            reached);
+        c.Binding.Bind(BindingMode.Final);
+        program = c.BuildMir();
+        set = collector.Run(program, 1);
+        Assert.Empty(set.Records);
+        Assert.Equal(reached, Reached());
+
+        // The items of the Dictionary paths, each once (G157 (30)'s duplicates are of the same function reached two ways, none here).
+        string[] Reached() => set.Items.ToArray().Select(x => Label(program, x))
+            .Where(static x => x.StartsWith("LegacyRow ", StringComparison.Ordinal) || x.StartsWith("library Fn append ", StringComparison.Ordinal) ||
+                x.StartsWith("library Fn initialize ", StringComparison.Ordinal) || x.StartsWith("library Fn clearEntries ", StringComparison.Ordinal))
+            .Order(StringComparer.Ordinal).ToArray();
     }
 
     // S2-S4 X15 with DECISIONS R5-M74: one row per intrinsic, and only ErasedWriter, StaticEnsure, the creations and DestroyValues name a

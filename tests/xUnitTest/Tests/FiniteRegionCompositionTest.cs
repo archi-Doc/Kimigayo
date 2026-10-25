@@ -24,17 +24,22 @@ public class FiniteRegionCompositionTest
     public void FiniteAndInferredRegionsShareValueFlow(string name, string source)
         => ScalarEmissionTest.EmitFixture("FiniteRegionComposition" + name, source, string.Empty);
 
+    // The `use` row expects the old rule: `f()`'s result `during x` keeps no Loan live (SPEC 15.6) and the call retains no argument
+    // (15.6.4, 15.6.7), so `x@follow = 9` is valid, as the MIR finds; the default pipeline keeps the old rule until R6-check (PLAN G147
+    // (7), class (a), X-1's; DECISIONS R4-M136).
     [Theory]
-    [InlineData(Values + "let view: ref/i32 during root = b@ref\nb = 3\n" + Read, "b = 3")]
-    [InlineData(Values + Identity + "let view = f(b@ref)\nb = 3\n" + Read, "b = 3")]
-    [InlineData("var n = 7\nlet f = func (pair: (ref/i32, i32)) => pair.0\nlet view = f((n@ref, 1))\nn = 8\nrequire view@follow == 7 else => $abort(\"closure\")", "n = 8")]
-    [InlineData(Store + "n = 3\n" + ReadStored, "n = 3")]
+    [Trait("OldRule", "ledger:a5815e667296:4")]
+    [InlineData(Values + "let view: ref/i32 during root = b@ref\nb = 3\n" + Read, "b = 3", "b = 3")]
+    [InlineData(Values + Identity + "let view = f(b@ref)\nb = 3\n" + Read, "b = 3", "b = 3")]
+    [InlineData("var n = 7\nlet f = func (pair: (ref/i32, i32)) => pair.0\nlet view = f((n@ref, 1))\nn = 8\nrequire view@follow == 7 else => $abort(\"closure\")", "n = 8", "n = 8")]
+    [InlineData(Store + "n = 3\n" + ReadStored, "n = 3", "n = 3")]
     [InlineData("func use(x: uniq/i32, f: ref/(() -> ref/i32 during x)) -> i32\n    var old = x@follow@ref\n    let view = f()\n    x@follow = 9\n    return view@follow\npublic func main() => ()", "x")]
-    public void EveryTransferredBorrowStillProtectsItsSource(string source, string at)
+    public void EveryTransferredBorrowStillProtectsItsSource(string source, string at, string? mir = null)
     {
-        var errors = DiagnosticCorpus.Check(source).Diagnostics;
-        Assert.Contains(errors, x => x.Code == nameof(DiagnosticCode.ComparisonLoanConflict_Kd) && source.Substring(x.Span!.Value.Start, x.Span.Value.Length) == at);
-        Assert.DoesNotContain(errors, x => x.Category == DiagnosticCategory.Unsupported);
+        var c = MinimalEmissionTest.Analyze(source, "Program.kimi");
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd && c.SyntaxOf(x.Subject).ToString() == at);
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        MirTargetSide.Check(c, mir is null ? [] : [(DiagnosticCode.ComparisonLoanConflict_Kd, new(mir))]);
     }
 
     [Theory]

@@ -4,9 +4,10 @@
 // R5-M67, R5-M70, R5-M74): every body instance, type-driven item and shim a root requires through runtime or check-only edges, its
 // instance-stage records, and the one resolution of each site's target that code generation reads.
 // Input: a built, validated MirProgram; the number of root modules (a range of Source.Module, not a mode); TyCtxt (Instantiates, Erase,
-// Compose, Apply, Implementation, Witness, Comparison, OwnRequirement, Published, Signature, SubstOfClosure, SubstOfItem, Synthesized,
-// Applies); MirCases (Views); MirTypes.MayNeedDrop; DropGlue.Parts; AdtDef.FindField; VTableDef; MirProgram.StaticInit; the Target and
-// Layout columns of the intrinsic rows; the capability table; the compilation's Layout, whose outcomes the collector alone maps (R5-M37).
+// Compose, Instance, BindingComplete, Implementation, Witness, Comparison, OwnRequirement, Published, Signature, SubstOfClosure,
+// SubstOfItem, Synthesized, Applies); MirCases (Views); MirTypes.MayNeedDrop; DropGlue.Parts; AdtDef.FindField; VTableDef;
+// MirProgram.StaticInit; the Target and Layout columns of the intrinsic rows; the capability table; the compilation's Layout, whose
+// outcomes the collector alone maps (R5-M37).
 // Output: the CheckedSet of the program version: the roots, in MirProgram.Bodies order, then the items a FIFO worklist admits, each with one
 // target per resolved site of its body, in location order, with whether a runtime path reaches the site; and its records, which
 // Compilation.MirRecords publishes under MIR code generation (K4b); for code generation (R5 C0b1) also an item's Types (TypeOf) and the
@@ -19,10 +20,14 @@
 // InstanceCollector.Edges.cs's: replaying a body item's template resolves each site's row under the item's representative, a callee's body
 // (InstanceCollector.Callees.cs), and a Requirement call's, a requirement Item's, a bodyless callee's published row's and an erased writer's
 // by the witness there (InstanceCollector.Witnesses.cs: a body, a Builtin or a property-witness shim keyed by its compiler function or Field
-// and the erased Self, or a gap); a bodyless callee whose legacy row's writer is Instance targets its function instance's LegacyRow
-// item (AdmitRow: the function and the erased Subst, no body; DECISIONS R5-M121); a type-driven item's targets follow from its
-// representative Type by its kind's row (Expand: an adapter's Item; InstanceCollector.Glue.cs: a DropGlue's direct parts, DropGlue.Parts,
-// and a LegacyRow's declared needs, an ElementGlue need its Element parts' glue; InstanceCollector.Witnesses.cs: a comparison shim's leaf
+// and the erased Self, or a gap); a bodyless callee whose legacy row writes its call in its instance (the Array operations and storage
+// kinds, placeEntry) targets its function instance's LegacyRow item (AdmitRow: the function and the erased Subst, no body, represented by
+// the storage its handle parameter designates; DECISIONS R5-M121, R5-M124); a Dictionary from none targets the body of the
+// DictionaryStorage function the Dictionary runtime declares for construction, initialize (Declared, through TyCtxt's F2c view); a
+// type-driven item's targets follow from its representative Type by its kind's row (Expand: an adapter's Item; InstanceCollector.Glue.cs:
+// a DropGlue's direct parts, DropGlue.Parts, a Dictionary's the clearEntries instance its Drop row declares when an entry may need a drop,
+// and a LegacyRow's declared callee and needs, placeEntry's append body and an ElementGlue need its Element parts' glue;
+// InstanceCollector.Witnesses.cs: a comparison shim's leaf
 // witnesses, TyCtxt.Comparison, a property-witness setter's Field glue; InstanceCollector.Objects.cs: a created payload's descriptor's
 // glue and VTable, a VTable's slot bodies by VTableDef and Applies).
 // Capability (K 4.7, InstanceCollector.Capabilities.cs): the definition-stage check (A3b) of every operation of a root-module body whose
@@ -34,13 +39,21 @@
 // Function Type, DECISIONS R5-M108), each type-driven item's Type and a DropGlue's collection element Types (X34) take
 // Layout's verdict: a limit is GenerationResourceLimit_Kd once per erased Type at its first use, a C-layout instance storing a zero-sized
 // Field InvalidCLayout_Kd and a layout over 2^63 - 1 bytes OversizedLayout_Kd at each use (both at one use when both hold); Rejected
-// storage derives from a Binding error; a type-driven item needs an Ok verdict.
+// storage derives from a Binding error (Derived); a type-driven item needs an Ok verdict.
+// Storage (DECISIONS BU-36, BU-38): TyCtxt's verdict on a Type or substitution of an item's instance is read once, at its requesting site
+// (Made): Prepared makes it; Rejected rests on a part Binding rejected, a dependent dropped without a record, as Layout's Rejected; a
+// limit is the storage-nesting gap. A complete compilation has no part Binding rejected (TyCtxt.BindingComplete): there TyCtxt's or
+// Layout's Rejected is InternalInvariant_Kd at its site (Derived). Every row reads a Type of an instance at its site through In, Below or
+// Instantiable, so through Made, never through TypeOf, TyCtxt.Apply or TyCtxt.Signature under a substitution; those read no verdict and
+// serve code generation and a Type whose verdict its site already read (Rest's operand and environment, Agrees' signature under a
+// witness's substitution whose Self the call's composition made, Bodyless's intrinsic row's Type argument, a part of the Item Type its site
+// made).
 // Admission (K 4.6, X19): a new key is admitted once; its representative is the first composed substitution or Type, erased only into the
-// key (KD3). A call of a nested function whose substitution does not carry its enclosing instance (DECISIONS R5-M43), a substitution
-// TyCtxt cannot make and OCC-X's refused witness are the capability table's gaps (an access of a static of a generic container's group
-// is none: its declaration is, X33 (a), R5-M82); depth past 128, 16 ancestors of the same definition and 1,024 items of one definition
-// are GenerationResourceLimit_Kd; a representative that is open or leaves its body open, and a requirement call of a closed Self without a
-// witness, are InternalInvariant_Kd.
+// key (KD3). A call of a nested function whose substitution does not carry its enclosing instance (DECISIONS R5-M43), a substitution or
+// Type whose storage is a limit (Made) and OCC-X's refused witness are the capability table's gaps (an access of a static of a generic
+// container's group is none: its declaration is, X33 (a), R5-M82); depth past 128, 16 ancestors of the same definition and 1,024 items of
+// one definition are GenerationResourceLimit_Kd; a representative that is open or leaves its body open, and a requirement call of a closed
+// Self without a witness, are InternalInvariant_Kd.
 // A refused edge is dropped and collection continues.
 // Location (K 4.9): a record's subject is the cause's site, moved out of inlined library defaults to the outermost omitting call, else the
 // root-module site the admission chain first reached; code generation's records take the same rule.
@@ -85,6 +98,11 @@ internal sealed partial class InstanceCollector
     /// <summary>Gets the work of the latest run: the sites replayed and the items admitted, which grow linearly with the instances.</summary>
     internal int Work { get; private set; }
 
+    // SPEC 23.1.2, DIAGNOSTICS rule 8 (DECISIONS BU-38): the record of a verdict resting on a part Binding rejected, TyCtxt's or Layout's
+    // Rejected: none, a dependent of the Binding error, in an incomplete compilation; InternalInvariant_Kd in a complete one, which has no
+    // such part (R5's guard, as Binding.Retained's and R4-M118's).
+    private DiagnosticCode? Derived => this.types.BindingComplete ? DiagnosticCode.InternalInvariant_Kd : null;
+
     /// <summary>Collects the checked set of a program version unless this version already was.</summary>
     /// <param name="program">The built and validated program.</param>
     /// <param name="rootModules">The number of root modules: the bodies of modules below it are roots.</param>
@@ -126,22 +144,59 @@ internal sealed partial class InstanceCollector
     }
 
     /// <summary>Gets a Type of an item's body in the item's instance (S2-S4 X2), the one instance rule of the collector's edges and layout
-    /// obligations and of code generation (R5 C0b1): the Type itself for a closed item, else its application under the representative.</summary>
+    /// obligations and of code generation (R5 C0b1): the Type itself for a closed item, else its instance under the representative when its
+    /// storage is Prepared (Instance).</summary>
     /// <param name="item">The item.</param>
     /// <param name="type">A Type of its body.</param>
-    /// <returns>The Type in the instance, or null when TyCtxt cannot make it (the collector's storage-nesting gap).</returns>
-    internal BoundType? TypeOf(int item, BoundType type)
-        => this.Set.Items[item].Representative is { } representative ? this.types.Apply(type, representative) : type;
+    /// <returns>The Type in the instance, or null when its storage is not Prepared (a site maps the verdict, In).</returns>
+    internal BoundType? TypeOf(int item, BoundType type) => this.Instance(item, type) is ({ } closed, Binding.StorageOutcome.Prepared) ? closed : null;
 
-    // A Type of an item's body in the item's instance (TypeOf); null, with the storage-nesting gap at the site, when TyCtxt cannot make it.
-    private BoundType? In(int item, SourceRef subject, BoundType type)
+    /// <summary>Gets whether a storage verdict of TyCtxt makes the instance a site requests, the collector's one reading of it (DECISIONS
+    /// BU-36, BU-38, R5-M37): Prepared does; Rejected rests on a part Binding rejected (Derived); Limit is the storage-nesting gap (PLAN
+    /// G128) at the site.</summary>
+    /// <param name="storage">The verdict.</param>
+    /// <param name="subject">The requesting site.</param>
+    /// <returns>Whether the verdict is Prepared.</returns>
+    internal bool Made(Binding.StorageOutcome storage, SourceRef subject)
     {
-        var closed = this.TypeOf(item, type);
-        if (closed is null)
+        DiagnosticCode? record = storage switch
         {
-            this.Set.Report(Capability.Code(CapabilityGap.StorageNesting), subject);
+            Binding.StorageOutcome.Prepared => null,
+            Binding.StorageOutcome.Rejected => this.Derived,
+            Binding.StorageOutcome.Limit => Capability.Code(CapabilityGap.StorageNesting),
+            _ => throw new InvalidOperationException($"The storage verdict {storage} has no row."),
+        };
+
+        if (record is { } code)
+        {
+            this.Set.Report(code, subject);
         }
 
-        return closed;
+        return storage == Binding.StorageOutcome.Prepared;
+    }
+
+    // A Type of an item's body in the item's instance with its storage verdict (TyCtxt.Instance), the one path of TypeOf and In: the Type
+    // itself, Prepared, for a closed item.
+    private (BoundType? Type, Binding.StorageOutcome Storage) Instance(int item, BoundType type)
+        => this.Set.Items[item].Representative is { } representative ? this.types.Instance(type, representative) : (type, Binding.StorageOutcome.Prepared);
+
+    // A Type of an item's body in the item's instance (Instance), its verdict read at the site (Made); null unless Prepared.
+    private BoundType? In(int item, SourceRef subject, BoundType type)
+        => this.Instance(item, type) is var (closed, storage) && this.Made(storage, subject) ? closed : null;
+
+    // K 4.5 rows 2 and 7 (DECISIONS BU-38): the Type below a bodyless callee's parameter at a slot in its call's instance (TyCtxt.Instance of
+    // the declared Type; the declared Type without a substitution), its verdict read at the site (Made); null unless Prepared. A Prepared
+    // slot without a Type below is a broken contract (a published row past the parameters).
+    private BoundType? Below(SourceRef subject, BindingSymbol function, Subst? subst, int slot)
+    {
+        var declared = TyCtxt.Signature(function, null, slot, out _);
+        var (type, storage) = declared is null || subst is null ? (declared, Binding.StorageOutcome.Prepared) : this.types.Instance(declared, subst);
+        _ = TyCtxt.Layer(type, out var below, out _);
+        if (storage == Binding.StorageOutcome.Prepared && below is null)
+        {
+            this.Set.Report(DiagnosticCode.InternalInvariant_Kd, subject);
+        }
+
+        return this.Made(storage, subject) ? below : null;
     }
 }

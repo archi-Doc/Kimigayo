@@ -1,6 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -10,8 +12,13 @@ public class ObjectCallableOriginTest
     // The old path's verdict until R6-check: Program's `apply(identity, n@mode)` borrows the Function Item temporary `identity` for
     // `f: ref/F`, SPEC 15.4.3 (1) binds the result to `f` as well, and SPEC 3.6 ends that temporary at its statement, so the later use
     // of `direct` is invalid. A5 rejects it (ComparisonLoanConflict_Kd rows of R4's MIR difference ledger, which R4 reclassifies to
-    // class (a)); the default pipeline keeps D5's Function Item boundary (OwnershipBody.IsTemporaryOriginRoot).
+    // class (a)); the default pipeline keeps D5's Function Item boundary (OwnershipBody.IsTemporaryOriginRoot). Each mode's MIR side is
+    // A5's conflict at `identity` (DECISIONS R4-M136, with R5's agreement).
     [Theory]
+    [Trait("OldRule", "ledger:e9baa8758af5:6")]
+    [Trait("OldRule", "ledger:b15c0ee183cd:6")]
+    [Trait("OldRule", "ledger:9f666daad3fd:6")]
+    [Trait("OldRule", "ledger:51d834e80d94:6")]
     [InlineData("ref")]
     [InlineData("uniq")]
     [InlineData("objref")]
@@ -22,6 +29,7 @@ public class ObjectCallableOriginTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         ScalarEmissionTest.EmitFixture("ObjectCallableOrigin" + mode, source, string.Empty);
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At("apply(identity", "identity")));
     }
 
     // SPEC 7.3, 7.7.3, 13.5.5: a direct call through an object handle or view, or of its written payload follow, acquires the
@@ -66,6 +74,8 @@ public class ObjectCallableOriginTest
 
     // Program's acceptance is the old path's verdict until R6-check (SPEC 15.4.3 (1), 3.6; see BorrowSignaturesSharePerCallOriginInstantiation).
     [Trait("Purpose", "Allocation")]
+    [Trait("OldRule", "ledger:9f666daad3fd:6")]
+    [Trait("OldRule", "ledger:51d834e80d94:6")]
     [Theory]
     [InlineData("objref")]
     [InlineData("objuniq")]
@@ -74,6 +84,7 @@ public class ObjectCallableOriginTest
         var c = MinimalEmissionTest.Analyze(Program(mode));
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At("apply(identity", "identity")));
     }
 
     private static string Program(string mode)

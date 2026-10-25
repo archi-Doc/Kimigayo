@@ -30,7 +30,18 @@ public class LocalRegionCompletionTest
     [InlineData("IndirectBranch", "func none() -> Option<ref/i32 during source> => .None\nvar a = none()\nvar b = none()\nvar c = none()\nvar slot = c@uniq\nlet flag = true\nif flag\n    slot = a@uniq\nelse\n    slot = b@uniq\nvar n = 2\nslot@follow = .Some(n@ref)\na = .None\nb = .None\nn = 3\nmatch c\n    .Some(_) => $abort(\"old target\")\n    .None => ()")]
     [InlineData("IndirectLoop", "func none() -> Option<ref/i32 during source> => .None\nvar a = none()\nvar b = none()\nvar slot = a@uniq\nvar i = 0\nwhile i < 2\n    slot = b@uniq\n    i += 1\nslot = b@uniq\nvar n = 2\nslot@follow = .Some(n@ref)\nslot@follow = .None\nn = 3\nmatch a\n    .Some(_) => $abort(\"old target\")\n    .None => ()\nmatch b\n    .Some(_) => $abort(\"new target\")\n    .None => ()")]
     public void CompletedRegionsComposeWithoutReopeningTheirType(string name, string source)
-        => ScalarEmissionTest.EmitFixture("LocalRegionCompletion" + name, source, string.Empty);
+    {
+        ScalarEmissionTest.EmitFixture("LocalRegionCompletion" + name, source, string.Empty);
+
+        // The MIR side: S4's conflicts, and row 9's located limit at a Function Type annotation's omitted inner Origins (PLAN G216).
+        (DiagnosticCode, SyntaxLocation)[] mir = name switch
+        {
+            "IndirectReplacement" or "IndirectLoop" => [(DiagnosticCode.ComparisonLoanConflict_Kd, new("n = 3"))],
+            "LocalFunctionNested" => [(DiagnosticCode.Unsupported_Kd, new("(ref/(ref/i32))")), (DiagnosticCode.Unsupported_Kd, MirTargetSide.At("(ref/(ref/i32))", "ref/(ref/i32)"))],
+            _ => [],
+        };
+        MirTargetSide.Check(source, mir);
+    }
 
     [Theory]
     [InlineData(Joined + "var a = 3\nvar b = 4\nlet value = choose(false, a@ref, b@ref)\nb = 5\nrequire value@follow == 4 else => $abort(\"join\")", "b = 5")]
@@ -83,11 +94,11 @@ public class LocalRegionCompletionTest
 
     // The first row expects the old path's strong update through `slot`, as above (S4).
     [Theory]
-    [InlineData(Slots + "slot@follow = .Some(n@ref)\nslot@follow = .None\nn = 3\n" + Empty)]
+    [InlineData(Slots + "slot@follow = .Some(n@ref)\nslot@follow = .None\nn = 3\n" + Empty, "n = 3")]
     [InlineData("func read(pair: (ref/i32 during source, i32)) -> i32 => pair.0@follow + pair.1\nlet f: ((ref/i32, i32)) -> i32 = read\nlet n = 3\n_=f((n@ref, 2))")]
     [Trait("Purpose", "Allocation")]
     [Trait("OldRule", "S4")]
-    public void RepeatedCompletionReusesItsStorage(string source)
+    public void RepeatedCompletionReusesItsStorage(string source, string? mir = null)
     {
         var c = MinimalEmissionTest.Analyze(source);
         var expected = CompilationTestHelper.WriteIr(c);
@@ -98,5 +109,6 @@ public class LocalRegionCompletionTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(expected, CompilationTestHelper.WriteIr(c));
+        MirTargetSide.Check(c, mir is null ? [] : [(DiagnosticCode.ComparisonLoanConflict_Kd, new(mir))]);
     }
 }

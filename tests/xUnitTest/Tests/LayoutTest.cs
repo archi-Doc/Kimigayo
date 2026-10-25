@@ -538,6 +538,25 @@ public partial class LayoutTest
         Assert.Equal(words, layout.Fields.Length);
     }
 
+    // SPEC 4.7.3, 22.2 (DECISIONS R5-M124): each handle row names its length word, which a Len reads: a Slice's and an Array's Field 1, a
+    // Dictionary's DictionaryStorage.Handle Field `length`, its live count; dictionaryStorage's {address, stride} Tuple lies at 0 and 8, the
+    // words P2a's DictionaryLayout kernel stores.
+    [Fact]
+    public void TheHandlesLengthWordsAndTheDictionaryLayoutTupleAreTheKernelsWords()
+    {
+        var c = MirBuildTest.Compile("func f(entries: uniq/Dictionary<i32, i64>) => entries.reserve(1)\n");
+        var dictionary = c.BuildMir().Bodies.ToArray().SelectMany(static x => x.Locals.ToArray()).Select(static x => x.Type)
+            .Select(static x => TyCtxt.Layer(x, out var below, out _) == HirPlaceKind.Deref ? below! : x)
+            .First(static x => x.Kind == BoundTypeKind.Dictionary && !x.ContainsParameter);
+        var handle = c.Library.DictionaryUnlink.Parameters[0].Type.TypeOf()!.Components[0];
+        Assert.Equal(AdtDef.IndexOf(handle, "length"), Layout.LengthWord(dictionary));
+        Assert.Equal(3, Layout.LengthWord(dictionary));
+        Assert.Equal(1, Layout.LengthWord(new BoundType("a", BoundTypeKind.Array, components: [BoundType.I32])));
+        Assert.Equal(1, Layout.LengthWord(new BoundType("s", BoundTypeKind.Slice, components: [BoundType.I32])));
+        var tuple = c.Types.Tuple([c.Types.Pointer(dictionary), BoundType.ISize]);
+        Assert.Equal(new[] { 0, 8 }, c.Layout.Of(tuple).Value!.Layout.FieldOffsets.ToArray());
+    }
+
     [Fact]
     public void LoanIsPlacedAsAStructWithoutStoredFields()
     {

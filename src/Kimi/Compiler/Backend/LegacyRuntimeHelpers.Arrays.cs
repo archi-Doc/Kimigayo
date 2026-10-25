@@ -381,9 +381,8 @@ internal sealed partial class LegacyRuntimeHelpers
     private static FunctionAbi Slotted(string name, AbiParameter[] parameters)
         => new(name, RuntimeAbi.Unit.ComputationType, parameters) { ResultSlot = true };
 
-    // A stored-value argument of a helper that moves it in at a slot (-1: none, a Dictionary helper's): a scalar by value, another value by
-    // address (SPEC 21.3.1).
-    private static AbiParameter Argument(in StoredValue value, string name, int slot = -1) => value.IsScalar
+    // A stored-value argument of a helper that moves it in at its call's slot: a scalar by value, another value by address (SPEC 21.3.1).
+    private static AbiParameter Argument(in StoredValue value, string name, int slot) => value.IsScalar
         ? new(value.Value.ComputationType, name, AbiParameterKind.Value, slot)
         : new("ptr", name, AbiParameterKind.OwnedSlot, slot);
 

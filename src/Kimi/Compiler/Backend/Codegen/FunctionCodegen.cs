@@ -32,7 +32,8 @@
 // (.Erasures.cs); a static's slot, its ensure function and an access's state test (.Statics.cs); the handle operations: a creation, a
 // clone, a runtime Type test and a virtual slot's entry (.Objects.cs); the whole-value updates, replace, exchange and swap (.Updates.cs),
 // and the inline storage kernels (.Storage.cs), the legacy rows of compiler functions (DECISIONS R5-M116); the Array rows written in place:
-// an Array from none, setArrayLength, capacity and an Array's glue level (.Arrays.cs; DECISIONS R5-M121).
+// an Array from none, setArrayLength, capacity and an Array's glue level (.Arrays.cs; DECISIONS R5-M121); the Dictionary rows written in
+// place: a Dictionary from none and a Dictionary's glue level (.Dictionaries.cs; DECISIONS R5-M124).
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact or a case selection
 // (MirCases decides a PairLayer under the item's view), compose a Subst or a Type (TypeOf does), resolve a callee, or use LINQ, Supports*,
 // out-string failures or catch-alls. An Opaque value (the gate admits none), a Type TypeOf cannot make and a Layout outcome other than
@@ -81,11 +82,12 @@ internal sealed partial class FunctionCodegen
         {
             // Gate step 2 (PD12, package C 3.8; DECISIONS R5-M96): A2's verdicts are exact only for a body A1 accepts (R4-M6a), so a body
             // A1 or A2 left inexact (R4-M102: an inline copy's problem marks its caller) is not written; its refusal is that problem's own
-            // code at its subject, by the location rule, and every other item is still written, so its gaps are recorded too. Interim: a
-            // body A1 skipped at the arena limit (ViewsOf 0, R4-M15a) is one located Unsupported_Kd at the body, since its problem carries
-            // no arguments for OwnershipStorageLimit_Kd; removed once A1's arena problem publishes requiredBytes, limitBytes and the table.
-            var (code, subject) = program.Drops.ViewsOf(body.Ordinal) == 0 ? (DiagnosticCode.Unsupported_Kd, body.Source) : refusal;
-            this.module.Report(code, collector.Subject(item, subject));
+            // code at its subject, by the location rule (K 4.9: out of an inline default outside the root modules, R4-M132), and every
+            // other item is still written, so its gaps are recorded too. Interim: a body A1 skipped at the arena limit (ViewsOf 0,
+            // R4-M15a) is one located Unsupported_Kd at the body, since a generation record is location-only; removed once a record
+            // carries the arena problem's Required, Limit and Table facts (refusal.Problem's) as requiredBytes, limitBytes and table.
+            var code = program.Drops.ViewsOf(body.Ordinal) == 0 ? DiagnosticCode.Unsupported_Kd : refusal.Code;
+            this.module.Report(code, collector.Subject(item, body, refusal.Source));
             return;
         }
 

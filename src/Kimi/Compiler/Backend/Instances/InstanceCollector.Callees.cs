@@ -4,14 +4,17 @@
 // Closure's body under its context, a function item's function or a requirement Item's witness, the implementation a function's
 // substitution selects, and for a function without a MIR body the requirement its published row runs, the glue of what it destroys in
 // place, its LegacyRow item when its legacy row writes its call in its instance (DECISIONS R5-M121), or what its intrinsic's row names (and,
-// where the row says so, its Type argument's layout verdict, K 4.8).
+// where the row says so, its Type argument's layout verdict, K 4.8); and the body of a DictionaryStorage function a legacy row or the
+// Dictionary runtime declares as its callee (Declared; DECISIONS R5-M124).
 // Input: a closed Closure or function item Type, or a function with its composed substitution; the program's bodies; TyCtxt
-// (SubstOfClosure, SubstOfItem, Dispatches, Witness(item), Implementation, Published, Signature); the intrinsic dispositions and rows.
+// (SubstOfClosure, SubstOfItem, Dispatches, Witness(item), Implementation, Published, Signature, DictionaryStorage); the intrinsic
+// dispositions and rows; the legacy rows' declared callees.
 // Output: the admitted item (Admit, the witness rows of InstanceCollector.Witnesses.cs, a glue of InstanceCollector.Glue.cs or an
 // intrinsic's row), or -1 for a virtual slot's Item (X5), a Function Type value (its erasure's adapter carries it), a callee without a
-// body or row (C8e; a foreign function) or a refused edge.
+// body or row (a foreign function) or a refused edge.
 // Invariants: the substitution admitted is the one the body runs under, so Admit keys and represents it.
-// Must not: read a site or a template, or record anything itself (Admit, the layout verdict, the witness and glue rows do).
+// Must not: read a site or a template, or record anything itself (Admit, Below, the layout verdict, the witness and glue rows do) but a
+// declared callee without a body, a broken contract.
 
 using Kimi.Compiler.Mir;
 
@@ -56,26 +59,25 @@ internal sealed partial class InstanceCollector
     // K 4.5 rows 2, 6 and 8 (DECISIONS R5-M30, R5-M74, R5-M116): a callee without a MIR body whose published row runs a requirement on the
     // Type below a parameter (Utf8Format's format, for Text.toString, Text.tryFormat and Utf8Writer.write), that requirement's witness on
     // that Type under the composed substitution; one whose published row destroys the Type below a parameter in place (replace, SPEC 15.7:
-    // Binding's one fact, which A3's borrows and the effect summary read too), that Type's glue when it may need a drop (Destroys); one whose
-    // legacy row writes its call in its instance (the Array operations and storage kinds), its LegacyRow item (K 4.5 row 2; DECISIONS
-    // R5-M121, AdmitRow); the function of an intrinsic, reached by its Item (a call of it is an Intrinsic callee), the target its row names
-    // under the Item's Type argument, which is a by-value use where the row says so, as at the intrinsic's call (K 4.8,
-    // IntrinsicRows.LaysOutType; DECISIONS R5-M108); -1 for another (a legacy row's callees and needs, C8e; a foreign function).
+    // Binding's one fact, which A3's borrows and the effect summary read too), that Type's glue when it may need a drop (GlueOf); one whose
+    // legacy row writes its call in its instance (LegacyRow.InInstance: the Array operations and storage kinds, placeEntry), its LegacyRow
+    // item (K 4.5 row 2; DECISIONS R5-M121, R5-M124, AdmitRow); the function of an intrinsic, reached by its Item (a call of it is an
+    // Intrinsic callee), the target its row names under the Item's Type argument, a part of the Item Type its site made (In), which is a
+    // by-value use where the row says so, as at the intrinsic's call (K 4.8, IntrinsicRows.LaysOutType; DECISIONS R5-M108); -1 for another
+    // (a foreign function).
     private int Bodyless(MirProgram program, int item, SourceRef subject, BindingSymbol function, Subst? subst)
     {
         if (this.types.Published(function) is { Runs: { } requirement, On: var on })
         {
-            _ = TyCtxt.Layer(TyCtxt.Signature(function, subst, on, out _), out var below, out _);
-            return this.Runs(program, item, subject, requirement, below);
+            return this.Below(subject, function, subst, on) is { } below ? this.Runs(program, item, subject, requirement, below) : -1;
         }
 
         if (this.types.Published(function) is { InPlace: true, Destroys: >= 0 and var destroys })
         {
-            _ = TyCtxt.Layer(TyCtxt.Signature(function, subst, destroys, out _), out var destroyed, out _);
-            return this.Destroys(item, subject, destroyed);
+            return this.Below(subject, function, subst, destroys) is { } destroyed ? this.GlueOf(item, subject, destroyed) : -1;
         }
 
-        if (LegacyRuntimeHelpers.Row(function.CompilerFunction) is { Writer: LegacyWriter.Instance })
+        if (LegacyRuntimeHelpers.Row(function.CompilerFunction) is { InInstance: true })
         {
             return this.AdmitRow(item, subject, function, subst);
         }
@@ -86,5 +88,20 @@ internal sealed partial class InstanceCollector
         }
 
         return this.Intrinsic(program, item, subject, IntrinsicRows.Of(id), subst!.Types[0]);
+    }
+
+    // X4, F2c (DECISIONS R5-M28, R5-M124): the body of the DictionaryStorage function a legacy row or the Dictionary runtime declares as its
+    // callee (placeEntry's append, a Dictionary from none's initialize, a Dictionary glue's clearEntries), named by TyCtxt's symbol view and
+    // admitted for a site under the substitution given (a generic one's over the entry Types; null for one that does not instantiate); a
+    // declared callee without a body is a broken contract.
+    private int Declared(MirProgram program, int item, SourceRef site, DictionaryCallee callee, Subst? subst)
+    {
+        if (program[new(this.types.DictionaryStorage(callee), MirBodyKind.Fn)] is { } body)
+        {
+            return this.Admit(item, site, body, subst);
+        }
+
+        this.Set.Report(DiagnosticCode.InternalInvariant_Kd, site);
+        return -1;
     }
 }
