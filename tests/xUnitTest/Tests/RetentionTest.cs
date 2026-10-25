@@ -509,7 +509,8 @@ public sealed class RetentionTest
     // by `Raw.initialize(r.q, p)`, formed by `f -> R`) or Exclusive (`Cell.at`, kept by a Loan), a shared one (`Sh.r`), an rc or arc
     // handle the call forms (`S.x`, alone or in an Option). A raw argument's own value is a Value row there, and a raw layer there
     // stepping Unstated or Static unties the output: a direct referent (`uniq/(raw/i32)`, `static` alike) as an Option's payload, an
-    // allocated pointer in an rc's payload, a regular recursive Type's own Field.
+    // allocated pointer in an rc's payload, a regular recursive Type's own Field. One Type at two positions steps by each (BU-35): H's
+    // `at`, written with a `ref` slot, is Shared; the same `raw/i32 during static` its `a` holds through T steps Static and unties.
     [Theory]
     [InlineData("struct S {a}\n    public var r: uniq/(raw/i32) during a\nfunc f(s: uniq/S, p: raw/i32)\n    s.r@follow = p", "0 Content store 0, 1 Value store 0, untied store 0")]
     [InlineData("struct R\n    public var q: raw/(raw/i32)\nfunc f(r: uniq/R, p: raw/i32)\n    unsafe => Raw.initialize(r.q, p)", "1 Value store 0, untied store 0")]
@@ -533,6 +534,10 @@ public sealed class RetentionTest
     [InlineData("func f(p: uniq/(raw/i32 during static)) => ()", "0 Content store 0, untied store 0")]
     [InlineData("func f(p: uniq/Option<raw/i32>) => ()", "untied store 0")]
     [InlineData(RawPointerSyntaxTest.PairHolder + "func f(x: uniq/i32, h: uniq/Holder<raw/i32 during x>, p: raw/i32) => ()", "2 Value store 1, untied store 1")]
+    [InlineData(
+        "struct H<T> {s}\n    internal let loan: Loan<ref/i32 during s>\n    internal var at: raw/i32 during s\n    internal var a: T\n" +
+        "func f(y: ref/i32, h: uniq/(H<raw/i32 during static> during static), p: raw/i32) => ()",
+        "1 Content store 1, 2 Value store 1, untied store 1")]
     public void OneWalkReachesWhatACallMayWrite(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
