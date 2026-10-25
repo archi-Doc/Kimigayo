@@ -82,11 +82,12 @@ public sealed partial class MirBorrowsTest
 
     // SPEC 15.6 Addresses and reach (G184, G160 (b), D2): `w@raw` addresses w's holder, so a read through it carries what w holds and a
     // write through it adds to w, also through a raw chain; a pointer keeps the holders it addresses used (D2) though nothing reads
-    // through it; a Raw Place borrow of w's referent carries what the pointer reaches (5.2.2); the dead twins are valid.
+    // through it; a Raw Place borrow of w's referent carries what the pointer reaches (5.2.2); an Adapt the view resolves to a raw Ref
+    // (`w@s` under `s is raw`, SPEC 8.14) addresses w's holder as `w@raw` does; the dead twins are valid.
     [Fact]
     public void ARawPointerCarriesTheHoldersItAddresses()
         => Assert.Equal(
-            ["readThrough: y = 5", "chain: x = 5", "compared: y = 5", "sliced: y = 5"],
+            ["readThrough: y = 5", "chain: x = 5", "compared: y = 5", "sliced: y = 5", "adapted: y = 5"],
             Problems(RawShapes + """
                 func readThrough()
                     var y: i32 = 1
@@ -128,6 +129,19 @@ public sealed partial class MirBorrowsTest
                         let first = s[0]
                         y = 5
                         inspect(first)
+                func adapted<s/T>()
+                    s is raw
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    let p = w@s
+                    y = 5
+                    let q = p@move
+                func adaptedDead<s/T>()
+                    s is raw
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    let p = w@s
+                    y = 5
                 """));
 
     // SPEC 5.7 Calls, 15.6, 15.6.4 (G160 (a), (c), (d); D6, D10; DECISIONS R4-M116 S2): a call stores through a raw Field what its contract
@@ -457,13 +471,24 @@ public sealed partial class MirBorrowsTest
                     inspect(a)
                 """));
 
-    // DECISIONS R4-M116 PQ-10 (B′ §4.3; registered for X-2): a Borrow of a `during self` layer's Place, or of a Tuple Place enclosing one,
-    // and a Copy read of such a Tuple, are located Unsupported_Kd until the Loan records the layer's own-step entry; a Borrow of the holder
-    // and a read of the layer through it are precise.
+    // DECISIONS R4-M116 PQ-10 (B′ §4.3; registered for X-2): a Borrow of a `during self` layer's Place, or of a Tuple or fixed-array Place
+    // enclosing one inline (also inside a nested Tuple), and a Copy read of such a Place, are located Unsupported_Kd until the Loan records
+    // the layer's own-step entry; a Borrow of the holder, a read of the layer through it, a read of an element and of a scalar beside the
+    // layer are precise.
     [Fact]
     public void ABorrowOfADuringSelfLayerIsUnsupported()
     {
         var c = MirBuildTest.Compile(Prelude + RawShapes + """
+            struct Arrs
+                internal var arr: [2 of raw/u8 during self]
+                internal var n: i32
+                public init()
+                    self.arr = [null, null]
+                    self.n = 0
+            struct Nest
+                internal var nest: ((raw/u8 during self, i32), i32)
+                public init()
+                    self.nest = ((null, 1), 2)
             func layerRef()
                 var y: i32 = 1
                 var b = Buf<ref/i32>.init(4)
@@ -487,10 +512,30 @@ public sealed partial class MirBorrowsTest
             func enclosingOnly()
                 let s = Pairs.init()
                 let t = s.pair
+            func arrayCopy()
+                let a = Arrs.init()
+                let t = a.arr
+            func arrayRef()
+                let a = Arrs.init()
+                let r = a.arr@ref
+            func arrayElement() -> bool
+                let a = Arrs.init()
+                let p = a.arr[1]
+                return p == null
+            func arrayScalar() -> i32
+                let a = Arrs.init()
+                return a.n
+            func nestedCopy()
+                let s = Nest.init()
+                let t = s.nest
+            func nestedScalar() -> i32
+                let s = Nest.init()
+                return s.nest.1
             """);
         Assert.Equal(
             ["layerRef: b.data@ref Unsupported_Kd", "enclosingRef: s.pair@ref Unsupported_Kd", "enclosingCopy: s.pair Unsupported_Kd",
-                "enclosingOnly: s.pair Unsupported_Kd"],
+                "enclosingOnly: s.pair Unsupported_Kd", "arrayCopy: a.arr Unsupported_Kd", "arrayRef: a.arr@ref Unsupported_Kd",
+                "nestedCopy: s.nest Unsupported_Kd"],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
@@ -511,13 +556,15 @@ public sealed partial class MirBorrowsTest
     // SPEC 15.6.4's chain clause (DECISIONS R4-M131 Q4 (a), BU-40, R4-M138): a Chain row carries what any chain of reads through its
     // argument carries, so a pointee the call may retain two or more reads deep keeps its Loan even when a holder on the way is replaced
     // after the call: a result two raw layers below the argument (also through a reference), a raw slot written from them, the written
-    // argument read through itself, a lent result three raw layers deep, and a popped, exchanged or swapped pointer whose pointee is
-    // replaced after the call (SPEC 15.6.4's transfer rule keeps the chain). Valid twins: the same with the result's use before `y = 5`.
+    // argument read through itself, a lent result three raw layers deep, a popped, exchanged or swapped pointer whose pointee is replaced
+    // after the call (SPEC 15.6.4's transfer rule keeps the chain), and a chain through E, the storage the body does not own, where an
+    // earlier store left a holder's address (Φ_E read at a later step). Valid twins: each with the result's use before `y = 5`, and viaEOk
+    // without the store.
     [Fact]
     public void AChainRowCarriesWhatAnyChainOfReadsThroughItsArgumentCarries()
         => Assert.Equal(
             ["getRRRRepl: y = 5", "getRFRRepl: y = 5", "fRRRRepl: y = 5", "unlinkRBad: y = 5", "lend3Repl: y = 5", "popLateBad: y = 5",
-                "popLateBadX: y = 5", "exchangeTwoBadX: y = 5", "swapTwoBad: y = 5"],
+                "popLateBadX: y = 5", "exchangeTwoBadX: y = 5", "swapTwoBad: y = 5", "viaEBad: y = 5"],
             Problems(RawShapes + ChainShapes + ChainForms));
 
     // SPEC 23.1.2: the chain's error stands beside an unrelated error.
@@ -586,10 +633,11 @@ public sealed partial class MirBorrowsTest
                     inspect(w)
                 """));
 
-    // V16 (R4-M138): a closure queues each holder once and joins what it read in balanced rounds, so the Work its Chain rows add beside the
-    // same body without them stays within what they read times its logarithm: N calls each reading a pointer chain of depth K, a K-cycle of
-    // raw holders read once, N vacuous Chain rows (`Raw.allocate`'s count) after E holds M addresses of Loan holders, and a holder fanning
-    // out to M addresses; each step's growth is at most three times the one before it (a quadratic's is four).
+    // V16 (R4-M138): a closure queues each holder once and joins what it read in one n-ary union (MirLoanSets.Union), so the Work its Chain
+    // rows add beside the same body without them is linear in what they read: N calls each reading a pointer chain of depth K, a K-cycle
+    // of raw holders read once, N vacuous Chain rows (`Raw.allocate`'s count) after E holds M addresses of Loan holders, and a holder
+    // fanning out to M addresses. A linear measure's growth doubles per doubling (2.00 to 2.04 measured); the bound 2.1 leaves its margin
+    // for the element span the union reads back (a log factor's 2.14 to 2.25 for balanced unions; a quadratic's 4).
     [Fact]
     public void AChainsWorkIsWithinWhatItReads()
     {
@@ -602,7 +650,7 @@ public sealed partial class MirBorrowsTest
         long[] fan = [.. new[] { 16, 32, 64 }.Select(m => this.Added(FanOut(m, Read), FanOut(m, string.Empty)))];
         output.WriteLine($"calls {string.Join(", ", calls)}; depth {string.Join(", ", depth)}; cycle {string.Join(", ", cycle)}; " +
             $"vacuous {string.Join(", ", vacuous)}; escaped {string.Join(", ", escaped)}; fan {string.Join(", ", fan)}");
-        Assert.All(new[] { calls, depth, cycle, vacuous, escaped, fan }, static x => Assert.True(Grows(x, 3), string.Join(", ", x)));
+        Assert.All(new[] { calls, depth, cycle, vacuous, escaped, fan }, static x => Assert.True(Grows(x, 2.1), string.Join(", ", x)));
     }
 
     // The Work a shape's body adds beside its twin's, both over the raw and chain shapes.
@@ -611,6 +659,15 @@ public sealed partial class MirBorrowsTest
 
     // The chain forms' bodies (sources in the R4 notes' N2 review), each Bad form's valid twin beside it.
     private const string ChainForms = ChainRepl + """
+        func getRRROk()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var h: raw/u8 = w@raw@raw/u8
+            var h2: raw/(raw/u8) = h@raw
+            let r = getRRR(h2@raw)
+            h = null
+            usep(r)
+            y = 5
         func getRFRRepl()
             var y: i32 = 1
             var w: ref/i32 = y@ref
@@ -620,6 +677,15 @@ public sealed partial class MirBorrowsTest
             h = null
             y = 5
             usep(r)
+        func getRFROk()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var h: raw/u8 = w@raw@raw/u8
+            var h2: raw/(raw/u8) = h@raw
+            let r = getRFR(h2@ref)
+            h = null
+            usep(r)
+            y = 5
         func fRRRRepl()
             var y: i32 = 1
             var w: ref/i32 = y@ref
@@ -630,6 +696,16 @@ public sealed partial class MirBorrowsTest
             h = null
             y = 5
             usep(s)
+        func fRRROk()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var h: raw/u8 = w@raw@raw/u8
+            var h2: raw/(raw/u8) = h@raw
+            var s: raw/u8 = null
+            fRRR(h2@raw, s@raw)
+            h = null
+            usep(s)
+            y = 5
         func unlinkRBad()
             var y: i32 = 1
             var w: ref/i32 = y@ref
@@ -733,6 +809,25 @@ public sealed partial class MirBorrowsTest
             h = null
             let used = z == null
             y = 5
+        func viaEBad(sink: raw/(raw/u8))
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var h: raw/u8 = w@raw@raw/u8
+            unsafe => *sink = h@raw@raw/u8
+            var s = sink
+            let r = getRRR(s@raw)
+            h = null
+            y = 5
+            let used = r == null
+        func viaEOk(sink: raw/(raw/u8))
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var h: raw/u8 = w@raw@raw/u8
+            var s = sink
+            let r = getRRR(s@raw)
+            h = null
+            y = 5
+            let used = r == null
         """;
 
     // getRRRRepl: a result two raw layers below the argument, the middle holder replaced after the call (its body ends a statement list).

@@ -74,6 +74,19 @@ public sealed partial class MirDifferenceTest
         Assert.Equal(expected, MirDifferenceLedger.Sides(c, program).Mir.TakeLast(3));
     }
 
+    // DECISIONS R4-M132 (rule W; the A5 step 2 plan's 2g-1 wording): a MIR problem with Cause facts is derived and leaves the compared MIR
+    // side, as publication suppresses it while its causes publish; its cause, the Origin problem, stays.
+    [Fact]
+    public void ADerivedProblemLeavesTheMirSide()
+    {
+        var c = MirBuildTest.Compile("func bad(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 1\n    var r = local@ref\n    return r\n");
+        var program = c.BuildMir();
+        Assert.Contains(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+        var mir = MirDifferenceLedger.Sides(c, program).Mir;
+        Assert.Contains(mir, static x => x.Code == DiagnosticCode.UnsatisfiedOriginRelation_Kd);
+        Assert.DoesNotContain(mir, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+    }
+
     // PLAN10 §7, R4-M67: the requirement each MIR recording rule names lies in the compared set's MIR column, so its problems take their
     // analysis there (MirAnalysisTest's program, one problem of each rule).
     [Fact]

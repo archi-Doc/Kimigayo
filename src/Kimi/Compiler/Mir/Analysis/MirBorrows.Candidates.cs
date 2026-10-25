@@ -26,15 +26,17 @@ internal sealed partial class MirBorrows
         this.Work += this.sets.Count(set);
         foreach (var element in this.sets.Elements(set))
         {
-            this.Consider(element, via);
+            this.Consider(element, set, via);
         }
     }
 
     // An element found in a holder (-1: a transit value) by the pass: a Loan once per mode (A3 5's mode: a two-phase Loan is shared only in
     // its reservation holder), its candidate tagged with the pass, whose named holder the closure reads; an address only its named holder;
-    // Φ_E makes E live. An activation keeps the first two holders the Based, Seeded and Valued passes find it in.
-    private void Consider(int element, int via)
+    // Φ_E makes E live. An activation keeps the first two holders the Based, Seeded and Valued passes find it in. A carrier that keeps a W
+    // element (MirBorrows.Causes' Kept) marks its candidate or guard marker kept.
+    private void Consider(int element, int set, int via)
     {
+        var kept = this.Kept(set, element, via);
         if (element == Escaped)
         {
             this.Reach(Escaped, scan: true);
@@ -47,6 +49,11 @@ internal sealed partial class MirBorrows
             if (this.pass is Based or Stored && this.markSeen[element] != this.stamp)
             {
                 (this.markSeen[element], this.markVia[element]) = (this.stamp, via);
+            }
+
+            if (this.pass is Based or Stored && kept)
+            {
+                this.markKept[element] = this.stamp;
             }
 
             return;
@@ -82,6 +89,7 @@ internal sealed partial class MirBorrows
 
         ref var candidate = ref this.candidates[this.candidateAt[key]];
         candidate.Tag(this.pass, this.passIndex, via);
+        candidate.Kept |= kept;
         if (loan is { Direct: true, Named: >= 0 })
         {
             this.Reach(loan.Named, scan: true);
@@ -119,6 +127,10 @@ internal sealed partial class MirBorrows
         internal readonly Tags Tags => this.tags;
 
         internal int Next { get; set; } = None;
+
+        // Whether a carrier keeps it (rule W, MirBorrows.Causes): found in a transit value, a holder other than an escape holder, or an
+        // escape holder as no Copy of the borrow, in some pass.
+        internal bool Kept { get; set; }
 
         // Whether a check set holds it (Tags.Takes).
         internal readonly bool Takes(int taking) => this.tags.Takes(taking);

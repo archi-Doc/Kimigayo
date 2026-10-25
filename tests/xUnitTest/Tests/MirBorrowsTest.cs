@@ -2578,7 +2578,8 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     public void AWarmRunAllocatesNothing()
     {
         var c = MirBuildTest.Compile(Prelude + RawShapes + ChainShapes + "func chained()\n    var y = 1\n    var w: ref/i32 = y@ref\n" +
-            "    var h: raw/u8 = w@raw@raw/u8\n    var h2: raw/(raw/u8) = h@raw\n    let r = getRRR(h2@raw)\n    usep(r)\nfunc addressed()\n    var y = 1\n    var w: ref/i32 = y@ref\n    let p = w@raw\n    y = 2\n" +
+            "    var h: raw/u8 = w@raw@raw/u8\n    var h2: raw/(raw/u8) = h@raw\n    let r = getRRR(h2@raw)\n    usep(r)\n" +
+            "func addressed()\n    var y = 1\n    var w: ref/i32 = y@ref\n    let p = w@raw\n    y = 2\n" +
             "    _ = p == null\nfunc selfRead()\n    var y = 1\n    var b = Buf<ref/i32>.init(4)\n    b.push(y@ref)\n    let p = b.data\n    y = 2\n" +
             "    _ = p == null\nfunc loopCarry(flag: bool)\n    var x = 1\n    var y = 2\n    var r = y@ref\n    while flag\n" +
             "        x = 3\n        inspect(r)\n        r = x@ref\nfunc stored()\n    var x = 1\n    var y = 2\n    var slot = y@ref\n" +
@@ -2655,7 +2656,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     }
 
     // Whether a measure grows from N = 64 to 128 at most a factor times as much as from 32 to 64, with a constant's slack.
-    private static bool Grows(long[] measure, int factor) => measure[2] - measure[1] <= (factor * (measure[1] - measure[0])) + 64;
+    private static bool Grows(long[] measure, double factor) => measure[2] - measure[1] <= (factor * (measure[1] - measure[0])) + 64;
 
     // A5's work and Loan-set bytes on a shape's body at N = 32, 64 and 128: its head, then N each lines, a Tuple of N operands where one is
     // given, and N after lines ({0} the index, {1} the index plus one), with no Loan problem.
@@ -2709,13 +2710,15 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         private readonly MirReport obligations = new(); // A4's obligation problems, which A5 does not read.
         private readonly MirCases cases;
         private readonly MirEffects effects;
+        private readonly MirOrigins origins; // The Origin stratum, which judges each body first, as the driver's step 4 does (rule W).
         private ulong version; // The program version A4 last solved.
 
         internal Stratum(TyCtxt types)
         {
             this.cases = new(types);
             this.effects = new(types, this.cases, this.flow);
-            this.Borrows = new(types, this.flow, this.moves, this.cases, this.effects);
+            this.origins = new(types, this.cases);
+            this.Borrows = new(types, this.flow, this.moves, this.cases, this.effects, this.origins);
         }
 
         internal MirBorrows Borrows { get; }
@@ -2733,6 +2736,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             this.Summaries(program);
             this.flow.Begin(body);
             this.moves.Build(body, this.flow);
+            this.origins.Judge(body, MirCases.Count(body), program.Problems);
             for (var view = 0L; view < MirCases.Count(body); view++)
             {
                 this.cases.Select(body, view);

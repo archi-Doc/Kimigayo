@@ -22,7 +22,7 @@ fn sum @4
   _14: uniq/i32 temp @24 s3
   _15: isize temp @92 s1
   _16: i32 temp @28 s1
-  _17: i32 temp @4
+  _17: i32 temp (Result) @4
   s1: lexical in s0 @10
   s2: lexical in s1 @14
   s3: lexical in s2 @17
@@ -148,7 +148,7 @@ fn positions @29
   _15: isize temp @53 s3
   _16: uniq/isize temp @51 s3
   _17: isize temp @55 s1
-  _18: isize temp @29
+  _18: isize temp (Result) @29
   s1: lexical in s0 @34
   s2: lexical in s1 @39
   s3: lexical in s2 @44
@@ -274,7 +274,7 @@ fn pairs @56
   _16: uniq/i32 temp @75 s4
   _17: isize temp @105 s1
   _18: i32 temp @79 s1
-  _19: i32 temp @56
+  _19: i32 temp (Result) @56
   s1: lexical in s0 @63
   s2: lexical in s1 @67
   s3: lexical in s2 @71

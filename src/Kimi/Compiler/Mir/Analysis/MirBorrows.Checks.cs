@@ -47,18 +47,27 @@ internal sealed partial class MirBorrows
     }
 
     // The first Loan on an access's root in its check set (Takes) it conflicts with (Conflicts), None for none: one whose failure its template
-    // owns, by the operation's scope and reservation (-1: none), is skipped and the scan goes on (D11), so it hides no later one.
+    // owns, by the operation's scope and reservation (-1: none), is skipped and the scan goes on (D11), so it hides no later one. In a run
+    // with rule W's elements the scan goes on past the first: the access is derived exactly when every conflicting candidate is
+    // (MirBorrows.Causes' Derived, R4-M96), its causes then left for its record, else none.
     private int Conflict(int root, ReadOnlySpan<MirStep> steps, AccessKind kind, int taking, int scope, int reservation)
     {
+        var first = None;
+        this.causes.Clear();
         for (var c = this.First(root); c != None; c = this.candidates[c].Next)
         {
             if (this.Conflicts(c, root, steps, kind, taking) && !this.Covered(scope, this.candidates[c].Loan, reservation))
             {
-                return c;
+                first = first == None ? c : first;
+                if (this.wCount == 0 || !this.Derived(c))
+                {
+                    this.causes.Clear();
+                    return first;
+                }
             }
         }
 
-        return None;
+        return first;
     }
 
     // Whether a candidate of an access's check set conflicts with it (A3 5's conflicts and hits): a write, Move, exclusive borrow,
@@ -131,6 +140,7 @@ internal sealed partial class MirBorrows
         if (this.markSeen[mark] == this.stamp && !this.Covered(this.body.Common(this.Source(at).Scope, this.body.Locals[candidate].Source.Scope), -1, -1))
         {
             var anchor = this.body.Subject(this.body.Locals[candidate].Source);
+            this.EndedCauses(candidate, mark);
             this.Report(DiagnosticCode.ComparisonLoanConflict_Kd, anchor, this.markVia[mark], at, -1, null);
         }
     }

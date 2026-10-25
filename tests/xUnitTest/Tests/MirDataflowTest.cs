@@ -1,6 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler.Mir;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -46,6 +48,37 @@ public sealed class MirDataflowTest
         }
     }
 
+    // G213 (DECISIONS R4-M132, R4-M15a): the one record of an arena over the analyses' byte limit is OwnershipStorageLimit_Kd at the body in
+    // the views it stops, with its arguments as facts at the body: Required the arena's bytes, Limit the byte limit and Table the arena,
+    // the catalog's requiredBytes, limitBytes and table; it returns the problem's index.
+    [Fact]
+    public void TheStorageLimitCarriesItsArguments()
+    {
+        var body = MirBuildTest.Compile("func f() => ()\n").BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var report = new MirReport();
+        report.Add(new(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported), body.Source, body.Ordinal, 1));
+        var words = (8L * 1024 * 1024) + 1;
+        Assert.False(MirDataflow.Within(words));
+        Assert.Equal(1, MirDataflow.StorageLimit(report, body, 0b11, MirStorageTable.Origins, words));
+        var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.StorageLimit);
+        Assert.Equal(new MirProblem(DiagnosticCode.OwnershipStorageLimit_Kd, requirement, body.Source, body.Ordinal, 0b11), report.All[1]);
+        Assert.Equal(
+            [
+                new MirFact(MirFactKind.Required, body.Source, words * 8), new(MirFactKind.Limit, body.Source, 64L * 1024 * 1024),
+                new(MirFactKind.Table, body.Source, (long)MirStorageTable.Origins),
+            ],
+            report.Facts(1).ToArray());
+        Assert.Equal("Origins over", Limit(report, 1));
+    }
+
+    // A storage limit's arguments as a test reads them: its arena and whether the arena's bytes exceed the byte limit.
+    internal static string Limit(MirReport report, int problem)
+    {
+        var facts = report.Facts(problem).ToArray();
+        var (required, limit) = (facts.Single(static x => x.Kind == MirFactKind.Required).Value, facts.Single(static x => x.Kind == MirFactKind.Limit).Value);
+        return $"{(MirStorageTable)facts.Single(static x => x.Kind == MirFactKind.Table).Value} {(required > limit ? "over" : "within")}";
+    }
+
     private static int Words(MirBody body) => (body.Locals.Length + 63) >> 6;
 
     private static bool Live(ulong[] entries, int words, int block, int local) => (entries[(block * words) + (local >> 6)] & (1UL << local)) != 0;
@@ -56,7 +89,7 @@ public sealed class MirDataflowTest
         var flow = new MirDataflow(new MirReach());
         flow.Begin(body);
         var words = Words(body);
-        var live = new Liveness(body, flow.Prepare(words, 0, words)!, new ulong[body.Blocks.Length * words]);
+        var live = new Liveness(body, flow.Prepare(words, 0, words, out _)!, new ulong[body.Blocks.Length * words]);
         flow.Backward(ref live);
         flow.ReplayBackward(ref live);
         return (flow, live.Entries);

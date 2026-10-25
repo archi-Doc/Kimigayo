@@ -42,7 +42,7 @@ fn counters @11
   _20: isize temp @43 s1
   _21: i32 temp @48 s1
   _22: uniq/i32 temp @48 s1
-  _23: i32 temp @11
+  _23: i32 temp (Result) @11
   s1: lexical in s0 @20
   bb0:
       StorageLive(_4) @21 s1

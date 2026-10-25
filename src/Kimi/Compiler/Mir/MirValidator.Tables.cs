@@ -3,10 +3,11 @@
 namespace Kimi.Compiler.Mir;
 
 // A body's tables and the Places that index them (plan 5.4).
-// - Responsibility: the locals (local 0 the Return local, the Arg locals directly after it, each of a known kind and typed), the
-//   MustNotComplete rows, the scopes, the Opaque sites and the projection table, each in range and each projection step admitted by
-//   the Type of the step it extends (Tables, Admits); and each Place MirUses reports (Place): in range (IsValid), its first step
-//   admitted by its root's Type.
+// - Responsibility: the locals (local 0 the Return local, the Arg locals directly after it, each of a known kind and typed, a Result
+//   local a Temp of local 0's Type), the MustNotComplete rows, the scopes, the Opaque sites and the projection table, each in range and
+//   each projection step admitted by the Type of the step it extends (Tables, Admits); and each Place MirUses reports (Place): in range
+//   (IsValid), its first step admitted by its root's Type, and a Result local read only by the whole Move that delivers it into _0
+//   (DECISIONS R4-M132).
 // - Inputs: the body's tables; each location's Places with their access. Outputs: Local, TargetRange, Scope, Opaque, Projection,
 //   UnknownKind and Place findings; a written root's write bits for G131 and G136 (MirValidator.Diverged, MirValidator.Inputs); a valid
 //   Place for G191's rule of its static root (MirValidator.Statics).
@@ -27,6 +28,13 @@ internal sealed partial class MirValidator
             }
 
             this.Accessed(place);
+            if (place.Root >= 0 && body.Locals[place.Root].Role == MirLocalRole.Result &&
+                (access & (MirAccess.Reads | MirAccess.Moves | MirAccess.Borrows | MirAccess.DropUse)) != 0 &&
+                !(this.delivering && place.Projection == 0 && (access & MirAccess.Moves) != 0))
+            {
+                this.Report(MirViolation.Local); // R4-M132: the body's result in transit is read only by its delivery into _0.
+            }
+
             if ((access & MirAccess.Writes) != 0 && place.Root >= 0)
             {
                 writes[place.Root] |= OtherWrite;
@@ -57,7 +65,8 @@ internal sealed partial class MirValidator
                 this.At(local.Source);
                 arguments &= i == 0 || local.Kind == MirLocalKind.Arg;
                 if (local.Type is null || local.Kind > MirLocalKind.DropFlag || (local.Kind == MirLocalKind.Return) != (i == 0) ||
-                    (local.Kind == MirLocalKind.Arg && !arguments))
+                    (local.Kind == MirLocalKind.Arg && !arguments) ||
+                    (local.Role == MirLocalRole.Result && (local.Kind != MirLocalKind.Temp || !ReferenceEquals(local.Type, locals[0].Type))))
                 {
                     this.Report(MirViolation.Local);
                 }

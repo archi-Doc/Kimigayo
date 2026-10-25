@@ -9,7 +9,7 @@ fn effects @4
   _1: bool arg flag @4
   _2: string arg text @4
   _3: bool temp @10 s1
-  _4: () temp @4
+  _4: () temp (Result) @4
   _5: string temp @20 s1
   _6: () temp @23 s1
   _7: bool temp @24 s1

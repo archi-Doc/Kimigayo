@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
+
 namespace Kimi.Compiler.Mir;
 
 // A5's reach on a state (A3 5's content and refs, E16's W, DECISIONS R4-M73, R4-M116): the holders a set refers to (those its direct
@@ -13,18 +15,22 @@ internal sealed partial class MirBorrows
     private readonly List<int> targets = []; // The holders a reference's value refers to (refs), or a call's store writes (W).
     private readonly List<int> read = []; // The sets whose content or chain the location read, reset by Plan.
     private readonly List<int> chained = []; // A closure's holders to read, each queued once (Chain).
-    private readonly List<int> parts = []; // The states a closure read, which UnionAll joins.
+    private readonly List<int> parts = []; // The states a closure read, each through rule W's clause, which one n-ary union joins.
     private readonly Dictionary<BoundType, byte> walked = new(ReferenceEqualityComparer.Instance); // HoldsLoans' scratch.
     private (int Content, int Chain)[] reads = []; // By set: its content and its chain at the location, each plus 1 (0: not read there).
     private int[] queuedBy = []; // By holder: the closure that queued it.
+    private int[] partlyBy = []; // By holder: the closure that reached it through a part or E (rule W's read-through clause).
     private int closures; // The closures made (Chain).
     private MirWrites[] writable = []; // By local: what a call may write past it (MirTypes.HoldsLoans).
     private int[] writing = []; // By slot: the W walk that reached it.
     private MirWrites[] writingKind = []; // By slot: its local's MirWrites, at that walk.
     private int walks; // The W walks made.
 
-    // content(S) (A3 5): the states of the holders its direct Loans name, and E's where it carries Φ_E or no direct Loan; memoized at the
-    // location.
+    // Whether a direct Loan's Place is its holder's whole value, through which rule W's read-through clause reads a Copy (ReadThrough).
+    private static bool Whole(in Loan loan) => loan.Count == 0;
+
+    // content(S) (A3 5): the states of the holders its direct Loans name, and E's where it carries Φ_E or no direct Loan, each read through
+    // rule W's clause (ReadThrough); memoized at the location.
     private int Content(ulong[] state, int set)
     {
         if (set < this.reads.Length && this.reads[set].Content != 0)
@@ -40,18 +46,19 @@ internal sealed partial class MirBorrows
             if (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true } loan)
             {
                 direct = true;
-                content = loan.Named >= 0 ? this.sets.Union(content, (int)state[loan.Named]) : content;
+                content = loan.Named >= 0 ? this.sets.Union(content, this.ReadThrough(state, loan.Named, Whole(loan))) : content;
             }
         }
 
-        content = escaped || !direct ? this.sets.Union(content, (int)state[Escaped]) : content;
+        content = escaped || !direct ? this.sets.Union(content, this.ReadThrough(state, Escaped, whole: false)) : content;
         this.Memo(set).Content = content + 1;
         return content;
     }
 
     // chain(S) (SPEC 15.6.4; DECISIONS BU-40, R4-M138): the least fixed point of a read from S, the states of the holders content(S) reads,
     // then of each holder a state read names by a direct Loan or address, and E's where that state carries Φ_E; each holder is queued once
-    // per closure, so a pointer cycle ends; memoized at the location.
+    // per closure, so a pointer cycle ends, and read through rule W's clause as a whole value only where every reach of it was one
+    // (ReadThrough); the states are joined by one n-ary union (MirLoanSets.Union); memoized at the location.
     private int Chain(ulong[] state, int set)
     {
         if (set < this.reads.Length && this.reads[set].Chain != 0)
@@ -60,42 +67,28 @@ internal sealed partial class MirBorrows
         }
 
         MirDataflow.Grow(ref this.queuedBy, this.holderCount);
+        MirDataflow.Grow(ref this.partlyBy, this.holderCount);
         this.closures++;
         this.chained.Clear();
         if (!this.Queue(set))
         {
-            this.Queued(Escaped); // content's rule: E where S carries no direct Loan.
+            this.Queued(Escaped, whole: false); // content's rule: E where S carries no direct Loan.
+        }
+
+        for (var i = 0; i < this.chained.Count; i++)
+        {
+            this.Queue((int)state[this.chained[i]]);
         }
 
         this.parts.Clear();
-        for (var i = 0; i < this.chained.Count; i++)
+        foreach (var holder in this.chained)
         {
-            var next = (int)state[this.chained[i]];
-            this.parts.Add(next);
-            this.Queue(next);
+            this.parts.Add(this.ReadThrough(state, holder, whole: this.partlyBy[holder] != this.closures));
         }
 
-        var chain = this.UnionAll(this.parts);
+        var chain = this.sets.Union(CollectionsMarshal.AsSpan(this.parts));
         this.Memo(set).Chain = chain + 1;
         return chain;
-    }
-
-    // The union of the sets a closure read, pairwise in balanced rounds, so the sets it makes stay within the elements it read times their
-    // depth (log of their number) rather than one growing set per state.
-    private int UnionAll(List<int> parts)
-    {
-        while (parts.Count > 1)
-        {
-            var half = 0;
-            for (var j = 0; j < parts.Count; j += 2)
-            {
-                parts[half++] = j + 1 < parts.Count ? this.sets.Union(parts[j], parts[j + 1]) : parts[j];
-            }
-
-            parts.RemoveRange(half, parts.Count - half);
-        }
-
-        return parts.Count == 0 ? 0 : parts[0];
     }
 
     // Queues for Chain the holders a set names, those its direct Loans and addresses name and E where it carries Φ_E; whether it has a
@@ -108,14 +101,14 @@ internal sealed partial class MirBorrows
         {
             if (element == Escaped)
             {
-                this.Queued(Escaped);
+                this.Queued(Escaped, whole: false);
             }
             else if (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true } loan)
             {
                 direct = true;
                 if (loan.Named >= 0)
                 {
-                    this.Queued(loan.Named);
+                    this.Queued(loan.Named, Whole(loan));
                 }
             }
         }
@@ -123,13 +116,18 @@ internal sealed partial class MirBorrows
         return direct;
     }
 
-    // A holder Chain reads, once per closure.
-    private void Queued(int holder)
+    // A holder Chain reads, once per closure, and whether a reach of it was through a part or through E (a may-fact, joined).
+    private void Queued(int holder, bool whole)
     {
         if (this.queuedBy[holder] != this.closures)
         {
             this.queuedBy[holder] = this.closures;
             this.chained.Add(holder);
+        }
+
+        if (!whole)
+        {
+            this.partlyBy[holder] = this.closures;
         }
     }
 
@@ -144,6 +142,10 @@ internal sealed partial class MirBorrows
 
         return ref this.reads[set];
     }
+
+    // Rule W's read-through clause (SPEC 15.6.5): a read through a reference to a holder's whole value is a Copy of its state, through one
+    // to a part of it, or through E, not (Indirect, MirBorrows.Causes).
+    private int ReadThrough(ulong[] state, int holder, bool whole) => whole ? (int)state[holder] : this.Indirect((int)state[holder]);
 
     // refs(S) (A3 5) into the targets: the holders its direct Loans name, and E where it carries Φ_E or no direct Loan.
     private void Refs(int set)

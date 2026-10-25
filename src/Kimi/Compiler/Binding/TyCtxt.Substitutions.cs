@@ -4,8 +4,9 @@
 // synthesizes, and their application to a Type and composition (SPEC 8.1.3, 8.6.4, 8.13.3; plan 5.6.2; DECISIONS R5-M36, R5-M43, R5-M70).
 // Input: CallPlans, Closure and function item Types, a binder, a target with its slot bindings; Binding's storage instantiation, length
 // substitution and Origin forwarding.
-// Output: interned Subst values, identity being equality, kept as long as the TyCtxt; a Type or a substitution in an instance (Apply,
-// Compose; null where the instance does not substitute it).
+// Output: interned Subst values, identity being equality, kept as long as the TyCtxt; a Type or a substitution in an instance with its
+// storage verdict (Instance, Compose; DECISIONS BU-36, BU-38), Apply the instance when Prepared; Binding's completeness, the premise of
+// a Rejected verdict's contract (BindingComplete).
 // Invariants: one Subst per (target, Self, declaring Type, Types, lengths, Origins, inputs), with one length entry per slot; the scratch
 // arrays Fit grows are reused.
 // Must not: clear its interning, resolve source expressions, or construct a Subst outside Intern.
@@ -29,6 +30,10 @@ internal sealed partial class TyCtxt
 
     // The lengths of a substitution whose binder has no length slot; never written, so every entry is null.
     private BoundLength?[] noLengths = [];
+
+    // DIAGNOSTICS rule 8 (DECISIONS BU-38): whether Binding is complete, so has rejected no part: a Rejected storage verdict (Instance,
+    // Compose) met in a complete compilation is a broken contract, the premise of Binding.Retained's guard and R4-M118's OriginFinding.
+    internal bool BindingComplete => binding.Result.IsComplete;
 
     // SPEC 8.1.3, 10.5: a selected call's substitution, as its selection committed it; a value call has none. A direct base call's is its
     // implementation's in the Type implementing it, which it calls (virtual-dispatch 4).
@@ -117,31 +122,37 @@ internal sealed partial class TyCtxt
 
     // Plan 5.6.2: the substitution of a call in a body that another substitution instantiates, as a call in a default template folds under
     // the substitution of the call omitting the default: each binding of the inner one in the outer instance, as Binding forwards a call of
-    // a generic body (InstantiateForwardedCall), so Apply(t, Compose(inner, outer)) is that call's instantiation of t. Null when the outer
-    // instance does not substitute an inner Type, the conforming Self or the declaring Type.
-    internal Subst? Compose(Subst inner, Subst outer)
+    // a generic body (InstantiateForwardedCall), so Instance(t, Compose(inner, outer).Subst) is that call's instantiation of t; with the
+    // verdict of its parts' storage in the outer instance (Instance), the worst one, so a limit wins (DECISIONS BU-36, BU-38). Rejected
+    // keeps the composed substitution, as the forwarded call keeps its Types; null and Limit when the outer instance does not substitute an
+    // inner Type, length, conforming Self or declaring Type, or one's storage is a limit.
+    internal (Subst? Subst, Binding.StorageOutcome Storage) Compose(Subst inner, Subst outer)
     {
         if (outer.IsIdentity)
         {
-            return inner;
+            return (inner, Binding.StorageOutcome.Prepared);
         }
 
+        var storage = Binding.StorageOutcome.Prepared;
         var types = Fit(ref this.composedTypes, inner.Types.Length);
         var lengths = Fit(ref this.composedLengths, inner.Lengths.Length);
         var origins = Fit(ref this.composedOrigins, inner.Origins.Length + inner.Inputs.Length);
-        var self = inner.Self is { } conforming ? this.Apply(conforming, outer) : null;
-        var declaring = inner.Declaring is { } owner ? this.Apply(owner, outer) : null;
-        var failed = (self is null && inner.Self is not null) || (declaring is null && inner.Declaring is not null);
+        var self = inner.Self is { } conforming ? Part(conforming) : null;
+        var declaring = inner.Declaring is { } owner ? Part(owner) : null;
         for (var i = 0; i < types.Length; i++)
         {
-            types[i] = inner.Types[i] is { } type ? this.Apply(type, outer) : null;
-            failed |= types[i] is null && inner.Types[i] is not null;
+            types[i] = inner.Types[i] is { } type ? Part(type) : null;
         }
 
         for (var i = 0; i < lengths.Length; i++)
         {
             lengths[i] = inner.Lengths[i] is { } length ? binding.SubstituteLength(length, outer.Binder, outer.Lengths) : null;
-            failed |= lengths[i] is null && inner.Lengths[i] is not null;
+            storage = lengths[i] is null && inner.Lengths[i] is not null ? Binding.StorageOutcome.Limit : storage;
+        }
+
+        if (storage == Binding.StorageOutcome.Limit)
+        {
+            return (null, storage);
         }
 
         for (var i = 0; i < origins.Length; i++)
@@ -150,7 +161,15 @@ internal sealed partial class TyCtxt
                 ? binding.ForwardOrigin(origin, outer.Target, outer.Declaring, outer.Origins, outer.Inputs, outer.Types) : null!;
         }
 
-        return failed ? null : this.Intern(inner.Target, self, declaring, types, lengths, origins[..inner.Origins.Length], origins[inner.Origins.Length..]);
+        return (this.Intern(inner.Target, self, declaring, types, lengths, origins[..inner.Origins.Length], origins[inner.Origins.Length..]), storage);
+
+        // A part in the outer instance; its verdict joins the composition's in the verdicts' order (a limit, then Rejected).
+        BoundType? Part(BoundType type)
+        {
+            var (instance, verdict) = this.Instance(type, outer);
+            storage = verdict > storage ? verdict : storage;
+            return instance;
+        }
     }
 
     // SPEC 8.4.1, 8.6.4: the bound Contract reference a requirement call dispatches through (Indexable<isize>), which declares the requirement as a
