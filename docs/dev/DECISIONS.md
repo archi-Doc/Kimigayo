@@ -5545,15 +5545,22 @@ resumed by R4-M86 (2026-10-20).
     Outside Binding's passes it is read only on a complete Binding (the old analyses return at an incomplete one, the old generator runs
     after acceptance), where no storage is Rejected.
   - Dispatch: `Resolve` refuses a Limit only. What a requirement call runs does not depend on a stored part, so a Rejected Self has its
-    witness's target, whose instance is its reader's to admit; `Comparison`'s null and the collector's Limit row are genuine limits, and
-    a tuple operator over Rejected storage builds its leaf calls.
-  - The collector's reading of the verdict and `Compose`'s verdict follow in this unit's second commit.
+    witness's target, whose instance is its reader's to admit; `Comparison`'s null and the collector's requirement Limit row (R5-M67)
+    are genuine limits, and a tuple operator over Rejected storage builds its leaf calls.
+  - Staged: the first commit (bu40 1/2) changes Binding and TyCtxt only. The second, after R5's C8d lands and with R5's review of its
+    collector hunks and R4's of the builder's, adds `Compose`'s verdict (`(Subst?, StorageOutcome)`; `MirBuilder.Defaults.Copies` :47,
+    :146), the collector's one mapping at `In`, Admit, Edge's `Compose` and the bodyless `Signature` site (deleting `Destroys` and
+    `Runs`' null branch), and R5's guard (Rejected in a complete compilation, a located `InternalInvariant_Kd`; completeness through one
+    TyCtxt member; Layout's Rejected row by R5's choice). Until then, MIR code generation still publishes the collector's StorageNesting
+    `Unsupported_Kd` over Rejected storage.
   - Supersedes BU-36's `== Prepared` at `InstantiateStorageType` and Dispatch (kept there only to preserve behavior); amends R5-M61's
     and R5-M67's Limit to a Self nested past the bound. Each names this entry.
   - Rejected: B's E1 (Rejected as "not judged": hides the independent violation r1's repair reports, an `out` verdict most callers
     discard, and formatting, requirement, selected-requirement and closure instances still conflating); a Rejected target kind (a second
     carrier of the verdict for an answer that does not depend on the part, and `Comparison` and the builder would need their own);
     `Apply` giving Rejected instances to the MIR readers (BU-36's rejected option, R7's).
+  - Open: e3 (BU, PLAN G242; a failed call, not storage): the effect summary reads a call Binding did not bind as `UnclassifiedCall`,
+    so an unbound call in a confined witness publishes a dependent `IncompatibleContractImplementation_Kd` on every pipeline.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
