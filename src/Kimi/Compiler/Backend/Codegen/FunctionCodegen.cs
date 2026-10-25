@@ -31,7 +31,8 @@
 // function or an Open row's (.Glue.cs); the common Function values: erasure, the adapter items' functions and a Function value's glue row
 // (.Erasures.cs); a static's slot, its ensure function and an access's state test (.Statics.cs); the handle operations: a creation, a
 // clone, a runtime Type test and a virtual slot's entry (.Objects.cs); the whole-value updates, replace, exchange and swap (.Updates.cs),
-// and the inline storage kernels (.Storage.cs), the legacy rows of compiler functions (DECISIONS R5-M116).
+// and the inline storage kernels (.Storage.cs), the legacy rows of compiler functions (DECISIONS R5-M116); the Array rows written in place:
+// an Array from none, setArrayLength, capacity and an Array's glue level (.Arrays.cs; DECISIONS R5-M121).
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact or a case selection
 // (MirCases decides a PairLayer under the item's view), compose a Subst or a Type (TypeOf does), resolve a callee, or use LINQ, Supports*,
 // out-string failures or catch-alls. An Opaque value (the gate admits none), a Type TypeOf cannot make and a Layout outcome other than

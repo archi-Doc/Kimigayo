@@ -132,7 +132,7 @@ consume(tasks@move)
 | A bare Place, including a standard projection of a temporary ([§3.4](03-types-and-values.md#34-places-and-storage)) | A shared borrow of the Place; when the Place stores `ref/T` or `uniq/T`, a Reborrow of that reference in its own mode, bounded to Shared by any shared layer on the path |
 | Any other expression (`E@ref`, `E@uniq`, `E@move`, `E@copy`, a temporary, ...) | The value it produces |
 
-The **Subject mode** is the access the Subject Place grants past its safe-reference layers: Shared (`ref`, `objref`), Exclusive (`uniq`, `objuniq`) or ByValue (owned). For a qualifying pair layer it is the weakest mode of the admitted cases ([§13.5.5](13-operators-and-assignment.md#1355-follow)), never ByValue; any other pair layer, such as one admitting Object Semantics, is no safe-reference layer, so a Binding takes its slot by value. A shared layer anywhere on the path bounds the mode to Shared. The mode never depends on `var`, Copy capability, conformances or the body. An explicit borrow applies to the written slot, so `values@uniq` on `let values: uniq/Array<T>` is an error; write `values` or `values@follow@uniq`. `for` selects its iteration entry from the mode ([§14.6.2](14-control-flow.md#1462-iteration-protocol)); Patterns select Places as in [§14.8.1](14-control-flow.md#1481-patterns).
+The **Subject mode** is the access the Subject Place grants past its safe-reference layers: Shared (`ref`, `objref`), Exclusive (`uniq`, `objuniq`) or ByValue (owned). For a qualifying pair layer it is the weakest mode of the admitted cases ([§13.5.5](13-operators-and-assignment.md#1355-follow)), never ByValue; any other pair layer, such as one admitting Object Semantics, is no safe-reference layer, so a Binding takes its slot by value. A shared layer anywhere on the path bounds the mode to Shared. In a Closure body, a Subject mode is decided with no Call Receiver layer on a path from an environment binding ([§7.7.3](07-functions-and-callable-values.md#773-call-receiver)). The mode never depends on `var`, Copy capability, conformances or the body. An explicit borrow applies to the written slot, so `values@uniq` on `let values: uniq/Array<T>` is an error; write `values` or `values@follow@uniq`. `for` selects its iteration entry from the mode ([§14.6.2](14-control-flow.md#1462-iteration-protocol)); Patterns select Places as in [§14.8.1](14-control-flow.md#1481-patterns).
 
 - The Subject Place is initialized before arm selection. A Property with a custom, computed or required `get` is read once, and the Subject Place is that Temporary Place, with the restriction of [§11.5](11-properties.md#115-getter-results).
 - Exclusive mode, also past a pair layer, grants exclusive access only where the lending point can be exclusively acquired ([§15.1.5](#1515-access-operations-and-acquisition)); a binding or `for` entry that needs exclusive access elsewhere is an error, never a shared binding.
@@ -316,11 +316,11 @@ func use(source: uniq/i32, bound: ref/i32) -> i32
 
 **Variance.** A safe borrow is covariant in its outer Origin, and a raw layer in its Origin ([§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins)). `uniq`, `obj`, `objuniq` and `raw` are invariant in their target; every other Semantics is covariant in its target, because `ref`, `objref`, `rc` and `arc` grant no mutation ([§15.6.2](#1562-place-overlap-and-conflicts)). In declaration variance a pair layer counts as covariant; in a generic body its target is invariant when an invariant Semantics is admitted. Function parameters reverse polarity. A Type derives its variance from its storage; there are no variance annotations.
 
-**Loan requirements.** Each slot has a requirement `none < ref < uniq`, from its shared or exclusive uses; nested uses propagate the stronger. A raw layer's Origin is no use; a `during self` pointee counts as stored content of its Type ([§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins)). It names the caller-side Loan to keep and grants nothing. Equal or shortened Origins never merge Loans or create exclusive access.
+**Loan requirements.** Each slot has a requirement `none < ref < uniq`, from its shared or exclusive uses; nested uses propagate the stronger. A conditional slot ([§8.1.2](08-generics-constraints-and-contracts.md#812-pair-reconstruction-and-origin-annotations)) is a use only in the admitted borrow cases of its binder, shared in the `ref` and `objref` cases and exclusive in the `uniq` and `objuniq` cases, so a slot's requirement and Phantom status are judged per admitted Semantics case of the declaration's pair binders; an instance has those of the case its arguments select ([§8.15.2](08-generics-constraints-and-contracts.md#8152-semantics-cases)). A raw layer's Origin is no use; a `during self` pointee counts as stored content of its Type ([§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins)). It names the caller-side Loan to keep and grants nothing. Equal or shortened Origins never merge Loans or create exclusive access.
 
-**Fixed points.** Variance, Loan requirements, OwnedOrigins and `Transferable` are computed once per declaration, in terms of its own Type parameters and slots, never by expanding instantiations. Each is the least fixed point from the bottom value (unused, `none`, empty set, no exclusion), so recursive Types, including non-regular ones such as a Field `rc/Nest<(T, T)>?`, terminate.
+**Fixed points.** Variance, Loan requirements, OwnedOrigins and `Transferable` are computed once per declaration (Loan requirements and Phantom status once per admitted Semantics case of its pair binders), in terms of its own Type parameters and slots, never by expanding instantiations. Each is the least fixed point from the bottom value (unused, `none`, empty set, no exclusion), so recursive Types, including non-regular ones such as a Field `rc/Nest<(T, T)>?`, terminate.
 
-**Phantom Origins.** A slot is **Phantom** when no chain of stored Fields, including slots of nested Types bound to it, reaches a stored safe reference or a `Loan<T>` Field. It keeps its dependency but grants no validity, Loan, Copy or access; its requirement is `none`, and it is invariant.
+**Phantom Origins.** A slot is **Phantom** when no chain of stored Fields, including slots of nested Types bound to it, reaches a stored safe reference or a `Loan<T>` Field. It keeps its dependency but grants no validity, Loan, Copy or access; its requirement is `none`, and it is invariant. Variance stays one per declaration: a slot is invariant as Phantom only when it is Phantom in every admitted case.
 
 **`Kimi.Loan<T>`** is a zero-sized compiler-managed struct that expresses a dependency without storage. `T` must be a borrow Type with outer `ref`, `uniq`, `objref` or `objuniq`. A `Loan<T>` Field counts as storing a `T` for all slot properties; it is Copy when `T` is, has no address and grants no access. `Loan<T>.init(value: T)` is safe and keeps the borrow's dependency; destroying it ends only its own responsibility, and the Loan stays live while the values that carry it are used ([§15.6](#156-borrow-checking)). `Slice<T>` ([§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)), `UniqSlice<T>` (invariant, [§4.8.4](04-arrays-indexing-and-slices.md#484-views-and-uniqslice)) and `Array<T>` ([§4.5](04-arrays-indexing-and-slices.md#45-array-ownership)) take slot properties from their own rules; `Weak<S>` counts as storing an `S` ([§3.2.2](03-types-and-values.md#322-weak-references)).
 
@@ -333,6 +333,15 @@ struct Node<T> {a}
     let value: ref/T during a
     let next: Option<rc/Node<T>{n}>
         origin n.a == a                 // Recursion adds nothing; a is covariant.
+```
+
+```kimi
+struct Holder<s/T> {a}
+    s is owner or uniq
+    let item: s/T during a          // a is uniq in the uniq case, none and Phantom in the owner case.
+
+func cached(h: Holder<i32> during static) => ()                   // Valid: the owner case stores no reference.
+// func lent(h: Holder<uniq/i32 during r> during static) => ()   // Error: a is uniq in the uniq case (§15.2.3).
 ```
 
 ### 15.3.6. Origin inference
@@ -388,6 +397,7 @@ After aliases, grouping and redundant owner prefixes are normalized, an omitted 
 | Function result | [§15.4.3](#1543-result-defaults); an omitted whole result Type is Unit |
 | Local with an initializer | Inferred ([§15.4.4](#1544-locals-and-independent-type-expressions)) |
 | Local without an initializer, Field, payload | Must be complete from explicit information |
+| Type in a Constraint, outside a Function Type | Must be complete from explicit information |
 | Static storage | Requires `Owned` and [§11.8](11-properties.md#118-static-storage); shared layers and `none`/`ref` slots default to `static`; `uniq` is an error |
 | Accessor or specialization | The inherited contract first; getter results use the getter receiver |
 | Adaptation Target, test or cast target | From the operand ([§13.5.1](13-operators-and-assignment.md#1351-forms-and-adaptation-targets), [§13.6.5](13-operators-and-assignment.md#1365-checked-casts-and-target-completion)) |

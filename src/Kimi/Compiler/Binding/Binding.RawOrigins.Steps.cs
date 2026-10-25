@@ -27,9 +27,9 @@ internal enum RawStep : byte
 }
 
 // Raw Origins, steps (SPEC 5.7, 5.2.1 condition 3; DECISIONS BU-24; contract in Binding.RawOrigins.cs): the authority a raw layer's
-// Origin can keep, which retention and the TyCtxt views read after Binding: by its kind (StepOf), a signature's layer (SignatureStep,
-// SignatureLayerStep) and a layer an instance stores (StoredStep, its members StoredMembers, both over StoredLayer; the step from the
-// layer its declaration states, DeclaredStep, which StoredStep and the hold walk read).
+// Origin can keep, which retention and the TyCtxt views read after Binding: by its kind (StepOf), a signature's layer (SignatureStep)
+// and a layer an instance stores (StoredStep, its members StoredMembers, both over StoredLayer; the step from the layer its declaration
+// states, DeclaredStep, which StoredStep and the hold walk read).
 public sealed partial class Binding
 {
     // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-24; R4's constraint 2): the authority a raw layer's Origin can keep where no declaration
@@ -58,34 +58,6 @@ public sealed partial class Binding
         }
 
         return kept == RawStep.Shared ? RawStep.Shared : StepOf(raw);
-    }
-
-    // SignatureStep of the raw layer a function's or accessor's signature states at `input` (Retention.Result for its result) and the
-    // component `positions` below it, as it declares them (TyCtxt.Signature); a path that ends at no raw layer is a broken contract.
-    internal RawStep SignatureLayerStep(BindingSymbol function, int input, ReadOnlySpan<int> positions)
-    {
-        _ = TyCtxt.Signature(function, null, 0, out var count);
-        var inputs = this.RentTypes(count);
-        try
-        {
-            for (var i = 0; i < count; i++)
-            {
-                inputs[i] = TyCtxt.Signature(function, null, i, out _)!;
-            }
-
-            var layer = TyCtxt.Signature(function, null, input, out _);
-            for (var i = 0; i < positions.Length && layer is not null; i++)
-            {
-                layer = (uint)positions[i] < (uint)layer.Components.Count ? layer.Components[positions[i]] : null;
-            }
-
-            return layer is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } ? this.SignatureStep(layer.RawOrigin, inputs.AsSpan(0, count))
-                : throw new InvalidOperationException($"No raw layer is declared at input {input} of `{function.Name}` (InternalInvariant).");
-        }
-        finally
-        {
-            this.typeScratch.Return(inputs, clearArray: true);
-        }
     }
 
     // SPEC 5.2.1 condition 3: the step of the raw layer an instance stores at a part and inline positions (StoredLayer), by DeclaredStep.

@@ -1,0 +1,5 @@
+#Layout("C")
+struct Empty
+    public func make() -> i32 => 0
+func opaque(p: raw/Empty) => ()
+Console.writeLine("ok")

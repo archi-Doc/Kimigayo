@@ -1,0 +1,12 @@
+func forgeL<T>(p: raw/u8) -> raw/T => p@raw/T
+func rz7Leak(a: ref/i32, b: ref/i32) -> ref/i32 during a
+    var r: ref/i32 during a = a
+    let q = forgeL<ref/i32>(r@raw@raw/u8)
+    unsafe => *q = b
+    return r
+func rz7LeakCaller() -> i32
+    var x: i32 = 7
+    var y: i32 = 1
+    let res = rz7Leak(x@ref, y@ref)
+    y = 8
+    return res@follow

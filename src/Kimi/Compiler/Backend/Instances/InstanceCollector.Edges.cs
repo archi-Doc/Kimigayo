@@ -70,8 +70,9 @@ internal sealed partial class InstanceCollector
     }
 
     // K 4.3: a type-driven item's targets, from its representative Type, each at the default site, by its kind's row: a ClosureErasure's
-    // body and its environment's glue; an ItemAdapter's body; a shim's (InstanceCollector.Witnesses.cs); a DropGlue's direct parts
-    // (InstanceCollector.Glue.cs); an object item's (InstanceCollector.Objects.cs). A kind without a row is a fault.
+    // body and its environment's glue; an ItemAdapter's body; a shim's (InstanceCollector.Witnesses.cs); a DropGlue's direct parts and a
+    // LegacyRow item's declared needs (InstanceCollector.Glue.cs); an object item's (InstanceCollector.Objects.cs). A kind without a row is a
+    // fault.
     private void Expand(MirProgram program, int item)
     {
         var key = this.Set.Items[item].Key;
@@ -88,6 +89,9 @@ internal sealed partial class InstanceCollector
                 return;
             case MonoKind.DropGlue:
                 this.DestructionTargets(program, item, site, type);
+                return;
+            case MonoKind.LegacyRow:
+                this.RowTargets(item, site, type);
                 return;
             case MonoKind.ObjectDescriptor or MonoKind.VTable:
                 this.Object(program, item, site, key.Kind, type);
