@@ -4961,7 +4961,7 @@ resumed by R4-M86 (2026-10-20).
     obligations unjudged); judging at formation (a Field's own Origins are still `Unbound`); "binder failed, no record" in the judge
     (`IsDerived` owns derivation). Open: A's `IsDerived` widening for an associated specification's record (review N1).
 
-- **BU-24** (2026-10-22; the BU planning session after the full process: designs A′ and B′, design review 2, design-final §14 "B′+";
+- **BU-24** (superseded in part by BU-39) (2026-10-22; the BU planning session after the full process: designs A′ and B′, design review 2, design-final §14 "B′+";
   unit bu20 C1a; CR-R2) A raw layer's Origin (SPEC 5.7) is a role of its own: `BoundType.RawOrigin` beside `Origin`, one slot whose
   role the Semantics decides (0 B; a pinned interleaved A/B of the getters against C0d's build gave warm Bind minima 35.70 against
   35.41 ms over three milestones, inside the baseline's own 3% spread, and equal cold bytes, so B′'s +8 B field is not taken). `Origin`
@@ -5693,6 +5693,20 @@ resumed by R4-M86 (2026-10-20).
     `Apply` giving Rejected instances to the MIR readers (BU-36's rejected option, R7's).
   - Open: e3 (BU, PLAN G242; a failed call, not storage): the effect summary reads a call Binding did not bind as `UnclassifiedCall`,
     so an unbound call in a confined witness publishes a dependent `IncompatibleContractImplementation_Kd` on every pipeline.
+
+- **BU-39 TyCtxt keeps only the raw readers of a stored layer** (2026-10-25; the BU planning session; PLAN G160, unit bu42; one
+  design, one review) R4-M116 (PQ-7): A5 reads neither `RawMembers` nor `RawStep(raw)`, only the step of the raw layer an instance
+  stores, so BU-24's signature reader, added on the owner's 「シグネチャ版も入れる (推奨)」 for A5 to read a signature's layer step, has
+  no reader either. A search of `src` (Benchmark and Playground included) and `tests` on dev 2351c1dfc found no caller of
+  `TyCtxt.RawStep(raw)`, `TyCtxt.RawStep(function, input, positions)` or `TyCtxt.RawMembers(origin, scope, members)` outside
+  `TyCtxtTest`, and `Binding.SignatureLayerStep` reached only through the second; all four are deleted.
+  - Kept: `TyCtxt.RawStep(instance, part, positions)` (A5's `MirBorrows` and `MirTypes.Holding` read it),
+    `TyCtxt.RawMembers(instance, part, positions, members)` for G148 (1)'s per-part guard (R4-M76), and Binding's `StepOf`,
+    `SignatureStep` and `RawMembers(origin, scope, members)`, which `StoredStep`, retention, `InvalidRawOrigin` and `StoredMembers` read.
+  - A result layer's signature cap has no compiler observer (retention reads a raw layer's step only for what a call may write, which
+    no result row reads), so no test asserts it.
+  - Supersedes BU-24's `TyCtxt.RawStep(raw)`, `TyCtxt.RawStep(function, …)` and `TyCtxt.RawMembers(origin, …)` readers, with its
+    open difference between the declared signature view and instantiated retention.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
