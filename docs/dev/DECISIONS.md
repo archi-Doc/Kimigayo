@@ -3691,6 +3691,28 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Rejected copy derived without a record (B2); rolling back a written copy (B3: a try-then-fallback chain; `MirBody` has no
     truncation); a per-call decision in Binding or the publisher (B4: the template's Types are MIR's).
   - Numbering: R4-M127 is free on dev and every remote and local branch (R4-M118 on 2a-1c; R4-M120 and R4-M124 on 4b).
+- **R4-M130 A Closure's receiver from every exclusive use of a Place a capture's path reaches (2c-1, G147 (3); the owner's two
+  readings)** (owner, 2026-10-25, the R4 planning session's dialog, verbatim: the Subject reading 「(a) Exclusive (推奨)」, raw writes
+  「(a) 両方 Exclusive (推奨)」; BU confirmed both in its dialog: 「はい、(a) Exclusive」, 「はい、(a) 両方 Exclusive」) SPEC 7.7.3, 7.7.2,
+  15.1.6, 14.6.2, 5.2.1 (3).
+  - Rule (`ClosureEffects`, `Binding.ClosureReceivers.cs`): a Closure is Exclusive when its body uses a Place a capture's path reaches,
+    one `NextPathStep` at a time, by an operation that needs it exclusively; each operation is read from its owner: an explicit
+    adaptation through `Binding.ExplicitAdaptations`' one rule (`AdaptationBorrow`: a Borrow, an Address or an upcast to an object
+    view, exclusive to `uniq`/`objuniq`; `BorrowsExclusively` for a CaseAdaptation, exclusive in some admitted case, the case-free
+    receiver being the strongest over cases), a `for` or `match` Subject through its plan's Subject mode, calls and accessors
+    through their argument operations. 2c-2 publishes the per-case facts.
+  - The owner's readings, acceptance changes: a bare `match` or `for` Subject Binding binds in Exclusive mode makes the Closure
+    Exclusive also when the body only reads (15.1.6: the mode never depends on the body; 7.7.3: the requirement comes from the
+    resolved operations; a read-only use writes `view@ref`); a write through a captured raw pointer, `*p` or `p[n]`, is Exclusive
+    (5.2.1 (3): a pointer read past a shared layer has no write authority, so under a Shared call the write would always be undefined).
+    The mode is the Subject's, so a ResolvedRange Subject through a captured `uniq` (mode Exclusive, its interval read once by
+    14.6.2) is Exclusive too. A `let` Closure's call of such a Closure is `InvalidAssignment_Kd`; its `var` form is valid.
+  - Open (PLAN): the receiver/Subject-mode order and 7.7.3's "mutates" for read-only Exclusive causes, which the later SPEC session
+    states; the general Note's wording for read-only causes (DIAGNOSTICS); `NeedsExclusively`, HIR's `ExclusiveUse` and
+    EffectBounds' `PlaceAccess` decide one meaning at three times (a duplication candidate, cross-phase, full process).
+  - Rejected: listing `ConversionBinding` kinds (it missed an upcast to `objuniq` and an exclusive admitted case, BU's F1); a
+    second enumeration of path steps beside `NextPathStep` (R4's re-check R1); rebinding the body under the chosen receiver
+    (R4-M126).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
