@@ -96,22 +96,8 @@ internal sealed partial class ModuleCodegen
     /// <param name="item">The item whose instance the call is in.</param>
     /// <returns>The signature; null, recorded at the item's site, where the instance does not make a Type of it.</returns>
     internal FunctionAbi? Slot(BindingSymbol original, Subst? subst, int item)
-    {
-        _ = TyCtxt.Signature(original, null, int.MaxValue, out var count);
-        this.Reserve(count);
-        var result = this.InstanceOf(original, subst, -1, item);
-        for (var slot = 0; result is not null && slot < count; slot++)
-        {
-            if (this.InstanceOf(original, subst, slot, item) is not { } parameter)
-            {
-                return null; // Recorded.
-            }
-
-            this.parameters[slot] = parameter;
-        }
-
-        return result is null ? null : this.Unnamed(Abi.Flags.None, result, this.parameters.AsSpan(0, count));
-    }
+        => this.Declared(original, subst, item, out var count) is { } result
+            ? this.Unnamed(Abi.Flags.None, result, this.parameters.AsSpan(0, count)) : null;
 
     /// <summary>Gets the signature a virtual function's Item's call takes (<see cref="Slot(BindingSymbol, Subst, int)"/>), under the Item's own
     /// substitution, the pure one its Type makes (TyCtxt.SubstOfItem; DECISIONS R5-M43).</summary>
@@ -127,6 +113,26 @@ internal sealed partial class ModuleCodegen
     internal FunctionAbi Ensure(int item)
         => this.Helper(item) ??=
             new(StaticPrefix + item.ToString(CultureInfo.InvariantCulture) + "_ensure", "void", [RuntimeAbi.Location, RuntimeAbi.LocationLength]);
+
+    // A function's result Type and its parameter Types in slot order into the scratch, each under a substitution (null: its declared Type)
+    // in an item's instance (InstanceOf); null, recorded at the item's site, where the instance does not make one.
+    private BoundType? Declared(BindingSymbol function, Subst? subst, int item, out int count)
+    {
+        _ = TyCtxt.Signature(function, null, int.MaxValue, out count);
+        this.Reserve(count);
+        var result = this.InstanceOf(function, subst, -1, item);
+        for (var slot = 0; result is not null && slot < count; slot++)
+        {
+            if (this.InstanceOf(function, subst, slot, item) is not { } parameter)
+            {
+                return null; // Recorded.
+            }
+
+            this.parameters[slot] = parameter;
+        }
+
+        return result;
+    }
 
     // A body item's Callable inputs, its parameter Types in slot order into the scratch (its Arg locals' in its instance, by
     // FunctionCodegen.ArgumentPosition; a Closure body's environment, its Arg local 1, is no parameter slot), and its result Type, local 0's;

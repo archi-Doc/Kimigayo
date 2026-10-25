@@ -114,18 +114,19 @@ internal sealed partial class FunctionCodegen
 
     // SPEC 7.7.4 (DECISIONS R5-M108): what a call of a function Item runs, decided by its function, for its Value call and its adapter's
     // entry: a compiler function's call is its direct call's row whatever targets the row needs (a format witness, a descriptor), written
-    // when it is one runtime routine (Routine, its slot-less values from the call's result Type into `given`); any other function's is its
-    // body target (the collector's: its function's body or a requirement Item's witness, BodyRun: a virtual witness through its slot); a
-    // virtual function's Item, which has no target (X5), runs its slot (SPEC 6.4.3) under the Item's own substitution (ModuleCodegen.Slot).
+    // when it is one runtime routine (Routine, its slot-less values from the call's result Type into `given`); any other function's is what
+    // its target runs (the collector's: its function's body or a requirement Item's witness; FunctionCodegen.Calls' Witness, a virtual
+    // witness through its slot); a virtual function's Item, which has no target (X5), runs its slot (SPEC 6.4.3) under the Item's own
+    // substitution (ModuleCodegen.Slot).
     // Null after a record at the source (an adapter's: its site): a row not written yet, its unit's located Unsupported_Kd, or a broken
     // contract.
     private Run? Runs(BoundType item, int target, BoundType? result, SourceInfo source, out ReadOnlySpan<Value> given)
     {
         given = default;
         var kind = item.Symbol?.CompilerFunction ?? CompilerFunctionKind.None;
-        if (kind == CompilerFunctionKind.None && target >= 0 && this.collector.Set.Items[target].Key.Kind == MonoKind.Body)
+        if (kind == CompilerFunctionKind.None && target >= 0)
         {
-            return this.BodyRun(target); // Null after a record.
+            return this.Witness(target, source); // Null after a record.
         }
 
         if (kind == CompilerFunctionKind.None && item.Symbol is { } function && VTableDef.SlotOf(function) >= 0)
