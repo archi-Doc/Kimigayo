@@ -133,8 +133,7 @@ internal sealed partial class FunctionCodegen
         var rvalue = statement.Rvalue;
         if (!this.Compute(this.body.Operands[rvalue.Start], out var input))
         {
-            // A Place of a later row (an object's payload, C6a) or a raw pointer's null (C8a).
-            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
+            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // An operand form not covered yet (Compute).
             return;
         }
 
