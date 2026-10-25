@@ -41,9 +41,10 @@ internal sealed partial class FunctionCodegen
     }
 
     // SPEC 22.2 (DECISIONS R5-M124): a Dictionary storage kernel (LegacyRow.DictionaryKernel) over its call's entry layout
-    // (DictionaryEntryLayout.Of of the K and V the call's substitution binds, in the item's instance; one rule for the five writers), its source operand 0's value (a
-    // reference's Dictionary address, ownStorage's moved Dictionary in memory, a slot pointer), its result the call Place's record, whose
-    // Fields the kernel stores, or, for a result that travels as a scalar (keyAt's and valueAt's pointer), the value the kernel defines.
+    // (DictionaryEntryLayout.Of of the K and V the call's substitution binds, in the item's instance; one rule for the five writers), its
+    // source operand 0's value (a reference's Dictionary address, ownStorage's moved Dictionary in memory, a slot pointer), its result the
+    // call Place's record, whose Fields the kernel stores, or, for a result that travels as a scalar (keyAt's and valueAt's pointer), the
+    // value the kernel defines.
     private void DictionaryKernel(in MirTerminator call, LegacyWriter writer)
     {
         var types = call.Callee.Subst!.Types;

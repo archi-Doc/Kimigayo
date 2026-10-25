@@ -792,7 +792,8 @@ public sealed class InstanceCollectorTest
         var c = MirBuildTest.Compile(CLayoutP + DictionaryKey + $"func put(v: {value})\n    let d: Dictionary<Key, {value}> = [Key.init(1): v@move]\n");
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         var records = code is null ? Array.Empty<string>()
-            : [$"{code} func put(v: {value})", $"{code} v@move", $"{code} [Key.init(1): v@move]", $"{code} let d: Dictionary<Key, {value}> = [Key.init(1): v@move]"];
+            : [$"{code} func put(v: {value})", $"{code} v@move", $"{code} [Key.init(1): v@move]",
+                $"{code} let d: Dictionary<Key, {value}> = [Key.init(1): v@move]"];
         Assert.Equal(records, set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}"));
         Assert.Equal(code is null ? 1 : 0, set.Items.ToArray().Count(static x => x.Key.Kind == MonoKind.LegacyRow));
     }
