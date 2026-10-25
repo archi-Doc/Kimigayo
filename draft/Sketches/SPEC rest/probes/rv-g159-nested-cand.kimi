@@ -1,0 +1,4 @@
+func f(c: bool, d: bool, a: i64) -> i64
+    let t = if c => (if d => (a, (return 1)) else => ((return 2), a)) else => (a, a)
+    return t.0
+Console.writeLine("\(f(true, true, 5))")

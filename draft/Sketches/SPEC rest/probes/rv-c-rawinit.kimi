@@ -1,0 +1,5 @@
+var x: i32 = 1
+let p = x@raw
+let f = func [p] () => unsafe => Raw.initialize(p, 5)
+f()
+Console.writeLine("\(x)")

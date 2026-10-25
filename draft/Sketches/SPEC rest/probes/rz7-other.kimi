@@ -1,0 +1,11 @@
+func forge3<T>(p: raw/u8) -> raw/T => p@raw/T
+func rz7Other(slot: uniq/(ref/i32 during c), other: ref/i32 during d)
+    let q = forge3<ref/i32>(slot@follow@raw@raw/u8)
+    unsafe => *q = other
+func rz7OtherCaller() -> i32
+    var y: i32 = 1
+    var x: i32 = 7
+    var r: ref/i32 = y@ref
+    rz7Other(r@uniq, x@ref)
+    x = 8
+    return r@follow
