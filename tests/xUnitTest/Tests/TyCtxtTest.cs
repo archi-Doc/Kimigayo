@@ -710,6 +710,21 @@ public sealed class TyCtxtTest
         Assert.Equal(Binding.StorageOutcome.Prepared, identity.Storage);
     }
 
+    // DECISIONS BU-36, R4-M139: a reader of an instance may read Prepared and Rejected storage, not a Limit (Readable, which retention,
+    // the MIR builder, A4 and MirCases read); Rejected rests on a Binding failure, so in a complete compilation it is a broken contract
+    // (the guard, as the collector's Derived): an incomplete compilation reads it, a complete one throws.
+    [Fact]
+    public void ARejectedVerdictIsReadableOnlyBesideABindingFailure()
+    {
+        var failed = MirBuildTest.Compile("struct Bad\n    public var m: Missing\nfunc f(b: ref/Bad) => ()\n");
+        var complete = MirBuildTest.Compile("struct Good\n    public var m: i32\nfunc f(b: ref/Good) => ()\n");
+        Assert.False(failed.Binding.Result.IsComplete);
+        Assert.True(complete.Binding.Result.IsComplete);
+        Assert.Equal([true, true, false], new[] { Binding.StorageOutcome.Prepared, Binding.StorageOutcome.Rejected, Binding.StorageOutcome.Limit }.Select(x => failed.Types.Readable(BoundType.I32, x)));
+        Assert.Equal([true, false], new[] { Binding.StorageOutcome.Prepared, Binding.StorageOutcome.Limit }.Select(x => complete.Types.Readable(BoundType.I32, x)));
+        Assert.Throws<InvalidOperationException>(() => complete.Types.Readable(BoundType.I32, Binding.StorageOutcome.Rejected));
+    }
+
     // SPEC 23.1.2 (DECISIONS BU-38): what a requirement call runs does not depend on a stored part Binding rejected, so a conforming Self
     // whose storage is Rejected has its witness's target (fail-before: Limit, which the collector published as a gap), while a Self whose
     // storage also nests past the bound keeps the Limit target beside its failed Field, as its repair does: the limit wins.

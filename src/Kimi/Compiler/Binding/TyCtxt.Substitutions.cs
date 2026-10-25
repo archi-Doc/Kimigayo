@@ -6,7 +6,7 @@
 // substitution and Origin forwarding.
 // Output: interned Subst values, identity being equality, kept as long as the TyCtxt; a Type or a substitution in an instance with its
 // storage verdict (Instance, Compose; DECISIONS BU-36, BU-38), Apply the instance when Prepared; Binding's completeness, the premise of
-// a Rejected verdict's contract (BindingComplete).
+// a Rejected verdict's contract (BindingComplete), and whether a reader may read a verdict, guarded by it (Readable; R4-M139).
 // Invariants: one Subst per (target, Self, declaring Type, Types, lengths, Origins, inputs), with one length entry per slot; the scratch
 // arrays Fit grows are reused.
 // Must not: clear its interning, resolve source expressions, or construct a Subst outside Intern.
@@ -32,8 +32,12 @@ internal sealed partial class TyCtxt
     private BoundLength?[] noLengths = [];
 
     // DIAGNOSTICS rule 8 (DECISIONS BU-38): whether Binding is complete, so has rejected no part: a Rejected storage verdict (Instance,
-    // Compose) met in a complete compilation is a broken contract, the premise of Binding.Retained's guard and R4-M118's OriginFinding.
+    // Compose) met in a complete compilation is a broken contract, the premise of Readable's guard and R4-M118's OriginFinding.
     internal bool BindingComplete => binding.Result.IsComplete;
+
+    // Whether a reader of an instance may read a Type whose storage has this verdict (Binding.Readable; DECISIONS BU-36, R4-M139):
+    // Prepared or Rejected, not a Limit; Rejected in a complete compilation throws, a broken contract.
+    internal bool Readable(BoundType type, Binding.StorageOutcome storage) => binding.Readable(type, storage);
 
     // SPEC 8.1.3, 10.5: a selected call's substitution, as its selection committed it; a value call has none. A direct base call's is its
     // implementation's in the Type implementing it, which it calls (virtual-dispatch 4).
