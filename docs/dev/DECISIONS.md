@@ -4007,6 +4007,64 @@ and migration obligations remain in force; no numeric cap changes are authorized
   (「はい、そのとおり (推奨)」). R5 agreed to R5-M113's pointer; R5 has the owner's own word, given to R5 directly
   (「70%を超えても、今の実装者・レビュアー体制で作業を継続してください」), recorded as R5-M120 (batch 41), which supersedes R5-M113's
   clause for R5.
+- **R4-M128 C2's receiver facts on `BoundClosure` (2c-2)** (2026-10-25, R4's implementer lane under R4-M126 §2.1 and D-1, D-9;
+  no reader but tests until 2c-3B and 2c-3; one acceptance change, the by-value positions below)
+  - Facts (SPEC 7.7.3, 8.14), written only by `ClosureEffects` (`Binding.ClosureReceivers`): `BoundCapture.BareReborrows`, an
+    acquisition of the environment binding itself by value without an operator (at a value position its consumer takes it by
+    value, `Binding.AcquiredByValue`, or by a nested Closure's `Bare` entry) Reborrows in some admitted case;
+    `BoundClosure.CaseFreeReceiver`, the requirement from every other use (Consuming only from a transfer, so never by case);
+    `Receiver` keeps its meaning (the strongest over every case, read by acquisition, the body's receiver local, the ABI and R5),
+    derived once at the end of `Classify`: `CaseFreeReceiver` raised to Exclusive when a capture is marked. A view of one case reads
+    that case's receiver as `CaseFreeReceiver` unless Shared, else Exclusive where a marked capture's case Type is an exclusive layer
+    (2c-3's `TyCtxt.ClosureReceiverIn`). `Classified`: reset where `BindClosure` clears the Signature, set at the end of `Classify`.
+  - `Classify` runs right after the body binds, before the failed-result and failed-parameter returns (N4 (a)); its snapshots
+    (diagnostic, semantic with HIR and MIR, the mir ledger) are byte-equal to 2c-1's, so the move is 2c-2's (D-9). A use counts only
+    when it names one of this binding's environment bindings (identity in `Storage`).
+  - By-value positions (2c-1 review O1, 2c-2 review B1, the family's second round; the owner, 2026-10-25, verbatim 「(a)
+    表現で直す。それまでは許可リスト (推奨)」): until one Binding-time "consumed by value" fact that `ClosureEffects` and the HIR
+    publisher's `Consume` both read (the planning session's separate full process, which removes this list), `AcquiredByValue`
+    (`Binding.BareAcquisition`, the owner of bare positions) names SPEC 3.5's value positions as `Consume` takes them: null in
+    Discard Context (a statement `x` or `(x)`, a discarded `if` body), whose acquisition SPEC 3.5 and 14.2.2 leave open and the MIR
+    builder takes by case (`MirBuilder.Values.cs`; R5's round 3 B2: answering false, round 2's R1, brought back `acquire (*_1).0` past
+    `ref/closure` on three valid forms), so the net covers it until the SPEC session settles 3.5 against 14.2.2; false where an
+    adaptation recorded at the use decides; true where the position decides (`AcquiredByPosition`: a bare position, an aggregate
+    element, a Dictionary entry), or at an input its consumer's operation takes by value (a receiver or argument of any callee kind's
+    plan, an enum Case's payload, SPEC 3.5's payloads); else by the consumer, the specific rows before the general binary one (an
+    index, a selection and a conversion are binary nodes; re-check R3): true at
+    an assignment's or compound assignment's source, an `and`/`or` operand, a Range bound, a built-in index key and a conversion
+    operand under the bare rule; false at a write or update target, an inspected operator operand, a selection, a runtime test, a
+    borrow, an address, a follow, a transfer, an object view upcast that borrows, a `for` or `match` Subject and a value call's
+    callee; null elsewhere. So `take(x)`, `g(x)` of a value call, `local = x`, `[1: x]` and `.Some(x)` of a captured `x: s/T`
+    Reborrow in x's exclusive cases, as `let y = x` does, and the strongest receiver is Exclusive (SPEC 8.14, 7.7.3; they were
+    Shared, the MIR reborrowing through `ref/closure`): a call of such a `let` Closure is `InvalidAssignment_Kd`. The payload also
+    keeps X1's `TransferRequired_Kd` (2c-2 review X1, BU's), as outside a Closure; the `let` Closure's `InvalidAssignment_Kd` beside it is
+    correct by SPEC 3.5 and 7.7.3, the payload Copying or Reborrowing by case (BU's re-check 2).
+    The net: a use of a capture that Reborrows by case at a null consumer is a located `Unsupported_Kd` when the capture is unmarked
+    and the case-free receiver Shared. A use is explained (SPEC 23.1.2; `Binding.ExplainedUse`, the owner's answer to the family's third
+    round, 2026-10-25, verbatim 「(a) 許可リストのまま直す (推奨)」, BU's re-check 2) only by its own failure, or by the failure or
+    dependency of the consumer whose operation decides its acquisition (a call or payload input, a conversion, an index), read from
+    the dependent-record rule's owner (`Binding.Diagnostics.Prerequisites.HasFailureCauses`, `FailureCauses`' condition); a position
+    that decides by itself, and a use in Discard Context, whose acquisition nothing decides (BU's re-check 3, N1: a failed sibling
+    `match` arm explained `true => value`, which keeps the net as `_ => value` does), are explained by nothing else. An assignment
+    source takes the target's Type, so `missing = x` loses the mark with its failed target (SPEC 3.5, 10.2; the twin is Shared).
+    An explained use neither reaches the net nor marks its capture: `"\(x)"`,
+    `Box(x)`, `x@copy` and `a[x]` keep their one record, a dependent call `pair(missing, x)` gets no net record beside
+    `UnresolvedBinding_Kd`, and a failed sibling element (`(x, missing)`, `[x, missing]`, `(take(x), missing)`) keeps the mark, as the
+    concrete twin over `uniq/i32` keeps its `InvalidAssignment_Kd`. Valid programs reach the net: the Discard Context forms above;
+    the remaining null consumers (a label, a `try`, a formatting or macro operand) need what a capturable pair layer `s/T` lacks
+    (`"\(x)"` stays `UnprovenConstraint_Kd` under `T is Utf8Format`), and an application `s/U` is not capturable (`Binding.Captures`).
+    Rejected: a derived record at the use (a prerequisite naming a failed node, which the net cannot know before a later failure);
+    round 2's walk over every enclosing node's failure (`InFailure`: a failed sibling dropped the mark, a dependent consumer without its
+    own failure kept the net, BU's re-check 2).
+  - Limits, each counted in every case, the strongest receiver (PLAN G13), because the capture's case Type does not tell their cases:
+    a Reborrow of a Place reached through a capture (a part `pair.0`, a referent `r@follow`; the part forms are a located
+    `Unsupported_Kd` on the default, the referent form `TransferRequired_Kd` in its uniq case); an explicit case adaptation
+    (`local@s/i32` of a captured `i32`, BU's 2c-1 note: its cases are the target binder's) and 2c-1's other rows (Subjects,
+    upcasts; R4-M130). A per-Place or per-binder fact would be a new representation (2c-3's planning). The early-return
+    classification is observed by probe only until 2c-3B's tests. Rejected: the facts beside today's `Receiver` writes (two maxima);
+    the bit on the environment `BindingSymbol`; a computed `Receiver` (a capture loop per read); the three missed positions added to
+    `ClosureEffects`' own list (a third fix of an open family); a net counting an unlisted use Exclusive in every case (a conservative
+    Language error on valid programs). Numbering: R4-M128 is free on dev and every branch (R4-M127 on G245's U1).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
