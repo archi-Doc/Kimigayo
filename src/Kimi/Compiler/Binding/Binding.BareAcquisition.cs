@@ -8,11 +8,12 @@ namespace Kimi.Compiler;
 // - Responsibility: the positions that do (IsBareAcquisitionPosition) and the Reborrow of a Place storing an exclusive reference there
 //   (StoredReborrow), recorded as the node's one adaptation, exactly as an annotation of the same complete Type would record it; whether
 //   the consumer of a value acquires it by value without an operator at any value position (AcquiredByValue, the list until the
-//   Binding-time "consumed by value" fact the HIR publisher's Consume will read too, the owner 2026-10-25; DECISIONS R4-M128), and the
-//   operation by which a method or accessor call takes its receiver (ReceiverOperation).
+//   Binding-time "consumed by value" fact the HIR publisher's Consume will read too, the owner 2026-10-25; DECISIONS R4-M128), whether
+//   a failure explains such a use (ExplainedUse: its own, or its deciding consumer's), and the operation by which a method or accessor
+//   call takes its receiver (ReceiverOperation).
 // - Inputs: the node, its bound Type, its Place (IsBarePlace) and the common adaptation (ExpectedAdaptation), which names the Reborrow;
 //   the recorded adaptations, Discard Context (KotoHelper.IsValueContext), the call plans of a node's consumer (CallPlan.Of), its
-//   enum Case construction and the accessor calls.
+//   enum Case construction, the accessor calls and a node's Binding causes (HasFailureCauses).
 // - Outputs: the recorded adaptation and its Type; the bare entries of pair layers per Semantics case are Binding.PairCases'.
 // - Invariants: a position with a fixed expected Type adapts by the common adaptation instead; AcquiredByValue answers only for the
 //   consumers its list names, and null for any other.
@@ -20,14 +21,15 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // SPEC 3.5, 8.14 (DECISIONS R4-M128): whether the consumer of the value at `node` (its parentheses unwrapped) acquires it by value
-    // without an operator, which a pair layer does per admitted case, read from the consumer where one decides: false in Discard Context,
-    // where no consumer takes it (a statement, a discarded body), or where an adaptation recorded at it decides; true at a bare position, a
-    // Dictionary literal's key or value, or an input its consumer's operation takes by value (a receiver or argument of any callee's plan,
-    // an enum Case's payload); else by the consumer: true at an assignment's source, an `and`/`or` operand, a Range's bound, a built-in
-    // index key and a conversion's operand under the bare rule, false at a write or update target, an inspected operator operand (SPEC
-    // 13.4), a selection through it, a runtime test, a borrow, an address, a follow, a transfer, a view upcast that borrows, a `for` or
-    // `match` Subject and a value call's callee; null at any other consumer, which this list, a copy of the HIR publisher's Consume until
-    // one Binding-time fact replaces both (the owner, 2026-10-25), does not decide.
+    // without an operator, which a pair layer does per admitted case, read from the consumer where one decides: null in Discard Context
+    // (a statement, a discarded body: SPEC 3.5 and 14.2.2 leave its acquisition open, and the MIR builder acquires it by case; R5's 2c-2
+    // round 3); false where an adaptation recorded at it decides; true where the position decides (AcquiredByPosition: a bare position,
+    // an aggregate element, a Dictionary literal's key or value) or at an input its consumer's operation takes by value (a receiver or
+    // argument of any callee's plan, an enum Case's payload); else by the consumer: true at an assignment's source, an `and`/`or`
+    // operand, a Range's bound, a built-in index key and a conversion's operand under the bare rule, false at a write or update target,
+    // an inspected operator operand (SPEC 13.4), a selection through it, a runtime test, a borrow, an address, a follow, a transfer, a
+    // view upcast that borrows, a `for` or `match` Subject and a value call's callee; null at any other consumer, which this list, a copy
+    // of the HIR publisher's Consume until one Binding-time fact replaces both (the owner, 2026-10-25), does not decide.
     internal bool? AcquiredByValue(Koto node)
     {
         var target = node;
@@ -36,12 +38,17 @@ public sealed partial class Binding
             target = parenthesized;
         }
 
-        if (!KotoHelper.IsValueContext(target) || this.adaptations.ContainsKey(target))
+        if (!KotoHelper.IsValueContext(target))
+        {
+            return null; // A Discard Context use: SPEC 3.5 and 14.2.2 leave its acquisition open; the MIR builder acquires it by case.
+        }
+
+        if (this.adaptations.ContainsKey(target))
         {
             return false;
         }
 
-        if (IsBareAcquisitionPosition(target) || target.Parent is DictionaryLiteralKoto)
+        if (AcquiredByPosition(target))
         {
             return true;
         }
@@ -67,6 +74,21 @@ public sealed partial class Binding
             InvocationKoto { BoundValueCall: { } call } when ReferenceEquals(call.CalleeValue, target) => false,
             _ => null,
         };
+    }
+
+    // SPEC 23.1.2 (the owner's third round on the list, 2026-10-25): whether a failure explains a use, its own or one of the consumer
+    // whose operation decides its acquisition (a call or payload input, a conversion, an index, an operator): that consumer's failure
+    // or its dependency on another failure (HasFailureCauses, the dependent-record rule). A position that decides the acquisition by
+    // itself (AcquiredByPosition) is explained by nothing else, so a failed sibling element never explains it.
+    internal bool ExplainedUse(Koto use)
+    {
+        var target = use;
+        while (target.Parent is ParenthesizedKoto parenthesized)
+        {
+            target = parenthesized;
+        }
+
+        return this.HasFailureCauses(use) || (!AcquiredByPosition(target) && target.Parent is { } consumer && this.HasFailureCauses(consumer));
     }
 
     // The operation by which the method or accessor call whose receiver a Place is takes it (SPEC 7.3.3, 11.3), or null.
@@ -116,6 +138,10 @@ public sealed partial class Binding
             _ => ResultTarget(target) is IfKoto or MatchKoto or DoKoto && KotoHelper.IsValueContext(target),
         };
     }
+
+    // SPEC 3.5: whether the position of `target` (its parentheses unwrapped) acquires its value by value itself, as StoredReborrow decides
+    // a bare acquisition: a bare position, an aggregate element or a Dictionary literal's key or value.
+    private static bool AcquiredByPosition(Koto target) => IsBareAcquisitionPosition(target) || target.Parent is DictionaryLiteralKoto;
 
     // The operation by which the consumer of `target` takes it: a receiver or argument of one of its calls, or an enum Case's payload.
     private BoundArgumentOperation? ConsumerInput(Koto target)
