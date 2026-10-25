@@ -5,7 +5,7 @@
 // helper records, the runtime flags, the source functions the compiler requested, the DictionaryStorage functions and the
 // formatting wrappers), the element descriptor of a stored collection value, the stored-value text kernels the helpers write
 // through, the Array capacity routines and helpers (LegacyRuntimeHelpers.Arrays.cs), the Dictionary runtime, the storage byte
-// primitives and the Dictionary helpers (LegacyRuntimeHelpers.Dictionaries.cs), the formatting runtime with its routines' ABIs
+// primitives, a Dictionary entry's layout and the Dictionary helpers (LegacyRuntimeHelpers.Dictionaries.cs), the formatting runtime with its routines' ABIs
 // and the wrappers over user formatting witnesses (LegacyRuntimeHelpers.Formatting.cs), the storage-boundary, Raw.slice and
 // capacity kernels written inline in their caller's body with the library record Field addressing they share with the old
 // writer (LegacyRuntimeHelpers.Storage.cs) and the string-comparison routines, spliced from their signatures (StringEqual, StringCompare,
@@ -26,8 +26,9 @@
 // its callees as DictionaryCallee values: the generic function its helpers call over the entry Types (findEntry for
 // CheckKey, clearEntries for Drop) and the one the module resolves (requireAbsent for CheckKey, append for Place).
 // DictionaryCallee, the key of KimiLibrary's DictionaryStorage view (F2c), names each function by the symbol Binding declares
-// for it; the Dictionary runtime (the duplicate-key adapter and the initialization bridge, which calls initialize) has no
-// row, and the old lowering also requests it for a Dictionary's construction. Each formatting compiler function's row
+// for it; the Dictionary runtime (the duplicate-key adapter and the initialization bridge) has no row but declares the callee a
+// Dictionary's construction runs (Construction, initialize), and the old lowering also requests it for a Dictionary's construction.
+// Each formatting compiler function's row
 // (FormattingRow; P1d) holds its routine's ABI and HelperNeeds (the formatting runtime) and declares no library callee, since the
 // formatting runtime calls none; the formatting witness WriterWrite, TextToString and TextTryFormat run is the need their
 // published library rows state (Formats, SPEC 4.9.6), which the collector reads there. Each inline storage kernel's row
