@@ -1,5 +1,18 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Origin failure explanations (SPEC 5.7, 10.6, 15.2.3, 15.3.2, 15.4.3, 23.1): the parts of an Origin failure's record beyond the
+// typed facts its check records.
+// - Responsibility: the records of a per-call slot (ReportPerCallSlot), an undeclared storage Origin name
+//   (ReportUndeclaredStorageOrigin, StorageOriginType, TypeNameSpan), an absent slot (RecordAbsentSlot, ReportAbsentSlot) and an
+//   invalid slot (ReportInvalidOriginSlot); the omitted-result Note (OmittedResultNote); the Borrow in a value whose Origin contains
+//   an atom (LocalBorrow), which BorrowSource (Binding.Diagnostics.cs) relates.
+// - Inputs: the failing node and the facts its check recorded (absentSlotProjections, invalidStaticOriginSlots, phantomRawOrigins,
+//   PerCallSlotFact), the result contexts, the bound syntax.
+// - Outputs: the records with their Notes, evidence and related locations; the Borrow node.
+// - Invariants: a fact is recorded where its check fails (RecordAbsentSlot); everything else runs only while a failure's record is
+//   formed.
+// - Prohibitions: no inference, proof or judgment re-run to explain a failure; no failure decided here.
+
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -136,6 +149,14 @@ public sealed partial class Binding
         }
 
         static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
+    }
+
+    // The Borrow in a closure's result expression whose Origin is the call-local one, which the record names and relates.
+    private static Koto? LocalBorrow(Koto value, BoundOrigin origin)
+    {
+        var finder = new LocalBorrowFinder(origin);
+        finder.Visit(value);
+        return finder.Found;
     }
 
     // SPEC 15.4.3, 15.6.1: a result fitting or Origin failure whose omitted result Origin defaulted to static because the only
@@ -285,5 +306,45 @@ public sealed partial class Binding
             : null;
         node.Report(requirement, code, note: note, at: slot, evidence: [$"{symbol.Name} has no Origin slot {slot.IdentifierName}"], relatedSpans: related);
         return true;
+    }
+
+    // The first Borrow in a result expression whose Origin contains the call-local atom.
+    private sealed class LocalBorrowFinder(BoundOrigin atom) : KotoVisitor
+    {
+        internal Koto? Found { get; private set; }
+
+        public override void Visit(Koto node)
+        {
+            if (this.Found is not null)
+            {
+                return;
+            }
+
+            if (node is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Origin: { } borrowed } && this.Contains(borrowed))
+            {
+                this.Found = node;
+                return;
+            }
+
+            node.VisitChildren(this);
+        }
+
+        private bool Contains(BoundOrigin origin)
+        {
+            if (ReferenceEquals(origin, atom))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (this.Contains(origin.Operands[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 }

@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -9,12 +8,26 @@ namespace Kimi.Compiler;
 // The rows of TyCtxt.Retains (Binding.Retention.cs computes the atoms and premises they are read from).
 public sealed partial class Binding
 {
-    // The rows of the contract being computed, the inputs whose writable storage may receive a pointer tied to no input, the structs and
-    // enums the hold walk of an output has met (Held) and the inline path it is at (StoredStep's positions), reused.
+    // The rows of the contract being computed, the inputs whose writable storage may receive a pointer tied to no input, and the positions
+    // the hold walk of an output has met (Held: a Type with the Type its declaration writes there, both interned, so compared by
+    // reference), reused.
     private readonly List<Retention> retentionRows = new();
     private readonly List<int> retentionUntiedStores = new();
-    private readonly HashSet<BoundType> retentionStored = new(ReferenceEqualityComparer.Instance);
-    private readonly List<int> retentionPath = new();
+    private readonly HashSet<(BoundType Type, BoundType? Written)> retentionMet = new();
+
+    // Whether a retention reads a Type whose storage has this verdict (SPEC 23.1.2; DECISIONS BU-36): Prepared, and Rejected, whose parts
+    // that do not substitute hold nothing, so the rows that hold whatever they are stay; a Limit gives CallRetention.Limit. Rejected
+    // storage rests on a Binding failure (DIAGNOSTICS rule 8: a part Binding did not bind makes it incomplete), so in a complete
+    // compilation it is a broken contract.
+    internal bool Retained(BoundType type, StorageOutcome storage)
+    {
+        if (storage == StorageOutcome.Rejected && this.Result.IsComplete)
+        {
+            throw new InvalidOperationException($"The storage of {type.Name} is Rejected in a complete compilation.");
+        }
+
+        return storage != StorageOutcome.Limit;
+    }
 
     // An input retained through one of its occurrences: Value over Content; an atom of no kind gives none (a raw input's own layer).
     private static void Mark(RetentionKind?[] kinds, in RetentionAtom atom)
@@ -31,7 +44,7 @@ public sealed partial class Binding
     // call forms within a raw parameter's storage (`within`) retains that argument's own value. A raw input's own value is a Value row of
     // the outputs that can hold it, and an output whose hold walk meets a raw layer stepping Unstated or Static is untied (Held: Untied,
     // UntiedStores; DECISIONS R4-M116). The work is what the closures reach, each node with its incoming premises once per closure, and
-    // each output's hold walk. CallRetention.Limit where a stored Type is not instantiated.
+    // each output's hold walk, each position once (BU-35). CallRetention.Limit where the hold walk meets storage past its limits (Held).
     private CallRetention RetentionRows(OriginPremiseEnvironment environment, int[] nodes, int inputCount, int within)
     {
         // The sources at a node, linked atom indexes.
@@ -71,12 +84,12 @@ public sealed partial class Binding
                 }
             }
 
-            // The hold walk from each of the output's holds, each struct's or enum's stored content once.
-            this.retentionStored.Clear();
+            // The hold walk from each of the output's holds, each position once.
+            this.retentionMet.Clear();
             var held = false;
             foreach (var (at, type) in this.retentionHolds)
             {
-                held |= at == output && this.Held(type, null, -1, 0, output, owned);
+                held |= at == output && this.Held(type, null, output, owned);
             }
 
             untied |= held && output == Retention.Result;
@@ -142,25 +155,35 @@ public sealed partial class Binding
         return tied;
     }
 
-    // SPEC 15.6.4, 5.7 Calls (DECISIONS R4-M116 items 2 and 5, R-B2, BU-30), the hold walk: a position of `output` the call may write,
-    // a hold (retentionHolds: a position of the result, or of input j's writable storage) or a position below one (`instance`'s Field or
-    // Case `part` on its inline path from `start`; -1 off it). Each raw input other than `output` whose Type the position can hold retains
-    // its own value there (R-B4: a raw layer agreeing with it, Origins fitted: their erasures, TyCtxt.Erase, are one Type, SPEC 3.8; or an
-    // abstract part, which an instance may make one); a pointer is never part of its own pointee. A raw layer stepping Unstated or Static
-    // (StoredStep on an instance's inline path, its Origin's kind elsewhere, DECISIONS BU-24) unties `output`, the result returned: a
-    // pointer the call forms there is tied to no argument. A value stored at a writable position brings its whole Type (BU-1), so the walk
-    // goes below every layer that stores (IsCallable), as RetentionParts' writable positions do, and into a struct's or enum's stored
-    // content, each once per output. A Type whose storage Binding does not complete, a growing one among them (PrepareTypeStorage's
-    // limits, DECISIONS BU-12), makes the contract CallRetention.Limit.
-    private bool Held(BoundType? type, BoundType? instance, int part, int start, int output, bool[] owned)
+    // SPEC 15.6.4, 5.7 Calls (DECISIONS R4-M116 items 2 and 5, R-B2, BU-30, BU-35), the hold walk: a position of `output` the call may
+    // write, a hold (retentionHolds: a position of the result, or of input j's writable storage) or a position below one, with `written`,
+    // the Type a struct's Field or an enum's Case payload declares there while it is a Tuple, a fixed array or a raw layer (null elsewhere:
+    // off a declaration, or below a Type parameter or another part it does not write inline). Each raw input other than `output` whose
+    // Type the position can hold retains its own value there (R-B4: a raw layer agreeing with it, Origins fitted: their erasures,
+    // TyCtxt.Erase, are one Type, SPEC 3.8; or an abstract part, which an instance may make one); a pointer is never part of its own
+    // pointee. A raw layer stepping Unstated or Static (DeclaredStep: its declaration's cap where `written` states the layer, its Origin's
+    // kind elsewhere, DECISIONS BU-24) unties `output`, the result returned: a pointer the call forms there is tied to no argument. A value
+    // stored at a writable position brings its whole Type (BU-1), so the walk goes below every layer that stores (IsCallable), as
+    // RetentionParts' writable positions do, and into a struct's or enum's stored content. What a position gives depends on its Type and
+    // `written` alone and only accumulates, so each position is walked once per output (retentionMet): the work is linear in the distinct
+    // positions, not in the paths to them through the interned Types (V16). A struct or enum whose storage is a Limit, a growing one among
+    // them (PrepareTypeStorage's limits, DECISIONS BU-12), makes the contract CallRetention.Limit; Rejected storage is walked as far as it
+    // substitutes, a part that does not (null) holding nothing (Retained, BU-36).
+    private bool Held(BoundType? type, BoundType? written, int output, bool[] owned)
     {
-        var nominal = AdtDef.IsStruct(type) || AdtDef.IsEnum(type);
-        if (nominal && !this.retentionStored.Add(type!))
+        if (type is null)
         {
             return false;
         }
 
-        if (type is null || (nominal && !this.PrepareTypeStorage(type)))
+        written = ReferenceTypes.IsPointer(written) || written?.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray ? written : null;
+        if (!this.retentionMet.Add((type, written)))
+        {
+            return false;
+        }
+
+        var nominal = AdtDef.IsStruct(type) || AdtDef.IsEnum(type);
+        if (nominal && !this.Retained(type, this.PrepareTypeStorage(type)))
         {
             this.retentionLimit = true;
             return false;
@@ -172,23 +195,19 @@ public sealed partial class Binding
             owned[input] |= input != output && (type.IsAbstract || (raw && ReferenceEquals(this.types.Erase(type), this.types.Erase(pointer))));
         }
 
-        var step = !raw ? RawStep.Unstated
-            : part >= 0 ? this.StoredStep(instance!, part, CollectionsMarshal.AsSpan(this.retentionPath)[start..]) : StepOf(type.RawOrigin);
-        var untied = raw && step is RawStep.Unstated or RawStep.Static;
+        var untied = raw && DeclaredStep(type, written) is RawStep.Unstated or RawStep.Static;
         untied |= nominal && this.Stores(type, output, owned);
-        var inline = type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray;
         for (var i = 0; !IsCallable(type) && i < type.Components.Count; i++)
         {
-            this.retentionPath.Add(i);
-            untied |= this.Held(type.Components[i], instance, inline ? part : -1, start, output, owned);
-            this.retentionPath.RemoveAt(this.retentionPath.Count - 1);
+            untied |= this.Held(type.Components[i], InlinePart(written, i), output, owned);
         }
 
         return untied;
     }
 
-    // The hold walk (Held) of a struct's or enum's stored content (SPEC 5.7 Slots and ownership): its base, Fields and Case payloads,
-    // each on its inline path; whether one unties `output`.
+    // The hold walk (Held) of a struct's or enum's stored content (SPEC 5.7 Slots and ownership): its base, and its Fields and Case
+    // payloads with the Types their declarations write; whether one unties `output`. An enum's Cases are walked only where its instance
+    // substituted them, the storage its verdict covered (DECISIONS BU-36), which bounds the walk.
     private bool Stores(BoundType instance, int output, bool[] owned)
     {
         if (instance.Symbol?.Adt is not { } adt)
@@ -196,20 +215,18 @@ public sealed partial class Binding
             return false;
         }
 
-        var first = this.retentionPath.Count;
-        var untied = AdtDef.Base(instance) is { } parent && this.Held(parent, null, -1, first, output, owned);
+        var untied = AdtDef.Base(instance) is { } parent && this.Held(parent, null, output, owned);
         for (var i = 0; AdtDef.IsStruct(instance) && i < adt.Fields.Length; i++)
         {
-            untied |= this.Held(this.StoredType(adt.Fields[i], instance), instance, i, first, output, owned);
+            untied |= this.Held(this.StoredType(adt.Fields[i], instance), WrittenType(adt.Fields[i]), output, owned);
         }
 
-        for (var i = 0; AdtDef.IsEnum(instance) && i < adt.Cases.Length; i++)
+        var cases = AdtDef.CaseTypes(instance) is null ? 0 : adt.Cases.Length;
+        for (var i = 0; i < cases; i++)
         {
             for (var j = 0; adt.Cases[i] is { } selected && j < selected.Payload.Length; j++)
             {
-                this.retentionPath.Add(j);
-                untied |= this.Held(this.StoredType(selected.Payload[j], instance), instance, i, first, output, owned);
-                this.retentionPath.RemoveAt(first);
+                untied |= this.Held(this.StoredType(selected.Payload[j], instance), WrittenType(selected.Payload[j]), output, owned);
             }
         }
 

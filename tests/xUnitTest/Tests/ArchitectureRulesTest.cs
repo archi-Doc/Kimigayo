@@ -20,7 +20,7 @@ public class ArchitectureRulesTest
         "Binding/Binding.DiagnosticTypes.cs=1;Binding/Binding.Lints.cs=1;Binding/Binding.LocalRegions.Types.cs=2;" +
         "Binding/Binding.OriginDeclarations.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.PlaceAuthority.Raw.cs=1;" +
         "Binding/Binding.RawOrigins.Holder.cs=5;Binding/Binding.RawOrigins.Steps.cs=5;Binding/Binding.RawOrigins.cs=4;" +
-        "Binding/Binding.Retention.Atoms.cs=1;Binding/Binding.Retention.Rows.cs=1;Binding/Binding.Storage.cs=2;Binding/Binding.TypeOrigins.cs=3;" +
+        "Binding/Binding.Retention.Atoms.cs=1;Binding/Binding.Storage.cs=2;Binding/Binding.TypeOrigins.cs=3;" +
         "Binding/Binding.TypeRelations.Origins.cs=7;Binding/Binding.TypeRelations.cs=2;" +
         "Binding/BindingModel.cs=2;Binding/TyCtxt.Raw.cs=1;Binding/TyCtxt.cs=4";
 

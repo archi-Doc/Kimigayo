@@ -4,7 +4,7 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Mir;
 
-// A5's view loop (A3 5, Carrying, with E8): Run checks a body under the selected view: its Loans, its holders' slots (Holders), endings,
+// A5's view loop (A3 5, Carrying, with E8): Run checks a body under the selected view: its Loans, addresses, its holders' slots (Holders), endings,
 // touches and the copies' entries, then holder liveness backward and carrying forward over the dataflow's chains, each holder's set joined
 // by node union, then the checks replay and R26-access's pass (MirBorrows.Defaults). A block's locations are carried in order, each planned
 // on the state before it (MirBorrows.Flow), checked in the replay, then committed; at a destruction in place the Loans it ends are then
@@ -31,9 +31,10 @@ internal sealed partial class MirBorrows
         this.sets.Clear();
         (this.loanBase, this.escapedSet) = (Markers + body.Locals.Length, this.sets.Add(0, Escaped));
         this.Loans();
+        this.Addresses();
         if (!this.producing)
         {
-            return; // No input of a Loan-stratum producer, no problem (A3 6.1, D5; E7's γ, R3 and a slot write need no Loan).
+            return; // No input of a Loan-stratum producer, no problem (A3 6.1, D5; E7's γ, R3, a slot write and PQ-10 need no Loan).
         }
 
         this.Holders();
@@ -63,11 +64,12 @@ internal sealed partial class MirBorrows
         this.Work += this.sets.Bytes + this.sets.Scanned;
     }
 
-    // σ at the entry: a Loan-capable argument refers to storage the body does not own (Φ_E); the forward solve starts with the view not
-    // held (R4-M73).
+    // σ at the entry: a Loan-capable argument, and what storage the body does not own holds, refer to such storage (Φ_E; SPEC 15.6), so
+    // every value read through E carries Φ_E (R4-M120, B1); the forward solve starts with the view not held (R4-M73).
     private void Initial(ulong[] state)
     {
         state.AsSpan(0, this.holderCount).Clear();
+        state[Escaped] = (ulong)this.escapedSet;
         this.held = false;
         for (var i = 1; i < this.body.Locals.Length && this.body.Locals[i].Kind == MirLocalKind.Arg; i++)
         {

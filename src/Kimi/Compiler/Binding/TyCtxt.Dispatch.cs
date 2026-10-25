@@ -91,7 +91,7 @@ internal sealed partial class TyCtxt
             return default;
         }
 
-        if (!binding.PrepareTypeStorage(self))
+        if (binding.PrepareTypeStorage(self) != Binding.StorageOutcome.Prepared)
         {
             return new(RequirementTargetKind.Limit, null, null, default);
         }

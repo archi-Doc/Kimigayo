@@ -5,9 +5,12 @@
 // Callable signature it declares (CallPlan.DeclaredSignature, DECISIONS R4-M41); the calling definition (null: top-level statements).
 // Output: an immutable CallRetention, rows Retention(Input, Kind, Output), Untied and UntiedStores, one per callee or signature, Type
 // instantiation and the premise scope or declaration it reads, for the latest Binding pass and reused by later passes until an edit;
-// CallRetention.Limit where Binding's storage instantiation does not complete the contract or a Type its hold walk reaches (storage
-// nested past its depth bound, which a growing recursive Type of SPEC 15.3.5 always reaches) or a raw layer's member walk (a keeper cycle
-// that changes its Type arguments; Binding.RawMembers), never an exception.
+// CallRetention.Limit, a genuine limit only, where the contract or a Type its hold walk reaches has storage past Binding's limits (nested
+// past its depth bound, which a growing recursive Type of SPEC 15.3.5 always reaches; Binding.StorageOutcome.Limit), the contract's
+// substitution does not complete (no reproducer), or a raw layer's member walk is incomplete (a keeper cycle that changes its Type
+// arguments; Binding.RawMembers). Storage a Binding failure left Rejected is no limit: its parts that do not substitute hold nothing and
+// the rows that hold whatever they are stay (SPEC 23.1.2; DECISIONS BU-36); in a complete compilation it is a broken contract, an
+// exception, which ends the check as CheckFaulted_Kd.
 // Invariants: an output retains an input exactly when the callee's body may move a value of the input there under the premises its
 // body is checked under: the instantiated contract (the Subst's Types, Self and declaring Type substituted, the callee's own Origins
 // left as the call's fresh regions, so retention is per argument) and the premises of its enclosing declarations; or when both name
@@ -61,10 +64,11 @@ internal readonly record struct Retention(int Input, RetentionKind Kind, int Out
 /// may write a pointer tied to no input (DECISIONS R4-M116 R-B2, BU-30); or <see cref="Limit"/>, which has none of them.</summary>
 internal sealed class CallRetention(Retention[]? rows, bool untied, int[] untiedStores)
 {
-    /// <summary>The retention of a call whose contract, or a Type its hold walk reaches, Binding's storage instantiation does not complete
-    /// under its Subst (storage nested past its depth bound, which a growing recursive Type of SPEC 15.3.5 always reaches), or whose raw
-    /// layer's member walk is incomplete (a keeper cycle that changes its Type arguments), as A4's effects take it: no rows are computed,
-    /// and A5 records a located Unsupported_Kd at the call. Reading its rows, Untied or UntiedStores is a broken contract.</summary>
+    /// <summary>A genuine limit: the retention of a call whose contract, or a Type its hold walk reaches, has storage past Binding's limits
+    /// under its Subst (nested past its depth bound, which a growing recursive Type of SPEC 15.3.5 always reaches), or whose raw layer's
+    /// member walk is incomplete (a keeper cycle that changes its Type arguments), as A4's effects take it: no rows are computed, and A5
+    /// records a located Unsupported_Kd at the call. Storage a Binding failure left Rejected is not a Limit (DECISIONS BU-36). Reading its
+    /// rows, Untied or UntiedStores is a broken contract.</summary>
     internal static readonly CallRetention Limit = new(null, untied: false, []);
 
     private readonly Retention[]? rows = rows;
