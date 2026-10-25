@@ -3494,6 +3494,56 @@ and migration obligations remain in force; no numeric cap changes are authorized
     substitution in place of R1's `Unsupported_Kd`.
   - Open: p7-round's F1, F2 and G1–G13 stay with the planning session and 2c-D; `15.8.2-closure-dependencies` now classes the same R1
     record (b), as Binding's record both paths publish (the review's ruling; its old-path-only Refuted code is named in the note). Numbering: R4-M123 is free on dev and every remote and local branch.
+- **R4-M126 A5-F7's design package (2c-D) approved: Closure calls as receiver calls in the existing owners** (owner, 2026-10-25,
+  relayed by the R4 planning session, verbatim answers: OQ-F7-1 「(a) すべて承認 (推奨)」, OQ-F7-2 「(a) 削除する (推奨)」, OQ-F7-3
+  「(a) メソッドと同じ規則 (推奨)」, on the review groups 「(a) 単独で入れる (推奨)」 (D-10, with AB-2's adaptation), on the implementers 「0c だけ BU (推奨)」
+  (relayed by BU, confirmed in R4's dialog: 「はい、そのとおり」); R4-M74 OQ2, plan PD5) The package is `draft/Sketches/A5 Step 2/2c-D-package.md`
+  (design B as the base with parts of design A, merged by the full-process design review, whose blocking B1–B5 it resolves, and
+  cleared by the review's re-check, ACCEPT WITH FIXES, its F1–F6 applied; the designs and the review are beside it as `2c-D-design-A.md`, `2c-D-design-B.md` and `2c-D-review.md`).
+  Implementers: R4 for every unit but 0c (2c-4), which is BU's. Units and review forms (DEC Q6, PD29): 2c-0, 2c-1 and 2c-9 one
+  review each; 2c-2, 2c-3B, 2c-3 and 2c-5 one design and one review each, BU reviewing every Binding part beside R4's reviewer
+  (R4-M119) and R5 2c-2 and 2c-3 (AR-2), each merging alone; 2c-4 is BU's 0c (BU's review and R4's), after 2c-3's merge and never
+  before it; G:A5-F7, one group review, is 2c-6 and 2c-7, whose closing review covers 2c-3–2c-6 end to end. Order: 2c-0, 2c-1,
+  2c-2, 2c-3B in lane B; 2c-3 after 2c-3B and G:A5-F4's merge, then 2c-4; 2c-5 after 2c-3; 2c-6 and 2c-7 last; 2c-9 any time in
+  lane B. In short:
+  - Rule (R4-M99, R4-M123): a Closure body is checked against its call receiver ρ (`ClosureValueSlot`'s atom) as a method body is
+    against `self`. A walk that reaches an environment binding through a layer stored in it meets ρ (BU-27's C3, G6); a nested bare
+    entry of an outer binding takes `meet(o, ρ_outer)` (R4-M123's 7.7.2; an exception to BU-28's "source's Type"). Once a Closure is
+    classified, `OriginAtUse` resolves its environment atoms to ρ under a borrowed receiver and ρ to `static` under `owner/Self`;
+    before that both are pending, fitted as local regions and routed at the outermost pending Closure's classification as binding
+    time routes them (every path classifies; a binding's pending entries leave with it, entries whose obligation was removed are
+    skipped; unclassified atoms Dependent in the view).
+  - C2 is `BoundClosure`'s facts (the strongest receiver for acquisition, a per-capture bit and the case-free receiver for each
+    case, `Classified`); retention is `TyCtxt.Retains` with the receiver at input 0 (D1: a `let` binding is not written; the memo
+    key holds the instance Closure Type); MirBorrows maps input 0 to the callee operand and stores through W (rule G, P13);
+    `HoldsLoans` walks a concrete Closure's components.
+  - Results are formed after classification: each position the meet of its admissible sources, `static` with none, the CallResult
+    atom when every source is Refuted or failed; CallResult becomes `Unbound` at a call, an R4-M118 row ("a later site adds a row
+    under it"); one `ResultFit` row per returned value at the returned value. Value calls substitute ρ by the receiver acquisition's
+    Origin, a returned Closure value's call signature through its closure context with the same map. G216: h1 and h2 are valid
+    (SPEC 15.3.4).
+  - Departures approved (OQ-F7-1 (a)): (i) no `ClosureContract`, no `TyCtxt.Closure` view and no MIR-builder receiver Origin;
+    (ii) A3 P4's Closure clause retired (ER-closure-stores, an A3 erratum numbered by 2c-3); (iii) PD13's located `Unsupported_Kd` is
+    R4-M73's view hold whenever a call's acquired receiver is stronger than its view's case receiver; (iv) S3's result formals are not
+    built (S3-0's gate R moot); (v) the old Emission's element-borrow Origin check compares modulo ρ until R6-gen (D5); (vi) OQ4 (a)'s
+    gate is program-level in the old Analysis, reporting `Unsupported_Kd` at each call meeting R1's exact condition (a Transitional
+    fact on the value call's plan, read from the final binding) and analyzing nothing else, `ResultFixedForCall` kept as its input
+    until R6-check.
+  - OQ-F7-2 (a): `CallLocalOrigin` is deleted in 2c-5; Binding reports an inferred result's Refuted source at the returned value on
+    both pipelines (G7 closes on both), the Closure keeping its Type (F2). OQ-F7-3 (a): rule G's self-store row applies to Closures as
+    to methods (v4, c-f7c-ok, f7h2's uniq view rejected on the MIR; f7c, f7d get a second record); GXS stays unscheduled; 2c-3
+    reports the ledger count.
+  - Supersedes: the plan's 2c-2 row (`TyCtxt.Closure(k)`, `TyCtxt.Closures.cs`) and 2c-0's token reason (Q9); 2x-R11 (not needed);
+    R4-M99's proposal §6 on D14's walk and the MIR builder; 2a0-D §3 row 4's interim and D19's "Environment atoms are Finite until
+    2c-6"; PD13's "`CallLocalOrigin` stays until R6-check's H11"; the S3 plan's C2 formals; AB-2's "lands in G:A5-F7's dev merge"
+    (2c-4 follows 2c-3's merge, BU confirming); PD6's "BU implements Binding acceptance rules" for 2c-3B (R4 implements it).
+  - Rejected: design A's view row 4 per receiver with a builder receiver Origin and ρ judged before classification (two classes of
+    one atom; false errors on valid Consuming bodies); design B's §15.4.2 error for h1/h2 and its narrower gate (the default would
+    accept t5b and n1); rebinding a Closure body once its receiver is known; per-case callee acquisition (PLAN G13); the receiver at
+    input n; a per-call gate in `CallValue`; PD13's per-Loan witness fact (OQ-F7-1 (b)); `CallLocalOrigin` until H11 (OQ-F7-2 (b));
+    GXS before R4's exit or a hold for rule G's forms (OQ-F7-3 (b), (c)).
+  - Numbering: R4-M126 is free on dev and every remote and local branch (R4-M118 on 2a-1c; R4-M120 and R4-M124 on 4b; R4-M125 on
+    G241).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
