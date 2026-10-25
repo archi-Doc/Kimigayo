@@ -267,11 +267,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private int Argument(BoundType type, string? name, Koto source, int parameters, MirLocalRole role = MirLocalRole.None)
     {
         var local = this.body.AddLocal(new(type, MirLocalKind.Arg, this.Info(source, local: true), Name: name, Role: role));
-        if (MirTypes.MayNeedDrop(type, this.walked))
-        {
-            this.Register(Cleanup.Drop, local, null, parameters);
-        }
-
+        this.Created(local, parameters);
         return local;
     }
 }

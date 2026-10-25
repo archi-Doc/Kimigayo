@@ -1501,6 +1501,26 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     public void AResultIsDestroyedBeforeTheTemporaryItBorrows()
         => Assert.Empty(Problems("func lend(value: ref/i32) -> R => R.init(r: value)\nfunc t()\n    inspect(lend(1 + 1))\n    inspect(lend(size(3)))\n"));
 
+    // SPEC 14.2.1, 16.2.2 step 3, 15.6.6 (DECISIONS R4-M129): an if clause's, a match arm's and a do's body is its own Body, so the
+    // temporaries of its result end with it, and a result that borrows one and observes it in its destruction outlives it: an error at
+    // the temporary (fail-before: an if clause's and a do's temporaries were the enclosing statement's, destroyed after the result).
+    [Fact]
+    public void AnArmsResultDoesNotOutliveItsTemporaries()
+        => Assert.Equal(
+            ["t1: 1 + 1", "t2: 1 + 1", "t3: 1 + 1"],
+            Problems("""
+                func lend(value: ref/i32) -> R => R.init(r: value)
+                func t1(c: bool)
+                    inspect(if c => lend(1 + 1) else => return)
+                func t2(c: bool)
+                    inspect(match c
+                        true => lend(1 + 1)
+                        false => return
+                    )
+                func t3()
+                    inspect(do => lend(1 + 1))
+                """));
+
     // SPEC 8.15.1, 15.6, 15.6.6, 3.6 (PLAN10-X1 and abstract temporaries; the R5 plan's Q1 programs, its Q5 and ask A-3): a generic body is
     // checked for every instance, so a holder of an abstract Type may observe its Loans when it is destroyed: replacing `local` while the
     // iterator it lent is live conflicts in `hold<C>`, as in its twin over a Bin whose iterator's drop observes the source, while the twin

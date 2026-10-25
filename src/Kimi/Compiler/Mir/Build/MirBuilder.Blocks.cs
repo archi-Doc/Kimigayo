@@ -110,7 +110,8 @@ internal sealed partial class MirBuilder
     private void RequestExit(int block, in SourceInfo info) => this.body.Push(block, MirStatement.Of(MirStatementKind.FakeRead, new(0), info));
 
     // SPEC 14.2, 16.2: a block's items in a scope of their own (an unsafe block's, SPEC 14.3), the last one its result; the locals and
-    // defers it registers are cleaned up when it is left. Its last item's temporaries are its enclosing statement's (SPEC 3.6).
+    // defers it registers are cleaned up when it is left. Its last item's temporaries are those of the Body it is (SPEC 3.6, 16.2.2 step
+    // 3): an arm's, an if clause's or a do's, the function's, else the enclosing statement's.
     private void Block(MirPlace destination, CodeBlockKoto block, MirScopeKind kind = MirScopeKind.Lexical)
     {
         var outer = this.scope;

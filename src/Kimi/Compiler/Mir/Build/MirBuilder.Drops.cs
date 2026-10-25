@@ -74,7 +74,7 @@ internal sealed partial class MirBuilder
     // binding's cleanup is ordered by its declaration, which a later initialization does not move (SPEC 16.2.1).
     private int Live(int local, int index)
     {
-        this.Storage(local, index);
+        this.Allocated(local, index);
         this.Created(local, index);
         return local;
     }
@@ -83,7 +83,7 @@ internal sealed partial class MirBuilder
     // and Made, once the value is complete, registers its Drop after the temporaries created while it was evaluated, so they are destroyed
     // after it; an exit that interrupts the build only ends its storage. Temp holds and makes a temp written from operands evaluated before.
     private MirPlace Hold(BoundType type, Koto node, MirLocalRole role = MirLocalRole.None, string? name = null)
-        => new(this.Storage(this.body.AddLocal(new(type, MirLocalKind.Temp, this.Info(node, local: true), Name: name, Role: role)), this.temporaries));
+        => new(this.Allocated(this.body.AddLocal(new(type, MirLocalKind.Temp, this.Info(node, local: true), Name: name, Role: role)), this.temporaries));
 
     // A held temp's value complete (Hold), in the scope of temporaries it was held in.
     private MirPlace Made(MirPlace temp)
@@ -92,8 +92,8 @@ internal sealed partial class MirBuilder
         return temp;
     }
 
-    // A local's storage beginning here and ending with the scope at an index.
-    private int Storage(int local, int index)
+    // A local's storage allocated here, ending with the scope at an index.
+    private int Allocated(int local, int index)
     {
         this.body.Push(this.current, MirStatement.Of(MirStatementKind.StorageLive, new(local), this.body.Locals[local].Source));
         this.Register(Cleanup.StorageDead, local, null, index);

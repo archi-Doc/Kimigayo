@@ -123,10 +123,14 @@ internal sealed partial class MirBuilder
         this.body.Terminate(this.current, terminator);
     }
 
-    // A body whose value its construct takes, as a call's input as Result places it (input), then the join after the construct.
+    // An if clause's or a do's body whose value its construct takes, as a call's input as Result places it (input), in a scope of its
+    // own, as a match arm's: the body is its own Body, so the temporaries of its result end with it (SPEC 14.2.1, 16.2.2 step 3); then the
+    // join after the construct.
     private void Arm(MirPlace destination, Koto body, int after, bool input)
     {
+        var scope = this.temporaries = this.OpenScope(block: true);
         this.Result(destination, body, body, input);
+        this.CloseScope(scope);
         this.Join(after, body);
     }
 

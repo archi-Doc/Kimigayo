@@ -225,9 +225,9 @@ internal sealed partial class MirBuilder
         }
 
         var type = (derived ? expected : null) ?? HirTables.Meaning(node) as BoundType ?? expected ?? BoundType.Unit;
-        if (into is { } place && ReferenceEquals(this.body.TypeOf(place), type))
+        if (this.Given(into, type) is { } place)
         {
-            this.Into(place, node, input); // The place given is its holder's to make.
+            this.Into(place, node, input);
             return place;
         }
 

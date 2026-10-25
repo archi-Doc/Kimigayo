@@ -296,8 +296,8 @@ public sealed partial class MirBuildTest
     // (a call's result before its receiver's and arguments' temporaries, an aggregate before its operands', a Subject or iterator before its
     // expression's, a pending slot before its argument's), on the normal end and on an exit that interrupts the statement: a cleanup chain
     // after a Drop of the first drops the second, and none after a Drop of the second drops the first. A binding is destroyed by
-    // declaration, after its initializer's temporaries (fail-before: each temp's Drop registered where its storage began, so the second was
-    // destroyed first, but for the binding).
+    // declaration, after its initializer's temporaries, and before an earlier binding initialized after it (fail-before: each temp's Drop
+    // registered where its storage began, so the second was destroyed first, but for the bindings).
     [Theory]
     [InlineData("show(pass(Noisy.init(1)))", "pass(Noisy.init(1))", "Noisy.init(1)")]
     [InlineData("show(Noisy.init(1).make(2))", "Noisy.init(1).make(2)", "Noisy.init(1)")]
@@ -315,12 +315,29 @@ public sealed partial class MirBuildTest
     [InlineData("two(pass(Noisy.init(1)), try n)", "pass(Noisy.init(1))", "Noisy.init(1)")]
     [InlineData("both(pass(Noisy.init(1)), try n)", "pass(Noisy.init(1))", "Noisy.init(1)")]
     [InlineData("let kept = pass(Noisy.init(1))", "Noisy.init(1)", "kept")]
+    [InlineData("let a: Noisy\n    let b = Noisy.init(2)\n    a = Noisy.init(1)", "b", "a")]
     public void ATemporaryIsDestroyedBeforeTheTemporariesOfItsEvaluation(string statement, string first, string then)
     {
         var (c, body) = Temporaried(statement);
         var (a, b) = (Dropped(c, body, first), Dropped(c, body, then));
         Assert.True(Precedes(body, a, b));
         Assert.False(Precedes(body, b, a));
+    }
+
+    // SPEC 14.2.1, 16.2.2 step 3 (DECISIONS R4-M129): an if clause's body is its own Body, as a match arm's is, so the temporaries of its
+    // result end with it, before the call that takes the if's value (fail-before: they were the enclosing statement's, destroyed after the
+    // call).
+    [Fact]
+    public void AnIfClausesTemporariesEndWithIt()
+    {
+        var (c, body) = Temporaried("show(if true => pass(Noisy.init(1)) else => Noisy.init(3))");
+        var blocks = body.Blocks.ToArray();
+        var argument = Dropped(c, body, "Noisy.init(1)");
+        var all = Enumerable.Range(0, blocks.Length);
+        var drop = Assert.Single(all, x => blocks[x].Terminator is { Kind: MirTerminatorKind.Drop } d && d.Place.Root == argument);
+        var call = Assert.Single(all, x => blocks[x].Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "show" });
+        Assert.True(Reaches(body, drop, call));
+        Assert.False(Reaches(body, call, drop));
     }
 
     // SPEC 12.4.3, 16.2.1, 3.6 (DECISIONS R4-M129): a dictionary literal places its entries in a value of its own, which an exit from an
@@ -348,17 +365,23 @@ public sealed partial class MirBuildTest
         return (c, program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f"));
     }
 
-    // The one local a key names (its name, its syntax or its Type) among those a body drops whole.
-    private static int Dropped(Compilation c, MirBody body, string key) => Assert.Single(
-        body.Blocks.ToArray().Where(static x => x.Terminator is { Kind: MirTerminatorKind.Drop, Place.Projection: 0 })
-            .Select(static x => x.Terminator.Place.Root).Distinct(),
-        x => body.Locals[x].Name == key || TyCtxt.Name(body.Locals[x].Type) == key || c.SyntaxOf(body.Locals[x].Source.Syntax).ToString() == key);
+    // The one local a key names among those a body drops whole: a binding by its name, else a temp by its syntax or its Type.
+    private static int Dropped(Compilation c, MirBody body, string key)
+    {
+        var dropped = body.Blocks.ToArray().Where(static x => x.Terminator is { Kind: MirTerminatorKind.Drop, Place.Projection: 0 })
+            .Select(static x => x.Terminator.Place.Root).Distinct().ToArray();
+        return dropped.Any(x => body.Locals[x].Name == key) ? Assert.Single(dropped, x => body.Locals[x].Name == key)
+            : Assert.Single(dropped, x => TyCtxt.Name(body.Locals[x].Type) == key || c.SyntaxOf(body.Locals[x].Source.Syntax).ToString() == key);
+    }
 
-    // Whether a body drops a local and, in the cleanup chain after some Drop of it (along Drops and Gotos), another.
+    // Whether a body drops a local and, in the cleanup chain after some Drop of it (along Drops and Gotos), another; an assignment's Drop
+    // of the old value, which the new value's write follows, starts no chain (SPEC 13.7.1).
     private static bool Precedes(MirBody body, int first, int then)
     {
         var blocks = body.Blocks.ToArray();
-        foreach (var start in blocks.Where(x => x.Terminator is { Kind: MirTerminatorKind.Drop } drop && drop.Place.Root == first))
+        foreach (var start in blocks.Where(x => x.Terminator is { Kind: MirTerminatorKind.Drop } drop && drop.Place.Root == first &&
+            (body.Statements.Slice(blocks[drop.Target].Start, blocks[drop.Target].Count).ToArray() is not [{ Kind: MirStatementKind.Assign } write, ..]
+            || write.Place != drop.Place)))
         {
             var seen = new HashSet<int>();
             for (var block = start.Terminator.Target; block >= 0 && seen.Add(block) && blocks[block].Terminator.Kind is MirTerminatorKind.Drop or
@@ -372,6 +395,15 @@ public sealed partial class MirBuildTest
         }
 
         return false;
+    }
+
+    // Whether a body's runtime edges lead from one block to another.
+    private static bool Reaches(MirBody body, int from, int to)
+    {
+        var reach = new MirReach();
+        reach.Clear(body.Blocks.Length);
+        reach.Walk(body, from, checks: false);
+        return reach[to];
     }
 
     // Whether a location reads (Copies or Moves) or writes (assigns or borrows) a Place rooted at a local.

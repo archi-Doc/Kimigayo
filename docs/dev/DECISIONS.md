@@ -3699,12 +3699,13 @@ and migration obligations remain in force; no numeric cap changes are authorized
     first: a call's result after its arguments' temporaries (`show(pass(Noisy.init(1)))`: sel `one two`, the old generator `two one`),
     a Subject or iterator after its expression's, and A3 reported a Loan conflict where the result's destruction observes the argument
     it borrows (`ComparisonLoanConflict_Kd` at the argument, the old path accepting). A2 judges Drops and decides no order.
-  - Rule (`MirBuilder.Drops`): a local's StorageDead registers where its storage begins, and a binding's Drop with it, in declaration
-    order (`Live`); a temp's Drop where its value is created: `Hold` begins the storage of a temp whose value its caller builds next,
-    and `Made` registers its Drop once that value is complete, in the scope of temporaries it was held in; `Temp` is `Made(Hold(..))`,
-    for a temp written from operands evaluated before. A scope then cleans up a temp's Drop, the Drops and StorageDeads of the temps of
-    its evaluation, then its StorageDead (rustc's `as_temp`); an exit that interrupts the build ends the held temp's storage only, so the
-    Drop A2 elided there is gone. A given place (`Value`'s `into`) is its holder's to make.
+  - Rule (`MirBuilder.Drops`): a local's StorageDead registers where its storage is allocated (`Allocated`), and a binding's or an
+    argument's Drop with it, in declaration order (`Live`, `Created`); a temp's Drop where its value is created: `Hold` begins the
+    storage of a temp whose value its caller builds next, and `Made` registers its Drop once that value is complete, in the scope of
+    temporaries it was held in; `Temp` is `Made(Hold(..))`, for a temp written from operands evaluated before. A scope then cleans up a
+    temp's Drop, the Drops and StorageDeads of the temps of its evaluation, then its StorageDead (rustc's `as_temp`); an exit that
+    interrupts the build ends the held temp's storage only, so the Drop A2 elided there is gone. A given place (`Value`'s `into`,
+    `Given`) is its holder's to make.
   - Sites (search: every `Temp(` in `Mir/Build` that a build of its value follows; every site that evaluates operands into an
     earlier-held temp uses Hold and Made, none is left on the old order): `Value` (operand temps: call, method, accessor, constructor and
     operator results, aggregates, closures, interpolations, selections' values, receivers), `Referent`, `Statement`, `Discard`,
@@ -3717,11 +3718,16 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - A dictionary literal places its entries in a temp of its own, made at the empty Dictionary, so an exit from an entry destroys the
     entries placed (SPEC 16.2.1), and moves it to the literal's value after the last entry, where that value is created (SPEC 12.4.3:
     no partial Dictionary results); before, the value held by `Value` would have leaked on that exit, and one built in `_0` did.
+  - An if clause's and a do's body has a scope of its own, as a match arm's (`MirBuilder.Arm`): it is its own Body, so the temporaries
+    of its result end with it (SPEC 14.2.1, 16.2.2 step 3). Before, they were the enclosing statement's, so with creation registration
+    an if's value was destroyed before them and A3 accepted `inspect(if c => lend(1 + 1) else => return)` (R5's review B1); the old
+    generator already ended them with the arm. A block's last item's temporaries are the Body's it is (`MirBuilder.Block`).
+  - Guard: `MirBuildTest.EveryWrittenTempIsMade` audits the goldens, the library and the milestones: every temp with storage of its own,
+    of a Type that may need drop and written whole, has a Drop (a transfer's result temp has no storage of its own, R5-M50).
   - Rejected: registering both cleanups at creation (an interrupted build would leave the temp storage-live, and a `continue` reaches
-    its StorageLive again); the first whole write as creation in `Set` and `Invoke` (wrong at an `if`/`match` join unless arm results end
-    their temporaries with the arm, PLAN F1's separate question, and still wrong for literals built by calls on their destination);
-    ordering a scope's cleanups by a creation stamp (breaks the drop trees' prefix sharing); a builder check for a forgotten `Made` (the
-    MIR's broken-contract channel is `MirValidator`; G245 U1's review rejected a builder-side one).
+    its StorageLive again); the first whole write as creation in `Set` and `Invoke` (wrong for literals built by calls on their
+    destination); ordering a scope's cleanups by a creation stamp (breaks the drop trees' prefix sharing); a builder check for a forgotten
+    `Made` (the MIR's broken-contract channel is `MirValidator`; G245 U1's review rejected a builder-side one).
   - Numbering: R4-M128, reserved, is 2c-2's on its branch; R4-M129 is free on dev and every remote and local branch (R4-M127 on G245's
     U1).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;

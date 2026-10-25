@@ -414,8 +414,10 @@ internal sealed partial class MirBuilder
         => this.Made(this.Hold(type, node, role, name));
 
     // The place given where it has the Type, else a new temp of it.
-    private MirPlace Temp(BoundType type, Koto node, MirPlace? into) => into is { } place && ReferenceEquals(this.body.TypeOf(place), type) ? place
-        : this.Temp(type, node);
+    private MirPlace Temp(BoundType type, Koto node, MirPlace? into) => this.Given(into, type) ?? this.Temp(type, node);
+
+    // The place given where it has the Type, which its holder makes (Made), else none.
+    private MirPlace? Given(MirPlace? into, BoundType type) => into is { } place && ReferenceEquals(this.body.TypeOf(place), type) ? place : null;
 
     // An Unsupported form, or a derived one, in a temp of the Type its consumer expects, else of its own.
     private MirPlace Unsupported(Koto node, bool derived = false, BoundType? type = null)
