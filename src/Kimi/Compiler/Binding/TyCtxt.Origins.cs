@@ -20,7 +20,7 @@ namespace Kimi.Compiler;
 
 #pragma warning disable SA1402 // The view's records.
 
-/// <summary>Where a row comes from (2a0-D D2, without <c>ResultFit</c> until 2a-2, DECISIONS R4-M101 E6).</summary>
+/// <summary>Where a row comes from (2a0-D D2, DECISIONS R4-M101 E6).</summary>
 internal enum OriginRowSource : byte
 {
     Fit,

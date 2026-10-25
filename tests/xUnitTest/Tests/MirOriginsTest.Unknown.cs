@@ -140,6 +140,18 @@ public sealed partial class MirOriginsTest
         Assert.Equal(2, origins.Classes);
     }
 
+    // SPEC 15.6.3 and 13.5.5 (a pair layer is absent for `s = owner`): a Reborrow through a local's pair layer is contained in the
+    // layer's Origin only in the case that makes it a borrow, so returning it `during x` needs the parameter's outer Origin to outlive x
+    // in the `uniq` case alone; in the owner case the layer forms no Deref step and the Reborrow is contained in x only.
+    [Fact]
+    public void APairLayersContainmentIsItsBorrowCasesOnly()
+    {
+        var c = MirBuildTest.Compile("func pd<s/T>(x: ref/i32, v: s/(uniq/i32 during x)) -> ref/i32 during x\n    s is owner or uniq\n    var w = v\n" +
+            "    let q = w@follow@follow@ref\n    return q\n" + Main);
+        var found = Assert.Single(Found(c.BuildMir()));
+        Assert.Equal((DiagnosticCode.UnprovenOriginRelation_Kd, "q", 2UL), (found.Problem.Code, Line(c, found.Problem.Subject), found.Problem.Views));
+    }
+
     // j-bits: 70 fixed sources through one local region into one target take two bitset words; each source the premises do not order
     // is its own problem at the one subject, the target's own source none.
     [Fact]

@@ -628,13 +628,15 @@ and migration obligations remain in force; no numeric cap changes are authorized
   R4-M67: the requirement each recording rule names, and by R4-M71: the body; its key superseded by R4-M71: (code, subject, body)).
   `MirProblem(DiagnosticCode Code, SourceRef Subject, ulong Views)`; `MirReport` merges by (Code, Subject), the canonical
   `Problem` key, OR-ing Views into the first problem, until U11 adds the Reason fact and Reason joins the key (R4-M11's
-  (code, subject, Reason)); a merge keeps the first problem's facts. Construction records keep their own merge in
+  (code, subject, Reason)); a merge keeps the first problem's facts (superseded by R4-M132: a merged problem is derived only when
+  every report it groups is, its causes the union). Construction records keep their own merge in
   `MirProgram` until R6 unit a folds them into `MirReport` (stage ledger).
   No Requirement: Mir may not name the legacy `OwnershipFailure` (KR1001), and moving that enum into a shared area would
   make old-path vocabulary a shared concept (this naming clause is superseded by R5-M24: Diagnostics owns the kinds as
   `OwnershipRequirement`); R6 unit a derives the published requirement from the code and the facts (this
   derivation clause is superseded by R5-M23: each recording rule names the requirement; revised ask A-5). No
-  Related: related sites are facts, and fact rows (pooled, with their own index on the problem) are added by their first
+  Related: related sites are facts (a fact a site and its kind's typed value since R4-M132), and fact rows (pooled, with their own index
+  on the problem) are added by their first
   producer. The ledger fills its requirement column from the old side only (superseded by R5-M56: a MIR problem's row names
   its own requirement). Rejected: design A's (Code, Subject, Related, Requirement, Views) keyed by (requirement, code,
   subject); a Requirement through a moved legacy enum; an `int Fact` field before anything produces or reads it.
@@ -1289,7 +1291,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   located internal invariant without recovery); a code parameter on `Unsupported` (one function steered by a parameter for two
   contracts). Not temporary. Its detection in the builder (`Broken`) is superseded by R4-M61: the publisher checks the facts.
 - **R4-M50** (2026-10-17; the A5 plan's §9.2 under OD5) A test that expects a rule an adopted SPEC revision replaced carries
-  `[Trait("OldRule", "<id>")]`, the id naming the revision's item as `draft/INTEGRATED.md` maps it (S1, S4, P1–P11, a, b),
+  `[Trait("OldRule", "<id>")]`, the id naming the revision's item as `draft/INTEGRATED.md` maps it (S1, S4, P1–P11, a, b; refined by
+  R4-M136: or `ledger:<hash>:<line>` for an old verdict no item names, beside the test's required MIR target side),
   with a comment naming the affected rows. It marks what the default pipeline still decides; each such test migrates to the
   revised rule, dropping the trait, when MIR decides acceptance. Rejected: changing the expectations now (the default
   pipeline decides acceptance until R6-check); splitting mixed theories (churn for a marker); per-row markers (xUnit traits
@@ -1357,7 +1360,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   even in its borrow cases (narrowed by BU-3; step 4 would give Content), as do the other
   Loan-holding views (the internal Storage remainders; WriteWindow, Utf8Writer and FixedBuffer, whose `u8` holds no
   Origin), a sound over-approximation; A5 reads the view once per pass, its warm cost unmeasured. Not temporary.
-- **R4-M60** (2026-10-17, tooling session; PLAN G111; refines R4-M50 for corpus rows) A corpus row that expects a rule an
+- **R4-M60** (2026-10-17, tooling session; PLAN G111; refines R4-M50 for corpus rows; the trait's key and MIR target side refined by
+  R4-M136) A corpus row that expects a rule an
   adopted SPEC revision replaced states the SPEC's verdict and, in an `Old` entry, what the default pipeline decides until
   R6-check, as `spec-cases.json` states a path's differences beside the SPEC's records (R4-M45); it is that table's class
   (d), named by the revision item instead of a class and clause. In `tests/diagnostics/pair-cases.json`, `Old` names the item
@@ -1437,7 +1441,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   (`MirBorrows.cs`, the pre-pass; `.Liveness`, `.Flow`, `.Checks`) checks a body per Semantics case view, once for a body no view
   decides (as A1), and reports each conflict as `ComparisonLoanConflict_Kd` at its access with the Loan's anchor and its witness as
   facts: the witness holder's next use in its chain, or the store whose value carries the Loan. `MirReport` gains pooled fact rows
-  per problem (`MirFact`, kinds `Anchor`, `Use`, `Store`; a merge keeps the first problem's, R4-M3a); A6's code mapping is unit 1c's.
+  per problem (`MirFact`, kinds `Anchor`, `Use`, `Store`; a merge keeps the first problem's, R4-M3a, superseded by R4-M132's merge); A6's
+  code mapping is unit 1c's.
   The choices within A3:
   - Holder slots: E is slot 0, then the flow holders, then the chain-local ones. A holder is a flow holder when MirMoveData makes its
     root a flow root or a direct Loan names it, since content, refs and the closure read a named holder's state at any location;
@@ -2473,7 +2478,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   folded into 2a-1a); 2a0-4 and the new 2x-R15 (A5's Place steps, behavior-preserving) take their own reviews. In short:
   - Rows (2a0-2): a relation is a body chain when an end, resolved at its use, is not fixed (`Binding.BodyChain`, the call test);
     rows `(Site, Longer, Shorter, Equality, Source, Clause, Destination, CaseMask)` with `ResultFit` set by Binding where it
-    validates a body result; each row owned by the executable body Binding binds it in (function, Closure, accessor, default
+    validates a body result (superseded by R4-M132: the builder's validated `MirLocalRole.Result`, no `ResultFit` Source); each row owned
+    by the executable body Binding binds it in (function, Closure, accessor, default
     template by Binding's default index, static initializer), recorded at formation, never from `Use.Parent` (the parentless
     `$for.iterator` Use); resolution at use instead of alias rows, meets keyed by their canonical operand set; T1 by construction.
   - `OriginAtom.Of`: SPEC's three kinds by a first-match precedence table (the package's §3): the body's contract → Fixed; meets
@@ -2488,9 +2494,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
     2a0-3b at the plan's letter (no-candidate variables are body regions; "no principal candidate" is the clause's relation
     judgment). 2a0-4 splits the ledger by owner.
   - `MirOrigins` (2a-1a, 2a-1b), a canonical component: step 4 per body runs `Judge` (all classes), then `MirBorrows` per view,
-    then `Record`; containment per borrow layer through the shared classifier `MirSteps` (2x-R15), up to the first shared layer,
+    then `Record` (superseded by R4-M132: `Judge` adds its problems before the Loan stratum; no `Record`); containment per borrow layer
+    through the shared classifier `MirSteps` (2x-R15), up to the first shared layer,
     stopping at a raw Deref; MeetNode; Refuted by finite-source and Unknown by fixed-source bitsets; Reason `(Longer, Shorter,
-    Equality)` on `MirProblem` and in `MirReport`'s key, facts `Anchor`, `Relation`, `Result`; `MirDataflow.Within` decides the
+    Equality)` on `MirProblem` and in `MirReport`'s key, facts `Anchor`, `Relation`, `Result` (no `Result` fact since R4-M132);
+    `MirDataflow.Within` decides the
     byte limit. G161 is decided by 2a-1a's Refuted rule.
   - Merge (2a-2; superseded by R4-M104): rule 1 drops a storage-end conflict with the `Result` fact in the views where its Anchor's
     atom is refuted at a `ResultFit` row (PD11's first half, per atom); rule 2 (OQ-4 (b)) drops a guard-sourced
@@ -2897,7 +2905,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Order: a prototype round over 2a-2's list and the proposal's §3 rows with its repair check (a difference returns to the owner);
     then one SPEC session before 2a-2's design review; 2a-2's merge part takes the full process, starting from the proposal's
     direction (H): MirBorrows' direct bit per (Loan, holder), the per-store fixed-part check and the link from a MIR transfer to its
-    relation row; R5 reviews H3's publication of MIR-to-MIR causes (DIAGNOSTICS §4.3's invariant).
+    relation row (superseded by R4-M132: the builder's validated `MirLocalRole.Result` and MirOrigins' `Fixed`, no row link); R5 reviews
+    H3's publication of MIR-to-MIR causes (DIAGNOSTICS §4.3's invariant).
   - Rejected: a general definition in 23.1.2 (rounds 1 and 2: required failures made optional, cycles); an arrival test by Origins
     (fixed Origins are shared names and regions are flow-insensitive); calls without the call clause (`return id(local@ref)` and
     `rv-g-param` would stay independent); R, the same rule as an implementation contract only; H, rules 1 and 2 as approved.
@@ -3261,13 +3270,15 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (SPEC 15.6.3, D14, through `MirSteps`: an exclusive layer's Origin outlives the Ref's and the walk continues, a shared one's too and it
     stops, a raw Deref stops; a Ref inside an Inlined scope forms none); Tarjan's components of the inner nodes; finite-source bitsets in
     topological order; `UnsatisfiedOriginRelation_Kd` (`Ownership.UnprovenOrigin`) at each edge into a Fixed node per source reaching its
-    tail. Step 4: `Judge` before the Loan stratum, `Record` after it. Unknown, the oracle and the arena's limit are 2a-1b's; the arena has
+    tail. Step 4: `Judge` before the Loan stratum, `Record` after it (superseded by R4-M132: `Judge` adds its problems at its end; no
+    `Record`). Unknown, the oracle and the arena's limit are 2a-1b's; the arena has
     no limit check yet, acceptable only because G:A5-F4 merges after 2a-1b (its group review), and no 2a-1a test body comes near 64 MiB.
   - Site rule: an Origin problem's subject is its last edge's site, the row's Site or the Ref's statement for a containment edge; the
     row's producer owns the location and MirOrigins reads no syntax. H11's list gains (R4-M108): non-call fits' rows are formed at the value
     Binding's record names, so the location users see is unchanged when the twins leave.
   - D18: `MirProblem.Reason (Longer, Shorter, Equality)` of the view's canonical atoms, in `MirReport`'s key (code, subject, body, Reason);
-    `MirFactKind.Relation` with `MirFact.Row`, the row's index in the body's view or -1 for a containment edge at its Ref; `Anchor`, the
+    `MirFactKind.Relation` with `MirFact.Row` (`MirFact.Value` since R4-M132), the row's index in the body's view or -1 for a containment
+    edge at its Ref; `Anchor`, the
     first Ref whose Origin is the finite source; DIAGNOSTICS' source value `contained`.
   - The view (a departure from R4-M101's published record, by ARCH rows 29 and 90: MIR names syntax only by SourceRef): `OriginRow.Site`
     and `OriginFindings` are `SourceRef`, converted once by the producer (`Binding.OriginRows.cs`); `TyCtxt.OriginAtom` takes a MIR site
@@ -3305,6 +3316,20 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: (B) and (C) of the Site rule (a per-row value fact; moving the row Site now); reading Binding's completeness for row 9 (it
     also hides genuine limits in incomplete compilations, meet-trans); no row-9 report until the derived marking exists (it would accept
     uncovered forms silently); keeping appended atoms across passes (stale atoms after an edit, a second table).
+  - Verification (G:A5-F4's group review B1, B2; the planning session's decisions of 2026-10-25): 2a0-D §6.2's "no dev program reaches
+    MeetNode" no longer holds: a local annotation meeting a local region with a parameter's Origin (`let m: ref/i32 during (p and x) =
+    local@ref`) reaches it, so `MirOriginsTest.AMeetAtTheLongerEndIsAlsoItsOwnNode` pins D15 by that program, its two-region form and the
+    valid counterpart in place of the view fixture (both rejecting rows fail with the meet node's own edge removed). The per-builder-site
+    identity (2a0-D §3) is `EachBuilderRefFormsTheNodeItsRowsName` (an explicit Borrow, an argument's adapting Borrow, a stored exclusive
+    reference's Reborrow, a guard candidate, a Slice element's and a Slice handle's Borrow) and `ABuildersOwnRefFormsNoChain` (the
+    builder's own Refs carry no Origin; a discarded value's by-case Reborrow reaches no fixed Origin). Void: `leak3`'s "no MIR problem"
+    and `leak4`'s storage-end conflict (§9 item 6), since PLAN G196 closed (bu18, eff74f946) before 2a-1a's base: both are Refuted on
+    the MIR, the Slice handle rows. c-own is the prototype's own-step row (`own`, Refuted); the design table's owner-case pair form is
+    `APairLayersContainmentIsItsBorrowCasesOnly`; d-g161-ok is a valid row; a-split is the library's `Storage.splitFirst`, which
+    `MirCensusTest` covers. PD31's facts are asserted on `bad`, j-region and a chain through containment edges
+    (`AnOriginProblemCarriesItsLastEdgeAndAnchor`); void: a Relation of -1, since no program was found whose chain ends at a
+    containment edge (a Ref's own Origin is Binding's name for the borrow, and every probed chain ends at a fit row). audit-origins
+    rows 7, 9c and 19 with their twins: `AnAuditRowsChainPairsItsTwin`.
 - **R4-M114 MirOrigins: Unknown, the oracle's masks, `Work` and the arena's limit; the view's part of a MIR atom** (2026-10-23; unit 2a-1b,
   the second of G:A5-F4, DEC Q6 form 2, under R4-M94's package §6.3's Unknown, §6.4, D17 and D20; the R4 planning session's rulings on
   its design (`s2-2a-1b/rulings.md`, `rulings-2.md`) and on its stop (`stop-g226.md`))
