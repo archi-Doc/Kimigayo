@@ -25,13 +25,13 @@
 // and a site's location (FunctionCodegen.Values.cs); the text's spelling (.Spelling.cs); the function's frame: homes, prologue and return
 // (.Frame.cs); parameter passing: its kind's argument order, each argument by its parameter and the copy slots (.Arguments.cs); the place
 // writer (.Places.cs) and the loads, stores and copies through it (.Stores.cs); the rvalues (.Rvalues.cs) and aggregates (.Aggregates.cs),
-// operators (.Arithmetic.cs), casts by their kind (.Casts.cs) and the scalar conversions (.Conversions.cs), calls (.Calls.cs) and value
-// calls (.Closures.cs), intrinsics (.Intrinsics.cs), the Drop terminator and A2's verdict rows (.Drops.cs) and drop flags (.Flags.cs); a
-// value's destruction one level per Type, a DropGlue item's function or an Open row's (.Glue.cs); the common Function values: erasure, the
-// adapter items' functions and a Function value's glue row (.Erasures.cs); a static's slot, its ensure function and an access's state
-// test (.Statics.cs); the handle operations: a creation, a clone, a runtime Type test and a virtual slot's entry (.Objects.cs); the
-// whole-value updates, replace, exchange and swap (.Updates.cs), and the inline storage kernels (.Storage.cs), the legacy rows of compiler
-// functions (DECISIONS R5-M116).
+// operators (.Arithmetic.cs) and the string comparisons among them (.Strings.cs; DECISIONS R5-M118), casts by their kind (.Casts.cs) and
+// the scalar conversions (.Conversions.cs), calls (.Calls.cs) and value calls (.Closures.cs), intrinsics (.Intrinsics.cs), the Drop
+// terminator and A2's verdict rows (.Drops.cs) and drop flags (.Flags.cs); a value's destruction one level per Type, a DropGlue item's
+// function or an Open row's (.Glue.cs); the common Function values: erasure, the adapter items' functions and a Function value's glue row
+// (.Erasures.cs); a static's slot, its ensure function and an access's state test (.Statics.cs); the handle operations: a creation, a
+// clone, a runtime Type test and a virtual slot's entry (.Objects.cs); the whole-value updates, replace, exchange and swap (.Updates.cs),
+// and the inline storage kernels (.Storage.cs), the legacy rows of compiler functions (DECISIONS R5-M116).
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact or a case selection
 // (MirCases decides a PairLayer under the item's view), compose a Subst or a Type (TypeOf does), resolve a callee, or use LINQ, Supports*,
 // out-string failures or catch-alls. An Opaque value (the gate admits none), a Type TypeOf cannot make and a Layout outcome other than
