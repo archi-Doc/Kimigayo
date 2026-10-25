@@ -175,13 +175,14 @@ public sealed partial class FunctionCodegenTest
     }
 
     // SPEC 22.2 (DECISIONS R5-M45, R5-M116): borrowStorage over a fixed array writes the remainder {storage, position, count} at its Fields:
-    // the borrowed array's address, 0 and its closed length, through P2a's kernel text; an empty array's count is 0.
+    // the borrowed array's address, 0 and its closed length, through P2a's kernel text: the shared kernel of [3] and of an empty array (count
+    // 0), the exclusive kernel of [2] (sliceUniq).
     [Fact]
     public void AFixedArraysStorageIsItsAddressAndLength()
     {
         var c = Analyze(Updates, OutputKind.Library);
         var text = Generate(c);
-        foreach (var length in new[] { 3, 0 })
+        foreach (var length in new[] { 3, 0, 2 })
         {
             Assert.Matches(
                 $@"(?m)^  store ptr %t\d+, ptr %l\d+, align 8\n  %fpos(\d+) = getelementptr i8, ptr %l\d+, i64 8\n  store i64 0, ptr %fpos\1, align 8\n" +
@@ -217,7 +218,8 @@ public sealed partial class FunctionCodegenTest
         var textual = entries[1];
         var stores = textual.Instructions.Where(static x => x.Opcode == "store").ToArray();
         Assert.Equal(["store %kimi.string %, ptr %, align 8", "store %kimi.string %, ptr %, align 8"], stores.Select(static x => x.Shape));
-        Assert.Contains(stores[0].Operands[^1], textual.Parameters);
+        Assert.Same(textual.Parameters[1], stores[0].Operands[^1]); // The old value at the result slot (after the environment word) ...
+        Assert.Same(textual.Parameters[2], stores[1].Operands[^1]); // ... then the new one at the target.
 
         var replace = entries[2];
         var glue = CallsOf(replace).First();

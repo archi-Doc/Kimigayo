@@ -44,9 +44,9 @@ internal sealed partial class FunctionCodegen
         var targets = collector.Set.Targets(item);
         var (key, represented) = (collector.Set.Items[item].Key, collector.Set.Items[item].RepresentativeType!);
         var closure = key.Kind == MonoKind.ClosureErasure;
-        if (!closure && UpdateOf(represented) is { } writer)
+        if (!closure && LegacyRuntimeHelpers.Row(represented.Symbol?.CompilerFunction ?? CompilerFunctionKind.None) is { Updates: true } row)
         {
-            this.WriteUpdateEntry(item, entry, writer, targets.Length > 0 ? targets[0].Item : -1); // Its direct call's row (FunctionCodegen.Updates).
+            this.WriteUpdateEntry(item, entry, row.Writer, targets.Length > 0 ? targets[0].Item : -1); // Its direct call's row (FunctionCodegen.Updates).
             return;
         }
 

@@ -32,9 +32,7 @@ internal sealed partial class FunctionCodegen
     // A Value call by its callee value's Type (above).
     private void ValueCall(in MirTerminator call)
     {
-        var operand = call.Operand;
-        var written = operand.Kind == MirOperandKind.Const ? this.body.Consts[operand.Arg].Type : this.body.TypeOf(operand.Place)!;
-        if (this.collector.TypeOf(this.item, written) is not { } type)
+        if (this.InstanceType(call.Operand) is not { } type)
         {
             this.Report(DiagnosticCode.InternalInvariant_Kd, call.Source); // The collector made every Type of an admitted item.
             return;
@@ -102,9 +100,9 @@ internal sealed partial class FunctionCodegen
     private void FunctionItem(in MirTerminator call, BoundType item)
     {
         var target = this.Target(new(this.at, this.body.Blocks[this.at].Count));
-        if (item.Symbol?.CompilerFunction is not (null or CompilerFunctionKind.None) and { } kind && IntrinsicDisposition.Of(kind).Kind == DispositionKind.Body)
+        if (LegacyRuntimeHelpers.Row(item.Symbol?.CompilerFunction ?? CompilerFunctionKind.None) is { } row)
         {
-            this.Legacy(call, kind, target);
+            this.Legacy(call, row, target);
             return;
         }
 

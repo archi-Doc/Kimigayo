@@ -91,9 +91,9 @@ internal sealed partial class FunctionCodegen
     // The copy slots of a Call's operands that an OwnedSlot parameter takes (Copies), and of a Value callee's operand.
     private void CopySlots(in MirTerminator call, int block)
     {
-        if (this.CompilerFunction(call) is not CompilerFunctionKind.None and var kind && IntrinsicDisposition.Of(kind).Kind == DispositionKind.Body)
+        if (LegacyRuntimeHelpers.Row(this.CompilerFunction(call)) is { } legacy)
         {
-            this.RowSlots(call, LegacyRuntimeHelpers.Row(kind));
+            this.RowSlots(call, legacy);
             return;
         }
 

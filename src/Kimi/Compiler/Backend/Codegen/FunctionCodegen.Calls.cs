@@ -34,9 +34,8 @@ internal sealed partial class FunctionCodegen
         var callee = call.Callee;
         switch (callee.Kind)
         {
-            case MirCalleeKind.Fn when callee.Symbol!.CompilerFunction is not CompilerFunctionKind.None and var kind &&
-                IntrinsicDisposition.Of(kind).Kind == DispositionKind.Body:
-                this.Legacy(call, kind, this.Target(new(this.at, this.body.Blocks[this.at].Count)));
+            case MirCalleeKind.Fn when LegacyRuntimeHelpers.Row(callee.Symbol!.CompilerFunction) is { } row:
+                this.Legacy(call, row, this.Target(new(this.at, this.body.Blocks[this.at].Count)));
                 return;
             case MirCalleeKind.Fn or MirCalleeKind.Requirement:
                 this.Function(call);
@@ -202,16 +201,18 @@ internal sealed partial class FunctionCodegen
     // carries: a runtime routine through the one call writer (Invoke), the call's operands at its parameters' slots placed by the call's own
     // key and the call site's location; a whole-value update (FunctionCodegen.Updates); a fixed array's storage (FunctionCodegen.Storage);
     // a row not written yet, its unit's located Unsupported_Kd.
-    private void Legacy(in MirTerminator call, CompilerFunctionKind kind, int target)
+    private void Legacy(in MirTerminator call, LegacyRow row, int target)
     {
-        var row = LegacyRuntimeHelpers.Row(kind);
+        if (row.Updates)
+        {
+            this.Update(call, row.Writer, target);
+            return;
+        }
+
         switch (row.Writer)
         {
             case LegacyWriter.Routine:
                 this.Invoke(call, row.Routine!, new(call.Callee.Symbol, MirBodyKind.Fn));
-                return;
-            case LegacyWriter.Replace or LegacyWriter.Exchange or LegacyWriter.Swap:
-                this.Update(call, row.Writer, target);
                 return;
             case LegacyWriter.FixedStorage:
                 this.FixedStorage(call);

@@ -18,19 +18,6 @@ namespace Kimi.Compiler.Backend;
 // report nothing; a zero-sized T has no bytes, its replace still destroying. A missing glue is a broken contract.
 internal sealed partial class FunctionCodegen
 {
-    // The update writer of an Item's function, its legacy row's; null for any other function (Runs).
-    private static LegacyWriter? UpdateOf(BoundType item)
-    {
-        var kind = item.Symbol?.CompilerFunction ?? CompilerFunctionKind.None;
-        if (kind == CompilerFunctionKind.None || IntrinsicDisposition.Of(kind).Kind != DispositionKind.Body)
-        {
-            return null;
-        }
-
-        var writer = LegacyRuntimeHelpers.Row(kind).Writer;
-        return writer is LegacyWriter.Replace or LegacyWriter.Exchange or LegacyWriter.Swap ? writer : null;
-    }
-
     // An entry parameter of an input of a Type at a logical index, by the kind the internal convention gives it (Abi.Of), for Own.
     private static AbiParameter Input(BoundType type, int logical) => new(string.Empty, string.Empty, Abi.Kind(Abi.Convention.Internal, type), logical);
 
@@ -154,10 +141,11 @@ internal sealed partial class FunctionCodegen
         return old is { } value ? this.Narrow(lowering, value) : null;
     }
 
-    // The referent Type of a reference in the item's instance; null, with InternalInvariant_Kd at the body, for another Type.
+    // The Type below the reference layer of a Type in the item's instance (TyCtxt.Layer, as the collector reads it); null, with
+    // InternalInvariant_Kd at the body, for a Type with no reference layer.
     private BoundType? Referent(BoundType? reference)
     {
-        if (reference is { Kind: BoundTypeKind.Semantics, Components: [var referent] })
+        if (TyCtxt.Layer(reference, out var referent, out _) == HirPlaceKind.Deref)
         {
             return referent;
         }

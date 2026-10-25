@@ -67,8 +67,7 @@ internal sealed partial class FunctionCodegen
         return IntrinsicDisposition.Of(kind) switch
         {
             { Kind: DispositionKind.Intrinsic, Id: var id } => this.Routine(IntrinsicRows.Of(id), result, target, out given),
-            { Kind: DispositionKind.Body } => LegacyRuntimeHelpers.Row(kind).Routine,
-            _ => null,
+            _ => LegacyRuntimeHelpers.Row(kind)?.Routine,
         };
     }
 

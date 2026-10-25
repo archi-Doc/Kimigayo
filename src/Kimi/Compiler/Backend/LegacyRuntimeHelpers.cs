@@ -101,7 +101,11 @@ internal enum LegacyWriter : byte
 /// <param name="Writer">How MIR code generation writes a call.</param>
 /// <param name="Routine">The runtime routine of a <see cref="LegacyWriter.Routine"/> row.</param>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
-internal readonly record struct LegacyRow(LegacyWriter Writer, FunctionAbi? Routine = null);
+internal readonly record struct LegacyRow(LegacyWriter Writer, FunctionAbi? Routine = null)
+{
+    /// <summary>Gets a value indicating whether the row is a whole-value update (SPEC 15.7): the one place that names the update writers.</summary>
+    internal bool Updates => this.Writer is LegacyWriter.Replace or LegacyWriter.Exchange or LegacyWriter.Swap;
+}
 
 /// <summary>The element descriptor of a stored collection value (SPEC 4.5, 16.3.2, 21.3.1): its representation, the name of the
 /// routine that destroys it when it is an aggregate needing destruction (otherwise null), and whether it is a string.</summary>
@@ -182,12 +186,13 @@ internal sealed partial class LegacyRuntimeHelpers
     internal bool NeedsStringComparison { get; set; }
 
     /// <summary>Gets the legacy row of a compiler function of the Body disposition (S2-S4 X39; DECISIONS R5-M116), the one map from such a
-    /// kind to how MIR code generation writes its call, by the row's writer; a kind of another disposition, None included, is a broken
-    /// contract.</summary>
+    /// kind to how MIR code generation writes its call, by the row's writer, and the one test of whether a function is one: every site asks
+    /// it, a Call, a Value call, the copy slots and the routine rows.</summary>
     /// <param name="kind">The compiler function.</param>
-    /// <returns>Its row.</returns>
-    internal static LegacyRow Row(CompilerFunctionKind kind) => kind switch
+    /// <returns>Its row; null for None and for a kind of another disposition.</returns>
+    internal static LegacyRow? Row(CompilerFunctionKind kind) => kind switch
     {
+        CompilerFunctionKind.None => null,
         CompilerFunctionKind.WriteLine => new(LegacyWriter.Routine, RuntimeAbi.WriteLine), // SPEC 22.1-22.5.5: it borrows its string.
         CompilerFunctionKind.Replace => new(LegacyWriter.Replace),
         CompilerFunctionKind.Exchange => new(LegacyWriter.Exchange),
@@ -196,8 +201,8 @@ internal sealed partial class LegacyRuntimeHelpers
 
         // C8d: the Array operations and the Array storage kinds; C8e: the Dictionary storage kinds; C9a: the text, buffer, window and writer
         // rows and WriteLineUtf8.
-        not CompilerFunctionKind.None when IntrinsicDisposition.Of(kind).Kind == DispositionKind.Body => default,
-        _ => throw new InvalidOperationException($"The compiler function {kind} has no legacy row."),
+        _ when IntrinsicDisposition.Of(kind).Kind == DispositionKind.Body => new(LegacyWriter.Unwritten),
+        _ => null,
     };
 
     internal static void WriteStoredCopy(TextWriter output, string destination, string source, long size)
