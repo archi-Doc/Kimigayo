@@ -11,10 +11,10 @@
 //   (Binding.ClosureResults.cs).
 // - Outputs: the literal's Type (its EnvironmentType) or its failure; BoundClosure's Storage, Signature, EnvironmentType and
 //   EvaluatingBody; a ClosureReceiverRefutation; the located Unsupported_Kd of each use the classification leaves unlisted.
-// - Invariants: BindClosure clears the published Signature and Classified before a binding, and BindConcreteClosure starts from
-//   reset receiver facts (empty Storage, Shared, no exclusive cause) and has them classified right after the body is bound, before
-//   a failed result or parameter Type returns; a header probe binds no parameter, visits no body and restores the enclosing probe
-//   on exit.
+// - Invariants: BindClosure clears the published Signature and Classified before a binding, and the pending relations an earlier
+//   binding formed in its body; BindConcreteClosure starts from reset receiver facts (empty Storage, Shared, no exclusive cause) and
+//   has them classified right after the body is bound, before a failed result or parameter Type returns, its pending relations judged
+//   then (Binding.OriginProof.cs); a header probe binds no parameter, visits no body and restores the enclosing probe on exit.
 // - Prohibitions: no receiver classification, capture formation or capture record here (Binding.ClosureReceivers.cs,
 //   Binding.Captures.cs, Binding.CaptureDiagnostics.cs).
 
@@ -221,6 +221,7 @@ public sealed partial class Binding
         {
             previous.Signature = null!; // BoundClosure.Of is this binding's definition, set once it is bound.
             previous.Classified = false; // And its receiver facts this binding's, once it has classified them.
+            this.LeavePendingRelations(function); // The pending relations of an earlier binding leave with it (R4-M126 §2.5 (d)).
         }
 
         if (expected is not null && !this.ClosureSignatureFits(function, expected, openResult))
@@ -345,7 +346,8 @@ public sealed partial class Binding
 
         // SPEC 7.7.3: the receiver is classified from the bound body on every path that bound it, a failed result or parameter
         // included; classification reads neither the signature nor the environment Type. A by-value use of a pair-layer capture the
-        // list does not decide, which could leave a case Shared, is a located Unsupported_Kd (the owner's net, DECISIONS R4-M128).
+        // list does not decide, which could leave a case Shared, is a located Unsupported_Kd (the owner's net, DECISIONS R4-M128). The
+        // relations that waited for the classification are judged then (SPEC 15.8.2, 23.1.2; DECISIONS R4-M126 §2.5).
         var effects = this.closureEffects ??= new(this);
         effects.Classify(function, plan);
         foreach (var (use, _) in effects.Unlisted)
@@ -353,6 +355,7 @@ public sealed partial class Binding
             this.Fail(use, BindingFailure.Unsupported);
         }
 
+        this.JudgePendingRelations(function);
         if (symbol.Type is null)
         {
             return Complete(function, null);

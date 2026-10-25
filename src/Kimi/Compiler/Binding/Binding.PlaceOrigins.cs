@@ -8,18 +8,21 @@ namespace Kimi.Compiler;
 // Place Origins (SPEC 13.5.6, 15.6.3, 15.6.5, 15.8.2; DECISIONS BU-27): the Origin of a Borrow of the Place an expression designates
 // (PlaceOrigin), of a slot that stores a reference (SlotOrigin), of a borrow prepared from a source (PreparedOrigin) and of a Borrow of the
 // referent of a stored reference (ReferentOrigin, PathReborrowOrigin), through the one containment walk over a path's steps
-// (ContainedOrigin, MeetLayers); the binder and Projection slot naming a Place's own atom (PlaceOriginSource, PlaceOriginBinder,
-// PlaceOriginSlot, SymbolOriginSlot, CandidateOriginBinder) and the reserved Projection slots (EnvironmentSlot, CallResultSlot,
-// ClosureValueSlot, HelperSlot, ReceiverSlot).
+// (ContainedOrigin, MeetLayers) and a root's containment (EnvironmentContainment); the binder and Projection slot naming a Place's own
+// atom (PlaceOriginSource, PlaceOriginBinder, PlaceOriginSlot, SymbolOriginSlot, CandidateOriginBinder) and the reserved Projection
+// slots (EnvironmentSlot, CallResultSlot, ClosureValueSlot, HelperSlot, ReceiverSlot).
 // - Inputs: the bound syntax and its path steps (NextPathStep), the recorded adaptations and pair-layer facts, the helper borrow
 //   (HelperOrigin), the indexer calls.
 // - Outputs: Origins interned through OriginAtom and Meet, which adaptations, written Borrows, Subjects, in-place reads and the Origin
 //   rows read.
 // - Invariants: a Borrow reached through safe borrow layers is named by the meet of their Origins, from its last dereference outward up
-//   to and including the first shared layer, every one when none is shared (SPEC 15.6.3); a reference read in place is its referent; a
-//   binding's own Place is the atom of its binder and slot; a raw dereference ends the walk (raw Origins are Binding.RawOrigins').
+//   to and including the first shared layer, every one when none is shared, and then also the containment of the root they are stored
+//   in, a Closure's receiver Origin ρ for an environment binding (SPEC 15.6.3, 15.8.2; EnvironmentContainment); a reference read in
+//   place is its referent; a binding's own Place is the atom of its binder and slot; a raw dereference ends the walk (raw Origins are
+//   Binding.RawOrigins').
 // - Prohibitions: nothing here judges an Origin relation, selects an adaptation or reports a diagnostic; no other component meets the
-//   layers of a Borrow's path, and a Pattern position's layers (Binding.Patterns.Layers) meet through MeetLayer, this walk's step.
+//   layers of a Borrow's path or a root's containment (a nested bare entry's Type reads EnvironmentContainment, Binding.Captures), and
+//   a Pattern position's layers (Binding.Patterns.Layers) meet through MeetLayer, this walk's step.
 public sealed partial class Binding
 {
     internal static Koto PlaceOriginSource(Koto source)
@@ -56,7 +59,8 @@ public sealed partial class Binding
     // The Projection slot of a closure's call result, a display end only (SPEC 23.1).
     internal const int CallResultSlot = -1;
 
-    // The Projection slot that names a closure literal's own temporary value, the receiver of a call on that literal (SPEC 15.8.2).
+    // The Projection slot that names a closure literal's own temporary value, the receiver of a call on that literal, and in the
+    // Closure's body its call receiver's Origin ρ (SPEC 15.8.2; EnvironmentContainment).
     internal const int ClosureValueSlot = int.MinValue;
 
     // The Projection slot of the helper borrow, a Borrow of the whole destruction receiver (SPEC 16.3.1, Binding.HelperOrigin). Its binder
@@ -65,7 +69,7 @@ public sealed partial class Binding
 
     // The slot of a constructor's or destructor's receiver `self` and so the Projection slot of its Place (SPEC 6.3.4, 16.3.1;
     // DECISIONS BU-23): no parameter index, so the receiver's Place is never a parameter's (Receiver). Its binder is always a
-    // constructor or destructor, never a closure, so no reader of an environment slot (Slot <= EnvironmentSlot(0)) meets it.
+    // constructor or destructor, never a closure, and every reader of a closure's slots reads their role (RoleOf).
     internal const int ReceiverSlot = int.MinValue + 2;
 
     // The Projection slot that names a binding's own Place.
@@ -87,7 +91,13 @@ public sealed partial class Binding
     // SPEC 15.6.3: a Reborrow of the referent of an exclusive reference stored at `place`, whose Origin is `origin`, is contained in that
     // reference and in the layers `place` is reached through (ContainedOrigin).
     private BoundOrigin? PathReborrowOrigin(Koto place, BoundOrigin? origin)
-        => origin is null ? null : this.MeetWith(origin, this.ContainedOrigin(place));
+        => origin is null ? null : this.ContainedOrigin(place, origin);
+
+    // SPEC 15.8.2, 15.6.3 (DECISIONS R4-M126 P2, P3): an environment binding is a Field of its Closure's call receiver's referent, so a
+    // Place reached through a layer stored in it is also contained in the receiver, whose Origin is ρ, the Closure's reserved atom at
+    // ClosureValueSlot; any other root has no containment.
+    private BoundOrigin? EnvironmentContainment(BindingSymbol? root)
+        => root is { Kind: BindingSymbolKind.Capture, Declaration: FunctionKoto closure } ? this.OriginAtom(closure, OriginKind.Projection, ClosureValueSlot) : null;
 
     // SPEC 15.6.3, 13.5.5, 3.4.3: a Borrow of the referent that `layers` safe borrow layers of `reference`, stored at `holder`, reach (a
     // follow, a Subject's Reborrow, a read in place or through several layers): those layers first (MeetLayers), then, unless one of
@@ -100,15 +110,14 @@ public sealed partial class Binding
         }
 
         BoundOrigin? origin = null;
-        return this.MeetLayers(reference, layers, ref origin) ? origin : this.MeetWith(origin, this.ContainedOrigin(holder));
+        return this.MeetLayers(reference, layers, ref origin) ? origin : this.ContainedOrigin(holder, origin);
     }
 
-    // SPEC 15.6.3, 4.7.1, 4.8.2, 14.8 (DECISIONS BU-27): the meet of the Origins of the safe borrow layers `place`'s path dereferences,
-    // from its last step outward up to and including the first shared one, over NextPathStep (MeetStep); null when the path dereferences
-    // no layer.
-    private BoundOrigin? ContainedOrigin(Koto place)
+    // SPEC 15.6.3, 4.7.1, 4.8.2, 14.8 (DECISIONS BU-27): `origin`, the meet of the layers dereferenced at `place` (null when none), met
+    // with the Origins of the safe borrow layers `place`'s path dereferences, from its last step outward up to and including the first
+    // shared one, over NextPathStep (MeetStep); null when no layer is dereferenced.
+    private BoundOrigin? ContainedOrigin(Koto place, BoundOrigin? origin)
     {
-        BoundOrigin? origin = null;
         var path = KotoHelper.UnwrapParentheses(place);
         for (var depth = 0; depth < 64; depth++)
         {
@@ -130,7 +139,7 @@ public sealed partial class Binding
     // admitted cases (SPEC 13.5.5): on unless shared. A user index's element is the referent of its published result, an Array or
     // UniqSlice element of a reference to the receiver's Borrow, a Slice element of `ref/E during s.source` (SPEC 4.7.1), a guard candidate
     // `ref/T during g` (SPEC 14.8): each names its receiver or is shared, and ends it. An inline part goes on; a root, a special receiver
-    // and a raw dereference end it.
+    // and a raw dereference end it, a root reached through a dereferenced layer met with its containment (EnvironmentContainment).
     private bool MeetStep(PathStep step, Koto path, Koto next, ref BoundOrigin? origin)
     {
         switch (step)
@@ -156,6 +165,9 @@ public sealed partial class Binding
                 return true;
             case PathStep.Candidate:
                 origin = this.MeetWith(origin, this.OriginAtom(PlaceOriginBinder(path), OriginKind.Projection, PlaceOriginSlot(path)));
+                return true;
+            case PathStep.Root when origin is not null:
+                origin = this.MeetWith(origin, this.EnvironmentContainment(path.BoundSymbol));
                 return true;
             case PathStep.Root or PathStep.Receiver or PathStep.RawFollow:
                 return true;
@@ -270,10 +282,11 @@ public sealed partial class Binding
         }
 
         // SPEC 3.4.3, 4.8.1, 15.6.3: a Place reached through an exclusive layer stored in place is contained in it and in the layers
-        // reaching it (ContainedOrigin), a reference read in place is its referent, and a Slice handle that is itself the Place is a
-        // Place of its root.
+        // reaching it (ContainedOrigin), a reference read in place is its referent, through an exclusive one also contained in its root's
+        // containment (EnvironmentContainment), and a Slice handle that is itself the Place is a Place of its root.
         return layer is null || !(reachedThrough || layer.Kind == BoundTypeKind.Semantics)
             ? this.OriginAtom(PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source))
-            : reachedThrough ? this.ContainedOrigin(place) ?? layer.Origin! : layer.Origin!;
+            : reachedThrough ? this.ContainedOrigin(place, null) ?? layer.Origin!
+            : this.MeetWith(layer.Origin!, IsExclusive(layer.Semantics) ? this.EnvironmentContainment(source.BoundSymbol) : null)!;
     }
 }

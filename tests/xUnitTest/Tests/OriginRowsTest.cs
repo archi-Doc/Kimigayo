@@ -21,9 +21,14 @@ public sealed partial class OriginRowsTest
     // Pick in a group, for callers a top-level function does not reach (a group's or struct's member).
     private const string Util = "group Util\n    public func pick(x: ref/i32 during s, y: ref/i32 during s) -> i32 => x@follow\n";
 
-    // A Closure storing a Borrow of an environment binding through a captured exclusive reference (2a0-D's rv/env-store).
+    // A Closure storing a Borrow of an environment binding through a captured exclusive reference (2a0-D's rv/env-store), under an
+    // Exclusive receiver and, consuming another capture, under `owner/Self`.
     private const string EnvStore = "func store(target: uniq/(ref/i32 during t), value: ref/i32 during t) -> ()\n    target@follow = value\n" +
         "func g(x: i32, target: uniq/(ref/i32 during t)) -> ()\n    var f = func [x, target] () => store(target, value: x@ref)\n    f()\n";
+
+    private const string EnvStoreConsuming = "func store(target: uniq/(ref/i32 during t), value: ref/i32 during t) -> ()\n    target@follow = value\n" +
+        "func consume(s: string) => ()\nfunc g(x: i32, target: uniq/(ref/i32 during t), s: string) -> ()\n    let f = func [x, target, s@move] ()\n" +
+        "        consume(s@move)\n        store(target, value: x@ref)\n    f@move()\n";
 
     // A struct whose Field initializer forms rows, with two constructors (2a0-D F2; the review's f2-init-two-ctors).
     private const string FieldInit = Util + "struct S\n    public var n: i32 = Util.pick(3@ref, 4@ref)\n    public init() => ()\n    public init(k: i32) => self.n = k\n";

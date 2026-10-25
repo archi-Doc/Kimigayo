@@ -3580,6 +3580,44 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the bit on the environment `BindingSymbol`; a computed `Receiver` (a capture loop per read); the three missed positions added to
     `ClosureEffects`' own list (a third fix of an open family); a net counting an unlisted use Exclusive in every case (a conservative
     Language error on valid programs). Numbering: R4-M128 is free on dev and every branch (R4-M127 on G245's U1).
+- **R4-M133 ρ, containment through the receiver layer, one receiver resolution and pending relations (2c-3B)** (2026-10-25, R4's
+  implementer lane under R4-M126 §2.2-§2.5, §2.12, §2.14 and D-2, D-3, D-12-D-15; PLAN G65's G6 and n2b)
+  - ρ (P2): a Closure k's call receiver Origin is `OriginAtom(k, Projection, ClosureValueSlot)`, no storage. Containment (P3): one
+    function, `Binding.PlaceOrigins.EnvironmentContainment`, gives an environment binding's root its containment ρ (any other root
+    none); the containment walk meets it at a root reached through a dereferenced layer with no shared layer first (`ContainedOrigin`
+    takes the meet reached so far, which `ReferentOrigin` and `PathReborrowOrigin` pass), and `PlaceOrigin`'s direct-layer return of a
+    binding storing an exclusive reference meets it too (g6a's `p[0]@uniq` through the indexer's receiver Reborrow). A Borrow of the
+    binding's own Place keeps `env_i`.
+  - The nested-entry Type (P4, R4-M123's 7.7.2, the exception to BU-28's "the binding's Type is its source's"): a bare entry that
+    Reborrows, in every or some admitted case, an enclosing Closure's environment binding takes the source Type with its outer Origin
+    met with ρ_outer (`Binding.Captures.CaptureEntry`); a pair layer carries it on its outer-Origin slot (D-14 holds: no stop). An
+    enclosing local's or parameter's entry keeps its Type.
+  - Resolution (P5): `OriginAtUse`, the one resolution every judge, record, the old reporter and the C1-F4 view read, resolves at each
+    classified Closure ancestor `env_i -> ρ` under a borrowed receiver and `ρ -> static` under `owner/Self` (`ResolveReceiver`). Classes:
+    `PendingAtom` (ρ or `env_i` of an unclassified Closure) is neither fixed nor finite, tested first in `FixedIn` and `BodyLocalIn`;
+    classified, ρ inside k is fixed by EnclosingAtom's ClosureValue row (k's literal value is a root of its evaluating body, an
+    enclosing body of each body inside k), the package's receiver class without a second row (its exclusion of that row inside k only
+    served to keep ρ unfixed while pending, which `PendingAtom` does). The view's row 4 is met only under `owner/Self`.
+  - Pending relations (§2.5, D-2): a pending atom is fitted as a local region is (`HasLocalRegion`); `AddObligation` appends an
+    obligation naming one, new or deduplicated, once per binding, to one reused list keyed by the outermost unclassified Closure whose
+    atoms it names; `Classify(k)` is followed by `JudgePendingRelations(k)`: an entry whose obligation left `obligationSet` is skipped
+    (F2), each other is routed as a binding-time fit is (F3): resolved fixed-fixed or Refuted, judged by the fit's position judge in
+    its body and recorded at its use (a Refuted body chain also a twin), any other body chain stays a row; the obligations stay. (a) is
+    2c-2's `Classify` placement; (c) a pending atom is Unclassed in the view until R4-M118's Dependent row (D-3); (d) `BindClosure(k)`
+    removes the entries formed in k's body or a body nested in it. No program found rebinds a Closure while entries are open, and none
+    removes a pending obligation in place before classification: (d)'s removal and F2's skip are guards.
+  - P12: the four `Slot <= EnvironmentSlot(0)` sites read `RoleOf`: the two "closure: call receiver" displays and
+    `HasEnvironmentOrigin` Environment or ClosureValue (a result naming ρ is receiver-dependent, 7.7.4), `CallLocalOrigin` Environment
+    only (ρ is never call-local). P11 (D5's follow-up, removal R6-gen): the old Emission's element Borrow compares its Origin with the
+    receiver's modulo ClosureValue operands (`BodyLowering.SameOriginModuloReceiver`).
+  - Verdicts (SPEC 15.6.3, 15.6.5, 7.7.2): g6a (the MIR's use-after-free), g6b, g6d, g6e, r1e, r1f, t4g, n2b
+    `UnprovenOriginRelation_Kd` on both pipelines (the default's conservative Loan records of g6a-g6e become Binding's); g65a, r1g,
+    15.8.2's `invalid` Unproven (Refuted before); r1a-r1c add the body's record beside R1's call U; t4e, t4f, f7j1, rc4, s773, D-13's
+    three forms under Shared and Exclusive receivers (no missing receiver premise, D-13) and g6c stay valid (g6c and D-13's Option form
+    keep the old analysis's conservative Loan record). Rejected: a `reached` flag on
+    the walk (a mode parameter); routing by `JudgeCallPosition` (it re-adds a meet's operand rows and leaves a Refuted body chain
+    unrecorded); the lists on `BoundClosure` (a field on the published definition for one list); a pass reset in `ResetPass`.
+    Numbering: R4-M133 is free on dev and every branch (R4-M131 on `claude/r4-spec-n2`, R4-M132 on `claude/a5-2a-2`).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

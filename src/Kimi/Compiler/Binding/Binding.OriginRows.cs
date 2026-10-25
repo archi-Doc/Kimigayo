@@ -344,6 +344,13 @@ public sealed partial class Binding
             return null; // E5: a non-declaration atom first formed outside every body.
         }
 
+        if (PendingAtom(atom))
+        {
+            // DECISIONS R4-M126 §2.5 (c), D-3: an unclassified Closure's receiver or environment atom, which no bound body leaves after
+            // Bind; row 9 until R4-M118's Dependent row is on dev.
+            return new(atom, OriginAtomKind.Unclassed, role);
+        }
+
         if (role is ProjectionRole.ClosureValue or ProjectionRole.CallResult && DeclaredBy(atom, slice.Body))
         {
             return new(atom, OriginAtomKind.Fixed, role); // Row 5: B's own call receiver and call result.

@@ -267,6 +267,7 @@ public sealed partial class Binding
         }
 
         obligation = obligation with { Body = this.formingBody }; // The body Binding formed it in (DECISIONS R4-M101 E1).
+        this.AddPendingRelation(obligation); // Judged when its Closure is classified, if it names a pending atom (R4-M126 §2.5).
         if (this.obligationSet.Add(obligation))
         {
             this.obligations.Add(obligation);

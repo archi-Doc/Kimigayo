@@ -151,7 +151,7 @@ public sealed partial class Binding
         static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
     }
 
-    // The Borrow in a closure's result expression whose Origin is the call-local one, which the record names and relates.
+    // The first Borrow in a value whose Origin contains `origin`, which the record names and relates (BorrowSource).
     private static Koto? LocalBorrow(Koto value, BoundOrigin origin)
     {
         var finder = new LocalBorrowFinder(origin);
@@ -308,7 +308,7 @@ public sealed partial class Binding
         return true;
     }
 
-    // The first Borrow in a result expression whose Origin contains the call-local atom.
+    // The first Borrow in a value whose Origin contains an atom (LocalBorrow).
     private sealed class LocalBorrowFinder(BoundOrigin atom) : KotoVisitor
     {
         internal Koto? Found { get; private set; }

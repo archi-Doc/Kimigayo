@@ -45,11 +45,14 @@ public sealed partial class OriginRowsTest
         Assert.Equal(OriginAtomKind.Finite, c.Types.OriginAtom(new ExecutableBody(h.SymbolOf(), 1), input, h).Kind);
     }
 
-    // 2a0-D §3 with DECISIONS R4-M101 E5: one class per precedence row and slot role, on rows the programs form.
+    // 2a0-D §3 with DECISIONS R4-M101 E5: one class per precedence row and slot role, on rows the programs form. Row 4, an environment
+    // binding's own atom, resolves to the call receiver Origin ρ (row 5, Fixed) under a borrowed receiver and stays a Finite root under
+    // `owner/Self` (DECISIONS R4-M126 P5, superseding the interim Finite in every receiver mode).
     [Theory]
     [InlineData(Destructors, "drop", "self.buffer@ref", "Finite", "Receiver")]
     [InlineData(Destructors, "drop", "whole.buffer@ref", "Finite", "Helper")]
-    [InlineData(EnvStore, "", "x@ref", "Finite", "Environment")]
+    [InlineData(EnvStore, "", "x@ref", "Fixed", "ClosureValue")]
+    [InlineData(EnvStoreConsuming, "", "x@ref", "Finite", "Environment")]
     [InlineData(Guard, "g", "v@ref", "Finite", "Place")]
     [InlineData(Pick + "func g(n: i32, r: i32 = pick(n@ref, 5@ref)) -> i32 => r\n", "g", "n@ref", "Finite", "Parameter")]
     [InlineData(Pick + "func g(n: i32, r: i32 = pick(n@ref, 5@ref)) -> i32 => r\n", "g", "5@ref", "Finite", "Place")]
@@ -174,6 +177,18 @@ public sealed partial class OriginRowsTest
         var constructor = (FunctionKoto)init.Key.Decl!.Declaration;
         var receiver = c.Types.OriginAtom(BodyOf(init.Key), new(OriginKind.Projection, constructor, Binding.ReceiverSlot), constructor);
         Assert.Equal((OriginAtomKind.Finite, ProjectionRole.Receiver), (receiver.Kind, receiver.Role));
+    }
+
+    // DECISIONS R4-M126 §2.5 (c), D-3: a Closure that is not classified (its capture failed, so no body was bound) has pending receiver and
+    // environment atoms, neither Fixed nor Finite: Unclassed (row 9) until R4-M118's Dependent row.
+    [Fact]
+    public void AnUnclassifiedClosuresAtomsAreUnclassed()
+    {
+        var c = MirBuildTest.Compile("func g() -> i32\n    let text = \"a\"\n    let f = func [text] () -> i32 => 1\n    return 0\n" + Main);
+        var literal = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.IsAnonymous);
+        var body = new ExecutableBody(literal.SymbolOf());
+        Assert.Equal(OriginAtomKind.Unclassed, c.Types.OriginAtom(body, new BoundOrigin(OriginKind.Projection, literal, Binding.ClosureValueSlot), literal).Kind);
+        Assert.Equal(OriginAtomKind.Unclassed, c.Types.OriginAtom(body, new BoundOrigin(OriginKind.Projection, literal, Binding.EnvironmentSlot(0)), literal).Kind);
     }
 
     // The row of a body (by its definition's name; "" for the Closure) at a site.

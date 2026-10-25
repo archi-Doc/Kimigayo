@@ -199,7 +199,8 @@ public sealed partial class Binding
         }
     }
 
-    // Whether a result names an environment binding of the closure `function` (SPEC 15.8.2).
+    // Whether a result names an environment binding of the closure `function` or its call receiver Origin ρ, so it depends on the
+    // receiver (SPEC 15.8.2, 7.7.4; DECISIONS R4-M126 P12).
     private static bool HasEnvironmentOrigin(BoundType type, Koto function)
     {
         if (EnvironmentAtom(type.Origin, function))
@@ -240,7 +241,7 @@ public sealed partial class Binding
                 }
             }
 
-            return origin.Kind == OriginKind.Projection && ReferenceEquals(origin.Binder, function) && origin.Slot <= EnvironmentSlot(0) && origin.Slot != ClosureValueSlot;
+            return ReferenceEquals(origin.Binder, function) && RoleOf(origin) is ProjectionRole.Environment or ProjectionRole.ClosureValue;
         }
     }
 

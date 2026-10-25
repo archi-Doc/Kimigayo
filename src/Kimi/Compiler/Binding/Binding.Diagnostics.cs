@@ -240,7 +240,7 @@ public sealed partial class Binding
         }
 
         // An erased closure's environment binding lies within its call receiver, which no Origin expression names (SPEC 15.8.2).
-        var longer = contract.Longer is { Kind: OriginKind.Projection, Binder: FunctionKoto { IsAnonymous: true } } environment && environment.Slot <= EnvironmentSlot(0)
+        var longer = contract.Longer is { Binder: FunctionKoto { IsAnonymous: true } } && RoleOf(contract.Longer) is ProjectionRole.Environment or ProjectionRole.ClosureValue
             ? new DiagnosticOrigin("closure", "call receiver") : OriginDisplay(contract.Longer, null);
         var shorter = OriginDisplay(contract.Shorter, null);
         var longerAt = longer.Kind == "omitted" ? OmittedAt(contract.Longer) : null;

@@ -89,6 +89,44 @@ public class ClosureEnvironmentOriginTest
         "    let f = func [q] (y: ref/i32) -> i32\n        let h: H{x} = H.init(y)\n            origin x.s outlives q\n        return h.item@follow\n" +
         "    let a: i32 = 1\n    return f(a@ref)\npublic func main() => ()\n";
 
+    // G6's two forms of a function whose Closure stores through a captured `q` into an Origin of the enclosing body (2c-D design B's g6).
+    private const string G6Single = "func use(p: uniq/i32, q: uniq/(uniq/i32 during p)) -> i32\n";
+
+    private const string G6Array = "func use(p: uniq/Array<i32>, q: uniq/(uniq/i32 during p)) -> i32\n";
+
+    // A local exclusive reference a Closure captures bare (2x-P7's t4 and n2 forms).
+    private const string LocalView = "func use() -> i32\n    var x: i32 = 1\n    let u = x@uniq\n";
+
+    private const string Consume = "func consumeText(value: string) => ()\n";
+
+    private const string Resource = "struct Resource\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc makeResource() -> Resource => Resource.init(1)\n" +
+        "func consume(r: Resource) => ()\n";
+
+    // g6a (2c-D design B's G6 probe): the first call stores `p[0]@uniq` into `*q`, the second appends to `p` and writes through `*q`.
+    private const string G6a = G6Array + "    var first = true\n    var c = func [p@move, q@move, var first] () -> i32\n        if first\n" +
+        "            q@follow = p[0]@uniq\n            first = false\n            return 0\n        p.append(7)\n        q@follow@follow = 5\n        return 1\n" +
+        "    _ = c()\n    _ = c()\n    return 0\n";
+
+    // g6c, G6's Consuming control: the same store under `owner/Self`, valid by SPEC.
+    private const string G6c = Consume + G6Single + "    let t = \"a\"\n    var c = func [p@move, q@move, t@move] () -> i32\n        consumeText(t@move)\n" +
+        "        q@follow = p\n        return 0\n    return c@move()\n";
+
+    // D-13's third form under an Exclusive receiver: an `Option` of a reference stored through an exclusive Borrow of a `var` binding.
+    private const string OptionStore = "func use(p: ref/i32) -> i32\n    let a: Option<ref/i32 during p> = .Some(p)\n    let r = p\n" +
+        "    var c = func [var a, r] () -> ()\n        let q = a@uniq\n        q@follow = .Some(r)\n    c()\n    return 0\n";
+
+    // G6's store in a Closure whose inferred result fails (its returns have no common Type), and a head whose pair-layer capture a bare
+    // use marks (BoundCapture.BareReborrows).
+    private const string FailedReturns = "        q@follow = p\n        if k\n            return 1\n        return \"a\"\n";
+
+    private const string FailedResult = "    var c = func [p@move, q@move] (k: bool)\n" + FailedReturns;
+
+    private const string MarkedHead = "func use<s/T>(value: s/T, p: uniq/i32, q: uniq/(uniq/i32 during p)) -> ()\n    s is owner or uniq\n    T is Copy\n";
+
+    // G6's store in a closure argument bound under its call's consultation (the slot T is fixed before the body binds).
+    private const string ConsultedStore = "func run<T, F>(value: T, action: F) -> T\n    F is Callable<uniq, (T) -> ()>\n    return value\n" + G6Single +
+        "    let n = run(1, func [p@move, q@move] (y)\n        q@follow = p\n        let k = y\n    )\n    return n\n";
+
     private const string Unproven = nameof(DiagnosticCode.UnprovenOriginRelation_Kd);
 
     private const string Unsatisfied = nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd);
@@ -268,6 +306,137 @@ public class ClosureEnvironmentOriginTest
         {
             Assert.Empty(ContextualCaptureTest.PublishedRecords(function + "public func main() => ()\n", pipeline));
         }
+    }
+
+    // SPEC 15.8.2, 15.6.3, 7.7.2 (DECISIONS R4-M126 P3-P5; PLAN G65's G6 and n2b): an environment binding is a Field of the call receiver's
+    // referent, so a Borrow through a layer stored in it is also contained in the receiver Origin ρ (a nested bare entry's binding too), and
+    // a Borrow of the binding itself lies in ρ under a borrowed receiver; storing either into an Origin of the enclosing body, or returning
+    // it `during` one, is Unknown once the Closure is classified, Binding's one record on both pipelines. The MIR accepted G6's stores
+    // (g6a's use-after-free: one call stores `p[0]@uniq` into `*q`, the next appends to `p`), both pipelines the uncalled forms, and the
+    // Borrows of `n` were Refuted. Each record stays beside an unrelated Binding error (SPEC 23.1.2).
+    [Theory]
+    [InlineData(G6a, "p[0]@uniq")]
+    [InlineData(G6Single + "    var c = func [p@move, q@move] () -> i32\n        q@follow = p\n        return 0\n    _ = c()\n    _ = c()\n    return 0\n", "p\n")]
+    [InlineData(G6Single + "    var c = func [p@move, q@move] () -> i32\n        q@follow = p\n        return 0\n    return 0\n", "p\n")]
+    [InlineData(G6Array + "    var c = func [p@move, q@move] () -> i32\n        q@follow = p[0]@uniq\n        p.append(7)\n        q@follow@follow = 5\n        return 1\n    return c()\n", "p[0]@uniq")]
+    [InlineData("func use(p: uniq/i32) -> i32\n    var c = func [p@move] () -> uniq/i32 during p => p\n    return 0\n", "p\n")]
+    [InlineData("func use(p: uniq/i32) -> i32\n    let c = func [p@move] () -> ref/i32 during p => p@follow@ref\n    return 0\n", "p@follow@ref")]
+    [InlineData(LocalView + "    let c = func [u] () -> ref/i32 during u => u@follow@ref\n    return 0\n", "u@follow@ref")]
+    [InlineData(LocalView + "    var outer = func [u] () -> i32\n        let inner = func [u] () -> uniq/i32 during u => u@move\n        return 0\n    return 0\n", "u@move")]
+    [InlineData("func use(p: ref/i32) -> i32\n    let n: i32 = 1\n    let c = func [n] () -> ref/i32 during p => n@ref\n    return c()@follow\n", "n@ref")]
+    [InlineData("func use(p: ref/i32) -> i32\n    let n: i32 = 1\n    let c = func [n] () -> ref/i32 during p => n@ref\n    return 0\n", "n@ref")]
+    public void ABorrowThroughTheEnvironmentIsContainedInTheCallReceiver(string function, string at)
+    {
+        foreach (var beside in new[] { false, true })
+        {
+            var source = function + (beside ? "func unrelated() -> i32\n    let wrong: Missing = 1\n    return 0\n" : string.Empty) + "public func main() => ()\n";
+            foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
+            {
+                var records = ContextualCaptureTest.PublishedRecords(source, pipeline).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
+                var error = Assert.Single(records, static x => x.Code != nameof(DiagnosticCode.UnresolvedBinding_Kd));
+                Assert.Equal(Unproven, error.Code);
+                Assert.StartsWith(at, source[error.Span.Start..], StringComparison.Ordinal);
+                Assert.Equal(beside ? 2 : 1, records.Length);
+            }
+        }
+    }
+
+    // The valid twins (DECISIONS R4-M126 §1): under `owner/Self` ρ is no borrow, so a Reborrow through a captured reference keeps its Origin
+    // (t4e, t4f, the Consuming outer of n2b, a result over it, which ρ never makes call-local); a nested exclusive slot entry, a Consuming
+    // body's nested entry and SPEC 7.7.3's example; D-13's three forms under Shared and Exclusive receivers (the receiver's well-formedness
+    // is no row: no premise is missing); a nested bare entry of a pair capture, whose binding meets ρ on the pair layer's outer slot.
+    [Theory]
+    [InlineData(Consume + LocalView + "    let t = \"a\"\n    let c = func [u, t@move] () -> uniq/i32 during u\n        consumeText(t@move)\n        return u\n    return 0\n")]
+    [InlineData(Consume + LocalView + "    let t = \"a\"\n    let c = func [u@move, t@move] () -> uniq/i32 during u\n        consumeText(t@move)\n        return u\n    return 0\n")]
+    [InlineData(Consume + LocalView + "    let t = \"a\"\n    var outer = func [u, t@move] () -> i32\n        consumeText(t@move)\n" +
+        "        let inner = func [u] () -> uniq/i32 during u => u@move\n        return 0\n    return 0\n")]
+    [InlineData(Consume + LocalView + "    let t = \"a\"\n    let c = func [u, t@move] ()\n        consumeText(t@move)\n        return u@follow@ref\n    return 0\n")]
+    [InlineData("func use() -> i32\n    var count: i32 = 0\n    var outer = func [var count] () -> i32\n        var inner = func [count@uniq] () => count@follow += 1\n" +
+        "        inner()\n        return count\n    return outer()\n")]
+    [InlineData(Resource + "func use() -> i32\n    let count: i32 = 0\n    let item = makeResource()\n    let outer = func [var count, item@move] () -> i32\n" +
+        "        var inner = func [count@uniq] () => count@follow += 1\n        inner()\n        consume(item@move)\n        return count\n    return outer@move()\n")]
+    [InlineData(Resource + "func use() -> i32\n    let count: i32 = 0\n    var next = func [var count] () -> i32\n        count += 1\n        return count\n" +
+        "    let first = next()\n    let item = makeResource()\n    let take = func [item@move] () => item@move\n    let taken = take@move()\n    return first\n")]
+    [InlineData("func swap<T>(x: uniq/T, y: uniq/T) => ()\nfunc use(p: ref/i32) -> i32\n    let a = p\n    let b = p\n    var c = func [var a, var b] () -> ()\n" +
+        "        swap(a@uniq, b@uniq)\n    c()\n    return 0\n")]
+    [InlineData("func same<T>(x: ref/T, y: ref/T) => ()\nfunc use(p: ref/i32) -> i32\n    let a = p\n    let b = p\n    let c = func [a, b] () -> ()\n" +
+        "        same(a@ref, b@ref)\n    c()\n    return 0\n")]
+    [InlineData("func use(p: ref/i32) -> i32\n    let a = p\n    let r = p\n    var c = func [var a, r] () -> ()\n        let q = a@uniq\n        q@follow = r\n    c()\n    return 0\n")]
+    [InlineData("func use(p: ref/i32) -> i32\n    let a = p\n    let r = p\n    let c = func [a, r] () -> i32\n        let q = a@ref\n        let v = q@follow\n" +
+        "        return v@follow + r@follow\n    return c()\n")]
+    [InlineData("func use(p: ref/i32) -> i32\n    let a: Option<ref/i32 during p> = .Some(p)\n    let c = func [a] () -> i32\n        let q = a@ref\n        let w = q@follow\n" +
+        "        return 0\n    return c()\n")]
+    [InlineData("func use<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n    var h = func [value] () -> ()\n        var g = func [value] () -> ()\n" +
+        "            let local = value\n            _ = local\n        g()\n    h()\n")]
+    [InlineData("func use<s/T>(value: s/T) -> ()\n    s is ref or uniq\n    T is Copy\n    var h = func [value] () -> ()\n        var g = func [value] () -> ()\n" +
+        "            let local = value\n            _ = local\n        g()\n    h()\n")]
+    public void AReceiverContainmentTheBodyNeedsNotStaysValid(string function)
+    {
+        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
+        {
+            Assert.Empty(ContextualCaptureTest.PublishedRecords(function + "public func main() => ()\n", pipeline));
+        }
+    }
+
+    // D-13's Option form under an Exclusive receiver and g6c, G6's Consuming control, hold by SPEC: Binding and the MIR accept them; the
+    // old analysis keeps its conservative Loan record (a recorded old-path limit until R6-check).
+    [Theory]
+    [InlineData(OptionStore, "a@uniq")]
+    [InlineData(G6c, "q@follow = p")]
+    public void OnlyTheOldAnalysisRejectsAReceiverContainmentThatHolds(string function, string at)
+    {
+        var source = function + "public func main() => ()\n";
+        var c = VerifiedSpecExampleTest.Bind(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        c.Analyze();
+        var (common, old, passed, mir) = MirDifferenceLedger.Sides(c, c.BuildMir());
+        Assert.Empty(Errors([.. common, .. mir]));
+        var errors = Errors([.. common, .. old, .. passed]);
+        Assert.All(errors, static x => Assert.Equal(DiagnosticCode.ComparisonLoanConflict_Kd, x.Code));
+        Assert.Contains(errors, x => source[x.Node.Span.Start..].StartsWith(at, StringComparison.Ordinal));
+
+        static MirDifferenceLedger.Entry[] Errors(List<MirDifferenceLedger.Entry> side)
+            => [.. side.Where(static x => DiagnosticEntries.TryGet(x.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error)];
+    }
+
+    // DECISIONS R4-M126 §2.5: a pending relation waits for its Closure's classification, which runs on every path that bound the body:
+    // beside a failed parameter Type or a failed result (a), the two early returns after the body, also with a pair-layer capture its
+    // bare use marks (the receiver from the mark, 2c-2's review N5), for a closure argument bound under a consultation (d), and again
+    // after a warm rebind, its record is one, located at its value, on both pipelines.
+    [Theory]
+    [InlineData(G6Single + "    var c = func [p@move, q@move] (z: Missing) -> i32\n        q@follow = p\n        return 0\n    return 0\n", 2)]
+    [InlineData(G6Single + FailedResult + "    return 0\n", 2)]
+    [InlineData(MarkedHead + "    var c = func [value, p@move, q@move] (z: Missing) -> ()\n        let local = value\n        _ = local\n        q@follow = p\n", 2)]
+    [InlineData(MarkedHead + "    var c = func [value, p@move, q@move] (k: bool)\n        let local = value\n        _ = local\n" + FailedReturns, 2)]
+    [InlineData(ConsultedStore, 1)]
+    public void APendingRelationIsJudgedOnceOnEveryPathThatBindsTheBody(string function, int count)
+    {
+        var source = function + "public func main() => ()\n";
+        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
+        {
+            var records = ContextualCaptureTest.PublishedRecords(source, pipeline).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
+            Assert.Equal(count, records.Length);
+            var error = Assert.Single(records, static x => x.Code == Unproven);
+            Assert.StartsWith("p\n", source[error.Span.Start..], StringComparison.Ordinal);
+        }
+
+        var c = MinimalEmissionTest.Analyze(source);
+        var first = c.Binding.Issues.Select(static x => $"{x.Code} {x.Node.Span.Start}").Order(StringComparer.Ordinal).ToArray();
+        c.Bind();
+        Assert.Equal(first, c.Binding.Issues.Select(static x => $"{x.Code} {x.Node.Span.Start}").Order(StringComparer.Ordinal).ToArray());
+    }
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmPendingRelationsAllocateNothing()
+    {
+        var nested = LocalView.Replace("use", "nested", StringComparison.Ordinal) + "    let t = \"a\"\n    var outer = func [u, t@move] () -> i32\n" +
+            "        consumeText(t@move)\n        let inner = func [u] () -> uniq/i32 during u => u@move\n        return 0\n    return 0\n";
+        var c = MinimalEmissionTest.Analyze(G6c + nested + "public func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var valid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
+        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 
     [Trait("Purpose", "Allocation")]
