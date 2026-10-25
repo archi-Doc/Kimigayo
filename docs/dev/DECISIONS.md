@@ -8084,3 +8084,12 @@ structure is recorded here by the unit that first implements it.
   (`KimiLibraryCatalog`, `TyCtxt.Published`), which the instance collector reads, rather than from a need the legacy row declares
   (against K package 4.5 row 2 and S2-S4 X4, R5-M18); and the fixed-array storage borrows (StorageBorrowFixedShared and
   StorageBorrowFixedExclusive) move from plan row C8d's storage-boundary kinds to C8b, so C8d keeps six. They leave the list.
+- **R5-M119 The owner confirms C8c's departures** (owner, 2026-10-25, on the R5 planning session's explanation after C8c's design and
+  before its behavior commit; verbatim 「C8c の逸脱 2 件（文字列の BuiltinEquals/Compare シムを C8f へ移すこと、Strings カーネルの O2 と前提 E7 を E7 と
+  C9c の遅い方へ移し C8c は一時カーネルで参考測定すること）を承認します。」; the consequences are the planning session's) The two
+  departures R5-M118 records are confirmed: `BuiltinEquals` and `BuiltinCompare` on strings, a string Self's shim included, move from
+  plan row C8c (and audit rows :102-103) to C8f, which owns the one shim writer, since a string-Self shim flips no row alone; and plan
+  row C8c's Strings kernel O2, with its prerequisite E7 (the `Strings` corpus kernel, not landed), moves to the later of E7 and C9c,
+  since the kernel's checksum line needs interpolation (C9c) under MIR code generation; C8c measures a temporary kernel as information,
+  a B/A beyond the A=B variance stopping it (R5-M8's O2 rule). The later of E7 and C9c runs the corpus A/B under R5-M8. They leave the
+  list.
