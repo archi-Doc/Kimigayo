@@ -10,7 +10,7 @@
 //   value call, an exclusive Reborrow at an expected Type or bare), or a nested entry that Reborrows or exclusively
 //   borrows an outer environment binding, makes it Exclusive; every other use borrows (Shared).
 // - Inputs: the Closure's bound body (each node's bound symbol, Type, call, value call and conversion), the adaptations Binding
-//   recorded, a nested Closure's published Storage, a loop's entry call and a match's Subject mode; BareReborrows,
+//   recorded, a nested Closure's published Storage, a loop's and a match's Subject mode; BareReborrows,
 //   BorrowsExclusively, PropertyCall and ProveCopy.
 // - Outputs: BoundClosure.Receiver, which every reader of a Closure's call receiver reads (value calls, candidate selection and
 //   Callable proofs, effects, the MIR builder, the old analysis and Emission); ExclusiveUse and ExclusiveReborrow, the Exclusive
@@ -173,8 +173,7 @@ public sealed partial class Binding
             {
                 UnaryKoto update => update.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement,
                 ConversionKoto conversion => ReferenceEquals(conversion.Left, place) && binding.BorrowsExclusively(conversion),
-                ForKoto loop => ReferenceEquals(loop.Iterable, place) && CallPlan.Of(loop) is { ReceiverOperation: var entry } &&
-                    ReferenceEquals(entry.Source, place) && LendsExclusively(entry),
+                ForKoto loop => ReferenceEquals(loop.Iterable, place) && loop.Mode == SubjectMode.Exclusive,
                 MatchKoto match => ReferenceEquals(match.Expression, place) && BoundMatch.Of(match) is { Mode: SubjectMode.Exclusive },
                 InvocationKoto { BoundValueCall: { } valueCall } => ReferenceEquals(valueCall.CalleeValue, place) && valueCall.ReceiverKind == SemanticsKind.Uniq,
                 InvocationKoto { BoundCall: { } call } => IsExclusiveArgument(call.ArgumentOperations, place),
