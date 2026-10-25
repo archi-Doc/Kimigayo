@@ -24,11 +24,14 @@ Do not print a long inspection report. Begin the first unit.
 
 ## 2. Unit cycle
 
+Each unit follows [WORKFLOW](../WORKFLOW.md): its class sets the design and reviews.
+
 ```
 reproducer (a failing test or program variant)
-→ implementation following the agreed design
+→ implementation following the agreed design, with incremental builds and selected tests
+→ reviews until ACCEPT or a hold
 → ./scripts/verify.ps1 -Class <related tests> [-Fixtures '<pattern>'] [-Milestone <n>]
-→ fix failures at their root
+→ fix failures at their root (the fix gets a diff review; the checks it invalidated run again)
 → commit (descriptive message; this is the unit's record)
 → next unit
 ```
@@ -52,7 +55,7 @@ reproducer (a failing test or program variant)
 ## 4. Decisions and blockers
 
 - Resolve implementation details yourself when SPEC behavior is preserved.
-- If progress needs an undefined rule or meets a SPEC conflict, record the blocker and proposed decision in PLAN §7 and continue independent work. Revise SPEC/IMPL only when specification or contract revision is explicitly in the user's requested scope; otherwise report the issue and request a decision only if needed to proceed. A possible improvement alone does not authorize rewriting the rules.
+- If progress needs an undefined rule, record the blocker and proposed decision in PLAN §7 and continue independent work. A case under [WORKFLOW's owner decisions](../WORKFLOW.md#owner-decisions), including a SPEC contradiction, suspends the unit and goes to the owner. Revise SPEC/IMPL only when specification or contract revision is explicitly in the user's requested scope; otherwise report the issue. A possible improvement alone does not authorize rewriting the rules.
 - A blocked unit leaves the tree green: revert or finish its partial change before switching.
 
 ## 5. Session end
