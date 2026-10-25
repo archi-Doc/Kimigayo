@@ -86,11 +86,12 @@ internal sealed partial class MirBorrows
     }
 
     // ret(i, κ) (A3 5): Value, the argument's value and, for a borrow (a reference or a view handle, Borrows), a read through it; Content,
-    // a read through it only.
+    // a read through it only; Chain (SPEC 15.6.4's any chain of reads through it; DECISIONS BU-40) is read as Content, one read, until
+    // A5's Chain closure (DECISIONS R4-M131 Order 3, PLAN G160).
     private int Retained(ulong[] state, int operand, int position, RetentionKind kind)
     {
         var value = this.argValues[position];
-        if (kind == RetentionKind.Content)
+        if (kind != RetentionKind.Value)
         {
             return this.Content(state, value);
         }

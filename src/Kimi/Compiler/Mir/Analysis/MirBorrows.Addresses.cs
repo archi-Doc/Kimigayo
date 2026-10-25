@@ -16,7 +16,8 @@ namespace Kimi.Compiler.Mir;
 // enclosing Place, mark its location for a located Unsupported_Kd and make the view a producer (PQ-10; registered for X-2, PD28; removal
 // stage: the Loan records the layer's own-step entry and positions). An own-step entry makes its root borrowed, so the root's accesses are
 // listed for its departures (MirBorrows.OwnSteps), and the view a producer (D5). The pre-pass runs once per view, after the Loans and
-// before the holders.
+// before the holders. It walks the view's uses only where Loans saw a raw Ref or a projection row may be or enclose a layer (Layer's and
+// Encloses' Type tests, once per row); elsewhere no use forms an address or a mark (G246).
 // Must not issue a Loan, carry a value (MirBorrows.Values) or record a problem (MirBorrows.Locations records PQ-10's).
 internal sealed partial class MirBorrows
 {
@@ -26,6 +27,20 @@ internal sealed partial class MirBorrows
     private bool[] layerBorrowed = []; // By location: PQ-10's located Unsupported_Kd.
     private int addressCount;
     private int ownCount; // The layer Places of the view.
+
+    // Whether a Tuple or fixed array holds a raw pointer inline, at any of its positions.
+    private static bool Inline(BoundType type)
+    {
+        for (var i = 0; i < type.Components.Count && type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray; i++)
+        {
+            if (type.Components[i].Semantics == SemanticsKind.Raw || Inline(type.Components[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     // The addresses of the view (B §5.2): from every Place each location uses, after the Loans and before the holders, so that a holder an
     // address names is a flow holder.
@@ -37,6 +52,12 @@ internal sealed partial class MirBorrows
         this.ownAt.Clear();
         MirDataflow.Grow(ref this.layerBorrowed, locations);
         Array.Clear(this.layerBorrowed, 0, locations);
+        this.Work += this.body.Projections.Length;
+        if (!this.rawRefs && !this.Layering())
+        {
+            return; // No Place the walk would find: no raw Ref, and no Place that may be or enclose a layer.
+        }
+
         var visitor = new Addressing(this);
         for (var block = 0; block < this.body.Blocks.Length; block++)
         {
@@ -49,6 +70,21 @@ internal sealed partial class MirBorrows
 
         this.producing |= this.ownEntries > 0; // The own-step Warning is a producer (D5).
         this.Work += locations;
+    }
+
+    // Whether a Place of the view may be a `during self` layer or enclose one inline (Layer's and Encloses' Type tests, on the projection
+    // rows, each a Place's last step): a row whose Type is a raw pointer, or under the view a Tuple or fixed array holding one inline.
+    private bool Layering()
+    {
+        foreach (var row in this.body.Projections)
+        {
+            if (row.Type is { } type && (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } || Inline(cases.Type(type))))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // A Place a location uses: a raw Ref's address; the layer of each prefix; PQ-10's non-raw Borrow of a layer, and a non-raw Borrow or a
