@@ -59,8 +59,10 @@ public class InputDependentValueCallTest
     // acceptance is the old path's verdict until R6-check: `apply(none)` borrows the Function Item temporary `none` for `f: ref/F`, SPEC
     // 15.4.3 (1) binds the result to `f`, and SPEC 3.6 ends that temporary at its statement, so `match r` is invalid. A5 rejects it
     // (a ComparisonLoanConflict_Kd row of R4's MIR difference ledger, which R4 reclassifies to class (a)); the default pipeline keeps D5's
-    // Function Item boundary (OwnershipBody.IsTemporaryOriginRoot).
+    // Function Item boundary (OwnershipBody.IsTemporaryOriginRoot). The Callable row's MIR side is A5's conflict at `none` (DECISIONS
+    // R4-M136, with R5's agreement).
     [Theory]
+    [Trait("OldRule", "ledger:55b340ea0f4f:6")]
     [InlineData("Item", None + "let e = none\nlet r = e()" + IsNone)]
     [InlineData("Erased", None + "let e: () -> Option<ref/i32> = none\nlet r = e()" + IsNone)]
     [InlineData("ErasedInput", None + "let e: (i32) -> Option<ref/i32> = noneOf\nlet r = e(1)" + IsNone)]
@@ -70,6 +72,7 @@ public class InputDependentValueCallTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         ScalarEmissionTest.EmitFixture("InputDependentCallStatic" + name, source, string.Empty);
+        MirTargetSide.Check(c, name == "Callable" ? [(DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At("apply(none)", "none"))] : []);
     }
 
     [Theory]

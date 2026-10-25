@@ -6,8 +6,8 @@ using Xunit;
 namespace XunitTest;
 
 /// <summary>A5's interned Loan sets (design A3 §6.1, docs/dev/DECISIONS.md R4-M53) through <see cref="MirLoanSets"/> itself: equal sets
-/// have one id, 0 is the empty set, Add, Union, Remove and Range keep the set laws and repeat through their memos, and the storage is
-/// pooled.</summary>
+/// have one id, 0 is the empty set, Add, Union, Remove, Range and Of keep the set laws and repeat through their memos (Of through its
+/// run), and the storage is pooled.</summary>
 public sealed class MirLoanSetsTest(ITestOutputHelper output)
 {
     // R4-M53: a set is its id: the same elements added in any order, joined by Union or left by Remove are one node, and the empty set is
@@ -61,6 +61,20 @@ public sealed class MirLoanSetsTest(ITestOutputHelper output)
         Assert.Equal([run, Of(sets, 1), 0], new[] { sets.Remove(run, absent), sets.Remove(pair, run), sets.Remove(four, run) });
         Assert.Equal(bytes, sets.Bytes);
         Assert.Equal([3, 5, 6], sets.Elements(sets.Remove(run, four)).ToArray());
+    }
+
+    // DECISIONS R4-M132 (the design review's A-B1): Of interns an ascending run in one pass, the set its elements make one at a time, the
+    // empty run node 0; a run equal to an existing set makes no node, and it scans the run once.
+    [Fact]
+    public void OfIsTheSetOfItsAscendingRun()
+    {
+        var sets = new MirLoanSets();
+        var set = sets.Of([2, 5, 8, 13]);
+        Assert.Equal([set, 0], new[] { Of(sets, 13, 8, 5, 2), sets.Of([]) });
+        Assert.Equal([2, 5, 8, 13], sets.Elements(set).ToArray());
+        var (bytes, scanned) = (sets.Bytes, sets.Scanned);
+        Assert.Equal(set, sets.Of([2, 5, 8, 13]));
+        Assert.Equal((bytes, scanned + 4), (sets.Bytes, sets.Scanned));
     }
 
     // R4-M53, A3 §6.2: an operation repeated, in either operand order for a Union, returns its first result and makes no node, and a

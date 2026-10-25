@@ -78,6 +78,13 @@ public sealed partial class MirDifferenceLedger : IDisposable
     internal static bool BindingComplete(Compilation compilation)
         => compilation.Binding.Result.IsComplete && compilation.Binding.LintErrors == 0;
 
+    /// <summary>Gets the hash that names a compilation's sources in the ledger, a raw row's <c>sha</c> and its saved source's name: the first
+    /// 12 hexadecimal digits of the SHA-256 of the sources, each document after a <c>// name</c> line (an OldRule key's, DECISIONS R4-M136).
+    /// </summary>
+    /// <param name="compilation">The compilation.</param>
+    /// <returns>The hash.</returns>
+    internal static string Hash(Compilation compilation) => Hash(Source(compilation));
+
     // The definition whose body holds a node: the node itself or its nearest function, Property or accessor, else its tree's root.
     private static Koto BodyOf(Koto node)
     {
@@ -88,6 +95,8 @@ public sealed partial class MirDifferenceLedger : IDisposable
 
         return node;
     }
+
+    private static string Hash(string source) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(source)))[..12];
 
     private static string Source(Compilation compilation)
     {
@@ -127,7 +136,7 @@ public sealed partial class MirDifferenceLedger : IDisposable
     private void Write(Compilation compilation, List<(string Side, Entry Entry)> matched)
     {
         var source = Source(compilation);
-        var sha = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(source)))[..12];
+        var sha = Hash(source);
         var section = BindingComplete(compilation) ? "complete" : "incomplete";
         var comparison = $"{Environment.ProcessId}.{Interlocked.Increment(ref this.events)}";
         var rows = new StringBuilder();

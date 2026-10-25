@@ -22,7 +22,8 @@ internal enum MirViolation : byte
     Entry, // An edge into a region, the body or an Inlined scope's locations, elsewhere than its first location, or from it into that block.
     Diverged, // A read, move or borrow, where runtime edges reach, of a Temp whose only writes are diverging Calls' destinations (G131).
     NeverWrite, // A Temp of Type Never written by other than an unadapted Copy or Move of a Never Place, an Opaque value or a diverging Call.
-    Local, // Local 0 is not the Return local, an Arg local does not directly follow it, or a local has no Type.
+    Local, // Local 0 is not the Return local, an Arg local does not directly follow it, a local has no Type, or a Result local is no Temp of
+    // local 0's Type or is read other than by the whole Move into _0 that delivers it (R4-M132).
     Scope, // A scope that its outer scope does not precede, or a source outside the scopes.
     StorageLocal, // StorageLive or StorageDead of a Place other than a Var or Temp local.
     EndBorrowLocal, // EndBorrow of a Place other than a reference local.
@@ -135,6 +136,7 @@ internal sealed partial class MirValidator(TyCtxt types)
         private int named; // The roots of the Opaque site being walked that are still to come (MirValidator.Statics).
         private bool acquires; // Whether the operands walked are a marked Use's assigned to a local's whole Place, a PairAcquire's one position.
         private bool used; // Whether the operands walked are an Assign's Use's, a function item constant's one position.
+        private bool delivering; // Whether they are a Move's into _0's whole Place, a Result local's one read (MirValidator.Tables).
 
         // Gets a value indicating whether the scope table or a location's scope cannot be walked, a Scope finding; only Entries needs them.
         internal bool Unscoped { get; private set; }

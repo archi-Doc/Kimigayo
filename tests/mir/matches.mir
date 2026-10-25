@@ -19,7 +19,7 @@ fn area @28
   _11: ref/i32 var h @50 s4
   _12: isize temp @58 s1
   _13: isize temp @67 s1
-  _14: i32 temp @28
+  _14: i32 temp (Result) @28
   s1: lexical in s0 @31
   s2: lexical in s1 @35
   s3: guard in s1 @52
@@ -121,7 +121,7 @@ fn classify @71
   _6: bool temp @87 s1
   _7: bool temp @94 s1
   _8: i32 var n @92 s4
-  _9: i32 temp @71
+  _9: i32 temp (Result) @71
   s1: lexical in s0 @76
   s2: lexical in s1 @82
   s3: lexical in s1 @86
@@ -193,7 +193,7 @@ fn code @98
   _3: ref/string temp (Subject) @104 s1
   _4: bool temp @105 s1
   _5: ref/string temp @105 s1
-  _6: i32 temp @98
+  _6: i32 temp (Result) @98
   s1: lexical in s0 @101
   s2: lexical in s1 @105
   s3: lexical in s1 @107
@@ -256,7 +256,7 @@ fn guarded @114
   _5: bool temp @128 s2
   _6: ref/string temp data (GuardCandidate) @126 s2
   _7: string var data @126 s3
-  _8: i32 temp @114
+  _8: i32 temp (Result) @114
   _9: isize temp @133 s1
   _10: bool temp @139 s4
   _11: ref/string temp data (GuardCandidate) @137 s4
@@ -413,7 +413,7 @@ fn half @151
   _4: i32 temp @160 s1
   _5: Option<i32> temp @166 s2
   _6: i32 temp @169 s2
-  _7: Option<i32> temp @151
+  _7: Option<i32> temp (Result) @151
   _8: Option<i32> temp @173 s1
   s1: lexical in s0 @157
   s2: lexical in s1 @164
@@ -478,7 +478,7 @@ fn quarter @175
   _5: i32 var $try.value @192 s2
   _6: isize temp @301 s1
   _7: Option<i32> temp @303 s3
-  _8: Option<i32> temp @175
+  _8: Option<i32> temp (Result) @175
   _9: Option<i32> temp @211 s1
   s1: lexical in s0 @181
   s2: lexical in s1 @188

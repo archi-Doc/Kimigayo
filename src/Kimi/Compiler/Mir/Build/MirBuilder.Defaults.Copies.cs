@@ -54,7 +54,8 @@ internal sealed partial class MirBuilder
     }
 
     // Plan 5.6.2: a copy of a template's MIR in this body, folded once under the call's substitution, which instantiates it (Instantiates):
-    // its scopes in a scope Inlined at the call, its locals after this body's (its result the slot, its parameters the borrows from at),
+    // its scopes in a scope Inlined at the call, its locals after this body's (its result the slot, its parameters the borrows from at;
+    // a Result temp, delivered into the slot, is no result of this body: it keeps no role, DECISIONS R4-M132),
     // its entry block the current one (the builder targets no entry block) and its returns going on after it; each Type applied and each
     // callee's substitution composed (TyCtxt.Compose), each Place projected again, so that a pair layer the substitution decides is its
     // case's layer and a case-dependent acquisition its case's (ByCase), each static and constant added again, and a Drop the instance's
@@ -88,7 +89,8 @@ internal sealed partial class MirBuilder
             }
             else
             {
-                mapped = this.body.AddLocal(local with { Type = FoldType(local.Type), Source = FoldInfo(local.Source) });
+                var role = local.Role == MirLocalRole.Result ? MirLocalRole.None : local.Role;
+                mapped = this.body.AddLocal(local with { Type = FoldType(local.Type), Source = FoldInfo(local.Source), Role = role });
             }
 
             map.Add(mapped);

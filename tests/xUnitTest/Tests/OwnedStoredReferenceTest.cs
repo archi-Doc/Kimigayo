@@ -139,6 +139,7 @@ public class OwnedStoredReferenceTest
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject).ToString() == "whole.0");
         Assert.False(c.Validate(out _));
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, new("item@ref")));
     }
 
     [Theory]
@@ -157,12 +158,12 @@ public class OwnedStoredReferenceTest
     // pipeline keeps the old rule until R6-check.
     [Theory]
     [Trait("OldRule", "S1")]
-    [InlineData("let child = item.0@follow@uniq\nitem.0@follow = 5\nchild@follow = 1", "item.0")]
-    [InlineData("let child = item.0@follow@ref\nitem.0@follow = 5\nrequire child == 42 else => $abort(\"child\")", "item.0")]
-    [InlineData("let child = item.0@follow@uniq\nlet copy = item.0@follow\nchild@follow = 1", "item.0")]
-    [InlineData("let child = item.0@follow@uniq\nlet slot = item@ref\nlet read: i32 = slot.0@follow\nchild@follow = 1", "slot.0")]
-    [InlineData("value = 5\nitem.0@follow = 99", "value = 5")]
-    public void ConflictingAccessThroughTheParentRejects(string body, string conflict)
+    [InlineData("let child = item.0@follow@uniq\nitem.0@follow = 5\nchild@follow = 1", "item.0", "item.0@follow = 5")]
+    [InlineData("let child = item.0@follow@ref\nitem.0@follow = 5\nrequire child == 42 else => $abort(\"child\")", "item.0", "item.0@follow = 5")]
+    [InlineData("let child = item.0@follow@uniq\nlet copy = item.0@follow\nchild@follow = 1", "item.0", "copy = item.0@follow", "item.0@follow")]
+    [InlineData("let child = item.0@follow@uniq\nlet slot = item@ref\nlet read: i32 = slot.0@follow\nchild@follow = 1", "slot.0", "item@ref")]
+    [InlineData("value = 5\nitem.0@follow = 99", "value = 5", "value = 5")]
+    public void ConflictingAccessThroughTheParentRejects(string body, string conflict, string mir, string? subject = null)
     {
         var c = MinimalEmissionTest.Analyze("var value = 42\nvar item = (value@uniq, 7)\n" + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
@@ -170,6 +171,7 @@ public class OwnedStoredReferenceTest
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject).ToString() == conflict);
         Assert.False(c.Validate(out _));
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At(mir, subject)));
     }
 
     [Fact]
@@ -212,11 +214,11 @@ public class OwnedStoredReferenceTest
     // Borrow of the base of the live child `view`; the default pipeline keeps the old rule until R6-check.
     [Theory]
     [Trait("OldRule", "S1")]
-    [InlineData("var t = (value@uniq, 2)\nlet r = t.0@uniq\nlet inner = r@follow@follow@ref\nr@follow@follow = 5\nrequire inner == 1 else => $abort(\"inner\")", "r@follow")]
-    [InlineData("var t = (value@uniq, 2)\nlet view = t.0@follow@ref\nlet r = t.0@uniq\nr@follow@follow = 5\nrequire view == 1 else => $abort(\"view\")", "r@follow")]
-    [InlineData("var t = (value@uniq, 2)\nlet r = t.0@uniq\nlet inner = r@follow@follow@ref\nlet other = r@follow@follow@uniq\nother@follow = 2\nrequire inner == 1 else => $abort(\"inner\")", "r@follow@follow")]
-    [InlineData("var p = value@uniq\nlet q = p@uniq\nlet peek = q@follow@follow@ref\nq@follow@follow = 3\nrequire peek == 1 else => $abort(\"peek\")", "q@follow")]
-    public void ConflictsThroughBothLayersReject(string body, string conflict)
+    [InlineData("var t = (value@uniq, 2)\nlet r = t.0@uniq\nlet inner = r@follow@follow@ref\nr@follow@follow = 5\nrequire inner == 1 else => $abort(\"inner\")", "r@follow", "r@follow@follow = 5")]
+    [InlineData("var t = (value@uniq, 2)\nlet view = t.0@follow@ref\nlet r = t.0@uniq\nr@follow@follow = 5\nrequire view == 1 else => $abort(\"view\")", "r@follow", "t.0@uniq")]
+    [InlineData("var t = (value@uniq, 2)\nlet r = t.0@uniq\nlet inner = r@follow@follow@ref\nlet other = r@follow@follow@uniq\nother@follow = 2\nrequire inner == 1 else => $abort(\"inner\")", "r@follow@follow", "r@follow@follow@uniq")]
+    [InlineData("var p = value@uniq\nlet q = p@uniq\nlet peek = q@follow@follow@ref\nq@follow@follow = 3\nrequire peek == 1 else => $abort(\"peek\")", "q@follow", "q@follow@follow = 3")]
+    public void ConflictsThroughBothLayersReject(string body, string conflict, string mir)
     {
         var c = MinimalEmissionTest.Analyze("var value = 1\n" + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
@@ -224,6 +226,7 @@ public class OwnedStoredReferenceTest
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
         Assert.Equal(conflict, c.SyntaxOf(c.Problems.First(static x => x.Code.IsLoanConflict()).Subject).ToString());
         Assert.False(c.Validate(out _));
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, new(mir)));
     }
 
     // SPEC 3.3.2: a shared borrow of a slot holding an exclusive reference (`ref/uniq/i32`) has only shared access to the
