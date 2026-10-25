@@ -220,7 +220,7 @@ public class ConversionEmissionTest
     [InlineData("classification")]
     public void MalformedConversionPlansNeverWriteIr(string mutation)
     {
-        var c = MinimalEmissionTest.Analyze("let flag = true\nlet x: u32 = 1\nlet y = x@i32");
+        var c = MinimalEmissionTest.Analyze("let flag = true\nlet x: u32 = 1\nlet y = x@i32", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Convert);

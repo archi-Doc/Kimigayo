@@ -1,0 +1,4 @@
+public func main()
+    let f = func ()
+        let l: i32 = 1
+        return l@ref

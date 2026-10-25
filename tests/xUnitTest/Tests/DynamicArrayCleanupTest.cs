@@ -54,8 +54,11 @@ public class DynamicArrayCleanupTest
     // since none of them grows, reserves or shrinks a buffer.
     [Theory]
     [InlineData("FieldDrop", "struct Box\n    public let items: Array<i32>\nlet value: Option<Box> = .None", "__kimi_array_drop_")]
-    [InlineData("Clear", "func f(a: uniq/Array<i32>)\n    a.clear()\nlet n: i32 = 0", "__kimi_array_clear_")]
-    [InlineData("OwnStorage", "func g(a: Array<i32>) -> isize\n    var n: isize = 0\n    for x in a@move\n        n = n + 1\n    return n\nlet m: i32 = 0", "__kimi_array_own_")]
+    [InlineData("Clear", "func f(a: uniq/Array<i32>)\n    a.clear()\nvar a: Array<i32> = []\nf(a@uniq)", "__kimi_array_clear_")]
+    [InlineData(
+        "OwnStorage",
+        "func g(a: Array<i32>) -> isize\n    var n: isize = 0\n    for x in a@move\n        n = n + 1\n    return n\nlet m = g([])",
+        "__kimi_array_own_")]
     public void HelpersWithoutGrowthHoldNoCapacityRoutine(string name, string source, string helper)
     {
         var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(source));

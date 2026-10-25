@@ -7,10 +7,10 @@ namespace Kimi.Compiler.Backend;
 
 // The module frame of ModuleCodegen (R5 package C 3.3, IMPL 21.4.2): the output form around the output roots, and the complete module
 // through LlvmModuleText in the old generator's order: the header with the pooled constants, the runtime, the external declarations, the
-// zero-sized symbol, the overflow declarations, the memory declarations, the nullable Alloc, the buffered definitions, the entry and the
-// footer. The external declarations, the imports a definition calls (Import, DECISIONS R5-M89), the zero-sized symbol, the memory
-// declarations and the nullable Alloc (DECISIONS R5-M92) are written only when a definition requested them (Request; package C 3.2's
-// requests, DECISIONS R5-M87). The entry calls its root through FunctionCodegen's one call writer (PD3).
+// zero-sized symbol, the overflow declarations, the memory declarations, the nullable Alloc, the buffered definitions, the entry, the
+// object runtime and the footer. The external declarations, the imports a definition calls (Import, DECISIONS R5-M89), the zero-sized
+// symbol, the memory declarations, the nullable Alloc (DECISIONS R5-M92) and the object runtime (DECISIONS R5-M110) are written only when a
+// definition requested them (Request; package C 3.2's requests, DECISIONS R5-M87). The entry calls its root through FunctionCodegen's one call writer (PD3).
 internal sealed partial class ModuleCodegen
 {
     /// <summary>The zero-sized symbol, the home of every zero-sized local: one 16-aligned address (IMPL 21.1.3: a borrow of a zero-sized
@@ -36,6 +36,9 @@ internal sealed partial class ModuleCodegen
 
         /// <summary>The nullable Alloc's definition (LlvmModuleText.TryAllocate), for a tryAllocateBytes call (DECISIONS R5-M92).</summary>
         TryAllocate = 4,
+
+        /// <summary>The object runtime (ObjectRuntime.WriteRuntime), for a descriptor, a clone or a runtime Type test (DECISIONS R5-M110).</summary>
+        Objects = 8,
     }
 
     /// <summary>Requests a module part for the module being written.</summary>
@@ -68,6 +71,11 @@ internal sealed partial class ModuleCodegen
         if (start is not null)
         {
             this.WriteStart(output, start);
+        }
+
+        if ((this.needs & Needs.Objects) != 0)
+        {
+            ObjectRuntime.WriteRuntime(output);
         }
 
         output.Write(LlvmModuleText.Footer);

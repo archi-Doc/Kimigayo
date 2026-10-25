@@ -4,12 +4,15 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The Call terminator of FunctionCodegen (R5 package C 3.2 I8, plan C3a, C3b, C8a, C5a; DECISIONS R5-M89, R5-M92, R5-M93, R5-M102): a
-// callee by its kind's row (a Value callee's in FunctionCodegen.Closures), the collector's targets read by one forward cursor, each once
-// in its site's order, and the one call writer, which the legacy rows, the intrinsic rows, the glue items and the module's entry call too;
-// each argument is FunctionCodegen.Arguments' (its parameter's kind, a copy slot). Rows not written yet: a virtual slot (C6c), a Builtin
-// shim (C8f, C9b), a property witness (C3c), a requirement whose witness has no body (PLAN G157 (10)), the other compiler functions'
-// legacy rows (C8b-C8e, C9a).
+// The Call terminator of FunctionCodegen (R5 package C 3.2 I8, plan C3a, C3b, C8a, C5a, C6c, C8b; DECISIONS R5-M89, R5-M92, R5-M93,
+// R5-M102, R5-M114, R5-M116): a callee by its kind's row (a Value callee's in FunctionCodegen.Closures, a compiler function's of the Body
+// disposition by its legacy row's writer, Legacy), the collector's targets read by one forward cursor, each once in its site's order, and
+// the one call writer, which the legacy rows, the intrinsic rows, the glue items and the module's entry call too; each argument is
+// FunctionCodegen.Arguments' (its parameter's kind, a copy slot). A call that dispatches (SPEC 6.4.3, 6.4.6) runs through a virtual slot,
+// which only makes the callee value it writes (EntryOf): a Virtual callee, without a target (X5), under its slot's signature
+// (ModuleCodegen.Slot); a body target that implements a slot, a requirement's virtual witness (BodyRun). Rows not written yet: a Builtin
+// shim (C8f, C9b), a property witness (C3c), a requirement whose witness has no body (PLAN G157 (10)), the other compiler functions' legacy
+// rows (C8d, C8e, C9a; LegacyRuntimeHelpers.Row).
 internal sealed partial class FunctionCodegen
 {
     private int cursor; // The item's first target not passed yet (I8).
@@ -23,15 +26,6 @@ internal sealed partial class FunctionCodegen
         _ = this.WriteCall(startup, default);
     }
 
-    // The legacy runtime row of a compiler function of the Body disposition, by its kind: the console writeLine (RuntimeAbi.WriteLine, SPEC
-    // 22.1-22.5.5: it borrows its string); C8b-C8e add theirs, and C9a's formatting rows come from one Backend table beside
-    // LegacyRuntimeHelpers.FormattingRow, not from more arms here. Null for a row not written yet.
-    private static FunctionAbi? LegacyRoutine(CompilerFunctionKind kind) => kind switch
-    {
-        CompilerFunctionKind.WriteLine => RuntimeAbi.WriteLine,
-        _ => null,
-    };
-
     // A Call by its callee's row: a compiler function of the Body disposition (KimiLibraryKinds' published IntrinsicDisposition) by its
     // legacy row, any other Fn callee and a Requirement by its target (Function), an intrinsic by its row's writer
     // (FunctionCodegen.Intrinsics); the other rows are not written yet, each at the call.
@@ -40,9 +34,8 @@ internal sealed partial class FunctionCodegen
         var callee = call.Callee;
         switch (callee.Kind)
         {
-            case MirCalleeKind.Fn when callee.Symbol!.CompilerFunction is not CompilerFunctionKind.None and var kind &&
-                IntrinsicDisposition.Of(kind).Kind == DispositionKind.Body:
-                this.Legacy(call, kind);
+            case MirCalleeKind.Fn when LegacyRuntimeHelpers.Row(callee.Symbol!.CompilerFunction) is { } row:
+                this.Legacy(call, row, this.Target(new(this.at, this.body.Blocks[this.at].Count)));
                 return;
             case MirCalleeKind.Fn or MirCalleeKind.Requirement:
                 this.Function(call);
@@ -51,7 +44,7 @@ internal sealed partial class FunctionCodegen
                 this.ValueCall(call);
                 return;
             case MirCalleeKind.Virtual:
-                this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // C6c loads the virtual slot.
+                this.Virtual(call);
                 return;
             case MirCalleeKind.Intrinsic:
                 this.Intrinsic(call, IntrinsicRows.Of((IntrinsicId)callee.Arg));
@@ -62,10 +55,11 @@ internal sealed partial class FunctionCodegen
     }
 
     // A Fn or Requirement callee by the collector's target at the call (I8; a requirement's is the witness K6 resolved, SPEC 8.6.3-8.6.4,
-    // whose signature is the call's, since compatibility inserts no conversion): a body item is called by its signature
-    // (ModuleCodegen.Signature), a caller-location one given the call's location (Invoke); a Builtin shim is C8f's and C9b's, a property
-    // witness C3c's. Without a target, a #LibraryImport function is called by its C signature (SPEC 22.6), a requirement's witness has no
-    // body (R5-M67; a row not written yet, PLAN G157 (10)), and any other callee is a broken contract.
+    // whose signature is the call's, since compatibility inserts no conversion): a Fn callee's body item is called by its signature
+    // (ModuleCodegen.Signature), a caller-location one given the call's location (Invoke), whatever it implements (a direct base call, SPEC
+    // 6.4.4); a Requirement callee's runs as a witness does (BodyRun); a Builtin shim is C8f's and C9b's, a property witness C3c's. Without a
+    // target, a #LibraryImport function is called by its C signature (SPEC 22.6), a requirement's witness has no body (R5-M67; a row not
+    // written yet, PLAN G157 (10)), and any other callee is a broken contract.
     private void Function(in MirTerminator call)
     {
         var target = this.Target(new(this.at, this.body.Blocks[this.at].Count));
@@ -89,8 +83,9 @@ internal sealed partial class FunctionCodegen
 
         switch (this.collector.Set.Items[target].Key.Kind)
         {
-            case MonoKind.Body when this.module.Signature(target) is { } signature:
-                this.Invoke(call, signature, this.program.Bodies[this.collector.Set.Items[target].BodyOrdinal].Key);
+            case MonoKind.Body when this.BodyRun(target) is { } run:
+                var key = this.program.Bodies[this.collector.Set.Items[target].BodyOrdinal].Key;
+                this.Invoke(call, run.Signature, key, default, call.Callee.Kind == MirCalleeKind.Requirement ? run.Slot : null);
                 return;
             case MonoKind.Body:
                 return; // A broken contract, recorded.
@@ -103,12 +98,40 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // A call by its signature (IMPL 21.3.1, SPEC 22.6): its arguments (Pass), then the call and its end (Finish).
-    private void Invoke(in MirTerminator call, FunctionAbi signature, MirDefKey callee, ReadOnlySpan<Value> given = default)
+    // SPEC 6.4.6, 8.6.3 (DECISIONS R5-M114): what a call of a body target runs, the one rule of a requirement's witness: the body by its
+    // signature, through the virtual slot its definition runs when it runs one (VTableDef.SlotOf; a virtual witness maps to its slot). A
+    // Requirement call and a function Item's call and adapter (Runs) take it; a Fn callee calls the function it names (above). A virtual
+    // function's own call and Item have no body target (X5). Null after a record.
+    private Run? BodyRun(int target)
+    {
+        if (this.module.Signature(target) is not { } signature)
+        {
+            return null; // Recorded.
+        }
+
+        var function = this.program.Bodies[this.collector.Set.Items[target].BodyOrdinal].Key.Decl;
+        return new Run(signature, function is not null && VTableDef.SlotOf(function) >= 0 ? function : null);
+    }
+
+    // SPEC 6.4.3 (X5; DECISIONS R5-M114): a Virtual callee, which has no target: the original's slot under the call's substitution in the
+    // item's instance (ModuleCodegen.Slot), its operands the original's (the receiver first), called through the original's slot.
+    private void Virtual(in MirTerminator call)
+    {
+        var original = call.Callee.Symbol!;
+        if (this.module.Slot(original, call.Callee.Subst, this.item) is { } signature)
+        {
+            this.Invoke(call, signature, new(original, MirBodyKind.Fn), default, original);
+        }
+    }
+
+    // A call by its signature (IMPL 21.3.1, SPEC 22.6): its arguments (Pass), then the call of its callee value, which the slot it runs
+    // through, if any, makes (EntryOf), and its end (Finish).
+    private void Invoke(in MirTerminator call, FunctionAbi signature, MirDefKey callee, ReadOnlySpan<Value> given = default, BindingSymbol? slot = null)
     {
         if (this.Pass(call, signature, callee, given))
         {
-            this.Finish(call, this.WriteCall(signature, this.arguments.AsSpan(0, signature.Parameters.Length)));
+            var arguments = this.arguments.AsSpan(0, signature.Parameters.Length);
+            this.Finish(call, this.WriteCall(signature, arguments, this.EntryOf(signature, slot)));
         }
     }
 
@@ -173,24 +196,38 @@ internal sealed partial class FunctionCodegen
         this.Branch(call.Target);
     }
 
-    // A compiler function the backend serves from a legacy runtime row until R8 writes its body (the Body disposition), by its kind's
-    // routine (LegacyRoutine), called through the one call writer (Invoke): the call's operands at its parameters' slots, placed by the
-    // call's own key, and the call site's location; its result is Unit.
-    private void Legacy(in MirTerminator call, CompilerFunctionKind kind)
+    // A compiler function the backend serves from its legacy row until R8 writes its body (the Body disposition; LegacyRuntimeHelpers.Row,
+    // DECISIONS R5-M116), by the row's writer, at its direct call and at its Item's Value call (SPEC 7.7.4), with the target the call site
+    // carries: a runtime routine through the one call writer (Invoke), the call's operands at its parameters' slots placed by the call's own
+    // key and the call site's location; a whole-value update (FunctionCodegen.Updates); a fixed array's storage (FunctionCodegen.Storage);
+    // a row not written yet, its unit's located Unsupported_Kd.
+    private void Legacy(in MirTerminator call, LegacyRow row, int target)
     {
-        var routine = LegacyRoutine(kind);
-        if (routine is null)
+        if (row.Updates)
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
+            this.Update(call, row.Writer, target);
             return;
         }
 
-        this.Invoke(call, routine, new(call.Callee.Symbol, MirBodyKind.Fn));
+        switch (row.Writer)
+        {
+            case LegacyWriter.Routine:
+                this.Invoke(call, row.Routine!, new(call.Callee.Symbol, MirBodyKind.Fn));
+                return;
+            case LegacyWriter.FixedStorage:
+                this.FixedStorage(call);
+                return;
+            case LegacyWriter.Unwritten:
+                this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // Its row's unit (LegacyRuntimeHelpers.Row).
+                return;
+            default:
+                throw new InvalidOperationException($"The legacy writer {row.Writer} has no code generation row.");
+        }
     }
 
-    // A call of a routine, its symbol or an entry pointer (an erased value's, FunctionCodegen.Closures), each argument with its parameter's
-    // Type and attributes (the O2 parity list's `noundef nonnull ...` at every call, value calls included, package C row 14); its value, or
-    // null for a void result.
+    // A call of a routine, each argument with its parameter's Type and attributes (the O2 parity list's `noundef nonnull ...` at every call,
+    // value calls included, package C row 14); its value, or null for a void result. Its callee is one value: the routine's symbol, or an
+    // entry pointer (an erased value's table entry, FunctionCodegen.Closures; a virtual slot's, EntryOf); nothing else decides how it calls.
     private Value? WriteCall(FunctionAbi routine, ReadOnlySpan<Value> arguments, Value? entry = null)
     {
         var output = this.output;

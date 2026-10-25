@@ -105,7 +105,9 @@ public class ElementBorrowOwnerEmissionTest
     [InlineData("duplicate")]
     public void ConditionalFlagsRejectMissingOrIncorrectTransitions(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("func f(flag: bool) -> bool => flag and (\"head\", \"tail\").0 == \"head\"\nf(true)\nf(false)");
+        var c = MinimalEmissionTest.Analyze(
+            "func f(flag: bool) -> bool => flag and (\"head\", \"tail\").0 == \"head\"\nf(true)\nf(false)",
+            codegen: CompilerCodegen.Legacy);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var body = c.Ownership.Bodies[1];
         var function = module.GetFunction(1);
@@ -138,7 +140,7 @@ public class ElementBorrowOwnerEmissionTest
     [InlineData("selection", "let equal = (if true => (\"held\", 0) else => (\"held\", 1)).0 == \"held\"")]
     public void BorrowOwnersRequireTheirStoragePlan(string defect, string source)
     {
-        var c = MinimalEmissionTest.Analyze(Make + source);
+        var c = MinimalEmissionTest.Analyze(Make + source, codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Projections.Count > 0);
         var root = body.Projections[0].Root;
@@ -166,7 +168,7 @@ public class ElementBorrowOwnerEmissionTest
     public void SecuredSelectionStorageIsUnavailableDuringItsCleanup(OwnershipOperationKind kind)
     {
         const string Source = "let equal = (label work: do\n    defer => Console.writeLine(\"cleanup\")\n    exit to work (\"held\", 0)\n).0 == \"held\"";
-        var c = MinimalEmissionTest.Analyze(Source);
+        var c = MinimalEmissionTest.Analyze(Source, codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var result = Assert.Single(body.SlotResults);

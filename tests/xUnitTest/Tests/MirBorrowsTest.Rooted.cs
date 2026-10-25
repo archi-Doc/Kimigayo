@@ -591,7 +591,7 @@ public sealed partial class MirBorrowsTest
     // V16 "F5 effects" (DECISIONS R4-M92) on rooted bodies: one body with M Loans on M mutable statics live across N calls, each to a function
     // writing one of K other statics, checks each call's keys once per effect root (A4's row, the root's two bits and its candidates): the
     // work grows linearly in N at M = 4, K = 8 and within the bound's M × (holders) term in M at N = 32. A guard, not a regression: no problem
-    // arises. No staticEnsure precedes a rooted Borrow, so the shape has M checked sites fewer than its source form.
+    // arises. Each rooted Borrow follows its static's staticEnsure (Rooted), as in its source form.
     [Fact]
     public void EffectsScaleWithCallsAndStaticLoans()
     {
@@ -851,10 +851,11 @@ public sealed partial class MirBorrowsTest
 
     // Each body of the program's own module with its stand-ins rooted at their statics, validated: a stand-in is a Var or Temp local a call of
     // group Root initializes, standing for the static that function names, which a body of the program accesses, and of its Type up to
-    // Origins (MirTypes.Agree, MIR's Type agreement). The copy leaves out the stand-in's storage statements, turns that call and the
-    // stand-in's Drop into Gotos to their targets and roots each of its Places at the static (so its projections are the static's); every
-    // other row and the block numbers are the built body's, so A2's verdicts of the body (its Ordinal) apply. So a Borrow of a stand-in is a
-    // Borrow of its static, with no staticEnsure before it: no such ensure the source tests ran met a live Loan. A4's summaries are the built
+    // Origins (MirTypes.Agree, MIR's Type agreement). The copy leaves out the stand-in's storage statements, turns that call into the
+    // static's staticEnsure (into a Unit temp of its own, the builder's form, which MirValidator requires of a static's Places, G191) and
+    // the stand-in's Drop into a Goto to its target, and roots each of its Places at the static (so its projections are the static's);
+    // every other row and the block numbers are the built body's, so A2's verdicts of the body (its Ordinal) apply. So a Borrow of a
+    // stand-in is a Borrow of its static after the static's staticEnsure, as P42's source form has it. A4's summaries are the built
     // program's, so a twin function's lacks its stand-ins' static accesses; no witness composes one (copies are inlined).
     private static MirBody[] Rooted(Compilation c, MirProgram program)
     {
@@ -953,9 +954,20 @@ public sealed partial class MirBorrowsTest
                     }
                 }
 
-                var copied = Marker(terminator) is not null || (terminator.Kind == MirTerminatorKind.Drop && StandIn(terminator.Place))
-                    ? MirTerminator.Goto(terminator.Target, terminator.Source, terminator.CheckTarget)
-                    : terminator with { Place = Map(terminator.Place), Operand = terminator.Operand with { Place = Map(terminator.Operand.Place) } };
+                MirTerminator copied;
+                if (Marker(terminator) is not null)
+                {
+                    var slot = body.AddOperand(MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.ISize, ~roots[terminator.Place.Root]))));
+                    var unit = new MirPlace(body.AddLocal(new(BoundType.Unit, MirLocalKind.Temp, terminator.Source)));
+                    copied = MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.StaticEnsure), slot, 1, unit, terminator.Target, terminator.Source);
+                }
+                else
+                {
+                    copied = terminator.Kind == MirTerminatorKind.Drop && StandIn(terminator.Place)
+                        ? MirTerminator.Goto(terminator.Target, terminator.Source, terminator.CheckTarget)
+                        : terminator with { Place = Map(terminator.Place), Operand = terminator.Operand with { Place = Map(terminator.Operand.Place) } };
+                }
+
                 body.Terminate(b, copied);
             }
 

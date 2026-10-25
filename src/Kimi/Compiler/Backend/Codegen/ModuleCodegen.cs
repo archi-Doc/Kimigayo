@@ -9,10 +9,12 @@
 // the module frame through LlvmModuleText in the old generator's order (header with the pooled constants, runtime, the called imports'
 // declarations, overflow declarations, functions, entry, footer); the coverage rows (PD11) of the item kinds and output forms: DropGlue
 // (__kimi_drop<item>, written by FunctionCodegen by its Type's row, DropGlue.Row: a string's (R5-M78), a struct's, Tuple's, enum's or fixed
-// array's (R5-M95), a Closure environment's (R5-M102), an erased function's (R5-M104); a handle's C6b, a collection's C8d and C8e),
+// array's (R5-M95), a Closure environment's (R5-M102), an erased function's (R5-M104), an owning handle's (R5-M112); a collection's C8d and C8e),
 // ClosureErasure and ItemAdapter (__kimi_erase<item>, its entry under its target Function Type's erased signature, its table and its
 // heap environment's release, written by FunctionCodegen; R5-M108), the Builtin shims (C8f, C9b), the property witnesses (C3c), K8's
-// ObjectDescriptor and VTable items (C6a, C6c), a test build's TestEntry (C10a).
+// ObjectDescriptor items (the module's runtime identities, a descriptor's constants, payload destructor and factory through
+// ObjectRuntime, ModuleCodegen.Objects; R5-M110) and VTable items, whose text is their descriptors' virtual tables (R5-M114), a test
+// build's TestEntry (C10a).
 // Inputs: the program the generation gate passed (validated, analyzed and accepted); the instance collector's checked set, marked from the
 // output roots the generation entry gives (K package 4.10), TypeOf and location rule (K package 4.9); the compilation's Layout and runtime
 // location texts (Compilation.Locations); the startup selection.
@@ -27,9 +29,10 @@
 // item) is a broken contract, InternalInvariant_Kd at the item's site.
 // Must not decide acceptance (the gate) or what is generated (the generation entry's mark), read syntax, HIR or the old Emission, write a
 // partial module, use LINQ, Supports* or catch-alls.
-// Files: the items and the records (this file); the body, glue and ensure signatures and the signature cache (ModuleCodegen.Signatures.cs),
-// the called imports' C signatures and declarations (ModuleCodegen.Imports.cs) and the common Function values' entries
-// (ModuleCodegen.Erasures.cs); the module frame and the output form (ModuleCodegen.Frame.cs).
+// Files: the items and the records (this file); the body, glue, ensure and virtual slot signatures and the signature caches
+// (ModuleCodegen.Signatures.cs), the called imports' C signatures and declarations (ModuleCodegen.Imports.cs), the common Function values'
+// entries (ModuleCodegen.Erasures.cs) and the object descriptors with their virtual tables (ModuleCodegen.Objects.cs); the module frame and
+// the output form (ModuleCodegen.Frame.cs).
 
 using System.Globalization;
 using Kimi.Compiler.Mir;
@@ -43,6 +46,7 @@ internal sealed partial class ModuleCodegen
     private readonly LlvmConstantPool constants = new();
     private readonly HashSet<Problem> reported = new();
     private readonly FunctionCodegen bodies;
+    private readonly TyCtxt types; // Its erasure and Copy proofs, which the object descriptors read (ModuleCodegen.Objects).
     private readonly IReadOnlyList<LibraryImport> imports; // Binding's validated #LibraryImport declarations (F2b).
     private readonly List<ExternalFunction> externals = []; // The imports the latest Write's definitions call, one per symbol (Import).
     private int writes; // The number of Writes.
@@ -57,7 +61,7 @@ internal sealed partial class ModuleCodegen
     /// <param name="imports">Binding's validated <c>#LibraryImport</c> declarations, kept current across its passes.</param>
     internal ModuleCodegen(Layout layout, SourceLocationTable locations, TyCtxt types, IReadOnlyList<LibraryImport> imports)
     {
-        (this.Layout, this.Locations, this.imports) = (layout, locations, imports);
+        (this.Layout, this.Locations, this.types, this.imports) = (layout, locations, types, imports);
         this.bodies = new(this, types);
     }
 
@@ -89,6 +93,7 @@ internal sealed partial class ModuleCodegen
         this.functions.GetStringBuilder().Clear();
         this.externals.Clear();
         (this.set, this.program, this.collector, this.writes) = (collector.Set, program, collector, this.writes + 1);
+        this.Number();
         for (var item = 0; item < this.set.Items.Length; item++)
         {
             if (this.set.IsGenerated(item))
@@ -118,8 +123,8 @@ internal sealed partial class ModuleCodegen
         }
     }
 
-    // An item by its kind's row: a body item through FunctionCodegen; a type-driven item is a row not written yet, at the site that
-    // admitted it.
+    // An item by its kind's row: a body item, a glue and an adapter through FunctionCodegen, a descriptor through ObjectRuntime, a VTable as
+    // its descriptor's table; another type-driven item is a row not written yet, at the site that admitted it.
     private void Item(MirProgram program, InstanceCollector collector, int item)
     {
         var entry = collector.Set.Items[item];
@@ -137,9 +142,11 @@ internal sealed partial class ModuleCodegen
             case MonoKind.Builtin or MonoKind.PropertyWitness:
                 this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // C3c writes property witnesses; C8f and C9b the Builtin shims (R5-M67).
                 return;
-            case MonoKind.ObjectDescriptor or MonoKind.VTable:
-                this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // C6a writes descriptors, C6c the VTables (R5-M74).
+            case MonoKind.ObjectDescriptor:
+                this.Descriptor(item);
                 return;
+            case MonoKind.VTable:
+                return; // Its text is its descriptor's virtual table (ModuleCodegen.Objects' Table; R5-M114).
             default:
                 throw new InvalidOperationException($"The mono item kind {entry.Key.Kind} has no code generation row.");
         }

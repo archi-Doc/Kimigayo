@@ -4,11 +4,17 @@
 // P3b; DECISIONS R5-M69): the payload-independent runtime every module that uses objects holds once (the dynamic Type test through a
 // descriptor's base map, the descriptor's free entry, finalization, which destroys the payload through its metadata before the free,
 // and the rc and arc clone and drop with their release transitions, ObjectRuntime.Handles.cs), each object's private constants
-// (Runtime Type key, payload metadata, descriptor, virtual table, base map), its payload destructor and its factory, and a Sealed
-// handle's direct release (ObjectRuntime.Handles.cs). Both generators write objects through it (PD2: promoted, never copied).
-// Input: a writer; per object its ObjectCreation row and the module's LlvmConstantPool holding its key; for a Sealed handle's release
-// its ObjectCountingStep (BoundType.HandleMode's) and the symbol of the payload's drop routine.
-// Output: LLVM text written to the writer: the runtime, then per object its constants, its destructor and its factory.
+// (payload metadata, descriptor, virtual table, base map), its payload destructor and its factory, the factory's signature (Factory),
+// whose parameters its text names, and whether it copies its payload by memcpy (Copies), a Sealed handle's direct release
+// (ObjectRuntime.Handles.cs), and the facts a caller of the runtime reads: the signatures of its Type test (Supports), its retains
+// (Clone) and its releases (Release), a factory's control value (InitialControl), the payload's offset in an object (PayloadOffset) and the
+// virtual table's in a descriptor (TableOffset). Both generators write objects through it (PD2: promoted, never copied). Runtime
+// identity is the module's Type token (PD17); no Runtime Type key text is written (DECISIONS R5-M110).
+// Input: a writer; per object its ObjectCreation row; for a factory's signature the object's number, its payload's representation and
+// the payload parameter's kind; for a Sealed handle's release its ObjectCountingStep (BoundType.HandleMode's) and the symbol of the
+// payload's drop routine; for a retain or a control value the handle's ObjectCountingStep.
+// Output: LLVM text written to the writer: the runtime, then per object its constants, its destructor and its factory; the signatures and
+// values above.
 // Invariants: a release publishes the reduced count before any destruction, destroys the payload before the free and accesses the
 // header after neither (SHARED_OBJECT_RUNTIME, Release); the legacy writer's .ll stays byte-identical while it shares this text;
 // warm writes allocate nothing.
@@ -17,16 +23,17 @@
 
 #pragma warning disable SA1402 // The object row is this writer's input.
 
+using System.Globalization;
 using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
 
 /// <summary>
-/// The syntax-free physical row of one object payload: its number, the pooled Runtime Type key, the payload representation, Copy,
-/// the factory's ABI and the Runtime Type token; the payload destructor, the base tokens and the virtual table are the descriptor's
-/// optional entries, absent when null or empty.
+/// The syntax-free physical row of one object payload: its number, the payload representation, Copy, the factory's ABI and the
+/// Runtime Type token; the payload destructor, the base tokens and the virtual table are the descriptor's optional entries, absent when
+/// null or empty.
 /// </summary>
-internal sealed record ObjectCreation(int Id, int TypeKey, ValueLowering Payload, bool Copy, FunctionAbi Abi, int TypeToken)
+internal sealed record ObjectCreation(int Id, ValueLowering Payload, bool Copy, FunctionAbi Abi, int TypeToken)
 {
     internal string? Destroy { get; init; }
 
@@ -38,6 +45,14 @@ internal sealed record ObjectCreation(int Id, int TypeKey, ValueLowering Payload
 /// <summary>Writes the object runtime of the LLVM text that every generator shares.</summary>
 internal static partial class ObjectRuntime
 {
+    /// <summary>The offset of an object's payload from its header, after its descriptor and control words (IMPL 21.1.3), at which the
+    /// runtime's text reads and writes it.</summary>
+    internal const int PayloadOffset = 16;
+
+    /// <summary>The offset of a descriptor's virtual table, after its metadata, free entry and base map (IMPL 21.1.3), at which the
+    /// descriptor's text holds it.</summary>
+    internal const int TableOffset = 24;
+
     // IMPL 21.1.3: the payload-independent object runtime: the dynamic Type test through the descriptor's base map, the free
     // entry of every current descriptor, and finalization, which destroys the payload through its metadata before the free.
     private const string ObjectFunctions = """
@@ -114,6 +129,10 @@ internal static partial class ObjectRuntime
 
         """;
 
+    /// <summary>Gets the runtime's dynamic Type test (SPEC 13.6.4): whether the object at a header supports a Type token, its
+    /// descriptor's own or one of its base map's.</summary>
+    internal static FunctionAbi Supports { get; } = new("__kimi_object_supports", "i1", [new("ptr", "header"), new("i64", "target")]);
+
     // The payload-independent runtime, once per module that uses objects, before its objects.
     internal static void WriteRuntime(TextWriter output)
     {
@@ -123,28 +142,44 @@ internal static partial class ObjectRuntime
     }
 
     // One object: its private constants, its payload destructor and its factory.
-    internal static void WriteObject(TextWriter output, LlvmConstantPool constants, ObjectCreation item)
+    internal static void WriteObject(TextWriter output, ObjectCreation item)
     {
-        WriteDescriptor(output, constants, item);
+        WriteDescriptor(output, item);
         WriteDestroyValues(output, item);
         WriteCreation(output, item);
     }
 
-    // An object's private constants: its Runtime Type key, the payload metadata (identity, layout, Copy and payload
-    // destructor), and the descriptor naming that metadata, the free entry, the base map and the virtual table.
-    private static void WriteDescriptor(TextWriter output, LlvmConstantPool constants, ObjectCreation item)
+    // The signature of an object's factory (SHARED_OBJECT_RUNTIME, Creation), whose parameters WriteCreation's text names: the result
+    // slot, the payload at its kind unless it is zero-sized, the static control value and the creation's location; named after the
+    // object's number.
+    internal static FunctionAbi Factory(int id, ValueLowering payload, AbiParameterKind kind)
+    {
+        var sized = payload.Layout.Size != 0;
+        var parameters = new AbiParameter[sized ? 5 : 4];
+        var n = 0;
+        parameters[n++] = new("ptr", "ret", AbiParameterKind.ResultSlot);
+        if (sized)
+        {
+            parameters[n++] = new(payload.ArgumentType!, "a0", kind, 0);
+        }
+
+        parameters[n++] = new("i64", "controlValue", AbiParameterKind.Context);
+        parameters[n++] = new("ptr", "location", AbiParameterKind.Location);
+        parameters[n] = new("i64", "length", AbiParameterKind.LocationLength);
+        return new("__kimi_make_object" + id.ToString(CultureInfo.InvariantCulture), "void", parameters) { ResultSlot = true };
+    }
+
+    // Whether a factory copies its payload by memcpy from the pointer it receives (a value in memory), so the module declares the memory
+    // intrinsics.
+    internal static bool Copies(ValueLowering payload)
+        => payload.Layout.Size != 0 && payload.ArgumentType == "ptr" && payload.ComputationType != "ptr";
+
+    // An object's private constants: the payload metadata (identity, layout, Copy and payload destructor), and the descriptor naming
+    // that metadata, the free entry, the base map and the virtual table.
+    private static void WriteDescriptor(TextWriter output, ObjectCreation item)
     {
         var id = item.Id;
         var layout = item.Payload.Layout;
-        var key = constants[item.TypeKey];
-        Name(output, "@__kimi_object_type_key", id);
-        output.Write(" = private constant { i64, ptr, i64 } { i64 ");
-        WriteNumber(output, item.TypeToken);
-        output.Write(", ptr @");
-        output.Write(key.Name);
-        output.Write(", i64 ");
-        WriteNumber(output, key.ByteLength);
-        output.Write(" }, align 8\n");
         Name(output, "@__kimi_object_metadata", id);
         output.Write(" = private constant { i64, i64, i64, i64, ptr, ptr } { i64 ");
         WriteNumber(output, item.TypeToken);
@@ -273,7 +308,7 @@ internal static partial class ObjectRuntime
         if (layout.Size != 0)
         {
             output.Write("  %payload = getelementptr i8, ptr %header, i64 16\n");
-            if (item.Payload.ArgumentType == "ptr" && item.Payload.ComputationType != "ptr")
+            if (Copies(item.Payload))
             {
                 output.Write("  call void @llvm.memcpy.p0.p0.i64(ptr align ");
                 WriteNumber(output, layout.Alignment);

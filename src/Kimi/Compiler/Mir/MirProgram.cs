@@ -49,19 +49,19 @@ internal sealed class MirProgram
         : this[new(callee.Symbol, MirBodyKind.Fn)] ?? this[new(callee.Symbol, MirBodyKind.Getter)] ?? this[new(callee.Symbol, MirBodyKind.Setter)];
 
     /// <summary>Gets the initializer a <c>staticEnsure</c> names (plan 5.6.6): the StaticInit body of the static whose index in the calling
-    /// body's statics the call's operand holds as a constant. The builder ensures only statics whose initializer it builds, so a consumer
-    /// treats null as a broken contract (<c>InternalInvariant_Kd</c>).</summary>
+    /// body's statics the call's operand holds as a constant. The builder ensures only statics whose initializer it builds, which
+    /// <see cref="MirValidator"/> checks, so a consumer of a validated program never meets null (G191).</summary>
     /// <param name="body">The calling body.</param>
     /// <param name="operand">The staticEnsure call's operand.</param>
-    /// <returns>The body, null only when the contract is broken.</returns>
+    /// <returns>The body, null only in a program the validator rejects.</returns>
     internal MirBody? StaticInit(MirBody body, in MirOperand operand) => this.StaticInit(body, (int)body.Consts[operand.Arg].Bits);
 
-    /// <summary>Gets the initializer of a static a body accesses: the StaticInit body of the static at an index of the body's statics. The
-    /// builder builds one for every static a body accesses, so a consumer treats null as a broken contract
-    /// (<c>InternalInvariant_Kd</c>).</summary>
+    /// <summary>Gets the initializer of a static a body accesses: the StaticInit body of the static at an index of the body's statics. A
+    /// validated body ensures each static its Places access, and each staticEnsure's static has its initializer (<see cref="MirValidator"/>,
+    /// G191), so a consumer of a validated program never meets null for such a static; an Opaque site's root may name a static without one.</summary>
     /// <param name="body">The accessing body.</param>
     /// <param name="slot">The static's index in <see cref="MirBody.Statics"/>.</param>
-    /// <returns>The body, null only when the contract is broken.</returns>
+    /// <returns>The body, null for a static no staticEnsure of a validated body names.</returns>
     internal MirBody? StaticInit(MirBody body, int slot) => this[new(body.Statics[slot].Symbol, MirBodyKind.StaticInit)];
 
     internal void Clear()

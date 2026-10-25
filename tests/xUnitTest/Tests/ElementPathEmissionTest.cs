@@ -116,7 +116,7 @@ public class ElementPathEmissionTest
     [InlineData("location")]
     public void CorruptedPathPlansFailBeforeOutputAndRecover(string defect)
     {
-        var c = MinimalEmissionTest.Analyze("var a: [2 of i32] = [40, 2]\na[0] += a[1]");
+        var c = MinimalEmissionTest.Analyze("var a: [2 of i32] = [40, 2]\na[0] += a[1]", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         // SPEC 13.7.2: the RHS read a[1] is located first, then the updated element a[0].

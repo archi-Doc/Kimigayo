@@ -68,8 +68,10 @@ public class MinimalEmissionTest
         var ir = writer.ToString();
         Assert.Contains("%kimi.string = type { ptr, i64, i8 }", ir);
         Assert.Contains("define void @__kimi_start() noreturn #0", ir);
-        Assert.Contains("call void @__kimi_write_line(ptr noundef nonnull align 8 dereferenceable(24) %p", ir);
-        Assert.Contains("call void @__kimi_destroy_string(ptr %p", ir);
+        var module = GeneratedIr.Parse(ir);
+        Assert.Contains(module.Startup.Instructions, x => x.Callee == module.Function("__kimi_write_line") &&
+            x.Shape.StartsWith("call void @(ptr noundef nonnull align 8 dereferenceable(24) %, ", StringComparison.Ordinal));
+        Assert.Contains(module.Functions.SelectMany(static x => x.Instructions), x => x.Callee == module.Function("__kimi_destroy_string"));
         Assert.Contains("@_fltused = global i32 0, align 4", ir);
         Assert.DoesNotContain("byval", ir);
         Assert.DoesNotContain("sret", ir);

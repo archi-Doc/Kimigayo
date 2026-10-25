@@ -266,8 +266,7 @@ internal sealed partial class FunctionCodegen
         if (this.LoweringOf(operand) is { } lowering)
         {
             var constant = operand.Kind == MirOperandKind.Const;
-            var type = constant ? this.collector.TypeOf(this.item, this.body.Consts[operand.Arg].Type)! : this.InstanceType(operand.Place)!;
-            computed = new(constant || lowering.Layout.Size == 0 ? value : this.Narrow(lowering, value), type, lowering);
+            computed = new(constant || lowering.Layout.Size == 0 ? value : this.Narrow(lowering, value), this.InstanceType(operand)!, lowering);
         }
 
         return true;

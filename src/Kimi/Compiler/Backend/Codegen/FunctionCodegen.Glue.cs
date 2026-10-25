@@ -20,12 +20,13 @@ namespace Kimi.Compiler.Backend;
 // under one switch on its tag over the Cases holding such a part (an Open enum's tag is defined: Case payload paths exist only in an owned
 // match Subject, initialized before arm selection, SPEC 15.1.6); a fixed array's elements from the last, each run of elements without a
 // row in one counted loop (Loop, Fill's loop), so the text does not grow with the length. Each level reads its own glue item's targets.
-// A common Function value's calls its table's drop entry, when present (FunctionCodegen.Erasures). The other rows are their units' (C6b,
-// C8d, C8e), one located Unsupported_Kd, a glue function's at its item's site; a Type of a kind no glue has, or a target missing or left
-// over, is a broken contract, InternalInvariant_Kd there.
+// A common Function value's calls its table's drop entry, when present (FunctionCodegen.Erasures). An owning handle's releases its
+// object (FunctionCodegen.Objects' Release), only in its glue function, since no move path opens a handle. A collection's row is its
+// units' (C8d, C8e), one located Unsupported_Kd, a glue function's at its item's site; a Type of a kind no glue has, or a target missing
+// or left over, is a broken contract, InternalInvariant_Kd there.
 internal sealed partial class FunctionCodegen
 {
-    private static readonly Site Received = new(new('p', 1), new('p', 2)); // A glue function's location, its own parameters a1 and a2.
+    private static readonly Site Received = new(new('p', 1), new('p', 2)); // A glue function's location, its own parameters location and length.
     private readonly List<DropPart> parts = []; // DropGlue.Parts' scratch.
     private int glue; // The glue item whose level is being written, and its targets read.
     private int glued;
@@ -59,8 +60,14 @@ internal sealed partial class FunctionCodegen
             case DropGlueRow.Function:
                 this.DestroyErased(type, address, site);
                 return;
-            case DropGlueRow.Handle or DropGlueRow.Collection:
-                this.Report(DiagnosticCode.Unsupported_Kd, default); // C6b, C8d and C8e write these rows.
+            case DropGlueRow.Handle when row < 0:
+                this.Release(glue, type, address, site);
+                return;
+            case DropGlueRow.Handle:
+                this.Report(DiagnosticCode.InternalInvariant_Kd, default); // A handle has no part a move path opens.
+                return;
+            case DropGlueRow.Collection:
+                this.Report(DiagnosticCode.Unsupported_Kd, default); // C8d and C8e write this row.
                 return;
             default:
                 this.Report(DiagnosticCode.InternalInvariant_Kd, default); // A glue item's Type is of a kind MirTypes.MayNeedDrop admits.

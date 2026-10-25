@@ -972,7 +972,7 @@ The owner's instruction of 2026-10-21, after R4's list of SPEC improvement candi
 Its independent review is `Sketches/R4 Proposals 2026-10-21/review-1.md`; the second proposal's round 2 is reviewed in
 `review-2.md`.
 
-- [Closure Calls as Receiver Calls](Proposals/2026-10-21%20Closure%20Calls%20as%20Receiver%20Calls.md): 一部取り込み (open,
+- [Closure Calls as Receiver Calls](Changes/2026-10-21%20Closure%20Calls%20as%20Receiver%20Calls.md): 一部取り込み (open,
   intake only); adopted by the owner (OQ-C1 (a), OQ-C2 (a); DECISIONS R4-M99). One sentence in §15.8.2: a Closure body is checked
   against its call receiver as an instance function's body is, its environment bindings being Fields of the receiver's referent,
   so results, containment and retention follow the receiver rules; the five-row table becomes a restatement. §7.7.2, §7.7.3 and
@@ -980,14 +980,16 @@ Its independent review is `Sketches/R4 Proposals 2026-10-21/review-1.md`; the se
   D.2. Meant to change no verdict. The owner answered on the round-1 text; the review's narrower formulation, used now, keeps
   option A's intent and removes two verdict changes the round-1 definition had (its §9). Planned mapping (its §5): §15.8.2,
   §15.6.5, §7.7.4. The SPEC text lands only after 2x-P7's derivation column agrees (its §8), before 2c-D's design review.
-- [Failures Caused Only by Other Failures](Proposals/2026-10-21%20Failures%20Caused%20Only%20by%20Other%20Failures.md):
+  (Superseded: integrated and closed as 取り込み済み on 2026-10-25, below.)
+- [Failures Caused Only by Other Failures](Changes/2026-10-21%20Failures%20Caused%20Only%20by%20Other%20Failures.md):
   一部取り込み (open, intake only), candidate 3. Round 1 ("Escapes and Derived Failures", not kept) and round 2 (a general
   definition of "caused only by" in §23.1.2) were not accepted by their reviews. After two rounds on one family the owner chooses
   between W, one concrete §15.6.5 sentence for a Loan conflict on the Loan of a Borrow refuted to a fixed Origin, R, the same rule
   as an implementation contract of A6, and H, 2a0-D §7 as approved; the owner chose W (2026-10-22, 「P2は、W：個別規則に決定します」).
   Round 3 writes W out; it passed its review with fixes, a re-check and a confirmation
   (`Sketches/R4 Proposals 2026-10-21/review-p2r3.md`), and DECISIONS R4-M104 adopts it. Planned mapping, after the prototype round
-  and a SPEC session: §15.6.5, §14.8.3, §15.8.2. The owner's answers to round 1 are not applied.
+  and a SPEC session: §15.6.5, §14.8.3, §15.8.2. The owner's answers to round 1 are not applied. (Superseded: integrated and closed
+  as 取り込み済み on 2026-10-24, below.)
 - Nothing is integrated into SPEC or IMPL, no text is frozen, and no support is claimed.
 
 ## 2026-10-22 — Static slots, layout requirements and lifecycle receivers (R4)
@@ -1185,3 +1187,62 @@ the current AGENTS (1 and 2 are the two corrections below).
     "(AGENTS, `8071549f`)" → DECISIONS Q3.
   - Correction (the file is frozen): after the move, its header link to the PLAN Size Budget proposal resolves at
     `../Proposals/2026-10-12%20PLAN%20Size%20Budget%20and%20Issue%20Register.md`. That proposal, this one's precondition, stays open.
+
+## 2026-10-24 — Failures caused only by other failures integrated (rule W; R4 unit spec-w)
+
+The owner, 2026-10-24, verbatim answers to the R4 planning session's questions after the prototype round that DECISIONS R4-M104
+ordered: 「(a) 今、W だけで開く (推奨)」 and 「(a) SPEC の W の文に書く (推奨)」 (DECISIONS R4-M122).
+
+- `Changes/2026-10-21 Failures Caused Only by Other Failures.md`: 取り込み済み (closed 2026-10-24); the file moved from `Proposals/`
+  with only its status sentence replaced. Mapping:
+  - §2's sentence → SPEC §15.6.5, a paragraph after the sentence on locals, unchanged, with the owner's clause appended ("and a read
+    through a reference to a whole value counts as a Copy of that value", the prototype round's item 6). §8's citations → §14.8.3 (one
+    sentence in Candidates) and §15.8.2 (its sentence on a returned body-local borrow). Example: §15.6.5's `store` and `keep` (§3's
+    m-write4 and m-write rows), registered in `tests/diagnostics/spec-cases.json` as `15.6.5-derived-conflict`.
+  - §1, §2's explanation and bullets, §5 and §7 → DECISIONS R4-M104 and R4-M122 (rationale, Principles, what the sentence leaves
+    unchanged, and which supersessions take effect now and which with 2a-2 and 2g-5).
+  - §3 and §6 item 1 → the prototype round of 2026-10-24 (every row that reaches a reading matches; no acceptance change). §4
+    (implementation direction, H), §6 item 3 (R5's review of the publication part) and §9 → 2a-2's full-process design and R5's H3
+    (R4-M104's order). Nothing is rejected and nothing stays open.
+  - Corrections (the file is frozen), from the prototype round: §3's m-36f row is vacuous (P12 was deleted by Abstract Calls Reach by
+    Paths, DECISIONS R4-M106, so the program has no conflict); the note after §3 expects m-write3's storage-end conflict to be derived,
+    but there is none (the write `x = 2` ends x's Loans first, SPEC §15.6.3), only the independent write conflict; round 3's B1 (b) row
+    (keepA) lists one conflict, but the program has a second, at local's storage end, derived from the relation at `v` (`p.*` receives
+    v's value, a Copy of `local@ref`, at `a`); review-2's B1 (a) row lists one conflict, but the program has a second, at local's storage
+    end, which the sentence derives per part (`p.*.0` receives a Copy of `local@ref` at `a`) and the prototype, without per-part facts,
+    reads independent (SPEC-legal); §4 does not state the read-through rule SPEC now has. The prototype round's record:
+    `Sketches/A5 Step 2/W prototype round/`.
+  - Not implemented: A5's derivation is 2a-2's. No verdict changes, so STATUS is unchanged (its Diagnostics row already states that a
+    Binding Origin failure stops ownership, the example's (a) difference). SPECJ and GUIDE are not refreshed.
+
+## 2026-10-25 — Closure calls as receiver calls integrated (R4 unit spec-closure)
+
+The owner, 2026-10-25, verbatim answers to the R4 planning session's questions after the 2x-P7 derivation round that DECISIONS R4-M99
+ordered: 「(a) §7.7.2 の許可で決める (推奨)」 (D1), 「(a) 本体局所の源に限る (推奨)」 (D2), 「(a) 今開き、2c-D の設計と並行 (推奨)」 (timing) and,
+on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みにする（元の Origin）: 借り直しの子が親と同じ長さを持てる、と SPEC を直します。」
+(DECISIONS R4-M123).
+
+- `Changes/2026-10-21 Closure Calls as Receiver Calls.md`: 取り込み済み (closed 2026-10-25); the file moved from `Proposals/` with only
+  its status sentence replaced. Mapping:
+  - §2's sentence → SPEC §15.8.2, a paragraph before the table, its §15.6.5 citation dropped (the Fields statement is made there and
+    §15.6.5 cites it), followed by the permissions and retention sentence (§2's first bullet, worded by 2x-P7's m-rc1 and m-rc2 and by
+    D1). §2's bullets: §7.7.2's permissions and §7.7.3's receiver unchanged; the Closure Type unchanged; "per the table" → "by the
+    receiver rules" (§15.8.2's second paragraph); the third paragraph kept with its reason and elision stated without the hidden
+    receiver (§15.4.3; OQ-C2 (a)).
+  - §3 → the table as a restatement; its last row (the catch-all) → D2's derived statement, merged into the second paragraph's sentence
+    on a returned body-local borrow. §3's other bullets → §15.6.5 (the fixed-Origin sentence deleted, the body-local sentence citing
+    §15.8.2) and §7.7.4 ("its result contract does not depend on its receiver"), as §5 maps them.
+  - §4: option A adopted; B rejected (OQ-C2 (a)); C and D rejected (DECISIONS R4-M99). §6 and §8's step 2 → 2c-D's design (A5 step 2
+    plan §4.5) and DECISIONS R4-M123's "2c-D implements". §7 → R4-M123's Principles. §8's step 1 → the 2x-P7 round
+    (`Sketches/A5 Step 2/2x-P7 round/p7-round.md`): no difference but D1 and D2, both answered. §9 answered; §10 → p7-round §8.
+  - Examples: §15.8.2's `update` (D1) and `take` (F3 and §3's Consuming row), registered in `tests/diagnostics/spec-cases.json` as
+    `15.8.2-environment-retention` (the old path's conflict, (a)) and `15.8.2-bare-entry-origin` (R1's `Unsupported_Kd`, (b)).
+  - Not the proposal's: F3 → SPEC §3.5.1 ("possibly the parent's own") and §7.7.2 (a bare entry's child has the meet of the Origins
+    that contain it), DECISIONS R4-M123 and BU-28's note.
+  - Corrections (the file is frozen): §5's "No example changes (H)" — two examples were added; §6's 2c-2 Exclusive row "the
+    environment and captured exclusive referents" reads, by D1, `var` bindings and captured exclusive referents, since no Closure body
+    can replace its environment; §3's catch-all row "is an error" holds only for a source whose Origin is body-local (D2); after the
+    move, the links to the A5 step 2 plan and the S3 plan resolve at `../Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md`
+    and `../Proposals/2026-10-20%20S3%20Closure%20Origin%20Publication%20Plan.md`.
+  - Not implemented: 2c-D (A5-F7). STATUS records the default pipeline's rejection of D1's `let`-binding form as an old-path limit until
+    R6-check. SPECJ and GUIDE are not refreshed.

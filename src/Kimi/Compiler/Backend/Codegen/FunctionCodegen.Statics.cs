@@ -19,8 +19,8 @@
 // (SPEC 22.4.3); a slot's value is read and written only through the place writer and these stores; a warm write allocates nothing.
 // Must not decide which statics are generated: the StaticStorage capability row (DECISIONS R5-M82) refuses at check a static that can be
 // set, whose Type is not a scalar or that belongs to a generic container's group, so only scalars reach here and no Type is tested. A
-// staticEnsure without a StaticInit target, a static Place its body ensures nowhere (MirBuilder.Places' contract, which the validator does
-// not check) and two slots for one static (P42's keys) are broken contracts: InternalInvariant_Kd.
+// staticEnsure without a StaticInit target and two slots for one static (P42's keys) are broken contracts: InternalInvariant_Kd; the
+// validator checks that a static Place's body ensures it (MirBuilder.Places' contract, G191).
 
 using Kimi.Compiler.Mir;
 using static Kimi.Compiler.Backend.LlvmModuleText;
@@ -186,23 +186,14 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // A static Place's root: its slot (StaticSlots); a static the body ensures nowhere is a broken contract.
-    private Value StaticAddress(int index)
-    {
-        if (this.statics[index] < 0)
-        {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, default);
-        }
-
-        return new('v', this.statics[index]);
-    }
+    // A static Place's root: its slot (StaticSlots), which a staticEnsure of the body targets (the validator's G191, Ensure's target).
+    private Value StaticAddress(int index) => new('v', this.statics[index]);
 
     // SPEC 22.4.3: a staticEnsure, its target the static's StaticInit item (InstanceCollector.Static): nothing for a folded slot; else, after
     // the call's flag points, the slot's state read, the access proceeding when it is Initialized and otherwise after the ensure function,
     // given the access's location (SPEC 22.5.1); its Unit result has no storage.
-    private void Ensure(in MirTerminator call)
+    private void Ensure(in MirTerminator call, int target)
     {
-        var target = this.Target(new(this.at, this.body.Blocks[this.at].Count));
         if (target < 0 || this.collector.Set.Items[target] is not { Key.Kind: MonoKind.Body } entry)
         {
             this.Report(DiagnosticCode.InternalInvariant_Kd, call.Source); // The collector targets every staticEnsure of a checked program.

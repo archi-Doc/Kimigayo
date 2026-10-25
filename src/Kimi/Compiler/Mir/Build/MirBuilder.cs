@@ -36,7 +36,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private ushort scope;
     private bool statementStart; // The next statement or terminator starts a source statement.
 
-    /// <summary>Builds and validates the MIR of the latest Binding pass, once per pass.</summary>
+    /// <summary>Builds and validates the MIR of the latest Binding pass, once per pass: each body, then the program.</summary>
     /// <returns>The program, with its construction records and validator findings.</returns>
     internal MirProgram Build()
     {
@@ -60,6 +60,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
             this.Module(compilation.Library.Kotonoha.Syntax, pass == 0);
         }
 
+        this.validator.Validate(this.program); // What the bodies require of each other (G191).
         this.program.Version = version;
         return this.program;
     }

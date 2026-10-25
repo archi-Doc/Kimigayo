@@ -13,12 +13,26 @@ public class ContextualClosureTest(ITestOutputHelper output)
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("String", "let text = \"owned\"\nlet f: () -> bool = func [text@move] () => text == \"owned\"\nrequire f() and f() else => $abort(\"capture\")", 1, 24, "")]
-    [InlineData("Object", "struct Item\n    public let id: i32 = 7\n    drop => Console.writeLine(\"drop\")\nlet owner = Kimi.Intrinsics.makeObj(Item.init())\nlet f: () -> i32 = func [owner@move] () => owner.id\nrequire f() == 7 and f() == 7 else => $abort(\"capture\")", 2, 28, "drop\n")]
     [InlineData("Large", "let a: i64 = 1\nlet b: i64 = 2\nlet c: i64 = 3\nlet f: () -> i64 = func [a, b, c] () => a + b + c\nrequire f() == 6 else => $abort(\"capture\")", 1, 24, "")]
     [InlineData("Parameter", "func make(offset: i32) -> (i32) -> i32 => func [offset] (value) => value + offset\nlet f = make(7)\nrequire f(2) == 9 else => $abort(\"parameter\")", 0, 0, "")]
     [InlineData("Argument", "func use(f: () -> bool) -> bool => f()\nlet text = \"owned\"\nrequire use(func [text@move] () => text == \"owned\") else => $abort(\"argument\")", 1, 24, "")]
     public void DirectExpectedFunctionsUseOwnedConcreteEnvironments(string name, string source, int count, int bytes, string stdout)
         => NativeAllocationAudit.WriteFixture("ContextualClosure" + name, source, count, count, bytes, stdout);
+
+    // An expected Function Type's environment of 8 bytes holding an obj handle, which needs destruction (PD19, IMPL 21.1.3): MIR code
+    // generation stores it in the Function value's word, the old generator allocates it (DECISIONS R5-M104's inline-env deviation,
+    // R5-M112); the object is one allocation of 20 bytes either way.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AnObjectCaptureOfAnExpectedFunctionTypeIsReleasedOnce()
+    {
+        const string Source = "struct Item\n    public let id: i32 = 7\n    drop => Console.writeLine(\"drop\")\n" +
+            "let owner = Kimi.Intrinsics.makeObj(Item.init())\nlet f: () -> i32 = func [owner@move] () => owner.id\n" +
+            "require f() == 7 and f() == 7 else => $abort(\"capture\")";
+        var count = Codegen.Expect(1, 2, CodegenDeviations.InlineEnvironment);
+        var bytes = Codegen.Expect(20L, 28L, CodegenDeviations.InlineEnvironment);
+        NativeAllocationAudit.WriteFixture("ContextualClosureObject", Source, count, count, bytes, "drop\n");
+    }
 
     [Theory]
     [InlineData("let text = \"owned\"\nlet f: () -> bool = func [text] () => text == \"owned\"")]

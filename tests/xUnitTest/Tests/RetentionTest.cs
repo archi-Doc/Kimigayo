@@ -15,9 +15,56 @@ namespace XunitTest;
 /// write), and whether the result is untied.</summary>
 public sealed class RetentionTest
 {
-    private const string Cell = "struct Cell<T> {s}\n    var item: uniq/T during s\n";
+    // A struct B that stores its Type argument, and B^64<i32> and B^65<i32>, whose storage heights are 64 and 65 (DECISIONS BU-12's bound
+    // is 64).
+    internal const string Box = "struct B<T>\n    public var item: T\n    public init(item: T) => self.item = item@move\n";
 
-    private const string Box = "struct B<T>\n    public var item: T\n    public init(item: T) => self.item = item@move\n";
+    internal const string Box64 = "B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<" +
+        "i32>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>";
+
+    internal const string Box65 = "B<" + Box64 + ">";
+
+    // G240's forms (the designs' and R4's probes; the rejected spelling MISSING is a Binding failure, its repair valid). Bad's Field;
+    // Sx holding Bad through a handle; keep2's result during x beside a Bad input, then v written while the result lives; stash storing
+    // x's borrow into slot beside a Bad input, then x written while slot lives; Pick's payload Origin, with a conflict beside its call;
+    // Bad beside a Field of height 65; G growing beside a failed Field.
+    internal const string Bad = "struct Bad\n    public var m: MISSING\n";
+
+    internal const string Handle = Bad + "struct Sx\n    public var x: rc/Bad\nfunc f(s: uniq/Sx, p: raw/i32) => ()\nfunc g(s: uniq/Sx) => f(s, null)\n";
+
+    internal const string Keep2 = Bad + "func keep2(x: ref/i32, b: uniq/Bad) -> ref/i32 during x => x\nfunc g(b: uniq/Bad)\n    var v = 1\n" +
+        "    let r = keep2(v@ref, b)\n    v = 2\n    let k = r@follow\n";
+
+    internal const string Stash = Bad + "func stash(slot: uniq/(ref/i32 during a), value: ref/i32 during a, b: uniq/Bad) => slot@follow = value\n" +
+        "func g(b: uniq/Bad)\n    var x = 1\n    var y = 2\n    var slot = y@ref\n    stash(slot@uniq, x@ref, b)\n    x = 3\n    let k = slot@follow\n";
+
+    internal const string Pick = "enum Pick {s}\n    First(ref/i32 during MISSING)\n    Second(ref/i32 during s)\n" +
+        "    public func choose(self: ref/Self, useFirst: bool) -> i32 => 0\nfunc g(pair: uniq/Pick, useFirst: bool) -> i32\n    var x = 1\n" +
+        "    let r = x@ref\n    let n = pair.choose(useFirst)\n    x = 2\n    let k = r@follow\n    return n\n";
+
+    internal const string Tall = Box + Bad + "    public var big: " + Box65 + "\nfunc f(b: uniq/Bad, p: raw/i32) => ()\nfunc g(b: uniq/Bad) => f(b, null)\n";
+
+    internal const string Growing = "struct G<T>\n    public var m: MISSING\n    public var next: raw/G<(T, T)>\nfunc f(g: uniq/G<i32>, p: raw/i32) => ()\n" +
+        "func h(g: uniq/G<i32>) => f(g, null)\n";
+
+    // Site 3 of DECISIONS R4-M118: Selection's payload Origin MISSING spells (missing: a Binding failure; source: its repair).
+    internal const string Selection = "struct Cell\n    public var value: i32\n    public init(value: i32) => self.value = value\nenum Selection {source}\n" +
+        "    Found(ref/Cell during MISSING)\n    Missing\nstruct Pair {left, right}\n    let first: ref/Cell during left\n    let second: ref/Cell during right\n" +
+        "    public init(first: ref/Cell during left, second: ref/Cell during right)\n        self.first = first\n        self.second = second\n" +
+        "    public func choose(self: ref/Self, useFirst: bool) -> Selection{selection}\n        origin selection.source == self.left and self.right\n" +
+        "        if useFirst\n            return .Found(self.first)\n        return .Found(self.second)\nfunc run(useFirst: bool)\n" +
+        "    var first = Cell.init(10)\n    var second = Cell.init(20)\n    let pair = Pair.init(first@ref, second@ref)\n    let result = pair.choose(useFirst)\n";
+
+    // R4's i-field forms: D's Field h, whose Type MISSING spells, holds the C a constructor call takes.
+    internal const string Fielded = "struct C {s}\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nstruct D {s}\n" +
+        "    public let h: MISSING\n    public init(h: C during s) => self.h = h@move\nfunc f(a: ref/i32) -> ref/i32 during a\n    let l = 5\n" +
+        "    let d = D.init(C.init(l@ref))\n    return a\n";
+
+    // X reaches T's B^64 Field through a handle beside a Field whose Type MISSING spells (T's storage height is 65).
+    internal const string Beyond = Box + "struct X\n    public var t: Option<rc/T>\n    public var f: MISSING\nstruct T\n    public var x: Option<rc/X>\n" +
+        "    public var y: " + Box64 + "\nfunc ft(t: uniq/T, p: raw/i32) => ()\nfunc fx(x: uniq/X, p: raw/i32) => ()\n";
+
+    private const string Cell = "struct Cell<T> {s}\n    var item: uniq/T during s\n";
 
     private const string View = "struct View<T> {source}\n    let data: ref/T during source\n    public init(data: ref/T during source) => self.data = data\n" +
         "    public func read(self: ref/Self) -> ref/T during self.source => self.data\n    public func whole(self: ref/Self) -> ref/Self during self => self\n";
@@ -33,6 +80,13 @@ public sealed class RetentionTest
     // An object payload that holds a Loan, and a local to lend it.
     private const string Lent = "struct Lent {a}\n    public var r: ref/i32 during a\n    public init(r: ref/i32 during a) => self.r = r\n" +
         "var x = 1\n";
+
+    // A struct with an unstated raw Field beside a Loan-carrying one (the design review's S2 and R-B2 probes).
+    private const string Hid = "struct Hid {a}\n    public var r: ref/i32 during a\n    public var p: raw/(ref/i32 during a)\n" +
+        "    public init(r: ref/i32 during a, p: raw/(ref/i32 during a))\n        self.r = r\n        self.p = p\n";
+
+    // A struct with an unstated raw Field, which a Field holds through an rc or arc handle (the G160-2c review's R2).
+    private const string Shared = "struct Bx\n    public var v: raw/i32\n    public init(v: raw/i32) => self.v = v\n";
 
     // A function whose body relies on its enclosing function's premise c outlives o (y's well-formedness), called while *q is written.
     private const string Enclosing = "func outer(y: ref/(ref/i32 during c) during o, q: uniq/i32 during c) -> i32\n";
@@ -93,13 +147,14 @@ public sealed class RetentionTest
     // input with no Origin below its layer stores nothing. What lies behind a shared layer reached before a writable slot is only read
     // (SPEC 15.6.2: a shared input, an rc payload held by value), a raw pointer read past it included (SPEC 5.7, 8.11.4 rule 1; the
     // expectation the SPEC revision R4-M95 changed: `ref/(raw/…)` stores nothing); a value stored into a writable slot brings its whole
-    // Type, so an Origin below an rc or arc layer there, or below a pair layer admitting only them, is stored (DECISIONS BU-1).
+    // Type, so an Origin below an rc or arc layer there, or below a pair layer admitting only them, is stored (DECISIONS BU-1). A raw
+    // input's own pointee retains it as a read through it, never its own value (SPEC 15.6.4 as DECISIONS R4-M116 revised it).
     [Theory]
     [InlineData("func f(dst: uniq/(ref/i32 during q), v: ref/i32 during q) => dst@follow = v", "0 Content store 0, 1 Value store 0")]
     [InlineData("func f(dst: uniq/i32, v: ref/i32) => dst@follow = v@follow", "")]
     [InlineData("func f(dst: ref/(ref/i32 during q), v: ref/i32 during q) -> i32 => v@follow", "")]
     [InlineData("func f<T>(dst: uniq/T, value: T) => dst@follow = value@move", "0 Content store 0, 1 Value store 0")]
-    [InlineData("func f<T>(storage: raw/T, value: T) => ()", "0 Value store 0, 1 Value store 0")]
+    [InlineData("func f<T>(storage: raw/T, value: T) => ()", "0 Content store 0, 1 Value store 0")]
     [InlineData("func f(storage: ref/(raw/(ref/i32 during q)), v: ref/i32 during q) => ()", "")]
     [InlineData(Cell + "func f(dst: Cell<ref/i32 during q>, v: ref/i32 during q) => ()", "0 Value store 0, 1 Value store 0")]
     [InlineData(Cell + "func f(dst: ref/Cell<ref/i32 during q>, v: ref/i32 during q) => ()", "")]
@@ -316,16 +371,17 @@ public sealed class RetentionTest
     // with another Origin lets it write what each borrow that Origin belongs to admits (an input's referent, the keepers of a slot), as
     // the raw input's storage, unless only shared input borrows of the signature state that Origin (SPEC 5.2.1 condition 3, the owner's
     // 「シグネチャ版も入れる (推奨)」): then a pointer read from the layer has read authority only and the call writes nothing through it;
-    // a universal stated by a `ref` and a `uniq` input is no such Origin.
+    // a universal stated by a `ref` and a `uniq` input is no such Origin. A raw input's pointee and its Origin's members are Content, and
+    // its own layer's Origin gives no row (SPEC 15.6.4 as DECISIONS R4-M116 revised it, R-B3).
     [Theory]
     [InlineData("func f(x: ref/i32, n: i32) -> raw/i32 => null", "0 Value result, 1 Value result, untied")]
     [InlineData("func f(x: ref/i32, n: isize) -> (raw/u8, isize) => (null, n)", "0 Value result, 1 Value result, untied")]
     [InlineData("func f(b: ref/i32, c: ref/i32, p: raw/i32 during b) -> raw/i32 during b => p", "0 Value result, 2 Value result")]
-    [InlineData("func f(p: raw/(ref/i32 during q) during static, v: ref/i32 during q) => ()", "0 Value store 0, 1 Value store 0")]
-    [InlineData("func f(b: uniq/(ref/i32 during q), p: raw/(ref/i32 during q) during b, v: ref/i32 during q) => ()", "0 Content store 0, 1 Value store 0, 2 Value store 0, 0 Content store 1, 1 Value store 1, 2 Value store 1")]
+    [InlineData("func f(p: raw/(ref/i32 during q) during static, v: ref/i32 during q) => ()", "0 Content store 0, 1 Value store 0")]
+    [InlineData("func f(b: uniq/(ref/i32 during q), p: raw/(ref/i32 during q) during b, v: ref/i32 during q) => ()", "0 Content store 0, 1 Content store 0, 2 Value store 0, 0 Content store 1, 1 Content store 1, 2 Value store 1")]
     [InlineData("func f(b: ref/(ref/i32 during q), p: raw/(ref/i32 during q) during b, v: ref/i32 during q) => ()", "")]
     [InlineData("func f(a: ref/(ref/i32 during q) during o, b: ref/(ref/i32 during q) during o, p: raw/(ref/i32 during q) during o, v: ref/i32 during q) => ()", "")]
-    [InlineData("func f(a: ref/(ref/i32 during q) during o, b: uniq/(ref/i32 during q) during o, p: raw/(ref/i32 during q) during o, v: ref/i32 during q) => ()", "0 Content store 1, 1 Content store 1, 2 Value store 1, 3 Value store 1, 0 Content store 2, 1 Content store 2, 2 Value store 2, 3 Value store 2")]
+    [InlineData("func f(a: ref/(ref/i32 during q) during o, b: uniq/(ref/i32 during q) during o, p: raw/(ref/i32 during q) during o, v: ref/i32 during q) => ()", "0 Content store 1, 1 Content store 1, 2 Content store 1, 3 Value store 1, 0 Content store 2, 1 Content store 2, 2 Content store 2, 3 Value store 2")]
     [InlineData(KeptView + "func f<K, V>(v: ref/View<K, V>, p: raw/u8 during v.source, key: K)\n    K is Equatable\n    return", "0 Content store 1, 1 Content store 1, 2 Value store 1")]
     public void RawLayersRetainByTheirOrigins(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
@@ -351,7 +407,7 @@ public sealed class RetentionTest
 
     // SPEC 5.7 Calls (DECISIONS BU-24, U2): each slot keeper is walked once per slot, owner Type, input and mode, so a keeper cycle through
     // a raw pointer to its own Type keeps the rows of its one-level unrolling, and a raw layer whose referent states the Origin being walked
-    // again ends there.
+    // again ends there, where `key`'s own value can be stored, as a raw/i32 the member holds (SPEC 15.6.4, DECISIONS R4-M116).
     [Fact]
     public void AKeeperCycleEndsWhereItStarted()
     {
@@ -363,7 +419,7 @@ public sealed class RetentionTest
         var unrolled = "struct L<K, V> {s}\n" + Loan + "    public init(d: uniq/Dictionary<K, V> during s) => self.loan = Loan.init(d)\n" +
             "struct N<K, V> {s}\n" + Loan + "    let next: raw/(L<K, V> during s)\n" + Init + Use;
         Assert.Equal(rows, Declared(Bind(unrolled), "f"));
-        Assert.Equal("0 Content store 1, 1 Value store 1", Declared(Bind("struct R {s}\n    let at: uniq/(raw/i32 during s) during s\nfunc f(v: ref/R, p: raw/u8 during v.s, key: raw/i32) => ()\n"), "f"));
+        Assert.Equal("0 Content store 1, 1 Content store 1, 2 Value store 1", Declared(Bind("struct R {s}\n    let at: uniq/(raw/i32 during s) during s\nfunc f(v: ref/R, p: raw/u8 during v.s, key: raw/i32) => ()\n"), "f"));
     }
 
     // SPEC 5.7 Calls (DECISIONS BU-24, U2; the design review's item 3): a keeper cycle that changes its Type arguments, raw or not, through
@@ -381,11 +437,13 @@ public sealed class RetentionTest
     }
 
     // SPEC 5.7 Calls (the design review's item 3): two raw layers stating one Origin each walk its members as their own input's content
-    // (the keeper key holds the content atom), so neither loses its rows to the other: `p`'s store 1 and `q`'s store 2 alike.
+    // (the keeper key holds the content atom), so neither loses its rows to the other: `p`'s store 1 and `q`'s store 2 alike; the
+    // abstract `T` they and `n` reach may hold the other's own value (SPEC 15.6.4, DECISIONS R4-M116).
     [Fact]
     public void TwoRawLayersOfOneOriginKeepTheirRows()
         => Assert.Equal(
-            "0 Content store 0, 1 Value store 0, 2 Value store 0, 0 Content store 1, 1 Content store 1, 2 Content store 1, 0 Content store 2, 1 Content store 2, 2 Content store 2",
+            "0 Content store 0, 1 Value store 0, 1 Content store 0, 2 Value store 0, 2 Content store 0, 0 Content store 1, 1 Content store 1, 2 Value store 1, " +
+            "2 Content store 1, 0 Content store 2, 1 Value store 2, 1 Content store 2, 2 Content store 2",
             Declared(Bind("struct K<T> {s}\n    internal let at: uniq/T during s\nfunc f<T>(n: uniq/(K<T> during a), p: raw/u8 during a, q: raw/u8 during a) => ()\n"), "f"));
 
     // SPEC 5.7 Calls, 15.6.4 (R4-M52): an erased callable's signature is its own scope for its raw layers, also when it has fewer inputs
@@ -403,7 +461,7 @@ public sealed class RetentionTest
     {
         const string Inputs = "ref/(ref/i32 during q) during o, raw/(ref/i32 during q) during o, ref/i32 during q";
         var c = Bind($"func apply(g: ({Inputs}) -> (), b: ref/(ref/i32 during q) during o, p: raw/(ref/i32 during q) during o, v: ref/i32 during q)\n    g(b, p, v)\n");
-        Assert.Equal(["0 Value store 1, 1 Value store 1, 2 Value store 1"], ValueCalls(c));
+        Assert.Equal(["0 Value store 1, 1 Content store 1, 2 Value store 1"], ValueCalls(c));
         Assert.Equal(string.Empty, Declared(c, "apply"));
     }
 
@@ -413,29 +471,220 @@ public sealed class RetentionTest
         => Assert.Equal([string.Empty], ValueCalls(Bind("func apply(g: (ref/(raw/(ref/i32 during q)), ref/i32 during q) -> (), s: ref/(raw/(ref/i32 during q)), v: ref/i32 during q) => g(s, v)\n")));
 
     // SPEC 15.6.4 (A3 E14): an intrinsic's call retains as its library declaration says, as any call does: an object creation its value,
-    // clone its handle's payload only (Content), Raw.initialize its value into the raw storage, Text.writer its destination; Raw.slice's
-    // result is untied (a fresh anchor), Raw.allocate's, a raw pointer without an Origin, retains every argument and is untied (SPEC 5.7
-    // Calls, D6), and a row into a raw pointer's own storage carries nothing (it holds no Loan).
+    // clone its handle's payload only (Content), Raw.initialize its value into the raw storage, also a raw pointer's own value (`c01`)
+    // into an unstated layer, which unties the storage (R-B2), and the storage a read through it (SPEC 15.6.4 as DECISIONS R4-M116
+    // revised it: a pointer is never part of its own pointee);
+    // Text.writer its destination, its Utf8Writer untied by the unstated raw Fields it stores; Raw.slice's result, a fresh anchor, is
+    // untied unless its pointee's Origins tie it, and lies within its storage, which it retains (D14, R4-M116 item 4) with a read through
+    // it; Raw.allocate's, a raw pointer without an Origin, retains every argument and is untied (SPEC 5.7 Calls, D6). A raw input's
+    // unstated pointee is its own writable storage, which retains it as a read through it.
     [Theory]
     [InlineData(Lent + "let h = Kimi.Intrinsics.makeObj(Lent.init(r: x@ref))\n", "makeObj", "0 Value result")]
     [InlineData(Lent + "let h = Kimi.Intrinsics.makeRc(Lent.init(r: x@ref))\n", "makeRc", "0 Value result")]
     [InlineData(Lent + "let h = Kimi.Intrinsics.makeArc(Lent.init(r: x@ref))\n", "makeArc", "0 Value result")]
     [InlineData(Lent + "let h = Kimi.Intrinsics.makeRc(Lent.init(r: x@ref))\nlet c = Kimi.Intrinsics.clone(h@ref)\n", "clone", "0 Content result")]
-    [InlineData("var x = 1\nlet p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.initialize(p, x@ref)\n", "initialize", "0 Value store 0, 1 Value store 0")]
-    [InlineData("let p: raw/i32 = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "untied")]
-    [InlineData("var b = Text.heap(8)\nlet w = Text.writer(b@uniq)\n", "writer", "0 Value result")]
+    [InlineData("var x = 1\nlet p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.initialize(p, x@ref)\n", "initialize", "0 Content store 0, 1 Value store 0")]
+    [InlineData("let slot: raw/(raw/i32) = Raw.allocate(1)\nlet p: raw/i32 = Raw.allocate(1)\nunsafe => Raw.initialize(slot, p)\n", "initialize", "1 Value store 0, untied store 0")]
+    [InlineData("let p: raw/i32 = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "0 Value result, untied")]
+    [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "0 Value result, 0 Content result, 0 Content store 0")]
+    [InlineData("var b = Text.heap(8)\nlet w = Text.writer(b@uniq)\n", "writer", "0 Value result, untied")]
     [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "allocate", "0 Value result, untied")]
-    [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "0 Value store 0")]
+    [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "0 Content store 0")]
     public void IntrinsicsRetainAsTheirDeclarationsSay(string source, string name, string expected)
         => Assert.Equal([expected], Calls(Bind(source), name));
 
     // G147 (1), G160-3 (SPEC 5.7, 15.6.4): placeEntry's handle `raw/Dictionary<K, V>` admits K and V, so the call stores its key and value
-    // (and, as Raw.initialize, possibly the handle) in the Dictionary the handle addresses; the earlier `raw/u8` handle admitted nothing.
-    [Fact]
-    public void PlaceEntryStoresThePairThroughItsHandle()
+    // in the Dictionary the handle addresses, and the handle as a read through it, never its own value (DECISIONS R4-M116); the earlier
+    // `raw/u8` handle admitted nothing. keyAt's raw result states no Origin, so it retains its slot as a value and as a read (D6).
+    [Theory]
+    [InlineData(KimiDeclarationId.StoragePlaceDictionaryEntry, "0 Content store 0, 1 Value store 0, 2 Value store 0")]
+    [InlineData(KimiDeclarationId.StorageKeyAt, "0 Value result, 0 Content result, untied")]
+    public void StorageOperationsRetainTheirRawArguments(KimiDeclarationId id, string expected)
     {
         var c = Bind(string.Empty);
-        Assert.Equal("0 Value store 0, 1 Value store 0, 2 Value store 0", Show(c.Types.Retains(c.Library.GetSymbol(KimiDeclarationId.StoragePlaceDictionaryEntry)!, null, null)));
+        Assert.Equal(expected, Show(c.Types.Retains(c.Library.GetSymbol(id)!, null, null)));
+    }
+
+    // SPEC 15.6.4 (OQ-3, DECISIONS R4-M116; G160-2c): a raw argument is retained as a borrowed one, its pointee as the referent. An Origin
+    // inside its pointee is Content: the result keeps what a read through `p` carries (a Value row lost it once the addressed holder was
+    // replaced: `snap`), and its own layer's Origin gives no row (R-B3: a `ref/i32 during b` result cannot hold the pointer). Its own
+    // value is a Value row only of an output that can hold a value of its Type: a raw layer agreeing with it with Origins fitted (R-B4),
+    // at a position (`slot`'s pointee, whose unstated layer unties `slot`) or in a struct's stored content (Node's `next`, both ways),
+    // or an abstract part (Array's `T`); never its own pointee (no `head` row into `head`).
+    [Theory]
+    [InlineData("func f(p: raw/(ref/i32 during a)) -> ref/i32 during a\n    unsafe => return *p", "0 Content result, 0 Content store 0")]
+    [InlineData("func f(b: ref/i32, p: raw/i32 during b) -> ref/i32 during b => b", "0 Value result")]
+    [InlineData("func f(slot: raw/(raw/i32), b: ref/i32, p: raw/i32 during b) => ()", "2 Value store 0, untied store 0")]
+    [InlineData(
+        "struct Node\n    public var next: raw/Node\n    public init(next: raw/Node) => self.next = next\nfunc f(head: raw/Node, n: raw/Node) => ()",
+        "1 Value store 0, 0 Value store 1, untied store 0, untied store 1")]
+    [InlineData("func f<T>(dst: uniq/Array<T>, p: raw/i32) => ()", "0 Content store 0, 1 Value store 0")]
+    public void RawArgumentsRetainAsBorrowedOnes(string function, string expected)
+        => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // SPEC 5.7 Calls, 15.6 (the design review's S2 and R-B2; DECISIONS R4-M116 item 5): a raw pointer in an unstated or `static` Field or
+    // Case payload is stated by the Type's Fields alone, so a call that forms it ties it to no argument: a result that stores one, at any
+    // depth of its stored content, is untied (`make`, `Hid.init`, an enum's payload, a Tuple element of an Option's struct), and so is an
+    // input whose writable storage stores one (`fill`'s `h`, untied store 0), where the call may write such a pointer
+    // (`h.p = Raw.allocate(1)`) through which a later `Raw.initialize(h.p, y@ref)` stores. A Field stating a slot is tied by it (`Lens`),
+    // and a shared input's referent is no writable storage (`look`).
+    [Fact]
+    public void AStoredUnstatedRawLayerIsUntied()
+    {
+        var c = Bind(Hid + "func make(r: ref/i32 during a) -> Hid during a\n    let cell: raw/(ref/i32 during a) = Raw.allocate(1)\n    return Hid.init(r: r, p: cell)\n" +
+            "func fill(h: uniq/Hid during a)\n    h.p = Raw.allocate(1)\nfunc look(h: ref/Hid during a) => ()\n" +
+            "func hidden()\n    var y: i32 = 1\n    var v: i32 = 2\n    var h = make(v@ref)\n    fill(h@uniq)\n    unsafe => Raw.initialize(h.p, y@ref)\n" +
+            "enum E\n    One(raw/u8)\n    Two(i32)\nfunc one() -> E => .Two(1)\n" +
+            "struct W\n    public var pair: (i32, raw/u8 during static)\n    public init() => self.pair = (1, null)\nfunc wrapped() -> Option<W> => .None\n" +
+            "struct Lens<T> {source}\n    internal let loan: Loan<ref/T during source>\n    internal let at: raw/T during source\n" +
+            "    internal init(target: ref/T during source)\n        self.at = target@follow@raw\n        self.loan = Loan.init(target)\n" +
+            "func lens(x: ref/i32) -> Lens<i32> during x => Lens<i32>.init(target: x)\n");
+        Assert.Equal("0 Value result, untied", Declared(c, "make"));
+        Assert.Contains("0 Value result, 1 Value result, 1 Content result, 0 Value store 1, 1 Content store 1, untied", Calls(c, "init"));
+        Assert.Equal("0 Content store 0, untied store 0", Declared(c, "fill"));
+        Assert.Equal(["0 Content store 0, untied store 0"], Calls(c, "fill"));
+        Assert.Equal(["0 Content store 0, 1 Value store 0"], Calls(c, "initialize"));
+        Assert.Equal(string.Empty, Declared(c, "look"));
+        Assert.Equal("untied", Declared(c, "one"));
+        Assert.Equal("untied", Declared(c, "wrapped"));
+        Assert.Equal("0 Value result", Declared(c, "lens"));
+    }
+
+    // SPEC 15.6.4, 5.7 (DECISIONS R4-M116 items 2 and 5, R-B2, BU-30; the G160-2c reviews' B1, R2, R4's F1 and B2): a value a call stores
+    // at a writable position brings its whole Type (BU-1), so one walk reaches every layer below a hold, in a held struct's stored content
+    // as at a position: an exclusive borrow (`S.r`, written as `s.r@follow = p`), a raw layer stepping Unstated or Static (`R.q`, written
+    // by `Raw.initialize(r.q, p)`, formed by `f -> R`) or Exclusive (`Cell.at`, kept by a Loan), a shared one (`Sh.r`), an rc or arc
+    // handle the call forms (`S.x`, alone or in an Option). A raw argument's own value is a Value row there, and a raw layer there
+    // stepping Unstated or Static unties the output: a direct referent (`uniq/(raw/i32)`, `static` alike) as an Option's payload, an
+    // allocated pointer in an rc's payload, a regular recursive Type's own Field. One Type at two positions steps by each (BU-35): H's
+    // `at`, written with a `ref` slot, is Shared; the same `raw/i32 during static` its `a` holds through T steps Static and unties.
+    [Theory]
+    [InlineData("struct S {a}\n    public var r: uniq/(raw/i32) during a\nfunc f(s: uniq/S, p: raw/i32)\n    s.r@follow = p", "0 Content store 0, 1 Value store 0, untied store 0")]
+    [InlineData("struct R\n    public var q: raw/(raw/i32)\nfunc f(r: uniq/R, p: raw/i32)\n    unsafe => Raw.initialize(r.q, p)", "1 Value store 0, untied store 0")]
+    [InlineData(
+        "struct R\n    public var q: raw/(raw/i32)\n    public init(q: raw/(raw/i32)) => self.q = q\nfunc f(p: raw/i32) -> R\n    let cell: raw/(raw/i32) = Raw.allocate(1)\n    return R.init(q: cell)",
+        "0 Value result, untied")]
+    [InlineData("struct Sh {a}\n    public var r: ref/(raw/i32) during a\nfunc f(s: uniq/Sh, p: raw/i32) => ()", "0 Content store 0, 1 Value store 0, untied store 0")]
+    [InlineData(
+        "struct Cell {a}\n    public var keep: Loan<uniq/(raw/i32) during a>\n    public var at: raw/(raw/i32) during a\nfunc f(c: uniq/Cell, p: raw/i32)\n    unsafe => Raw.initialize(c.at, p)",
+        "0 Content store 0, 1 Value store 0, untied store 0")]
+    [InlineData(Shared + "struct S\n    public var x: rc/Bx\nfunc f(s: uniq/S, p: raw/i32)\n    s.x = Bx.init(v: p)@rc", "1 Value store 0, untied store 0")]
+    [InlineData(Shared + "struct S\n    public var x: rc/Bx\nfunc f(s: uniq/S)\n    let q: raw/i32 = Raw.allocate(1)\n    s.x = Bx.init(v: q)@rc", "untied store 0")]
+    [InlineData(Shared + "struct S\n    public var x: rc/Bx\n    public init(x: rc/Bx) => self.x = x@move\nfunc f(p: raw/i32) -> S\n    return S.init(x: Bx.init(v: p)@rc)", "0 Value result, untied")]
+    [InlineData(
+        Shared + "struct S\n    public var x: rc/Bx\n    public init(x: rc/Bx) => self.x = x@move\nfunc f() -> S\n    let q: raw/i32 = Raw.allocate(1)\n    return S.init(x: Bx.init(v: q)@rc)",
+        "untied")]
+    [InlineData(Shared + "struct S\n    public var x: arc/Bx\nfunc f(s: uniq/S, p: raw/i32)\n    s.x = Bx.init(v: p)@arc", "1 Value store 0, untied store 0")]
+    [InlineData(Shared + "struct S\n    public var x: Option<rc/Bx>\nfunc f(s: uniq/S, p: raw/i32) => ()", "1 Value store 0, untied store 0")]
+    [InlineData("struct G<T>\n    public var v: T\n    public var next: raw/G<T>\nfunc f(g: uniq/G<raw/i32>, p: raw/i32) => ()", "1 Value store 0, untied store 0")]
+    [InlineData("func f(p: uniq/(raw/i32))\n    p@follow = Raw.allocate(1)", "untied store 0")]
+    [InlineData("func f(p: uniq/(raw/i32 during static)) => ()", "0 Content store 0, untied store 0")]
+    [InlineData("func f(p: uniq/Option<raw/i32>) => ()", "untied store 0")]
+    [InlineData(RawPointerSyntaxTest.PairHolder + "func f(x: uniq/i32, h: uniq/Holder<raw/i32 during x>, p: raw/i32) => ()", "2 Value store 1, untied store 1")]
+    [InlineData(
+        "struct H<T> {s}\n    internal let loan: Loan<ref/i32 during s>\n    internal var at: raw/i32 during s\n    internal var a: T\n" +
+        "func f(y: ref/i32, h: uniq/(H<raw/i32 during static> during static), p: raw/i32) => ()",
+        "1 Content store 1, 2 Value store 1, untied store 1")]
+    public void OneWalkReachesWhatACallMayWrite(string function, string expected)
+        => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // SPEC 15.6.4, 5.7, 8.1.1 (DECISIONS BU-34, BU-30): a raw layer a pair slot supplies states no Origin, so it is D6's unstated layer
+    // and its holder's hold walk unties it, as `Holder<raw/i32>`'s: a result instance written with the dropped Origin, a call whose
+    // result the pair's original `s/T` gives and a call storing through it. A Type slot keeps the argument's Origin and its row.
+    [Fact]
+    public void APairSuppliedRawLayerIsUnstated()
+    {
+        var c = Bind(RawPointerSyntaxTest.PairHolder + "func id<s/T>(v: s/T) -> s/T => v@move\nfunc idt<T>(v: T) -> T => v@move\n" +
+            "func fill<s/T>(h: uniq/Holder<s/T>, v: s/T) => h.value = v@move\n" +
+            "func make(x: uniq/i32, p: raw/i32 during x) -> Holder<raw/i32 during x> => Holder<raw/i32 during x>.init(v: p)\n" +
+            "func pass(x: ref/i32, p: raw/i32 during x) -> raw/i32 => id(p)\nfunc keep(x: ref/i32, p: raw/i32 during x) -> raw/i32 during x => idt(p)\n" +
+            "func store(x: uniq/i32, q: raw/i32)\n    var h = Holder<raw/i32 during x>.init(v: x@follow@raw)\n    fill(h@uniq, q)\n");
+        Assert.Equal("0 Value result, 1 Value result, 1 Content result, untied", Declared(c, "make"));
+        Assert.Equal(["0 Value result, 0 Content result, untied"], Calls(c, "id"));
+        Assert.Equal(["0 Value result"], Calls(c, "idt"));
+        Assert.Equal(["1 Value store 0, untied store 0"], Calls(c, "fill"));
+    }
+
+    // SPEC 15.3.5, 15.6.4 (the G160-2c reviews' R1 and R4's B1): a Type whose storage grows through an indirection (a raw pointer, an
+    // exclusive borrow, an object handle) has storage no preparation completes (DECISIONS BU-12's limits), so a contract whose hold walk
+    // reaches it is CallRetention.Limit, for an input and a result alike, never an unbounded walk.
+    [Theory]
+    [InlineData("struct G<T>\n    public var v: T\n    public var next: raw/G<(T, T)>\nfunc f(g: uniq/G<i32>, p: raw/i32) => ()")]
+    [InlineData("struct G<T>\n    public var next: raw/G<Option<T>>\n    public var v: i32\nfunc f(g: uniq/G<i32>) => ()")]
+    [InlineData("struct G<T> {a}\n    public var next: uniq/(G<Option<T>> during a) during a\n    public var v: i32\nfunc f(g: uniq/G<i32>) => ()")]
+    [InlineData("struct G<T>\n    public var next: raw/G<Option<T>>\n    public var v: i32\n    public init(v: i32)\n        self.next = null\n        self.v = v\nfunc f() -> G<i32> => G<i32>.init(v: 1)")]
+    [InlineData("struct B<T>\n    public var v: T\n    public var next: Option<obj/B<(T, T)>>\nfunc f(g: uniq/B<i32>, p: raw/i32) => ()")]
+    public void AGrowingStoredTypeIsALimit(string function)
+        => Assert.Equal("limit", Declared(Bind(function + "\n"), "f"));
+
+    // SPEC 23.1.2, 15.6.4 (G240; DECISIONS BU-36): storage whose part Binding did not bind (a Field or Case payload Type that failed,
+    // inline, through a handle, in an instance or a Type argument, or an Origin that did not bind) is Rejected storage, no limit: the part
+    // holds nothing, and the call keeps the rows that hold whatever it is, its repaired program's (fail-before: CallRetention.Limit).
+    [Theory]
+    [InlineData(Handle, "Missing", "i32", "f", "")]
+    [InlineData(Bad + "func f(b: uniq/Bad, p: raw/i32) => ()\nfunc g(b: uniq/Bad) => f(b, null)\n", "Missing", "i32", "f", "")]
+    [InlineData("enum E\n    A(MISSING)\n    C\nfunc f(e: uniq/E, p: raw/i32) => ()\nfunc g(e: uniq/E) => f(e, null)\n", "Missing", "i32", "f", "")]
+    [InlineData("struct Bad<T>\n    public var v: T\n    public var m: MISSING\nfunc f<T>(b: uniq/Bad<T>, p: raw/i32) => ()\nfunc g(b: uniq/Bad<i32>) => f(b, null)\n", "Missing", "i32", "f", "")]
+    [InlineData("struct Bad<T>\n    public var v: T\n    public var m: MISSING\nfunc id<T>(x: ref/T) -> ref/T during x => x\nfunc g(b: Bad<i32>)\n    let r = id(b@ref)\n", "Missing", "i32", "id", "0 Value result")]
+    [InlineData("struct Sx\n    public var m: MISSING\n    public var p: raw/i32\nfunc f(s: uniq/Sx, q: raw/i32) => ()\nfunc g(s: uniq/Sx) => f(s, null)\n", "Missing", "i32", "f", "1 Value store 0, untied store 0")]
+    [InlineData(Keep2, "Missing", "i32", "keep2", "0 Value result")]
+    [InlineData(Stash, "Missing", "i32", "stash", "0 Content store 0, 1 Value store 0")]
+    [InlineData(Selection, "missing", "source", "choose", "0 Content result")]
+    [InlineData(Pick, "missing", "s", "choose", "")]
+    [InlineData(Fielded, "C{x}\n        origin x.s == zz", "C{x}\n        origin x.s == s", "init", "0 Value result | 0 Value result")]
+    [InlineData(Fielded, "Missing", "C{x}\n        origin x.s == s", "init", "0 Value result | 0 Value result")]
+    public void RejectedStorageKeepsTheRowsThatHoldWhateverItIs(string source, string failed, string repaired, string callee, string expected)
+    {
+        var rejected = MinimalEmissionTest.Analyze(source.Replace("MISSING", failed, StringComparison.Ordinal));
+        Assert.False(rejected.Binding.Result.IsComplete);
+        Assert.Equal(expected, string.Join(" | ", Calls(rejected, callee)));
+        Assert.Equal(expected, string.Join(" | ", Calls(Bind(source.Replace("MISSING", repaired, StringComparison.Ordinal)), callee)));
+    }
+
+    // SPEC 23.1.1, 15.3.5 (DECISIONS BU-12, BU-36): a genuine limit stays CallRetention.Limit beside a part Binding did not bind, which
+    // ends no storage walk, so the limit is met in either Field order and either query order: a Field of height 65 before or after the
+    // failed Field, a growing Field beside it, a growing Type in a program failing elsewhere, and X and T, which reach T's Box^64 Field.
+    [Theory]
+    [InlineData(Tall, "f")]
+    [InlineData(Box + "struct Bad\n    public var big: " + Box65 + "\n    public var m: Missing\nfunc f(b: uniq/Bad, p: raw/i32) => ()\nfunc g(b: uniq/Bad) => f(b, null)\n", "f")]
+    [InlineData(Growing, "f")]
+    [InlineData("func inspect<T>(value: ref/T) => ()\nstruct Nest<T>\n    public var value: T\n    public var next: Option<rc/Nest<(T, T)>> = .None\nfunc h(n: ref/Nest<i32>) => inspect(n)\nfunc other() => missing\n", "inspect")]
+    [InlineData(Beyond + "func g(t: uniq/T, x: uniq/X)\n    ft(t, null)\n    fx(x, null)\n", "ft fx")]
+    [InlineData(Beyond + "func g(t: uniq/T, x: uniq/X)\n    fx(x, null)\n    ft(t, null)\n", "fx ft")]
+    public void AGenuineLimitStaysBesideRejectedStorage(string source, string callees)
+    {
+        var c = MinimalEmissionTest.Analyze(source.Replace("MISSING", "Missing", StringComparison.Ordinal));
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.All(callees.Split(' '), x => Assert.Equal(["limit"], Calls(c, x)));
+    }
+
+    // DECISIONS BU-36: the hold walk walks an enum's Cases only where its instance substituted them, the storage its verdict covered, so
+    // an enum whose failed payload leaves E<(T, T)> unsubstituted ends (an unbounded walk before the rule) with no row. Its growth through
+    // Case B is not seen (InstanceStorage.Cases holds no per-case parts; PLAN G242), while its repair's is the limit.
+    [Fact]
+    public async Task AnEnumWithAFailedPayloadIsWalkedAsFarAsItSubstitutes()
+    {
+        const string Source = "enum E<T>\n    A(MISSING)\n    B(rc/E<(T, T)>)\nfunc f(e: uniq/E<i32>, p: raw/i32) => ()\nfunc g(e: uniq/E<i32>) => f(e, null)\n";
+        var c = MinimalEmissionTest.Analyze(Source.Replace("MISSING", "Missing", StringComparison.Ordinal));
+        var rows = Task.Run(() => Calls(c, "f"), TestContext.Current.CancellationToken);
+        Assert.Equal([string.Empty], await rows.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        Assert.Equal(["limit"], Calls(Bind(Source.Replace("MISSING", "i32", StringComparison.Ordinal)), "f"));
+    }
+
+    // SPEC 15.6.4, V16 (G243; DECISIONS BU-35): a row depends on the Type at a position and the Type its declaration writes there, not on
+    // the route to it through the interned Types, so the hold walk visits each position once per output. Chain's Types grow as trees
+    // eight wide (8^(n-1) leaves) but are 2n distinct Types, reached through rc handles, Tuples, fixed arrays and enum payloads, raw leaves
+    // included; walked as trees they take seconds to minutes, which the bound reports instead of hanging the run.
+    [Theory]
+    [InlineData("struct", 11, "")]
+    [InlineData("array", 11, "")]
+    [InlineData("enum", 11, "")]
+    [InlineData("raw", 10, "1 Value store 0, untied store 0")]
+    public async Task AHoldWalkVisitsEachPositionOnce(string form, int n, string expected)
+    {
+        var c = Bind(Chain(form, n));
+        var rows = Task.Run(() => Declared(c, "f"), TestContext.Current.CancellationToken);
+        Assert.Equal(expected, await rows.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
     }
 
     // Every call of the Kimi library and the milestone programs, an intrinsic's included, has a retention under its substitution, for the
@@ -518,13 +767,16 @@ public sealed class RetentionTest
     }
 
     // A warm rebind that reads every call's retention again, C1 (also under a calling definition's premises) and C8, allocates nothing:
-    // an unchanged pass reuses the rows.
+    // an unchanged pass reuses the rows, and interning an instance and an Item whose pair argument states a raw Origin binds it in
+    // TyCtxt's reused scratch (DECISIONS BU-34).
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmRebindReusesRetentions()
     {
         var c = Bind(Erased + "func use(h: ref/H{s}, q: uniq/i32 during s.a) -> i32\n    let x = q@follow@ref\n    let r = apply(h.k@ref, x)\n    return h.k(r)@follow\n" +
-            "func first<T>(x: ref/T, y: ref/T) -> ref/T during x => x\nfunc both<T>(v: ref/T) -> ref/T => first(v, v)\nvar a = 1\nlet p = first(a@ref, a@ref)\n");
+            "func first<T>(x: ref/T, y: ref/T) -> ref/T during x => x\nfunc both<T>(v: ref/T) -> ref/T => first(v, v)\n" + RawPointerSyntaxTest.PairHolder +
+            "func id<s/T>(v: s/T) -> s/T => v@move\nfunc hold(x: ref/i32, q: raw/i32) -> raw/i32\n    let h = Holder<raw/i32 during x>.init(v: q)\n" +
+            "    let g = id<raw/i32 during x>\n    return g(h.value)\nvar a = 1\nlet p = first(a@ref, a@ref)\n");
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => (Node: x, Definition: Definition(x))).ToArray();
         Assert.True(calls.Length >= 4);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
@@ -575,6 +827,19 @@ public sealed class RetentionTest
         return c;
     }
 
+    // D1 to Dn (structs, or enums whose Case A holds the part), each holding the next through an rc handle at a Type argument eight
+    // wide (a Tuple; for `array`, a fixed array and seven), the last holding the argument itself; f's input instantiates D1 at i32, or
+    // at `raw/i32` for `raw`.
+    private static string Chain(string form, int n)
+    {
+        var argument = form == "array" ? $"([2 of T], {string.Join(", ", Enumerable.Repeat("T", 7))})" : $"({string.Join(", ", Enumerable.Repeat("T", 8))})";
+        return string.Concat(Enumerable.Range(1, n).Select(i =>
+        {
+            var part = i < n ? $"rc/D{i + 1}<{argument}>" : form == "array" ? "[2 of T]" : "T";
+            return form == "enum" ? $"enum D{i}<T>\n    A({part})\n    B\n" : $"struct D{i}<T>\n    public var x: {part}\n";
+        })) + $"func f(d: uniq/D1<{(form == "raw" ? "raw/i32" : "i32")}>, p: raw/i32) => ()\n";
+    }
+
     private static FunctionKoto Function(Compilation c, string name)
         => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == name);
 
@@ -618,5 +883,5 @@ public sealed class RetentionTest
 
     private static string Show(CallRetention retention)
         => retention.IsLimit ? "limit" : string.Join(", ", retention.Rows.ToArray().Select(static x => $"{x.Input} {x.Kind} {(x.Output == Retention.Result ? "result" : $"store {x.Output}")}")
-            .Append(retention.Untied ? "untied" : null).OfType<string>());
+            .Append(retention.Untied ? "untied" : null).OfType<string>().Concat(retention.UntiedStores.ToArray().Select(static x => $"untied store {x}")));
 }

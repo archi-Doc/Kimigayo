@@ -6,8 +6,8 @@ namespace Kimi.Compiler.Mir;
 
 // A5's problem codes and witness sites (A3 5's A6 table, 6.4): a conflict's code (a Loan found in its reservation holder is a reservation
 // conflict, else the check's), a location's subject and source (its statement's or terminator's), a Loan's anchor (its issuing location's
-// subject, D14), a witness holder's next use in its chain, and a Loan problem's subject and facts built from them (Facts), which
-// MirBorrows.Reports records.
+// subject, D14), a witness holder's next use in its chain, and a Loan problem's or the own-step Warning's subject and facts built from
+// them (Facts), which MirBorrows.Reports records.
 // Must not record a problem or decide which problem a conflict becomes (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {

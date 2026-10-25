@@ -19,8 +19,10 @@ namespace Kimi.Compiler.Backend;
 // call of that Type writes (ModuleCodegen.Adapter) and calls what the source's call runs with its own parameters and the location it
 // received (Forward): a ClosureErasure's Shared Closure body with its environment (the word spilled for an inline one, the heap pointer) and
 // a null context; an ItemAdapter's what its Item's call runs (FunctionCodegen.Closures' Runs: a function's body, a requirement Item's
-// witness, a compiler function's routine row with its slot-less values, or that row's unit's located Unsupported_Kd at the adapter's site);
-// a Never-result callee leaves the entry's result unused and ends it unreachable (SPEC 10.7).
+// witness, a virtual function's slot through the receiver parameter's object, a compiler function's routine row with its slot-less values,
+// or that row's unit's located Unsupported_Kd at the adapter's site; an update Item's entry writes the update over its own parameters,
+// FunctionCodegen.Updates, DECISIONS R5-M116); a Never-result callee leaves the entry's result unused and ends it unreachable (SPEC 10.7),
+// also where the entry's own result is another (a slot's signature is its Item's own, ModuleCodegen.Slot).
 // A Function value's glue row (DestroyErased): its table's drop entry, when present, at its address.
 internal sealed partial class FunctionCodegen
 {
@@ -42,11 +44,17 @@ internal sealed partial class FunctionCodegen
         var targets = collector.Set.Targets(item);
         var (key, represented) = (collector.Set.Items[item].Key, collector.Set.Items[item].RepresentativeType!);
         var closure = key.Kind == MonoKind.ClosureErasure;
+        if (!closure && LegacyRuntimeHelpers.Row(represented.Symbol?.CompilerFunction ?? CompilerFunctionKind.None) is { Updates: true } row)
+        {
+            this.WriteUpdateEntry(item, entry, row.Writer, targets.Length > 0 ? targets[0].Item : -1); // Its direct call's row (FunctionCodegen.Updates).
+            return;
+        }
+
         var given = default(ReadOnlySpan<Value>);
-        var callee = closure
-            ? this.module.Signature(targets[0].Item)
+        var run = closure
+            ? (this.module.Signature(targets[0].Item) is { } body ? new Run(body, null) : null)
             : this.Runs(represented, targets.Length > 0 ? targets[0].Item : -1, key.Function!.Components[1], default, out given);
-        if (callee is null || this.Laid(represented) is not { } source)
+        if (run is not { Signature: var callee, Slot: var slot } || this.Laid(represented) is not { } source)
         {
             return; // Recorded: a row not written yet, or a broken contract.
         }
@@ -57,7 +65,9 @@ internal sealed partial class FunctionCodegen
         this.abi = entry;
         output.Write(entry.GetDefinition(exported: false));
         output.Write("entry:\n");
-        var forwarded = closure ? this.Forward(callee, [this.Environment(heap), new('n', 0)], out var result) : this.Forward(callee, given, out result);
+        var forwarded = closure
+            ? this.Forward(callee, [this.Environment(heap), new('n', 0)], null, out var result)
+            : this.Forward(callee, given, slot, out result);
         if (!forwarded)
         {
             return; // A broken contract, recorded.
@@ -85,8 +95,7 @@ internal sealed partial class FunctionCodegen
 
         var function = this.InstanceType(statement.Place);
         var operand = this.body.Operands[statement.Rvalue.Start];
-        var type = operand.Kind == MirOperandKind.Const
-            ? this.collector.TypeOf(this.item, this.body.Consts[operand.Arg].Type) : this.InstanceType(operand.Place);
+        var type = this.InstanceType(operand);
         if (this.Laid(type) is not { } source || this.Laid(function) is not { } handle)
         {
             return; // A broken contract, recorded.
@@ -172,8 +181,9 @@ internal sealed partial class FunctionCodegen
 
     // An adapter's call of its callee (PD3): each callee parameter takes the adapter's own of its kind and logical index (a value, the
     // result slot, the location the erased call passed, SPEC 22.5.1), a parameter without an operand (Given: an environment or a context)
-    // the next given value; its value (none for a void callee). False, with InternalInvariant_Kd, where the adapter has no such parameter.
-    private bool Forward(FunctionAbi callee, ReadOnlySpan<Value> given, out Value? result)
+    // the next given value, then the call of its callee value, which the slot it runs through, if any, makes (EntryOf); its value (none for a
+    // void callee). False, with InternalInvariant_Kd, where the adapter has no such parameter.
+    private bool Forward(FunctionAbi callee, ReadOnlySpan<Value> given, BindingSymbol? slot, out Value? result)
     {
         result = null;
         var parameters = callee.Parameters;
@@ -197,7 +207,8 @@ internal sealed partial class FunctionCodegen
             this.arguments[i] = new('p', own);
         }
 
-        result = this.WriteCall(callee, this.arguments.AsSpan(0, parameters.Length));
+        var arguments = this.arguments.AsSpan(0, parameters.Length);
+        result = this.WriteCall(callee, arguments, this.EntryOf(callee, slot));
         return true;
     }
 

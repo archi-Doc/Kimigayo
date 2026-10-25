@@ -81,13 +81,12 @@ public class BitConversionTest
     public void BitConversionsEmitNoChecks()
     {
         var ir = ScalarEmissionTest.EmitFixture("BitInstructions", "var f: f32 = 1.5\nlet a = f@bits<u32>\nvar u: u64 = 1\nlet b = u@bits<f64>\nConsole.writeLine(\"ok\")", "ok\n");
-        var start = ir.IndexOf("define internal void @__kimi_entry_body", StringComparison.Ordinal);
-        var body = ir[start..ir.IndexOf("\n}\n", start, StringComparison.Ordinal)];
-        Assert.Contains(" = bitcast float ", body);
-        Assert.Contains(" = bitcast i64 ", body);
-        Assert.DoesNotContain("icmp", body);
-        Assert.DoesNotContain("fcmp", body);
-        Assert.DoesNotContain("br i1", body);
+        var body = GeneratedIr.Parse(ir).Startup.Instructions;
+        Assert.Contains(body, static x => x.Shape.StartsWith("bitcast float ", StringComparison.Ordinal));
+        Assert.Contains(body, static x => x.Shape.StartsWith("bitcast i64 ", StringComparison.Ordinal));
+        Assert.DoesNotContain(body, static x => x.Opcode == "icmp");
+        Assert.DoesNotContain(body, static x => x.Opcode == "fcmp");
+        Assert.DoesNotContain(body, static x => x.Shape.StartsWith("br i1 ", StringComparison.Ordinal));
     }
 
     [Theory]

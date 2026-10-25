@@ -8,7 +8,8 @@ namespace Kimi.Compiler.Mir;
 //   the Type of the step it extends (Tables, Admits); and each Place MirUses reports (Place): in range (IsValid), its first step
 //   admitted by its root's Type.
 // - Inputs: the body's tables; each location's Places with their access. Outputs: Local, TargetRange, Scope, Opaque, Projection,
-//   UnknownKind and Place findings; a written root's write bits for G131 and G136 (MirValidator.Diverged, MirValidator.Inputs).
+//   UnknownKind and Place findings; a written root's write bits for G131 and G136 (MirValidator.Diverged, MirValidator.Inputs); a valid
+//   Place for G191's rule of its static root (MirValidator.Statics).
 // - Invariants: Tables returns false exactly when a projection chain or an Opaque site cannot be walked, and Validate then stops; a
 //   scope chain that cannot be walked marks the body Unscoped, so Validate runs every check but Entries.
 // - Prohibitions: no rule of the operation a location performs (MirValidator.Blocks, .Rvalues, .Calls) and no Type agreement.
@@ -25,6 +26,7 @@ internal sealed partial class MirValidator
                 return;
             }
 
+            this.Accessed(place);
             if ((access & MirAccess.Writes) != 0 && place.Root >= 0)
             {
                 writes[place.Root] |= OtherWrite;

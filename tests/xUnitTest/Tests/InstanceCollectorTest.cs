@@ -609,6 +609,41 @@ public sealed class InstanceCollectorTest
         Assert.Equal(["Fn read [Leaf<string>]", "Fn nested [Base<string>]"], Targets(program, set, "VTable Leaf<string>"));
     }
 
+    // K 4.5 row 8, SPEC 13.6.2, 8.14 (DECISIONS R5-M111): a case adaptation whose instance's case creates an object is a creation, its
+    // payload's descriptor, one for the obj and rc instances; its owner instance, an identity, has none.
+    [Fact]
+    public void ACaseAdaptationThatCreatesIsItsPayloadsDescriptor()
+    {
+        var (program, set) = Collect("func box<s/T>(value: T) -> s/T\n    s is owner or object\n    T is ObjectPayload\n    return value@move@s\n" +
+            "let a = box<i32>(6)\nlet b = box<obj/i32>(7)\nlet c = box<rc/i32>(8)\n");
+        Assert.Empty(set.Records);
+        var boxes = Enumerable.Range(0, set.Items.Length).Select(x => Label(program, set.Items[x])).Where(static x => x.StartsWith("Fn box", StringComparison.Ordinal));
+        Assert.Equal([0, 1, 1], boxes.Select(x => Calls(program, set, x).Count(static y => y == "ObjectDescriptor i32")));
+        Assert.Single(set.Items.ToArray(), x => Label(program, x) == "ObjectDescriptor i32");
+    }
+
+    // SPEC 15.7.1, 4.9.6 (DECISIONS R5-M116): replace destroys its target's old value in place, Binding's published row, so its call
+    // targets the glue of that Type when it may need a drop, as its Item's Value call and its adapter do; an i32 needs none, and exchange
+    // and swap destroy nothing.
+    [Fact]
+    public void AReplaceTargetsTheGlueOfTheValueItDestroysInPlace()
+    {
+        var (program, set) = Collect("struct Res\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n" +
+            "func r(t: uniq/Res, v: Res) => Kimi.Intrinsics.replace(t, with: v@move)\nfunc n(t: uniq/i32) => Kimi.Intrinsics.replace(t, with: 2)\n" +
+            "func e(t: uniq/Res, v: Res) -> Res => Kimi.Intrinsics.exchange(t, with: v@move)\n" +
+            "func s(a: uniq/Res, b: uniq/Res) => Kimi.Intrinsics.swap(a, b)\n" +
+            "func v(t: uniq/Res, w: Res)\n    let f = Kimi.Intrinsics.replace<Res>\n    f(t, w@move)\n" +
+            "func a() -> (uniq/Res, Res) -> () => Kimi.Intrinsics.replace\n");
+        Assert.Empty(set.Records);
+        Assert.Equal(["DropGlue Res"], AtCalls(program, set, "Fn r"));
+        Assert.Equal([string.Empty], AtCalls(program, set, "Fn n"));
+        Assert.Equal([string.Empty], AtCalls(program, set, "Fn e"));
+        Assert.Equal([string.Empty], AtCalls(program, set, "Fn s"));
+        Assert.Equal(["DropGlue Res"], AtCalls(program, set, "Fn v"));
+        var adapter = Assert.Single(Enumerable.Range(0, set.Items.Length), x => set.Items[x].Key.Kind == MonoKind.ItemAdapter);
+        Assert.Equal(["DropGlue Res"], set.Targets(adapter).ToArray().Select(x => Label(program, set.Items[x.Item])));
+    }
+
     // SPEC 13.6.4, 8.15.3 (DECISIONS R5-M74): a runtime Type test and a clone acquire nothing and need no layout, so neither has a target:
     // a test of a struct no creation makes, oversized or with a table, collects nothing of it, and a clone of a handle to an oversized
     // payload records nothing; only creations are descriptors.
@@ -1164,26 +1199,6 @@ public sealed class InstanceCollectorTest
             set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
     }
 
-    // F10's contract: the builder ensures only the statics whose initializers it builds, so a staticEnsure that names a static without one is
-    // a broken contract, InternalInvariant_Kd at the access and no target. Binding never gives one, so the test points the ensure at a
-    // function's symbol.
-    [Fact]
-    public void AnEnsureWithoutAnInitializerIsABrokenContract()
-    {
-        var c = MirBuildTest.Compile("group Registry\n    public let total: i32 = 5\nfunc plain() -> i32 => 1\nfunc use() -> i32 => Registry.total\n");
-        var program = c.BuildMir();
-        var use = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "use");
-        var plain = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "plain").Key.Decl!;
-        var block = Enumerable.Range(0, use.Blocks.Length).Single(b => use.Blocks[b].Terminator is
-            { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.StaticEnsure } });
-        var root = use.Static(new(plain, BoundType.Unit, false, false)).Root;
-        var operand = use.AddOperand(MirOperand.Const(use.Const(new(MirConstKind.Integer, BoundType.ISize, ~root))));
-        use.Terminate(block, use.Blocks[block].Terminator with { Start = operand });
-        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
-        Assert.Equal([(DiagnosticCode.InternalInvariant_Kd, "Registry.total")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
-        Assert.Empty(Targets(program, set, "Fn use"));
-    }
-
     // K 4.5 row 9: a DestroyValues call is its Type argument's glue in the item's instance when that Type needs a drop. No library call makes
     // one before R8 (PD21), so the test turns a Raw.allocate call into one.
     [Fact]
@@ -1494,20 +1509,29 @@ public sealed class InstanceCollectorTest
     }
 
     // K 4.9 with a second, non-root module: a record caused in its inlined default moves to the root module's omitting call, and one caused
-    // in its body to the root-module call that first admitted the chain.
+    // in its body to the root-module call that first admitted the chain. take's default, grow<u8>(1, 3), instantiates under the call, so
+    // the builder copies it (DECISIONS R4-M127) with no record of its own, and its resource limit arises inside the copy, at its call in
+    // main's Inlined scope at the library's location; a default its call does not instantiate is no copy, but the builder's Unsupported_Kd at
+    // the call (MirBuildTest.ACopyTheCallDoesNotInstantiateIsAnOpaqueValue, this test's former probe<Array<…65…>> default).
     [Fact]
     public void TheLocationRuleLeavesNonRootModules()
     {
-        var deep = string.Concat(Enumerable.Repeat("Array<", 65)) + "i32" + new string('>', 65);
         var library = "public struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\npublic group Api\n" +
-            $"    public func probe<T>(value: T) -> i32 => 0\n    public func take(x: i32, extra: i32 = probe<{deep}>([])) -> i32 => x + extra\n" +
+            "    public func take(x: i32, extra: i32 = grow<u8>(1, 3)) -> i32 => x + extra\n" +
             "    public func grow<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => grow<Box<T>>(Box<T>.init(value@move), n - 1)\n";
         var c = ModuleBindingTest.Create("public func main() -> ()\n    _ = Lib.Api.take(1)\n    _ = Lib.Api.grow<i32>(1, 3)\n    return\n", library);
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        var program = c.BuildMir();
+        Assert.Empty(program.Records);
+        var main = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "main" });
+        Assert.Contains(
+            main.Blocks.ToArray(),
+            x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "grow", Source.Syntax.Module: 1 } &&
+                main.Scopes[x.Terminator.Source.Scope].Kind == MirScopeKind.Inlined);
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal(
-            [(DiagnosticCode.Unsupported_Kd, "Lib.Api.take(1)"), (DiagnosticCode.GenerationResourceLimit_Kd, "Lib.Api.grow<i32>(1, 3)")],
+            [(DiagnosticCode.GenerationResourceLimit_Kd, "Lib.Api.take(1)"), (DiagnosticCode.GenerationResourceLimit_Kd, "Lib.Api.grow<i32>(1, 3)")],
             set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
         Assert.All(set.Records, static x => Assert.Equal(0, x.Subject.Module));
     }
@@ -1660,6 +1684,25 @@ public sealed class InstanceCollectorTest
 
     private static string[] Targets(MirProgram program, CheckedSet set, string label)
         => set.Targets(Item(program, set, label)).ToArray().Select(x => Label(program, set.Items[x.Item]) + (x.Runtime ? string.Empty : " (check)")).ToArray();
+
+    // The targets at each call site of an item's body whose callee is a compiler function or a value, joined (empty: none).
+    private static string[] AtCalls(MirProgram program, CheckedSet set, string label)
+    {
+        var item = Item(program, set, label);
+        var body = program.Bodies[set.Items[item].BodyOrdinal];
+        var sites = new List<string>();
+        for (var b = 0; b < body.Blocks.Length; b++)
+        {
+            if (body.Blocks[b].Terminator is { Kind: MirTerminatorKind.Call } call &&
+                (call.Callee.Kind == MirCalleeKind.Value || call.Callee.Symbol?.CompilerFunction is not (null or CompilerFunctionKind.None)))
+            {
+                var at = new MirLocation(b, body.Blocks[b].Count);
+                sites.Add(string.Join(", ", set.Targets(item).ToArray().Where(x => x.At == at).Select(x => Label(program, set.Items[x.Item]))));
+            }
+        }
+
+        return [.. sites];
+    }
 
     // An item's targets but the glue of the values its body drops.
     private static string[] Calls(MirProgram program, CheckedSet set, string label)

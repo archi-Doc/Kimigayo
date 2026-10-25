@@ -97,7 +97,6 @@ public class ClosureEnvironmentOriginTest
     [Theory]
     [InlineData("    let n = 7\n    var f = func [var n] () -> i32\n        let r = n@ref\n        n = 1\n        return r@follow\n    let v = f()\n", "n = 1")]
     [InlineData("    let n = 7\n    var f = func [var n] () -> i32\n        let r = id(n@ref)\n        n = 1\n        return r@follow\n    let v = f()\n", "n = 1")]
-    [InlineData("    let n = 7\n    var f = func [var n] () -> i32\n        let r = n@uniq\n        let q = n\n        r@follow = 3\n        return q\n    let v = f()\n", "n")]
     [InlineData("    var n = 7\n    let view = n@uniq\n    var f = func [view] () -> i32\n        let c = view\n        view@follow = 1\n        c@follow = 2\n        return view@follow\n    let v = f()\n", "view")]
     [InlineData("    var n = 7\n    let view = n@uniq\n    var f = func [view] () -> i32\n        let c = view@follow@uniq\n        view@follow = 1\n        c@follow = 2\n        return 0\n    let v = f()\n", "view")]
     [InlineData("    var n = 7\n    var f = func [n@uniq] () -> i32\n        let q = n@follow@ref\n        let s = q@follow\n        n@follow = 3\n        return s * 10 + q@follow\n    let v = f()\n", "n")]
@@ -109,6 +108,47 @@ public class ClosureEnvironmentOriginTest
         var source = "func id(x: ref/i32) -> ref/i32 during x => x\nfunc keep(x: uniq/i32) -> uniq/i32 during x => x\nfunc bump(x: uniq/i32) => x@follow += 50\n" + Main + body;
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((code, text), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
+    }
+
+    private const string Bindings = "    let n = 7\n    let t = (1, 2)\n    var f = func [var n, var t] () -> i32\n";
+
+    private const string View = "    var a: Array<i32> = [1, 2]\n    let view = a@uniq\n    var f = func [view] () -> isize\n";
+
+    private const string OptionView = "    var o: Option<i32> = .Some(1)\n    let view = o@uniq\n    var f = func [view] () -> i32\n";
+
+    // SPEC 7.7.3 (PLAN G147 (3), ledger row 13972.1438): an exclusive Borrow of a `var` environment binding or of a part of it, or an
+    // Exclusive-mode `for` or `match` Subject that is a captured exclusive reference (SPEC 14.6.2, 15.1.6), makes the call Exclusive,
+    // so the body is checked against `uniq/Self` by both the old analysis and the MIR's: using the binding while the child lives is a
+    // Loan conflict, and the twin that uses it before or after the child is valid. The MIR accepted the conflicts, its body borrowing
+    // the binding exclusively through a shared receiver.
+    [Theory]
+    [InlineData(Bindings + "        let r = n@uniq\n        let q = n\n        r@follow = 3\n        return q\n", "n\n        r@follow")]
+    [InlineData(Bindings + "        let r = n@uniq\n        r@follow = 3\n        let q = n\n        return q\n", null)]
+    [InlineData(Bindings + "        let r = (n)@uniq\n        let q = n\n        r@follow = 3\n        return q\n", "n\n        r@follow")]
+    [InlineData(Bindings + "        let r = t.0@uniq\n        let q = t.0\n        r@follow = 3\n        return q\n", "t.0\n        r@follow")]
+    [InlineData(View + "        var n: isize = 0\n        for x in view\n            n = view@follow.length\n            x@follow += 1\n        return n\n", "view@follow.length")]
+    [InlineData(View + "        let n = view@follow.length\n        for x in view\n            x@follow += 1\n        return n\n", null)]
+    [InlineData(OptionView + "        match view\n            .Some(let w) => w@follow = peek(view@follow@ref)\n            .None => return 1\n        return 0\n", "view@follow@ref")]
+    [InlineData(OptionView + "        let k = peek(view@follow@ref)\n        match view\n            .Some(let w) => w@follow = k\n            .None => return 1\n        return 0\n", null)]
+    public void AnExclusiveUseOfAnEnvironmentBindingIsCheckedAgainstTheExclusiveReceiver(string body, string? at)
+    {
+        var source = "func peek(o: ref/Option<i32>) -> i32 => 1\n" + Main + body + "    let v = f()\n";
+        var c = VerifiedSpecExampleTest.Bind(source);
+        c.Analyze();
+        var (common, old, passed, mir) = MirDifferenceLedger.Sides(c, c.BuildMir());
+        foreach (var side in new List<MirDifferenceLedger.Entry>[] { [.. common, .. old, .. passed], [.. common, .. mir] })
+        {
+            var errors = side.Where(static x => DiagnosticEntries.TryGet(x.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error).ToArray();
+            if (at is null)
+            {
+                Assert.Empty(errors);
+                continue;
+            }
+
+            var error = Assert.Single(errors);
+            Assert.Equal(DiagnosticCode.ComparisonLoanConflict_Kd, error.Code);
+            Assert.StartsWith(at, source[error.Node.Span.Start..], StringComparison.Ordinal);
+        }
     }
 
     // Loans on environment bindings end at their last use and stay per Field, as those of locals do.

@@ -29,7 +29,9 @@
 // calls (.Closures.cs), intrinsics (.Intrinsics.cs), the Drop terminator and A2's verdict rows (.Drops.cs) and drop flags (.Flags.cs); a
 // value's destruction one level per Type, a DropGlue item's function or an Open row's (.Glue.cs); the common Function values: erasure, the
 // adapter items' functions and a Function value's glue row (.Erasures.cs); a static's slot, its ensure function and an access's state
-// test (.Statics.cs).
+// test (.Statics.cs); the handle operations: a creation, a clone, a runtime Type test and a virtual slot's entry (.Objects.cs); the
+// whole-value updates, replace, exchange and swap (.Updates.cs), and the inline storage kernels (.Storage.cs), the legacy rows of compiler
+// functions (DECISIONS R5-M116).
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact or a case selection
 // (MirCases decides a PairLayer under the item's view), compose a Subst or a Type (TypeOf does), resolve a callee, or use LINQ, Supports*,
 // out-string failures or catch-alls. An Opaque value (the gate admits none), a Type TypeOf cannot make and a Layout outcome other than
