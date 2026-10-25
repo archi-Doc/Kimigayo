@@ -3,8 +3,9 @@
 // The published closure definition (C2; ClosureDef, plan 5.3; DECISIONS R4-M126, R4-M128).
 // - Responsibility: what a binding of an anonymous function publishes: each capture's source and environment binding (Storage), the
 //   environment Type, the signature, the evaluating body, and the call receiver facts (SPEC 7.7.3): the strongest requirement over
-//   every admitted case (Receiver), the requirement every case has (CaseFreeReceiver), each capture whose bare acquisition Reborrows
-//   by case (BoundCapture.BareReborrows), the first Exclusive cause, and whether this binding has classified them (Classified).
+//   every admitted case (Receiver), the requirement every case has (CaseFreeReceiver), each capture whose acquisition by value
+//   Reborrows by case (BoundCapture.BareReborrows), the first Exclusive cause, and whether this binding has classified them
+//   (Classified).
 // - Inputs: Binding.Closures (the literal's binding: Signature, EnvironmentType, EvaluatingBody and the resets), Binding.Captures
 //   (Storage), Binding.ClosureReceivers (the receiver facts).
 // - Outputs: Receiver for acquisition and every receiver reader (value calls, candidate selection and Callable proofs, effects, the
@@ -26,8 +27,9 @@ public readonly record struct BoundCapture(BindingSymbol Source, BindingSymbol E
     // How the entry initializes its environment binding (SPEC 7.7.2), as the HIR Adjust column states acquisitions.
     internal HirAdjust Adjust => HirAdjust.Of(this.Environment.CaptureAcquisition);
 
-    // SPEC 7.7.3, 8.14: a bare acquisition of the environment binding itself, in the body or by a nested Closure's bare entry,
-    // Reborrows in some admitted case, so the call is Exclusive exactly in the cases where the binding's case Type is exclusive.
+    // SPEC 7.7.3, 8.14: an acquisition of the environment binding itself by value without an operator, in the body (bare, or an
+    // argument taken by value) or by a nested Closure's bare entry, Reborrows in some admitted case, so the call is
+    // Exclusive exactly in the cases where the binding's case Type is exclusive.
     internal bool BareReborrows { get; init; }
 }
 

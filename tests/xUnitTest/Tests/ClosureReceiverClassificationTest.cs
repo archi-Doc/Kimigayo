@@ -170,14 +170,15 @@ public class ClosureReceiverClassificationTest
     public void AScalarReadThroughACapturedExclusiveReferenceIsShared()
         => ScalarEmissionTest.EmitFixture("ClosureReceiverScalarRead", "var n = 7\nlet view = n@uniq\nlet f = func [view] () => view@follow + 1\nlet r = f()\nrequire r == 8 and f() == 8 else => $abort(\"r\")", string.Empty);
 
-    private const string PairHead = "func f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n";
+    private const string PairHead = "func take<t/U>(y: t/U)\n    t is owner or uniq\n    U is Copy\n    return\nfunc f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n";
     private const string PairMain = "public func main() -> ()\n    var n: i32 = 1\n    f(n)\n";
 
     // SPEC 7.7.3, 8.14 (DECISIONS R4-M126 PD13): a bare acquisition of a captured pair layer Reborrows exactly in its exclusive cases,
     // so the call is Exclusive there. A Closure publishes the receiver every case has and marks such captures; a case's receiver is
     // the case-free one, raised to Exclusive where a marked capture's case Type is an exclusive layer, and Receiver is the strongest
     // over the cases. Each row: per Closure in source order, the case-free receiver, the owner and uniq cases' receivers and the
-    // marked captures. A bare Reborrow of a Place reached through a capture counts in every case.
+    // marked captures. An argument taken by value acquires as a bare use does; a Reborrow of a Place reached through a capture, and an
+    // explicit case adaptation of a capture that is no pair layer, count in every case.
     [Theory]
     [InlineData("    var h = func [value] () -> ()\n        let local = value\n        _ = local\n    h()\n    h()\n", "Ref Ref Uniq [value]")]
     [InlineData("    let h = func [value] () -> ()\n        let local = value\n        _ = local\n    h()\n    h()\n", "Ref Ref Uniq [value]")]
@@ -185,8 +186,10 @@ public class ClosureReceiverClassificationTest
     [InlineData("    var h = func [value] () -> ()\n        var g = func [value] () -> ()\n            let local = value\n            _ = local\n        g()\n    h()\n", "Ref Ref Uniq [value] | Ref Ref Uniq [value]")]
     [InlineData("    var k: i32 = 0\n    var h = func [value, var k] () -> ()\n        let local = value\n        k += 1\n", "Uniq Uniq Uniq [value]")]
     [InlineData("    let text = \"abc\"\n    let h = func [value, text@move] () -> ()\n        let local = value\n        let t = text@move\n", "Owner Owner Owner [value]")]
+    [InlineData("    var h = func [value] () -> ()\n        take(value)\n", "Ref Ref Uniq [value]")]
     [InlineData("    var h = func [value] () -> ()\n        _ = 1\n", "Ref Ref Ref []")]
     [InlineData("    let pair = (value, 1)\n    var h = func [pair@move] () -> ()\n        let local = pair.0\n        _ = local\n", "Uniq Uniq Uniq []")]
+    [InlineData("    var local: i32 = 1\n    var h = func [var local] () -> ()\n        let k = local@s/i32\n", "Uniq Uniq Uniq []")]
     public void EachAdmittedCaseHasTheReceiverItsFactsGive(string body, string expected)
     {
         var c = MinimalEmissionTest.Analyze(PairHead + body + PairMain);
@@ -204,6 +207,18 @@ public class ClosureReceiverClassificationTest
 
         Assert.Equal(expected, string.Join(" | ", facts));
     }
+
+    // SPEC 3.5, 8.14, 7.7.3: an argument a call takes by value acquires a captured pair layer as each case's Type does, so it Reborrows
+    // in the exclusive cases and the call is Exclusive there: the strongest receiver is Exclusive, and a `let` Closure's call is
+    // invalid; under admitted cases that only Copy it stays Shared.
+    [Theory]
+    [InlineData("owner or uniq", true)]
+    [InlineData("owner or ref", false)]
+    public void AByValueArgumentOfAPairLayerCaptureIsExclusiveInItsReborrowCases(string admitted, bool exclusive)
+        => AssertCallReceiver(
+            "func take<t/U>(y: t/U)\n    t is " + admitted + "\n    U is Copy\n    return\nfunc outer<s/T>(x: s/T)\n    s is " + admitted + "\n    T is Copy\n" +
+                "    let f = func [x] () -> i32\n        take(x)\n        return 0\n    let v = f()\npublic func main() -> ()\n    var n = 1\n    outer(n)\n",
+            exclusive);
 
     // DECISIONS R4-M126 (N4 (a)): each binding of a Closure classifies its receiver once its body is bound, also when the Closure then
     // fails, as an inferred result that borrows the call's own storage does; a rebinding classifies it again with the same facts.

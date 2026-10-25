@@ -8,9 +8,10 @@
 //   needs it exclusively (one predicate, NeedsExclusively: a write or update, an exclusive Borrow or object view upcast in some
 //   admitted case, an exclusive argument or method or accessor receiver, an Exclusive-mode `for` or `match` Subject, an Exclusive
 //   value call, an exclusive Reborrow at an expected Type or bare), or a nested entry that Reborrows or exclusively
-//   borrows an outer environment binding, makes it Exclusive; every other use borrows (Shared). A bare acquisition of the binding
-//   itself, in the body or by a nested bare entry, that Reborrows in some admitted cases makes it Exclusive in exactly those
-//   (SPEC 8.14): the capture is marked (BoundCapture.BareReborrows); every other use counts in every case (CaseFreeReceiver).
+//   borrows an outer environment binding, makes it Exclusive; every other use borrows (Shared). An acquisition of the binding itself
+//   by value without an operator (bare, an argument its call takes by value, or a nested bare entry) that Reborrows in
+//   some admitted cases makes it Exclusive in exactly those (SPEC 8.14): the capture is marked (BoundCapture.BareReborrows); every
+//   other use counts in every case (CaseFreeReceiver).
 // - Inputs: the Closure's bound body (each node's bound symbol, Type, call, value call and conversion), the adaptations Binding
 //   recorded, a nested Closure's published Storage, a loop's entry call and a match's Subject mode; BareReborrows,
 //   BorrowsExclusively, PropertyCall and ProveCopy.
@@ -151,18 +152,18 @@ public sealed partial class Binding
             node.VisitChildren(this);
         }
 
-        // Whether a call's argument operation of the Place lends it to an exclusive parameter.
-        private static bool IsExclusiveArgument(ReadOnlySpan<BoundArgumentOperation> arguments, Koto place)
+        // The operation by which a call takes the Place as an argument, or null.
+        private static BoundArgumentOperation? ArgumentOf(ReadOnlySpan<BoundArgumentOperation> arguments, Koto place)
         {
             foreach (ref readonly var argument in arguments)
             {
-                if (ReferenceEquals(argument.Source, place) && LendsExclusively(argument))
+                if (ReferenceEquals(argument.Source, place))
                 {
-                    return true;
+                    return argument;
                 }
             }
 
-            return false;
+            return null;
         }
 
         // Whether an operation lends its source to an exclusive parameter (SPEC 15.1.5): a Borrow, Reborrow, base borrow or payload
@@ -173,8 +174,8 @@ public sealed partial class Binding
 
         // SPEC 7.7.3, 7.7.2: whether the body uses a Place reached from a capture (the capture itself, a part of it through Fields or
         // elements, a captured referent through a follow, or a raw pointer's referent, `*p` as `p[0]`, SPEC 5.2) exclusively. Such a
-        // body mutates the environment or a captured referent, so the call is Exclusive; `byCase` when that use is a bare acquisition
-        // of the capture itself that Reborrows in some admitted cases, which the capture's case Type tells. A bare Reborrow of a Place
+        // body mutates the environment or a captured referent, so the call is Exclusive; `byCase` when that use is an acquisition of the
+        // capture itself by value that Reborrows in some admitted cases, which the capture's case Type tells. Such a Reborrow of a Place
         // reached through the capture takes that Place's cases, which the capture's do not tell, so it counts in every case: the
         // strongest receiver (PLAN G13).
         private bool UsesExclusively(Koto capture, out bool byCase)
@@ -202,7 +203,7 @@ public sealed partial class Binding
         // borrows it exclusively (an explicit adaptation as Binding.BorrowsExclusively decides it, SPEC 13.5.6), lends it to an
         // exclusive parameter as an argument or a method or accessor receiver, takes it as a `for` or `match` Subject in Exclusive mode
         // (SPEC 14.6.2, 15.1.6), calls it as an Exclusive callee, or acquires it by a Reborrow in an exclusive mode, at an expected Type
-        // or bare; `byCase` when only a bare acquisition of a pair layer that Reborrows in some admitted cases needs it (SPEC 8.14).
+        // or bare; `byCase` when only an acquisition by value of a pair layer that Reborrows in some admitted cases needs it (SPEC 8.14).
         private bool NeedsExclusively(Koto place, out bool byCase)
         {
             var exclusive = place.Parent switch
@@ -212,7 +213,7 @@ public sealed partial class Binding
                 ForKoto loop => ReferenceEquals(loop.Iterable, place) && CallPlan.Of(loop) is { } entry && LendsExclusively(entry.ReceiverOperation),
                 MatchKoto match => ReferenceEquals(match.Expression, place) && BoundMatch.Of(match) is { Mode: SubjectMode.Exclusive },
                 InvocationKoto { BoundValueCall: { } valueCall } => ReferenceEquals(valueCall.CalleeValue, place) && valueCall.ReceiverKind == SemanticsKind.Uniq,
-                InvocationKoto { BoundCall: { } call } => IsExclusiveArgument(call.ArgumentOperations, place),
+                InvocationKoto { BoundCall: { } call } => ArgumentOf(call.ArgumentOperations, place) is { } argument && LendsExclusively(argument),
                 MemberAccessKoto => this.ReceiverOperation(place) is { } receiver && LendsExclusively(receiver),
                 BinaryKoto assignment => assignment.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals && ReferenceEquals(assignment.Left, place),
                 _ => false,
@@ -223,7 +224,11 @@ public sealed partial class Binding
                 return true;
             }
 
-            byCase = IsBareAcquisitionPosition(place) && place.BoundType is { } bare && binding.BareReborrows(bare, place);
+            // SPEC 3.5, 8.14: a Place acquired by value without an operator, bare or as an argument its call takes by value, is acquired
+            // as each case's Type is.
+            byCase = (IsBareAcquisitionPosition(place) ||
+                (place.Parent is InvocationKoto { BoundCall: { } byValue } && ArgumentOf(byValue.ArgumentOperations, place) is { Kind: ArgumentOperationKind.Value })) &&
+                place.BoundType is { } bare && binding.BareReborrows(bare, place);
             return byCase;
         }
 
