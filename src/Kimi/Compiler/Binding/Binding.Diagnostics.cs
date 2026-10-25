@@ -76,8 +76,8 @@ public sealed partial class Binding
     {
         // SPEC 15.6.5: a local initialized by a Borrow shows that Borrow, which is also the related location. An input's well-formedness
         // fails over an Origin that another input of the call supplied, so its Borrow is found in that call.
-        var borrow = BorrowSource(relation.At, relation.Longer) ??
-            (relation.WellFormed && EnclosingCall(relation.At) is { } call ? BorrowSource(call, relation.Longer) : null);
+        var borrow = BorrowSource(relation.At, relation.Supplier) ??
+            (relation.WellFormed && EnclosingCall(relation.At) is { } call ? BorrowSource(call, relation.Supplier) : null);
         // A clause of a Field or Case names its Type's own slots as written there, without `self.`; a Type's clause substituted at
         // a use in a body names the substituted Origins as that body does.
         var typeLevel = relation.Clause is not null && !relation.Substituted && TypeLevelClause(relation.At);
@@ -305,7 +305,7 @@ public sealed partial class Binding
         {
             // SPEC 23.1: a closure end is related at the anonymous function's header, from `func` through the parameter list.
             var header = SourceSpan.FromBounds(closure.Span.Start, Math.Max(closure.Span.Start, closure.HeaderEnd));
-            var at = relation.At is CodeBlockKoto ? BorrowSource(relation.At, relation.Longer) ?? relation.At : relation.At;
+            var at = relation.At is CodeBlockKoto ? BorrowSource(relation.At, relation.Supplier) ?? relation.At : relation.At;
             node.Report(requirement, code, note: note, evidence: evidence, related: related, relatedSpans: [("origin", closure, header, null)], at: at);
             return;
         }

@@ -157,6 +157,27 @@ public class ClosureEnvironmentOriginTest
 
     private const string Unsatisfied = nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd);
 
+    // BU's re-check 2 (B1-B3, g3): two environment Borrows, an implicit Borrow argument, composite destinations and local regions.
+    private const string Second = "func second(x: ref/i32, y: ref/i32) -> ref/i32 during y => y\n";
+
+    private const string TwoEnv = Second + EnvBorrow + "    let m: i32 = 2\n";
+
+    private const string Pass = "func pass(x: ref/i32) -> ref/i32 => x\n";
+
+    private const string EnvStore = "func use(p: uniq/i32, q: uniq/(ref/i32 during p)) -> i32\n    let n: i32 = 1\n";
+
+    private const string G6SecondStore = "func second(x: ref/i32, y: uniq/i32) -> uniq/i32 during y => y\n" + G6Single + "    let n: i32 = 1\n" +
+        "    var c = func [p@move, q@move, n] () -> i32\n        q@follow = second(n@ref, p)\n        return 0\n    return 0\n";
+
+    private const string OptionStoreInto = "func use(p: uniq/i32, q: uniq/Option<ref/i32 during p>) -> i32\n    let n: i32 = 1\n" +
+        "    var c = func [q@move, n] () -> i32\n        let o: Option<ref/i32> = .Some(n@ref)\n        q@follow = o\n        return 0\n    return 0\n";
+
+    private const string RegionStore = "func use(p: uniq/i32, q: uniq/(ref/i32 during p), s: ref/i32 during p) -> i32\n    let n: i32 = 1\n" +
+        "    var c = func [q@move, n, s] () -> i32\n        var r = s\n        r = n@ref\n        q@follow = r\n        return 0\n    return 0\n";
+
+    private const string RegionMeet = "func use(p: ref/i32, b: bool) -> i32\n    let n: i32 = 1\n    let c = func [n, p, b] () -> ref/i32 during p\n" +
+        "        var r = if b => n@ref else => p\n        return r\n    return 0\n";
+
     // S1 (PLAN G65): these bodies were accepted, and the first aborted at run time with the write observed through `r`.
     [Theory]
     [InlineData("    let n = 7\n    var f = func [var n] () -> i32\n        let r = n@ref\n        n = 1\n        return r@follow\n    let v = f()\n", "n = 1")]
@@ -326,6 +347,10 @@ public class ClosureEnvironmentOriginTest
     [InlineData("func ok(p: ref/i32) -> i32\n    var o: Option<ref/i32> = .None\n    var f = func [var o] (n: i32) -> i32\n        match o\n            .Some(let r) => return r@follow\n            _ => return n\n    o = .Some(p)\n    return f@uniq(1)\n")]
     [InlineData("func ok() -> i32\n    let n: i32 = 1\n    var v = n@ref\n    let q = v@follow@raw\n    var f = func [var q@move] () -> i32 => 0\n    return f@uniq()\n")]
     [InlineData("func ok() -> i32\n    var arr: Array<ref/i32 during static> = []\n    let f = func [arr@move] () -> ref/i32 => arr[0]\n    return f()@follow\n")]
+    [InlineData(TwoEnv + "    let c = func [n, m] () -> i32 => second(n@ref, m@ref)@follow\n    return c()\n")]
+    [InlineData(Pass + EnvBorrow + "    let c = func [n] () -> i32 => pass(n)@follow\n    return c()\n")]
+    [InlineData(EnvBorrow + "    let c = func [n] () -> i32\n        let o: Option<ref/i32> = .Some(n@ref)\n        return 0\n    return c()\n")]
+    [InlineData(EnvBorrow + "    let c = func [n, p] () -> i32\n        var r = p\n        r = n@ref\n        return r@follow\n    return c()\n")]
     public void AnEnvironmentReadOrItsOwnOriginStaysValid(string function)
     {
         foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
@@ -390,6 +415,46 @@ public class ClosureEnvironmentOriginTest
         Assert.StartsWith(related, From(Assert.Single(error.Related!).Span), StringComparison.Ordinal);
 
         string From(SourceSpan? span) => span is { } value ? source[value.Start..] : string.Empty;
+    }
+
+    // SPEC 23.1, 15.6.5 (DECISIONS R4-M133, the owner's revised rule): a record shows and relates the Borrow that supplied its end, found
+    // by identity with the atom the failing check recorded before resolution: of two environment Borrows the one the failing position
+    // reads (a Tuple's element, a call's result `during y`); an implicit Borrow argument, shown by its text (directly, through a local,
+    // stored, beside a body-local argument); a region's later assignment, its store and a meet's operand; and none when a moved capture's
+    // Reborrow supplies ρ (G6's store beside an unrelated Borrow argument). A fit's record names the fit's whole destination. Each is
+    // its function's one record, also beside an unrelated Binding error (SPEC 23.1.2).
+    [Theory]
+    [InlineData(TwoEnv + "    let c = func [n, m] () -> ref/i32 during p\n        let t = (n@ref, m@ref)\n        return t.1\n    return 0\n", "t.1", "the borrow m@ref", "m@ref", "ref/i32 during p")]
+    [InlineData(TwoEnv + "    let c = func [n, m] () -> ref/i32 during p => second(n@ref, m@ref)\n    return 0\n", "second(n@ref, m@ref)", "the borrow m@ref", "m@ref", "ref/i32 during p")]
+    [InlineData(G6SecondStore, "second(n@ref, p)", "the closure's call receiver", "func [p@move, q@move, n]", "uniq/i32 during p")]
+    [InlineData(Pass + EnvBorrow + "    let c = func [n] () -> ref/i32 during p => pass(n)\n    return 0\n", "pass(n)", "the borrow n", "n", "ref/i32 during p")]
+    [InlineData(Pass + EnvBorrow + "    let c = func [n] () -> ref/i32 during p\n        let r = pass(n)\n        return r\n    return 0\n", "r\n", "the borrow n", "n", "ref/i32 during p")]
+    [InlineData(Pass + EnvStore + "    var c = func [q@move, n] () -> i32\n        q@follow = pass(n)\n        return 0\n    return 0\n", "pass(n)", "the borrow n", "n", "ref/i32 during p")]
+    [InlineData(Second + EnvBorrow + "    let c = func [n] () -> ref/i32 during p\n        let k: i32 = 2\n        return second(k, n)\n    return 0\n", "second(k, n)", "the borrow n", "n", "ref/i32 during p")]
+    [InlineData(EnvBorrow + "    let c = func [n] () -> Option<ref/i32 during p>\n        let o: Option<ref/i32> = .Some(n@ref)\n        return o\n    return 0\n", "o\n", "the borrow n@ref", "n@ref", "Option<ref/i32 during p>")]
+    [InlineData(EnvBorrow + "    let c = func [n] () -> (ref/i32 during p, i32)\n        let t = (n@ref, 1)\n        return t\n    return 0\n", "t\n", "the borrow n@ref", "n@ref", "(ref/i32 during p, i32)")]
+    [InlineData(OptionStoreInto, "o\n", "the borrow n@ref", "n@ref", "Option<ref/i32 during p>")]
+    public void ARecordShowsTheBorrowThatSuppliedItsEnd(string function, string at, string longer, string related, string destination)
+    {
+        foreach (var beside in new[] { false, true })
+        {
+            var source = function + (beside ? "func unrelated() -> i32\n    let wrong: bool = 3\n    return 0\n" : string.Empty) + "public func main() => ()\n";
+            var records = DiagnosticCorpus.Check(source).Diagnostics;
+            Assert.Equal(beside ? 2 : 1, records.Length);
+            AssertSuppliedRecord(source, Assert.Single(records, static x => x.Code != nameof(DiagnosticCode.TypeMismatch_Kd)), at, longer, related, destination);
+        }
+    }
+
+    // The same for a region's chain, which the old analysis judges until R6-check (a recorded old-path limit: with an unrelated Binding
+    // error it does not run, so no record stands beside that error): a region's later assignment, its store and a meet's operand.
+    [Theory]
+    [InlineData(EnvBorrow + "    let c = func [n, p] () -> ref/i32 during p\n        var r = p\n        r = n@ref\n        return r\n    return 0\n", "r\n", "the borrow n@ref", "n@ref", "ref/i32 during p")]
+    [InlineData(RegionStore, "r\n", "the borrow n@ref", "n@ref", "ref/i32 during p")]
+    [InlineData(RegionMeet, "r\n", "the borrow n@ref", "n@ref", "ref/i32 during p")]
+    public void ARegionsRecordShowsTheBorrowThatSuppliedItsSource(string function, string at, string longer, string related, string destination)
+    {
+        var source = function + "public func main() => ()\n";
+        AssertSuppliedRecord(source, Assert.Single(DiagnosticCorpus.Check(source).Diagnostics), at, longer, related, destination);
     }
 
     // SPEC 23.1.2, DIAGNOSTICS (DECISIONS R4-M133; reviews B1, F3): a pending relation is recorded as a binding-time fit is: a local
@@ -532,5 +597,14 @@ public class ClosureEnvironmentOriginTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+    }
+
+    // One record of ARecordShowsTheBorrowThatSuppliedItsEnd: its code, label, location, related Borrow and destination.
+    private static void AssertSuppliedRecord(string source, CheckDiagnostic error, string at, string longer, string related, string destination)
+    {
+        Assert.Equal((Unproven, $"requires {longer} outlives p, which is not proven"), (error.Code, error.Label));
+        Assert.StartsWith(at, source[error.Span!.Value.Start..], StringComparison.Ordinal);
+        Assert.StartsWith(related, source[Assert.Single(error.Related!).Span!.Value.Start..], StringComparison.Ordinal);
+        Assert.Equal(destination, error.Reason![4].Value);
     }
 }

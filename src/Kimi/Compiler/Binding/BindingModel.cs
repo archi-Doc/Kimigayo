@@ -763,4 +763,8 @@ internal readonly record struct ObjectHandleMode(SemanticsKind Semantics)
 // clause in `Clause` that is judged at the caller's input, where the caller's premises cannot remove it, and `FixedBy` is the input
 // whose equality made a fresh Origin of the call equal to a fixed one, related with the role `relation` (SPEC 15.6.1, Location).
 // `WellFormed` marks the intrinsic relation of an input's instantiated Type (source `wellFormed`, SPEC 15.3.7, 15.6.4 step 3).
-internal readonly record struct OriginRelationFact(Koto At, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, BoundType? Destination, bool Refuted, Koto? Clause = null, bool Substituted = false, Koto? FixedBy = null, bool WellFormed = false);
+// `Supplier` is the longer end as the failing check had it before resolution, the atom (or meet operand) that supplied `Longer`; the
+// record's Borrow is the one whose Origin is it, by identity (BorrowSource; DECISIONS R4-M133).
+internal readonly record struct OriginRelationFact(
+    Koto At, BoundOrigin Longer, BoundOrigin Supplier, BoundOrigin Shorter, bool Equality, BoundType? Destination, bool Refuted, Koto? Clause = null,
+    bool Substituted = false, Koto? FixedBy = null, bool WellFormed = false);

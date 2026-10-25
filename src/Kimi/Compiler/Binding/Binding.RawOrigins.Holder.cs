@@ -135,7 +135,7 @@ public sealed partial class Binding
         }
 
         var longer = written?.BoundType?.RawOrigin ?? BoundOrigin.Unstated;
-        var relation = new OriginRelationFact(at, longer, BoundOrigin.Holder, Equality: false, stored, Refuted: true);
+        var relation = new OriginRelationFact(at, longer, longer, BoundOrigin.Holder, Equality: false, stored, Refuted: true);
         this.FailExplained(ref this.originRelations, at, BindingFailure.OriginRelation, relation);
         return true;
     }

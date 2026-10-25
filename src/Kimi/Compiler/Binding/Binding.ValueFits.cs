@@ -43,9 +43,19 @@ public sealed partial class Binding
     private static bool NeverFits(BoundType actual) => ReferenceEquals(actual, BoundType.Never);
 
     // SPEC 15.6.1: a fit whose structure holds leaves each differing Origin position as an obligation that ownership judges and reports
-    // with facts at the value.
+    // with facts at the value. A position's pending relation is recorded with the fit's whole destination, as the fit's own record is
+    // (RecordOriginFitFailure; DECISIONS R4-M133).
     private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use)
-        => NeverFits(actual) || this.CheckTypeUseCore(actual, expected, use, OriginVariance.Covariant);
+    {
+        var pending = this.pendingRelations.Count;
+        var fits = NeverFits(actual) || this.CheckTypeUseCore(actual, expected, use, OriginVariance.Covariant);
+        for (var i = pending; i < this.pendingRelations.Count; i++)
+        {
+            this.pendingRelations[i] = this.pendingRelations[i] with { Destination = expected };
+        }
+
+        return fits;
+    }
 
     // `polarity` is the variance of the compared position within the fitted Type (SPEC 15.3.5), composed as FitsTypeCore composes it: a
     // contravariant position reverses the relation, and an invariant or unused one makes it `==`, also for every position nested in it,

@@ -257,8 +257,8 @@ public sealed partial class Binding
             if (!holds || (obligation.Equality && UnstatedRelation(shorter, longer) == false))
             {
                 var at = RelationAt(obligation); // As ownership reports a fit's record: at the value that supplies the longer end.
-                var fact = holds ? new OriginRelationFact(at, shorter, longer, Equality: true, obligation.Type, Refuted: true)
-                    : new(at, longer, shorter, obligation.Equality, obligation.Type, Refuted: true);
+                var fact = holds ? new OriginRelationFact(at, shorter, shorter, longer, Equality: true, obligation.Type, Refuted: true)
+                    : new(at, longer, longer, shorter, obligation.Equality, obligation.Type, Refuted: true);
                 this.FailExplained(ref this.originRelations, at, BindingFailure.OriginRelation, fact);
             }
 

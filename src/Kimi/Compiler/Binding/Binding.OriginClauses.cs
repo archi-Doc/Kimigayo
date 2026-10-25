@@ -181,7 +181,7 @@ public sealed partial class Binding
 
         var longer = this.OriginAtUse(reversed ? relation.Shorter : relation.Longer, use);
         var shorter = this.OriginAtUse(reversed ? relation.Longer : relation.Shorter, use);
-        return new OriginRelationFact(use, longer, shorter, relation.Equality, null, RefutesOriginRelation(longer, shorter, this.formingBody), use);
+        return new OriginRelationFact(use, longer, longer, shorter, relation.Equality, null, RefutesOriginRelation(longer, shorter, this.formingBody), use);
     }
 
     // The declaration part: a Field's, Case's, alias's or associated formation's own clause, which Binding alone judges, is recorded

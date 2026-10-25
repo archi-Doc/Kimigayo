@@ -7,8 +7,9 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // The pending relations (DECISIONS R4-M126 §2.5, D-2): each obligation formed naming a pending atom, once per binding, with the
-    // outermost unclassified Closure whose atoms it names, which judges it when it is classified; reused across passes.
-    private readonly List<(FunctionKoto Owner, BindingObligation Obligation)> pendingRelations = [];
+    // outermost unclassified Closure whose atoms it names, which judges it when it is classified, and its record's destination (the
+    // obligation's Type, a fit's whole destination Type, CheckTypeUse; DECISIONS R4-M133); reused across passes.
+    private readonly List<(FunctionKoto Owner, BindingObligation Obligation, BoundType? Destination)> pendingRelations = [];
 
     // Every change to inference, obligation or Origin declaration state; a pure proof request leaves it unchanged.
     private int originStateVersion;
@@ -268,7 +269,7 @@ public sealed partial class Binding
             return;
         }
 
-        this.pendingRelations.Add((owner, obligation));
+        this.pendingRelations.Add((owner, obligation, obligation.Type));
 
         // The outermost of `owner` and the Closures whose pending atoms `origin` names; the unclassified Closures are being bound, nested.
         static FunctionKoto? PendingOwner(BoundOrigin origin, FunctionKoto? owner)
@@ -326,7 +327,7 @@ public sealed partial class Binding
             }
             else if (this.obligationSet.Contains(entry.Obligation))
             {
-                this.RoutePendingRelation(entry.Obligation);
+                this.RoutePendingRelation(entry.Obligation, entry.Destination);
             }
         }
 
@@ -337,8 +338,9 @@ public sealed partial class Binding
     // chains are found by the fit's position search in the body that formed it, passed explicitly, and recorded as a fit's are
     // (RecordOriginChains: at RelationAt, a failed Origin environment's dependent, a body chain a twin); any other body chain stays a row
     // for A5 and the old reporter, unjudged here. The obligation stays either way: a recorded failure leaves Binding incomplete, so the
-    // old reporter never judges it again.
-    private void RoutePendingRelation(in BindingObligation obligation)
+    // old reporter never judges it again. Each chain records the part of the obligation's longer end as formed that supplied it, and the
+    // entry's destination (DECISIONS R4-M133).
+    private void RoutePendingRelation(in BindingObligation obligation, BoundType? destination)
     {
         var (use, body) = (obligation.Use, obligation.Body);
         var longer = this.OriginAtUse(obligation.Longer!, use);
@@ -356,12 +358,29 @@ public sealed partial class Binding
         {
             for (var i = 0; i < all.Count; i++)
             {
-                all[i] = all[i] with { Clause = obligation.Clause, WellFormed = obligation.WellFormed };
+                var supplier = this.SuppliedBy(obligation.Longer!, all[i].Longer, use);
+                all[i] = all[i] with { Supplier = supplier, Clause = obligation.Clause, WellFormed = obligation.WellFormed };
             }
 
-            var recorded = first with { Clause = obligation.Clause, WellFormed = obligation.WellFormed };
-            _ = this.RecordOriginChains(use, RelationAt(obligation), body, obligation.Type, recorded);
+            var firstSupplier = this.SuppliedBy(obligation.Longer!, first.Longer, use);
+            var recorded = first with { Supplier = firstSupplier, Clause = obligation.Clause, WellFormed = obligation.WellFormed };
+            _ = this.RecordOriginChains(use, RelationAt(obligation), body, destination, recorded);
         }
+    }
+
+    // The part of `written`, a relation's end as it was formed, that supplied `resolved`, a record's end at `use` (DECISIONS R4-M133): the
+    // first operand of a meet whose resolution there holds it, otherwise the end itself.
+    private BoundOrigin SuppliedBy(BoundOrigin written, BoundOrigin resolved, Koto use)
+    {
+        for (var i = 0; i < written.Operands.Count; i++)
+        {
+            if (OriginIncludes(this.OriginAtUse(written.Operands[i], use), resolved))
+            {
+                return this.SuppliedBy(written.Operands[i], resolved, use);
+            }
+        }
+
+        return written;
     }
 
     // SPEC 15.3.6 (PLAN G74): a pure question: whether the premises visible at `use` entail `longer outlives shorter`
