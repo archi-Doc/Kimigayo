@@ -3861,6 +3861,45 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Rejected copy derived without a record (B2); rolling back a written copy (B3: a try-then-fallback chain; `MirBody` has no
     truncation); a per-call decision in Binding or the publisher (B4: the template's Types are MIR's).
   - Numbering: R4-M127 is free on dev and every remote and local branch (R4-M118 on 2a-1c; R4-M120 and R4-M124 on 4b).
+- **R4-M129 A temp's Drop registers where its value is created: temporaries are destroyed in reverse creation order** (2026-10-25;
+  unit G248, the R4 planning session approving lane A's design A, R5 agreeing the builder holds; R5's C8c finding) SPEC 3.6, 16.2.1,
+  7.2.3, 14.6.2, 15.6.6.
+  - Cause: `MirBuilder.Live` registered a temp's StorageDead and Drop where its storage began, and a build site allocates a temp before
+    it builds the temp's value (destination passing), so each temp created while evaluating it registered later and was destroyed
+    first: a call's result after its arguments' temporaries (`show(pass(Noisy.init(1)))`: sel `one two`, the old generator `two one`),
+    a Subject or iterator after its expression's, and A3 reported a Loan conflict where the result's destruction observes the argument
+    it borrows (`ComparisonLoanConflict_Kd` at the argument, the old path accepting). A2 judges Drops and decides no order.
+  - Rule (`MirBuilder.Drops`): a local's StorageDead registers where its storage is allocated (`Allocated`), and a binding's or an
+    argument's Drop with it, in declaration order (`Live`, `Created`); a temp's Drop where its value is created: `Hold` begins the
+    storage of a temp whose value its caller builds next, and `Made` registers its Drop once that value is complete, in the scope of
+    temporaries it was held in; `Temp` is `Made(Hold(..))`, for a temp written from operands evaluated before. A scope then cleans up a
+    temp's Drop, the Drops and StorageDeads of the temps of its evaluation, then its StorageDead (rustc's `as_temp`); an exit that
+    interrupts the build ends the held temp's storage only, so the Drop A2 elided there is gone. A given place (`Value`'s `into`,
+    `Given`) is its holder's to make.
+  - Sites (search: every `Temp(` in `Mir/Build` that a build of its value follows; every site that evaluates operands into an
+    earlier-held temp uses Hold and Made, none is left on the old order): `Value` (operand temps: call, method, accessor, constructor and
+    operator results, aggregates, closures, interpolations, selections' values, receivers), `Referent`, `Statement`, `Discard`,
+    `Result`'s input, a `match` Subject, a guard's, a condition's and a verification's bool, a Literal Pattern's test, a `for` iterator
+    and step Subject, `Count`'s range, a compound update's read, result and setter Unit, an Array literal's Unit, a Dictionary entry's
+    key, value, link, test and handle, a Contract comparison's result and leaf value, `and`/`or`'s left, an Abrupt conversion's operand,
+    Formatting's writer, hint Unit, write result and discriminant, a verification's issue and message, an acquisition's Never value, a
+    constructor's body value, a defer's result, a keyed selection's result, `Replace`'s value; and `Defaults`' explicit-argument slot
+    (made where `Pending` places its argument) and omitted-default slot. The rest are one-step temps.
+  - A dictionary literal places its entries in a temp of its own, made at the empty Dictionary, so an exit from an entry destroys the
+    entries placed (SPEC 16.2.1), and moves it to the literal's value after the last entry, where that value is created (SPEC 12.4.3:
+    no partial Dictionary results); before, the value held by `Value` would have leaked on that exit, and one built in `_0` did.
+  - An if clause's and a do's body has a scope of its own, as a match arm's (`MirBuilder.Arm`): it is its own Body, so the temporaries
+    of its result end with it (SPEC 14.2.1, 16.2.2 step 3). Before, they were the enclosing statement's, so with creation registration
+    an if's value was destroyed before them and A3 accepted `inspect(if c => lend(1 + 1) else => return)` (R5's review B1); the old
+    generator already ended them with the arm. A block's last item's temporaries are the Body's it is (`MirBuilder.Block`).
+  - Guard: `MirBuildTest.EveryWrittenTempIsMade` audits the goldens, the library and the milestones: every temp with storage of its own,
+    of a Type that may need drop and written whole, has a Drop (a transfer's result temp has no storage of its own, R5-M50).
+  - Rejected: registering both cleanups at creation (an interrupted build would leave the temp storage-live, and a `continue` reaches
+    its StorageLive again); the first whole write as creation in `Set` and `Invoke` (wrong for literals built by calls on their
+    destination); ordering a scope's cleanups by a creation stamp (breaks the drop trees' prefix sharing); a builder check for a forgotten
+    `Made` (the MIR's broken-contract channel is `MirValidator`; G245 U1's review rejected a builder-side one).
+  - Numbering: R4-M128, reserved, is 2c-2's on its branch; R4-M129 is free on dev and every remote and local branch (R4-M127 on G245's
+    U1).
 - **R4-M130 A Closure's receiver from every exclusive use of a Place a capture's path reaches (2c-1, G147 (3); the owner's two
   readings)** (owner, 2026-10-25, the R4 planning session's dialog, verbatim: the Subject reading 「(a) Exclusive (推奨)」, raw writes
   「(a) 両方 Exclusive (推奨)」; BU confirmed both in its dialog: 「はい、(a) Exclusive」, 「はい、(a) 両方 Exclusive」) SPEC 7.7.3, 7.7.2,
@@ -5510,23 +5549,24 @@ resumed by R4-M86 (2026-10-20).
   beside `b: uniq/Bad` and `v = 2` while its result lives; i3's store, d3P's conflict beside its call).
   - Representation: `PrepareTypeStorage` gives `Binding.StorageOutcome { Prepared, Rejected, Limit }`. Rejected is the fact and name of
     Layout's `Outcome.Rejected` (R5-M37) as a separate type: Binding's walk reaches through handles (`Sx { x: rc/Bad }` is Rejected here
-    and Ok for Layout), Layout's by placement only and wider (InlineCycle, CLayoutRejected, Length < 0), and Binding cannot depend on the
-    Backend. A limit takes precedence. The walk goes past a part that does not substitute (a null Field; an enum's null Cases, its base
-    and components still walked); each Type's walk keeps a rejected bit ORed into its caller's, and the member closing a component marks
-    every member with the component's. A finished Type's mark is `(height, -1)` for Rejected in place of `(height, 0)`, so marks stay
-    8 bytes. The verdict depends on the Type alone: x1 (X reaches T's Box^64 Field through a handle beside its failed Field) is Limit for
-    X and T in both query orders, the X-Y ring and Z, which stores Y, Rejected in three; stopping at the first failure would make it
-    order-dependent and hide a limit behind a failed part.
+    and Ok for Layout), Layout's by placement only and wider (InlineCycle, CLayoutRejected, Length < 0), and Binding cannot depend on
+    the Backend. A limit takes precedence. The walk goes past a part that does not substitute (a null Field; an enum's null Cases, its
+    base and components still walked; a null Case since BU-37); each Type's walk keeps a rejected bit ORed into its caller's, and the
+    member closing a component marks every member with the component's. A finished Type's mark is `(height, -1)` for Rejected in place
+    of `(height, 0)`, so marks stay 8 bytes. The verdict depends on the Type alone: x1 (X reaches T's Box^64 Field through a handle
+    beside its failed Field) is Limit for X and T in both query orders, the X-Y ring and Z, which stores Y, Rejected in three; stopping
+    at the first failure would make it order-dependent and hide a limit behind a failed part.
   - One TyCtxt path: `TyCtxt.Instance(type, subst)` gives the instance (`Binding.StorageInstance`, split out of `InstantiateStorageType`
     first, behavior unchanged) with its verdict, the identity keeping the Type as Prepared; `Apply` is that instance when Prepared. The
     readers of the verdict take `== Prepared` where they took true (`InstantiateStorageType`, `TyCtxt.Dispatch`, `BodyLowering.Structs`),
     so every reader but retention sees what it saw.
   - Pass-through: retention reads Rejected storage as instantiated (`Binding.Retained`, for the contract's instance and `Held`): a part
     that does not substitute holds nothing (no row, no untie) and the rows that hold whatever it is stay. `Held` walks an enum's Cases
-    only where its instance substituted them (`AdtDef.CaseTypes` not null), the storage the verdict covered, which bounds it (e1, `enum
-    E<T> { A(Missing), B(rc/E<(T, T)>) }`, does not end otherwise). `CallRetention.Limit` is a genuine limit only: BU-12's height and path,
-    a keeper cycle (BU-24), and a contract substitution that does not complete (no reproducer). BU-24's keeper clause (a keeper Type
-    `StoredType` does not instantiate makes the walk incomplete) stays Limit and is unreached: a failed keeper Field registers no keeper.
+    only where its instance substituted them (`AdtDef.CaseTypes` not null; a Case where it is set since BU-37, which makes e1 a limit),
+    the storage the verdict covered, which bounds it (e1, `enum E<T> { A(Missing), B(rc/E<(T, T)>) }`, does not end otherwise).
+    `CallRetention.Limit` is a genuine limit only: BU-12's height and path, a keeper cycle (BU-24), and a contract substitution that
+    does not complete (no reproducer). BU-24's keeper clause (a keeper Type `StoredType` does not instantiate makes the walk incomplete)
+    stays Limit and is unreached: a failed keeper Field registers no keeper.
   - Guard: `Binding.Retained` throws for Rejected storage in a complete compilation (DIAGNOSTICS rule 8 makes a part Binding did not bind
     an incomplete Binding), the established broken-contract form at this site (`TyCtxt.Instance`'s contract without its Type,
     `CallRetention`'s Limit rows), which ends the check as `CheckFaulted_Kd` (rule 9).
@@ -5545,11 +5585,46 @@ resumed by R4-M86 (2026-10-20).
     changes; R7's); stopping at the first failure; classifying by `BindingState` or A5 reading completeness (a second rule, R4-M113); a
     dependent flag on `CallRetention` (A5 has nothing to do with it); B's `(Height, Open, Rejected)` mark (a third larger table on valid
     programs).
-  - Open (outside the unit): per-case holes in `InstanceStorage.Cases` (PLAN G242, BU: e2 `enum E { A(Missing), B(raw/i32) }` gives no
-    row where its repair gives `1 Value store 0, untied store 0`; growth in another case is unseen), whose shared fix (R4's G244 A1)
-    replaces this unit's enum clause in `StorageParts` and rule in `Stores`; Dispatch's K6 Witness Limit and the collector's StorageNesting
-    `Unsupported_Kd` over Rejected storage, published under MIR code generation (BU, R5); A4's `MirEffects.Solve` and `MirCases.Views` over
-    `Apply`'s null (R4, PLAN G240's row); the builder's default copy `FoldType` and the Arity finding on a Rejected enum's case (G244).
+  - Open (outside the unit): per-case holes in `InstanceStorage.Cases` (closed by BU-37; PLAN G242, BU: e2 `enum E { A(Missing),
+    B(raw/i32) }` gives no row where its repair gives `1 Value store 0, untied store 0`; growth in another case is unseen), whose shared
+    fix (R4's G244 A1) replaces this unit's enum clause in `StorageParts` and rule in `Stores`; Dispatch's K6 Witness Limit and the
+    collector's StorageNesting `Unsupported_Kd` over Rejected storage, published under MIR code generation (BU, R5); A4's
+    `MirEffects.Solve` and `MirCases.Views` over `Apply`'s null (R4, PLAN G240's row); the builder's default copy `FoldType` and the
+    Arity finding on a Rejected enum's case (G244).
+
+- **BU-37 An enum instance publishes each Case it substitutes** (2026-10-25; the BU planning session after the full process: designs A
+  (R4's A1) and B, the design review's choice of B with A's MIR rows and its required changes R1-R5; R4's A5/MIR review, no blocking
+  finding, its rows and O4; PLAN G242's enum part and G245's enum half, unit bu39) SPEC 6.5.1, 15.6.4, 23.1.1, 23.1.2: Binding publishes
+  the stored parts it substituted and only a part it rejected is absent; a consumer reads an absent part as Binding's rejection, a
+  dependent that holds, places and destroys nothing, never as a limit.
+  - Cause: `Binding.Substitute` returned at the first Case whose payload did not substitute and left `InstanceStorage.Cases` null, so an
+    enum's storage was all-or-nothing while a struct's is per Field, and BU-36 special-cased it twice (`StorageParts`' enum clause,
+    `Stores`' whole-enum rule). e2 (`A(Missing)`, `B(raw/i32)`) kept no row, e1's growth through B went unseen, MIR over B gave Arity or
+    Projection findings (mir: `InternalInvariant_Kd`, nothing analyzed), and Layout's early Rejected hid another Case's Oversized.
+  - Representation: `InstanceStorage.Cases` is `BoundType?[]`, never null for an enum (one absent state; reused in place, as Fields are);
+    `AdtDef.CaseTypes` is null only off an enum. A Case is null exactly where its payload Tuple did not form (a payload that does not
+    substitute, or a Case form without a name). The Case's payload Tuple is the part, as a Field's Type is: the node BU-12's walk and
+    Layout count and the Type MIR's Downcast projects.
+  - Readers: a null Case reads as that reader's null Field: the storage walk (rejected and walked past; the enum clause is deleted),
+    Layout (`Fold.Reject`, R5-M52's precedence), `MirTypes.HoldsLoans`, `HoldsRaw` and `Destruction`, `EffectBounds`,
+    `MirBody.ProjectedType` (null), the validator's Arity (-1, a broken contract), DropGlue, codegen and the old path's readers. `Stores`
+    walks a Case's payloads only where the Case is set: the per-part rule at the Case's grain, the part the storage verdict walked, which
+    bounds the hold walk (walked by payload, `A(Missing, rc/E<(T, T)>, rc/E<Option<T>>)` did not end in 120 s).
+  - Consequences: e2 keeps its repair's row, also inside a struct; e1 is the genuine limit, its repair's; MIR over the substituted Cases
+    has no finding and A5 and A1 report the valid twin's records, where a Loan held only through the failed Case is a dependent and goes
+    (m3); an oversized other Case is `OversizedLayout_Kd` at its use under MIR code generation, independent (its repair reports it, as a
+    struct's Field does); a form over the failed Case stays Binding's (`TypeMismatch_Kd`, `InvalidPattern_Kd`) and is never projected.
+    The diagnostic snapshot and the semantic one (HIR, MIR) are unchanged; cold Bind bytes are identical on milestones 1, 20, 33 and 34,
+    warm 0 B.
+  - Supersedes BU-36's enum clauses (the walk's "an enum's null Cases" and `Held`'s "`CaseTypes` not null") and e1's residual expectation;
+    closes BU-36's first Open item and G245's enum half (R4-M127 the builder half). Each names this entry.
+  - Rejected: A's `null!` form (two absent states); a walk by payload with `Stores` ungated (it does not end, above); the payload grain in
+    Binding only (two grains over one Case); all-or-nothing Cases with a per-Case mask (MIR still without the substituted Cases);
+    consumers re-substituting a Case (MIR cannot); an Error placeholder Type (a vocabulary entry every Type walker reads).
+  - Open (PLAN G242): the residual at the payload grain, a Case with one failed payload publishing none of its payloads (`A(Missing,
+    raw/i32)` keeps no row, the growth in the p16 form is unseen; BU with R4 for `MirTypes.Holding` and R5 for Layout; option 2:
+    payloads published and walked per payload); A4's `MirEffects.Destroyed` reads a null part as Limit, a dependent by R4-M118 (R4); the
+    collector's `Unsupported_Kd` over Rejected storage, now visible on enum forms under sel, is G242's Dispatch part (BU, next).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
@@ -8494,3 +8569,81 @@ structure is recorded here by the unit that first implements it.
   (`KimiLibraryCatalog`, `TyCtxt.Published`), which the instance collector reads, rather than from a need the legacy row declares
   (against K package 4.5 row 2 and S2-S4 X4, R5-M18); and the fixed-array storage borrows (StorageBorrowFixedShared and
   StorageBorrowFixedExclusive) move from plan row C8d's storage-boundary kinds to C8b, so C8d keeps six. They leave the list.
+- **R5-M118 Strings in MIR code generation: the string column and string constants put whole (C8c)** (2026-10-25, C lane; plan C8c,
+  package C 3.2 and 3.4, audit rows Const String and Rvalue BinaryOp, PD2, PD21; SPEC 3.4.3, 13.3.2, 13.4, 13.4.1, 13.7.1, 14.8.1, IMPL
+  21.1.3; the planning session's go and rulings Q1-Q6 on C8c's design, `c8c-design.md`; under R5-M18 form 2 (G:library-1), R5-M16, R5-M75,
+  R5-M76, R5-M92 and R5-M116)
+  - Form: every string comparison MIR builds is one form, a `BinaryOp` of `Eq` to `Ge` whose operands are a string constant (Type
+    `string`) or a value of one or more `ref`/`uniq` layers over `string`, which the validator agrees at their terminals: a direct
+    operator (`a == "x"` is `Eq(ref/string, const)`, `"a" < "b"` `Lt(const, const)`, a `uniq/string` operand `ref/uniq/string`), a literal
+    Pattern's test (`MirBuilder.Match`) and a tuple's string leaf (R5-M75). No compiler function of the Body disposition compares strings,
+    so X39's map gains no row; no intrinsic does (PD21).
+  - String column (R5-M76: a new Type class adds a column): the operator table's seventh column, taken by an operand whose terminal below
+    its safe value-reference layers (ref, uniq, pair layers; `FunctionCodegen.Strings`' `Terminal`) is string; its entries, the six
+    comparison rows' only, are the predicate on the row's string routine's i32 against 0 (SPEC 13.4.1: "the i32 compared with zero");
+    `Row.Routine`, a comparison row's second optional column, names the routine: `LegacyRuntimeHelpers.StringEqual` for `==` and `!=`,
+    `StringCompare` for the orderings, as the old generator uses them. `Operator` takes its column before it reads an operand (bp3), and the
+    string column's arm (`CompareStrings`) inspects its operands instead of computing them: each operand's bytes (a constant's pooled
+    text and count, `""` null and 0, the rule `Text` writes, bp2; else its value, the referent of its outer layer, through the pointer
+    each further `ref`/`uniq` layer stores, then the record's Fields 0 and 1, `Record`), the routine through the one call writer, the
+    predicate through `LlvmScalarText`, the bool widened. Nothing is checked, located or destroyed. Broken contracts, `InternalInvariant_Kd`:
+    a string Place as an operand (MIR inspects strings through shared borrows); an arithmetic row on strings (SPEC 13.3.2; a refinement of
+    the design, which kept the table's located record); a pair layer in an operand (ruling Q5, by reachability: no valid program reaches
+    it: Binding rejects the built-in comparison through a pair target, `a == b` and `a == "x"` with `a, b: s/T` and `T is string` and through
+    `ref/(s/T)` being `UnprovenConstraint_Kd`, and MIR is built per body, so an abstract target compares by a requirement call).
+  - Routines (P1a, PD2): `StringEqual` and `StringCompare` are the routines' signatures, and `LegacyRuntimeHelpers.StringComparisons` is
+    their text spliced from them (`LlvmModuleText.ExpandRuntime`, bp1, the old `.ll` byte-identical); MIR code generation requests it
+    (`ModuleCodegen.Needs.Strings`), written once after the nullable Alloc and before the definitions, the old generator's order; the old
+    writer's call text stays (D5).
+  - String constants put whole (the Use row's rule): a constant has nothing to evaluate, so an aggregate (Tuple, struct, enum Case, fixed
+    array) skips it while it reads its operands and writes it whole at its component once its Place is located; `Raw.initialize` puts its
+    operand through the operand `Put` (R5-M116's bp1). A string constant has no Value (`FunctionCodegen.Values`).
+  - Not rows: a literal Pattern has no writer of its own (the comparison row, then the SwitchInt); a string has no Len (Binding's sequence
+    members take none); a Fill's element is Copy, never a string.
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M119): ruling Q1 (a), `BuiltinEquals` and `BuiltinCompare` on
+    strings, a string Self's shim included, move from plan row C8c (and audit rows :102-103) to C8f, which owns the one shim writer over
+    F6's tree (G157 (28)), since a string-Self shim flips no ledger row alone; C8f's string leaf reads `Record` and the row's routine.
+    `a.equals("b")` and a generic `T == T` at `string` stay C8f's located `Unsupported_Kd`.
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M119): ruling Q4 (a), plan row C8c's Strings kernel O2, with its
+    prerequisite E7 (the `Strings` corpus kernel, not landed), moves to the later of E7 and C9c, since a corpus kernel's checksum line needs
+    interpolation (C9c) under MIR code generation; C8c measures a temporary kernel as information, a B/A beyond the A=B variance stopping it.
+  - Fixture rows (ruling Q2 (a)): 26 audit fixtures of G188's class become fixture rows with its cause: a constant has no
+    destruction obligation in MIR, so a literal comparison operand or a constant a transfer abandons is never materialized and the audit
+    counts no Static destruction the old generator made (`StringComparison*Audit` 9, `ElementBorrowOwnerLifetime*Audit` 8,
+    `ForeignPointerString*Audit` 3, `FixedArrayCapture*Audit` 2, `GuardCleanup*Audit` 2 and `ElementReplacementTransfer*Audit` 2, the last two
+    a constant abandoned by a transfer). G188's owner (R5's W1 or E lane) decides the builder or the audits before R5's exit. No R5-M85
+    deviation now.
+  - Fixture row (ruling Q3 (a)): `ElementBorrowOwnerLifetimeCalleeCleanupAudit`, under PLAN G248 (R4's builder unit): a
+    call's destination temporary registers its cleanup before its arguments' (`Console.writeLine(inspect(("head", "tail").0))` destroys the
+    tuple before `inspect`'s result), against SPEC 3.6's reverse creation order, natively observable with user destructors (sel prints
+    `one two` where the old generator prints `two one`). Not C8c's: MIR's drop order (A2) and the builder.
+  - Restructured first, behavior unchanged (ae0c21647): the routines' signatures and the text spliced from them; a string constant's bytes
+    in one member, which `Text` writes; the operator's column decided before its operands are read.
+  - Verified: the sel ledger loses 505 test rows (C-aggregate 303, C-frame 102, library-1 38, object 17, library-2 14, C-drop 10,
+    call 9, closure 7, C-scalar 3, K-edges 2), all this unit's, each failing at its base: the census's 481 comparison and constant rows
+    (C8b's three update-adapter rows and G:object's two string `==` rows among them) and 24 warm-allocation rows that now reach 0 B;
+    `StringComparisonEmissionTest` and `StringGuardEmissionTest` leave it whole; the 27 fixture rows above join it. The flipped tests' 41
+    fixture families (2,424 fixtures, the new `StringRows` among them) run natively under sel at O0 and O2, every fixture but those 27
+    passing, and `StringRows` also under the old generator; `FunctionCodegenTest` (the six operators' routines on the records' bytes and
+    their predicates, constants' bytes with `""` null and 0 and no record stored, a uniq layer's extra load, literal Patterns, a tuple's
+    string leaf by equality then order, string constants written whole into a Tuple, a fixed array, an enum Case and raw storage, no
+    routines in a module without a comparison, M9's 0 B and I1 over the `Comparisons` source). O2 (information; no corpus kernel): a
+    temporary kernel (4M rounds over an `[8 of string]` of `==` and `<` through borrows, `!=` with a literal, a four-arm literal match and
+    a tuple ordering with a string leaf), old generator A against sel B at O2, 15 interleaved samples: B/A median 0.94 (0.85-1.04) against
+    A/A 0.88-1.17, both routines inlined and the same memcmp calls but one, the tuple leaf's second pass (PLAN G157 (16)).
+  - Rejected: arms per operator in place of the table (R5-M76); `__kimi_string_compare` for `==` too (slower than the old generator where
+    lengths differ); the routine chosen by a bool parameter or by `op is Eq or Ne` beside the table (a second statement of SPEC 13.4.1's
+    partition); an inline length test for `""` (a clause for one form); materializing constant operands to match the old audits; string
+    constants read at put time for every operand (SPEC 13.7.1's order for the others); string comparisons as Calls of BuiltinEquals/Compare
+    (R5-M75: a second form of one comparison); a string-comparison IntrinsicId (PD21); a second copy of the routine text (PD2); the shim in
+    C8c (Q1 (b), its frame for one leaf Type); a located `Unsupported_Kd` for a pair-layer operand (ruling Q5: the symptom G:closure's
+    review flagged in `Closures.cs`' PairLayer arm).
+- **R5-M119 The owner confirms C8c's departures** (owner, 2026-10-25, on the R5 planning session's explanation after C8c's design and
+  before its behavior commit; verbatim 「C8c の逸脱 2 件（文字列の BuiltinEquals/Compare シムを C8f へ移すこと、Strings カーネルの O2 と前提 E7 を E7 と
+  C9c の遅い方へ移し C8c は一時カーネルで参考測定すること）を承認します。」; the consequences are the planning session's) The two
+  departures R5-M118 records are confirmed: `BuiltinEquals` and `BuiltinCompare` on strings, a string Self's shim included, move from
+  plan row C8c (and audit rows :102-103) to C8f, which owns the one shim writer, since a string-Self shim flips no row alone; and plan
+  row C8c's Strings kernel O2, with its prerequisite E7 (the `Strings` corpus kernel, not landed), moves to the later of E7 and C9c,
+  since the kernel's checksum line needs interpolation (C9c) under MIR code generation; C8c measures a temporary kernel as information,
+  a B/A beyond the A=B variance stopping it (R5-M8's O2 rule). The later of E7 and C9c runs the corpus A/B under R5-M8. They leave the
+  list.

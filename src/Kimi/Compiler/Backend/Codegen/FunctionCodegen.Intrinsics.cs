@@ -116,7 +116,8 @@ internal sealed partial class FunctionCodegen
     }
 
     // SPEC 5.6: Raw.initialize(storage, value) moves the value into the storage, which holds none, so nothing is destroyed: the value put
-    // at the storage's address in its Type's representation (R5-M87's copy form); nothing for a zero-sized one.
+    // at the storage's address in its Type's representation (R5-M87's copy form; a string constant written whole, DECISIONS R5-M118);
+    // nothing for a zero-sized one.
     private void Initialize(in MirTerminator call)
     {
         var key = new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
@@ -129,13 +130,11 @@ internal sealed partial class FunctionCodegen
 
         if (lowering.Layout.Size != 0)
         {
-            if (!this.Operand(storage, out var address) || !this.Operand(operand, out var value))
+            if (!this.Operand(storage, out var address) || !this.Put(address, this.InstanceType(operand)!, lowering, operand))
             {
                 this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
                 return;
             }
-
-            this.Put(address, this.InstanceType(operand)!, lowering, value);
         }
 
         this.Finish(call, null);

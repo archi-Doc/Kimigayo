@@ -6,8 +6,9 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 namespace Kimi.Compiler.Backend;
 
 // The aggregates of FunctionCodegen (R5 package C 3.2, plans C2a, C2b and C5a; DECISIONS R5-M83, R5-M87, R4-M81, R5-M102): a Tuple, struct,
-// enum Case, Closure environment or fixed array put by its components, and a Fill's one value at each element by one counted loop, the
-// loop writer (Loop) the glue shares. Rows not written yet: an Array or Dictionary from none (C8d, C8e).
+// enum Case, Closure environment or fixed array put by its components (a string constant written whole, DECISIONS R5-M118), and a Fill's
+// one value at each element by one counted loop, the loop writer (Loop) the glue shares. Rows not written yet: an Array or Dictionary from
+// none (C8d, C8e).
 internal sealed partial class FunctionCodegen
 {
     // One pass of a counted loop (Loop): its labels' stem and its work from the pass's element offset.
@@ -20,7 +21,8 @@ internal sealed partial class FunctionCodegen
 
     // An Aggregate (SPEC 4.3.1-4.3.4, 6.5.1-6.5.2, 7.7.1-7.7.2; IMPL 21.1.2-21.1.3): its operands' values in order, its Place located (SPEC
     // 13.7.1), then an enum Case's ordinal as its tag (Layout.Tag) and each value put at its component (Component), or a Fill's one value at
-    // each element by one counted loop (DECISIONS R4-M81); noinit, from no operand, and a zero-sized Place store none. A Closure's
+    // each element by one counted loop (DECISIONS R4-M81); noinit, from no operand, and a zero-sized Place store none. A string constant has
+    // nothing to evaluate: it is written whole at its component once the Place is located (Evaluate and Put, the Use row's rule). A Closure's
     // environment is the Closure value, its captures placed as a Tuple's elements in the Place's own storage at every size, so forming it
     // allocates nothing (DECISIONS R5-M102). An Array or Dictionary from none is C8d's and C8e's row.
     private void Aggregate(in MirStatement statement)
@@ -44,7 +46,7 @@ internal sealed partial class FunctionCodegen
         this.arguments = this.arguments.Length < operands.Length ? new Value[operands.Length] : this.arguments;
         for (var i = 0; i < operands.Length; i++)
         {
-            if (!this.Operand(operands[i], out this.arguments[i]))
+            if (!this.Evaluate(operands[i], out this.arguments[i]))
             {
                 this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
                 return;
@@ -70,10 +72,12 @@ internal sealed partial class FunctionCodegen
         for (var i = 0; i < operands.Length; i++)
         {
             var (offset, component) = this.Component(kind, type, record, rvalue.Arg, i);
-            if (this.Laid(component) is { Layout.Size: > 0 } lowering)
+            if (this.Laid(component) is not { Layout.Size: > 0 } lowering)
             {
-                this.Put(this.Offset(address, offset), component, lowering, this.arguments[i]);
+                continue;
             }
+
+            this.Put(this.Offset(address, offset), component, lowering, operands[i], this.arguments[i]);
         }
     }
 
@@ -92,7 +96,7 @@ internal sealed partial class FunctionCodegen
             case MirAggregateKind.Tuple or MirAggregateKind.Closure:
                 return (offsets[index], type.Components[index]);
             case MirAggregateKind.Adt when AdtDef.IsEnum(type):
-                var payload = AdtDef.CaseTypes(type)![ordinal];
+                var payload = AdtDef.CaseTypes(type)![ordinal]!;
                 return (offsets[1] + (this.Laid(payload)?.Layout.FieldOffsets.Span[index] ?? 0), payload.Components[index]);
             case MirAggregateKind.Adt when AdtDef.Base(type) is { } parent:
                 return index == 0 ? (0, parent) : (offsets[index - 1], AdtDef.FieldType(type, index - 1)!);

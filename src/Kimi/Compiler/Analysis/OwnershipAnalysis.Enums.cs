@@ -221,7 +221,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.visitingTypes.RemoveAt(this.visitingTypes.Count - 1);
-        supported = supported && AdtDef.CaseTypes(type) is not null;
+        supported = supported && Array.IndexOf(AdtDef.CaseTypes(type)!, null) < 0;
         this.supportedTypes[type] = supported;
         return supported;
     }

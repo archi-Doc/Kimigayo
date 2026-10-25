@@ -27,9 +27,9 @@ internal sealed partial class MirBuilder
 
         var entry = CallPlan.Of(loop)!;
         var step = CallPlan.Of(loop, 1)!;
-        var iterator = this.Temp(entry.ReturnType, loop);
+        var iterator = this.Hold(entry.ReturnType, loop);
         this.Call(iterator, entry, loop, first: null);
-        this.locals[HirTables.Symbol(step.Receiver!)!] = iterator.Root;
+        this.locals[HirTables.Symbol(step.Receiver!)!] = this.Made(iterator).Root;
         var head = this.body.AddBlock();
         this.body.Terminate(this.current, MirTerminator.Goto(head, this.Info(loop)));
         var after = this.Open(loop, destination, head);
@@ -38,8 +38,9 @@ internal sealed partial class MirBuilder
         var tail = this.body.AddBlock();
         this.current = head;
         var iteration = this.OpenScope(block: false);
-        var subject = this.Temp(step.ReturnType, loop, MirLocalRole.Subject);
+        var subject = this.Hold(step.ReturnType, loop, MirLocalRole.Subject);
         this.Call(subject, step, loop, first: null);
+        this.Made(subject);
         CollectionsMarshal.SetCount(this.selected, start + plan.Positions.Count);
         this.Pattern(plan, plan.Arms[0].Pattern, subject, start, none);
         this.Iteration(loop, head, plan, start, default);
@@ -58,8 +59,9 @@ internal sealed partial class MirBuilder
     private void Count(MirPlace destination, ForKoto loop)
     {
         var type = TypeOf(loop.Iterable);
-        var range = this.Temp(MirTypes.IsReference(type) ? type.Components[0] : type, loop.Iterable);
+        var range = this.Hold(MirTypes.IsReference(type) ? type.Components[0] : type, loop.Iterable);
         this.Assign(range, loop.Iterable);
+        this.Made(range);
         var position = this.Temp(BoundType.ISize, loop);
         var end = this.Temp(BoundType.ISize, loop);
         var test = this.Temp(BoundType.Boolean, loop);
@@ -152,7 +154,7 @@ internal sealed partial class MirBuilder
             storage = this.Writeback(storage, node);
         }
 
-        var read = plan.First is null ? storage : this.Temp(plan.First.ReturnType, target);
+        var read = plan.First is null ? storage : this.Hold(plan.First.ReturnType, target);
         if (right is null)
         {
             value = MirOperand.Const(this.body.Const(new(MirConstKind.Integer, this.body.TypeOf(read)!, 1))); // One of the old value's Type.
@@ -175,6 +177,7 @@ internal sealed partial class MirBuilder
             }
 
             this.Call(read, getter, target, null, given, operand);
+            this.Made(read);
         }
 
         var postfix = node.Akind is KotoKind.PostfixIncrement or KotoKind.PostfixDecrement;
@@ -183,7 +186,7 @@ internal sealed partial class MirBuilder
             this.Use(destination, MirOperand.Copy(read), node);
         }
 
-        var result = plan.Second is null && arithmetic is null ? storage : this.Temp(arithmetic?.ReturnType ?? this.body.TypeOf(read)!, node);
+        var result = plan.Second is null && arithmetic is null ? storage : this.Hold(arithmetic?.ReturnType ?? this.body.TypeOf(read)!, node);
         if (arithmetic is not null)
         {
             this.located.Add((target, read));
@@ -207,6 +210,11 @@ internal sealed partial class MirBuilder
             this.Set(result, MirRvalue.Binary(op, operands, this.Proven(op, this.body.TypeOf(read)!, value)), node);
         }
 
+        if (result != storage)
+        {
+            this.Made(result);
+        }
+
         if (right is null && !postfix)
         {
             this.Use(destination, MirOperand.Copy(result), node);
@@ -214,13 +222,12 @@ internal sealed partial class MirBuilder
 
         if (plan.Second is { } setter)
         {
-            this.Call(
-                right is null ? this.Temp(BoundType.Unit, node) : destination,
-                setter,
-                node,
-                null,
-                setter.ArgumentOperations[plan.Evaluated].Source,
-                MirOperand.Move(result));
+            var unit = right is null ? this.Hold(BoundType.Unit, node) : destination;
+            this.Call(unit, setter, node, null, setter.ArgumentOperations[plan.Evaluated].Source, MirOperand.Move(result));
+            if (unit != destination)
+            {
+                this.Made(unit);
+            }
         }
         else if (arithmetic is not null)
         {
@@ -271,7 +278,7 @@ internal sealed partial class MirBuilder
         this.Set(destination, MirRvalue.Aggregate(MirAggregateKind.FixedArray, this.body.Operands.Length, 0, type), array);
         if (count > 0)
         {
-            var unit = this.Temp(BoundType.Unit, array);
+            var unit = this.Hold(BoundType.Unit, array);
             for (var i = -1; i < count; i++)
             {
                 var at = this.arguments.Count;
@@ -279,6 +286,8 @@ internal sealed partial class MirBuilder
                 this.arguments.Add(i < 0 ? MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize, count))) : this.arguments[start + i]);
                 this.Serve(unit, i < 0 ? CompilerFunctionKind.ArrayReserve : CompilerFunctionKind.ArrayAppend, type, [], at, array);
             }
+
+            this.Made(unit);
         }
 
         this.arguments.RemoveRange(start, count);
@@ -287,26 +296,30 @@ internal sealed partial class MirBuilder
     // SPEC 12.4.3: a dictionary literal: the empty Dictionary, then each entry in source order: its key evaluated once and retained, looked
     // up among the entries inserted (its plan's findEntry call), a duplicate failing with KIMI_E_DUPLICATE_KEY before the value is evaluated,
     // then the value evaluated and the pair placed (the placeEntry body, over the handle dictionaryStorage gives). The empty Dictionary is a
-    // part made before the entries.
+    // part made before the entries, in a temp of its own that an interrupted entry's exit destroys, and moved to the destination after the
+    // last entry, where the literal's value is created (SPEC 3.6, 16.2.1; DECISIONS R4-M129).
     private void Dictionary(MirPlace destination, DictionaryLiteralKoto dictionary)
     {
         var find = CallPlan.Of(dictionary)!;
         var type = TypeOf(dictionary);
         var layout = compilation.Types.Tuple([compilation.Types.Pointer(type), BoundType.ISize]);
         ReadOnlySpan<BoundType?> slots = [type.Components[0], type.Components[1]];
-        this.Set(destination, MirRvalue.Aggregate(MirAggregateKind.FixedArray, this.body.Operands.Length, 0, type), dictionary);
+        var built = this.Temp(type, dictionary);
+        this.Set(built, MirRvalue.Aggregate(MirAggregateKind.FixedArray, this.body.Operands.Length, 0, type), dictionary);
         foreach (var entry in dictionary.Entries)
         {
-            var key = this.Temp(type.Components[0], entry.Key);
-            var value = this.Temp(type.Components[1], entry.Value);
-            var link = this.Temp(BoundType.ISize, entry.Key);
-            var test = this.Temp(BoundType.Boolean, entry.Key);
+            var key = this.Hold(type.Components[0], entry.Key);
+            var value = this.Hold(type.Components[1], entry.Value);
+            var link = this.Hold(BoundType.ISize, entry.Key);
+            var test = this.Hold(BoundType.Boolean, entry.Key);
             var fail = this.body.AddBlock();
             var start = this.arguments.Count;
             this.Assign(key, entry.Key);
-            this.arguments.Add(this.Borrow(SemanticsKind.Ref, destination, entry.Key));
+            this.Made(key);
+            this.arguments.Add(this.Borrow(SemanticsKind.Ref, built, entry.Key));
             this.arguments.Add(this.Borrow(SemanticsKind.Ref, key, entry.Key));
             this.Invoke(link, new(MirCalleeKind.Fn, find.Target, compilation.Types.SubstOf(find)), start, entry.Key);
+            this.Made(link);
             this.Compare(
                 test,
                 MirBinaryOp.Eq,
@@ -314,15 +327,20 @@ internal sealed partial class MirBuilder
                 MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize))),
                 fail,
                 entry.Key);
+            this.Made(test);
             this.Fail(fail, "KIMI_E_DUPLICATE_KEY", entry.Key);
             this.Assign(value, entry.Value);
-            var handle = this.Temp(layout, entry.Value);
-            this.arguments.Add(this.Borrow(SemanticsKind.Uniq, destination, entry.Value));
+            this.Made(value);
+            var handle = this.Hold(layout, entry.Value);
+            this.arguments.Add(this.Borrow(SemanticsKind.Uniq, built, entry.Value));
             this.Serve(handle, CompilerFunctionKind.StorageDictionaryLayout, null, slots, start, entry.Value);
+            this.Made(handle);
             this.arguments.Add(MirOperand.Copy(this.body.Project(handle, MirProjectionKind.Field, 0)));
             this.arguments.Add(MirOperand.Move(key));
             this.arguments.Add(MirOperand.Move(value));
             this.Serve(this.Temp(BoundType.Unit, entry.Value), CompilerFunctionKind.StoragePlaceDictionaryEntry, null, slots, start, entry.Value);
         }
+
+        this.Use(destination, MirOperand.Move(built), dictionary);
     }
 }

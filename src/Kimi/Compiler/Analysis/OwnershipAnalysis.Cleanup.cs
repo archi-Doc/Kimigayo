@@ -91,7 +91,7 @@ public sealed partial class OwnershipAnalysis
         {
             foreach (var payload in cases)
             {
-                if (this.CleanupObservesBorrows(payload, source, depth + 1))
+                if (payload is not { } stored || this.CleanupObservesBorrows(stored, source, depth + 1))
                 {
                     return true;
                 }

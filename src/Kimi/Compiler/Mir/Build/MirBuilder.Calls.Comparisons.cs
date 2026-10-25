@@ -25,9 +25,9 @@ internal sealed partial class MirBuilder
             return;
         }
 
-        var result = this.Temp(call.ReturnType, node);
+        var result = this.Hold(call.ReturnType, node);
         this.Call(result, call, node, first: null);
-        var start = this.body.AddOperand(MirOperand.Move(result));
+        var start = this.body.AddOperand(MirOperand.Move(this.Made(result)));
         if (relation != MirBinaryOp.Ne)
         {
             this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, call.ReturnType))));
@@ -128,7 +128,7 @@ internal sealed partial class MirBuilder
             return (MirOperand.Copy(this.Inspected(leaf.Left, shared, node).Place), MirOperand.Copy(this.Inspected(leaf.Right, shared, node).Place), null);
         }
 
-        var value = this.Temp(result, node);
+        var value = this.Hold(result, node);
         if (leaf.Node.Kind == ComparisonKind.None)
         {
             this.program.Report(SourceRef.Of(node), DiagnosticCode.InternalInvariant_Kd);
@@ -145,6 +145,7 @@ internal sealed partial class MirBuilder
             this.Invoke(value, callee, start, node);
         }
 
+        this.Made(value);
         return equality ? (default, default, value)
             : (MirOperand.Copy(value), MirOperand.Const(this.body.Const(new(MirConstKind.Integer, result))), null);
     }

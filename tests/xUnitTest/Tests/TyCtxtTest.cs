@@ -458,7 +458,7 @@ public sealed class TyCtxtTest
             [RawStep.Own, RawStep.Own, RawStep.Shared, RawStep.Shared, RawStep.Exclusive, RawStep.Own, RawStep.Own],
             [types.RawStep(p[3], 0, []), types.RawStep(p[4], 0, [0]), types.RawStep(p[5], 1, []), types.RawStep(p[6], 1, []),
                 types.RawStep(p[7], 0, []), types.RawStep(p[8], 0, [0]), types.RawStep(p[8], 1, [1])]);
-        Assert.All([AdtDef.FieldType(p[3], 0)!, AdtDef.CaseTypes(p[4])![0].Components[0], AdtDef.FieldType(p[5], 1)!], static x => Assert.Null(x.RawOrigin));
+        Assert.All([AdtDef.FieldType(p[3], 0)!, AdtDef.CaseTypes(p[4])![0]!.Components[0], AdtDef.FieldType(p[5], 1)!], static x => Assert.Null(x.RawOrigin));
     }
 
     // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-24; R4's constraint 2): a raw layer a Type argument supplies, where the declaration states a
@@ -780,6 +780,19 @@ public sealed class TyCtxtTest
         var identity = c.Types.Instance(declared, c.Types.Identity(calls[0].Target.Declaration));
         Assert.Same(declared, identity.Type);
         Assert.Equal(Binding.StorageOutcome.Prepared, identity.Storage);
+    }
+
+    // SPEC 6.5.1, 23.1.2 (G242; DECISIONS BU-37): an enum instance publishes each Case its substitution forms, and a Case whose payload
+    // does not substitute is null, as a Field is: E's B and C beside its failed A, and G<i32>'s B, whose growth the storage verdict then
+    // meets beside the failed A (fail-before: no Case published, and G<i32> Rejected).
+    [Fact]
+    public void AnEnumPublishesTheCasesItSubstitutes()
+    {
+        var c = MirBuildTest.Compile("enum E\n    A(Missing)\n    B(i32)\n    C\nenum G<T>\n    A(Missing)\n    B(rc/G<(T, T)>)\nfunc f(e: E, g: G<i32>) => ()\n");
+        Assert.False(c.Binding.Result.IsComplete);
+        var parameters = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
+        Assert.Equal([null, c.Types.Tuple([BoundType.I32]), c.Types.Tuple([])], AdtDef.CaseTypes(parameters[0]) ?? []);
+        Assert.Equal([Binding.StorageOutcome.Rejected, Binding.StorageOutcome.Limit], parameters.Select(c.Binding.PrepareTypeStorage));
     }
 
     // A warm rebind keeps every call's substitution the same object and looking it up allocates nothing.

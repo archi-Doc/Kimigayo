@@ -234,7 +234,7 @@ public class EnumOwnershipTest
         var rebuiltCases = AdtDef.CaseTypes(rebuilt)!;
         Assert.NotSame(originalCases, rebuiltCases);
         Assert.Equal(2, rebuiltCases.Length);
-        var reference = Assert.Single(rebuiltCases[1].Components);
+        var reference = Assert.Single(rebuiltCases[1]!.Components);
         Assert.Equal(SemanticsKind.Ref, reference.Semantics);
         Assert.Equal(OriginKind.Static, reference.Origin!.Kind);
     }

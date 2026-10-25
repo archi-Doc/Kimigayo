@@ -37,7 +37,9 @@ internal sealed partial class MirBuilder
                 this.Transfer((JumpKoto)item);
                 break;
             default:
-                this.Into(this.Temp(item), item);
+                var value = this.Hold(TypeOf(item), item);
+                this.Into(value, item);
+                this.Made(value);
                 break;
         }
 
@@ -46,7 +48,12 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 14.2.4: bare acquisition of a discarded operand into a temp destroyed with the statement's temporaries.
-    private void Discard(DiscardKoto discard) => this.Assign(this.Temp(discard.Operand), discard.Operand);
+    private void Discard(DiscardKoto discard)
+    {
+        var value = this.Hold(TypeOf(discard.Operand), discard.Operand);
+        this.Assign(value, discard.Operand);
+        this.Made(value);
+    }
 
     // The value a body or a block's last item leaves in the destination: the item as its consumer takes it, a block's own result, or the
     // container's Unit after the item as a statement where the container completes (SPEC 7.1, 14.2). As a call's input that reserves
@@ -56,8 +63,9 @@ internal sealed partial class MirBuilder
     {
         if (input)
         {
-            var value = this.Temp(this.body.TypeOf(destination)!, item);
+            var value = this.Hold(this.body.TypeOf(destination)!, item);
             this.Result(value, item, container, input: false);
+            this.Made(value);
             if (Completes(container))
             {
                 this.Use(destination, MirOperand.Move(value), item);
@@ -102,7 +110,8 @@ internal sealed partial class MirBuilder
     private void RequestExit(int block, in SourceInfo info) => this.body.Push(block, MirStatement.Of(MirStatementKind.FakeRead, new(0), info));
 
     // SPEC 14.2, 16.2: a block's items in a scope of their own (an unsafe block's, SPEC 14.3), the last one its result; the locals and
-    // defers it registers are cleaned up when it is left. Its last item's temporaries are its enclosing statement's (SPEC 3.6).
+    // defers it registers are cleaned up when it is left. Its last item's temporaries are those of the Body it is (SPEC 3.6, 16.2.2 step
+    // 3): an arm's, an if clause's or a do's, the function's, else the enclosing statement's.
     private void Block(MirPlace destination, CodeBlockKoto block, MirScopeKind kind = MirScopeKind.Lexical)
     {
         var outer = this.scope;

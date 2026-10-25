@@ -154,11 +154,11 @@ fn obtainedIsCell @98
       _0 = intrinsic TypeTest(move _4, const type Cell) -> bb2 @101
   bb2:
       StorageDead(_4) @101
-      drop _3 -> bb3 [elide] @104
+      drop _2 -> bb3 [keep] @102
   bb3:
-      StorageDead(_3) @104
-      drop _2 -> bb4 [keep] @102
+      drop _3 -> bb4 [elide] @104
   bb4:
+      StorageDead(_3) @104
       StorageDead(_2) @102
       drop _1 -> bb5 [elide] @98
   bb5:

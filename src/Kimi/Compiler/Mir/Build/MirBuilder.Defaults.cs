@@ -83,13 +83,13 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 7.2.3: the pending slot of an explicit argument of a call that omits defaults, of its parameter's Type, which takes the argument
-    // (Pending) where its acquisition did not form it there.
-    private MirPlace Slot(BoundType? type, Koto node) => this.Temp(type ?? TypeOf(node), node, MirLocalRole.PendingSlot);
+    // (Pending) where its acquisition did not form it there, its value made there (SPEC 3.6, 16.2.1; DECISIONS R4-M129).
+    private MirPlace Slot(BoundType? type, Koto node) => this.Hold(type ?? TypeOf(node), node, MirLocalRole.PendingSlot);
 
     private MirOperand Pending(MirPlace slot, in MirOperand operand, Koto node)
     {
         this.Use(slot, operand, node);
-        return MirOperand.Move(slot);
+        return MirOperand.Move(this.Made(slot));
     }
 
     // SPEC 7.2.3: the omitted defaults of a call, each into a pending slot of its parameter's Type in parameter order, from shared borrows
@@ -103,7 +103,7 @@ internal sealed partial class MirBuilder
         foreach (ref readonly var omitted in call.DefaultArguments)
         {
             var decl = DefaultDecl.Of(omitted);
-            var slot = this.Temp(omitted.ParameterType, node, MirLocalRole.PendingSlot, omitted.Parameter.Name);
+            var slot = this.Hold(omitted.ParameterType, node, MirLocalRole.PendingSlot, omitted.Parameter.Name);
             var template = this.visited.TryGetValue(decl, out var index) ? this.omissions[index] : default;
             var limit = template is { Body: { } copy, Recursive: false } && this.body.Statements.Length + copy.Statements.Length > ExpansionLimit;
             var unsupported = !limit && template is { Body: { } made, Recursive: false, Failed: false } && subst is not null &&
@@ -150,7 +150,7 @@ internal sealed partial class MirBuilder
                 }
             }
 
-            this.arguments[start + MirCallee.Position(function, decl.Index)] = MirOperand.Move(slot);
+            this.arguments[start + MirCallee.Position(function, decl.Index)] = MirOperand.Move(this.Made(slot));
         }
     }
 

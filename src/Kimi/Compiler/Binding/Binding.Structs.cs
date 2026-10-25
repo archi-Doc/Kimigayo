@@ -239,13 +239,12 @@ public sealed partial class Binding
     }
 
     // Walks a Type's parts in order (a struct's or enum's base, Fields and Case payload Tuples, then its components): 0, or the limit that
-    // ends the walk. An enum whose Cases did not substitute is rejected; its base and components are still walked.
+    // ends the walk. A Field or Case that did not substitute (null) is rejected and walked past, its siblings walked (DECISIONS BU-37).
     private int StorageParts(BoundType type, int path, ref int height, ref int lowest, ref bool rejected)
     {
         if (AdtDef.IsStruct(type) || AdtDef.IsEnum(type))
         {
             var instance = this.Instance(type);
-            rejected |= AdtDef.IsEnum(type) && instance.Cases is null;
             var failure = instance.Base is { } parent ? this.StorageEach([parent], path, ref height, ref lowest, ref rejected) : 0;
             failure = failure != 0 ? failure : this.StorageEach(instance.Fields, path, ref height, ref lowest, ref rejected);
             failure = failure != 0 ? failure : this.StorageEach(instance.Cases, path, ref height, ref lowest, ref rejected);

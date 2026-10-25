@@ -121,7 +121,8 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
 
     // Plan 5.6.1: the Type rule is per view: a pair-generic value is destroyed in its owner case and owns nothing in a reference case, so
     // its Drop has a group per view class, a part moved out of it included (GenericCleanupCaseTest's select). A default copy keeps the Drops
-    // its instance Type may need (an abstract U's, judged by their state; none of i32).
+    // its instance Type may need (an abstract U's, judged by their state; none of i32), the call's result before its slots (SPEC 3.6,
+    // DECISIONS R4-M129).
     [Fact]
     public void TheTypeRuleIsPerView()
     {
@@ -131,7 +132,7 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
         Assert.Equal(["drop _1 -> bb4 [elide in v0; open (.0 elide) in v1]", "drop _2 -> bb6 [elide]"], Lines(Select, "select"));
         const string Pick = "func pick<T>(a: T, b: T = a) -> T\n    T is Copy\n    return b\nfunc generic<U>(a: U) -> U\n    U is Copy\n    return pick(a)\n" +
             "func concrete() -> i32 => pick(1)\n";
-        Assert.Equal(["drop _1 -> bb6 [keep]", "drop _4 -> bb8 [elide]", "drop _3 -> bb9 [elide]", "drop _2 -> bb10 [elide]"], Lines(Pick, "generic"));
+        Assert.Equal(["drop _1 -> bb6 [keep]", "drop _2 -> bb8 [elide]", "drop _4 -> bb9 [elide]", "drop _3 -> bb10 [elide]"], Lines(Pick, "generic"));
         Assert.Empty(Lines(Pick, "concrete", all: true));
     }
 
