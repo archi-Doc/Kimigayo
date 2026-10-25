@@ -57,18 +57,17 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // SPEC 7.7.4 (DECISIONS R5-M108): a compiler function's routine row by its disposition, what its Value call and its adapter's entry call
-    // (FunctionCodegen.Closures' Runs) with the target they carry: an intrinsic's routine row (below), a Body disposition's legacy routine
-    // (LegacyRoutine); null for any other row, which is not one routine call or not written yet (a Shim's, an instruction writer's, an
-    // unwritten row's).
+    // SPEC 7.7.4 (DECISIONS R5-M108, R5-M116): a compiler function's routine row by its disposition, what its adapter's entry calls
+    // (FunctionCodegen.Closures' Runs) with the target it carries, and an intrinsic's Value call: an intrinsic's routine row (below), a Body
+    // disposition's legacy routine (LegacyRuntimeHelpers.Row); null for any other row, which is not one routine call or not written yet (a
+    // Shim's, an instruction writer's, an unwritten row's).
     private FunctionAbi? Routine(CompilerFunctionKind kind, BoundType? result, int target, out ReadOnlySpan<Value> given)
     {
         given = default;
         return IntrinsicDisposition.Of(kind) switch
         {
             { Kind: DispositionKind.Intrinsic, Id: var id } => this.Routine(IntrinsicRows.Of(id), result, target, out given),
-            { Kind: DispositionKind.Body } => LegacyRoutine(kind),
-            _ => null,
+            _ => LegacyRuntimeHelpers.Row(kind)?.Routine,
         };
     }
 
@@ -136,10 +135,7 @@ internal sealed partial class FunctionCodegen
                 return;
             }
 
-            var type = operand.Kind == MirOperandKind.Const
-                ? this.collector.TypeOf(this.item, this.body.Consts[operand.Arg].Type)
-                : this.InstanceType(operand.Place);
-            this.Put(address, type!, lowering, value);
+            this.Put(address, this.InstanceType(operand)!, lowering, value);
         }
 
         this.Finish(call, null);

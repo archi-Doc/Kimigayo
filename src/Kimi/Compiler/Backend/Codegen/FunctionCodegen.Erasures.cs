@@ -20,8 +20,9 @@ namespace Kimi.Compiler.Backend;
 // received (Forward): a ClosureErasure's Shared Closure body with its environment (the word spilled for an inline one, the heap pointer) and
 // a null context; an ItemAdapter's what its Item's call runs (FunctionCodegen.Closures' Runs: a function's body, a requirement Item's
 // witness, a virtual function's slot through the receiver parameter's object, a compiler function's routine row with its slot-less values,
-// or that row's unit's located Unsupported_Kd at the adapter's site); a Never-result callee leaves the entry's result unused and ends it
-// unreachable (SPEC 10.7), also where the entry's own result is another (a slot's signature is its Item's own, ModuleCodegen.Slot).
+// or that row's unit's located Unsupported_Kd at the adapter's site; an update Item's entry writes the update over its own parameters,
+// FunctionCodegen.Updates, DECISIONS R5-M116); a Never-result callee leaves the entry's result unused and ends it unreachable (SPEC 10.7),
+// also where the entry's own result is another (a slot's signature is its Item's own, ModuleCodegen.Slot).
 // A Function value's glue row (DestroyErased): its table's drop entry, when present, at its address.
 internal sealed partial class FunctionCodegen
 {
@@ -43,6 +44,12 @@ internal sealed partial class FunctionCodegen
         var targets = collector.Set.Targets(item);
         var (key, represented) = (collector.Set.Items[item].Key, collector.Set.Items[item].RepresentativeType!);
         var closure = key.Kind == MonoKind.ClosureErasure;
+        if (!closure && LegacyRuntimeHelpers.Row(represented.Symbol?.CompilerFunction ?? CompilerFunctionKind.None) is { Updates: true } row)
+        {
+            this.WriteUpdateEntry(item, entry, row.Writer, targets.Length > 0 ? targets[0].Item : -1); // Its direct call's row (FunctionCodegen.Updates).
+            return;
+        }
+
         var given = default(ReadOnlySpan<Value>);
         var run = closure
             ? (this.module.Signature(targets[0].Item) is { } body ? new Run(body, null) : null)
@@ -88,8 +95,7 @@ internal sealed partial class FunctionCodegen
 
         var function = this.InstanceType(statement.Place);
         var operand = this.body.Operands[statement.Rvalue.Start];
-        var type = operand.Kind == MirOperandKind.Const
-            ? this.collector.TypeOf(this.item, this.body.Consts[operand.Arg].Type) : this.InstanceType(operand.Place);
+        var type = this.InstanceType(operand);
         if (this.Laid(type) is not { } source || this.Laid(function) is not { } handle)
         {
             return; // A broken contract, recorded.
