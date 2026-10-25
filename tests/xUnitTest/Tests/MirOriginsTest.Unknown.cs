@@ -72,9 +72,11 @@ public sealed partial class MirOriginsTest
     // source, fixed target): both rows of r7-inv (one direction of its `==`), a chain through a local region (the j-f chain), a meet at the
     // longer end split per operand (bc801917a239), two well-formedness rows of one call (e3312717bde0), a Phantom slot's `==` failing both
     // ways (one problem with Equality set), a local's callable store (cd1535825466, 597510880fb0, cab8c776076f), a Closure's parameter fit
-    // (8e4cca7290b1), a Reborrow through a local's layers, which Binding names by their meet (p1: one problem at the return; rejected on both
-    // pipelines since G226, DECISIONS BU-27, closing PLAN G192), and a Field initializer's relation that only the constructor's clause would prove: the layer's part is judged
-    // under the Type's public premises (SPEC 6.3.3; DECISIONS R4-M101 E4, R4-M110, R4-M114).
+    // (8e4cca7290b1), an environment binding's Borrow stored under a borrowed receiver, which lies in the receiver Origin ρ (rv/env-store,
+    // fixed in the Closure's body: Unknown, not Refuted, since 2c-3B; DECISIONS R4-M126 P5, R4-M133), a Reborrow through a local's layers,
+    // which Binding names by their meet (p1: one problem at the return; rejected on both pipelines since G226, DECISIONS BU-27, closing PLAN
+    // G192), and a Field initializer's relation that only the constructor's clause would prove: the layer's part is judged under the Type's
+    // public premises (SPEC 6.3.3; DECISIONS R4-M101 E4, R4-M110, R4-M114).
     [Theory]
     [InlineData(R7Inv, "uniq/(ref/i32 during a): a > in1", "let z: uniq/(ref/i32 during a) = y: a > b")]
     [InlineData("func f(x: ref/i32, y: ref/i32) -> ref/i32 during y\n    var r = x\n    r = y\n    return r\n", "r: in0 > in1")]
@@ -85,6 +87,7 @@ public sealed partial class MirOriginsTest
     [InlineData(Holder + "func use(a: ref/i32, b: ref/i32, h0: H{p}, k: (H{q}) -> i32) -> i32\n    origin p.s == a\n    origin q.s == b\n    return k(h0@move)\n", "h0@move: in0 > in1")]
     [InlineData(ClauseBound, "origin x.s outlives b: in2 > in1")]
     [InlineData(Closures, "a: closure.in0 > in0")]
+    [InlineData(EnvStore, "x@ref: closure.ρ > t")]
     [InlineData("func f(p: uniq/(uniq/i32 during a) during b) -> uniq/i32 during a\n    var q = p\n    return q@follow@follow@uniq\n", "q@follow@follow@uniq: b > a")]
     [InlineData(LayerCount, "ref/(ref/i32 during a) during b: a > b")]
     public void AChainBetweenFixedOriginsThePremisesDoNotDeriveIsUnknown(string source, params string[] expected)
@@ -244,12 +247,13 @@ public sealed partial class MirOriginsTest
             $"{Line(c, x.Problem.Subject)}: {Name(x.Problem.Reason.Longer!)} {(x.Problem.Reason.Equality ? "==" : ">")} {Name(x.Problem.Reason.Shorter!)}")];
     }
 
-    // An end as the tests write it: a named Origin by its name, an omitted input Origin by its index (a Closure's prefixed), a meet by its
-    // operands.
+    // An end as the tests write it: a named Origin by its name, an omitted input Origin by its index (a Closure's prefixed), a Closure's
+    // call receiver Origin as closure.ρ, a meet by its operands.
     private static string Name(BoundOrigin origin) => origin.Kind switch
     {
         OriginKind.Intersection => "(" + string.Join(" and ", origin.Operands.Select(Name)) + ")",
         OriginKind.Input => (origin.Binder is FunctionKoto { IsAnonymous: true } ? "closure.in" : "in") + origin.InputIndex,
+        OriginKind.Projection when origin.Slot == Binding.ClosureValueSlot => "closure.ρ",
         _ => origin.Name,
     };
 

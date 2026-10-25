@@ -84,7 +84,8 @@ public sealed partial class MirOriginsTest
         "func g(anchor: ref/i32, x: Option<i32>) -> i32\n    var t: ref/i32 during anchor = anchor\n    match x\n" +
         "        .Some(let v) if keep(t@uniq, v@ref) => return 1\n        _ => return 0\n";
 
-    // A Closure storing a Borrow of an environment binding through a captured exclusive reference (2a0-D's rv/env-store, row 4).
+    // A Closure storing a Borrow of an environment binding through a captured exclusive reference (2a0-D's rv/env-store): under its
+    // borrowed receiver the binding's atom (row 4) resolves to the call receiver Origin ρ (row 5; DECISIONS R4-M126 P5).
     private const string EnvStore = "func store(target: uniq/(ref/i32 during t), value: ref/i32 during t) -> ()\n    target@follow = value\n" +
         "func g(x: i32, target: uniq/(ref/i32 during t)) -> ()\n    var f = func [x, target] () => store(target, value: x@ref)\n    f()\n";
 
@@ -98,9 +99,9 @@ public sealed partial class MirOriginsTest
     // SPEC 15.6.5: a finite Origin never outlives a fixed one, so each chain from a finite source into a fixed Origin is a problem at its
     // last edge's site (DECISIONS R4-M113's Site rule: a row's Site, or the Ref's statement for a containment edge), whether or not that
     // site is reachable (j-unreach), through a local region (j-region, m-scope), a nested function's own body (n-inner), a guard candidate
-    // and the subject it binds (rv/guard-annot), an environment slot (rv/env-store), the destruction receiver's part and its helper borrow
-    // (G161), shared and exclusive layers a Ref is reached through (SPEC 15.6.3's containment), an object's own step, a mutable static's
-    // storage (row 7), and FailedClause's body with its clause valid (AChainThroughADependentNodeIsJudgedBetweenItsEnds' counterpart).
+    // and the subject it binds (rv/guard-annot), the destruction receiver's part and its helper borrow (G161), shared and exclusive layers
+    // a Ref is reached through (SPEC 15.6.3's containment), an object's own step, a mutable static's storage (row 7), and FailedClause's
+    // body with its clause valid (AChainThroughADependentNodeIsJudgedBetweenItsEnds' counterpart).
     [Theory]
     [InlineData("func bad(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 1\n    return local@ref\n", "return local@ref")]
     [InlineData(Region, "view")]
@@ -108,7 +109,6 @@ public sealed partial class MirOriginsTest
     [InlineData("func f(x: ref/i32, c: bool) -> ref/i32 during x\n    var r = x\n    if c\n        let local = 1\n        r = local@ref\n    return r\n", "r")]
     [InlineData("func use(bound: ref/i32) -> i32\n    func inner() -> ref/i32 during bound\n        let t = 1\n        return t@ref\n    return 0\n", "return t@ref")]
     [InlineData(Guard, "v@ref", "v@ref")]
-    [InlineData(EnvStore, "x@ref")]
     [InlineData(Destructors, "self.buffer@ref", "whole.buffer@ref")]
     [InlineData("func f(p: ref/i32) -> ref/i32 during p\n    let local: i32 = 1\n    let r = local@ref\n    let rr = r@ref\n    return rr@follow@follow@ref\n", "return rr@follow@follow@ref")]
     [InlineData(Layers, "rr@follow@follow@ref", "rr@follow@follow@ref")]
