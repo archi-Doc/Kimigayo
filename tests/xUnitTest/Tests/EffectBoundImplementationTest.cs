@@ -73,6 +73,56 @@ public class EffectBoundImplementationTest
         Assert.Equal((code, source.IndexOf(at, StringComparison.Ordinal), at.Length), (error.Code, error.Span!.Value.Start, error.Span.Value.Length));
     }
 
+    // SPEC 8.11.3, 23.1.2 (DECISIONS BU-38): a witness reaching storage that rests on a part Binding rejected (Bad's Field m) reads it as
+    // instantiated, so its conformance has the records its repair has, beside Binding's own: none through a forwarded call, a forwarded
+    // Type argument, a dictionary, a requirement, formatting or a comparison over it, the repair's violation through a forwarded
+    // environment effect, and Unsupported_Kd for a storage limit beside it or alone (fail-before: Unsupported_Kd at each conformance, the
+    // rejected part read as a limit).
+    [Theory]
+    [InlineData("forward", "")]
+    [InlineData("environment", "IncompatibleContractImplementation_Kd @ Self is Reset")]
+    [InlineData("argument", "")]
+    [InlineData("dictionary", "")]
+    [InlineData("requirement", "")]
+    [InlineData("format", "")]
+    [InlineData("equals", "")]
+    [InlineData("pair", "Unsupported_Kd @ Self is Reset")]
+    [InlineData("deep", "Unsupported_Kd @ Self is Reset")]
+    [InlineData("deepArgument", "Unsupported_Kd @ Self is Reset")]
+    public void StorageBindingRejectedViolatesNothing(string form, string repaired)
+    {
+        Assert.Equal(repaired, string.Join("; ", Issues("i32")));
+        Assert.Equal(Issues("i32").Append("UnresolvedBinding_Kd @ Missing").Order(), Issues("Missing").Order());
+
+        string[] Issues(string field)
+        {
+            var item = form.StartsWith("deep", StringComparison.Ordinal) ? RetentionTest.Box65 : "Bad";
+            var (conformance, witness) = form switch
+            {
+                "requirement" => ("Named", "    public func name(self: ref/Self) -> i32 => 1\n"),
+                "format" => ("Utf8Format", "    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write(1)\n"),
+                "equals" => ("Equatable", "    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n"),
+                _ => (null, string.Empty),
+            };
+            var (call, helpers) = form switch
+            {
+                "forward" or "deep" => ("U.wrap(self.item@ref)", "    public func touch<T>(x: ref/T) => ()\n    public func wrap<T>(x: ref/T) => U.touch(x)\n"),
+                "environment" => ("U.wrap(self.item@ref)", "    public func touch<T>(x: ref/T) => Console.writeLine(\"t\")\n    public func wrap<T>(x: ref/T) => U.touch(x)\n"),
+                "argument" or "deepArgument" => ($"_ = U.outer<{item}>()", "    public func outer<T>() -> i32 => U.inner<T>()\n    public func inner<T>() -> i32 => 0\n"),
+                "dictionary" => ("_ = U.keyed(self.item@ref)", "    public func keyed<T>(x: ref/T) -> i32\n        var d: Dictionary<i32, Option<T>> = [:]\n        return 0\n"),
+                "requirement" => ("_ = U.ask(self.item@ref)", "    public func ask<T>(x: ref/T) -> i32\n        T is Named\n        return x.name()\n"),
+                "format" => ("_ = U.show(self.item@ref)", "    public func show<T>(x: ref/T) -> string\n        T is Utf8Format\n        return Text.toString(x)\n"),
+                "equals" => ("_ = U.same(self.item@ref)", "    public func same<T>(x: ref/T) -> bool\n        T is Equatable\n        return x == x\n"),
+                _ => ("U.pair(self.item@ref, self.big@ref)", "    public func touch<T, S>(x: ref/T, y: ref/S) => ()\n    public func pair<T, S>(x: ref/T, y: ref/S) => U.touch(x, y)\n"),
+            };
+            var source = "contract Reset\n    func reset(self: uniq/Self)\n        effect confined\ncontract Named\n    func name(self: ref/Self) -> i32\n        effect confined\n" +
+                RetentionTest.Box + "struct Bad\n" + (conformance is null ? string.Empty : $"    Self is {conformance}\n") + $"    public var m: {field}\n" + witness +
+                $"struct Holder\n    Self is Reset\n    var item: {item}\n" + (form == "pair" ? $"    var big: {RetentionTest.Box65}\n" : string.Empty) +
+                $"    public func reset(self: uniq/Self)\n        {call}\ngroup U\n" + helpers + Main;
+            return [.. MinimalEmissionTest.Analyze(source).Binding.Issues.Select(static x => $"{x.Code} @ {x.Node.ToString().Split('\n')[0].Trim()}")];
+        }
+    }
+
     // SPEC 8.11.2: every compiler function has one effect class. The Storage and Raw families act only on their inputs and the
     // allocator; Console output and the test temporary directory are environment effects; formatting dispatch is followed to its
     // witness before classification. A new kind is unclassified until it is placed here.
