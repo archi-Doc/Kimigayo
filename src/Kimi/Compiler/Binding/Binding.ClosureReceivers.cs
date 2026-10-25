@@ -12,7 +12,8 @@
 //   by value without an operator (at a value position its consumer takes it by value, Binding.AcquiredByValue's list, or a nested bare
 //   entry) that Reborrows in some admitted cases makes it Exclusive in exactly those (SPEC 8.14): the capture is marked
 //   (BoundCapture.BareReborrows); every other use counts in every case (CaseFreeReceiver). A use of such a capture whose consumer the
-//   list does not decide is published (Unlisted) where it could leave a case Shared.
+//   list does not decide is published (Unlisted) where it could leave a case Shared. A failure at the use or a node enclosing it in
+//   the body explains the use (SPEC 23.1.2): it neither marks its capture nor is published (InFailure).
 // - Inputs: the Closure's bound body (each node's bound symbol, Type, call, value call and conversion), the adaptations Binding
 //   recorded, a nested Closure's published Storage, a loop's and a match's Subject mode; AcquiredByValue, ReceiverOperation,
 //   BareReborrows, BorrowsExclusively and ProveCopy.
@@ -135,7 +136,7 @@ public sealed partial class Binding
                     this.plan.CaseFreeReceiver = SemanticsKind.Owner;
                 }
 
-                if (node.BoundType is { } captured && binding.BareReborrows(captured, node) && binding.AcquiredByValue(node) is null && !FailedConsumer(node))
+                if (node.BoundType is { } captured && binding.BareReborrows(captured, node) && binding.AcquiredByValue(node) is null && !this.InFailure(node))
                 {
                     this.Unlisted.Add((node, at)); // The list does not decide whether this use Reborrows by case.
                 }
@@ -164,15 +165,19 @@ public sealed partial class Binding
             => operation.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.BaseBorrow or ArgumentOperationKind.PayloadProjection &&
                 operation.ParameterType is { } parameter && IsExclusive(parameter.Semantics);
 
-        // Whether the consumer of a use's value (past its parentheses) failed: its own record stands, and the net adds none (SPEC 23.1.2).
-        private static bool FailedConsumer(Koto use)
+        // SPEC 23.1.2: whether the use or a node enclosing it in the Closure's body failed; that record explains the use, which then
+        // neither marks its capture nor reaches the net.
+        private bool InFailure(Koto use)
         {
-            while (use.Parent is ParenthesizedKoto parenthesized)
+            for (var node = use; node is not null && !ReferenceEquals(node, this.function); node = node.Parent)
             {
-                use = parenthesized;
+                if (node.BindingFailure != BindingFailure.None)
+                {
+                    return true;
+                }
             }
 
-            return use.Parent is { BindingFailure: not BindingFailure.None };
+            return false;
         }
 
         // SPEC 7.7.2, 7.7.3: a nested Closure's entries of this binding's captures: moving an outer environment value is Consuming;
@@ -268,8 +273,8 @@ public sealed partial class Binding
             }
 
             // SPEC 3.5, 8.14: a Place its consumer acquires by value without an operator (Binding.AcquiredByValue) is acquired as each
-            // case's Type is.
-            byCase = binding.AcquiredByValue(place) == true && place.BoundType is { } bare && binding.BareReborrows(bare, place);
+            // case's Type is, unless a failure explains the use (InFailure).
+            byCase = binding.AcquiredByValue(place) == true && place.BoundType is { } bare && binding.BareReborrows(bare, place) && !this.InFailure(place);
             return byCase;
         }
 
