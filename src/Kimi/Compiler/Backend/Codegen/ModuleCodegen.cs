@@ -9,14 +9,14 @@
 // the module frame through LlvmModuleText in the old generator's order (header with the pooled constants, runtime, the called imports'
 // declarations, overflow declarations, functions, entry, footer); the coverage rows (PD11) of the item kinds and output forms: DropGlue
 // (__kimi_drop<item>, written by FunctionCodegen by its Type's row, DropGlue.Row: a string's (R5-M78), a struct's, Tuple's, enum's or fixed
-// array's (R5-M95), a Closure environment's (R5-M102), an erased function's (R5-M104), an owning handle's (R5-M112), an Array's (R5-M121); a
-// Dictionary's is C8e's),
+// array's (R5-M95), a Closure environment's (R5-M102), an erased function's (R5-M104), an owning handle's (R5-M112), an Array's (R5-M121), a
+// Dictionary's (R5-M124)),
 // ClosureErasure and ItemAdapter (__kimi_erase<item>, its entry under its target Function Type's erased signature, its table and its
-// heap environment's release, written by FunctionCodegen; R5-M108), the LegacyRow items of the Array rows (their routines, their helpers
-// written before the definitions, ModuleCodegen.Arrays; R5-M121), the Builtin shims (C8f, C9b), the property witnesses (C3c), K8's
-// ObjectDescriptor items (the module's runtime identities, a descriptor's constants, payload destructor and factory through
-// ObjectRuntime, ModuleCodegen.Objects; R5-M110) and VTable items, whose text is their descriptors' virtual tables (R5-M114), a test
-// build's TestEntry (C10a).
+// heap environment's release, written by FunctionCodegen; R5-M108), the LegacyRow items of the Array rows and of placeEntry (their routines,
+// their helpers written before the definitions, ModuleCodegen.Arrays and ModuleCodegen.Dictionaries; R5-M121, R5-M124), the Builtin shims
+// (C8f, C9b), the property witnesses (C3c), K8's ObjectDescriptor items (the module's runtime identities, a descriptor's constants, payload
+// destructor and factory through ObjectRuntime, ModuleCodegen.Objects; R5-M110) and VTable items, whose text is their descriptors' virtual
+// tables (R5-M114), a test build's TestEntry (C10a).
 // Inputs: the program the generation gate passed (validated, analyzed and accepted); the instance collector's checked set, marked from the
 // output roots the generation entry gives (K package 4.10), TypeOf and location rule (K package 4.9); the compilation's Layout and runtime
 // location texts (Compilation.Locations); the startup selection.
@@ -33,8 +33,9 @@
 // partial module, use LINQ, Supports* or catch-alls.
 // Files: the items and the records (this file); the body, glue, ensure and virtual slot signatures and the signature caches
 // (ModuleCodegen.Signatures.cs), the called imports' C signatures and declarations (ModuleCodegen.Imports.cs), the common Function values'
-// entries (ModuleCodegen.Erasures.cs), the object descriptors with their virtual tables (ModuleCodegen.Objects.cs) and the Array rows'
-// routines and helpers (ModuleCodegen.Arrays.cs); the module frame and the output form (ModuleCodegen.Frame.cs).
+// entries (ModuleCodegen.Erasures.cs), the object descriptors with their virtual tables (ModuleCodegen.Objects.cs), the Array rows'
+// routines and helpers (ModuleCodegen.Arrays.cs) and the Dictionary rows' (ModuleCodegen.Dictionaries.cs); the module frame and the output
+// form (ModuleCodegen.Frame.cs).
 
 using System.Globalization;
 using Kimi.Compiler.Mir;
@@ -151,7 +152,7 @@ internal sealed partial class ModuleCodegen
             case MonoKind.VTable:
                 return; // Its text is its descriptor's virtual table (ModuleCodegen.Objects' Table; R5-M114).
             case MonoKind.LegacyRow:
-                _ = this.Row(item, out _); // Its routine, its helper's text and its row's needs (ModuleCodegen.Arrays; R5-M121).
+                _ = this.Row(item, out _); // Its routine, its helper's text and its row's needs (ModuleCodegen.Arrays; R5-M121, R5-M124).
                 return;
             default:
                 throw new InvalidOperationException($"The mono item kind {entry.Key.Kind} has no code generation row.");

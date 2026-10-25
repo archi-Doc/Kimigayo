@@ -21,10 +21,10 @@ namespace Kimi.Compiler.Backend;
 // match Subject, initialized before arm selection, SPEC 15.1.6); a fixed array's elements from the last, each run of elements without a
 // row in one counted loop (Loop, Fill's loop), so the text does not grow with the length. Each level reads its own glue item's targets.
 // A common Function value's calls its table's drop entry, when present (FunctionCodegen.Erasures). An owning handle's releases its
-// object (FunctionCodegen.Objects' Release), only in its glue function, since no move path opens a handle. A collection's row (also only in
-// its glue function): an Array's calls its glue item's Drop helper with the glue's parameters (FunctionCodegen.Arrays; DECISIONS R5-M121), a
-// Dictionary's is C8e's, one located Unsupported_Kd at its item's site; a Type of a kind no glue has, or a target missing or left over, is
-// a broken contract, InternalInvariant_Kd there.
+// object (FunctionCodegen.Objects' Release), only in its glue function, since no move path opens a handle. A collection's rows (also only
+// in its glue function): an Array's and a Dictionary's call their glue item's Drop helper with the glue's parameters (FunctionCodegen.Arrays,
+// FunctionCodegen.Dictionaries; DECISIONS R5-M121, R5-M124); a Type of a kind no glue has, or a target missing or left over, is a broken
+// contract, InternalInvariant_Kd there.
 internal sealed partial class FunctionCodegen
 {
     private static readonly Site Received = new(new('p', 1), new('p', 2)); // A glue function's location, its own parameters location and length.
@@ -67,10 +67,13 @@ internal sealed partial class FunctionCodegen
             case DropGlueRow.Handle:
                 this.Report(DiagnosticCode.InternalInvariant_Kd, default); // A handle has no part a move path opens.
                 return;
-            case DropGlueRow.Collection when row < 0:
-                this.Collection(glue, type, address, site);
+            case DropGlueRow.Array when row < 0:
+                this.ArrayGlue(glue, address, site);
                 return;
-            case DropGlueRow.Collection:
+            case DropGlueRow.Dictionary when row < 0:
+                this.DictionaryGlue(glue, address, site);
+                return;
+            case DropGlueRow.Array or DropGlueRow.Dictionary:
                 this.Report(DiagnosticCode.InternalInvariant_Kd, default); // A collection has no part a move path opens.
                 return;
             default:

@@ -20,10 +20,14 @@
 // InstanceCollector.Edges.cs's: replaying a body item's template resolves each site's row under the item's representative, a callee's body
 // (InstanceCollector.Callees.cs), and a Requirement call's, a requirement Item's, a bodyless callee's published row's and an erased writer's
 // by the witness there (InstanceCollector.Witnesses.cs: a body, a Builtin or a property-witness shim keyed by its compiler function or Field
-// and the erased Self, or a gap); a bodyless callee whose legacy row's writer is Instance targets its function instance's LegacyRow
-// item (AdmitRow: the function and the erased Subst, no body; DECISIONS R5-M121); a type-driven item's targets follow from its
-// representative Type by its kind's row (Expand: an adapter's Item; InstanceCollector.Glue.cs: a DropGlue's direct parts, DropGlue.Parts,
-// and a LegacyRow's declared needs, an ElementGlue need its Element parts' glue; InstanceCollector.Witnesses.cs: a comparison shim's leaf
+// and the erased Self, or a gap); a bodyless callee whose legacy row writes its call in its instance (the Array operations and storage
+// kinds, placeEntry) targets its function instance's LegacyRow item (AdmitRow: the function and the erased Subst, no body, represented by
+// the storage its handle parameter designates; DECISIONS R5-M121, R5-M124); a Dictionary from none targets the body of the
+// DictionaryStorage function the Dictionary runtime declares for construction, initialize (Declared, through TyCtxt's F2c view); a
+// type-driven item's targets follow from its representative Type by its kind's row (Expand: an adapter's Item; InstanceCollector.Glue.cs:
+// a DropGlue's direct parts, DropGlue.Parts, a Dictionary's the clearEntries instance its Drop row declares when an entry may need a drop,
+// and a LegacyRow's declared callee and needs, placeEntry's append body and an ElementGlue need its Element parts' glue;
+// InstanceCollector.Witnesses.cs: a comparison shim's leaf
 // witnesses, TyCtxt.Comparison, a property-witness setter's Field glue; InstanceCollector.Objects.cs: a created payload's descriptor's
 // glue and VTable, a VTable's slot bodies by VTableDef and Applies).
 // Capability (K 4.7, InstanceCollector.Capabilities.cs): the definition-stage check (A3b) of every operation of a root-module body whose
@@ -42,7 +46,8 @@
 // Layout's Rejected is InternalInvariant_Kd at its site (Derived). Every row reads a Type of an instance at its site through In, Below or
 // Instantiable, so through Made, never through TypeOf, TyCtxt.Apply or TyCtxt.Signature under a substitution; those read no verdict and
 // serve code generation and a Type whose verdict its site already read (Rest's operand and environment, Agrees' signature under a
-// witness's substitution whose Self the call's composition made).
+// witness's substitution whose Self the call's composition made, Bodyless's intrinsic row's Type argument, a part of the Item Type its site
+// made).
 // Admission (K 4.6, X19): a new key is admitted once; its representative is the first composed substitution or Type, erased only into the
 // key (KD3). A call of a nested function whose substitution does not carry its enclosing instance (DECISIONS R5-M43), a substitution or
 // Type whose storage is a limit (Made) and OCC-X's refused witness are the capability table's gaps (an access of a static of a generic

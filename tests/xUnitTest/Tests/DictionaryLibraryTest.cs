@@ -326,20 +326,21 @@ public class DictionaryLibraryTest
         var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(Source);
         Assert.Contains(sel.Library.DictionaryUnlink, generated);
 
-        // Library reach of the Dictionary runtime's callees and theirs, until R5 C8e (DECISIONS R4-M13a, R5-M27): the old analysis collects
-        // them for every Dictionary Type, and the checked set has them only once C8e roots the hidden DictionaryStorage instances (before
-        // it, the Dictionary's drop glue and placeEntry name no body). C8e moves these eight reads to the Generated mark: the six, and the two
-        // negatives that guard shrinking against being reached through them.
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryAppendSlot));
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryStorage(DictionaryCallee.Initialize).Declaration));
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryClearLinks));
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryStorage(DictionaryCallee.FindEntry).Declaration));
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryStorage(DictionaryCallee.ClearEntries).Declaration));
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryStorage(DictionaryCallee.Append).Declaration));
+        // The library reach of the hidden DictionaryStorage instances in the checked set (DECISIONS R4-M13a, R5-M27, R5-M124), where the old
+        // analysis collected the Dictionary runtime's callees for every Dictionary Type: placeEntry's LegacyRow item targets append, which
+        // reaches appendSlot; the Dictionary from none targets initialize, which reaches clearLinks; tryInsert and remove reach findEntry.
+        // The glue targets clearEntries only when an entry may need a drop (CallsEntries): never for i32 entries, and for a string value.
         // Shrinking is reached only through shrinkToFit calls; no bridge compiles it eagerly.
-        Assert.DoesNotContain(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryCompact));
-        var shrink = c.Library.GetSymbol(KimiDeclarationId.DictionaryStorageShrinkToFit)!.Declaration;
-        Assert.DoesNotContain(c.Ownership.Bodies, body => ReferenceEquals(body.Function, shrink));
+        Assert.Contains(sel.Library.DictionaryAppendSlot, generated);
+        Assert.Contains(sel.Library.DictionaryStorage(DictionaryCallee.Initialize).Declaration, generated);
+        Assert.Contains(sel.Library.DictionaryClearLinks, generated);
+        Assert.Contains(sel.Library.DictionaryStorage(DictionaryCallee.FindEntry).Declaration, generated);
+        Assert.Contains(sel.Library.DictionaryStorage(DictionaryCallee.Append).Declaration, generated);
+        Assert.DoesNotContain(sel.Library.DictionaryStorage(DictionaryCallee.ClearEntries).Declaration, generated);
+        var (texts, dropped) = FunctionCodegenTest.GeneratedDefinitions("var entries: Dictionary<i32, string> = [:]\n_ = entries.tryInsert(1, \"a\")");
+        Assert.Contains(texts.Library.DictionaryStorage(DictionaryCallee.ClearEntries).Declaration, dropped);
+        Assert.DoesNotContain(sel.Library.DictionaryCompact, generated);
+        Assert.DoesNotContain(sel.Library.GetSymbol(KimiDeclarationId.DictionaryStorageShrinkToFit)!.Declaration, generated);
         Assert.Equal(CompilerFunctionKind.None, c.Library.DictionaryUnlink.SymbolOf()!.CompilerFunction);
         Assert.Contains("DictionaryStorage.kimi", c.Library.DictionaryUnlink.CodeContext.SourceDocument!.Path);
         ScalarEmissionTest.WriteFixture("DictionaryLibraryRemoval", outputIr, string.Empty);

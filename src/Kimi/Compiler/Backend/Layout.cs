@@ -5,7 +5,7 @@
 // old pool calls it, never a copy), and its verdict: OK, a typed generation limit, the C-layout zero-sized rule anywhere in the
 // 64-level window (S2-S4 X18), a layout over 2^63 - 1 bytes (Oversized, IMPL 21.1.1), or a failure derived from Binding's rejected
 // storage. Rows (Layout.Rows.cs; static, Row): IMPL 21.1.3's scalars, Unit, string, Never, borrows and raw pointers, object and function
-// handles, and the sequence handles (Slice, Array, Dictionary words).
+// handles, and the sequence handles (Slice, Array, Dictionary words, each with its length word, LengthWord).
 // Placement (Layout.Placement.cs): structs (Loan<T> among them), Tuples, fixed arrays, enums, Closures and Function Items, memoized
 // per program version, each placement's entry and its one decision in Layout.Decision.cs; Weak<S> comes with its operations (P41).
 // Inputs: a closed, interned Type of the owning compilation; AdtDef (stored Types, IsCLayout, InlineCycle, CLayoutRejected);

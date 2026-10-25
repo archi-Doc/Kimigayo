@@ -90,7 +90,7 @@ internal sealed partial class InstanceCollector
                 this.DestructionTargets(program, item, site, type);
                 return;
             case MonoKind.LegacyRow:
-                this.RowTargets(item, site, type);
+                this.RowTargets(program, item, site, type);
                 return;
             case MonoKind.ObjectDescriptor or MonoKind.VTable:
                 this.Object(program, item, site, key.Kind, type);
@@ -227,7 +227,8 @@ internal sealed partial class InstanceCollector
     }
 
     // K 4.5 rows 8 and 11-13, K 4.7 and K 4.8, in the item's instance: a case adaptation that creates an object its payload's descriptor
-    // (Adaptation; DECISIONS R5-M111); an aggregate's Type a by-value use, a Closure environment's also its body;
+    // (Adaptation; DECISIONS R5-M111); an aggregate's Type a by-value use, a Closure environment's also its body, a Dictionary from none's
+    // the body of the DictionaryStorage function the Dictionary runtime declares for construction, initialize (Declared; DECISIONS R5-M124);
     // a function item constant's body (as row 5); an erasure's ClosureErasure or ItemAdapter item, keyed by the erased Closure or Item Type
     // and the erased target Function Type, the Cast's, whose inputs and result are by-value uses at the erasure (its entry takes and gives
     // them; a Never-result source fits Function Types of other results, SPEC 10.7), a target that does not lay out dropping the edge
@@ -256,7 +257,12 @@ internal sealed partial class InstanceCollector
         if (aggregate)
         {
             _ = this.LaysOut(subject, closed);
-            return (MirAggregateKind)rvalue.Op == MirAggregateKind.Closure ? this.Callee(program, item, subject, closed) : -1;
+            return (MirAggregateKind)rvalue.Op switch
+            {
+                MirAggregateKind.Closure => this.Callee(program, item, subject, closed),
+                _ when closed.Kind == BoundTypeKind.Dictionary => this.Declared(program, item, subject, LegacyRuntimeHelpers.Construction, null),
+                _ => -1,
+            };
         }
 
         if (rvalue.Kind != MirRvalueKind.Cast)
