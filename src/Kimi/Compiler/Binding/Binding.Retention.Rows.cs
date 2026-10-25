@@ -15,6 +15,20 @@ public sealed partial class Binding
     private readonly List<int> retentionUntiedStores = new();
     private readonly HashSet<(BoundType Type, BoundType? Written)> retentionMet = new();
 
+    // Whether a retention reads a Type whose storage has this verdict (SPEC 23.1.2; DECISIONS BU-36): Prepared, and Rejected, whose parts
+    // that do not substitute hold nothing, so the rows that hold whatever they are stay; a Limit gives CallRetention.Limit. Rejected
+    // storage rests on a Binding failure (DIAGNOSTICS rule 8: a part Binding did not bind makes it incomplete), so in a complete
+    // compilation it is a broken contract.
+    internal bool Retained(BoundType type, StorageOutcome storage)
+    {
+        if (storage == StorageOutcome.Rejected && this.Result.IsComplete)
+        {
+            throw new InvalidOperationException($"The storage of {type.Name} is Rejected in a complete compilation.");
+        }
+
+        return storage != StorageOutcome.Limit;
+    }
+
     // An input retained through one of its occurrences: Value over Content; an atom of no kind gives none (a raw input's own layer).
     private static void Mark(RetentionKind?[] kinds, in RetentionAtom atom)
     {
@@ -30,7 +44,7 @@ public sealed partial class Binding
     // call forms within a raw parameter's storage (`within`) retains that argument's own value. A raw input's own value is a Value row of
     // the outputs that can hold it, and an output whose hold walk meets a raw layer stepping Unstated or Static is untied (Held: Untied,
     // UntiedStores; DECISIONS R4-M116). The work is what the closures reach, each node with its incoming premises once per closure, and
-    // each output's hold walk, each position once (BU-35). CallRetention.Limit where a stored Type is not instantiated.
+    // each output's hold walk, each position once (BU-35). CallRetention.Limit where the hold walk meets storage past its limits (Held).
     private CallRetention RetentionRows(OriginPremiseEnvironment environment, int[] nodes, int inputCount, int within)
     {
         // The sources at a node, linked atom indexes.
@@ -152,13 +166,13 @@ public sealed partial class Binding
     // stored at a writable position brings its whole Type (BU-1), so the walk goes below every layer that stores (IsCallable), as
     // RetentionParts' writable positions do, and into a struct's or enum's stored content. What a position gives depends on its Type and
     // `written` alone and only accumulates, so each position is walked once per output (retentionMet): the work is linear in the distinct
-    // positions, not in the paths to them through the interned Types (V16). A Type whose storage Binding does not complete, a growing one
-    // among them (PrepareTypeStorage's limits, DECISIONS BU-12), makes the contract CallRetention.Limit.
+    // positions, not in the paths to them through the interned Types (V16). A struct or enum whose storage is a Limit, a growing one among
+    // them (PrepareTypeStorage's limits, DECISIONS BU-12), makes the contract CallRetention.Limit; Rejected storage is walked as far as it
+    // substitutes, a part that does not (null) holding nothing (Retained, BU-36).
     private bool Held(BoundType? type, BoundType? written, int output, bool[] owned)
     {
         if (type is null)
         {
-            this.retentionLimit = true;
             return false;
         }
 
@@ -169,7 +183,7 @@ public sealed partial class Binding
         }
 
         var nominal = AdtDef.IsStruct(type) || AdtDef.IsEnum(type);
-        if (nominal && !this.PrepareTypeStorage(type))
+        if (nominal && !this.Retained(type, this.PrepareTypeStorage(type)))
         {
             this.retentionLimit = true;
             return false;
@@ -192,7 +206,8 @@ public sealed partial class Binding
     }
 
     // The hold walk (Held) of a struct's or enum's stored content (SPEC 5.7 Slots and ownership): its base, and its Fields and Case
-    // payloads with the Types their declarations write; whether one unties `output`.
+    // payloads with the Types their declarations write; whether one unties `output`. An enum's Cases are walked only where its instance
+    // substituted them, the storage its verdict covered (DECISIONS BU-36), which bounds the walk.
     private bool Stores(BoundType instance, int output, bool[] owned)
     {
         if (instance.Symbol?.Adt is not { } adt)
@@ -206,7 +221,8 @@ public sealed partial class Binding
             untied |= this.Held(this.StoredType(adt.Fields[i], instance), WrittenType(adt.Fields[i]), output, owned);
         }
 
-        for (var i = 0; AdtDef.IsEnum(instance) && i < adt.Cases.Length; i++)
+        var cases = AdtDef.CaseTypes(instance) is null ? 0 : adt.Cases.Length;
+        for (var i = 0; i < cases; i++)
         {
             for (var j = 0; adt.Cases[i] is { } selected && j < selected.Payload.Length; j++)
             {

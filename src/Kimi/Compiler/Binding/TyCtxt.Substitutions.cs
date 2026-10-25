@@ -98,9 +98,22 @@ internal sealed partial class TyCtxt
     internal Subst Synthesized(BindingSymbol requirement, BoundType self, BoundType reference)
         => this.Intern(requirement, self, ReferenceEquals(reference.Symbol?.Type, reference) ? null : reference, [], [], [], []);
 
-    // SPEC 8.1.3, 8.15.1: a declared Type in the instance a substitution makes, which Binding's storage instantiation computes until R7 moves it
-    // here; the identity keeps the Type.
-    internal BoundType? Apply(BoundType type, Subst subst) => subst.IsIdentity ? type : binding.InstantiateStorageType(type, subst);
+    // SPEC 8.1.3, 8.15.1: a declared Type in the instance a substitution makes whose storage is Prepared (Instance); null otherwise.
+    internal BoundType? Apply(BoundType type, Subst subst) => this.Instance(type, subst) is ({ } instance, Binding.StorageOutcome.Prepared) ? instance : null;
+
+    // A declared Type in the instance a substitution makes with its storage's verdict (DECISIONS BU-36), which Binding computes until R7
+    // moves it here (Binding.StorageInstance, then Binding.PrepareTypeStorage): the identity keeps the Type, whose storage it does not query
+    // (Prepared); null and Limit where the substitution does not complete.
+    internal (BoundType? Type, Binding.StorageOutcome Storage) Instance(BoundType type, Subst subst)
+    {
+        if (subst.IsIdentity)
+        {
+            return (type, Binding.StorageOutcome.Prepared);
+        }
+
+        var instance = binding.StorageInstance(type, subst);
+        return (instance, instance is null ? Binding.StorageOutcome.Limit : binding.PrepareTypeStorage(instance));
+    }
 
     // Plan 5.6.2: the substitution of a call in a body that another substitution instantiates, as a call in a default template folds under
     // the substitution of the call omitting the default: each binding of the inner one in the outer instance, as Binding forwards a call of

@@ -56,7 +56,7 @@ internal sealed partial class MirBorrows
 
         if ((index == this.body.Blocks[block].Count && this.Retaining(this.body.Blocks[block].Terminator) is { IsLimit: true }) || this.layerBorrowed[location])
         {
-            this.Unsupported(at); // A contract Binding does not instantiate; a `during self` layer's enclosing Place (PQ-10, MirBorrows.Addresses).
+            this.Unsupported(at); // A genuine retention limit (TyCtxt.Retention.cs); a `during self` layer's enclosing Place (PQ-10, MirBorrows.Addresses).
         }
 
         this.Activations(at);
