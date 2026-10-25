@@ -55,7 +55,7 @@ internal sealed partial class MirBorrows
 
         if (index == this.body.Blocks[block].Count && this.Retaining(this.body.Blocks[block].Terminator) is { IsLimit: true })
         {
-            this.Unsupported(at); // A contract Binding does not instantiate.
+            this.Unsupported(at); // A genuine retention limit (TyCtxt.Retention.cs).
         }
 
         this.Activations(at);

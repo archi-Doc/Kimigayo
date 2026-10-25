@@ -15,9 +15,56 @@ namespace XunitTest;
 /// write), and whether the result is untied.</summary>
 public sealed class RetentionTest
 {
-    private const string Cell = "struct Cell<T> {s}\n    var item: uniq/T during s\n";
+    // A struct B that stores its Type argument, and B^64<i32> and B^65<i32>, whose storage heights are 64 and 65 (DECISIONS BU-12's bound
+    // is 64).
+    internal const string Box = "struct B<T>\n    public var item: T\n    public init(item: T) => self.item = item@move\n";
 
-    private const string Box = "struct B<T>\n    public var item: T\n    public init(item: T) => self.item = item@move\n";
+    internal const string Box64 = "B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<B<" +
+        "i32>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>";
+
+    internal const string Box65 = "B<" + Box64 + ">";
+
+    // G240's forms (the designs' and R4's probes; the rejected spelling MISSING is a Binding failure, its repair valid). Bad's Field;
+    // Sx holding Bad through a handle; keep2's result during x beside a Bad input, then v written while the result lives; stash storing
+    // x's borrow into slot beside a Bad input, then x written while slot lives; Pick's payload Origin, with a conflict beside its call;
+    // Bad beside a Field of height 65; G growing beside a failed Field.
+    internal const string Bad = "struct Bad\n    public var m: MISSING\n";
+
+    internal const string Handle = Bad + "struct Sx\n    public var x: rc/Bad\nfunc f(s: uniq/Sx, p: raw/i32) => ()\nfunc g(s: uniq/Sx) => f(s, null)\n";
+
+    internal const string Keep2 = Bad + "func keep2(x: ref/i32, b: uniq/Bad) -> ref/i32 during x => x\nfunc g(b: uniq/Bad)\n    var v = 1\n" +
+        "    let r = keep2(v@ref, b)\n    v = 2\n    let k = r@follow\n";
+
+    internal const string Stash = Bad + "func stash(slot: uniq/(ref/i32 during a), value: ref/i32 during a, b: uniq/Bad) => slot@follow = value\n" +
+        "func g(b: uniq/Bad)\n    var x = 1\n    var y = 2\n    var slot = y@ref\n    stash(slot@uniq, x@ref, b)\n    x = 3\n    let k = slot@follow\n";
+
+    internal const string Pick = "enum Pick {s}\n    First(ref/i32 during MISSING)\n    Second(ref/i32 during s)\n" +
+        "    public func choose(self: ref/Self, useFirst: bool) -> i32 => 0\nfunc g(pair: uniq/Pick, useFirst: bool) -> i32\n    var x = 1\n" +
+        "    let r = x@ref\n    let n = pair.choose(useFirst)\n    x = 2\n    let k = r@follow\n    return n\n";
+
+    internal const string Tall = Box + Bad + "    public var big: " + Box65 + "\nfunc f(b: uniq/Bad, p: raw/i32) => ()\nfunc g(b: uniq/Bad) => f(b, null)\n";
+
+    internal const string Growing = "struct G<T>\n    public var m: MISSING\n    public var next: raw/G<(T, T)>\nfunc f(g: uniq/G<i32>, p: raw/i32) => ()\n" +
+        "func h(g: uniq/G<i32>) => f(g, null)\n";
+
+    // Site 3 of DECISIONS R4-M118: Selection's payload Origin MISSING spells (missing: a Binding failure; source: its repair).
+    internal const string Selection = "struct Cell\n    public var value: i32\n    public init(value: i32) => self.value = value\nenum Selection {source}\n" +
+        "    Found(ref/Cell during MISSING)\n    Missing\nstruct Pair {left, right}\n    let first: ref/Cell during left\n    let second: ref/Cell during right\n" +
+        "    public init(first: ref/Cell during left, second: ref/Cell during right)\n        self.first = first\n        self.second = second\n" +
+        "    public func choose(self: ref/Self, useFirst: bool) -> Selection{selection}\n        origin selection.source == self.left and self.right\n" +
+        "        if useFirst\n            return .Found(self.first)\n        return .Found(self.second)\nfunc run(useFirst: bool)\n" +
+        "    var first = Cell.init(10)\n    var second = Cell.init(20)\n    let pair = Pair.init(first@ref, second@ref)\n    let result = pair.choose(useFirst)\n";
+
+    // R4's i-field forms: D's Field h, whose Type MISSING spells, holds the C a constructor call takes.
+    internal const string Fielded = "struct C {s}\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nstruct D {s}\n" +
+        "    public let h: MISSING\n    public init(h: C during s) => self.h = h@move\nfunc f(a: ref/i32) -> ref/i32 during a\n    let l = 5\n" +
+        "    let d = D.init(C.init(l@ref))\n    return a\n";
+
+    // X reaches T's B^64 Field through a handle beside a Field whose Type MISSING spells (T's storage height is 65).
+    internal const string Beyond = Box + "struct X\n    public var t: Option<rc/T>\n    public var f: MISSING\nstruct T\n    public var x: Option<rc/X>\n" +
+        "    public var y: " + Box64 + "\nfunc ft(t: uniq/T, p: raw/i32) => ()\nfunc fx(x: uniq/X, p: raw/i32) => ()\n";
+
+    private const string Cell = "struct Cell<T> {s}\n    var item: uniq/T during s\n";
 
     private const string View = "struct View<T> {source}\n    let data: ref/T during source\n    public init(data: ref/T during source) => self.data = data\n" +
         "    public func read(self: ref/Self) -> ref/T during self.source => self.data\n    public func whole(self: ref/Self) -> ref/Self during self => self\n";
@@ -569,6 +616,60 @@ public sealed class RetentionTest
     [InlineData("struct B<T>\n    public var v: T\n    public var next: Option<obj/B<(T, T)>>\nfunc f(g: uniq/B<i32>, p: raw/i32) => ()")]
     public void AGrowingStoredTypeIsALimit(string function)
         => Assert.Equal("limit", Declared(Bind(function + "\n"), "f"));
+
+    // SPEC 23.1.2, 15.6.4 (G240; DECISIONS BU-36): storage whose part Binding did not bind (a Field or Case payload Type that failed,
+    // inline, through a handle, in an instance or a Type argument, or an Origin that did not bind) is Rejected storage, no limit: the part
+    // holds nothing, and the call keeps the rows that hold whatever it is, its repaired program's (fail-before: CallRetention.Limit).
+    [Theory]
+    [InlineData(Handle, "Missing", "i32", "f", "")]
+    [InlineData(Bad + "func f(b: uniq/Bad, p: raw/i32) => ()\nfunc g(b: uniq/Bad) => f(b, null)\n", "Missing", "i32", "f", "")]
+    [InlineData("enum E\n    A(MISSING)\n    C\nfunc f(e: uniq/E, p: raw/i32) => ()\nfunc g(e: uniq/E) => f(e, null)\n", "Missing", "i32", "f", "")]
+    [InlineData("struct Bad<T>\n    public var v: T\n    public var m: MISSING\nfunc f<T>(b: uniq/Bad<T>, p: raw/i32) => ()\nfunc g(b: uniq/Bad<i32>) => f(b, null)\n", "Missing", "i32", "f", "")]
+    [InlineData("struct Bad<T>\n    public var v: T\n    public var m: MISSING\nfunc id<T>(x: ref/T) -> ref/T during x => x\nfunc g(b: Bad<i32>)\n    let r = id(b@ref)\n", "Missing", "i32", "id", "0 Value result")]
+    [InlineData("struct Sx\n    public var m: MISSING\n    public var p: raw/i32\nfunc f(s: uniq/Sx, q: raw/i32) => ()\nfunc g(s: uniq/Sx) => f(s, null)\n", "Missing", "i32", "f", "1 Value store 0, untied store 0")]
+    [InlineData(Keep2, "Missing", "i32", "keep2", "0 Value result")]
+    [InlineData(Stash, "Missing", "i32", "stash", "0 Content store 0, 1 Value store 0")]
+    [InlineData(Selection, "missing", "source", "choose", "0 Content result")]
+    [InlineData(Pick, "missing", "s", "choose", "")]
+    [InlineData(Fielded, "C{x}\n        origin x.s == zz", "C{x}\n        origin x.s == s", "init", "0 Value result | 0 Value result")]
+    [InlineData(Fielded, "Missing", "C{x}\n        origin x.s == s", "init", "0 Value result | 0 Value result")]
+    public void RejectedStorageKeepsTheRowsThatHoldWhateverItIs(string source, string failed, string repaired, string callee, string expected)
+    {
+        var rejected = MinimalEmissionTest.Analyze(source.Replace("MISSING", failed, StringComparison.Ordinal));
+        Assert.False(rejected.Binding.Result.IsComplete);
+        Assert.Equal(expected, string.Join(" | ", Calls(rejected, callee)));
+        Assert.Equal(expected, string.Join(" | ", Calls(Bind(source.Replace("MISSING", repaired, StringComparison.Ordinal)), callee)));
+    }
+
+    // SPEC 23.1.1, 15.3.5 (DECISIONS BU-12, BU-36): a genuine limit stays CallRetention.Limit beside a part Binding did not bind, which
+    // ends no storage walk, so the limit is met in either Field order and either query order: a Field of height 65 before or after the
+    // failed Field, a growing Field beside it, a growing Type in a program failing elsewhere, and X and T, which reach T's Box^64 Field.
+    [Theory]
+    [InlineData(Tall, "f")]
+    [InlineData(Box + "struct Bad\n    public var big: " + Box65 + "\n    public var m: Missing\nfunc f(b: uniq/Bad, p: raw/i32) => ()\nfunc g(b: uniq/Bad) => f(b, null)\n", "f")]
+    [InlineData(Growing, "f")]
+    [InlineData("func inspect<T>(value: ref/T) => ()\nstruct Nest<T>\n    public var value: T\n    public var next: Option<rc/Nest<(T, T)>> = .None\nfunc h(n: ref/Nest<i32>) => inspect(n)\nfunc other() => missing\n", "inspect")]
+    [InlineData(Beyond + "func g(t: uniq/T, x: uniq/X)\n    ft(t, null)\n    fx(x, null)\n", "ft fx")]
+    [InlineData(Beyond + "func g(t: uniq/T, x: uniq/X)\n    fx(x, null)\n    ft(t, null)\n", "fx ft")]
+    public void AGenuineLimitStaysBesideRejectedStorage(string source, string callees)
+    {
+        var c = MinimalEmissionTest.Analyze(source.Replace("MISSING", "Missing", StringComparison.Ordinal));
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.All(callees.Split(' '), x => Assert.Equal(["limit"], Calls(c, x)));
+    }
+
+    // DECISIONS BU-36: the hold walk walks an enum's Cases only where its instance substituted them, the storage its verdict covered, so
+    // an enum whose failed payload leaves E<(T, T)> unsubstituted ends (an unbounded walk before the rule) with no row. Its growth through
+    // Case B is not seen (InstanceStorage.Cases holds no per-case parts; PLAN G242), while its repair's is the limit.
+    [Fact]
+    public async Task AnEnumWithAFailedPayloadIsWalkedAsFarAsItSubstitutes()
+    {
+        const string Source = "enum E<T>\n    A(MISSING)\n    B(rc/E<(T, T)>)\nfunc f(e: uniq/E<i32>, p: raw/i32) => ()\nfunc g(e: uniq/E<i32>) => f(e, null)\n";
+        var c = MinimalEmissionTest.Analyze(Source.Replace("MISSING", "Missing", StringComparison.Ordinal));
+        var rows = Task.Run(() => Calls(c, "f"), TestContext.Current.CancellationToken);
+        Assert.Equal([string.Empty], await rows.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        Assert.Equal(["limit"], Calls(Bind(Source.Replace("MISSING", "i32", StringComparison.Ordinal)), "f"));
+    }
 
     // SPEC 15.6.4, V16 (G243; DECISIONS BU-35): a row depends on the Type at a position and the Type its declaration writes there, not on
     // the route to it through the interned Types, so the hold walk visits each position once per output. Chain's Types grow as trees
