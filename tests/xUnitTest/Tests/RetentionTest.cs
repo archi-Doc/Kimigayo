@@ -509,7 +509,8 @@ public sealed class RetentionTest
     // by `Raw.initialize(r.q, p)`, formed by `f -> R`) or Exclusive (`Cell.at`, kept by a Loan), a shared one (`Sh.r`), an rc or arc
     // handle the call forms (`S.x`, alone or in an Option). A raw argument's own value is a Value row there, and a raw layer there
     // stepping Unstated or Static unties the output: a direct referent (`uniq/(raw/i32)`, `static` alike) as an Option's payload, an
-    // allocated pointer in an rc's payload, a regular recursive Type's own Field.
+    // allocated pointer in an rc's payload, a regular recursive Type's own Field. One Type at two positions steps by each (BU-35): H's
+    // `at`, written with a `ref` slot, is Shared; the same `raw/i32 during static` its `a` holds through T steps Static and unties.
     [Theory]
     [InlineData("struct S {a}\n    public var r: uniq/(raw/i32) during a\nfunc f(s: uniq/S, p: raw/i32)\n    s.r@follow = p", "0 Content store 0, 1 Value store 0, untied store 0")]
     [InlineData("struct R\n    public var q: raw/(raw/i32)\nfunc f(r: uniq/R, p: raw/i32)\n    unsafe => Raw.initialize(r.q, p)", "1 Value store 0, untied store 0")]
@@ -533,6 +534,10 @@ public sealed class RetentionTest
     [InlineData("func f(p: uniq/(raw/i32 during static)) => ()", "0 Content store 0, untied store 0")]
     [InlineData("func f(p: uniq/Option<raw/i32>) => ()", "untied store 0")]
     [InlineData(RawPointerSyntaxTest.PairHolder + "func f(x: uniq/i32, h: uniq/Holder<raw/i32 during x>, p: raw/i32) => ()", "2 Value store 1, untied store 1")]
+    [InlineData(
+        "struct H<T> {s}\n    internal let loan: Loan<ref/i32 during s>\n    internal var at: raw/i32 during s\n    internal var a: T\n" +
+        "func f(y: ref/i32, h: uniq/(H<raw/i32 during static> during static), p: raw/i32) => ()",
+        "1 Content store 1, 2 Value store 1, untied store 1")]
     public void OneWalkReachesWhatACallMayWrite(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
@@ -564,6 +569,22 @@ public sealed class RetentionTest
     [InlineData("struct B<T>\n    public var v: T\n    public var next: Option<obj/B<(T, T)>>\nfunc f(g: uniq/B<i32>, p: raw/i32) => ()")]
     public void AGrowingStoredTypeIsALimit(string function)
         => Assert.Equal("limit", Declared(Bind(function + "\n"), "f"));
+
+    // SPEC 15.6.4, V16 (G243; DECISIONS BU-35): a row depends on the Type at a position and the Type its declaration writes there, not on
+    // the route to it through the interned Types, so the hold walk visits each position once per output. Chain's Types grow as trees
+    // eight wide (8^(n-1) leaves) but are 2n distinct Types, reached through rc handles, Tuples, fixed arrays and enum payloads, raw leaves
+    // included; walked as trees they take seconds to minutes, which the bound reports instead of hanging the run.
+    [Theory]
+    [InlineData("struct", 11, "")]
+    [InlineData("array", 11, "")]
+    [InlineData("enum", 11, "")]
+    [InlineData("raw", 10, "1 Value store 0, untied store 0")]
+    public async Task AHoldWalkVisitsEachPositionOnce(string form, int n, string expected)
+    {
+        var c = Bind(Chain(form, n));
+        var rows = Task.Run(() => Declared(c, "f"), TestContext.Current.CancellationToken);
+        Assert.Equal(expected, await rows.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+    }
 
     // Every call of the Kimi library and the milestone programs, an intrinsic's included, has a retention under its substitution, for the
     // callee MIR names (a direct base call's implementation, an intrinsic's library declaration), or over its declared Callable signature,
@@ -703,6 +724,19 @@ public sealed class RetentionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         return c;
+    }
+
+    // D1 to Dn (structs, or enums whose Case A holds the part), each holding the next through an rc handle at a Type argument eight
+    // wide (a Tuple; for `array`, a fixed array and seven), the last holding the argument itself; f's input instantiates D1 at i32, or
+    // at `raw/i32` for `raw`.
+    private static string Chain(string form, int n)
+    {
+        var argument = form == "array" ? $"([2 of T], {string.Join(", ", Enumerable.Repeat("T", 7))})" : $"({string.Join(", ", Enumerable.Repeat("T", 8))})";
+        return string.Concat(Enumerable.Range(1, n).Select(i =>
+        {
+            var part = i < n ? $"rc/D{i + 1}<{argument}>" : form == "array" ? "[2 of T]" : "T";
+            return form == "enum" ? $"enum D{i}<T>\n    A({part})\n    B\n" : $"struct D{i}<T>\n    public var x: {part}\n";
+        })) + $"func f(d: uniq/D1<{(form == "raw" ? "raw/i32" : "i32")}>, p: raw/i32) => ()\n";
     }
 
     private static FunctionKoto Function(Compilation c, string name)
