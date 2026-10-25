@@ -361,10 +361,10 @@ public sealed partial class FunctionCodegenTest
     // R4-M15a, PD12: a body A1 skips at the arena limit has no drop rows and is inexact. No program the old analysis accepts reaches this
     // before G2 (the old arena trips first), so the skip is simulated: the version's table is rebuilt with f's rows, points and views
     // cleared and its fact set, A1's record at the body, every other body's kept. Interim (DECISIONS R5-M96): the refusal is one located
-    // Unsupported_Kd at the body (f's), never InternalInvariant_Kd or a throw, until A1's arena problem carries the arguments
-    // OwnershipStorageLimit_Kd takes.
+    // Unsupported_Kd at the body (f's), never InternalInvariant_Kd or a throw, until a generation record carries the arguments
+    // OwnershipStorageLimit_Kd takes, which A1's arena problem holds as facts (G213, R4-M132).
     [Fact]
-    public void AnArenaSkippedBodyIsUnsupportedUntilA1PublishesItsArguments()
+    public void AnArenaSkippedBodyIsUnsupportedUntilARecordCarriesItsArguments()
     {
         var c = Analyze("func f()\n    Console.writeLine(\"a\")\nf()\n");
         var (table, bodies) = (c.BuildMir().Drops, c.BuildMir().Bodies.ToArray());
@@ -375,7 +375,7 @@ public sealed partial class FunctionCodegenTest
         {
             if (bodies[i].Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" })
             {
-                table.Close(0, 0, (DiagnosticCode.OwnershipStorageLimit_Kd, bodies[i].Source));
+                table.Close(0, 0, (DiagnosticCode.OwnershipStorageLimit_Kd, default, -1));
                 continue;
             }
 

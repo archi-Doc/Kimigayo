@@ -14,7 +14,7 @@ fn select @4
   _6: () temp @22 s1
   _7: bool temp @23 s1
   _8: i32 temp @26 s5
-  _9: i32 temp @4
+  _9: i32 temp (Result) @4
   _10: i32 var b @27 s1
   _11: bool temp @31 s1
   _12: () temp @33 s6
@@ -169,7 +169,7 @@ fn iterate @48
   _20: i32 temp @95 s6
   _21: i32 temp @92 s1
   _22: i32 temp @97 s1
-  _23: i32 temp @48
+  _23: i32 temp (Result) @48
   s1: lexical in s0 @51
   s2: lexical in s1 @58
   s3: lexical in s2 @67
@@ -352,7 +352,7 @@ fn statements @98
   _8: Never temp @117 s1
   _9: i32 var y @118 s4
   _10: i32 temp @122 s4
-  _11: i32 temp @98
+  _11: i32 temp (Result) @98
   _12: () temp @123 s1
   _13: [2 of i32] var mut buffer @125 s5
   _14: () temp @131 s5
@@ -508,7 +508,7 @@ fn short @152
   _0: bool return @152
   _1: bool arg flag @152
   _2: bool temp @156
-  _3: bool temp @152
+  _3: bool temp (Result) @152
   bb0:
       StorageLive(_2) @156
     * _2 = copy _1 @156
@@ -542,7 +542,7 @@ fn deadTail @160
   _4: bool temp @167 s1
   _5: () temp @169 s2
   _6: i32 temp @170 s2
-  _7: () temp @160
+  _7: () temp (Result) @160
   _8: () temp @174 s3
   _9: i32 temp @175 s3
   _10: () temp @178 s1

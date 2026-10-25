@@ -750,6 +750,41 @@ public sealed class MirValidatorTest
         Assert.Equal([MirViolation.Scope, MirViolation.Unreachable], Validate(body).Select(static x => x.Rule));
     }
 
+    // DECISIONS R4-M132: a Result local, the body's result in transit, is a Temp of local 0's Type read only by the whole Move into _0 that
+    // delivers it: the builder's is valid; the role on a Var or on a temp of another Type, or a delivery that copies it, is a Local finding.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("var")]
+    [InlineData("bool")]
+    [InlineData("copy")]
+    public void AResultLocalIsReadOnlyByItsDelivery(string? broken)
+    {
+        var body = MirBuildTest.Compile("func leave(x: ref/i32, c: bool) -> ref/i32 during x\n    if c\n        let local = 1\n" +
+            "        var r = local@ref\n        return r\n    return x\n").BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "leave");
+        var locals = body.Locals.ToArray();
+        var result = Array.FindIndex(locals, static x => x.Role == MirLocalRole.Result);
+        var delivery = Array.FindIndex(body.Statements.ToArray(), x => x is { Kind: MirStatementKind.Assign, Place.Root: 0, Rvalue.Kind: MirRvalueKind.Use } &&
+            body.Operands[x.Rvalue.Start].Place.Root == result);
+        Assert.True(delivery >= 0);
+        var other = broken switch
+        {
+            "var" => Array.FindIndex(locals, static x => x.Kind == MirLocalKind.Var),
+            "bool" => Array.FindIndex(locals, static x => x.Kind == MirLocalKind.Temp && ReferenceEquals(x.Type, BoundType.Boolean)),
+            _ => -1,
+        };
+        if (other >= 0)
+        {
+            Unsafe.AsRef(in body.Locals[other]) = locals[other] with { Role = MirLocalRole.Result };
+        }
+        else if (broken == "copy")
+        {
+            var operand = body.Statements[delivery].Rvalue.Start;
+            Unsafe.AsRef(in body.Operands[operand]) = body.Operands[operand] with { Kind = MirOperandKind.Copy };
+        }
+
+        Assert.Equal(broken is null ? [] : [MirViolation.Local], Validate(body).Select(static x => x.Rule).Distinct());
+    }
+
     // V11: validating a body again, the Type tier's and its Adapt's case views included, and enumerating its uses, of the body and under
     // each case view, allocates nothing.
     [Trait("Purpose", "Allocation")]

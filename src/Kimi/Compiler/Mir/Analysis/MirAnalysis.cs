@@ -7,7 +7,8 @@
 // 1. per body, A3;
 // 2. per body, per view A1, then A2, then A4's local facts;
 // 3. A4 over the program;
-// 4. per body, A5;
+// 4. per body, A5: the Origin stratum's judgment, which adds its problems, then the Loan stratum per view; then, once per program, the
+//    C1-F4 view's findings (MirOrigins.Findings);
 // 5. A6 inside MirReport.
 // Owns one instance of each analysis and their shared scratch for the compilation's lifetime, arrays reset by counts; each analysis unit
 // adds its field and its pass row at its step: steps 1 and 2 in Body, steps 3 and 4 in Run (A5 with its own loop over the bodies after
@@ -28,6 +29,7 @@ internal sealed class MirAnalysis
     private readonly MirDrops drops;
     private readonly MirEffects effects;
     private readonly MirBorrows borrows;
+    private readonly MirOrigins origins;
     private ulong version; // The program version whose problems the program holds (0: none).
 
     /// <summary>Initializes a new instance of the <see cref="MirAnalysis"/> class.</summary>
@@ -42,7 +44,8 @@ internal sealed class MirAnalysis
         this.drops = new(this.moves, this.cases);
         this.init = new(this.flow, this.moves, this.cases, this.drops);
         this.effects = new(types, this.cases, this.flow);
-        this.borrows = new(types, this.flow, this.moves, this.cases, this.effects); // A5 reads A4's keys (R4-M92).
+        this.origins = new(types, this.cases); // A5's Origin stratum (2a0-D D13).
+        this.borrows = new(types, this.flow, this.moves, this.cases, this.effects, this.origins); // A4's keys (R4-M92), rule W's causes (R4-M132).
     }
 
     /// <summary>Analyzes a program unless this version already was: a new version starts without problems, and one with validator
@@ -75,6 +78,7 @@ internal sealed class MirAnalysis
             this.Borrows(program, body); // 4. per body.
         }
 
+        this.origins.Findings(program.Problems); // 4. once per program.
         return program;
     }
 
@@ -106,12 +110,15 @@ internal sealed class MirAnalysis
     }
 
     // 4. A5 over the views of a body A1 and A2 completed, which A2's table publishes (MirDropTable.ViewsOf), after its block order and move
-    // paths are built again (design A3 6.1, DECISIONS R4-M57), reading A4's keys (R4-M92).
+    // paths are built again (design A3 6.1, DECISIONS R4-M57), reading A4's keys (R4-M92): the Origin stratum judges its classes of views
+    // and adds their problems, then the Loan stratum runs per view (2a0-D D13, DECISIONS R4-M132).
     private void Borrows(MirProgram program, MirBody body)
     {
         this.flow.Begin(body);
         this.moves.Build(body, this.flow);
-        for (var view = 0L; view < program.Drops.ViewsOf(body.Ordinal); view++)
+        var views = program.Drops.ViewsOf(body.Ordinal);
+        this.origins.Judge(body, views, program.Problems);
+        for (var view = 0L; view < views; view++)
         {
             this.cases.Select(body, view);
             this.borrows.Run(program, body, view);

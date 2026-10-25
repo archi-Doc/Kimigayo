@@ -2708,13 +2708,15 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         private readonly MirReport obligations = new(); // A4's obligation problems, which A5 does not read.
         private readonly MirCases cases;
         private readonly MirEffects effects;
+        private readonly MirOrigins origins; // The Origin stratum, which judges each body first, as the driver's step 4 does (rule W).
         private ulong version; // The program version A4 last solved.
 
         internal Stratum(TyCtxt types)
         {
             this.cases = new(types);
             this.effects = new(types, this.cases, this.flow);
-            this.Borrows = new(types, this.flow, this.moves, this.cases, this.effects);
+            this.origins = new(types, this.cases);
+            this.Borrows = new(types, this.flow, this.moves, this.cases, this.effects, this.origins);
         }
 
         internal MirBorrows Borrows { get; }
@@ -2732,6 +2734,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             this.Summaries(program);
             this.flow.Begin(body);
             this.moves.Build(body, this.flow);
+            this.origins.Judge(body, MirCases.Count(body), program.Problems);
             for (var view = 0L; view < MirCases.Count(body); view++)
             {
                 this.cases.Select(body, view);

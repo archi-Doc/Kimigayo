@@ -1,6 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -51,12 +53,16 @@ public class BorrowedInputResultTest
         ScalarEmissionTest.EmitFixture("BorrowedInputResult" + name, source, string.Empty);
     }
 
+    // Expects the rule before SPEC 15.6's holders (A5 P1): a borrow of the Scalar part held no Loan of the stored reference. A value
+    // read or borrowed from a part carries every Loan the holder carries, so `n = 9` conflicts while x is used; the default pipeline
+    // keeps the old rule until R6-check.
     [Fact]
+    [Trait("OldRule", "P1")]
     public void APartBorrowBesideAStoredReferenceStaysPrecise()
     {
-        // SPEC 15.6.2: without a call result over the root, a borrow of the Scalar part does not hold the stored reference's Loan.
         var c = MinimalEmissionTest.Analyze("var n = 7\nlet item = (n@ref, 5)\nlet x = item.1@ref\nn = 9\nrequire x == 5 else => $abort(\"part\")");
         Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, new("n = 9")));
     }
 
     [Trait("Purpose", "Allocation")]

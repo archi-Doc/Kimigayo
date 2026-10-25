@@ -340,11 +340,15 @@ public sealed class MirInitTest(ITestOutputHelper output)
 
     // R4-M15a: a body whose state arena would exceed the analyses' byte limit (64 MiB) records OwnershipStorageLimit_Kd once, at the body,
     // and is not analyzed: N locals live across N branches need about N heads × 5 lanes × N/64 words, so the unset read of y is reported at
-    // N = 64 and not at N = 13,500.
+    // N = 64 and not at N = 13,500, where the limit carries its arguments, A1's arena over the limit (G213, R4-M132).
     [Fact]
     public void AnArenaAboveTheLimitStopsTheBody()
     {
-        foreach (var (size, expected) in new[] { (64, "UninitializedPlace_Kd y 1"), (13_500, "OwnershipStorageLimit_Kd func f(flag: bool) -> i32 1") })
+        foreach (var (size, expected) in new[]
+        {
+            (64, "UninitializedPlace_Kd y 1"),
+            (13_500, "OwnershipStorageLimit_Kd func f(flag: bool) -> i32 1 Initialization over"),
+        })
         {
             var text = new StringBuilder("func f(flag: bool) -> i32\n    let y: i32\n");
             for (var n = 0; n < size; n++)
@@ -511,7 +515,7 @@ public sealed class MirInitTest(ITestOutputHelper output)
     internal static long ArenaWords(MirBody body, MirDataflow flow, MirMoveData moves)
         => (body.Blocks.ToArray().Select((_, b) => flow.Head(b)).Max() + 1) * (long)MirInit.Lanes * ((moves.FlowCount + 63) / 64);
 
-    // The problems of a source's own bodies: code, the first line of the subject, and the views.
+    // The problems of a source's own bodies: code, the first line of the subject, the views and a storage limit's arguments.
     internal static string[] Problems(string source)
         => Problems(MirBuildTest.Compile(source));
 
@@ -519,7 +523,8 @@ public sealed class MirInitTest(ITestOutputHelper output)
     {
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        return [.. program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
-            .Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}")];
+        return [.. program.Problems.All.ToArray().Select(static (x, i) => (Problem: x, Index: i)).Where(static x => x.Problem.Subject.Module == 0)
+            .Select(x => $"{x.Problem.Code} {c.SyntaxOf(x.Problem.Subject).ToString().Split('\n')[0].Trim()} {x.Problem.Views}" +
+                (x.Problem.Code == DiagnosticCode.OwnershipStorageLimit_Kd ? $" {MirDataflowTest.Limit(program.Problems, x.Index)}" : string.Empty))];
     }
 }

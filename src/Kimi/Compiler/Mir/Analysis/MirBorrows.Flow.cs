@@ -19,7 +19,7 @@ internal sealed partial class MirBorrows
     // makes; a Call's.
     private void Plan(ulong[] state, int block, int index, bool checks)
     {
-        this.entryCount = 0;
+        (this.entryCount, this.planLocation) = (0, this.Location(block, index));
         foreach (var set in this.contentsRead)
         {
             this.contents[set] = 0;
@@ -99,22 +99,27 @@ internal sealed partial class MirBorrows
             last = this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw ? i : last;
         }
 
+        var receiving = this.wCount == 0 ? null : cases.Type(this.body.TypeOf(place)!); // Rule W's receiving part (MirBorrows.Causes).
         if (last < 0)
         {
-            if (place.Root < 0)
+            var slot = place.Root < 0 ? Escaped : this.slots[place.Root];
+            var whole = count == 0 && place.Root >= 0;
+            if (slot >= 0)
             {
-                this.AddSlot(Escaped, value, own, Joined, issue);
+                var (arrived, issued) = (this.Arrive(slot, receiving, whole, 0, value), this.Arrive(slot, receiving, whole, 0, own));
+                this.AddSlot(slot, arrived, issued, whole ? Replaced : Joined, issue);
             }
 
-            this.Add(place.Root, value, own, count == 0 ? Replaced : Joined, issue);
             return;
         }
 
         var (layer, parents) = this.Prefix(state, place.Root, last);
-        this.Refs(this.PointerOf(place.Root, layer, parents, last)); // What its last Deref goes through.
+        var pointer = this.PointerOf(place.Root, layer, parents, last); // What its last Deref goes through.
+        var through = last == count - 1 ? pointer : 0; // A write of the whole referent (rule W's write-through).
+        this.Refs(pointer);
         foreach (var target in this.targets)
         {
-            this.AddSlot(target, value, own, Joined, issue);
+            this.AddSlot(target, this.Arrive(target, receiving, false, through, value), this.Arrive(target, receiving, false, through, own), Joined, issue);
         }
     }
 

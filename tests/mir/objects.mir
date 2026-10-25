@@ -37,7 +37,7 @@ fn shared @15
   _10: i32 temp @74 s1
   _11: i32 temp @75 s1
   _12: i32 temp @76 s1
-  _13: i32 temp @15
+  _13: i32 temp (Result) @15
   s1: lexical in s0 @17
   bb0:
       StorageLive(_1) @18 s1
@@ -188,7 +188,7 @@ fn eitherCell @115
   _6: bool temp @123 s1
   _7: bool temp @130 s1
   _8: objref/Cell temp @130 s1
-  _9: bool temp @115
+  _9: bool temp (Result) @115
   s1: lexical in s0 @120
   must not complete bb9 from bb1 @127
   bb0:

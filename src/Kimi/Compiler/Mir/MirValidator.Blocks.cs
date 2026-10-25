@@ -5,10 +5,11 @@ namespace Kimi.Compiler.Mir;
 // A body's blocks and control flow (plan 5.4; SPEC 14.7, 14.10.3).
 // - Responsibility: each block's statement range and its locations in order (Block); a statement's kind rules (Statement: a storage
 //   statement of a Var or Temp, an EndBorrow of a reference local, the Never value's writers, WritesNever, DECISIONS R5-M38) and the
-//   operand positions it marks for the operand visitor (A3 E13 (4), G154); a terminator's (Terminator: a Goto's target, successors,
-//   case range and check target in range, a check target only where it may stand, a SwitchInt's tested Type, a Return's _0); every
-//   block reached from the entry through runtime or check edges (Reach); and each region, the body or an Inlined scope's locations,
-//   entered only at its first location, whose block no edge from inside the region targets (Entries, DECISIONS R5-M90).
+//   operand positions it marks for the operand visitor (A3 E13 (4), G154; a delivery into _0, R4-M132); a terminator's (Terminator: a
+//   Goto's target, successors, case range and check target in range, a check target only where it may stand, a SwitchInt's tested Type,
+//   a Return's _0); every block reached from the entry through runtime or check edges (Reach); and each region, the body or an Inlined
+//   scope's locations, entered only at its first location, whose block no edge from inside the region targets (Entries, DECISIONS
+//   R5-M90).
 // - Inputs: the body's blocks, statements, terminators and scopes. Outputs: UnknownKind, StatementRange, StorageLocal, EndBorrowLocal,
 //   NeverWrite, Unterminated, TargetRange, CheckTarget, Operation, Type, Unreachable and Entry findings; an Assign's rvalue goes to
 //   MirValidator.Rvalues, a Call to MirValidator.Calls, a lending write to MirValidator.Inputs, then MirUses walks the location.
@@ -232,8 +233,10 @@ internal sealed partial class MirValidator
                 Rvalue: { Kind: MirRvalueKind.Use, Op: (byte)MirRefKind.Uniq or (byte)MirRefKind.TwoPhaseUniq },
             };
             this.used = statement is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use };
+            this.delivering = statement is { Kind: MirStatementKind.Assign, Place: { Root: 0, Projection: 0 }, Rvalue: { Kind: MirRvalueKind.Use, Op: 0 } } &&
+                body.Operands[statement.Rvalue.Start].Kind == MirOperandKind.Move;
             MirUses.ForEach(body, location, ref this);
-            (this.acquires, this.used) = (false, false);
+            (this.acquires, this.used, this.delivering) = (false, false, false);
             return true;
         }
 

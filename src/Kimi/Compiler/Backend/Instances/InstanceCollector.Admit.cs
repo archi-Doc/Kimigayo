@@ -25,16 +25,11 @@ internal sealed partial class InstanceCollector
     /// admission chain first reached, which each item keeps.</summary>
     /// <param name="item">The item.</param>
     /// <param name="body">Its body.</param>
-    /// <param name="source">The source of a statement, a terminator or a local of the body, or none for the body itself.</param>
+    /// <param name="source">The source of a statement, a terminator or a local of the body, an analysis problem's subject in its location's
+    /// scope (MirDropTable.Incomplete), or none for the body itself.</param>
     /// <returns>The subject.</returns>
-    internal SourceRef Subject(int item, MirBody body, in SourceInfo source) => this.Subject(item, this.Located(body, source));
-
-    /// <summary>Gets the subject of a record at a located site of an item's body (K 4.9): the site, if it lies in a root module; else the
-    /// root-module site the item's admission chain first reached.</summary>
-    /// <param name="item">The item.</param>
-    /// <param name="located">The located site, such as an analysis problem's subject.</param>
-    /// <returns>The subject.</returns>
-    internal SourceRef Subject(int item, SourceRef located) => located.Module < this.rootModules ? located : this.Set.Items[item].Site;
+    internal SourceRef Subject(int item, MirBody body, in SourceInfo source)
+        => this.Located(body, source) is var located && located.Module < this.rootModules ? located : this.Set.Items[item].Site;
 
     // SPEC 6.1.3: whether a substitution carries the instance of the function enclosing its binder's definition, as its binder (a Closure's
     // context, R5-M36) or its declaring Type (Binding writes one level into a generic function).

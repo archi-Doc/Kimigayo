@@ -36,7 +36,7 @@ fn format @9
   _34: string temp @33 s1
   _35: ref/string temp @33 s1
   _36: ref/Utf8Writer temp @121 s1
-  _37: Result<(), BufferFull> temp @9
+  _37: Result<(), BufferFull> temp (Result) @9
   s1: lexical in s0 @19
   flags 4
   bb0:
@@ -431,7 +431,7 @@ fn show @47
   _21: string temp @60 s1
   _22: ref/string temp @60 s1
   _23: Never temp @57 s1
-  _24: string temp @47
+  _24: string temp (Result) @47
   s1: lexical in s0 @55
   bb0:
       StorageLive(_2) @57 s1
@@ -952,7 +952,7 @@ fn early @97
   _14: isize temp @101 s1
   _15: uniq/Utf8Writer temp @101 s1
   _16: Never temp @103 s1
-  _17: string temp @97
+  _17: string temp (Result) @97
   _18: uniq/Utf8Writer temp @101 s1
   _19: Result<(), BufferFull> temp @101 s1
   _20: isize temp @101 s1
