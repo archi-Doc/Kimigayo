@@ -536,6 +536,118 @@ public sealed class MirValidatorTest
         Assert.Empty(program.Findings);
     }
 
+    // W1 rule 1 (DECISIONS R5-M123; SPEC 3.3.2, 4.8.1, 13.5.5): a projected Place that a location writes or destroys in place passes no shared
+    // layer after its last raw Deref (a Deref of a ref, objref, rc or arc Type, an Index of a Slice, or a PairLayer whose binder admits a
+    // shared Semantics): else a SharedPath finding at the location, here at Broken. None for an exclusive or owning layer, a fixed array's
+    // element, a raw Place (5.2.1 (3)), a Move (A1's Move Path rule), a shared borrow or an address, the Deref directly on a PreparedInput
+    // (the caller's slot itself; a shared layer past it is a finding), a location in an inline default copy (its template's check), and a
+    // location whose scope cannot be walked (its Scope finding alone).
+    [Theory]
+    [InlineData("ref", true)]
+    [InlineData("ref uniq", true)]
+    [InlineData("uniq ref", true)]
+    [InlineData("raw ref", true)]
+    [InlineData("objref", true)]
+    [InlineData("rc", true)]
+    [InlineData("arc", true)]
+    [InlineData("slice", true)]
+    [InlineData("slice drop", true)]
+    [InlineData("ref drop", true)]
+    [InlineData("pair ref", true)]
+    [InlineData("slot ref", true)]
+    [InlineData("uniq", false)]
+    [InlineData("objuniq", false)]
+    [InlineData("obj", false)]
+    [InlineData("array", false)]
+    [InlineData("ref raw", false)]
+    [InlineData("pair uniq", false)]
+    [InlineData("move", false)]
+    [InlineData("shared borrow", false)]
+    [InlineData("address", false)]
+    [InlineData("slot", false)]
+    [InlineData("inlined", false)]
+    [InlineData("unscoped", false)]
+    public void AWriteOrDestructionPastASharedLayerIsAFinding(string form, bool finding)
+    {
+        var (c, types) = Fixture.Value;
+        var body = MirModelTest.NewBody(types);
+        BoundType Layer(SemanticsKind semantics, BoundType referent) => semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc
+            ? c.Types.Intern(BoundTypeKind.Semantics, null, semantics, [referent]) : c.Types.Reference(semantics, referent);
+        var tuple = c.Types.Tuple([BoundType.I32, BoundType.Boolean]);
+        var prepared = new MirPlace(body.AddLocal(new(
+            Layer(SemanticsKind.Ref, form == "slot ref" ? Layer(SemanticsKind.Ref, tuple) : BoundType.I32), MirLocalKind.Arg, At, Role: MirLocalRole.PreparedInput)));
+        PairBinder.Collect(types.Generic, body.Binders); // Its binder admits owner or uniq.
+        if (form == "pair ref")
+        {
+            body.Binders[0] = body.Binders[0] with { Admitted = SemanticsMask.Ref | SemanticsMask.Uniq };
+        }
+
+        MirPlace Local(BoundType type) => MirModelTest.Local(body, type);
+        MirPlace Deref(MirPlace place) => body.Project(place, MirProjectionKind.Deref, 0);
+        var index = MirModelTest.Local(body, BoundType.ISize, MirLocalKind.Temp);
+        var reference = Local(Layer(SemanticsKind.Ref, BoundType.I32));
+        var one = MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.I32, 1)));
+        var (entry, exit) = (body.AddBlock(), body.AddBlock());
+        var at = form switch
+        {
+            "inlined" => Broken with { Scope = (ushort)body.AddScope(0, MirScopeKind.Inlined, default) },
+            "unscoped" => Broken with { Scope = 9 },
+            _ => Broken,
+        };
+        MirPlace Payload(SemanticsKind semantics) => body.Project(Deref(Local(Layer(semantics, types.Point))), MirProjectionKind.Field, 0); // x
+        var place = form switch
+        {
+            "ref" or "ref drop" or "move" or "shared borrow" or "address" or "inlined" or "unscoped" => Deref(reference),
+            "ref uniq" => Deref(Deref(Local(Layer(SemanticsKind.Ref, Layer(SemanticsKind.Uniq, BoundType.I32))))),
+            "uniq ref" => Deref(Deref(Local(Layer(SemanticsKind.Uniq, Layer(SemanticsKind.Ref, BoundType.I32))))),
+            "raw ref" => Deref(Deref(Local(c.Types.Pointer(Layer(SemanticsKind.Ref, BoundType.I32))))),
+            "objref" => Payload(SemanticsKind.ObjRef),
+            "rc" => Payload(SemanticsKind.Rc),
+            "arc" => Payload(SemanticsKind.Arc),
+            "objuniq" => Payload(SemanticsKind.ObjUniq),
+            "obj" => Payload(SemanticsKind.Obj),
+            "slice" or "slice drop" => body.Project(Local(c.Types.Intern(BoundTypeKind.Slice, null, SemanticsKind.Owner, [BoundType.I32])), MirProjectionKind.Index, index.Root),
+            "array" => body.Project(Local(types.Array), MirProjectionKind.Index, index.Root),
+            "uniq" => Deref(Local(Layer(SemanticsKind.Uniq, BoundType.I32))),
+            "ref raw" => Deref(body.Project(Deref(Local(Layer(SemanticsKind.Ref, c.Types.Tuple([c.Types.Pointer(BoundType.I32), BoundType.Boolean])))), MirProjectionKind.Field, 0)),
+            "pair ref" or "pair uniq" => body.Project(Local(types.Pair), MirProjectionKind.PairLayer, 0),
+            "slot" => Deref(prepared),
+            _ => body.Project(Deref(Deref(prepared)), MirProjectionKind.Field, 0), // slot ref: the parameter's own shared layer past the slot.
+        };
+        var value = form.StartsWith("pair", StringComparison.Ordinal) ? MirOperand.Copy(body.Project(Local(types.Pair), MirProjectionKind.PairLayer, 0)) : one;
+        var rvalue = form switch
+        {
+            "shared borrow" => MirRvalue.Ref(MirRefKind.Shared, place, body.TypeOf(reference)!),
+            "address" => MirRvalue.Ref(MirRefKind.Raw, place, c.Types.Pointer(BoundType.I32)),
+            "move" => MirRvalue.Use(AddOperands(body, [MirOperand.Move(place)])),
+            _ => MirRvalue.Use(AddOperands(body, [value])),
+        };
+        if (form.EndsWith("drop", StringComparison.Ordinal))
+        {
+            body.Terminate(entry, MirTerminator.Drop(place, exit, at));
+        }
+        else
+        {
+            var destination = form is "move" or "shared borrow" or "address" ? Local(rvalue.Kind == MirRvalueKind.Use ? BoundType.I32 : rvalue.Type!) : place;
+            body.Push(entry, MirStatement.Assign(destination, rvalue, form is "move" or "shared borrow" or "address" ? Broken : at));
+            body.Terminate(entry, MirTerminator.Goto(exit, At));
+        }
+
+        body.Terminate(exit, MirTerminator.Return(At));
+        MirViolation[] expected = finding ? [MirViolation.SharedPath] : form == "unscoped" ? [MirViolation.Scope] : [];
+        Assert.Equal(expected.Select(static x => (x, Broken.Syntax)), Validate(body).Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // W1 rule 1: a UniqSlice's element is reached past its exclusive view, so its write is no SharedPath finding (SPEC 4.8.2).
+    [Fact]
+    public void AUniqSlicesElementIsWrittenPastNoSharedLayer()
+    {
+        var program = MirBuildTest.Compile("func set(values: uniq/[2 of i32])\n    var view = values.sliceUniq()\n    view[0] = 5\n").BuildMir();
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "set");
+        Assert.Contains(body.Statements.ToArray(), x => x.Kind == MirStatementKind.Assign && body.Projections[x.Place.Projection].Kind == MirProjectionKind.Deref);
+        Assert.Empty(program.Findings);
+    }
+
     // SPEC 8.15, 23.1.1: Binding publishes no part of a definition beyond PairBinder.CaseBound views (Binding.CaseLimits), so a body with more
     // views is a Binder finding at the body, which is not checked further: six binders of two cases, 64 views, are valid but for an Adapt no
     // view resolves (T to bool); a seventh gives the one Binder finding, the Adapt's views unresolved.
@@ -872,6 +984,9 @@ public sealed class MirValidatorTest
                 break;
             case MirViolation.Unensured: // G191: a static no staticEnsure of the body names.
                 Push(MirStatementKind.FakeRead, body.Static(new(types.Generic.SymbolOf()!, BoundType.I32, false, false)), Broken);
+                break;
+            case MirViolation.SharedPath: // W1 rule 1: a write through the shared reference.
+                Assign(body.Project(reference, MirProjectionKind.Deref, 0), MirRvalue.Use(Operands(one)), Broken);
                 break;
         }
 

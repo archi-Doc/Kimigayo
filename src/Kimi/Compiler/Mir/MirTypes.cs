@@ -2,14 +2,15 @@
 
 // Owns the Type facts needed by MIR construction and analyses.
 // Input: published Types, their stored shapes and Binding's Copy and Sealed proofs. Output: the destruction walk and the drop, observation,
-// Loan-holding with what a call may write past a value (its guard), raw, exclusivity, selection, agreement, borrow-kind and pointer-cast
-// facts.
+// Loan-holding with what a call may write past a value (its guard), raw, exclusivity, shared-layer, selection, agreement, borrow-kind and
+// pointer-cast facts.
 // Inline storage is traversed under each fact's documented bounds and Type rules; what destroying a value does is the one Destruction walk.
 // Must not inspect source syntax or substitute new Binding decisions.
 // Its concerns: the destruction walk and the facts over it (MirTypes.Destruction.cs), what a value may hold (MirTypes.Holding.cs), and
-// here the reference, view, selection, borrow-kind, pointer-cast and agreement facts.
+// here the reference, view, shared-layer, selection, borrow-kind, pointer-cast and agreement facts.
 
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
+using SemanticsMask = Kimi.Compiler.Parsing.SemanticsMask;
 
 namespace Kimi.Compiler.Mir;
 
@@ -34,6 +35,27 @@ internal static partial class MirTypes
         { Symbol.LibraryDeclaration: KimiDeclarationId.UniqSlice } => SemanticsKind.Uniq,
         _ => null,
     };
+
+    /// <summary>Gets whether a projection step passes a shared layer, past which no case grants write or exclusive access (SPEC 3.3.2,
+    /// 4.8.1, 13.5.5): a Deref of a ref or objref borrow or of an rc or arc handle, an Index of a Slice (its view, <see cref="View"/>), or a
+    /// PairLayer whose binder admits a shared Semantics (its weakest case); not a raw pointer's referent, an exclusive or owning layer or
+    /// another step.</summary>
+    /// <param name="type">The Type of the Place the step applies to.</param>
+    /// <param name="step">The step's kind.</param>
+    /// <param name="admitted">For a PairLayer, its binder's admitted Semantics, whose cases MirCases views; else ignored.</param>
+    /// <returns>Whether the step passes a shared layer.</returns>
+    internal static bool IsSharedLayer(BoundType? type, MirProjectionKind step, SemanticsMask admitted)
+    {
+        const SemanticsMask shared = SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Rc | SemanticsMask.Arc;
+        var cases = step switch // A Semantics' mask bit is its SemanticsKind's (MirCases).
+        {
+            MirProjectionKind.Deref when type is { Kind: BoundTypeKind.Semantics } => (SemanticsMask)(1 << (int)type.Semantics),
+            MirProjectionKind.Index when View(type) is { } view => (SemanticsMask)(1 << (int)view),
+            MirProjectionKind.PairLayer => admitted,
+            _ => SemanticsMask.None,
+        };
+        return (cases & shared) != 0;
+    }
 
     /// <summary>Gets whether a Type is an exclusive reference, <c>uniq</c> or <c>objuniq</c>: a borrow of its mode is exclusive, and a bare
     /// acquisition of a Place storing it Reborrows it in its own Semantics where another Type's Copies (SPEC 3.5, 8.14).</summary>
