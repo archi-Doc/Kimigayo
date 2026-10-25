@@ -782,6 +782,23 @@ public sealed class TyCtxtTest
         Assert.Equal(Binding.StorageOutcome.Prepared, identity.Storage);
     }
 
+    // SPEC 23.1.2 (DECISIONS BU-38): what a requirement call runs does not depend on a stored part Binding rejected, so a conforming Self
+    // whose storage is Rejected has its witness's target (fail-before: Limit, which the collector published as a gap), while a Self whose
+    // storage also nests past the bound keeps the Limit target beside its failed Field, as its repair does: the limit wins.
+    [Theory]
+    [InlineData("Missing", false, "Body")]
+    [InlineData("Missing", true, "Limit")]
+    [InlineData("i32", true, "Limit")]
+    public void ARejectedSelfRunsItsWitness(string field, bool deep, string expected)
+    {
+        var c = MirBuildTest.Compile(RetentionTest.Box + $"contract Zero\n    func zero() -> i32\nstruct Bad\n    Self is Zero\n    public var m: {field}\n" +
+            (deep ? $"    public var big: {RetentionTest.Box64}\n" : string.Empty) + "    public func zero() -> i32 => 1\n");
+        var zero = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<ContractKoto>().Single().SymbolOf()!;
+        var bad = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(static x => x.Name == "Bad").SymbolOf()!.Type!;
+        var requirement = zero.Contract!.OwnRequirement()!;
+        Assert.Equal(expected, c.Types.Witness(requirement, zero, c.Types.Synthesized(requirement, bad, zero.Type!)).Kind.ToString());
+    }
+
     // SPEC 6.5.1, 23.1.2 (G242; DECISIONS BU-37): an enum instance publishes each Case its substitution forms, and a Case whose payload
     // does not substitute is null, as a Field is: E's B and C beside its failed A, and G<i32>'s B, whose growth the storage verdict then
     // meets beside the failed A (fail-before: no Case published, and G<i32> Rejected).
