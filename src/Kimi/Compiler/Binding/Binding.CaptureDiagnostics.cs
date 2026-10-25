@@ -172,7 +172,7 @@ public sealed partial class Binding
     // a local region the binding names (LocalRegionSourceUse), unless that value is the binding's own initializer, is the related borrow.
     private CaptureFailure HelperCaptureFact(SourceSpan at, BindingSymbol source, (BoundOrigin Carrier, BoundOrigin Helper) helper)
     {
-        var use = this.LocalRegionSourceUse(helper.Carrier, helper.Helper);
+        var use = this.LocalRegionSourceUse(helper.Carrier, helper.Helper)?.Value;
         return new(at, source.Name, source.Type!, source, ReferenceEquals(use, (source.Declaration as VariableKoto)?.InitializerKoto) ? null : use, null);
     }
 
@@ -183,7 +183,7 @@ public sealed partial class Binding
     {
         var name = capture.Environment.Name;
         var captured = closure.Captures is not null ? CaptureEntryOf(closure, name)?.Span : CaptureUse.Of(closure, capture.Environment);
-        if (this.LocalRegionSourceUse(carrier, helper) is not { } late || captured is not { } at)
+        if (this.LocalRegionSourceUse(carrier, helper)?.Value is not { } late || captured is not { } at)
         {
             // The capture site judged every carrier but a region's later source, and CarrierOf found this one through the walk that finds
             // its use; the storage entry exists because of its entry or first occurrence. A broken contract, without recovery.

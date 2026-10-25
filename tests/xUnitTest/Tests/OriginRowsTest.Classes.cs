@@ -49,12 +49,14 @@ public sealed partial class OriginRowsTest
         Assert.Equal(OriginAtomKind.Finite, Atom(c, new ExecutableBody(h.SymbolOf(), 1), input, h).Kind);
     }
 
-    // 2a0-D §3 with DECISIONS R4-M101 E5: one class per precedence row and slot role, on rows the programs form; an end a Binding failure
-    // left Unbound (a repeated binding set's) is Dependent (R4-M118).
+    // 2a0-D §3 with DECISIONS R4-M101 E5: one class per precedence row and slot role, on rows the programs form. Row 4, an environment
+    // binding's own atom, stays a Finite root under `owner/Self` (DECISIONS R4-M126 P5, superseding the interim Finite in every receiver
+    // mode); under a borrowed receiver it resolves to ρ, so its relation is fixed-fixed and Binding's, no row (AClosuresValueAndAReceiverAre
+    // ClassedByTheirRole reads its class); an end a Binding failure left Unbound (a repeated binding set's) is Dependent (R4-M118).
     [Theory]
     [InlineData(Destructors, "drop", "self.buffer@ref", "Finite", "Receiver")]
     [InlineData(Destructors, "drop", "whole.buffer@ref", "Finite", "Helper")]
-    [InlineData(EnvStore, "", "x@ref", "Finite", "Environment")]
+    [InlineData(EnvStoreConsuming, "", "x@ref", "Finite", "Environment")]
     [InlineData(Guard, "g", "v@ref", "Finite", "Place")]
     [InlineData(Pick + "func g(n: i32, r: i32 = pick(n@ref, 5@ref)) -> i32 => r\n", "g", "n@ref", "Finite", "Parameter")]
     [InlineData(Pick + "func g(n: i32, r: i32 = pick(n@ref, 5@ref)) -> i32 => r\n", "g", "5@ref", "Finite", "Place")]
@@ -71,7 +73,7 @@ public sealed partial class OriginRowsTest
     // inference Inferred, a callee's own meet of Parameter atoms forms no edge (Unclassed, PLAN G195's located limit); an end a Binding
     // failure left Unbound, and a meet of such ends, are Dependent (DECISIONS R4-M118).
     [Theory]
-    [InlineData(EnvStore, "", "x@ref", "Fixed")]
+    [InlineData(EnvStoreConsuming, "", "x@ref", "Fixed")]
     [InlineData(Pick + "func g(a: i32 = pick(3@ref, 4@ref)) -> i32 => a\n", "g", "3@ref", "Inferred")]
     [InlineData(MeetTrans, "mt", "x", "Inferred")]
     [InlineData(MeetTrans, "mt", "t@uniq", "Unclassed")]
@@ -192,7 +194,8 @@ public sealed partial class OriginRowsTest
     }
 
     // Row 5 and the receiver's part (E5, DECISIONS R4-M103): a Closure literal's value is Fixed in its own body and a Finite temporary of
-    // the body evaluating it; a Closure's call result is Fixed in it; a constructor's receiver is a Finite root of the constructor.
+    // the body evaluating it; an environment binding's own atom resolves to it under a borrowed receiver (row 4, DECISIONS R4-M126 P5); a
+    // Closure's call result is Fixed in it; a constructor's receiver is a Finite root of the constructor.
     [Fact]
     public void AClosuresValueAndAReceiverAreClassedByTheirRole()
     {
@@ -204,12 +207,31 @@ public sealed partial class OriginRowsTest
         var literal = (FunctionKoto)closure.Key.Decl!.Declaration;
         var value = new BoundOrigin(OriginKind.Projection, literal, Binding.ClosureValueSlot);
         Assert.Equal(OriginAtomKind.Fixed, Atom(c, closure.Key.Body, value, literal).Kind);
+        var environment = Atom(c, closure.Key.Body, new(OriginKind.Projection, literal, Binding.EnvironmentSlot(0)), literal);
+        Assert.Equal((OriginAtomKind.Fixed, ProjectionRole.ClosureValue), (environment.Kind, environment.Role));
         Assert.Equal(OriginAtomKind.Finite, Atom(c, g, value, literal).Kind);
         Assert.Equal(OriginAtomKind.Fixed, Atom(c, closure.Key.Body, new(OriginKind.Projection, literal, Binding.CallResultSlot), literal).Kind);
         var init = bodies.First(IsProgramConstructor);
         var constructor = (FunctionKoto)init.Key.Decl!.Declaration;
         var receiver = Atom(c, init.Key.Body, new(OriginKind.Projection, constructor, Binding.ReceiverSlot), constructor);
         Assert.Equal((OriginAtomKind.Finite, ProjectionRole.Receiver), (receiver.Kind, receiver.Role));
+    }
+
+    // DECISIONS R4-M126 §2.5 (c), D-3: a Closure that is not classified (its capture failed, so no body was bound) has pending receiver and
+    // environment atoms, Dependent (R4-M118): never a source or a judged target. The view records a Dependent atom as a broken contract in
+    // a complete compilation only, which classifies every Closure: the valid twin's ρ is Fixed (row 5) and its env_0 resolves to ρ.
+    [Theory]
+    [InlineData("text", false, "Dependent")]
+    [InlineData("text@move", true, "Fixed")]
+    public void AnUnclassifiedClosuresAtomsAreDependent(string capture, bool complete, string kind)
+    {
+        var c = MirBuildTest.Compile($"func g() -> i32\n    let text = \"a\"\n    let f = func [{capture}] () -> i32 => 1\n    return 0\n" + Main);
+        var literal = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.IsAnonymous);
+        var body = new ExecutableBody(literal.SymbolOf());
+        Assert.Equal(complete, c.Binding.Result.IsComplete);
+        Assert.Equal(kind, Atom(c, body, new BoundOrigin(OriginKind.Projection, literal, Binding.ClosureValueSlot), literal).Kind.ToString());
+        Assert.Equal(kind, Atom(c, body, new BoundOrigin(OriginKind.Projection, literal, Binding.EnvironmentSlot(0)), literal).Kind.ToString());
+        Assert.Empty(c.Types.OriginFindings);
     }
 
     // The row of a body (by its definition's name; "" for the Closure) at a site.

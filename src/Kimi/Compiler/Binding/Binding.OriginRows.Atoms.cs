@@ -6,9 +6,10 @@
 // Input: an atom, the slice it is interned in and the use or MIR site it is resolved at. Output: the atom's index in the slice's table and
 // its part (OriginRowSet.InLayer).
 // Invariants: an atom is classed once, on its first appearance in a slice; a class no precedence row gives, and a Dependent atom (an end a
-// Binding failure left Unbound, DECISIONS R4-M118), is a broken contract in a complete compilation (OriginFinding); roots by the forming
-// body for non-declaration binders and by slot role for declaration binders; an atom's part is its rows' part, or for an atom MIR reads
-// its forming body's (DECISIONS R4-M114), and only a Fixed atom is in both parts (else a finding).
+// Binding failure left Unbound, DECISIONS R4-M118, or an unclassified Closure's pending atom, R4-M126 §2.5 (c)), is a broken contract in
+// a complete compilation (OriginFinding); roots by the forming body for non-declaration binders and by slot role for declaration binders;
+// an atom's part is its rows' part, or for an atom MIR reads its forming body's (DECISIONS R4-M114), and only a Fixed atom is in both
+// parts (else a finding).
 // Must not: let a slot or binder leave the view (only ProjectionRole does, D7).
 
 using Kimi.Compiler.Parsing;
@@ -143,6 +144,13 @@ public sealed partial class Binding
         if (role is ProjectionRole.None or ProjectionRole.Place && !atom.Body.IsBody)
         {
             return null; // E5: a non-declaration atom first formed outside every body.
+        }
+
+        if (PendingAtom(atom))
+        {
+            // DECISIONS R4-M126 §2.5 (c), D-3: an unclassified Closure's receiver or environment atom, Dependent (R4-M118); only a Closure
+            // whose body no binding bound, so a failed one, leaves it after Bind.
+            return new(atom, OriginAtomKind.Dependent, role);
         }
 
         if (role is ProjectionRole.ClosureValue or ProjectionRole.CallResult && DeclaredBy(atom, slice.Body))

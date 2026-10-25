@@ -2483,7 +2483,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     template by Binding's default index, static initializer), recorded at formation, never from `Use.Parent` (the parentless
     `$for.iterator` Use); resolution at use instead of alias rows, meets keyed by their canonical operand set; T1 by construction.
   - `OriginAtom.Of`: SPEC's three kinds by a first-match precedence table (the package's §3): the body's contract → Fixed; meets
-    by operands; the body's roots, default templates' prepared inputs included → Finite; environment bindings Finite until 2c-6;
+    by operands; the body's roots, default templates' prepared inputs included → Finite; environment bindings Finite until 2c-6
+    (superseded by R4-M126 P5 and R4-M133: resolved to the call receiver Origin under a borrowed receiver, Finite under `owner/Self`);
     binders in an enclosing body → Fixed; static Borrows formed in the body by mutability; `Inference`, `Anchor` → Inferred; an
     `Unbound` end or another declaration's universal atom (PLAN G195) → a located `Unsupported_Kd`. Slots are decoded only by the
     view (an `ArchitectureRulesTest` row, G163). One owner of fixed–fixed entailment: the premise catalog and
@@ -4330,6 +4331,104 @@ and migration obligations remain in force; no numeric cap changes are authorized
   (「はい、そのとおり (推奨)」). R5 agreed to R5-M113's pointer; R5 has the owner's own word, given to R5 directly
   (「70%を超えても、今の実装者・レビュアー体制で作業を継続してください」), recorded as R5-M120 (batch 41), which supersedes R5-M113's
   clause for R5.
+- **R4-M133 ρ, containment through the receiver layer, one receiver resolution and pending relations (2c-3B)** (2026-10-25, R4's
+  implementer lane under R4-M126 §2.2-§2.5, §2.12, §2.14 and D-2, D-3, D-12-D-15; PLAN G65's G6 and n2b)
+  - ρ (P2): a Closure k's call receiver Origin is `OriginAtom(k, Projection, ClosureValueSlot)`, no storage. Containment (P3): one
+    function, `Binding.PlaceOrigins.EnvironmentContainment`, gives an environment binding's root its containment ρ (any other root
+    none); the containment walk meets it at a root reached through a dereferenced layer with no shared layer first (`ContainedOrigin`
+    takes the meet reached so far, which `ReferentOrigin` and `PathReborrowOrigin` pass), and `PlaceOrigin`'s direct-layer return of a
+    binding storing an exclusive reference meets it too (g6a's `p[0]@uniq` through the indexer's receiver Reborrow). A Borrow of the
+    binding's own Place keeps `env_i`.
+  - The nested-entry Type (P4, R4-M123's 7.7.2, the exception to BU-28's "the binding's Type is its source's"): a bare entry that
+    Reborrows, in every or some admitted case, an enclosing Closure's environment binding takes the source Type with its outer Origin
+    met with ρ_outer (`Binding.Captures.CaptureEntry`); a pair layer carries it on its outer-Origin slot (D-14 holds: no stop). An
+    enclosing local's or parameter's entry keeps its Type.
+  - Resolution (P5): `OriginAtUse`, the one resolution every judge, record, the old reporter and the C1-F4 view read, resolves at each
+    classified Closure ancestor `env_i -> ρ` under a borrowed receiver and `ρ -> static` under `owner/Self` (`ResolveReceiver`). Classes:
+    `PendingAtom` (ρ or `env_i` of an unclassified Closure) is neither fixed nor finite, tested first in `FixedIn` and `BodyLocalIn`;
+    classified, ρ inside k is fixed by EnclosingAtom's ClosureValue row (k's literal value is a root of its evaluating body, an
+    enclosing body of each body inside k), the package's receiver class without a second row (its exclusion of that row inside k only
+    served to keep ρ unfixed while pending, which `PendingAtom` does). The view's row 4 is met only under `owner/Self`.
+  - Pending relations (§2.5, D-2): a pending atom is fitted as a local region is (`HasLocalRegion`); `AddObligation` appends an
+    obligation naming one, once per formation (no deduplication, PLAN V16; a relation formed twice is judged twice, the second finding
+    its use failed or proving it again; 2c-3B review B3), to one reused list keyed by the outermost unclassified Closure whose atoms it
+    names; `Classify(k)` is followed by `JudgePendingRelations(k)`: an entry whose obligation left `obligationSet` is skipped
+    (F2), each other is routed as a binding-time fit is (F3): resolved fixed-fixed or Refuted, its chains are found by the fit's
+    position search in the body that formed it, passed explicitly, and recorded by the one recording a binding-time fit uses
+    (`Binding.OriginFits.RecordOriginChains`: at `RelationAt`, a local annotation's fit at its initializer as DIAGNOSTICS and the old
+    reporter locate it; a failure no chain refutes in a failed Origin environment a dependent of it; the other chains through
+    `RecordMoreRelation`; the destination the obligation's Type, `BoundType?`; a body chain a twin), any other body chain stays a row
+    (reviews B1, F3, O5: the first version re-implemented the recording, recorded at the obligation's use and entered the body with
+    `EnterBody`, against BU-28). A relation Binding so judges is no row (2a0-D D1; the package's "g65a: Binding's one record on mir"):
+    its obligation leaves, as one judged at binding time is never formed, unless a recorded chain is a body chain, the twin's row
+    (R4-M108, R4-M111). The old reporter is unaffected: a recorded failure leaves Binding incomplete, and a proven relation judges
+    nothing (the 2c-3B landing prep's review B1: the merged MirOrigins judged the kept row again, two records of one failure). The component it adds (planning session's choice (b), 2026-10-25):
+    `OriginFitSearch`, OriginFits' position search as one non-allocating value (its contract in the file) whose constant context is the
+    use, the body, the mode `OriginFitMode` (Proof, Judged, Verified; the two former mode bools) and the chain list, and whose members
+    take only the varying inputs, every member within the parameter limit; it was a behavior-preserving commit first, and the search
+    no longer carries the destination Type, which the recording names. Rejected: the body threaded through the search's members (two
+    already over the 6-parameter limit grow; an owner exception); `EnterBody` (BU-28). (a) is
+    2c-2's `Classify` placement; (c) a pending atom is Dependent in the view (R4-M118's row, since 2c-3B lands after G:A5-F4; D-3), a
+    finding in a complete compilation, which classifies every Closure, so a guard; (d) `BindClosure(k)` removes the entries formed in
+    k's body or a body nested in it. No program found rebinds a Closure while entries are open, and none
+    removes a pending obligation in place before classification: (d)'s removal and F2's skip are guards.
+  - P12: the four `Slot <= EnvironmentSlot(0)` sites read `RoleOf`: the two "closure: call receiver" contract displays,
+    `HasEnvironmentOrigin` and `PendingAtom` through one predicate, `Binding.OriginClasses.ReceiverAtom` (ρ or `env_i`; a result naming ρ
+    is receiver-dependent, 7.7.4; BU's review N1), `CallLocalOrigin` Environment only (ρ is never call-local). Display (package §8;
+    reviews B2, F1): a relation record's end ρ shows as the closure's call receiver unless a Borrow supplies it, related at the
+    Closure literal; the supplying Borrow, explicit or a call's implicit Borrow of an argument, is shown by its text and related, also
+    reached through a local, a call or a Tuple. The owner's first rule (2026-10-25, verbatim 「(a) 一つの判定で直す (推奨)：BorrowSource
+    の3つの比較すべてに同じ OriginAtUse の判定を通す、レビュアーの修正で進めてください。」) compared each Borrow's Origin as written and
+    as `OriginAtUse` resolves it; it failed for the search inside a value (BU's re-check 2, B1): every environment Borrow resolves to
+    the same ρ, so the first one in the value was named (`second(n@ref, m@ref)` named `n@ref`). Cause: the fact kept only the ends
+    resolved at the use, so the adapter re-derived the supplier. The owner's revised rule (2026-10-25, verbatim 「2c-3B は (a) で：検査
+    が失敗の事実に「供給した（解決前の）原子」を記録し、BorrowSource は4つの比較すべてでそれを同一性で比べる。B3 と R2 も同じ修正回で
+    直してください。」): `OriginRelationFact.Supplier` is the atom that supplies the longer end at the use, the end after the Origin
+    declarations and local initializers and before any classified Closure's receiver resolution, which alone turns an environment
+    Borrow's atom into ρ. One function gives it, `SuppliedAtUse`, and `OriginAtUse` is its composition with the receiver resolutions
+    (the two commute: no declaration or initializer maps an environment atom or ρ; checked at every resolution over the Functional suite
+    and BU's harnesses before the split). Every record takes it there: a pending relation maps each chain to the operand of its supplied
+    end whose resolution holds it (`SuppliedBy`); the binding-time fit, the declared relation, a selected call's positions, the old
+    reporter (`OwnershipAnalysis.cs`) and the rest record `SuppliedAtUse` of the end they compared. Fix part 4 took two points (the
+    declared relation the end after `OriginAtUse`, the pending route the end as formed, a clause's `x.s` that no Borrow carries), so a
+    local clause in a Closure over an environment Borrow showed the call receiver (BU's re-check 3, N1); the one function replaces the
+    declared path's special case. BorrowSource compares it by identity at the four comparisons (the value's own Borrow, a local's
+    Borrow initializer, a named call's implicit Borrow argument and the search inside a value, the last two one finder reading the
+    call's plan as the pass recorded it, also at a value its record failed; a Field's implicit Borrow shows its Place, `s.f`). A local
+    region's source is found through the bound that brought it in, by that bound's parent as written, which `LocalRegionSourceUse` now
+    returns with the value (the planning session's R-a, `Binding.LocalRegions.cs`). B3: a pending entry carries its record's
+    destination, the obligation's Type, which `CheckTypeUse` stamps with the fit's whole Type, as the binding-time fit records it (it
+    is the one entry to a fit's position obligations, so the entries appended during it are exactly its own). Deleted: `SuppliesEnd`'s
+    resolution, `IsBorrowValue`, BorrowSource's separate implicit-argument branch. Rejected: one OriginAtUse check (the first rule); a
+    position re-search in the adapter; a shape guard; R-b, a written supplier carried through `LocalRegionSources` and the old
+    analysis's region loop (`BindingObligation` or `OwnershipIssue`, Full); R-c, resolution kept in the region branch (the first rule's
+    cause again); a mode parameter on `OriginAtUse`. Open: BorrowSource searches one local level (BU's re-check 2); a value call's
+    implicit Borrow is not found (`f(n)`; base too). `OriginDisplay` and `BorrowSource` moved to `Binding.OriginDiagnostics` first
+    (behavior unchanged), since `Binding.Diagnostics.cs` is over the token limit. P11 (D5's follow-up, removal R6-gen): the old
+    Emission's element Borrow compares its Origin with the receiver's modulo ClosureValue operands (`BodyLowering.SameOriginModuloReceiver`).
+  - Verdicts (SPEC 15.6.3, 15.6.5, 7.7.2): g6a (the MIR's use-after-free), g6b, g6d, g6e, r1e, r1f, t4g, n2b
+    `UnprovenOriginRelation_Kd` on both pipelines (the default's conservative Loan records of g6a-g6e become Binding's); g65a, r1g,
+    15.8.2's `invalid` Unproven (Refuted before); r1a-r1c add the body's record beside R1's call U; t4e, t4f, f7j1, rc4, s773, D-13's
+    three forms under Shared and Exclusive receivers (no missing receiver premise, D-13) and g6c stay valid (g6c and D-13's Option form
+    keep the old analysis's conservative Loan record). Not covered (BU's review F2, PLAN G254, the planning session's (c)): a captured
+    pair layer's bare use that Reborrows by case records no same-Semantics Reborrow (BU-27 covers `uniq/T` and `objuniq/T`), so it
+    keeps `s/T during a` and is never contained in ρ (`q@follow = value` with `s is uniq` is accepted, its concrete twin Unproven; base
+    too); BU-27's extension to a pair layer acquired by case is the next unit under the full process. An `s is uniq` store builds and
+    runs on both generators; whether a use-after-free follows is unverified (no native attempt through a constrained `T` exposing an
+    interior borrow was made). Also not covered (BU's re-checks R2, PLAN G257): a fit through a meet whose operand is a pending `env_i`
+    is decided at binding time as a located `Unsupported_Kd` where base gave a Language error (the pending rule covers relations naming
+    a pending atom, not a meet holding one; a local region over such a Borrow is judged, Unproven or Unsatisfied); nothing unsound, no
+    valid program rejected.
+  - Open (the re-checks): BU's N-a, an unresolved `env_i` end under a Consuming outer (a capture of a capture) prints the outer
+    literal, `OriginDisplay`'s closure row reading only ρ's slot; BU's N-b, `OriginFitMode.Verified` picks the failing operand with
+    the Proof predicate, which nothing reads (`FitsVerifiedTypeAt` reads only `is null`); R4's R1, `var r = p[0]@uniq; q@follow = r`
+    stays a body row (the default's old reporter rejects it, the MIR accepts it) that 2c-6 takes as a failing-first row.
+  - Bind (the reviews' A/B): pinned with TieredCompilation off, warm min is about +1% from `0a14e8a07` on, a code-layout artifact of that
+    setup: bisected to the behavior-preserving `0a14e8a07`, none of whose code runs in the benchmark (counted by R4's re-check), and
+    under the default runtime the head is 1.7-3.2% faster warm. Rejected: a `reached` flag on
+    the walk (a mode parameter); routing by `JudgeCallPosition` (it re-adds a meet's operand rows and leaves a Refuted body chain
+    unrecorded); the lists on `BoundClosure` (a field on the published definition for one list); a pass reset in `ResetPass`.
+    Numbering: R4-M133 is free on dev and every branch (R4-M131 on `claude/r4-spec-n2`, R4-M132 on `claude/a5-2a-2`).
 - **R4-M136 OldRule's ledger key and the MIR target side (2x-T5), refining R4-M50 and R4-M60** (2026-10-25; unit 2x-T5 under the A5
   step 2 plan's PD19 and its 2x-T5 row (R4-M74), the prerequisite 2a0-D's 2a-4 row names, in G:A5-F4's group review; the R4 planning
   session's decisions of 2026-10-25 on its open points and number; R5's agreement, relayed by the planning session)

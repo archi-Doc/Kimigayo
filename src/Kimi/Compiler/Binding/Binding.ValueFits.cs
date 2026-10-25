@@ -33,7 +33,8 @@ public sealed partial class Binding
     // Lowering rechecks the already verified contract without adding constraints or reopening inference.
     internal bool FitsVerifiedTypeAt(BoundType actual, BoundType expected, Koto use)
         => this.FitsTypeAt(actual, expected, use) || ((actual.CarriesAnyOrigin || expected.CarriesAnyOrigin) &&
-            this.FitsStructurallyAt(actual, expected, use) && this.FailedOriginRelation(actual, expected, use, OriginVariance.Covariant, verified: true) is null);
+            this.FitsStructurallyAt(actual, expected, use) &&
+            new OriginFitSearch(this, use, this.formingBody, OriginFitMode.Verified).FailedOriginRelation(actual, expected, OriginVariance.Covariant) is null);
 
     internal bool FitsStructurallyAt(BoundType actual, BoundType expected, Koto use)
         => NeverFits(actual) || FitsTypeCore(actual, expected, this, use, structural: true);
@@ -42,9 +43,20 @@ public sealed partial class Binding
     private static bool NeverFits(BoundType actual) => ReferenceEquals(actual, BoundType.Never);
 
     // SPEC 15.6.1: a fit whose structure holds leaves each differing Origin position as an obligation that ownership judges and reports
-    // with facts at the value.
+    // with facts at the value. A position's pending relation is recorded with the fit's whole destination, as the fit's own record is
+    // (RecordOriginFitFailure; DECISIONS R4-M133): this is the one entry to the positions' obligations (CheckTypeUseCore recurses only into
+    // itself, FitsTypeCore forms none), so the entries appended before it returns are exactly this fit's.
     private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use)
-        => NeverFits(actual) || this.CheckTypeUseCore(actual, expected, use, OriginVariance.Covariant);
+    {
+        var pending = this.pendingRelations.Count;
+        var fits = NeverFits(actual) || this.CheckTypeUseCore(actual, expected, use, OriginVariance.Covariant);
+        for (var i = pending; i < this.pendingRelations.Count; i++)
+        {
+            this.pendingRelations[i] = this.pendingRelations[i] with { Destination = expected };
+        }
+
+        return fits;
+    }
 
     // `polarity` is the variance of the compared position within the fitted Type (SPEC 15.3.5), composed as FitsTypeCore composes it: a
     // contravariant position reverses the relation, and an invariant or unused one makes it `==`, also for every position nested in it,

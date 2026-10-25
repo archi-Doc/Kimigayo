@@ -7,6 +7,48 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
+    // SPEC 15.6.3, 15.8.2 (DECISIONS R4-M126 P11, D-15; until R6-gen, with this path): an element Borrow through a reference a Closure
+    // captured is also contained in the Closure's call receiver Origin ρ, so it names the receiver's Origin modulo ρ: the operand sets
+    // of the two Origins (an atom a set of one; Binding.Meet flattens meets) are equal once every ClosureValue atom is dropped.
+    private static bool SameOriginModuloReceiver(BoundOrigin? element, BoundOrigin? receiver)
+    {
+        return ReferenceEquals(element, receiver) || (element is not null && receiver is not null && Covers(element, receiver) && Covers(receiver, element));
+
+        // Whether every operand of `origin` but a ClosureValue atom is an operand of `other`.
+        static bool Covers(BoundOrigin origin, BoundOrigin other)
+        {
+            var count = origin.Kind == OriginKind.Intersection ? origin.Operands.Count : 1;
+            for (var i = 0; i < count; i++)
+            {
+                var operand = origin.Kind == OriginKind.Intersection ? origin.Operands[i] : origin;
+                if (operand is not { Kind: OriginKind.Projection, Slot: Binding.ClosureValueSlot } && !Holds(other, operand))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        static bool Holds(BoundOrigin origin, BoundOrigin operand)
+        {
+            if (origin.Kind != OriginKind.Intersection)
+            {
+                return ReferenceEquals(origin, operand);
+            }
+
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (ReferenceEquals(origin.Operands[i], operand))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
     private bool LowerSequence(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, out string? failure)
     {
         failure = null;
@@ -129,7 +171,7 @@ internal sealed partial class BodyLowering
             var reference = ValueType(body, id);
             var originSource = Binding.PlaceOriginSource(syntaxReceiver);
             var sameOrigin = receiver.Kind == BoundTypeKind.Slice || borrowedArray
-                ? ReferenceEquals(reference?.Origin, receiverPlace.Type.Origin)
+                ? SameOriginModuloReceiver(reference?.Origin, receiverPlace.Type.Origin)
                 : reference?.Origin is { Kind: OriginKind.Projection } origin && ReferenceEquals(origin.Binder, Binding.PlaceOriginBinder(originSource)) && origin.Slot == Binding.PlaceOriginSlot(originSource);
             // SPEC 4.7.1: an exclusive element borrow addresses the elements through a uniq array reference.
             var exclusiveElements = borrowedArray && receiverPlace.Type.Semantics == SemanticsKind.Uniq &&

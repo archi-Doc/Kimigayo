@@ -7,9 +7,9 @@
 // at each edge into a Fixed node a problem per finite source (Refuted) and per fixed source the oracle does not derive (Unknown), the oracle
 // closed once per target and part. An edge of the layer's part (a layer row, or an edge between a Field initializer's atoms) is judged with
 // the layer's oracle, the Type's public premises (DECISIONS R4-M101 E4, R4-M110 Q1 (a), R4-M114); a row or containment edge with an
-// Unclassed end forms nothing and is the located limit. A Dependent node, an end a Binding failure left Unbound, is never a source or a
-// judged target: it passes on what reaches it, so a chain through it is judged between its ends and one ending at it records nothing
-// (SPEC 23.1.2; DECISIONS R4-M118).
+// Unclassed end forms nothing and is the located limit. A Dependent node, an end a Binding failure left Unbound or an unclassified
+// Closure's pending atom (DECISIONS R4-M126 §2.5 (c)), is never a source or a judged target: it passes on what reaches it, so a chain
+// through it is judged between its ends and one ending at it records nothing (SPEC 23.1.2; DECISIONS R4-M118).
 
 using System.Numerics;
 using Kimi.Diagnostics;

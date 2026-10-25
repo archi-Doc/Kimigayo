@@ -19,8 +19,7 @@ public sealed partial class Binding
     private static void ReportCallableConstraint(Koto node, CallableConstraintFact fact, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var contract = fact.Contract;
-        var receiver = contract.Longer is { Kind: OriginKind.Projection, Binder: FunctionKoto { IsAnonymous: true } closure } environment && environment.Slot <= EnvironmentSlot(0)
-            ? closure : null;
+        var receiver = ReceiverAtom(contract.Longer) ? (FunctionKoto)contract.Longer.Binder! : null;
         var longer = receiver is not null ? new DiagnosticOrigin("closure", "call receiver") : OriginDisplay(contract.Longer, null);
         var shorter = OriginDisplay(contract.Shorter, null);
         var related = new List<(string Role, Koto At, string? Label)>(3) { ("constraint", fact.Clause, null) };

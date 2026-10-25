@@ -19,7 +19,7 @@ public sealed partial class Binding
 {
     // SPEC 15.8.2: the first Origin of an inferred closure result that names the call's own storage: a parameter slot or a body local
     // of the closure, or, in a Consuming call, an environment binding. Origins of the enclosing body and receiver-dependent bindings
-    // of a borrowed environment are no such storage.
+    // of a borrowed environment are no such storage, nor is the call receiver's Origin ρ (RoleOf; DECISIONS R4-M126 P12).
     private static BoundOrigin? CallLocalOrigin(BoundType type, FunctionKoto function, bool consuming)
     {
         if (CallLocal(type.Origin) is { } found)
@@ -66,7 +66,8 @@ public sealed partial class Binding
             }
 
             return origin.Kind is OriginKind.Projection or OriginKind.Anchor && origin.Binder is { } binder &&
-                (ReferenceEquals(binder, function) ? origin.Slot >= 0 || (consuming && origin.Slot <= EnvironmentSlot(0)) : IsWithin(binder, function)) ? origin : null;
+                (ReferenceEquals(binder, function) ? origin.Slot >= 0 || (consuming && RoleOf(origin) == ProjectionRole.Environment)
+                    : IsWithin(binder, function)) ? origin : null;
         }
     }
 

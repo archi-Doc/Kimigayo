@@ -53,6 +53,9 @@ public sealed partial class MirOriginsTest
     private const string IteratorItem = "struct Cursor {source}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during source\n" +
         "    let value: uniq/i32 during source\n    public func next(self: uniq/Self) -> Option<ref/i32 during source> => .Some(self.value)\n";
 
+    // PLAN G65's g65a: a Closure capturing a local of a function whose parameter Origin its body's Borrow of the capture is related to.
+    private const string PendingHead = "func use(p: ref/i32) -> i32\n    let n: i32 = 1\n";
+
     // A call's substituted relation (r7-subst).
     private const string Substituted = "func keep(x: uniq/(ref/i32 during a), y: ref/i32 during b) -> ()\n    origin b outlives a\n    x@follow = y\n" +
         "func use(p: uniq/(ref/i32 during c), q: ref/i32 during d) -> ()\n    keep(p, q)\n";
@@ -73,8 +76,8 @@ public sealed partial class MirOriginsTest
     // longer end split per operand (bc801917a239), two well-formedness rows of one call (e3312717bde0), a Phantom slot's `==` failing both
     // ways (one problem with Equality set), a local's callable store (cd1535825466, 597510880fb0, cab8c776076f), a Closure's parameter fit
     // (8e4cca7290b1), a Reborrow through a local's layers, which Binding names by their meet (p1: one problem at the return; rejected on both
-    // pipelines since G226, DECISIONS BU-27, closing PLAN G192), and a Field initializer's relation that only the constructor's clause would prove: the layer's part is judged
-    // under the Type's public premises (SPEC 6.3.3; DECISIONS R4-M101 E4, R4-M110, R4-M114).
+    // pipelines since G226, DECISIONS BU-27, closing PLAN G192), and a Field initializer's relation that only the constructor's clause would
+    // prove: the layer's part is judged under the Type's public premises (SPEC 6.3.3; DECISIONS R4-M101 E4, R4-M110, R4-M114).
     [Theory]
     [InlineData(R7Inv, "uniq/(ref/i32 during a): a > in1", "let z: uniq/(ref/i32 during a) = y: a > b")]
     [InlineData("func f(x: ref/i32, y: ref/i32) -> ref/i32 during y\n    var r = x\n    r = y\n    return r\n", "r: in0 > in1")]
@@ -110,7 +113,10 @@ public sealed partial class MirOriginsTest
 
     // D1: a relation whose ends are fixed where Binding forms it is Binding's judgment until R7 and forms no row, and its failed node is
     // Opaque on the MIR, so the stratum forms no problem for it: j-f, j-pick (each case), c-detach (SPEC 15.5), c-box, c-peekU, c-pair (each
-    // case), n-pass, x-skip (an Iterator's item Reborrowed through `self`), p1's direct form and r7-subst's call.
+    // case), n-pass, x-skip (an Iterator's item Reborrowed through `self`), p1's direct form and r7-subst's call. So is a relation formed over a
+    // Closure's pending receiver atoms that Binding judges once the Closure is classified, fixed there (DECISIONS R4-M126 §2.5 (b), F3): its
+    // obligation leaves as one judged at binding time forms none, Binding's one record on each pipeline (rv/env-store; g65a annotated and
+    // returned; g6b).
     [Theory]
     [InlineData("func f(x: ref/i32, y: ref/i32) -> ref/i32 during y\n    let r = x\n    return r\n", "return r")]
     [InlineData("struct Box<E>\n    public let item: E\nfunc pick<s/T>(b: ref/Box<s/T during a> during c, x: ref/i32 during a) -> ref/i32 during c\n    s is owner or ref\n    return x\n", "return x")]
@@ -122,6 +128,10 @@ public sealed partial class MirOriginsTest
     [InlineData(IteratorItem, "self.value")]
     [InlineData("func f(p: uniq/(uniq/i32 during a) during b) -> uniq/i32 during a\n    return p@follow@follow@uniq\n", "return p@follow@follow@uniq")]
     [InlineData(Substituted, "q")]
+    [InlineData(EnvStore, "x@ref")]
+    [InlineData(PendingHead + "    let c = func [n] () -> i32\n        let r: ref/i32 during p = n@ref\n        return 0\n    return 0\n", "let r: ref/i32 during p = n@ref")]
+    [InlineData(PendingHead + "    let c = func [n] () -> ref/i32 during p => n@ref\n    return 0\n", "n@ref")]
+    [InlineData("func use(p: uniq/i32, q: uniq/(uniq/i32 during p)) -> i32\n    var c = func [p@move, q@move] () -> i32\n        q@follow = p\n        return 0\n    return 0\n", "p")]
     public void ARelationBindingJudgesDirectlyIsNotTheStratums(string source, string site)
     {
         var c = MirBuildTest.Compile(source + Main);
