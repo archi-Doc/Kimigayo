@@ -69,7 +69,7 @@ public sealed partial class Binding
             var position = this.PositionOf(node);
             var op = this.OpOf(node, position);
             var parts = this.Parts(node, op, position);
-            var unresolvedOperation = node.BindingState != BindingState.Resolved && op == HirOp.Error && !Rejected(node) && Operation(this.KindOp(node));
+            var unresolvedOperation = node.BindingState != BindingState.Resolved && op == HirOp.Error && !Rejected(node) && Operation(binding.KindOp(node));
             if (this.parentOp == HirOp.Error && position == HirPosition.Evaluated)
             {
                 this.Write(node, new(HirAcquire.None, HirAdaptation.None)); // A kept operand of an Error (Keeps), used in place.
@@ -107,7 +107,15 @@ public sealed partial class Binding
             if (parts is not (HirOp.Unset or HirOp.Error) &&
                 (parts != HirOp.Syntax || (node is FunctionKoto function && PartsPublished(function) && (position & HirPosition.Replaced) == 0)))
             {
-                this.Consume(node, parts);
+                // The selection by which Consume takes a user index's inputs, recorded for its ExpansionPlan (SPEC 4.7.1).
+                if (node is IndexKoto)
+                {
+                    var uniq = binding.SelectsUniq(node, this.exclusive);
+                    HirTables.PlanFor(node, uniq).Mode = uniq ? (byte)1 : (byte)0;
+                }
+
+                var taker = new PublisherTaker(this);
+                binding.Consume(node, parts, ref taker);
             }
 
             (this.parent, this.parentOp, this.position, this.unresolvedOperation) = (node, parts, parts == op ? position : HirPosition.None, unresolvedOperation);
@@ -200,7 +208,7 @@ public sealed partial class Binding
                 case BindingSymbolKind.Storage:
                     return HirRes.Field;
                 case BindingSymbolKind.Property:
-                    return symbol.Scope.Owner is GroupKoto ? HirRes.Static : HirRes.Field;
+                    return IsStaticStorage(node) ? HirRes.Static : HirRes.Field;
                 case BindingSymbolKind.EnumCase:
                     return HirRes.Variant;
                 default:
@@ -223,7 +231,7 @@ public sealed partial class Binding
             HirOp.Deref => binding.PairAdmitted(node) == SemanticsMask.None ? HirPlaceKind.Deref : HirPlaceKind.PairLayer,
             HirOp.Index => ElementAccess.IsSlicing(node) ? HirPlaceKind.Value : ElementAccess.StaticSelector((IndexKoto)node) < 0 ? HirPlaceKind.Index : HirPlaceKind.ConstIndex,
             HirOp.Call => ElementAccess.IsUserIndex(node) ? HirPlaceKind.CallResult : HirPlaceKind.Value,
-            HirOp.Group when node is ParenthesizedKoto && KotoHelper.UnwrapParentheses(node) is var inner => this.KindOf(inner, this.OpOf(inner, HirPosition.Evaluated), this.ResOf(inner)),
+            HirOp.Group when node is ParenthesizedKoto && KotoHelper.UnwrapParentheses(node) is var inner => this.KindOf(inner, binding.OpOf(inner), this.ResOf(inner)),
             _ => HirPlaceKind.Value,
         };
 
