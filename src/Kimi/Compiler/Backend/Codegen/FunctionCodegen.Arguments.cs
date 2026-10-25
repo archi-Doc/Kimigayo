@@ -148,8 +148,9 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // A legacy row's slots (DECISIONS R5-M116, R5-M121): a routine row's OwnedSlot parameters, as an intrinsic routine's; an Instance row's as a
-    // body callee's (OperandSlots), since its helper takes an element in memory by pointer and copies it after it grows (`a.append(a[0])`);
+    // A legacy row's slots (DECISIONS R5-M116, R5-M121, R5-M124): a routine row's OwnedSlot parameters, as an intrinsic routine's; a row's in
+    // its function's instance (LegacyRow.InInstance) as a body callee's (OperandSlots), since its helper takes an element in memory by pointer
+    // and copies it after it grows (`a.append(a[0])`);
     // a swap of a value in memory the one slot holding its first value (FunctionCodegen.Updates), numbered at its first operand, a reference,
     // which has no copy slot of its own; none for the others, which read their operands in place, no callee seeing them.
     private void RowSlots(in MirTerminator call, LegacyRow row, int block)
@@ -160,7 +161,7 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        if (row.Writer == LegacyWriter.Instance)
+        if (row.InInstance)
         {
             this.OperandSlots(call, block);
             return;

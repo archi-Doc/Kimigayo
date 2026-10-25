@@ -153,11 +153,11 @@ internal sealed partial class FunctionCodegen
         return true;
     }
 
-    // A sequence's length (SPEC 4.7.3) from its address: a fixed array's closed length, else the length word of an Array's or Slice's
-    // handle record, its Field 1 (IMPL 21.1.3).
+    // A sequence's length (SPEC 4.7.3) from its address: a fixed array's closed length, else the length word of its handle record, which its
+    // handle row names (Layout.LengthWord: an Array's or Slice's Field 1, a Dictionary's live count; IMPL 21.1.3).
     private Value Length(BoundType sequence, ValueLowering record, Value start)
         => sequence.Kind == BoundTypeKind.FixedArray ? new('\0', sequence.Length)
-            : this.LoadAt(this.Offset(start, record.Layout.FieldOffsets.Span[1]), Layout.Row(BoundType.ISize).Layout);
+            : this.LoadAt(this.Offset(start, record.Layout.FieldOffsets.Span[Layout.LengthWord(sequence)]), Layout.Row(BoundType.ISize).Layout);
 
     // An address a constant number of bytes past another: the same address for none.
     private Value Offset(Value start, long bytes) => bytes == 0 ? start : this.Offset(start, new Value('\0', bytes));

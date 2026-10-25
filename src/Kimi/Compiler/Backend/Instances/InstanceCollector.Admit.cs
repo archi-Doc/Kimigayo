@@ -28,6 +28,14 @@ internal sealed partial class InstanceCollector
     private static bool Carries(Subst subst, BindingSymbol enclosing)
         => ReferenceEquals(subst.Target, enclosing) || ReferenceEquals(subst.Declaring?.Symbol, enclosing);
 
+    // The storage a legacy row's handle, its parameter 0, designates (K 4.3; DECISIONS R5-M121, R5-M124), which AdmitRow applies to every
+    // row: the LegacyRow item's representative Type, whose components, the element or the key and the value its routine stores, it lays out.
+    // It is the Type below the parameter's implicit layers (Below, TyCtxt.Layer), an Array's, a UniqSlice's or a fixed array's own, and
+    // through a raw pointer, whose dereference is explicit (SPEC 3.4.3, 5.1), its pointee (placeEntry's raw handle to a Dictionary, SPEC
+    // 22.2); a part of the Type Below made, so its verdict was read at the site.
+    private static BoundType Designated(BoundType below)
+        => below is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw, Components: [var pointee] } ? pointee : below;
+
     // The item of a callee body requested at a site of an item's body (its located subject), admitted once per key (KD1): keyed by its
     // definition and, when it instantiates, its erased substitution, represented by the substitution itself (KD3). A function nested in a
     // body whose substitution does not carry the enclosing instance is a capability gap, and a new key's instance needs its local Types
@@ -117,24 +125,25 @@ internal sealed partial class InstanceCollector
         return set.Add(new() { Key = key, RepresentativeType = type, BodyOrdinal = -1, Parent = parent, Depth = (ushort)depth, Site = site });
     }
 
-    // K 4.3, 4.5 row 2 (DECISIONS R5-M121): the LegacyRow item of a bodyless compiler function whose legacy row writes its call in its
+    // K 4.3, 4.5 row 2 (DECISIONS R5-M121, R5-M124): the LegacyRow item of a bodyless compiler function whose legacy row writes its call in its
     // instance, requested at a site, admitted once per key: its function and its erased substitution (as a body instance's, null exactly when
-    // the function does not instantiate), represented by the substitution, under which TyCtxt.Signature gives its Types, and by the Type
-    // below its parameter 0 (an Array, a UniqSlice or a fixed array; Below, its verdict read at the site), whose element its helper stores, a
-    // by-value use (K 4.8, X34); past the depth limit GenerationResourceLimit_Kd; an open or missing instance is a broken contract. -1 when
-    // refused.
+    // the function does not instantiate), represented by the substitution, under which TyCtxt.Signature gives its Types, and by the storage
+    // its parameter 0 designates (Designated: an Array, a UniqSlice, a fixed array or a Dictionary; Below, its verdict read at the site),
+    // each of whose components, the elements its helper stores, is a by-value use (K 4.8, X34); past the depth limit
+    // GenerationResourceLimit_Kd; an open or missing instance is a broken contract. -1 when refused.
     private int AdmitRow(int parent, SourceRef site, BindingSymbol function, Subst? subst)
     {
         var set = this.Set;
         Subst? erased = null;
         var instantiates = this.types.Instantiates(function);
-        if (this.Below(site, function, subst, 0) is not { } collection)
+        if (this.Below(site, function, subst, 0) is not { } below)
         {
             return -1;
         }
 
+        var collection = Designated(below);
         if ((instantiates && (subst is null || (erased = this.types.Erase(subst)) is null)) ||
-            collection is not { ContainsParameter: false, Components: [var element, ..] })
+            collection is not { ContainsParameter: false, Components.Count: > 0 })
         {
             set.Report(DiagnosticCode.InternalInvariant_Kd, site);
             return -1;
@@ -146,7 +155,13 @@ internal sealed partial class InstanceCollector
             return found;
         }
 
-        if (!this.LaysOut(site, element))
+        var laidOut = true;
+        for (var i = 0; i < collection.Components.Count; i++)
+        {
+            laidOut &= this.LaysOut(site, collection.Components[i]);
+        }
+
+        if (!laidOut)
         {
             return -1;
         }

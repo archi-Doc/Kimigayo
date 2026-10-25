@@ -5,7 +5,7 @@
 // helper records, the runtime flags, the source functions the compiler requested, the DictionaryStorage functions and the
 // formatting wrappers), the element descriptor of a stored collection value, the stored-value text kernels the helpers write
 // through, the Array capacity routines and helpers (LegacyRuntimeHelpers.Arrays.cs), the Dictionary runtime, the storage byte
-// primitives and the Dictionary helpers (LegacyRuntimeHelpers.Dictionaries.cs), the formatting runtime with its routines' ABIs
+// primitives, a Dictionary entry's layout and the Dictionary helpers (LegacyRuntimeHelpers.Dictionaries.cs), the formatting runtime with its routines' ABIs
 // and the wrappers over user formatting witnesses (LegacyRuntimeHelpers.Formatting.cs), the storage-boundary, Raw.slice and
 // capacity kernels written inline in their caller's body with the library record Field addressing they share with the old
 // writer (LegacyRuntimeHelpers.Storage.cs) and the string-comparison routines, spliced from their signatures (StringEqual, StringCompare,
@@ -26,8 +26,9 @@
 // its callees as DictionaryCallee values: the generic function its helpers call over the entry Types (findEntry for
 // CheckKey, clearEntries for Drop) and the one the module resolves (requireAbsent for CheckKey, append for Place).
 // DictionaryCallee, the key of KimiLibrary's DictionaryStorage view (F2c), names each function by the symbol Binding declares
-// for it; the Dictionary runtime (the duplicate-key adapter and the initialization bridge, which calls initialize) has no
-// row, and the old lowering also requests it for a Dictionary's construction. Each formatting compiler function's row
+// for it; the Dictionary runtime (the duplicate-key adapter and the initialization bridge) has no row but declares the callee a
+// Dictionary's construction runs (Construction, initialize), and the old lowering also requests it for a Dictionary's construction.
+// Each formatting compiler function's row
 // (FormattingRow; P1d) holds its routine's ABI and HelperNeeds (the formatting runtime) and declares no library callee, since the
 // formatting runtime calls none; the formatting witness WriterWrite, TextToString and TextTryFormat run is the need their
 // published library rows state (Formats, SPEC 4.9.6), which the collector reads there. Each inline storage kernel's row
@@ -37,7 +38,9 @@
 // function of the Body disposition to how MIR code generation writes its call (Row, S2-S4 X39; DECISIONS R5-M116) names each kind's
 // writer: writeLine's runtime routine, the whole-value updates, the fixed-array storage kernel, the Array operations and storage kinds in
 // their function's instance (Instance: the Array helper of its kind, or a capacity routine, through its call's LegacyRow item; DECISIONS
-// R5-M121), setArrayLength's length, every other kind its unit's row not written yet (C8e, C9a).
+// R5-M121), setArrayLength's length, placeEntry in its function's instance (Place: the Dictionary Place helper, which calls the item's
+// declared callee, append) and the other Dictionary storage kinds as the P2a kernels over their call's entry layout (DECISIONS R5-M124),
+// every other kind its unit's row not written yet (C9a).
 // Invariants: a new helper kind adds a row; a kind without a row fails; a request's runtime flags come from its row; each
 // requested helper is written once (the planner requests each formatting wrapper once), in request order, after the runtimes its
 // row declares;
@@ -105,6 +108,28 @@ internal enum LegacyWriter : byte
 
     /// <summary>SPEC 22.2: setArrayLength, the length stored in the Array handle's length word (FunctionCodegen.Arrays).</summary>
     Length,
+
+    /// <summary>SPEC 4.9.6, 22.2: placeEntry, P1c's Place helper in its function's instance, its call's LegacyRow item's (ModuleCodegen.Row),
+    /// which calls the item's declared callee, append (DECISIONS R5-M124).</summary>
+    Place,
+
+    // The Dictionary storage kernels (SPEC 22.2; DECISIONS R5-M124), each P2a's kernel over its call's entry layout with its own number
+    // (FunctionCodegen.Storage's DictionaryKernel); they stay contiguous, so LegacyRow.DictionaryKernel names them by range.
+
+    /// <summary>dictionaryStorage: the {address, entry stride} Tuple through the DictionaryLayout kernel.</summary>
+    DictionaryLayout,
+
+    /// <summary>borrowStorage and borrowStorageUniq over a Dictionary: the remainder through the BorrowDictionary kernel, with the stride.</summary>
+    DictionaryBorrow,
+
+    /// <summary>ownStorage of a Dictionary: the owning remainder through the OwnDictionary kernel, with the stride.</summary>
+    DictionaryOwn,
+
+    /// <summary>keyAt: a slot's key address through the EntryAddress kernel, with the key's offset.</summary>
+    KeyAt,
+
+    /// <summary>valueAt: a slot's value address through the EntryAddress kernel, with the value's offset.</summary>
+    ValueAt,
 }
 
 /// <summary>The legacy row of a compiler function of the Body disposition (X39): its writer, a routine row's runtime routine and an Instance
@@ -119,14 +144,27 @@ internal readonly record struct LegacyRow(LegacyWriter Writer, FunctionAbi? Rout
     /// <summary>Gets a value indicating whether the row is a whole-value update (SPEC 15.7): the one place that names the update writers.</summary>
     internal bool Updates => this.Writer is LegacyWriter.Replace or LegacyWriter.Exchange or LegacyWriter.Swap;
 
-    /// <summary>Gets the needs an Instance row declares (X4; DECISIONS R5-M46, R5-M121): its helper kind's row's, or the Array runtime for a
-    /// capacity routine, which is that runtime's.</summary>
+    /// <summary>Gets a value indicating whether the row's call runs a routine in its function's instance, its LegacyRow item's (K 4.5 row 2;
+    /// DECISIONS R5-M121, R5-M124): the one place that names those writers.</summary>
+    internal bool InInstance => this.Writer is LegacyWriter.Instance or LegacyWriter.Place;
+
+    /// <summary>Gets a value indicating whether the row is a Dictionary storage kernel (DECISIONS R5-M124): the one place that names them.</summary>
+    internal bool DictionaryKernel => this.Writer is >= LegacyWriter.DictionaryLayout and <= LegacyWriter.ValueAt;
+
+    /// <summary>Gets the needs a row in its function's instance declares (X4; DECISIONS R5-M46, R5-M121, R5-M124): an Array helper kind's row's,
+    /// the Array runtime for a capacity routine, which is that runtime's, or placeEntry's Place row's.</summary>
     internal HelperNeeds Needs => this switch
     {
         { Helper: { } kind } => LegacyRuntimeHelpers.ArrayRow(kind).Needs,
         { Writer: LegacyWriter.Instance } => HelperNeeds.ArrayRuntime,
+        { Writer: LegacyWriter.Place } => LegacyRuntimeHelpers.DictionaryRow(DictionaryHelperKind.Place).Needs,
         _ => HelperNeeds.None,
     };
+
+    /// <summary>Gets the library callee a row in its function's instance declares (X4, F2c; DECISIONS R5-M124): placeEntry's, its Place row's
+    /// Storage callee, append; None for every other row, since no Array helper calls one.</summary>
+    internal DictionaryCallee Callee
+        => this.Writer == LegacyWriter.Place ? LegacyRuntimeHelpers.DictionaryRow(DictionaryHelperKind.Place).Storage : DictionaryCallee.None;
 }
 
 /// <summary>The element descriptor of a stored collection value (SPEC 4.5, 16.3.2, 21.3.1): its representation, the name of the
@@ -250,7 +288,15 @@ internal sealed partial class LegacyRuntimeHelpers
         CompilerFunctionKind.StorageOwnFixed => Instance(ArrayHelperKind.OwnFixedStorage),
         CompilerFunctionKind.StorageSetArrayLength => new(LegacyWriter.Length),
 
-        // C8e: the Dictionary storage kinds; C9a: the text, buffer, window and writer rows and WriteLineUtf8.
+        // SPEC 4.9.6, 22.2 (DECISIONS R5-M124): the Dictionary storage kinds, placeEntry in its function's instance, the others inline kernels.
+        CompilerFunctionKind.StoragePlaceDictionaryEntry => new(LegacyWriter.Place),
+        CompilerFunctionKind.StorageDictionaryLayout => new(LegacyWriter.DictionaryLayout),
+        CompilerFunctionKind.StorageBorrowDictionary or CompilerFunctionKind.StorageBorrowDictionaryExclusive => new(LegacyWriter.DictionaryBorrow),
+        CompilerFunctionKind.StorageOwnDictionary => new(LegacyWriter.DictionaryOwn),
+        CompilerFunctionKind.StorageKeyAt => new(LegacyWriter.KeyAt),
+        CompilerFunctionKind.StorageValueAt => new(LegacyWriter.ValueAt),
+
+        // C9a: the text, buffer, window and writer rows and WriteLineUtf8.
         _ when IntrinsicDisposition.Of(kind).Kind == DispositionKind.Body => new(LegacyWriter.Unwritten),
         _ => null,
     };

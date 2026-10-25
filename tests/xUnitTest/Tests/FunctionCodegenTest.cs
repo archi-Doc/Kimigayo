@@ -1112,7 +1112,7 @@ public sealed partial class FunctionCodegenTest
 
     // SPEC 21.4.3, 22.2 (DECISIONS R5-M92): the nullable Alloc's definition is one runtime text spliced from its FunctionAbi, which a module
     // whose bodies call it defines exactly once; the old generator writes that text (its pin goes by G4; MIR code generation's first such
-    // module is C8e's, through the same text).
+    // modules write it since C8e, through the same text: DictionaryHelpersPrecedeTheDefinitionsWithTheRuntimeTheirRowsDeclare).
     [Fact]
     public void TheNullableAllocIsDefinedOnceFromItsOneText()
     {
@@ -1143,7 +1143,8 @@ public sealed partial class FunctionCodegenTest
 
     // SPEC 22.6, IMPL 21.4.7 (DECISIONS R5-M89): a #LibraryImport function is called by its C signature, whose declaration its call
     // requests, once per symbol; an import no call reaches is not declared. A caller-location library callee is called since C3b (R5-M93),
-    // and Dictionary.reserve's body still holds a row not written yet, one record at the user's call (K package 4.9).
+    // and the library bodies a Dictionary's tryInsert over an i32 key reaches still hold a row not written yet, the key's equality shim
+    // (C8f), one record at the user's call (K package 4.9); Dictionary.reserve's body is written since C8e (R5-M124).
     [Fact]
     public void AnImportIsCalledByItsCSignature()
     {
@@ -1164,9 +1165,10 @@ public sealed partial class FunctionCodegenTest
         Assert.Matches(@"= call double @mix\(i8 -1, double 0x4002000000000000\)\n", text);
         Assert.Matches(@"= call double @mix\(i8 1, double %t\d+\)\n", text);
         Assert.DoesNotContain("@idle", text, StringComparison.Ordinal);
-        var c = Analyze("func grow(d: uniq/Dictionary<i32, i32>) => d.reserve(4)\n", OutputKind.Library);
+        var c = Analyze("func put(d: uniq/Dictionary<i32, i32>)\n    _ = d.tryInsert(1, 2)\n", OutputKind.Library);
         Assert.False(c.Generate(TextWriter.Null));
-        Assert.Contains(("Unsupported_Kd", (string?)"d.reserve(4)"), Records(c));
+        Assert.Contains(("Unsupported_Kd", (string?)"d.tryInsert(1, 2)"), Records(c));
+        Assert.True(Analyze("func grow(d: uniq/Dictionary<i32, i32>) => d.reserve(4)\n", OutputKind.Library).Generate(TextWriter.Null));
     }
 
     // X13, SPEC 13.5.5: a PairLayer step is decided by the item's view: in the owner case the Place itself, so the write stores into the
@@ -1275,8 +1277,8 @@ public sealed partial class FunctionCodegenTest
     // have a raw pointer column since C8a (R5-M92), which writes null too; an erasure is written since C5b (DECISIONS R5-M104), into any
     // target since C5c (R5-M108); an Array's capacity and an Array from none since C8d (R5-M121); the place writer (DECISIONS R5-M83)
     // reads an object borrow's payload since C6a (R5-M110); the rvalue rows (DECISIONS R5-M87) write a Tuple aggregate
-    // and a zero-sized local's address and leave a Dictionary's length to C8e, at the member, and a Dictionary from none, at the literal,
-    // and its iteration's storage, at its for loop. K11: an Application's function nothing calls is not generated, so its form records nothing; a Library generates it.
+    // and a zero-sized local's address, and since C8e (R5-M124) a Dictionary's length, a Dictionary from none and its iteration's storage.
+    // K11: an Application's function nothing calls is not generated, so its form records nothing; a Library generates it.
     [Theory]
     [InlineData("func twice(a: i128) -> i128 => a + a\n", OutputKind.Library, new[] { "a + a" })]
     [InlineData("func twice(a: i128) -> i128 => a + a\n()", OutputKind.Application, new string[0])]
@@ -1287,9 +1289,9 @@ public sealed partial class FunctionCodegenTest
     [InlineData("func room(a: ref/Array<i32>) -> isize => a.capacity\n", OutputKind.Library, new string[0])]
     [InlineData("let t = (1, 2)\n", OutputKind.Application, new string[0])]
     [InlineData("let u = ()\nlet r = u@ref\n", OutputKind.Application, new string[0])]
-    [InlineData("func count(d: ref/Dictionary<i32, i32>) -> isize => d.length\n", OutputKind.Library, new[] { "d.length" })]
+    [InlineData("func count(d: ref/Dictionary<i32, i32>) -> isize => d.length\n", OutputKind.Library, new string[0])]
     [InlineData("func make() -> Array<i32> => []\n", OutputKind.Library, new string[0])]
-    [InlineData("func make() -> Dictionary<i32, i32> => [:]\n", OutputKind.Library, new[] { "[:]" })]
+    [InlineData("func make() -> Dictionary<i32, i32> => [:]\n", OutputKind.Library, new string[0])]
     [InlineData("struct Item\n    public var id: i32 = 7\nfunc take(v: objref/Item) -> i32 => v.id\n", OutputKind.Library, new string[0])]
     [InlineData("func twice(a: Wrapping<i128>) -> Wrapping<i128> => a + a\n", OutputKind.Library, new string[0])]
     [InlineData("func twice(a: i32) -> i32 => a\nlet x = twice(1)\n", OutputKind.Application, new string[0])]
@@ -1313,7 +1315,7 @@ public sealed partial class FunctionCodegenTest
     [InlineData("func show(text: Text.Utf8Slice) => Console.writeLine(text)\n", OutputKind.Library, new[] { "Console.writeLine(text)" })]
     [InlineData("func show(x: i32) -> string => Text.toString(x)\n", OutputKind.Library, new[] { "Text.toString(x)" })]
     [InlineData(ForLoop, OutputKind.Library, new string[0])]
-    [InlineData(DictionaryLoop, OutputKind.Library, new[] { "for entry in values\n        total = 1" })]
+    [InlineData(DictionaryLoop, OutputKind.Library, new string[0])]
     [InlineData("group Registry\n    public let limit: i32 = 4\n", OutputKind.Library, new string[0])]
     [InlineData("func twice(a: i32) -> i32 => a\n", OutputKind.Library, new string[0])]
     [InlineData(Signatures, OutputKind.Library, new string[0])]
@@ -1360,6 +1362,7 @@ public sealed partial class FunctionCodegenTest
     [InlineData(Updates, OutputKind.Library)]
     [InlineData(Comparisons, OutputKind.Library)]
     [InlineData(Arrays, OutputKind.Library)]
+    [InlineData(Dictionaries, OutputKind.Library)]
     public void GenerationIsDeterministic(string source, OutputKind output)
     {
         var first = Generate(Analyze(source, output));
@@ -1461,6 +1464,7 @@ public sealed partial class FunctionCodegenTest
     [InlineData(Updates, OutputKind.Library)]
     [InlineData(Comparisons, OutputKind.Library)]
     [InlineData(Arrays, OutputKind.Library)]
+    [InlineData(Dictionaries, OutputKind.Library)]
     public void WarmGenerationAllocatesNothing(string source, OutputKind output)
     {
         var c = Analyze(source, output);

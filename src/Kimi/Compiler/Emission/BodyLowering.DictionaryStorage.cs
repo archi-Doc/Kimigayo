@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -40,7 +41,7 @@ internal sealed partial class BodyLowering
             return Fail(failure ?? "Dictionary layout projection has no acquired handle.", out failure);
         }
 
-        var entryLayout = GetDictionaryEntryLayout(key, value);
+        var entryLayout = DictionaryEntryLayout.Of(key.Value.Layout, value.Value.Layout);
         function.AddScalar(EmissionOpcode.Sequence, id, [handle, new(EmissionOperandKind.Integer, entryLayout.Stride)], place: body.Operations[id].Place, op: "DictionaryLayout");
         return true;
     }
@@ -83,7 +84,7 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        var entryLayout = GetDictionaryEntryLayout(key, value);
+        var entryLayout = DictionaryEntryLayout.Of(key.Value.Layout, value.Value.Layout);
         if (this.aggregateLayouts.Get(returnType) is not { } remainder || !SlotTypes.IsResult(returnType) || !this.ValidateSlotCallResult(body, id, out failure))
         {
             return Fail(failure ?? "Dictionary storage borrow result is not a stored record.", out failure);
@@ -189,7 +190,7 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        var entryLayout = GetDictionaryEntryLayout(key, value);
+        var entryLayout = DictionaryEntryLayout.Of(key.Value.Layout, value.Value.Layout);
         if (!owning)
         {
             if (!this.ScalarArrayArgument(body, id, 0, pointer!, out var slot))
