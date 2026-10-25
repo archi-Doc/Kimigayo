@@ -2572,12 +2572,13 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     }
 
     // V16: A5 on a program version it checked before allocates nothing: its sets, tables, call rows (an intrinsic's too), addresses (a raw
-    // Ref's, a `during self` layer's), the own-step Warning's tags and the dataflow keep their storage.
+    // Ref's, a `during self` layer's), a Chain row's closure, the own-step Warning's tags and the dataflow keep their storage.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmRunAllocatesNothing()
     {
-        var c = MirBuildTest.Compile(Prelude + RawShapes + "func addressed()\n    var y = 1\n    var w: ref/i32 = y@ref\n    let p = w@raw\n    y = 2\n" +
+        var c = MirBuildTest.Compile(Prelude + RawShapes + ChainShapes + "func chained()\n    var y = 1\n    var w: ref/i32 = y@ref\n" +
+            "    var h: raw/u8 = w@raw@raw/u8\n    var h2: raw/(raw/u8) = h@raw\n    let r = getRRR(h2@raw)\n    usep(r)\nfunc addressed()\n    var y = 1\n    var w: ref/i32 = y@ref\n    let p = w@raw\n    y = 2\n" +
             "    _ = p == null\nfunc selfRead()\n    var y = 1\n    var b = Buf<ref/i32>.init(4)\n    b.push(y@ref)\n    let p = b.data\n    y = 2\n" +
             "    _ = p == null\nfunc loopCarry(flag: bool)\n    var x = 1\n    var y = 2\n    var r = y@ref\n    while flag\n" +
             "        x = 3\n        inspect(r)\n        r = x@ref\nfunc stored()\n    var x = 1\n    var y = 2\n    var slot = y@ref\n" +
