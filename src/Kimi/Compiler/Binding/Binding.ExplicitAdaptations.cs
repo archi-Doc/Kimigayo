@@ -12,7 +12,8 @@ public sealed partial class Binding
     // some admitted case: every case of its plan holds, and a case whose target is an exclusive reference or object view borrows there.
     internal bool BorrowsExclusively(ConversionKoto conversion)
         => conversion.ConversionBinding == ConversionBinding.CaseAdaptation
-            ? conversion.Adaptation is { } plan && (this.ResultSemantics(plan.Target, this.ConstraintScope(conversion)) & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0
+            ? conversion.Adaptation is { } plan &&
+                (this.ResultSemantics(plan.Target, this.ConstraintScope(conversion)) & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0
             : conversion.BoundType is { } target && AdaptationBorrow(conversion.ConversionBinding, target) == true;
 
     // Inputs and acquisition were verified at definition. A context substitutes them and selects the canonical factory.
@@ -29,7 +30,7 @@ public sealed partial class Binding
     // exclusive reference or object view, shared (false) to any other reference or view, Address included, or none (null).
     private static bool? AdaptationBorrow(ConversionBinding operation, BoundType target)
         => operation is ConversionBinding.Borrow or ConversionBinding.Address || (operation == ConversionBinding.ObjectUpcast && target.IsObjectBorrow)
-            ? target.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq : null;
+            ? IsExclusive(target.Semantics) : null;
 
     // Short generic targets apply the selected Semantics, not a second round of operand inference.
     private BoundType? BindSemanticsAdaptation(ConversionKoto conversion, BindingScope scope, BindingSymbol semantics)

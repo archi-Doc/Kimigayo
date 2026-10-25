@@ -3,8 +3,8 @@
 // A Closure's call receiver (SPEC 7.7.3, 7.7.2): the minimum receiver a call of the Closure needs, classified from the uses of its
 // captures in its bound body.
 // - Responsibility: ClosureEffects, one reusable visitor: a capture transferred out of the environment, or an outer environment
-//   binding a nested Closure's entry moves, makes the call Consuming; a Place reached from a capture (the capture itself, a part
-//   of it through Fields or elements, a captured referent through a follow, a raw pointer's referent) whose consuming operation
+//   binding a nested Closure's entry moves, makes the call Consuming; a Place reached from a capture (the capture itself or a Place
+//   its path reaches through NextPathStep's steps: a part of it, a captured referent, a raw pointer's referent) whose consuming operation
 //   needs it exclusively (one predicate, NeedsExclusively: a write or update, an exclusive Borrow or object view upcast in some
 //   admitted case, an exclusive argument or method or accessor receiver, an Exclusive-mode `for` or `match` Subject, an Exclusive
 //   value call, an exclusive Reborrow at an expected Type or bare), or a nested entry that Reborrows or exclusively
@@ -172,12 +172,12 @@ public sealed partial class Binding
             => operation.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.BaseBorrow or ArgumentOperationKind.PayloadProjection &&
                 operation.ParameterType is { } parameter && IsExclusive(parameter.Semantics);
 
-        // SPEC 7.7.3, 7.7.2: whether the body uses a Place reached from a capture (the capture itself, a part of it through Fields or
-        // elements, a captured referent through a follow, or a raw pointer's referent, `*p` as `p[0]`, SPEC 5.2) exclusively. Such a
-        // body mutates the environment or a captured referent, so the call is Exclusive; `byCase` when that use is an acquisition of the
-        // capture itself by value that Reborrows in some admitted cases, which the capture's case Type tells. Such a Reborrow of a Place
-        // reached through the capture takes that Place's cases, which the capture's do not tell, so it counts in every case: the
-        // strongest receiver (PLAN G13).
+        // SPEC 7.7.3, 7.7.2: whether the body uses a Place reached from a capture (the capture itself or a Place its path reaches, one
+        // NextPathStep at a time: a part of it through Fields or elements, a captured referent through a follow, a raw pointer's
+        // referent, `*p` as `p[0]`, SPEC 5.2) exclusively. Such a body mutates the environment or a captured referent, so the call is
+        // Exclusive; `byCase` when that use is an acquisition of the capture itself by value that Reborrows in some admitted cases,
+        // which the capture's case Type tells. Such a Reborrow of a Place reached through the capture takes that Place's cases, which
+        // the capture's do not tell, so it counts in every case: the strongest receiver (PLAN G13).
         private bool UsesExclusively(Koto capture, out bool byCase)
         {
             for (var place = capture; ; place = place.Parent!)
@@ -188,11 +188,8 @@ public sealed partial class Binding
                     return true;
                 }
 
-                if (!(place.Parent is ParenthesizedKoto ||
-                    (place.Parent is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } follow && ReferenceEquals(follow.Left, place)) ||
-                    (place.Parent is MemberAccessKoto member && ReferenceEquals(member.Left, place)) ||
-                    (place.Parent is IndexKoto index && ReferenceEquals(index.Left, place)) ||
-                    (place.Parent is DereferenceKoto dereference && ReferenceEquals(dereference.Operand, place))))
+                _ = NextPathStep(place.Parent!, out var next);
+                if (!(place.Parent is ParenthesizedKoto || ReferenceEquals(next, place)))
                 {
                     return false;
                 }
@@ -210,7 +207,8 @@ public sealed partial class Binding
             {
                 UnaryKoto update => update.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement,
                 ConversionKoto conversion => ReferenceEquals(conversion.Left, place) && binding.BorrowsExclusively(conversion),
-                ForKoto loop => ReferenceEquals(loop.Iterable, place) && CallPlan.Of(loop) is { } entry && LendsExclusively(entry.ReceiverOperation),
+                ForKoto loop => ReferenceEquals(loop.Iterable, place) && CallPlan.Of(loop) is { ReceiverOperation: var entry } &&
+                    ReferenceEquals(entry.Source, place) && LendsExclusively(entry),
                 MatchKoto match => ReferenceEquals(match.Expression, place) && BoundMatch.Of(match) is { Mode: SubjectMode.Exclusive },
                 InvocationKoto { BoundValueCall: { } valueCall } => ReferenceEquals(valueCall.CalleeValue, place) && valueCall.ReceiverKind == SemanticsKind.Uniq,
                 InvocationKoto { BoundCall: { } call } => ArgumentOf(call.ArgumentOperations, place) is { } argument && LendsExclusively(argument),
@@ -227,7 +225,8 @@ public sealed partial class Binding
             // SPEC 3.5, 8.14: a Place acquired by value without an operator, bare or as an argument its call takes by value, is acquired
             // as each case's Type is.
             byCase = (IsBareAcquisitionPosition(place) ||
-                (place.Parent is InvocationKoto { BoundCall: { } byValue } && ArgumentOf(byValue.ArgumentOperations, place) is { Kind: ArgumentOperationKind.Value })) &&
+                (place.Parent is InvocationKoto { BoundCall: { } byValue } &&
+                    ArgumentOf(byValue.ArgumentOperations, place) is { Kind: ArgumentOperationKind.Value })) &&
                 place.BoundType is { } bare && binding.BareReborrows(bare, place);
             return byCase;
         }
