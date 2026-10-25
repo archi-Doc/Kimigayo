@@ -761,12 +761,7 @@ public sealed partial class Binding
 
         if (symbol.Property is { } property)
         {
-            var target = node;
-            while (target.Parent is ParenthesizedKoto parentheses)
-            {
-                target = parentheses;
-            }
-
+            var target = Grouped(node);
             var assignment = target.Parent is BinaryKoto binary && ReferenceEquals(binary.Left, target) && binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
             var write = assignment && target.Parent!.Akind == KotoKind.Equals;
             var update = (assignment && !write) || target.Parent?.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement;
