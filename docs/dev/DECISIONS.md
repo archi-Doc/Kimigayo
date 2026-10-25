@@ -4114,6 +4114,37 @@ and migration obligations remain in force; no numeric cap changes are authorized
     dropping derived conflicts (R4-M104).
   - Numbering: R4-M132 is free on dev and every branch (R4-M128 2c-2, R4-M129 G248, R4-M130 2c-1 on dev, R4-M131 reserved for the N2
     SPEC session).
+- **R4-M136 OldRule's ledger key and the MIR target side (2x-T5), refining R4-M50 and R4-M60** (2026-10-25; unit 2x-T5 under the A5
+  step 2 plan's PD19 and its 2x-T5 row (R4-M74), the prerequisite 2a0-D's 2a-4 row names, in G:A5-F4's group review; the R4 planning
+  session's decisions of 2026-10-25 on its open points and number; R5's agreement, relayed by the planning session)
+  - Rule: a test that asserts an old rule keeps its default-pipeline assertion under `[Trait("OldRule", …)]` with a comment naming the
+    rows and the SPEC rule (R4-M50), and asserts its MIR target side through `MirTargetSide.Check`: the MIR side of
+    `MirDifferenceLedger.Sides` (Binding's and the MIR's Error records), each record at its exact subject span. The trait value is
+    R4-M50's revision item, or `ledger:<hash>:<line>` for an old verdict no `draft/INTEGRATED.md` item names: the ledger hash of the
+    test's compilation (`MirDifferenceLedger.Hash`, extracted from the ledger's `Write`, behavior-preserving, R5 consenting) and the
+    1-based line of the record one side has and the other lacks. The key names no code, so a code change leaves it; `Check` on the
+    analyzed compilation asserts that the key names such a line, and a theory carries one trait per ledger row. A test whose own
+    compilation is out of reach (a native fixture's, the command line's) checks a separate compilation without the old analysis,
+    which no ledger observes, and its markers name items only. Both markers and the old-side assertions go at R6-check with the old
+    path; the MIR side then is the test's assertion. The procedure is this entry's (no VERIFICATION row).
+  - Applied: A5-F1/A5-F3's six methods (OwnedStoredReferenceTest ×3, StoredReferenceLoanTest, FixedOriginRetentionTest ×2),
+    LocalRegionCompositionTest ×2, LocalRegionCompletionTest ×2 (row 9's located limit pinned in its `LocalFunctionNested` row,
+    PLAN G216) and DefaultAccessTest (F9); new markers: BorrowedInputResultTest's part borrow (P1), AnUpperBoundClauseKeepsItsLoan
+    (`ledger:1720228ea1c3:11`, 2a-5's re-triage) and FiniteRegionCompositionTest's `use` row (`ledger:a5815e667296:4`, G147 (7)),
+    both moved from the command line to analyzed `Program.kimi` compilations, so their ledger rows keep their hashes; with R5's
+    agreement, the a5-items Function Item tests: InputDependentValueCallTest's Callable row (`ledger:55b340ea0f4f:6`) and
+    ObjectCallableOriginTest's four modes and two warm modes, each A5's `ComparisonLoanConflict_Kd` at the temporary (`none`,
+    `identity`), their old-verdict assertions and comments unchanged and STATUS's limit R5's until R6-check.
+  - Ratchet (`ArchitectureRulesTest`, "OldRule tests without a MIR target side" ≤ 7, 0 by R4's exit, the plan's N8): A5-F8's six
+    (ContentUpdateTest ×3, DictionaryStoredReferenceTest ×3) leave it with 2d-8, which also takes the plan's
+    ContentUpdateTest.UpdatesTransferOnlyTheOldOrNewContentsLoans and ReplacementEndsOldDependenciesOnLoopBackEdges (F8's update rules,
+    moved from 2x-T5's list); and NormalizedConstraintProofBindingTest's B3.3.
+  - Open (R4's exit list, X-1 … X-6): B3.3 (R4-M115) is a Binding-only OldRule with no MIR side, so it never reaches the helper; it
+    needs its own resolution (a Binding target side or its removal) before R4's exit, not an exemption.
+  - Rejected: a second copy of the ledger's hash rule in the helper; a strict "every OldRule method" row now (F8 and B3.3 cannot reach
+    the helper); comparing by line as the SPEC-example oracle does (R5's condition: the exact record at its subject).
+  - Numbering: R4-M136 is free on dev and every branch (R4-M133 2c-3B, R4-M134 the spec-rest session, R4-M135 the owner's withdrawal of
+    the 70% rule).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

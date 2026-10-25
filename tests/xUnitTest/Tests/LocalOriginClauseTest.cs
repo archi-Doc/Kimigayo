@@ -350,13 +350,18 @@ public class LocalOriginClauseTest
     public void NestedAndTypeLevelClausesExecute()
         => ScalarEmissionTest.EmitFixture("LocalOriginClauseNested", Nested, "ok\n");
 
-    // SPEC 15.6.5: the meet keeps the clause's Borrow, so its Loan stays live while the local is.
+    // Expects the rule before the 2026-10-15 SPEC rewrite, where the clause's meet kept r's Loan live while h was. Origin regions and
+    // outlives relations never keep a Loan live (SPEC 15.6): h carries only v's Loan, so `w = 5` is valid, as the MIR finds; the default
+    // pipeline keeps the old rule until R6-check (the ledger row 1720228ea1c3, class (a), X-1's; DECISIONS R4-M136).
     [Fact]
+    [Trait("OldRule", "ledger:1720228ea1c3:11")]
     public void AnUpperBoundClauseKeepsItsLoan()
     {
         var source = Holder + "func f() -> i32\n    let v = 1\n    var w = 2\n    let r = w@ref\n    let h: H{x} = H.init(v@ref)\n        origin r outlives x.s\n    w = 5\n    return h.item@follow\n" + Main;
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "w = 5"), (error.Code, Text(source, error.Span)));
+        var c = MinimalEmissionTest.Analyze(source, "Program.kimi");
+        var problem = Assert.Single(c.Problems);
+        Assert.Equal((DiagnosticCode.ComparisonLoanConflict_Kd, "w = 5"), (problem.Code, c.SyntaxOf(problem.Subject).ToString()));
+        MirTargetSide.Check(c);
     }
 
     [Theory]
