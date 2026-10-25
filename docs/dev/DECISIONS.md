@@ -9287,9 +9287,9 @@ structure is recorded here by the unit that first implements it.
   R5-M121 and BU-38)
   - Map (X39; rulings Q1 (a), Q2 (a)): `LegacyWriter` gains `Place` (placeEntry in its function's instance) and the five Dictionary kernel
     writers `DictionaryLayout`, `DictionaryBorrow` (both borrows), `DictionaryOwn`, `KeyAt` and `ValueAt`, contiguous, each P2a's kernel with
-    its own number; `LegacyRow` names them once (`Entries`), names the writers in a function's instance once (`InInstance`: Instance,
+    its own number; `LegacyRow` names them once (`DictionaryKernel`), names the writers in a function's instance once (`InInstance`: Instance,
     Place), and gives Place's declared callee (`Callee`, its P1c row's Storage callee, append) and needs (its row's Array runtime, R5-M46).
-  - Kernels (`FunctionCodegen.Storage`'s `Entries`, one decoder; PD2): over the call's entry layout (`DictionaryEntryLayout.Of` of the K and
+  - Kernels (`FunctionCodegen.Storage`'s `DictionaryKernel`, one decoder; PD2): over the call's entry layout (`DictionaryEntryLayout.Of` of the K and
     V its substitution binds in the item's instance), the source operand 0's value, the result the call Place's record (its Fields in
     declaration order) or, for a result that travels as a scalar (keyAt, valueAt), the value the kernel defines; no new IntrinsicId (PD21).
   - placeEntry (K 4.3, K 4.5 row 2): its LegacyRow item, represented by the storage its handle parameter designates (`Designated`: the Type
@@ -9331,6 +9331,15 @@ structure is recorded here by the unit that first implements it.
     Synthesized substitution and tryInsert's call) and clearEntries' (the glue's and clear's call), static size only.
   - Deviations: none in native outcomes; IR only (PD9): `[:]` calls initialize directly; a Place helper per instance item, a Drop helper per
     glue item; a Dictionary's glue one call above its Drop helper; the literal's duplicate check through findEntry and Fail.
+  - Size, net over bp1, bp2, the behavior commit and its review fold: code +358 lines (+540/-182: Codegen +174, the collector +73, the
+    map, entry layout, helpers, DropGlue and Layout +102, the TyCtxt view +18, the old Emission -9), tests +319, the ledger -23 rows,
+    documents +68.
+  - Deleted: the located `Unsupported_Kd` records of placeEntry and the six storage kinds, of a Dictionary from none, of a Dictionary's
+    glue and of its Len; `DropGlueRow.Collection` (split into the Array and Dictionary rows); `GetDictionaryEntryLayout`'s body (promoted
+    to `DictionaryEntryLayout.Of`); nine `Ownership.Bodies` reads.
+  - Speed: one inline kernel per storage call, no call; one helper call per placeEntry (the old text); one call per Dictionary from
+    none, one fewer than the bridge; helpers kept per item, so a warm Write allocates nothing, as does a warm collection of the
+    Dictionary paths (`AWarmRunOfDictionariesAllocatesNothing`); one `Find` per declared callee, at admission; no pass over MIR.
   - Rejected: placeEntry or the glue written from FunctionCodegen primitives (a second copy of P1c's text, PD2); `[:]` through the
     `__kimi_dictionary_init` bridge (an extra call and text whose only content is that call); a Kernel column on the map (ARCH's two
     optional parameters; R5-M116); keyAt versus valueAt read from the result Type (ambiguous when K = V); K and V from the operand's referent

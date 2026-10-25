@@ -28,9 +28,11 @@ internal sealed partial class InstanceCollector
     private static bool Carries(Subst subst, BindingSymbol enclosing)
         => ReferenceEquals(subst.Target, enclosing) || ReferenceEquals(subst.Declaring?.Symbol, enclosing);
 
-    // The storage a legacy row's handle parameter designates (DECISIONS R5-M124): the Type below its implicit layers (Below, TyCtxt.Layer), and
-    // through a raw pointer, whose dereference is explicit (SPEC 3.4.3, 5.1), its pointee (placeEntry's handle, dictionaryStorage's address,
-    // SPEC 22.2); a part of the Type Below made, so its verdict is read.
+    // The storage a legacy row's handle, its parameter 0, designates (K 4.3; DECISIONS R5-M121, R5-M124), which AdmitRow applies to every
+    // row: the LegacyRow item's representative Type, whose components, the element or the key and the value its routine stores, it lays out.
+    // It is the Type below the parameter's implicit layers (Below, TyCtxt.Layer), an Array's, a UniqSlice's or a fixed array's own, and
+    // through a raw pointer, whose dereference is explicit (SPEC 3.4.3, 5.1), its pointee (placeEntry's raw handle to a Dictionary, SPEC
+    // 22.2); a part of the Type Below made, so its verdict was read at the site.
     private static BoundType Designated(BoundType below)
         => below is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw, Components: [var pointee] } ? pointee : below;
 

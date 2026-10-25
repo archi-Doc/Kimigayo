@@ -66,6 +66,10 @@ public sealed class InstanceCollectorTest
     private const string CLayoutP = "#Layout(\"C\")\nstruct P<T>\n    public var n: i32\n    public var value: T\n" +
         "    public init(n: i32, value: T)\n        self.n = n\n        self.value = value@move\n";
 
+    // A user Dictionary key (a built-in key's equality is C8f's shim).
+    private const string DictionaryKey = "struct Key\n    Self is Equatable\n    public let code: i64\n    public init(code: i64) => self.code = code\n" +
+        "    public func equals(self: ref/Self, other: ref/Self) -> bool => self.code == other.code\n";
+
     // A Contract property a standard witness implements by a shared borrow and a set of a Field that needs a drop, and a generic function
     // using both.
     private const string HeldSource = "contract Held\n    property items: ref/Array<i32>\n        get() -> ref/Array<i32>\n" +
@@ -776,6 +780,23 @@ public sealed class InstanceCollectorTest
         Assert.DoesNotContain(set.Items.ToArray(), static x => x.Key.Kind == MonoKind.LegacyRow);
     }
 
+    // K 4.8, X34 (DECISIONS R5-M124): placeEntry's LegacyRow item lays out each component of the Dictionary its handle designates, the value
+    // too: a literal's oversized or rejected value refuses the item at the literal (the records of its other uses are at the same sites);
+    // an i64 value admits it (the counterpart).
+    [Theory]
+    [InlineData(Huge, "OversizedLayout_Kd")]
+    [InlineData("P<()>", "InvalidCLayout_Kd")]
+    [InlineData("i64", null)]
+    public void ALegacyRowLaysOutADictionarysValue(string value, string? code)
+    {
+        var c = MirBuildTest.Compile(CLayoutP + DictionaryKey + $"func put(v: {value})\n    let d: Dictionary<Key, {value}> = [Key.init(1): v@move]\n");
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        var records = code is null ? Array.Empty<string>()
+            : [$"{code} func put(v: {value})", $"{code} v@move", $"{code} [Key.init(1): v@move]", $"{code} let d: Dictionary<Key, {value}> = [Key.init(1): v@move]"];
+        Assert.Equal(records, set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}"));
+        Assert.Equal(code is null ? 1 : 0, set.Items.ToArray().Count(static x => x.Key.Kind == MonoKind.LegacyRow));
+    }
+
     // SPEC 13.6.4, 8.15.3 (DECISIONS R5-M74): a runtime Type test and a clone acquire nothing and need no layout, so neither has a target:
     // a test of a struct no creation makes, oversized or with a table, collects nothing of it, and a clone of a handle to an oversized
     // payload records nothing; only creations are descriptors.
@@ -1298,9 +1319,7 @@ public sealed class InstanceCollectorTest
     [Fact]
     public void PlaceEntryAndADictionaryFromNoneTargetTheirDeclaredBodies()
     {
-        var (program, set) = Collect("struct Key\n    Self is Equatable\n    public let code: i64\n    public init(code: i64) => self.code = code\n" +
-            "    public func equals(self: ref/Self, other: ref/Self) -> bool => self.code == other.code\n" +
-            "func put(d: uniq/Dictionary<Key, i64>)\n    _ = d.tryInsert(Key.init(1), 2)\n" +
+        var (program, set) = Collect(DictionaryKey + "func put(d: uniq/Dictionary<Key, i64>)\n    _ = d.tryInsert(Key.init(1), 2)\n" +
             "func text(d: uniq/Dictionary<Key, string>)\n    _ = d.tryInsert(Key.init(1), \"a\")\n" +
             "func make() -> Dictionary<Key, i64> => [:]\n");
         Assert.Empty(set.Records);
@@ -1821,6 +1840,42 @@ public sealed class InstanceCollectorTest
         }));
         Assert.Equal(2, tables);
         Assert.Equal(tables, set.Items.ToArray().Count(static x => x.Key.Kind is MonoKind.ObjectDescriptor or MonoKind.VTable));
+    }
+
+    // A warm rebind collects a program's Dictionary paths again (DECISIONS R5-M124): placeEntry's LegacyRow items and the append their rows
+    // declare, a Dictionary from none's initialize and the clearEntries a glue's Drop row declares, with no allocation.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmRunOfDictionariesAllocatesNothing()
+    {
+        var c = MirBuildTest.Compile(DictionaryKey + "struct Res\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n" +
+            "func put(d: uniq/Dictionary<Key, Res>)\n    _ = d.tryInsert(Key.init(1), Res.init(2))\nfunc make() -> Dictionary<Key, Res> => [:]\n" +
+            "func keep(d: Dictionary<Key, Res>) => ()\nlet table: Dictionary<Key, i64> = [Key.init(1): 2]\n");
+        var collector = new InstanceCollector(c.Types, c.Layout);
+        var program = c.BuildMir();
+        var set = collector.Run(program, 1);
+        var reached = Reached();
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Binding.Bind(BindingMode.Final);
+            collector.Run(c.BuildMir(), 1);
+        }));
+        Assert.Equal(
+            ["LegacyRow Dictionary<Key, Res> StoragePlaceDictionaryEntry", "LegacyRow Dictionary<Key, i64> StoragePlaceDictionaryEntry",
+                "library Fn append in group DictionaryStorage", "library Fn clearEntries in group DictionaryStorage [Key, Res]",
+                "library Fn initialize in group DictionaryStorage"],
+            reached);
+        c.Binding.Bind(BindingMode.Final);
+        program = c.BuildMir();
+        set = collector.Run(program, 1);
+        Assert.Empty(set.Records);
+        Assert.Equal(reached, Reached());
+
+        // The items of the Dictionary paths, each once (G157 (30)'s duplicates are of the same function reached two ways, none here).
+        string[] Reached() => set.Items.ToArray().Select(x => Label(program, x))
+            .Where(static x => x.StartsWith("LegacyRow ", StringComparison.Ordinal) || x.StartsWith("library Fn append ", StringComparison.Ordinal) ||
+                x.StartsWith("library Fn initialize ", StringComparison.Ordinal) || x.StartsWith("library Fn clearEntries ", StringComparison.Ordinal))
+            .Order(StringComparer.Ordinal).ToArray();
     }
 
     // S2-S4 X15 with DECISIONS R5-M74: one row per intrinsic, and only ErasedWriter, StaticEnsure, the creations and DestroyValues name a

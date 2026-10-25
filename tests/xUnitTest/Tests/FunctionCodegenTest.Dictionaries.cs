@@ -42,7 +42,9 @@ public sealed partial class FunctionCodegenTest
         "func dcKeepInts(d: Dictionary<Key, i32>) => ()\n";
 
     // SPEC 4.3, 4.9.4-4.9.7, 22.2 (DECISIONS R5-M124): every operation over user keys, string, drop-needing and zero-sized values, growth
-    // through transferBytes, reverse-insertion destruction and an owning iteration's early exit, natively under both generators.
+    // through transferBytes, reverse-insertion destruction and an owning iteration's early exit; a drop-needing key (Named) in a struct
+    // Field's Dictionary, whose entries are destroyed value before key, as are a rejected duplicate's and a removed entry's pairs; natively
+    // under both generators.
     public static TheoryData<string, string, string> DictionaryPrograms => new()
     {
         {
@@ -50,6 +52,10 @@ public sealed partial class FunctionCodegenTest
             DictionaryKeys +
             "struct Res\n    public let name: string\n    public init(name: string) => self.name = name@move\n    drop => Console.writeLine(self.name)\n" +
             "struct Token\n    public init() => ()\n    drop => Console.writeLine(\"token\")\n" +
+            "struct Named\n    Self is Equatable\n    public let code: i64\n    public let name: string\n" +
+            "    public init(code: i64, name: string)\n        self.code = code\n        self.name = name@move\n" +
+            "    public func equals(self: ref/Self, other: ref/Self) -> bool => self.code == other.code\n    drop => Console.writeLine(self.name)\n" +
+            "struct Holder\n    public var table: Dictionary<Named, Res>\n    public init() => self.table = [:]\n" +
             "var a: Dictionary<Key, i64> = [:]\n" +
             "require a.length == 0 and a.capacity == 0 else => $abort(\"empty\")\n" +
             "for i in 0..20\n    _ = a.tryInsert(Key.init(i@i64), (i * 10)@i64)\n" +
@@ -75,8 +81,13 @@ public sealed partial class FunctionCodegenTest
             "var z: Dictionary<Key, Token> = [:]\n_ = z.tryInsert(Key.init(1), Token.init())\n_ = z.tryInsert(Key.init(2), Token.init())\n" +
             "var u: Dictionary<Small, ()> = [:]\n_ = u.tryInsert(Small.init(1), ())\nrequire u.length == 1 else => $abort(\"unit\")\n" +
             "let nested: Array<Dictionary<Key, string>> = [[Key.init(1): \"n\"]]\n" +
+            "var h = Holder.init()\n_ = h.table.tryInsert(Named.init(7, \"k7\"), Res.init(\"v7\"))\n" +
+            "_ = h.table.tryInsert(Named.init(8, \"k8\"), Res.init(\"v8\"))\n_ = h.table.tryInsert(Named.init(9, \"k9\"), Res.init(\"v9\"))\n" +
+            "_ = h.table.tryInsert(Named.init(7, \"k7dup\"), Res.init(\"v7dup\"))\n" +
+            "match h.table.remove(Named.init(8, \"q\"))\n    .Some(let pair) => Console.writeLine(\"removed\")\n    .None => $abort(\"named\")\n" +
+            "require h.table.length == 2 else => $abort(\"holder\")\n" +
             "Console.writeLine(\"done\")\n",
-            "r3\nr2\nr1\ncleared\na\ndone\ntoken\ntoken\nr4\n"
+            "r3\nr2\nr1\ncleared\na\nv7dup\nk7dup\nremoved\nv8\nk8\nq\ndone\nv9\nk9\nv7\nk7\ntoken\ntoken\nr4\n"
         },
     };
 

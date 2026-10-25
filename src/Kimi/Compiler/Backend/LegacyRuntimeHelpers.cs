@@ -114,7 +114,7 @@ internal enum LegacyWriter : byte
     Place,
 
     // The Dictionary storage kernels (SPEC 22.2; DECISIONS R5-M124), each P2a's kernel over its call's entry layout with its own number
-    // (FunctionCodegen.Storage's Entries); they stay contiguous, so LegacyRow.Entries names them by range.
+    // (FunctionCodegen.Storage's DictionaryKernel); they stay contiguous, so LegacyRow.DictionaryKernel names them by range.
 
     /// <summary>dictionaryStorage: the {address, entry stride} Tuple through the DictionaryLayout kernel.</summary>
     DictionaryLayout,
@@ -149,7 +149,7 @@ internal readonly record struct LegacyRow(LegacyWriter Writer, FunctionAbi? Rout
     internal bool InInstance => this.Writer is LegacyWriter.Instance or LegacyWriter.Place;
 
     /// <summary>Gets a value indicating whether the row is a Dictionary storage kernel (DECISIONS R5-M124): the one place that names them.</summary>
-    internal bool Entries => this.Writer is >= LegacyWriter.DictionaryLayout and <= LegacyWriter.ValueAt;
+    internal bool DictionaryKernel => this.Writer is >= LegacyWriter.DictionaryLayout and <= LegacyWriter.ValueAt;
 
     /// <summary>Gets the needs a row in its function's instance declares (X4; DECISIONS R5-M46, R5-M121, R5-M124): an Array helper kind's row's,
     /// the Array runtime for a capacity routine, which is that runtime's, or placeEntry's Place row's.</summary>

@@ -211,9 +211,9 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        if (row.Entries)
+        if (row.DictionaryKernel)
         {
-            this.Entries(call, row.Writer);
+            this.DictionaryKernel(call, row.Writer);
             return;
         }
 
