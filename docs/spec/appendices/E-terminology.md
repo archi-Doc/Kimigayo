@@ -94,7 +94,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Project root | The top of a Kotonoha's declaration hierarchy. | [§18](../18-modules-and-dependencies.md#18-modules-and-dependencies) |
 | Proper part | A Type reached by one or more steps into the components of constructed Types, never into a projection or a Field. | [§8.2.3](../08-generics-constraints-and-contracts.md#823-type-identity-and-identity-premises) |
 | Property | A stored `let`/`var` member or a computed member. | [§11.1](../11-properties.md#111-property-kinds) |
-| Punned Place | A transient Place of a punnable, positive-sized Type (a Scalar, a raw pointer, or a Tuple or fixed array of them) over bytes that Initialized Places hold. | [§5.2](../05-raw-pointers-and-unsafe-memory.md#52-raw-places) |
+| Punned Place | A transient Place of a punnable, positive-sized Type (an `owner` Scalar, a raw pointer, or a Tuple or fixed array of punnable Types) over bytes that Initialized Places hold. | [§5.2](../05-raw-pointers-and-unsafe-memory.md#52-raw-places) |
 | Raw pointer / raw Place | A `raw/T` address / `*p`, `p[n]` or a part of one, designating a Place at its address. | [§5](../05-raw-pointers-and-unsafe-memory.md#5-raw-pointers-and-unsafe-memory), [§5.2](../05-raw-pointers-and-unsafe-memory.md#52-raw-places) |
 | Raw pointer Origin | `raw/T during o`: the storage the pointer addresses, `o`'s or, for `self`, the holding value's own; it forms no Loan and constrains no region. | [§5.7](../05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins) |
 | Raw storage | Storage, such as an allocation or a dynamic collection's element storage, that declares no Place for the values placed in it. | [§3.4](../03-types-and-values.md#34-places-and-storage) |

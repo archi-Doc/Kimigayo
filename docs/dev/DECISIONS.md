@@ -3894,15 +3894,17 @@ and migration obligations remain in force; no numeric cap changes are authorized
     into a temporary first (`rz3-inplace`: old and sel `moved moved`), a STATUS row. Rejected: (a′) every `_ = P@move` in place
     (A1 and A2 would have to read a mid-scope Drop as a move-out); (b) the transfer, which narrows SPEC to the implementation; (c)
     a `Raw.destroy` beside it, a second form.
-  - RZ5 (5.2, 5.5, Appendix E): a raw Place puns only a punnable Type: the Scalars (3.1), raw pointer Types, and Tuples and fixed
-    arrays of punnable Types. A Field or element of a raw Place is a raw Place of its own Type, so `(*p).f` puns Field by
-    Field (5.2's `Header` example). A punned raw pointer has the provenance of the raw pointer value whose
-    bytes it reads when a raw pointer's write, placement or relocation last wrote them, and otherwise none (5.5); one whose Type
+  - RZ5 (5.2, 5.5, 5.7, Appendix E): a raw Place puns only a punnable Type: the `owner` Scalars (3.1), raw pointer Types, and Tuples
+    and fixed arrays of punnable Types. A Field or element of a raw Place is a raw Place of its own Type, so `(*p).f` puns Field by
+    Field (5.2's `Header` example, its bytes aligned for `Header`). A punned raw pointer has the provenance of the raw pointer value
+    whose bytes it reads when a raw pointer's write, placement or relocation last wrote them, and otherwise none (5.5); one whose Type
     states an Origin promises what a claim of it promises. A punned write changes a byte only when the byte is padding or its
-    innermost Initialized Place has a punnable Type, which must then hold a valid value: punning constructs no payload and changes
-    no Case, a Copy enum's included, which the old text allowed. 15.1.2's "a punned Place holds a complete value" is unchanged.
-    The library puns only `isize`; its Handle Fields are ordinary Places since RZ6. Rejected: (a) Copy with "valid" meaning a held,
-    live value (not decidable from the code); (c) one rule per class.
+    innermost Initialized Place has a punnable Type, which must then hold a valid value: punning constructs no payload and changes no
+    Case. Two consequences of the closed list, both allowed by the old text: a punned write can no longer change a Copy enum's Case,
+    nor the bytes the active Case leaves unused (kept undefined, since exempting them as padding is exempted would depend on layout).
+    5.7 Authority now names a read and a shared borrow (read capability) beside the accesses that need write capability. 15.1.2's "a
+    punned Place holds a complete value" is unchanged. The library puns only `isize`; its Handle Fields are ordinary Places since RZ6.
+    Rejected: (a) Copy with "valid" meaning a held, live value (not decidable from the code); (c) one rule per class.
   - RZ7 (5.2): a value written or placed through a raw Place into a Place outside raw storage must fit that Place's Type, Origins
     included, as a write through its access path would, judged through the writer's contract: a Place the writing body reaches
     from its inputs has the Type its signature gives it. Raw storage stays with Retained dependencies. This supersedes R4-M116's
@@ -3919,33 +3921,38 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (invariant as Phantom only when Phantom in every case). Example `15.3.5-conditional-slot`: its Error variant is a (b)
     difference, since Binding computes `ref` (`Binding.TypeOrigins.AccumulateRequirements`). Rejected: (b) the strongest admitted
     case (it rejects `g86-static-owner`, a static owner instance); today's `ref` (wrong even for `s is uniq`).
-  - G159 (2) (14.9.2 step 2): a Tuple, array or Dictionary literal holding a part of Type Never, also within such a literal part,
-    and a selection, `do` or `loop` none of whose sources supplies one, supply no candidate. When no source supplies one, the
-    common Type is formed part by part over those sources, each part found as step 2 finds one from its parts other than Never, and
-    a part that is Never in every source is Never. Example `14.9.2-part-by-part`, a (b) difference (Binding's `TypeMismatch_Kd`).
-    Rejected: (a) the sources' own Types, an error; (c) a Never Expression Type.
+  - G159 (2) (14.9.2 step 2): a Tuple, array or Dictionary literal holding a part of Type Never, also within such a literal part, and
+    a selection, `do` or `loop` none of whose sources supplies one, supply no candidate. When no source supplies one, the common Type
+    is formed part by part over those sources other than Never, each part found as step 2 finds one from its parts other than Never,
+    and a part that is Never in every source is Never. Both precisions follow from the answer and step 2: a plain Never source
+    supplies nothing (`if c => (a, (return 1)) else => (return 2)` is `(i64, Never)`, the fresh literal's own Type), and an array
+    literal source constructs `Array<T>` there (4.3.1), so no length is compared. Example `14.9.2-part-by-part`, a (b) difference
+    (Binding's `TypeMismatch_Kd`). Rejected: (a) the sources' own Types, an error; (c) a Never Expression Type.
   - §15.4.2 (G170, B §3.4's gap): the row "Type in a Constraint, outside a Function Type: must be complete from explicit
     information", which Binding reports today (`MissingOriginBinding_Kd`); a pair parameter (8.1.1) states a borrowed outer layer
     with an unnamed Origin. Not now: (a+) names a function's Constraints introduce, which no call instantiates yet (`e5-ref-sig`,
     `rv-e5-same-borrow`: `UnprovenConstraint_Kd`), and (c) the subject's own Origin at the omitted position; either may come
     later as an explicit extension.
-  - Closures (7.7.2, 7.7.3, 15.1.6; R4-M130's two readings; Q10′): the requirement comes from the operations, never from the
-    receiver they run under, and a path from an environment binding has no receiver layer. Exclusive access includes an exclusive
-    Borrow or Reborrow, a `uniq/Self` receiver, a `match` or `for` Subject in Exclusive mode (also when the body only reads and
-    whatever the iteration entry does), and an access through a raw pointer read from the environment, or through a pointer
+  - Closures (7.7.2, 7.7.3, 15.1.6; R4-M130's two readings; Q10′): the requirement comes from the operations, never from the receiver
+    they run under: deciding it, a path from an environment binding has no receiver layer, and 15.1.6 decides a Subject mode the same
+    way. A pointer read from the environment in a Shared call still has no write authority (5.2.1 (3)). Exclusive access includes an
+    exclusive Borrow or Reborrow, a `uniq/Self` receiver, a `match` or `for` Subject in Exclusive mode (also when the body only reads
+    and whatever the iteration entry does), and an access through a raw pointer read from the environment, or through a pointer
     derived from it, that needs write capability: a write, a Take, an in-place destruction or an exclusive borrow. Example
     `7.7.3-exclusive-uses`. Binding classes the Take, `_ = (*p)@move` and derived-pointer forms Shared today (the review's
-    `rv-c-rawtake`, `rv-c-rawdestroy`, `rv-c-rawcopyptr`), a STATUS row.
+    `rv-c-rawtake`, `rv-c-rawdestroy`, `rv-c-rawcopyptr`), a STATUS row. Rejected: Q10′ (b), only `*p` and `p[n]` writes on the
+    pointer itself (a Take, an in-place destruction, an exclusive borrow or a derived pointer's write is as undefined in a Shared
+    call).
   - F2 (7.2.3, 3.6): an omitted default is an outermost expression of its own; its temporaries end once its value is in its
     pending slot, before the next default and before callee entry, as the MIR and Binding read it. The old generator ends them at
     the statement's end, and the default pipeline rejects `g248-f2-guard` (`CallActivationConflict_Kd`), a STATUS row. Rejected:
     (b) through the call, under which "Inspection Loans end before callee entry" becomes an obligation that `g248-f2-guard` fails.
     Q12 (3.6, editorial; R4-M129): "A Body's items are outermost expressions (14.2.1)".
-  - O1 (16.2.1, 12.4.3): an unfinished Dictionary literal's inserted entries are cleaned up as a Tuple's or array's placed
-    components are, each in reverse acquisition order. Both pipelines destroy them with the Dictionary after the later temporaries
-    (`rv-o1-dict`: `one two`, where the Tuple and array twins give `two one`), a STATUS row; `MirBuildTest`'s
-    `ADictionaryLiteralsEntriesArePlacedInAValueOfItsOwn` changes its expectation by this decision. Rejected: (b) one temporary
-    acquired where the literal begins.
+  - O1 (16.2.1, 12.4.3): an unfinished Dictionary literal's inserted entries are cleaned up as a Tuple's or array's placed components
+    are, each in reverse acquisition order. The old generator destroys them with the Dictionary after the later temporaries
+    (`rv-o1-dict`: `one two`, where the Tuple and array twins give `two one`), a STATUS row; the MIR builds the same order (R4-M129's
+    builder rule; `MirBuildTest.ADictionaryLiteralsEntriesArePlacedInAValueOfItsOwn`, whose expectation changes by this decision), and
+    sel cannot build the form yet (`Unsupported_Kd`). Rejected: (b) one temporary acquired where the literal begins.
   - Q8 (G158 (3)), a planning note: SPEC 6.7.1 and 8.15.3 make only a use that needs the layout the error, so Binding's declaration
     checks (an open, derived or empty struct at the attribute, a direct zero-sized Field, a written instance with a zero-sized Field
     behind a borrow or raw pointer) are conservative Language errors. This supersedes R5-M55's "Binding's declaration check is
@@ -3965,6 +3972,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     2c-1 follow-up) and DIAGNOSTICS' Note wording for read-only Exclusive causes; an open issue for a callee writing through a
     captured pointer the body passes it (`rv-c-rawinit`: `Raw.initialize(p, 5)` in a `let` Closure is Shared). The old
     generator's RZ3, F2 and O1 orders close at R6-check.
+  - Open (G86's row): 5.7's "a slot that a raw layer states must not be Phantom" does not say in which case, now that Phantom
+    status is per case; by 8.15.2 ("A generic definition is valid when every Semantics case is valid") it reads "in any admitted
+    case" (`struct H<s/T> {a}` under `s is owner or uniq` with `s/T during a` and `raw/i32 during a` is invalid). Reasoned, not
+    probed; no library Type has a pair parameter.
   - Numbering: R4-M134 is free on dev (R4-M131) and every branch (R4-M132 on `claude/a5-2a-2`, R4-M133 on `claude/a5-2c-3b`).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
