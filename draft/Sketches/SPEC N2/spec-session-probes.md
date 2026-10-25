@@ -44,8 +44,9 @@ Every error is A5's `ComparisonLoanConflict_Kd`, from `next`'s (or `remove`'s) `
 
 ## The transfer rule (the owner's (a) after the review)
 
-Mode AT is AN plus the rule. It keys on functions declared in Array.kimi, ArrayOperations.kimi, Dictionary.kimi and Slice.kimi,
-on the standard `next`, and on `Kimi.Intrinsics.exchange` and `swap`. At their unstated layers, a borrowed or Slice input gets
+Mode AT is AN plus the rule. It keys by file on the functions declared in Array.kimi, ArrayOperations.kimi, Dictionary.kimi and
+Slice.kimi, on the `next` declared in Core.kimi and Iteration.kimi, and on `Kimi.Intrinsics.exchange` and `swap`. It does not
+key on the Iterator conformance, so a user Iterator's `next` is unprobed. At their unstated layers, a borrowed or Slice input gets
 Content, never Value. At a collection's storage output, Callable, borrowed and unscoped inputs are skipped, and a Slice input keeps
 Content.
 
@@ -60,3 +61,20 @@ other verdict differs between AN and AT. `none` is the branch head (dev plus doc
 | swapI32, swapRef, dictRemoveStoreI32 (controls) | acc | acc | acc |
 | twoOut (user code; open) | acc | err | err |
 | fillBad (the SPEC `fill`), appendTupBad2 (an added input), swapRawBad (a swapped pointer that carries w's address) | acc | err | err |
+
+## After the re-check (`spec-recheck.md`): Slices, removed elements and `exchange`'s result
+
+Mode ATX is AT plus N1's extension: `exchange`'s result keeps only its target's chain, never its `value`. `prototype-at.diff.txt`
+now holds AT and ATX, the latter gated by `KIMI_N2_X=1`. Sources: `probes\g32-recheck.kimi` (the reviewer's) and
+`probes\g33-exchange.kimi`.
+
+| Program | none | AT | ATX |
+| --- | --- | --- | --- |
+| popRawBad (a popped pointer carrying w's address, then `y = 5`) | err | err | err |
+| toArrayRaw (`src.slice().toArray()`, then `src.append(null)`) | err | acc | acc |
+| toArrayRawBad (the same, with an addressed element) | err | err | err |
+| exchangeValue (`old = exchange(x@uniq, with: q)`, then `x = null; y = 5`) | err | err | acc |
+| exchangeTargetBad (x held q; `old = exchange(x@uniq, with: null)`) | err | err | err |
+| exchangeStoreBad (`exchange(x@uniq, with: q)`, then x used after `y = 5`) | err | err | err |
+
+On the other programs of g14, g17, g18, g20, g30 and g31, AT and ATX agree.

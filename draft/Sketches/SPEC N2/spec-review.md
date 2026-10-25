@@ -4,7 +4,7 @@ Date: 2026-10-25. R4's reviewer slot. I wrote none of the SPEC text, the analysi
 `bin\worktrees\spec-n2-srev` (detached at 907bd797f, removed after the run, junction unlinked first). The branch merges cleanly into
 origin/dev `1dd0f967f` (`git merge-tree`). R4-M131 is unique on dev and on every `origin/claude/*` branch.
 
-Evidence in this folder:
+Evidence in the R4 notes folder `r4-notes\spec-n2\srev\` (not kept here; its probe sources are copied to `probes\`):
 - `out-none\parse-blocks.txt`: the SPEC example parse probe over every `kimi` block of chapters 5 and 15.
 - `src\g30-transfer.kimi`: my probes. `out2-none\` is the branch head (dev `ac14e8fde` + docs); `out2-AR2\` is the same build with
   the reviewer's throwaway prototype (`draft/Sketches/SPEC N2/prototype.diff.txt`, mode AR2: A2 + R′ + "every other argument").

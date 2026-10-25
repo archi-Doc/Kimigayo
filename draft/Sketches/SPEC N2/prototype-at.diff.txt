@@ -25,10 +25,10 @@ index 281269592..685a210b3 100644
          {
              this.RetentionWalk(type.Components[i], below, ComposeVariance(variance, this.ComponentVariance(type, i)), inside);
 diff --git a/src/Kimi/Compiler/Binding/Binding.Retention.Rows.cs b/src/Kimi/Compiler/Binding/Binding.Retention.Rows.cs
-index 9b2cd9652..086d8ea22 100644
+index 9b2cd9652..c04f0f8aa 100644
 --- a/src/Kimi/Compiler/Binding/Binding.Retention.Rows.cs
 +++ b/src/Kimi/Compiler/Binding/Binding.Retention.Rows.cs
-@@ -15,6 +15,18 @@ public sealed partial class Binding
+@@ -15,6 +15,20 @@ public sealed partial class Binding
      private readonly List<int> retentionUntiedStores = new();
      private readonly HashSet<(BoundType Type, BoundType? Written)> retentionMet = new();
  
@@ -40,6 +40,8 @@ index 9b2cd9652..086d8ea22 100644
 +
 +    internal bool ProtoTransfer { get; set; }
 +
++    internal bool ProtoExchange { get; set; }
++
 +    private BoundType? ProtoAt(int i) => i < this.retentionScope.Count ? this.retentionScope[i] : null;
 +
 +    private static bool ProtoBorrowed(BoundType? type) => type is not null && ((type.Kind == BoundTypeKind.Semantics && IsBorrow(type.Semantics)) || type.Kind == BoundTypeKind.Slice);
@@ -47,7 +49,7 @@ index 9b2cd9652..086d8ea22 100644
      // Whether a retention reads a Type whose storage has this verdict (SPEC 23.1.2; DECISIONS BU-36): Prepared, and Rejected, whose parts
      // that do not substitute hold nothing, so the rows that hold whatever they are stay; a Limit gives CallRetention.Limit. Rejected
      // storage rests on a Binding failure (DIAGNOSTICS rule 8: a part Binding did not bind makes it incomplete), so in a complete
-@@ -73,6 +85,13 @@ public sealed partial class Binding
+@@ -73,6 +87,13 @@ public sealed partial class Binding
              if (output == Retention.Result)
              {
                  this.ResultRetains(kinds, owned, within);
@@ -61,7 +63,7 @@ index 9b2cd9652..086d8ea22 100644
              }
  
              for (var i = 0; i < atoms.Count; i++)
-@@ -87,11 +106,55 @@ public sealed partial class Binding
+@@ -87,12 +108,60 @@ public sealed partial class Binding
              // The hold walk from each of the output's holds, each position once.
              this.retentionMet.Clear();
              var held = false;
@@ -115,9 +117,14 @@ index 9b2cd9652..086d8ea22 100644
 +            }
 +
              untied |= held && output == Retention.Result;
++            for (var x = 1; this.ProtoExchange && output == Retention.Result && x < inputCount; x++)
++            {
++                (kinds[x], owned[x]) = (null, false);
++            }
              if (held && output >= 0)
              {
-@@ -130,6 +193,14 @@ public sealed partial class Binding
+                 this.retentionUntiedStores.Add(output);
+@@ -130,6 +199,14 @@ public sealed partial class Binding
              }
          }
  
@@ -132,7 +139,7 @@ index 9b2cd9652..086d8ea22 100644
          if (within >= 0)
          {
              owned[within] = true;
-@@ -182,6 +253,13 @@ public sealed partial class Binding
+@@ -182,6 +259,13 @@ public sealed partial class Binding
              return false;
          }
  
@@ -146,7 +153,7 @@ index 9b2cd9652..086d8ea22 100644
          var nominal = AdtDef.IsStruct(type) || AdtDef.IsEnum(type);
          if (nominal && !this.Retained(type, this.PrepareTypeStorage(type)))
          {
-@@ -190,12 +268,22 @@ public sealed partial class Binding
+@@ -190,12 +274,22 @@ public sealed partial class Binding
          }
  
          var raw = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
@@ -170,17 +177,18 @@ index 9b2cd9652..086d8ea22 100644
          for (var i = 0; !IsCallable(type) && i < type.Components.Count; i++)
          {
 diff --git a/src/Kimi/Compiler/Binding/Binding.Retention.cs b/src/Kimi/Compiler/Binding/Binding.Retention.cs
-index a78b7fb19..4177f6c90 100644
+index a78b7fb19..dc41544e2 100644
 --- a/src/Kimi/Compiler/Binding/Binding.Retention.cs
 +++ b/src/Kimi/Compiler/Binding/Binding.Retention.cs
-@@ -91,6 +91,10 @@ public sealed partial class Binding
+@@ -91,6 +91,11 @@ public sealed partial class Binding
          this.retentionRawVisits.Clear();
          this.retentionLimit = false;
          this.retentionUnstatedResult = false;
 +        this.ProtoBehind = false;
 +        var protoFile = System.IO.Path.GetFileName(callee?.CodeContext?.SourceDocument?.Path ?? string.Empty);
 +        this.ProtoCollection = System.Environment.GetEnvironmentVariable("KIMI_N2_PROTO") == "AT" && protoFile is "Array.kimi" or "ArrayOperations.kimi" or "Dictionary.kimi";
-+        this.ProtoTransfer = this.ProtoCollection || (System.Environment.GetEnvironmentVariable("KIMI_N2_PROTO") == "AT" && ((protoFile == "Slice.kimi") || (protoFile == "Intrinsics.kimi" && callee!.Name is "exchange" or "swap") || (callee?.Name == "next" && protoFile is "Core.kimi" or "Iteration.kimi")));
++        this.ProtoExchange = System.Environment.GetEnvironmentVariable("KIMI_N2_X") == "1" && protoFile == "Intrinsics.kimi" && callee?.Name == "exchange";
++        this.ProtoTransfer = this.ProtoCollection ||(System.Environment.GetEnvironmentVariable("KIMI_N2_PROTO") == "AT" && ((protoFile == "Slice.kimi") || (protoFile == "Intrinsics.kimi" && callee!.Name is "exchange" or "swap") || (callee?.Name == "next" && protoFile is "Core.kimi" or "Iteration.kimi")));
          for (var i = 0; i < inputs.Length; i++)
          {
              this.RetentionInput(inputs[i], i);
