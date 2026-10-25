@@ -216,15 +216,20 @@ public sealed partial class OriginRowsTest
     }
 
     // DECISIONS R4-M126 §2.5 (c), D-3: a Closure that is not classified (its capture failed, so no body was bound) has pending receiver and
-    // environment atoms, neither Fixed nor Finite: Unclassed (row 9) until R4-M118's Dependent row.
-    [Fact]
-    public void AnUnclassifiedClosuresAtomsAreUnclassed()
+    // environment atoms, Dependent (R4-M118): never a source or a judged target. The view records a Dependent atom as a broken contract in
+    // a complete compilation only, which classifies every Closure: the valid twin's ρ is Fixed (row 5) and its env_0 resolves to ρ.
+    [Theory]
+    [InlineData("text", false, "Dependent")]
+    [InlineData("text@move", true, "Fixed")]
+    public void AnUnclassifiedClosuresAtomsAreDependent(string capture, bool complete, string kind)
     {
-        var c = MirBuildTest.Compile("func g() -> i32\n    let text = \"a\"\n    let f = func [text] () -> i32 => 1\n    return 0\n" + Main);
+        var c = MirBuildTest.Compile($"func g() -> i32\n    let text = \"a\"\n    let f = func [{capture}] () -> i32 => 1\n    return 0\n" + Main);
         var literal = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.IsAnonymous);
         var body = new ExecutableBody(literal.SymbolOf());
-        Assert.Equal(OriginAtomKind.Unclassed, Atom(c, body, new BoundOrigin(OriginKind.Projection, literal, Binding.ClosureValueSlot), literal).Kind);
-        Assert.Equal(OriginAtomKind.Unclassed, Atom(c, body, new BoundOrigin(OriginKind.Projection, literal, Binding.EnvironmentSlot(0)), literal).Kind);
+        Assert.Equal(complete, c.Binding.Result.IsComplete);
+        Assert.Equal(kind, Atom(c, body, new BoundOrigin(OriginKind.Projection, literal, Binding.ClosureValueSlot), literal).Kind.ToString());
+        Assert.Equal(kind, Atom(c, body, new BoundOrigin(OriginKind.Projection, literal, Binding.EnvironmentSlot(0)), literal).Kind.ToString());
+        Assert.Empty(c.Types.OriginFindings);
     }
 
     // The row of a body (by its definition's name; "" for the Closure) at a site.

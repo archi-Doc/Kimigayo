@@ -4364,8 +4364,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     take only the varying inputs, every member within the parameter limit; it was a behavior-preserving commit first, and the search
     no longer carries the destination Type, which the recording names. Rejected: the body threaded through the search's members (two
     already over the 6-parameter limit grow; an owner exception); `EnterBody` (BU-28). (a) is
-    2c-2's `Classify` placement; (c) a pending atom is Unclassed in the view until R4-M118's Dependent row (D-3); (d) `BindClosure(k)`
-    removes the entries formed in k's body or a body nested in it. No program found rebinds a Closure while entries are open, and none
+    2c-2's `Classify` placement; (c) a pending atom is Dependent in the view (R4-M118's row, since 2c-3B lands after G:A5-F4; D-3), a
+    finding in a complete compilation, which classifies every Closure, so a guard; (d) `BindClosure(k)` removes the entries formed in
+    k's body or a body nested in it. No program found rebinds a Closure while entries are open, and none
     removes a pending obligation in place before classification: (d)'s removal and F2's skip are guards.
   - P12: the four `Slot <= EnvironmentSlot(0)` sites read `RoleOf`: the two "closure: call receiver" contract displays,
     `HasEnvironmentOrigin` and `PendingAtom` through one predicate, `Binding.OriginClasses.ReceiverAtom` (ρ or `env_i`; a result naming ρ
