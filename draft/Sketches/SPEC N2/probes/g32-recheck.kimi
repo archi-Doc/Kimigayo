@@ -1,0 +1,34 @@
+// Re-check probes: a popped pointer keeps its address; a Slice's toArray over raw elements; exchange's owned value in the result.
+func popRawBad()
+    var y: i32 = 1
+    var w: ref/i32 = y@ref
+    let q = w@raw@raw/u8
+    var a: Array<raw/u8> = [q]
+    let x = a.pop()
+    a.clear()
+    y = 5
+    inspect(x)
+func toArrayRaw()
+    var src: Array<raw/u8> = [null]
+    let s = src.slice()
+    let copy = s.toArray()
+    src.append(null)
+    inspect(copy)
+func toArrayRawBad()
+    var y: i32 = 1
+    var w: ref/i32 = y@ref
+    let q = w@raw@raw/u8
+    var src: Array<raw/u8> = [q]
+    let copy = src.slice().toArray()
+    src.clear()
+    y = 5
+    inspect(copy)
+func exchangeValue()
+    var y: i32 = 1
+    var w: ref/i32 = y@ref
+    let q = w@raw@raw/u8
+    var x: raw/u8 = null
+    let old = Kimi.Intrinsics.exchange(x@uniq, with: q)
+    x = null
+    y = 5
+    usep(old)

@@ -8,7 +8,8 @@
 // primitives and the Dictionary helpers (LegacyRuntimeHelpers.Dictionaries.cs), the formatting runtime with its routines' ABIs
 // and the wrappers over user formatting witnesses (LegacyRuntimeHelpers.Formatting.cs), the storage-boundary, Raw.slice and
 // capacity kernels written inline in their caller's body with the library record Field addressing they share with the old
-// writer (LegacyRuntimeHelpers.Storage.cs) and the string-comparison routines. Each generator's module holds one instance, and both
+// writer (LegacyRuntimeHelpers.Storage.cs) and the string-comparison routines, spliced from their signatures (StringEqual, StringCompare,
+// the ones every call reads). Each generator's module holds one instance, and both
 // write the helpers through this component (promoted, never copied).
 // Input: helper records built from FunctionAbi, ValueLowering, StoredValue (drop routine name, text flag), the Option payload
 // offset and remainder Field offsets; the compiled ABIs of the DictionaryStorage functions the Dictionary helpers call, keyed
@@ -32,7 +33,11 @@
 // published library rows state (Formats, SPEC 4.9.6), which the collector reads there. Each inline storage kernel's row
 // (StorageRow; P2a) holds its writer over StorageKernelInput and HelperNeeds, which are none: its text is loads, stores and
 // address arithmetic in the caller's body, so it declares no callee and nothing is requested for it. The Raw.slice and capacity
-// kernels (P2b) are plain writers without a row: their calls are intrinsics, whose rows are IntrinsicRows'.
+// kernels (P2b) are plain writers without a row: their calls are intrinsics, whose rows are IntrinsicRows'. The one map from a compiler
+// function of the Body disposition to how MIR code generation writes its call (Row, S2-S4 X39; DECISIONS R5-M116) names each kind's
+// writer: writeLine's runtime routine, the whole-value updates, the fixed-array storage kernel, the Array operations and storage kinds in
+// their function's instance (Instance: the Array helper of its kind, or a capacity routine, through its call's LegacyRow item; DECISIONS
+// R5-M121), setArrayLength's length, every other kind its unit's row not written yet (C8e, C9a).
 // Invariants: a new helper kind adds a row; a kind without a row fails; a request's runtime flags come from its row; each
 // requested helper is written once (the planner requests each formatting wrapper once), in request order, after the runtimes its
 // row declares;
@@ -71,6 +76,59 @@ internal enum HelperNeeds : byte
     FormattingRuntime = 8,
 }
 
+/// <summary>How MIR code generation writes a call of a compiler function of the Body disposition (S2-S4 X39; DECISIONS R5-M116).</summary>
+[Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
+internal enum LegacyWriter : byte
+{
+    /// <summary>A later unit's row (<see cref="LegacyRuntimeHelpers.Row"/> names it): one located Unsupported_Kd at the call.</summary>
+    Unwritten,
+
+    /// <summary>The row's runtime routine through the one call writer.</summary>
+    Routine,
+
+    /// <summary>SPEC 15.7: the target's old value destroyed in place, then the new one put (FunctionCodegen.Updates).</summary>
+    Replace,
+
+    /// <summary>SPEC 15.7: the target's old value put at the result, then the new one at the target.</summary>
+    Exchange,
+
+    /// <summary>SPEC 15.7: the two targets' values exchanged.</summary>
+    Swap,
+
+    /// <summary>SPEC 22.2: a fixed array's remainder through the BorrowFixed kernel (FunctionCodegen.Storage).</summary>
+    FixedStorage,
+
+    /// <summary>SPEC 4.9.3, 4.9.5, 22.2: the row's routine in its function's instance, its call's LegacyRow item's (ModuleCodegen.Row): the
+    /// Array helper of the row's <see cref="LegacyRow.Helper"/> kind, or the row's capacity routine given the element's stride (DECISIONS
+    /// R5-M121).</summary>
+    Instance,
+
+    /// <summary>SPEC 22.2: setArrayLength, the length stored in the Array handle's length word (FunctionCodegen.Arrays).</summary>
+    Length,
+}
+
+/// <summary>The legacy row of a compiler function of the Body disposition (X39): its writer, a routine row's runtime routine and an Instance
+/// row's Array helper kind.</summary>
+/// <param name="Writer">How MIR code generation writes a call.</param>
+/// <param name="Routine">The runtime routine of a <see cref="LegacyWriter.Routine"/> row, or an <see cref="LegacyWriter.Instance"/> row's
+/// capacity routine.</param>
+/// <param name="Helper">The Array helper kind of an <see cref="LegacyWriter.Instance"/> row without a routine.</param>
+[Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
+internal readonly record struct LegacyRow(LegacyWriter Writer, FunctionAbi? Routine = null, ArrayHelperKind? Helper = null)
+{
+    /// <summary>Gets a value indicating whether the row is a whole-value update (SPEC 15.7): the one place that names the update writers.</summary>
+    internal bool Updates => this.Writer is LegacyWriter.Replace or LegacyWriter.Exchange or LegacyWriter.Swap;
+
+    /// <summary>Gets the needs an Instance row declares (X4; DECISIONS R5-M46, R5-M121): its helper kind's row's, or the Array runtime for a
+    /// capacity routine, which is that runtime's.</summary>
+    internal HelperNeeds Needs => this switch
+    {
+        { Helper: { } kind } => LegacyRuntimeHelpers.ArrayRow(kind).Needs,
+        { Writer: LegacyWriter.Instance } => HelperNeeds.ArrayRuntime,
+        _ => HelperNeeds.None,
+    };
+}
+
 /// <summary>The element descriptor of a stored collection value (SPEC 4.5, 16.3.2, 21.3.1): its representation, the name of the
 /// routine that destroys it when it is an aggregate needing destruction (otherwise null), and whether it is a string.</summary>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
@@ -100,9 +158,21 @@ internal sealed partial class LegacyRuntimeHelpers
 {
     internal const string Removal = "R8 replaces the legacy runtime helpers with Kimigayo library code.";
 
-    internal const string StringComparisons = """
+    /// <summary>SPEC 13.4: the string equality routine, 0 exactly when the two byte sequences are equal: the one signature its definition
+    /// (<see cref="StringComparisons"/>) and every call read.</summary>
+    internal static readonly FunctionAbi StringEqual =
+        new("__kimi_string_equal", "i32", [new("ptr", "a"), new("i64", "an"), new("ptr", "b"), new("i64", "bn")]);
+
+    /// <summary>SPEC 13.4: the string ordering routine, negative, 0 or positive as the first byte sequence orders before, equal to or after
+    /// the second, lexicographically by UTF-8 byte.</summary>
+    internal static readonly FunctionAbi StringCompare = new("__kimi_string_compare", "i32", StringEqual.Parameters);
+
+    /// <summary>The string-comparison routines' text, each definition spliced from its signature (LlvmModuleText.ExpandRuntime), which every
+    /// generator writes once per module that compares strings.</summary>
+    internal static readonly string StringComparisons = ExpandRuntime(
+        """
         declare i32 @memcmp(ptr, ptr, i64)
-        define internal i32 @__kimi_string_equal(ptr %a, i64 %an, ptr %b, i64 %bn) #0 {
+        {{__kimi_string_equal}}
         entry:
           %sameLength = icmp eq i64 %an, %bn
           br i1 %sameLength, label %same, label %different
@@ -117,7 +187,7 @@ internal sealed partial class LegacyRuntimeHelpers
         different:
           ret i32 1
         }
-        define internal i32 @__kimi_string_compare(ptr %a, i64 %an, ptr %b, i64 %bn) #0 {
+        {{__kimi_string_compare}}
         entry:
           %shorter = icmp ult i64 %an, %bn
           %count = select i1 %shorter, i64 %an, i64 %bn
@@ -135,7 +205,9 @@ internal sealed partial class LegacyRuntimeHelpers
           %result = select i1 %sameLength, i32 0, i32 %direction
           ret i32 %result
         }
-        """ + "\n";
+
+        """,
+        [StringEqual, StringCompare]);
 
     // The per-element Array helpers requested by lowered bodies (SPEC 4.9.3), in first-request order.
     private readonly List<ArrayHelper> arrayHelpers = new();
@@ -148,6 +220,40 @@ internal sealed partial class LegacyRuntimeHelpers
     internal bool NeedsArrayRuntime { get; set; }
 
     internal bool NeedsStringComparison { get; set; }
+
+    /// <summary>Gets the legacy row of a compiler function of the Body disposition (S2-S4 X39; DECISIONS R5-M116), the one map from such a
+    /// kind to how MIR code generation writes its call, by the row's writer, and the one test of whether a function is one: every site asks
+    /// it, a Call, a Value call, the copy slots and the routine rows.</summary>
+    /// <param name="kind">The compiler function.</param>
+    /// <returns>Its row; null for None and for a kind of another disposition.</returns>
+    internal static LegacyRow? Row(CompilerFunctionKind kind) => kind switch
+    {
+        CompilerFunctionKind.None => null,
+        CompilerFunctionKind.WriteLine => new(LegacyWriter.Routine, RuntimeAbi.WriteLine), // SPEC 22.1-22.5.5: it borrows its string.
+        CompilerFunctionKind.Replace => new(LegacyWriter.Replace),
+        CompilerFunctionKind.Exchange => new(LegacyWriter.Exchange),
+        CompilerFunctionKind.Swap => new(LegacyWriter.Swap),
+        CompilerFunctionKind.StorageBorrowFixedShared or CompilerFunctionKind.StorageBorrowFixedExclusive => new(LegacyWriter.FixedStorage),
+
+        // SPEC 4.9.3, 4.9.5, 22.2 (DECISIONS R5-M121): the Array operations and storage kinds in their function's instance.
+        CompilerFunctionKind.ArrayReserve => new(LegacyWriter.Instance, RuntimeAbi.ArrayReserve),
+        CompilerFunctionKind.ArrayShrinkToFit => new(LegacyWriter.Instance, RuntimeAbi.ArrayShrink),
+        CompilerFunctionKind.ArrayAppend => Instance(ArrayHelperKind.Append),
+        CompilerFunctionKind.ArrayInsert => Instance(ArrayHelperKind.Insert),
+        CompilerFunctionKind.ArrayPop => Instance(ArrayHelperKind.Pop),
+        CompilerFunctionKind.ArrayRemove => Instance(ArrayHelperKind.Remove),
+        CompilerFunctionKind.ArrayClear => Instance(ArrayHelperKind.Clear),
+        CompilerFunctionKind.ArraySwap => Instance(ArrayHelperKind.Swap),
+        CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive or CompilerFunctionKind.StorageBorrowUniqSlice =>
+            Instance(ArrayHelperKind.BorrowStorage),
+        CompilerFunctionKind.StorageOwn => Instance(ArrayHelperKind.OwnStorage),
+        CompilerFunctionKind.StorageOwnFixed => Instance(ArrayHelperKind.OwnFixedStorage),
+        CompilerFunctionKind.StorageSetArrayLength => new(LegacyWriter.Length),
+
+        // C8e: the Dictionary storage kinds; C9a: the text, buffer, window and writer rows and WriteLineUtf8.
+        _ when IntrinsicDisposition.Of(kind).Kind == DispositionKind.Body => new(LegacyWriter.Unwritten),
+        _ => null,
+    };
 
     internal static void WriteStoredCopy(TextWriter output, string destination, string source, long size)
     {
@@ -229,6 +335,9 @@ internal sealed partial class LegacyRuntimeHelpers
         this.formattingConversions.Clear();
         this.NeedsStringComparison = false;
     }
+
+    // An Instance row over the Array helper of a kind (DECISIONS R5-M121).
+    private static LegacyRow Instance(ArrayHelperKind kind) => new(LegacyWriter.Instance, Helper: kind);
 
     // A requested helper's runtime needs are its kind row's (X4); they join the module's.
     private void JoinNeeds(HelperNeeds needs)

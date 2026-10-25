@@ -158,6 +158,10 @@ public sealed class TyCtxtTest
         "    override func pick(self: objref/Self, values: ref/[2 of i32] during s) -> ref/i32 during s => base.pick(values)\n" +
         "let r = R.init()@obj\nlet two: [2 of i32] = [4, 5]\nrequire r.pick(two@ref)@follow == 4 else => $abort(\"pick\")\n";
 
+    // X and Y, a ring through rc handles, X beside a Field whose Type did not bind, and Z, which stores Y inline.
+    private const string RejectedRing = "struct X\n    public var t: Option<rc/Y>\n    public var f: MISSING\nstruct Y\n    public var x: Option<rc/X>\n" +
+        "struct Z\n    public var y: Y\n";
+
     // SPEC 8.1.3, 8.15.1: the declared parameter and result Types of the function a call's substitution instantiates are the call's
     // instantiation (SPEC 8.4.1, 8.6.4: a requirement's under its conforming Self and the bound Contract reference it dispatches through, which
     // SubstOf records as its declaring Type; SPEC 6.4.4: a direct base call's function is the implementation it runs, in the Type
@@ -288,57 +292,6 @@ public sealed class TyCtxtTest
         Assert.Equal(["uniq/i32", "s/T", "s/i32"], [TyCtxt.Name(types.Reference(SemanticsKind.Uniq, BoundType.I32)), TyCtxt.Name(pair), TyCtxt.Name(application)]);
     }
 
-    // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-24 with the owner's decisions of 2026-10-22; R4's constraint 2): A5's view of a raw layer
-    // no declaration states, total over the layers MIR holds: a pointer temporary states none, a `during self` Field is the holder's own
-    // step, `static` static storage, and any other Origin, an input's, a meet or a typed path's, Exclusive: never Shared by default.
-    [Fact]
-    public void RawStepClassifiesEveryRawLayer()
-    {
-        var c = MinimalEmissionTest.Analyze("struct B\n    internal var data: raw/i32 during self\n    public init() => self.data = null\n" +
-            "func choose(c: bool, a: uniq/i32, b: uniq/i32) -> uniq/i32 => if c => a else => b\n" +
-            "func f(c: bool, x: ref/i32, y: uniq/i32, z: uniq/i32, p: raw/i32 during x, q: raw/i32 during y) -> raw/i32 => choose(c, y, z)@follow@raw\n" +
-            "public func main() => ()\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var types = c.Types;
-        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
-        var field = nodes.OfType<PropertyKoto>().Single(static x => x.ToString()!.Contains("data", StringComparison.Ordinal)).SymbolOf()!.Type!;
-        var f = nodes.OfType<FunctionKoto>().Single(static x => x.Name == "f");
-        var meet = nodes.OfType<ConversionKoto>().Single(static x => x.ToString() == "choose(c, y, z)@follow@raw").TypeOf()!;
-        Assert.Equal(
-            [RawStep.Unstated, RawStep.Static, RawStep.Own, RawStep.Exclusive, RawStep.Exclusive, RawStep.Exclusive],
-            [types.RawStep(types.Pointer(BoundType.I32)), types.RawStep(types.Pointer(BoundType.I32, BoundOrigin.Static)), types.RawStep(field),
-                types.RawStep(f.Parameters[4].Type.TypeOf()!), types.RawStep(f.Parameters[5].Type.TypeOf()!), types.RawStep(meet)]);
-        Assert.Equal(OriginKind.Intersection, meet.RawOrigin!.Kind);
-    }
-
-    // SPEC 5.2.1 condition 3 (the owner's 「シグネチャ版も入れる (推奨)」): a raw layer written in a signature, parameter or result, is
-    // Shared when every borrow its Origin belongs to in that signature keeps only shared Loans (a `ref` input's outer Origin, a universal
-    // stated only by `ref` inputs, a slot whose Loan requirement is `ref`), else by its
-    // kind; body borrows never count. A `uniq` input, a universal stated by a `ref` and a `uniq` input, an Option's `uniq` borrow and a
-    // projection that an exclusive input states are Exclusive.
-    [Fact]
-    public void ASignatureRawLayerIsSharedOnlyThroughSharedInputs()
-    {
-        var c = MinimalEmissionTest.Analyze(RawPointerSyntaxTest.KeptView +
-            "func f(x: ref/i32, y: uniq/i32, p: raw/i32 during x, q: raw/i32 during y) -> raw/i32 during x => p\n" +
-            "func g(a: ref/i32 during o, b: uniq/i32 during o, p: raw/i32 during o) => ()\n" +
-            "func h(a: ref/i32 during o, b: ref/i32 during o, p: raw/i32 during o, s: raw/i32 during static, n: raw/i32) => ()\n" +
-            "func k(v: ref/View, x: uniq/i32 during v.source, p: raw/i32 during v.source, q: Option<raw/i32 during x>) => ()\n" +
-            "func m(v: ref/View, p: raw/i32 during v.source) => ()\n" +
-            "func n(a: ref/i32 during o, b: Option<uniq/i32 during o>, p: raw/i32 during o) => ()\n" +
-            "func z(a: ref/i32 during o, q: raw/i32 during static, p: raw/i32 during o)\n    unsafe\n        let w: uniq/i32 during o = (*q)@uniq\n" +
-            "        *(w@follow@raw) = 1\npublic func main() => ()\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var types = c.Types;
-        var functions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => !x.IsAnonymous).ToDictionary(static x => x.Name);
-        RawStep Step(string name, int input, params int[] positions) => types.RawStep(functions[name].SymbolOf()!, input, positions);
-        Assert.Equal(
-            [RawStep.Shared, RawStep.Exclusive, RawStep.Shared, RawStep.Exclusive, RawStep.Shared, RawStep.Static, RawStep.Unstated,
-                RawStep.Exclusive, RawStep.Exclusive, RawStep.Shared, RawStep.Shared, RawStep.Exclusive],
-            [Step("f", 2), Step("f", 3), Step("f", Retention.Result), Step("g", 2), Step("h", 2), Step("h", 3), Step("h", 4),
-                Step("k", 2), Step("k", 3, 0), Step("m", 1), Step("z", 2), Step("n", 2)]);
-    }
-
     // SPEC 5.2.1 condition 3 (the owner's 「Loan 要求で上限 (推奨)」): a raw layer a Field declares with a slot whose Loan requirement is
     // `ref` is Shared under any instance, its image a `uniq` input's Origin and a member taking an exclusive borrow of the slot included
     // (R4's cap and reqcap); `during static` is Static, and a `uniq` slot's layer the image's kind.
@@ -355,16 +308,15 @@ public sealed class TyCtxtTest
         Assert.Equal([RawStep.Static, RawStep.Shared, RawStep.Exclusive], [c.Types.RawStep(p[1], 0, []), c.Types.RawStep(p[2], 1, []), c.Types.RawStep(p[3], 1, [])]);
     }
 
-    // SPEC 5.7 Origins, Calls (G160-4's (3a)): the borrows a raw layer's Origin belongs to: a stored layer's are the keepers of the slot the
-    // instance binds it to, under the instance (View's `ref` Loan of i32, K's `uniq` one); a signature's, among its input Types, each
-    // input whose outer Origin it is and each slot it binds there; `static` has none.
+    // SPEC 5.7 Origins, Calls (G160-4's (3a)): the borrows a stored raw layer's Origin belongs to are the keepers of the slot the instance
+    // binds it to, under the instance (View's `ref` Loan of i32, K's `uniq` one); `static` has none.
     [Fact]
     public void RawMembersAreTheBorrowsAnOriginBelongsTo()
     {
         var c = MinimalEmissionTest.Analyze("struct G\n    internal let g: raw/u8 during static\n    public init() => self.g = null\n" +
             "struct H {s}\n    internal let loan: Loan<ref/i32 during s>\n    internal var at: raw/i32 during s\n" +
             "struct K {s}\n    internal let loan: Loan<uniq/i32 during s>\n    internal var at: raw/i32 during s\n" +
-            "func probe(y: uniq/i32, g: G, h: H during y, k: K during y, a: ref/i32 during o, b: uniq/i32 during o, p: raw/i32 during o) => ()\n" +
+            "func probe(y: uniq/i32, g: G, h: H during y, k: K during y) => ()\n" +
             "public func main() => ()\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
@@ -373,14 +325,11 @@ public sealed class TyCtxtTest
         Assert.Empty(members);
         Assert.True(c.Types.RawMembers(p[2], 1, [], members) && c.Types.RawMembers(p[3], 1, [], members));
         Assert.Equal([new(0, BoundType.I32, false), new(0, BoundType.I32, true)], members);
-        members.Clear();
-        Assert.True(c.Types.RawMembers(p[6].RawOrigin!, p.AsSpan(0, 6), members));
-        Assert.Equal([new(4, BoundType.I32, false), new(5, BoundType.I32, true)], members);
     }
 
     // SPEC 5.7 (the final review's R3; DECISIONS BU-24, U2): a keeper reached on many paths is walked once per slot, owner Type, input and
     // mode, so a ladder of n diamonds (D_i keeps its slot through D_(i-1) and through E_(i-1), which keeps it through D_(i-1)) gives D0's
-    // one keeper once, not once per path (2^n), and the walk is linear in n.
+    // one keeper once as a member of the raw layer X stores, not once per path (2^n), and the walk is linear in n.
     [Theory]
     [InlineData(8)]
     [InlineData(16)]
@@ -392,34 +341,17 @@ public sealed class TyCtxtTest
             source += $"struct E{i - 1} {{s}}\n    internal let x: D{i - 1} during s\nstruct D{i} {{s}}\n    internal let a: D{i - 1} during s\n    internal let b: E{i - 1} during s\n";
         }
 
-        var c = MinimalEmissionTest.Analyze(source + $"func f(v: ref/D{n}, p: raw/u8 during v.s) => ()\npublic func main() => ()\n");
+        var c = MinimalEmissionTest.Analyze(source + $"struct X {{s}}\n    internal let at: raw/u8 during s\n    internal let d: D{n} during s\n" +
+            "func f(y: uniq/i32, x: X during y) => ()\npublic func main() => ()\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
         var members = new List<RawMember>();
-        Assert.True(c.Types.RawMembers(p[1].RawOrigin!, p, members));
+        Assert.True(c.Types.RawMembers(p[1], 0, [], members));
         Assert.Equal([new(0, BoundType.I32, false)], members);
     }
 
-    // The signature-layer reader allocates nothing when warm.
-    [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void AWarmSignatureRawLayerReadAllocatesNothing()
-    {
-        var c = MinimalEmissionTest.Analyze("func f(x: ref/i32, y: uniq/i32, p: raw/i32 during x, q: raw/i32 during y) => ()\npublic func main() => ()\n");
-        var f = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").SymbolOf()!;
-        _ = c.Types.RawStep(f, 2, []);
-        Assert.Equal(0, AllocationMeasurement.Measure(() =>
-        {
-            if (c.Types.RawStep(f, 2, []) != RawStep.Shared || c.Types.RawStep(f, 3, []) != RawStep.Exclusive)
-            {
-                throw new InvalidOperationException("Signature raw steps changed.");
-            }
-        }));
-    }
-
     // SPEC 5.7 (DECISIONS BU-24): a formed raw Origin is the plain Origin it is formed with, also through a shared borrow: a closure
-    // parameter's projection, an address through a local's shared borrow, a call's result whose Origin is that local's region; A5 reads
-    // each by its kind, Exclusive, since no declaration states them.
+    // parameter's projection, an address through a local's shared borrow, a call's result whose Origin is that local's region.
     [Fact]
     public void AFormedRawOriginIsThePlainOrigin()
     {
@@ -437,8 +369,8 @@ public sealed class TyCtxtTest
             nodes.OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "a").SymbolOf()!.Type!,
             nodes.OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "b").SymbolOf()!.Type!,
         ];
-        Assert.All(layers, x => Assert.Equal(RawStep.Exclusive, c.Types.RawStep(x)));
         Assert.Same(r, layers[1].RawOrigin);
+        Assert.Same(r, layers[2].RawOrigin);
         Assert.Contains(layers[0].RawOrigin!.Kind, new[] { OriginKind.Inference, OriginKind.Projection });
     }
 
@@ -454,7 +386,7 @@ public sealed class TyCtxtTest
             [RawStep.Own, RawStep.Own, RawStep.Shared, RawStep.Shared, RawStep.Exclusive, RawStep.Own, RawStep.Own],
             [types.RawStep(p[3], 0, []), types.RawStep(p[4], 0, [0]), types.RawStep(p[5], 1, []), types.RawStep(p[6], 1, []),
                 types.RawStep(p[7], 0, []), types.RawStep(p[8], 0, [0]), types.RawStep(p[8], 1, [1])]);
-        Assert.All([AdtDef.FieldType(p[3], 0)!, AdtDef.CaseTypes(p[4])![0].Components[0], AdtDef.FieldType(p[5], 1)!], static x => Assert.Null(x.RawOrigin));
+        Assert.All([AdtDef.FieldType(p[3], 0)!, AdtDef.CaseTypes(p[4])![0]!.Components[0], AdtDef.FieldType(p[5], 1)!], static x => Assert.Null(x.RawOrigin));
     }
 
     // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-24; R4's constraint 2): a raw layer a Type argument supplies, where the declaration states a
@@ -740,6 +672,72 @@ public sealed class TyCtxtTest
         instance.Set(outer.Target, outer.ReturnType, null, [], [nested]);
         Assert.Null(c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(instance)!));
         Assert.Null(c.Binding.InstantiateForwardedCall(inner, instance));
+    }
+
+    // DECISIONS BU-36, BU-12: storage preparation's verdict depends on the Type alone. A part Binding did not bind ends no storage walk,
+    // so a limit beyond it is met whichever Type is queried first (X reaches T's B^64 Field through a handle beside its failed Field: both
+    // Limit), and a component reaching such a part is Rejected in every order, a Type storing a member of it too.
+    [Theory]
+    [InlineData(RetentionTest.Beyond, "T X", "Limit Limit")]
+    [InlineData(RetentionTest.Beyond, "X T", "Limit Limit")]
+    [InlineData(RejectedRing, "X Y Z", "Rejected Rejected Rejected")]
+    [InlineData(RejectedRing, "Y X Z", "Rejected Rejected Rejected")]
+    [InlineData(RejectedRing, "Z Y X", "Rejected Rejected Rejected")]
+    public void AStorageVerdictDependsOnTheTypeAlone(string source, string order, string expected)
+    {
+        var c = MirBuildTest.Compile(source.Replace("MISSING", "Missing", StringComparison.Ordinal));
+        Assert.False(c.Binding.Result.IsComplete);
+        var types = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Select(static x => x.SymbolOf()!).ToDictionary(static x => x.Name, static x => x.Type!);
+        Assert.Equal(expected, string.Join(' ', order.Split(' ').Select(x => c.Binding.PrepareTypeStorage(types[x]))));
+    }
+
+    // DECISIONS BU-36: TyCtxt.Instance gives the instance a substitution makes with its storage verdict, and Apply is that instance when
+    // Prepared: f's `uniq/T` at Bad<i32>, whose Field m did not bind, is Rejected, at B^65<i32> a Limit, and under f's identity the
+    // declared Type, Prepared.
+    [Fact]
+    public void AnInstanceCarriesItsStorageVerdict()
+    {
+        var c = MirBuildTest.Compile(RetentionTest.Box + "struct Bad<T>\n    public var v: T\n    public var m: Missing\nfunc f<T>(b: uniq/T) => ()\n" +
+            $"func g(b: uniq/Bad<i32>, t: uniq/{RetentionTest.Box65})\n    f(b)\n    f(t)\n");
+        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf()!).Where(static x => x.Target.Name == "f").ToArray();
+        var declared = ((FunctionKoto)calls[0].Target.Declaration).Parameters[0].Type.TypeOf()!;
+        var outcomes = calls.Select(x => c.Types.Instance(declared, c.Types.SubstOf(x)!)).ToArray();
+        Assert.Equal([Binding.StorageOutcome.Rejected, Binding.StorageOutcome.Limit], outcomes.Select(static x => x.Storage));
+        Assert.Equal(["Bad", "B"], outcomes.Select(static x => x.Type!.Components[0].Symbol!.Name));
+        Assert.All(calls, x => Assert.Null(c.Types.Apply(declared, c.Types.SubstOf(x)!)));
+        var identity = c.Types.Instance(declared, c.Types.Identity(calls[0].Target.Declaration));
+        Assert.Same(declared, identity.Type);
+        Assert.Equal(Binding.StorageOutcome.Prepared, identity.Storage);
+    }
+
+    // SPEC 23.1.2 (DECISIONS BU-38): what a requirement call runs does not depend on a stored part Binding rejected, so a conforming Self
+    // whose storage is Rejected has its witness's target (fail-before: Limit, which the collector published as a gap), while a Self whose
+    // storage also nests past the bound keeps the Limit target beside its failed Field, as its repair does: the limit wins.
+    [Theory]
+    [InlineData("Missing", false, "Body")]
+    [InlineData("Missing", true, "Limit")]
+    [InlineData("i32", true, "Limit")]
+    public void ARejectedSelfRunsItsWitness(string field, bool deep, string expected)
+    {
+        var c = MirBuildTest.Compile(RetentionTest.Box + $"contract Zero\n    func zero() -> i32\nstruct Bad\n    Self is Zero\n    public var m: {field}\n" +
+            (deep ? $"    public var big: {RetentionTest.Box64}\n" : string.Empty) + "    public func zero() -> i32 => 1\n");
+        var zero = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<ContractKoto>().Single().SymbolOf()!;
+        var bad = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(static x => x.Name == "Bad").SymbolOf()!.Type!;
+        var requirement = zero.Contract!.OwnRequirement()!;
+        Assert.Equal(expected, c.Types.Witness(requirement, zero, c.Types.Synthesized(requirement, bad, zero.Type!)).Kind.ToString());
+    }
+
+    // SPEC 6.5.1, 23.1.2 (G242; DECISIONS BU-37): an enum instance publishes each Case its substitution forms, and a Case whose payload
+    // does not substitute is null, as a Field is: E's B and C beside its failed A, and G<i32>'s B, whose growth the storage verdict then
+    // meets beside the failed A (fail-before: no Case published, and G<i32> Rejected).
+    [Fact]
+    public void AnEnumPublishesTheCasesItSubstitutes()
+    {
+        var c = MirBuildTest.Compile("enum E\n    A(Missing)\n    B(i32)\n    C\nenum G<T>\n    A(Missing)\n    B(rc/G<(T, T)>)\nfunc f(e: E, g: G<i32>) => ()\n");
+        Assert.False(c.Binding.Result.IsComplete);
+        var parameters = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
+        Assert.Equal([null, c.Types.Tuple([BoundType.I32]), c.Types.Tuple([])], AdtDef.CaseTypes(parameters[0]) ?? []);
+        Assert.Equal([Binding.StorageOutcome.Rejected, Binding.StorageOutcome.Limit], parameters.Select(c.Binding.PrepareTypeStorage));
     }
 
     // A warm rebind keeps every call's substitution the same object and looking it up allocates nothing.

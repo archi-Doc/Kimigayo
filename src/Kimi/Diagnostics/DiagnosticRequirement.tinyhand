@@ -649,6 +649,9 @@
   + Name="Ownership.StorageLimit"
     Description="ownership analysis storage stays within its resource limit"
 
+  + Name="Ownership.OwnStepDeparture"
+    Description="no pointer formed through an own step is used after its owning value may leave its holder"
+
   + Name="Binding.CaseLimit"
     Description="the Semantics cases of the definition stay within the implementation bound"
 

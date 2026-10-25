@@ -59,7 +59,8 @@ public sealed partial class Binding
             IndexKoto index => !ReferenceEquals(index.Left, target),
             ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.Address or ConversionBinding.Transfer } => false,
             ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } => false,
-            ConversionKoto { ConversionBinding: ConversionBinding.ObjectUpcast, BoundType: { IsObjectBorrow: true } view } upcast => upcast.Left.BoundType?.Semantics == view.Semantics,
+            ConversionKoto { ConversionBinding: ConversionBinding.ObjectUpcast, BoundType: { IsObjectBorrow: true } view } upcast =>
+                upcast.Left.BoundType?.Semantics == view.Semantics,
             ConversionKoto => true,
             BinaryKoto { Akind: >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals } assignment => ReferenceEquals(assignment.Right, target),
             BinaryKoto { Akind: KotoKind.And or KotoKind.Or } or RangeKoto => true,

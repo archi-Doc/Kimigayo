@@ -47,6 +47,9 @@ internal sealed partial class FunctionCodegen
             case IntrinsicWriter.Test:
                 this.Test(call);
                 return;
+            case IntrinsicWriter.Capacity:
+                this.Capacity(call);
+                return;
             case IntrinsicWriter.Create or IntrinsicWriter.Clone:
                 return; // A broken contract, recorded by Routine.
             case IntrinsicWriter.Unwritten:
@@ -57,19 +60,42 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // SPEC 7.7.4 (DECISIONS R5-M108): a compiler function's routine row by its disposition, what its Value call and its adapter's entry call
-    // (FunctionCodegen.Closures' Runs) with the target they carry: an intrinsic's routine row (below), a Body disposition's legacy routine
-    // (LegacyRoutine); null for any other row, which is not one routine call or not written yet (a Shim's, an instruction writer's, an
-    // unwritten row's).
+    // SPEC 7.7.4 (DECISIONS R5-M108, R5-M116): a compiler function's routine row by its disposition, what its adapter's entry calls
+    // (FunctionCodegen.Closures' Runs) with the target it carries, and an intrinsic's Value call: an intrinsic's routine row (below), a Body
+    // disposition's legacy routine (LegacyRuntimeHelpers.Row); null for any other row, which is not one routine call or not written yet (a
+    // Shim's, an instruction writer's, an unwritten row's).
     private FunctionAbi? Routine(CompilerFunctionKind kind, BoundType? result, int target, out ReadOnlySpan<Value> given)
     {
         given = default;
         return IntrinsicDisposition.Of(kind) switch
         {
             { Kind: DispositionKind.Intrinsic, Id: var id } => this.Routine(IntrinsicRows.Of(id), result, target, out given),
-            { Kind: DispositionKind.Body } => LegacyRoutine(kind),
-            _ => null,
+            _ => LegacyRuntimeHelpers.Row(kind) is { } row ? this.Routine(row, target, out given) : null,
         };
+    }
+
+    // A legacy row's routine (DECISIONS R5-M116, R5-M121), the one path its direct call, its Item's Value call and its adapter's entry take,
+    // its slot-less values into `given`: a Routine row's (writeLine); an Instance row's in its function's instance, its call site's LegacyRow
+    // item's (ModuleCodegen.Row: the item's helper or its row's capacity routine, given the element's stride or a fixed array's length);
+    // null for any other row, and after a record (an Instance row's call targets its item, K 4.5 row 2).
+    private FunctionAbi? Routine(LegacyRow row, int target, out ReadOnlySpan<Value> given)
+    {
+        given = default;
+        if (row.Writer != LegacyWriter.Instance)
+        {
+            return row.Writer == LegacyWriter.Routine ? row.Routine : null;
+        }
+
+        if (target < 0 || this.collector.Set.Items[target].Key.Kind != MonoKind.LegacyRow)
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The collector targets an Instance row's call at its LegacyRow item.
+            return null;
+        }
+
+        var routine = this.module.Row(target, out var number);
+        this.slotless[0] = new('\0', number);
+        given = this.slotless.AsSpan(0, 1);
+        return routine;
     }
 
     // A routine row, a call that is one runtime routine: its routine, after its module request (TryAllocate's), and its slot-less values in
@@ -117,7 +143,8 @@ internal sealed partial class FunctionCodegen
     }
 
     // SPEC 5.6: Raw.initialize(storage, value) moves the value into the storage, which holds none, so nothing is destroyed: the value put
-    // at the storage's address in its Type's representation (R5-M87's copy form); nothing for a zero-sized one.
+    // at the storage's address in its Type's representation (R5-M87's copy form; a string constant written whole, DECISIONS R5-M118);
+    // nothing for a zero-sized one.
     private void Initialize(in MirTerminator call)
     {
         var key = new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
@@ -130,16 +157,11 @@ internal sealed partial class FunctionCodegen
 
         if (lowering.Layout.Size != 0)
         {
-            if (!this.Operand(storage, out var address) || !this.Operand(operand, out var value))
+            if (!this.Operand(storage, out var address) || !this.Put(address, this.InstanceType(operand)!, lowering, operand))
             {
                 this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
                 return;
             }
-
-            var type = operand.Kind == MirOperandKind.Const
-                ? this.collector.TypeOf(this.item, this.body.Consts[operand.Arg].Type)
-                : this.InstanceType(operand.Place);
-            this.Put(address, type!, lowering, value);
         }
 
         this.Finish(call, null);

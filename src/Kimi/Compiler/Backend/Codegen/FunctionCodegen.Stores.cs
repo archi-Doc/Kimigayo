@@ -7,8 +7,9 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 namespace Kimi.Compiler.Backend;
 
 // The loads, stores and copies of FunctionCodegen through its place writer (R5 plan C2a, C2b, package C 3.2 I2, I4, I7 and I10; DECISIONS
-// R5-M83, R5-M87): an Assign's destination and the value put into it, a Place's value read in its representation, a local's home. A
-// value is read and put in its representation (InMemory): a value in memory is its address, its bytes copied by memcpy when it is put.
+// R5-M83, R5-M87): an Assign's destination and the value put into it, an operand put at an address (a string constant, the one operand
+// without a value, written whole as its record), a Place's value read in its representation and the value an address holds. A value is
+// read and put in its representation (InMemory): a value in memory is its address, its bytes copied by memcpy when it is put.
 internal sealed partial class FunctionCodegen
 {
     // IMPL 21.1.3, 21.3.1 (DECISIONS R5-M87): whether a value of a Type is in memory, so it is read as its address and copied by memcpy: a
@@ -70,31 +71,73 @@ internal sealed partial class FunctionCodegen
         output.Write(", i1 false)\n");
     }
 
-    // A string constant stored at an address (the string representation, implementation-defined by IMPL 21.1.3: RuntimeAbi.String): its
-    // UTF-8 bytes a pooled constant, the Static release kind, so never released; the empty string has no bytes (null, length 0).
-    private void Text(Value address, string text)
+    // An operand's value, read before its Place is located (SPEC 13.7.1; Operand): none for a string constant, which has nothing to
+    // evaluate (Put writes it whole). False for an operand form not covered yet, which the caller records.
+    private bool Evaluate(in MirOperand operand, out Value value)
     {
-        var (output, lowering) = (this.output, RuntimeAbi.String);
-        output.Write("  store ");
-        output.Write(lowering.Layout.StorageType);
-        output.Write(" { ptr ");
-        if (text.Length == 0)
+        value = default;
+        return this.TextOf(operand) is not null || this.Operand(operand, out value);
+    }
+
+    // An evaluated operand of nonzero size put at an address in its Type's representation: a string constant written whole as its record
+    // (Text), any other its value (Put).
+    private void Put(Value address, BoundType type, ValueLowering lowering, in MirOperand operand, Value value)
+    {
+        if (this.TextOf(operand) is { } text)
         {
-            output.Write("null, i64 0");
+            this.Text(address, text);
         }
         else
         {
-            var constant = this.module.Constants[this.module.Constants.Intern(text, LlvmConstantKind.Text)];
-            output.Write('@');
-            output.Write(constant.Name);
-            output.Write(", i64 ");
-            WriteNumber(output, constant.ByteLength);
+            this.Put(address, type, lowering, value);
+        }
+    }
+
+    // An operand of nonzero size evaluated (Evaluate), then put at an address in its Type's representation (above). False for an operand
+    // form not covered yet, which the caller records.
+    private bool Put(Value address, BoundType type, ValueLowering lowering, in MirOperand operand)
+    {
+        if (!this.Evaluate(operand, out var value))
+        {
+            return false;
         }
 
+        this.Put(address, type, lowering, operand, value);
+        return true;
+    }
+
+    // The text of a string constant operand of the string Type, which has no value of its own: it is written whole where it is put (Text).
+    private string? TextOf(in MirOperand operand)
+        => operand.Kind == MirOperandKind.Const && this.body.Consts[operand.Arg] is { Kind: MirConstKind.String, Value: string text } constant &&
+            ReferenceEquals(constant.Type, BoundType.String) ? text : null;
+
+    // A string constant stored at an address (the string representation, implementation-defined by IMPL 21.1.3: RuntimeAbi.String): its
+    // bytes (TextBytes), the Static release kind, so never released.
+    private void Text(Value address, string text)
+    {
+        var (output, lowering, bytes) = (this.output, RuntimeAbi.String, this.TextBytes(text));
+        output.Write("  store ");
+        output.Write(lowering.Layout.StorageType);
+        output.Write(" { ptr ");
+        this.WriteValue(bytes.Data);
+        output.Write(", i64 ");
+        this.WriteValue(bytes.Length);
         output.Write(", i8 ");
         WriteNumber(output, RuntimeAbi.StaticReleaseKind);
         output.Write(" }");
         this.WriteAccess(address, lowering.Layout);
+    }
+
+    // A string constant's bytes: its UTF-8 bytes a pooled constant and their count; the empty string has none (null, length 0).
+    private StringBytes TextBytes(string text)
+    {
+        if (text.Length == 0)
+        {
+            return new(new('n', 0), new('\0', 0));
+        }
+
+        var constant = this.module.Constants.Intern(text, LlvmConstantKind.Text);
+        return new(new('@', constant), new('\0', this.module.Constants[constant].ByteLength));
     }
 
     // A Place's value in its representation (I4): loaded in its storage representation, or its address when the value is in memory; none
@@ -114,11 +157,14 @@ internal sealed partial class FunctionCodegen
 
         if (this.LoweringOf(place) is { Layout.Size: > 0 } lowering)
         {
-            value = InMemory(this.InstanceType(place)!, lowering) ? address : this.LoadAt(address, lowering.Layout);
+            value = this.ValueAt(address, this.InstanceType(place)!, lowering);
         }
 
         return true;
     }
+
+    // The value of nonzero size an address holds, in its Type's representation (I4): the address itself for a value in memory, else loaded.
+    private Value ValueAt(Value address, BoundType type, ValueLowering lowering) => InMemory(type, lowering) ? address : this.LoadAt(address, lowering.Layout);
 
     // Whether a Place is a local without storage (zero-sized, I2).
     private bool Unstored(MirPlace place) => place is { Root: >= 0, Projection: 0 } && this.slots[place.Root].Home == Home.None;
@@ -126,6 +172,10 @@ internal sealed partial class FunctionCodegen
     // The Type of a Place in the item's instance: a local's, or its projection's.
     private BoundType? InstanceType(MirPlace place)
         => place is { Root: >= 0, Projection: 0 } ? this.types[place.Root] : this.collector.TypeOf(this.item, this.body.TypeOf(place)!);
+
+    // The Type of an operand in the item's instance: a constant's, or its Place's.
+    private BoundType? InstanceType(in MirOperand operand)
+        => operand.Kind == MirOperandKind.Const ? this.collector.TypeOf(this.item, this.body.Consts[operand.Arg].Type) : this.InstanceType(operand.Place);
 
     // The representation of a Place's Type in the item's instance (I7): a local's slot's, or its Type's (null after a record).
     private ValueLowering? LoweringOf(MirPlace place)
@@ -164,25 +214,6 @@ internal sealed partial class FunctionCodegen
         this.output.Write('\n');
     }
 
-    private void WriteHome(int local)
-    {
-        var slot = this.slots[local];
-        switch (slot.Home)
-        {
-            case Home.Slot:
-                this.output.Write("%l");
-                WriteNumber(this.output, local);
-                return;
-            case Home.Parameter:
-                this.WriteValue(new('p', slot.Index));
-                return;
-            case Home.None:
-                this.module.Request(ModuleCodegen.Needs.ZeroSized);
-                this.output.Write('@');
-                this.output.Write(ModuleCodegen.ZeroSized);
-                return;
-            default:
-                throw new InvalidOperationException($"The home {slot.Home} has no spelling.");
-        }
-    }
+    // A string's bytes, the string record's first two Fields (IMPL 21.1.3): their address and their count.
+    private readonly record struct StringBytes(Value Data, Value Length);
 }

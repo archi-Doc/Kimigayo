@@ -19,59 +19,68 @@ public sealed class MirTypesTest(ITestOutputHelper output)
         "struct Forest {a}\n    let r: ref/i32 during a\n    var children: Array<Forest during a>\n" +
         "struct Table\n    var rows: Dictionary<i32, Table>\nstruct Logged\n    var n: i32\n    var children: Array<Logged>\n    drop\n        _ = self.n\n";
 
-    // SPEC 15.6, 3.2.2, 15.3.5, 5.2.2: a value may hold a Loan where a part of its own storage is a borrow or pair layer, a Slice, a
-    // Function value or an abstract Type, or a Type argument its storage may hold (a library collection behind a raw pointer, a Loan);
-    // a raw pointer, scalars, strings and Origin-free aggregates hold none. A repeating recursive Type ends exactly, a growing one at the
-    // walk's bound, conservatively.
+    // SPEC 15.6, 3.2.2, 15.3.5: a value may hold a Loan where a part of its own storage is a borrow, pair or raw layer (a raw pointer
+    // carries the holders it addresses and its Loans, SPEC 15.6 Addresses), a Slice, a Function value or an abstract Type, or a Type
+    // argument its storage may hold (a library collection behind a raw pointer, a Loan); scalars, strings and Origin-free aggregates hold
+    // none. A repeating recursive Type ends exactly, a growing one at the walk's bound, conservatively.
     [Fact]
     public void LoansAreHeldByBorrowsAndWhatMayStoreThem()
     {
-        var body = Probe(
+        var (body, c) = Probe(
             "func probe<s/T>(scalar: i32, text: string, numbers: Array<i32>, plain: Plain, raw: raw/(ref/i32 during a), chain: Chain, " +
             "tree: Tree, forest: Forest, rows: Table, borrow: ref/i32, borrows: Array<ref/i32 during a>, tuple: (i32, ref/i32 during a), " +
             "fixed: [2 of ref/i32 during a], table: Dictionary<i32, ref/i32 during a>, option: Option<ref/i32 during a>, holder: Holder, " +
             "handle: obj/Holder, slice: Slice<i32>, view: UniqSlice<i32>, loan: Loan<ref/i32 during a>, " +
             "iterator: ArrayOwningIterator<ref/i32 during a>, action: () -> (), layer: s/T, nest: Nest<i32>)\n    s is owner or ref\n" +
-            "    return\n").Body;
+            "    return\n");
         var seen = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
         Assert.Equal(
-            [("scalar", false), ("text", false), ("numbers", false), ("plain", false), ("raw", false), ("chain", false), ("tree", false),
+            [("scalar", false), ("text", false), ("numbers", false), ("plain", false), ("raw", true), ("chain", false), ("tree", false),
                 ("forest", true), ("rows", false),
                 ("borrow", true), ("borrows", true), ("tuple", true), ("fixed", true), ("table", true), ("option", true),
                 ("holder", true), ("handle", true), ("slice", true), ("view", true), ("loan", true), ("iterator", true), ("action", true),
                 ("layer", true), ("nest", true)],
-            Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, seen, out _))).ToArray());
+            Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, c.Types, seen, out _))).ToArray());
     }
 
-    // A3 E16 (SPEC 15.6, 15.6.2, 15.6.4; DECISIONS R4-M73): a call may write past a value that may hold, past no shared layer or raw
-    // pointer, an exclusive reference to storage that may hold a Loan or a raw pointer whose pointee may: an exclusive reference, in an
-    // Array, a payload or a Field, a UniqSlice's elements, a Function value (the guard); only through a Type argument, a pair layer or an
-    // abstract part, which may be one (P13's interim, R4-M76); not past a shared reference, through an exclusive reference to Loan-free
-    // storage (a scalar, Utf8Writer's Loan<uniq/u8>) or a raw pointer. A value that holds no Loan but a raw pointer whose pointee may is
-    // raw-only: a call writing it writes storage the body does not own.
+    // A3 E16 (SPEC 15.6, 15.6.2, 15.6.4; DECISIONS R4-M73, R4-M116): a call may write past a value that may hold, past no shared layer,
+    // an exclusive reference to storage that may hold a Loan: an exclusive reference, in an Array, a payload or a Field, a UniqSlice's
+    // elements, a Function value, a raw parameter's pointee (the guard); only through a Type argument, a pair layer or an abstract part,
+    // which may be one (P13's interim, R4-M76); not past a shared reference, or through an exclusive reference or a raw pointer to
+    // Loan-free storage (a scalar, Utf8Writer's Loan<uniq/u8> and raw Fields). A stored raw layer is classed by its step (design B′
+    // §4.4): a slot kept only by `ref` writes nothing past it, another slot its pointee by argument, `during self` the holding value's own
+    // storage, and an unstated one an exclusive reference to its pointee.
     [Fact]
     public void TheGuardSaysWhatACallMayWritePastAValue()
     {
-        var body = Probe(
+        var (body, c) = Probe(
             "struct Slot {a}\n    var r: uniq/(ref/i32 during a) during a\n" +
+            "struct RefKept<E> {source}\n    let storage: raw/E during source\n    let loan: Loan<ref/E during source>\n" +
+            "struct UniqKept<E> {source}\n    let storage: raw/E during source\n    let loan: Loan<uniq/E during source>\n" +
+            "struct Owned<E>\n    let storage: raw/E during self\n" +
+            "struct Cursor<E>\n    let p: raw/E\n" +
             "func probe<s/T>(borrow: ref/i32, scalar: uniq/i32, writer: Utf8Writer, shared: ref/(uniq/(ref/i32 during a) during a), " +
             "unique: uniq/(ref/i32 during a), array: Array<uniq/(ref/i32 during a) during a>, " +
             "option: Option<uniq/(ref/i32 during a) during a>, slot: Slot, view: UniqSlice<ref/i32 during a>, scalars: UniqSlice<i32>, " +
             "action: () -> (), toRaw: uniq/(raw/(ref/i32 during a)), value: T, layer: s/T, iterator: ArrayIterator<T>, " +
-            "loan: Loan<uniq/(ref/i32 during a) during a>, raw: raw/(ref/i32 during a), rawScalar: raw/i32, number: i32)\n" +
-            "    s is owner or uniq\n    return\n").Body;
+            "loan: Loan<uniq/(ref/i32 during a) during a>, raw: raw/(ref/i32 during a), rawScalar: raw/i32, number: i32, " +
+            "refKept: RefKept<ref/i32 during a>, uniqKept: UniqKept<ref/i32 during a>, owned: Owned<ref/i32 during a>, " +
+            "ownedUniq: Owned<uniq/(ref/i32 during a) during a>, cursor: Cursor<ref/i32 during a>)\n" +
+            "    s is owner or uniq\n    return\n");
         var seen = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
         Assert.Equal(
             [("borrow", MirWrites.None), ("scalar", MirWrites.None), ("writer", MirWrites.None), ("shared", MirWrites.None),
                 ("unique", MirWrites.Through), ("array", MirWrites.Through), ("option", MirWrites.Through), ("slot", MirWrites.Through),
                 ("view", MirWrites.Through), ("scalars", MirWrites.None), ("action", MirWrites.Through), ("toRaw", MirWrites.Through),
                 ("value", MirWrites.ThroughArgument), ("layer", MirWrites.ThroughArgument), ("iterator", MirWrites.ThroughArgument),
-                ("loan", MirWrites.ThroughArgument), ("raw", MirWrites.Raw), ("rawScalar", MirWrites.None), ("number", MirWrites.None)],
+                ("loan", MirWrites.ThroughArgument), ("raw", MirWrites.Through), ("rawScalar", MirWrites.None), ("number", MirWrites.None),
+                ("refKept", MirWrites.None), ("uniqKept", MirWrites.ThroughArgument), ("owned", MirWrites.None),
+                ("ownedUniq", MirWrites.Through), ("cursor", MirWrites.Through)],
             Parameters(body).Select(x => (x.Name, Writes(x.Type))).ToArray());
 
         MirWrites Writes(BoundType type)
         {
-            _ = MirTypes.HoldsLoans(type, seen, out var writes);
+            _ = MirTypes.HoldsLoans(type, c.Types, seen, out var writes);
             return writes;
         }
     }
@@ -128,11 +137,11 @@ public sealed class MirTypesTest(ITestOutputHelper output)
         Assert.Equal((26, 51), (seen.Count, walk.Met)); // P24..P0 and i32; each struct's two Fields met once each.
         Assert.False(MirTypes.MayNeedDrop(pairs, seen));
         Assert.False(MirTypes.Observes(pairs, c.Types, body.Key.Decl, seen, out var deep) || deep);
-        Assert.False(MirTypes.HoldsRaw(pairs, seen) || MirTypes.HoldsLoans(pairs, new(ReferenceEqualityComparer.Instance), out _));
+        Assert.False(MirTypes.HoldsRaw(pairs, seen) || MirTypes.HoldsLoans(pairs, c.Types, new(ReferenceEqualityComparer.Instance), out _));
     }
 
-    // R4-M36: every local Type of every library body is classified and none is deep; a borrow layer always holds a Loan and a raw pointer
-    // never. The output gives the counts.
+    // R4-M36, R4-M116: every local Type of every library body is classified and none is deep; a borrow or raw layer always holds a Loan.
+    // The output gives the counts.
     [Fact]
     public void LibraryTypesClassify()
     {
@@ -144,9 +153,9 @@ public sealed class MirTypesTest(ITestOutputHelper output)
         {
             foreach (var local in body.Locals.ToArray())
             {
-                var holds = MirTypes.HoldsLoans(local.Type, walked, out _);
+                var holds = MirTypes.HoldsLoans(local.Type, c.Types, walked, out _);
                 var raw = local.Type.Semantics == Kimi.Compiler.Parsing.SemanticsKind.Raw;
-                Assert.True(raw ? !holds : holds || !MirTypes.IsReference(local.Type), $"{body.Key.Decl?.Name}: {local.Name}");
+                Assert.True(holds || !(raw || MirTypes.IsReference(local.Type)), $"{body.Key.Decl?.Name}: {local.Name}");
                 var observes = MirTypes.Observes(local.Type, c.Types, body.Key.Decl, seen, out var deep);
                 Assert.False(deep, $"{body.Key.Decl?.Name}: {local.Name}");
                 (locals, holding, observing) = (locals + 1, holding + (holds ? 1 : 0), observing + (observes ? 1 : 0));

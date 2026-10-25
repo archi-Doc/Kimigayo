@@ -7,8 +7,9 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 namespace Kimi.Compiler.Backend;
 
 // The values of FunctionCodegen (R5 package C 3.2 I4, I5 and I7): an operand's value and a constant's, a Type's representation in the
-// item's instance, bool's widening and narrowing and a site's location (SPEC 22.5.1); their spelling is FunctionCodegen.Spelling's.
-// Rows not written yet: a string constant other than into a string Place (C8c); Location and TypeToken constants, intrinsic operands
+// item's instance, bool's widening and narrowing and a site's location (SPEC 22.5.1); their spelling is FunctionCodegen.Spelling's. A
+// string constant has no value: it is written whole where it is put (FunctionCodegen.Stores' Text) and its bytes are read where it is
+// compared (FunctionCodegen.Strings; DECISIONS R5-M118). Rows not written yet: Location and TypeToken constants, intrinsic operands
 // (C10a's TestObserve; C6a's TypeTest, C9a).
 internal sealed partial class FunctionCodegen
 {
@@ -41,7 +42,7 @@ internal sealed partial class FunctionCodegen
         value = default;
         if (constant.Kind is not (MirConstKind.Bool or MirConstKind.Integer or MirConstKind.Float or MirConstKind.Unit or MirConstKind.FnItem))
         {
-            return false; // String other than into a string local (C8c), Location (C10a), TypeToken (C6a, C9a).
+            return false; // String, which has no value (above), Location (C10a), TypeToken (C6a, C9a).
         }
 
         if (this.Representation(constant.Type) is not { } lowering)

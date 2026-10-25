@@ -161,18 +161,18 @@ fn both @38
       StorageDead(_4) @64 s1
       goto bb7 @38
   bb15:
-      StorageDead(_11) @86 s1
       drop _10 -> bb16 [elide] @85 s1
   bb16:
+      StorageDead(_11) @86 s1
       StorageDead(_10) @85 s1
       goto bb11 @38
   bb17:
       _12 = move _10 @84 s1
       goto bb15 @84 s1
   bb18:
-      StorageDead(_11) @86 s1
       drop _10 -> bb19 @85 s1
   bb19:
+      StorageDead(_11) @86 s1
       StorageDead(_10) @85 s1
       drop _8 -> bb20 @77 s1
   bb20:
@@ -272,30 +272,30 @@ fn caller @107
   bb6:
       goto bb4 @107
   bb7:
-      StorageDead(_5) @122 s1
-      drop _4 -> bb8 [elide] @122 s1
+      drop _2 -> bb8 [elide] @122 s1
   bb8:
-      StorageDead(_4) @122 s1
-      drop _3 -> bb9 [elide] @124 s1
+      drop _4 -> bb9 [elide] @122 s1
   bb9:
-      StorageDead(_3) @124 s1
-      drop _2 -> bb10 [elide] @122 s1
+      StorageDead(_5) @122 s1
+      StorageDead(_4) @122 s1
+      drop _3 -> bb10 [elide] @124 s1
   bb10:
+      StorageDead(_3) @124 s1
       StorageDead(_2) @122 s1
       goto bb5 @107
   bb11:
       _6 = move _2 @121 s1
       goto bb7 @121 s1
   bb12:
-      StorageDead(_5) @122 s1
-      drop _4 -> bb13 @122 s1
+      drop _2 -> bb13 @122 s1
   bb13:
-      StorageDead(_4) @122 s1
-      drop _3 -> bb14 @124 s1
+      drop _4 -> bb14 @122 s1
   bb14:
-      StorageDead(_3) @124 s1
-      drop _2 -> bb15 @122 s1
+      StorageDead(_5) @122 s1
+      StorageDead(_4) @122 s1
+      drop _3 -> bb15 @124 s1
   bb15:
+      StorageDead(_3) @124 s1
       StorageDead(_2) @122 s1
       drop _1 -> bb16 @107
   bb16:

@@ -437,16 +437,16 @@ fn chosen @214
       StorageLive(_8) @231 s1
     * _8 = &uniq _3: uniq/i32 @232 s2
       _6 = move _8 @231 s1
+      StorageDead(_8) @231 s1
       goto bb1 @231 s1
   bb3:
       StorageDead(_7) @230 s1
       StorageLive(_9) @235 s1
     * _9 = &uniq _4: uniq/i32 @236 s3
       _6 = move _9 @235 s1
+      StorageDead(_9) @235 s1
       goto bb1 @235 s1
   bb4:
-      StorageDead(_9) @235 s1
-      StorageDead(_8) @231 s1
       StorageDead(_6) @229 s1
       StorageDead(_5) @227 s1
       StorageLive(_10) @240 s1
@@ -494,16 +494,16 @@ fn chosen @214
       StorageLive(_20) @263 s1
     * _20 = &uniq _3: uniq/i32 @264 s6
       _18 = move _20 @263 s1
+      StorageDead(_20) @263 s1
       goto bb11 @263 s1
   bb13:
       StorageDead(_19) @262 s1
       StorageLive(_21) @267 s1
     * _21 = &uniq _4: uniq/i32 @268 s7
       _18 = move _21 @267 s1
+      StorageDead(_21) @267 s1
       goto bb11 @267 s1
   bb14:
-      StorageDead(_21) @267 s1
-      StorageDead(_20) @263 s1
       StorageDead(_18) @261 s1
       StorageDead(_17) @255 s1
       StorageLive(_22) @273 s1
@@ -577,17 +577,17 @@ fn exited @276
     * _9 = copy _1 @296 s2
       switch copy _9 [0: bb4, otherwise: bb3] @296 s2
   bb1:
-      _5 = take(move _6, copy _2) -> bb13 @289 s1
+      _5 = take(move _6, copy _2) -> bb14 @289 s1
   bb2:
       StorageDead(_8) @295 s2
       StorageLive(_12) @303 s2
     * _12 = &uniq _4: uniq/i32 @303 s2
-      goto bb11 check bb12 @302 s2
+      goto bb12 check bb13 @302 s2
   bb3:
       StorageDead(_9) @296 s2
       StorageLive(_10) @299 s3
     * _10 = &uniq _3: uniq/i32 @299 s3
-      goto bb8 check bb9 @298 s3
+      goto bb9 check bb10 @298 s3
   bb4:
       StorageDead(_9) @296 s2
       _8 = const () @295 s2
@@ -596,28 +596,31 @@ fn exited @276
       _6 = move _11 @298 s3
       goto bb1 @298 s3
   bb6:
-      StorageDead(_8) @295 s2
+      StorageDead(_7) @294 s1
       goto bb5 @276
   bb7:
-      StorageDead(_10) @299 s3
+      StorageDead(_8) @295 s2
       goto bb6 @276
   bb8:
-      _11 = move _10 @298 s3
-      goto bb7 @298 s3
+      StorageDead(_10) @299 s3
+      goto bb7 @276
   bb9:
+      _11 = move _10 @298 s3
+      goto bb8 @298 s3
+  bb10:
       StorageDead(_10) @299 s3
       unreachable check bb2 @297 s2
-  bb10:
-      StorageDead(_12) @303 s2
-      goto bb5 @276
   bb11:
-      _11 = move _12 @302 s2
-      goto bb10 @302 s2
-  bb12:
       StorageDead(_12) @303 s2
-      unreachable check bb1 @294 s1
+      goto bb6 @276
+  bb12:
+      _11 = move _12 @302 s2
+      goto bb11 @302 s2
   bb13:
+      StorageDead(_12) @303 s2
       StorageDead(_7) @294 s1
+      unreachable check bb1 @294 s1
+  bb14:
       StorageDead(_6) @291 s1
       StorageDead(_5) @289 s1
       StorageLive(_13) @307 s1
@@ -625,79 +628,82 @@ fn exited @276
       StorageLive(_15) @310 s1
       StorageLive(_16) @312 s4
     * _16 = copy _1 @312 s4
-      switch copy _16 [0: bb17, otherwise: bb16] @312 s4
-  bb14:
-      _13 = take(move _14, copy _2) -> bb18 @307 s1
+      switch copy _16 [0: bb18, otherwise: bb17] @312 s4
   bb15:
-      _14 = move _15 @310 s1
-      goto bb14 @310 s1
+      _13 = take(move _14, copy _2) -> bb19 @307 s1
   bb16:
-      StorageDead(_16) @312 s4
-    * _15 = &uniq _3: uniq/i32 @314 s5
-      goto bb15 @313 s4
+      _14 = move _15 @310 s1
+      StorageDead(_15) @310 s1
+      goto bb15 @310 s1
   bb17:
       StorageDead(_16) @312 s4
-    * _15 = &uniq _4: uniq/i32 @318 s6
-      goto bb15 @317 s4
+    * _15 = &uniq _3: uniq/i32 @314 s5
+      goto bb16 @313 s4
   bb18:
-      StorageDead(_15) @310 s1
+      StorageDead(_16) @312 s4
+    * _15 = &uniq _4: uniq/i32 @318 s6
+      goto bb16 @317 s4
+  bb19:
       StorageDead(_14) @309 s1
       StorageDead(_13) @307 s1
       StorageLive(_17) @322 s1
       StorageLive(_18) @324 s1
       StorageLive(_19) @327 s1
     * _19 = copy _1 @327 s1
-      switch copy _19 [0: bb21, otherwise: bb20] @327 s1
-  bb19:
-      _17 = take(move _18, copy _2) -> bb26 @322 s1
+      switch copy _19 [0: bb22, otherwise: bb21] @327 s1
   bb20:
+      _17 = take(move _18, copy _2) -> bb28 @322 s1
+  bb21:
       StorageDead(_19) @327 s1
       StorageLive(_20) @328 s1
       StorageLive(_21) @330 s7
     * _21 = &uniq _3: uniq/i32 @330 s7
-      goto bb24 check bb25 @329 s7
-  bb21:
+      goto bb26 check bb27 @329 s7
+  bb22:
       StorageDead(_19) @327 s1
       StorageLive(_23) @333 s1
     * _23 = &uniq _4: uniq/i32 @334 s8
       _18 = move _23 @333 s1
-      goto bb19 @333 s1
-  bb22:
-      _18 = move _22 @329 s7
-      goto bb19 @329 s7
+      StorageDead(_23) @333 s1
+      goto bb20 @333 s1
   bb23:
-      StorageDead(_21) @330 s7
-      goto bb22 @276
+      _18 = move _22 @329 s7
+      goto bb20 @329 s7
   bb24:
-      _22 = move _21 @329 s7
-      goto bb23 @329 s7
+      StorageDead(_20) @328 s1
+      goto bb23 @276
   bb25:
       StorageDead(_21) @330 s7
-      unreachable check bb19 @328 s1
+      goto bb24 @276
   bb26:
-      StorageDead(_23) @333 s1
+      _22 = move _21 @329 s7
+      goto bb25 @329 s7
+  bb27:
+      StorageDead(_21) @330 s7
       StorageDead(_20) @328 s1
+      unreachable check bb20 @328 s1
+  bb28:
       StorageDead(_18) @324 s1
       StorageDead(_17) @322 s1
       StorageLive(_24) @339 s1
     * _24 = Add(copy _3, copy _4) @339 s1
-      goto bb31 check bb32 @338 s1
-  bb27:
-      return @276
-  bb28:
-      _0 = move _25 @338 s1
-      goto bb27 @338 s1
+      goto bb33 check bb34 @338 s1
   bb29:
+      return @276
+  bb30:
+      _0 = move _25 @338 s1
+      goto bb29 @338 s1
+  bb31:
       StorageDead(_4) @285 s1
       StorageDead(_3) @281 s1
-      goto bb28 @276
-  bb30:
-      StorageDead(_24) @339 s1
-      goto bb29 @276
-  bb31:
-      _25 = move _24 @338 s1
-      goto bb30 @338 s1
+      goto bb30 @276
   bb32:
+      StorageDead(_24) @339 s1
+      goto bb31 @276
+  bb33:
+      _25 = move _24 @338 s1
+      goto bb32 @338 s1
+  bb34:
       StorageDead(_24) @339 s1
       StorageDead(_4) @285 s1
       StorageDead(_3) @281 s1
@@ -853,16 +859,16 @@ fn received @404
       StorageLive(_7) @425 s1
     * _7 = &uniq _2: uniq/Counter @426 s2
       _5 = move _7 @425 s1
+      StorageDead(_7) @425 s1
       goto bb3 @425 s1
   bb5:
       StorageDead(_6) @424 s1
       StorageLive(_8) @429 s1
     * _8 = &uniq _3: uniq/Counter @430 s3
       _5 = move _8 @429 s1
+      StorageDead(_8) @429 s1
       goto bb3 @429 s1
   bb6:
-      StorageDead(_8) @429 s1
-      StorageDead(_7) @425 s1
       StorageDead(_5) @422 s1
       StorageDead(_4) @420 s1
       StorageLive(_9) @436 s1
@@ -940,12 +946,14 @@ fn called @445
       StorageLive(_7) @463 s1
     * _7 = &uniq _3: uniq/closure () -> i32 @464 s2
       _5 = move _7 @463 s1
+      StorageDead(_7) @463 s1
       goto bb1 @463 s1
   bb3:
       StorageDead(_6) @462 s1
       StorageLive(_8) @467 s1
     * _8 = &uniq _3: uniq/closure () -> i32 @468 s3
       _5 = move _8 @467 s1
+      StorageDead(_8) @467 s1
       goto bb1 @467 s1
   bb4:
       goto bb9 check bb10 @458 s1
@@ -960,8 +968,6 @@ fn called @445
       goto bb6 @445
   bb8:
       StorageDead(_9) @460 s1
-      StorageDead(_8) @467 s1
-      StorageDead(_7) @463 s1
       StorageDead(_5) @460 s1
       StorageDead(_4) @459 s1
       goto bb7 @445
@@ -970,8 +976,6 @@ fn called @445
       goto bb8 @458 s1
   bb10:
       StorageDead(_9) @460 s1
-      StorageDead(_8) @467 s1
-      StorageDead(_7) @463 s1
       StorageDead(_5) @460 s1
       StorageDead(_4) @459 s1
       StorageDead(_3) @453 s1

@@ -169,6 +169,9 @@ public sealed partial class Binding
         return selected;
     }
 
+    // The symbol a Type name selects. It binds none of the name's syntax: a qualifier is bound once, in the role of the form its name
+    // selects, by BindContainerReference for a nested Type and by BindAssociatedProjection for a projection base, which the projection's
+    // position completes (SPEC 15.4.2).
     private BindingSymbol? TypeName(Koto syntax, BindingScope scope, bool core, int arity = 0)
     {
         while (syntax is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner })
@@ -228,9 +231,9 @@ public sealed partial class Binding
                 return target;
             }
 
+            // The declaration's own Type selects the inherited member: a qualifier's arguments and Origins never change the selection.
             if (qualifier?.Declaration is StructKoto && TypeSpelling(member.Right) is { } inheritedName &&
-                this.BindContainerQualifier(member.Left, qualifier, scope, this.TypeContext(member.Left, scope)) is { } declaring &&
-                this.LookupTypeMember(declaring, inheritedName, scope, typeRole: true) is { Member: { } inherited })
+                this.LookupTypeMember(this.SelfType(qualifier), inheritedName, scope, typeRole: true) is { Member: { } inherited })
             {
                 member.Left.BoundSymbol = qualifier;
                 member.Right.BoundSymbol = inherited;

@@ -19,8 +19,10 @@
 // InstanceCollector.Edges.cs's: replaying a body item's template resolves each site's row under the item's representative, a callee's body
 // (InstanceCollector.Callees.cs), and a Requirement call's, a requirement Item's, a bodyless callee's published row's and an erased writer's
 // by the witness there (InstanceCollector.Witnesses.cs: a body, a Builtin or a property-witness shim keyed by its compiler function or Field
-// and the erased Self, or a gap); a type-driven item's targets follow from its representative Type by its kind's row (Expand: an adapter's Item;
-// InstanceCollector.Glue.cs: a DropGlue's direct parts, DropGlue.Parts; InstanceCollector.Witnesses.cs: a comparison shim's leaf
+// and the erased Self, or a gap); a bodyless callee whose legacy row's writer is Instance targets its function instance's LegacyRow
+// item (AdmitRow: the function and the erased Subst, no body; DECISIONS R5-M121); a type-driven item's targets follow from its
+// representative Type by its kind's row (Expand: an adapter's Item; InstanceCollector.Glue.cs: a DropGlue's direct parts, DropGlue.Parts,
+// and a LegacyRow's declared needs, an ElementGlue need its Element parts' glue; InstanceCollector.Witnesses.cs: a comparison shim's leaf
 // witnesses, TyCtxt.Comparison, a property-witness setter's Field glue; InstanceCollector.Objects.cs: a created payload's descriptor's
 // glue and VTable, a VTable's slot bodies by VTableDef and Applies).
 // Capability (K 4.7, InstanceCollector.Capabilities.cs): the definition-stage check (A3b) of every operation of a root-module body whose

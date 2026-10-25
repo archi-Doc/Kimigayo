@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Xunit;
 
@@ -51,6 +52,33 @@ public class LocalRegionCompletionTest
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
         Assert.Contains(errors, x => x.Code == nameof(DiagnosticCode.MissingOriginBinding_Kd));
         Assert.DoesNotContain(errors, x => x.Category == DiagnosticCategory.Unsupported);
+    }
+
+    // SPEC 15.3.6, 15.4.4 (DECISIONS R4-M112 (c)): a variable of the local's Type that no fit reaches, here the slot of a projection
+    // base that the projection's normalization drops (`Item` is i32), has no candidate and is the local's region; no Inference atom of
+    // the local stays unresolved, on either pipeline. The unqualified spelling forms the same variable (SPEC 15.4.2).
+    [Theory]
+    [InlineData("S.(Src).Item")]
+    [InlineData("S.Item")]
+    public void AnAnnotationVariableTheDeclaredTypeDropsIsTheLocalsRegion(string written)
+    {
+        var source = "contract Src\n    associate Item\n    func read(self: ref/Self) -> Self.Item\nstruct S {s}\n    Self is Src\n    public let v: ref/i32 during s\n" +
+            "    public init(v: ref/i32 during s) => self.v = v\n    public func read(self: ref/Self) -> i32 => 1\nfunc f() -> i32\n    let w: " + written + " = 5\n    return w\n" +
+            "public func main() => ()\n";
+        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
+        {
+            Assert.Empty(ContextualCaptureTest.PublishedRecords(source, pipeline));
+        }
+
+        var c = MinimalEmissionTest.Analyze(source);
+        var local = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "w");
+        var bases = KotoTree.Walk(local.TypeKoto!).Select(static x => x.TypeOf()).Where(static x => x?.Symbol?.Name == "S").ToArray();
+        Assert.NotEmpty(bases);
+        foreach (var type in bases)
+        {
+            var slot = Assert.Single(type!.OriginArguments);
+            Assert.True(Binding.IsLocalRegion(slot) && ReferenceEquals(slot.Binder, local), slot.Kind + " " + slot.Binder);
+        }
     }
 
     // The first row expects the old path's strong update through `slot`, as above (S4).

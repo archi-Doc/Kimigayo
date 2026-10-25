@@ -27,8 +27,9 @@ internal enum RawStep : byte
 }
 
 // Raw Origins, steps (SPEC 5.7, 5.2.1 condition 3; DECISIONS BU-24; contract in Binding.RawOrigins.cs): the authority a raw layer's
-// Origin can keep, which retention and the TyCtxt views read after Binding: by its kind (StepOf), a signature's layer (SignatureStep,
-// SignatureLayerStep) and a layer an instance stores (StoredStep, its members StoredMembers, both over StoredLayer).
+// Origin can keep, which retention and the TyCtxt views read after Binding: by its kind (StepOf), a signature's layer (SignatureStep)
+// and a layer an instance stores (StoredStep, its members StoredMembers, both over StoredLayer; the step from the layer its declaration
+// states, DeclaredStep, which StoredStep and the hold walk read).
 public sealed partial class Binding
 {
     // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-24; R4's constraint 2): the authority a raw layer's Origin can keep where no declaration
@@ -59,46 +60,9 @@ public sealed partial class Binding
         return kept == RawStep.Shared ? RawStep.Shared : StepOf(raw);
     }
 
-    // SignatureStep of the raw layer a function's or accessor's signature states at `input` (Retention.Result for its result) and the
-    // component `positions` below it, as it declares them (TyCtxt.Signature); a path that ends at no raw layer is a broken contract.
-    internal RawStep SignatureLayerStep(BindingSymbol function, int input, ReadOnlySpan<int> positions)
-    {
-        _ = TyCtxt.Signature(function, null, 0, out var count);
-        var inputs = this.RentTypes(count);
-        try
-        {
-            for (var i = 0; i < count; i++)
-            {
-                inputs[i] = TyCtxt.Signature(function, null, i, out _)!;
-            }
-
-            var layer = TyCtxt.Signature(function, null, input, out _);
-            for (var i = 0; i < positions.Length && layer is not null; i++)
-            {
-                layer = (uint)positions[i] < (uint)layer.Components.Count ? layer.Components[positions[i]] : null;
-            }
-
-            return layer is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } ? this.SignatureStep(layer.RawOrigin, inputs.AsSpan(0, count))
-                : throw new InvalidOperationException($"No raw layer is declared at input {input} of `{function.Name}` (InternalInvariant).");
-        }
-        finally
-        {
-            this.typeScratch.Return(inputs, clearArray: true);
-        }
-    }
-
-    // SPEC 5.2.1 condition 3 (the owner's 「Loan 要求で上限 (推奨)」; design-final §15): the step of a raw layer an instance stores, read from
-    // its declaration, since an instance's stored Types state none: Shared when the declaration states the layer with a slot whose Loan
-    // requirement is `ref`, since a pointer read from it has read authority only; any other is the kind of its Origin under the instance's
-    // substitution (`self` the holder's own step, an Unbound slot argument Unstated). A layer a Type argument supplies is no layer the
-    // declaration states, so no cap reads it: it has the kind of the Origin the argument states, as any layer no declaration states (a
-    // pair slot's argument states none, TyCtxt.PairBinding).
+    // SPEC 5.2.1 condition 3: the step of the raw layer an instance stores at a part and inline positions (StoredLayer), by DeclaredStep.
     internal RawStep StoredStep(BoundType instance, int part, ReadOnlySpan<int> positions)
-    {
-        var layer = this.StoredLayer(instance, part, positions, out var declared);
-        return declared?.RawOrigin is { Kind: OriginKind.Parameter } && NamedSlot(declared.RawOrigin) is { LoanRequirement: LoanRequirement.Ref }
-            ? RawStep.Shared : StepOf(layer.RawOrigin);
-    }
+        => DeclaredStep(this.StoredLayer(instance, part, positions, out var declared), declared);
 
     // RawMembers of the raw layer an instance stores (StoredLayer): its Origin under the instance's substitution, within the instance, so
     // its members are the keepers of the slots the instance binds it to; `self`, `static` and an unstated layer have none. False when the
@@ -121,6 +85,17 @@ public sealed partial class Binding
             => schema.Origins[atom.Slot],
         _ => null,
     };
+
+    // SPEC 5.2.1 condition 3 (the owner's 「Loan 要求で上限 (推奨)」; design-final §15): the step of a raw layer an instance stores, read from
+    // the layer its declaration states there (`declared`), since an instance's stored Types state none: Shared when the declaration states
+    // the layer with a slot whose Loan requirement is `ref`, since a pointer read from it has read authority only; any other is the kind of
+    // its Origin under the instance's substitution (`self` the holder's own step, an Unbound slot argument Unstated). A layer a Type
+    // argument supplies (`declared` null) is no layer the declaration states, so no cap reads it: it has the kind of the Origin the
+    // argument states, as any layer no declaration states (a pair slot's argument states none, TyCtxt.PairBinding). StoredStep and the
+    // hold walk (Held) read this one rule.
+    private static RawStep DeclaredStep(BoundType layer, BoundType? declared)
+        => declared?.RawOrigin is { Kind: OriginKind.Parameter } && NamedSlot(declared.RawOrigin) is { LoanRequirement: LoanRequirement.Ref }
+            ? RawStep.Shared : StepOf(layer.RawOrigin);
 
     // The component a Tuple's or fixed array's inline position selects; null for any other Type or none.
     private static BoundType? InlinePart(BoundType? type, int position)
@@ -180,7 +155,7 @@ public sealed partial class Binding
         Koto? declaration = structure ? (uint)part < (uint)adt!.Fields.Length ? adt.Fields[part] : null
             : adt is not null && (uint)part < (uint)adt.Cases.Length && adt.Cases[part] is { } selected && positions.Length > 0 &&
                 (uint)positions[0] < (uint)selected.Payload.Length ? selected.Payload[positions[0]] : null;
-        var written = declaration?.BoundType ?? (declaration as PropertyKoto)?.BoundSymbol?.Type;
+        var written = WrittenType(declaration);
         var stored = written is null ? null : this.StoredType(written, instance);
         for (var i = structure ? 0 : 1; i < positions.Length && stored is not null; i++)
         {

@@ -72,8 +72,8 @@ internal sealed partial class MirValidator
                     MirAggregateKind.FixedArray when type?.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary => 0,
                     MirAggregateKind.Fill when type?.Kind == BoundTypeKind.FixedArray => 1,
                     MirAggregateKind.Adt when AdtDef.IsStruct(type) => AdtDef.Count(type!) + (AdtDef.Base(type!) is null ? 0 : 1),
-                    MirAggregateKind.Adt when type is not null && AdtDef.CaseTypes(type) is { } cases => (uint)rvalue.Arg < (uint)cases.Length
-                        ? cases[rvalue.Arg].Components.Count : -1,
+                    MirAggregateKind.Adt when type is not null && AdtDef.CaseTypes(type) is { } cases => (uint)rvalue.Arg < (uint)cases.Length &&
+                        cases[rvalue.Arg] is { } payload ? payload.Components.Count : -1,
                     _ => -1,
                 },
                 _ => 0,

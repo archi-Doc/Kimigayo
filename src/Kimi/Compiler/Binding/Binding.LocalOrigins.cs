@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 // omits, inferred from the initializer's Type and solved with the local's clauses.
 // - Responsibility: ResolveInitializerOrigins closes the initializer's acquisition (initializerOrigins, whose bounds the fits record in
 //   Binding.OriginProof.cs) and rewrites the initializer's Type; InferLocalOrigins matches the annotation against that Type, giving a
-//   mutable local's slots regions (LocalRegionSlot); SolveLocalBounds solves the slots its clauses bound.
+//   mutable local's slots and every slot no fit binds regions (LocalRegionSlot); SolveLocalBounds solves the slots its clauses bound.
 // - Inputs: the local's declared and initializer Types, the bounds its initializer's fits recorded, its clauses (originDeclarations).
 // - Outputs: the replacements of the local's two Origin declarations, the local's rewritten Types and annotation nodes, the discharged
 //   inference obligations of resolved Origins, and the region bounds that publish their resolutions.
@@ -63,24 +63,55 @@ public sealed partial class Binding
         return this.RewriteOrigins(type, declaration);
     }
 
-    // `slot` is the local's next region slot (BindVariableCore).
+    // SPEC 15.3.6, 15.4.4: an Origin the local's Type omits takes its candidate from the initializer's Type; one that no fit binds, bound
+    // only to itself or no longer reached by the declared Type (a projection base's slot that the projection's normalization drops), has
+    // none and is a local region of `owner` (DECISIONS R4-M112 (c)), numbered after the initializer's. `slot` is the local's next region
+    // slot (BindVariableCore).
     private BoundType InferLocalOrigins(BoundType declared, BoundType actual, VariableKoto owner, BindingScope scope, int slot)
     {
-        if (!declared.CarriesOrigin || !actual.CarriesOrigin)
+        OriginDeclaration? declaration = null;
+        if (declared.CarriesOrigin && actual.CarriesOrigin)
+        {
+            Match(declared, actual, OriginVariance.Covariant);
+        }
+
+        // OmittedOrigin creates the local's declaration with the first Origin its Type omits.
+        if (declaration is null && !this.originDeclarations.ContainsKey(owner))
         {
             return declared;
         }
 
-        OriginDeclaration? declaration = null;
-        Match(declared, actual, OriginVariance.Covariant);
+        if (declaration?.Inferred is { Count: > 0 } inferred)
+        {
+            this.SolveLocalBounds(declaration, inferred, owner, ref slot);
+        }
+
+        for (var i = this.obligations.Count - 1; i >= 0; i--)
+        {
+            var obligation = this.obligations[i];
+            if (obligation is not { Kind: BindingObligationKind.OriginInference, Longer: { } pending })
+            {
+                continue;
+            }
+
+            if (declaration?.Replacements.ContainsKey(pending) != true)
+            {
+                if (!IsWithin(pending.Binder!, owner.TypeKoto!))
+                {
+                    continue;
+                }
+
+                declaration ??= this.OriginDeclarationFor(owner);
+                declaration.Replacements[pending] = this.LocalRegionSlot(owner, slot--);
+            }
+
+            this.obligationSet.Remove(obligation);
+            this.obligations.RemoveAt(i);
+        }
+
         if (declaration is null)
         {
             return declared;
-        }
-
-        if (declaration.Inferred is { Count: > 0 } inferred)
-        {
-            this.SolveLocalBounds(declaration, inferred, owner, ref slot);
         }
 
         declaration.Scope = scope;
@@ -90,16 +121,6 @@ public sealed partial class Binding
         visitor.Declaration = declaration;
         visitor.Visit(owner.TypeKoto!);
         visitor.Declaration = null;
-        for (var i = this.obligations.Count - 1; i >= 0; i--)
-        {
-            var obligation = this.obligations[i];
-            if (obligation.Kind == BindingObligationKind.OriginInference && obligation.Longer is { } pending && declaration.Replacements.ContainsKey(pending))
-            {
-                this.obligationSet.Remove(obligation);
-                this.obligations.RemoveAt(i);
-            }
-        }
-
         return this.RewriteOrigins(declared, declaration);
 
         // `polarity` is the variance of the position within the local's Type, composed as FitsTypeCore compares it.

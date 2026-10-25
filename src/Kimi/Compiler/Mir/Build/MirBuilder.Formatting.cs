@@ -64,8 +64,9 @@ internal sealed partial class MirBuilder
             var buffer = this.Temp(CallPlan.Of(node)!.ReturnType, node);
             var adapter = CallPlan.Of(node, 1)!;
             this.Estimate(buffer, IntrinsicId.FormatBuffer, bytes, start, this.arguments.Count, node);
-            (writer, unit) = (this.Temp(adapter.ReturnType, node), this.Temp(BoundType.Unit, node));
+            (writer, unit) = (this.Hold(adapter.ReturnType, node), this.Hold(BoundType.Unit, node));
             this.Call(writer, adapter, node, null, adapter.ArgumentOperations[0].Source, this.Borrow(SemanticsKind.Uniq, buffer, node));
+            this.Made(writer);
         }
 
         var (later, values, k) = (bytes, start, first);
@@ -80,11 +81,11 @@ internal sealed partial class MirBuilder
                 this.Estimate(unit, IntrinsicId.FormatHint, later, values, at, node);
             }
 
-            var result = this.Temp(write.ReturnType, node);
-            var discriminant = this.Temp(BoundType.ISize, node);
+            var result = this.Hold(write.ReturnType, node);
+            var discriminant = this.Hold(BoundType.ISize, node);
             this.Call(result, write, node, null, first > 0 ? storage : null, first > 0 ? this.Borrow(SemanticsKind.Uniq, writer, node) : default);
-            this.Set(discriminant, MirRvalue.Discriminant(result), node);
-            this.Pass(MirOperand.Copy(discriminant), 0, done, node);
+            this.Set(discriminant, MirRvalue.Discriminant(this.Made(result)), node);
+            this.Pass(MirOperand.Copy(this.Made(discriminant)), 0, done, node);
         }
 
         if (first == 0)
@@ -95,6 +96,7 @@ internal sealed partial class MirBuilder
         }
         else
         {
+            this.Made(unit); // The hints' Unit, written by each.
             this.Fail(done, "KIMI_E_FORMAT", node);
             this.arguments.Add(MirOperand.Move(writer));
             this.Estimate(destination, IntrinsicId.FormatFinish, bytes, start, this.arguments.Count - 1, node);

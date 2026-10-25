@@ -56,8 +56,10 @@ internal sealed class AdtDef
 
     internal static BoundType? Base(BoundType type) => IsStruct(type) ? Instance(type).Base : null;
 
-    // Each Case's payload Types as one Tuple, by ordinal; null when a payload does not substitute.
-    internal static BoundType[]? CaseTypes(BoundType type) => IsEnum(type) ? Instance(type).Cases : null;
+    // An enum's Cases by ordinal, each its payload Types as one Tuple, never null for an enum (DECISIONS BU-37); a Case whose payload does
+    // not substitute, or a Case form without a name, is null, as a Field is, a part Binding rejected, which its readers take as they take a
+    // null Field. Null for any other Type.
+    internal static BoundType?[]? CaseTypes(BoundType type) => IsEnum(type) ? Instance(type).Cases : null;
 
     internal static int Count(BoundType type) => Struct(type)?.Fields.Length ?? 0;
 
@@ -188,7 +190,8 @@ internal sealed class AdtDef
 
         internal BoundType?[] Fields { get; set; } = [];
 
-        internal BoundType[]? Cases { get; set; }
+        // An enum's Case payload Tuples by ordinal, null where one did not form (CaseTypes); empty for a struct.
+        internal BoundType?[] Cases { get; set; } = [];
 
         // The pass that substituted these Types; not current otherwise.
         internal ulong Version { get; set; }

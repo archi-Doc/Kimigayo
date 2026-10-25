@@ -266,6 +266,20 @@ public partial class LayoutTest
         Assert.Equal(new Layout.Result(Layout.Outcome.Rejected, null, expected, false), c.Layout.Of(type));
     }
 
+    [Theory]
+    [InlineData("enum E\n    A(Missing)\n    B(i32)\n", "Rejected")]
+    [InlineData("enum E\n    A(Missing)\n    B([9223372036854775807 of i64])\n", "Oversized")]
+    [InlineData("enum E\n    A(Missing)\n    B([2147483648 of u8])\n", "CountLimit")]
+    [InlineData("struct E\n    var a: Missing\n    var b: [9223372036854775807 of i64]\n", "Oversized")]
+    public void ARejectedCaseYieldsToAnotherCasesOutcome(string source, string outcome)
+    {
+        // R5-M52, DECISIONS BU-37 (G242): an enum's Case whose payload Binding did not substitute is a part Layout does not place, as a
+        // struct's Field is, so another Case's Oversized or limit takes precedence over Rejected (fail-before: the enum Rejected at once).
+        var c = CompilationTestHelper.Parse(source + "let y = 1");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(outcome, c.Layout.Of(Declared(c, "E")).Outcome.ToString());
+    }
+
     [Fact]
     public void AnUnresolvedBaseIsLaidOutWithoutIt()
     {
@@ -534,6 +548,19 @@ public partial class LayoutTest
         Assert.Equal(("{ [0 x i8], [0 x i8] }", 0, 1, 0, "{ [0 x i8], [0 x i8] }", "ptr"), Row(value));
         Assert.Equal(0, value.Layout.FieldOffsets.Length);
         Assert.Same(value, new AggregateLayoutPool(c.Layout).Get(loan)!.Value);
+    }
+
+    // SPEC 22.2 (DECISIONS R5-M121): borrowStorageUniq over a UniqSlice runs the Array's BorrowStorage helper, which reads the buffer and the
+    // length at an Array handle's words 0 and 8: a UniqSlice's storage and length lie there, its Loan zero-sized.
+    [Fact]
+    public void AUniqSlicesStorageAndLengthLieAtTheArrayHandlesWords()
+    {
+        var c = MirBuildTest.Compile("func f(values: uniq/Array<i64>) -> i64\n    var view = values.sliceUniq()\n    return view[0]\n");
+        var slice = c.BuildMir().Bodies.ToArray().SelectMany(static x => x.Locals.ToArray()).Select(static x => x.Type)
+            .First(x => x.Symbol?.LibraryDeclaration == KimiDeclarationId.UniqSlice && !x.ContainsParameter);
+        var value = c.Layout.Of(slice).Value!;
+        Assert.Equal([0, 8], value.Layout.FieldOffsets.ToArray()[..2]);
+        Assert.Equal(16, value.Layout.Size);
     }
 
     [Fact]

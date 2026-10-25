@@ -1,0 +1,20 @@
+struct Noisy
+    public let name: i32
+    public init(name: i32) => self.name = name
+    public func make(self, n: i32) -> Noisy => Noisy.init(n)
+    public computed twin: Noisy
+        get() -> Noisy => Noisy.init(2)
+    drop
+        match self.name
+            1 => Console.writeLine("one")
+            2 => Console.writeLine("two")
+            3 => Console.writeLine("three")
+            _ => Console.writeLine("four")
+func pass(a: ref/Noisy) -> Noisy => Noisy.init(2)
+func keysT(t: (Noisy, Noisy)) => ()
+func ft() -> Option<i32>
+    let n: Option<i32> = .None
+    keysT((pass(Noisy.init(1)), Noisy.init(try n)))
+    return .Some(0)
+_ = ft()
+Console.writeLine("end")

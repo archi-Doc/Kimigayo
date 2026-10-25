@@ -27,6 +27,9 @@ public sealed partial class FunctionCodegenTest
     private const string ForLoop =
         "func f(values: ref/Array<i32>) -> i32\n    var total: i32 = 0\n    for value in values\n        total = 1\n    return total\n";
 
+    private const string DictionaryLoop =
+        "func f(values: ref/Dictionary<i32, i32>) -> i32\n    var total: i32 = 0\n    for entry in values\n        total = 1\n    return total\n";
+
     private const string Strings =
         "func show(text: ref/string) => Console.writeLine(text)\nfunc greeting() -> string => \"Hi\"\nfunc nothing(flag: bool) -> string => \"\"\n";
 
@@ -1270,10 +1273,10 @@ public sealed partial class FunctionCodegenTest
     // (DECISIONS R5-M65), which the diagnostics could not order when each was keyed by its node. A static's initializer is written since
     // C7b (DECISIONS R5-M106), a constant one folded into its slot. The operator rows (DECISIONS R5-M76) leave checked 128-bit arithmetic to ModuleCodegen's wide overflow declarations and
     // have a raw pointer column since C8a (R5-M92), which writes null too; an erasure is written since C5b (DECISIONS R5-M104), into any
-    // target since C5c (R5-M108); an intrinsic of a later unit is its row's (an Array's capacity, C8d), at its call; the place writer (DECISIONS R5-M83)
+    // target since C5c (R5-M108); an Array's capacity and an Array from none since C8d (R5-M121); the place writer (DECISIONS R5-M83)
     // reads an object borrow's payload since C6a (R5-M110); the rvalue rows (DECISIONS R5-M87) write a Tuple aggregate
-    // and a zero-sized local's address and leave a Dictionary's length to C8e, at the member, and an Array from none to C8d, at the
-    // literal. K11: an Application's function nothing calls is not generated, so its form records nothing; a Library generates it.
+    // and a zero-sized local's address and leave a Dictionary's length to C8e, at the member, and a Dictionary from none, at the literal,
+    // and its iteration's storage, at its for loop. K11: an Application's function nothing calls is not generated, so its form records nothing; a Library generates it.
     [Theory]
     [InlineData("func twice(a: i128) -> i128 => a + a\n", OutputKind.Library, new[] { "a + a" })]
     [InlineData("func twice(a: i128) -> i128 => a + a\n()", OutputKind.Application, new string[0])]
@@ -1281,11 +1284,12 @@ public sealed partial class FunctionCodegenTest
     [InlineData("func id(x: i32) -> i32 => x\nfunc get() -> (i32) -> i32 => id\n", OutputKind.Library, new string[0])]
     [InlineData("func none() -> usize => null@raw/i32@usize\n", OutputKind.Library, new string[0])]
     [InlineData("func same(p: raw/i32, q: raw/i32) -> bool => p == q\n", OutputKind.Library, new string[0])]
-    [InlineData("func room(a: ref/Array<i32>) -> isize => a.capacity\n", OutputKind.Library, new[] { "a.capacity" })]
+    [InlineData("func room(a: ref/Array<i32>) -> isize => a.capacity\n", OutputKind.Library, new string[0])]
     [InlineData("let t = (1, 2)\n", OutputKind.Application, new string[0])]
     [InlineData("let u = ()\nlet r = u@ref\n", OutputKind.Application, new string[0])]
     [InlineData("func count(d: ref/Dictionary<i32, i32>) -> isize => d.length\n", OutputKind.Library, new[] { "d.length" })]
-    [InlineData("func make() -> Array<i32> => []\n", OutputKind.Library, new[] { "[]" })]
+    [InlineData("func make() -> Array<i32> => []\n", OutputKind.Library, new string[0])]
+    [InlineData("func make() -> Dictionary<i32, i32> => [:]\n", OutputKind.Library, new[] { "[:]" })]
     [InlineData("struct Item\n    public var id: i32 = 7\nfunc take(v: objref/Item) -> i32 => v.id\n", OutputKind.Library, new string[0])]
     [InlineData("func twice(a: Wrapping<i128>) -> Wrapping<i128> => a + a\n", OutputKind.Library, new string[0])]
     [InlineData("func twice(a: i32) -> i32 => a\nlet x = twice(1)\n", OutputKind.Application, new string[0])]
@@ -1308,7 +1312,8 @@ public sealed partial class FunctionCodegenTest
         new[] { "w.reserve(4)" })]
     [InlineData("func show(text: Text.Utf8Slice) => Console.writeLine(text)\n", OutputKind.Library, new[] { "Console.writeLine(text)" })]
     [InlineData("func show(x: i32) -> string => Text.toString(x)\n", OutputKind.Library, new[] { "Text.toString(x)" })]
-    [InlineData(ForLoop, OutputKind.Library, new[] { "for value in values\n        total = 1" })]
+    [InlineData(ForLoop, OutputKind.Library, new string[0])]
+    [InlineData(DictionaryLoop, OutputKind.Library, new[] { "for entry in values\n        total = 1" })]
     [InlineData("group Registry\n    public let limit: i32 = 4\n", OutputKind.Library, new string[0])]
     [InlineData("func twice(a: i32) -> i32 => a\n", OutputKind.Library, new string[0])]
     [InlineData(Signatures, OutputKind.Library, new string[0])]
@@ -1352,6 +1357,9 @@ public sealed partial class FunctionCodegenTest
     [InlineData(Objects, OutputKind.Library)]
     [InlineData(Releases, OutputKind.Library)]
     [InlineData(Virtuals, OutputKind.Library)]
+    [InlineData(Updates, OutputKind.Library)]
+    [InlineData(Comparisons, OutputKind.Library)]
+    [InlineData(Arrays, OutputKind.Library)]
     public void GenerationIsDeterministic(string source, OutputKind output)
     {
         var first = Generate(Analyze(source, output));
@@ -1450,6 +1458,9 @@ public sealed partial class FunctionCodegenTest
     [InlineData(Objects, OutputKind.Library)]
     [InlineData(Releases, OutputKind.Library)]
     [InlineData(Virtuals, OutputKind.Library)]
+    [InlineData(Updates, OutputKind.Library)]
+    [InlineData(Comparisons, OutputKind.Library)]
+    [InlineData(Arrays, OutputKind.Library)]
     public void WarmGenerationAllocatesNothing(string source, OutputKind output)
     {
         var c = Analyze(source, output);

@@ -1,0 +1,5 @@
+struct Holder<s/T> {a}
+    s is uniq
+    public let item: s/T during a
+func g(r: uniq/i32) -> Holder<uniq/i32 during r> during static => $abort("unused")
+Console.writeLine("ok")

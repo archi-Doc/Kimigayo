@@ -7,17 +7,16 @@ namespace Kimi.Compiler.Backend;
 
 // The rvalues of FunctionCodegen (R5 package C 3.2, plan C2b; DECISIONS R5-M78, R5-M83, R5-M87), each computed from its operands, then put
 // into its Place through the place writer (SPEC 13.7.1): a Use, a Ref, a Discriminant, a Len and an Adapt; the aggregates are in
-// FunctionCodegen.Aggregates.cs, an Adapt's object creation in FunctionCodegen.Objects. Rows not written yet: a Dictionary's (C8e) and a
-// string's (C8c) Len.
+// FunctionCodegen.Aggregates.cs, an Adapt's object creation in FunctionCodegen.Objects. Rows not written yet: a Dictionary's Len (C8e); a
+// string has none (Binding's sequence members take no string, SPEC 4.7).
 internal sealed partial class FunctionCodegen
 {
     // A Use: its operand put into the Place in its representation (a value in memory copied; nothing for a zero-sized Place); a string
-    // constant written whole.
+    // constant, which has nothing to evaluate, written whole once its Place is located.
     private void Use(in MirStatement statement)
     {
         var operand = this.body.Operands[statement.Rvalue.Start];
-        if (operand.Kind == MirOperandKind.Const && this.body.Consts[operand.Arg] is { Kind: MirConstKind.String, Value: string text } &&
-            ReferenceEquals(this.InstanceType(statement.Place), BoundType.String))
+        if (this.TextOf(operand) is { } text)
         {
             if (this.Destination(statement, out var address))
             {
@@ -67,7 +66,7 @@ internal sealed partial class FunctionCodegen
     }
 
     // A Len (SPEC 4.7.3): the length of a fixed array, Array or Slice Place (Length), its Place located first, so an Index on its path
-    // checks its bounds. A Dictionary's count (its DictionaryStorage length word) is C8e's row; a string's has no Len row yet (C8c).
+    // checks its bounds. A Dictionary's count (its DictionaryStorage length word) is C8e's row; a string has no Len (no MIR producer).
     private void Len(in MirStatement statement)
     {
         var place = statement.Rvalue.Place;

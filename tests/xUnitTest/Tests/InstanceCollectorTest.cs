@@ -490,7 +490,7 @@ public sealed class InstanceCollectorTest
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal(items, set.Items.ToArray().Count(x => Label(program, x).StartsWith("Fn " + nested + " [", StringComparison.Ordinal)));
         Assert.Equal(refused is null ? [] : [(DiagnosticCode.Unsupported_Kd, refused)], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
-        Assert.All(set.Items.ToArray(), x => Assert.True(x.Representative is null || Closes(c.Types, program.Bodies[x.BodyOrdinal], x.Representative), Label(program, x)));
+        Assert.All(set.Items.ToArray(), x => Assert.True(Closed(c, program, x), Label(program, x)));
     }
 
     // K 4.5 rows 5, 11 and 12, DECISIONS R5-M43: a Closure of an instance is an instance of its body under the instance's substitution,
@@ -515,9 +515,7 @@ public sealed class InstanceCollectorTest
             ["Fn pick [i32]", "Fn apply [i32]", "Fn apply [bool]", "Fn make [i32]", "Fn pick [i32]", "Fn one [bool]", "Fn run [function item one<bool>]"],
             Targets(program, set, "Fn top"));
         Assert.Equal(["Fn one [bool]"], Targets(program, set, "Fn run [function item one<bool>]"));
-        Assert.All(
-            set.Items.ToArray(),
-            x => Assert.True(x.Representative is null || Closes(c.Types, program.Bodies[x.BodyOrdinal], x.Representative), Label(program, x)));
+        Assert.All(set.Items.ToArray(), x => Assert.True(Closed(c, program, x), Label(program, x)));
     }
 
     // K 4.5 row 13: an erasure of a Closure or function item to its Function Type is its ClosureErasure or ItemAdapter item, keyed by the
@@ -620,6 +618,85 @@ public sealed class InstanceCollectorTest
         var boxes = Enumerable.Range(0, set.Items.Length).Select(x => Label(program, set.Items[x])).Where(static x => x.StartsWith("Fn box", StringComparison.Ordinal));
         Assert.Equal([0, 1, 1], boxes.Select(x => Calls(program, set, x).Count(static y => y == "ObjectDescriptor i32")));
         Assert.Single(set.Items.ToArray(), x => Label(program, x) == "ObjectDescriptor i32");
+    }
+
+    // SPEC 15.7.1, 4.9.6 (DECISIONS R5-M116): replace destroys its target's old value in place, Binding's published row, so its call
+    // targets the glue of that Type when it may need a drop, as its Item's Value call and its adapter do; an i32 needs none, and exchange
+    // and swap destroy nothing.
+    [Fact]
+    public void AReplaceTargetsTheGlueOfTheValueItDestroysInPlace()
+    {
+        var (program, set) = Collect("struct Res\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n" +
+            "func r(t: uniq/Res, v: Res) => Kimi.Intrinsics.replace(t, with: v@move)\nfunc n(t: uniq/i32) => Kimi.Intrinsics.replace(t, with: 2)\n" +
+            "func e(t: uniq/Res, v: Res) -> Res => Kimi.Intrinsics.exchange(t, with: v@move)\n" +
+            "func s(a: uniq/Res, b: uniq/Res) => Kimi.Intrinsics.swap(a, b)\n" +
+            "func v(t: uniq/Res, w: Res)\n    let f = Kimi.Intrinsics.replace<Res>\n    f(t, w@move)\n" +
+            "func a() -> (uniq/Res, Res) -> () => Kimi.Intrinsics.replace\n");
+        Assert.Empty(set.Records);
+        Assert.Equal(["DropGlue Res"], AtCalls(program, set, "Fn r"));
+        Assert.Equal([string.Empty], AtCalls(program, set, "Fn n"));
+        Assert.Equal([string.Empty], AtCalls(program, set, "Fn e"));
+        Assert.Equal([string.Empty], AtCalls(program, set, "Fn s"));
+        Assert.Equal(["DropGlue Res"], AtCalls(program, set, "Fn v"));
+        var adapter = Assert.Single(Enumerable.Range(0, set.Items.Length), x => set.Items[x].Key.Kind == MonoKind.ItemAdapter);
+        Assert.Equal(["DropGlue Res"], set.Targets(adapter).ToArray().Select(x => Label(program, set.Items[x.Item])));
+    }
+
+    // K 4.3, 4.5 row 2, X4 (DECISIONS R5-M121): a call of an Array operation targets the LegacyRow item of its function's instance, keyed by
+    // the function and the erased substitution and represented by the collection, as its Item's Value call and its adapter do; its targets
+    // are its row's declared needs: clear's the glue of an element that may need a drop, none over i32; an Array<isize> is another
+    // instance; setArrayLength, written in place, has none.
+    [Fact]
+    public void AnArrayOperationIsItsFunctionInstancesLegacyRow()
+    {
+        var (program, set) = Collect("struct Res\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n" +
+            "func p(values: uniq/Array<i32>) => values.append(1)\nfunc w(values: uniq/Array<isize>) => values.append(1)\n" +
+            "func c(values: uniq/Array<Res>) => values.clear()\nfunc n(values: uniq/Array<i32>) => values.clear()\n" +
+            "func v(values: uniq/Array<i32>)\n    let f = Array<i32>.reserve\n    f(values, 2)\n" +
+            "func a() -> (uniq/Array<Res>) -> () => Array<Res>.clear\n");
+        Assert.Empty(set.Records);
+        Assert.Equal(["LegacyRow Array<i32> ArrayAppend"], AtCalls(program, set, "Fn p"));
+        Assert.Equal(["LegacyRow Array<isize> ArrayAppend"], AtCalls(program, set, "Fn w"));
+        Assert.Equal(["LegacyRow Array<Res> ArrayClear"], AtCalls(program, set, "Fn c"));
+        Assert.All(RowTargets(program, set, "LegacyRow Array<Res> ArrayClear"), static x => Assert.Equal(["DropGlue Res"], x));
+        Assert.Empty(Targets(program, set, "LegacyRow Array<i32> ArrayClear"));
+        Assert.Equal(["LegacyRow Array<i32> ArrayReserve"], AtCalls(program, set, "Fn v").Where(static x => x.Length != 0));
+        Assert.Empty(Targets(program, set, "LegacyRow Array<i32> ArrayReserve"));
+        var adapter = Assert.Single(Enumerable.Range(0, set.Items.Length), x => set.Items[x].Key.Kind == MonoKind.ItemAdapter);
+        Assert.Equal(["LegacyRow Array<Res> ArrayClear"], set.Targets(adapter).ToArray().Select(x => Label(program, set.Items[x.Item])));
+        Assert.All(set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.LegacyRow), static x => Assert.Equal(-1, x.BodyOrdinal));
+    }
+
+    // G157 (6), X4 (DECISIONS R5-M95, R5-M121): the Array rows that declare ElementGlue, clear's item and an Array's glue (its Drop row), target
+    // exactly the glue of their collection's Element parts that may need a drop, as DropGlue.Parts enumerates them.
+    [Theory]
+    [InlineData("Res", new[] { "DropGlue Res" })]
+    [InlineData("string", new[] { "DropGlue string" })]
+    [InlineData("i32", new string[0])]
+    public void TheRowsDeclaringElementGlueTargetTheirElementPartsGlue(string element, string[] glue)
+    {
+        var (program, set) = Collect("struct Res\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n" +
+            $"func c(values: uniq/Array<{element}>) => values.clear()\nfunc d(values: Array<{element}>) => ()\n");
+        Assert.Empty(set.Records);
+        Assert.Equal(glue, Assert.Single(RowTargets(program, set, $"LegacyRow Array<{element}> ArrayClear")));
+        Assert.Equal(glue, Targets(program, set, $"DropGlue Array<{element}>"));
+        Assert.True((LegacyRuntimeHelpers.ArrayRow(ArrayHelperKind.Clear).Needs & HelperNeeds.ElementGlue) != 0);
+        Assert.True((LegacyRuntimeHelpers.ArrayRow(ArrayHelperKind.Drop).Needs & HelperNeeds.ElementGlue) != 0);
+    }
+
+    // K 4.8, X34 (DECISIONS R5-M121): a LegacyRow item lays out its collection's element, as the Array's glue does: an element whose layout is
+    // oversized (OversizedLayout_Kd), rejected (InvalidCLayout_Kd) or over a limit (the erased Type's one GenerationResourceLimit_Kd) is the
+    // record at the call and no item; the row itself admits (the counterpart, AnArrayOperationIsItsFunctionInstancesLegacyRow).
+    [Theory]
+    [InlineData(Huge, "OversizedLayout_Kd values.clear()")]
+    [InlineData("P<()>", "InvalidCLayout_Kd values.clear()")]
+    [InlineData("[2147483648 of u8]", "GenerationResourceLimit_Kd values.clear()")]
+    public void ALegacyRowLaysOutItsElement(string element, string records)
+    {
+        var c = MirBuildTest.Compile(CLayoutP + $"func c(values: uniq/Array<{element}>) => values.clear()\n");
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        Assert.Equal(records, string.Join("|", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
+        Assert.DoesNotContain(set.Items.ToArray(), static x => x.Key.Kind == MonoKind.LegacyRow);
     }
 
     // SPEC 13.6.4, 8.15.3 (DECISIONS R5-M74): a runtime Type test and a clone acquire nothing and need no layout, so neither has a target:
@@ -808,7 +885,12 @@ public sealed class InstanceCollectorTest
         var program = c.BuildMir();
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Empty(set.Records);
-        Assert.Equal(["PropertyWitness Bag StorageSet", "DropGlue Array<i32>", "PropertyWitness Bag StorageBorrow"], Targets(program, set, "Fn refill [Bag]"));
+        Assert.Equal(
+            [
+                "LegacyRow Array<i32> ArrayReserve", "LegacyRow Array<i32> ArrayAppend", "LegacyRow Array<i32> ArrayAppend", "PropertyWitness Bag StorageSet",
+                "DropGlue Array<i32>", "PropertyWitness Bag StorageBorrow",
+            ],
+            Targets(program, set, "Fn refill [Bag]")); // `[1, 2]` reserves, then appends twice (DECISIONS R5-M121).
         Assert.Equal(["DropGlue Array<i32>"], Targets(program, set, "PropertyWitness Bag StorageSet"));
         Assert.Empty(Targets(program, set, "PropertyWitness Bag StorageBorrow"));
         Assert.All(set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.PropertyWitness), static x => Assert.Equal("items", x.Key.Symbol!.Name));
@@ -1425,6 +1507,19 @@ public sealed class InstanceCollectorTest
         Assert.Equal(records, string.Join("|", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
     }
 
+    // IMPL 21.1.1, SPEC 23.1.2 (G242; DECISIONS R5-M52, BU-37): an oversized Case beside a Case whose payload Binding did not bind is the
+    // use's OversizedLayout_Kd, as in its repair: it rests on the oversized Case alone (fail-before: no record, the enum Rejected).
+    [Theory]
+    [InlineData("Missing")]
+    [InlineData("i32")]
+    public void AnOversizedCaseBesideAFailedOneIsARecord(string payload)
+    {
+        var c = MirBuildTest.Compile("enum E\n    A(" + payload + ")\n    B(" + Huge + ")\nfunc h(e: E) => ()\n");
+        Assert.Equal(payload == "i32", c.Binding.Result.IsComplete);
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        Assert.Equal("OversizedLayout_Kd func h(e: E) => ()", string.Join("|", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
+    }
+
     // SPEC 8.15.3, DECISIONS R5-M52: a Type formed only behind a borrow or a raw pointer, or by a struct nothing uses by value, is no use.
     [Theory]
     [InlineData("func r(value: ref/(" + Big + ", u8)) => ()\n")]
@@ -1487,20 +1582,29 @@ public sealed class InstanceCollectorTest
     }
 
     // K 4.9 with a second, non-root module: a record caused in its inlined default moves to the root module's omitting call, and one caused
-    // in its body to the root-module call that first admitted the chain.
+    // in its body to the root-module call that first admitted the chain. take's default, grow<u8>(1, 3), instantiates under the call, so
+    // the builder copies it (DECISIONS R4-M127) with no record of its own, and its resource limit arises inside the copy, at its call in
+    // main's Inlined scope at the library's location; a default its call does not instantiate is no copy, but the builder's Unsupported_Kd at
+    // the call (MirBuildTest.ACopyTheCallDoesNotInstantiateIsAnOpaqueValue, this test's former probe<Array<…65…>> default).
     [Fact]
     public void TheLocationRuleLeavesNonRootModules()
     {
-        var deep = string.Concat(Enumerable.Repeat("Array<", 65)) + "i32" + new string('>', 65);
         var library = "public struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\npublic group Api\n" +
-            $"    public func probe<T>(value: T) -> i32 => 0\n    public func take(x: i32, extra: i32 = probe<{deep}>([])) -> i32 => x + extra\n" +
+            "    public func take(x: i32, extra: i32 = grow<u8>(1, 3)) -> i32 => x + extra\n" +
             "    public func grow<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => grow<Box<T>>(Box<T>.init(value@move), n - 1)\n";
         var c = ModuleBindingTest.Create("public func main() -> ()\n    _ = Lib.Api.take(1)\n    _ = Lib.Api.grow<i32>(1, 3)\n    return\n", library);
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        var program = c.BuildMir();
+        Assert.Empty(program.Records);
+        var main = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "main" });
+        Assert.Contains(
+            main.Blocks.ToArray(),
+            x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "grow", Source.Syntax.Module: 1 } &&
+                main.Scopes[x.Terminator.Source.Scope].Kind == MirScopeKind.Inlined);
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal(
-            [(DiagnosticCode.Unsupported_Kd, "Lib.Api.take(1)"), (DiagnosticCode.GenerationResourceLimit_Kd, "Lib.Api.grow<i32>(1, 3)")],
+            [(DiagnosticCode.GenerationResourceLimit_Kd, "Lib.Api.take(1)"), (DiagnosticCode.GenerationResourceLimit_Kd, "Lib.Api.grow<i32>(1, 3)")],
             set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
         Assert.All(set.Records, static x => Assert.Equal(0, x.Subject.Module));
     }
@@ -1654,9 +1758,39 @@ public sealed class InstanceCollectorTest
     private static string[] Targets(MirProgram program, CheckedSet set, string label)
         => set.Targets(Item(program, set, label)).ToArray().Select(x => Label(program, set.Items[x.Item]) + (x.Runtime ? string.Empty : " (check)")).ToArray();
 
+    // The targets at each call site of an item's body whose callee is a compiler function or a value, joined (empty: none).
+    private static string[] AtCalls(MirProgram program, CheckedSet set, string label)
+    {
+        var item = Item(program, set, label);
+        var body = program.Bodies[set.Items[item].BodyOrdinal];
+        var sites = new List<string>();
+        for (var b = 0; b < body.Blocks.Length; b++)
+        {
+            if (body.Blocks[b].Terminator is { Kind: MirTerminatorKind.Call } call &&
+                (call.Callee.Kind == MirCalleeKind.Value || call.Callee.Symbol?.CompilerFunction is not (null or CompilerFunctionKind.None)))
+            {
+                var at = new MirLocation(b, body.Blocks[b].Count);
+                sites.Add(string.Join(", ", set.Targets(item).ToArray().Where(x => x.At == at).Select(x => Label(program, set.Items[x.Item]))));
+            }
+        }
+
+        return [.. sites];
+    }
+
+    // The targets of each item of a label: a function instance its call and its Item reach with erased substitutions of different input-Origin
+    // counts has two LegacyRow items (DECISIONS R5-M121).
+    private static string[][] RowTargets(MirProgram program, CheckedSet set, string label)
+        => [.. Enumerable.Range(0, set.Items.Length).Where(x => Label(program, set.Items[x]) == label)
+            .Select(x => set.Targets(x).ToArray().Select(y => Label(program, set.Items[y.Item])).ToArray())];
+
     // An item's targets but the glue of the values its body drops.
     private static string[] Calls(MirProgram program, CheckedSet set, string label)
         => Targets(program, set, label).Where(static x => !x.StartsWith("DropGlue ", StringComparison.Ordinal)).ToArray();
+
+    // Whether an item's representative closes its body (Closes), a body item's being the one that has a body (BodyOrdinal; a LegacyRow item's
+    // representative has none, DECISIONS R5-M121).
+    private static bool Closed(Compilation c, MirProgram program, in MonoItem item)
+        => item.Representative is not { } representative || item.BodyOrdinal < 0 || Closes(c.Types, program.Bodies[item.BodyOrdinal], representative);
 
     // A body's kind and definition, a closure by the named function enclosing it, a module's top-level statements as top, a library body with
     // the declaration it is in, an instance with its representative's declaring Type and Type arguments; a type-driven item's kind and Type.
@@ -1668,6 +1802,7 @@ public sealed class InstanceCollectorTest
             {
                 MonoKind.Builtin => " " + item.Key.Symbol!.CompilerFunction,
                 MonoKind.PropertyWitness => " " + (PropertyWitnessKind)item.Key.Variant,
+                MonoKind.LegacyRow => " " + item.Key.Body.Def.Decl!.CompilerFunction,
                 _ => string.Empty,
             };
             return $"{item.Key.Kind} {TyCtxt.Name(item.RepresentativeType!)}{variant}";
@@ -1719,7 +1854,7 @@ public sealed class InstanceCollectorTest
 
         if (AdtDef.IsEnum(type))
         {
-            return AdtDef.CaseTypes(type)![part.Ordinal].Components[part.Index];
+            return AdtDef.CaseTypes(type)![part.Ordinal]!.Components[part.Index];
         }
 
         if (!AdtDef.IsStruct(type))

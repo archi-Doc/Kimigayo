@@ -83,31 +83,34 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 7.2.3: the pending slot of an explicit argument of a call that omits defaults, of its parameter's Type, which takes the argument
-    // (Pending) where its acquisition did not form it there.
-    private MirPlace Slot(BoundType? type, Koto node) => this.Temp(type ?? TypeOf(node), node, MirLocalRole.PendingSlot);
+    // (Pending) where its acquisition did not form it there, its value made there (SPEC 3.6, 16.2.1; DECISIONS R4-M129).
+    private MirPlace Slot(BoundType? type, Koto node) => this.Hold(type ?? TypeOf(node), node, MirLocalRole.PendingSlot);
 
     private MirOperand Pending(MirPlace slot, in MirOperand operand, Koto node)
     {
         this.Use(slot, operand, node);
-        return MirOperand.Move(slot);
+        return MirOperand.Move(this.Made(slot));
     }
 
     // SPEC 7.2.3: the omitted defaults of a call, each into a pending slot of its parameter's Type in parameter order, from shared borrows
     // of the earlier parameters' slots (a copy, of those its template reads): a copy of its template, a call of a recursive template
-    // (every slot, its arguments), or an Opaque value reading those slots where
-    // its template failed (no record) or the copy would take the body past the limit (the call's Resource record). A default that does not
-    // complete reaches no later default and no callee at run time (SPEC 15.6.7); building goes on for the checks.
+    // (every slot, its arguments), or an Opaque value reading those slots where its template failed (no record), the copy would take the
+    // body past the limit (the call's Resource record) or the call's substitution does not instantiate it (Instantiates, decided before a
+    // copy is written: the call's Unsupported_Kd, SPEC 23.1.1, through Unsupported). A default that does not complete reaches no later
+    // default and no callee at run time (SPEC 15.6.7); building goes on for the checks.
     private void Defaults(CallPlan call, BindingSymbol function, Subst? subst, int start, Koto node)
     {
         foreach (ref readonly var omitted in call.DefaultArguments)
         {
             var decl = DefaultDecl.Of(omitted);
-            var slot = this.Temp(omitted.ParameterType, node, MirLocalRole.PendingSlot, omitted.Parameter.Name);
+            var slot = this.Hold(omitted.ParameterType, node, MirLocalRole.PendingSlot, omitted.Parameter.Name);
             var template = this.visited.TryGetValue(decl, out var index) ? this.omissions[index] : default;
             var limit = template is { Body: { } copy, Recursive: false } && this.body.Statements.Length + copy.Statements.Length > ExpansionLimit;
+            var unsupported = !limit && template is { Body: { } made, Recursive: false, Failed: false } && subst is not null &&
+                !this.Instantiates(made, subst);
             var at = this.arguments.Count;
             var completes = Completes(decl.Expression);
-            if (!template.Recursive && (template.Body is null || template.Failed || limit))
+            if (!template.Recursive && (template.Body is null || template.Failed || limit || unsupported))
             {
                 this.roots.Clear();
                 for (var i = 0; i < decl.Index; i++)
@@ -115,7 +118,15 @@ internal sealed partial class MirBuilder
                     this.roots.Add(this.arguments[start + MirCallee.Position(function, i)].Place.Root);
                 }
 
-                this.Site(node, slot, completes);
+                if (unsupported)
+                {
+                    this.Unsupported(node, slot, decl.Expression);
+                }
+                else
+                {
+                    this.Site(node, slot, completes);
+                }
+
                 if (limit)
                 {
                     this.program.Report(SourceRef.Of(node), DiagnosticCode.DefaultExpansionLimit_Kd);
@@ -139,7 +150,7 @@ internal sealed partial class MirBuilder
                 }
             }
 
-            this.arguments[start + MirCallee.Position(function, decl.Index)] = MirOperand.Move(slot);
+            this.arguments[start + MirCallee.Position(function, decl.Index)] = MirOperand.Move(this.Made(slot));
         }
     }
 

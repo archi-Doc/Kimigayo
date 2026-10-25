@@ -1,0 +1,6 @@
+func g(u: uniq/i32, k: i32 = Guard.init(u@follow@ref).get()) -> i32
+    u@follow = 5
+    return k
+func f2Guard() -> i32
+    var x: i32 = 1
+    return g(x@uniq)

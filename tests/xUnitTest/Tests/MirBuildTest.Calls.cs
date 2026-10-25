@@ -9,10 +9,43 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>The calls of the MIR build: reservations of exclusive inputs, evaluation order and operand reads, pair acquisitions, diverging
-/// arguments and Value callees.</summary>
+/// <summary>The calls of the MIR build: reservations of exclusive inputs, evaluation order and operand reads, the temporaries' destruction in
+/// reverse creation order, pair acquisitions, diverging arguments and Value callees.</summary>
 public sealed partial class MirBuildTest
 {
+    // Values with a destructor, their calls, method, getter, constructor and Contract operator (SPEC 3.6's temporaries).
+    private const string Temporaries = """
+        struct Noisy
+            public let name: i32
+            public computed twin: Noisy
+                get() -> Noisy => Noisy.init(2)
+            public init(name: i32) => self.name = name
+            public func make(self, n: i32) -> Noisy => Noisy.init(n)
+            public func bump(self: uniq/Self, other: ref/Noisy) -> Noisy => Noisy.init(4)
+            drop => ()
+        struct Echo
+            public let n: i32
+            public init(a: ref/Noisy) => self.n = a.name
+            drop => ()
+        struct Num
+            Self is Addable<Num>
+            associate Addable<Num>.Output is Num
+            public let v: i32
+            public init(v: i32) => self.v = v
+            public func added(self: ref/Self, right: ref/Num) -> Num => Num.init(4)
+            drop => ()
+        func pass(a: ref/Noisy) -> Noisy => Noisy.init(2)
+        func show(a: ref/Noisy) => ()
+        func see(e: ref/Echo) => ()
+        func sum(n: ref/Num) => ()
+        func pair(t: ref/(Noisy, i32)) => ()
+        func two(a: ref/Noisy, b: i32) => ()
+        func both(a: Noisy, b: i32, c: i32 = 0) => ()
+        func noisies(a: ref/Noisy) -> Array<Noisy> => [Noisy.init(2)]
+        func keys(d: ref/Dictionary<i32, Noisy>) => ()
+
+        """;
+
     // SPEC 15.6.7: every exclusive borrow that produces an invocation's argument or receiver is reserved (TwoPhaseUniq): a written @uniq,
     // also in parentheses, the Reborrow of a stored uniq at a uniq parameter and a synthesized receiver (an Array literal's reserve and
     // appends); a written @uniq on a receiver's path is not formed (DECISIONS R4-M52), so the receiver has one reservation, at its lending
@@ -247,6 +280,24 @@ public sealed partial class MirBuildTest
         Assert.True(program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f").HasOpaque);
     }
 
+    // SPEC 13.4, 23.1.2 (DECISIONS BU-38): a tuple operator whose leaf's storage rests on a part Binding rejected, inline or through a
+    // handle, has its comparison, since what the leaf's witness runs does not depend on that part: its leaf calls build, with no record of
+    // the builder's (fail-before: the Limit of the twin above, Unsupported_Kd at the operator).
+    [Theory]
+    [InlineData("struct Bad\n    Self is Equatable\n    public var m: Missing\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc f(a: ref/Bad, b: ref/Bad) -> bool => (a, 1) == (b, 1)\n")]
+    [InlineData("struct Bad\n    public var m: Missing\nstruct Sx\n    Self is Equatable\n    public var x: rc/Bad\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc f(a: ref/Sx, b: ref/Sx) -> bool => (a, 1) == (b, 1)\n")]
+    public void ATupleOperatorOverRejectedStorageBuildsItsLeaves(string source)
+    {
+        var c = Compile(source);
+        Assert.Equal(["UnresolvedBinding_Kd"], CompilationTestHelper.BindingErrors(c).Select(static x => x.Code));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records, static x => x.Subject.Module == 0);
+        var f = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        Assert.False(f.HasOpaque);
+        Assert.Contains(f.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "equals" });
+    }
+
     // SPEC 7.7.3, 15.6.4 (DECISIONS R4-M41): a Value callee names the Callable signature its callee declares, a TypeToken constant: the
     // Function Type with its own Origins, not the call's, whose result is bound to the argument.
     [Fact]
@@ -257,6 +308,120 @@ public sealed partial class MirBuildTest
         var signature = body.Consts[call.Terminator.Callee.Arg];
         Assert.Equal(MirConstKind.TypeToken, signature.Kind);
         Assert.Same(body.TypeOf(new MirPlace(1)), signature.Type);
+    }
+
+    // SPEC 3.6, 16.2.1, 7.2.3, 14.6.2 (DECISIONS R4-M129): a temporary is destroyed before every temporary created while it was evaluated
+    // (a call's result before its receiver's and arguments' temporaries, an aggregate before its operands', a Subject or iterator before its
+    // expression's, a pending slot before its argument's), on the normal end and on an exit that interrupts the statement: a cleanup chain
+    // after a Drop of the first drops the second, and none after a Drop of the second drops the first. A binding is destroyed by
+    // declaration, after its initializer's temporaries, and before an earlier binding initialized after it (fail-before: each temp's Drop
+    // registered where its storage began, so the second was destroyed first, but for the bindings).
+    [Theory]
+    [InlineData("show(pass(Noisy.init(1)))", "pass(Noisy.init(1))", "Noisy.init(1)")]
+    [InlineData("show(Noisy.init(1).make(2))", "Noisy.init(1).make(2)", "Noisy.init(1)")]
+    [InlineData("show(pass(Noisy.init(1)).bump(Noisy.init(3)))", "pass(Noisy.init(1)).bump(Noisy.init(3))", "pass(Noisy.init(1))")]
+    [InlineData("show(Noisy.init(1).twin)", "Noisy.init(1).twin", "Noisy.init(1)")]
+    [InlineData("see(Echo.init(Noisy.init(1)))", "Echo.init(Noisy.init(1))", "Noisy.init(1)")]
+    [InlineData("sum(Num.init(1) + Num.init(3))", "Num.init(1) + Num.init(3)", "Num.init(3)")]
+    [InlineData("pair((pass(Noisy.init(1)), 5))", "(pass(Noisy.init(1)), 5)", "Noisy.init(1)")]
+    [InlineData("show(pass(pass(Noisy.init(1))))", "pass(pass(Noisy.init(1)))", "pass(Noisy.init(1))")]
+    [InlineData("_ = pass(Noisy.init(1))", "pass(Noisy.init(1))", "Noisy.init(1)")]
+    [InlineData("pass(Noisy.init(1))", "pass(Noisy.init(1))", "Noisy.init(1)")]
+    [InlineData("match pass(Noisy.init(1))\n        _ => ()", "pass(Noisy.init(1))", "Noisy.init(1)")]
+    [InlineData("for x in noisies(Noisy.init(1))@ref => ()", "noisies(Noisy.init(1))", "Noisy.init(1)")]
+    [InlineData("for x in noisies(Noisy.init(1)) => ()", "ArrayOwningIterator<Noisy>", "Noisy.init(1)")]
+    [InlineData("two(pass(Noisy.init(1)), try n)", "pass(Noisy.init(1))", "Noisy.init(1)")]
+    [InlineData("both(pass(Noisy.init(1)), try n)", "pass(Noisy.init(1))", "Noisy.init(1)")]
+    [InlineData("let kept = pass(Noisy.init(1))", "Noisy.init(1)", "kept")]
+    [InlineData("let a: Noisy\n    let b = Noisy.init(2)\n    a = Noisy.init(1)", "b", "a")]
+    public void ATemporaryIsDestroyedBeforeTheTemporariesOfItsEvaluation(string statement, string first, string then)
+    {
+        var (c, body) = Temporaried(statement);
+        var (a, b) = (Dropped(c, body, first), Dropped(c, body, then));
+        Assert.True(Precedes(body, a, b));
+        Assert.False(Precedes(body, b, a));
+    }
+
+    // SPEC 14.2.1, 16.2.2 step 3 (DECISIONS R4-M129): an if clause's body is its own Body, as a match arm's is, so the temporaries of its
+    // result end with it, before the call that takes the if's value (fail-before: they were the enclosing statement's, destroyed after the
+    // call).
+    [Fact]
+    public void AnIfClausesTemporariesEndWithIt()
+    {
+        var (c, body) = Temporaried("show(if true => pass(Noisy.init(1)) else => Noisy.init(3))");
+        var blocks = body.Blocks.ToArray();
+        var argument = Dropped(c, body, "Noisy.init(1)");
+        var all = Enumerable.Range(0, blocks.Length);
+        var drop = Assert.Single(all, x => blocks[x].Terminator is { Kind: MirTerminatorKind.Drop } d && d.Place.Root == argument);
+        var call = Assert.Single(all, x => blocks[x].Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "show" });
+        Assert.True(Reaches(body, drop, call));
+        Assert.False(Reaches(body, call, drop));
+    }
+
+    // SPEC 12.4.3, 16.2.1, 3.6 (DECISIONS R4-M129): a dictionary literal places its entries in a value of its own, which an exit from an
+    // entry destroys after the temporaries created since, and moves it to the literal's value after the last entry, where that is created,
+    // so it is destroyed before its entries' temporaries (fail-before: the entries placed in the literal's value, held before them).
+    [Fact]
+    public void ADictionaryLiteralsEntriesArePlacedInAValueOfItsOwn()
+    {
+        var (c, body) = Temporaried("keys([1: pass(Noisy.init(1)), 2: Noisy.init(try n)])");
+        var moved = Assert.Single(
+            body.Statements.ToArray(),
+            x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use } && TyCtxt.Name(body.TypeOf(x.Place)!) == "Dictionary<i32, Noisy>");
+        var (literal, entries, argument) = (moved.Place.Root, body.Operands[moved.Rvalue.Start].Place.Root, Dropped(c, body, "Noisy.init(1)"));
+        Assert.True(Precedes(body, literal, argument));
+        Assert.False(Precedes(body, argument, literal));
+        Assert.True(Precedes(body, argument, entries));
+    }
+
+    // A function f of the temporaries' program that runs a statement, built without validator findings.
+    private static (Compilation C, MirBody Body) Temporaried(string statement)
+    {
+        var c = Compile(Temporaries + "func f(n: Option<i32>) -> Option<i32>\n    " + statement + "\n    return .Some(0)\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        return (c, program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f"));
+    }
+
+    // The one local a key names among those a body drops whole: a binding by its name, else a temp by its syntax or its Type.
+    private static int Dropped(Compilation c, MirBody body, string key)
+    {
+        var dropped = body.Blocks.ToArray().Where(static x => x.Terminator is { Kind: MirTerminatorKind.Drop, Place.Projection: 0 })
+            .Select(static x => x.Terminator.Place.Root).Distinct().ToArray();
+        return dropped.Any(x => body.Locals[x].Name == key) ? Assert.Single(dropped, x => body.Locals[x].Name == key)
+            : Assert.Single(dropped, x => TyCtxt.Name(body.Locals[x].Type) == key || c.SyntaxOf(body.Locals[x].Source.Syntax).ToString() == key);
+    }
+
+    // Whether a body drops a local and, in the cleanup chain after some Drop of it (along Drops and Gotos), another; an assignment's Drop
+    // of the old value, which the new value's write follows, starts no chain (SPEC 13.7.1).
+    private static bool Precedes(MirBody body, int first, int then)
+    {
+        var blocks = body.Blocks.ToArray();
+        foreach (var start in blocks.Where(x => x.Terminator is { Kind: MirTerminatorKind.Drop } drop && drop.Place.Root == first &&
+            (body.Statements.Slice(blocks[drop.Target].Start, blocks[drop.Target].Count).ToArray() is not [{ Kind: MirStatementKind.Assign } write, ..]
+            || write.Place != drop.Place)))
+        {
+            var seen = new HashSet<int>();
+            for (var block = start.Terminator.Target; block >= 0 && seen.Add(block) && blocks[block].Terminator.Kind is MirTerminatorKind.Drop or
+                MirTerminatorKind.Goto; block = blocks[block].Terminator.Target)
+            {
+                if (blocks[block].Terminator is { Kind: MirTerminatorKind.Drop } drop && drop.Place.Root == then)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // Whether a body's runtime edges lead from one block to another.
+    private static bool Reaches(MirBody body, int from, int to)
+    {
+        var reach = new MirReach();
+        reach.Clear(body.Blocks.Length);
+        reach.Walk(body, from, checks: false);
+        return reach[to];
     }
 
     // Whether a location reads (Copies or Moves) or writes (assigns or borrows) a Place rooted at a local.

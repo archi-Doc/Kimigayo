@@ -82,7 +82,7 @@ internal sealed partial class TyCtxt
     }
 
     // The retention of a callee's contract and Callable bounds (erased callables its body may call through a carrier) as the Types
-    // instantiate them; null where Binding's storage instantiation does not complete one of them (CallRetention.Limit).
+    // instantiate them; null where one of them is past Binding's storage limits or does not substitute (CallRetention.Limit; Instance).
     private CallRetention? InstanceRetention(BindingSymbol callee, Subst? types, BindingScope? scope)
     {
         if (this.Instance(callee, types, -1, scope, out var count) is not { } result)
@@ -125,11 +125,13 @@ internal sealed partial class TyCtxt
         return this.Instance(declared, types, scope);
     }
 
-    // A declared Type as the Types instantiate it, under `scope`'s premises when given (TyCtxt.Premised's rule); null where Binding's storage
-    // instantiation does not complete it.
+    // A declared Type as the Types instantiate it, under `scope`'s premises when given (TyCtxt.Premised's rule); null where its storage is a
+    // Limit or the substitution does not complete. Rejected storage is read as instantiated: its parts that do not substitute hold nothing
+    // (Binding.Retained, DECISIONS BU-36).
     private BoundType? Instance(BoundType declared, Subst? types, BindingScope? scope)
     {
-        var type = types is null ? declared : this.Apply(declared, types);
+        var type = types is null ? declared
+            : this.Instance(declared, types) is ({ } instance, var storage) && binding.Retained(instance, storage) ? instance : null;
         return type is null || scope is null ? type : binding.CallableContractType(type, scope);
     }
 }

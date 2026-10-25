@@ -20,8 +20,9 @@ namespace Kimi.Compiler.Backend;
 // received (Forward): a ClosureErasure's Shared Closure body with its environment (the word spilled for an inline one, the heap pointer) and
 // a null context; an ItemAdapter's what its Item's call runs (FunctionCodegen.Closures' Runs: a function's body, a requirement Item's
 // witness, a virtual function's slot through the receiver parameter's object, a compiler function's routine row with its slot-less values,
-// or that row's unit's located Unsupported_Kd at the adapter's site); a Never-result callee leaves the entry's result unused and ends it
-// unreachable (SPEC 10.7), also where the entry's own result is another (a slot's signature is its Item's own, ModuleCodegen.Slot).
+// or that row's unit's located Unsupported_Kd at the adapter's site; an update Item's entry writes the update over its own parameters,
+// FunctionCodegen.Updates, DECISIONS R5-M116); a Never-result callee leaves the entry's result unused and ends it unreachable (SPEC 10.7),
+// also where the entry's own result is another (a slot's signature is its Item's own, ModuleCodegen.Slot).
 // A Function value's glue row (DestroyErased): its table's drop entry, when present, at its address.
 internal sealed partial class FunctionCodegen
 {
@@ -31,6 +32,16 @@ internal sealed partial class FunctionCodegen
     private static readonly TypeLayout WordLayout = Layout.Row(BoundType.ISize).Layout; // The environment word, an i64.
 
     private static readonly TypeLayout PointerLayout = RuntimeAbi.StringReference.Layout;
+
+    /// <summary>Gets whether an adapter's own parameter passes what a callee's parameter of the same logical index takes (Forward; DECISIONS
+    /// R5-M121): one of the same kind, or a SharedReference and a Value of the same Type when that Type is a pointer, since a SharedReference
+    /// is a Value with attributes (<see cref="AbiParameter.Attributes"/>), so both lower to the same pointer (a string borrow at a legacy
+    /// helper's by-value pointer input). One rule for every adapter; a Value of another Type or an OwnedSlot is not passed so.</summary>
+    /// <param name="own">The adapter's parameter.</param>
+    /// <param name="parameter">The callee's parameter.</param>
+    /// <returns>Whether the one passes the other.</returns>
+    internal static bool Passes(in AbiParameter own, in AbiParameter parameter)
+        => own.Kind == parameter.Kind || (own.Type == parameter.Type && own.Type == PointerLayout.StorageType && ByValue(own.Kind) && ByValue(parameter.Kind));
 
     /// <summary>Writes the table and functions of a ClosureErasure or ItemAdapter item, or records why not.</summary>
     /// <param name="collector">The collector of the checked set.</param>
@@ -43,6 +54,12 @@ internal sealed partial class FunctionCodegen
         var targets = collector.Set.Targets(item);
         var (key, represented) = (collector.Set.Items[item].Key, collector.Set.Items[item].RepresentativeType!);
         var closure = key.Kind == MonoKind.ClosureErasure;
+        if (!closure && LegacyRuntimeHelpers.Row(represented.Symbol?.CompilerFunction ?? CompilerFunctionKind.None) is { Updates: true } row)
+        {
+            this.WriteUpdateEntry(item, entry, row.Writer, targets.Length > 0 ? targets[0].Item : -1); // Its direct call's row (FunctionCodegen.Updates).
+            return;
+        }
+
         var given = default(ReadOnlySpan<Value>);
         var run = closure
             ? (this.module.Signature(targets[0].Item) is { } body ? new Run(body, null) : null)
@@ -73,6 +90,9 @@ internal sealed partial class FunctionCodegen
         }
     }
 
+    // Whether a parameter of a kind passes its value itself, a Value or a SharedReference (a Value with attributes).
+    private static bool ByValue(AbiParameterKind kind) => kind is AbiParameterKind.Value or AbiParameterKind.SharedReference;
+
     // An environment of more than 8 bytes or of an alignment above 8 is allocated (IMPL 21.1.3).
     private static bool Heap(TypeLayout environment) => environment.Size > 8 || environment.Alignment > 8;
 
@@ -88,8 +108,7 @@ internal sealed partial class FunctionCodegen
 
         var function = this.InstanceType(statement.Place);
         var operand = this.body.Operands[statement.Rvalue.Start];
-        var type = operand.Kind == MirOperandKind.Const
-            ? this.collector.TypeOf(this.item, this.body.Consts[operand.Arg].Type) : this.InstanceType(operand.Place);
+        var type = this.InstanceType(operand);
         if (this.Laid(type) is not { } source || this.Laid(function) is not { } handle)
         {
             return; // A broken contract, recorded.
@@ -206,13 +225,13 @@ internal sealed partial class FunctionCodegen
         return true;
     }
 
-    // The adapter's parameter of a callee parameter's kind and logical index, or -1.
+    // The adapter's parameter of a callee parameter's logical index that passes what it takes (Passes), or -1.
     private int Own(in AbiParameter parameter)
     {
         var own = this.abi.Parameters;
         for (var i = 0; i < own.Length; i++)
         {
-            if (own[i].Kind == parameter.Kind && own[i].LogicalIndex == parameter.LogicalIndex)
+            if (own[i].LogicalIndex == parameter.LogicalIndex && Passes(own[i], parameter))
             {
                 return i;
             }
