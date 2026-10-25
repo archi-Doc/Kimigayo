@@ -374,9 +374,27 @@ public sealed partial class MirBorrowsTest
                 b.push(y@ref)
                 let r = b@ref
                 let p = r.data
+            func enclosingOnly()
+                let s = Pairs.init()
+                let t = s.pair
             """);
         Assert.Equal(
-            ["layerRef: b.data@ref Unsupported_Kd", "enclosingRef: s.pair@ref Unsupported_Kd", "enclosingCopy: s.pair Unsupported_Kd"],
+            ["layerRef: b.data@ref Unsupported_Kd", "enclosingRef: s.pair@ref Unsupported_Kd", "enclosingCopy: s.pair Unsupported_Kd",
+                "enclosingOnly: s.pair Unsupported_Kd"],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+    }
+
+    // V16 (SPEC 15.6 Addresses; DECISIONS R4-M116): the address pre-pass walks a view's uses only where a raw Ref was issued or a projection
+    // row may be or enclose a `during self` layer, so a body with neither takes no step per location beyond its Loans' scan: 32 more
+    // statements cost at least 32 steps fewer than beside a raw Ref, whose view the walk visits.
+    [Fact]
+    public void AViewWithNothingToAddressIsNotWalked()
+    {
+        const string Plain = "func shape()\n    var x = 0\n«N:    x = {0}\n»";
+        const string Addressed = "func shape()\n    var x = 0\n    let p = x@raw\n«N:    x = {0}\n»    _ = p == null\n";
+        long[] plain = [.. new[] { 32, 64 }.Select(n => this.Measured(Prelude + Expand(Plain, n, 0)).Work)];
+        long[] addressed = [.. new[] { 32, 64 }.Select(n => this.Measured(Prelude + Expand(Addressed, n, 0)).Work)];
+        output.WriteLine($"N 32, 64: plain {string.Join(", ", plain)}, addressed {string.Join(", ", addressed)}");
+        Assert.True(addressed[1] - addressed[0] - (plain[1] - plain[0]) >= 32, $"plain {string.Join(", ", plain)}, addressed {string.Join(", ", addressed)}");
     }
 }
