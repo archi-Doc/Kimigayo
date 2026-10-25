@@ -15,8 +15,8 @@ namespace Kimi.Compiler.Mir;
 // - P9 (SPEC 7.2.3, R4-M93): a default template's call has one row (input i, Content, Result) per input and is untied: its inputs are the
 //   prologue's shared borrows of the slots, and each input's Content, its slot's value, reaches the result; no store row (the omitting
 //   call's own rows apply the default's raw stores, SPEC 7.2.3, 5.2.1 Retained dependencies; R4-M116 PQ-5).
-// Invariants: a CallRetention.Limit, a contract Binding does not instantiate, retains nothing the stratum follows; another terminator, an
-// intrinsic without a declaration and a default template's call have no CallRetention.
+// Invariants: a CallRetention.Limit, a genuine limit (Binding's storage bounds or a keeper cycle), retains nothing the stratum follows;
+// another terminator, an intrinsic without a declaration and a default template's call have no CallRetention.
 // Must not read a state or apply a row (MirBorrows.Calls), derive retention (TyCtxt.Retains) or record a problem: the checks record the
 // Limit as a located Unsupported_Kd at the call (R4-M51, MirBorrows.Locations).
 internal sealed partial class MirBorrows
@@ -76,8 +76,8 @@ internal sealed partial class MirBorrows
 
     // The retention a Call's contract gives: TyCtxt.Retains over the callee's declaration (an intrinsic's library declaration, E14) and
     // Subst, or a Value callee's declared signature; none for another terminator, an intrinsic without a declaration or a default template's
-    // call. Its Limit, a contract Binding does not instantiate, retains nothing the stratum follows: the checks record a located
-    // Unsupported_Kd at the call (R4-M51).
+    // call. Its Limit, a genuine limit, retains nothing the stratum follows: the checks record a located Unsupported_Kd at the call
+    // (R4-M51); a call over storage Binding rejected has its rows (G240).
     private CallRetention? Retaining(in MirTerminator call)
     {
         var callee = call.Callee;

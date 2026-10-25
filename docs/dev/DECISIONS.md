@@ -1321,7 +1321,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   discards it at every edit, whether or not a pass finished, as it does the item contexts (A5 1a2; rejected:
   per-declaration invalidation, a dependency table only this view would use, and pooled recomputation per pass). A
   contract Binding's storage instantiation does not complete under the Subst (storage nested past its depth bound,
-  which a growing recursive Type of SPEC 15.3.5 always reaches) gives `CallRetention.Limit` (`IsLimit`; no rows, and
+  which a growing recursive Type of SPEC 15.3.5 always reaches; amended by BU-36: a genuine limit only, storage a Binding
+  failure left Rejected passing through) gives `CallRetention.Limit` (`IsLimit`; no rows, and
   reading its `Rows` or `Untied` is a broken contract), memoized like any retention; A5 records a located
   `Unsupported_Kd` at the call, as A4 does for `Apply`'s null (A5 1a4; rejected: the exception it threw, every
   argument retained). The catalog's `PublishedRow` gains `InPlace`: `Replace` (`Destroys: 0, InPlace`) for `replace`,
@@ -4187,7 +4188,8 @@ resumed by R4-M86 (2026-10-20).
   strongly connected components of its storage. The nodes are the Types a storage walk meets (a struct's or enum's base, Fields and
   Case payload Tuples, every Type's components); an edge between two members of a component counts 0, an edge to a non-member
   1 + its height, and every member has its component's height, its largest exit. `PrepareTypeStorage` admits a Type whose height is
-  at most 64 and every Type it reaches substitutes, so the verdict depends on the Type alone: the failed-entry case
+  at most 64 and every Type it reaches substitutes (superseded by BU-36: a part that does not substitute is Rejected storage, which
+  ends no walk; Refused and Capped are the limits), so the verdict depends on the Type alone: the failed-entry case
   (`R<T> { x: X<T>, y: Box^200<T> }`, `X<T> { r: Option<rc/R<T>> }`) is refused in every order, `Option<rc/L<Box^61>>` is decided
   with `L<Box^61>` (height 62), and a ring of structs linked by `Option<rc/…>` has height 1. A growing Type never closes a
   component, so the walk's path holds at most 256 Types, the root included (the owner's value); a query that passes it is refused.
@@ -5085,7 +5087,8 @@ resumed by R4-M86 (2026-10-20).
     is one of the result's holds, so the walk decides its Untied too, and a `static` result layer now unties as a stored one does. A raw
     input may have a Value and a Content row to one output. `Text.writer`'s Utf8Writer (`dispatch`, `pending`) is untied, and so is
     every input storing one or a `DictionaryStorage.Handle` (`buffer`).
-  - The bound (the reviews' R1, R4's B1): a stored Type Binding does not instantiate, and a struct or enum the walk reaches whose storage
+  - The bound (the reviews' R1, R4's B1): a stored Type Binding does not instantiate (superseded by BU-36: it holds nothing, and its
+    owner's Rejected storage passes through), and a struct or enum the walk reaches whose storage
     preparation does not complete (`PrepareTypeStorage`, BU-12's height and path limits, which a Type growing through an indirection
     always reaches: `raw/G<(T, T)>`, `uniq/(G<Option<T>> during a)`, `Option<obj/B<(T, T)>>`), make the contract `CallRetention.Limit`,
     as TyCtxt.Retention.cs states; a regular recursion (`raw/G<T>`, Node's `next`) ends at the struct already walked.
@@ -5223,6 +5226,56 @@ resumed by R4-M86 (2026-10-20).
   - Open (BU; pre-existing on `ece46cfa5`): O1 `RetentionWalk`/`RetentionParts` walk a contract's instantiated Types as trees (a
     generic callee at `D_n<T_{n-1}>`: 56 ms at n = 20, 2^n + 2 visits); O2 `VisitInlineLayout` recurses into Tuples unremembered (Bind
     10 to 12 s at n = 28); O3 the other component-recursive Binding walks (about 60) have no V16 DAG probe.
+- **BU-36 Storage resting on a Binding failure passes through; CallRetention.Limit is a genuine limit** (2026-10-25; the BU planning
+  session after the full process: designs A and B, the design review's choice of B with A's mark encoding and one TyCtxt path, its
+  required changes 1-5; R4's A5-facing review accepted it with fixes F1-F3, which this entry and the unit apply; PLAN G240, unit bu35)
+  SPEC 23.1.2 reports each independent failed requirement, a failure caused only by another being the implementation's to omit; SPEC
+  23.1.1 makes a limit a located `Unsupported_Kd`, never a ruling. Storage preparation answered a bool, so a part Binding did not bind
+  (a Field or Case payload whose Type failed: null in `InstanceStorage`) and BU-12's limits were one refusal, `CallRetention.Limit`,
+  which retains nothing: A5's `Unsupported_Kd` at the call replaced conflicts that hold whatever the part is (i1: `keep2(v@ref, b)`
+  beside `b: uniq/Bad` and `v = 2` while its result lives; i3's store, d3P's conflict beside its call).
+  - Representation: `PrepareTypeStorage` gives `Binding.StorageOutcome { Prepared, Rejected, Limit }`. Rejected is the fact and name of
+    Layout's `Outcome.Rejected` (R5-M37) as a separate type: Binding's walk reaches through handles (`Sx { x: rc/Bad }` is Rejected here
+    and Ok for Layout), Layout's by placement only and wider (InlineCycle, CLayoutRejected, Length < 0), and Binding cannot depend on the
+    Backend. A limit takes precedence. The walk goes past a part that does not substitute (a null Field; an enum's null Cases, its base
+    and components still walked); each Type's walk keeps a rejected bit ORed into its caller's, and the member closing a component marks
+    every member with the component's. A finished Type's mark is `(height, -1)` for Rejected in place of `(height, 0)`, so marks stay
+    8 bytes. The verdict depends on the Type alone: x1 (X reaches T's Box^64 Field through a handle beside its failed Field) is Limit for
+    X and T in both query orders, the X-Y ring and Z, which stores Y, Rejected in three; stopping at the first failure would make it
+    order-dependent and hide a limit behind a failed part.
+  - One TyCtxt path: `TyCtxt.Instance(type, subst)` gives the instance (`Binding.StorageInstance`, split out of `InstantiateStorageType`
+    first, behavior unchanged) with its verdict, the identity keeping the Type as Prepared; `Apply` is that instance when Prepared. The
+    readers of the verdict take `== Prepared` where they took true (`InstantiateStorageType`, `TyCtxt.Dispatch`, `BodyLowering.Structs`),
+    so every reader but retention sees what it saw.
+  - Pass-through: retention reads Rejected storage as instantiated (`Binding.Retained`, for the contract's instance and `Held`): a part
+    that does not substitute holds nothing (no row, no untie) and the rows that hold whatever it is stay. `Held` walks an enum's Cases
+    only where its instance substituted them (`AdtDef.CaseTypes` not null), the storage the verdict covered, which bounds it (e1, `enum
+    E<T> { A(Missing), B(rc/E<(T, T)>) }`, does not end otherwise). `CallRetention.Limit` is a genuine limit only: BU-12's height and path,
+    a keeper cycle (BU-24), and a contract substitution that does not complete (no reproducer). BU-24's keeper clause (a keeper Type
+    `StoredType` does not instantiate makes the walk incomplete) stays Limit and is unreached: a failed keeper Field registers no keeper.
+  - Guard: `Binding.Retained` throws for Rejected storage in a complete compilation (DIAGNOSTICS rule 8 makes a part Binding did not bind
+    an incomplete Binding), the established broken-contract form at this site (`TyCtxt.Instance`'s contract without its Type,
+    `CallRetention`'s Limit rows), which ends the check as `CheckFaulted_Kd` (rule 9).
+  - A5 changes only its comments (R4's F3). Monotonicity (R4's review): the located failures only grow with rows (Loan conflicts, Φ_E and
+    untied, 4c's `OwnStepDeparture_Kd`, err(ended)); two classifications are not monotone in form, the P13 hold (R4-M73: a kept row storing
+    past a by-argument holder holds the view, m1's repair and pass-through alike `Unsupported_Kd` at `y = 3` and `var x = 1`) and the
+    first conflicting candidate, which decides code and facts; no added row removes a location's record. So a record over passed-through
+    rows holds in every repair: independent (SPEC 23.1.2, R4-M10; R4-M118, on `claude/a5-2a-1c`, adds this site's row when it lands).
+    A conflict resting on the failed part is dependent and goes (q1: `result`'s Selection has null CaseTypes, so it holds no Loan).
+  - Supersedes BU-12's refusal of a Type that reaches a part that does not substitute (the walk's comment: "Refused and Capped are the
+    walk's two failures") and BU-30's bound clause for a stored Type Binding does not instantiate; amends R4-M51's Limit to genuine
+    limits (R4 agreed). Each names this entry.
+  - Rejected: A's Dependent evidence (a per-declaration failure lookup beside the null part, the form R4-M118 rejected, missing `Invalid`
+    syntax in R4's `i-field-set`) and its walk of a Dependent enum's declared parts (e1 did not end in 600 s); option N, a no-rows
+    Dependent retention (loses i1's and i3's independent conflicts; an A5 branch); `Apply` returning Rejected instances (every reader
+    changes; R7's); stopping at the first failure; classifying by `BindingState` or A5 reading completeness (a second rule, R4-M113); a
+    dependent flag on `CallRetention` (A5 has nothing to do with it); B's `(Height, Open, Rejected)` mark (a third larger table on valid
+    programs).
+  - Open (outside the unit): per-case holes in `InstanceStorage.Cases` (PLAN G242, BU: e2 `enum E { A(Missing), B(raw/i32) }` gives no
+    row where its repair gives `1 Value store 0, untied store 0`; growth in another case is unseen), whose shared fix (R4's G244 A1)
+    replaces this unit's enum clause in `StorageParts` and rule in `Stores`; Dispatch's K6 Witness Limit and the collector's StorageNesting
+    `Unsupported_Kd` over Rejected storage, published under MIR code generation (BU, R5); A4's `MirEffects.Solve` and `MirCases.Views` over
+    `Apply`'s null (R4, PLAN G240's row); the builder's default copy `FoldType` and the Arity finding on a Rejected enum's case (G244).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

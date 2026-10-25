@@ -158,6 +158,10 @@ public sealed class TyCtxtTest
         "    override func pick(self: objref/Self, values: ref/[2 of i32] during s) -> ref/i32 during s => base.pick(values)\n" +
         "let r = R.init()@obj\nlet two: [2 of i32] = [4, 5]\nrequire r.pick(two@ref)@follow == 4 else => $abort(\"pick\")\n";
 
+    // X and Y, a ring through rc handles, X beside a Field whose Type did not bind, and Z, which stores Y inline.
+    private const string RejectedRing = "struct X\n    public var t: Option<rc/Y>\n    public var f: MISSING\nstruct Y\n    public var x: Option<rc/X>\n" +
+        "struct Z\n    public var y: Y\n";
+
     // SPEC 8.1.3, 8.15.1: the declared parameter and result Types of the function a call's substitution instantiates are the call's
     // instantiation (SPEC 8.4.1, 8.6.4: a requirement's under its conforming Self and the bound Contract reference it dispatches through, which
     // SubstOf records as its declaring Type; SPEC 6.4.4: a direct base call's function is the implementation it runs, in the Type
@@ -740,6 +744,42 @@ public sealed class TyCtxtTest
         instance.Set(outer.Target, outer.ReturnType, null, [], [nested]);
         Assert.Null(c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(instance)!));
         Assert.Null(c.Binding.InstantiateForwardedCall(inner, instance));
+    }
+
+    // DECISIONS BU-36, BU-12: storage preparation's verdict depends on the Type alone. A part Binding did not bind ends no storage walk,
+    // so a limit beyond it is met whichever Type is queried first (X reaches T's B^64 Field through a handle beside its failed Field: both
+    // Limit), and a component reaching such a part is Rejected in every order, a Type storing a member of it too.
+    [Theory]
+    [InlineData(RetentionTest.Beyond, "T X", "Limit Limit")]
+    [InlineData(RetentionTest.Beyond, "X T", "Limit Limit")]
+    [InlineData(RejectedRing, "X Y Z", "Rejected Rejected Rejected")]
+    [InlineData(RejectedRing, "Y X Z", "Rejected Rejected Rejected")]
+    [InlineData(RejectedRing, "Z Y X", "Rejected Rejected Rejected")]
+    public void AStorageVerdictDependsOnTheTypeAlone(string source, string order, string expected)
+    {
+        var c = MirBuildTest.Compile(source.Replace("MISSING", "Missing", StringComparison.Ordinal));
+        Assert.False(c.Binding.Result.IsComplete);
+        var types = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Select(static x => x.SymbolOf()!).ToDictionary(static x => x.Name, static x => x.Type!);
+        Assert.Equal(expected, string.Join(' ', order.Split(' ').Select(x => c.Binding.PrepareTypeStorage(types[x]))));
+    }
+
+    // DECISIONS BU-36: TyCtxt.Instance gives the instance a substitution makes with its storage verdict, and Apply is that instance when
+    // Prepared: f's `uniq/T` at Bad<i32>, whose Field m did not bind, is Rejected, at B^65<i32> a Limit, and under f's identity the
+    // declared Type, Prepared.
+    [Fact]
+    public void AnInstanceCarriesItsStorageVerdict()
+    {
+        var c = MirBuildTest.Compile(RetentionTest.Box + "struct Bad<T>\n    public var v: T\n    public var m: Missing\nfunc f<T>(b: uniq/T) => ()\n" +
+            $"func g(b: uniq/Bad<i32>, t: uniq/{RetentionTest.Box65})\n    f(b)\n    f(t)\n");
+        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf()!).Where(static x => x.Target.Name == "f").ToArray();
+        var declared = ((FunctionKoto)calls[0].Target.Declaration).Parameters[0].Type.TypeOf()!;
+        var outcomes = calls.Select(x => c.Types.Instance(declared, c.Types.SubstOf(x)!)).ToArray();
+        Assert.Equal([Binding.StorageOutcome.Rejected, Binding.StorageOutcome.Limit], outcomes.Select(static x => x.Storage));
+        Assert.Equal(["Bad", "B"], outcomes.Select(static x => x.Type!.Components[0].Symbol!.Name));
+        Assert.All(calls, x => Assert.Null(c.Types.Apply(declared, c.Types.SubstOf(x)!)));
+        var identity = c.Types.Instance(declared, c.Types.Identity(calls[0].Target.Declaration));
+        Assert.Same(declared, identity.Type);
+        Assert.Equal(Binding.StorageOutcome.Prepared, identity.Storage);
     }
 
     // A warm rebind keeps every call's substitution the same object and looking it up allocates nothing.
