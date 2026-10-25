@@ -1,12 +1,18 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// The producer of the C1-F4 view, under its contract (TyCtxt.Origins.cs; 2a0-D §2-§4 with DECISIONS R4-M101): one walk over the
+// obligations on a pass's first read, each Origin row in the unit of the body Binding formed it in (BindingObligation.Body); a body's slice
+// on its first read, a constructor's own rows then its layer's (E4), each row's Site converted once to the SourceRef MIR names syntax by
+// (DECISIONS R4-M113). The slice's atom table is Binding.OriginRows.Atoms.cs's, the body's fixed-fixed oracle Binding.OriginRows.Oracle.cs's.
+// Input: the pass's obligations of the body-origin deadline. Output: OriginRows (a body's OriginRowSet) and OriginFindings.
+// Invariants: a slice is read-only for consumers and filled only through IOriginRowSetBuilder; a row formed with no body is in no slice
+// (DECISIONS BU-26); storage is kept across passes.
+// Must not: judge a relation, or decode a slot for MIR.
+
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// The producer of the C1-F4 view, under its contract (TyCtxt.Origins.cs; 2a0-D §2-§4 with DECISIONS R4-M101): one walk over the
-// obligations on a pass's first read, each Origin row in the unit of the body Binding formed it in (BindingObligation.Body); a body's slice
-// on its first read, its atoms classed by 2a0-D §3's precedence relative to it; and a body's fixed-fixed oracle (UniversalRelations).
 public sealed partial class Binding
 {
     // The pass's rows by body, each unit's in obligation order (ends resolved and canonical, CaseMask in the body's binder order), the
@@ -15,10 +21,9 @@ public sealed partial class Binding
     private readonly List<List<OriginRowDraft>> originUnits = [];
     private readonly Dictionary<ExecutableBody, int> originSliceIndex = [];
     private readonly List<OriginRowSet> originSlices = [];
-    private readonly List<Koto> originFindings = [];
+    private readonly List<SourceRef> originFindings = [];
     private readonly List<PairBinder> originUseBinders = [];
     private readonly List<PairBinder> originBodyBinders = [];
-    private readonly List<UniversalRelations> universalRelations = [];
     private int originUnitCount;
     private int originSliceCount;
     private ulong originRowsVersion;
@@ -30,7 +35,7 @@ public sealed partial class Binding
 
         List<OriginAtomEntry> Atoms { get; }
 
-        // Each atom's table index, and the parts (1 own, 2 layer) whose rows name it.
+        // Each atom's table index, and its parts (1 own, 2 layer): those whose rows name it, or for an atom MIR reads its forming body's.
         Dictionary<BoundOrigin, int> Index { get; }
 
         List<byte> Parts { get; }
@@ -41,7 +46,7 @@ public sealed partial class Binding
         void EndOwnRows();
     }
 
-    internal IReadOnlyList<Koto> OriginFindings
+    internal IReadOnlyList<SourceRef> OriginFindings
     {
         get
         {
@@ -79,93 +84,12 @@ public sealed partial class Binding
             this.AddOriginRows(slice, layer, 2);
         }
 
-        for (var i = 0; i < slice.Atoms.Count; i++)
-        {
-            // E4: the parts share Fixed atoms only, so a chain never crosses from one oracle's part to the other's.
-            if (builder.Parts[i] == 3 && slice.Atoms[i].Kind != OriginAtomKind.Fixed)
-            {
-                this.OriginFinding(slice.Rows[slice.LayerStart].Site);
-            }
-        }
-
         return slice;
-    }
-
-    // An atom MIR reads (a Ref's or a dereferenced layer's Origin), resolved at its use and classed in the body's table.
-    internal OriginAtomEntry OriginAtomIn(ExecutableBody body, BoundOrigin origin, Koto site)
-    {
-        var slice = this.OriginRows(body);
-        return slice.Atoms[this.InternAtom(slice, this.CanonicalOrigin(this.OriginAtUse(origin, site)), site, 0)];
-    }
-
-    // A body's fixed-fixed oracle (2a0-D §4, D8): one premise environment rented at the body's root, the catalog's premises from there
-    // outward (R1-R4; R5 for the nodes already in the graph), queried per target and Semantics case.
-    internal UniversalRelations UniversalRelationsOf(ExecutableBody body)
-    {
-        var root = this.BodyRoot(AccessorBody(body)) ?? throw new InvalidOperationException("A body without a root has no premises.");
-        foreach (var relations in this.universalRelations)
-        {
-            if (!relations.Active)
-            {
-                return relations.Open(root);
-            }
-        }
-
-        var created = new UniversalRelations(this);
-        this.universalRelations.Add(created);
-        return created.Open(root);
     }
 
     // MIR keys a Getter or Setter by the function its calls target; the formation context names the accessor itself.
     private static ExecutableBody AccessorBody(ExecutableBody body)
         => body.Definition?.Declaration is FunctionKoto { Accessor.SignatureSymbol: { } accessor } ? new(accessor) : body;
-
-    // A Projection slot's role (2a0-D D7: only the view decodes slots; DECISIONS R4-M101 E5): a declaration binder (a function, accessor
-    // or Property) by its slot, any other binder its own place.
-    private static ProjectionRole RoleOf(BoundOrigin atom) => atom.Kind != OriginKind.Projection ? ProjectionRole.None : atom.Binder switch
-    {
-        FunctionKoto when atom.Slot == ClosureValueSlot => ProjectionRole.ClosureValue,
-        FunctionKoto when atom.Slot == CallResultSlot => ProjectionRole.CallResult,
-        FunctionKoto when atom.Slot == ReceiverSlot => ProjectionRole.Receiver,
-        FunctionKoto when atom.Slot == HelperSlot => ProjectionRole.Helper,
-        FunctionKoto when atom.Slot <= EnvironmentSlot(0) => ProjectionRole.Environment,
-        FunctionKoto or PropertyAccessorKoto => ProjectionRole.Parameter,
-        PropertyKoto => ProjectionRole.Storage,
-        _ => ProjectionRole.Place,
-    };
-
-    // Whether an atom is a root of a body, by the body that formed it (a non-declaration binder) or by its slot's role (E5): parameter j
-    // of f is a root of f's body and of each template (f, i) with j < i; a receiver and a helper borrow of their own body; an environment
-    // binding and a call result of their Closure's; a Closure literal's value of the body that evaluates it; an accessor's self and value
-    // of the accessor's; a Property's storage of each of its accessors' (one atom, whichever formed it first).
-    private static bool RootOf(BoundOrigin atom, ProjectionRole role, ExecutableBody body) => role switch
-    {
-        ProjectionRole.None or ProjectionRole.Place => atom.Body == body,
-        ProjectionRole.Storage => body.Definition?.Declaration is PropertyAccessorKoto { Parent: var property } && ReferenceEquals(property, atom.Binder),
-        ProjectionRole.ClosureValue => body.IsBody && EvaluatingBody(new(atom.Binder!.BoundSymbol)) == body,
-        ProjectionRole.Parameter when atom.Binder is FunctionKoto => DeclaredBy(atom, body) && (body.Index < 0 || (uint)atom.Slot < (uint)body.Index),
-        ProjectionRole.Receiver or ProjectionRole.Helper => DeclaredBy(atom, body) && body.Index < 0,
-        _ => DeclaredBy(atom, body),
-    };
-
-    private static bool DeclaredBy(BoundOrigin atom, ExecutableBody body) => body.Definition is { } symbol && ReferenceEquals(symbol.Declaration, atom.Binder);
-
-    // SPEC 15.3.6: a meet in its canonical form, operands flattened, deduplicated and ordered, static dropped (Meet).
-    private BoundOrigin CanonicalOrigin(BoundOrigin origin)
-    {
-        if (origin.Kind != OriginKind.Intersection)
-        {
-            return origin;
-        }
-
-        var result = BoundOrigin.Static;
-        for (var i = 0; i < origin.Operands.Count; i++)
-        {
-            result = this.Meet(result, origin.Operands[i]);
-        }
-
-        return result;
-    }
 
     // The declaration a body's premises and pair binders start from: its definition's, a layer's struct, a module's generated function.
     private Koto? BodyRoot(ExecutableBody body)
@@ -174,11 +98,11 @@ public sealed partial class Binding
         return body.Definition?.Declaration ?? ((uint)body.Index < (uint)modules.Length ? modules[body.Index].GeneratedFunction : null);
     }
 
-    private void OriginFinding(Koto site)
+    private void OriginFinding(SourceRef site)
     {
         if (this.Result.IsComplete)
         {
-            this.originFindings.Add(site); // A broken contract is InternalInvariant_Kd in a complete compilation only (R4-M10).
+            this.originFindings.Add(site); // InternalInvariant_Kd in a complete compilation only (R4-M10), from MirOrigins.Findings.
         }
     }
 
@@ -207,7 +131,7 @@ public sealed partial class Binding
             {
                 // DECISIONS BU-26: Binding's declaration judge consumes every row formed with no body whose ends are declaration atoms
                 // (JudgeDeclarationRows), so a remaining one is a broken contract.
-                this.OriginFinding(obligation.Use);
+                this.OriginFinding(SourceRef.Of(obligation.Use));
                 continue;
             }
 
@@ -260,7 +184,7 @@ public sealed partial class Binding
             var at = bit < this.originUseBinders.Count ? this.BodyBinder(this.originUseBinders[bit].Target) : -1;
             if (at < 0)
             {
-                this.OriginFinding(obligation.Use);
+                this.OriginFinding(SourceRef.Of(obligation.Use));
                 continue;
             }
 
@@ -295,213 +219,8 @@ public sealed partial class Binding
         {
             var longer = this.InternAtom(slice, draft.Longer, draft.Site, part);
             var shorter = this.InternAtom(slice, draft.Shorter, draft.Site, part);
-            builder.Rows.Add(new(draft.Site, longer, shorter, draft.Equality, draft.Source, draft.Clause, draft.Destination, draft.CaseMask));
+            builder.Rows.Add(new(SourceRef.Of(draft.Site), longer, shorter, draft.Equality, draft.Source, draft.Clause, draft.Destination, draft.CaseMask));
         }
-    }
-
-    // An atom's index in the slice's table, classed on its first appearance; a class no precedence row gives is a broken contract.
-    private int InternAtom(OriginRowSet slice, BoundOrigin atom, Koto site, byte part)
-    {
-        IOriginRowSetBuilder builder = slice;
-        if (!builder.Index.TryGetValue(atom, out var index))
-        {
-            index = builder.Atoms.Count;
-            builder.Index.Add(atom, index);
-            if (this.ClassifyAtom(atom, slice) is not { } entry)
-            {
-                this.OriginFinding(site);
-                entry = new(atom, OriginAtomKind.Unclassed, RoleOf(atom));
-            }
-
-            builder.Atoms.Add(entry);
-            builder.Parts.Add(0);
-        }
-
-        builder.Parts[index] |= part;
-        return index;
-    }
-
-    // SPEC 15.6.5 and 2a0-D §3's precedence (E4, E5): an atom's class in body B, the first row matching; null when none does (a broken
-    // contract). Roots, their order given by role (rows 3, 4, 5, 7, 7', 8), and atoms of an enclosing body (row 6) exclude each other.
-    private OriginAtomEntry? ClassifyAtom(BoundOrigin atom, OriginRowSet slice)
-    {
-        switch (atom.Kind)
-        {
-            case OriginKind.Static:
-                return new(atom, OriginAtomKind.Fixed, ProjectionRole.None);
-            case OriginKind.Parameter or OriginKind.Input:
-                // Rows 1 and 9: B's contract (its or an enclosing declaration's), or another declaration's universal atom (PLAN G195).
-                return new(atom, this.InContract(atom.Binder, slice.Body) ? OriginAtomKind.Fixed : OriginAtomKind.Unclassed, ProjectionRole.None);
-            case OriginKind.Intersection:
-                return this.ClassifyMeet(atom, slice);
-            case OriginKind.Unbound:
-                return new(atom, OriginAtomKind.Unclassed, ProjectionRole.None);
-        }
-
-        var role = RoleOf(atom);
-        if (role is ProjectionRole.None or ProjectionRole.Place && !atom.Body.IsBody)
-        {
-            return null; // E5: a non-declaration atom first formed outside every body.
-        }
-
-        if (PendingAtom(atom))
-        {
-            // DECISIONS R4-M126 §2.5 (c), D-3: an unclassified Closure's receiver or environment atom, which no bound body leaves after
-            // Bind; row 9 until R4-M118's Dependent row is on dev.
-            return new(atom, OriginAtomKind.Unclassed, role);
-        }
-
-        if (role is ProjectionRole.ClosureValue or ProjectionRole.CallResult && DeclaredBy(atom, slice.Body))
-        {
-            return new(atom, OriginAtomKind.Fixed, role); // Row 5: B's own call receiver and call result.
-        }
-
-        if (RootOf(atom, role, slice.Body) || (slice.Layer.IsBody && RootOf(atom, role, slice.Layer)))
-        {
-            return new(atom, this.RootKind(atom, role), role);
-        }
-
-        if (EnclosingAtom(atom, slice.Body))
-        {
-            return new(atom, OriginAtomKind.Fixed, role); // Row 6: an enclosing body's atom.
-        }
-
-        return new(atom, OriginAtomKind.Unclassed, role); // Row 9: another body's root seen from B.
-    }
-
-    // A root's class: an inference or anchor of B Inferred (row 8); a Borrow of static storage formed in B, a site's or an accessor's
-    // `storage`, Finite when mutable, Inferred when immutable (rows 7, 7'); a place read through a reference Inferred (row 3's referent
-    // clause: a Borrow through a referent, or a stored accessor's instance `storage` through its receiver); any other root Finite (rows 3-5).
-    private OriginAtomKind RootKind(BoundOrigin atom, ProjectionRole role)
-    {
-        if (role == ProjectionRole.None)
-        {
-            return OriginAtomKind.Inferred;
-        }
-
-        if (role is not (ProjectionRole.Place or ProjectionRole.Storage))
-        {
-            return OriginAtomKind.Finite;
-        }
-
-        if (atom.Binder!.BoundSymbol is { } symbol && IsStatic(symbol))
-        {
-            return IsMutableDeclaration(symbol.Declaration) ? OriginAtomKind.Finite : OriginAtomKind.Inferred;
-        }
-
-        return role == ProjectionRole.Storage || this.ReadsReferent(atom.Binder) ? OriginAtomKind.Inferred : OriginAtomKind.Finite;
-    }
-
-    // Rows 2, 2' and 9: a meet is one Fixed node when every operand is Fixed, an Inferred meet node otherwise, and forms no edge when an
-    // operand forms none.
-    private OriginAtomEntry? ClassifyMeet(BoundOrigin meet, OriginRowSet slice)
-    {
-        var kind = OriginAtomKind.Fixed;
-        for (var i = 0; i < meet.Operands.Count; i++)
-        {
-            if (this.ClassifyAtom(meet.Operands[i], slice) is not { } operand)
-            {
-                return null;
-            }
-
-            if (operand.Kind == OriginAtomKind.Unclassed)
-            {
-                return new(meet, OriginAtomKind.Unclassed, ProjectionRole.None);
-            }
-
-            kind = operand.Kind == OriginAtomKind.Fixed ? kind : OriginAtomKind.Inferred;
-        }
-
-        return new(meet, kind, ProjectionRole.None);
-    }
-
-    // SPEC 15.3.4: a declaration atom is B's contract when its binder owns B's definition or a scope enclosing it.
-    private bool InContract(Koto? binder, ExecutableBody body)
-    {
-        if (this.BodyRoot(body) is not { } root)
-        {
-            return false;
-        }
-
-        for (var scope = this.scopes.GetValueOrDefault(root) ?? root.BoundSymbol?.Scope; scope is not null; scope = scope.Parent)
-        {
-            if (ReferenceEquals(scope.Owner, binder))
-            {
-                return true;
-            }
-        }
-
-        return ReferenceEquals(root, binder);
-    }
-
-    // A body's fixed-fixed oracle (2a0-D §4): Close from a target in one Semantics case, then ask which sources it reached. The structural
-    // instances (I1-I4) answer first, as in EntailsOrigin; a request changes no inference or obligation state (originStateVersion).
-    internal sealed class UniversalRelations(Binding binding) : IDisposable
-    {
-        private OriginPremiseEnvironment? environment;
-        private BoundOrigin target = BoundOrigin.Static;
-        private int version;
-
-        internal bool Active => this.environment is not null;
-
-        // Returns the environment; oracles open at once are disposed in the reverse order of opening, as premise environments nest.
-        public void Dispose()
-        {
-            if (this.environment is { } rented)
-            {
-                this.environment = null;
-                binding.ReturnPremises(rented);
-            }
-        }
-
-        internal void Close(BoundOrigin target, ulong caseBits)
-        {
-            var closure = this.Rented().Closure;
-            this.target = target;
-            closure.Close(closure.Node(target, out _), -1, caseBits);
-        }
-
-        internal bool Outlives(BoundOrigin source)
-        {
-            var closure = this.Rented().Closure;
-            if (OriginOutlives(source, this.target))
-            {
-                return true;
-            }
-
-            if (closure.TryNode(source, out var node))
-            {
-                return closure.Reached(node);
-            }
-
-            if (source.Kind != OriginKind.Intersection)
-            {
-                return false; // No premise names it.
-            }
-
-            for (var i = 0; i < source.Operands.Count; i++)
-            {
-                if (!this.Outlives(source.Operands[i]))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        internal UniversalRelations Open(Koto root)
-        {
-            this.environment = binding.RentPremises(root) ?? throw new InvalidOperationException("The premise environment of a body's oracle is not ready.");
-            binding.CollectOriginResolvers(this.environment);
-            binding.ExtractOriginPremises(this.environment, root);
-            this.version = binding.originStateVersion;
-            return this;
-        }
-
-        private OriginPremiseEnvironment Rented()
-            => this.environment is { } rented && this.version == binding.originStateVersion ? rented
-                : throw new InvalidOperationException("A body's fixed-fixed oracle is used after its disposal or after a change of Origin state.");
     }
 
     /// <summary>A body's slice of the view: its rows, a constructor's layer rows from <see cref="LayerStart"/>, and its atom table.</summary>
@@ -541,6 +260,12 @@ public sealed partial class Binding
         }
 
         void IOriginRowSetBuilder.EndOwnRows() => this.LayerStart = this.rows.Count;
+
+        /// <summary>Gets whether an atom belongs to the layer's part only (DECISIONS R4-M101 E4, R4-M114): a non-Fixed atom the layer's rows
+        /// name or a Field initializer formed; a Fixed atom is shared by both parts.</summary>
+        /// <param name="atom">The atom's index.</param>
+        /// <returns>Whether it is the layer's.</returns>
+        internal bool InLayer(int atom) => this.parts[atom] == 2 && this.atoms[atom].Kind != OriginAtomKind.Fixed;
     }
 
     // A row of a body's unit before its slice indexes its ends.

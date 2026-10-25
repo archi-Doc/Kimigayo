@@ -54,7 +54,7 @@ public sealed partial class OriginRowsTest
             var program = c.BuildMir();
             foreach (var body in program.Bodies)
             {
-                var slice = c.Types.OriginRows(BodyOf(body.Key));
+                var slice = c.Types.OriginRows(body.Key.Body);
                 foreach (var atom in slice.Atoms)
                 {
                     var foreign = atom is { Kind: OriginAtomKind.Unclassed, Atom.Kind: OriginKind.Parameter or OriginKind.Input };
@@ -66,9 +66,9 @@ public sealed partial class OriginRowsTest
             {
                 Assert.True(o.Body.IsBody, $"{name}: the declaration row at {o.Use} remains");
                 var slice = c.Types.OriginRows(o.Body);
-                var longer = c.Types.OriginAtom(o.Body, o.Longer!, o.Use);
-                var shorter = c.Types.OriginAtom(o.Body, o.Shorter!, o.Use);
-                var count = slice.Rows.Take(slice.LayerStart).Count(x => ReferenceEquals(x.Site, o.Use) && slice.Atoms[x.Longer] == longer &&
+                var longer = Atom(c, o.Body, o.Longer!, o.Use);
+                var shorter = Atom(c, o.Body, o.Shorter!, o.Use);
+                var count = slice.Rows.Take(slice.LayerStart).Count(x => x.Site == SourceRef.Of(o.Use) && slice.Atoms[x.Longer] == longer &&
                     slice.Atoms[x.Shorter] == shorter && x.Equality == o.Equality && ReferenceEquals(x.Destination, o.Type));
                 Assert.True(count == (ReferenceEquals(longer.Atom, shorter.Atom) ? 0 : 1), $"{name}: {count} rows at {o.Use}");
             }
@@ -177,7 +177,7 @@ public sealed partial class OriginRowsTest
     public void EachConstructorEndsWithItsLayersRowsJudgedWithTheLayersPremises()
     {
         var c = MirBuildTest.Compile(FieldInit + Main);
-        var constructors = Bodies(c).Where(IsProgramConstructor).Select(x => c.Types.OriginRows(BodyOf(x.Key))).ToList();
+        var constructors = Bodies(c).Where(IsProgramConstructor).Select(x => c.Types.OriginRows(x.Key.Body)).ToList();
         Assert.Equal(2, constructors.Count);
         Assert.All(constructors, x => Assert.Equal("Layer:S", Describe(x.Layer)));
         Assert.All(constructors, x => Assert.Equal(2, x.Rows.Count - x.LayerStart));
@@ -186,7 +186,7 @@ public sealed partial class OriginRowsTest
 
         c = MirBuildTest.Compile(InitPremise + Main);
         var init = Bodies(c).Single(IsProgramConstructor);
-        var slice = c.Types.OriginRows(BodyOf(init.Key));
+        var slice = c.Types.OriginRows(init.Key.Body);
         var row = Assert.Single(slice.Rows.Skip(slice.LayerStart));
         var (longer, shorter) = (slice.Atoms[row.Longer], slice.Atoms[row.Shorter]);
         Assert.Equal((OriginAtomKind.Fixed, OriginAtomKind.Fixed), (longer.Kind, shorter.Kind));
@@ -200,7 +200,7 @@ public sealed partial class OriginRowsTest
     {
         var c = MirBuildTest.Compile(FieldInit[..FieldInit.IndexOf("    public init()", StringComparison.Ordinal)] +
             "    public init(k: i32 = Util.pick(5@ref, 6@ref)) => self.n = k\n" + Main);
-        var slices = Bodies(c).Where(IsProgramConstructor).Select(x => c.Types.OriginRows(BodyOf(x.Key))).ToList();
+        var slices = Bodies(c).Where(IsProgramConstructor).Select(x => c.Types.OriginRows(x.Key.Body)).ToList();
         var template = Assert.Single(slices, static x => x.Body.Index == 0);
         Assert.Equal((2, 2, false), (template.Rows.Count, template.LayerStart, template.Layer.IsBody));
         var init = Assert.Single(slices, static x => x.Body.Index < 0);
@@ -229,7 +229,7 @@ public sealed partial class OriginRowsTest
         var masked = 0;
         foreach (var body in c.BuildMir().Bodies)
         {
-            var slice = c.Types.OriginRows(BodyOf(body.Key));
+            var slice = c.Types.OriginRows(body.Key.Body);
             foreach (var o in Rows(c, false).Where(x => x.Body == slice.Body && x.Condition != 0))
             {
                 var useBinders = new List<PairBinder>();
@@ -243,7 +243,7 @@ public sealed partial class OriginRowsTest
                     }
                 }
 
-                Assert.Contains(slice.Rows, x => ReferenceEquals(x.Site, o.Use) && x.CaseMask == expected);
+                Assert.Contains(slice.Rows, x => x.Site == SourceRef.Of(o.Use) && x.CaseMask == expected);
                 masked++;
             }
         }
@@ -264,15 +264,15 @@ public sealed partial class OriginRowsTest
         Assert.NotSame(aliases[0].Shorter, aliases[1].Shorter);
         foreach (var alias in aliases)
         {
-            var longer = c.Types.OriginAtom(alias.Body, alias.Longer!, alias.Use);
-            var shorter = c.Types.OriginAtom(alias.Body, alias.Shorter!, alias.Use);
+            var longer = Atom(c, alias.Body, alias.Longer!, alias.Use);
+            var shorter = Atom(c, alias.Body, alias.Shorter!, alias.Use);
             Assert.Equal(OriginKind.Inference, alias.Shorter!.Kind);
             Assert.Same(longer.Atom, shorter.Atom);
-            Assert.DoesNotContain(c.Types.OriginRows(alias.Body).Rows, x => ReferenceEquals(x.Site, alias.Use));
+            Assert.DoesNotContain(c.Types.OriginRows(alias.Body).Rows, x => x.Site == SourceRef.Of(alias.Use));
         }
 
-        Assert.Equal(OriginAtomKind.Finite, c.Types.OriginAtom(aliases[0].Body, aliases[0].Shorter!, aliases[0].Use).Kind);
-        Assert.Equal(OriginAtomKind.Fixed, c.Types.OriginAtom(aliases[1].Body, aliases[1].Shorter!, aliases[1].Use).Kind);
+        Assert.Equal(OriginAtomKind.Finite, Atom(c, aliases[0].Body, aliases[0].Shorter!, aliases[0].Use).Kind);
+        Assert.Equal(OriginAtomKind.Fixed, Atom(c, aliases[1].Body, aliases[1].Shorter!, aliases[1].Use).Kind);
     }
 
     // 2a0-D D5 (T1): no row comes from a Constraint proof: a Type's own clause forms rows only at a local annotation of that Type, never at
@@ -300,13 +300,13 @@ public sealed partial class OriginRowsTest
             foreach (var o in Rows(c, library).Where(static x => x.Body.IsBody))
             {
                 var slice = c.Types.OriginRows(o.Body);
-                var (longer, shorter) = (c.Types.OriginAtom(o.Body, o.Longer!, o.Use), c.Types.OriginAtom(o.Body, o.Shorter!, o.Use));
+                var (longer, shorter) = (Atom(c, o.Body, o.Longer!, o.Use), Atom(c, o.Body, o.Shorter!, o.Use));
                 if (longer.Kind != OriginAtomKind.Fixed || shorter.Kind != OriginAtomKind.Fixed || ReferenceEquals(longer.Atom, shorter.Atom))
                 {
                     continue;
                 }
 
-                var row = slice.Rows.First(x => ReferenceEquals(x.Site, o.Use) && slice.Atoms[x.Longer] == longer && slice.Atoms[x.Shorter] == shorter);
+                var row = slice.Rows.First(x => x.Site == SourceRef.Of(o.Use) && slice.Atoms[x.Longer] == longer && slice.Atoms[x.Shorter] == shorter);
                 var oracle = Entails(c, o.Body, longer.Atom, shorter.Atom, row.CaseMask) &&
                     (!o.Equality || Entails(c, o.Body, shorter.Atom, longer.Atom, row.CaseMask));
                 Assert.True(oracle == c.Binding.IsVerifiedOriginObligation(o), $"{name}: {o.Use} {longer.Atom.Name} >= {shorter.Atom.Name}");
@@ -336,7 +336,7 @@ public sealed partial class OriginRowsTest
     public void AWarmRebindAndTheViewsReadsAllocateNothing()
     {
         var c = MirBuildTest.Compile(EnvStore + FieldInit + Pick + "func h(a: i32 = pick(3@ref, 4@ref)) -> i32 => a\n" + Main);
-        var bodies = c.BuildMir().Bodies.ToArray().Select(static x => BodyOf(x.Key)).ToArray();
+        var bodies = c.BuildMir().Bodies.ToArray().Select(static x => x.Key.Body).ToArray();
         var (counts, rowStamps, atomStamps) = (Read(), RowStamps(), AtomStamps());
         Assert.Equal(counts, Read());
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
@@ -346,6 +346,10 @@ public sealed partial class OriginRowsTest
         }));
         Assert.Equal(counts, Read());
         Assert.Equal(rowStamps, RowStamps());
+
+        // The baseline's tables hold the atoms MirOrigins appended during that pass's BuildMir (the view's contract: appended atoms are
+        // per pass), so the new pass is read by the same MIR reader before the whole tables are compared.
+        _ = c.BuildMir();
         Assert.Equal(atomStamps, AtomStamps());
 
         ExecutableBody[] RowStamps() => [.. Rows(c, false).Select(static x => x.Body)];
@@ -405,7 +409,12 @@ public sealed partial class OriginRowsTest
             x.Use.CodeContext.SourceDocument?.Path?.StartsWith("compiler://", StringComparison.Ordinal) == library);
 
     // A MIR body's key in the view's form: a default template's index, or a module's ordinal for top-level statements.
-    private static ExecutableBody BodyOf(MirDefKey key) => new(key.Decl, key.Kind == MirBodyKind.DefaultTemplate || key.Decl is null ? key.Index : -1);
+    // An atom's entry in a body's table, read through the view at a syntax site (the view takes MIR's SourceRef and returns the index).
+    private static OriginAtomEntry Atom(Compilation c, ExecutableBody body, BoundOrigin origin, Koto site)
+        => c.Types.OriginRows(body).Atoms[c.Types.OriginAtom(body, origin, SourceRef.Of(site))];
+
+    // A row's Site as its syntax's first line (the view publishes a SourceRef).
+    private static string Site(Compilation c, OriginRow row) => First(c.SyntaxOf(row.Site));
 
     private static string First(Koto node) => (node.ToString() ?? string.Empty).Split('\n')[0].Trim();
 

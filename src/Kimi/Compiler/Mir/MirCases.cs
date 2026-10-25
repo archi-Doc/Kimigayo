@@ -99,6 +99,24 @@ internal sealed class MirCases(TyCtxt types)
     /// (an obligation Binding publishes for a use, R4-M22).</summary>
     internal void Deselect() => this.width = 0;
 
+    /// <summary>Gets the binders the selected view makes borrows, as bits of the body's binder order: the Semantics case a relation is
+    /// required in (SPEC 15.6.5; a C1-F4 row's CaseMask, Binding's Condition renumbered to the body), so a row whose mask they cover is
+    /// checked in the view.</summary>
+    /// <returns>The view's borrow binders.</returns>
+    internal ulong Borrows()
+    {
+        var bits = 0UL;
+        for (var b = 0; b < this.width; b++)
+        {
+            if (this.view[b].Target is not null && MirTypes.IsBorrow(this.view[b].Semantics))
+            {
+                bits |= 1UL << b;
+            }
+        }
+
+        return bits;
+    }
+
     /// <summary>Gets the views of a callee body that a call with a substitution selects under the selected view (SPEC 8.15): for each
     /// resolved binder of the callee, the case of its whole Type in the substitution, the Semantics of that Type's case Type, or every
     /// admitted case while that Type is still abstract. Views are decoded as <see cref="Select"/> numbers them; the selected view is kept.</summary>

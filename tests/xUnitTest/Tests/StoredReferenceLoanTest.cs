@@ -137,6 +137,7 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
     {
         const string source = "func change(value: uniq/i32) => value@follow = 99\nfunc run(value: uniq/i32 during a)\n    let found = value@follow@ref\n    let moved = value@move\n    require found == 42 else => $abort(\"value\")\n    change(moved)\nvar value = 42\nrun(value@uniq)\nrequire value == 99 else => $abort(\"changed\")";
         ScalarEmissionTest.EmitFixture("StoredReferenceLoanTransferred", source, string.Empty);
+        MirTargetSide.Check(source, (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At("value@move", "value")));
     }
 
     [Fact]

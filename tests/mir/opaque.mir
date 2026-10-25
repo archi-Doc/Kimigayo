@@ -13,7 +13,7 @@ fn sum @4
   _5: ref/[3 of i32] temp @18 s1
   _6: isize temp @18 s1
   _7: i32 temp @22 s1
-  _8: i32 temp @4
+  _8: i32 temp (Result) @4
   s1: lexical in s0 @15
   opaque 0 @20: _2
   bb0:
@@ -82,7 +82,7 @@ fn kept @31
   _8: i32 temp @49 s1
   _9: string temp @51 s1
   _10: string temp @54 s1
-  _11: i32 temp @31
+  _11: i32 temp (Result) @31
   s1: lexical in s0 @35
   opaque 0 @37: _1 _4
   opaque 1 @48: _8
@@ -168,7 +168,7 @@ closure @61
   _5: string temp @70 s1
   _6: string temp @73 s1
   _7: ref/i32 temp @77 s1
-  _8: ref/i32 temp @61
+  _8: ref/i32 temp (Result) @61
   s1: lexical in s0 @63
   bb0:
       StorageLive(_3) @64 s1

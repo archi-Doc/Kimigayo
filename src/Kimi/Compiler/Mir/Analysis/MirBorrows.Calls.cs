@@ -39,6 +39,7 @@ internal sealed partial class MirBorrows
         var callee = call.Callee;
         var result = callee.Kind == MirCalleeKind.Value && call.Operand.Kind != MirOperandKind.Const ? this.Read(state, call.Operand.Place) : 0;
         result = result != 0 && MirTypes.IsReference(this.TypeOf(call.Operand)) ? this.Content(state, result) : result;
+        result = this.Indirect(result); // Rule W: a Value callee's environment is no Copy of an argument.
         this.Moves(call.Start, call.Count);
         if (callee.Kind == MirCalleeKind.Value && call.Operand is { Kind: MirOperandKind.Move, Place: { Projection: 0 } moved })
         {
@@ -48,6 +49,7 @@ internal sealed partial class MirBorrows
         var retained = this.Rows(call, out var untied);
         var writesOf = Retention.Result; // The output whose writable holders the targets are.
         var clean = 0; // The first target W reaches only past a by-argument holder.
+        BoundType? referent = null; // Rule W: the Type the written argument refers to, every part of which may receive the value.
         foreach (var row in retained)
         {
             var value = row.Input == NoInput ? this.escapedSet : this.Retained(state, call.Start + row.Input, row.Input, row.Kind);
@@ -61,12 +63,13 @@ internal sealed partial class MirBorrows
             {
                 clean = this.Writes(state, this.argValues[row.Output]);
                 writesOf = row.Output;
+                referent = this.wCount > 0 && this.TypeOf(call.Start + row.Output) is { Kind: BoundTypeKind.Semantics, Components: [var to, ..] } ? to : null;
             }
 
             this.held |= !checks && value != 0 && clean < this.targets.Count;
             foreach (var target in this.targets)
             {
-                this.AddSlot(target, value, 0, Joined, issue: false);
+                this.AddSlot(target, this.Arrive(target, referent, false, this.argValues[row.Output], value), 0, Joined, issue: false);
             }
         }
 
@@ -86,11 +89,12 @@ internal sealed partial class MirBorrows
     }
 
     // ret(i, κ) (A3 5): Value, the argument's value and, for a borrow (a reference or a view handle, Borrows), a read through it; Content,
-    // a read through it only.
+    // a read through it only; Chain (SPEC 15.6.4's any chain of reads through it; DECISIONS BU-40) is read as Content, one read, until
+    // A5's Chain closure (DECISIONS R4-M131 Order 3, PLAN G160).
     private int Retained(ulong[] state, int operand, int position, RetentionKind kind)
     {
         var value = this.argValues[position];
-        if (kind == RetentionKind.Content)
+        if (kind != RetentionKind.Value)
         {
             return this.Content(state, value);
         }

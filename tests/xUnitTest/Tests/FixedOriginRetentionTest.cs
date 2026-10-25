@@ -148,6 +148,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Analysis.IsVerified == !conflict, MinimalEmissionTest.Describe(c, null));
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, new((conflict ? "z" : "w") + "@follow = 42")));
     }
 
     [Theory]
@@ -247,6 +248,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Analysis.IsVerified == valid, MinimalEmissionTest.Describe(c, null));
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, new("z@follow = 42")));
         if (valid)
         {
             source += "var z: i32 = 41\nlet x: i32 = 7\nrequire use(z@uniq, x@ref) == 7 else => $abort(\"replacement\")";

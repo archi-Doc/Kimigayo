@@ -354,7 +354,8 @@ public class PairFollowTest
 
     // SPEC 13.5.5, 15.5, 8.15: a follow through a borrow-only layer keeps the slot met with the borrows that reach the operand
     // when uniq is admitted, and an outer pair layer on the path adds its slot, as the follow of the uniq case's concrete reference
-    // does; a result that detaches from those borrows is rejected with the concrete twin's code.
+    // does; a result that detaches from those borrows is rejected with the concrete twin's code. Binding judges the fixed relation
+    // (DECISIONS R4-M108), so its record is the MIR side's too (2a-4).
     [Theory]
     // A.10
     [InlineData(
@@ -378,10 +379,12 @@ public class PairFollowTest
         "func bad(b: uniq/Box<uniq/i32 during a> during c, p: ref/i32) -> (Option<ref/Box<uniq/i32 during a> during p>, uniq/i32 during p)\n    return (.None, b.item@follow@uniq)")]
     public void DetachingFollowsAreRejectedLikeTheirConcreteTwins(string pair, string concrete)
     {
-        var generic = MinimalEmissionTest.Analyze(Box + pair);
-        var twin = MinimalEmissionTest.Analyze(Box + concrete);
-        Assert.Equal([DiagnosticCode.UnprovenOriginRelation_Kd], generic.Binding.Issues.Select(x => x.Code));
-        Assert.Equal([DiagnosticCode.UnprovenOriginRelation_Kd], twin.Binding.Issues.Select(x => x.Code));
+        foreach (var c in new[] { MinimalEmissionTest.Analyze(Box + pair), MinimalEmissionTest.Analyze(Box + concrete) })
+        {
+            Assert.Equal([DiagnosticCode.UnprovenOriginRelation_Kd], c.Binding.Issues.Select(x => x.Code));
+            var (common, _, _, mir) = MirDifferenceLedger.Sides(c, c.BuildMir());
+            Assert.Equal([DiagnosticCode.UnprovenOriginRelation_Kd], common.Concat(mir).Select(static x => x.Code));
+        }
     }
 
     // SPEC 8.1.1, 8.1.2: an instance binds `o` through its Type argument wherever a body's Type names it, also as a meet operand
