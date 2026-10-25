@@ -346,11 +346,10 @@ public sealed partial class Binding
         {
             var origin = this.OriginAtom(use, OriginKind.Inference, aggregateSlot);
             this.AddObligation(new(BindingObligationKind.OriginInference, use, BindingDeadline.BodyOrigins, Longer: origin));
-            if (IsWithin(use, initializer))
-            {
-                _ = this.InitializerDeclaration(local); // It resolves the Origin when the initializer is bound (ResolveInitializerOrigins).
-            }
 
+            // The declaration that resolves the Origin (DECISIONS R4-M112): the initializer's when the initializer is bound
+            // (ResolveInitializerOrigins), the local's when its Type is fixed (InferLocalOrigins).
+            _ = IsWithin(use, initializer) ? this.InitializerDeclaration(local) : this.OriginDeclarationFor(local);
             return origin;
         }
 

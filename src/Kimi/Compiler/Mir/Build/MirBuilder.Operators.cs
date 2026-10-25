@@ -123,8 +123,9 @@ internal sealed partial class MirBuilder
     // left's value into it, so that each path writes the destination once (a let binding is initialized once).
     private void Logical(MirPlace destination, BinaryKoto logical)
     {
-        var left = this.Temp(BoundType.Boolean, logical.Left);
+        var left = this.Hold(BoundType.Boolean, logical.Left);
         this.Assign(left, logical.Left);
+        this.Made(left);
         var right = this.body.AddBlock();
         var decided = this.body.AddBlock();
         var join = this.body.AddBlock();
@@ -159,9 +160,15 @@ internal sealed partial class MirBuilder
                 folded))),
                 conversion);
         }
-        else if (binding is ConversionBinding.Literal or ConversionBinding.Abrupt)
+        else if (binding == ConversionBinding.Literal)
         {
-            this.Assign(binding == ConversionBinding.Literal ? destination : this.Temp(conversion.Left), conversion.Left);
+            this.Assign(destination, conversion.Left);
+        }
+        else if (binding == ConversionBinding.Abrupt)
+        {
+            var value = this.Hold(TypeOf(conversion.Left), conversion.Left);
+            this.Assign(value, conversion.Left);
+            this.Made(value);
         }
         else if (binding == ConversionBinding.CaseAdaptation)
         {

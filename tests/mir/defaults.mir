@@ -30,9 +30,6 @@ defaulttemplate count#1 @52
     * _2 = Eq(copy (*_1), const 0_i32) proven @53
       switch copy _2 [0: bb3, otherwise: bb2] @53
   bb1:
-      StorageDead(_5) @59 s2
-      StorageDead(_4) @59 s2
-      StorageDead(_3) @61 s2
       return @52
   bb2:
       StorageDead(_2) @53
@@ -49,6 +46,9 @@ defaulttemplate count#1 @52
   bb4:
       _0 = count(move _3, move _4) -> bb5 @59 s2
   bb5:
+      StorageDead(_5) @59 s2
+      StorageDead(_4) @59 s2
+      StorageDead(_3) @61 s2
       goto bb1 @58
 defaulttemplate run#1 @71
   _0: () -> i32 return @66
@@ -369,9 +369,9 @@ fn use @79
   bb9:
       _18 = run(move _19, move _20) -> bb10 @105 s1
   bb10:
-      StorageDead(_21) @105 s1
       drop _20 -> bb11 [elide] @105 s1
   bb11:
+      StorageDead(_21) @105 s1
       StorageDead(_20) @105 s1
       StorageDead(_19) @107 s1
       StorageLive(_23) @109 s1
