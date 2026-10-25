@@ -3565,8 +3565,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     builder takes by case (`MirBuilder.Values.cs`; R5's round 3 B2: answering false, round 2's R1, brought back `acquire (*_1).0` past
     `ref/closure` on three valid forms), so the net covers it until the SPEC session settles 3.5 against 14.2.2; false where an
     adaptation recorded at the use decides; true where the position decides (`AcquiredByPosition`: a bare position, an aggregate
-    element, a Dictionary entry), or at an input its consumer's operation takes by value (a receiver or argument of any callee kind's plan, an enum Case's payload, SPEC 3.5's payloads); else by the consumer,
-    the specific rows before the general binary one (an index, a selection and a conversion are binary nodes; re-check R3): true at
+    element, a Dictionary entry), or at an input its consumer's operation takes by value (a receiver or argument of any callee kind's
+    plan, an enum Case's payload, SPEC 3.5's payloads); else by the consumer, the specific rows before the general binary one (an
+    index, a selection and a conversion are binary nodes; re-check R3): true at
     an assignment's or compound assignment's source, an `and`/`or` operand, a Range bound, a built-in index key and a conversion
     operand under the bare rule; false at a write or update target, an inspected operator operand, a selection, a runtime test, a
     borrow, an address, a follow, a transfer, an object view upcast that borrows, a `for` or `match` Subject and a value call's
@@ -3580,7 +3581,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     round, 2026-10-25, verbatim 「(a) 許可リストのまま直す (推奨)」, BU's re-check 2) only by its own failure, or by the failure or
     dependency of the consumer whose operation decides its acquisition (a call or payload input, a conversion, an index), read from
     the dependent-record rule's owner (`Binding.Diagnostics.Prerequisites.HasFailureCauses`, `FailureCauses`' condition); a position
-    that decides by itself is explained by nothing else. An explained use neither reaches the net nor marks its capture: `"\(x)"`,
+    that decides by itself, and a use in Discard Context, whose acquisition nothing decides (BU's re-check 3, N1: a failed sibling
+    `match` arm explained `true => value`, which keeps the net as `_ => value` does), are explained by nothing else. An assignment
+    source takes the target's Type, so `missing = x` loses the mark with its failed target (SPEC 3.5, 10.2; the twin is Shared).
+    An explained use neither reaches the net nor marks its capture: `"\(x)"`,
     `Box(x)`, `x@copy` and `a[x]` keep their one record, a dependent call `pair(missing, x)` gets no net record beside
     `UnresolvedBinding_Kd`, and a failed sibling element (`(x, missing)`, `[x, missing]`, `(take(x), missing)`) keeps the mark, as the
     concrete twin over `uniq/i32` keeps its `InvalidAssignment_Kd`. Valid programs reach the net: the Discard Context forms above;

@@ -32,12 +32,7 @@ public sealed partial class Binding
     // of the HIR publisher's Consume until one Binding-time fact replaces both (the owner, 2026-10-25), does not decide.
     internal bool? AcquiredByValue(Koto node)
     {
-        var target = node;
-        while (target.Parent is ParenthesizedKoto parenthesized)
-        {
-            target = parenthesized;
-        }
-
+        var target = Grouped(node);
         if (!KotoHelper.IsValueContext(target))
         {
             return null; // A Discard Context use: SPEC 3.5 and 14.2.2 leave its acquisition open; the MIR builder acquires it by case.
@@ -79,16 +74,13 @@ public sealed partial class Binding
     // SPEC 23.1.2 (the owner's third round on the list, 2026-10-25): whether a failure explains a use, its own or one of the consumer
     // whose operation decides its acquisition (a call or payload input, a conversion, an index, an operator): that consumer's failure
     // or its dependency on another failure (HasFailureCauses, the dependent-record rule). A position that decides the acquisition by
-    // itself (AcquiredByPosition) is explained by nothing else, so a failed sibling element never explains it.
+    // itself (AcquiredByPosition), and a use in Discard Context, whose acquisition nothing decides (BU's re-check 3, N1), are explained
+    // by nothing else, so a failed sibling element or arm never explains them.
     internal bool ExplainedUse(Koto use)
     {
-        var target = use;
-        while (target.Parent is ParenthesizedKoto parenthesized)
-        {
-            target = parenthesized;
-        }
-
-        return this.HasFailureCauses(use) || (!AcquiredByPosition(target) && target.Parent is { } consumer && this.HasFailureCauses(consumer));
+        var target = Grouped(use);
+        return this.HasFailureCauses(use) ||
+            (KotoHelper.IsValueContext(target) && !AcquiredByPosition(target) && target.Parent is { } consumer && this.HasFailureCauses(consumer));
     }
 
     // The operation by which the method or accessor call whose receiver a Place is takes it (SPEC 7.3.3, 11.3), or null.
@@ -122,12 +114,7 @@ public sealed partial class Binding
     // common Type is chosen from the Types its sources take here.
     private static bool IsBareAcquisitionPosition(Koto node)
     {
-        var target = node;
-        while (target.Parent is ParenthesizedKoto parenthesized)
-        {
-            target = parenthesized;
-        }
-
+        var target = Grouped(node);
         return target.Parent switch
         {
             VariableKoto variable => ReferenceEquals(variable.InitializerKoto, target),
@@ -137,6 +124,17 @@ public sealed partial class Binding
             JumpKoto jump => ReferenceEquals(jump.Expression, target),
             _ => ResultTarget(target) is IfKoto or MatchKoto or DoKoto && KotoHelper.IsValueContext(target),
         };
+    }
+
+    // The outermost parentheses around `node`, the node its consumer takes.
+    private static Koto Grouped(Koto node)
+    {
+        while (node.Parent is ParenthesizedKoto parenthesized)
+        {
+            node = parenthesized;
+        }
+
+        return node;
     }
 
     // SPEC 3.5: whether the position of `target` (its parentheses unwrapped) acquires its value by value itself, as StoredReborrow decides
