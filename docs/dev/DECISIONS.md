@@ -90,8 +90,8 @@ rules that result from them.
     semantic (responsibility, contract and invariants unchanged, no other site sharing the cause). A design is one
     chain from the required meaning to the special cases it removes. Concepts are shared by meaning and contract; a new
     form is a row only under a canonical table. An open family is closed by a representation or a whitelist. A reviewer
-    attempts a smaller design and classifies findings; two rounds on one family go to the owner. Roles and the two
-    senses of "owner" are defined.
+    attempts a smaller design and classifies findings; two rounds on one family go to the owner (superseded by Q10).
+    Roles and the two senses of "owner" are defined.
   - Reasons: concept and token counts favoured a design that hid a distinction (R4 U0a design A dropped independent
     records and was revised after review under SPEC 23.1); "the local patch and why it is rejected" presupposed
     rejecting correct owner-local fixes; shape-based sharing and generic tables can merge different contracts; path
@@ -111,8 +111,8 @@ rules that result from them.
     or across phases; any other change gets one review before completion, covering its design.
   - Reason: the caps, forecasts and per-unit allowances added owner gates without improving the code, and every
     non-local change paying two reviews slowed small units (R4-M33).
-- **Q6 Lighter review forms and short commit records** (2026-10-17, owner; AGENTS "Review weight" and "Verification and
-  Delivery").
+- **Q6 Lighter review forms and short commit records** (2026-10-17, owner; AGENTS "Review weight", moved to WORKFLOW by Q10,
+  and "Verification and Delivery").
   - Adopted for all work: (1) a change whose contract an owner-approved design recorded here already fixes gets one design
     and one review, and a departure, including a new representation, component or vocabulary entry, takes the full
     process; (2) the units of one group such a design names may share one review in place of their own, merging into dev or main
@@ -170,6 +170,24 @@ rules that result from them.
   - Rejected: keeping the count as a review prompt that a one-responsibility ruling resets (it keeps per-unit counting across
     parallel lanes and rulings on small single-responsibility files to ask the question review already asks); a larger
     count or a size floor (another proxy for the same test).
+- **Q10 Change workflow: classes, verdicts and bounded reviews** (2026-10-25, owner; [WORKFLOW](WORKFLOW.md), AGENTS
+  "Workflow").
+  - Adopted: WORKFLOW owns design, review and completion, moved from AGENTS "Design before code", "Review weight" and
+    "Independent review". Changes are Minor (local), Major, Full (formerly the full process) or Owner (Q6 (1)); a Major
+    change gets a design review only for an open design issue, so Q5's one review otherwise stands. Verdicts are ACCEPT,
+    REVISE (fixed within the approved design) and REJECT (the cause analysis or the design is revised). A fix starts from
+    the reviewed change without keeping a wrong structure. Implementer and reviewer continue; a repeated review covers the
+    previous findings, the diff and what it affects. Reviews accumulate per unit, separately for design and implementation;
+    two sharing a cause redo the cause analysis; a third without ACCEPT holds the unit for the owner. A specification
+    contradiction, a significant measured slowdown or a simplification by unifying concepts suspends the unit for the
+    owner. Completion checks run on the final inputs, reusing evidence for the same inputs, configuration and coverage.
+  - Supersedes: AGENTS' "A rejected design or diff is redone, not patched; after two rounds on one family of findings, the
+    owner chooses between a representation, a whitelist and a hold", that clause of Q4 and its restatement in R4-M119.
+  - Reason: a repeated round cost as much as the first: fresh agents re-read the context, the reviewer re-reviewed the
+    whole change and raised new findings, and verification repeated for small fixes.
+  - Rejected: a design review for every Major change (Q5's reason, slower small units, still holds, and the saving is
+    unmeasured); bounding REVISE by the Minor definition (a fix the approved design prescribes may still add a branch);
+    resetting the count on a design revision (the bound would never apply); a review count as a reason to ACCEPT.
 
 - **G138-1 Native execution and verification evidence ownership** (2026-10-24; planning session, independent designs A/B and
   independent pre-code review). G138 needs execution progress distinguished from scheduling delay and missing observations
@@ -3376,8 +3394,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - A Binding-touching R4 unit is reviewed in parallel: its A5 part by R4's reviewer, its Binding part by BU (R4-M110 had BU review the
     whole unit serially).
   - Back to one implementer and one reviewer when weekly usage passes 70% early in the week (withdrawn by R4-M135).
-  - Unchanged: the full process, the owner's choice after two rounds on one family, SPEC's authority, soundness, and no input-changing
-    push inside an announced merge window. BU and R5 confirm the relayed rule once with the owner; the cap binds them as stated.
+  - Unchanged: the full process, the owner's choice after two rounds on one family (superseded by Q10), SPEC's authority,
+    soundness, and no input-changing push inside an announced merge window. BU and R5 confirm the relayed rule once with the
+    owner; the cap binds them as stated.
   - Reason: under one plus one each full-process unit (two designs, a design review, implementation, a review) occupied both slots, so
     independent lanes waited (G160-4's step-walk merge, A5-F7's prototype); reviews of Binding-touching units waited for BU's capacity;
     and several sessions' agents running full suites at once slowed runs and caused timeouts (G138), while one design's probes ran the
