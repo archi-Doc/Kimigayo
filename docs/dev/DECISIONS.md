@@ -2832,7 +2832,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     test (`IsStatic`). O1: a Closure header's well-formedness row whose inner Origin is omitted relates the Closure's per-call `Input`
     to an `Inference` atom of the evaluating body (SPEC 15.3.4; e.g. `let h = func [] (p: ref/(ref/i32)) -> i32 => 1`). It is neither a
     declaration row (E2's validation, E3) nor classifiable by 2a0-D §3 without a Closure rule. It stays in the evaluating body's slice
-    with the `Input` Unclassed (row 9), so 2a-1a reports the located `Unsupported_Kd`. 2c-D decides it (PLAN G216).
+    with the `Input` Unclassed (row 9), so 2a-1a reports the located `Unsupported_Kd`. 2c-D decides it (PLAN G216; superseded by
+    R4-M137: no row of the evaluating body, a premise of the signature and an obligation of each call).
   - Conditions for 2a-1a (BU's answer 1 and O7): MIR's conversion of a `MirDefKey` to an `ExecutableBody` gets a single owner in Mir,
     which the tests use (today only the test helper `BodyOf`); MIR's inline default copies read the template's atoms in the template's
     slice, or a warm-against-cold check settles the stamps of a Koto an edit re-parents (`BoundOrigin.Body` is set once at interning).
@@ -4464,8 +4465,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
   implementer lane under R4-M126 §2.15 (P10) and D-11, the planning session's scope confirmation; supersedes R4-M101 O1)
   - Rule (SPEC 15.3.4 "Nested signatures", which names Function Types, Callable and anonymous functions together as nested signatures
     with per-call direct-input quantification; SPEC 15.6.1: a definition assumes its signature's Types well-formed and each call proves
-    it): an input's well-formedness is a premise of its signature (R2, `ExtractOriginPremises` for a `FunctionKoto` or `FunctionTypeKoto`)
-    and an obligation of each call (`SolveValueCallOrigins`' bound, `RequireInputPremises`), so `Binding.CompleteOrigins`
+    it): an input's well-formedness is a premise of its signature (R2, `ExtractOriginPremises` for a `FunctionKoto` or `FunctionTypeKoto`),
+    no premise of a body whose input holds the Function Type (`AddTypePremises` adds none for a Function Type's inputs), and an
+    obligation of each call (`SolveValueCallOrigins`' bound, `RequireInputPremises` at every value call, also one whose inputs are all
+    written), so `Binding.CompleteOrigins`
     (`Binding.TypeOrigins`) forms no well-formedness obligation for a parameter Type of a nested signature (Position Parameter, Owner an
     anonymous function or a Function Type), as a named signature forms none in a body (its header is bound in none, R4-M101 E1; its rows
     are declaration rows the judge proves by the same premise, BU-26).
@@ -4473,16 +4476,22 @@ and migration obligations remain in force; no numeric cap changes are authorized
     inputs related by a written Origin, a Function Type in a local annotation with or without an initializer, or inside a Closure's
     parameter) form no row and leave no Unclassed `Input` in the evaluating body's slice. On `claude/a5-2a-2` the row-9 located
     `Unsupported_Kd` of these forms goes when G:A5-F4 meets dev (a throwaway probe there: MirOriginsTest's two G216 rows and
-    LocalRegionCompletionTest's LocalFunctionNested give no record). Default pipeline: no change (package §5); a Function Type's
-    declaration rows were proven by the same premise. The named twin stays `MissingOriginBinding_Kd` (15.4.2).
+    LocalRegionCompletionTest's LocalFunctionNested give no record). The named twin stays `MissingOriginBinding_Kd` (15.4.2).
+  - Each call proves it (BU's review B1: the first version removed the in-body row while a value call with no per-call input skipped
+    `RequireInputPremises`, so a Function Type annotation writing every input let `keep` outlive `short`, accepted on both pipelines).
+    Default pipeline, an acceptance change: a named function calling its written Function Type parameter now proves the input's
+    well-formedness in its body, `UnprovenOriginRelation_Kd` at the input where nothing does (BU's x2, x5_fnparam_uaf2); before,
+    `AddTypePremises` made it a premise of that body, so neither the call nor the declaration row checked it.
   - Rejected: anonymous functions only (a clause for one form; SPEC's nested signatures are one class, and a Function Type inside a
     Closure's parameter is a Closure header row); the row in the Closure's own body (a restatement of its own premise, a Function Type
     has no body, E1's formation context moves); a view rule for a nested signature's `Input` (no Closure rule, R4-M126); no input
     well-formedness obligation for any signature, retiring `CallBorrows`' declaration path (BU-26's judge, the view vocabulary and the
     old analysis; beyond the package).
-  - Open (PLAN at landing, the planning session's): a Closure's result well-formedness (`func [q] (p: ref/i32) -> Option<ref/(ref/i32
-    during q)>`) keeps its row in the evaluating body and the default rejects it (`UnprovenOriginRelation_Kd`): it needs an R3 premise
-    for Closures and a value-call result obligation. After this unit no body slice has a `CallBorrows` row.
+  - Open (PLAN at landing, the planning session's): a Closure's or a body's Function Type's result well-formedness (`func [q] (p:
+    ref/i32) -> Option<ref/(ref/i32 during q)>`, `var f: (ref/i32) -> Option<ref/(ref/i32 during q)>`) keeps its row in the evaluating
+    body and the default rejects it (`UnprovenOriginRelation_Kd`): it needs an R3 premise for nested signatures and a value-call result
+    obligation; a named function's Function Type parameter keeps its result premise in that function's body. After this unit no body
+    slice has a `CallBorrows` row.
   - Numbering: R4-M137 was reserved for 2c-9 (R4-M134-R4-M136 on dev and `claude/a5-2a-2`).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
