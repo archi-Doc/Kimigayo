@@ -3560,17 +3560,26 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - By-value positions (2c-1 review O1, 2c-2 review B1, the family's second round; the owner, 2026-10-25, verbatim 「(a)
     表現で直す。それまでは許可リスト (推奨)」): until one Binding-time "consumed by value" fact that `ClosureEffects` and the HIR
     publisher's `Consume` both read (the planning session's separate full process, which removes this list), `AcquiredByValue`
-    (`Binding.BareAcquisition`, the owner of bare positions) names SPEC 3.5's value positions as `Consume` takes them: true at a bare
-    position, a Dictionary entry, an assignment's or compound assignment's source, an `and`/`or` operand, a Range bound, a built-in
-    index key, or a call input (receiver or argument, any callee kind's plan) its operation takes by value; false where an adaptation
-    or the consumer takes it otherwise; null elsewhere. So `take(x)`, `g(x)` of a value call, `local = x` and `[1: x]` of a
-    captured `x: s/T` Reborrow in x's exclusive cases, as `let y = x` does, and the strongest receiver is Exclusive (SPEC 8.14,
-    7.7.3; they were Shared, the MIR reborrowing through `ref/closure`): a call of such a `let` Closure is `InvalidAssignment_Kd`.
-    The net: a use of a capture that Reborrows by case at a null consumer, unless that consumer failed (its record stands), is a
-    located `Unsupported_Kd` when the capture is unmarked and the case-free receiver Shared. No valid program found reaches it: the
-    null positions need a concrete Type (a condition, a formatting operand without an unproven constraint) that a capturable pair
-    layer `s/T` lacks, an application `s/U` is not capturable (`Binding.Captures`), and a payload `.Some(x)` is
-    `TransferRequired_Kd` (2c-2 review X1, BU's).
+    (`Binding.BareAcquisition`, the owner of bare positions) names SPEC 3.5's value positions as `Consume` takes them: false in
+    Discard Context, where no consumer takes the use (a statement `x` or `(x)`, a discarded `if` body; 2c-2 re-check R1), or where an
+    adaptation recorded at the use decides; true at a bare position, a Dictionary entry, or an input its consumer's operation takes
+    by value (a receiver or argument of any callee kind's plan, an enum Case's payload, SPEC 3.5's payloads); else by the consumer,
+    the specific rows before the general binary one (an index, a selection and a conversion are binary nodes; re-check R3): true at
+    an assignment's or compound assignment's source, an `and`/`or` operand, a Range bound, a built-in index key and a conversion
+    operand under the bare rule; false at a write or update target, an inspected operator operand, a selection, a runtime test, a
+    borrow, an address, a follow, a transfer, an object view upcast that borrows, a `for` or `match` Subject and a value call's
+    callee; null elsewhere. So `take(x)`, `g(x)` of a value call, `local = x`, `[1: x]` and `.Some(x)` of a captured `x: s/T`
+    Reborrow in x's exclusive cases, as `let y = x` does, and the strongest receiver is Exclusive (SPEC 8.14, 7.7.3; they were
+    Shared, the MIR reborrowing through `ref/closure`): a call of such a `let` Closure is `InvalidAssignment_Kd`. The payload also
+    keeps X1's `TransferRequired_Kd` (2c-2 review X1, BU's), as outside a Closure.
+    The net: a use of a capture that Reborrows by case at a null consumer is a located `Unsupported_Kd` when the capture is unmarked
+    and the case-free receiver Shared. A failure at the use or at a node enclosing it in the Closure's body explains the use (SPEC
+    23.1.2; re-check R2): such a use neither reaches the net nor marks its capture, so `"\(x)"` keeps its one
+    `UnprovenConstraint_Kd`, `Box(x)` its one `UnresolvedBinding_Kd` and `x@copy` its one `NonCopyOperand_Kd`. A valid program can
+    reach the net (the statement forms did before R1); the re-check's probes find none now: the remaining null consumers (a label, a
+    `try`, a formatting or macro operand) need what a capturable pair layer `s/T` lacks (`"\(x)"` stays `UnprovenConstraint_Kd` under
+    `T is Utf8Format`), and an application `s/U` is not capturable (`Binding.Captures`). Rejected: a derived record at the use (a
+    prerequisite naming a failed node, which the net cannot know before a later failure, for the same published output).
   - Limits, each counted in every case, the strongest receiver (PLAN G13), because the capture's case Type does not tell their cases:
     a Reborrow of a Place reached through a capture (a part `pair.0`, a referent `r@follow`; the part forms are a located
     `Unsupported_Kd` on the default, the referent form `TransferRequired_Kd` in its uniq case); an explicit case adaptation

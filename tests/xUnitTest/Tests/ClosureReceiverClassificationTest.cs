@@ -240,6 +240,45 @@ public class ClosureReceiverClassificationTest
                 "public func main() -> ()\n    var n = 1\n    var m = 2\n    outer(n, m)\n",
             exclusive);
 
+    // SPEC 3.5, 14.2, 23.1.2 (2c-2 re-check R1, R2): no consumer takes a use in Discard Context (a statement, a discarded selection
+    // body), so a captured pair layer there acquires nothing and the Closure is valid under `let` and `var`. A use that a failure at it
+    // or at an enclosing node explains keeps that failure's one record: it neither marks its capture nor reaches the list's net. Each
+    // row: the records under `let h`, then under `var h`.
+    [Theory]
+    [InlineData("        value\n", "", "")]
+    [InlineData("        (value)\n", "", "")]
+    [InlineData("        if c\n            value\n", "", "")]
+    [InlineData("        let t = \"\\(value)\"\n        _ = t\n", "UnprovenConstraint_Kd \"\\(value)\"", "UnprovenConstraint_Kd \"\\(value)\"")]
+    [InlineData("        let b = Box(value)\n        _ = b\n", "UnresolvedBinding_Kd Box", "UnresolvedBinding_Kd Box")]
+    [InlineData("        let k = value@copy\n        _ = k\n", "NonCopyOperand_Kd value@copy", "NonCopyOperand_Kd value@copy")]
+    [InlineData("        let a: [2 of i32] = [1, 2]\n        let k = a[value]\n        _ = k\n", "TypeMismatch_Kd value", "TypeMismatch_Kd value")]
+    public void AUseNoConsumerTakesOrAFailureExplainsAddsNoRecord(string use, string letRecords, string varRecords)
+    {
+        var source = PairHead + "    var h = func [value] (c: bool) -> ()\n" + use + "    h(true)\n" + PairMain;
+        Assert.Equal(letRecords, Records(source.Replace("    var h = func", "    let h = func", StringComparison.Ordinal)));
+        Assert.Equal(varRecords, Records(source));
+
+        static string Records(string source) => string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}"));
+    }
+
+    // SPEC 3.5 (2c-2 re-check R2, R3): an enum Case's payload is a listed input, so `.Some(value)` of a captured pair layer Reborrows in
+    // the uniq case: the capture is marked and a `let` Closure's call is Exclusive. X1's TransferRequired_Kd stays at the use, as
+    // outside a Closure, and the net does not replace it; Binding's records, since PLAN G252 also owns the mir builder's record here.
+    [Theory]
+    [InlineData("let", "TransferRequired_Kd value; InvalidAssignment_Kd h")]
+    [InlineData("var", "TransferRequired_Kd value")]
+    public void AnEnumPayloadOfAPairLayerCaptureIsAListedInput(string binding, string records)
+    {
+        var source = PairHead + "    " + binding + " h = func [value] () -> ()\n        let o: Option<s/T> = .Some(value)\n        _ = o\n    h()\n" + PairMain;
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
+        c.Bind();
+        Assert.Equal(records, string.Join("; ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
+        var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous).ClosureOf()!;
+        Assert.Equal((SemanticsKind.Ref, SemanticsKind.Uniq, "value"), (closure.CaseFreeReceiver, closure.Receiver, string.Join(",", closure.Captures.Where(x => x.BareReborrows).Select(x => x.Environment.Name))));
+    }
+
     // DECISIONS R4-M126 (N4 (a)): each binding of a Closure classifies its receiver once its body is bound, also when the Closure then
     // fails, as an inferred result that borrows the call's own storage does; a rebinding classifies it again with the same facts.
     [Theory]
