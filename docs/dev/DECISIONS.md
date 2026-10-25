@@ -8743,7 +8743,7 @@ structure is recorded here by the unit that first implements it.
   - Adapters (ruling Q6 (a)): `Forward`'s `Own` matches a callee parameter by logical index and passing (`FunctionCodegen.Passes`): the same
     kind, or a SharedReference and a Value of the same pointer Type (a SharedReference is a Value with attributes), so an erased Item over
     `ref/string` elements reaches its helper's by-value pointer input.
-  - Departure (for the owner's departures list): plan row C8d's "Array kernel O2" (ruling Q5 (a)): the `Array` corpus kernel's A/B moves to
+  - Departure, confirmed by the owner (R5-M122): plan row C8d's "Array kernel O2" (ruling Q5 (a)): the `Array` corpus kernel's A/B moves to
     the later of C8d and C9c, since its checksum line needs interpolation (C9c) under MIR code generation; C8d measures a temporary variant
     as information, a B/A beyond the A=B variance stopping it (R5-M8).
   - Deviations: none in native outcomes; IR only (PD9): a literal reserves then appends (the builder's form), one helper per function
@@ -8759,3 +8759,10 @@ structure is recorded here by the unit that first implements it.
     statement of the legacy capacity word); `[]` as three stores; clear's glue from Binding's published row (Q3 (b)); the builder writing
     grow and place (held, R3 decision 5); new IntrinsicIds (PD21); a `DropGlueRow` per collection (no consumer before C8e); re-pointing the
     old lowering to the map (D5).
+- **R5-M122 The owner confirms C8d's departure** (owner, 2026-10-25, on the R5 planning session's explanation after C8d's design; verbatim
+  「C8d の逸脱（Array カーネルの corpus O2 A/B
+  を C8d と C9c の遅い方へ移し、C8d は一時カーネルで参考測定すること）も承認します。」; the consequences are the planning session's) The
+  departure R5-M121 records is confirmed: plan row C8d's Array kernel O2 moves to the later of C8d and C9c, since the `Array` corpus
+  kernel's checksum line needs interpolation (C9c) under MIR code generation; C8d measured a temporary variant as information (B/A median
+  0.96, within the A=B variance, R5-M8's O2 rule). The later of C8d and C9c runs the corpus A/B under R5-M8, with ErasedCalls',
+  SharedHandles' and VirtualDispatch's (R5-M105, R5-M111, R5-M115). It leaves the list.
