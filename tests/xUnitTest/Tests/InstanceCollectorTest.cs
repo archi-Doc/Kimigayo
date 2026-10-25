@@ -1509,20 +1509,29 @@ public sealed class InstanceCollectorTest
     }
 
     // K 4.9 with a second, non-root module: a record caused in its inlined default moves to the root module's omitting call, and one caused
-    // in its body to the root-module call that first admitted the chain.
+    // in its body to the root-module call that first admitted the chain. take's default, grow<u8>(1, 3), instantiates under the call, so
+    // the builder copies it (DECISIONS R4-M127) with no record of its own, and its resource limit arises inside the copy, at its call in
+    // main's Inlined scope at the library's location; a default its call does not instantiate is no copy, but the builder's Unsupported_Kd at
+    // the call (MirBuildTest.ACopyTheCallDoesNotInstantiateIsAnOpaqueValue, this test's former probe<Array<…65…>> default).
     [Fact]
     public void TheLocationRuleLeavesNonRootModules()
     {
-        var deep = string.Concat(Enumerable.Repeat("Array<", 65)) + "i32" + new string('>', 65);
         var library = "public struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\npublic group Api\n" +
-            $"    public func probe<T>(value: T) -> i32 => 0\n    public func take(x: i32, extra: i32 = probe<{deep}>([])) -> i32 => x + extra\n" +
+            "    public func take(x: i32, extra: i32 = grow<u8>(1, 3)) -> i32 => x + extra\n" +
             "    public func grow<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => grow<Box<T>>(Box<T>.init(value@move), n - 1)\n";
         var c = ModuleBindingTest.Create("public func main() -> ()\n    _ = Lib.Api.take(1)\n    _ = Lib.Api.grow<i32>(1, 3)\n    return\n", library);
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        var program = c.BuildMir();
+        Assert.Empty(program.Records);
+        var main = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "main" });
+        Assert.Contains(
+            main.Blocks.ToArray(),
+            x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "grow", Source.Syntax.Module: 1 } &&
+                main.Scopes[x.Terminator.Source.Scope].Kind == MirScopeKind.Inlined);
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal(
-            [(DiagnosticCode.Unsupported_Kd, "Lib.Api.take(1)"), (DiagnosticCode.GenerationResourceLimit_Kd, "Lib.Api.grow<i32>(1, 3)")],
+            [(DiagnosticCode.GenerationResourceLimit_Kd, "Lib.Api.take(1)"), (DiagnosticCode.GenerationResourceLimit_Kd, "Lib.Api.grow<i32>(1, 3)")],
             set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
         Assert.All(set.Records, static x => Assert.Equal(0, x.Subject.Module));
     }

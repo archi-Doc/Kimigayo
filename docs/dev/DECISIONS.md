@@ -3660,6 +3660,37 @@ and migration obligations remain in force; no numeric cap changes are authorized
     GXS before R4's exit or a hold for rule G's forms (OQ-F7-3 (b), (c)).
   - Numbering: R4-M126 is free on dev and every remote and local branch (R4-M118 on 2a-1c; R4-M120 and R4-M124 on 4b; R4-M125 on
     G241).
+- **R4-M127 A default's copy is decided before it is written** (2026-10-25; PLAN G245's unit U1, the R4 planning session's design B1,
+  R5 agreeing that R4 takes the builder site and reviewing its hunk) SPEC 7.2.3, 23.1.1, 23.1.2.
+  - Cause: `MirBuilder.Inline` wrote a copy before it knew whether the call's substitution instantiates it. A null `TyCtxt.Apply` or
+    `Compose` kept the template's own Type or callee substitution (`applied ?? type`, `composed ?? Subst`), then a trailing
+    `Unsupported(node, slot)` overwrote the slot. Over storage Binding rejected (`k: Option<T> = .None`, a Tuple holding one, T a struct
+    whose Field failed) and in complete programs past the storage depth (`Option<Bx<…63…<i32>>>`), the copy held Types over the template's
+    parameter: a validator Type finding, so the mir pipeline published `InternalInvariant_Kd` and analyzed nothing (the caller's
+    independent records lost). An uncomposed callee (`k: i32 = h<T>()`) left `h<T>()` in the caller, which no rule saw.
+  - Rule (`MirBuilder.Defaults`, `.Defaults.Copies`): `Instantiates` decides, before a copy is written, whether the substitution applies
+    every Type the copy folds (each local's but the result's and the parameters', each constant's and rvalue's) and composes every
+    callee substitution. Where it does not, the default takes the failed template's path, an Opaque value reading the earlier slots,
+    with the call's `Unsupported_Kd` (an instantiation the implementation leaves unsupported); the expansion limit's
+    `DefaultExpansionLimit_Kd` takes precedence and a failed template keeps no record. `Inline` never fails.
+  - The record goes through the one owner, `MirBuilder.Opaque`'s `Unsupported` (COMPILER_ARCHITECTURE: the one Unsupported record with
+    an Opaque value), whose core now takes the value whose evaluation the Opaque replaces (its completion and its rejection) beside the
+    node that locates the site and the record, the site's roots collected by the caller: a form without a rule passes itself and its
+    syntax's roots, a default its call does not instantiate the call, the earlier slots and its expression. No flag selects either.
+  - Deleted: `Inline`'s `failed`, `FoldType`'s `?? type`, the callee's `?? terminator.Callee.Subst`, the trailing `Unsupported`.
+  - Consequence (R5 agreeing): a closed Type past the storage depth under a non-identity call substitution (a library group member's
+    default `probe<Array<…65…<i32>>>([])`) is no copy but the builder's `Unsupported_Kd` at the call, so the collector no longer admits it;
+    `InstanceCollectorTest.TheLocationRuleLeavesNonRootModules` keeps K 4.9's inlined-default case with a default that instantiates and
+    whose resource limit arises inside the copy (`grow<u8>(1, 3)`), its expectation exact; the former form is MirBuildTest's.
+  - Shared reading (R4-M125): the builder builds what Binding published, derives only what Binding rejected, and reports an instance it
+    cannot make as `Unsupported_Kd` at its use. Until U2, `Apply`'s null conflates storage Binding rejected with a genuine limit, so a
+    Rejected instance also skips its copy; U2 copies it through G240's instance with its outcome (`TyCtxt.Instance`, BU-36).
+  - Hand-off: the enum sites of the family (an Adt aggregate's Arity and a pattern's Downcast, over a case Binding substituted beside
+    one it did not) are BU's G242 (per-case `InstanceStorage.Cases`, design A1, full process), not the builder's.
+  - Rejected: builder guards deriving at the construct (they derive forms Binding accepted, losing a copy's caller Loans, R4-M10); a
+    Rejected copy derived without a record (B2); rolling back a written copy (B3: a try-then-fallback chain; `MirBody` has no
+    truncation); a per-call decision in Binding or the publisher (B4: the template's Types are MIR's).
+  - Numbering: R4-M127 is free on dev and every remote and local branch (R4-M118 on 2a-1c; R4-M120 and R4-M124 on 4b).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
