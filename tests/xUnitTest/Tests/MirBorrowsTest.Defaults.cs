@@ -136,23 +136,47 @@ public sealed partial class MirBorrowsTest
                     _ = rr(v@uniq, w@ref, 3)
                 """));
 
-    // r3 (R4-M93; PLAN G160, registered for X-2): a default may write through a raw pointer it reads from a slot (SPEC 5.2.1), which no
-    // row of its template call follows, so a template call whose slot's Type holds raw authority while its inputs' values hold a Loan is a
-    // located Unsupported_Kd at the call, never a Language problem (storing every input into E would make the valid `w = 5` an error,
-    // R4-M93): a raw-only slot (rawRec, which still errs at `v = 5` by the omitting call's own row, rule G's raw clause),
-    // one beside an input the default never stores (unrelated: `w = 5` is valid; in its local twin `var v = 1` is SPEC's error, v's end
-    // while the call's own row keeps v's Loan in raw storage, which may be used after every point, SPEC 15.6, as `rawStoredLocal`'s), a
-    // raw pointer in a holder that holds a Loan (hid, an unsound acceptance before) and its valid twin; inputs whose values hold no Loan
-    // give none (rawParam).
+    // SPEC 7.2.3, 5.2.1 Retained dependencies (DECISIONS R4-M116 PQ-5; R4-M93's r3 removed): a default may write through a raw pointer it
+    // reads from a slot, and those stores are part of the omitting call, which can make the call invalid only through the effects it
+    // contributes: its own rows apply them at the call to the holders the slot's value reaches, while the template call stores nothing.
+    // A raw-only slot errs at `v = 5` by the omitting call's own row (rawRec); one beside an input the default never stores is valid
+    // (unrelated), its local twin's `var v = 1` SPEC's error (v's end while the call's row keeps v's Loan in raw storage, which may be used
+    // after every point, as `rawStoredLocal`'s); a raw pointer in a holder read past a shared layer writes nothing (hid, valid by
+    // condition 3); inputs whose values hold no Loan give none (rawParam). Between a template call and its call only other defaults run,
+    // and what they read back through the pointer the call retains per argument: a later default reading back the stored Loan into the
+    // result keeps it (window1) or into a holder the pointer addresses (window2); with no later use the call is valid (window3).
     [Fact]
-    public void ARawSlotAtATemplateCallIsUnsupported()
+    public void ADefaultsRawStoresAreItsCallsOwn()
         => Assert.Equal(
-            [
-                "rawRec: putr(rp, v@ref, 3) Unsupported_Kd", "rawRec: v = 5", "unrelated: putz(rp, v, w@ref, 3) Unsupported_Kd",
-                "unrelatedLocal: putz(rp, v@ref, w@ref, 3) Unsupported_Kd", "unrelatedLocal: var v = 1", "hid: putb(box@ref, v@ref, 3) Unsupported_Kd",
-                "hidValid: putb(box@ref, v@ref, 3) Unsupported_Kd",
-            ],
+            ["window1: v = 5", "window2: v = 5", "rawRec: v = 5", "unrelatedLocal: var v = 1"],
             AllProblems(Recursive + """
+                func store(p: raw/(ref/i32 during a), x: ref/i32 during a) -> i32
+                    unsafe => Raw.initialize(p, x)
+                    return 0
+                func readBack(p: raw/(ref/i32 during a)) -> ref/i32 during a
+                    unsafe => return *p
+                func putrb(p: raw/(ref/i32 during a), x: ref/i32 during a, y: i32 = store(p, x), z: ref/i32 during a = readBack(p)) -> ref/i32 during a
+                    return z
+                func window1()
+                    var u: i32 = 0
+                    var v: i32 = 1
+                    var w: ref/i32 = u@ref
+                    let r = putrb(w@raw, v@ref)
+                    v = 5
+                    inspect(r)
+                func window2()
+                    var u: i32 = 0
+                    var v: i32 = 1
+                    var w: ref/i32 = u@ref
+                    _ = putrb(w@raw, v@ref)
+                    v = 5
+                    inspect(w)
+                func window3()
+                    var u: i32 = 0
+                    var v: i32 = 1
+                    var w: ref/i32 = u@ref
+                    _ = putrb(w@raw, v@ref)
+                    v = 5
                 func rawRec()
                     var v = 1
                     let rp: raw/(ref/i32) = Raw.allocate(1)
@@ -206,7 +230,7 @@ public sealed partial class MirBorrowsTest
         static string Calls(int n, int m) => string.Concat(Enumerable.Repeat(Expand("    _ = fN(«N:r, »3)\n", n, 0), m));
     }
 
-    // V16: template calls, r3's walk included, allocate nothing on a program version A5 checked before.
+    // V16: template calls, a raw slot's addresses included, allocate nothing on a program version A5 checked before.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void ATemplateCallsWarmRunAllocatesNothing()
@@ -216,7 +240,7 @@ public sealed partial class MirBorrowsTest
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);
         Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
-        Assert.Equal(["live: n = 4", "hid: putb(box@ref, v@ref, 3) Unsupported_Kd"], Problems(c, program, [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+        Assert.Equal(["live: n = 4"], Problems(c, program, [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
     // R26-borrow (SPEC 7.2.3, PD15 (iv); R4-M98 D3): a default's result keeps no new Borrow or Reborrow of a preceding argument, nor does

@@ -5,17 +5,18 @@ namespace Kimi.Compiler.Mir;
 // A5's location driver (A3 5, Check sets and err(conflict), with E5 and E13 (1)): at each location of the checks replay, its accesses of
 // borrowed roots (MirBorrows.Accesses) with the check sets they take, a Call's or Drop's effect access after them, and the reservations it
 // activates; one gather of their check sets (MirBorrows.CheckSets); each access compared with the Loans on its root by the conflicts
-// relation, its first conflict recorded by MirBorrows.Reports; then a guard candidate's EndBorrow (err(ended)), a call's retention Limit,
-// the location's activations (MirBorrows.Activations), its effects (MirBorrows.Effects, whose keys select other case views) and at a
-// default template's Return R26-borrow.
+// relation, its first conflict recorded by MirBorrows.Reports; then a guard candidate's EndBorrow (err(ended)), a call's retention Limit and
+// a Borrow or read the addresses do not classify (PQ-10, MirBorrows.Addresses), each a located Unsupported_Kd, the location's activations
+// (MirBorrows.Activations), its own-step departures (MirBorrows.OwnSteps), its effects (MirBorrows.Effects, whose keys select other case
+// views) and at a default template's Return R26-borrow.
 // Must not decide whether an access meets a Loan (MirBorrows.Checks) or which problem a conflict becomes (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
     private MirStep[] accessSteps = [];
 
-    // The checks at a location (A3 5, E13 (1)): its accesses of borrowed roots, a guard candidate's EndBorrow, its activations and its
-    // effects, on the check sets of one gather; the first conflicting Loan of each access is its problem; at a Return, R26-borrow on its own
-    // gather.
+    // The checks at a location (A3 5, E13 (1)): its accesses of borrowed roots, a guard candidate's EndBorrow, its activations, its
+    // own-step departures and its effects, on the check sets of one gather; the first conflicting Loan of each access is its problem; at a
+    // Return, R26-borrow on its own gather.
     private void Check(ulong[] state, int block, int index, int location)
     {
         this.accessCount = 0;
@@ -53,12 +54,13 @@ internal sealed partial class MirBorrows
             this.Ended(at, statement.Place.Root);
         }
 
-        if (index == this.body.Blocks[block].Count && this.Retaining(this.body.Blocks[block].Terminator) is { IsLimit: true })
+        if ((index == this.body.Blocks[block].Count && this.Retaining(this.body.Blocks[block].Terminator) is { IsLimit: true }) || this.layerBorrowed[location])
         {
-            this.Unsupported(at); // A contract Binding does not instantiate.
+            this.Unsupported(at); // A contract Binding does not instantiate; a `during self` layer's enclosing Place (PQ-10, MirBorrows.Addresses).
         }
 
         this.Activations(at);
+        this.Departures(at, accessed);
         if (accessed < this.accessCount)
         {
             this.Effects(at, this.accesses[accessed].Taking);

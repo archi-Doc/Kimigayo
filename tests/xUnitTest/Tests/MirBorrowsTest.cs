@@ -764,8 +764,10 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // (twoLayersRead, acrossLayersRead). Where the route passes a holder whose Type passes the guard only through a Type argument (an
     // iterator's Loan<uniq/T>), the store holds its view, so each is a located Unsupported_Kd until the guard reads each part (P13's
     // body hold, R4-M73): an exclusive iteration over a local collection of shared references, then reads (iterated), or over
-    // exclusive elements, then a shared one (exclusiveElements, MemberThroughLayersTest's program), and an exclusive parameter's
-    // iteration whose stores reach E, then an append (bumpRefs, its Loan met once, where the loop's Borrow of values is formed, R4-M68).
+    // exclusive elements, then a shared one (exclusiveElements, MemberThroughLayersTest's program, with the ends of b and the array, whose
+    // Loans the iterator's stores carry to E: its value names b's exclusive Loan, b holding none, so it carries Φ_E by the untracked rule,
+    // R4-M116 PQ-2), and an exclusive parameter's iteration whose stores reach E, then an append (bumpRefs, its Loan met once, where the
+    // loop's Borrow of values is formed, R4-M68).
     [Fact]
     public void ACallStoreFollowsSpecsPerArgumentRule()
     {
@@ -811,14 +813,15 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             [
                 "twoLayersRead: w@follow@ref", "twoLayersRead: w@follow@ref", "acrossLayersRead: w@follow@ref", "acrossLayersRead: w@follow@ref",
                 "iterated: refs@ref Unsupported_Kd", "iterated: refs@ref Unsupported_Kd", "exclusiveElements: exclusive Unsupported_Kd",
+                "exclusiveElements: var exclusive: [1 of uniq/Data] = [b@uniq] Unsupported_Kd", "exclusiveElements: var b = Data.init() Unsupported_Kd",
                 "bumpRefs: values Unsupported_Kd",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
-    // G147 (1), G160-3 (SPEC 5.7, 15.6.4): a Dictionary literal places each entry through placeEntry, whose handle `raw/Dictionary<K, V>`
-    // admits K and V, so an element keeps its Loan: writing the borrowed Place while the Dictionary is used afterwards errs. A5 has no raw
-    // holders or addresses until G160-4 (R4-M95), so the valid twins (the Dictionary dead, the entry removed) are G160-4's ledger rows.
+    // G147 (1), G160-3 (SPEC 5.7, 15.6.4, 15.6 Addresses): a Dictionary literal places each entry through placeEntry, whose handle
+    // `raw/Dictionary<K, V>` admits K and V and addresses the Dictionary's holder (dictionaryStorage's handle), so an element keeps its
+    // Loan there: writing the borrowed Place while the Dictionary is used afterwards errs, and once it is dead the write is valid.
     [Fact]
     public void ADictionaryLiteralKeepsItsElementsLoans()
         => Assert.Equal(
@@ -829,6 +832,10 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     let entries = [1: value@ref]
                     value = 99
                     inspect(entries)
+                func deadLiteral()
+                    var value = 42
+                    let entries = [1: value@ref]
+                    value = 99
                 """));
 
     // SPEC 15.6, 15.6.4 (A3 E14, review B4): an intrinsic's call retains as its library declaration says. Raw.initialize stores its value
@@ -2400,7 +2407,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // reference in loop k, an output quadratic in N: the worklist settles each loop before the next (R4-M65), so the passes stay constant
     // and the work and the Loan-set bytes (ν) are dense, not cubic. One operation with N operands, each carrying a Loan and each an
     // access of a borrowed root, gathers its check sets once (A3 E13 (5)), so it stays linear. N calls storing through a four-layer chain
-    // write every layer (A3 E16), each accumulating every call's Loan, which the next call's walk scans: dense too (R4-M73).
+    // write every layer (A3 E16), each accumulating every call's Loan, which the next call's walk scans: dense too (R4-M73). N addressed
+    // holders read through their live pointers across N writes (each write scans the live holders, the addressed ones among them) and a
+    // raw chain of depth N (each pointer addressing the one before, read through at the end) stay within the dense bound (R4-M116, B §7).
     [Theory]
     [InlineData("    var x = 1\n    let r = x@ref\n", "    var x{0} = {0}\n    let r{0} = x{0}@ref\n    inspect(r{0})\n", "", true)]
     [InlineData("    var x = 1\n    let r = x@ref\n", "    var x{0} = {0}\n    let r{0} = x{0}@ref\n", "    inspect(r{0})\n", true)]
@@ -2420,6 +2429,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     [InlineData("    var x = 0\n    var r = x@ref\n", "    while flag\n        x = {0}\n        r = x@ref\n        inspect(r)\n", "", true)]
     [InlineData("    var x = 1\n    let r = x@ref\n    let rr = r@ref\n", "", "", false, "r")]
     [InlineData("    var x = 1\n    var b = 2\n    var w = x@ref\n    var s1 = w@uniq\n    var s2 = s1@uniq\n    var s3 = s2@uniq\n", "    put4(s3@uniq, b@ref)\n", "", true)]
+    [InlineData(
+        "    var y = 1\n    var z = 0\n", "    var w{0}: ref/i32 = y@ref\n    let p{0} = w{0}@raw\n    z = {0}\n", "    unsafe => inspect(*p{0})\n", true)]
+    [InlineData("    var y = 1\n    var w: ref/i32 = y@ref\n    let p0 = w@raw\n", "    let p{1} = p{0}@raw\n", "    _ = p{1} == null\n", true)]
     public void TheWorkScalesWithTheProgram(string head, string each, string after, bool dense, string operand = "")
     {
         var (work, bytes) = this.Scaled(head, each, after, operand);
@@ -2532,24 +2544,28 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         Assert.Equal(alone.Borrows.Work, after.Borrows.Work - work);
     }
 
-    // V16: A5 on a program version it checked before allocates nothing: its sets, tables, call rows (an intrinsic's too) and the dataflow
-    // keep their storage.
+    // V16: A5 on a program version it checked before allocates nothing: its sets, tables, call rows (an intrinsic's too), addresses (a raw
+    // Ref's, a `during self` layer's), the own-step Warning's tags and the dataflow keep their storage.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmRunAllocatesNothing()
     {
-        var c = MirBuildTest.Compile(Prelude + "func loopCarry(flag: bool)\n    var x = 1\n    var y = 2\n    var r = y@ref\n    while flag\n" +
+        var c = MirBuildTest.Compile(Prelude + RawShapes + "func addressed()\n    var y = 1\n    var w: ref/i32 = y@ref\n    let p = w@raw\n    y = 2\n" +
+            "    _ = p == null\nfunc selfRead()\n    var y = 1\n    var b = Buf<ref/i32>.init(4)\n    b.push(y@ref)\n    let p = b.data\n    y = 2\n" +
+            "    _ = p == null\nfunc loopCarry(flag: bool)\n    var x = 1\n    var y = 2\n    var r = y@ref\n    while flag\n" +
             "        x = 3\n        inspect(r)\n        r = x@ref\nfunc stored()\n    var x = 1\n    var y = 2\n    var slot = y@ref\n" +
             "    put(slot@uniq, x@ref)\n    x = 3\n    inspect(slot)\nfunc reserved()\n    var tasks: Array<Task> = []\n    tasks.append(tasks.remove(0))\n" +
             "func written()\n    var x = 1\n    let v = x@ref\n    x += 1\n    inspect(v)\nfunc destroyed()\n    var x = 1\n    var y = 2\n" +
             "    var s = D.init(r: x@uniq)\n    let c = s.r@follow@uniq\n    s = D.init(r: y@uniq)\n    c@follow = 1\nfunc escaped()\n" +
             "    let fallback = Data.init()\n    let packet: Packet = .Data(Data.init())\n    var saved = fallback@ref\n    match packet\n" +
             "        .Data(let d) if save(saved@uniq, d) => ()\n        _ => ()\n    inspect(saved)\nfunc raw()\n    var x = 1\n" +
-            "    let p: raw/(ref/i32) = Raw.allocate(1)\n    unsafe => Raw.initialize(p, x@ref)\n    x = 2\n");
+            "    let p: raw/(ref/i32) = Raw.allocate(1)\n    unsafe => Raw.initialize(p, x@ref)\n    x = 2\nfunc departed()\n    var b = Buf<i32>.init(4)\n" +
+            "    let p = b.data\n    let c = b@move\n    _ = p == null\n");
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);
         Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
-        Assert.Equal(7, program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code)));
+        Assert.Equal(9, program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code)));
+        Assert.Single(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.OwnStepDeparture_Kd && x.Subject.Module == 0);
     }
 
     // The Loan problems of a program's own bodies.
@@ -2614,7 +2630,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     private static bool Grows(long[] measure, int factor) => measure[2] - measure[1] <= (factor * (measure[1] - measure[0])) + 64;
 
     // A5's work and Loan-set bytes on a shape's body at N = 32, 64 and 128: its head, then N each lines, a Tuple of N operands where one is
-    // given, and N after lines, with no Loan problem.
+    // given, and N after lines ({0} the index, {1} the index plus one), with no Loan problem.
     private (long[] Work, long[] Bytes) Scaled(string head, string each, string after, string operand = "")
     {
         var (sizes, work, bytes) = (new[] { 32, 64, 128 }, new long[3], new long[3]);
@@ -2625,7 +2641,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             {
                 for (var n = 0; n < sizes[i]; n++)
                 {
-                    text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, pass == 0 ? each : after, n);
+                    text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, pass == 0 ? each : after, n, n + 1);
                 }
 
                 if (pass == 0 && operand.Length > 0)

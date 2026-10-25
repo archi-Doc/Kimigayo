@@ -31,7 +31,7 @@ internal sealed partial class MirBorrows
         {
             if (data.Terminator.Kind == MirTerminatorKind.Call)
             {
-                this.Call(state, new(block, index), data.Terminator, checks);
+                this.Call(state, data.Terminator, checks);
             }
 
             return;
@@ -89,8 +89,8 @@ internal sealed partial class MirBorrows
         this.entries[this.entryCount++] = new(slot, value, own, op, issue);
     }
 
-    // assign D := v (A3 5): a whole root replaced, a direct part joined (P1), through k borrow Derefs every holder refs^k names joined
-    // (P10), through a raw pointer or into a static E joined.
+    // assign D := v (A3 5): a whole root replaced, a direct part joined (P1), through k Derefs every holder refs^k names joined (P10; past a
+    // raw pointer, the holders it addresses, and E where it carries Φ_E), into a static E joined.
     private void Store(ulong[] state, MirPlace place, int value, int own, bool issue)
     {
         var (count, last) = (this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk), -1);
@@ -110,18 +110,8 @@ internal sealed partial class MirBorrows
             return;
         }
 
-        var (layer, raw) = (this.Root(state, place.Root), this.walk[last].Class == MirStepClass.Raw);
-        for (var i = 0; i < last; i++)
-        {
-            layer = this.walk[i].Class switch
-            {
-                MirStepClass.Shared or MirStepClass.Uniq => this.Content(state, layer),
-                MirStepClass.Raw => this.escapedSet,
-                _ => layer,
-            };
-        }
-
-        this.Refs(raw ? this.escapedSet : layer);
+        var (layer, parents) = this.Prefix(state, place.Root, last);
+        this.Refs(this.PointerOf(place.Root, layer, parents, last)); // What its last Deref goes through.
         foreach (var target in this.targets)
         {
             this.AddSlot(target, value, own, Joined, issue);

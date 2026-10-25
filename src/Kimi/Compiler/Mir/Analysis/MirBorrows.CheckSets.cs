@@ -55,8 +55,8 @@ internal sealed partial class MirBorrows
     // The check set of an activation in a holder.
     private static int Activation(int holder) => Activating - holder;
 
-    // Restarts the checks' stamps for the view: those of its slots, Loans, roots and markers are cleared, so a view's cost is its own
-    // (markVia, candidateAt and the root, entry and taken lists are read only where their stamps hold the check's).
+    // Restarts the checks' stamps for the view: those of its slots, Loans, roots, markers and own-step entries are cleared, so a view's cost
+    // is its own (markVia, candidateAt and the root, entry and taken lists are read only where their stamps hold the check's).
     private void Restamp()
     {
         this.stamp = 0;
@@ -81,6 +81,10 @@ internal sealed partial class MirBorrows
         this.markSeen.AsSpan(0, this.loanBase).Clear();
         this.listed.AsSpan(0, this.holderCount + 1).Clear();
         this.Work += (2 * this.holderCount) + 1 + (2 * this.loanCount) + keys + this.loanBase;
+        if (this.ownEntries > 0)
+        {
+            this.RestampOwnSteps(keys);
+        }
     }
 
     // The gather of a location's check sets: its entries listed by holder, the Based pass from E and the live holders (an overwritten one

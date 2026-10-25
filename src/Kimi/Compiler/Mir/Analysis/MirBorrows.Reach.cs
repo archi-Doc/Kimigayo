@@ -2,9 +2,10 @@
 
 namespace Kimi.Compiler.Mir;
 
-// A5's reach on a state (A3 5's content and refs, E16's W, DECISIONS R4-M73): the holders a set refers to, its content, the holders a
-// call's store through it writes, and the guard's per-local MirWrites (MirTypes.HoldsLoans). On the state a location's plan reads, a set's
-// content is read once (E13 (5)), however many operands and retention rows read it. Must not form a value or a Loan (MirBorrows.Values).
+// A5's reach on a state (A3 5's content and refs, E16's W, DECISIONS R4-M73, R4-M116): the holders a set refers to (those its direct
+// Loans and addresses name, and E where it carries Φ_E or no direct one), its content, the holders a call's store through it writes, and
+// the guard's per-local MirWrites (MirTypes.HoldsLoans). On the state a location's plan reads, a set's content is read once (E13 (5)),
+// however many operands and retention rows read it. Must not form a value or a Loan (MirBorrows.Values).
 internal sealed partial class MirBorrows
 {
     private readonly List<int> targets = []; // The holders a reference's value refers to (refs), or a call's store writes (W).
@@ -73,17 +74,16 @@ internal sealed partial class MirBorrows
     private bool Holding(int local)
     {
         MirDataflow.Grow(ref this.writable, this.body.Locals.Length);
-        return MirTypes.HoldsLoans(cases.Type(this.body.Locals[local].Type), this.walked, out this.writable[local]);
+        return MirTypes.HoldsLoans(cases.Type(this.body.Locals[local].Type), types, this.walked, out this.writable[local]);
     }
 
-    // W(S) (A3 E16, DECISIONS R4-M73) into the targets, the holders a call's store through S writes: refs(S) (E14); E for a direct Loan
-    // of S naming a local that holds no Loan but a raw pointer whose pointee may (MirWrites.Raw); and, from each holder h ≠ E of W whose
-    // Type passes the guard, the holder each direct Loan of σ(h) names, in any mode, E where σ(h) carries Φ_E, and E for a direct Loan
-    // naming such a raw-only local. The first pass steps from the holders that pass it concretely (MirWrites.Through), the second from
-    // those that pass it only through a Type argument, a pair layer or an abstract part (MirWrites.ThroughArgument) and from what only
-    // they reach: those targets come last, from the index returned (the count where none), and a Call that stores a non-empty value into
-    // one holds its view (P13's interim, R4-M73). Every store path (a Call's rows; A5-F7's capture stores, unit 2c; A5-F6's desc(c)
-    // stores, 2f) takes W here and sets the hold so.
+    // W(S) (A3 E16, DECISIONS R4-M73, R4-M116) into the targets, the holders a call's store through S writes: refs(S) (E14); and, from each
+    // holder h ≠ E of W whose Type passes the guard, the holder each direct Loan or address of σ(h) names, in any mode, and E where σ(h)
+    // carries Φ_E. The first pass steps from the holders that pass it concretely (MirWrites.Through), the second from those that pass it
+    // only through a Type argument, a pair layer, an abstract part or a stored raw layer stepping Exclusive (MirWrites.ThroughArgument) and
+    // from what only they reach: those targets come last, from the index returned (the count where none), and a Call that stores a
+    // non-empty value into one holds its view (P13's interim, R4-M73). Every store path (a Call's rows, its untied stores among them;
+    // A5-F7's capture stores, unit 2c; A5-F6's desc(c) stores, 2f) takes W here and sets the hold so.
     private int Writes(ulong[] state, int set)
     {
         this.Refs(set);
@@ -101,7 +101,7 @@ internal sealed partial class MirBorrows
         }
 
         this.targets.RemoveRange(count, this.targets.Count - count);
-        this.Write(set); // The kinds of refs(S)'s holders, and E for a raw-only local.
+        this.Write(set); // The kinds of refs(S)'s holders.
         var clean = int.MaxValue;
         var argument = false;
         for (var pass = 0; pass == 0 || (pass == 1 && argument); pass++)
@@ -122,8 +122,9 @@ internal sealed partial class MirBorrows
         return clean;
     }
 
-    // A step of W from a set (Writes): E where it carries Φ_E, the holder each direct Loan names and E for a direct Loan naming a raw-only
-    // local.
+    // A step of W from a set (Writes): E where it carries Φ_E, and the holder each direct Loan or address names. A value that may refer to
+    // storage the body does not own carries Φ_E where it is formed (an untied result or store, a raw pointer formed untracked, an integer's
+    // pointer, a parameter and E's own content at entry), so a set naming nothing writes nothing.
     private void Write(int set)
     {
         this.Work += this.sets.Count(set);
@@ -133,16 +134,9 @@ internal sealed partial class MirBorrows
             {
                 this.Written(Escaped, MirWrites.None);
             }
-            else if (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true } loan)
+            else if (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true, Named: >= 0 } loan)
             {
-                if (loan.Named >= 0)
-                {
-                    this.Written(loan.Named, loan.Named == Escaped ? MirWrites.None : this.writable[loan.Root]); // A static's names E.
-                }
-                else if (loan.Root < this.body.Locals.Length && this.writable[loan.Root] == MirWrites.Raw)
-                {
-                    this.Written(Escaped, MirWrites.None);
-                }
+                this.Written(loan.Named, loan.Named == Escaped ? MirWrites.None : this.writable[loan.Root]); // A static's names E.
             }
         }
     }

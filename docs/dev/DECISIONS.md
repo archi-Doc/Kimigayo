@@ -1146,8 +1146,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M36** (2026-10-17; design A3 §4.1 G2, owner approval of its §9 item 8 on 2026-10-17) The Type facts A5's holders and destruction
   checks read. `MirTypes.HoldsLoans(type, seen)` (A3 §3's holder rule): a part of the value is a borrow or pair layer, a Slice, a
   Function or Closure value or an abstract Type; its parts are its own storage (Fields and base, payloads) and its components (elements,
-  an owning handle's payload, Type arguments); a raw pointer and a function item hold none. Two clarifications of A3's list, both needed
-  for soundness: an abstract Type counts, since an instance may store a borrow its Origins do not show (SPEC 15.2.3's `pass(local)`;
+  an owning handle's payload, Type arguments); a raw pointer and a function item hold none (a raw layer holds since R4-M120). Two
+  clarifications of A3's list, both needed for soundness: an abstract Type counts, since an instance may store a borrow its Origins do not show (SPEC 15.2.3's `pass(local)`;
   `BoundType.HasAbstractPart`), and a Type argument may be stored (library collections and their iterators hold their elements behind
   a raw pointer, and SPEC 3.2.2 and 15.3.5 analyze a Loan or a Weak as storing its argument); leaving either out loses the Loans an
   iterator or a T-typed result carries. `MirTypes.Observes(type, types, definition, seen, out deep)`, a visitor of the one Destruction
@@ -1884,7 +1884,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Representation: `MirTypes.HoldsLoans`' one walk, each Type once per mode, also gives what a call may write past a value
     (`MirWrites`): the guard, passed concretely (`Through`; a callable and a part past the bound count so) or only through a struct's or
     enum's Type argument, a pair layer or an abstract part (`ThroughArgument`), and for a value that holds no Loan whether a raw pointer
-    past no reference leads to storage that may (`Raw`); no vocabulary entry. One function, `MirBorrows.Writes` beside `Refs`, serves
+    past no reference leads to storage that may (`Raw`, removed by R4-M120); no vocabulary entry. One function, `MirBorrows.Writes` beside `Refs`, serves
     Binding's rows, an intrinsic's declared rows and the unknown-callee rows, one W per output, its first pass from the holders that
     pass the guard concretely, its second from the ThroughArgument ones and what only they reach. A5-F7's capture stores (2c) and
     A5-F6's desc(c) stores (2f, G113; superseded by R4-M106) call it, and no refs-only store path remains.
@@ -2414,7 +2414,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     at the call of RecursiveDefaultTest's generic, Function-typed and reference programs, the 1c design's p06 and dc-reserved-rec).
     `Flow.Placed`'s template-call disjunct is deleted: a template call's value carries no default taint; inline copies keep it until
     2e-3. The unknown-callee branch (Value rows into the result and each exclusive input, an N(N + 1) scratch) is deleted.
-  - r3 (registered for X-2, PD28; removal stage: G160's representation): in the checks replay, a template call whose inputs' Contents
+  - r3 (registered for X-2, PD28; removal stage: G160's representation; removed by R4-M120): in the checks replay, a template call whose inputs' Contents
     hold a Loan and one of whose slots' case Types holds raw authority (`MirTypes.HoldsRaw`: a raw pointer, an rc handle or a Weak of
     one, at any depth) is a located `Unsupported_Kd` at the omitting call, `Ownership.Unsupported`, no fact, recorded from `Calls.Call`
     (`Checks.cs` unchanged). The default may write through it by raw authority (SPEC 5.2.1), which no row follows. It covers
@@ -3384,6 +3384,58 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: one implementer and one reviewer below the guard (the pace above; kept as the fallback above it); two implementers and
     one reviewer (two designs and a review still cannot overlap); counting agents without a cap on heavy runs (the load, not the count,
     slows the machine).
+- **R4-M120 G160-4's 4b: A5's raw addresses** (2026-10-25; unit 4b of R4-M116's design B′ as amended, the planning session's rulings
+  PQ-1 to PQ-13; its two departures, the last two bullets, are the planning session's rulings of 2026-10-25 amending B′: W keeps "E
+  where the set carries Φ_E", and the untracked rule is narrowed to addresses and exclusive Loans, sound by SPEC 5.2.1 condition 3's
+  first and second limits)
+  - Representation: an address is an entry of A5's Loan table with mode `Raw` after the group-ordered Loans, so no Loan rule, ending,
+    candidate or bucket meets it (D19): a root's plain address for `P@raw` through no borrow, raw or Own step; an own-step entry per
+    owning Place (the prefix of the last Own step, or the value whose `during self` layer a Place uses), with that Place's steps for 4c's
+    Warning, direct (naming the root) when the owning Place passes no borrow or raw Deref. A direct entry names its holder as a direct
+    Loan does, so `Content`, `Refs`, `Seed`, W and the check-set closure read it unchanged (`Candidates.Consider`: it reaches its holder).
+  - Formation (`MirBorrows.Addresses`, one pre-pass per view before the producing check): a raw Ref issues its entry (`loanAt`); a
+    `during self` layer is found from the MIR Place path (Tuple and fixed-array elements, then a struct Field or a Case payload's
+    component) and `TyCtxt.RawStep(instance, part, positions) == Own`, never from an Origin; its read adds what `@raw` of its storage
+    forms (the walk's parents and its own-step entry, SPEC 5.7 Reading a Field).
+  - Propagation (`MirBorrows.Values`): a raw Ref's value is its parents and entry; a Cast between raw pointer Types and a displacement
+    keep the operand's value, a Cast to `usize` none, IntToPointer {Φ_E} (D8); the step walk's Raw arm is Shared's (5.2.2's fresh
+    anchor), the pointer being its prefix's read (`PointerOf`), which a store's last raw Deref writes through.
+  - Holders and the guard (`MirTypes.HoldsLoans(type, types, seen, out writes)`): a raw layer is a part that may hold a Loan; past one
+    in the value's own storage a stored layer by `TyCtxt.RawStep`: Own the holding value's own storage, Shared nothing, Exclusive the
+    pointee by argument (R-N1), Unstated or Static an exclusive reference to the pointee; any other layer an exclusive reference to its
+    pointee. The walk keeps the stored part it is inside; a raw layer and its part's inline Tuples bypass the per-(Type, mode) memo.
+  - Φ_E where a value may refer to storage the body does not own: G160-2c's untied results (S2), a row with no input per
+    `CallRetention.UntiedStores` input whose W receives {Φ_E} (R-B2), and the untracked rule (S3, PQ-2) at raw formation, at a layer's
+    read (on what `@raw` forms) and at a call result that may hold a raw pointer (`MirTypes.HoldsRaw`); and E's own state from the entry
+    (`MirBorrows.Solve.Initial`: what storage the body does not own holds may refer to such storage, SPEC 15.6), so every value read
+    from E carries Φ_E (B1). Residual: a punned Loan-carrying value in a Loan-free local stays in E, a Language error where it outlives
+    the local.
+  - PQ-10: a located `Unsupported_Kd` at a non-raw Borrow of a layer's Place or of a Tuple or fixed-array Place enclosing one inline, and
+    at a Copy or Move read of such an enclosing Place; a mark makes the view a producer (D5). Registered for X-2 (PD28); removal stage: a
+    Loan records the layer's own-step entry and positions (R4-M117 item 6 states the meaning), when a program needs the form.
+  - r3 is removed (PQ-5): a default's raw stores are the omitting call's, applied by its own rows (window1 and window2 err, window3 is
+    valid). No `Raw.slice` row and no `MirDescriptors` change (PQ-4); A5 reads neither `RawMembers` nor `RawStep(raw)` (PQ-7).
+  - Supersedes R4-M36's "a raw pointer … hold[s] none", R4-M73's `Raw` bullet (`MirWrites.Raw`), A3 E16's raw clause, R4-M93's r3, and
+    BU-24's consumer of `RawMembers` (A5 reads none; `RawMembers(instance, …)` stays for P13's per-part guard, R4-M76).
+  - Departure 1, W (ruling): W keeps "E where the set carries Φ_E" and loses only `MirWrites.Raw`; B §5.4's "or names no holder" is
+    not adopted. As written it sent a store past an empty holder that passes the guard to E (`sharedOverExclusiveTwin`, documented
+    valid, became three Language errors; no ledger row differs) and misses a holder with a second, direct part; its reason, a
+    raw-holding holder that names nothing, is served by the Φ_E producers above (A-B3: a value that must reach E carries Φ_E), E's
+    own state among them. The final review found that producer missing (B1: a raw pointer read through a parameter and kept in a raw
+    local or a Tuple, with or without a second, direct part, reached nowhere when a call stored through the holder; dev erred on the
+    first two; SPEC 15.6 and 5.2.1 condition 5 require the error); the owner, 2026-10-25: 「(a) 表現で直す (推奨)」 (E's state
+    carries Φ_E from the entry).
+  - Departure 2, the untracked rule (ruling) counts only a direct address or exclusive Loan naming a local that is no holder: a pointer
+    formed through a shared borrow writes nothing (SPEC 5.2.1 condition 3). As written, a shared Loan a call result carries in its
+    content (`[first@ref: a@ref]`'s key, `values@ref` of an `Array<i32>`) gave a Dictionary handle, an iterator or a UniqSlice Φ_E, so 8
+    of bu23's 54 Dictionary-literal rows stayed and valid `sliceUniq` and `iterate` programs (8ac3a677bc2d, SPEC 22's example 123)
+    erred.
+  - Ledger (mir Functional against dev 699ed0b44): −54 (all bu23's Dictionary-literal rows), +22: 16 PQ-10 (a5-pq10 and a5-p13's
+    ConversionKoto), 4 held ends (an exclusive iteration over `[1 of uniq/P]`, a5-p13), D6's Callable fixture (a5-d6-callable, (d)) and
+    `hidden`'s `var v` (R-B2 through an untied holder, a5-new). B1's producer (E's state) changes no row: the full mir ledger on the fix
+    against the pre-fix head is 3,116 = 3,116. Census: no problem. Rejected: B's W rule and the untracked rule as written (above); the
+    untracked test on a layer's content (every read of `b.data` after `b.push(y@ref)` would carry Φ_E). Unverified: the Exclusive guard
+    row on a Type-argument layer (no corpus program); cost beyond the V16 rows (measured in G160-5).
 - **R4-M121 The MIR validator checks the builder's static contracts** (2026-10-24, R4 planning session; PLAN G191 and G157 (23)'s
   validator half; supersedes R5-M71's "whether the program has the static's initializer stays `StaticInit`'s null, a consumer's broken
   contract (F10), since the validator sees one body" and R5-M106's "a static Place its body ensures nowhere (the builder's contract,
@@ -3494,6 +3546,37 @@ and migration obligations remain in force; no numeric cap changes are authorized
     substitution in place of R1's `Unsupported_Kd`.
   - Open: p7-round's F1, F2 and G1–G13 stay with the planning session and 2c-D; `15.8.2-closure-dependencies` now classes the same R1
     record (b), as Binding's record both paths publish (the review's ruling; its old-path-only Refuted code is named in the note). Numbering: R4-M123 is free on dev and every remote and local branch.
+- **R4-M124 G160-4's 4c: the own-step Warning `OwnStepDeparture_Kd`** (2026-10-25; unit 4c of R4-M116's design B′ §5 on B §5.8, with
+  the owner's OQ-1 (a) and OQ-2 (a); the new code and requirement are the closed-vocabulary entries OQ-2 approved)
+  - Rule (`MirBorrows.OwnSteps`, SPEC 5.2.1 condition 3): at each location of the checks replay, after its activations, an access with
+    path S departs an own-step entry (R4-M120) with owning path O on its root when S prefixes O step by step (`Meets`) and it is a Move
+    (a raw Take included), a write or a destruction of any class (StorageDead, every Drop) with no borrow or raw Deref of O past S, or an
+    exclusive Borrow or a call's activation of a reservation across any steps; reads and shared Borrows never depart. "May still be
+    used": the check found the entry in its Based or Stored pass, for an activation also in its Valued pass. A departure whose operation
+    and formation lie in one inline default copy is its template's (`Covered(Common(scope, formation scope), -1, -1)`, as err(ended)).
+  - Record (`MirBorrows.Reports.Departure`): requirement `Ownership.OwnStepDeparture`; subject the operation, or the outermost omitting
+    call; the shared builder's facts: Anchor (the entry's first formation, the location that reads the layer or forms the address), the
+    witness (a holder's next use, or the call for an operand an activation takes, as Use; a transit value's or E's store as Store, as for
+    every A5 problem: OQ-2's "Use (the witness)" read as the witness fact) and Evaluated; never through P13's hold (PQ-8); at most one per
+    location, since every record there has one subject, which `MirReport` merges; a Move and a later destruction each warn while the
+    pointer may be used (B-N3).
+  - State: tags by own-step entry (found at the check, its first Based or Stored holder, the next entry found on its root) and a list
+    per root, so a departing access scans the entries found on its root (B §7: the conflict scan's density); an own-step entry makes its
+    root `borrowed`, so the root's accesses are listed, and its view a producer (D5).
+  - Vocabulary: `DiagnosticCode.OwnStepDeparture_Kd` (Warning, Language, `case:Text` evidence as every A5 code); the requirement kind
+    `OwnStepDeparture`, added against R5-M24's "no member is added" by the owner's OQ-2 (the enumeration's prohibition now reads "without
+    the owner's approval"); `OwnershipIssue.Code` maps it, the requirement's one code that the ledger's consistency set reads (the old
+    analysis records none), a row of the old Analysis's `OwnershipModel.cs` that adds no accepted form or generation feature (D5); the
+    ledger's compared pair (A5) and the (d) row `a5-own-step`.
+  - Observations: a copy reaches a pending slot only through a reference of its own, so a departure inside a copy of a pointer formed
+    outside it needs a root the caller and the copy share (a static, where `Evaluated` arises); a Drop past the destruction walk's bound
+    of a root only own-step entries make borrowed is the existing located `Unsupported_Kd` (no corpus program).
+  - Rejected: one tag table with err(ended)'s markers (they never read a root list or a Valued tag); a scan of every own-step entry of the
+    view per access (a term beyond the conflict scan's density); an E or transit witness as Use at the operation (a use it does not make).
+  - Ledger (mir Functional on ac0531fa8 against 4b's 18e2c2487): no row of the Warning, since no compilation of the corpus departs an
+    own step (the (d) row `a5-own-step` matches nothing yet; MirBorrowsTest's programs are no ledger compilations); the delta, +6 raw
+    rows (3,088 to 3,094), is dev's new SPEC case `15.6.5-derived-conflict` (R4-M122); blocking 195 unchanged. Census: no Warning or
+    problem in the library, the milestones, the goldens and the accepted SPEC variants. Unverified: corpus cost (G160-5).
 - **R4-M125 A local's declaration Binding rejected declares its local** (2026-10-25; unit G241, the R4 planning session's design B
   after R4's triage, R5 agreeing to the builder site; PLAN G241, G103's "a name of an Error local" term) SPEC 6.6, 3.6, 23.1.2.
   - Cause: the builder declared no local for a `let`/`var` Binding rejected (Op Error): `Statement` built its value into a statement
@@ -4698,7 +4781,7 @@ resumed by R4-M86 (2026-10-20).
   cap, under any instance); `SignatureStep`, Shared for a signature's layer whose Origin its inputs state only as the outer Origin of
   a `ref`, `objref` or Slice layer (or of a pair admitting only those) or at a `ref` slot (the signature cap; RetentionTest's row
   `p: raw/… during b` with `b: ref/…` keeps no store); `TyCtxt.RawStep(function, input, positions)` reads the latter, allocation-free
-  when warm. `RawMembers` (`TyCtxt.RawMembers`, G160-4's (3a); total; one substitution per stored layer, a scan of the input Types
+  when warm. `RawMembers` (`TyCtxt.RawMembers`, G160-4's (3a), which reads none, R4-M120; total; one substitution per stored layer, a scan of the input Types
   per signature layer) gives the borrows an Origin belongs to, shared with retention's `RawContent`. `InvalidRawOrigin` judges every
   written raw Origin once, from `ValidateOriginRequirements` after the last fixed point (R2 (a): a Phantom slot through a
   declaration's projection too; a binder atom no borrow holds; U1 keeps only the non-borrow pair case), and a universal stated by a
