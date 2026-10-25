@@ -40,14 +40,19 @@ public sealed partial class Binding
     }
 
     // Whether a transfer operation writes `output` there: a 4.9 operation's row is its complete published effect (SPEC 4.9.6), which
-    // writes its result and its receiver's element storage, never through another argument (`append`'s added `raw/(raw/u8)`), and
-    // `exchange` writes its result and its target, never through `with` (15.7); rule A forms no row at another output.
+    // writes its result and its receiver's element storage (ReceiverStorage), never through another argument (`append`'s added
+    // `raw/(raw/u8)`), and `exchange` writes its result and its target, never through `with` (15.7); rule A forms no row at another output.
     private static bool TransferWrites(Transfer transfer, BindingSymbol? callee, int output) => output == Retention.Result || transfer switch
     {
-        Transfer.Elements => output == callee!.ReceiverIndex,
+        Transfer.Elements => ReceiverStorage(callee!, output),
         Transfer.Exchange => output == ExchangeTarget,
         _ => true,
     };
+
+    // Whether `output` is a 4.9 operation's receiver's element storage, the one fact TransferWrites and TransferKept read: a store output
+    // (an input's writable storage, never the result) at the callee's receiver. A member without a receiver (construction: its
+    // ReceiverIndex is -1, which is Retention.Result) has none, so the receiver narrowing never reaches its result (SPEC 4.9.6, 15.6.4).
+    private static bool ReceiverStorage(BindingSymbol callee, int output) => output >= 0 && output == callee.ReceiverIndex;
 
     // The transfer key of a callee (the file's contract), its Iterator conformance proven under `premises` (null: the library root's).
     private Transfer TransferOf(FunctionKoto? callee, ReadOnlySpan<BoundType> inputs, BindingScope? premises)
@@ -86,11 +91,11 @@ public sealed partial class Binding
 
     // What input i, other than `output`, keeps at `output`'s written unstated layer: its own value and its chain; under a transfer
     // operation a borrowed argument (BorrowReferent: not a raw pointer, a Slice or UniqSlice included) its chain only, `exchange`'s result
-    // nothing but its target's chain, and a 4.9 operation's receiver storage nothing of an input that is not added.
+    // nothing but its target's chain, and a 4.9 operation's receiver storage (ReceiverStorage) nothing of an input that is not added.
     private Kept TransferKept(Transfer transfer, BindingSymbol? callee, BoundType input, int i, int output)
     {
         if ((transfer == Transfer.Exchange && output == Retention.Result && i != ExchangeTarget) ||
-            (transfer == Transfer.Elements && output == callee!.ReceiverIndex && !KimiLibraryCatalog.Added(callee, i)))
+            (transfer == Transfer.Elements && ReceiverStorage(callee!, output) && !KimiLibraryCatalog.Added(callee, i)))
         {
             return Kept.None;
         }

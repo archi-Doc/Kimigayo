@@ -34,7 +34,10 @@
 // written: it retains only the raw inputs, by Value and Chain, and unties nothing (R′). A
 // published operation that transfers values (an Iterator's `next`, `exchange`, `swap`, an operation of SPEC 4.6 to 4.9, keyed by
 // declaring identity in Binding.Retention.Transfers.cs) retains there a borrowed input by its Chain only, `exchange`'s result only its
-// target's Chain, and a 4.9 operation's receiver storage, of the other inputs, only its added ones (KimiLibraryCatalog.Added).
+// target's Chain, and a 4.9 operation's receiver storage, of the other inputs, only its added ones (KimiLibraryCatalog.Added; a member
+// without a receiver, construction, has no receiver storage, so its result keeps every input). It writes only its own outputs
+// (TransferWrites): a 4.9 operation its result and its receiver's element storage, `exchange` its result and its target; rule A forms
+// no row at another output.
 // Content and Chain are two measures: Content what one read through the input carries (premises, step 4), Chain any chain of reads.
 // Files: this one (the contract and its records RetentionKind, Retention, CallRetention); TyCtxt.Retention.Calls.cs (TyCtxt.Retains
 // and its memo); Binding.Retention.cs with .Atoms.cs, .Rows.cs and .Transfers.cs (the computation).

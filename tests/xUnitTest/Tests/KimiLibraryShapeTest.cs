@@ -343,9 +343,9 @@ public class KimiLibraryShapeTest
     }
 
     // SPEC 4.9.6, 15.6.4 (DECISIONS BU-40): a 4.9 operation's added and replacing inputs (KimiLibraryCatalog.Added) are exactly its inputs,
-    // other than the receiver and not borrowed (a borrowed key is read, never stored), that its declared contract retains in the
-    // receiver's storage, so an Array or Dictionary member that adds an input cannot miss its row and a row names no input it does not
-    // store.
+    // other than the receiver and not borrowed (a borrowed key is read, never stored), that its declared contract retains in the receiver's
+    // storage, and a member without a receiver (construction) has none, so an Array or Dictionary member that adds an input cannot miss its
+    // row and a row names no input it does not store.
     [Fact]
     public void AddedInputsAreTheInputsStoredInTheReceiver()
     {
@@ -356,15 +356,11 @@ public class KimiLibraryShapeTest
             var container = Assert.IsAssignableFrom<DeclarationContainerKoto>(c.Library.GetSymbol(id)!.Declaration);
             foreach (var function in container.Members.OfType<FunctionKoto>())
             {
-                if (function.SymbolOf() is not { ReceiverIndex: >= 0 } symbol)
-                {
-                    continue;
-                }
-
+                var symbol = function.SymbolOf()!;
                 var rows = c.Types.Retains(symbol, null, null).Rows.ToArray();
                 for (var i = 0; i < function.Parameters.Count; i++)
                 {
-                    var stored = i != symbol.ReceiverIndex && !Borrowed(TyCtxt.Signature(symbol, null, i, out _)!) &&
+                    var stored = symbol.ReceiverIndex >= 0 && i != symbol.ReceiverIndex && !Borrowed(TyCtxt.Signature(symbol, null, i, out _)!) &&
                         rows.Any(x => x.Input == i && x.Output == symbol.ReceiverIndex);
                     Assert.True(stored == KimiLibraryCatalog.Added(symbol, i), $"{Line(function)}: input {i}");
                     if (stored)

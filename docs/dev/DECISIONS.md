@@ -5746,15 +5746,19 @@ resumed by R4-M86 (2026-10-20).
     scope for an instance with an abstract part, passed to `Binding.Retains` and from it, as `RetentionRows`' parameter, to
     `TransferOf` (null for an instance without an abstract part, for C8's closure path and from `RetainsErased`, which has no callee),
     else the library root's; `exchange`, `swap` by their catalog IDs; 4.6–4.9 by declaring identity (Array, Dictionary, Slice,
-    UniqSlice, FromEnd, Start, End, Range, ClosedRange, ResolvedRange,
-    `FixedArrayMembers`). Under them a borrowed input keeps its Chain only; `exchange`'s result only its target's Chain; for §4.9 only
-    (Array, Dictionary) the receiver's storage keeps of the other inputs only the added ones: `KimiLibraryCatalog.Added` over
-    `AddedRow(Id, Mask)` beside `WithinRows` (append, insertAt, insert, appendAll, appendCopies, tryInsert, insertOrReplace), with two
-    new IDs `ArrayInsertPosition` (`insert<P>`) and `ArrayAppendAll`, pinned by KimiLibraryShapeTest (non-borrowed inputs the declared
-    contract stores in the receiver ⇔ Added). A §4.9 operation and `exchange` form no rule-A row at an output they do not write
-    (`TransferWrites`; the planning session's decision, R4 concurring, G255's C4): 4.9.6 makes the row the operation's complete
-    published effect, which writes its result and its receiver's element storage, never through another argument's own pointee
-    (`Array<raw/(raw/u8)>.append`'s store 1), and 15.6.4's `exchange` clause writes its result and target, never through `with`.
+    UniqSlice, FromEnd, Start, End, Range, ClosedRange, ResolvedRange, `FixedArrayMembers`). Under them a borrowed input keeps its
+    Chain only; `exchange`'s result only its target's Chain; for §4.9 only (Array, Dictionary) the receiver's storage keeps of the
+    other inputs only the added ones: `KimiLibraryCatalog.Added` over `AddedRow(Id, Mask)` beside `WithinRows` (append, insertAt,
+    insert, appendAll, appendCopies, tryInsert, insertOrReplace), with two new IDs `ArrayInsertPosition` (`insert<P>`) and
+    `ArrayAppendAll`, pinned by KimiLibraryShapeTest (non-borrowed inputs the declared contract stores in the receiver ⇔ Added). A
+    §4.9 operation and `exchange` form no rule-A row at an output they do not write (`TransferWrites`; the planning session's
+    decision, R4 concurring, G255's C4): 4.9.6 makes the row the operation's complete published effect, which writes its result and
+    its receiver's element storage, never through another argument's own pointee (`Array<raw/(raw/u8)>.append`'s store 1), and
+    15.6.4's `exchange` clause writes its result and target, never through `with`. The receiver's element storage is a store output at
+    the callee's receiver (`ReceiverStorage`, the one fact `TransferKept` and `TransferWrites` read); a member without a receiver
+    (construction: `initRepeating`, `initCapacity`) has none, its `ReceiverIndex` −1 being `Retention.Result`, so its result keeps
+    every input (the final review's B1: the index compared alone narrowed construction's result to nothing and accepted `repRawBad`,
+    `repTupBad` and `repTupRepl`, which err on dev and now).
   - Deleted: `retentionUnstatedResult` (field, set, `AddErasedSignature`'s save and restore) and `ResultRetains` (its D6 branch; the
     within clause is one line of `RetentionRows`). Superseded: D6's one-read depth and nominal-Field exclusion; BU-30's conservative
     holds behind a result borrow and its N2 pointer.
@@ -5769,14 +5773,18 @@ resumed by R4-M86 (2026-10-20).
     outputs; an output column for chains (exact only per output); B's receiver narrowing for every listed Type (15.6.4 scopes it to
     4.9); for the premise scope (the final review's B2), a field set by `Retains` past one member's six parameters, an argument bag,
     and a transfer key read before the hold walk (every contract would pay it): each entry point (`Retains`, `RetainsErased`) runs its
-    own steps between `BeginRetention` and `EndRetention` and hands the scope to `RetentionRows`.
+    own steps between `BeginRetention` and `EndRetention` and hands the scope to `RetentionRows`; for construction's result (B1), a
+    second comparison in each reader of `ReceiverIndex` (one fact, one predicate).
   - Open: N1 Chain on inputs with no raw or borrowed layer is vacuous (R4's closure decides); N2 "internal implementations" stay
     outside the keys (DictionaryStorage, HeapBuffer); N3 PLAN G255's C2 (the MIR literal's per-entry handle: multi-entry Dictionary
     literals of raw-holding values) and C3 (rule G's second pass against 4.9.6; R4's), not this unit's: `appendNullOk` and
     `appendIntoOk` (R4's g62) are known MIR-only errors caused by C3, rule G's second-pass W reaching E through the first append's
     `untied store 0`, which then receives the receiver's own chain (SPEC's, R4-M131 R2); `TransferWrites` is right either way; N4 user
-    Iterators on an abstract Self (unprobed; an abstract Item yields no unstated layer). Pre-existing: a lent `static` layer unties;
-    `unlinkOk` is SPEC-invalid (`Node.init` stores through the null `next` into storage the body does not own: R4's triage).
+    Iterators on an abstract Self (unprobed; an abstract Item yields no unstated layer); N5 (the final review's N1) at an output a
+    transfer operation does not write (`append<raw/(raw/u8)>`'s store 1, `exchange`'s `with`) `TransferWrites` forms no rule-A row
+    while the hold walk keeps its untied store, two answers to "the call writes output j", conservative (one more Φ_E target).
+    Pre-existing: a lent `static` layer unties; `unlinkOk` is SPEC-invalid (`Node.init` stores through the null `next` into storage
+    the body does not own: R4's triage).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

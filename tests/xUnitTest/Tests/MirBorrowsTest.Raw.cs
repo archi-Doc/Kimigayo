@@ -347,14 +347,15 @@ public sealed partial class MirBorrowsTest
                     storeT(t@uniq, k)
                 """));
 
-    // SPEC 15.6.4's transfer rule (DECISIONS R4-M131, BU-40): a Chain row is a read through the argument, never its own Loans, so a
-    // popped or iterated raw item, an exchanged raw pointer's old contents and a user Iterator's item keep no Loan of their receiver or
-    // target, while a swapped pointer keeps what a read through the other argument carries (`y`'s Loan through `w`). A5 reads Chain as
-    // one read until its Chain closure (R4-M131 Order 3).
+    // SPEC 15.6.4's transfer rule (DECISIONS R4-M131, BU-40): a Chain row is a read through the argument, never its own Loans, so a popped
+    // or iterated raw item, an exchanged raw pointer's old contents and a user Iterator's item keep no Loan of their receiver or target,
+    // while a swapped pointer keeps what a read through the other argument carries (`y`'s Loan through `w`), and an Array constructed from
+    // a raw value, alone or in a Tuple, or from a pointer to a replaced one keeps that value and what a read through it carries
+    // (`repeating`, the input construction adds, SPEC 4.9.6). A5 reads Chain as one read until its Chain closure (R4-M131 Order 3).
     [Fact]
     public void AChainRowIsAReadThroughTheArgument()
         => Assert.Equal(
-            ["swapRawBad: y = 5", "swapRawOwnBad: y = 5"],
+            ["swapRawBad: y = 5", "swapRawOwnBad: y = 5", "repRawBad: y = 5", "repTupBad: y = 5", "repTupRepl: y = 5"],
             Problems("""
                 func usep<T>(p: raw/T) => ()
                 struct RawIter
@@ -406,35 +407,35 @@ public sealed partial class MirBorrowsTest
                     Kimi.Intrinsics.swap(x@uniq, z@uniq)
                     y = 5
                     usep(z)
-                """));
-
-    // SPEC 15.6.4, 15.7 (DECISIONS BU-40; PLAN G255's C4): `exchange` writes its result and its target, never through `with` (its rows,
-    // RetentionTest), so `g`, used after `y = 5` once `h` is replaced, keeps nothing of the target, while the old contents keep `h`'s
-    // address of `w` while `h` still holds it.
-    [Fact]
-    public void AnExchangeWritesNothingThroughItsValue()
-        => Assert.Equal(
-            ["exchangeWithBad: y = 5"],
-            Problems("""
-                func exchangeWithOk()
+                func repRawBad()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    let q = w@raw@raw/u8
+                    let a = Array<raw/u8>.init(repeating: q, count: 2)
+                    y = 5
+                    inspect(a)
+                func repRawOk()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    let q = w@raw@raw/u8
+                    let a = Array<raw/u8>.init(repeating: q, count: 2)
+                    inspect(a)
+                    y = 5
+                func repTupBad()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    let q = w@raw@raw/u8
+                    let a = Array<(raw/u8, i32)>.init(repeating: (q, 1), count: 2)
+                    y = 5
+                    inspect(a)
+                func repTupRepl()
                     var y: i32 = 1
                     var w: ref/i32 = y@ref
                     var h: raw/u8 = w@raw@raw/u8
-                    var x: raw/(raw/u8) = h@raw
-                    var g: raw/u8 = null
-                    let old = Kimi.Intrinsics.exchange(x@uniq, with: g@raw)
+                    let a = Array<raw/(raw/u8)>.init(repeating: h@raw, count: 2)
                     h = null
                     y = 5
-                    let used = g == null
-                func exchangeWithBad()
-                    var y: i32 = 1
-                    var w: ref/i32 = y@ref
-                    var h: raw/u8 = w@raw@raw/u8
-                    var x: raw/(raw/u8) = h@raw
-                    var g: raw/u8 = null
-                    let old = Kimi.Intrinsics.exchange(x@uniq, with: g@raw)
-                    y = 5
-                    let used = old == null
+                    inspect(a)
                 """));
 
     // DECISIONS R4-M116 PQ-10 (B′ §4.3; registered for X-2): a Borrow of a `during self` layer's Place, or of a Tuple Place enclosing one,

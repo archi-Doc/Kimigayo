@@ -691,10 +691,11 @@ public sealed class RetentionTest
     // at a raw layer without an Origin only by its chain, never its own value: an Iterator's `next` (a user Iterator, the library's owning
     // adapter under its conditional conformance), `swap`, Array's `pop`, Dictionary's `remove`; `exchange`'s result only its target's
     // chain. A 4.9 operation's element storage keeps, of its arguments other than the receiver, only the added ones (`insert`'s value,
-    // `appendAll`'s Array, `appendCopies`' Slice by its chain), no index, key or predicate. The keys are declaring identities: a
-    // LendingIterator-only `next`, a user `pop` and a user `swap` keep every argument (A's cost, R4-M131 Open), and `exchange` over a
-    // borrow keeps its rows. A 4.9 operation and `exchange` form none at an output they do not write (SPEC 4.9.6's complete published
-    // effect; PLAN G255's C4): an added `raw/(raw/u8)`'s pointee, `exchange`'s `with` (fail-before: `0 Chain store 1`).
+    // `appendAll`'s Array, `appendCopies`' Slice by its chain), no index, key or predicate; construction has no receiver storage, so its
+    // result keeps every argument, `repeating` and `count`, by its own value and its chain (fail-before: only `untied`). The keys are
+    // declaring identities: a LendingIterator-only `next`, a user `pop` and a user `swap` keep every argument (A's cost, R4-M131 Open), and
+    // `exchange` over a borrow keeps its rows. A 4.9 operation and `exchange` form none at an output they do not write (SPEC 4.9.6's
+    // complete published effect; PLAN G255's C4): an added `raw/(raw/u8)`'s pointee, `exchange`'s `with` (fail-before: `0 Chain store 1`).
     [Theory]
     [InlineData("var x: raw/u8 = null\nvar y: raw/u8 = null\nKimi.Intrinsics.swap(x@uniq, y@uniq)\n", "swap", "0 Chain store 0, 1 Chain store 0, 0 Chain store 1, 1 Chain store 1, untied store 0, untied store 1")]
     [InlineData(
@@ -718,6 +719,9 @@ public sealed class RetentionTest
     [InlineData("var a: Array<raw/u8> = []\nvar b: Array<raw/u8> = [null]\na.appendAll(b@move)\n", "appendAll", "0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0")]
     [InlineData("var a: Array<raw/u8> = []\nlet b: Array<raw/u8> = [null]\na.appendCopies(b.slice())\n", "appendCopies", "0 Chain store 0, 1 Chain store 0, untied store 0")]
     [InlineData("var a: Array<raw/u8> = [null]\nvar bias = 1\nlet b = bias@ref\na.sort(by: func (x, y) => b@follow)\n", "sort", "0 Chain store 0, untied store 0")]
+    [InlineData("let a = Array<raw/u8>.init(repeating: null, count: 2)\n", "initRepeating", "0 Value result, 0 Chain result, 1 Value result, 1 Chain result, untied")]
+    [InlineData("let a = Array<(raw/u8, i32)>.init(repeating: (null, 1), count: 2)\n", "initRepeating", "0 Value result, 0 Chain result, 1 Value result, 1 Chain result, untied")]
+    [InlineData("let a = Array<raw/u8>.init(capacity: 2)\n", "initCapacity", "0 Value result, 0 Chain result, untied")]
     [InlineData(RawIt + "var it = RawIt.init(items: [null])\nlet x = it.next()\n", "next", "0 Chain result, 0 Chain store 0, untied, untied store 0")]
     [InlineData(RawLend + "var it = RawLend.init(items: [null])\nlet x = it.next()\n", "next", "0 Value result, 0 Chain result, 0 Chain store 0, untied, untied store 0")]
     [InlineData("let a: Array<raw/u8> = [null]\nvar it = Iteration.owning(a@move.intoIterator())\nlet x = it.next()\n", "next", "0 Chain result, 0 Chain store 0, untied, untied store 0")]
