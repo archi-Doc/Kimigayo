@@ -18,6 +18,10 @@ internal sealed partial class FunctionCodegen
 {
     private readonly Value[] slotless = new Value[1]; // A routine row's slot-less values (Routine).
 
+    // A legacy row's routine (DECISIONS R5-M116), the one path its direct call, its Item's Value call and its adapter's entry take: a Routine
+    // row's (writeLine); null for any other row.
+    private static FunctionAbi? Routine(LegacyRow row) => row.Writer == LegacyWriter.Routine ? row.Routine : null;
+
     private void Intrinsic(in MirTerminator call, in IntrinsicRow row)
     {
         var target = row.Target == IntrinsicTarget.None ? -1 : this.Target(new(this.at, this.body.Blocks[this.at].Count));
@@ -67,7 +71,7 @@ internal sealed partial class FunctionCodegen
         return IntrinsicDisposition.Of(kind) switch
         {
             { Kind: DispositionKind.Intrinsic, Id: var id } => this.Routine(IntrinsicRows.Of(id), result, target, out given),
-            _ => LegacyRuntimeHelpers.Row(kind)?.Routine,
+            _ => LegacyRuntimeHelpers.Row(kind) is { } row ? Routine(row) : null,
         };
     }
 

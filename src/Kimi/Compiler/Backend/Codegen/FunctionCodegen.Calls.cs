@@ -209,11 +209,14 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
+        if (Routine(row) is { } routine)
+        {
+            this.Invoke(call, routine, new(call.Callee.Symbol, MirBodyKind.Fn));
+            return;
+        }
+
         switch (row.Writer)
         {
-            case LegacyWriter.Routine:
-                this.Invoke(call, row.Routine!, new(call.Callee.Symbol, MirBodyKind.Fn));
-                return;
             case LegacyWriter.FixedStorage:
                 this.FixedStorage(call);
                 return;
