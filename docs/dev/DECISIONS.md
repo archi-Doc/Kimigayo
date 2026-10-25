@@ -5687,7 +5687,7 @@ resumed by R4-M86 (2026-10-20).
   - Open (outside the unit): per-case holes in `InstanceStorage.Cases` (closed by BU-37; PLAN G242, BU: e2 `enum E { A(Missing),
     B(raw/i32) }` gives no row where its repair gives `1 Value store 0, untied store 0`; growth in another case is unseen), whose shared
     fix (R4's G244 A1) replaces this unit's enum clause in `StorageParts` and rule in `Stores`; Dispatch's K6 Witness Limit and the
-    collector's StorageNesting `Unsupported_Kd` over Rejected storage, published under MIR code generation (BU, R5); A4's
+    collector's StorageNesting `Unsupported_Kd` over Rejected storage, published under MIR code generation (BU, R5; closed by BU-38); A4's
     `MirEffects.Solve` and `MirCases.Views` over `Apply`'s null (R4, PLAN G240's row); the builder's default copy `FoldType` and the
     Arity finding on a Rejected enum's case (G244).
 
@@ -5723,7 +5723,8 @@ resumed by R4-M86 (2026-10-20).
   - Open (PLAN G242): the residual at the payload grain, a Case with one failed payload publishing none of its payloads (`A(Missing,
     raw/i32)` keeps no row, the growth in the p16 form is unseen; BU with R4 for `MirTypes.Holding` and R5 for Layout; option 2:
     payloads published and walked per payload); A4's `MirEffects.Destroyed` reads a null part as Limit, a dependent by R4-M118 (R4); the
-    collector's `Unsupported_Kd` over Rejected storage, now visible on enum forms under sel, is G242's Dispatch part (BU, next).
+    collector's `Unsupported_Kd` over Rejected storage, now visible on enum forms under sel, is G242's Dispatch part (BU, next; closed by
+    BU-38).
 
 - **BU-38 A part Binding rejected passes through Binding's instantiation and Dispatch** (2026-10-25; the BU planning session after
   the full process: designs A and B, the design review's combination C (A's D1-D3 and D4 reworked with B's Bodyless site and R5's
@@ -5742,20 +5743,39 @@ resumed by R4-M86 (2026-10-20).
   - Dispatch: `Resolve` refuses a Limit only. What a requirement call runs does not depend on a stored part, so a Rejected Self has its
     witness's target, whose instance is its reader's to admit; `Comparison`'s null and the collector's requirement Limit row (R5-M67)
     are genuine limits, and a tuple operator over Rejected storage builds its leaf calls.
-  - Staged: the first commit (bu40 1/2) changes Binding and TyCtxt only. The second, after R5's C8d lands and with R5's review of its
-    collector hunks and R4's of the builder's, adds `Compose`'s verdict (`(Subst?, StorageOutcome)`; `MirBuilder.Defaults.Copies` :47,
-    :146), the collector's one mapping at `In`, Admit, Edge's `Compose` and the bodyless `Signature` site (deleting `Destroys` and
-    `Runs`' null branch), and R5's guard (Rejected in a complete compilation, a located `InternalInvariant_Kd`; completeness through one
-    TyCtxt member; Layout's Rejected row by R5's choice). Until then, MIR code generation still publishes the collector's StorageNesting
-    `Unsupported_Kd` over Rejected storage.
+  - Composition (bu40 2/2, after R5's C8d, with R5's review of the collector and R4's of the builder): `TyCtxt.Compose` gives
+    `(Subst?, StorageOutcome)`, each part by `Instance`, the greatest verdict (`StorageOutcome`'s order is the precedence), a length
+    that does not substitute a Limit. A Limit has no substitution; Rejected keeps the composed one, the forwarded call's (review A4,
+    for G245 U2). Its readers: the collector's Edge and the builder's `Instantiates` (`Storage != Prepared`) and `Inline` (`.Subst`,
+    reached only after `Instantiates`), both behavior-preserving.
+  - Collector: one reading of a verdict at its requesting site, `InstanceCollector.Made`: Prepared makes the edge, a Limit is the
+    storage-nesting gap, Rejected a dependent dropped without a record. Its readers: `In` (one `Instance` path with `TypeOf`),
+    `Instantiable` (every local read, so a limit wins in either order; Admit's private `Instance` enum goes), Edge's `Compose`, and
+    `Below`, the Type below a bodyless callee's parameter (`Instance` of its declared Type) for the `Runs` and in-place rows (`Destroys`
+    and `Runs`' null branch deleted) and `AdmitRow`'s collection. The collector's contract states the rule for later rows (C8e): a
+    Type of an instance is read at its site through these. `AdmitRow` (R5-M121) read `Signature` under its substitution and gave
+    `InternalInvariant_Kd` for Rejected and Limit alike, also for the valid `Array<B^65>.reserve(1)` under MIR code generation: C8d's
+    defect, missed by its review, which this unit fixes (the gap at the call).
+  - Guard (R5's condition): `Derived` gives a Rejected verdict no record in an incomplete compilation and `InternalInvariant_Kd` at
+    its site in a complete one, which has no part Binding rejected (DIAGNOSTICS rule 8), reading completeness only through
+    `TyCtxt.BindingComplete`, as `Binding.Retained` (BU-36) and R4-M118's `OriginFinding` do; Layout's Rejected row (`RecordOf`,
+    R5-M37) reads the same member. No source reaches it; `Made` and `RecordOf` are tested directly.
+  - Under MIR code generation the collector's `Unsupported_Kd` over Rejected storage leaves (designs A's c01-c07, c11 and B's a1-a4,
+    c1, c2, d1, d6-d8, x2, r2, r4, with the sel halves of the EffectBounds forms), and the collector's duplicate of x3's and r8's
+    builder record; every genuine-limit twin keeps its record and no record is added.
   - Supersedes BU-36's `== Prepared` at `InstantiateStorageType` and Dispatch (kept there only to preserve behavior); amends R5-M61's
-    and R5-M67's Limit to a Self nested past the bound. Each names this entry.
+    and R5-M67's Limit to a Self nested past the bound, R5-M40's admission gap and R5-M67's composed substitution to a limit; closes
+    BU-36's and BU-37's Open item for Dispatch and the collector. Each names this entry.
   - Rejected: B's E1 (Rejected as "not judged": hides the independent violation r1's repair reports, an `out` verdict most callers
     discard, and formatting, requirement, selected-requirement and closure instances still conflating); a Rejected target kind (a second
     carrier of the verdict for an answer that does not depend on the part, and `Comparison` and the builder would need their own);
     `Apply` giving Rejected instances to the MIR readers (BU-36's rejected option, R7's).
+  - Rejected (part 2): a `Composition` beside a Prepared-only `Compose` (two forms of one answer); a collector filter of Rejected
+    records; Admit's private `Instance.Rejected` (a second copy of the verdict); `Apply` over Rejected for `TypeOf` (R7's).
   - Open: e3 (BU, PLAN G242; a failed call, not storage): the effect summary reads a call Binding did not bind as `UnclassifiedCall`,
-    so an unbound call in a confined witness publishes a dependent `IncompatibleContractImplementation_Kd` on every pipeline.
+    so an unbound call in a confined witness publishes a dependent `IncompatibleContractImplementation_Kd` on every pipeline. x3 and
+    r8 (R4, G245 U2): the builder's default copy over Rejected storage keeps its `Unsupported_Kd` (`Instantiates` reads `Apply`). The
+    residual (R7): a record that exists only inside an instance the collector drops stays unseen.
 
 - **BU-39 TyCtxt keeps only the raw readers of a stored layer** (2026-10-25; the BU planning session; PLAN G160, unit bu42; one
   design, one review) R4-M116 (PQ-7): A5 reads neither `RawMembers` nor `RawStep(raw)`, only the step of the raw layer an instance
@@ -6799,7 +6819,8 @@ structure is recorded here by the unit that first implements it.
   The first composed substitution is the representative; the item's one view of its body is `MirCases.Views` on the representative, and
   none or several is `InternalInvariant_Kd`. `Admit`, one function: a known key is reused, so Origin-only variants and a recursion under
   one substitution share an item; a new key whose composition fails or whose body's local Types `TyCtxt.Apply` cannot make under the
-  representative is the capability table's storage-nesting gap (`Unsupported_Kd`, PD30), so each later Type of the item exists; a depth
+  representative is the capability table's storage-nesting gap (`Unsupported_Kd`, PD30; amended by BU-38: a limit, storage Binding
+  rejected a dependent without a record), so each later Type of the item exists; a depth
   past 128, 16 items of the definition on the admission chain, or 1,024 items of the definition are `GenerationResourceLimit_Kd` (X19;
   every item is a Body item so far); a representative that is open or leaves a local Type of its body open is `InternalInvariant_Kd`
   (K §4.3: representatives are closed). A refused edge is dropped and collection continues. The location rule (KD12): the cause's site,
@@ -7359,7 +7380,9 @@ structure is recorded here by the unit that first implements it.
   Field Type's glue; Refused, the capability row `ExclusiveInheritedWitness` (OCC-X, `Unsupported_Kd` at the call); Limit, the
   storage-nesting row (a genuine limit, BU-38); None, a broken contract (`InternalInvariant_Kd` at the call). Both shims are
   type-driven items: the Self's layout verdict joins their admission (R5-M44). A composed substitution whose Self does not instantiate
-  is null (`TyCtxt.Compose`, PLAN G157 (4)), the storage-nesting gap at the call as for the other parts. Locations: R5-M40's rule.
+  is null (`TyCtxt.Compose`, PLAN G157 (4)), the storage-nesting gap at the call as for the other parts (amended by BU-38: `Compose`
+  gives its parts' verdict, a Limit the gap and Rejected a dependent without a record, `InstanceCollector.Made`). Locations: R5-M40's
+  rule.
   - Staged to unit K6b (after F6; before C3b, C8f and C9b, which read these targets; K6b landed them, R5-M70):
     requirement Items (rows 5 and 12), whose substitution needs a witness form of `TyCtxt.SubstOfItem` (this supersedes R5-M43's "until
     K6": they now wait for K6b); row 6's writer witness and row 2's formatting witnesses (`TyCtxt.Published`, R5-M30) with its Shim

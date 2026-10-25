@@ -11,7 +11,7 @@
 // intrinsic's row), or -1 for a virtual slot's Item (X5), a Function Type value (its erasure's adapter carries it), a callee without a
 // body or row (C8e; a foreign function) or a refused edge.
 // Invariants: the substitution admitted is the one the body runs under, so Admit keys and represents it.
-// Must not: read a site or a template, or record anything itself (Admit, the layout verdict, the witness and glue rows do).
+// Must not: read a site or a template, or record anything itself (Admit, Below, the layout verdict, the witness and glue rows do).
 
 using Kimi.Compiler.Mir;
 
@@ -56,7 +56,7 @@ internal sealed partial class InstanceCollector
     // K 4.5 rows 2, 6 and 8 (DECISIONS R5-M30, R5-M74, R5-M116): a callee without a MIR body whose published row runs a requirement on the
     // Type below a parameter (Utf8Format's format, for Text.toString, Text.tryFormat and Utf8Writer.write), that requirement's witness on
     // that Type under the composed substitution; one whose published row destroys the Type below a parameter in place (replace, SPEC 15.7:
-    // Binding's one fact, which A3's borrows and the effect summary read too), that Type's glue when it may need a drop (Destroys); one whose
+    // Binding's one fact, which A3's borrows and the effect summary read too), that Type's glue when it may need a drop (GlueOf); one whose
     // legacy row writes its call in its instance (the Array operations and storage kinds), its LegacyRow item (K 4.5 row 2; DECISIONS
     // R5-M121, AdmitRow); the function of an intrinsic, reached by its Item (a call of it is an Intrinsic callee), the target its row names
     // under the Item's Type argument, which is a by-value use where the row says so, as at the intrinsic's call (K 4.8,
@@ -65,14 +65,12 @@ internal sealed partial class InstanceCollector
     {
         if (this.types.Published(function) is { Runs: { } requirement, On: var on })
         {
-            _ = TyCtxt.Layer(TyCtxt.Signature(function, subst, on, out _), out var below, out _);
-            return this.Runs(program, item, subject, requirement, below);
+            return this.Below(subject, function, subst, on) is { } below ? this.Runs(program, item, subject, requirement, below) : -1;
         }
 
         if (this.types.Published(function) is { InPlace: true, Destroys: >= 0 and var destroys })
         {
-            _ = TyCtxt.Layer(TyCtxt.Signature(function, subst, destroys, out _), out var destroyed, out _);
-            return this.Destroys(item, subject, destroyed);
+            return this.Below(subject, function, subst, destroys) is { } destroyed ? this.GlueOf(item, subject, destroyed) : -1;
         }
 
         if (LegacyRuntimeHelpers.Row(function.CompilerFunction) is { Writer: LegacyWriter.Instance })

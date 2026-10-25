@@ -44,7 +44,7 @@ internal sealed partial class MirBuilder
 
         foreach (ref readonly var block in template.Blocks)
         {
-            if (block.Terminator.Callee.Subst is { } inner && compilation.Types.Compose(inner, subst) is null)
+            if (block.Terminator.Callee.Subst is { } inner && compilation.Types.Compose(inner, subst).Storage != Binding.StorageOutcome.Prepared)
             {
                 return false;
             }
@@ -143,7 +143,7 @@ internal sealed partial class MirBuilder
             var place = call || terminator.Kind == MirTerminatorKind.Drop ? FoldPlace(terminator.Place) : default;
             var callee = terminator.Callee with
             {
-                Subst = terminator.Callee.Subst is { } inner && subst is not null ? compilation.Types.Compose(inner, subst) : terminator.Callee.Subst,
+                Subst = terminator.Callee.Subst is { } inner && subst is not null ? compilation.Types.Compose(inner, subst).Subst : terminator.Callee.Subst,
             };
             if (callee.Kind == MirCalleeKind.Value)
             {

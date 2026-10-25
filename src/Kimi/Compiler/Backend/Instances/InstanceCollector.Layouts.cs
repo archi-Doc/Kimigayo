@@ -7,13 +7,16 @@ namespace Kimi.Compiler.Backend;
 // Layout obligations (K package 4.8, X18; DECISIONS R5-M37, R5-M44, R5-M55): the verdict of each by-value use in an item's instance.
 internal sealed partial class InstanceCollector
 {
-    // K 4.8 (R5-M37: the collector alone maps Layout's outcomes): the record of an outcome. A size, count or depth limit is Resource
-    // (IMPL 21.3.2); a C-layout instance storing a zero-sized Field, at any depth in the window, is the Language error InvalidCLayout_Kd
-    // (SPEC 6.7.1, 8.15.3); Ok has none, and Rejected storage derives from the Binding error that rejected it. Oversized is reported
-    // through Result.Oversized, which an oversized CLayout carries too.
-    private static DiagnosticCode? RecordOf(Layout.Outcome outcome) => outcome switch
+    /// <summary>Gets the record of a Layout outcome (K 4.8; R5-M37: the collector alone maps Layout's outcomes). A size, count or depth limit
+    /// is Resource (IMPL 21.3.2); a C-layout instance storing a zero-sized Field, at any depth in the window, is the Language error
+    /// InvalidCLayout_Kd (SPEC 6.7.1, 8.15.3); Ok has none, and Rejected storage derives from the Binding error that rejected it (Derived,
+    /// DECISIONS BU-38). Oversized is reported through Result.Oversized, which an oversized CLayout carries too.</summary>
+    /// <param name="outcome">The outcome.</param>
+    /// <returns>Its record, or null for none.</returns>
+    internal DiagnosticCode? RecordOf(Layout.Outcome outcome) => outcome switch
     {
-        Layout.Outcome.Ok or Layout.Outcome.Rejected or Layout.Outcome.Oversized => null,
+        Layout.Outcome.Ok or Layout.Outcome.Oversized => null,
+        Layout.Outcome.Rejected => this.Derived,
         Layout.Outcome.SizeLimit or Layout.Outcome.CountLimit or Layout.Outcome.DepthLimit => DiagnosticCode.GenerationResourceLimit_Kd,
         Layout.Outcome.CLayout => DiagnosticCode.InvalidCLayout_Kd,
         _ => throw new InvalidOperationException($"The layout outcome {outcome} has no record row."),
@@ -56,7 +59,7 @@ internal sealed partial class InstanceCollector
             this.Set.Report(DiagnosticCode.OversizedLayout_Kd, subject);
         }
 
-        if (RecordOf(result.Outcome) is { } code && (!result.IsLimit || this.limited.Add(this.types.Erase(type))))
+        if (this.RecordOf(result.Outcome) is { } code && (!result.IsLimit || this.limited.Add(this.types.Erase(type))))
         {
             this.Set.Report(code, subject);
         }

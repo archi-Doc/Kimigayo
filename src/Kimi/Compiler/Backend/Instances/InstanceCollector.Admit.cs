@@ -12,14 +12,6 @@ internal sealed partial class InstanceCollector
     private const int GrowthLimit = 16; // Ancestors of one definition with other keys: a growing key.
     private const int SetLimit = 1024; // Items of one definition.
 
-    // Whether an instance's Types exist and are closed.
-    private enum Instance : byte
-    {
-        Closed,
-        Missing,
-        Open,
-    }
-
     /// <summary>Gets the subject of a record caused at a site of an item's body (K 4.9), the one location rule of the collector's records and
     /// code generation's (R5 C0b1): the site located in its body, if that lies in a root module; else the root-module site the item's
     /// admission chain first reached, which each item keeps.</summary>
@@ -43,8 +35,9 @@ internal sealed partial class InstanceCollector
 
     // The item of a callee body requested at a site of an item's body (its located subject), admitted once per key (KD1): keyed by its
     // definition and, when it instantiates, its erased substitution, represented by the substitution itself (KD3). A function nested in a
-    // body whose substitution does not carry the enclosing instance, or a new key whose instance's Types TyCtxt cannot make, is a capability
-    // gap; one past a limit is GenerationResourceLimit_Kd; a representative that leaves its body open is a broken contract. -1 when refused.
+    // body whose substitution does not carry the enclosing instance is a capability gap, and a new key's instance needs its local Types
+    // (Instantiable); one past a limit is GenerationResourceLimit_Kd; a representative that leaves its body open is a broken contract. -1
+    // when refused.
     private int Admit(int parent, SourceRef site, MirBody target, Subst? subst)
     {
         var set = this.Set;
@@ -72,9 +65,8 @@ internal sealed partial class InstanceCollector
         }
 
         var representative = erased is null ? null : subst;
-        if (representative is not null && this.Instantiable(target, representative) is var instance && instance != Instance.Closed)
+        if (representative is not null && !this.Instantiable(target, representative, site))
         {
-            set.Report(instance == Instance.Missing ? Capability.Code(CapabilityGap.StorageNesting) : DiagnosticCode.InternalInvariant_Kd, site);
             return -1;
         }
 
@@ -133,14 +125,19 @@ internal sealed partial class InstanceCollector
     // K 4.3, 4.5 row 2 (DECISIONS R5-M121): the LegacyRow item of a bodyless compiler function whose legacy row writes its call in its
     // instance, requested at a site, admitted once per key: its function and its erased substitution (as a body instance's, null exactly when
     // the function does not instantiate), represented by the substitution, under which TyCtxt.Signature gives its Types, and by the Type
-    // below its parameter 0 (an Array, a UniqSlice or a fixed array), whose element its helper stores, a by-value use (K 4.8, X34); past the
-    // depth limit GenerationResourceLimit_Kd; an open or missing instance is a broken contract. -1 when refused.
+    // below its parameter 0 (an Array, a UniqSlice or a fixed array; Below, its verdict read at the site), whose element its helper stores, a
+    // by-value use (K 4.8, X34); past the depth limit GenerationResourceLimit_Kd; an open or missing instance is a broken contract. -1 when
+    // refused.
     private int AdmitRow(int parent, SourceRef site, BindingSymbol function, Subst? subst)
     {
         var set = this.Set;
         Subst? erased = null;
         var instantiates = this.types.Instantiates(function);
-        _ = TyCtxt.Layer(TyCtxt.Signature(function, subst, 0, out _), out var collection, out _);
+        if (this.Below(site, function, subst, 0) is not { } collection)
+        {
+            return -1;
+        }
+
         if ((instantiates && (subst is null || (erased = this.types.Erase(subst)) is null)) ||
             collection is not { ContainsParameter: false, Components: [var element, ..] })
         {
@@ -174,37 +171,31 @@ internal sealed partial class InstanceCollector
         });
     }
 
-    // Whether a representative is closed and TyCtxt makes every local Type of its body in its instance, closed: Missing, a Type TyCtxt cannot
-    // make (PD30: PLAN G128), Open, a Type left open, which K 4.3's closed representatives exclude.
-    private Instance Instantiable(MirBody body, Subst representative)
+    // Whether a representative is closed and makes every local Type of its body in its instance (TyCtxt.Instance), closed, the locals' worst
+    // verdict read at the requesting site (Made; every local is read, so a limit wins over a part Binding rejected, DECISIONS BU-36); an open
+    // representative or local Type, which K 4.3's closed representatives exclude, is a broken contract.
+    private bool Instantiable(MirBody body, Subst representative, SourceRef site)
     {
-        if (Open(representative.Self) || Open(representative.Declaring))
-        {
-            return Instance.Open;
-        }
-
+        var open = Open(representative.Self) || Open(representative.Declaring);
         foreach (var type in representative.Types)
         {
-            if (Open(type))
-            {
-                return Instance.Open;
-            }
+            open |= Open(type);
         }
 
-        foreach (var local in body.Locals)
+        var storage = Binding.StorageOutcome.Prepared;
+        for (var i = 0; !open && i < body.Locals.Length; i++)
         {
-            if (this.types.Apply(local.Type, representative) is not { } instance)
-            {
-                return Instance.Missing;
-            }
-
-            if (instance.ContainsParameter)
-            {
-                return Instance.Open;
-            }
+            var (instance, verdict) = this.types.Instance(body.Locals[i].Type, representative);
+            (open, storage) = (Open(instance), verdict > storage ? verdict : storage);
         }
 
-        return Instance.Closed;
+        if (open)
+        {
+            this.Set.Report(DiagnosticCode.InternalInvariant_Kd, site);
+            return false;
+        }
+
+        return this.Made(storage, site);
 
         static bool Open(BoundType? type) => type is { ContainsParameter: true };
     }
