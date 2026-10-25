@@ -44,7 +44,8 @@ public sealed partial class Binding
 
     // SPEC 15.6.1: a fit whose structure holds leaves each differing Origin position as an obligation that ownership judges and reports
     // with facts at the value. A position's pending relation is recorded with the fit's whole destination, as the fit's own record is
-    // (RecordOriginFitFailure; DECISIONS R4-M133).
+    // (RecordOriginFitFailure; DECISIONS R4-M133): this is the one entry to the positions' obligations (CheckTypeUseCore recurses only into
+    // itself, FitsTypeCore forms none), so the entries appended before it returns are exactly this fit's.
     private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use)
     {
         var pending = this.pendingRelations.Count;

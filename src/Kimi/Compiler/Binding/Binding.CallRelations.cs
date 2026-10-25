@@ -328,7 +328,10 @@ public sealed partial class Binding
                 : slot is not null ? SlotEqualitySource(context, slot, shorter) : null;
             var refuted = forward == OriginJudgment.Refuted || backward == OriginJudgment.Refuted;
             var destination = declared ? null : context.Parameter;
-            this.callRelationScratch.Add((at, new(at, longer, longer, shorter, equality, destination, refuted, declared ? clause : null, Substituted: declared, FixedBy: fixedBy, WellFormed: wellFormed)));
+            var supplier = this.SuppliedAtUse(longer, at);
+            var declaredClause = declared ? clause : null;
+            var fact = new OriginRelationFact(at, longer, supplier, shorter, equality, destination, refuted, declaredClause, declared, fixedBy, wellFormed);
+            this.callRelationScratch.Add((at, fact));
             return;
         }
 

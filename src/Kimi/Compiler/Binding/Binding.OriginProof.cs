@@ -100,6 +100,28 @@ public sealed partial class Binding
         return worst;
     }
 
+    // The atom that supplies an Origin at its use (DECISIONS R4-M133): the Origin declarations and local initializers that enclose the use
+    // applied, innermost first, and no receiver resolution: a Borrow's own atom, which a classified Closure's receiver resolution alone
+    // turns into ρ. A record's Supplier is this, at its use.
+    internal BoundOrigin SuppliedAtUse(BoundOrigin origin, Koto use)
+    {
+        var initializers = this.initializerOrigins.Count != 0;
+        for (var node = use; node is not null; node = node.Parent)
+        {
+            if (this.originDeclarations.TryGetValue(node, out var declaration) && declaration.State >= 2)
+            {
+                origin = this.ResolveOrigin(origin, declaration);
+            }
+
+            if (initializers && this.initializerOrigins.TryGetValue(node, out var inferred) && inferred.State >= 2)
+            {
+                origin = this.ResolveOrigin(origin, inferred);
+            }
+        }
+
+        return origin;
+    }
+
     // The order in which a judgment fails a relation: Refuted before Unknown before Unrepresentable.
     private static int Severity(OriginJudgment judgment) => judgment switch
     {
@@ -192,23 +214,13 @@ public sealed partial class Binding
     }
 
     // The one resolution of an Origin at its use (2a0-D D4), which every judgment, record, the old reporter and the C1-F4 view read: the
-    // Origin declarations and local initializers that enclose the use, and the receiver of each classified Closure that does
-    // (ResolveReceiver), innermost first.
+    // atom that supplies it there (SuppliedAtUse), then the receiver of each classified Closure that encloses the use (ResolveReceiver),
+    // innermost first.
     private BoundOrigin OriginAtUse(BoundOrigin origin, Koto use)
     {
-        var initializers = this.initializerOrigins.Count != 0;
+        origin = this.SuppliedAtUse(origin, use);
         for (var node = use; node is not null; node = node.Parent)
         {
-            if (this.originDeclarations.TryGetValue(node, out var declaration) && declaration.State >= 2)
-            {
-                origin = this.ResolveOrigin(origin, declaration);
-            }
-
-            if (initializers && this.initializerOrigins.TryGetValue(node, out var inferred) && inferred.State >= 2)
-            {
-                origin = this.ResolveOrigin(origin, inferred);
-            }
-
             if (origin.Kind is OriginKind.Projection or OriginKind.Intersection &&
                 node is FunctionKoto { IsAnonymous: true, ClosureStorage: { Classified: true } plan } closure)
             {
@@ -338,8 +350,8 @@ public sealed partial class Binding
     // chains are found by the fit's position search in the body that formed it, passed explicitly, and recorded as a fit's are
     // (RecordOriginChains: at RelationAt, a failed Origin environment's dependent, a body chain a twin); any other body chain stays a row
     // for A5 and the old reporter, unjudged here. The obligation stays either way: a recorded failure leaves Binding incomplete, so the
-    // old reporter never judges it again. Each chain records the part of the obligation's longer end as formed that supplied it, and the
-    // entry's destination (DECISIONS R4-M133).
+    // old reporter never judges it again. Each chain records as its Supplier the part of the obligation's longer end, as it supplies the
+    // end at the use (SuppliedAtUse), that holds the chain's end, and the entry's destination (DECISIONS R4-M133).
     private void RoutePendingRelation(in BindingObligation obligation, BoundType? destination)
     {
         var (use, body) = (obligation.Use, obligation.Body);
@@ -358,29 +370,29 @@ public sealed partial class Binding
         {
             for (var i = 0; i < all.Count; i++)
             {
-                var supplier = this.SuppliedBy(obligation.Longer!, all[i].Longer, use);
+                var supplier = this.SuppliedBy(this.SuppliedAtUse(obligation.Longer!, use), all[i].Longer, use);
                 all[i] = all[i] with { Supplier = supplier, Clause = obligation.Clause, WellFormed = obligation.WellFormed };
             }
 
-            var firstSupplier = this.SuppliedBy(obligation.Longer!, first.Longer, use);
+            var firstSupplier = this.SuppliedBy(this.SuppliedAtUse(obligation.Longer!, use), first.Longer, use);
             var recorded = first with { Supplier = firstSupplier, Clause = obligation.Clause, WellFormed = obligation.WellFormed };
             _ = this.RecordOriginChains(use, RelationAt(obligation), body, destination, recorded);
         }
     }
 
-    // The part of `written`, a relation's end as it was formed, that supplied `resolved`, a record's end at `use` (DECISIONS R4-M133): the
-    // first operand of a meet whose resolution there holds it, otherwise the end itself.
-    private BoundOrigin SuppliedBy(BoundOrigin written, BoundOrigin resolved, Koto use)
+    // The part of `supplied`, a relation's end as it supplies it at `use` (SuppliedAtUse), that supplied `resolved`, a record's end there
+    // (DECISIONS R4-M133): the first operand of a meet whose resolution holds it, otherwise the end itself.
+    private BoundOrigin SuppliedBy(BoundOrigin supplied, BoundOrigin resolved, Koto use)
     {
-        for (var i = 0; i < written.Operands.Count; i++)
+        for (var i = 0; i < supplied.Operands.Count; i++)
         {
-            if (OriginIncludes(this.OriginAtUse(written.Operands[i], use), resolved))
+            if (OriginIncludes(this.OriginAtUse(supplied.Operands[i], use), resolved))
             {
-                return this.SuppliedBy(written.Operands[i], resolved, use);
+                return this.SuppliedBy(supplied.Operands[i], resolved, use);
             }
         }
 
-        return written;
+        return supplied;
     }
 
     // SPEC 15.3.6 (PLAN G74): a pure question: whether the premises visible at `use` entail `longer outlives shorter`

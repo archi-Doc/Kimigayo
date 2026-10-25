@@ -225,7 +225,9 @@ public sealed partial class OwnershipAnalysis
                 var fit = Binding.IsFitObligation(obligation);
                 var at = fit && obligation.Use is VariableKoto { InitializerKoto: { } initializer } ? initializer : obligation.Use;
                 var refuted = Binding.RefutesOriginRelation(longer, shorter, obligation.Body);
-                var relation = new OriginRelationFact(at, longer, longer, shorter, obligation.Equality, obligation.Type, refuted, obligation.Clause, WellFormed: obligation.WellFormed);
+                var supplier = this.compilation.Binding.SuppliedAtUse(longer, obligation.Use);
+                var (clause, wellFormed) = (obligation.Clause, obligation.WellFormed);
+                var relation = new OriginRelationFact(at, longer, supplier, shorter, obligation.Equality, obligation.Type, refuted, clause, WellFormed: wellFormed);
                 var (evidence, related) = Binding.OriginRelationFacts(relation, fit ? "fit" : obligation.Clause is not null ? "declared" : "wellFormed");
                 if (ChainOrdinal(at, issue.Code, evidence) is { } chain)
                 {

@@ -261,7 +261,8 @@ public sealed partial class Binding
                 return null;
             }
 
-            OriginRelationFact equality = new(use, actual, actual, expected, true, null, RefutesOriginRelation(actual, expected, body));
+            var refuted = RefutesOriginRelation(actual, expected, body);
+            OriginRelationFact equality = new(use, actual, binding.SuppliedAtUse(actual, use), expected, true, null, refuted);
             all?.Add(equality);
             return equality;
         }
@@ -276,7 +277,8 @@ public sealed partial class Binding
         private OriginRelationFact FailedChain(BoundOrigin longer, BoundOrigin shorter, ulong condition)
         {
             var operand = this.FailingOperand(longer, shorter, true, condition) ?? this.FailingOperand(longer, shorter, false, condition) ?? longer;
-            OriginRelationFact chain = new(use, operand, operand, shorter, false, null, RefutesOriginRelation(operand, shorter, body));
+            var refuted = RefutesOriginRelation(operand, shorter, body);
+            OriginRelationFact chain = new(use, operand, binding.SuppliedAtUse(operand, use), shorter, false, null, refuted);
             if (all is not null && (ReferenceEquals(operand, longer) || !this.AddFailingChains(longer, shorter, condition)))
             {
                 all.Add(chain);
@@ -306,7 +308,7 @@ public sealed partial class Binding
                     return false;
                 }
 
-                all!.Add(new(use, origin, origin, shorter, false, null, RefutesOriginRelation(origin, shorter, body)));
+                all!.Add(new(use, origin, binding.SuppliedAtUse(origin, use), shorter, false, null, RefutesOriginRelation(origin, shorter, body)));
                 return true;
             }
 

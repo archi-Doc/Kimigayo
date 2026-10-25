@@ -175,6 +175,36 @@ public class ClosureEnvironmentOriginTest
     private const string RegionStore = "func use(p: uniq/i32, q: uniq/(ref/i32 during p), s: ref/i32 during p) -> i32\n    let n: i32 = 1\n" +
         "    var c = func [q@move, n, s] () -> i32\n        var r = s\n        r = n@ref\n        q@follow = r\n        return 0\n    return 0\n";
 
+    private const string ClauseHolder = "struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\n";
+
+    private const string ClauseHolder2 = "struct H2 {s, t}\n    public let a: ref/i32 during s\n    public let b: ref/i32 during t\n" +
+        "    public init(a: ref/i32 during s, b: ref/i32 during t)\n        self.a = a\n        self.b = b\n";
+
+    private const string ClauseOverEnv = ClauseHolder + EnvBorrow + "    let c = func [n] () -> i32\n        let h: H{x} = H.init(n@ref)\n" +
+        "            origin x.s outlives p\n        return h.item@follow\n    return c()\n";
+
+    private const string ClauseOverMovedLocal = ClauseHolder + EnvBorrow + "    let c = func [n] () -> i32\n        let h0 = H.init(n@ref)\n" +
+        "        let h: H{x} = h0@move\n            origin x.s outlives p\n        return h.item@follow\n    return c()\n";
+
+    private const string ClauseOverSecondEnv = ClauseHolder2 + EnvBorrow + "    let m: i32 = 2\n    let c = func [n, m] () -> i32\n" +
+        "        let h: H2{x} = H2.init(n@ref, m@ref)\n            origin x.t outlives p\n        return h.a@follow\n    return c()\n";
+
+    private const string ClauseOverPlain = ClauseHolder + EnvBorrow + "    let h: H{x} = H.init(n@ref)\n        origin x.s outlives p\n" +
+        "    return h.item@follow\n";
+
+    private const string ClauseOverSecondPlain = ClauseHolder2 + EnvBorrow + "    let m: i32 = 2\n    let h: H2{x} = H2.init(n@ref, m@ref)\n" +
+        "        origin x.t outlives p\n    return h.a@follow\n";
+
+    private const string ClauseOverEnvConsuming = Consume + ClauseHolder + EnvBorrow + "    let t = \"a\"\n    let c = func [n, t@move] () -> i32\n" +
+        "        consumeText(t@move)\n        let h: H{x} = H.init(n@ref)\n            origin x.s outlives p\n        return h.item@follow\n    return 0\n";
+
+    private const string FieldHolder = "struct S\n    public var f: i32\n    public init(f: i32) => self.f = f\n" + "func pass(x: ref/i32) -> ref/i32 => x\n";
+
+    private const string ImplicitFieldPlain = FieldHolder + "func use(p: ref/i32) -> ref/i32 during p\n    let s = S.init(1)\n    return pass(s.f)\n";
+
+    private const string ImplicitFieldEnv = FieldHolder + "func use(p: ref/i32) -> i32\n    let s = S.init(1)\n" +
+        "    let c = func [s@move] () -> ref/i32 during p => pass(s.f)\n    return 0\n";
+
     private const string RegionMeet = "func use(p: ref/i32, b: bool) -> i32\n    let n: i32 = 1\n    let c = func [n, p, b] () -> ref/i32 during p\n" +
         "        var r = if b => n@ref else => p\n        return r\n    return 0\n";
 
@@ -455,6 +485,35 @@ public class ClosureEnvironmentOriginTest
     {
         var source = function + "public func main() => ()\n";
         AssertSuppliedRecord(source, Assert.Single(DiagnosticCorpus.Check(source).Diagnostics), at, longer, related, destination);
+    }
+
+    // SPEC 23.1, 15.3.3 (DECISIONS R4-M133): a local clause over an environment Borrow names the Borrow its end resolves to through the
+    // local's declaration, before the receiver (the Supplier): directly, through a moved local and at the clause's second slot; the
+    // plain and Consuming twins name it too. An implicit Borrow of a Field shows by its Place, `s.f`, plain or through the environment.
+    // Each is its function's one record, also beside an unrelated Binding error (SPEC 23.1.2).
+    [Theory]
+    [InlineData(ClauseOverEnv, Unproven, "H.init(n@ref)", "the borrow n@ref", "n@ref", null)]
+    [InlineData(ClauseOverMovedLocal, Unproven, "h0@move", "the borrow n@ref", "n@ref", null)]
+    [InlineData(ClauseOverSecondEnv, Unproven, "H2.init(n@ref, m@ref)", "the borrow m@ref", "m@ref", null)]
+    [InlineData(ClauseOverPlain, Unsatisfied, "H.init(n@ref)", "the borrow n@ref", "n@ref", null)]
+    [InlineData(ClauseOverSecondPlain, Unsatisfied, "H2.init(n@ref, m@ref)", "the borrow m@ref", "m@ref", null)]
+    [InlineData(ClauseOverEnvConsuming, Unsatisfied, "H.init(n@ref)", "the borrow n@ref", "n@ref", null)]
+    [InlineData(ImplicitFieldPlain, Unsatisfied, "pass(s.f)", "the borrow s.f", "s.f", "ref/i32 during p")]
+    [InlineData(ImplicitFieldEnv, Unproven, "pass(s.f)", "the borrow s.f", "s.f", "ref/i32 during p")]
+    public void AClauseOrFieldRecordShowsTheBorrowThatSuppliedItsEnd(string function, string code, string at, string longer, string related, string? destination)
+    {
+        foreach (var beside in new[] { false, true })
+        {
+            var source = function + (beside ? "func unrelated() -> i32\n    let wrong: bool = 3\n    return 0\n" : string.Empty) + "public func main() => ()\n";
+            var records = DiagnosticCorpus.Check(source).Diagnostics;
+            Assert.Equal(beside ? 2 : 1, records.Length);
+            var error = Assert.Single(records, static x => x.Code != nameof(DiagnosticCode.TypeMismatch_Kd));
+            var verdict = code == Unproven ? "not proven" : "false";
+            Assert.Equal((code, $"requires {longer} outlives p, which is {verdict}"), (error.Code, error.Label));
+            Assert.StartsWith(at, source[error.Span!.Value.Start..], StringComparison.Ordinal);
+            Assert.StartsWith(related, source[error.Related![0].Span!.Value.Start..], StringComparison.Ordinal);
+            Assert.Equal(destination ?? "declared", destination is null ? error.Reason![3].Value : error.Reason![4].Value);
+        }
     }
 
     // SPEC 23.1.2, DIAGNOSTICS (DECISIONS R4-M133; reviews B1, F3): a pending relation is recorded as a binding-time fit is: a local
