@@ -5,7 +5,8 @@
 // collector's DropGlue items target and FunctionCodegen writes their functions from, so the two cannot disagree; and the row of a Type's
 // glue function (Row), which FunctionCodegen writes through its call writer (PD3): a string's calls the runtime release (PD18's string
 // row, C0c); a struct's, Tuple's, enum's, fixed array's or Closure environment's destroys its parts (C4a, C5a); an erased function's
-// calls its drop entry (C5b), an owning handle's releases its object (C6b); a collection's is its units'.
+// calls its drop entry (C5b), an owning handle's releases its object (C6b); an Array's and a Dictionary's are their legacy Drop rows'
+// (C8d, C8e), one row each.
 // Input: a closed Type of a compilation and its TyCtxt (Sealed). Output: a Type's row, the string row's routine and a glue function's
 // parameters; the Type's direct parts in destruction order, each with its position in its aggregate: a declared destructor alone for a
 // struct that declares one (its body destroys the Fields and the base, R4-M6b); else a struct's Fields in reverse logical declaration order,
@@ -43,7 +44,8 @@ internal enum DropGlueRow : byte
     // in reverse initialization order, X23); a declared destructor alone (R4-M6b).
     Function, // An erased function value's environment, through its table's drop entry: C5b.
     Handle, // An obj, rc or arc release through ObjectRuntime, a Sealed payload's glue called directly (DECISIONS R5-M112).
-    Collection, // An Array's or Dictionary's legacy row with its element glue: C8d, C8e.
+    Array, // An Array's legacy Drop row, which destroys its elements by their glue (DECISIONS R5-M121).
+    Dictionary, // A Dictionary's legacy Drop row: C8e.
 }
 
 /// <summary>A direct part of a destroyed value.</summary>
@@ -86,7 +88,8 @@ internal static class DropGlue
             BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure => DropGlueRow.Parts,
             BoundTypeKind.Function => DropGlueRow.Function,
             BoundTypeKind.Semantics => DropGlueRow.Handle,
-            BoundTypeKind.Array or BoundTypeKind.Dictionary => DropGlueRow.Collection,
+            BoundTypeKind.Array => DropGlueRow.Array,
+            BoundTypeKind.Dictionary => DropGlueRow.Dictionary,
             _ => null,
         };
     }
