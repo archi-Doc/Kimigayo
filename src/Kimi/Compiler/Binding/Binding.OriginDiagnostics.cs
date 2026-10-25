@@ -160,6 +160,18 @@ public sealed partial class Binding
         return finder.Found;
     }
 
+    // Whether a value is a Borrow (SPEC 13.5.6), whose text an end it supplies shows.
+    private static bool IsBorrowValue(Koto? value)
+        => value is not null && KotoHelper.UnwrapParentheses(value) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow };
+
+    // Whether a Borrow, its own Origin `borrowed`, supplies a record's end `end`, one containing the other as written or as `borrowed`
+    // resolves at the Borrow (OriginAtUse: an environment binding's Borrow supplies ρ, R4-M126 P5); BorrowSource's one comparison.
+    private static bool SuppliesEnd(Koto borrow, BoundOrigin borrowed, BoundOrigin end)
+    {
+        var resolved = borrow.CodeContext.Compilation.Binding.OriginAtUse(borrowed, borrow);
+        return OriginIncludes(borrowed, end) || OriginIncludes(end, borrowed) || OriginIncludes(resolved, end) || OriginIncludes(end, resolved);
+    }
+
     // The Borrow that supplies a body-local Origin: the value itself, or the initializer of the local it names. For a meet, it is the
     // Borrow of its first body-local operand, which the meet's display shows (SPEC 23.1).
     private static Koto? BorrowSource(Koto value, BoundOrigin origin)
@@ -175,9 +187,7 @@ public sealed partial class Binding
         {
             // SPEC 23.1: at an inner position of a Borrow, such as the stored `local@ref` of `y@uniq` after `var y = local@ref`, the
             // failing Origin is not the Borrow's own: it is found through the borrowed Place.
-            // A Borrow of an environment binding supplies ρ, to which its Origin resolves at its use (R4-M126 P5).
-            if (borrowValue.BoundType?.Origin is not { } own || OriginIncludes(own, origin) || OriginIncludes(origin, own) ||
-                OriginIncludes(origin, value.CodeContext.Compilation.Binding.OriginAtUse(own, value)))
+            if (borrowValue.BoundType?.Origin is not { } own || SuppliesEnd(borrowValue, own, origin))
             {
                 return unwrapped;
             }
@@ -197,7 +207,8 @@ public sealed partial class Binding
         }
 
         if (origin.Kind == OriginKind.Projection && unwrapped is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: VariableKoto { InitializerKoto: { } initializer } } } &&
-            KotoHelper.UnwrapParentheses(initializer) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } source && ReferenceEquals(source.BoundType?.Origin, origin))
+            KotoHelper.UnwrapParentheses(initializer) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Origin: { } held } source &&
+            SuppliesEnd(source, held, origin))
         {
             return source;
         }
@@ -307,7 +318,7 @@ public sealed partial class Binding
             case OriginKind.Holder:
                 return new("expression", "self"); // SPEC 5.7: `during self`.
             case OriginKind.Projection when origin.Binder is FunctionKoto { IsAnonymous: true } &&
-                (origin.Slot == CallResultSlot || (origin.Slot == ClosureValueSlot && value is null)): // ρ, unless a Borrow supplies it.
+                (origin.Slot == CallResultSlot || (origin.Slot == ClosureValueSlot && !IsBorrowValue(value))): // ρ, unless a Borrow supplies it.
                 return new("closure", origin.Slot == CallResultSlot ? "call result" : "call receiver");
             case OriginKind.Projection or OriginKind.Anchor:
                 // Without its Borrow, the Place: a local or a parameter by name, a constructor's or destructor's receiver (and its helper
@@ -503,31 +514,13 @@ public sealed partial class Binding
                 return;
             }
 
-            if (node is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Origin: { } borrowed } && this.Contains(borrowed))
+            if (node is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Origin: { } borrowed } && SuppliesEnd(node, borrowed, atom))
             {
                 this.Found = node;
                 return;
             }
 
             node.VisitChildren(this);
-        }
-
-        private bool Contains(BoundOrigin origin)
-        {
-            if (ReferenceEquals(origin, atom))
-            {
-                return true;
-            }
-
-            for (var i = 0; i < origin.Operands.Count; i++)
-            {
-                if (this.Contains(origin.Operands[i]))
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
     }
 }

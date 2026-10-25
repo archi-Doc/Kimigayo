@@ -3642,11 +3642,15 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - P12: the four `Slot <= EnvironmentSlot(0)` sites read `RoleOf`: the two "closure: call receiver" contract displays,
     `HasEnvironmentOrigin` and `PendingAtom` through one predicate, `Binding.OriginClasses.ReceiverAtom` (ρ or `env_i`; a result naming ρ
     is receiver-dependent, 7.7.4; BU's review N1), `CallLocalOrigin` Environment only (ρ is never call-local). Display (package §8;
-    reviews B2, F1): a relation record's end ρ shows as the closure's call receiver (`OriginDisplay`'s closure row reads the slot), related
-    at the Closure literal; a Borrow of an environment binding, whose Origin resolves to ρ at its use, stays the shown and related borrow
-    (`BorrowSource` reads `OriginAtUse`). `OriginDisplay` and `BorrowSource` moved to `Binding.OriginDiagnostics` first (behavior
-    unchanged), since `Binding.Diagnostics.cs` is over the token limit. P11 (D5's follow-up, removal R6-gen): the old Emission's element Borrow compares its Origin with the
-    receiver's modulo ClosureValue operands (`BodyLowering.SameOriginModuloReceiver`).
+    reviews B2, F1): a relation record's end ρ shows as the closure's call receiver unless a Borrow supplies it (`OriginDisplay`'s
+    closure row reads the slot and whether the supplied value is a Borrow, R4's re-check R2), related at the Closure literal; a Borrow of
+    an environment binding, whose Origin resolves to ρ at its use, stays the shown and related borrow, also reached through a local,
+    a call or a Tuple: BorrowSource's three comparisons (the value, a local's initializer, a Borrow inside the value) read one
+    predicate, `SuppliesEnd`, with the Borrow's Origin as written and as `OriginAtUse` resolves it (BU's re-check R1; the owner,
+    2026-10-25, verbatim 「(a) 一つの判定で直す (推奨)：BorrowSource の3つの比較すべてに同じ OriginAtUse の判定を通す、レビュアーの
+    修正で進めてください。」). `OriginDisplay` and `BorrowSource` moved to `Binding.OriginDiagnostics` first (behavior unchanged),
+    since `Binding.Diagnostics.cs` is over the token limit. P11 (D5's follow-up, removal R6-gen): the old Emission's element Borrow
+    compares its Origin with the receiver's modulo ClosureValue operands (`BodyLowering.SameOriginModuloReceiver`).
   - Verdicts (SPEC 15.6.3, 15.6.5, 7.7.2): g6a (the MIR's use-after-free), g6b, g6d, g6e, r1e, r1f, t4g, n2b
     `UnprovenOriginRelation_Kd` on both pipelines (the default's conservative Loan records of g6a-g6e become Binding's); g65a, r1g,
     15.8.2's `invalid` Unproven (Refuted before); r1a-r1c add the body's record beside R1's call U; t4e, t4f, f7j1, rc4, s773, D-13's
@@ -3654,7 +3658,18 @@ and migration obligations remain in force; no numeric cap changes are authorized
     keep the old analysis's conservative Loan record). Not covered (BU's review F2, PLAN G254, the planning session's (c)): a captured
     pair layer's bare use that Reborrows by case records no same-Semantics Reborrow (BU-27 covers `uniq/T` and `objuniq/T`), so it
     keeps `s/T during a` and is never contained in ρ (`q@follow = value` with `s is uniq` is accepted, its concrete twin Unproven; base
-    too); BU-27's extension to a pair layer acquired by case is the next unit under the full process. Rejected: a `reached` flag on
+    too); BU-27's extension to a pair layer acquired by case is the next unit under the full process. An `s is uniq` store builds and
+    runs on both generators; whether a use-after-free follows is unverified (no native attempt through a constrained `T` exposing an
+    interior borrow was made). Also not covered (BU's re-check R2, PLAN G257): a fit through a meet or local region whose source is a
+    pending `env_i` is decided at binding time as a located `Unsupported_Kd` where base gave a Language error (the pending rule covers
+    relations naming a pending atom, not a region whose sources contain one); nothing unsound, no valid program rejected.
+  - Open (the re-checks): BU's N-a, an unresolved `env_i` end under a Consuming outer (a capture of a capture) prints the outer
+    literal, `OriginDisplay`'s closure row reading only ρ's slot; BU's N-b, `OriginFitMode.Verified` picks the failing operand with
+    the Proof predicate, which nothing reads (`FitsVerifiedTypeAt` reads only `is null`); R4's R1, `var r = p[0]@uniq; q@follow = r`
+    stays a body row (the default's old reporter rejects it, the MIR accepts it) that 2c-6 takes as a failing-first row.
+  - Bind (the reviews' A/B): pinned with TieredCompilation off, warm min is about +1% from `0a14e8a07` on, a code-layout artifact of that
+    setup: bisected to the behavior-preserving `0a14e8a07`, none of whose code runs in the benchmark (counted by R4's re-check), and
+    under the default runtime the head is 1.7-3.2% faster warm. Rejected: a `reached` flag on
     the walk (a mode parameter); routing by `JudgeCallPosition` (it re-adds a meet's operand rows and leaves a Refuted body chain
     unrecorded); the lists on `BoundClosure` (a field on the published definition for one list); a pass reset in `ResetPass`.
     Numbering: R4-M133 is free on dev and every branch (R4-M131 on `claude/r4-spec-n2`, R4-M132 on `claude/a5-2a-2`).

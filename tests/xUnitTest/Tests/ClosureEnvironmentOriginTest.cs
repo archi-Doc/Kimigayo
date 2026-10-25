@@ -134,6 +134,17 @@ public class ClosureEnvironmentOriginTest
     private const string LocalAnnotated = EnvBorrow + "    let c = func [n] () -> i32\n        let r: ref/i32 during p = n@ref\n        return 0\n    return 0\n";
     private const string G6bStore = G6Single + "    var c = func [p@move, q@move] () -> i32\n        q@follow = p\n        return 0\n    return 0\n";
     private const string FailedClauseStore = G6Single + "    origin p outlives zz\n    var c = func [p@move, q@move] () -> i32\n        q@follow = p\n        return 0\n    return 0\n";
+    private const string LocalReturned = EnvBorrow + "    let c = func [n] () -> ref/i32 during p\n        let r = n@ref\n        return r\n    return 0\n";
+
+    // BU's re-check R1: a Borrow of an environment binding reaching the record through a call, a Tuple or a stored local.
+    private const string CallReturned = "func pass(x: ref/i32) -> ref/i32 => x\n" + EnvBorrow +
+        "    let c = func [n] () -> ref/i32 during p => pass(n@ref)\n    return 0\n";
+
+    private const string TupleReturned = EnvBorrow + "    let c = func [n] () -> ref/i32 during p\n        let t = (n@ref, 1)\n" +
+        "        return t.0\n    return 0\n";
+
+    private const string LocalStored = "func use(p: uniq/i32, q: uniq/(ref/i32 during p)) -> i32\n    let n: i32 = 1\n" +
+        "    var c = func [q@move, n] () -> i32\n        let r = n@ref\n        q@follow = r\n        return 0\n    return 0\n";
 
     private const string LocalAnnotatedConsuming = Consume + EnvBorrow + "    let t = \"a\"\n    let c = func [n, t@move] () -> i32\n        consumeText(t@move)\n" +
         "        let r: ref/i32 during p = n@ref\n        return 0\n    return 0\n";
@@ -364,6 +375,10 @@ public class ClosureEnvironmentOriginTest
     [InlineData(EnvBorrow + "    let c = func [n] () -> ref/i32 during p => n@ref\n    return 0\n", "n@ref", "the borrow n@ref outlives p", "n@ref")]
     [InlineData(SpecInvalid, "other@ref", "the borrow other@ref outlives static", "other@ref")]
     [InlineData(LocalAnnotated, "n@ref", "the borrow n@ref outlives p", "n@ref")]
+    [InlineData(LocalReturned, "r\n", "the borrow n@ref outlives p", "n@ref")]
+    [InlineData(CallReturned, "pass(n@ref)", "the borrow n@ref outlives p", "n@ref")]
+    [InlineData(TupleReturned, "t.0", "the borrow n@ref outlives p", "n@ref")]
+    [InlineData(LocalStored, "r\n", "the borrow n@ref outlives p", "n@ref")]
     [InlineData(G6bStore, "p\n", "the closure's call receiver outlives p", "func [p@move, q@move]")]
     [InlineData(N2bStore, "u@move", "the closure's call receiver outlives the borrow x", "func [u] () -> i32")]
     public void ARecordNamingTheCallReceiverShowsTheClosure(string function, string at, string relation, string related)
