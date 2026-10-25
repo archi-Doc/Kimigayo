@@ -550,6 +550,19 @@ public partial class LayoutTest
         Assert.Same(value, new AggregateLayoutPool(c.Layout).Get(loan)!.Value);
     }
 
+    // SPEC 22.2 (DECISIONS R5-M121): borrowStorageUniq over a UniqSlice runs the Array's BorrowStorage helper, which reads the buffer and the
+    // length at an Array handle's words 0 and 8: a UniqSlice's storage and length lie there, its Loan zero-sized.
+    [Fact]
+    public void AUniqSlicesStorageAndLengthLieAtTheArrayHandlesWords()
+    {
+        var c = MirBuildTest.Compile("func f(values: uniq/Array<i64>) -> i64\n    var view = values.sliceUniq()\n    return view[0]\n");
+        var slice = c.BuildMir().Bodies.ToArray().SelectMany(static x => x.Locals.ToArray()).Select(static x => x.Type)
+            .First(x => x.Symbol?.LibraryDeclaration == KimiDeclarationId.UniqSlice && !x.ContainsParameter);
+        var value = c.Layout.Of(slice).Value!;
+        Assert.Equal([0, 8], value.Layout.FieldOffsets.ToArray()[..2]);
+        Assert.Equal(16, value.Layout.Size);
+    }
+
     [Fact]
     public void ATypeWithoutARowIsAnInternalError()
         => Assert.Throws<InvalidOperationException>(() => new Layout().Of(new BoundType("T", BoundTypeKind.Parameter)));

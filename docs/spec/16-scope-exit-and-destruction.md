@@ -82,7 +82,7 @@ func process(first: Resource, second: Resource)
 // Cleanup: "B", b, "A", a, second, first.
 ```
 
-**Interrupted expressions.** When a transfer leaves an expression before it completes, each live temporary and each placed component of an unfinished Tuple, array or enum Case construction belongs to the innermost enclosing body scope at the point where it was acquired. It is cleaned up with that scope in reverse acquisition order, so it is destroyed before that scope's earlier declarations and Deferred Blocks. This includes match guard temporaries and match Subjects. Transferring a value's responsibility removes it from this order.
+**Interrupted expressions.** When a transfer leaves an expression before it completes, each live temporary, each placed component of an unfinished Tuple, array or enum Case construction and each inserted entry of an unfinished Dictionary literal ([§12.4.3](12-expressions.md#1243-dictionary-literals)) belongs to the innermost enclosing body scope at the point where it was acquired. It is cleaned up with that scope in reverse acquisition order, so it is destroyed before that scope's earlier declarations and Deferred Blocks. This includes match guard temporaries and match Subjects. Transferring a value's responsibility removes it from this order.
 
 ```kimi
 func f() -> Result<i32, ParseError>

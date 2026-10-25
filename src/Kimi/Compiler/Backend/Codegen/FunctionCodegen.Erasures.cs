@@ -33,6 +33,16 @@ internal sealed partial class FunctionCodegen
 
     private static readonly TypeLayout PointerLayout = RuntimeAbi.StringReference.Layout;
 
+    /// <summary>Gets whether an adapter's own parameter passes what a callee's parameter of the same logical index takes (Forward; DECISIONS
+    /// R5-M121): one of the same kind, or a SharedReference and a Value of the same Type when that Type is a pointer, since a SharedReference
+    /// is a Value with attributes (<see cref="AbiParameter.Attributes"/>), so both lower to the same pointer (a string borrow at a legacy
+    /// helper's by-value pointer input). One rule for every adapter; a Value of another Type or an OwnedSlot is not passed so.</summary>
+    /// <param name="own">The adapter's parameter.</param>
+    /// <param name="parameter">The callee's parameter.</param>
+    /// <returns>Whether the one passes the other.</returns>
+    internal static bool Passes(in AbiParameter own, in AbiParameter parameter)
+        => own.Kind == parameter.Kind || (own.Type == parameter.Type && own.Type == PointerLayout.StorageType && ByValue(own.Kind) && ByValue(parameter.Kind));
+
     /// <summary>Writes the table and functions of a ClosureErasure or ItemAdapter item, or records why not.</summary>
     /// <param name="collector">The collector of the checked set.</param>
     /// <param name="item">The adapter item.</param>
@@ -79,6 +89,9 @@ internal sealed partial class FunctionCodegen
             this.Release(item, glue);
         }
     }
+
+    // Whether a parameter of a kind passes its value itself, a Value or a SharedReference (a Value with attributes).
+    private static bool ByValue(AbiParameterKind kind) => kind is AbiParameterKind.Value or AbiParameterKind.SharedReference;
 
     // An environment of more than 8 bytes or of an alignment above 8 is allocated (IMPL 21.1.3).
     private static bool Heap(TypeLayout environment) => environment.Size > 8 || environment.Alignment > 8;
@@ -212,13 +225,13 @@ internal sealed partial class FunctionCodegen
         return true;
     }
 
-    // The adapter's parameter of a callee parameter's kind and logical index, or -1.
+    // The adapter's parameter of a callee parameter's logical index that passes what it takes (Passes), or -1.
     private int Own(in AbiParameter parameter)
     {
         var own = this.abi.Parameters;
         for (var i = 0; i < own.Length; i++)
         {
-            if (own[i].Kind == parameter.Kind && own[i].LogicalIndex == parameter.LogicalIndex)
+            if (own[i].LogicalIndex == parameter.LogicalIndex && Passes(own[i], parameter))
             {
                 return i;
             }

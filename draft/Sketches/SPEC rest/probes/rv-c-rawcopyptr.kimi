@@ -1,0 +1,8 @@
+var x: i32 = 1
+let p = x@raw
+let f = func [p] ()
+    unsafe
+        let q = p + 0
+        *q = 2
+f()
+Console.writeLine("\(x)")

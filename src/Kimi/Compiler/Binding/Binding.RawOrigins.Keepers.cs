@@ -10,8 +10,8 @@ namespace Kimi.Compiler;
 internal readonly record struct RawMember(int Input, BoundType Referent, bool Exclusive);
 
 // Raw Origins, member borrows and slot keepers (SPEC 5.7 Origins, Calls, 15.3.5; D15; DECISIONS BU-24; contract in Binding.RawOrigins.cs):
-// the borrows a raw Origin belongs to within a scope (RawMembers), which retention, InvalidRawOrigin and A5 read, and the borrows
-// keeping a declared slot, collected by the requirement fixed point (Keep, Keepers).
+// the borrows a raw Origin belongs to within a scope (RawMembers), which retention, InvalidRawOrigin and StoredMembers read, and the
+// borrows keeping a declared slot, collected by the requirement fixed point (Keep, Keepers).
 public sealed partial class Binding
 {
     // SPEC 5.7 (D15): the borrows keeping each declared Origin slot, per declaration and pass (Keepers); the (slot, owner Type, input,
@@ -26,7 +26,7 @@ public sealed partial class Binding
     // keepers' referents under that Type with the slot's Loan requirement as the mode (SlotMembers). Each (slot, owner Type, input, mode)
     // is walked once, so the cost is linear in the keepers reached and nothing is lost: equal keys add equal members. False when the walk
     // is incomplete (KeptReferents: a keeper cycle that changes its Type arguments, or a keeper's Type that Binding's storage
-    // instantiation does not complete), which retention and A5 read as CallRetention.Limit. Allocates nothing beyond `members` when warm.
+    // instantiation does not complete), which retention reads as CallRetention.Limit. Allocates nothing beyond `members` when warm.
     internal bool RawMembers(BoundOrigin origin, ReadOnlySpan<BoundType> scope, List<RawMember> members)
     {
         this.keeperVisits.Clear();
