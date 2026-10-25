@@ -9348,3 +9348,13 @@ structure is recorded here by the unit that first implements it.
     `Compilation.Pipeline.cs` and 57 test constructions); catalog rows or `KimiDeclarationId`s for initialize (R5-M28); the MIR builder
     calling initialize or append (a second literal form); new IntrinsicIds (PD21); Kimigayo bodies now (R8); re-pointing the old lowering
     to the map (D5).
+- **R5-M125 The owner confirms C8e's two departures** (owner, 2026-10-25, to the R5 planning session directly, on its explanation after
+  C8e's design; verbatim 「C8e の逸脱 2 件（Dictionary カーネルの corpus O2 A/B を C8e・C8f・C9c
+  のうち最も遅いものへ移し、C8e は一時カーネルで参考測定すること、Dictionary のグルーの対象を要素グルーではなく Drop 行が宣言する
+  clearEntries とすること）を承認します。」; the consequences are the planning session's) The departures R5-M124 records are confirmed:
+  (i) plan row C8e's Dictionary kernel O2 moves to the later of C8e, C8f and C9c, since the `Dictionary` corpus kernel needs C8f's
+  `BuiltinEquals` (its `i64` keys) and C9c (its checksum line) under MIR code generation; C8e measures a temporary user-key variant as
+  information, a B/A beyond the A=B variance stopping it (R5-M8); (ii) K package 4.5's DropGlue paragraph ("Array and Dictionary → the
+  element glue their legacy row declares") is read by X4 for the Dictionary: its glue targets the Entries callee its legacy Drop row
+  declares, `clearEntries<K,V>`, when an entry may need a drop (R5-M27's `CallsEntries`), and the element glues are reached through that
+  body. Both leave the list.
