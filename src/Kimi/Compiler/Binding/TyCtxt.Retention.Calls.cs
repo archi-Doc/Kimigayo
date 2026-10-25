@@ -61,7 +61,7 @@ internal sealed partial class TyCtxt
         else
         {
             binding.CallableBoundSignatures(owner, this.retentionBounds);
-            retention = binding.Retains(owner, inputs, signature.Components[1], null, CollectionsMarshal.AsSpan(this.retentionBounds));
+            retention = binding.Retains(owner, inputs, signature.Components[1], null, CollectionsMarshal.AsSpan(this.retentionBounds), premises: null);
         }
 
         this.retentions.Add((signature, null, key), retention);
@@ -114,7 +114,7 @@ internal sealed partial class TyCtxt
             bounds[i] = bound;
         }
 
-        return binding.Retains(declaration, inputs, result, types?.Declaring, CollectionsMarshal.AsSpan(bounds));
+        return binding.Retains(declaration, inputs, result, types?.Declaring, CollectionsMarshal.AsSpan(bounds), scope);
     }
 
     // A parameter's Type, or at -1 the result's, as the Types instantiate it (null: CallRetention.Limit). A declared contract without

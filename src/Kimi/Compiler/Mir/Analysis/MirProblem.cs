@@ -1,19 +1,18 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the record of a problem a MIR analysis finds and of its related sites (A6; DECISIONS R4-M3a, R4-M57, R5-M23, R4-M71).
+// Owns the record of a problem a MIR analysis finds (A6; DECISIONS R4-M3a, R4-M57, R5-M23, R4-M71) and its Reason, the relation an Origin
+// problem names (2a0-D D18, DECISIONS R4-M113); its related sites are MirFact values (MirFact.cs).
 // Input: the values a recording rule gives: its code, the requirement it judged, its subject, the body it found it in, the Semantics case
-// views that have it, and each related site with what it is. Output: MirProblem and MirFact values, which MirReport keeps and the
-// difference ledger reads.
+// views that have it and, for an Origin problem, its relation. Output: MirProblem values, which MirReport keeps (the Reason in its key) and
+// the difference ledger reads.
 // Invariants: a problem's requirement is the one its recording rule names (the Ownership partition's, or ControlFlow for A3, DIAGNOSTICS
-// rule 1); its views are bits of its body's MirCases views, and a problem no body describes (A4's obligation rows, at Binding's rows) has
-// NoBody, whose views name no body's cases (A4's codes take no case fact); a fact is a site the problem relates, never a message: an
-// Inlined fact names the inline default copy whose template an A1 or A2 Language problem belongs to, which a limit record never carries
-// (R4-M69, until 2g-6), an Evaluated fact the default's operation of a Loan problem a body owns inside a copy, recorded at the omitting
-// call (R4-M97), and an effect fact the static Field an effect met, its kind what decided it (R4-M92); a problem has at most one fact of
-// each kind but its witness's.
+// rule 1); its views are bits of its body's MirCases views, and a problem no body describes (A4's obligation rows, at Binding's rows, and
+// the C1-F4 view's broken contracts, DECISIONS R4-M118) has NoBody, whose views name no body's cases (A4's codes take no case fact); a
+// Reason's ends are the C1-F4 view's canonical atoms (its table's entries), so one relation has one Reason, and every other problem has
+// the default Reason.
 // Must not derive a requirement from a code, carry message text, or merge or drop problems (MirReport's).
 
-#pragma warning disable SA1402 // The problem and fact records belong together.
+#pragma warning disable SA1402 // The problem and its Reason belong together.
 
 using Kimi.Diagnostics;
 
@@ -28,31 +27,23 @@ namespace Kimi.Compiler.Mir;
 /// <param name="Subject">The syntax the problem is about.</param>
 /// <param name="Body">The ordinal of the body whose views <paramref name="Views"/> numbers, or <see cref="NoBody"/>.</param>
 /// <param name="Views">The views that have the problem, bit i for view i (every bit: a problem no view decides).</param>
-internal readonly record struct MirProblem(DiagnosticCode Code, DiagnosticRequirement Requirement, SourceRef Subject, int Body, ulong Views)
+/// <param name="Reason">The relation an Origin problem names (D18); the default for any other problem.</param>
+internal readonly record struct MirProblem(
+    DiagnosticCode Code,
+    DiagnosticRequirement Requirement,
+    SourceRef Subject,
+    int Body,
+    ulong Views,
+    MirReason Reason = default)
 {
-    /// <summary>The body of a problem no body describes: A4's obligation rows, which lie at Binding's rows (R4-M71); its views name no
-    /// body's cases.</summary>
+    /// <summary>The body of a problem no body describes: A4's obligation rows, which lie at Binding's rows (R4-M71), and the C1-F4 view's
+    /// findings (R4-M118); its views name no body's cases.</summary>
     internal const int NoBody = -1;
 }
 
-/// <summary>What a related site of a problem is (R4-M3a): a Loan's anchor, its witness holder's next use, the store whose value
-/// carries it, the anchor of the reservation the problem's activation or destruction is of (design A3 6.4), the call of the inline
-/// default copy an A1 or A2 Language problem was found in (R4-M69), the default's operation of a Loan problem a body owns inside a copy
-/// (R4-M97), or the declaration of the static Field a Call's or Drop's effects met, by what decided it (R4-M92).</summary>
-internal enum MirFactKind : byte
-{
-    Anchor,
-    Use,
-    Store,
-    Reservation,
-    Inlined, // The call of the Inlined scope an A1 or A2 problem lies in: its template's check (SPEC 7.2.3), which MirReport drops.
-    EffectRead, // A read key of the Field (SPEC 15.6.4): it meets a unique Loan.
-    EffectWrite, // A write key of the Field: it meets a Loan in any mode.
-    EffectUnknown, // An unknown effect or an erased destruction (SPEC 15.6.4, 16.3.3): it meets every mutable-static Loan.
-    Evaluated, // The default's operation of a Loan problem a body owns inside a copy, whose subject is the omitting call (SPEC 15.6).
-}
-
-/// <summary>A related site of a problem (R4-M3a).</summary>
-/// <param name="Kind">What the site is.</param>
-/// <param name="Site">The syntax.</param>
-internal readonly record struct MirFact(MirFactKind Kind, SourceRef Site);
+/// <summary>The relation an Origin problem names (2a0-D D18): its longer and shorter ends, the C1-F4 view's canonical atoms of the
+/// body, and whether it is an equality; two problems at one subject are two relations only when their Reasons differ.</summary>
+/// <param name="Longer">The end required to outlive the other.</param>
+/// <param name="Shorter">The other end.</param>
+/// <param name="Equality">Whether the relation is an equality, failed in both directions.</param>
+internal readonly record struct MirReason(BoundOrigin? Longer, BoundOrigin? Shorter, bool Equality);

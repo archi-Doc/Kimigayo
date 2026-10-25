@@ -159,7 +159,7 @@ fn generic @81
   _6: bool temp @95 s1
   _7: ref/T temp @95 s1
   _8: ref/T temp @95 s1
-  _9: bool temp @81
+  _9: bool temp (Result) @81
   s1: lexical in s0 @93
   bb0:
       StorageLive(_3) @95 s1

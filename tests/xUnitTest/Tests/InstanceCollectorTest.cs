@@ -212,6 +212,48 @@ public sealed class InstanceCollectorTest
         { InClosed, "pick", 1, null },
     };
 
+    // DECISIONS BU-38 (PLAN G242; designs A and B, the review's combination C): programs whose instance (a local, a Type argument, a
+    // requirement Item or a LegacyRow's collection), composed substitution (Self or a Type argument) or bodyless callee's parameter rests on
+    // storage Binding rejected, with Binding's records and the collector's; and their genuine-limit twins, which keep the storage-nesting gap,
+    // beside a failed part in either order too, and C8d's LegacyRow over a Type nested past the bound (before: InternalInvariant_Kd).
+    public static TheoryData<string, string, string, string> RejectedCases
+    {
+        get
+        {
+            const string Inspect = "func inspect<T>(value: ref/T) => ()\n";
+            const string Bad = "struct Bad\n    public var m: Missing\n";
+            const string Box = "struct B<T>\n    public var v: T\n";
+            const string Zero = "contract Zero\n    func zero() -> i32\nfunc call<T>() -> i32\n    T is Zero\n    return T.zero()\nstruct Bad\n    Self is Zero\n    public var m: Missing\n";
+            const string Format = "    Self is Utf8Format\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write(1)\n";
+            const string Named = "contract Named\n    func name(self: ref/Self) -> i32\nfunc call<T>(x: ref/T) -> i32\n    T is Named\n    return x.name()\nstruct Bad\n    Self is Named\n";
+            var b65 = Nest("B", 65, "i32");
+            return new()
+            {
+                { "enum", Inspect + "enum E {s}\n    A(Missing)\n    B(ref/i32 during s)\nfunc g()\n    var v = 1\n    let e: E = .B(v@ref)\n    v = 2\n    inspect(e@ref)\n", "UnresolvedBinding_Kd", string.Empty },
+                { "witness", Named + "    public var m: Missing\n    public func name(self: ref/Self) -> i32 => 1\nfunc g(b: ref/Bad) -> i32 => call(b)\n", "UnresolvedBinding_Kd", string.Empty },
+                { "local", "struct Bad<T>\n    public var v: T\n    public var m: Missing\nfunc make<T>() -> i32\n    let v: Option<T> = .None\n    return 0\nfunc g() -> i32 => make<Bad<i32>>()\n", "UnresolvedBinding_Kd", string.Empty },
+                { "handle", Inspect + Bad + "struct Sx\n    public var x: rc/Bad\nfunc h(s: ref/Sx) => inspect(s)\n", "UnresolvedBinding_Kd", string.Empty },
+                { "static", Zero + "    public func zero() -> i32 => 1\nfunc g() -> i32 => call<Bad>()\n", "UnresolvedBinding_Kd", string.Empty },
+                { "item", Zero.Replace("    return T.zero()", "    let f = T.zero\n    return f()", StringComparison.Ordinal) + "    public func zero() -> i32 => 1\nfunc g() -> i32 => call<Bad>()\n", "UnresolvedBinding_Kd", string.Empty },
+                { "compose", "struct Bad<T>\n    public var v: T\n    public var m: Missing\nfunc make<T>() -> i32 => 0\nfunc outer<T>() -> i32 => make<Bad<T>>()\nfunc g() -> i32 => outer<i32>()\n", "UnresolvedBinding_Kd", string.Empty },
+                { "outer", Bad + "func inner<T>() => ()\nfunc outer<T>() => inner<T>()\nfunc g() => outer<Bad>()\n", "UnresolvedBinding_Kd", string.Empty },
+                { "toString", "struct Bad\n" + Format + "    public var m: Missing\nfunc g(b: ref/Bad) -> string => Text.toString(b)\n", "UnresolvedBinding_Kd", string.Empty },
+                { "write", "struct Bad\n" + Format + "    public var m: Missing\nfunc g(w: uniq/Utf8Writer, b: ref/Bad) -> Result<(), BufferFull> => w.write(b)\n", "UnresolvedBinding_Kd", string.Empty },
+                { "replace", Bad + "func g(slot: uniq/Option<Bad>) => Kimi.Intrinsics.replace(slot, with: .None)\n", "UnresolvedBinding_Kd", string.Empty },
+                { "replaceGeneric", Bad + "func put<T>(slot: uniq/Option<T>) => Kimi.Intrinsics.replace(slot, with: .None)\nfunc g(slot: uniq/Option<Bad>) => put(slot)\n", "UnresolvedBinding_Kd", string.Empty },
+                { "row", Bad + "struct Sx\n    public var x: Array<Bad>\nfunc g(s: uniq/Sx) => s.x.reserve(1)\n", "UnresolvedBinding_Kd", string.Empty },
+                { "limitBesideError", Inspect + Box + $"func h(b: ref/{b65}) => inspect(b)\nfunc other() -> i32 => missing\n", "UnresolvedBinding_Kd", "Unsupported_Kd inspect(b)" },
+                { "limitBesideField", Inspect + Box + $"struct Bad\n    public var m: Missing\n    public var big: {b65}\nfunc h(b: ref/Bad) => inspect(b)\n", "UnresolvedBinding_Kd", "Unsupported_Kd inspect(b)" },
+                { "limitAfterLocal", Box + $"struct Bad<T>\n    public var v: T\n    public var m: Missing\nfunc two<T>(a: ref/Bad<T>, b: ref/{Nest("B", 65, "T")}) => ()\nfunc g(x: ref/Bad<i32>, y: ref/{b65}) => two(x, y)\n", "UnresolvedBinding_Kd", "Unsupported_Kd two(x, y)" },
+                { "limitBeforeLocal", Box + $"struct Bad<T>\n    public var v: T\n    public var m: Missing\nfunc two<T>(b: ref/{Nest("B", 65, "T")}, a: ref/Bad<T>) => ()\nfunc g(x: ref/Bad<i32>, y: ref/{b65}) => two(y, x)\n", "UnresolvedBinding_Kd", "Unsupported_Kd two(y, x)" },
+                { "staticLimit", Box + Zero + $"    public var b: {Nest("B", 64, "i32")}\n    public func zero() -> i32 => 1\nfunc g() -> i32 => call<Bad>()\n", "UnresolvedBinding_Kd", "Unsupported_Kd T.zero()" },
+                { "outerLimit", Box + $"func inner<T>() => ()\nfunc outer<T>() => inner<T>()\nfunc g() => outer<{b65}>()\n", string.Empty, "Unsupported_Kd inner<T>()" },
+                { "toStringLimit", "struct B<T>\n" + Format + $"    public var v: T\nfunc g(b: ref/{b65}) -> string => Text.toString(b)\n", string.Empty, "Unsupported_Kd Text.toString(b)" },
+                { "rowLimit", Box + $"func g(a: uniq/Array<{b65}>) => a.reserve(1)\n", string.Empty, "Unsupported_Kd a.reserve(1)" },
+            };
+        }
+    }
+
     // K 4.4: every body of the root module whose definition does not instantiate, the top-level statements, the closure of a closed
     // function, both accessors of a closed struct and the default templates among them; generic bodies and library bodies only as the
     // targets of calls.
@@ -471,6 +513,41 @@ public sealed class InstanceCollectorTest
             "    return\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal(records, string.Join(" | ", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}")));
+    }
+
+    // DECISIONS BU-38 (R5's guard): the collector's one reading of a storage verdict at a site (Made) and Layout's Rejected row read Binding's
+    // completeness through TyCtxt.BindingComplete. A part Binding rejected exists only in an incomplete compilation, where Rejected is a
+    // dependent without a record; in a complete one, which no source reaches, it is InternalInvariant_Kd at the site. Prepared makes the
+    // instance and Limit is the storage-nesting gap in both.
+    [Theory]
+    [InlineData(false, "Unsupported_Kd")]
+    [InlineData(true, "InternalInvariant_Kd Unsupported_Kd")]
+    public void ARejectedVerdictIsABrokenContractInACompleteCompilation(bool complete, string records)
+    {
+        var c = MirBuildTest.Compile((complete ? string.Empty : "struct Bad\n    public var m: Missing\n") + "public func main() -> () => ()\n");
+        Assert.Equal(complete, c.Binding.Result.IsComplete);
+        var collector = new InstanceCollector(c.Types, c.Layout);
+        var site = SourceRef.Of(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "main"));
+        var verdicts = new[] { Binding.StorageOutcome.Prepared, Binding.StorageOutcome.Rejected, Binding.StorageOutcome.Limit };
+        Assert.Equal([true, false, false], verdicts.Select(x => collector.Made(x, site)));
+        Assert.Equal(records, string.Join(' ', collector.Set.Records.Select(static x => x.Code)));
+        Assert.Equal(complete ? DiagnosticCode.InternalInvariant_Kd : null, collector.RecordOf(Layout.Outcome.Rejected));
+    }
+
+    // SPEC 23.1.2, 23.1.1 (DECISIONS BU-38): a part Binding rejected is a dependent, never a limit. A program whose instance, composed
+    // substitution or bodyless callee's parameter rests on storage Binding rejected keeps exactly its Binding record and gains no generation
+    // record (before: the storage-nesting gap at the requesting call, C8d's LegacyRow item InternalInvariant_Kd), while a Type nested past the
+    // bound keeps the gap at its site, beside a failed part in either order too: the limit wins.
+    [Theory]
+    [MemberData(nameof(RejectedCases))]
+    public void APartBindingRejectedIsNoGenerationRecord(string name, string source, string issues, string records)
+    {
+        var c = MirBuildTest.Compile(source + "public func main() -> () => ()\n");
+        Assert.Equal(issues, string.Join(' ', c.Binding.Issues.Select(static x => x.Code)));
+        var program = c.BuildMir();
+        Assert.True(program.Findings.Count == 0, name); // A program with findings has an empty checked set.
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal(records, string.Join(" | ", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}")));
     }

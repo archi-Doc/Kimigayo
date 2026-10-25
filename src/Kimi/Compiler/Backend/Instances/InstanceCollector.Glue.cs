@@ -12,23 +12,10 @@ internal sealed partial class InstanceCollector
     private int Glue(int item, SourceRef subject, BoundType type) => this.In(item, subject, type) is { } closed ? this.GlueOf(item, subject, closed) : -1;
 
     // The DropGlue item of a closed Type, keyed by its erased Type, for a Type whose destruction runs or releases something
-    // (MirTypes.MayNeedDrop); A2's verdicts do not narrow the checked set (codegen reads them). -1 for a Type with nothing to destroy or a
-    // refused edge.
+    // (MirTypes.MayNeedDrop), a call's in-place destruction's too (SPEC 15.7.1, 16.3.2; DECISIONS R5-M116: replace's published row); A2's
+    // verdicts do not narrow the checked set (codegen reads them). -1 for a Type with nothing to destroy or a refused edge.
     private int GlueOf(int item, SourceRef subject, BoundType closed)
         => MirTypes.MayNeedDrop(closed, this.seen) ? this.AdmitType(item, subject, new(MonoKind.DropGlue, default, null, null, 0, null), closed) : -1;
-
-    // SPEC 15.7.1, 16.3.2 (DECISIONS R5-M116): the glue of the Type a call destroys in place (replace's, its published row), when it may
-    // need a drop (GlueOf); a Type the substitution could not make is the storage-nesting gap at the site (PD30), as a requirement's Self is.
-    private int Destroys(int item, SourceRef subject, BoundType? destroyed)
-    {
-        if (destroyed is null)
-        {
-            this.Set.Report(Capability.Code(CapabilityGap.StorageNesting), subject);
-            return -1;
-        }
-
-        return this.GlueOf(item, subject, destroyed);
-    }
 
     // K 4.5 row 7: the StaticInit body a staticEnsure names (MirProgram.StaticInit, F10), which the validator checks the program has (G191).
     // A static of a generic container's group, whose storage the MIR keys by its symbol alone (SPEC 22.4.4), has no instance to admit: its

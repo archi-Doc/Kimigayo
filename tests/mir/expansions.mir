@@ -41,7 +41,7 @@ fn format @29
   _17: string temp @50 s1
   _18: ref/string temp @50 s1
   _19: ref/Utf8Writer temp @218 s1
-  _20: Result<(), BufferFull> temp @29
+  _20: Result<(), BufferFull> temp (Result) @29
   s1: lexical in s0 @39
   flags 1
   bb0:
@@ -245,7 +245,7 @@ fn pick @88
   _9: isize temp @104 s1
   _10: isize temp @107 s1
   _11: isize temp @104 s1
-  _12: i32 temp @88
+  _12: i32 temp (Result) @88
   s1: lexical in s0 @94
   bb0:
       StorageLive(_2) @95 s1

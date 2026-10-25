@@ -111,16 +111,21 @@ public sealed class MirAnalysisTest
     private static readonly DiagnosticRequirement Uninitialized = DiagnosticRequirement.Ownership(OwnershipRequirement.UninitializedUse);
 
     // R4-M3a, R4-M71: a problem of a code, subject and body added again ORs its views into the first; another code, subject or body is its
-    // own problem, so the views of one body's cases are never ORed into another's.
+    // own problem, so the views of one body's cases are never ORed into another's. Add returns the problem's index, the first's on a merge
+    // (R4-M132).
     [Fact]
     public void ARepeatedProblemMergesItsViews()
     {
         var report = new MirReport();
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01));
-        report.Add(new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, 5), 0, 0b01));
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), 0, 0b01));
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 1, 0b100));
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b10));
+        int[] indices =
+        [
+            report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01)),
+            report.Add(new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, 5), 0, 0b01)),
+            report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), 0, 0b01)),
+            report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 1, 0b100)),
+            report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b10)),
+        ];
+        Assert.Equal([0, 1, 2, 3, 0], indices);
         Assert.Equal(
             [
                 new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b11), new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, 5), 0, 0b01),
@@ -132,14 +137,18 @@ public sealed class MirAnalysisTest
     }
 
     // R5-M23: the problems a key merges name one requirement, the first's; a problem that names another is a recording rule's defect, one
-    // InternalInvariant_Kd problem at the subject with the views that disagreed, however often it disagrees.
+    // InternalInvariant_Kd problem at the subject with the views that disagreed, however often it disagrees, and Add returns -1 for it.
     [Fact]
     public void AMergeNamesOneRequirement()
     {
         var report = new MirReport();
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01));
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Uninitialized, new(0, 5), 0, 0b10));
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Uninitialized, new(0, 5), 0, 0b100));
+        int[] indices =
+        [
+            report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01)),
+            report.Add(new(DiagnosticCode.MovedPlace_Kd, Uninitialized, new(0, 5), 0, 0b10)),
+            report.Add(new(DiagnosticCode.MovedPlace_Kd, Uninitialized, new(0, 5), 0, 0b100)),
+        ];
+        Assert.Equal([0, -1, -1], indices);
         Assert.Equal(
             [
                 new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01),
@@ -149,18 +158,49 @@ public sealed class MirAnalysisTest
     }
 
     // R4-M69 (SPEC 7.2.3, 23.1.1): a problem with an Inlined fact, a Language problem found inside an inline default copy, is its template's
-    // check and is dropped; a limit record, which a copy records without that fact, stays, as does the template's own problem.
+    // check and is dropped (Add returns -1); a limit record, which a copy records without that fact, stays, as does the template's own
+    // problem.
     [Fact]
     public void AnInlinedProblemIsDropped()
     {
         var report = new MirReport();
         var loan = new MirProblem(DiagnosticCode.ComparisonLoanConflict_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.ComparisonLoanConflict), new(0, 5), 0, 0b10);
         var limit = new MirProblem(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported), new(0, 5), 0, 0b10);
-        report.Add(loan, [new(MirFactKind.Anchor, new(0, 4)), new(MirFactKind.Inlined, new(0, 9))]);
-        report.Add(limit);
-        report.Add(loan with { Views = 0b01 }, [new(MirFactKind.Anchor, new(0, 4))]);
+        int[] indices =
+        [
+            report.Add(loan, [new(MirFactKind.Anchor, new(0, 4)), new(MirFactKind.Inlined, new(0, 9))]),
+            report.Add(limit),
+            report.Add(loan with { Views = 0b01 }, [new(MirFactKind.Anchor, new(0, 4))]),
+        ];
+        Assert.Equal([-1, 0, 1], indices);
         Assert.Equal([limit, loan with { Views = 0b01 }], report.All.ToArray());
         Assert.Equal([new MirFact(MirFactKind.Anchor, new(0, 4))], report.Facts(1).ToArray());
+    }
+
+    // DECISIONS R4-M132 (rule W; R4-M96 per report, DIAGNOSTICS §4.3): a merged problem is derived exactly when every report of it is, its
+    // Cause facts (their tail) the union of the reports' causes: a derived problem meeting a direct report becomes direct and stays so, two
+    // derived reports keep their causes once each, the first's span moved after another problem's facts, so the other problem keeps its own.
+    [Fact]
+    public void AMergeIsDerivedOnlyWhenEveryReportIs()
+    {
+        var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.ComparisonLoanConflict);
+        var (loan, other) = (new MirProblem(DiagnosticCode.ComparisonLoanConflict_Kd, requirement, new(0, 5), 0, 0b01), new MirProblem(
+            DiagnosticCode.ComparisonLoanConflict_Kd, requirement, new(0, 6), 0, 0b01));
+        var (anchor, first, second) = (new MirFact(MirFactKind.Anchor, new(0, 4)), new MirFact(MirFactKind.Cause, new(0, 1), 7), new MirFact(
+            MirFactKind.Cause, new(0, 2), 8));
+        var report = new MirReport();
+        Assert.Equal([0, 1, 0, 0, 0], new[]
+        {
+            report.Add(loan, [anchor, first]), report.Add(other, [anchor]), report.Add(loan with { Views = 0b10 }, [anchor, second]),
+            report.Add(loan, [anchor, first, second]), report.Add(loan, [anchor, second]),
+        });
+        Assert.Equal([anchor, first, second], report.Facts(0).ToArray());
+        Assert.Equal([anchor], report.Facts(1).ToArray());
+        Assert.Equal(0b11UL, report.All[0].Views);
+        Assert.Equal(0, report.Add(loan, [anchor]));
+        Assert.Equal([anchor], report.Facts(0).ToArray());
+        Assert.Equal(0, report.Add(loan, [anchor, first]));
+        Assert.Equal([anchor], report.Facts(0).ToArray());
     }
 
     // R4-M69 (G125): the Language problems of a default's inline copies are its template's: A5's conflict in the default of the 1c design's
@@ -331,7 +371,8 @@ public sealed class MirAnalysisTest
     // R4-M15a, design A3 6.1: A5 runs as the driver's step 4 over the views A1 and A2 completed, which A2's table publishes (ask A-2):
     // every view of a body, two for a pair-generic one, so a Loan conflict is a problem of the version, and none of a body whose A1 arena
     // exceeds the limit (N locals live across N branches, MirInitTest), which records only OwnershipStorageLimit_Kd, though A5's own arena
-    // would fit; N reference locals live across N branches fit A1's arena but not A5's, whose own OwnershipStorageLimit_Kd stops it.
+    // would fit; N reference locals live across N branches fit A1's arena but not A5's, whose own OwnershipStorageLimit_Kd stops it; each
+    // limit names its arena (G213, R4-M132).
     [Fact]
     public void A5ChecksTheViewsA1Completed()
     {
@@ -341,8 +382,8 @@ public sealed class MirAnalysisTest
         foreach (var (size, views, line, expected) in new[]
         {
             (64, 1, Scalars, "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd x = 2"),
-            (13_500, 0, Scalars, Limit),
-            (2_000, 1, References, Limit),
+            (13_500, 0, Scalars, Limit + " Initialization over"),
+            (2_000, 1, References, Limit + " Loans over"),
         })
         {
             var text = new StringBuilder("func inspect(value: ref/i32) => ()\nfunc pair<s/T>(p: s/T) -> ()\n    s is owner or uniq\n    let v = p@move\n")
@@ -357,8 +398,10 @@ public sealed class MirAnalysisTest
 
             var c = MirBuildTest.Compile(text.Append("    x = 2\n    inspect(r)\n    return x\n").ToString());
             var program = c.BuildMir();
-            Assert.Equal([expected], program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
-                .Select(x => $"{x.Requirement} {x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()}"));
+            Assert.Equal([expected], program.Problems.All.ToArray().Select(static (x, i) => (Problem: x, Index: i))
+                .Where(static x => x.Problem.Subject.Module == 0)
+                .Select(x => $"{x.Problem.Requirement} {x.Problem.Code} {c.SyntaxOf(x.Problem.Subject).ToString().Split('\n')[0].Trim()}" +
+                    (x.Problem.Code == DiagnosticCode.OwnershipStorageLimit_Kd ? $" {MirDataflowTest.Limit(program.Problems, x.Index)}" : string.Empty)));
             Assert.Equal(
                 [("f", (long)views), ("inspect", 1L), ("pair", 2L)],
                 program.Bodies.ToArray().Where(static x => x.Key.Decl?.Name is "f" or "inspect" or "pair")
