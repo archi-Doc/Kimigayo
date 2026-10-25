@@ -4,12 +4,14 @@
 // captures in its bound body.
 // - Responsibility: ClosureEffects, one reusable visitor: a capture transferred out of the environment, or an outer environment
 //   binding a nested Closure's entry moves, makes the call Consuming; a Place reached from a capture (the capture itself, a part
-//   of it through Fields or elements, a captured referent through a follow) whose consuming operation needs it exclusively (one
-//   predicate, NeedsExclusively: a write or update, an exclusive Borrow, an exclusive argument or method or accessor receiver, an
-//   Exclusive value call, an exclusive Reborrow at an expected Type or bare), or a nested entry that Reborrows or exclusively
+//   of it through Fields or elements, a captured referent through a follow, a raw pointer's referent) whose consuming operation
+//   needs it exclusively (one predicate, NeedsExclusively: a write or update, an exclusive Borrow or object view upcast in some
+//   admitted case, an exclusive argument or method or accessor receiver, an Exclusive-mode `for` or `match` Subject, an Exclusive
+//   value call, an exclusive Reborrow at an expected Type or bare), or a nested entry that Reborrows or exclusively
 //   borrows an outer environment binding, makes it Exclusive; every other use borrows (Shared).
 // - Inputs: the Closure's bound body (each node's bound symbol, Type, call, value call and conversion), the adaptations Binding
-//   recorded, a nested Closure's published Storage; BareReborrows, PropertyCall and ProveCopy.
+//   recorded, a nested Closure's published Storage, a loop's entry call and a match's Subject mode; BareReborrows,
+//   BorrowsExclusively, PropertyCall and ProveCopy.
 // - Outputs: BoundClosure.Receiver, which every reader of a Closure's call receiver reads (value calls, candidate selection and
 //   Callable proofs, effects, the MIR builder, the old analysis and Emission); ExclusiveUse and ExclusiveReborrow, the Exclusive
 //   cause a write record names (Binding.Diagnostics.cs).
@@ -140,8 +142,8 @@ public sealed partial class Binding
                 operation.ParameterType is { } parameter && IsExclusive(parameter.Semantics);
 
         // SPEC 7.7.3, 7.7.2: whether the body uses a Place reached from a capture (the capture itself, a part of it through Fields or
-        // elements, or a captured referent through a follow) exclusively. Such a body mutates the environment or a captured referent,
-        // so the call is Exclusive.
+        // elements, a captured referent through a follow, or a raw pointer's referent, `*p` as `p[0]`, SPEC 5.2) exclusively. Such a
+        // body mutates the environment or a captured referent, so the call is Exclusive.
         private bool UsesExclusively(Koto capture)
         {
             for (var place = capture; ; place = place.Parent!)
@@ -154,7 +156,8 @@ public sealed partial class Binding
                 if (!(place.Parent is ParenthesizedKoto ||
                     (place.Parent is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } follow && ReferenceEquals(follow.Left, place)) ||
                     (place.Parent is MemberAccessKoto member && ReferenceEquals(member.Left, place)) ||
-                    (place.Parent is IndexKoto index && ReferenceEquals(index.Left, place))))
+                    (place.Parent is IndexKoto index && ReferenceEquals(index.Left, place)) ||
+                    (place.Parent is DereferenceKoto dereference && ReferenceEquals(dereference.Operand, place))))
                 {
                     return false;
                 }
@@ -162,14 +165,18 @@ public sealed partial class Binding
         }
 
         // Whether the operation that consumes a Place needs it exclusively (SPEC 7.7.3, 3.5.1): it writes or updates the Place,
-        // borrows it exclusively, lends it to an exclusive parameter as an argument or a method or accessor receiver, calls it as an
-        // Exclusive callee, or acquires it by a Reborrow in an exclusive mode, at an expected Type or bare.
+        // borrows it exclusively (an explicit adaptation as Binding.BorrowsExclusively decides it, SPEC 13.5.6), lends it to an
+        // exclusive parameter as an argument or a method or accessor receiver, takes it as a `for` or `match` Subject in Exclusive mode
+        // (SPEC 14.6.2, 15.1.6), calls it as an Exclusive callee, or acquires it by a Reborrow in an exclusive mode, at an expected Type
+        // or bare.
         private bool NeedsExclusively(Koto place)
         {
             var exclusive = place.Parent switch
             {
                 UnaryKoto update => update.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement,
-                ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow => borrow.BoundType is { } borrowed && IsExclusive(borrowed.Semantics),
+                ConversionKoto conversion => ReferenceEquals(conversion.Left, place) && binding.BorrowsExclusively(conversion),
+                ForKoto loop => ReferenceEquals(loop.Iterable, place) && CallPlan.Of(loop) is { } entry && LendsExclusively(entry.ReceiverOperation),
+                MatchKoto match => ReferenceEquals(match.Expression, place) && BoundMatch.Of(match) is { Mode: SubjectMode.Exclusive },
                 InvocationKoto { BoundValueCall: { } valueCall } => ReferenceEquals(valueCall.CalleeValue, place) && valueCall.ReceiverKind == SemanticsKind.Uniq,
                 InvocationKoto { BoundCall: { } call } => IsExclusiveArgument(call.ArgumentOperations, place),
                 MemberAccessKoto => this.ReceiverOperation(place) is { } receiver && LendsExclusively(receiver),

@@ -50,13 +50,21 @@ public class ClosureReceiverClassificationTest
     private const string Places = "func bump(x: uniq/i32) => x@follow += 50\nstruct Counter\n    public var value: i32 = 0\n" +
         "    public func add(self: uniq/Self, n: i32) => self.value = self.value + n\n    public func read(self: ref/Self) -> i32 => self.value\n" +
         "struct ObjCell\n    public var value: i32 = 1\n    public func put(self: objuniq/Self, n: i32)\n        let p = self@follow@uniq\n        p.value = n\n" +
+        "    public func set(self: uniq/Self, n: i32) => self.value = n\n" +
+        "open struct Base\n    public var value: i32\n    protected init(value: i32) => self.value = value\n    public func look(self: ref/Self) -> i32 => self.value\n" +
+        "struct Leaf: Base\n    public init(): base(10) => ()\nfunc make() -> obj/Leaf => Kimi.Intrinsics.makeObj(Leaf.init())\n" +
         "public func main() -> ()\n    let n = 7\n    let t = (1, 2)\n    let fa: [2 of i32] = [1, 2]\n    var c = Counter.init()\n    let r = c@uniq\n" +
         "    var a: Array<Counter> = []\n    var x = 1\n    var u: Array<uniq/i32> = []\n    u.append(x@uniq)\n    var o = Kimi.Intrinsics.makeObj(ObjCell.init())\n" +
-        "    let f = func [var n, var t, var fa, r, var a@move, var u@move, var o@move] () -> i32\n";
+        "    var ol = make()\n    var other = make()\n    let q = other@objuniq\n    var items: Array<i32> = [1, 2]\n    let view = items@uniq\n" +
+        "    var option: Option<i32> = .Some(1)\n    let ov = option@uniq\n    let owned: Array<i32> = [1]\n    let oo: Option<i32> = .Some(2)\n    var y = 1\n" +
+        "    let p = y@raw\n" +
+        "    let f = func [var n, var t, var fa, r, var a@move, var u@move, var o@move, var ol@move, q, view, ov, owned@move, oo, p] () -> i32\n";
 
-    // SPEC 7.7.3, 7.7.2 (PLAN G147 (3)): a Place reached from a capture, the capture itself, a part of it or a captured referent, that
-    // the body writes, borrows exclusively or lends to an exclusive parameter as an argument or receiver makes the call Exclusive, so
-    // a call of a `let` Closure is invalid; the Shared twins read or borrow shared. Each Exclusive row was classed Shared.
+    // SPEC 7.7.3, 7.7.2 (PLAN G147 (3)): a Place reached from a capture, the capture itself, a part of it, a captured referent or a raw
+    // pointer's referent, that the body writes, borrows exclusively (an exclusive Borrow or an upcast to an `objuniq` view, SPEC 13.5.6),
+    // lends to an exclusive parameter as an argument or receiver, or takes as an Exclusive-mode `for` or `match` Subject (SPEC 14.6.2,
+    // 15.1.6, whatever the body then does) makes the call Exclusive, so a call of a `let` Closure is invalid and of a `var` one valid;
+    // the Shared twins read or borrow shared.
     [Theory]
     [InlineData("        let s = n@uniq\n        s@follow = 3\n", true)]
     [InlineData("        let s = (n)@uniq\n        s@follow = 3\n", true)]
@@ -71,23 +79,33 @@ public class ClosureReceiverClassificationTest
     [InlineData("        let k = t.0@ref\n", false)]
     [InlineData("        let k = r@follow.read()\n", false)]
     [InlineData("        let k = a[0].read()\n", false)]
+    [InlineData("        let s = ol@objuniq/Base\n", true)]
+    [InlineData("        let s = q@objuniq/Base\n", true)]
+    [InlineData("        let s = ol@objref/Base\n", false)]
+    [InlineData("        for e in view\n            e@follow += 1\n", true)]
+    [InlineData("        var k = 0\n        for e in view\n            k += e@follow\n", true)]
+    [InlineData("        var k = 0\n        for e in owned\n            k += e@follow\n", false)]
+    [InlineData("        match ov\n            .Some(let w) => w@follow = 3\n            .None => ()\n", true)]
+    [InlineData("        var k = 0\n        match ov\n            .Some(let w) => k = w@follow\n            .None => ()\n", true)]
+    [InlineData("        var k = 0\n        match oo\n            .Some(let w) => k = w\n            .None => ()\n", false)]
+    [InlineData("        unsafe => *p = 3\n", true)]
+    [InlineData("        unsafe => p[0] = 3\n", true)]
+    [InlineData("        var k = 0\n        unsafe => k = *p\n", false)]
+    [InlineData("        let k = ol.look()\n", false)]
+    [InlineData("        o.set(2)\n", true)]
     public void AnExclusiveUseOfAPlaceReachedFromACaptureIsAnExclusiveCall(string body, bool exclusive)
-    {
-        var source = Places + body + "        return 0\n    let v = f()\n";
-        var c = MinimalEmissionTest.Analyze(source);
-        var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous);
-        Assert.Equal(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, closure.ClosureOf()!.Receiver);
-        var errors = DiagnosticCorpus.Check(source).Diagnostics;
-        if (!exclusive)
-        {
-            Assert.Empty(errors);
-            return;
-        }
+        => AssertCallReceiver(Places + body + "        return 0\n    let v = f()\n", exclusive);
 
-        var error = Assert.Single(errors);
-        Assert.Equal((nameof(DiagnosticCode.InvalidAssignment_Kd), "f"), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
-        Assert.Equal("The call is Exclusive (SPEC 7.7.3): it borrows the callee exclusively, because the callee changes its environment or a captured referent", error.Note);
-    }
+    // SPEC 8.14, 13.5.6, 7.7.3: a case adaptation of a capture that borrows it exclusively in an admitted case makes the call Exclusive,
+    // the strongest requirement over the cases; one whose borrowing cases are all shared stays Shared.
+    [Theory]
+    [InlineData("owner or uniq", true)]
+    [InlineData("owner or ref", false)]
+    public void ACaseAdaptationThatBorrowsExclusivelyInSomeCaseIsAnExclusiveCall(string admitted, bool exclusive)
+        => AssertCallReceiver(
+            "func gen<s/T>(value: s/i32) -> i32\n    s is " + admitted + "\n    var local: i32 = 1\n    let f = func [var local] () -> i32\n" +
+                "        let k = local@s/i32\n        return 0\n    return f()\npublic func main() -> ()\n    var y = 1\n",
+            exclusive);
 
     private const string CapturedView = "public func main() -> ()\n    var n = 7\n    let view = n@uniq\n";
 
@@ -151,4 +169,24 @@ public class ClosureReceiverClassificationTest
     [Fact]
     public void AScalarReadThroughACapturedExclusiveReferenceIsShared()
         => ScalarEmissionTest.EmitFixture("ClosureReceiverScalarRead", "var n = 7\nlet view = n@uniq\nlet f = func [view] () => view@follow + 1\nlet r = f()\nrequire r == 8 and f() == 8 else => $abort(\"r\")", string.Empty);
+
+    // The one Closure's call receiver, and its `let f` call: an `InvalidAssignment_Kd` with the general Note when Exclusive, valid
+    // otherwise; the same program with `var f` is valid either way.
+    private static void AssertCallReceiver(string source, bool exclusive)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous);
+        Assert.Equal(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, closure.ClosureOf()!.Receiver);
+        Assert.Empty(DiagnosticCorpus.Check(source.Replace("    let f = func", "    var f = func", StringComparison.Ordinal)).Diagnostics);
+        var errors = DiagnosticCorpus.Check(source).Diagnostics;
+        if (!exclusive)
+        {
+            Assert.Empty(errors);
+            return;
+        }
+
+        var error = Assert.Single(errors);
+        Assert.Equal((nameof(DiagnosticCode.InvalidAssignment_Kd), "f"), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
+        Assert.Equal("The call is Exclusive (SPEC 7.7.3): it borrows the callee exclusively, because the callee changes its environment or a captured referent", error.Note);
+    }
 }

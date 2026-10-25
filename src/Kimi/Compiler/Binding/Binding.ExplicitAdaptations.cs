@@ -8,6 +8,13 @@ public sealed partial class Binding
 {
     private readonly ScratchBuffers<PairCase> adaptationCaseScratch = new();
 
+    // SPEC 13.5.6, 15.1.5, 8.14: whether an explicit adaptation borrows its operand exclusively (AdaptationBorrow), a case adaptation in
+    // some admitted case: every case of its plan holds, and a case whose target is an exclusive reference or object view borrows there.
+    internal bool BorrowsExclusively(ConversionKoto conversion)
+        => conversion.ConversionBinding == ConversionBinding.CaseAdaptation
+            ? conversion.Adaptation is { } plan && (this.ResultSemantics(plan.Target, this.ConstraintScope(conversion)) & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0
+            : conversion.BoundType is { } target && AdaptationBorrow(conversion.ConversionBinding, target) == true;
+
     // Inputs and acquisition were verified at definition. A context substitutes them and selects the canonical factory.
     internal CallPlan ResolveObjectCreation(ConversionKoto conversion, BoundType source, BoundType target, CallPlan destination)
     {
@@ -17,6 +24,12 @@ public sealed partial class Binding
         destination.AdaptationSource = conversion;
         return destination;
     }
+
+    // SPEC 13.5.6, 15.1.5: the Borrow an explicit adaptation's operation to a target forms of its operand: exclusive (true) to an
+    // exclusive reference or object view, shared (false) to any other reference or view, Address included, or none (null).
+    private static bool? AdaptationBorrow(ConversionBinding operation, BoundType target)
+        => operation is ConversionBinding.Borrow or ConversionBinding.Address || (operation == ConversionBinding.ObjectUpcast && target.IsObjectBorrow)
+            ? target.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq : null;
 
     // Short generic targets apply the selected Semantics, not a second round of operand inference.
     private BoundType? BindSemanticsAdaptation(ConversionKoto conversion, BindingScope scope, BindingSymbol semantics)
@@ -267,11 +280,9 @@ public sealed partial class Binding
             return false;
         }
 
-        if (operation is ConversionBinding.Borrow or ConversionBinding.Address ||
-            (operation == ConversionBinding.ObjectUpcast && target.IsObjectBorrow))
+        if (AdaptationBorrow(operation, target) is { } exclusive)
         {
             // SPEC 13.5.6, 15.1.5: a borrowing case, shared or exclusive, borrows a Place that lends in its mode or a Temporary Value.
-            var exclusive = target.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
             if (!this.BorrowablePlace(conversion.Left, scope, exclusive) && !BorrowableTemporary(conversion.Left, exclusive, true, false))
             {
                 var failure = this.BorrowFailure(conversion.Left, scope, exclusive);
