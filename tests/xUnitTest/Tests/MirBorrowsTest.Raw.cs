@@ -636,8 +636,10 @@ public sealed partial class MirBorrowsTest
     // V16 (R4-M138): a closure queues each holder once and joins what it read in one n-ary union (MirLoanSets.Union), so the Work its Chain
     // rows add beside the same body without them is linear in what they read: N calls each reading a pointer chain of depth K, a K-cycle
     // of raw holders read once, N vacuous Chain rows (`Raw.allocate`'s count) after E holds M addresses of Loan holders, and a holder
-    // fanning out to M addresses. A linear measure's growth doubles per doubling (2.00 to 2.04 measured); the bound 2.1 leaves its margin
-    // for the element span the union reads back (a log factor's 2.14 to 2.25 for balanced unions; a quadratic's 4).
+    // fanning out to M addresses, and N sparse rows (the N2 landing review 2's B1: each joins {Φ_E} and one of N Loans, so its least and
+    // greatest elements span the body's numbering). A linear measure's growth doubles per doubling (2.00 to 2.04 measured); the bound 2.1
+    // leaves its margin for the marker words the union sorts (a log factor's 2.14 to 2.25 for balanced unions; a union reading its range
+    // 2.69 and 3.03 on the sparse rows; a quadratic's 4).
     [Fact]
     public void AChainsWorkIsWithinWhatItReads()
     {
@@ -648,9 +650,10 @@ public sealed partial class MirBorrowsTest
         long[] vacuous = [.. new[] { 16, 32, 64 }.Select(n => this.Added(Escaping(8, n), Escaping(8, 0)))];
         long[] escaped = [.. new[] { 16, 32, 64 }.Select(m => this.Added(Escaping(m, 8), Escaping(m, 0)))];
         long[] fan = [.. new[] { 16, 32, 64 }.Select(m => this.Added(FanOut(m, Read), FanOut(m, string.Empty)))];
+        long[] sparse = [.. new[] { 64, 128, 256 }.Select(n => this.Added(Sparse(n, calls: true), Sparse(n, calls: false)))];
         output.WriteLine($"calls {string.Join(", ", calls)}; depth {string.Join(", ", depth)}; cycle {string.Join(", ", cycle)}; " +
-            $"vacuous {string.Join(", ", vacuous)}; escaped {string.Join(", ", escaped)}; fan {string.Join(", ", fan)}");
-        Assert.All(new[] { calls, depth, cycle, vacuous, escaped, fan }, static x => Assert.True(Grows(x, 2.1), string.Join(", ", x)));
+            $"vacuous {string.Join(", ", vacuous)}; escaped {string.Join(", ", escaped)}; fan {string.Join(", ", fan)}; sparse {string.Join(", ", sparse)}");
+        Assert.All(new[] { calls, depth, cycle, vacuous, escaped, fan, sparse }, static x => Assert.True(Grows(x, 2.1), string.Join(", ", x)));
     }
 
     // The Work a shape's body adds beside its twin's, both over the raw and chain shapes.
@@ -880,6 +883,20 @@ public sealed partial class MirBorrowsTest
         for (var n = 0; n < calls; n++)
         {
             text.Append($"    let p{n}: raw/u8 = Raw.allocate(1)\n    let used{n} = p{n} == null\n");
+        }
+
+        return text.ToString();
+    }
+
+    // N Loan holders, each read into a raw holder that otherwise keeps a pointer read from E, then (calls) a call reading each, whose Chain
+    // row joins {Φ_E}, element 0, with that holder's Loan, numbered past every holder before it (the N2 landing review 2's probe).
+    private static string Sparse(int holders, bool calls)
+    {
+        var text = new StringBuilder("func shape(sink: raw/(raw/u8), c: i32)\n    var y: i32 = 1\n    var g: raw/u8 = null\n    unsafe => g = *sink\n");
+        for (var i = 0; i < holders; i++)
+        {
+            text.Append($"    var w{i}: ref/i32 = y@ref\n    var k{i}: raw/u8 = g\n    if c == {i} => k{i} = w{i}@raw@raw/u8\n");
+            text.Append(calls ? $"    _ = touch(k{i})\n" : string.Empty);
         }
 
         return text.ToString();

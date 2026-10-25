@@ -4374,8 +4374,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     location beside content (E13 (5)); a warm run allocates nothing. Content rows stay one read and Value is unchanged; `Retained` keys on
     the row's kind only (no Type, Untied or callee test; review §8).
   - `MirLoanSets.Union` over any number of sets (the planning session's V16 decision): each element of each set is set once in a reused
-    bit marker, which is read back in ascending order and cleared over the words from the least element to the greatest, then interned;
-    its work is the elements read plus those words (the span, bounded by the body's numbered elements). Not memoized; its caller memoizes.
+    bit marker, and each word it sets is listed once in a reused list as it is first set; the list is sorted, and its words are read
+    back in ascending order and cleared, then the run is interned. Its work is the elements read plus the set made, with at most a log
+    factor on the distinct words touched (each at most the elements read), never a term in the range between its least and greatest
+    element (the planning session's bound after the landing review 2's B1). Not memoized; its caller memoizes.
   - On the MIR the two-read forms err at their SPEC point (getRRRRepl, getRFRRepl, fRRRRepl, unlinkRBad, lend3Repl, popLateBad,
     popLateBadX, exchangeTwoBadX, swapTwoBad; the probes' swap2Bad), their twins stay valid (getRRROk, getRFROk, fRRROk, unlinkROk,
     lend3Ok, exchangeTwoOk, swapTwoOk), and a Tuple's borrow storing through a pointer read from storage the body does not own keeps the
@@ -4389,14 +4391,16 @@ and migration obligations remain in force; no numeric cap changes are authorized
     removal unit beside appendNullOk and appendIntoOk; C3's rows (arrNode1Ok, arrNodeAppendOk, rawPairOk, arrNode2Ok, appendNullOk,
     appendIntoOk, the probes' pop2Ok) are unchanged; dictNodeOk is C2's (the literal's internal `placeEntry`), not C3's.
   - V16: the Work Chain rows add beside the same body without them is linear for N calls over a depth-K pointer chain, a K-cycle, N
-    vacuous rows (`Raw.allocate`'s count) after E holds M addresses and an M-way fan-out: each step's growth at most 2.1 times the one
-    before (2.00 to 2.04 measured; balanced unions measured 2.14 to 2.25 and fail it on the cycle and E rows).
+    vacuous rows (`Raw.allocate`'s count) after E holds M addresses, an M-way fan-out and N sparse rows, each joining {Φ_E} with one of
+    N Loans: each step's growth at most 2.1 times the one before (2.00 to 2.05 measured; balanced unions measured 2.14 to 2.25 and fail
+    it on the cycle and E rows; a read-back over the range 2.69 and 3.03 on the sparse rows).
   - Rule W's facts on Chain rows (G263's item): a Chain row's conflict is derived where every read on the way was of a whole holder, as
     a Content row's, and independent where the chain read the Loan through E (chain-retention, chain-through-e beside
     content-through-e); a chain through E at a later step reaches what an earlier store left there (viaEBad, viaEOk).
   - Rejected: closing Content rows at untied outputs (BU-40's reason); one union per state read (a set per prefix, quadratic in a
     chain's length, measured in the V16 rows); pairwise unions in balanced rounds (a log factor, K·log K for K holders; the planning
-    session's V16 decision); Chain reading states unmarked or by a rule of its own (a second copy of rule W's clause; L1); a Type skip
+    session's V16 decision); a marker read back over the words from the least element to the greatest (B1: a sparse union, Φ_E with
+    one Loan, costs the body's numbering / 64); Chain reading states unmarked or by a rule of its own (a second copy of rule W's clause; L1); a Type skip
     of vacuous Chain rows in A5 (review §4); C3 keyed by callee identity; C3 by dropping a 4.9 receiver's untied store. No valid form
     tells Content from Chain keying: under an Origin-stated premise the content holds a Loan on each holder a second read passes (a
     `raw/T during source` Field needs its `Loan` Field), so replacing it, or writing what it refers to, conflicts either way. Numbering: R4-M138

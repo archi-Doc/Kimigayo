@@ -6,8 +6,8 @@ using Xunit;
 namespace XunitTest;
 
 /// <summary>A5's interned Loan sets (design A3 §6.1, docs/dev/DECISIONS.md R4-M53) through <see cref="MirLoanSets"/> itself: equal sets
-/// have one id, 0 is the empty set, Add, Union, Remove, Range and Of keep the set laws and repeat through their memos (Of through its
-/// run), and the storage is pooled.</summary>
+/// have one id, 0 is the empty set, Add, Union (of two or of any number, R4-M138), Remove, Range and Of keep the set laws and repeat
+/// through their memos (Of through its run), and the storage is pooled.</summary>
 public sealed class MirLoanSetsTest(ITestOutputHelper output)
 {
     // R4-M53: a set is its id: the same elements added in any order, joined by Union or left by Remove are one node, and the empty set is
@@ -107,6 +107,51 @@ public sealed class MirLoanSetsTest(ITestOutputHelper output)
         Assert.Equal(32, sets.Scanned);
     }
 
+    // R4-M138: the union of any number of sets is the fold of their binary Unions: none or only empty sets give the empty set, one distinct
+    // set (with empty sets and repeats) is itself, and duplicates, disjoint sets, element 0 (A5's Φ_E) beside a high element and parts that
+    // cross marker words give the fold's node; consecutive unions over random parts in universes of 64 to 5,000 elements agree with the fold,
+    // so the marker is clear between calls.
+    [Fact]
+    public void TheUnionOfAnyNumberIsTheFoldOfUnions()
+    {
+        var sets = new MirLoanSets();
+        var (a, b, high) = (Of(sets, 1, 4, 70), Of(sets, 4, 130), Of(sets, 0, 100_000));
+        Assert.Equal([0, 0, a, a], new[] { sets.Union([]), sets.Union([0, 0]), sets.Union([a]), sets.Union([0, a, a, 0]) });
+        Assert.Equal(sets.Union(a, b), sets.Union([a, b, a, b]));
+        Assert.Equal([0, 1, 4, 70, 130, 100_000], sets.Elements(sets.Union([a, high, b])).ToArray());
+        Assert.Equal([0, 7], sets.Elements(sets.Union([Of(sets, 7), Of(sets, 0)])).ToArray());
+        var random = new Random(264);
+        foreach (var universe in new[] { 64, 65, 200, 1_000, 5_000 })
+        {
+            for (var round = 0; round < 200; round++)
+            {
+                var parts = new int[random.Next(0, 9)];
+                for (var i = 0; i < parts.Length; i++)
+                {
+                    parts[i] = random.Next(4) == 0 ? 0 : Of(sets, [.. Enumerable.Range(0, random.Next(1, 6)).Select(_ => random.Next(universe))]);
+                }
+
+                Assert.Equal(parts.Aggregate(0, sets.Union), sets.Union(parts));
+            }
+        }
+    }
+
+    // V16 (R4-M138, the N2 landing review 2's B1): the union of any number of sets scans the elements it reads, the marker words it sets
+    // (sorted) and the set it makes, never the range between its least and its greatest element: element 0 beside 64 costs what it costs
+    // beside 2^20.
+    [Fact]
+    public void TheUnionOfAnyNumberScansNoRange()
+    {
+        var sets = new MirLoanSets();
+        var (zero, near, far) = (Of(sets, 0), Of(sets, 64), Of(sets, 1 << 20));
+        var scanned = sets.Scanned;
+        _ = sets.Union([zero, near]);
+        var nearly = sets.Scanned - scanned;
+        scanned = sets.Scanned;
+        _ = sets.Union([zero, far]);
+        Assert.Equal(nearly, sets.Scanned - scanned);
+    }
+
     // R4-M53: Clear restarts at the empty set: ids and Bytes begin again, and no result of an operation before it answers for the sets
     // made after it. AWarmRunAllocatesNothing shows that it keeps the storage.
     [Fact]
@@ -148,6 +193,27 @@ public sealed class MirLoanSetsTest(ITestOutputHelper output)
         }
 
         Assert.Equal(expected.Order(), sets.Elements(result).ToArray());
+    }
+
+    // V16, R4-M138: a warm union of any number of sets allocates nothing: its marker and its list of words keep their storage.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmUnionOfAnyNumberAllocatesNothing()
+    {
+        var sets = new MirLoanSets();
+        var parts = new int[4];
+        var result = 0;
+        void Run()
+        {
+            sets.Clear();
+            (parts[0], parts[1]) = (sets.Add(sets.Add(0, 0), 3), sets.Add(sets.Add(0, 64), 3));
+            (parts[2], parts[3]) = (sets.Add(0, 5_000), sets.Add(sets.Add(0, 0), 70));
+            result = sets.Union(parts);
+        }
+
+        Run();
+        Assert.Equal(0, AllocationMeasurement.Measure(Run));
+        Assert.Equal([0, 3, 64, 70, 5_000], sets.Elements(result).ToArray());
     }
 
     // V16, A3 §6.2's ν: n Unions of overlapping runs of k elements, [w, w + k) and [w + 1, w + k + 1), each make one node of k + 1
