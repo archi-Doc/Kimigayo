@@ -56,7 +56,7 @@ A read, write, Take or borrow of a raw Place is undefined behavior unless all of
    - A pointer whose Type states an Origin has no more authority than that Origin keeps, judged where the Origin is bound ([§5.7](#57-raw-pointer-origins)). A pointer read from a raw layer that a declaration states, and every pointer derived from it, has no write authority when the layer's Origin keeps only shared Loans in that declaration: for a Field's or Case payload's layer, when it states a slot whose Loan requirement is `ref`; for a layer written in the signature of a function, closure or accessor (a parameter's or the result's, not a Function Type's), when that signature's inputs state the Origin, every borrow whose Origin it is there is a shared borrow (a `ref` or `objref` borrow or a Slice, in each admitted Semantics case of a pair layer), and every slot they bind it to has the Loan requirement `ref`. Borrows formed in a body do not count for an Origin the signature binds; a body-local borrow's own Origin is judged by that borrow ([§5.7](#57-raw-pointer-origins)).
    - A pointer formed through an own step, into an object payload or into storage a raw Field declares `during self` ([§5.7](#57-raw-pointer-origins)), has authority only while the owning value stays in the holder it was reached from; a Move of that value ends it. A pointer read again from a `during self` Field reaches the value's current holder. A Warning is required where an operation in a body may end the owning value's stay in its holder while a value carrying a pointer formed through that own step may still be used: a Move or Take of the owning value's Place or of an ancestor holding it with no dereference between them, a write that replaces either, or its destruction, or an exclusive Borrow of the Place or of any ancestor, as a call that takes it by `uniq` forms (`exchange`, `swap` and `replace` among them). Places are compared by their access paths ([§15.6.2](15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts)).
 4. **Loans.** The access conflicts with no live Loan of a Place overlapping what it acts on, except the Loan of the path the pointer was taken from. Loan liveness follows the uses of values, raw pointers included through the holders they reach ([§15.6](15-ownership-and-lifetime-analysis.md#156-borrow-checking)).
-5. **Reach.** An access that reads or writes a value carrying a Loan acts in a holder the pointer reaches or in storage the body does not own ([§15.6](15-ownership-and-lifetime-analysis.md#156-borrow-checking)): a pointer the body cannot trace to a holder, such as one hidden in a Field of a call result whose Type states no Origin or one restored from an integer, must not be used to read or write such values in the body's own holders.
+5. **Reach.** An access that reads or writes a value carrying a Loan acts in a holder the pointer reaches or in storage the body does not own ([§15.6](15-ownership-and-lifetime-analysis.md#156-borrow-checking)): a pointer the body cannot trace to a holder, such as one a call stored in static storage or one restored from an integer, must not be used to read or write such values in the body's own holders, by the body or by a call to which the body passes the pointer, directly or within a value or storage.
 
 ```kimi
 func h() -> ()
@@ -78,7 +78,7 @@ unsafe => inspect((*p)@ref)   // Valid: the same Place, initialized again.
 
 **Object payloads.** A payload's address is fixed from publication until its destruction begins, whatever happens to the handle.
 
-**Retained dependencies.** A value moved into raw storage keeps its Origins and Loan requirements, and its Loans follow the storage ([§15.6](15-ownership-and-lifetime-analysis.md#156-borrow-checking)): storage a raw Field declares `during self` is part of the value holding the Field, whose Type counts the pointee as stored content ([§15.3.5](15-ownership-and-lifetime-analysis.md#1535-variance-loan-requirements-and-phantom-origins)); storage a pointer addresses `during o` is covered by the Loans of `o`; any other storage is what the pointer reaches. A function stores through raw storage reached from its inputs only values that its public contract lets the call retain there ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)).
+**Retained dependencies.** A value moved into raw storage keeps its Origins and Loan requirements, and its Loans follow the storage ([§15.6](15-ownership-and-lifetime-analysis.md#156-borrow-checking)): storage a raw Field declares `during self` is part of the value holding the Field, whose Type counts the pointee as stored content ([§15.3.5](15-ownership-and-lifetime-analysis.md#1535-variance-loan-requirements-and-phantom-origins)); storage a pointer addresses `during o` is covered by the Loans of `o`; any other storage is what the pointer reaches. A function stores through raw storage reached from its inputs only values that its public contract lets the call retain there ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)). A raw layer without an Origin that the call writes lets it retain there every argument with what reads through it carry, but not the own value of the argument it writes through (narrower for the published transfer operations, [§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)), so `Raw.initialize`, `Array.append` and `insert` and the Array and Dictionary literals keep the Loans and addresses of a stored value of any Type, `(raw/u8, i32)` included. This applies only to a layer that states no Origin: a layer stating `during self` or `during o` retains as that Origin's borrow would ([§5.7](#57-raw-pointer-origins)), and the unstated layers in the storage it addresses follow this rule.
 
 ### 5.2.2. Borrowing raw Places
 
@@ -210,7 +210,7 @@ A raw layer may state an Origin with `during` ([§3.3.2](03-types-and-values.md#
 | Form | The pointer addresses |
 | --- | --- |
 | `raw/T` | Storage it does not state: what the value reaches ([§15.6](15-ownership-and-lifetime-analysis.md#156-borrow-checking)), and at a call what [§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls) gives |
-| `raw/T during o` | Storage that `o` covers: what the Loans of the borrow `o` belongs to protect, or static storage for `static` |
+| `raw/T during o` | Storage that `o` covers: what the Loans of the borrow `o` belongs to protect, or static storage for `static` (the bytes a string literal spells outside its interpolations included, [§3.1.2](03-types-and-values.md#312-characters-and-strings)) |
 | `raw/T during self` | Storage the value holding the layer owns: an own step of that value ([§15.6.2](15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts)), as an object payload is |
 
 - **Origins.** A written `o` is one Origin atom other than an intersection ([§15.3.1](15-ownership-and-lifetime-analysis.md#1531-borrow-annotations-and-binding-sets)), and it belongs to a borrow: a slot, also projected from a value (`x.source`), to the stored safe references and `Loan<T>` Fields that keep it, which together admit what their Referent Types admit; the outer Origin of a borrow value (an input's or, in a body, a local's) to that borrow; and `static` to static storage. In a signature a raw layer's Origin must belong to an input's borrow, a slot or `static`. `self` names the holding value only on a raw layer in the inline storage of a struct or enum (Fields, Tuple and fixed-array elements, Case payloads), never inside a Type argument. In the Type's own bodies `self` is the receiver's Origin ([§15.2.1](15-ownership-and-lifetime-analysis.md#1521-origin-expressions)); in a constructor it is the value being constructed and in `drop` the destruction receiver ([§16.3.1](16-scope-exit-and-destruction.md#1631-destruction-receiver)), both exclusive. An Origin that a raw layer obtains by reading a Field, by a typed path or by substituting a slot or input may be of any form, an intersection included, and belongs to what the Origin it comes from belongs to: for inputs `x: ref/T` and `y: ref/T` and `choose` of [§15.3.6](15-ownership-and-lifetime-analysis.md#1536-origin-inference), `choose(x, y)@follow@raw` is a `raw/T during (x and y)`, which a local's inferred Type may state but no written Type can.
@@ -220,7 +220,7 @@ A raw layer may state an Origin with `during` ([§3.3.2](03-types-and-values.md#
 - **Fits and claims.** A raw layer without `during` counts as stating an Origin that every Origin outlives, and a raw layer is covariant in its Origin ([§15.3.5](15-ownership-and-lifetime-analysis.md#1535-variance-loan-requirements-and-phantom-origins)): `raw/T during o` is a subtype of `raw/T` ([§3.8](03-types-and-values.md#38-type-relations-and-operations)), so dropping an Origin, or narrowing it to one it outlives, is a fit. A change that is not a fit is a **claim**, formed only by `E@(raw/U during o)` in an unsafe context ([§5.4](#54-addresses-and-conversions)); elsewhere it is an Origin relation error ([§15.6.1](15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness)). `null` takes any Origin. A claim promises that every access through the pointer, and through every pointer derived from it, lies in storage that `o` covers; breaking it is undefined behavior.
 - **Authority.** A raw Origin grants no authority, and no access through a raw pointer is an error for want of authority: whether a write, Take, in-place destruction or `@uniq` or `@objuniq` Borrow of a raw Place is defined is decided only by [§5.2.1](#521-access-conditions), while the unsafe context it needs and the Origin relations above (fits, claims, Writing a Field) are checked as everywhere. An Origin **keeps only shared Loans** when everything it belongs to (Origins above) does: each borrow is a shared borrow (a `ref` or `objref` borrow or a Slice) and each slot has the Loan requirement `ref` ([§15.3.5](15-ownership-and-lifetime-analysis.md#1535-variance-loan-requirements-and-phantom-origins)), in each admitted Semantics case. Each Origin is judged where it is bound: an input's or a slot's by the signature or Type declaration that binds it, never by the caller's actual borrow, and the outer Origin of a borrow formed in a body by that borrow itself. Through a pointer whose Origin keeps only shared Loans, such an access exceeds condition 3 and is undefined behavior.
 - **Slots and ownership.** A raw layer's Origin is a covariant position for variance but no use of a slot for Loan requirements or Phantom status; a slot that a raw layer states must not be Phantom, or the declaration is invalid. A `during self` pointee counts as stored content of its Type for slot properties and OwnedOrigins, values stored there keep their Loans in the holder of the owning value ([§15.6](15-ownership-and-lifetime-analysis.md#156-borrow-checking)), and a struct or enum whose inline storage holds a `during self` layer is not Copy. The layer's Type and a Tuple or fixed array holding it are Copy ([§3.5.2](03-types-and-values.md#352-copy-capability)); their Places follow "Writing a Field" and an explicit `@move` ([§13.5.3](13-operators-and-assignment.md#1353-defined-adaptations)).
-- **Calls.** Through a raw layer with an Origin a call may store what the Referent Type of each borrow that Origin belongs to admits (for `self`, the holding value's Type; for `static`, the pointee Type), and that storage retains as the borrow would, without forming a Loan. Through a raw layer without an Origin in a parameter, a call may store what its pointee Type admits. A raw layer without an Origin in a result Type, also as a Tuple element, an Option payload or a Type argument, may address storage the callee reaches through any argument, and storage the body does not own ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)). A raw pointer in a Field of a nominal result is stated by that Type's Fields alone; a pointer hidden there falls under condition 5 of [§5.2.1](#521-access-conditions).
+- **Calls.** Through a raw layer with an Origin a call may store what the Referent Type of each borrow that Origin belongs to admits (for `self`, the holding value's Type; for `static`, the pointee Type), and that storage retains as the borrow would, without forming a Loan. Through a raw layer without an Origin in a parameter, a call may store what its pointee Type admits. A raw layer without an Origin that a call may write, in its result or in storage it writes through an argument, also as a Tuple element, an Option payload, a Type argument or a Field, may address storage the callee reaches through any argument (through the one it writes through, only by reads through it; narrower for the published transfer operations) and storage the body does not own; behind a borrow in the result (a Slice's or UniqSlice's elements included), only storage the callee reaches through a raw argument ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)).
 
 ```kimi
 struct Lens<T> {source}
@@ -253,4 +253,55 @@ func demo() -> i32
     let moved = b.pair@move       // Reads the layer's element and Moves the i32.
     b.pair = (null, 2)            // The restore writes null in the layer's position.
     return t.1 + moved.1
+```
+
+A layer without an Origin that a call writes retains what the call may reach; stating an Origin narrows it:
+
+```kimi
+func fill(r: ref/i32, k: ref/i32, slot: uniq/(raw/i32))
+    if k@follow > 0 => slot@follow = r@follow@raw   // slot may retain r and k (§15.6.4).
+
+func fillFrom(r: ref/i32, k: ref/i32, slot: uniq/(raw/i32 during r))
+    if k@follow > 0 => slot@follow = r@follow@raw   // slot retains r alone.
+
+func caller()
+    var x: i32 = 1
+    var y: i32 = 2
+    var s: raw/i32 = null
+    fill(x@ref, y@ref, s@uniq)
+    // y = 3                                        // Error: s may retain y's Loan and is used below.
+    usep(s)
+    let r = x@ref
+    var t: raw/i32 during r = null
+    fillFrom(r, y@ref, t@uniq)
+    y = 4                                           // Valid: t retains r's Loan, not y's.
+    usep(t)
+```
+
+A pointer stored within an aggregate keeps its address, as the pointer stored alone does:
+
+```kimi
+var y: i32 = 1
+let w = y@ref
+let q = w@raw@raw/u8                                // Addresses w, which carries y's Loan.
+let pairs: Array<(raw/u8, isize)> = [(q, 1)]        // pairs keeps q's address.
+// y = 5                                            // Error: pairs reaches w and is used below.
+inspect(pairs)
+```
+
+Neither an item lent behind a borrow nor an item an owning Iterator moves out keeps its receiver's Loan:
+
+```kimi
+let shared: Array<raw/u8> = [null, null]
+var items = shared.iterate()
+let first = items.next()
+let second = items.next()                           // Valid: behind the item's borrow only raw arguments are retained.
+let owned: Array<raw/u8> = [null, null]
+var taken = owned@move.intoIterator()
+let third = taken.next()
+let fourth = taken.next()                           // Valid: an Iterator's item keeps no Loan of its receiver (§22.2.3).
+inspect(first)
+inspect(second)
+inspect(third)
+inspect(fourth)
 ```
