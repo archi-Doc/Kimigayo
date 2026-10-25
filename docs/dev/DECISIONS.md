@@ -7836,7 +7836,8 @@ structure is recorded here by the unit that first implements it.
   whether the program has the static's initializer stays `StaticInit`'s null, a consumer's broken contract (F10), since the
   validator sees one body (superseded by R4-M121: the validator checks it over the program). No library, corpus or mir-sweep body
   breaks it. AR-8's other two rules wait for a design with R4: a
-  write, Move or exclusive borrow past a shared Deref (G147 (2)) and one Ref per argument temp (G136) fail on valid programs today
+  write, Move or exclusive borrow past a shared Deref (G147 (2); partly superseded by R5-M123: no Move row) and one Ref per argument
+  temp (G136) fail on valid programs today
   (G147 (3)'s `&uniq (*_1).0` past `ref/closure`; a conditional argument's two Refs in one argument temp, so
   `replace(if c => a@uniq else => b@uniq, with: 3)` gives A5 `lent = b` on both paths) and meet forms other components own (A1's
   Move Paths, Binding-rejected Moves, default templates' prepared `ref` inputs). Rejected: the `Arity` row (a count rule); a Type
@@ -9293,3 +9294,29 @@ structure is recorded here by the unit that first implements it.
   kernel's checksum line needs interpolation (C9c) under MIR code generation; C8d measured a temporary variant as information (B/A median
   0.96, within the A=B variance, R5-M8's O2 rule). The later of C8d and C9c runs the corpus A/B under R5-M8, with ErasedCalls',
   SharedHandles' and VirtualDispatch's (R5-M105, R5-M111, R5-M115). It leaves the list.
+- **R5-M123 A write or an in-place destruction passes no shared layer (W1 rule 1, stage A)** (2026-10-26, R5 planning session; G147
+  (2)'s validator half, R4's step-2 ask AR-8; design review 1 accepted it; R4 signed off stage A from A5's side and agreed the placement;
+  partly supersedes R5-M71's wording of the rule) Rule (`MirValidator.SharedPaths.cs`, `MirViolation.SharedPath`): a projected Place
+  that a location writes (an Assign's or a returning Call's destination) or destroys in place (a Drop) passes no shared layer after its
+  last raw Deref; a finding is `InternalInvariant_Kd` at the location. A shared layer is one MIR Type fact, `MirTypes.IsSharedLayer`
+  (beside `View`): a Deref of a `ref`, `objref`, `rc` or `arc` Type (SPEC 3.3.2, 13.5.5), an Index of a Slice (4.8.1), or a PairLayer
+  whose binder admits a shared Semantics (its weakest case, 13.5.5; the binder's admitted set, whose cases `MirCases` views). The walk
+  goes from the Place's last step to its root and the first step that decides ends it: a raw pointer's Deref is no finding (SPEC 5.2.1
+  (3): a raw Place's authority is its pointer's), nor is the Deref directly on a PreparedInput, the caller's slot itself (plan 5.6.2, A3
+  E17), whose writes are A5-F9's `DefaultArgumentAccess_Kd` (R4-M90). A location in an inline default copy is its template's check
+  (R4-M69; a template with a finding is copied as an Opaque value), and where the scopes cannot be walked (a Scope finding) nothing is
+  checked. A Move is no row: A1's Move Path rule reports it (`StaticMovePathRequired_Kd`, `DefaultArgumentMove_Kd`), and the HIR
+  publishes the Move a `TransferRequired_Kd` needs until R6 (ledger row a1-g4), so R5-M71's "write, Move or exclusive borrow" loses
+  its Move. Stage B (a Ref `Uniq` or `TwoPhaseUniq`, a PairAcquire's and an Adapt's exclusive cases, a PairAcquire's own binder's layers
+  skipped, a second call in `Views`) waits for PLAN G262 (Binding plans a bare Reborrow without its path's authority), G251 (7)
+  (R4-M128's net counts pair captures only) and the SPEC session's reading of a discarded Place (3.5 against 14.2.2;
+  `MirBuilder.Values.cs:136-138`). Census under `-Pipeline mir` (the corpus's 461 cases, the whole Functional suite, 61 probe forms): no
+  write or Drop past a shared layer but at a slot step or in a copy. Consumers: A5's `Issue` forms no Loan past a shared step for any
+  mode (E3), which stage B makes a checked contract for exclusive Loans; code generation and the collector read nothing from it.
+  Size: Mir +94/-9 lines (the new file 58, with its contract), tests +115; no deletion. Speed: one access test per Place and a chain walk
+  per projected write or destruction; warm 0 B (`WarmValidationAllocatesNothing`); a warm validation of the library's and the 44
+  milestones' 10,020 bodies, six interleaved A/B pairs under other sessions' load, gave minima A 39.8-54.1 ms and B 43.1-56.5 ms, no
+  difference beyond the noise. Rejected: a Move row (A1's rule twice); skipping Closure or template bodies or dead temps (shape
+  allowlists); the validator reading the HIR Adjust of its location's syntax; a MIR mark on builder-decided acquisitions (a vocabulary
+  entry for a temporary structure, missing G262); the rule in the builder (one validator per IR); the shared-layer set in the validator
+  file (MirTypes owns MIR's Type facts; Binding states the same set in six places, a cross-phase duplication candidate).
