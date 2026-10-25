@@ -96,7 +96,7 @@ internal sealed partial class FunctionCodegen
             case MirAggregateKind.Tuple or MirAggregateKind.Closure:
                 return (offsets[index], type.Components[index]);
             case MirAggregateKind.Adt when AdtDef.IsEnum(type):
-                var payload = AdtDef.CaseTypes(type)![ordinal];
+                var payload = AdtDef.CaseTypes(type)![ordinal]!;
                 return (offsets[1] + (this.Laid(payload)?.Layout.FieldOffsets.Span[index] ?? 0), payload.Components[index]);
             case MirAggregateKind.Adt when AdtDef.Base(type) is { } parent:
                 return index == 0 ? (0, parent) : (offsets[index - 1], AdtDef.FieldType(type, index - 1)!);

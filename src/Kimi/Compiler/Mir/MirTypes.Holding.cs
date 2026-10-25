@@ -42,8 +42,9 @@ internal static partial class MirTypes
     private const int Bound = 32;
 
     /// <summary>Gets whether a value of a Type holds a raw pointer, an rc handle or a Weak of one at any depth, so that reading it from an
-    /// immutable static obtains authority from the environment (SPEC 8.11.2); a referent reached through the value counts too. Each Type
-    /// is walked once per query, as HoldsLoans' are, so a repeating recursive Type ends exactly; past depth 32 the answer is yes.</summary>
+    /// immutable static obtains authority from the environment (SPEC 8.11.2); a referent reached through the value counts too. A Field or
+    /// an enum's Case Binding did not substitute (null; <see cref="AdtDef.CaseTypes"/>) holds nothing, a dependent of Binding's rejection.
+    /// Each Type is walked once per query, as HoldsLoans' are, so a repeating recursive Type ends exactly; past depth 32 the answer is yes.</summary>
     /// <param name="type">The Type.</param>
     /// <param name="seen">Scratch for the Types walked, cleared first.</param>
     /// <returns>Whether the value holds raw authority.</returns>
@@ -56,7 +57,8 @@ internal static partial class MirTypes
     /// <summary>Gets whether a value of a Type may hold a Loan (SPEC 15.6), so that A5 tracks it: a part of it is a borrow, pair or raw
     /// layer (a raw pointer carries the holders it addresses and the Loans it was formed through, SPEC 15.6 Addresses), a Slice, a Function
     /// or Closure value, or an abstract Type, whose instance may store a borrow its Origins do not show. Its parts are its own storage, a
-    /// struct's Fields and base and an enum's payloads, and its components: elements, an owning handle's payload, and a Type argument,
+    /// struct's Fields and base and an enum's payloads (a Field or Case Binding did not substitute holds nothing, a dependent of Binding's
+    /// rejection; <see cref="AdtDef.CaseTypes"/>), and its components: elements, an owning handle's payload, and a Type argument,
     /// which its storage may hold behind a raw pointer (a library collection, its iterators) or as a Loan or a Weak (SPEC 3.2.2, 15.3.5);
     /// a function item holds none. The same walk gives what a call may write past the value (A3 E16): its guard, whether it may hold, past
     /// no shared layer, an exclusive reference (a pair layer's exclusive case and an abstract part counting, as do a Function or Closure

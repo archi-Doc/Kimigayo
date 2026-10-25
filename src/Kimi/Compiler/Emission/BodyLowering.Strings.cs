@@ -135,7 +135,7 @@ internal sealed partial class BodyLowering
         {
             foreach (var payload in cases)
             {
-                if (HasOwnedStorage(payload))
+                if (HasOwnedStorage(payload!))
                 {
                     return true;
                 }

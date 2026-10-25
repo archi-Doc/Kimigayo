@@ -131,7 +131,10 @@ internal static class DropGlue
         var cases = AdtDef.CaseTypes(type) ?? [];
         for (var ordinal = 0; ordinal < cases.Length; ordinal++)
         {
-            Reversed(cases[ordinal].Components, DropPartKind.Part, ordinal, into);
+            if (cases[ordinal] is { } payload)
+            {
+                Reversed(payload.Components, DropPartKind.Part, ordinal, into);
+            }
         }
 
         var parent = AdtDef.Base(type);

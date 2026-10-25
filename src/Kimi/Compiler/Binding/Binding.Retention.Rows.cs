@@ -206,8 +206,10 @@ public sealed partial class Binding
     }
 
     // The hold walk (Held) of a struct's or enum's stored content (SPEC 5.7 Slots and ownership): its base, and its Fields and Case
-    // payloads with the Types their declarations write; whether one unties `output`. An enum's Cases are walked only where its instance
-    // substituted them, the storage its verdict covered (DECISIONS BU-36), which bounds the walk.
+    // payloads with the Types their declarations write; whether one unties `output`. A Case's payloads are walked only where its instance
+    // substituted that Case (set in CaseTypes), the part the storage verdict walked (DECISIONS BU-37): the per-part rule at the Case's
+    // grain, which bounds the walk, so a failed Case's other payloads hold nothing (walked by payload, a failed Case's growing siblings
+    // would not end).
     private bool Stores(BoundType instance, int output, bool[] owned)
     {
         if (instance.Symbol?.Adt is not { } adt)
@@ -221,10 +223,10 @@ public sealed partial class Binding
             untied |= this.Held(this.StoredType(adt.Fields[i], instance), WrittenType(adt.Fields[i]), output, owned);
         }
 
-        var cases = AdtDef.CaseTypes(instance) is null ? 0 : adt.Cases.Length;
-        for (var i = 0; i < cases; i++)
+        var cases = AdtDef.CaseTypes(instance) ?? [];
+        for (var i = 0; i < cases.Length; i++)
         {
-            for (var j = 0; adt.Cases[i] is { } selected && j < selected.Payload.Length; j++)
+            for (var j = 0; cases[i] is not null && adt.Cases[i] is { } selected && j < selected.Payload.Length; j++)
             {
                 untied |= this.Held(this.StoredType(selected.Payload[j], instance), WrittenType(selected.Payload[j]), output, owned);
             }

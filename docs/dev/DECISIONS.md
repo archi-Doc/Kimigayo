@@ -5289,23 +5289,24 @@ resumed by R4-M86 (2026-10-20).
   beside `b: uniq/Bad` and `v = 2` while its result lives; i3's store, d3P's conflict beside its call).
   - Representation: `PrepareTypeStorage` gives `Binding.StorageOutcome { Prepared, Rejected, Limit }`. Rejected is the fact and name of
     Layout's `Outcome.Rejected` (R5-M37) as a separate type: Binding's walk reaches through handles (`Sx { x: rc/Bad }` is Rejected here
-    and Ok for Layout), Layout's by placement only and wider (InlineCycle, CLayoutRejected, Length < 0), and Binding cannot depend on the
-    Backend. A limit takes precedence. The walk goes past a part that does not substitute (a null Field; an enum's null Cases, its base
-    and components still walked); each Type's walk keeps a rejected bit ORed into its caller's, and the member closing a component marks
-    every member with the component's. A finished Type's mark is `(height, -1)` for Rejected in place of `(height, 0)`, so marks stay
-    8 bytes. The verdict depends on the Type alone: x1 (X reaches T's Box^64 Field through a handle beside its failed Field) is Limit for
-    X and T in both query orders, the X-Y ring and Z, which stores Y, Rejected in three; stopping at the first failure would make it
-    order-dependent and hide a limit behind a failed part.
+    and Ok for Layout), Layout's by placement only and wider (InlineCycle, CLayoutRejected, Length < 0), and Binding cannot depend on
+    the Backend. A limit takes precedence. The walk goes past a part that does not substitute (a null Field; an enum's null Cases, its
+    base and components still walked; a null Case since BU-37); each Type's walk keeps a rejected bit ORed into its caller's, and the
+    member closing a component marks every member with the component's. A finished Type's mark is `(height, -1)` for Rejected in place
+    of `(height, 0)`, so marks stay 8 bytes. The verdict depends on the Type alone: x1 (X reaches T's Box^64 Field through a handle
+    beside its failed Field) is Limit for X and T in both query orders, the X-Y ring and Z, which stores Y, Rejected in three; stopping
+    at the first failure would make it order-dependent and hide a limit behind a failed part.
   - One TyCtxt path: `TyCtxt.Instance(type, subst)` gives the instance (`Binding.StorageInstance`, split out of `InstantiateStorageType`
     first, behavior unchanged) with its verdict, the identity keeping the Type as Prepared; `Apply` is that instance when Prepared. The
     readers of the verdict take `== Prepared` where they took true (`InstantiateStorageType`, `TyCtxt.Dispatch`, `BodyLowering.Structs`),
     so every reader but retention sees what it saw.
   - Pass-through: retention reads Rejected storage as instantiated (`Binding.Retained`, for the contract's instance and `Held`): a part
     that does not substitute holds nothing (no row, no untie) and the rows that hold whatever it is stay. `Held` walks an enum's Cases
-    only where its instance substituted them (`AdtDef.CaseTypes` not null), the storage the verdict covered, which bounds it (e1, `enum
-    E<T> { A(Missing), B(rc/E<(T, T)>) }`, does not end otherwise). `CallRetention.Limit` is a genuine limit only: BU-12's height and path,
-    a keeper cycle (BU-24), and a contract substitution that does not complete (no reproducer). BU-24's keeper clause (a keeper Type
-    `StoredType` does not instantiate makes the walk incomplete) stays Limit and is unreached: a failed keeper Field registers no keeper.
+    only where its instance substituted them (`AdtDef.CaseTypes` not null; a Case where it is set since BU-37, which makes e1 a limit),
+    the storage the verdict covered, which bounds it (e1, `enum E<T> { A(Missing), B(rc/E<(T, T)>) }`, does not end otherwise).
+    `CallRetention.Limit` is a genuine limit only: BU-12's height and path, a keeper cycle (BU-24), and a contract substitution that
+    does not complete (no reproducer). BU-24's keeper clause (a keeper Type `StoredType` does not instantiate makes the walk incomplete)
+    stays Limit and is unreached: a failed keeper Field registers no keeper.
   - Guard: `Binding.Retained` throws for Rejected storage in a complete compilation (DIAGNOSTICS rule 8 makes a part Binding did not bind
     an incomplete Binding), the established broken-contract form at this site (`TyCtxt.Instance`'s contract without its Type,
     `CallRetention`'s Limit rows), which ends the check as `CheckFaulted_Kd` (rule 9).
@@ -5324,11 +5325,46 @@ resumed by R4-M86 (2026-10-20).
     changes; R7's); stopping at the first failure; classifying by `BindingState` or A5 reading completeness (a second rule, R4-M113); a
     dependent flag on `CallRetention` (A5 has nothing to do with it); B's `(Height, Open, Rejected)` mark (a third larger table on valid
     programs).
-  - Open (outside the unit): per-case holes in `InstanceStorage.Cases` (PLAN G242, BU: e2 `enum E { A(Missing), B(raw/i32) }` gives no
-    row where its repair gives `1 Value store 0, untied store 0`; growth in another case is unseen), whose shared fix (R4's G244 A1)
-    replaces this unit's enum clause in `StorageParts` and rule in `Stores`; Dispatch's K6 Witness Limit and the collector's StorageNesting
-    `Unsupported_Kd` over Rejected storage, published under MIR code generation (BU, R5); A4's `MirEffects.Solve` and `MirCases.Views` over
-    `Apply`'s null (R4, PLAN G240's row); the builder's default copy `FoldType` and the Arity finding on a Rejected enum's case (G244).
+  - Open (outside the unit): per-case holes in `InstanceStorage.Cases` (closed by BU-37; PLAN G242, BU: e2 `enum E { A(Missing),
+    B(raw/i32) }` gives no row where its repair gives `1 Value store 0, untied store 0`; growth in another case is unseen), whose shared
+    fix (R4's G244 A1) replaces this unit's enum clause in `StorageParts` and rule in `Stores`; Dispatch's K6 Witness Limit and the
+    collector's StorageNesting `Unsupported_Kd` over Rejected storage, published under MIR code generation (BU, R5); A4's
+    `MirEffects.Solve` and `MirCases.Views` over `Apply`'s null (R4, PLAN G240's row); the builder's default copy `FoldType` and the
+    Arity finding on a Rejected enum's case (G244).
+
+- **BU-37 An enum instance publishes each Case it substitutes** (2026-10-25; the BU planning session after the full process: designs A
+  (R4's A1) and B, the design review's choice of B with A's MIR rows and its required changes R1-R5; R4's A5/MIR review, no blocking
+  finding, its rows and O4; PLAN G242's enum part and G245's enum half, unit bu39) SPEC 6.5.1, 15.6.4, 23.1.1, 23.1.2: Binding publishes
+  the stored parts it substituted and only a part it rejected is absent; a consumer reads an absent part as Binding's rejection, a
+  dependent that holds, places and destroys nothing, never as a limit.
+  - Cause: `Binding.Substitute` returned at the first Case whose payload did not substitute and left `InstanceStorage.Cases` null, so an
+    enum's storage was all-or-nothing while a struct's is per Field, and BU-36 special-cased it twice (`StorageParts`' enum clause,
+    `Stores`' whole-enum rule). e2 (`A(Missing)`, `B(raw/i32)`) kept no row, e1's growth through B went unseen, MIR over B gave Arity or
+    Projection findings (mir: `InternalInvariant_Kd`, nothing analyzed), and Layout's early Rejected hid another Case's Oversized.
+  - Representation: `InstanceStorage.Cases` is `BoundType?[]`, never null for an enum (one absent state; reused in place, as Fields are);
+    `AdtDef.CaseTypes` is null only off an enum. A Case is null exactly where its payload Tuple did not form (a payload that does not
+    substitute, or a Case form without a name). The Case's payload Tuple is the part, as a Field's Type is: the node BU-12's walk and
+    Layout count and the Type MIR's Downcast projects.
+  - Readers: a null Case reads as that reader's null Field: the storage walk (rejected and walked past; the enum clause is deleted),
+    Layout (`Fold.Reject`, R5-M52's precedence), `MirTypes.HoldsLoans`, `HoldsRaw` and `Destruction`, `EffectBounds`,
+    `MirBody.ProjectedType` (null), the validator's Arity (-1, a broken contract), DropGlue, codegen and the old path's readers. `Stores`
+    walks a Case's payloads only where the Case is set: the per-part rule at the Case's grain, the part the storage verdict walked, which
+    bounds the hold walk (walked by payload, `A(Missing, rc/E<(T, T)>, rc/E<Option<T>>)` did not end in 120 s).
+  - Consequences: e2 keeps its repair's row, also inside a struct; e1 is the genuine limit, its repair's; MIR over the substituted Cases
+    has no finding and A5 and A1 report the valid twin's records, where a Loan held only through the failed Case is a dependent and goes
+    (m3); an oversized other Case is `OversizedLayout_Kd` at its use under MIR code generation, independent (its repair reports it, as a
+    struct's Field does); a form over the failed Case stays Binding's (`TypeMismatch_Kd`, `InvalidPattern_Kd`) and is never projected.
+    The diagnostic snapshot and the semantic one (HIR, MIR) are unchanged; cold Bind bytes are identical on milestones 1, 20, 33 and 34,
+    warm 0 B.
+  - Supersedes BU-36's enum clauses (the walk's "an enum's null Cases" and `Held`'s "`CaseTypes` not null") and e1's residual expectation;
+    closes BU-36's first Open item and G245's enum half (R4-M127 the builder half). Each names this entry.
+  - Rejected: A's `null!` form (two absent states); a walk by payload with `Stores` ungated (it does not end, above); the payload grain in
+    Binding only (two grains over one Case); all-or-nothing Cases with a per-Case mask (MIR still without the substituted Cases);
+    consumers re-substituting a Case (MIR cannot); an Error placeholder Type (a vocabulary entry every Type walker reads).
+  - Open (PLAN G242): the residual at the payload grain, a Case with one failed payload publishing none of its payloads (`A(Missing,
+    raw/i32)` keeps no row, the growth in the p16 form is unseen; BU with R4 for `MirTypes.Holding` and R5 for Layout; option 2:
+    payloads published and walked per payload); A4's `MirEffects.Destroyed` reads a null part as Limit, a dependent by R4-M118 (R4); the
+    collector's `Unsupported_Kd` over Rejected storage, now visible on enum forms under sel, is G242's Dispatch part (BU, next).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

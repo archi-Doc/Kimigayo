@@ -427,7 +427,7 @@ internal sealed class AggregateLayoutPool
             var destroy = false;
             for (var i = 0; i < types.Length; i++)
             {
-                if (this.Get(types[i], depth + 1) is not { } payload)
+                if (types[i] is not { } stored || this.Get(stored, depth + 1) is not { } payload)
                 {
                     return null;
                 }

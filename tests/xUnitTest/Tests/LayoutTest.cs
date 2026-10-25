@@ -266,6 +266,20 @@ public partial class LayoutTest
         Assert.Equal(new Layout.Result(Layout.Outcome.Rejected, null, expected, false), c.Layout.Of(type));
     }
 
+    [Theory]
+    [InlineData("enum E\n    A(Missing)\n    B(i32)\n", "Rejected")]
+    [InlineData("enum E\n    A(Missing)\n    B([9223372036854775807 of i64])\n", "Oversized")]
+    [InlineData("enum E\n    A(Missing)\n    B([2147483648 of u8])\n", "CountLimit")]
+    [InlineData("struct E\n    var a: Missing\n    var b: [9223372036854775807 of i64]\n", "Oversized")]
+    public void ARejectedCaseYieldsToAnotherCasesOutcome(string source, string outcome)
+    {
+        // R5-M52, DECISIONS BU-37 (G242): an enum's Case whose payload Binding did not substitute is a part Layout does not place, as a
+        // struct's Field is, so another Case's Oversized or limit takes precedence over Rejected (fail-before: the enum Rejected at once).
+        var c = CompilationTestHelper.Parse(source + "let y = 1");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(outcome, c.Layout.Of(Declared(c, "E")).Outcome.ToString());
+    }
+
     [Fact]
     public void AnUnresolvedBaseIsLaidOutWithoutIt()
     {

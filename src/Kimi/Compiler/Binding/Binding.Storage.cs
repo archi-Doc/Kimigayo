@@ -89,31 +89,35 @@ public sealed partial class Binding
         }
 
         var cases = adt?.Cases ?? [];
-        var types = instance.Cases?.Length == cases.Length ? instance.Cases : new BoundType[cases.Length];
-        instance.Cases = null;
-        for (var i = 0; i < cases.Length; i++)
+        if (instance.Cases.Length != cases.Length)
         {
-            this.enumPayloadTypes.Clear();
-            if (cases[i] is not { } selected)
-            {
-                return;
-            }
-
-            foreach (var syntax in selected.Payload)
-            {
-                if (this.StoredType(syntax, type) is not { } payload)
-                {
-                    return;
-                }
-
-                this.enumPayloadTypes.Add(this.WithoutRawOrigins(payload)!);
-            }
-
-            types[i] = this.types.Tuple(CollectionsMarshal.AsSpan(this.enumPayloadTypes));
+            instance.Cases = new BoundType?[cases.Length];
         }
 
+        for (var i = 0; i < cases.Length; i++)
+        {
+            instance.Cases[i] = cases[i] is { } selected ? this.PayloadTuple(selected, type) : null;
+        }
+    }
+
+    // A Case's payload Types under an instance's substitution as one Tuple; null when one does not substitute.
+    private BoundType? PayloadTuple(BoundEnumCase selected, BoundType type)
+    {
         this.enumPayloadTypes.Clear();
-        instance.Cases = types;
+        foreach (var syntax in selected.Payload)
+        {
+            if (this.StoredType(syntax, type) is not { } payload)
+            {
+                this.enumPayloadTypes.Clear();
+                return null;
+            }
+
+            this.enumPayloadTypes.Add(this.WithoutRawOrigins(payload)!);
+        }
+
+        var tuple = this.types.Tuple(CollectionsMarshal.AsSpan(this.enumPayloadTypes));
+        this.enumPayloadTypes.Clear();
+        return tuple;
     }
 
     // SPEC 21.3.2: a struct or enum that contains itself by value (through stored Fields and inline

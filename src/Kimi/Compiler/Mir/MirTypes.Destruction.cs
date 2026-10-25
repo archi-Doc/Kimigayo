@@ -66,7 +66,8 @@ internal static partial class MirTypes
     /// effect summaries share. It reports each part that runs or releases something: an abstract Type (its instance decides), an owning
     /// handle, a Function value (its environment), a string, an Array or a Dictionary, a struct that declares a drop (whose destructor body
     /// alone destroys its parts, R4-M6b), and as Deep a part past depth 32; it walks on into the components of a Tuple, fixed array,
-    /// Closure, Array or Dictionary, a struct's Fields and base and an enum's Case payloads. References, raw pointers, Slices, scalars and
+    /// Closure, Array or Dictionary, a struct's Fields and base and an enum's Case payloads; a Field or Case Binding did not substitute
+    /// (null; <see cref="AdtDef.CaseTypes"/>) destroys nothing, a dependent of Binding's rejection. References, raw pointers, Slices, scalars and
     /// an InlineStorage, whose owner destroys its contents (<see cref="AdtDef.IsInlineStorage"/>), release nothing. It enters each Type
     /// once per query (<see cref="IMirDestruction.First"/>): a Type met again was walked already, so the walk is linear in the distinct
     /// Types it meets, and a growing Type, new at each level, still ends at the bound.</summary>
@@ -111,7 +112,7 @@ internal static partial class MirTypes
         }
 
         var parts = sequence || type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure
-            ? type.Components : AdtDef.CaseTypes(type) ?? [];
+            ? (IReadOnlyList<BoundType?>)type.Components : AdtDef.CaseTypes(type) ?? [];
         for (var i = 0; i < parts.Count; i++)
         {
             if (Destruction(parts[i], ref visitor, depth + 1))

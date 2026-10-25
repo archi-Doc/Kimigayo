@@ -226,20 +226,22 @@ internal sealed partial class Layout
     }
 
     // An enum: its tag (Tag, an i32 holding the Case ordinal) at offset 0, then the union of its Case payload Tuples, aligned for the most
-    // aligned payload (IMPL 21.1.3: implementation-defined). The nonnull Option is laid out so too until PLAN U8 (STATUS). Payloads
-    // Binding did not substitute make it Rejected.
+    // aligned payload (IMPL 21.1.3: implementation-defined). The nonnull Option is laid out so too until PLAN U8 (STATUS). A Case whose
+    // payload Binding did not substitute is a part not placed, as a struct's Field is: Rejected, after the other Cases' outcomes (Fold's
+    // precedence; DECISIONS BU-37).
     private Entry PlaceEnum(BoundType type, int budget)
     {
-        if (AdtDef.CaseTypes(type) is not { } payloads)
-        {
-            return Rejected(type);
-        }
-
         var fold = new Fold(type);
         var alignment = 1;
         UInt128 payload = 0;
-        foreach (var item in payloads)
+        foreach (var item in AdtDef.CaseTypes(type)!)
         {
+            if (item is null)
+            {
+                fold.Reject();
+                continue;
+            }
+
             var part = fold.Add(this.Walk(item, budget), false);
             alignment = Math.Max(alignment, Math.Max(part.Alignment, 1));
             payload = UInt128.Max(payload, part.Size);

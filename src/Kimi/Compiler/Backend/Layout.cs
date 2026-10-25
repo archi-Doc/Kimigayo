@@ -16,7 +16,7 @@
 // OversizedLayout_Kd at each use (R5-M55, R5-M52), Rejected to a derived failure without a record; codegen after acceptance treats any
 // outcome but Ok as a broken contract (InternalInvariant_Kd). No size is published.
 // After a failed Binding: Rejected for a declaration with InlineCycle or a rejected C-layout declaration (CLayoutRejected: Binding
-// reports its direct zero-sized Field), a null stored Field Type, null CaseTypes or a fixed array with Length < 0; an unresolved base,
+// reports its direct zero-sized Field), a null stored Field Type or Case (BU-37), or a fixed array with Length < 0; an unresolved base,
 // which Binding publishes as no base, is laid out without it (Ok; no record follows a failed Binding).
 // Invariants: no alignment exceeds 16, the heap's (SPEC 21.4.3; DECISIONS R5-M92): a row's is at most 16 and a placement takes its parts'
 // maximum; an answer depends only on the Type and the program version, never on query order; one record per representation
