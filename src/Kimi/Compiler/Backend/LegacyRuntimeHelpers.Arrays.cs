@@ -227,9 +227,12 @@ internal sealed partial class LegacyRuntimeHelpers
             .Replace("REASON_OVERFLOW", Number(AbortReasons.IntegerOverflow), StringComparison.Ordinal) +
         RuntimeAbi.ArrayShrink.GetDefinition(exported: false) + ArrayShrinkBody;
 
-    private static readonly AbiParameter Handle = new("ptr", "handle");
+    // The parameters take the internal convention's kinds and logical indices (IMPL 21.3.1): the handle a Value at slot 0, an index, a second
+    // input and an element at their slots, a value in memory an OwnedSlot, a stride or count given; MIR code generation's one call writer
+    // places a call's operands by them (R5 plan C8d), and a definition prints only their types and names.
+    private static readonly AbiParameter Handle = new("ptr", "handle", AbiParameterKind.Value, 0);
 
-    private static readonly AbiParameter Index = new("i64", "index");
+    private static readonly AbiParameter Index = new("i64", "index", AbiParameterKind.Value, 1);
 
     private static readonly AbiParameter Result = new("ptr", "result", AbiParameterKind.ResultSlot);
 
@@ -290,7 +293,7 @@ internal sealed partial class LegacyRuntimeHelpers
         new(
             ArrayHelperKind.Swap,
             "__kimi_array_swap_",
-            static (name, _, _) => Located(name, [new("i64", "first"), new("i64", "second")]),
+            static (name, _, _) => Located(name, [new("i64", "first", AbiParameterKind.Value, 1), new("i64", "second", AbiParameterKind.Value, 2)]),
             ArrayHelperPrologue,
             WriteArraySwap,
             HelperNeeds.ArrayRuntime),
@@ -304,7 +307,7 @@ internal sealed partial class LegacyRuntimeHelpers
         new(
             ArrayHelperKind.OwnStorage,
             "__kimi_array_own_",
-            static (name, _, _) => Slotted(name, [new("ptr", "value"), Result]),
+            static (name, _, _) => Slotted(name, [new("ptr", "value", AbiParameterKind.OwnedSlot, 0), Result]),
             "entry:\n",
             WriteArrayOwn,
             HelperNeeds.None),
@@ -324,6 +327,19 @@ internal sealed partial class LegacyRuntimeHelpers
         => (uint)kind < (uint)ArrayRows.Length && ArrayRows[(int)kind].Kind == kind
             ? ArrayRows[(int)kind]
             : throw new InvalidOperationException("An Array helper kind has no row.");
+
+    /// <summary>Writes one Array helper's definition: its ABI, its kind row's prologue and writer, the one text both generators write
+    /// (PD2).</summary>
+    /// <param name="output">The module text.</param>
+    /// <param name="helper">The helper.</param>
+    internal static void WriteArray(TextWriter output, ArrayHelper helper)
+    {
+        var row = ArrayRow(helper.Kind);
+        output.Write(helper.Abi.GetDefinition(exported: false));
+        output.Write(row.Prologue);
+        row.Write(output, helper);
+        output.Write("}\n");
+    }
 
     /// <summary>Registers an Array helper a lowered body uses: each helper is written once per module, in first-request order,
     /// and the runtimes its kind's row declares join the module's.</summary>
@@ -348,11 +364,7 @@ internal sealed partial class LegacyRuntimeHelpers
 
         foreach (var helper in this.arrayHelpers)
         {
-            var row = ArrayRow(helper.Kind);
-            output.Write(helper.Abi.GetDefinition(exported: false));
-            output.Write(row.Prologue);
-            row.Write(output, helper);
-            output.Write("}\n");
+            WriteArray(output, helper);
         }
     }
 
@@ -364,15 +376,18 @@ internal sealed partial class LegacyRuntimeHelpers
     private static FunctionAbi Slotted(string name, AbiParameter[] parameters)
         => new(name, RuntimeAbi.Unit.ComputationType, parameters) { ResultSlot = true };
 
-    // A stored-value argument of a helper that moves it in: a scalar by value, another value by address (SPEC 21.3.1).
-    private static AbiParameter Argument(in StoredValue value, string name) => new(value.IsScalar ? value.Value.ComputationType : "ptr", name);
+    // A stored-value argument of a helper that moves it in at a slot (-1: none, a Dictionary helper's): a scalar by value, another value by
+    // address (SPEC 21.3.1).
+    private static AbiParameter Argument(in StoredValue value, string name, int slot = -1) => value.IsScalar
+        ? new(value.Value.ComputationType, name, AbiParameterKind.Value, slot)
+        : new("ptr", name, AbiParameterKind.OwnedSlot, slot);
 
     // A zero-sized element has no slot, so its helpers take no value, source or result pointer (SPEC 4.5).
     private static FunctionAbi AppendShape(string name, StoredValue element)
-        => element.IsZeroSized ? Located(name, []) : Located(name, [Argument(element, "value")]);
+        => element.IsZeroSized ? Located(name, []) : Located(name, [Argument(element, "value", 1)]);
 
     private static FunctionAbi InsertShape(string name, StoredValue element)
-        => element.IsZeroSized ? Located(name, [Index]) : Located(name, [Index, Argument(element, "value")]);
+        => element.IsZeroSized ? Located(name, [Index]) : Located(name, [Index, Argument(element, "value", 2)]);
 
     private static FunctionAbi PlaceShape(string name, StoredValue element)
         => element.IsZeroSized ? Located(name, []) : Located(name, [new("ptr", "source")]);
@@ -393,7 +408,7 @@ internal sealed partial class LegacyRuntimeHelpers
     // The consumed fixed array moves in by address unless its storage has no bytes (SPEC 22.2).
     private static FunctionAbi OwnFixedShape(string name, RemainderFields fields) => fields.StorageSize == 0
         ? Slotted(name, [new("i64", "count"), Result])
-        : Slotted(name, [new("ptr", "value"), new("i64", "count"), Result]);
+        : Slotted(name, [new("ptr", "value", AbiParameterKind.OwnedSlot, 0), new("i64", "count"), Result]);
 
     private static long Stride(ArrayHelper helper) => helper.Element.Value.Layout.Stride;
 
