@@ -634,16 +634,14 @@ public sealed partial class MirBorrowsTest
 
     // SPEC 23.1.2 (DECISIONS R4-M127): a default the call's substitution does not instantiate is an Opaque value at the call (MirBuildTest's
     // ACopyTheCallDoesNotInstantiateIsAnOpaqueValue), so no validator finding hides the caller's independent records: `v = 2` stays, over
-    // storage Binding rejected and in a complete program past the storage depth, as in the twins. The Unsupported_Kd at such a call is A5's
-    // own (its retention, which Binding does not instantiate there). Before, the copies' Type findings left both programs unanalyzed.
+    // storage Binding rejected and in a complete program past the storage depth, as in the twins. The Unsupported_Kd at lim's and lim64's
+    // calls is A5's own, their retention past the depth bound (CallRetention.Limit, a genuine limit); a call over storage Binding rejected
+    // keeps its other rows instead (DECISIONS BU-36, SPEC 23.1.2). Before, the copies' Type findings left both programs unanalyzed.
     [Fact]
     public void AnUninstantiableDefaultHidesNoRecord()
     {
         Assert.Equal(
-            [
-                "dep: f(b) Unsupported_Kd", "dep: v = 2", "dep3: f3(b) Unsupported_Kd", "dep3: v = 2", "dep2: f2(b) Unsupported_Kd", "dep2: v = 2",
-                "val: v = 2", "val2: v = 2",
-            ],
+            ["dep: v = 2", "dep3: v = 2", "dep2: v = 2", "val: v = 2", "val2: v = 2"],
             Analyzed(MirBuildTest.RejectedCopies));
         Assert.Equal(
             ["lim: f(b) Unsupported_Kd", "lim: v = 2", "lim64: f(b) Unsupported_Kd", "lim64: v = 2", "n30: v = 2"],

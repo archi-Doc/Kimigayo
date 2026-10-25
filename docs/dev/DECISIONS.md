@@ -3683,8 +3683,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `InstanceCollectorTest.TheLocationRuleLeavesNonRootModules` keeps K 4.9's inlined-default case with a default that instantiates and
     whose resource limit arises inside the copy (`grow<u8>(1, 3)`), its expectation exact; the former form is MirBuildTest's.
   - Shared reading (R4-M125): the builder builds what Binding published, derives only what Binding rejected, and reports an instance it
-    cannot make as `Unsupported_Kd` at its use. Until G240 (U2), `Apply`'s null conflates storage Binding rejected with a genuine limit,
-    so a Rejected instance also skips its copy; U2 copies it through G240's instance-with-outcome member.
+    cannot make as `Unsupported_Kd` at its use. Until U2, `Apply`'s null conflates storage Binding rejected with a genuine limit, so a
+    Rejected instance also skips its copy; U2 copies it through G240's instance with its outcome (`TyCtxt.Instance`, BU-36).
   - Hand-off: the enum sites of the family (an Adt aggregate's Arity and a pattern's Downcast, over a case Binding substituted beside
     one it did not) are BU's G242 (per-case `InstanceStorage.Cases`, design A1, full process), not the builder's.
   - Rejected: builder guards deriving at the construct (they derive forms Binding accepted, losing a copy's caller Loans, R4-M10); a
