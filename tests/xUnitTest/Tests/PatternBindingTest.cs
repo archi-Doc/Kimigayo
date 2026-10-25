@@ -276,6 +276,22 @@ public class PatternBindingTest
         Assert.Equal(string.Empty, Records(Head.Replace("MISSING", "2", StringComparison.Ordinal) + use));
     }
 
+    // SPEC 23.1.2: a match whose pattern or guard failed rests on that located failure, the one record; the match adds none (each
+    // row's twin replaces `written` by `valid` and has no record).
+    [Theory]
+    [InlineData("func g(o: Option<i32>) => match o\n    .Some(let x) if x => ()\n    _ => ()", "TypeMismatch_Kd x", "if x =>", "if x > 0 =>")]
+    [InlineData("func g(x: i32) => match x\n    true => ()\n    _ => ()", "InvalidPattern_Kd true", "true", "0")]
+    [InlineData("func g(o: Option<i32>) => match o\n    .Missing => ()\n    _ => ()", "InvalidPattern_Kd .Missing | UnresolvedBinding_Kd .Missing", ".Missing", ".None")]
+    [InlineData("func g(o: Option<i32>) => match o\n    .Missing => ()\n    .None => ()", "InvalidPattern_Kd .Missing | UnresolvedBinding_Kd .Missing", ".Missing", ".Some(_)")]
+    [InlineData("func g(o: Option<i32>) => match o\n    Missing.A => ()\n    _ => ()", "InvalidPattern_Kd Missing.A", "Missing.A", "Option<i32>.None")]
+    [InlineData("func g(o: Option<i32>) -> i32 => match o\n    .Some(_, _) => 1\n    _ => 2", "InvalidPattern_Kd .Some(_, _)", "(_, _)", "(_)")]
+    [InlineData("func g(x: (i32, i32)) => match x\n    (let n, let n) => ()", "DuplicateBinding_Kd let n", "let n)", "let m)")]
+    public void AMatchRestsOnItsFailedPatternOrGuard(string source, string records, string written, string valid)
+    {
+        Assert.Equal(records, Records(source));
+        Assert.Equal(string.Empty, Records(source.Replace(written, valid, StringComparison.Ordinal)));
+    }
+
     [Fact]
     public void SharedAccessBindsAReferenceToTheCopyPayload()
     {

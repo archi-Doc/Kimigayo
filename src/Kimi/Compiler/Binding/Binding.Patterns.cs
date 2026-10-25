@@ -290,12 +290,8 @@ public sealed partial class Binding
             return Complete(match, null);
         }
 
-        if (plan.Invalid)
-        {
-            return this.Fail(match, BindingFailure.InvalidPattern);
-        }
-
-        if (plan.Pending || pendingBody)
+        // SPEC 23.1.2: an invalid plan's located failures, at a position or a guard, were consulted; the match rests on them.
+        if (plan.Invalid || plan.Pending || pendingBody)
         {
             return this.Fail(match, BindingFailure.Unsupported, true);
         }
@@ -360,7 +356,13 @@ public sealed partial class Binding
         var index = plan.PositionStorage.Count;
         plan.PositionStorage.Add(new(syntax, matched, BoundPatternKind.Invalid, parent, element, index + 1));
         var position = plan.PositionStorage[index];
-        plan.Invalid |= syntax.BindingState == BindingState.Invalid;
+        if (syntax.BindingState == BindingState.Invalid)
+        {
+            // A position that failed before the plan, such as a repeated binding name, is a part the match consulted.
+            plan.Invalid = true;
+            this.Consulted(syntax);
+        }
+
         if (!this.ValidatePatternType(plan, syntax, matched, outer))
         {
             return index;
