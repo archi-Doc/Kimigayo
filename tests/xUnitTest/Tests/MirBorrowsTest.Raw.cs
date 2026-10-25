@@ -64,11 +64,12 @@ public sealed partial class MirBorrowsTest
 
     // SPEC 15.6 Addresses and reach (G184, G160 (b), D2): `w@raw` addresses w's holder, so a read through it carries what w holds and a
     // write through it adds to w, also through a raw chain; a pointer keeps the holders it addresses used (D2) though nothing reads
-    // through it; a Raw Place borrow of w's referent carries what the pointer reaches (5.2.2); the dead twins are valid.
+    // through it; a Raw Place borrow of w's referent carries what the pointer reaches (5.2.2); an Adapt the view resolves to a raw Ref
+    // (`w@s` under `s is raw`, SPEC 8.14) addresses w's holder as `w@raw` does; the dead twins are valid.
     [Fact]
     public void ARawPointerCarriesTheHoldersItAddresses()
         => Assert.Equal(
-            ["readThrough: y = 5", "chain: x = 5", "compared: y = 5", "sliced: y = 5"],
+            ["readThrough: y = 5", "chain: x = 5", "compared: y = 5", "sliced: y = 5", "adapted: y = 5"],
             Problems(RawShapes + """
                 func readThrough()
                     var y: i32 = 1
@@ -110,6 +111,19 @@ public sealed partial class MirBorrowsTest
                         let first = s[0]
                         y = 5
                         inspect(first)
+                func adapted<s/T>()
+                    s is raw
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    let p = w@s
+                    y = 5
+                    let q = p@move
+                func adaptedDead<s/T>()
+                    s is raw
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    let p = w@s
+                    y = 5
                 """));
 
     // SPEC 5.7 Calls, 15.6, 15.6.4 (G160 (a), (c), (d); D6, D10; DECISIONS R4-M116 S2): a call stores through a raw Field what its contract
@@ -347,13 +361,24 @@ public sealed partial class MirBorrowsTest
                     storeT(t@uniq, k)
                 """));
 
-    // DECISIONS R4-M116 PQ-10 (B′ §4.3; registered for X-2): a Borrow of a `during self` layer's Place, or of a Tuple Place enclosing one,
-    // and a Copy read of such a Tuple, are located Unsupported_Kd until the Loan records the layer's own-step entry; a Borrow of the holder
-    // and a read of the layer through it are precise.
+    // DECISIONS R4-M116 PQ-10 (B′ §4.3; registered for X-2): a Borrow of a `during self` layer's Place, or of a Tuple or fixed-array Place
+    // enclosing one inline (also inside a nested Tuple), and a Copy read of such a Place, are located Unsupported_Kd until the Loan records
+    // the layer's own-step entry; a Borrow of the holder, a read of the layer through it, a read of an element and of a scalar beside the
+    // layer are precise.
     [Fact]
     public void ABorrowOfADuringSelfLayerIsUnsupported()
     {
         var c = MirBuildTest.Compile(Prelude + RawShapes + """
+            struct Arrs
+                internal var arr: [2 of raw/u8 during self]
+                internal var n: i32
+                public init()
+                    self.arr = [null, null]
+                    self.n = 0
+            struct Nest
+                internal var nest: ((raw/u8 during self, i32), i32)
+                public init()
+                    self.nest = ((null, 1), 2)
             func layerRef()
                 var y: i32 = 1
                 var b = Buf<ref/i32>.init(4)
@@ -377,10 +402,30 @@ public sealed partial class MirBorrowsTest
             func enclosingOnly()
                 let s = Pairs.init()
                 let t = s.pair
+            func arrayCopy()
+                let a = Arrs.init()
+                let t = a.arr
+            func arrayRef()
+                let a = Arrs.init()
+                let r = a.arr@ref
+            func arrayElement() -> bool
+                let a = Arrs.init()
+                let p = a.arr[1]
+                return p == null
+            func arrayScalar() -> i32
+                let a = Arrs.init()
+                return a.n
+            func nestedCopy()
+                let s = Nest.init()
+                let t = s.nest
+            func nestedScalar() -> i32
+                let s = Nest.init()
+                return s.nest.1
             """);
         Assert.Equal(
             ["layerRef: b.data@ref Unsupported_Kd", "enclosingRef: s.pair@ref Unsupported_Kd", "enclosingCopy: s.pair Unsupported_Kd",
-                "enclosingOnly: s.pair Unsupported_Kd"],
+                "enclosingOnly: s.pair Unsupported_Kd", "arrayCopy: a.arr Unsupported_Kd", "arrayRef: a.arr@ref Unsupported_Kd",
+                "nestedCopy: s.nest Unsupported_Kd"],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
