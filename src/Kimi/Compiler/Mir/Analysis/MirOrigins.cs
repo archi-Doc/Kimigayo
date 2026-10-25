@@ -16,9 +16,9 @@
 //   ways, and the fact Relation; Unsupported_Kd (Ownership.Unsupported) at a row or Ref with an Unclassed end (2a0-D §3 row 9, D19),
 //   whatever Binding's completeness (DECISIONS R4-M113), while a Dependent node, an end a Binding failure left Unbound, is never a source
 //   or a judged target, so only a chain through it is judged, between its ends (SPEC 23.1.2, R4-M118); OwnershipStorageLimit_Kd once at a
-//   body whose arena MirDataflow.Within refuses, which the stratum then skips (D20); and, which Findings adds once per program after step
-//   4, InternalInvariant_Kd (Ownership.Internal, NoBody, every view) at each of the view's findings, a broken view contract in a complete
-//   compilation (R4-M101 E2, E4).
+//   body whose arena MirDataflow.Within refuses, through MirDataflow.StorageLimit with its arguments (G213), which the stratum then skips
+//   (D20); and, which Findings adds once per program after step 4, InternalInvariant_Kd (Ownership.Internal, NoBody, every view) at each
+//   of the view's findings, a broken view contract in a complete compilation (R4-M101 E2, E4).
 // - Invariants: no liveness, CFG order, Loan set or syntax is read; every Origin comes through the view, a row's ends by index and a Ref's
 //   or a dereferenced layer's through OriginAtom at the Ref's site; a chain's verdict does not depend on reachability; views whose active
 //   rows and containment edges are equal form one class, judged once, under the borrow binders all its views share (SPEC 15.6.5); an edge
@@ -99,7 +99,7 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
         {
             for (var c = 0; c < this.classCount; c++)
             {
-                if (!this.JudgeClass(c))
+                if (!this.JudgeClass(c, report))
                 {
                     break; // D20: the stratum skips a body over the limit.
                 }

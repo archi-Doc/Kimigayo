@@ -3917,6 +3917,17 @@ and migration obligations remain in force; no numeric cap changes are authorized
     naming none); `MirReport.Add` returns the problem's index (the first's on a merge; −1 for a dropped problem and a merge naming
     another requirement); `MirOrigins.Judge(body, views, report)` adds its problems at its end, before the Loan stratum, and `Record`
     goes. A body's Origin problems now precede its Loan problems in `MirReport.All`; nothing else changes.
+  - U4 (G213): one record of the analyses' storage limit, `MirDataflow.StorageLimit(report, body, views, table, words)`:
+    `OwnershipStorageLimit_Kd` at the body with the facts `Required` (the arena's bytes), `Limit` (the byte limit) and `Table` (a
+    `MirStorageTable`: Initialization for A1, Loans and Origins for A5's two arenas), each at the body, the catalog's `requiredBytes`,
+    `limitBytes` and `table`; A1 and A5's two strata call it, their inline constructions gone (`Prepare` gives the words). The facts
+    are the only form of the arguments (no `MirProblem` field). `MirDropTable.Incomplete` is (Code, SourceInfo Source, int Problem):
+    the subject in its location's scope and `Add`'s index (−1 for a copy's, which `Add` drops), set after `Add`. R5's gate
+    (`FunctionCodegen.Write`) locates a refusal by `InstanceCollector.Subject(item, body, source)` (KD12), and the `Subject(item,
+    SourceRef)` overload goes. R5-M96's interim (`ViewsOf == 0` refused as the located `Unsupported_Kd`) stays, by R5's review
+    condition: a generation record is location-only, so the arguments wait for a record that carries the arena problem's facts (H3's
+    mapping, R5's condition 1), whose input is `Incomplete`'s index. MirOrigins' and MirBorrows' limits at one body share a key, so
+    the first, MirOrigins' since U1, keeps its Table fact (R4-M71's merge).
   - Rejected (review §1, §5): deciding W in `MirReport` from carrier facts (a consumer deciding); one dirty bit per set (one indirect W
     Loan taints every W Loan of its holder); a backward query per carrier (a second walk for the same fact); B's received halves (every
     Loan value a pair: +18–31 % of the Loan stratum on valid shapes); a cause field on `MirProblem` (a second representation of facts);

@@ -53,7 +53,7 @@ internal sealed partial class MirOrigins
         => ((long)components * Math.Max((finiteSources + 63) >> 6, (fixedSources + 63) >> 6)) + ((fixedSources + 63) >> 6);
 
     // A class's judgment: its edges, then its chains; false when its arena is over the limit, so the stratum skips the body.
-    private bool JudgeClass(int c)
+    private bool JudgeClass(int c, MirReport report)
     {
         ref readonly var known = ref this.classes[c];
         (this.classViews, this.condition, this.edgeCount, this.lastDirect) = (known.Views, known.Borrows, 0, (-1, -1, -1, -1));
@@ -92,7 +92,7 @@ internal sealed partial class MirOrigins
             this.Relate(edge.Tail, edge.Head, site, -1);
         }
 
-        return this.Chains();
+        return this.Chains(report);
     }
 
     private bool Unclassed(int node) => this.slice.Atoms[node].Kind == OriginAtomKind.Unclassed;
@@ -188,7 +188,7 @@ internal sealed partial class MirOrigins
     // SPEC 15.6.5 (2a0-D D16, D17, D20): over Tarjan's components of the inner nodes, finite sources and then fixed sources propagate in
     // topological order, 64 per word, through one arena MirDataflow.Within admits; a Fixed node passes none on. False when the arena is over
     // the limit.
-    private bool Chains()
+    private bool Chains(MirReport report)
     {
         var atoms = this.slice.Atoms;
         var nodes = atoms.Count;
@@ -226,7 +226,7 @@ internal sealed partial class MirOrigins
         var words = ArenaWords(components, finiteCount, fixedCount);
         if (!MirDataflow.Within(words))
         {
-            this.StorageLimit();
+            this.StorageLimit(report, words);
             return false;
         }
 
@@ -546,13 +546,12 @@ internal sealed partial class MirOrigins
         this.pending.Add(new(DiagnosticCode.Unsupported_Kd, requirement, site, default, this.classViews, this.pendingFacts.Count, 0));
     }
 
-    // D20 (R4-M15a): a class's arena over the analyses' byte limit is OwnershipStorageLimit_Kd once at the body in every view, and the stratum
-    // skips the body, its other Origin problems dropped.
-    private void StorageLimit()
+    // D20 (R4-M15a): a class's arena over the analyses' byte limit is OwnershipStorageLimit_Kd once at the body in every view, with its
+    // arguments (MirDataflow.StorageLimit, G213), and the stratum skips the body, its other Origin problems dropped.
+    private void StorageLimit(MirReport report, long words)
     {
         this.pending.Clear();
         this.pendingFacts.Clear();
-        var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.StorageLimit);
-        this.pending.Add(new(DiagnosticCode.OwnershipStorageLimit_Kd, requirement, this.body.Source, default, this.allViews, 0, 0));
+        MirDataflow.StorageLimit(report, this.body, this.allViews, MirStorageTable.Origins, words);
     }
 }

@@ -345,7 +345,8 @@ public sealed class MirAnalysisTest
     // R4-M15a, design A3 6.1: A5 runs as the driver's step 4 over the views A1 and A2 completed, which A2's table publishes (ask A-2):
     // every view of a body, two for a pair-generic one, so a Loan conflict is a problem of the version, and none of a body whose A1 arena
     // exceeds the limit (N locals live across N branches, MirInitTest), which records only OwnershipStorageLimit_Kd, though A5's own arena
-    // would fit; N reference locals live across N branches fit A1's arena but not A5's, whose own OwnershipStorageLimit_Kd stops it.
+    // would fit; N reference locals live across N branches fit A1's arena but not A5's, whose own OwnershipStorageLimit_Kd stops it; each
+    // limit names its arena (G213, R4-M132).
     [Fact]
     public void A5ChecksTheViewsA1Completed()
     {
@@ -355,8 +356,8 @@ public sealed class MirAnalysisTest
         foreach (var (size, views, line, expected) in new[]
         {
             (64, 1, Scalars, "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd x = 2"),
-            (13_500, 0, Scalars, Limit),
-            (2_000, 1, References, Limit),
+            (13_500, 0, Scalars, Limit + " Initialization over"),
+            (2_000, 1, References, Limit + " Loans over"),
         })
         {
             var text = new StringBuilder("func inspect(value: ref/i32) => ()\nfunc pair<s/T>(p: s/T) -> ()\n    s is owner or uniq\n    let v = p@move\n")
@@ -371,8 +372,10 @@ public sealed class MirAnalysisTest
 
             var c = MirBuildTest.Compile(text.Append("    x = 2\n    inspect(r)\n    return x\n").ToString());
             var program = c.BuildMir();
-            Assert.Equal([expected], program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
-                .Select(x => $"{x.Requirement} {x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()}"));
+            Assert.Equal([expected], program.Problems.All.ToArray().Select(static (x, i) => (Problem: x, Index: i))
+                .Where(static x => x.Problem.Subject.Module == 0)
+                .Select(x => $"{x.Problem.Requirement} {x.Problem.Code} {c.SyntaxOf(x.Problem.Subject).ToString().Split('\n')[0].Trim()}" +
+                    (x.Problem.Code == DiagnosticCode.OwnershipStorageLimit_Kd ? $" {MirDataflowTest.Limit(program.Problems, x.Index)}" : string.Empty)));
             Assert.Equal(
                 [("f", (long)views), ("inspect", 1L), ("pair", 2L)],
                 program.Bodies.ToArray().Where(static x => x.Key.Decl?.Name is "f" or "inspect" or "pair")

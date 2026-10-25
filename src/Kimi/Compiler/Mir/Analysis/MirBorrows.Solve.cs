@@ -1,7 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Diagnostics;
-
 namespace Kimi.Compiler.Mir;
 
 // A5's view loop (A3 5, Carrying, with E8): Run checks a body under the selected view: its Loans, addresses, its holders' slots (Holders), endings,
@@ -42,11 +40,10 @@ internal sealed partial class MirBorrows
         this.Touches();
         this.Entries();
         var words = (this.holderCount + 63) >> 6;
-        var state = flow.Prepare((this.flowCount + 63) >> 6, this.flowCount, Math.Max(words, this.holderCount));
+        var state = flow.Prepare((this.flowCount + 63) >> 6, this.flowCount, Math.Max(words, this.holderCount), out var arena);
         if (state is null)
         {
-            var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.StorageLimit);
-            program.Problems.Add(new(DiagnosticCode.OwnershipStorageLimit_Kd, requirement, body.Source, body.Ordinal, all)); // R4-M15a.
+            MirDataflow.StorageLimit(program.Problems, body, all, MirStorageTable.Loans, arena); // R4-M15a.
             return;
         }
 
