@@ -45,6 +45,8 @@ internal enum MirViolation : byte
     // or, over the program, its static without a StaticInit body (G191).
     Unensured, // A static root of a Place a location accesses, other than an Opaque site's, that no staticEnsure of the body names (G191).
     Lent, // A Temp a Call takes as an input that reserves (MirCases.Reserves), written by a Ref or an Adapt and by another write (G136).
+    SharedPath, // A projected Place written or destroyed in place past a shared layer (MirTypes.IsSharedLayer) after its last raw Deref; a
+    // default template's slot step is the slot itself, and an inline default copy is its template's check (W1 rule 1).
 }
 
 /// <summary>A validator finding: its rule and the syntax of its statement, terminator or local, else the body's. The build reports it
@@ -56,13 +58,14 @@ internal readonly record struct MirFinding(MirViolation Rule, SourceRef Subject)
 /// <summary>The one structural verifier of MIR (plan 14-5): a body's structure, locals, projections against their base Types, operands,
 /// rvalues and arities, the Types values flow between (<see cref="MirTypes.Agree"/>, modulo Origins), each Adapt under every
 /// Semantics case view (<see cref="MirCases"/>), the blocks that read a Temp only diverging Calls write (G131), a Call's input temps
-/// (G136), where each region, the body or a default's copy, is entered (DECISIONS R5-M90) and the statics its Places access (G191); and
-/// over a program, the initializer each staticEnsure names (G191), before any analysis reads it. It keeps its scratch, so a warm run
-/// allocates nothing.</summary>
+/// (G136), where each region, the body or a default's copy, is entered (DECISIONS R5-M90), the statics its Places access (G191) and the
+/// shared layers a write or an in-place destruction passes (W1 rule 1); and over a program, the initializer each staticEnsure names
+/// (G191), before any analysis reads it. It keeps its scratch, so a warm run allocates nothing.</summary>
 /// <remarks>An intrinsic's operands are checked by its row's arity (its declaration's parameters come first, a fact of the table,
 /// MirValidatorTest) and staticEnsure's also as its static's slot (DECISIONS R5-M71), a Value callee's against its Type's signature where
 /// that Type is a Function Type, else by its declared signature's arity only, and every Call's whole-local inputs by one write of an input
-/// that reserves and that a Ref or an Adapt writes (DECISIONS R5-M72).</remarks>
+/// that reserves and that a Ref or an Adapt writes (DECISIONS R5-M72). A write or an in-place destruction passes no shared layer; a Move
+/// is A1's and an exclusive borrow not checked yet (DECISIONS R5-M123).</remarks>
 /// <param name="types">The Type context of the bodies, which interns their case Types.</param>
 internal sealed partial class MirValidator(TyCtxt types)
 {
