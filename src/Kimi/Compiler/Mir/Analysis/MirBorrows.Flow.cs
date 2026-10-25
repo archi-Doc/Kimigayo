@@ -20,12 +20,12 @@ internal sealed partial class MirBorrows
     private void Plan(ulong[] state, int block, int index, bool checks)
     {
         (this.entryCount, this.planLocation) = (0, this.Location(block, index));
-        foreach (var set in this.contentsRead)
+        foreach (var set in this.read)
         {
-            this.contents[set] = 0;
+            this.reads[set] = default;
         }
 
-        this.contentsRead.Clear();
+        this.read.Clear();
         ref readonly var data = ref this.body.Blocks[block];
         if (index == data.Count)
         {

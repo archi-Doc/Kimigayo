@@ -61,7 +61,7 @@ internal enum RetentionKind : byte
 
     /// <summary>The output carries what any chain of reads through the argument carries (SPEC 15.6.4: through a raw or borrowed layer
     /// anywhere in its value, then in each value read): a raw layer without an Origin the call writes or lends (DECISIONS R4-M131,
-    /// BU-40). A5 reads it as Content until R4's closure follows the chain.</summary>
+    /// BU-40). A5 closes it over every read (DECISIONS R4-M138).</summary>
     Chain,
 }
 
