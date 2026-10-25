@@ -5571,11 +5571,8 @@ resumed by R4-M86 (2026-10-20).
   - Kept: `TyCtxt.RawStep(instance, part, positions)` (A5's `MirBorrows` and `MirTypes.Holding` read it),
     `TyCtxt.RawMembers(instance, part, positions, members)` for G148 (1)'s per-part guard (R4-M76), and Binding's `StepOf`,
     `SignatureStep` and `RawMembers(origin, scope, members)`, which `StoredStep`, retention, `InvalidRawOrigin` and `StoredMembers` read.
-  - Tests: a rule a deleted reader's case asserted stays asserted once where a remaining reader observes it: the signature cap's forms
-    no retention row had (a `ref` slot, a borrow the body forms, an Option's `uniq` borrow, a projection a `uniq` input states) as rows
-    of `RetentionTest.RawLayersRetainByTheirOrigins`, the keeper ladder through `RawMembers(instance, …)`, and the kind steps by the
-    stored-layer cases. A result layer's cap reaches no row (retention reads a raw layer's step only for what a call may write, which no
-    result row reads), so no case keeps it.
+  - A result layer's signature cap has no compiler observer (retention reads a raw layer's step only for what a call may write, which
+    no result row reads), so no test asserts it.
   - Supersedes BU-24's `TyCtxt.RawStep(raw)`, `TyCtxt.RawStep(function, …)` and `TyCtxt.RawMembers(origin, …)` readers, with its
     open difference between the declared signature view and instantiated retention.
 

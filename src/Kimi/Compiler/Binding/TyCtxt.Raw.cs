@@ -26,7 +26,7 @@ internal sealed partial class TyCtxt
     // exclusive Loan. Total: false when the members are incomplete (a keeper cycle that changes its Type arguments, or a keeper Binding's
     // storage instantiation does not complete), and for a layer a Type slot's argument supplies whose Origin steps Exclusive: its borrows
     // are the scope's that wrote the Type (a pair slot's states none). One substitution of the stored layer and one walk of each (slot,
-    // owner Type) the bound slots' keepers reach, allocating nothing beyond `members` when warm.
+    // owner Type) the bound slots' keepers reach.
     internal bool RawMembers(BoundType instance, int part, ReadOnlySpan<int> positions, List<RawMember> members)
         => binding.StoredMembers(instance, part, positions, members);
 }
