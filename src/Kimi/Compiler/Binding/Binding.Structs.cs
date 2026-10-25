@@ -56,10 +56,15 @@ public sealed partial class Binding
 
     internal BoundType? InstantiateStorageType(BoundType type, CallPlan call) => this.InstantiateStorageType(type, this.types.StorageSubst(call));
 
-    // A declared Type in the instance a substitution makes, which TyCtxt.Apply delegates to until R7 moves it there: its binder's slots, then
-    // its stored Origins substituted, normalized in the binder's Constraint scope (a Contract's Self the conforming Type), its closures closed
-    // in the substitution, its storage prepared.
+    // A declared Type in the instance a substitution makes (StorageInstance) with its storage prepared, which TyCtxt.Apply delegates to until
+    // R7 moves it there.
     internal BoundType? InstantiateStorageType(BoundType type, Subst subst)
+        => this.StorageInstance(type, subst) is { } result && this.PrepareTypeStorage(result) ? result : null;
+
+    // A declared Type in the instance a substitution makes: its binder's slots, then its stored Origins substituted, normalized in the
+    // binder's Constraint scope (a Contract's Self the conforming Type), its closures closed in the substitution; null where one of these
+    // steps does not complete. Its storage is not prepared.
+    internal BoundType? StorageInstance(BoundType type, Subst subst)
     {
         var binder = subst.Binder;
         var originBinder = binder is FunctionKoto { Accessor: { } accessor } ? accessor.Binder : binder;
@@ -70,8 +75,7 @@ public sealed partial class Binding
             result = this.ContractType(result, this.ConstraintScope(binder), subst.Self);
         }
 
-        result = result is null ? null : this.CloseClosureTypes(result, subst);
-        return result is not null && this.PrepareTypeStorage(result) ? result : null;
+        return result is null ? null : this.CloseClosureTypes(result, subst);
     }
 
     // SPEC 6.3.4, 15.1.5, 16.3.1: what the receiver `self` of a constructor or destructor grants, the one decision the Place checks read
