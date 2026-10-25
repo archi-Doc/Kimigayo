@@ -3956,6 +3956,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
     naming none); `MirReport.Add` returns the problem's index (the first's on a merge; −1 for a dropped problem and a merge naming
     another requirement); `MirOrigins.Judge(body, views, report)` adds its problems at its end, before the Loan stratum, and `Record`
     goes. A body's Origin problems now precede its Loan problems in `MirReport.All`; nothing else changes.
+  - U2 (the result in transit): `MirLocalRole.Result` on the temp a transfer delivers whole into `_0` after the Scope Exit
+    (`MirBuilder.Transfers`, R5-M50's result temp, only where the target's Destination is `_0`: a constructor's return, whose target is
+    a Unit temp, has none, B-B1); a default's copy keeps no Result role, since the copy maps the template's `_0` to the caller's slot
+    (`MirBuilder.Defaults.Copies`). MirValidator: a Result local is a Temp of local 0's Type, read only by the whole Move into `_0`
+    that delivers it, else `MirViolation.Local` (no new violation, the planning session's approval). Code generation reads no role.
   - U4 (G213): one record of the analyses' storage limit, `MirDataflow.StorageLimit(report, body, views, table, words)`:
     `OwnershipStorageLimit_Kd` at the body with the facts `Required` (the arena's bytes), `Limit` (the byte limit) and `Table` (a
     `MirStorageTable`: Initialization for A1, Loans and Origins for A5's two arenas), each at the body, the catalog's `requiredBytes`,
