@@ -8,7 +8,7 @@
 //   MirSteps (a Ref's classed steps); the C1-F4 view (TyCtxt.OriginRows, OriginAtom, an atom's part), keyed by MirDefKey.Body, its
 //   fixed-fixed oracles (TyCtxt.UniversalRelations: the body's, and its layer's for the layer's part) and its findings
 //   (TyCtxt.OriginFindings).
-// - Outputs, which Record adds with each class's views: UnsatisfiedOriginRelation_Kd (Ownership.UnprovenOrigin) at a chain's last edge's
+// - Outputs, which Judge adds at its end with each class's views, before the Loan stratum (R4-M132): UnsatisfiedOriginRelation_Kd (Ownership.UnprovenOrigin) at a chain's last edge's
 //   site (a row's Site, or the Ref's statement for a containment edge), with Reason (finite source, fixed end, false) of the view's
 //   canonical atoms and the facts Relation (the edge's row, -1 for a containment edge) and Anchor (the first Ref whose Origin is the
 //   source); UnprovenOriginRelation_Kd (Ownership.UnprovenOrigin) where the oracle does not derive a chain or edge between fixed Origins,
@@ -25,16 +25,15 @@
 //   of the layer's part is judged with the layer's oracle (R4-M101 E4); a Ref inside an Inlined scope adds no containment (a default's rows
 //   are its template's, R4-M101 (b)); storage is pooled, so a warm run allocates nothing.
 // - Must not: judge a relation Binding judged directly (it forms no row, D1); decode a slot or read a binder or forming body (only the view
-//   does); port the preserves-results skip or the top-like Anchor (PD9); add a problem in Judge (Record adds them after MirBorrows', for
-//   2a-2's rules); or drop a problem (MirReport's).
+//   does); port the preserves-results skip or the top-like Anchor (PD9); or drop a problem (MirReport's).
 
 using System.Runtime.InteropServices;
 using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>A5's Origin stratum (2a0-D §6): <see cref="Judge"/> judges a body's classes of views, then <see cref="Record"/> adds their
-/// problems; <see cref="Findings"/> adds the view's broken contracts once per program.</summary>
+/// <summary>A5's Origin stratum (2a0-D §6): <see cref="Judge"/> judges a body's classes of views and adds their problems;
+/// <see cref="Findings"/> adds the view's broken contracts once per program.</summary>
 /// <param name="types">The Type context, whose C1-F4 view gives the rows and the atoms.</param>
 /// <param name="cases">The Semantics case views.</param>
 internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
@@ -71,11 +70,12 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
     /// <summary>Gets the containment edges the last <see cref="Judge"/> formed, over its classes (V16's "F4 containment").</summary>
     internal int ContainmentEdges => this.containedCount;
 
-    /// <summary>Judges a body over the views A1 and A2 completed (step 4, before MirBorrows): forms its classes of views and finds each
-    /// class's problems, which <see cref="Record"/> adds.</summary>
+    /// <summary>Judges a body over the views A1 and A2 completed (step 4, before MirBorrows): forms its classes of views, finds each
+    /// class's problems and adds them (R4-M132).</summary>
     /// <param name="body">The validated body.</param>
     /// <param name="views">The number of views judged, from view 0 (MirDropTable.ViewsOf).</param>
-    internal void Judge(MirBody body, long views)
+    /// <param name="report">The program's problems.</param>
+    internal void Judge(MirBody body, long views, MirReport report)
     {
         (this.body, this.classCount, this.containedCount, this.Work) = (body, 0, 0, 0);
         this.pending.Clear();
@@ -112,12 +112,7 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
             first?.Dispose();
             (this.ownOracle, this.layerOracle, this.layerFirst) = (null, null, false);
         }
-    }
 
-    /// <summary>Adds the problems the last <see cref="Judge"/> found, after MirBorrows' (step 4).</summary>
-    /// <param name="report">The program's problems.</param>
-    internal void Record(MirReport report)
-    {
         var facts = CollectionsMarshal.AsSpan(this.pendingFacts);
         foreach (var found in this.pending)
         {

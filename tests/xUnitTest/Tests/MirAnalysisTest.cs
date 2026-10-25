@@ -111,16 +111,21 @@ public sealed class MirAnalysisTest
     private static readonly DiagnosticRequirement Uninitialized = DiagnosticRequirement.Ownership(OwnershipRequirement.UninitializedUse);
 
     // R4-M3a, R4-M71: a problem of a code, subject and body added again ORs its views into the first; another code, subject or body is its
-    // own problem, so the views of one body's cases are never ORed into another's.
+    // own problem, so the views of one body's cases are never ORed into another's. Add returns the problem's index, the first's on a merge
+    // (R4-M132).
     [Fact]
     public void ARepeatedProblemMergesItsViews()
     {
         var report = new MirReport();
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01));
-        report.Add(new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, 5), 0, 0b01));
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), 0, 0b01));
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 1, 0b100));
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b10));
+        int[] indices =
+        [
+            report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01)),
+            report.Add(new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, 5), 0, 0b01)),
+            report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), 0, 0b01)),
+            report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 1, 0b100)),
+            report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b10)),
+        ];
+        Assert.Equal([0, 1, 2, 3, 0], indices);
         Assert.Equal(
             [
                 new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b11), new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, 5), 0, 0b01),
@@ -132,14 +137,18 @@ public sealed class MirAnalysisTest
     }
 
     // R5-M23: the problems a key merges name one requirement, the first's; a problem that names another is a recording rule's defect, one
-    // InternalInvariant_Kd problem at the subject with the views that disagreed, however often it disagrees.
+    // InternalInvariant_Kd problem at the subject with the views that disagreed, however often it disagrees, and Add returns -1 for it.
     [Fact]
     public void AMergeNamesOneRequirement()
     {
         var report = new MirReport();
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01));
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Uninitialized, new(0, 5), 0, 0b10));
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Uninitialized, new(0, 5), 0, 0b100));
+        int[] indices =
+        [
+            report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01)),
+            report.Add(new(DiagnosticCode.MovedPlace_Kd, Uninitialized, new(0, 5), 0, 0b10)),
+            report.Add(new(DiagnosticCode.MovedPlace_Kd, Uninitialized, new(0, 5), 0, 0b100)),
+        ];
+        Assert.Equal([0, -1, -1], indices);
         Assert.Equal(
             [
                 new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01),
@@ -149,16 +158,21 @@ public sealed class MirAnalysisTest
     }
 
     // R4-M69 (SPEC 7.2.3, 23.1.1): a problem with an Inlined fact, a Language problem found inside an inline default copy, is its template's
-    // check and is dropped; a limit record, which a copy records without that fact, stays, as does the template's own problem.
+    // check and is dropped (Add returns -1); a limit record, which a copy records without that fact, stays, as does the template's own
+    // problem.
     [Fact]
     public void AnInlinedProblemIsDropped()
     {
         var report = new MirReport();
         var loan = new MirProblem(DiagnosticCode.ComparisonLoanConflict_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.ComparisonLoanConflict), new(0, 5), 0, 0b10);
         var limit = new MirProblem(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported), new(0, 5), 0, 0b10);
-        report.Add(loan, [new(MirFactKind.Anchor, new(0, 4)), new(MirFactKind.Inlined, new(0, 9))]);
-        report.Add(limit);
-        report.Add(loan with { Views = 0b01 }, [new(MirFactKind.Anchor, new(0, 4))]);
+        int[] indices =
+        [
+            report.Add(loan, [new(MirFactKind.Anchor, new(0, 4)), new(MirFactKind.Inlined, new(0, 9))]),
+            report.Add(limit),
+            report.Add(loan with { Views = 0b01 }, [new(MirFactKind.Anchor, new(0, 4))]),
+        ];
+        Assert.Equal([-1, 0, 1], indices);
         Assert.Equal([limit, loan with { Views = 0b01 }], report.All.ToArray());
         Assert.Equal([new MirFact(MirFactKind.Anchor, new(0, 4))], report.Facts(1).ToArray());
     }

@@ -3883,6 +3883,46 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: listing `ConversionBinding` kinds (it missed an upcast to `objuniq` and an exclusive admitted case, BU's F1); a
     second enumeration of path steps beside `NextPathStep` (R4's re-check R1); rebinding the body under the chosen receiver
     (R4-M126).
+- **R4-M132 Rule W on the MIR, with MirProblem's facts as one representation (2a-2, G:A5-F4's merge unit; design C)** (owner,
+  2026-10-25, the R4 planning session's dialog, verbatim: the departures 「(a) 一括で承認 (推奨)」, publication 「(a)
+  PrerequisiteUnavailable_Kd (推奨)」, the vocabulary 「(a) すべて承認 (推奨)」; full process: designs A and B, the review's
+  combination C, `draft/Sketches/A5 Step 2/2a-2-package.md`, `2a-2-review.md` §5–§9) SPEC 15.6, 15.6.4, 15.6.5, 23.1.2.
+  - Design C (`2a-2-review.md` §5, units §6: U1 the representation, U2 the result role, U3 rule W, U4 G213's arguments, U5 records):
+    A's representation and owner split (indirect markers below `loanBase`, MirOrigins' published causes and `Fixed`, Judge recording
+    first), with B's exact R4-M96 scan, per-holder read-through, Content retention, write-through rows, validator rule (corrected),
+    merge of derived-ness and G213's one recorder; the review's blocking findings fixed (A-B1: a set interned in one pass; A-B2: a merge
+    unions causes; B-B1: the role only where the Destination is local 0).
+  - Departures, approved as one list: 2a0-D D13 / §6.1's "Judge, MirBorrows per view, then Record" → Judge records before the Loan
+    stratum (rule 2, its reason, is superseded by R4-M104/R4-M122's W); R4-M104's direction (H) "the link from a MIR transfer to its
+    relation row", 2a0-D D2's `ResultFit` Source and D18's `Result` fact → the builder's validated `MirLocalRole.Result` and MirOrigins'
+    `Fixed` (no row link); 2a0-D §10's 2a-2 row and its `MirOriginsTest.Merge.cs` → §6's units and `MirBorrowsTest.Causes.cs`; R4-M71's
+    "a merge keeps the first problem's facts" → a merged problem is derived only when every report it groups is, its causes the union,
+    the key unchanged; R4-M3a/R4-M71's "a `MirFact` is a site" → a site and its kind's typed value.
+  - Publication (OQ-2 (a)): a derived MIR Loan problem is published as `PrerequisiteUnavailable_Kd` with `DerivedFrom` = its causes'
+    check keys; DIAGNOSTICS §4.3's invariant is unchanged. OQ-3 (a call storing a borrow into a container) is decided by C: the
+    receiving check over every Origin of the receiving Type (A's `Fixed`); 2c-6 re-expects the closure forms.
+  - Vocabulary (O1, COMPILER_ARCHITECTURE's closed vocabularies): `MirFactKind` Cause, Required, Limit, Table and `MirLocalRole.Result`.
+  - R5's confirmation (2026-10-25, all eight of `2a-2-review.md` §9) and its conditions: `MirFact(Kind, Site, long Value)` is H3's one
+    input, a Kind mapped through one table, one row per Kind, a Kind without a row `InternalInvariant_Kd` (Required/Limit → Arguments,
+    Table → `table` evidence, Relation → H2's row, Cause → `DerivedFrom`, the rest → related locations and evidence); OQ-2 (a) is H3's
+    own fallback row; one resolver in H3's publisher maps a `Cause` index to the check key published after R4-M71's cross-body merge,
+    derived-ness merging the same way with causes unioned — R5 accepts this extension of AR-7 to MIR-to-MIR causes beside 2g-1's
+    Binding causes (−1); no consumer resolves an index itself, and an index naming a problem the merge or a later rule removed is a
+    broken contract, not a silent drop; `MirDifferenceLedger.ComparedSet.cs`'s line is R4's in U3; U2 holds `MirBuilder.Transfers.cs`,
+    `MirVocabulary.cs`, `MirValidator*.cs`, the MIR goldens and the semantic snapshot dumps, and R5 reviews the role (its evidence a sel
+    Unit run of `FunctionCodegenTest` and the result-heavy fixtures, `.ll` byte-identical, the sel gate at 0); U4 changes A2's
+    `Incomplete` (Code, SourceInfo, report index) and R5's gate together, with no temporary second form, R5 reviewing the Backend hunk;
+    no further H3 need for A5's codes; 2g-5's PreparedInput rule never drops a problem another names as a cause (failing closed).
+  - U1 (behavior-preserving): `MirFact(Kind, Site, long Value = -1)`, Value a kind's typed value (a Relation's row; −1 for a kind
+    naming none); `MirReport.Add` returns the problem's index (the first's on a merge; −1 for a dropped problem and a merge naming
+    another requirement); `MirOrigins.Judge(body, views, report)` adds its problems at its end, before the Loan stratum, and `Record`
+    goes. A body's Origin problems now precede its Loan problems in `MirReport.All`; nothing else changes.
+  - Rejected (review §1, §5): deciding W in `MirReport` from carrier facts (a consumer deciding); one dirty bit per set (one indirect W
+    Loan taints every W Loan of its holder); a backward query per carrier (a second walk for the same fact); B's received halves (every
+    Loan value a pair: +18–31 % of the Loan stratum on valid shapes); a cause field on `MirProblem` (a second representation of facts);
+    dropping derived conflicts (R4-M104).
+  - Numbering: R4-M132 is free on dev and every branch (R4-M128 2c-2, R4-M129 G248, R4-M130 2c-1 on dev, R4-M131 reserved for the N2
+    SPEC session).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

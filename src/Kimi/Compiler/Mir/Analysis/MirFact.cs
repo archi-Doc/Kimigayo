@@ -1,13 +1,15 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the vocabulary of a MIR problem's related sites (A6; DECISIONS R4-M3a, R4-M57, R4-M69, R4-M92, R4-M97): what a related site is and
-// the record of one.
-// Input: the kind and site a recording rule gives. Output: MirFact values, which MirReport keeps per problem and the difference ledger reads.
-// Invariants: a fact is a site the problem relates, never a message: an Inlined fact names the inline default copy whose template an A1 or
-// A2 Language problem belongs to, which a limit record never carries (R4-M69, until 2g-6), an Evaluated fact the default's operation of a
-// Loan problem a body owns inside a copy, recorded at the omitting call (R4-M97), and an effect fact the static Field an effect met, its
-// kind what decided it (R4-M92), and a Relation fact (an Origin problem's last edge, D18) the edge's site and Row, the row's index in the
-// body's C1-F4 view, or -1 for a containment edge at its Ref; a problem has at most one fact of each kind but its witness's.
+// Owns the vocabulary of a MIR problem's facts (A6; DECISIONS R4-M3a, R4-M57, R4-M69, R4-M92, R4-M97, R4-M132): what a fact is and the
+// record of one.
+// Input: the kind, site and value a recording rule gives. Output: MirFact values, which MirReport keeps per problem and the difference
+// ledger reads.
+// Invariants: a fact is a site the problem relates and, for a kind that names one, its typed value, never a message (R4-M132): an Inlined
+// fact names the inline default copy whose template an A1 or A2 Language problem belongs to, which a limit record never carries (R4-M69,
+// until 2g-6), an Evaluated fact the default's operation of a Loan problem a body owns inside a copy, recorded at the omitting call
+// (R4-M97), and an effect fact the static Field an effect met, its kind what decided it (R4-M92), and a Relation fact (an Origin problem's
+// last edge, D18) the edge's site and as its Value the row's index in the body's C1-F4 view, or -1 for a containment edge at its Ref; a
+// kind that names no value has -1; a problem has at most one fact of each kind but its witness's.
 // Must not carry message text, or decide which problem a fact belongs to or whether it is kept (MirReport's).
 
 #pragma warning disable SA1402 // The fact vocabulary and its record belong together.
@@ -29,11 +31,11 @@ internal enum MirFactKind : byte
     EffectWrite, // A write key of the Field: it meets a Loan in any mode.
     EffectUnknown, // An unknown effect or an erased destruction (SPEC 15.6.4, 16.3.3): it meets every mutable-static Loan.
     Evaluated, // The default's operation of a Loan problem a body owns inside a copy, whose subject is the omitting call (SPEC 15.6).
-    Relation, // An Origin problem's last edge (2a0-D D18): a row of the body's C1-F4 view (Row), or a containment edge at its Ref (Row -1).
+    Relation, // An Origin problem's last edge (2a0-D D18): a row of the body's C1-F4 view (Value), or a containment edge at its Ref (Value -1).
 }
 
-/// <summary>A related site of a problem (R4-M3a).</summary>
+/// <summary>A fact of a problem (R4-M3a, R4-M132): a site it relates and, for a kind that names one, its typed value.</summary>
 /// <param name="Kind">What the site is.</param>
 /// <param name="Site">The syntax.</param>
-/// <param name="Row">A Relation fact's row index in the body's C1-F4 view, -1 for a containment edge; -1 for any other kind.</param>
-internal readonly record struct MirFact(MirFactKind Kind, SourceRef Site, int Row = -1);
+/// <param name="Value">A Relation fact's row index in the body's C1-F4 view, -1 for a containment edge; -1 for a kind that names no value.</param>
+internal readonly record struct MirFact(MirFactKind Kind, SourceRef Site, long Value = -1);

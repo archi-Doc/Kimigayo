@@ -115,7 +115,7 @@ public sealed partial class MirOriginsTest
         Assert.Same(found[0].Problem.Reason.Shorter, found[1].Problem.Reason.Shorter);
         Assert.Equal(
             ["r: Relation r 3, Anchor l1@ref -1", "r: Relation r 3, Anchor l2@ref -1"],
-            found.Select(x => $"{Line(c, x.Problem.Subject)}: {string.Join(", ", program.Problems.Facts(x.Index).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)} {f.Row}"))}"));
+            found.Select(x => $"{Line(c, x.Problem.Subject)}: {string.Join(", ", program.Problems.Facts(x.Index).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)} {f.Value}"))}"));
     }
 
     // SPEC 15.6.5 and 15.6.3: valid counterparts form no Refuted chain: a parameter's Borrow passed on, a Field's Borrow read through its
@@ -278,7 +278,7 @@ public sealed partial class MirOriginsTest
     }
 
     // +warm: the stratum on a body it judged before allocates nothing (pooled frames, edges, components, bitsets and the arena; the oracles
-    // the view pools): Refuted chains, Unknown chains and edges, an Equality row failing both ways, a pair layer's two classes, a Field
+    // the view pools; the cleared report it adds to): Refuted chains, Unknown chains and edges, an Equality row failing both ways, a pair layer's two classes, a Field
     // initializer's layer oracle and Dependent ends (FailedClause).
     [Trait("Purpose", "Allocation")]
     [Fact]
@@ -293,11 +293,13 @@ public sealed partial class MirOriginsTest
         var program = c.BuildMir();
         var origins = new MirOrigins(c.Types, new MirCases(c.Types));
         var bodies = program.Bodies.ToArray();
+        var report = new MirReport();
         void Run()
         {
+            report.Clear();
             foreach (var body in bodies)
             {
-                origins.Judge(body, MirCases.Count(body));
+                origins.Judge(body, MirCases.Count(body), report);
             }
         }
 
@@ -326,7 +328,7 @@ public sealed partial class MirOriginsTest
         var program = c.BuildMir();
         var body = program.Bodies.ToArray().Single(x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == name);
         var origins = new MirOrigins(c.Types, new MirCases(c.Types));
-        origins.Judge(body, MirCases.Count(body));
+        origins.Judge(body, MirCases.Count(body), new MirReport());
         return (origins, body, c);
     }
 
