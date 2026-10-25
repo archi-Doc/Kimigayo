@@ -180,6 +180,8 @@ public class ClosureReceiverClassificationTest
     private const string PairHead = "func take<t/U>(y: t/U)\n    t is owner or uniq\n    U is Copy\n    return\nfunc f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n";
     private const string PairMain = "public func main() -> ()\n    var n: i32 = 1\n    f(n)\n";
     private const string PairCall = "func pair<t/U>(a: i32, y: t/U)\n    t is owner or uniq\n    U is Copy\n    return\n";
+    private const string MissingAndExclusive = "UnresolvedBinding_Kd missing; InvalidAssignment_Kd h";
+    private const string NetAndMissing = "Unsupported_Kd value; UnresolvedBinding_Kd missing";
 
     // SPEC 7.7.3, 8.14 (DECISIONS R4-M126 PD13): a bare acquisition of a captured pair layer Reborrows exactly in its exclusive cases,
     // so the call is Exclusive there. A Closure publishes the receiver every case has and marks such captures; a case's receiver is
@@ -247,6 +249,8 @@ public class ClosureReceiverClassificationTest
     // only by its own failure or by the failure or dependency of the consumer whose operation decides its acquisition: an aggregate
     // element's sibling explains nothing, so `(value, missing)`, `[value, missing]` and `(take(value), missing)` keep the mark and a
     // `let` Closure's call stays Exclusive, and a dependent call `pair(missing, value)` without its own failure keeps the net away.
+    // A Discard Context use has no deciding consumer, so a failed sibling arm leaves the net's record (BU's re-check 3, N1); an
+    // assignment's failed target fixes its source's Type and explains it (the concrete twin is Shared).
     // Each row: the records under `let h`, then under `var h`.
     [Theory]
     [InlineData("        value\n", "Unsupported_Kd value", "Unsupported_Kd value")]
@@ -254,8 +258,10 @@ public class ClosureReceiverClassificationTest
     [InlineData("        if c\n            value\n", "Unsupported_Kd value", "Unsupported_Kd value")]
     [InlineData("        let t = (value, missing)\n        _ = t\n", "UnresolvedBinding_Kd missing; InvalidAssignment_Kd h", "UnresolvedBinding_Kd missing")]
     [InlineData("        let a = [value, missing]\n        _ = a\n", "UnresolvedBinding_Kd missing; InvalidAssignment_Kd h", "UnresolvedBinding_Kd missing")]
-    [InlineData("        let t = (take(value), missing)\n        _ = t\n", "UnresolvedBinding_Kd missing; InvalidAssignment_Kd h", "UnresolvedBinding_Kd missing")]
+    [InlineData("        let t = (take(value), missing)\n        _ = t\n", MissingAndExclusive, "UnresolvedBinding_Kd missing")]
     [InlineData("        pair(missing, value)\n", "UnresolvedBinding_Kd missing", "UnresolvedBinding_Kd missing")]
+    [InlineData("        missing = value\n", "UnresolvedBinding_Kd missing", "UnresolvedBinding_Kd missing")]
+    [InlineData("        match c\n            true => value\n            false => missing\n", NetAndMissing, NetAndMissing)]
     [InlineData("        let t = \"\\(value)\"\n        _ = t\n", "UnprovenConstraint_Kd \"\\(value)\"", "UnprovenConstraint_Kd \"\\(value)\"")]
     [InlineData("        let b = Box(value)\n        _ = b\n", "UnresolvedBinding_Kd Box", "UnresolvedBinding_Kd Box")]
     [InlineData("        let k = value@copy\n        _ = k\n", "NonCopyOperand_Kd value@copy", "NonCopyOperand_Kd value@copy")]
