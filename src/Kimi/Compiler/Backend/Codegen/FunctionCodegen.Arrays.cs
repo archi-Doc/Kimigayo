@@ -9,8 +9,7 @@ namespace Kimi.Compiler.Backend;
 // empty handle (__kimi_array_init) at the aggregate's Place with its location; setArrayLength, the length stored in the handle's length word
 // (Field 1, the word Length reads), reading or destroying no element; capacity, P2b's kernel over the handle, the legacy representation's
 // capacity word of an Array or a Dictionary (PD2); and an Array's glue level, its glue item's Drop helper called with the glue's own
-// parameters (the string row's form). A Dictionary's glue (FunctionCodegen.Glue) and a Dictionary from none (FunctionCodegen.Aggregates)
-// are C8e's.
+// parameters (the string row's form). A Dictionary's glue and a Dictionary from none are FunctionCodegen.Dictionaries' (DECISIONS R5-M124).
 internal sealed partial class FunctionCodegen
 {
     // SPEC 4.3, 4.9.5: `[]`, an aggregate of no operand whose Type is an Array, allocates nothing: the runtime's empty handle at the Place.

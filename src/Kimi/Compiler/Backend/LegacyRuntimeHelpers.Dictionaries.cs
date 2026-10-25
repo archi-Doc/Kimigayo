@@ -80,7 +80,8 @@ internal sealed record DictionaryHelper(
 internal sealed partial class LegacyRuntimeHelpers
 {
     /// <summary>The DictionaryStorage function a Dictionary's construction from none runs (SPEC 4.3, 4.9.5), the callee the Dictionary
-    /// runtime declares (X4; DECISIONS R5-M27): its initialization bridge calls it.</summary>
+    /// runtime declares (X4; DECISIONS R5-M27, R5-M124): the old generator's initialization bridge calls it, and the instance collector targets
+    /// its body for a Dictionary from none, which MIR code generation calls.</summary>
     internal const DictionaryCallee Construction = DictionaryCallee.Initialize;
 
     // The duplicate-key callback {environment, table}; its environment is the address of the caller's location record.
@@ -150,7 +151,8 @@ internal sealed partial class LegacyRuntimeHelpers
     internal IReadOnlyList<DictionaryHelper> DictionaryHelpers => this.dictionaryHelpers;
 
     /// <summary>Gets or sets a value indicating whether the module holds the Dictionary runtime: a CheckKey request needs it, and the
-    /// old lowering requests it for a Dictionary's construction until the runtime declares its own needs (C8e).</summary>
+    /// old lowering requests it for a Dictionary's construction (D5); MIR code generation never needs it: a literal checks its duplicates
+    /// itself, and a Dictionary from none calls Construction's body (DECISIONS R5-M124).</summary>
     internal bool NeedsDictionaryRuntime { get; set; }
 
     /// <summary>Gets the row of a Dictionary helper kind; a kind without a row is a broken contract.</summary>

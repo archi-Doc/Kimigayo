@@ -12,7 +12,8 @@
 // struct that declares one (its body destroys the Fields and the base, R4-M6b); else a struct's Fields in reverse logical declaration order,
 // then its base; a Tuple's elements in decreasing index; a fixed array's element (each element, from the last); an enum's Case payload
 // elements, each Case's in reverse declaration order; a Closure environment's captures in reverse initialization order (X23); an Array's
-// or Dictionary's element Types, which its legacy Drop row destroys (its ElementGlue need, X4) and lays out (X34); an owning handle's
+// or Dictionary's element Types, which its legacy Drop row destroys (its ElementGlue need, X4; a Dictionary's through the clearEntries
+// instance its Drop row declares, its glue's one target, DECISIONS R5-M124) and lays out (X34); an owning handle's
 // payload when the payload is proven Sealed (else the object descriptor's finalizer runs the actual Type's glue, K8). Strings, scalars,
 // references, raw pointers, Slices, Function values (their environment's destruction is erased) and InlineStorage, whose owner destroys
 // its contents, have none.
@@ -45,7 +46,7 @@ internal enum DropGlueRow : byte
     Function, // An erased function value's environment, through its table's drop entry: C5b.
     Handle, // An obj, rc or arc release through ObjectRuntime, a Sealed payload's glue called directly (DECISIONS R5-M112).
     Array, // An Array's legacy Drop row, which destroys its elements by their glue (DECISIONS R5-M121).
-    Dictionary, // A Dictionary's legacy Drop row: C8e.
+    Dictionary, // A Dictionary's legacy Drop row, which calls the clearEntries instance its glue targets (DECISIONS R5-M124).
 }
 
 /// <summary>A direct part of a destroyed value.</summary>

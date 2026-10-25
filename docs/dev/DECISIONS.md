@@ -9280,3 +9280,62 @@ structure is recorded here by the unit that first implements it.
   allowlists); the validator reading the HIR Adjust of its location's syntax; a MIR mark on builder-decided acquisitions (a vocabulary
   entry for a temporary structure, missing G262); the rule in the builder (one validator per IR); the shared-layer set in the validator
   file (MirTypes owns MIR's Type facts; Binding states the same set in six places, a cross-phase duplication candidate).
+- **R5-M124 The Dictionary family in MIR code generation: the storage kernels, placeEntry's LegacyRow item and the hidden DictionaryStorage
+  instances (C8e)** (2026-10-26, C lane; plan C8e, package C 3.2, 3.4 and 3.6, K package 4.3 and 4.5 rows 2 and 11 and "DropGlue", S2-S4
+  X4, X34 and X39, PD2, PD21, F2c; SPEC 4.3, 4.7.3, 4.9.4-4.9.7, 12.4.3, 16.3.2, 22.2; the planning session's go and rulings Q1-Q12 on
+  C8e's design, `c8e-design.md`, and its rulings on the collector part; under R5-M18 form 2 (G:library-2), R5-M27, R5-M28, R5-M46, R5-M116,
+  R5-M121 and BU-38)
+  - Map (X39; rulings Q1 (a), Q2 (a)): `LegacyWriter` gains `Place` (placeEntry in its function's instance) and the five Dictionary kernel
+    writers `DictionaryLayout`, `DictionaryBorrow` (both borrows), `DictionaryOwn`, `KeyAt` and `ValueAt`, contiguous, each P2a's kernel with
+    its own number; `LegacyRow` names them once (`Entries`), names the writers in a function's instance once (`InInstance`: Instance,
+    Place), and gives Place's declared callee (`Callee`, its P1c row's Storage callee, append) and needs (its row's Array runtime, R5-M46).
+  - Kernels (`FunctionCodegen.Storage`'s `Entries`, one decoder; PD2): over the call's entry layout (`DictionaryEntryLayout.Of` of the K and
+    V its substitution binds in the item's instance), the source operand 0's value, the result the call Place's record (its Fields in
+    declaration order) or, for a result that travels as a scalar (keyAt, valueAt), the value the kernel defines; no new IntrinsicId (PD21).
+  - placeEntry (K 4.3, K 4.5 row 2): its LegacyRow item, represented by the storage its handle parameter designates (`Designated`: the Type
+    `Below` gives, through a raw pointer to its pointee, since a raw dereference is explicit, SPEC 3.4.3; one rule for every row), every
+    component laid out (an Array's element, a Dictionary's key and value; X34); its targets the callee its row declares, append's body
+    (`InstanceCollector.Declared`). Its routine (`ModuleCodegen.Dictionaries`) is P1c's Place helper (`LegacyRuntimeHelpers.WriteDictionary`,
+    the one copy), `__kimi_dictionary_place_<item>`, which calls append's `__kimi_f<N>` with the entry's stride; the one routine path serves
+    its call, a Value call and an adapter.
+  - A Dictionary from none (ruling Q3 (a); K 4.5 row 11): its aggregate targets the body of the function the Dictionary runtime declares for
+    construction (`LegacyRuntimeHelpers.Construction`, initialize; R5-M27's open callee), which code generation calls at the Place
+    (`FunctionCodegen.Dictionaries`); MIR never writes the old bridge `__kimi_dictionary_init` nor the duplicate adapter, since the literal's
+    duplicate check is MIR's findEntry and Fail.
+  - The glue (rulings Q4 (a), Q5 (a), Q10 (a)): `DropGlueRow.Dictionary` (split from Collection, bp2) calls its glue item's own Drop helper,
+    `__kimi_dictionary_drop_<item>`, P1c's Drop row text, which calls the glue's target, then `__kimi_array_free`; the glue's target is the
+    instance of its Drop row's Entries callee, clearEntries over the entry Types (`TyCtxt.Synthesized`), when an entry may need a drop
+    (`CallsEntries`), whose body reaches the entries' glue by its own edges. G157 (6) closes for Dictionaries.
+    Departure, confirmed by the owner (R5-M125): K package 4.5 "DropGlue" says a Dictionary's glue targets "the element glue their legacy
+    row declares"; it targets the Entries callee its Drop row declares (X4, R5-M27).
+  - Len (ruling Q7 (a)): Layout's sequence handle rows name their length word (`Layout.LengthWord`: a Slice's and an Array's Field 1, a
+    Dictionary's live count, `DictionaryStorage.Handle`'s `length`, Field 3), which `FunctionCodegen.Length` reads.
+  - The symbol view (ruling Q6 (a); F2c): `TyCtxt.DictionaryStorage(DictionaryCallee)` (`Binding/TyCtxt.DictionaryStorage.cs`) forwards
+    `KimiLibrary.DictionaryStorage` unchanged. A temporary structure, `[Transitional("R8")]`: the instance collector is its only reader (no
+    Binding or MIR-builder reader), which is the premise of its removal; R8 deletes it with `KimiLibrary.DictionaryStorage.cs`.
+  - Storage verdicts (BU-38): every new edge goes through `Admit` (`Instantiable`, `Made`), `Designated` reads a part of the Type `Below`
+    made; Bodyless's intrinsic row's Type argument is named in the entry file's exceptions, a part of the Item Type its site made (In), not
+    re-read (PLAN G242's item).
+  - Restructured first, behavior unchanged: the entry layout, the Place and CheckKey slots, `WriteDictionary` and `Construction`
+    (c59faf838); the DropGlueRow split (c6765752d).
+  - Departure, confirmed by the owner (R5-M125): plan row C8e's Dictionary kernel O2 moves to the later of C8e, C8f and C9c, since the
+    kernel's `i64` keys need C8f's `BuiltinEquals` shim and its checksum line interpolation (C9c); C8e measured a temporary variant (both
+    tables keyed by a user `Equatable` struct, the checksum line replaced by a `require` and one fixed line), old generator A against sel B
+    at O2, 15 interleaved samples: B/A median 0.96 (0.91-1.16) against A/A 0.90-1.33; 613 against 636 optimized instructions, one memcpy
+    each (growth's transferBytes, C8a's MoveBytes).
+  - Facts: C8e alone flips 23 ledger test rows (library-2 22, C-frame 1); 236 more Dictionary rows wait for C8f's `BuiltinEquals` on built-in
+    keys, 228 of them for nothing else, among them 36 of `DictionaryLibraryTest` and `DictionaryCostTest`, which leave the ledger whole at
+    C8f (G:library-2's group review checks them). G157 (17) closes: nine `Ownership.Bodies` reads move to the Generated mark, each asserting
+    the rule and its counterpart (clearEntries Generated for string values, not for i32 entries; findEntry Generated, requireAbsent not),
+    the ratchet 168 -> 159. G157 (30) stays open: one function instance reached two ways still has two items, placeEntry's (the literal's
+    Synthesized substitution and tryInsert's call) and clearEntries' (the glue's and clear's call), static size only.
+  - Deviations: none in native outcomes; IR only (PD9): `[:]` calls initialize directly; a Place helper per instance item, a Drop helper per
+    glue item; a Dictionary's glue one call above its Drop helper; the literal's duplicate check through findEntry and Fail.
+  - Rejected: placeEntry or the glue written from FunctionCodegen primitives (a second copy of P1c's text, PD2); `[:]` through the
+    `__kimi_dictionary_init` bridge (an extra call and text whose only content is that call); a Kernel column on the map (ARCH's two
+    optional parameters; R5-M116); keyAt versus valueAt read from the result Type (ambiguous when K = V); K and V from the operand's referent
+    (a second rule beside the substitution's); the glue targeting K's and V's glue (its text calls clearEntries, which would stay
+    uncollected); a placeEntry clause in AdmitRow (Designated serves every row); `InstanceCollector(…, KimiLibrary)` (the held
+    `Compilation.Pipeline.cs` and 57 test constructions); catalog rows or `KimiDeclarationId`s for initialize (R5-M28); the MIR builder
+    calling initialize or append (a second literal form); new IntrinsicIds (PD21); Kimigayo bodies now (R8); re-pointing the old lowering
+    to the map (D5).

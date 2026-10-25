@@ -1259,7 +1259,8 @@ public sealed class InstanceCollectorTest
         }
     }
 
-    // K 4.5 "DropGlue" (X4): an Array's or Dictionary's glue targets the glues of its element Types that need a drop.
+    // K 4.5 "DropGlue" (X4; DECISIONS R5-M124, the owner's R5-M125): an Array's glue targets the glues of its element Types that need a drop;
+    // a Dictionary's the clearEntries instance its Drop row declares, whose body reaches the entries' glues (their destroyDictionaryEntries).
     [Fact]
     public void ACollectionsGlueDestroysItsElements()
     {
@@ -1267,7 +1268,48 @@ public sealed class InstanceCollectorTest
             "    let table: Dictionary<string, Array<i32>> = [:]\n    return\n");
         Assert.Equal(["DropGlue string"], Targets(program, set, "DropGlue Array<string>"));
         Assert.Empty(Targets(program, set, "DropGlue Array<i32>"));
-        Assert.Equal(["DropGlue Array<i32>", "DropGlue string"], Targets(program, set, "DropGlue Dictionary<string, Array<i32>>"));
+        const string Clear = "library Fn clearEntries in group DictionaryStorage [string, Array<i32>]";
+        Assert.Equal([Clear], Targets(program, set, "DropGlue Dictionary<string, Array<i32>>"));
+        Assert.Contains(Calls(program, set, Clear), static x => x.StartsWith("library Fn destroyDictionaryEntries", StringComparison.Ordinal));
+    }
+
+    // G157 (6), SPEC 4.9.7, X4 (DECISIONS R5-M27, R5-M124, the owner's R5-M125): a Dictionary's glue targets exactly the instance of the Entries
+    // callee its Drop row declares, clearEntries over its entry Types, when an entry may need a drop (CallsEntries), else nothing; a value or a
+    // key that needs one is enough.
+    [Theory]
+    [InlineData("i32, Res", true)]
+    [InlineData("string, i32", true)]
+    [InlineData("i32, i64", false)]
+    public void ADictionarysGlueTargetsTheClearEntriesItsDropRowDeclares(string entry, bool clears)
+    {
+        var (program, set) = Collect("struct Res\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n" +
+            $"func d(values: Dictionary<{entry}>) => ()\n");
+        Assert.Empty(set.Records);
+        var glue = Targets(program, set, $"DropGlue Dictionary<{entry}>");
+        Assert.Equal(clears ? new[] { $"library Fn clearEntries in group DictionaryStorage [{entry}]" } : Array.Empty<string>(), glue);
+        var row = LegacyRuntimeHelpers.DictionaryRow(DictionaryHelperKind.Drop);
+        Assert.Equal((DictionaryCallee.ClearEntries, HelperNeeds.ElementGlue), (row.Entries, row.Needs));
+    }
+
+    // K 4.3, 4.5 rows 2 and 11, X4, F2c (DECISIONS R5-M124): placeEntry's call targets the LegacyRow item of its function's instance,
+    // represented by the Dictionary its raw handle designates, whose target is the body its row declares, append; a Dictionary from none
+    // targets the body of the function the Dictionary runtime declares for construction, initialize; neither instantiates, so each has one
+    // item.
+    [Fact]
+    public void PlaceEntryAndADictionaryFromNoneTargetTheirDeclaredBodies()
+    {
+        var (program, set) = Collect("struct Key\n    Self is Equatable\n    public let code: i64\n    public init(code: i64) => self.code = code\n" +
+            "    public func equals(self: ref/Self, other: ref/Self) -> bool => self.code == other.code\n" +
+            "func put(d: uniq/Dictionary<Key, i64>)\n    _ = d.tryInsert(Key.init(1), 2)\n" +
+            "func text(d: uniq/Dictionary<Key, string>)\n    _ = d.tryInsert(Key.init(1), \"a\")\n" +
+            "func make() -> Dictionary<Key, i64> => [:]\n");
+        Assert.Empty(set.Records);
+        const string Append = "library Fn append in group DictionaryStorage";
+        Assert.Equal(new[] { Append }, Assert.Single(RowTargets(program, set, "LegacyRow Dictionary<Key, i64> StoragePlaceDictionaryEntry")));
+        Assert.Equal(new[] { Append }, Assert.Single(RowTargets(program, set, "LegacyRow Dictionary<Key, string> StoragePlaceDictionaryEntry")));
+        Assert.Equal(["library Fn initialize in group DictionaryStorage"], Calls(program, set, "Fn make"));
+        Assert.Single(set.Items.ToArray(), x => Label(program, x) == Append);
+        Assert.Equal(DictionaryCallee.Append, LegacyRuntimeHelpers.Row(CompilerFunctionKind.StoragePlaceDictionaryEntry)!.Value.Callee);
     }
 
     // K 4.8, S2-S4 X34: a collection's own layout is its handle words, but its glue lays out its element Types, also those that need no drop,

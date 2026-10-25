@@ -7,8 +7,8 @@ namespace Kimi.Compiler.Backend;
 
 // The rvalues of FunctionCodegen (R5 package C 3.2, plan C2b; DECISIONS R5-M78, R5-M83, R5-M87), each computed from its operands, then put
 // into its Place through the place writer (SPEC 13.7.1): a Use, a Ref, a Discriminant, a Len and an Adapt; the aggregates are in
-// FunctionCodegen.Aggregates.cs, an Adapt's object creation in FunctionCodegen.Objects. Rows not written yet: a Dictionary's Len (C8e); a
-// string has none (Binding's sequence members take no string, SPEC 4.7).
+// FunctionCodegen.Aggregates.cs, an Adapt's object creation in FunctionCodegen.Objects. A string has no Len (Binding's sequence members take
+// no string, SPEC 4.7).
 internal sealed partial class FunctionCodegen
 {
     // A Use: its operand put into the Place in its representation (a value in memory copied; nothing for a zero-sized Place); a string
@@ -65,13 +65,14 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // A Len (SPEC 4.7.3): the length of a fixed array, Array or Slice Place (Length), its Place located first, so an Index on its path
-    // checks its bounds. A Dictionary's count (its DictionaryStorage length word) is C8e's row; a string has no Len (no MIR producer).
+    // A Len (SPEC 4.7.3): the length of a fixed array, Array, Slice or Dictionary Place (Length; a Dictionary's live count, DECISIONS
+    // R5-M124), its Place located first, so an Index on its path checks its bounds; a string has no Len (no MIR producer).
     private void Len(in MirStatement statement)
     {
         var place = statement.Rvalue.Place;
         var type = this.InstanceType(place)!;
-        if (type.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Slice) || !this.Address(place, out var address))
+        if (type.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Slice or BoundTypeKind.Dictionary) ||
+            !this.Address(place, out var address))
         {
             this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
             return;

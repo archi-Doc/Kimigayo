@@ -141,10 +141,12 @@ public class DictionaryLiteralEmissionTest
         const string source = "let entries = [(1, 2): \"ok\"]\nConsole.writeLine(entries[(1, 2)])";
         var c = MinimalEmissionTest.Analyze(source);
 
-        // Library reach of the literal's duplicate-key callee, until R5 C8e (DECISIONS R4-M13a, R5-M27): the old analysis collects it for
-        // a literal with entries, and the checked set has it only once C8e roots the hidden DictionaryStorage instances. C8e moves this
-        // read to the Generated mark.
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryStorage(DictionaryCallee.RequireAbsent).Declaration));
+        // The library reach of the literal's duplicate check in the checked set (SPEC 12.4.3; DECISIONS R4-M13a, R5-M27, R5-M124): MIR looks
+        // each key up through findEntry and fails itself (KIMI_E_DUPLICATE_KEY), so findEntry is reached and the old generator's
+        // requireAbsent, which its CheckKey helper calls, never is.
+        var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(source);
+        Assert.Contains(sel.Library.DictionaryStorage(DictionaryCallee.FindEntry).Declaration, generated);
+        Assert.DoesNotContain(sel.Library.DictionaryStorage(DictionaryCallee.RequireAbsent).Declaration, generated);
         var original = CompilationTestHelper.WriteIr(c);
         var loaded = CompilationTestHelper.Reload(c);
         Assert.True(loaded.Bind().IsComplete);
