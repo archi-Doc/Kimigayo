@@ -1,0 +1,10 @@
+struct Probe
+    public var v: i32
+    public init(v: i32) => self.v = v
+    drop => Console.writeLine("drop")
+func consume(x: Probe) => ()
+let p = Raw.allocate<Probe>(1)
+unsafe => Raw.initialize(p, Probe.init(1))
+let f = func [p] () => unsafe => consume((*p)@move)
+f()
+unsafe => Raw.release(p)

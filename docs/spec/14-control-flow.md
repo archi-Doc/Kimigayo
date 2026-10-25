@@ -91,7 +91,7 @@ if guard.contains(id) => work()   // A guard created in the condition would be d
 
 ### 14.2.4. Explicit discard
 
-`_ = Expression` is a statement (not assignment, not an expression, no compound form) that completes with Unit. The operand is checked in Value Context without an expected Type, introduces no local, is acquired by bare acquisition ([§3.5](03-types-and-values.md#35-copy-and-move)) or transfer, and is destroyed at statement temporary cleanup. A bare Non-Copy Place is an error unless it stores `uniq/T` or `objuniq/T`: then `_ = r` Reborrows a child and drops it, and `_ = r@move` consumes `r`. Explicit discard suppresses only the discard warnings for that result ([§17.5](17-failure-handling.md#175-warnings)); discarding a `Result` destroys its error payload and does not catch Abort.
+`_ = Expression` is a statement (not assignment, not an expression, no compound form) that completes with Unit. The operand is checked in Value Context without an expected Type, introduces no local, is acquired by bare acquisition ([§3.5](03-types-and-values.md#35-copy-and-move)) or transfer, and is destroyed at statement temporary cleanup. An operand `P@move` of a raw Place, or of a Field or element of one, transfers nothing: the value is destroyed in that Place at statement temporary cleanup, before the statement's temporaries, and the Place then holds no value ([§5.2.3](05-raw-pointers-and-unsafe-memory.md#523-taking-from-raw-places)). A bare Non-Copy Place is an error unless it stores `uniq/T` or `objuniq/T`: then `_ = r` Reborrows a child and drops it, and `_ = r@move` consumes `r`. Explicit discard suppresses only the discard warnings for that result ([§17.5](17-failure-handling.md#175-warnings)); discarding a `Result` destroys its error payload and does not catch Abort.
 
 ```kimi
 _ = prepare()          // Ignore the whole Result, including Err.
@@ -411,7 +411,7 @@ let conflict = loop
 The **Target Result Type** is found independently of source order:
 
 1. Use the declared Type, the Type fixed by [§14.2.2](#1422-evaluation-contexts-and-body-results) or a fixed outer expectation.
-2. Otherwise find one common Type of the independently typable sources ([§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries)). Source Types are compared by their structural part only ([§15.6.1](15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness)): the common Type's Origins are local regions, and each source's fit to it yields ordinary Origin relations, never a Type mismatch. Never supplies no candidate. Sources that differ only in safe reference layers over one Type, or are literals of it ([§12.3](12-expressions.md#123-literal-typing)), have that common Type and are value-read ([§3.5.3](03-types-and-values.md#353-value-read)). A control-flow expression used as a call argument is classified by the Argument kinds rule of [§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries).
+2. Otherwise find one common Type of the independently typable sources ([§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries)). Source Types are compared by their structural part only ([§15.6.1](15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness)): the common Type's Origins are local regions, and each source's fit to it yields ordinary Origin relations, never a Type mismatch. Never supplies no candidate. Neither does a Tuple, array or Dictionary literal that holds a part of Type Never, also within such a literal part, nor a selection, `do` or `loop` none of whose sources supplies one. When no source supplies a candidate, the common Type is formed part by part over those sources: Tuples of one length by element, arrays by element, Dictionaries by key and value, and a selection, `do` or `loop` through its own sources; each part's common Type is found as this step finds one, from the parts in that position that are not Never, and a part that is Never in every source is Never. Sources that differ only in safe reference layers over one Type, or are literals of it ([§12.3](12-expressions.md#123-literal-typing)), have that common Type and are value-read ([§3.5.3](03-types-and-values.md#353-value-read)). A control-flow expression used as a call argument is classified by the Argument kinds rule of [§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries).
 3. Propagate the Type to sources checkable against it (such as `0..3` beside `0..n`); literal defaults apply as [§10.2](10-overload-resolution-and-inference.md#102-common-adaptation) states.
 4. Check every source. A call, anonymous function or empty literal that still lacks a Type needs an annotation.
 
@@ -431,6 +431,12 @@ let a = loop => continue                   // Never
 let b = loop
     continue
     exit 1                                 // i32: an unreachable source still counts.
+```
+
+```kimi
+func pick(ready: bool, large: i64) -> i64
+    let both = if ready => (large, (return 1)) else => ((return 2), large)   // (i64, i64): formed part by part.
+    return both.0
 ```
 
 ### 14.9.3. Reachability

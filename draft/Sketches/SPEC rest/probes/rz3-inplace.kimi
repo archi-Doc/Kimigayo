@@ -1,0 +1,19 @@
+struct Probe
+    public var home: usize
+    public init() => self.home = 0
+    drop
+        let here = self.home@raw@usize
+        if here == self.home
+            Console.writeLine("in place")
+        else
+            Console.writeLine("moved")
+let p = Raw.allocate<Probe>(1)
+unsafe
+    Raw.initialize(p, Probe.init())
+    (*p).home = (*p).home@raw@usize
+    _ = (*p)@move
+    Raw.release(p)
+var local = Probe.init()
+local.home = local.home@raw@usize
+_ = local@move
+Console.writeLine("end")
