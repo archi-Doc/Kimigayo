@@ -3290,7 +3290,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     planning session's reading, confirmed by the re-review). One Concept, One Canonical Form: one retention rule for borrowed and raw
     arguments; Local Reasoning: decided per argument from the contract's Types; Explicit Semantics: the self-store exception is stated.
     Observation (re-review R-N2): a callee that stores a converted pointer where its contract's Type cannot hold the argument breaks
-    its contract (undefined behavior); no text change. Rejected: keeping the letter and having each library body avoid deriving raw
+    its contract (undefined behavior); no text change (superseded at unstated positions by R4-M131). Rejected: keeping the letter and having each library body avoid deriving raw
     store targets from remainders (impractical: every library raw store does so); an A5-only reading without SPEC text (a departure
     from SPEC, which AGENTS forbids).
   - SPEC 5.2.1 condition 3 (OQ-1): after the own-step limit, a Warning is required where an operation may end the owning value's stay
@@ -3716,56 +3716,86 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M131 SPEC N2: a raw layer without an Origin that a call writes retains what the call may reach** (owner, 2026-10-25, the R4
   planning session's dialog, verbatim: Q1 「(a) A: 追う (推奨)」, Q2 「(a) A2: 当てる (推奨)」, Q3 「(a) 含めて書く (推奨)」, Q4 「(a) 全段
   (推奨)」, Q5 「(a) R′: raw の引数だけ (推奨)」; after the SPEC session's stop, the owning-iterator conflict 「(i) Iterator の next に1文
-  (推奨)」 and §4.9.6 against the cost class 「(a) library が Origin を書く (推奨)」; the planning session's rulings on the written-through
-  argument and on R′'s reading; unit spec-n2; the analysis, its review (ACCEPT WITH FIXES) and the probes are
-  `draft/Sketches/SPEC N2/`) SPEC 15.6.4, 5.7, 5.2.1, 15.6. PLAN G160's N2 (BU-30's "The review's N2"; R4-M122's list).
+  (推奨)」 and §4.9.6 against the cost class 「(a) library が Origin を書く (推奨)」; after the review, transfer operations 「(a) 公開した契約で1つの
+  規則 (推奨)」, replacing (i), and literal bytes 「(a) SPEC に1文足す (推奨)」; the planning session's rulings on the written-through
+  argument and on R′'s reading; unit spec-n2, review ACCEPT WITH FIXES; the analysis, its review and the probes are
+  `draft/Sketches/SPEC N2/`) SPEC 15.6.4, 5.7, 5.2.1, 15.6, 3.1.2. PLAN G160's N2 (BU-30's "The review's N2"; R4-M122's list).
   - 15.6.4: a raw layer without an Origin that the call may write, in its result, a nominal Type's Fields included (Q2), or in
     storage it writes through an argument, may retain every argument with what any chain of reads through it carries (Q4: reads
     through raw or borrowed layers anywhere in the value, then in each value read), but not the own value of the argument it writes
     through, and reaches storage the body does not own. Behind a result borrow the layer is lent, not written: it retains only the raw
-    arguments with their chains, as the within clause does, and reaches no storage the body does not own (Q5). An Iterator's `next`
-    retains its receiver in an item only by reads through it, never by its own Loans, resting on 22.2.3's promise (the owner's (i)).
-    The own-value sentence names the unstated layer as a third retainer.
+    arguments with their chains, as the within clause does, and reaches no storage the body does not own (Q5). The own-value
+    sentence names the unstated layer as a third retainer.
+  - Transfer operations (the owner's (a), the review's draft): "A published operation that transfers values retains a borrowed
+    argument at a raw layer without an Origin only by what a chain of reads through it carries, never by its own Loans: an
+    Iterator's `next` (22.2.3), `exchange` and `swap` (15.7) and the operations of 4.6 to 4.9. At an element's raw layer without an
+    Origin, an operation of 4.9 retains only its added and replacing inputs (4.9.6)." §4.9.6 is unchanged, and 15.6.4 defers to it;
+    callers already use its rows, never a library body. Binding keys the rule on three published sources: the Iterator conformance,
+    the two 15.7 intrinsics and the 4.6–4.9 library operations, a closed set of declarations that 22.1 requires.
+  - Literal bytes (the owner's (a)): 3.1.2, "A string literal's bytes are immutable static storage (11.8) for the whole execution,
+    not owned by the literal's value, so a raw pointer to them may state `static` (5.7)."
   - 5.7 Calls states the rule once for results and storage and loses "A raw pointer in a Field of a nominal result is stated by that
     Type's Fields alone" (A2). 5.2.1 condition 5 (Q3) covers an access "by the body or by a call to which the body passes the
     pointer, directly or within a value or storage"; its examples are a pointer a call stored in static storage and one restored
     from an integer. Retained dependencies: `Raw.initialize`, `Array.append`/`insert` and the literals keep a stored value's Loans
-    and addresses for any Type, and the rule applies only where no Origin is stated (the owner's (a); §4.9.6 is unchanged). 15.6
-    Reach: storage the body does not own also comes from an unstated layer a call writes.
+    and addresses for any Type; the rule applies only to a layer that states no Origin, and the unstated layers in the storage a
+    stated layer addresses follow it (the review's F2). 15.6 Reach: storage the body does not own also comes from an unstated layer
+    a call writes.
   - The written-through argument (the planning session's ruling): only its own value is excluded, as "a pointer is never part of
-    its own pointee" does for a raw one; its chain is kept. With the reviewer's prototype both wordings give the same verdicts on
+    its own pointee" does for a raw one; its chain is kept. With the reviewer's prototype, both wordings give the same verdicts on
     125 programs (B3's gTOk, gRFOk, putOk, litTupOk, arrInsertOk stay valid), and the narrower one adds `j Content store j` on the
     unlink forms (`(*head).next = (*(*head).next).next`), the row A5's Content closure follows. No prototype has that closure, so
     the unlink verdict is unverified, as are Q4's two-read forms.
+  - Transfer probe (the prototype with the rule keyed on Array.kimi, ArrayOperations.kimi, Dictionary.kimi, Slice.kimi, the
+    standard `next` and the two intrinsics; 142 programs; `spec-session-probes.md`):
+    - now valid: `swap` and `exchange` over `raw/u8` and `Box`; `pop`, `remove`, `swapRemove` and `insertOrReplace`; Dictionary
+      `remove` in its result and in storage; `sort(by:)`, `removeAll` and `appendCopies` over raw element Types; owning iteration;
+    - still errors: `fill`, the pairs `append` and a swapped pointer that carries an address (`swapRawBad`);
+    - `twoOut` stays an error (user code);
+    - no other verdict changes.
   - Rationale and Principles (options §4 A): today's letter contradicts itself, since SPEC's own operations over a Tuple's raw
     layer and every unsafe callee storing a layer below an argument's top break Retained dependencies. One Concept: "unstated" is
-    what the callee may reach, in results and storage alike. Local Reasoning: read from the contract's Types. Explicit Semantics:
-    an Origin states precision, and omission is conservative. Compiler Server Protocol: a broad row fails as a located Loan
+    what the callee may reach, in results and storage alike, and a published contract states precision as an Origin does. Local
+    Reasoning: read from the contract's Types and the published operation contracts. Explicit Semantics: an Origin or a published
+    contract states precision, and omission is conservative. Compiler Server Protocol: a broad row fails as a located Loan
     conflict, not as silent undefined behavior.
-  - Rejected: B (typed by Content), C (the letter made consistent), C′ alone, D, A1 (Q2 (b)), one-level depth (Q4 (b), (c)), R
-    and today's retention behind a borrow (Q5 (b), (c)), static rejection in the callee; for the conflict, (ii) never retaining a
-    borrowed argument's own Loans (it changes D6: `formR`) and (iii) A1; for the cost class, a §4.9.6 edit; for the written-through
-    argument, "every other argument".
+  - Rejected:
+    - the main options: B (typed by Content), C (the letter made consistent), C′ alone, D, A1 (Q2 (b)), one-level depth (Q4 (b),
+      (c)), R and today's retention behind a borrow (Q5 (b), (c)), static rejection in the callee, and unstated layers in
+      signatures as elided Origins;
+    - for the written-through argument, "every other argument";
+    - for transfer operations: (b) the Iterator clause alone, with a 4.9.6 sentence admitting the cost (`swap`, `exchange`, the
+      removals and the mutators over raw element Types would report Loan conflicts with no repair); (c) the general (ii), never
+      retaining a borrowed argument's own Loans (it reverses `fill`, changes D6 at `formR` and needs an unchecked callee
+      obligation);
+    - for the cost class, both 4.9.6 edits: 4.9.6 deciding collection operations, and 4.9.6 admitting the cost. The transfer rule
+      now makes 15.6.4 defer to the unchanged 4.9.6.
   - Supersedes: D6's "outside a nominal Type's Fields" and its one-read depth (G160's draft is frozen; this entry records it);
-    BU-30's conservative holds behind a borrow; R4-M116's R-N2 at unstated positions.
-  - Examples (5.7): `fill`/`fillFrom` (an out-parameter and its `during r` repair) and an `Array<(raw/u8, isize)>` literal are
-    `5.7-out-parameter` and `5.7-raw-pairs`. Their family is F1 (plan item 2's family beside F3), because MirBorrowsTest's F3 theory
-    asserts exact A5 results. Their error variants are (a) on the old path (no raw retention until R6-check) and (b) on the MIR (no
-    N2 rows yet). The items block (`iterate` and `intoIterator` over `Array<raw/u8>`) has no row: A5 reports a conflict at each
-    later `next` (D6's receiver Value), and MirCensusTest admits no A5 problem in an accepted SPEC variant, so its row lands with
-    BU's rows.
-  - Order: the library unit (Utf8Writer's `dispatch` and `pending`, and the collections' own raw Fields, such as DictionaryStorage's
-    `Handle.buffer`, state their Origins); BU's rows (`Held`'s Unstated flag apart from Static, rows from the input list with the
-    written input's Content, results under the same flag without `retentionUnstatedResult`, R′'s split of holds behind a result
-    borrow, the Iterator clause keyed on the callee's Iterator conformance; failing-first RetentionTest rows); then A5's Content
-    closure at untied outputs in G160-5's follow-up, with V16 scaling rows.
-  - Open:
-    - Over a raw element Type (`Array<raw/u8>`), the layer is the element's own, which no library Origin states. So `sort(by:)`,
-      `removeAll` and `appendCopies` still retain their Callable or Slice argument there, which §4.9.6's rules do not join.
-    - `remove` and `swapRemove` keep the receiver over such elements (D6).
-    - A call storing into static storage and an integer round trip stay untracked (condition 5).
-    - Also open: a direct closure call writing its environment (review N4, BU and R4); `dictRawOk` on the MIR (A5); whether literal
-      bytes and code are static storage (the library unit).
+    BU-30's conservative holds behind a borrow; R4-M116's R-N2 at unstated positions (back-referenced). BU-30 is left untouched until
+    BU agrees to its back-reference.
+  - Examples (5.7):
+    - `fill`/`fillFrom` (an out-parameter and its `during r` repair) and an `Array<(raw/u8, isize)>` literal are registered as
+      `5.7-out-parameter` and `5.7-raw-pairs`. Their family is F1 (plan item 2's family beside F3), because MirBorrowsTest's F3
+      theory asserts exact A5 results.
+    - Their error variants are (a) on the old path (no raw retention until R6-check) and (b) on the MIR (no N2 rows yet).
+    - The items block (`iterate` and `intoIterator` over `Array<raw/u8>`) has no row. A5 reports a conflict at each later `next`
+      (D6's receiver Value), and MirCensusTest admits no A5 problem in an accepted SPEC variant, so its row lands with BU's rows.
+  - Order:
+    1. The library unit: Utf8Writer's `pending` and `dispatch` state `during static` (3.1.2), and DictionaryStorage's
+       `Handle.buffer` states `during self`.
+    2. BU's rows: `Held`'s Unstated flag apart from Static; rows from the input list with the written input's Content; results
+       under the same flag, without `retentionUnstatedResult`; R′'s split of holds behind a result borrow; the transfer rule's three
+       keys; failing-first RetentionTest rows.
+    3. A5's Content closure at untied outputs, in G160-5's follow-up, with V16 scaling rows.
+  - Open, now that the transfer class (the review's F1: SPEC's `swap`/`exchange`, the 4.9 removals and rejections, Dictionary key
+    borrows, the cost class) is answered by the transfer rule:
+    - user functions keep A's cost: two exclusive out-parameters (`twoOut`: each keeps the other's Loan, and no Origin can be
+      stated for an unstated source) and a user container's `pop`, with an Origin as the repair where one can be stated;
+    - a concrete conformance of a requirement whose result is an associated Type (8.11.1's `Take.take`), other than an Iterator's
+      `next`, keeps the receiver's Loans at an unstated Item layer, while the requirement keeps only reads (reasoned, not probed);
+    - a call storing into static storage and an integer round trip stay untracked (condition 5; with P42's static protocol);
+    - a direct closure call writing its environment (review N4; BU and R4);
+    - `dictRawOk` on the MIR (A5; triage before BU's rows).
   - Numbering: R4-M131 is free on dev (R4-M130) and every branch (R4-M132 on 2a-2).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection

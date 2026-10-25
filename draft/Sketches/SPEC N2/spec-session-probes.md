@@ -8,7 +8,12 @@ below) and its harness were applied, run and reverted; nothing was committed. So
 - `A2+R′` (AR2): no unstated-layer rule behind a result borrow except the raw inputs;
 - `AN`: AR2, plus the written-through input's chain (`kinds[j] ??= Content`), never its own value.
 
-## Owning iteration (the stop; answered by the owner's (i))
+Later additions:
+- `spec-review.md` is the SPEC edit's independent review, ACCEPT WITH FIXES; its probes are `probes\g30-transfer.kimi`.
+- `prototype-at.diff.txt` is the whole throwaway Binding prototype: modes AR2, AN and AT, with an env-gated debug line. Apply it
+  with `prototype.diff.txt`'s `Formatting.kimi` hunk.
+
+## Owning iteration (the stop; answered by the owner's (i), then by the transfer rule)
 
 An owning iterator's item is in the result, not behind a borrow (`ArrayOwningIterator<T>.next(self: uniq/Self) -> Option<T>`). So the
 unstated-layer rule retains the receiver and the item keeps its Loan, against SPEC 22.2.3 and LIBRARY §2.1. R′ covers only
@@ -36,3 +41,22 @@ Every error is A5's `ComparisonLoanConflict_Kd`, from `next`'s (or `remove`'s) `
   (a)), which no prototype has. With that closure, AN's row carries the address the call stored, and AR2 has no row to follow.
 - **Unrelated errors.** unlinkBad, unlinkUBad and copyDownBad err in every mode, their Ok twin too, for an unrelated reason:
   `Node.init`'s untied result and `usep<Node>`'s untied store keep w's address in storage the body does not own.
+
+## The transfer rule (the owner's (a) after the review)
+
+Mode AT is AN plus the rule. It keys on functions declared in Array.kimi, ArrayOperations.kimi, Dictionary.kimi and Slice.kimi,
+on the standard `next`, and on `Kimi.Intrinsics.exchange` and `swap`. At their unstated layers, a borrowed or Slice input gets
+Content, never Value. At a collection's storage output, Callable, borrowed and unscoped inputs are skipped, and a Slice input keeps
+Content.
+
+The table shows every program whose AN and AT verdicts differ, plus the transfer probes (g30, g31). There are 142 programs, and no
+other verdict differs between AN and AT. `none` is the branch head (dev plus docs).
+
+| Program | none | AN | AT |
+| --- | --- | --- | --- |
+| costAppendCopies, costSortBy, costTupleArray | acc | err | acc |
+| ownRaw, forMoveRaw, removeRaw, exchangeRaw, popRaw, dictRemoveKey, removeRaw2, swapRemoveRaw, insertOrReplaceRaw | err | err | acc |
+| ownBox, forMoveBox, removeBox, swapRaw, swapBox, exchangeBox, dictRemoveStore | acc | err | acc |
+| swapI32, swapRef, dictRemoveStoreI32 (controls) | acc | acc | acc |
+| twoOut (user code; open) | acc | err | err |
+| fillBad (the SPEC `fill`), appendTupBad2 (an added input), swapRawBad (a swapped pointer that carries w's address) | acc | err | err |
