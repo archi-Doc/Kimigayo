@@ -3716,31 +3716,44 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M131 SPEC N2: a raw layer without an Origin that a call writes retains what the call may reach** (owner, 2026-10-25, the R4
   planning session's dialog, verbatim: Q1 「(a) A: 追う (推奨)」, Q2 「(a) A2: 当てる (推奨)」, Q3 「(a) 含めて書く (推奨)」, Q4 「(a) 全段
   (推奨)」, Q5 「(a) R′: raw の引数だけ (推奨)」; after the SPEC session's stop, the owning-iterator conflict 「(i) Iterator の next に1文
-  (推奨)」 and §4.9.6 against the cost class 「(a) library が Origin を書く (推奨)」; after the review, transfer operations 「(a) 公開した契約で1つの
-  規則 (推奨)」, replacing (i), and literal bytes 「(a) SPEC に1文足す (推奨)」; the planning session's rulings on the written-through
-  argument, on R′'s reading and, after the re-check, on `exchange`'s result (N1); BU's agreement to the BU-30 back-reference; unit
-  spec-n2, review and re-check ACCEPT WITH FIXES; the analysis, the reviews and the probes are `draft/Sketches/SPEC N2/`) SPEC
-  15.6.4, 5.7, 5.2.1, 15.6, 3.1.2. PLAN G160's N2 (BU-30's "The review's N2"; R4-M122's list).
+  (推奨)」 and §4.9.6 against the cost class 「(a) library が Origin を書く (推奨)」; after the review, transfer operations
+  「(a) 公開した契約で1つの規則 (推奨)」, replacing (i), and literal bytes 「(a) SPEC に1文足す (推奨)」; the planning session's
+  rulings on the written-through argument, on R′'s reading and, after the re-check, on `exchange`'s result at a raw layer (N1);
+  BU's agreement to the BU-30 back-reference; unit spec-n2, review, re-check and final review ACCEPT WITH FIXES; the analysis, the
+  reviews and the probes are `draft/Sketches/SPEC N2/`) SPEC 15.6.4, 5.7, 5.2.1, 15.6, 3.1.2. PLAN G160's N2 (BU-30's "The
+  review's N2"; R4-M122's list).
   - 15.6.4: a raw layer without an Origin that the call may write, in its result, a nominal Type's Fields included (Q2), or in
     storage it writes through an argument, may retain every argument with what any chain of reads through it carries (Q4: reads
     through raw or borrowed layers anywhere in the value, then in each value read), but not the own value of the argument it writes
     through, and reaches storage the body does not own. Behind a result borrow, a Slice's or UniqSlice's elements included, the layer
     is lent, not written: it retains only the raw arguments with their chains, as the within clause does, and reaches no storage the
     body does not own (Q5). The own-value sentence names the unstated layer as a third retainer.
-  - Transfer operations (the owner's (a), the review's draft as the re-check amended it): "A published operation that transfers
-    values retains a borrowed argument, a Slice or UniqSlice included, at a raw layer without an Origin only by what a chain of reads
-    through it carries, never by its own Loans: an Iterator's `next` (22.2.3), `exchange` and `swap` (15.7) and the operations of 4.6
-    to 4.9; `exchange`'s result, the old contents, retains only what a chain of reads through its target carries. In the element
-    storage it writes, an operation of 4.9 retains at a raw layer without an Origin, of its arguments other than the receiver, only
-    its added and replacing inputs, and a removed element in its result keeps the stored Types' full dependencies (4.9.6)."
+  - Transfer operations (the owner's (a), the review's draft as the re-check and the final review amended it): "A published
+    operation that transfers values is an Iterator's `next` (22.2.3), `exchange` or `swap` (15.7), or an operation of 4.6 to 4.9; at
+    a raw layer without an Origin it retains a borrowed argument (not a raw pointer argument), a Slice or UniqSlice included, only by
+    what a chain of reads through it carries, never by its own value; there, `exchange`'s result, the old contents, retains only what
+    a chain of reads through its target carries. In the element storage it writes, an operation of 4.9 retains at a raw layer
+    without an Origin, of its arguments other than the receiver, only its added and replacing inputs, and a removed element in its
+    result keeps the stored Types' full dependencies (4.9.6)." 5.2.1's parenthetical and 5.7 Calls point to it ("narrower for the
+    published transfer operations").
+    - The final review's fixes:
+      - N1: the list is definitional, so a user container's `pop` and `Take.take` conformances are outside it.
+      - B2: "not a raw pointer argument", because 15.6.4 retains a raw pointer argument "as a borrowed one". An added raw input
+        keeps its own value, as 5.2.1, 4.9.6 and the own-value sentence say. In `g34`, `appendRawOwnBad`, `insertRawOwnBad`,
+        `dictInsertRawOwnBad` and `exchangeRawOwnStoreBad` err under every mode.
+      - B1: "there" scopes `exchange`'s result clause to the raw layer. Applied to every `T`, it would be a safe-code acceptance
+        change outside N2 (`exchangeRefValue`, which A5 rejects today).
+      - N3: "own value" is the section's term.
     - R1: a Slice is a Copy view with a slot, not a borrow layer (4.8.1), and `toArray` keeps no outer borrow (4.8.2).
     - R2: the 4.9 clause is scoped to the element storage written, and the receiver's chain is kept. Relocating bodies (`sort`,
       `remove`, `removeAll`) store the receiver's elements back, and removed values carry the full dependency set (4.9.6).
     - N1 (the planning session's ruling): `exchange`'s result is extended by its published contract (15.7: the result is the old
       contents).
     - 4.9.6 is unchanged, and 15.6.4 defers to it: callers already use its rows, never a library body.
-    - Binding keys the rule on three published sources: the Iterator conformance, the two 15.7 intrinsics and the 4.6–4.9 library
-      operations. This is a closed set of declarations that 22.1 requires.
+    - Binding keys the rule on three published sources: the Iterator conformance, the two 15.7 intrinsics, and the declarations
+      that implement 4.6–4.9's operations. That is a closed set that 22.1 requires; the Kimi library may declare more than the
+      table requires (the final review's N8).
+    - Borrowed arguments are keyed by borrow Types and Slices; a raw pointer argument is not one.
   - Literal bytes (the owner's (a)): 3.1.2, "The bytes of the text a string literal spells outside its interpolations are immutable
     static storage (11.8) for the whole execution, owned by no value (an interpolated literal still produces an owning `string`,
     12.4.2), so a raw pointer to them may state `static` (5.7)"; 5.7's `static` row cites it.
@@ -3771,8 +3784,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
       carries one (`popRawBad`) and `toArrayRawBad`;
     - `twoOut` stays an error (user code);
     - no other verdict changes.
-    - With N1's extension, `exchangeValue` is valid. `exchangeTargetBad`, whose old contents carry an address, still errs, and so
-      does `exchangeStoreBad`, where the target keeps the stored value.
+    - With N1's extension (mode ATX), `exchangeValue` is valid. `exchangeTargetBad`, whose old contents carry an address, still
+      errs, and so does `exchangeStoreBad`, where the target keeps the stored value.
+    - ATX applies the extension to the whole result for every `T`, so its verdicts without a raw layer (`exchangeRefValue`,
+      `exchangePairValue` valid) are not the rule. BU's row scopes the extension to the raw layer.
+    - The prototype narrows Slice, not UniqSlice, arguments; no 4.6–4.9 operation takes a UniqSlice by value.
   - Rationale and Principles (options §4 A): today's letter contradicts itself, since SPEC's own operations over a Tuple's raw
     layer and every unsafe callee storing a layer below an argument's top break Retained dependencies. One Concept: "unstated" is
     what the callee may reach, in results and storage alike, and a published contract states precision as an Origin does. Local
@@ -3817,6 +3833,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     - a call storing into static storage and an integer round trip stay untracked (condition 5; with P42's static protocol);
     - a direct closure call writing its environment (review N4; BU and R4);
     - `dictRawOk` on the MIR (A5; triage before BU's rows).
+    - 4.8.2's "Slice members ... results retain `s.source`" was already inexact for `toArray` (pre-existing; its own "not the
+      outer borrow" and the transfer rule settle it; the final review's N9).
   - Numbering: R4-M131 is free on dev (R4-M130) and every branch (R4-M132 on 2a-2).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection

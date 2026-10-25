@@ -78,3 +78,15 @@ now holds AT and ATX, the latter gated by `KIMI_N2_X=1`. Sources: `probes\g32-re
 | exchangeStoreBad (`exchange(x@uniq, with: q)`, then x used after `y = 5`) | err | err | err |
 
 On the other programs of g14, g17, g18, g20, g30 and g31, AT and ATX agree.
+
+## The final review (`spec-final-review.md`): the scope of the narrowing
+
+Corrections to the record above:
+- ATX applies `exchange`'s extension to the whole result for every `T`, not only at a raw layer. So its verdicts without a raw layer
+  are not the rule: `exchangeRefValue` and `exchangePairValue` in `probes\g35-exchange-scope.kimi` are valid under ATX, though A5
+  and the rule keep their errors. SPEC 15.6.4 scopes the clause to the raw layer ("there"), and BU's row does too.
+- "A borrowed or Slice input" in AT covers Slice, not UniqSlice; no 4.6–4.9 operation takes a UniqSlice by value.
+- AT does not narrow a raw pointer input: it keeps its own value with Content, as SPEC's "not a raw pointer argument" now says.
+  `probes\g34-frev.kimi` shows this: `appendRawOwnBad`, `insertRawOwnBad`, `dictInsertRawOwnBad` and `exchangeRawOwnStoreBad` (an
+  added pointer whose own value carries `y`'s Loan, while a read through it carries nothing) err at `y = 5` on the head, under AT and
+  under ATX; `appendRawOwnCtl` is clean.
