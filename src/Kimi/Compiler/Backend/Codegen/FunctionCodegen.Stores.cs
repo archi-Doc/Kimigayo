@@ -71,22 +71,38 @@ internal sealed partial class FunctionCodegen
         output.Write(", i1 false)\n");
     }
 
-    // An operand of nonzero size put at an address in its Type's representation: a string constant written whole as its record (Text), any
-    // other operand read (Operand), then put (Put). False for an operand form not covered yet, which the caller records.
-    private bool Put(Value address, BoundType type, ValueLowering lowering, in MirOperand operand)
+    // An operand's value, read before its Place is located (SPEC 13.7.1; Operand): none for a string constant, which has nothing to
+    // evaluate (Put writes it whole). False for an operand form not covered yet, which the caller records.
+    private bool Evaluate(in MirOperand operand, out Value value)
+    {
+        value = default;
+        return this.TextOf(operand) is not null || this.Operand(operand, out value);
+    }
+
+    // An evaluated operand of nonzero size put at an address in its Type's representation: a string constant written whole as its record
+    // (Text), any other its value (Put).
+    private void Put(Value address, BoundType type, ValueLowering lowering, in MirOperand operand, Value value)
     {
         if (this.TextOf(operand) is { } text)
         {
             this.Text(address, text);
-            return true;
         }
+        else
+        {
+            this.Put(address, type, lowering, value);
+        }
+    }
 
-        if (!this.Operand(operand, out var value))
+    // An operand of nonzero size evaluated (Evaluate), then put at an address in its Type's representation (above). False for an operand
+    // form not covered yet, which the caller records.
+    private bool Put(Value address, BoundType type, ValueLowering lowering, in MirOperand operand)
+    {
+        if (!this.Evaluate(operand, out var value))
         {
             return false;
         }
 
-        this.Put(address, type, lowering, value);
+        this.Put(address, type, lowering, operand, value);
         return true;
     }
 

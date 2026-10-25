@@ -113,7 +113,7 @@ internal sealed partial class FunctionCodegen
             return 5;
         }
 
-        if (ReferenceEquals(Terminal(type), BoundType.String))
+        if (ReferenceEquals(Terminal(type, out _, out _), BoundType.String))
         {
             return StringColumn;
         }
@@ -161,7 +161,7 @@ internal sealed partial class FunctionCodegen
         var right = default(Computed);
         if (!this.Compute(operands[0], out var left) || (operands.Length == 2 && !this.Compute(operands[1], out right)))
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // A Place of a later row (a payload, C6a) or a constant of one.
+            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // An operand form not covered yet (Compute).
             return;
         }
 

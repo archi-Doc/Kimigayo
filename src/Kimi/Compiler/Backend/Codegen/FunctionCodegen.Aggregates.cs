@@ -22,7 +22,7 @@ internal sealed partial class FunctionCodegen
     // An Aggregate (SPEC 4.3.1-4.3.4, 6.5.1-6.5.2, 7.7.1-7.7.2; IMPL 21.1.2-21.1.3): its operands' values in order, its Place located (SPEC
     // 13.7.1), then an enum Case's ordinal as its tag (Layout.Tag) and each value put at its component (Component), or a Fill's one value at
     // each element by one counted loop (DECISIONS R4-M81); noinit, from no operand, and a zero-sized Place store none. A string constant has
-    // nothing to evaluate: it is written whole at its component once the Place is located (Text, the Use row's rule). A Closure's
+    // nothing to evaluate: it is written whole at its component once the Place is located (Evaluate and Put, the Use row's rule). A Closure's
     // environment is the Closure value, its captures placed as a Tuple's elements in the Place's own storage at every size, so forming it
     // allocates nothing (DECISIONS R5-M102). An Array or Dictionary from none is C8d's and C8e's row.
     private void Aggregate(in MirStatement statement)
@@ -46,7 +46,7 @@ internal sealed partial class FunctionCodegen
         this.arguments = this.arguments.Length < operands.Length ? new Value[operands.Length] : this.arguments;
         for (var i = 0; i < operands.Length; i++)
         {
-            if (this.TextOf(operands[i]) is null && !this.Operand(operands[i], out this.arguments[i]))
+            if (!this.Evaluate(operands[i], out this.arguments[i]))
             {
                 this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
                 return;
@@ -77,14 +77,7 @@ internal sealed partial class FunctionCodegen
                 continue;
             }
 
-            if (this.TextOf(operands[i]) is { } text)
-            {
-                this.Text(this.Offset(address, offset), text);
-            }
-            else
-            {
-                this.Put(this.Offset(address, offset), component, lowering, this.arguments[i]);
-            }
+            this.Put(this.Offset(address, offset), component, lowering, operands[i], this.arguments[i]);
         }
     }
 

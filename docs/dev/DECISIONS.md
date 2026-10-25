@@ -8274,7 +8274,7 @@ structure is recorded here by the unit that first implements it.
     call 9, closure 7, C-scalar 3, K-edges 2), all this unit's, each failing at its base: the census's 481 comparison and constant rows
     (C8b's three update-adapter rows and G:object's two string `==` rows among them) and 24 warm-allocation rows that now reach 0 B;
     `StringComparisonEmissionTest` and `StringGuardEmissionTest` leave it whole; the 27 fixture rows above join it. The flipped tests' 41
-    fixture families (1,863 fixtures, the new `StringRows` among them) run natively under sel at O0 and O2, every fixture but those 27
+    fixture families (2,424 fixtures, the new `StringRows` among them) run natively under sel at O0 and O2, every fixture but those 27
     passing, and `StringRows` also under the old generator; `FunctionCodegenTest` (the six operators' routines on the records' bytes and
     their predicates, constants' bytes with `""` null and 0 and no record stored, a uniq layer's extra load, literal Patterns, a tuple's
     string leaf by equality then order, string constants written whole into a Tuple, a fixed array, an enum Case and raw storage, no

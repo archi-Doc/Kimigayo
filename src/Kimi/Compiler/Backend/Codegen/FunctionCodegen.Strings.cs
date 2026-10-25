@@ -17,14 +17,18 @@ namespace Kimi.Compiler.Backend;
 // C8f's comparison shims read a string leaf's record through Record.
 internal sealed partial class FunctionCodegen
 {
-    // SPEC 3.4.3, 13.4: the terminal of a comparison operand's Type below its safe value-reference layers (ref, uniq and pair layers); an
-    // object handle or borrow is not followed.
-    private static BoundType Terminal(BoundType type)
+    // SPEC 3.4.3, 13.4: the terminal of a comparison operand's Type below its safe value-reference layers (ref, uniq and pair layers; an
+    // object handle or borrow is not followed): the one walk of those layers, which also counts the layers followed and, of those, the
+    // ref and uniq ones.
+    private static BoundType? Terminal(BoundType? type, out int layers, out int references)
     {
+        (layers, references) = (0, 0);
         while (TyCtxt.Layer(type, out var below, out _) is var layer && (layer == HirPlaceKind.PairLayer ||
-            (layer == HirPlaceKind.Deref && type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)))
+            (layer == HirPlaceKind.Deref && type!.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)))
         {
-            type = below!;
+            layers++;
+            references += layer == HirPlaceKind.Deref ? 1 : 0;
+            type = below;
         }
 
         return type;
@@ -73,18 +77,16 @@ internal sealed partial class FunctionCodegen
             return false;
         }
 
-        var type = this.InstanceType(operand);
-        var layers = 0;
-        for (; type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] }; layers++)
-        {
-            address = layers == 0 ? address : this.LoadAt(address, PointerLayout);
-            type = referent;
-        }
-
-        if (layers == 0 || !ReferenceEquals(type, BoundType.String))
+        var terminal = Terminal(this.InstanceType(operand), out var layers, out var references);
+        if (references == 0 || references != layers || !ReferenceEquals(terminal, BoundType.String))
         {
             this.Report(DiagnosticCode.InternalInvariant_Kd, source);
             return false;
+        }
+
+        for (var layer = 1; layer < references; layer++)
+        {
+            address = this.LoadAt(address, PointerLayout);
         }
 
         bytes = this.Record(address);
