@@ -144,23 +144,26 @@ them (DECISIONS R5-M3).
 
 ## Shared heavy runs and bases
 
-Sessions working in parallel on one machine share its load and their full-suite baselines (DECISIONS R4-M119).
+Sessions working in parallel on one machine share its load and their full-suite baselines (DECISIONS R4-M119). Both live in
+the main checkout's `artifacts/`, which is ignored and therefore separate in every worktree: a unit in `bin/worktrees/<name>`
+uses the main checkout's directories by absolute path.
 
 A heavy run is a full Session (default, `-Pipeline mir` or sel), a full `-TestPurpose Functional` run (also a ledger run
 with `KIMI_MIR_DIFF`), or a native fixture or milestone sweep; a Unit run of selected classes is not. At most three heavy
 runs execute at once across the sessions. Before starting one, list `artifacts/heavy-runs/*.run` and delete those older
 than four hours (stale); if three or more remain, do targeted work and check again later. Otherwise create
-`<session>-<unit>-<yyyyMMdd-HHmmss>.run` there, one line naming the worktree and the command, start the run, and delete
+`<R4|BU|R5>-<unit>-<yyyyMMdd-HHmmss>.run` there, one line naming the worktree and the command, start the run, and delete
 the file when the run ends, passed or failed. A script running several heavy runs in sequence keeps one file.
 
 `artifacts/verify/shared-base/<sha9>/` holds the bases of one commit, a dev commit or a branch head other units start
-from: `diagnostic-snapshot.json` (`./scripts/verify.ps1 -DiagnosticSnapshot`; the snapshot step checks its fixed corpus
-whatever the selection, so a Unit run of the common checks suffices), `mir-diff/` (the whole `KIMI_MIR_DIFF` directory of
-`-Pipeline mir -TestPurpose Functional`), optionally `semantic/` (`KIMI_SEMANTIC_SNAPSHOT=write` output) and `README.txt`
-naming the commit, the commands, the evidence directory and the date. Reuse an existing base for the same commit;
-produce a missing one, the ledger as a registered heavy run, and copy it there. Never edit a base in place: delete a
-wrong one whole and remake it. A unit compares against the base of the commit it starts from; pass `-DiagnosticBaseline`
-a Windows path (`C:/...` or `C:\...`), since `verify.ps1` does not resolve a Git Bash path such as `/c/...`.
+from: `diagnostic-snapshot.json` (the snapshot step checks its fixed corpus whatever the selection, so
+`./scripts/verify.ps1 -DiagnosticSnapshot` alone, the build and that step, suffices), `mir-diff/` (the whole
+`KIMI_MIR_DIFF` directory of `-Pipeline mir -TestPurpose Functional`), optionally `semantic/` (`KIMI_SEMANTIC_SNAPSHOT=write`
+output, with the `KIMI_SEMANTIC_HIR`/`KIMI_SEMANTIC_MIR` flags it used) and `README.txt` naming the commit, the commands, the
+evidence directory and the date. Reuse an existing base for the same commit; produce a missing one, the ledger as a
+registered heavy run, and copy it there. Never edit a base in place: delete a wrong one whole and remake it. A unit compares
+against the base of the commit it starts from; pass `-DiagnosticBaseline` an absolute Windows path (`C:/...` or `C:\...`),
+since `verify.ps1` does not resolve a Git Bash path such as `/c/...`.
 
 ## Specification acceptance and support boundaries
 
