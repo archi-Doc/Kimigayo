@@ -303,6 +303,44 @@ public sealed partial class MirBorrowsTest
         Assert.True(Grows(bytes, 5), $"bytes {string.Join(", ", bytes)}");
     }
 
+    // V16 (DECISIONS R4-M132; G:A5-F4's group review N2, after the 2a-2 review's A-B1): rule W's Bytes stay within a constant c times the
+    // W-free run's on A-B1's shape (N locals borrowed, each stored through a parameter and read through it after the store, each conflict
+    // derived), against its twin storing into a local slot (no Refuted relation, so no W element, no marker and no conflict). Measured
+    // 3.87, 3.94 and 3.97 at N = 32, 64 and 128, tending to 4; c = 4.5 leaves 13% over the largest. A-B1's cubic form (one marker added at
+    // a time) would grow the ratio with N.
+    [Fact]
+    public void RuleWsBytesStayWithinAConstantOfItsWFreeTwin()
+    {
+        const string Each = "    var x{0} = {0}\n    var r{0} = x{0}@ref\n    p@follow = r{0}\n    inspect(p@follow)\n";
+        (long Bytes, int Problems, int Derived) Measure(string head, int size)
+        {
+            var text = new StringBuilder(Prelude).Append(head);
+            for (var n = 0; n < size; n++)
+            {
+                text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, Each, n);
+            }
+
+            var c = MirBuildTest.Compile(text.ToString());
+            var program = c.BuildMir();
+            Assert.Empty(program.Findings);
+            var stratum = new Stratum(c.Types);
+            stratum.Run(program, Body(program, "shape"));
+            return (stratum.Borrows.Bytes, program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code)), DerivedProblems(program).Length);
+        }
+
+        var ratios = new List<double>();
+        foreach (var size in new[] { 32, 64, 128 })
+        {
+            var ruled = Measure("func shape(p: uniq/(ref/i32 during a))\n", size);
+            var free = Measure("func shape()\n    var y = 0\n    var slot: ref/i32 = y@ref\n    let p = slot@uniq\n", size);
+            Assert.Equal((size, size, 0, 0), (ruled.Problems, ruled.Derived, free.Problems, free.Derived));
+            ratios.Add((double)ruled.Bytes / free.Bytes);
+            output.WriteLine($"N {size}: bytes {ruled.Bytes} with rule W, {free.Bytes} without");
+        }
+
+        Assert.All(ratios, static x => Assert.True(x <= 4.5, x.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+    }
+
     // DECISIONS R4-M132 (the gate, the design review's row 2): rule W sets nothing up in a body MirOrigins finds no Refuted relation in,
     // so a valid body's Work and Bytes are the same whether or not another body of the program has one.
     [Fact]

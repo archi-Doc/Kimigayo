@@ -24,6 +24,14 @@ public class ArchitectureRulesTest
         "Binding/Binding.TypeRelations.Origins.cs=7;Binding/Binding.TypeRelations.cs=2;" +
         "Binding/BindingModel.cs=2;Binding/TyCtxt.cs=4";
 
+    // DECISIONS R4-M136's OldRule ratchet: an OldRule test without a MirTargetSide call, from its Trait to its member's end, the line before
+    // the blank line and the next member (StyleCop separates members by one) or the class's end, so an expression-bodied member ends at its
+    // own end (PLAN G263; G:A5-F4's group review N4). A letter in brackets keeps the pattern from matching its source.
+    private const string OldRuleWithoutTargetSide = @"\[Trai[t]\(""OldRule"", ""[^""]+""\)\](?:(?!MirTargetSide\.|\n\n    \S|\n\})[\s\S])*(?=\n\n    \S|\n\})";
+
+    // An OldRule test's attributes in a member list, for TheOldRuleRatchetEndsEachMemberAtItsOwnEnd (escaped, so the ratchet skips it).
+    private const string OldRuleTest = "    [Trait(\"OldRule\", \"X\")]\n    [Fact]\n";
+
     // Test-only semantic-slot ratchet; production member policy is reviewed against COMPILER_ARCHITECTURE.
     private const string SemanticSlots = "Bound(?:Type|Origin|Symbol|Call|ValueCall|Constraint|RuntimeTest|Meaning|Closure)|BindingState|BindingFailure|HasCurrentBinding|CallStorage|ClosureStorage|ConversionBinding|FoldedConstant|CreationCall|ErasedFunctionType|EntryCall|FormattingStorage|ArithmeticCall|ComparisonCall|IsDirectStorage|FillCount|SemanticsIndexed|RequirementStorage|ImplementationStorage";
 
@@ -57,8 +65,8 @@ public class ArchitectureRulesTest
     // .OldContentConflictExplainsTheCauseInEveryAdapter and DictionaryStoredReferenceTest.CompoundStoredReferencesOutliveTheContainer,
     // .ConstructionAndConditionalStorageRetainTheInput and .LocalInputsAndSharedCopiesOutliveTheSlot (their unit 2d-8), and Binding's
     // NormalizedConstraintProofBindingTest.NormalizationDoesNotAddLogicalRulesOrEraseTypeStructure (B3.3, R4-M136's open line). Removal: 0
-    // by R4's exit (the A5 step 2 plan's N8). A letter in brackets keeps this row's own pattern from matching its source.
-    [InlineData("OldRule tests without a MIR target side", "tests/xUnitTest", "*.cs", @"\[Trai[t]\(""OldRule"", ""[^""]+""\)\](?:(?!MirTargetSide\.|\n    \}\n)[\s\S])*\n    \}\n", 7)]
+    // by R4's exit (the A5 step 2 plan's N8).
+    [InlineData("OldRule tests without a MIR target side", "tests/xUnitTest", "*.cs", OldRuleWithoutTargetSide, 7)]
     // DECISIONS R4-M101 E8 (2a0-D D7, D8): only the C1-F4 view decodes an Origin's slot, binder or forming body, so no Mir source reads
     // them (G163); fixed-fixed entailment has one owner, so OriginPremiseClosure.AddEdge has one caller, the premise catalog's writer
     // (AddPremiseEdge, bu20's C0d).
@@ -70,6 +78,18 @@ public class ArchitectureRulesTest
         var count = SourceFiles(directory, pattern).Sum(x => expression.Count(File.ReadAllText(x)));
         Assert.True(count <= limit, $"{rule}: {count} occurrences; the limit is {limit}.");
     }
+
+    // DECISIONS R4-M136 (PLAN G263; G:A5-F4's group review N4): the OldRule ratchet's pattern ends a member at its own end. An expression-
+    // bodied OldRule test before a member that calls MirTargetSide counts, where a pattern ending at the next closing brace was hidden by
+    // that call; a block-bodied one before an expression-bodied one counts both; a blank line inside a body ends nothing; a test with a
+    // MirTargetSide call counts none, in either form.
+    [Theory]
+    [InlineData("    public void A() => B();\n\n    [Fact]\n    public void C()\n    {\n        MirTargetSide.Check(x);\n    }\n}\n", 1)]
+    [InlineData("    public void A()\n    {\n        B();\n    }\n\n" + OldRuleTest + "    public void C()\n        => D();\n}\n", 2)]
+    [InlineData("    public void A()\n    {\n        B();\n\n        MirTargetSide.Check(x);\n    }\n}\n", 0)]
+    [InlineData("    public void A() => MirTargetSide.Check(x);\n\n" + OldRuleTest + "    public void C()\n    {\n        MirTargetSide.Check(y);\n    }\n}\n", 0)]
+    public void TheOldRuleRatchetEndsEachMemberAtItsOwnEnd(string members, int count)
+        => Assert.Equal(count, new Regex(OldRuleWithoutTargetSide).Count(OldRuleTest + members));
 
     // DECISIONS BU-24: the families of the raw Origin's representation are closed by their sites, file by file. A self-rebuild
     // `Intern(x.Kind, x.Symbol, x.Semantics, …)` is the keep-rebuild (TyCtxt.Rebuild), the erasure (EraseParts), a mapping rewriter that
