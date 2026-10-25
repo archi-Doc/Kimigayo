@@ -52,6 +52,12 @@ internal sealed partial class TyCtxt
     private BoundType?[] witnessTypes = [];
     private BoundOrigin[] witnessOrigins = [];
 
+    // SPEC 8.6.1: the Contract that declares a requirement, also of a built-in target, which keeps its requirement's declaration and scope
+    // (Binding.PrepareBuiltinTargets): the Contract whose mapping a comparison shim and whose operation an arithmetic shim runs, and whose
+    // requirement a compiler function's call of a user witness names (DECISIONS R5-M126; PLAN G157 (16)).
+    internal static BindingSymbol Contract(BindingSymbol requirement) => requirement.Scope.Owner is ContractKoto { BoundSymbol: { } contract }
+        ? contract : throw new InvalidOperationException($"{requirement.Name} is not a requirement.");
+
     // SPEC 8.6.1, 8.11.3, 11.9.2, 22.1; IMPL 21.3.1: what a requirement call with the recorded Contract reference runs under a closed
     // substitution.
     internal RequirementTarget Witness(BindingSymbol requirement, BindingSymbol? contract, Subst subst)

@@ -61,7 +61,7 @@ internal sealed partial class InstanceCollector
         {
             var slots = type.Symbol is { } structure && VTableDef.Of(structure) is not null;
             this.Target(item, this.GlueOf(item, site, type));
-            this.Target(item, slots ? this.AdmitType(item, site, new(MonoKind.VTable, default, null, null, 0, null), type) : -1);
+            this.Target(item, slots ? this.AdmitType(item, site, new(MonoKind.VTable, default, null, null, 0, null), type, null) : -1);
             return;
         }
 

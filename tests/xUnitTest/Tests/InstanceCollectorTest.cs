@@ -1064,6 +1064,34 @@ public sealed class InstanceCollectorTest
         Assert.Equal(2, shims.Select(x => set.Find(x.Key)).Distinct().Count());
     }
 
+    // K 4.3 (DECISIONS R5-M126, its departure (i)): a shim item is represented by its Self and by the substitution of the call that first
+    // admits it, so its requirement's signature in its instance (TyCtxt.Signature through TypeOf) is closed, also a binary arithmetic
+    // requirement's, whose Rhs and Output its Self alone leaves open; a second call of one key keeps the item (fail-before: no representative,
+    // added's right operand ref/Rhs and its result open).
+    [Fact]
+    public void AShimItemIsRepresentedByItsAdmittingCall()
+    {
+        var c = MirBuildTest.Compile(
+            "func sum<T>(left: ref/T, right: ref/T) -> T\n    T is Addable<T>\n    T.(Addable<T>).Output is T\n    return left + right\n" +
+            "func same<T>(left: ref/T, right: ref/T) -> bool\n    T is Equatable\n    return left == right\n" +
+            "let a = 2\nlet b = 3\nrequire sum(a@ref, b@ref) == 5 and same(a@ref, a@ref) and not same(b@ref, a@ref) else => $abort(\"shims\")\n");
+        var program = c.BuildMir();
+        var collector = new InstanceCollector(c.Types, c.Layout);
+        var set = collector.Run(program, 1);
+        Assert.Empty(set.Records);
+        var shims = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.Builtin).ToArray();
+        Assert.Equal(["Builtin i32 BuiltinArithmetic", "Builtin i32 BuiltinEquals"], shims.Select(x => Label(program, set.Items[x])).Order(StringComparer.Ordinal));
+        foreach (var shim in shims)
+        {
+            var (function, representative) = (set.Items[shim].Key.Symbol!, set.Items[shim].Representative);
+            Assert.Same(set.Items[shim].RepresentativeType, representative?.Self);
+            _ = TyCtxt.Signature(function, null, int.MaxValue, out var count);
+            var expected = function.CompilerFunction == CompilerFunctionKind.BuiltinEquals ? "bool" : "i32";
+            var types = Enumerable.Range(-1, count + 1).Select(x => TyCtxt.Name(collector.TypeOf(shim, TyCtxt.Signature(function, null, x, out _)!)!));
+            Assert.Equal([expected, "ref/i32", "ref/i32"], types);
+        }
+    }
+
     // PLAN G157 (4), PD30: a requirement call whose Self nests past Binding's storage bound in the instance (Box^65<i32>, storage depth 65;
     // no local of the body stores it) is the storage-nesting gap at the call, while the twin one level below is its witness's instance.
     [Theory]

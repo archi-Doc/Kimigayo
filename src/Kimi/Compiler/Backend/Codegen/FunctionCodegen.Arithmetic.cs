@@ -29,62 +29,86 @@ internal sealed partial class FunctionCodegen
     // a displacement by n * stride(T) (Displacement, Displace), unchecked; Binding admits no other pointer operator (DECISIONS R5-M92). A
     // string has the comparisons only (SPEC 13.3.2, 13.4): the predicate on its row's Routine's i32 against 0 (SPEC 13.4.1), the equality
     // routine for == and != and the ordering routine for the others, which compare UTF-8 bytes lexicographically (DECISIONS R5-M118).
-    // Reflexive: the result on equal operands, a comparison of Unit's one value.
+    // Contract: SPEC 13.3.3's table, the arithmetic Contract whose built-in witness on a numeric Type is the row's operation (an arithmetic
+    // Builtin shim's row, ArithmeticRow; DECISIONS R5-M126), the statement Binding makes by operator token (ArithmeticContracts.Operator),
+    // which the Backend does not read, and a test ties to the MIR builder's operator. Reflexive: the result on equal operands, a comparison
+    // of Unit's one value.
     private static readonly Row[] Rows = Complete(
     [
         new(
             [new("sadd", Check.Overflow, 0), new("uadd", Check.Overflow, 0), new("add", Check.None, 0), new("add", Check.None, 0), new("fadd", Check.None, 0),
-                new("gep", Check.None, 1), default]), // Add
+                new("gep", Check.None, 1), default],
+            KimiDeclarationId.Addable), // Add
         new(
             [new("ssub", Check.Overflow, 0), new("usub", Check.Overflow, 0), new("sub", Check.None, 0), new("sub", Check.None, 0), new("fsub", Check.None, 0),
-                new("gep", Check.None, -1), default]), // Sub
+                new("gep", Check.None, -1), default],
+            KimiDeclarationId.Subtractable), // Sub
         new(
             [new("smul", Check.Overflow, 0), new("umul", Check.Overflow, 0), new("mul", Check.None, 0), new("mul", Check.None, 0), new("fmul", Check.None, 0),
-                default, default]), // Mul
+                default, default],
+            KimiDeclarationId.Multipliable), // Mul
         new(
             [new("sdiv", Check.SignedQuotient, 0), new("udiv", Check.Zero, 0), new("sdiv", Check.WrappingQuotient, 0), new("udiv", Check.Zero, 0),
-                new("fdiv", Check.None, 0), default, default]), // Div
-        new([new("srem", Check.Zero, 0), new("urem", Check.Zero, 0), new("srem", Check.Zero, 0), new("urem", Check.Zero, 0), default, default, default]), // Rem
-        new([new("shl", Check.Shift, 0), new("shl", Check.Shift, 0), new("shl", Check.Shift, 0), new("shl", Check.Shift, 0), default, default, default]), // Shl
+                new("fdiv", Check.None, 0), default, default],
+            KimiDeclarationId.Dividable), // Div
+        new(
+            [new("srem", Check.Zero, 0), new("urem", Check.Zero, 0), new("srem", Check.Zero, 0), new("urem", Check.Zero, 0), default, default, default],
+            KimiDeclarationId.RemainderProvider), // Rem
+        new(
+            [new("shl", Check.Shift, 0), new("shl", Check.Shift, 0), new("shl", Check.Shift, 0), new("shl", Check.Shift, 0), default, default, default],
+            null), // Shl
         new(
             [new("ashr", Check.Shift, 0), new("lshr", Check.Shift, 0), new("ashr", Check.Shift, 0), new("lshr", Check.Shift, 0), default, default,
-                default]), // Shr
-        new([new("and", Check.None, 0), new("and", Check.None, 0), new("and", Check.None, 0), new("and", Check.None, 0), default, default, default]), // BitAnd
-        new([new("or", Check.None, 0), new("or", Check.None, 0), new("or", Check.None, 0), new("or", Check.None, 0), default, default, default]), // BitOr
-        new([new("xor", Check.None, 0), new("xor", Check.None, 0), new("xor", Check.None, 0), new("xor", Check.None, 0), default, default, default]), // BitXor
+                default],
+            null), // Shr
+        new(
+            [new("and", Check.None, 0), new("and", Check.None, 0), new("and", Check.None, 0), new("and", Check.None, 0), default, default, default],
+            null), // BitAnd
+        new([new("or", Check.None, 0), new("or", Check.None, 0), new("or", Check.None, 0), new("or", Check.None, 0), default, default, default], null), // BitOr
+        new(
+            [new("xor", Check.None, 0), new("xor", Check.None, 0), new("xor", Check.None, 0), new("xor", Check.None, 0), default, default, default],
+            null), // BitXor
         new(
             [new("eq", Check.None, 0), new("eq", Check.None, 0), new("eq", Check.None, 0), new("eq", Check.None, 0), new("oeq", Check.None, 0),
                 new("eq", Check.None, 0), new("eq", Check.None, 0)],
+            null,
             Reflexive: true,
             Routine: LegacyRuntimeHelpers.StringEqual), // Eq
         new(
             [new("ne", Check.None, 0), new("ne", Check.None, 0), new("ne", Check.None, 0), new("ne", Check.None, 0), new("une", Check.None, 0),
                 new("ne", Check.None, 0), new("ne", Check.None, 0)],
+            null,
             Routine: LegacyRuntimeHelpers.StringEqual), // Ne
         new(
             [new("slt", Check.None, 0), new("ult", Check.None, 0), new("slt", Check.None, 0), new("ult", Check.None, 0), new("olt", Check.None, 0),
                 default, new("slt", Check.None, 0)],
+            null,
             Routine: LegacyRuntimeHelpers.StringCompare), // Lt
         new(
             [new("sle", Check.None, 0), new("ule", Check.None, 0), new("sle", Check.None, 0), new("ule", Check.None, 0), new("ole", Check.None, 0),
                 default, new("sle", Check.None, 0)],
+            null,
             Reflexive: true,
             Routine: LegacyRuntimeHelpers.StringCompare), // Le
         new(
             [new("sgt", Check.None, 0), new("ugt", Check.None, 0), new("sgt", Check.None, 0), new("ugt", Check.None, 0), new("ogt", Check.None, 0),
                 default, new("sgt", Check.None, 0)],
+            null,
             Routine: LegacyRuntimeHelpers.StringCompare), // Gt
         new(
             [new("sge", Check.None, 0), new("uge", Check.None, 0), new("sge", Check.None, 0), new("uge", Check.None, 0), new("oge", Check.None, 0),
                 default, new("sge", Check.None, 0)],
+            null,
             Reflexive: true,
             Routine: LegacyRuntimeHelpers.StringCompare), // Ge
         new(
             [new("ssub", Check.Overflow, 0, Left: "0"), new("usub", Check.Overflow, 0, Left: "0"), new("sub", Check.None, 0, Left: "0"),
-                new("sub", Check.None, 0, Left: "0"), new("fneg", Check.None, 0), default, default]), // Neg
+                new("sub", Check.None, 0, Left: "0"), new("fneg", Check.None, 0), default, default],
+            KimiDeclarationId.Negatable), // Neg
         new(
             [new("xor", Check.None, 0, Right: "-1"), new("xor", Check.None, 0, Right: "-1"), new("xor", Check.None, 0, Right: "-1"),
-                new("xor", Check.None, 0, Right: "-1"), default, default, default]), // Not
+                new("xor", Check.None, 0, Right: "-1"), default, default, default],
+            null), // Not
     ]);
 
     // SPEC 13.3.1's checks, each one LlvmScalarText writer.
@@ -101,6 +125,23 @@ internal sealed partial class FunctionCodegen
     // The column whose entry is a column's operation without its check, which a Proven operation writes: an integer's wrapping column, a
     // wrapping integer's and a floating-point Type's own.
     private static ReadOnlySpan<byte> Unchecked => [2, 3, 2, 3, 4, 5, StringColumn];
+
+    /// <summary>Gets the row of the operation an arithmetic Contract's built-in witness is (SPEC 13.3.3), its index among the table's rows
+    /// (MirBinaryOp's members, then MirUnaryOp's), or -1 for a Contract no row names.</summary>
+    /// <param name="contract">The Contract's declaration identity.</param>
+    /// <returns>The row.</returns>
+    internal static int ArithmeticRow(KimiDeclarationId? contract)
+    {
+        for (var row = 0; contract is not null && row < Rows.Length; row++)
+        {
+            if (Rows[row].Contract == contract)
+            {
+                return row;
+            }
+        }
+
+        return -1;
+    }
 
     // The entry an operand Type takes (SPEC 3.1, 3.1.1, 13.4, 5.1): an integer's or a wrapping integer's by its signedness, a
     // floating-point Type's, bool's and char's the unsigned integer's, a raw pointer's; a string's, below its safe value-reference layers
@@ -185,12 +226,21 @@ internal sealed partial class FunctionCodegen
 
     // A row's operation on two operands in their computation representation (a unary operator's on both sides) at an entry's column: the
     // row's Reflexive result for zero-sized operands (SPEC 13.4: Unit has one value), else the entry's operation with its check unless
-    // Proven (the column's unchecked entry), which Aborts at the source's location; its value, or null after a record.
+    // Proven (the column's unchecked entry), which Aborts at the source's location; its value, or null after a record. An operation the
+    // capability table refuses (IMPL 21.3.3's 128-bit division) is its gap's record at the source: a statement's never reaches here, the
+    // collector refusing its instance, but an arithmetic shim's operation is no MIR statement the collector checks (DECISIONS R5-M126).
     private Value? Apply(int row, int column, in Computed left, in Computed right, bool proven, in SourceInfo source)
     {
         if (left.Lowering!.Layout.Size == 0)
         {
             return new Value('\0', Rows[row].Reflexive ? 1 : 0);
+        }
+
+        var form = row < UnaryRows ? new MirRvalue(MirRvalueKind.BinaryOp, (byte)row) : new MirRvalue(MirRvalueKind.UnaryOp, (byte)(row - UnaryRows));
+        if (Capability.Of(form, left.Type) is { } gap)
+        {
+            this.Report(Capability.Code(gap), source);
+            return null;
         }
 
         column = column >= 0 && proven ? Unchecked[column] : column;
@@ -311,6 +361,7 @@ internal sealed partial class FunctionCodegen
     // displacement's sign.
     private readonly record struct Entry(string? Operator, Check Check, sbyte Displacement, string? Left = null, string? Right = null);
 
-    // A row of the table: the entries by column, the result on equal operands and a comparison's string routine (the string column's).
-    private readonly record struct Row(Entry[] Entries, bool Reflexive = false, FunctionAbi? Routine = null);
+    // A row of the table: the entries by column, the arithmetic Contract whose built-in witness it is, the result on equal operands and a
+    // comparison's string routine (the string column's).
+    private readonly record struct Row(Entry[] Entries, KimiDeclarationId? Contract, bool Reflexive = false, FunctionAbi? Routine = null);
 }

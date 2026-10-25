@@ -1142,9 +1142,9 @@ public sealed partial class FunctionCodegenTest
     }
 
     // SPEC 22.6, IMPL 21.4.7 (DECISIONS R5-M89): a #LibraryImport function is called by its C signature, whose declaration its call
-    // requests, once per symbol; an import no call reaches is not declared. A caller-location library callee is called since C3b (R5-M93),
-    // and the library bodies a Dictionary's tryInsert over an i32 key reaches still hold a row not written yet, the key's equality shim
-    // (C8f), one record at the user's call (K package 4.9); Dictionary.reserve's body is written since C8e (R5-M124).
+    // requests, once per symbol; an import no call reaches is not declared. A caller-location library callee is called since C3b (R5-M93);
+    // the library bodies a Dictionary's tryInsert over an i32 key reaches, its key's equality shim included, are written since C8f
+    // (R5-M126), and Dictionary.reserve's body since C8e (R5-M124).
     [Fact]
     public void AnImportIsCalledByItsCSignature()
     {
@@ -1165,9 +1165,7 @@ public sealed partial class FunctionCodegenTest
         Assert.Matches(@"= call double @mix\(i8 -1, double 0x4002000000000000\)\n", text);
         Assert.Matches(@"= call double @mix\(i8 1, double %t\d+\)\n", text);
         Assert.DoesNotContain("@idle", text, StringComparison.Ordinal);
-        var c = Analyze("func put(d: uniq/Dictionary<i32, i32>)\n    _ = d.tryInsert(1, 2)\n", OutputKind.Library);
-        Assert.False(c.Generate(TextWriter.Null));
-        Assert.Contains(("Unsupported_Kd", (string?)"d.tryInsert(1, 2)"), Records(c));
+        Assert.True(Analyze("func put(d: uniq/Dictionary<i32, i32>)\n    _ = d.tryInsert(1, 2)\n", OutputKind.Library).Generate(TextWriter.Null));
         Assert.True(Analyze("func grow(d: uniq/Dictionary<i32, i32>) => d.reserve(4)\n", OutputKind.Library).Generate(TextWriter.Null));
     }
 
@@ -1268,8 +1266,9 @@ public sealed partial class FunctionCodegenTest
     // PD11: a form the frame does not cover yet is one Unsupported_Kd in the Emission partition at its location, and no module is written;
     // its valid counterpart is. A string's Move into another local is written since C2b (DECISIONS R5-M87), a function's call since C3a, a
     // generic callee's instance whose Keep of a T instanced at i32 needs no drop included (R5-M78, R5-M89), a requirement's since C3b
-    // (R5-M93), whose witness a Builtin shim (C8f), a property witness (C3c) or one without a body (PLAN G157 (10)) is one record at the
-    // call; a Fn call whose target is a Builtin shim (Text.toString of an i32, BuiltinFormat, R5-M70) is
+    // (R5-M93), a Builtin shim's since C8f (R5-M126), but an arithmetic shim's operation the capability table refuses (i128 division) is its
+    // gap's record at the shim's admitting call, and a requirement whose witness a property witness (C3c) or one without a body (PLAN G157
+    // (10)) is one record at the call; a Fn call whose target is a Builtin shim (Text.toString of an i32, BuiltinFormat, R5-M70) is
     // its compiler function's legacy row (C9a), at the call, as the Utf8Slice overload of writeLine is; the records of a for loop's
     // statement and of the siblings its expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location
     // (DECISIONS R5-M65), which the diagnostics could not order when each was keyed by its node. A static's initializer is written since
@@ -1301,7 +1300,12 @@ public sealed partial class FunctionCodegenTest
     [InlineData(
         "func same<T>(a: T, b: T) -> bool\n    T is Equatable\n    return a == b\nfunc use() -> bool => same(1, 2)\n",
         OutputKind.Library,
-        new[] { "a == b" })]
+        new string[0])]
+    [InlineData(
+        "func quotient<T>(left: ref/T, right: ref/T) -> T\n    T is Dividable<T>\n    T.(Dividable<T>).Output is T\n    return left.divided(right)\n" +
+        "func use(a: ref/i128, b: ref/i128) -> i128 => quotient(a, b)\n",
+        OutputKind.Library,
+        new[] { "left.divided(right)" })]
     [InlineData(
         "contract Counted\n    property count: i32 has get, set\nstruct Tally\n    Self is Counted\n    public var count: i32 = 1\n    public init() => ()\n" +
         "func read<T>(x: ref/T) -> i32\n    T is Counted\n    return x.count\nfunc use(t: ref/Tally) -> i32 => read(t)\n",
@@ -1363,6 +1367,7 @@ public sealed partial class FunctionCodegenTest
     [InlineData(Comparisons, OutputKind.Library)]
     [InlineData(Arrays, OutputKind.Library)]
     [InlineData(Dictionaries, OutputKind.Library)]
+    [InlineData(Shims, OutputKind.Library)]
     public void GenerationIsDeterministic(string source, OutputKind output)
     {
         var first = Generate(Analyze(source, output));
@@ -1465,6 +1470,7 @@ public sealed partial class FunctionCodegenTest
     [InlineData(Comparisons, OutputKind.Library)]
     [InlineData(Arrays, OutputKind.Library)]
     [InlineData(Dictionaries, OutputKind.Library)]
+    [InlineData(Shims, OutputKind.Library)]
     public void WarmGenerationAllocatesNothing(string source, OutputKind output)
     {
         var c = Analyze(source, output);
