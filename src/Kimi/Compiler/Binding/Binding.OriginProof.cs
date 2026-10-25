@@ -208,7 +208,8 @@ public sealed partial class Binding
                 origin = this.ResolveOrigin(origin, inferred);
             }
 
-            if (origin.Kind is OriginKind.Projection or OriginKind.Intersection && node is FunctionKoto { IsAnonymous: true, ClosureStorage: { Classified: true } plan } closure)
+            if (origin.Kind is OriginKind.Projection or OriginKind.Intersection &&
+                node is FunctionKoto { IsAnonymous: true, ClosureStorage: { Classified: true } plan } closure)
             {
                 origin = this.ResolveReceiver(origin, closure, plan.Receiver);
             }
@@ -257,21 +258,14 @@ public sealed partial class Binding
     }
 
     // DECISIONS R4-M126 §2.5 (b): an Origin relation formed naming a pending atom (PendingAtom), new or one obligationSet already holds,
-    // joins the list of the outermost unclassified Closure whose atoms it names, once per binding.
+    // joins the list of the outermost unclassified Closure whose atoms it names: one append per formation (PLAN V16), so a relation
+    // formed twice is judged twice, the second finding its use failed or proving it again, with no second record.
     private void AddPendingRelation(in BindingObligation obligation)
     {
         if (obligation is not { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter } ||
             PendingOwner(shorter, PendingOwner(longer, null)) is not { } owner)
         {
             return;
-        }
-
-        foreach (var entry in this.pendingRelations)
-        {
-            if (ReferenceEquals(entry.Owner, owner) && entry.Obligation.Equals(obligation))
-            {
-                return;
-            }
         }
 
         this.pendingRelations.Add((owner, obligation));

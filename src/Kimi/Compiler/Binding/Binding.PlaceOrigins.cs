@@ -97,7 +97,8 @@ public sealed partial class Binding
     // Place reached through a layer stored in it is also contained in the receiver, whose Origin is ρ, the Closure's reserved atom at
     // ClosureValueSlot; any other root has no containment.
     private BoundOrigin? EnvironmentContainment(BindingSymbol? root)
-        => root is { Kind: BindingSymbolKind.Capture, Declaration: FunctionKoto closure } ? this.OriginAtom(closure, OriginKind.Projection, ClosureValueSlot) : null;
+        => root is { Kind: BindingSymbolKind.Capture, Declaration: FunctionKoto closure }
+            ? this.OriginAtom(closure, OriginKind.Projection, ClosureValueSlot) : null;
 
     // SPEC 15.6.3, 13.5.5, 3.4.3: a Borrow of the referent that `layers` safe borrow layers of `reference`, stored at `holder`, reach (a
     // follow, a Subject's Reborrow, a read in place or through several layers): those layers first (MeetLayers), then, unless one of

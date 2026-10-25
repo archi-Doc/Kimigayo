@@ -175,7 +175,9 @@ public sealed partial class Binding
         {
             // SPEC 23.1: at an inner position of a Borrow, such as the stored `local@ref` of `y@uniq` after `var y = local@ref`, the
             // failing Origin is not the Borrow's own: it is found through the borrowed Place.
-            if (borrowValue.BoundType?.Origin is not { } own || OriginIncludes(own, origin) || OriginIncludes(origin, own))
+            // A Borrow of an environment binding supplies ρ, to which its Origin resolves at its use (R4-M126 P5).
+            if (borrowValue.BoundType?.Origin is not { } own || OriginIncludes(own, origin) || OriginIncludes(origin, own) ||
+                OriginIncludes(origin, value.CodeContext.Compilation.Binding.OriginAtUse(own, value)))
             {
                 return unwrapped;
             }
@@ -304,8 +306,9 @@ public sealed partial class Binding
                 return new("omitted", local.NameKoto.IdentifierName); // A local's region (LocalRegionSlot), as a Closure body names it.
             case OriginKind.Holder:
                 return new("expression", "self"); // SPEC 5.7: `during self`.
-            case OriginKind.Projection when origin.Slot == CallResultSlot && origin.Binder is FunctionKoto { IsAnonymous: true }:
-                return new("closure", "call result");
+            case OriginKind.Projection when origin.Binder is FunctionKoto { IsAnonymous: true } &&
+                (origin.Slot == CallResultSlot || (origin.Slot == ClosureValueSlot && value is null)): // ρ, unless a Borrow supplies it.
+                return new("closure", origin.Slot == CallResultSlot ? "call result" : "call receiver");
             case OriginKind.Projection or OriginKind.Anchor:
                 // Without its Borrow, the Place: a local or a parameter by name, a constructor's or destructor's receiver (and its helper
                 // borrow) as self, and a temporary by its text.

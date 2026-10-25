@@ -3608,16 +3608,21 @@ and migration obligations remain in force; no numeric cap changes are authorized
     enclosing body of each body inside k), the package's receiver class without a second row (its exclusion of that row inside k only
     served to keep ρ unfixed while pending, which `PendingAtom` does). The view's row 4 is met only under `owner/Self`.
   - Pending relations (§2.5, D-2): a pending atom is fitted as a local region is (`HasLocalRegion`); `AddObligation` appends an
-    obligation naming one, new or deduplicated, once per binding, to one reused list keyed by the outermost unclassified Closure whose
-    atoms it names; `Classify(k)` is followed by `JudgePendingRelations(k)`: an entry whose obligation left `obligationSet` is skipped
+    obligation naming one, once per formation (no deduplication, PLAN V16; a relation formed twice is judged twice, the second finding
+    its use failed or proving it again; 2c-3B review B3), to one reused list keyed by the outermost unclassified Closure whose atoms it
+    names; `Classify(k)` is followed by `JudgePendingRelations(k)`: an entry whose obligation left `obligationSet` is skipped
     (F2), each other is routed as a binding-time fit is (F3): resolved fixed-fixed or Refuted, judged by the fit's position judge in
     its body and recorded at its use (a Refuted body chain also a twin), any other body chain stays a row; the obligations stay. (a) is
     2c-2's `Classify` placement; (c) a pending atom is Unclassed in the view until R4-M118's Dependent row (D-3); (d) `BindClosure(k)`
     removes the entries formed in k's body or a body nested in it. No program found rebinds a Closure while entries are open, and none
     removes a pending obligation in place before classification: (d)'s removal and F2's skip are guards.
-  - P12: the four `Slot <= EnvironmentSlot(0)` sites read `RoleOf`: the two "closure: call receiver" displays and
-    `HasEnvironmentOrigin` Environment or ClosureValue (a result naming ρ is receiver-dependent, 7.7.4), `CallLocalOrigin` Environment
-    only (ρ is never call-local). P11 (D5's follow-up, removal R6-gen): the old Emission's element Borrow compares its Origin with the
+  - P12: the four `Slot <= EnvironmentSlot(0)` sites read `RoleOf`: the two "closure: call receiver" contract displays,
+    `HasEnvironmentOrigin` and `PendingAtom` through one predicate, `Binding.OriginClasses.ReceiverAtom` (ρ or `env_i`; a result naming ρ
+    is receiver-dependent, 7.7.4; BU's review N1), `CallLocalOrigin` Environment only (ρ is never call-local). Display (package §8;
+    reviews B2, F1): a relation record's end ρ shows as the closure's call receiver (`OriginDisplay`'s closure row reads the slot), related
+    at the Closure literal; a Borrow of an environment binding, whose Origin resolves to ρ at its use, stays the shown and related borrow
+    (`BorrowSource` reads `OriginAtUse`). `OriginDisplay` and `BorrowSource` moved to `Binding.OriginDiagnostics` first (behavior
+    unchanged), since `Binding.Diagnostics.cs` is over the token limit. P11 (D5's follow-up, removal R6-gen): the old Emission's element Borrow compares its Origin with the
     receiver's modulo ClosureValue operands (`BodyLowering.SameOriginModuloReceiver`).
   - Verdicts (SPEC 15.6.3, 15.6.5, 7.7.2): g6a (the MIR's use-after-free), g6b, g6d, g6e, r1e, r1f, t4g, n2b
     `UnprovenOriginRelation_Kd` on both pipelines (the default's conservative Loan records of g6a-g6e become Binding's); g65a, r1g,

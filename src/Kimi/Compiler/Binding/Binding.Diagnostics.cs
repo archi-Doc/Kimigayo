@@ -87,7 +87,8 @@ public sealed partial class Binding
         var shorter = OriginDisplay(relation.Shorter, shorterBorrow, typeLevel);
         var operation = relation.Equality ? "==" : "outlives";
         // SPEC 23.1: a borrow or omitted end is also related at its syntax.
-        var longerAt = longer.Kind == "borrow" ? borrow ?? relation.At : longer.Kind == "omitted" ? OmittedAt(relation.Longer) : null;
+        var longerAt = longer.Kind == "borrow" ? borrow ?? relation.At : longer.Kind == "omitted" ? OmittedAt(relation.Longer)
+            : longer.Kind == "closure" && RoleOf(relation.Longer) == ProjectionRole.ClosureValue ? relation.Longer.Binder : null; // ρ's literal.
         var shorterAt = shorter.Kind == "omitted" ? OmittedAt(relation.Shorter) : shorter.Kind == "borrow" ? shorterBorrow : null;
         (string Role, Koto At, string? Label)[]? related = longerAt is not null && shorterAt is not null ? [("origin", longerAt, null), ("origin", shorterAt, null)]
             : longerAt is not null ? [("origin", longerAt, null)]
@@ -240,8 +241,7 @@ public sealed partial class Binding
         }
 
         // An erased closure's environment binding lies within its call receiver, which no Origin expression names (SPEC 15.8.2).
-        var longer = contract.Longer is { Binder: FunctionKoto { IsAnonymous: true } } && RoleOf(contract.Longer) is ProjectionRole.Environment or ProjectionRole.ClosureValue
-            ? new DiagnosticOrigin("closure", "call receiver") : OriginDisplay(contract.Longer, null);
+        var longer = ReceiverAtom(contract.Longer) ? new DiagnosticOrigin("closure", "call receiver") : OriginDisplay(contract.Longer, null);
         var shorter = OriginDisplay(contract.Shorter, null);
         var longerAt = longer.Kind == "omitted" ? OmittedAt(contract.Longer) : null;
         var shorterAt = shorter.Kind == "omitted" ? OmittedAt(contract.Shorter) : null;

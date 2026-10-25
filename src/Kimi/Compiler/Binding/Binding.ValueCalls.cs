@@ -241,7 +241,7 @@ public sealed partial class Binding
                 }
             }
 
-            return ReferenceEquals(origin.Binder, function) && RoleOf(origin) is ProjectionRole.Environment or ProjectionRole.ClosureValue;
+            return ReferenceEquals(origin.Binder, function) && ReceiverAtom(origin);
         }
     }
 

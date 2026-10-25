@@ -129,6 +129,16 @@ public class ClosureEnvironmentOriginTest
 
     private const string Unproven = nameof(DiagnosticCode.UnprovenOriginRelation_Kd);
 
+    // The forms whose records name the call receiver ρ or a Borrow resolved to it (ARecordNamingTheCallReceiverShowsTheClosure).
+    private const string EnvBorrow = "func use(p: ref/i32) -> i32\n    let n: i32 = 1\n";
+    private const string G6bStore = G6Single + "    var c = func [p@move, q@move] () -> i32\n        q@follow = p\n        return 0\n    return 0\n";
+
+    private const string SpecInvalid = "func makeText() -> string => \"a\"\nfunc use() -> i32\n    let other = makeText()\n" +
+        "    let invalid = func [other@move] () -> ref/string => other@ref\n    return 0\n";
+
+    private const string N2bStore = LocalView + "    var outer = func [u] () -> i32\n        let inner = func [u] () -> uniq/i32 during u => u@move\n        return 0\n" +
+        "    return 0\n";
+
     private const string Unsatisfied = nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd);
 
     // S1 (PLAN G65): these bodies were accepted, and the first aborted at run time with the write observed through `r`.
@@ -339,6 +349,40 @@ public class ClosureEnvironmentOriginTest
                 Assert.Equal(beside ? 2 : 1, records.Length);
             }
         }
+    }
+
+    // SPEC 23.1 (DECISIONS R4-M126 §8; 2c-3B reviews B2, F1): a record's end ρ shows as the closure's call receiver, related at the
+    // Closure literal; a Borrow of an environment binding, whose Origin resolves to ρ at its use, stays the shown and related borrow (g65a,
+    // SPEC 15.8.2's `invalid`); G6's store (g6b) and n2b name ρ. Each was the Closure literal's text.
+    [Theory]
+    [InlineData(EnvBorrow + "    let c = func [n] () -> ref/i32 during p => n@ref\n    return 0\n", "n@ref", "the borrow n@ref outlives p", "n@ref")]
+    [InlineData(SpecInvalid, "other@ref", "the borrow other@ref outlives static", "other@ref")]
+    [InlineData(G6bStore, "p\n", "the closure's call receiver outlives p", "func [p@move, q@move]")]
+    [InlineData(N2bStore, "u@move", "the closure's call receiver outlives the borrow x", "func [u] () -> i32")]
+    public void ARecordNamingTheCallReceiverShowsTheClosure(string function, string at, string relation, string related)
+    {
+        var source = function + "public func main() => ()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((Unproven, $"requires {relation}, which is not proven"), (error.Code, error.Label));
+        Assert.StartsWith(at, From(error.Span), StringComparison.Ordinal);
+        Assert.StartsWith(related, From(Assert.Single(error.Related!).Span), StringComparison.Ordinal);
+
+        string From(SourceSpan? span) => span is { } value ? source[value.Start..] : string.Empty;
+    }
+
+    // SPEC 15.6.3, 23.1.2 (the package's r1a–r1c; R4's 2c-3B review O2): a result `during p` through the environment is Unknown in the
+    // body (its record at the returned value), independent of R1's located Unsupported_Kd at each call of the receiver-dependent result.
+    [Theory]
+    [InlineData("    var c = func [p@move] () -> uniq/i32 during p => p\n    let a = c()\n    let b = c()\n    a@follow = 1\n    b@follow = 2\n", "p\n", 2)]
+    [InlineData("    var c = func [p@move] () -> uniq/i32 during p => p\n    let a = c()\n    a@follow = 1\n", "p\n", 1)]
+    [InlineData("    let c = func [p@move] () -> ref/i32 during p => p@follow@ref\n    let a = c()\n    let m = c@move\n    return a@follow\n", "p@follow@ref", 1)]
+    public void AResultThroughTheEnvironmentKeepsTheBodysRecordBesideItsCalls(string body, string at, int calls)
+    {
+        var source = "func use(p: uniq/i32) -> i32\n" + body + (body.Contains("return", StringComparison.Ordinal) ? string.Empty : "    return 0\n") + "public func main() => ()\n";
+        var records = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Equal([Unproven, .. Enumerable.Repeat(nameof(DiagnosticCode.Unsupported_Kd), calls)], records.Select(static x => x.Code));
+        Assert.StartsWith(at, source[records[0].Span!.Value.Start..], StringComparison.Ordinal);
+        Assert.All(records.Skip(1), x => Assert.StartsWith("c()", source[x.Span!.Value.Start..], StringComparison.Ordinal));
     }
 
     // The valid twins (DECISIONS R4-M126 §1): under `owner/Self` ρ is no borrow, so a Reborrow through a captured reference keeps its Origin

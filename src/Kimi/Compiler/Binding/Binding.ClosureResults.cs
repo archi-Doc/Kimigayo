@@ -66,7 +66,8 @@ public sealed partial class Binding
             }
 
             return origin.Kind is OriginKind.Projection or OriginKind.Anchor && origin.Binder is { } binder &&
-                (ReferenceEquals(binder, function) ? origin.Slot >= 0 || (consuming && RoleOf(origin) == ProjectionRole.Environment) : IsWithin(binder, function)) ? origin : null;
+                (ReferenceEquals(binder, function) ? origin.Slot >= 0 || (consuming && RoleOf(origin) == ProjectionRole.Environment)
+                    : IsWithin(binder, function)) ? origin : null;
         }
     }
 

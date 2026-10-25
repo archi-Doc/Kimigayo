@@ -80,7 +80,12 @@ public sealed partial class Binding
     // is not classified: its receiver mode, which resolves them (Binding.OriginProof's OriginAtUse), is not known yet, so it is neither
     // fixed nor finite and a relation naming it waits for the classification (Binding.OriginProof's pending relations).
     internal static bool PendingAtom(BoundOrigin atom)
-        => atom is { Kind: OriginKind.Projection, Binder: Parsing.FunctionKoto { IsAnonymous: true, ClosureStorage: { Classified: false } } } &&
+        => ReceiverAtom(atom) && atom.Binder is Parsing.FunctionKoto { ClosureStorage: { Classified: false } };
+
+    // SPEC 15.8.2 (DECISIONS R4-M126 P2): an atom of a Closure's call receiver, the Closure value ρ or an environment binding's own atom,
+    // which the receiver resolution reads and a contract record shows as the closure's call receiver.
+    internal static bool ReceiverAtom(BoundOrigin atom)
+        => atom is { Kind: OriginKind.Projection, Binder: Parsing.FunctionKoto { IsAnonymous: true } } &&
             RoleOf(atom) is ProjectionRole.ClosureValue or ProjectionRole.Environment;
 
     // SPEC 15.3.6, 15.6.5: a local region that `body` judges through its sources; an enclosing body's region is fixed in it.
