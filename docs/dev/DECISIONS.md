@@ -90,8 +90,8 @@ rules that result from them.
     semantic (responsibility, contract and invariants unchanged, no other site sharing the cause). A design is one
     chain from the required meaning to the special cases it removes. Concepts are shared by meaning and contract; a new
     form is a row only under a canonical table. An open family is closed by a representation or a whitelist. A reviewer
-    attempts a smaller design and classifies findings; two rounds on one family go to the owner. Roles and the two
-    senses of "owner" are defined.
+    attempts a smaller design and classifies findings; two rounds on one family go to the owner (superseded by Q10).
+    Roles and the two senses of "owner" are defined.
   - Reasons: concept and token counts favoured a design that hid a distinction (R4 U0a design A dropped independent
     records and was revised after review under SPEC 23.1); "the local patch and why it is rejected" presupposed
     rejecting correct owner-local fixes; shape-based sharing and generic tables can merge different contracts; path
@@ -111,8 +111,8 @@ rules that result from them.
     or across phases; any other change gets one review before completion, covering its design.
   - Reason: the caps, forecasts and per-unit allowances added owner gates without improving the code, and every
     non-local change paying two reviews slowed small units (R4-M33).
-- **Q6 Lighter review forms and short commit records** (2026-10-17, owner; AGENTS "Review weight" and "Verification and
-  Delivery").
+- **Q6 Lighter review forms and short commit records** (2026-10-17, owner; AGENTS "Review weight", moved to WORKFLOW by Q10,
+  and "Verification and Delivery").
   - Adopted for all work: (1) a change whose contract an owner-approved design recorded here already fixes gets one design
     and one review, and a departure, including a new representation, component or vocabulary entry, takes the full
     process; (2) the units of one group such a design names may share one review in place of their own, merging into dev or main
@@ -170,6 +170,24 @@ rules that result from them.
   - Rejected: keeping the count as a review prompt that a one-responsibility ruling resets (it keeps per-unit counting across
     parallel lanes and rulings on small single-responsibility files to ask the question review already asks); a larger
     count or a size floor (another proxy for the same test).
+- **Q10 Change workflow: classes, verdicts and bounded reviews** (2026-10-25, owner; [WORKFLOW](WORKFLOW.md), AGENTS
+  "Workflow").
+  - Adopted: WORKFLOW owns design, review and completion, moved from AGENTS "Design before code", "Review weight" and
+    "Independent review". Changes are Minor (local), Major, Full (formerly the full process) or Owner (Q6 (1)); a Major
+    change gets a design review only for an open design issue, so Q5's one review otherwise stands. Verdicts are ACCEPT,
+    REVISE (fixed within the approved design) and REJECT (the cause analysis or the design is revised). A fix starts from
+    the reviewed change without keeping a wrong structure. Implementer and reviewer continue; a repeated review covers the
+    previous findings, the diff and what it affects. Reviews accumulate per unit, separately for design and implementation;
+    two sharing a cause redo the cause analysis; a third without ACCEPT holds the unit for the owner. A specification
+    contradiction, a significant measured slowdown or a simplification by unifying concepts suspends the unit for the
+    owner. Completion checks run on the final inputs, reusing evidence for the same inputs, configuration and coverage.
+  - Supersedes: AGENTS' "A rejected design or diff is redone, not patched; after two rounds on one family of findings, the
+    owner chooses between a representation, a whitelist and a hold", that clause of Q4 and its restatement in R4-M119.
+  - Reason: a repeated round cost as much as the first: fresh agents re-read the context, the reviewer re-reviewed the
+    whole change and raised new findings, and verification repeated for small fixes.
+  - Rejected: a design review for every Major change (Q5's reason, slower small units, still holds, and the saving is
+    unmeasured); bounding REVISE by the Minor definition (a fix the approved design prescribes may still add a branch);
+    resetting the count on a design revision (the bound would never apply); a review count as a reason to ACCEPT.
 
 - **G138-1 Native execution and verification evidence ownership** (2026-10-24; planning session, independent designs A/B and
   independent pre-code review). G138 needs execution progress distinguished from scheduling delay and missing observations
@@ -3404,9 +3422,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     planning session's reading, confirmed by the re-review). One Concept, One Canonical Form: one retention rule for borrowed and raw
     arguments; Local Reasoning: decided per argument from the contract's Types; Explicit Semantics: the self-store exception is stated.
     Observation (re-review R-N2): a callee that stores a converted pointer where its contract's Type cannot hold the argument breaks
-    its contract (undefined behavior); no text change (superseded at unstated positions by R4-M131). Rejected: keeping the letter
-    and having each library body avoid deriving raw store targets from remainders (impractical: every library raw store does so); an
-    A5-only reading without SPEC text (a departure from SPEC, which AGENTS forbids).
+    its contract (undefined behavior); no text change (superseded at unstated positions by R4-M131 and at stated ones by
+    R4-M134). Rejected: keeping the letter and having each library body avoid deriving raw store targets from remainders
+    (impractical: every library raw store does so); an A5-only reading without SPEC text (a departure from SPEC, which AGENTS
+    forbids).
   - SPEC 5.2.1 condition 3 (OQ-1): after the own-step limit, a Warning is required where an operation may end the owning value's stay
     in its holder while a pointer formed through that own step may still be used: a Move or Take of the Place or of an ancestor with no
     dereference between, a replacing write, its destruction, or an exclusive Borrow of the Place or of any ancestor, calls by `uniq`
@@ -3544,9 +3563,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     planning session also keeps one per branch head other units build on).
   - A Binding-touching R4 unit is reviewed in parallel: its A5 part by R4's reviewer, its Binding part by BU (R4-M110 had BU review the
     whole unit serially).
-  - Back to one implementer and one reviewer when weekly usage passes 70% early in the week.
-  - Unchanged: the full process, the owner's choice after two rounds on one family, SPEC's authority, soundness, and no input-changing
-    push inside an announced merge window. BU and R5 confirm the relayed rule once with the owner; the cap binds them as stated.
+  - Back to one implementer and one reviewer when weekly usage passes 70% early in the week (withdrawn by R4-M135).
+  - Unchanged: the full process, the owner's choice after two rounds on one family (superseded by Q10), SPEC's authority,
+    soundness, and no input-changing push inside an announced merge window. BU and R5 confirm the relayed rule once with the
+    owner; the cap binds them as stated.
   - Reason: under one plus one each full-process unit (two designs, a design review, implementation, a review) occupied both slots, so
     independent lanes waited (G160-4's step-walk merge, A5-F7's prototype); reviews of Binding-touching units waited for BU's capacity;
     and several sessions' agents running full suites at once slowed runs and caused timeouts (G138), while one design's probes ran the
@@ -4045,6 +4065,64 @@ and migration obligations remain in force; no numeric cap changes are authorized
     - 4.8.2's "Slice members ... results retain `s.source`" was already inexact for `toArray` (pre-existing; its own "not the
       outer borrow" and the transfer rule settle it; the final review's N9).
   - Numbering: R4-M131 is free on dev (R4-M130) and every branch (R4-M132 on 2a-2).
+- **R4-M128 C2's receiver facts on `BoundClosure` (2c-2)** (2026-10-25, R4's implementer lane under R4-M126 §2.1 and D-1, D-9;
+  no reader but tests until 2c-3B and 2c-3; one acceptance change, the by-value positions below)
+  - Facts (SPEC 7.7.3, 8.14), written only by `ClosureEffects` (`Binding.ClosureReceivers`): `BoundCapture.BareReborrows`, an
+    acquisition of the environment binding itself by value without an operator (at a value position its consumer takes it by
+    value, `Binding.AcquiredByValue`, or by a nested Closure's `Bare` entry) Reborrows in some admitted case;
+    `BoundClosure.CaseFreeReceiver`, the requirement from every other use (Consuming only from a transfer, so never by case);
+    `Receiver` keeps its meaning (the strongest over every case, read by acquisition, the body's receiver local, the ABI and R5),
+    derived once at the end of `Classify`: `CaseFreeReceiver` raised to Exclusive when a capture is marked. A view of one case reads
+    that case's receiver as `CaseFreeReceiver` unless Shared, else Exclusive where a marked capture's case Type is an exclusive layer
+    (2c-3's `TyCtxt.ClosureReceiverIn`). `Classified`: reset where `BindClosure` clears the Signature, set at the end of `Classify`.
+  - `Classify` runs right after the body binds, before the failed-result and failed-parameter returns (N4 (a)); its snapshots
+    (diagnostic, semantic with HIR and MIR, the mir ledger) are byte-equal to 2c-1's, so the move is 2c-2's (D-9). A use counts only
+    when it names one of this binding's environment bindings (identity in `Storage`).
+  - By-value positions (2c-1 review O1, 2c-2 review B1, the family's second round; the owner, 2026-10-25, verbatim 「(a)
+    表現で直す。それまでは許可リスト (推奨)」): until one Binding-time "consumed by value" fact that `ClosureEffects` and the HIR
+    publisher's `Consume` both read (the planning session's separate full process, which removes this list), `AcquiredByValue`
+    (`Binding.BareAcquisition`, the owner of bare positions) names SPEC 3.5's value positions as `Consume` takes them: null in
+    Discard Context (a statement `x` or `(x)`, a discarded `if` body), whose acquisition SPEC 3.5 and 14.2.2 leave open and the MIR
+    builder takes by case (`MirBuilder.Values.cs`; R5's round 3 B2: answering false, round 2's R1, brought back `acquire (*_1).0` past
+    `ref/closure` on three valid forms), so the net covers it until the SPEC session settles 3.5 against 14.2.2; false where an
+    adaptation recorded at the use decides; true where the position decides (`AcquiredByPosition`: a bare position, an aggregate
+    element, a Dictionary entry), or at an input its consumer's operation takes by value (a receiver or argument of any callee kind's
+    plan, an enum Case's payload, SPEC 3.5's payloads); else by the consumer, the specific rows before the general binary one (an
+    index, a selection and a conversion are binary nodes; re-check R3): true at
+    an assignment's or compound assignment's source, an `and`/`or` operand, a Range bound, a built-in index key and a conversion
+    operand under the bare rule; false at a write or update target, an inspected operator operand, a selection, a runtime test, a
+    borrow, an address, a follow, a transfer, an object view upcast that borrows, a `for` or `match` Subject and a value call's
+    callee; null elsewhere. So `take(x)`, `g(x)` of a value call, `local = x`, `[1: x]` and `.Some(x)` of a captured `x: s/T`
+    Reborrow in x's exclusive cases, as `let y = x` does, and the strongest receiver is Exclusive (SPEC 8.14, 7.7.3; they were
+    Shared, the MIR reborrowing through `ref/closure`): a call of such a `let` Closure is `InvalidAssignment_Kd`. The payload also
+    keeps X1's `TransferRequired_Kd` (2c-2 review X1, BU's), as outside a Closure; the `let` Closure's `InvalidAssignment_Kd` beside it is
+    correct by SPEC 3.5 and 7.7.3, the payload Copying or Reborrowing by case (BU's re-check 2).
+    The net: a use of a capture that Reborrows by case at a null consumer is a located `Unsupported_Kd` when the capture is unmarked
+    and the case-free receiver Shared. A use is explained (SPEC 23.1.2; `Binding.ExplainedUse`, the owner's answer to the family's third
+    round, 2026-10-25, verbatim 「(a) 許可リストのまま直す (推奨)」, BU's re-check 2) only by its own failure, or by the failure or
+    dependency of the consumer whose operation decides its acquisition (a call or payload input, a conversion, an index), read from
+    the dependent-record rule's owner (`Binding.Diagnostics.Prerequisites.HasFailureCauses`, `FailureCauses`' condition); a position
+    that decides by itself, and a use in Discard Context, whose acquisition nothing decides (BU's re-check 3, N1: a failed sibling
+    `match` arm explained `true => value`, which keeps the net as `_ => value` does), are explained by nothing else. An assignment
+    source takes the target's Type, so `missing = x` loses the mark with its failed target (SPEC 3.5, 10.2; the twin is Shared).
+    An explained use neither reaches the net nor marks its capture: `"\(x)"`,
+    `Box(x)`, `x@copy` and `a[x]` keep their one record, a dependent call `pair(missing, x)` gets no net record beside
+    `UnresolvedBinding_Kd`, and a failed sibling element (`(x, missing)`, `[x, missing]`, `(take(x), missing)`) keeps the mark, as the
+    concrete twin over `uniq/i32` keeps its `InvalidAssignment_Kd`. Valid programs reach the net: the Discard Context forms above;
+    the remaining null consumers (a label, a `try`, a formatting or macro operand) need what a capturable pair layer `s/T` lacks
+    (`"\(x)"` stays `UnprovenConstraint_Kd` under `T is Utf8Format`), and an application `s/U` is not capturable (`Binding.Captures`).
+    Rejected: a derived record at the use (a prerequisite naming a failed node, which the net cannot know before a later failure);
+    round 2's walk over every enclosing node's failure (`InFailure`: a failed sibling dropped the mark, a dependent consumer without its
+    own failure kept the net, BU's re-check 2).
+  - Limits, each counted in every case, the strongest receiver (PLAN G13), because the capture's case Type does not tell their cases:
+    a Reborrow of a Place reached through a capture (a part `pair.0`, a referent `r@follow`; the part forms are a located
+    `Unsupported_Kd` on the default, the referent form `TransferRequired_Kd` in its uniq case); an explicit case adaptation
+    (`local@s/i32` of a captured `i32`, BU's 2c-1 note: its cases are the target binder's) and 2c-1's other rows (Subjects,
+    upcasts; R4-M130). A per-Place or per-binder fact would be a new representation (2c-3's planning). The early-return
+    classification is observed by probe only until 2c-3B's tests. Rejected: the facts beside today's `Receiver` writes (two maxima);
+    the bit on the environment `BindingSymbol`; a computed `Receiver` (a capture loop per read); the three missed positions added to
+    `ClosureEffects`' own list (a third fix of an open family); a net counting an unlisted use Exclusive in every case (a conservative
+    Language error on valid programs). Numbering: R4-M128 is free on dev and every branch (R4-M127 on G245's U1).
 - **R4-M132 Rule W on the MIR, with MirProblem's facts as one representation (2a-2, G:A5-F4's merge unit; design C)** (owner,
   2026-10-25, the R4 planning session's dialog, verbatim: the departures 「(a) 一括で承認 (推奨)」, publication 「(a)
   PrerequisiteUnavailable_Kd (推奨)」, the vocabulary 「(a) すべて承認 (推奨)」; full process: designs A and B, the review's
@@ -4114,6 +4192,118 @@ and migration obligations remain in force; no numeric cap changes are authorized
     dropping derived conflicts (R4-M104).
   - Numbering: R4-M132 is free on dev and every branch (R4-M128 2c-2, R4-M129 G248, R4-M130 2c-1 on dev, R4-M131 reserved for the N2
     SPEC session).
+- **R4-M134 SPEC rest: the later SPEC session's items after N2** (owner, 2026-10-25, the R4 planning session's dialog, verbatim:
+  RZ1 「(a) 借用のモードで (推奨)」, RZ3 「(a) その場で破棄 (推奨)」, RZ5 「(b) 閉じた一覧 (推奨)」, RZ7 「(a) 宣言された型に合わせる (推奨)」,
+  element storage 「(a) 集合型の Loan も及ぶ (推奨)」, G86 「(a) 場合ごとに (推奨)」, G159 (2) 「(b) 部分ごとに (推奨)」, §15.4.2 「(a)
+  明示が必要 (推奨)」, closures 「(a) はい (推奨)」, F2 「(a) 呼び出し先に入る前 (推奨)」, O1 「(a) 要素ごとに (推奨)」, with the review's
+  wording fixes as the planning session relayed them; Q8, Q10 and Q12 settled by SPEC's letter, R4-M130 and R4-M129; unit spec-rest:
+  options, the independent review REVISE and its corrected questions; the analysis, the review and the probes are
+  `draft/Sketches/SPEC rest/`) SPEC 5.2, 5.2.1, 5.2.3, 5.5, 14.2.4, 15.3.5, 8.1.2, 14.9.2, 15.4.2, 7.7.2, 7.7.3, 15.1.6, 7.2.3, 3.6,
+  16.2.1, 12.4.3 and Appendix E. PLAN RZ, G86, G159 (2), G158 (3), G170 (B §3.4's gap), G147 (3)'s SPEC row, G248 (F2) and G253
+  (O1).
+  - RZ1 (5.2.1 condition 3): a borrow of a raw Place needs the capabilities 15.1.5's operation table requires of its mode (read
+    for a shared borrow, read and write for an exclusive one), for as long as 5.2.2 says. Rejected: (b) only each access made through
+    it, which puts the undefined behavior at a later safe write.
+  - RZ3 (5.2.3, 14.2.4): `_ = P@move` of a raw Place, or of a Field or element of one, transfers nothing; the value is destroyed in
+    that Place at statement temporary cleanup, before the statement's temporaries, its `drop` runs on that Place, and the Place
+    then holds no value. This is the letter of 5.2.3 and 5.2.1 (3); 14.2.4 now states the exception. Both pipelines move the value
+    into a temporary first (`rz3-inplace`: old and sel `moved moved`), a STATUS row. Rejected: (a′) every `_ = P@move` in place
+    (A1 and A2 would have to read a mid-scope Drop as a move-out); (b) the transfer, which narrows SPEC to the implementation; (c)
+    a `Raw.destroy` beside it, a second form.
+  - RZ5 (5.2, 5.5, 5.7, Appendix E): a raw Place puns only a punnable Type: the `owner` Scalars (3.1), raw pointer Types, and Tuples
+    and fixed arrays of punnable Types. A Field or element of a raw Place is a raw Place of its own Type, so `(*p).f` puns Field by
+    Field (5.2's `Header` example, its bytes aligned for `Header`). A punned raw pointer has the provenance of the raw pointer value
+    whose bytes it reads when a raw pointer's write, placement or relocation last wrote them, and otherwise none (5.5); one whose Type
+    states an Origin promises what a claim of it promises. A punned write changes a byte only when the byte is padding or its
+    innermost Initialized Place has a punnable Type, which must then hold a valid value: punning constructs no payload and changes no
+    Case. Two consequences of the closed list, both allowed by the old text: a punned write can no longer change a Copy enum's Case,
+    nor the bytes the active Case leaves unused (kept undefined, since exempting them as padding is exempted would depend on layout).
+    5.7 Authority now names a read and a shared borrow (read capability) beside the accesses that need write capability. 15.1.2's "a
+    punned Place holds a complete value" is unchanged. The library puns only `isize`; its Handle Fields are ordinary Places since RZ6.
+    Rejected: (a) Copy with "valid" meaning a held, live value (not decidable from the code); (c) one rule per class.
+  - RZ7 (5.2): a value written or placed through a raw Place into a Place outside raw storage must fit that Place's Type, Origins
+    included, as a write through its access path would, judged through the writer's contract: a Place the writing body reaches
+    from its inputs has the Type its signature gives it. Raw storage stays with Retained dependencies. This supersedes R4-M116's
+    R-N2 "no text change" at stated positions (R4-M131 superseded it at unstated ones), so `rz7-other`'s store of another parameter
+    through a forged pointer and the review's `rv-rz7-leak` into the body's own declared Place are undefined, and their acceptance
+    on both pipelines is SPEC-valid. Rejected: (a′) the contract rule for storage reached from inputs only, which leaves
+    `rv-rz7-leak` and static storage defined.
+  - Element storage (5.2.1 condition 4): an access also conflicts with a live Loan "of the dynamic collection whose element
+    storage it acts on". Element storage is no own step (15.6.2), so RZ6's `allocate` authority stays. Rejected: (b) authority
+    alone; an own step, which would end an element pointer's authority at a Move of its collection.
+  - G86 (15.3.5, 8.1.2): a conditional slot is a use only in its binder's admitted borrow cases, shared for `ref` and `objref`,
+    exclusive for `uniq` and `objuniq`, so a slot's requirement and Phantom status are judged per admitted Semantics case and an
+    instance has its case's (8.15.2); Fixed points compute them once per declaration per case; variance stays one per declaration
+    (invariant as Phantom only when Phantom in every case). Example `15.3.5-conditional-slot`: its Error variant is a (b)
+    difference, since Binding computes `ref` (`Binding.TypeOrigins.AccumulateRequirements`). Rejected: (b) the strongest admitted
+    case (it rejects `g86-static-owner`, a static owner instance); today's `ref` (wrong even for `s is uniq`).
+  - G159 (2) (14.9.2 step 2): a Tuple, array or Dictionary literal holding a part of Type Never, also within such a literal part, and
+    a selection, `do` or `loop` none of whose sources supplies one, supply no candidate. When no source supplies one, the common Type
+    is formed part by part over those sources other than Never, each part found as step 2 finds one from its parts other than Never,
+    and a part that is Never in every source is Never. Both precisions follow from the answer and step 2: a plain Never source
+    supplies nothing (`if c => (a, (return 1)) else => (return 2)` is `(i64, Never)`, the fresh literal's own Type), and an array
+    literal source constructs `Array<T>` there (4.3.1), so no length is compared. Example `14.9.2-part-by-part`, a (b) difference
+    (Binding's `TypeMismatch_Kd`). Rejected: (a) the sources' own Types, an error; (c) a Never Expression Type.
+  - §15.4.2 (G170, B §3.4's gap): the row "Type in a Constraint, outside a Function Type: must be complete from explicit
+    information", which Binding reports today (`MissingOriginBinding_Kd`); a pair parameter (8.1.1) states a borrowed outer layer
+    with an unnamed Origin. Not now: (a+) names a function's Constraints introduce, which no call instantiates yet (`e5-ref-sig`,
+    `rv-e5-same-borrow`: `UnprovenConstraint_Kd`), and (c) the subject's own Origin at the omitted position; either may come
+    later as an explicit extension.
+  - Closures (7.7.2, 7.7.3, 15.1.6; R4-M130's two readings; Q10′): the requirement comes from the operations, never from the receiver
+    they run under: deciding it, a path from an environment binding has no receiver layer, and 15.1.6 decides a Subject mode the same
+    way. A pointer read from the environment in a Shared call still has no write authority (5.2.1 (3)). Exclusive access includes an
+    exclusive Borrow or Reborrow, a `uniq/Self` receiver, a `match` or `for` Subject in Exclusive mode (also when the body only reads
+    and whatever the iteration entry does), and an access through a raw pointer read from the environment, or through a pointer
+    derived from it, that needs write capability: a write, a Take, an in-place destruction or an exclusive borrow. Example
+    `7.7.3-exclusive-uses`. Binding classes the Take, `_ = (*p)@move` and derived-pointer forms Shared today (the review's
+    `rv-c-rawtake`, `rv-c-rawdestroy`, `rv-c-rawcopyptr`), a STATUS row. Rejected: Q10′ (b), only `*p` and `p[n]` writes on the
+    pointer itself (a Take, an in-place destruction, an exclusive borrow or a derived pointer's write is as undefined in a Shared
+    call).
+  - F2 (7.2.3, 3.6): an omitted default is an outermost expression of its own; its temporaries end once its value is in its
+    pending slot, before the next default and before callee entry, as the MIR and Binding read it. The old generator ends them at
+    the statement's end, and the default pipeline rejects `g248-f2-guard` (`CallActivationConflict_Kd`), a STATUS row. Rejected:
+    (b) through the call, under which "Inspection Loans end before callee entry" becomes an obligation that `g248-f2-guard` fails.
+    Q12 (3.6, editorial; R4-M129): "A Body's items are outermost expressions (14.2.1)".
+  - O1 (16.2.1, 12.4.3): an unfinished Dictionary literal's inserted entries are cleaned up as a Tuple's or array's placed components
+    are, each in reverse acquisition order. The old generator destroys them with the Dictionary after the later temporaries
+    (`rv-o1-dict`: `one two`, where the Tuple and array twins give `two one`), a STATUS row; the MIR builds the same order (R4-M129's
+    builder rule; `MirBuildTest.ADictionaryLiteralsEntriesArePlacedInAValueOfItsOwn`, whose expectation changes by this decision), and
+    sel cannot build the form yet (`Unsupported_Kd`). Rejected: (b) one temporary acquired where the literal begins.
+  - Q8 (G158 (3)), a planning note: SPEC 6.7.1 and 8.15.3 make only a use that needs the layout the error, so Binding's declaration
+    checks (an open, derived or empty struct at the attribute, a direct zero-sized Field, a written instance with a zero-sized Field
+    behind a borrow or raw pointer) are conservative Language errors. This supersedes R5-M55's "Binding's declaration check is
+    lasting (X26)", whose reason was duplicate records, not SPEC (R5-M55 points here). No SPEC change.
+  - Principles. One Concept: one rule per position kind (the declared Type at every raw write, one punnable list, per-case
+    requirements as per-case premises, part-by-part joins whatever the nesting, one cleanup rule for literal components). Local
+    Reasoning: each rule is read from Types, the writer's contract or the operation, never from where a value came from. Explicit
+    Semantics: in-place destruction, borrow capability, the receiver order and a default's temporaries are stated. Compiler Server
+    Protocol: the decidable items (G86, G159 (2), the closure forms) fail as located records; the others stay undefined behavior
+    with no checker.
+  - Implementation follow-ups (PLAN): BU: G86's per-case requirement (`OriginParameter`; ValidateOriginRequirements, RawStep,
+    RawMembers and retention read it; full process) and the `s is uniq` defect now; G159 (2)'s part-by-part candidate in
+    `ResultCandidates`, and `rv-g159-nested-cand` (it has a candidate under the current letter and is `TypeMismatch_Kd` ×2); G158
+    (3)'s `Binding.Attributes` checks. R5: G158 (3)'s `Layout` CLayout outcome (open, derived, empty) and `check` over the checked
+    set's layout obligations; RZ3's in-place Drop through a raw pointer under sel. R4: RZ3's HIR discard classification and
+    `MirBuilder.Discard`; O1's per-entry cleanup in the MIR Dictionary literal; the closure forms in `Binding.ClosureReceivers` (a
+    2c-1 follow-up) and DIAGNOSTICS' Note wording for read-only Exclusive causes; an open issue for a callee writing through a
+    captured pointer the body passes it (`rv-c-rawinit`: `Raw.initialize(p, 5)` in a `let` Closure is Shared). The old
+    generator's RZ3, F2 and O1 orders close at R6-check.
+  - Open (G86's row): 5.7's "a slot that a raw layer states must not be Phantom" does not say in which case, now that Phantom
+    status is per case; by 8.15.2 ("A generic definition is valid when every Semantics case is valid") it reads "in any admitted
+    case" (`struct H<s/T> {a}` under `s is owner or uniq` with `s/T during a` and `raw/i32 during a` is invalid). Reasoned, not
+    probed; no library Type has a pair parameter.
+  - Numbering: R4-M134 is free on dev (R4-M131) and every branch (R4-M132 on `claude/a5-2a-2`, R4-M133 on `claude/a5-2c-3b`).
+- **R4-M135 The 70% usage fallback is withdrawn** (owner, 2026-10-25, the R4 planning session's dialog, verbatim:
+  「"週前半で70%超なら"という処置は撤回します。今のままの実装・レビューの数で継続してください」 and, asking for the documents to follow,
+  「70% ルールは撤回します。文書を修正してください。」) R4-M119's counts hold whatever the weekly usage: implementers one per lane, at
+  most two; designers and reviewers at most two; heavy runs at most three at once across R4, BU and R5. R4-M119's fallback
+  bullet and the clause R5-M113 took from it no longer apply, nor R4-M119's reading that the guard carries R4-M110's usage reason.
+  No planning session (R4, BU, R5) pauses an agent for usage without the owner's word. Context: at 87% weekly usage one day into
+  the week the R4 planning session applied the fallback and paused two agents (lane A, design B), and BU paused one (bu41, which had
+  committed nothing and resumed on the withdrawal); the owner withdrew it within the hour, and BU confirmed it in its dialog
+  (「はい、そのとおり (推奨)」). R5 agreed to R5-M113's pointer; R5 has the owner's own word, given to R5 directly
+  (「70%を超えても、今の実装者・レビュアー体制で作業を継続してください」), recorded as R5-M120 (batch 41), which supersedes R5-M113's
+  clause for R5.
 - **R4-M136 OldRule's ledger key and the MIR target side (2x-T5), refining R4-M50 and R4-M60** (2026-10-25; unit 2x-T5 under the A5
   step 2 plan's PD19 and its 2x-T5 row (R4-M74), the prerequisite 2a0-D's 2a-4 row names, in G:A5-F4's group review; the R4 planning
   session's decisions of 2026-10-25 on its open points and number; R5's agreement, relayed by the planning session)
@@ -5099,7 +5289,7 @@ resumed by R4-M86 (2026-10-20).
     obligations unjudged); judging at formation (a Field's own Origins are still `Unbound`); "binder failed, no record" in the judge
     (`IsDerived` owns derivation). Open: A's `IsDerived` widening for an associated specification's record (review N1).
 
-- **BU-24** (2026-10-22; the BU planning session after the full process: designs A′ and B′, design review 2, design-final §14 "B′+";
+- **BU-24** (superseded in part by BU-39) (2026-10-22; the BU planning session after the full process: designs A′ and B′, design review 2, design-final §14 "B′+";
   unit bu20 C1a; CR-R2) A raw layer's Origin (SPEC 5.7) is a role of its own: `BoundType.RawOrigin` beside `Origin`, one slot whose
   role the Semantics decides (0 B; a pinned interleaved A/B of the getters against C0d's build gave warm Bind minima 35.70 against
   35.41 ms over three milestones, inside the baseline's own 3% spread, and equal cold bytes, so B′'s +8 B field is not taken). `Origin`
@@ -5732,7 +5922,8 @@ resumed by R4-M86 (2026-10-20).
   - One TyCtxt path: `TyCtxt.Instance(type, subst)` gives the instance (`Binding.StorageInstance`, split out of `InstantiateStorageType`
     first, behavior unchanged) with its verdict, the identity keeping the Type as Prepared; `Apply` is that instance when Prepared. The
     readers of the verdict take `== Prepared` where they took true (`InstantiateStorageType`, `TyCtxt.Dispatch`, `BodyLowering.Structs`),
-    so every reader but retention sees what it saw.
+    so every reader but retention sees what it saw (superseded by BU-38 at `InstantiateStorageType` and `TyCtxt.Dispatch`: a Limit
+    only).
   - Pass-through: retention reads Rejected storage as instantiated (`Binding.Retained`, for the contract's instance and `Held`): a part
     that does not substitute holds nothing (no row, no untie) and the rows that hold whatever it is stay. `Held` walks an enum's Cases
     only where its instance substituted them (`AdtDef.CaseTypes` not null; a Case where it is set since BU-37, which makes e1 a limit),
@@ -5798,6 +5989,52 @@ resumed by R4-M86 (2026-10-20).
     raw/i32)` keeps no row, the growth in the p16 form is unseen; BU with R4 for `MirTypes.Holding` and R5 for Layout; option 2:
     payloads published and walked per payload); A4's `MirEffects.Destroyed` reads a null part as Limit, a dependent by R4-M118 (R4); the
     collector's `Unsupported_Kd` over Rejected storage, now visible on enum forms under sel, is G242's Dispatch part (BU, next).
+
+- **BU-38 A part Binding rejected passes through Binding's instantiation and Dispatch** (2026-10-25; the BU planning session after
+  the full process: designs A and B, the design review's combination C (A's D1-D3 and D4 reworked with B's Bodyless site and R5's
+  completeness guard), R5's conditions 1-4 and R4's agreement for the builder's hunks; PLAN G242's Dispatch and EffectBounds sites, unit
+  bu40) SPEC 23.1.2 lets a failure caused only by another go unreported and 23.1.1 makes a limit a located `Unsupported_Kd`; BU-36 and
+  BU-37 make a part Binding rejected a dependent that holds, places and destroys nothing. Gates that read the storage verdict as
+  Prepared alone turned Rejected into a limit: `Binding.InstantiateStorageType` (EffectBounds' `Type()` and forwarded calls:
+  `Unsupported_Kd` at a confined conformance on every pipeline), `TyCtxt.Dispatch.Resolve` (K6's Limit, which `TyCtxt.Comparison` and
+  the builder's tuple operator read: `Unsupported_Kd` at the operator under mir) and the Prepared-only `Apply`, `Compose` and
+  `Signature` the instance collector reads (`StorageNesting` `Unsupported_Kd` at the call under MIR code generation).
+  - Binding: `InstantiateStorageType` gives the instance unless its storage is a Limit, so Binding's passes read Rejected storage as
+    retention does (BU-36): a forwarded call, Type argument, dictionary, requirement, formatting or comparison over it violates nothing,
+    a forwarded environment effect keeps its repair's `IncompatibleContractImplementation_Kd` (r1), and a limit beside it still wins.
+    Outside Binding's passes it is read only on a complete Binding (the old analyses return at an incomplete one, the old generator runs
+    after acceptance), where no storage is Rejected.
+  - Dispatch: `Resolve` refuses a Limit only. What a requirement call runs does not depend on a stored part, so a Rejected Self has its
+    witness's target, whose instance is its reader's to admit; `Comparison`'s null and the collector's requirement Limit row (R5-M67)
+    are genuine limits, and a tuple operator over Rejected storage builds its leaf calls.
+  - Staged: the first commit (bu40 1/2) changes Binding and TyCtxt only. The second, after R5's C8d lands and with R5's review of its
+    collector hunks and R4's of the builder's, adds `Compose`'s verdict (`(Subst?, StorageOutcome)`; `MirBuilder.Defaults.Copies` :47,
+    :146), the collector's one mapping at `In`, Admit, Edge's `Compose` and the bodyless `Signature` site (deleting `Destroys` and
+    `Runs`' null branch), and R5's guard (Rejected in a complete compilation, a located `InternalInvariant_Kd`; completeness through one
+    TyCtxt member; Layout's Rejected row by R5's choice). Until then, MIR code generation still publishes the collector's StorageNesting
+    `Unsupported_Kd` over Rejected storage.
+  - Supersedes BU-36's `== Prepared` at `InstantiateStorageType` and Dispatch (kept there only to preserve behavior); amends R5-M61's
+    and R5-M67's Limit to a Self nested past the bound. Each names this entry.
+  - Rejected: B's E1 (Rejected as "not judged": hides the independent violation r1's repair reports, an `out` verdict most callers
+    discard, and formatting, requirement, selected-requirement and closure instances still conflating); a Rejected target kind (a second
+    carrier of the verdict for an answer that does not depend on the part, and `Comparison` and the builder would need their own);
+    `Apply` giving Rejected instances to the MIR readers (BU-36's rejected option, R7's).
+  - Open: e3 (BU, PLAN G242; a failed call, not storage): the effect summary reads a call Binding did not bind as `UnclassifiedCall`,
+    so an unbound call in a confined witness publishes a dependent `IncompatibleContractImplementation_Kd` on every pipeline.
+
+- **BU-39 TyCtxt keeps only the raw readers of a stored layer** (2026-10-25; the BU planning session; PLAN G160, unit bu42; one
+  design, one review) R4-M116 (PQ-7): A5 reads neither `RawMembers` nor `RawStep(raw)`, only the step of the raw layer an instance
+  stores, so BU-24's signature reader, added on the owner's 「シグネチャ版も入れる (推奨)」 for A5 to read a signature's layer step, has
+  no reader either. A search of `src` (Benchmark and Playground included) and `tests` on dev 2351c1dfc found no caller of
+  `TyCtxt.RawStep(raw)`, `TyCtxt.RawStep(function, input, positions)` or `TyCtxt.RawMembers(origin, scope, members)` outside
+  `TyCtxtTest`, and `Binding.SignatureLayerStep` reached only through the second; all four are deleted.
+  - Kept: `TyCtxt.RawStep(instance, part, positions)` (A5's `MirBorrows` and `MirTypes.Holding` read it),
+    `TyCtxt.RawMembers(instance, part, positions, members)` for G148 (1)'s per-part guard (R4-M76), and Binding's `StepOf`,
+    `SignatureStep` and `RawMembers(origin, scope, members)`, which `StoredStep`, retention, `InvalidRawOrigin` and `StoredMembers` read.
+  - A result layer's signature cap has no compiler observer (retention reads a raw layer's step only for what a call may write, which
+    no result row reads), so no test asserts it.
+  - Supersedes BU-24's `TyCtxt.RawStep(raw)`, `TyCtxt.RawStep(function, …)` and `TyCtxt.RawMembers(origin, …)` readers, with its
+    open difference between the declared signature view and instantiated retention.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
@@ -7015,7 +7252,8 @@ structure is recorded here by the unit that first implements it.
     (`ValidateCLayoutFields`, which reports at the Field and the struct and keeps `IsCLayout`, R5-M26) is published as
     `AdtDef.CLayoutRejected`, written in every pass like `InlineCycle` (R5-M37); `Layout` lays such a struct out as Rejected storage, so
     its by-value uses add no record and the collector never repeats Binding's declaration check (DIAGNOSTICS rule 1). Binding's
-    declaration check is lasting (X26).
+    declaration check is lasting (X26); superseded by R4-M134's planning note (SPEC 6.7.1 and 8.15.3 make only a use that needs the
+    layout the error).
   - Waiting: a collection's element (X34) is laid out by its glue item, so an empty `Array<P<()>>` local's record comes with K7.
   - Rejected: one Language record per Type (SPEC 8.15.3 places it at the use; R5-M44's rejected record per use concerns the Resource code);
     a second outcome table beside R5-M44's.
@@ -7081,7 +7319,8 @@ structure is recorded here by the unit that first implements it.
   under the call's own substitution, whose bound reference instantiates the requirement's signature (the CallPlan form drops it, its
   CallPlan already carrying that signature). Storage: a standard property witness's implementing Field under the call's
   substitution, `Access` its `PropertyWitnessKind` (AccessorCall for every other kind). Refused: OCC-X. Limit: the conforming Self's
-  storage does not complete (`PrepareTypeStorage`, the depth bound of R4-M51's Limit), for a Self no `Apply` instantiated, such as the
+  storage does not complete (`PrepareTypeStorage`, the depth bound of R4-M51's Limit; amended by BU-38: a Self nested past the bound,
+  a Rejected one passing through), for a Self no `Apply` instantiated, such as the
   Self-bearing `Synthesized` factory's (F6). None: no answer, a broken contract for a closed accepted Self that its reader records as
   `InternalInvariant_Kd`; an abstract Self has None, since the materializer's SPEC 8.15 forwarding keeps such a call. The view calls the
   core under the library root's premises (`EffectPremises(null)`) with the Contract reference `Binding.InstanceContract` matches,
@@ -7310,9 +7549,9 @@ structure is recorded here by the unit that first implements it.
   the instance (`TyCtxt.Signature`) is the key's up to Origins (a `ref/Self` or `uniq/Self` receiver, a result `F`, `ref/F` or Unit,
   a set input `F`, `F` the Field's Type in Self by `AdtDef.FindField`), else `InternalInvariant_Kd`, and a set's item targets the
   Field Type's glue; Refused, the capability row `ExclusiveInheritedWitness` (OCC-X, `Unsupported_Kd` at the call); Limit, the
-  storage-nesting row; None, a broken contract (`InternalInvariant_Kd` at the call). Both shims are type-driven items: the Self's
-  layout verdict joins their admission (R5-M44). A composed substitution whose Self does not instantiate is null (`TyCtxt.Compose`,
-  PLAN G157 (4)), the storage-nesting gap at the call as for the other parts. Locations: R5-M40's rule.
+  storage-nesting row (a genuine limit, BU-38); None, a broken contract (`InternalInvariant_Kd` at the call). Both shims are
+  type-driven items: the Self's layout verdict joins their admission (R5-M44). A composed substitution whose Self does not instantiate
+  is null (`TyCtxt.Compose`, PLAN G157 (4)), the storage-nesting gap at the call as for the other parts. Locations: R5-M40's rule.
   - Staged to unit K6b (after F6; before C3b, C8f and C9b, which read these targets; K6b landed them, R5-M70):
     requirement Items (rows 5 and 12), whose substitution needs a witness form of `TyCtxt.SubstOfItem` (this supersedes R5-M43's "until
     K6": they now wait for K6b); row 6's writer witness and row 2's formatting witnesses (`TyCtxt.Published`, R5-M30) with its Shim
@@ -8591,7 +8830,8 @@ structure is recorded here by the unit that first implements it.
   reviewer at a time) R5 runs implementers one per lane, at most two, their files disjoint and at most one unit changing a shared
   representation at a time, and designers and reviewers at most two, under R4-M119's rule: heavy runs at most three at once across R4, BU
   and R5, each registered in `artifacts/heavy-runs/` while it runs; design and review probes run selected classes and reuse the full-suite
-  bases kept once per dev sha in `artifacts/verify/shared-base/`; one plus one again when weekly usage passes 70% early in the week.
+  bases kept once per dev sha in `artifacts/verify/shared-base/`; one plus one again when weekly usage passes 70% early in the week
+  (withdrawn by R4-M135).
   Reading: 「同じ制約」 is R4-M119's rule, so 「実装者はレーンごとに最大 2」 is its "one per lane, at most two" (the planning session's
   wording of the owner's choice). Unchanged: the full process, R5-M18's one design and one review per unit under the packages (DEC Q6),
   merge windows announced to R4 and BU, and R5-M8's checks.
@@ -8820,3 +9060,70 @@ structure is recorded here by the unit that first implements it.
   since the kernel's checksum line needs interpolation (C9c) under MIR code generation; C8c measures a temporary kernel as information,
   a B/A beyond the A=B variance stopping it (R5-M8's O2 rule). The later of E7 and C9c runs the corpus A/B under R5-M8. They leave the
   list.
+- **R5-M120 R5 keeps its concurrency above 70% weekly usage** (owner, 2026-10-25, to the R5 planning session directly; verbatim
+  「70%を超えても、今の実装者・レビュアー体制で作業を継続してください」, replacing the same day's
+  「C8d の設計（第 1 段）を始めてください。使用量が 70% を超えたら 1 + 1 に絞ってください。」 in its second sentence; supersedes
+  R5-M113's "one plus one again when weekly usage passes 70% early in the week" for R5) Above 70% weekly usage R5 keeps R5-M113's
+  limits: implementers one per lane, at most two, and designers and reviewers at most two. Unchanged: heavy runs at most three at once
+  across R4, BU and R5 (R4-M119), the shared bases, and every other R5-M113 rule; R4's and BU's own limits are theirs.
+- **R5-M121 The Array family in MIR code generation: LegacyRow items and the Array rows (C8d)** (2026-10-25, C lane; plan C8d, package C
+  3.2, 3.4 and 3.6, K package 4.3 and 4.5 row 2, S2-S4 X4, X34 and X39, PD2, PD3, PD21; SPEC 4.3, 4.5, 4.9.1-4.9.8, 7.6, 7.7.4, 16.3.2, 22.2;
+  the planning session's go and rulings Q1-Q8 on C8d's design, `c8d-design.md`; under R5-M18 form 2 (G:library-2), R5-M45, R5-M46,
+  R5-M92, R5-M104, R5-M108 and R5-M116)
+  - LegacyRow items (ruling Q1 (a); K 4.3's key, R5-M18's ninth `MonoKind`, `[Transitional("R8")]`, first implemented here): a bodyless
+    compiler function whose legacy row writes its call in its instance (`LegacyWriter.Instance`) targets, at its direct call, its Item's
+    Value call and its ItemAdapter (all three reach `Bodyless`), the item keyed `((function, Fn), erased Subst)` (`AdmitRow`), represented by
+    the Subst, whose Types `TyCtxt.Signature` gives, and by the Type below parameter 0 (an Array, a UniqSlice or a fixed array), whose
+    element it lays out (K 4.8, X34). Its targets are the needs its row declares (X4, ruling Q3 (a)): ElementGlue (clear) the glue of each
+    Element part of that Type that may need a drop; no Array row declares a library callee. Reserve and shrinkToFit have text-less items
+    that carry the stride (ruling Q7 (a)). The collector's sites that tell a body item from another read `BodyOrdinal` (published once per
+    item), none a kind arm.
+  - Map (X39): `LegacyRow(Writer, Routine?, Helper?)` gains the `ArrayHelperKind` column and `Needs` (a helper's `ArrayRow` needs, the Array
+    runtime for a capacity routine, R5-M46's need the old lowering still sets by hand, D5); `LegacyWriter` gains `Instance` (the eight
+    operations and five storage kinds: reserve and shrinkToFit their capacity routine, append, insert, pop, remove, clear and swap the
+    helper of their kind, borrowStorage and borrowStorageUniq over an Array or a UniqSlice BorrowStorage, ownStorage OwnStorage, a fixed
+    array's ownStorage OwnFixedStorage) and `Length` (setArrayLength).
+  - One routine path: `Routine(LegacyRow, target, out given)` gives a Routine row's routine (writeLine) and an Instance row's item's
+    (`ModuleCodegen.Row`: its helper or its capacity routine, given its element's stride or a fixed array's length); `Legacy` and
+    `Routine(kind)`, so `Runs`, read it, so a direct call, a Value call and an adapter entry write one call (SPEC 7.7.4, R5-M108). The
+    helpers' parameters carry the internal convention's kinds and logical indices (restructured first, behavior unchanged), so the one call
+    writer places the operands, the result slot and the location; an Instance row takes copy slots as a body callee does (its helper copies
+    its element after growing: `values.append(values[0])`). G157 (22)'s C8d part closes: setArrayLength is unsafe (SPEC 7.6) and capacity a
+    member, so no C8d instruction row is a value.
+  - Helpers (`ModuleCodegen.Arrays`, PD2): P1b's row text (`LegacyRuntimeHelpers.WriteArray`, the one copy), named after the item by its
+    kind's prefix (ruling Q2 (a): `__kimi_array_append_<item>`), over the element's Layout record, the name of the element glue its text
+    destroys by (a string element by its glue), Pop's Option payload (the Some Case's element at Field 1) and a remainder's Fields in
+    declaration order with Field 0's size; made once per Write and kept while its descriptor matches (warm 0 B), its text written before the
+    definitions (PD8) with the Array runtime its row declares (`ModuleCodegen.Needs.Arrays`), after the memory declarations and before the
+    nullable Alloc, the old generator's order.
+  - In place (`FunctionCodegen.Arrays`): an Array from none is `__kimi_array_init` at its Place and location (the runtime's empty handle);
+    setArrayLength stores the length at the handle's Field 1, the word `Length` reads; capacity is P2b's kernel (`WriteCapacity`, the legacy
+    handle's capacity word, an Array's or a Dictionary's); an Array's glue calls its glue item's own Drop helper `__kimi_array_drop_<item>`
+    with the glue's parameters (ruling Q4 (a); the string row's form, R5-M78). G157 (6) closes for arrays: the rows that declare ElementGlue
+    (clear, the Drop row) target exactly their Element parts' glue. A Dictionary from none and its glue stay C8e's.
+  - Adapters (ruling Q6 (a)): `Forward`'s `Own` matches a callee parameter by logical index and passing (`FunctionCodegen.Passes`): the same
+    kind, or a SharedReference and a Value of the same pointer Type (a SharedReference is a Value with attributes), so an erased Item over
+    `ref/string` elements reaches its helper's by-value pointer input.
+  - Departure, confirmed by the owner (R5-M122): plan row C8d's "Array kernel O2" (ruling Q5 (a)): the `Array` corpus kernel's A/B moves to
+    the later of C8d and C9c, since its checksum line needs interpolation (C9c) under MIR code generation; C8d measures a temporary variant
+    as information, a B/A beyond the A=B variance stopping it (R5-M8).
+  - Deviations: none in native outcomes; IR only (PD9): a literal reserves then appends (the builder's form), one helper per function
+    instance, an Array's glue one call above its Drop helper, a string element destroyed by its glue.
+  - Restructured first, behavior unchanged: the helper shapes' and capacity routines' parameter kinds and logical indices, `WriteArray`
+    (fe9c23247); the legacy routine path (b28f256de).
+  - Open (for PLAN): `TyCtxt.Erase` keeps a Subst's count of input Origins, so a direct call's Subst and its Item's (`SubstOfItem`) or a
+    literal's (`Synthesized`) erase to two keys and one function instance has two LegacyRow items with the same helper text (static size
+    only; TyCtxt is held). Unverified: whether a body callee reached both ways has two items.
+  - Rejected: inlining the operations from FunctionCodegen primitives (a second copy of P1b's text); module requests keyed by the element
+    descriptor without an item (Q1 (b): the adapter lacks the call's Types; a table beside the checked set); names by representation (Q2
+    (b): two naming rules); the glue under the Drop shape (a second glue signature, R5-M104); capacity at Layout's Field 2 (a second
+    statement of the legacy capacity word); `[]` as three stores; clear's glue from Binding's published row (Q3 (b)); the builder writing
+    grow and place (held, R3 decision 5); new IntrinsicIds (PD21); a `DropGlueRow` per collection (no consumer before C8e); re-pointing the
+    old lowering to the map (D5).
+- **R5-M122 The owner confirms C8d's departure** (owner, 2026-10-25, on the R5 planning session's explanation after C8d's design; verbatim
+  「C8d の逸脱（Array カーネルの corpus O2 A/B
+  を C8d と C9c の遅い方へ移し、C8d は一時カーネルで参考測定すること）も承認します。」; the consequences are the planning session's) The
+  departure R5-M121 records is confirmed: plan row C8d's Array kernel O2 moves to the later of C8d and C9c, since the `Array` corpus
+  kernel's checksum line needs interpolation (C9c) under MIR code generation; C8d measured a temporary variant as information (B/A median
+  0.96, within the A=B variance, R5-M8's O2 rule). The later of C8d and C9c runs the corpus A/B under R5-M8, with ErasedCalls',
+  SharedHandles' and VirtualDispatch's (R5-M105, R5-M111, R5-M115). It leaves the list.

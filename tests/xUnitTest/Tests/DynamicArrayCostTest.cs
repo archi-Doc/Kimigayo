@@ -228,7 +228,7 @@ public class DynamicArrayCostTest
         var c = MinimalEmissionTest.Analyze("var values: Array<string> = [\"before\"]\nlet first = values@uniq.remove(0)\nConsole.writeLine(first)");
         using var initial = new StringWriter();
         Assert.True(c.WriteIr(initial, out var error), error);
-        Assert.Contains("@__kimi_array_remove_string", initial.ToString());
+        Assert.Contains("@__kimi_array_remove_", initial.ToString()); // A generator names its helper (DECISIONS R5-M121).
         var replacement = MinimalEmissionTest.Analyze("var values: Array<i32> = [20, 22]\nrequire values[0] + values[1] == 42 else => $abort(\"values\")\nvalues@uniq.clear()");
         var bytes = Tinyhand.TinyhandSerializer.Serialize(replacement.Kotonoha);
         var tree = c.Kotonoha;
@@ -241,8 +241,12 @@ public class DynamicArrayCostTest
         using var output = new StringWriter();
         Assert.True(c.WriteIr(output, out error), error);
         var ir = output.ToString();
-        Assert.DoesNotContain("@__kimi_array_remove_string", ir);
-        Assert.DoesNotContain("@__kimi_array_place_string", ir);
+        Assert.DoesNotContain("@__kimi_array_remove_", ir);
+        if (Codegen.Legacy)
+        {
+            Assert.DoesNotContain("@__kimi_array_place_string", ir); // The old generator's literal placement (MIR code generation appends).
+        }
+
         ScalarEmissionTest.WriteFixture("DynamicArrayCostReload", ir, string.Empty);
     }
 

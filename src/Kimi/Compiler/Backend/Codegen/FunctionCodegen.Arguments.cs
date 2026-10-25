@@ -93,22 +93,13 @@ internal sealed partial class FunctionCodegen
     {
         if (LegacyRuntimeHelpers.Row(this.CompilerFunction(call)) is { } legacy)
         {
-            this.RowSlots(call, legacy);
+            this.RowSlots(call, legacy, block);
             return;
         }
 
         if (call.Callee.Kind != MirCalleeKind.Intrinsic)
         {
-            for (var i = call.Start; i < call.Start + call.Count; i++)
-            {
-                this.CopySlot(this.body.Operands[i], i);
-            }
-
-            if (call.Callee.Kind == MirCalleeKind.Value)
-            {
-                this.CopySlot(call.Operand, this.body.Operands.Length + block);
-            }
-
+            this.OperandSlots(call, block);
             return;
         }
 
@@ -142,14 +133,36 @@ internal sealed partial class FunctionCodegen
         return callable is { Kind: BoundTypeKind.FunctionItem, Symbol: { } function } ? function.CompilerFunction : CompilerFunctionKind.None;
     }
 
-    // A legacy row's slots (DECISIONS R5-M116): a routine row's OwnedSlot parameters, as an intrinsic routine's; a swap of a value in memory
-    // the one slot holding its first value (FunctionCodegen.Updates), numbered at its first operand, a reference, which has no copy slot of
-    // its own; none for the others, which read their operands in place, no callee seeing them.
-    private void RowSlots(in MirTerminator call, LegacyRow row)
+    // The copy slots of a call whose callee takes its in-memory operands by pointer, a body's (Copies): each Copy or string constant operand's,
+    // and a Value callee's operand's.
+    private void OperandSlots(in MirTerminator call, int block)
+    {
+        for (var i = call.Start; i < call.Start + call.Count; i++)
+        {
+            this.CopySlot(this.body.Operands[i], i);
+        }
+
+        if (call.Callee.Kind == MirCalleeKind.Value)
+        {
+            this.CopySlot(call.Operand, this.body.Operands.Length + block);
+        }
+    }
+
+    // A legacy row's slots (DECISIONS R5-M116, R5-M121): a routine row's OwnedSlot parameters, as an intrinsic routine's; an Instance row's as a
+    // body callee's (OperandSlots), since its helper takes an element in memory by pointer and copies it after it grows (`a.append(a[0])`);
+    // a swap of a value in memory the one slot holding its first value (FunctionCodegen.Updates), numbered at its first operand, a reference,
+    // which has no copy slot of its own; none for the others, which read their operands in place, no callee seeing them.
+    private void RowSlots(in MirTerminator call, LegacyRow row, int block)
     {
         if (row.Writer == LegacyWriter.Routine)
         {
             this.RoutineSlots(call, row.Routine);
+            return;
+        }
+
+        if (row.Writer == LegacyWriter.Instance)
+        {
+            this.OperandSlots(call, block);
             return;
         }
 

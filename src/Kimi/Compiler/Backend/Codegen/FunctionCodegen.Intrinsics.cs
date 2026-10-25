@@ -47,6 +47,9 @@ internal sealed partial class FunctionCodegen
             case IntrinsicWriter.Test:
                 this.Test(call);
                 return;
+            case IntrinsicWriter.Capacity:
+                this.Capacity(call);
+                return;
             case IntrinsicWriter.Create or IntrinsicWriter.Clone:
                 return; // A broken contract, recorded by Routine.
             case IntrinsicWriter.Unwritten:
@@ -67,8 +70,32 @@ internal sealed partial class FunctionCodegen
         return IntrinsicDisposition.Of(kind) switch
         {
             { Kind: DispositionKind.Intrinsic, Id: var id } => this.Routine(IntrinsicRows.Of(id), result, target, out given),
-            _ => LegacyRuntimeHelpers.Row(kind)?.Routine,
+            _ => LegacyRuntimeHelpers.Row(kind) is { } row ? this.Routine(row, target, out given) : null,
         };
+    }
+
+    // A legacy row's routine (DECISIONS R5-M116, R5-M121), the one path its direct call, its Item's Value call and its adapter's entry take,
+    // its slot-less values into `given`: a Routine row's (writeLine); an Instance row's in its function's instance, its call site's LegacyRow
+    // item's (ModuleCodegen.Row: the item's helper or its row's capacity routine, given the element's stride or a fixed array's length);
+    // null for any other row, and after a record (an Instance row's call targets its item, K 4.5 row 2).
+    private FunctionAbi? Routine(LegacyRow row, int target, out ReadOnlySpan<Value> given)
+    {
+        given = default;
+        if (row.Writer != LegacyWriter.Instance)
+        {
+            return row.Writer == LegacyWriter.Routine ? row.Routine : null;
+        }
+
+        if (target < 0 || this.collector.Set.Items[target].Key.Kind != MonoKind.LegacyRow)
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The collector targets an Instance row's call at its LegacyRow item.
+            return null;
+        }
+
+        var routine = this.module.Row(target, out var number);
+        this.slotless[0] = new('\0', number);
+        given = this.slotless.AsSpan(0, 1);
+        return routine;
     }
 
     // A routine row, a call that is one runtime routine: its routine, after its module request (TryAllocate's), and its slot-less values in

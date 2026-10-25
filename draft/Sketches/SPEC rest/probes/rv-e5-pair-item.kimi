@@ -1,0 +1,5 @@
+func f<s/U>(x: s/U, item: U) -> U
+    s is ref
+    return item@move
+var y: i32 = 1
+Console.writeLine("\(f(y@ref, 2))")

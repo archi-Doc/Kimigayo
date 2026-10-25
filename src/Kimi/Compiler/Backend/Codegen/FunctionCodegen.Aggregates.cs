@@ -7,8 +7,8 @@ namespace Kimi.Compiler.Backend;
 
 // The aggregates of FunctionCodegen (R5 package C 3.2, plans C2a, C2b and C5a; DECISIONS R5-M83, R5-M87, R4-M81, R5-M102): a Tuple, struct,
 // enum Case, Closure environment or fixed array put by its components (a string constant written whole, DECISIONS R5-M118), and a Fill's
-// one value at each element by one counted loop, the loop writer (Loop) the glue shares. Rows not written yet: an Array or Dictionary from
-// none (C8d, C8e).
+// one value at each element by one counted loop, the loop writer (Loop) the glue shares; an Array from none is FunctionCodegen.Arrays'
+// (DECISIONS R5-M121). Rows not written yet: a Dictionary from none (C8e).
 internal sealed partial class FunctionCodegen
 {
     // One pass of a counted loop (Loop): its labels' stem and its work from the pass's element offset.
@@ -24,7 +24,7 @@ internal sealed partial class FunctionCodegen
     // each element by one counted loop (DECISIONS R4-M81); noinit, from no operand, and a zero-sized Place store none. A string constant has
     // nothing to evaluate: it is written whole at its component once the Place is located (Evaluate and Put, the Use row's rule). A Closure's
     // environment is the Closure value, its captures placed as a Tuple's elements in the Place's own storage at every size, so forming it
-    // allocates nothing (DECISIONS R5-M102). An Array or Dictionary from none is C8d's and C8e's row.
+    // allocates nothing (DECISIONS R5-M102). An Array from none is the runtime's empty handle (EmptyArray); a Dictionary's is C8e's row.
     private void Aggregate(in MirStatement statement)
     {
         var rvalue = statement.Rvalue;
@@ -35,8 +35,11 @@ internal sealed partial class FunctionCodegen
             case MirAggregateKind.Tuple or MirAggregateKind.Adt or MirAggregateKind.Closure:
             case MirAggregateKind.FixedArray or MirAggregateKind.Fill when type.Kind == BoundTypeKind.FixedArray:
                 break;
+            case MirAggregateKind.FixedArray when type.Kind == BoundTypeKind.Array:
+                this.EmptyArray(statement); // An Array from none (FunctionCodegen.Arrays).
+                return;
             case MirAggregateKind.FixedArray:
-                this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // C8d's and C8e's collections from none.
+                this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // C8e's Dictionary from none.
                 return;
             default:
                 throw new InvalidOperationException($"The MIR aggregate kind {kind} has no code generation row.");
