@@ -143,18 +143,18 @@ internal sealed partial class FunctionCodegen
         return complete ? rows : throw new InvalidOperationException("The operator table needs a row per MIR operator and an entry per column.");
     }
 
-    // An operator into its Place: its row's entry for the left operand's Type (its column, decided before any operand is read), its
-    // operands in their computation representation, the operation with its check unless Proven, and the result stored in the Place's
-    // storage representation (bool widened).
+    // An operator into its Place: its row and the entry for the left operand's Type (its column, decided before any operand is read), its
+    // operands in their computation representation, a raw pointer's displacement (Displace, which stores it) or the operation (Apply), and
+    // the result stored in the Place's storage representation (bool widened).
     private void Operator(in MirStatement statement)
     {
         var rvalue = statement.Rvalue;
-        var row = Rows[(rvalue.Kind == MirRvalueKind.UnaryOp ? UnaryRows : 0) + rvalue.Op];
+        var row = (rvalue.Kind == MirRvalueKind.UnaryOp ? UnaryRows : 0) + rvalue.Op;
         var operands = this.body.Operands.Slice(rvalue.Start, rvalue.Count);
         var column = this.InstanceType(operands[0]) is { } type ? Column(type) : -1; // None: a broken contract, recorded below.
         if (column == StringColumn)
         {
-            this.CompareStrings(statement, row, operands); // Its operands are inspected, not computed (FunctionCodegen.Strings).
+            this.CompareStrings(statement, Rows[row], operands); // Its operands are inspected, not computed (FunctionCodegen.Strings).
             return;
         }
 
@@ -171,36 +171,42 @@ internal sealed partial class FunctionCodegen
             return; // A broken contract, recorded.
         }
 
-        if (left.Lowering.Layout.Size == 0)
+        if (column >= 0 && Rows[row].Entries[column].Displacement is not 0 and var sign)
         {
-            this.Store(statement, this.Widen(target, new('\0', row.Reflexive ? 1 : 0))); // SPEC 13.4: Unit has one value.
+            this.Displace(statement, left, right, sign); // A raw pointer, never zero-sized; its entry is its own unchecked one.
             return;
         }
 
-        if (column >= 0 && rvalue.Proven)
+        if (this.Apply(row, column, left, right, rvalue.Proven, statement.Source) is { } result)
         {
-            column = Unchecked[column]; // Written without its check.
+            this.Store(statement, this.Widen(target, result));
+        }
+    }
+
+    // A row's operation on two operands in their computation representation (a unary operator's on both sides) at an entry's column: the
+    // row's Reflexive result for zero-sized operands (SPEC 13.4: Unit has one value), else the entry's operation with its check unless
+    // Proven (the column's unchecked entry), which Aborts at the source's location; its value, or null after a record.
+    private Value? Apply(int row, int column, in Computed left, in Computed right, bool proven, in SourceInfo source)
+    {
+        if (left.Lowering!.Layout.Size == 0)
+        {
+            return new Value('\0', Rows[row].Reflexive ? 1 : 0);
         }
 
-        var entry = column < 0 ? default : row.Entries[column];
-        if (entry.Displacement != 0)
-        {
-            this.Displace(statement, left, right, entry.Displacement);
-            return;
-        }
-
-        var check = rvalue.Proven ? Check.None : entry.Check;
+        column = column >= 0 && proven ? Unchecked[column] : column;
+        var entry = column < 0 ? default : Rows[row].Entries[column];
+        var check = proven ? Check.None : entry.Check;
         if (entry.Operator is null || (check == Check.Overflow && left.Lowering.Layout.Size > 8))
         {
             // A Type of a later row, or a checked 128-bit operation, whose intrinsics' declarations are ModuleCodegen's request (open issue).
-            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
-            return;
+            this.Report(DiagnosticCode.Unsupported_Kd, source);
+            return null;
         }
 
         Site site = default;
-        if (check != Check.None && !this.Location(statement.Source, out site))
+        if (check != Check.None && !this.Location(source, out site))
         {
-            return; // Recorded.
+            return null; // Recorded.
         }
 
         var result = new Value('t', this.next++);
@@ -211,9 +217,9 @@ internal sealed partial class FunctionCodegen
             entry.Left ?? Spell(left.Value, text[..SpellingLength]),
             entry.Right ?? Spell(right.Value, text.Slice(SpellingLength, SpellingLength)),
             Spell(result, text[(2 * SpellingLength)..]),
-            comparison: rvalue.Kind == MirRvalueKind.BinaryOp && rvalue.Op >= (byte)MirBinaryOp.Eq);
-        this.Write(check, operation, (int)result.Number, site, right.Lowering.ComputationType);
-        this.Store(statement, this.Widen(target, result));
+            comparison: row >= (int)MirBinaryOp.Eq && row < UnaryRows);
+        this.Write(check, operation, (int)result.Number, site, right.Lowering!.ComputationType);
+        return result;
     }
 
     // An operation with its check and failure block, named by its result's number id (%checked<id>, abort<id>, the success label
