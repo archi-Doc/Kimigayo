@@ -7957,8 +7957,9 @@ structure is recorded here by the unit that first implements it.
   R5-M45, R5-M87, R5-M89, R5-M92, R5-M95 and R5-M108)
   - Map (ruling Q1, X39): `LegacyRuntimeHelpers.Row(CompilerFunctionKind)` is the one map from a compiler function of the Body disposition
     to how MIR code generation writes its call, `LegacyRow(Writer, Routine)` with the closed `LegacyWriter` (Unwritten, Routine, Replace,
-    Exchange, Swap, FixedStorage), `[Transitional("R8")]`; another kind is a broken contract. Code generation switches over the writer,
-    never over the kind (R5-M92); `LegacyRoutine` is deleted. Rows: writeLine's routine; the three updates; FixedStorage for
+    Exchange, Swap, FixedStorage), `[Transitional("R8")]`; it gives null for a function of another disposition, the one test of the Body
+    disposition every reader asks, and `LegacyRow.Updates` names the three updates once (the review's fold). Code generation switches over
+    the writer, never over the kind (R5-M92); `LegacyRoutine` is deleted. Rows: writeLine's routine; the three updates; FixedStorage for
     StorageBorrowFixedShared and Exclusive; every other Body-disposition kind Unwritten, its unit's located `Unsupported_Kd` (C8d the Array
     operations and Array storage kinds, C8e the Dictionary storage kinds, C9a the formatting and writer rows). Refinement of the design
     (the planning session, accepted): no Kernel column; a kernel's input decoding belongs to its writer, so a kernel is a writer
