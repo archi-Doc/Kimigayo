@@ -356,7 +356,8 @@ public sealed partial class Binding
         {
             // The destination is the obligation's Type, which a clause's or a Within row's relation leaves null (the fact's is nullable).
             var variance = obligation.Equality ? OriginVariance.Invariant : OriginVariance.Covariant;
-            if (this.FailedOriginPart(longer, shorter, obligation.Type!, use, variance, judged: true, all, condition: obligation.Condition) is { } first)
+            var search = new OriginFitSearch(this, use, this.formingBody, OriginFitMode.Judged, all);
+            if (search.FailedOriginPart(longer, shorter, obligation.Type!, variance, obligation.Condition) is { } first)
             {
                 for (var i = 0; i < all.Count; i++)
                 {
