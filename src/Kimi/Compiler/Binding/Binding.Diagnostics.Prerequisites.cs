@@ -50,9 +50,15 @@ public sealed partial class Binding
     /// <summary>Gets the Binding causes of a node that a later phase checks: none when Binding resolved it or recorded no cause.</summary>
     /// <param name="node">The node.</param>
     /// <returns>The check keys, or <see langword="null"/>.</returns>
-    internal DiagnosticKey[]? FailureCauses(Koto node)
-        => node.BindingState != BindingState.Resolved && (IsRecovery(node, out _) || node.BindingFailure != BindingFailure.None || this.HasUnresolvedPrerequisite(node))
-            ? this.CauseKeys(node) : null;
+    internal DiagnosticKey[]? FailureCauses(Koto node) => this.HasFailureCauses(node) ? this.CauseKeys(node) : null;
+
+    /// <summary>Gets whether Binding recorded a cause for a node it did not resolve: the node is a recovery, failed, or rests on an
+    /// unresolved prerequisite (a dependent, SPEC 23.1.2).</summary>
+    /// <param name="node">The node.</param>
+    /// <returns>Whether a check that reads the node rests on a Binding cause.</returns>
+    internal bool HasFailureCauses(Koto node)
+        => node.BindingState != BindingState.Resolved &&
+            (IsRecovery(node, out _) || node.BindingFailure != BindingFailure.None || this.HasUnresolvedPrerequisite(node));
 
     private static bool IsUnresolvedPrerequisite(Koto node)
         => node.BindingState != BindingState.Resolved || IsRecovery(node, out _);

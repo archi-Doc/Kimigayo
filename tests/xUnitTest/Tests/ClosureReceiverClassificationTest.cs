@@ -179,6 +179,7 @@ public class ClosureReceiverClassificationTest
 
     private const string PairHead = "func take<t/U>(y: t/U)\n    t is owner or uniq\n    U is Copy\n    return\nfunc f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n";
     private const string PairMain = "public func main() -> ()\n    var n: i32 = 1\n    f(n)\n";
+    private const string PairCall = "func pair<t/U>(a: i32, y: t/U)\n    t is owner or uniq\n    U is Copy\n    return\n";
 
     // SPEC 7.7.3, 8.14 (DECISIONS R4-M126 PD13): a bare acquisition of a captured pair layer Reborrows exactly in its exclusive cases,
     // so the call is Exclusive there. A Closure publishes the receiver every case has and marks such captures; a case's receiver is
@@ -240,21 +241,28 @@ public class ClosureReceiverClassificationTest
                 "public func main() -> ()\n    var n = 1\n    var m = 2\n    outer(n, m)\n",
             exclusive);
 
-    // SPEC 3.5, 14.2, 23.1.2 (2c-2 re-check R1, R2): no consumer takes a use in Discard Context (a statement, a discarded selection
-    // body), so a captured pair layer there acquires nothing and the Closure is valid under `let` and `var`. A use that a failure at it
-    // or at an enclosing node explains keeps that failure's one record: it neither marks its capture nor reaches the list's net. Each
-    // row: the records under `let h`, then under `var h`.
+    // SPEC 3.5, 14.2.2, 23.1.2 (DECISIONS R4-M128; the owner's third round, 2026-10-25): whether a use in Discard Context (a statement,
+    // a discarded selection body) acquires a captured pair layer is the SPEC session's open question (3.5 against 14.2.2; the MIR
+    // builder acquires it by case), so the list leaves it to the net, a located Unsupported_Kd under `let` and `var`. A use is explained
+    // only by its own failure or by the failure or dependency of the consumer whose operation decides its acquisition: an aggregate
+    // element's sibling explains nothing, so `(value, missing)`, `[value, missing]` and `(take(value), missing)` keep the mark and a
+    // `let` Closure's call stays Exclusive, and a dependent call `pair(missing, value)` without its own failure keeps the net away.
+    // Each row: the records under `let h`, then under `var h`.
     [Theory]
-    [InlineData("        value\n", "", "")]
-    [InlineData("        (value)\n", "", "")]
-    [InlineData("        if c\n            value\n", "", "")]
+    [InlineData("        value\n", "Unsupported_Kd value", "Unsupported_Kd value")]
+    [InlineData("        (value)\n", "Unsupported_Kd value", "Unsupported_Kd value")]
+    [InlineData("        if c\n            value\n", "Unsupported_Kd value", "Unsupported_Kd value")]
+    [InlineData("        let t = (value, missing)\n        _ = t\n", "UnresolvedBinding_Kd missing; InvalidAssignment_Kd h", "UnresolvedBinding_Kd missing")]
+    [InlineData("        let a = [value, missing]\n        _ = a\n", "UnresolvedBinding_Kd missing; InvalidAssignment_Kd h", "UnresolvedBinding_Kd missing")]
+    [InlineData("        let t = (take(value), missing)\n        _ = t\n", "UnresolvedBinding_Kd missing; InvalidAssignment_Kd h", "UnresolvedBinding_Kd missing")]
+    [InlineData("        pair(missing, value)\n", "UnresolvedBinding_Kd missing", "UnresolvedBinding_Kd missing")]
     [InlineData("        let t = \"\\(value)\"\n        _ = t\n", "UnprovenConstraint_Kd \"\\(value)\"", "UnprovenConstraint_Kd \"\\(value)\"")]
     [InlineData("        let b = Box(value)\n        _ = b\n", "UnresolvedBinding_Kd Box", "UnresolvedBinding_Kd Box")]
     [InlineData("        let k = value@copy\n        _ = k\n", "NonCopyOperand_Kd value@copy", "NonCopyOperand_Kd value@copy")]
     [InlineData("        let a: [2 of i32] = [1, 2]\n        let k = a[value]\n        _ = k\n", "TypeMismatch_Kd value", "TypeMismatch_Kd value")]
-    public void AUseNoConsumerTakesOrAFailureExplainsAddsNoRecord(string use, string letRecords, string varRecords)
+    public void ADiscardedUseReachesTheNetAndOnlyItsDecidingConsumerExplainsAUse(string use, string letRecords, string varRecords)
     {
-        var source = PairHead + "    var h = func [value] (c: bool) -> ()\n" + use + "    h(true)\n" + PairMain;
+        var source = PairCall + PairHead + "    var h = func [value] (c: bool) -> ()\n" + use + "    h(true)\n" + PairMain;
         Assert.Equal(letRecords, Records(source.Replace("    var h = func", "    let h = func", StringComparison.Ordinal)));
         Assert.Equal(varRecords, Records(source));
 

@@ -12,11 +12,11 @@
 //   by value without an operator (at a value position its consumer takes it by value, Binding.AcquiredByValue's list, or a nested bare
 //   entry) that Reborrows in some admitted cases makes it Exclusive in exactly those (SPEC 8.14): the capture is marked
 //   (BoundCapture.BareReborrows); every other use counts in every case (CaseFreeReceiver). A use of such a capture whose consumer the
-//   list does not decide is published (Unlisted) where it could leave a case Shared. A failure at the use or a node enclosing it in
-//   the body explains the use (SPEC 23.1.2): it neither marks its capture nor is published (InFailure).
+//   list does not decide is published (Unlisted) where it could leave a case Shared. A use a failure explains (SPEC 23.1.2:
+//   Binding.ExplainedUse) neither marks its capture nor is published.
 // - Inputs: the Closure's bound body (each node's bound symbol, Type, call, value call and conversion), the adaptations Binding
-//   recorded, a nested Closure's published Storage, a loop's and a match's Subject mode; AcquiredByValue, ReceiverOperation,
-//   BareReborrows, BorrowsExclusively and ProveCopy.
+//   recorded, a nested Closure's published Storage, a loop's and a match's Subject mode; AcquiredByValue, ExplainedUse,
+//   ReceiverOperation, BareReborrows, BorrowsExclusively and ProveCopy.
 // - Outputs: BoundClosure's receiver facts: Receiver, the strongest over every case, which every reader of a Closure's call
 //   receiver reads (value calls, candidate selection and Callable proofs, effects, the MIR builder, the old analysis and Emission);
 //   CaseFreeReceiver and the captures' BareReborrows, from which a view of one case reads that case's receiver; Classified;
@@ -136,7 +136,8 @@ public sealed partial class Binding
                     this.plan.CaseFreeReceiver = SemanticsKind.Owner;
                 }
 
-                if (node.BoundType is { } captured && binding.BareReborrows(captured, node) && binding.AcquiredByValue(node) is null && !this.InFailure(node))
+                if (node.BoundType is { } captured && binding.BareReborrows(captured, node) && binding.AcquiredByValue(node) is null &&
+                    !binding.ExplainedUse(node))
                 {
                     this.Unlisted.Add((node, at)); // The list does not decide whether this use Reborrows by case.
                 }
@@ -164,21 +165,6 @@ public sealed partial class Binding
         private static bool LendsExclusively(in BoundArgumentOperation operation)
             => operation.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.BaseBorrow or ArgumentOperationKind.PayloadProjection &&
                 operation.ParameterType is { } parameter && IsExclusive(parameter.Semantics);
-
-        // SPEC 23.1.2: whether the use or a node enclosing it in the Closure's body failed; that record explains the use, which then
-        // neither marks its capture nor reaches the net.
-        private bool InFailure(Koto use)
-        {
-            for (var node = use; node is not null && !ReferenceEquals(node, this.function); node = node.Parent)
-            {
-                if (node.BindingFailure != BindingFailure.None)
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
 
         // SPEC 7.7.2, 7.7.3: a nested Closure's entries of this binding's captures: moving an outer environment value is Consuming;
         // Reborrowing it or borrowing its slot exclusively needs exclusive access to the outer environment, in the cases where it Reborrows
@@ -273,8 +259,9 @@ public sealed partial class Binding
             }
 
             // SPEC 3.5, 8.14: a Place its consumer acquires by value without an operator (Binding.AcquiredByValue) is acquired as each
-            // case's Type is, unless a failure explains the use (InFailure).
-            byCase = binding.AcquiredByValue(place) == true && place.BoundType is { } bare && binding.BareReborrows(bare, place) && !this.InFailure(place);
+            // case's Type is, unless a failure explains the use (Binding.ExplainedUse).
+            byCase = binding.AcquiredByValue(place) == true && place.BoundType is { } bare && binding.BareReborrows(bare, place) &&
+                !binding.ExplainedUse(place);
             return byCase;
         }
 
