@@ -42,6 +42,23 @@ public class OriginRelationDiagnosticTest
 
     private const string View = "struct P\n    public var x: i32 = 0\n    public init() => ()\nstruct H2 {a}\n    public var o: objuniq/P during a\n";
 
+    // BU's 2c-9 review, B1: a body keeping, past a block, what a call through a Function Type annotation that writes every input returns.
+    private const string KeepHead = "func bad() -> i32\n    let long = 1\n    let lr = long@ref\n    let lr2 = long@ref\n    var keep = lr\n";
+
+    private const string WrittenInputs = "(ref/(ref/i32 during sq) during lr, ref/i32 during sq) -> ref/i32 during lr";
+
+    private const string WrittenClosure = "func [] (p: ref/(ref/i32 during sq) during lr, s: ref/i32 during sq) -> ref/i32 during lr => s";
+
+    private const string WrittenParameter = "func k(q: ref/i32, r: ref/i32, t: ref/(ref/i32 during a) during b, " +
+        "f: (ref/(ref/i32 during q) during r) -> ref/i32 during r) -> ref/i32 during r\n    origin a outlives q\n    origin b outlives r\n";
+
+    // The same parameter with WrittenClosure's two inputs, passed the Closure by a body that keeps k's result past the block of `short`.
+    private const string WrittenParameterCalled = "func k(q: ref/i32, r: ref/i32, t: ref/(ref/i32 during a) during b, " +
+        "f: (ref/(ref/i32 during q) during r, ref/i32 during q) -> ref/i32 during r) -> ref/i32 during r\n" +
+        "    origin a outlives q\n    origin b outlives r\n    return f(t, q)\n" + KeepHead +
+        "    if true\n        let short = 2\n        let sq = short@ref\n" +
+        "        let f = " + WrittenClosure + "\n        keep = k(sq, lr, lr2@ref, f)\n    return keep@follow\n";
+
     [Theory]
     [InlineData(Bad, nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "r", "requires the borrow local@ref outlives x, which is false", "local@ref")]
     [InlineData("func pick(a: ref/i32, b: ref/i32) -> ref/i32 during a\n    return b\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "b", "requires b outlives a, which is not proven", null)]
@@ -106,6 +123,38 @@ public class OriginRelationDiagnosticTest
         Assert.Equal(("omitted", "Lens<i32>"), (error.Reason![1].Origin, error.Reason[1].Value));
         var related = Assert.Single(error.Related!);
         Assert.Equal(("origin", "Lens<i32>"), (related.Role, Text(source, related.Span)));
+    }
+
+    // SPEC 15.3.4, 15.6.1 (PLAN G216): an omitted Origin of a borrow layer nested in an anonymous function's or a local Function Type's
+    // parameter is a body variable, and that input's well-formedness is a premise of the signature and an obligation of each call, never
+    // of the evaluating body: G216's h1 and h2, a Closure body that needs the premise, a Function Type annotation and a named function's
+    // Function Type parameter writing the Origin, each called, are valid. In a named signature the omission is MissingOriginBinding_Kd
+    // (15.4.2). Beside an unrelated Binding error each keeps only its own record (SPEC 23.1.2). Each call proves the premise also where
+    // every input is written (BU's 2c-9 review, B1; SPEC 15.6.4 step 3): a Function Type annotation's call whose result is kept past the
+    // block of `short` lets `keep` outlive it (the Loan conflict; valid called in one scope; beside a Binding error ownership records
+    // nothing on either pipeline today), and a named function's written Function Type parameter, whose input premise is no premise of
+    // the function's body, is Unknown at its call unless the body's clause proves it.
+    [Theory]
+    [InlineData("func g() -> i32\n    let h = func [] (p: ref/(ref/i32)) -> i32 => 1\n    return 0\n", "")]
+    [InlineData("func k(q: ref/i32) -> i32\n    let h = func [] (p: ref/(ref/i32)) -> i32 => p@follow@follow\n    let x = 5\n    return h(x@ref@ref)\n", "")]
+    [InlineData("func g() -> i32\n    let h = func [] (p: ref/(ref/i32)) -> ref/i32 => p@follow\n    let x = 5\n    let y = x@ref\n    return h(y@ref)@follow\n", "")]
+    [InlineData("func g() -> i32\n    let f: (ref/(ref/i32)) -> i32 = func (value) => value@follow@follow\n    let n = 7\n    let view = n@ref\n    return f(view@ref)\n", "")]
+    [InlineData("func g(a: ref/i32, cb: (ref/(ref/i32 during a)) -> i32) -> i32 => cb(a@ref)\n", "")]
+    [InlineData("func g(p: ref/(ref/i32)) -> i32 => 0\n", "MissingOriginBinding_Kd ref/i32")]
+    [InlineData("func g(p: ref/(ref/i32)) -> i32 => 0\nfunc m() -> i32\n    let b: bool = 3\n    return 0\n", "MissingOriginBinding_Kd ref/i32; TypeMismatch_Kd 3")]
+    [InlineData("func g() -> i32\n    let h = func [] (p: ref/(ref/i32)) -> i32 => 1\n    let b: bool = 3\n    return 0\n", "TypeMismatch_Kd 3")]
+    [InlineData(KeepHead + "    let short = 2\n    let sq = short@ref\n    let f: " + WrittenInputs + " = " + WrittenClosure + "\n    keep = f(lr2@ref, sq)\n    return keep@follow\n", "")]
+    [InlineData(KeepHead + "    if true\n        let short = 2\n        let sq = short@ref\n        let f: " + WrittenInputs + " = " + WrittenClosure + "\n        keep = f(lr2@ref, sq)\n    return keep@follow\n", "ComparisonLoanConflict_Kd let short = 2")]
+    [InlineData(KeepHead + "    if true\n        let short = 2\n        let sq = short@ref\n        let f: " + WrittenInputs + " = func [] (p, s) => s\n        keep = f(lr2@ref, sq)\n    return keep@follow\n", "ComparisonLoanConflict_Kd let short = 2")]
+    [InlineData(KeepHead + "    if true\n        let short = 2\n        let sq = short@ref\n        let f: " + WrittenInputs + " = " + WrittenClosure + "\n        keep = f(lr2@ref, sq)\n    let b: bool = 3\n    return keep@follow\n", "TypeMismatch_Kd 3")]
+    [InlineData(WrittenParameter + "    origin q outlives r\n    return f(t)\n", "")]
+    [InlineData(WrittenParameter + "    return f(t)\n", "UnprovenOriginRelation_Kd t")]
+    [InlineData(WrittenParameter + "    return f(t)\nfunc m() -> i32\n    let b: bool = 3\n    return 0\n", "UnprovenOriginRelation_Kd t; TypeMismatch_Kd 3")]
+    [InlineData(WrittenParameterCalled, "UnprovenOriginRelation_Kd t")]
+    public void ANestedSignaturesInputIsWellFormedByPremiseAndAtEachCall(string body, string records)
+    {
+        var source = body + Main;
+        Assert.Equal(records, string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {Text(source, x.Span).Split('\n')[0]}")));
     }
 
     // SPEC 15.6.3, 4.7.1 (DECISIONS BU-27): a Borrow reached through safe borrow layers is contained in each, from its last dereference

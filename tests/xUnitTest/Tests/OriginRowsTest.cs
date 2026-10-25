@@ -138,8 +138,8 @@ public sealed partial class OriginRowsTest
         Assert.Empty(c.Types.OriginFindings);
     }
 
-    // DECISIONS R4-M101 E1 (2a0-D D3): a row is the body's Binding binds it in: a function's, a Closure's body, a Closure literal's fit and
-    // header in its evaluating body (the header's, PLAN G216's pinned limit), a getter's and a `for` in it, a default as its template, a static initializer, a Field initializer as its layer,
+    // DECISIONS R4-M101 E1 (2a0-D D3): a row is the body's Binding binds it in: a function's, a Closure's body, a Closure literal's fit in
+    // its evaluating body, a getter's and a `for` in it, a default as its template, a static initializer, a Field initializer as its layer,
     // a module's top-level statements, a user loop's parentless `$for.iterator` Use.
     [Theory]
     [InlineData(EnvStoreConsuming, "x@ref", "Closure")]
@@ -147,7 +147,6 @@ public sealed partial class OriginRowsTest
     [InlineData(Getter, "$for.iterator", "Accessor")]
     [InlineData(Pick + "func g(a: i32 = pick(3@ref, 4@ref)) -> i32 => a\n", "3@ref", "Default:g:0")]
     [InlineData(Pick + "func h(n: i32, f: () -> i32 = func [] () => pick(7@ref, 8@ref)) -> i32 => f()\n", "7@ref", "Closure")]
-    [InlineData("func g() -> i32\n    let h = func [] (p: ref/(ref/i32)) -> i32 => 1\n    return 0\n", "ref/(ref/i32)", "Fn:g")]
     [InlineData(Util + "group G\n    public let n: i32 = Util.pick(3@ref, 4@ref)\n", "3@ref", "Static:n")]
     [InlineData(FieldInit, "3@ref", "Layer:S")]
     [InlineData(Pick + "let v = pick(3@ref, 4@ref)\n", "3@ref", "TopLevel")]
@@ -375,6 +374,16 @@ public sealed partial class OriginRowsTest
 
             return rows;
         }
+    }
+
+    // A warm rebind of nested signatures' headers (PLAN G216's forms and a Function Type annotation, each called or not) allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmRebindOfNestedSignatureHeadersAllocatesNothing()
+    {
+        var c = MirBuildTest.Compile(HeaderOnly + HeaderCalled + FunctionTypeCalled + Main);
+        Assert.True(c.Binding.Result.IsComplete, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
 
     // The census sets as MirCensusTest loads them (R4-M12): the library, the milestones, the goldens and the accepting SPEC variants.

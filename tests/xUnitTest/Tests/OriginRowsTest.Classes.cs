@@ -32,6 +32,22 @@ public sealed partial class OriginRowsTest
     private const string MeetTrans = "func put(slot: uniq/(ref/i32 during (a and b)), v: ref/i32 during (a and b)) -> ()\n    slot@follow = v\n" +
         "func mt(x: ref/i32, y: ref/i32) -> i32\n    var t = x\n    put(t@uniq, y)\n    return 0\n";
 
+    // PLAN G216's h1 and h2: a Closure header omitting its parameter's inner Origin, not called and called; a Function Type annotation
+    // omitting it, called; and a named function's Function Type parameter naming it, called with an argument whose own Type proves it.
+    private const string HeaderOnly = "func g() -> i32\n    let h = func [] (p: ref/(ref/i32)) -> i32 => 1\n    return 0\n";
+
+    private const string HeaderCalled = "func k(q: ref/i32) -> i32\n    let h = func [] (p: ref/(ref/i32)) -> i32 => p@follow@follow\n    let x = 5\n" +
+        "    return h(x@ref@ref)\n";
+
+    private const string FunctionTypeCalled = "func f() -> i32\n    let apply: (ref/(ref/i32)) -> i32 = func (value) => value@follow@follow\n" +
+        "    let n = 7\n    let view = n@ref\n    return apply(view@ref)\n";
+
+    private const string FunctionTypeParameter = "func g(a: ref/i32, cb: (ref/(ref/i32 during a)) -> i32) -> i32 => cb(a@ref)\n";
+
+    // A Closure header's struct input, whose well-formedness each call discharges (CallBorrows).
+    private const string StructInput = "struct S {a}\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n" +
+        "func k(q: ref/i32) -> i32\n    let h = func [] (p: ref/S) -> i32 => p.x@follow\n    let s = S.init(q)\n    return h(s@ref)\n";
+
     // Explicit in-group static Borrows, mutable and immutable, and the mutable one inside a Closure (2a0-D §3 rows 6, 7, 7').
     private const string Statics = "group State\n    public var count: i32 = 0\n    public let limit: i32 = 10\n" +
         "    func reads() -> i32\n        let c = count@ref\n        let l = limit@ref\n        let f = func [c] () -> i32\n            let own = count@ref\n" +
@@ -176,21 +192,38 @@ public sealed partial class OriginRowsTest
         Assert.Equal((OriginAtomKind.Inferred, ProjectionRole.Place), (atom.Kind, atom.Role));
     }
 
-    // PLAN G216's pinned limit (DECISIONS R4-M101, O1): a Closure header's well-formedness row with an omitted inner Origin relates the
-    // Closure's per-call Input to an Inference atom of the evaluating body; it stays in that body's slice with the Input Unclassed (row 9)
-    // until 2c-D decides it. In g no other row names the Inference atom; in k the call's rows do.
+    // PLAN G216 (SPEC 15.3.4, 15.6.1; DECISIONS R4-M126 P10, R4-M137): a nested signature's input, an anonymous function's or a Function
+    // Type's parameter, is well formed by premise in that signature and by proof at each call, so its well-formedness forms no row of the
+    // body it is written in: no row lies at a Type occurrence and no other declaration's Input is in that body's slice. An omitted inner
+    // Origin ι is the body's variable, which the call's rows name where the body calls the value (k's argument fits into ι) and no row
+    // names otherwise (g). The forms: G216's h1 and h2, a Closure body that needs the premise, a written enclosing Origin, a struct input,
+    // two inputs related by a written Origin, a Function Type annotation called, a named function's Function Type parameter called (its
+    // row was a declaration's), and a Function Type inside a Closure's parameter.
     [Theory]
-    [InlineData("func g() -> i32\n    let h = func [] (p: ref/(ref/i32)) -> i32 => 1\n    return 0\n", "g", false)]
-    [InlineData("func k(q: ref/i32) -> i32\n    let h = func [] (p: ref/(ref/i32)) -> i32 => p@follow@follow\n    let x = 5\n    return h(x@ref@ref)\n", "k", true)]
-    public void AClosureHeadersOmittedInnerOriginIsAPinnedLimit(string source, string body, bool namedByCalls)
+    [InlineData(HeaderOnly, "g", true, false)]
+    [InlineData(HeaderCalled, "k", true, true)]
+    [InlineData("func g() -> i32\n    let h = func [] (p: ref/(ref/i32)) -> ref/i32 => p@follow\n    return 0\n", "g", true, false)]
+    [InlineData("func k(q: ref/i32) -> i32\n    let h = func [] (p: ref/(ref/i32 during q)) -> i32 => p@follow@follow\n    return h(q@ref)\n", "k", false, false)]
+    [InlineData(StructInput, "k", false, false)]
+    [InlineData("func g() -> i32\n    let h = func [] (p: ref/i32, r: ref/(ref/i32 during p)) -> i32 => 1\n    return 0\n", "g", false, false)]
+    [InlineData(FunctionTypeCalled, "f", true, true)]
+    [InlineData(FunctionTypeParameter, "g", false, false)]
+    [InlineData("func k(q: ref/i32) -> i32\n    let h = func [] (cb: (ref/(ref/i32 during q)) -> i32) -> i32 => 0\n    return 0\n", "k", false, false)]
+    public void ANestedSignaturesInputWellFormednessIsNoRowOfItsEvaluatingBody(string source, string body, bool omitted, bool namedByCalls)
     {
         var c = MirBuildTest.Compile(source + Main);
+        Assert.True(c.Binding.Result.IsComplete, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
+        Assert.DoesNotContain(Rows(c, false), static x => x.Use is TypeKoto);
         var slice = c.Types.OriginRows(Bodies(c).Single(x => x.Key.Decl?.Name == body).Key.Body);
-        var header = slice.Rows.First(x => Site(c, x) == "ref/(ref/i32)");
-        var (longer, shorter) = (slice.Atoms[header.Longer], slice.Atoms[header.Shorter]);
-        Assert.Equal((OriginKind.Inference, OriginAtomKind.Inferred), (longer.Atom.Kind, longer.Kind));
-        Assert.Equal((OriginKind.Input, OriginAtomKind.Unclassed), (shorter.Atom.Kind, shorter.Kind));
-        Assert.Equal(namedByCalls, slice.Rows.Any(x => x.Site != header.Site && x.Shorter == header.Longer));
+        Assert.DoesNotContain(slice.Atoms, static x => x is { Kind: OriginAtomKind.Unclassed, Atom.Kind: OriginKind.Input });
+        Assert.Empty(c.Types.OriginFindings);
+        if (omitted)
+        {
+            var header = KotoTree.Walk(c.Kotonoha.RootKoto).First(static x => x is TypeSemanticsKoto && InProgram(x) && First(x) == "ref/(ref/i32)");
+            var inner = header.TypeOf()!.Components[0].Origin!;
+            Assert.Equal(OriginKind.Inference, inner.Kind);
+            Assert.Equal(namedByCalls, slice.Rows.Any(x => slice.Atoms[x.Shorter].Atom == inner || slice.Atoms[x.Longer].Atom == inner));
+        }
     }
 
     // Row 5 and the receiver's part (E5, DECISIONS R4-M103): a Closure literal's value is Fixed in its own body and a Finite temporary of

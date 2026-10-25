@@ -543,22 +543,20 @@ public sealed partial class Binding
                 operations[i] = operations[i] with { ParameterType = parameter };
             }
 
-            if (ownBinder is not null)
+            // SPEC 15.6.1, 15.6.4 step 3: as at a selected call, each input's instantiated Type is well formed and each clause holds, also
+            // where no input is per-call: a written input's well-formedness is its signature's premise, proven at each call (R4-M137).
+            this.callRelationScratch.Clear();
+            for (var i = 0; i < count; i++)
             {
-                // SPEC 15.6.4 step 3: as at a selected call, each input's instantiated Type is well formed and each clause holds.
-                this.callRelationScratch.Clear();
-                for (var i = 0; i < count; i++)
-                {
-                    this.RequireInputPremises(operations[i]);
-                }
-
-                if (conditioned is not null)
-                {
-                    this.JudgeCallClauses(call, conditioned, operations.AsSpan(0, count + 1), count, origins, argumentOrigins, null);
-                }
-
-                this.PublishCallRelations();
+                this.RequireInputPremises(operations[i]);
             }
+
+            if (conditioned is not null)
+            {
+                this.JudgeCallClauses(call, conditioned, operations.AsSpan(0, count + 1), count, origins, argumentOrigins, null);
+            }
+
+            this.PublishCallRelations();
 
             var result = signature.Components[1];
             if (dependent || (inputBinder is not null && HasEnvironmentOrigin(result, inputBinder)))

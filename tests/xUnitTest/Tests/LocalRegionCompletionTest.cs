@@ -33,11 +33,11 @@ public class LocalRegionCompletionTest
     {
         ScalarEmissionTest.EmitFixture("LocalRegionCompletion" + name, source, string.Empty);
 
-        // The MIR side: S4's conflicts, and row 9's located limit at a Function Type annotation's omitted inner Origins (PLAN G216).
+        // The MIR side: S4's conflicts. A Function Type annotation's omitted inner Origins form no row of the evaluating body (its
+        // signature's premise, proven at each call; PLAN G216, DECISIONS R4-M137), so LocalFunctionNested has no located limit.
         (DiagnosticCode, SyntaxLocation)[] mir = name switch
         {
             "IndirectReplacement" or "IndirectLoop" => [(DiagnosticCode.ComparisonLoanConflict_Kd, new("n = 3"))],
-            "LocalFunctionNested" => [(DiagnosticCode.Unsupported_Kd, new("(ref/(ref/i32))")), (DiagnosticCode.Unsupported_Kd, MirTargetSide.At("(ref/(ref/i32))", "ref/(ref/i32)"))],
             _ => [],
         };
         MirTargetSide.Check(source, mir);
