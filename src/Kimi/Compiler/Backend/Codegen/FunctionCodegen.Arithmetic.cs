@@ -124,13 +124,15 @@ internal sealed partial class FunctionCodegen
         return complete ? rows : throw new InvalidOperationException("The operator table needs a row per MIR operator and an entry per column.");
     }
 
-    // An operator into its Place: its operands in their computation representation, its row's entry for the left operand's Type, the
-    // operation with its check unless Proven, and the result stored in the Place's storage representation (bool widened).
+    // An operator into its Place: its row's entry for the left operand's Type (its column, decided before any operand is read), its
+    // operands in their computation representation, the operation with its check unless Proven, and the result stored in the Place's
+    // storage representation (bool widened).
     private void Operator(in MirStatement statement)
     {
         var rvalue = statement.Rvalue;
         var row = Rows[(rvalue.Kind == MirRvalueKind.UnaryOp ? UnaryRows : 0) + rvalue.Op];
         var operands = this.body.Operands.Slice(rvalue.Start, rvalue.Count);
+        var column = this.InstanceType(operands[0]) is { } type ? Column(type) : -1; // None: a broken contract, recorded below.
         var right = default(Computed);
         if (!this.Compute(operands[0], out var left) || (operands.Length == 2 && !this.Compute(operands[1], out right)))
         {
@@ -150,7 +152,6 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        var column = Column(left.Type);
         if (column >= 0 && rvalue.Proven)
         {
             column = Unchecked[column]; // Written without its check.

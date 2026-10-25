@@ -96,30 +96,32 @@ internal sealed partial class FunctionCodegen
             ReferenceEquals(constant.Type, BoundType.String) ? text : null;
 
     // A string constant stored at an address (the string representation, implementation-defined by IMPL 21.1.3: RuntimeAbi.String): its
-    // UTF-8 bytes a pooled constant, the Static release kind, so never released; the empty string has no bytes (null, length 0).
+    // bytes (TextBytes), the Static release kind, so never released.
     private void Text(Value address, string text)
     {
-        var (output, lowering) = (this.output, RuntimeAbi.String);
+        var (output, lowering, bytes) = (this.output, RuntimeAbi.String, this.TextBytes(text));
         output.Write("  store ");
         output.Write(lowering.Layout.StorageType);
         output.Write(" { ptr ");
-        if (text.Length == 0)
-        {
-            output.Write("null, i64 0");
-        }
-        else
-        {
-            var constant = this.module.Constants[this.module.Constants.Intern(text, LlvmConstantKind.Text)];
-            output.Write('@');
-            output.Write(constant.Name);
-            output.Write(", i64 ");
-            WriteNumber(output, constant.ByteLength);
-        }
-
+        this.WriteValue(bytes.Data);
+        output.Write(", i64 ");
+        this.WriteValue(bytes.Length);
         output.Write(", i8 ");
         WriteNumber(output, RuntimeAbi.StaticReleaseKind);
         output.Write(" }");
         this.WriteAccess(address, lowering.Layout);
+    }
+
+    // A string constant's bytes: its UTF-8 bytes a pooled constant and their count; the empty string has none (null, length 0).
+    private StringBytes TextBytes(string text)
+    {
+        if (text.Length == 0)
+        {
+            return new(new('n', 0), new('\0', 0));
+        }
+
+        var constant = this.module.Constants.Intern(text, LlvmConstantKind.Text);
+        return new(new('@', constant), new('\0', this.module.Constants[constant].ByteLength));
     }
 
     // A Place's value in its representation (I4): loaded in its storage representation, or its address when the value is in memory; none
@@ -195,4 +197,7 @@ internal sealed partial class FunctionCodegen
         WriteNumber(this.output, layout.Alignment);
         this.output.Write('\n');
     }
+
+    // A string's bytes, the string record's first two Fields (IMPL 21.1.3): their address and their count.
+    private readonly record struct StringBytes(Value Data, Value Length);
 }
