@@ -18,8 +18,8 @@ namespace Kimi.Compiler.Backend;
 // - BuiltinArithmetic: its Contract's MIR operator (BuiltinArithmetic, SPEC 13.3.3) through the operator table's row, as a statement's, on
 //   the loaded operands with its check, which Aborts at the location the shim received (SPEC 22.5.1).
 // - BuiltinFormat: C9b's row, one located Unsupported_Kd at the item's site.
-// A node the collector refuses (Requirement, None, no tree) and an arithmetic operation the capability table refuses are its records at the
-// item's admission, which stop generation.
+// A node the collector refuses (Requirement, None, no tree) is its record at the item's admission, which stops generation; an arithmetic
+// operation the capability table refuses is the collector's record at each requesting site, whose edge admits no item.
 internal sealed partial class FunctionCodegen
 {
     private int leaf; // The shim's next Witness leaf target.

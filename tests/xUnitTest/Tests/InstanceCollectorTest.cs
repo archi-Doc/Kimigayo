@@ -49,6 +49,20 @@ public sealed class InstanceCollectorTest
     // The first line of CLayoutP's constructor, the subject of its instance's by-value uses.
     private const string Init = "public init(n: i32, value: T)";
 
+    // Generic functions that request an arithmetic shim: a requirement call, an operator, a function item's formation and call, and a
+    // requirement call in a body instantiated per tag Type.
+    private const string ShimQuotient = "func quotient<T>(left: ref/T, right: ref/T) -> T\n    T is Dividable<T>\n    T.(Dividable<T>).Output is T\n" +
+        "    return left.divided(right)\n";
+
+    private const string ShimHalf = "func half<T>(value: ref/T, two: ref/T) -> T\n    T is Dividable<T>\n    T.(Dividable<T>).Output is T\n" +
+        "    return value / two\n";
+
+    private const string ShimItem = "func viaItem<T>(left: ref/T, right: ref/T) -> T\n    T is Dividable<T>\n    T.(Dividable<T>).Output is T\n" +
+        "    let operation = T.divided\n    return operation(left, right)\n";
+
+    private const string ShimTagged = "func tagged<T, U>(left: ref/T, right: ref/T, tag: U) -> T\n    T is Dividable<T>\n    T.(Dividable<T>).Output is T\n" +
+        "    return left.divided(right)\n";
+
     // Exactly 2^63 - 1 bytes (649657 * 92737 * 153092023), every count within 2^31 - 1.
     private const string Big = "[649657 of [92737 of [153092023 of u8]]]";
 
@@ -1590,26 +1604,40 @@ public sealed class InstanceCollectorTest
     }
 
     // K 4.7 instance stage, IMPL 21.3.3 (DECISIONS R5-M54, R5-M126): an arithmetic shim's operation, its Contract's MIR operator
-    // (BuiltinArithmetic) on its Self, is checked with the item: a division or remainder of an i128, u128 or Wrapping<u128> Self is
-    // Unsupported_Kd at the shim's site (K 4.9: the root-module requirement call that first admits it), also when only an unused function
-    // reaches it; an addition of i128 and a division of i64 have none (fail-before: the collector checked no shim).
+    // (BuiltinArithmetic) on its Self, is checked at each site that requests the shim, in Requirement's refusal decision: a division or
+    // remainder of an i128, u128 or Wrapping<u128> Self is Unsupported_Kd at the requesting site (K 4.9), also when only an unused function
+    // reaches it. Two sites requesting one key are two records, as two statements' divisions are: a requirement call and an operator; a
+    // function item's formation and its call (SPEC 23.1.2 leaves a dependent failure's report implementation-defined); one site in two
+    // instances is one (fail-before: once per item, at its first site). An addition of i128 and a division of i64 have none.
     [Theory]
-    [InlineData("Dividable", "divided", "func unused(a: ref/i128, b: ref/i128) -> i128 => apply(a, b)\n", "left.divided(right)")]
-    [InlineData("RemainderProvider", "remainder", "let a: u128 = 7\nlet b: u128 = 2\nlet r = apply(a@ref, b@ref)\n", "left.remainder(right)")]
-    [InlineData("Dividable", "divided", "let a: Wrapping<u128> = 7\nlet r = apply(a@ref, a@ref)\n", "left.divided(right)")]
-    [InlineData("Addable", "added", "func unused(a: ref/i128, b: ref/i128) -> i128 => apply(a, b)\n", "")]
-    [InlineData("Dividable", "divided", "func unused(a: ref/i64, b: ref/i64) -> i64 => apply(a, b)\n", "")]
-    public void AnArithmeticShimsOperationOfTheTableIsAGapAtItsSite(string contract, string requirement, string uses, string refused)
+    [InlineData(ShimQuotient + "func unused(a: ref/i128, b: ref/i128) -> i128 => quotient(a, b)\n", "left.divided(right)")]
+    [InlineData(
+        "func rest<T>(left: ref/T, right: ref/T) -> T\n    T is RemainderProvider<T>\n    T.(RemainderProvider<T>).Output is T\n    return left % right\n" +
+        "let a: u128 = 7\nlet b: u128 = 2\nlet r = rest(a@ref, b@ref)\n",
+        "left % right")]
+    [InlineData(ShimQuotient + "let a: Wrapping<u128> = 7\nlet r = quotient(a@ref, a@ref)\n", "left.divided(right)")]
+    [InlineData(ShimQuotient + ShimHalf + "func unused(a: ref/i128, b: ref/i128) -> i128 => quotient(a, b) + half(a, b)\n", "left.divided(right)|value / two")]
+    [InlineData(ShimItem + "func unused(a: ref/i128, b: ref/i128) -> i128 => viaItem(a, b)\n", "T.divided|operation(left, right)")]
+    [InlineData(
+        ShimQuotient + ShimItem + "func unused(a: ref/i128, b: ref/i128) -> i128 => quotient(a, b) + viaItem(a, b)\n",
+        "left.divided(right)|T.divided|operation(left, right)")]
+    [InlineData(ShimTagged + "func unused(a: ref/i128, b: ref/i128) -> i128 => tagged(a, b, 1) + tagged(a, b, true)\n", "left.divided(right)")]
+    [InlineData(
+        "func third<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value / 3\nfunc fifth<T>(value: T) -> T\n    T is PrimitiveInteger\n" +
+        "    return value / 5\nfunc unused(a: i128) -> i128 => third(a) + fifth(a)\n",
+        "value / 3|value / 5")]
+    [InlineData(
+        "func sum<T>(left: ref/T, right: ref/T) -> T\n    T is Addable<T>\n    T.(Addable<T>).Output is T\n    return left.added(right)\n" +
+        "func unused(a: ref/i128, b: ref/i128) -> i128 => sum(a, b)\n",
+        "")]
+    [InlineData(ShimQuotient + ShimHalf + "func unused(a: ref/i64, b: ref/i64) -> i64 => quotient(a, b) + half(a, b)\n", "")]
+    public void AnArithmeticShimsOperationOfTheTableIsAGapAtEachRequestingSite(string source, string refused)
     {
-        var c = MirBuildTest.Compile(
-            "func apply<T>(left: ref/T, right: ref/T) -> T\n    T is " + contract + "<T>\n    T.(" + contract + "<T>).Output is T\n" +
-            "    return left." + requirement + "(right)\n" + uses);
+        var c = MirBuildTest.Compile(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var program = c.BuildMir();
-        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
-        Assert.Contains(set.Items.ToArray(), static x => x.Key.Kind == MonoKind.Builtin);
-        var expected = refused.Length == 0 ? [] : new[] { (DiagnosticCode.Unsupported_Kd, refused) };
-        Assert.Equal(expected, set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        var expected = refused.Length == 0 ? [] : refused.Split('|').Select(static x => (DiagnosticCode.Unsupported_Kd, x)).Order().ToArray();
+        Assert.Equal(expected, set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())).Order());
     }
 
     // K 4.8, SPEC 6.7.1, 8.15.3, DECISIONS R5-M55: a by-value use whose Type places a C-layout instance storing a zero-sized Field, at any

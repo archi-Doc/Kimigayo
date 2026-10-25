@@ -16,13 +16,15 @@ internal sealed partial class InstanceCollector
     // erased Self and its operation (X14, X28), whose key's signature agrees with the requirement's in the instance; a shim item represented
     // by the call's substitution, a Builtin's and a Storage witness's, whose bound reference instantiates the requirement's signature (one
     // Abi for every call of a key: its Self erases to one Type, references are pointers, SPEC 13.3.3 fixes a built-in numeric Type's
-    // counterpart and Output; DECISIONS R5-M126). OCC-X's refusal and a Self whose storage does not complete are capability gaps at the
-    // call; None, no answer for the closed Self of an accepted program, and a Storage witness whose signature disagrees are broken
-    // contracts; a kind without a row is a fault.
+    // counterpart and Output; DECISIONS R5-M126). OCC-X's refusal, a Self whose storage does not complete and an arithmetic shim whose
+    // operation the capability table refuses (ArithmeticGap; IMPL 21.3.3) are capability gaps at the call, each requesting site's, and
+    // refuse the edge; None, no answer for the closed Self of an accepted program, and a Storage witness whose signature disagrees are
+    // broken contracts; a kind without a row is a fault.
     private int Requirement(MirProgram program, int item, SourceRef subject, BindingSymbol requirement, in RequirementTarget target)
     {
         DiagnosticCode? refused = target.Kind switch
         {
+            RequirementTargetKind.Builtin when ArithmeticGap(target) is { } gap => Capability.Code(gap),
             RequirementTargetKind.Body or RequirementTargetKind.Builtin => null,
             RequirementTargetKind.Storage when this.Agrees(requirement, target) => null,
             RequirementTargetKind.Storage or RequirementTargetKind.None => DiagnosticCode.InternalInvariant_Kd,
@@ -91,9 +93,8 @@ internal sealed partial class InstanceCollector
 
     // K 4.3: a shim's targets, at its default site: a comparison shim's are its leaf witnesses (SPEC 13.4) by TyCtxt.Comparison of its
     // Contract, the scope owner of its compiler function (F 4.6), on the representative Self under the Contract's mapping; a formatting or
-    // arithmetic shim's scalar Self calls no witness (FormattingTypes.IsBuiltin, ArithmeticContracts.Supports), an arithmetic one's operation
-    // checked against the capability table (CheckArithmetic, K 4.7); a setter's property witness drops the Field's old value (its glue), the
-    // Field Agrees found in the representative Self at admission.
+    // arithmetic shim's scalar Self calls no witness (FormattingTypes.IsBuiltin, ArithmeticContracts.Supports); a setter's property witness
+    // drops the Field's old value (its glue), the Field Agrees found in the representative Self at admission.
     private void Shim(MirProgram program, int item, SourceRef site, in MonoKey key, BoundType self)
     {
         if (key.Kind == MonoKind.PropertyWitness)
@@ -117,10 +118,7 @@ internal sealed partial class InstanceCollector
             case CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare:
                 this.Leaves(program, item, site, this.types.Comparison(TyCtxt.Contract(key.Symbol), self, operators: false));
                 return;
-            case CompilerFunctionKind.BuiltinArithmetic:
-                this.CheckArithmetic(site, key.Symbol, self);
-                return;
-            case CompilerFunctionKind.BuiltinFormat:
+            case CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinArithmetic:
                 return;
             default:
                 throw new InvalidOperationException($"The shim {key.Symbol.CompilerFunction} has no target row.");
