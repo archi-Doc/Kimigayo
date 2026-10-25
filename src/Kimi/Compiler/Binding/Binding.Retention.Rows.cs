@@ -67,9 +67,15 @@ public sealed partial class Binding
     // hold it (R4-M116 R-B4), and reports the raw layers it met: one the call writes without an Origin keeps every input by rule A
     // (WrittenUnstated), one the result lends keeps the raw inputs (R′), and one stepping Unstated or Static, not lent, unties the
     // output (Untied, UntiedStores). The work is what the closures reach, each node with its incoming premises once per closure, and the
-    // hold walks; the transfer key is read once, at the first output that meets a written unstated layer. CallRetention.Limit where the
-    // hold walk meets storage past its limits (Held).
-    private CallRetention RetentionRows(OriginPremiseEnvironment environment, int[] nodes, ReadOnlySpan<BoundType> inputs, FunctionKoto? callee)
+    // hold walks; the transfer key is read once, at the first output that meets a written unstated layer, under `premises`, the scope
+    // TyCtxt read an instance with an abstract part under (null: none, or an erased callable's, which has no callee). CallRetention.Limit
+    // where the hold walk meets storage past its limits (Held).
+    private CallRetention RetentionRows(
+        OriginPremiseEnvironment environment,
+        int[] nodes,
+        ReadOnlySpan<BoundType> inputs,
+        FunctionKoto? callee,
+        BindingScope? premises)
     {
         // The sources at a node, linked atom indexes.
         var atoms = this.retentionAtoms;
@@ -120,7 +126,7 @@ public sealed partial class Binding
 
             if ((met & Holding.Unstated) != 0)
             {
-                transfer ??= this.TransferOf(callee, inputs);
+                transfer ??= this.TransferOf(callee, inputs, premises);
                 this.WrittenUnstated(kept, output, inputs, transfer.Value, callee?.BoundSymbol);
             }
             else if ((met & Holding.Lent) != 0)
@@ -185,24 +191,25 @@ public sealed partial class Binding
         return tied;
     }
 
-    // SPEC 15.6.4, 5.7 Calls (DECISIONS R4-M116 items 2 and 5, R-B2, BU-30, BU-35, BU-40), the hold walk: a position of `output` the
-    // call may write or lend, a hold (retentionHolds: the result's whole Type, or a position of input j's writable storage) or a position
-    // below one, with `written`, the Type a struct's Field or an enum's Case payload declares there while it is a Tuple, a fixed array or
-    // a raw layer (null elsewhere: off a declaration, or below a Type parameter or another part it does not write inline), and whether it
-    // is `lent`: below a borrow in the result (BorrowReferent: a borrow layer, a pair layer admitting only borrows, a Slice's or
-    // UniqSlice's elements) or below a result raw layer stating an input's or slot's Origin (stepping Exclusive or Shared: it retains as
-    // that borrow would, SPEC 5.7 Calls, so what it addresses is that borrow's storage, 5.2.1; PLAN G255's C1). Each raw input other than `output` whose Type the position can hold retains its own value there (R-B4: a raw
-    // layer stating an Origin or `static` that agrees with it, Origins fitted: their erasures, TyCtxt.Erase, are one Type, SPEC 3.8; or an
-    // abstract part, which an instance may make one); at a raw layer without an Origin rule A or R′ decides it (RetentionRows); a
-    // pointer is never part of its own pointee. A raw layer steps by DeclaredStep (its declaration's cap where `written` states the layer,
-    // its Origin's kind elsewhere, DECISIONS BU-24): Unstated is what the call writes there (Holding.Unstated) or lends (Holding.Lent),
-    // and Static is storage the body does not own (Holding.Static, lent or not). A value stored at a writable position brings its whole
-    // Type (BU-1), so the walk goes below every layer that stores (IsCallable), as RetentionParts' writable positions do, and into a
-    // struct's or enum's stored content. What a position gives depends on its Type, `written` and `lent` alone and only accumulates, so
-    // each position is walked at most once per lent bit and output (retentionMet): the work is linear in the distinct positions, not in
-    // the paths to them through the interned Types (V16). A struct or enum whose storage is a Limit, a growing one among them
-    // (PrepareTypeStorage's limits, DECISIONS BU-12), makes the contract CallRetention.Limit; Rejected storage is walked as far as it
-    // substitutes, a part that does not (null) holding nothing (Retained, BU-36).
+    // SPEC 15.6.4, 5.7 Calls (DECISIONS R4-M116 items 2 and 5, R-B2, BU-30, BU-35, BU-40), the hold walk: a position of `output` the call
+    // may write or lend, a hold (retentionHolds: the result's whole Type, or a position of input j's writable storage) or a position below
+    // one, with `written`, the Type a struct's Field or an enum's Case payload declares there while it is a Tuple, a fixed array or a raw
+    // layer (null elsewhere: off a declaration, or below a Type parameter or another part it does not write inline), and whether it is
+    // `lent`: below a borrow in the result (BorrowReferent: a borrow layer, a pair layer admitting only borrows, a Slice's or UniqSlice's
+    // elements) or below a result raw layer stating an input's or slot's Origin (stepping Exclusive or Shared: it retains as that borrow
+    // would, SPEC 5.7 Calls, so what it addresses is that borrow's storage, 5.2.1; PLAN G255's C1). Each raw input other than `output`
+    // whose Type the position can hold retains its own value there (R-B4: a raw layer stating an Origin or `static` that agrees with it,
+    // Origins fitted: their erasures, TyCtxt.Erase, are one Type, SPEC 3.8; or an abstract part, which an instance may make one); at a raw
+    // layer without an Origin rule A or R′ decides it (RetentionRows); a pointer is never part of its own pointee. A raw layer steps by
+    // DeclaredStep (its declaration's cap where `written` states the layer, its Origin's kind elsewhere, DECISIONS BU-24): Unstated is
+    // what the call writes there (Holding.Unstated) or lends (Holding.Lent), and Static is storage the body does not own (Holding.Static,
+    // lent or not). A value stored at a writable position brings its whole Type (BU-1), so the walk goes below every layer that stores
+    // (IsCallable), as RetentionParts' writable positions do, and into a struct's or enum's stored content. What a position gives depends
+    // on its Type, `written` and `lent` alone and only accumulates, so each position is walked at most once per lent bit and output
+    // (retentionMet): the work is linear in the distinct positions, not in the paths to them through the interned Types (V16). A struct or
+    // enum whose storage is a Limit, a growing one among them (PrepareTypeStorage's limits, DECISIONS BU-12), makes the contract
+    // CallRetention.Limit; Rejected storage is walked as far as it substitutes, a part that does not (null) holding nothing (Retained,
+    // BU-36).
     private Holding Held(BoundType? type, BoundType? written, int output, Kept[] kept, bool lent)
     {
         if (type is null)
@@ -237,7 +244,8 @@ public sealed partial class Binding
             RawStep.Unstated => Holding.Unstated,
             _ => Holding.None,
         };
-        var below = lent || (output == Retention.Result && (this.BorrowReferent(type, out _, out _) is not null || step is RawStep.Exclusive or RawStep.Shared));
+        var below = lent ||
+            (output == Retention.Result && (this.BorrowReferent(type, out _, out _) is not null || step is RawStep.Exclusive or RawStep.Shared));
         met |= nominal ? this.Stores(type, output, kept, below) : Holding.None;
         for (var i = 0; !IsCallable(type) && i < type.Components.Count; i++)
         {

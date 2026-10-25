@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 // Call retention, the transfer rule (SPEC 15.6.4 as DECISIONS R4-M131 states it; BU-40; contract in TyCtxt.Retention.cs).
 // Responsibility: which published operation transfers values, and how it narrows rule A's rows at a raw layer without an Origin.
 // Inputs: the callee of the contract being computed, its instantiated inputs, and the premise scope TyCtxt read an instance with an
-// abstract part under (retentionPremises; the library root's for any other).
+// abstract part under, RetentionRows' parameter, which it hands to TransferOf (the library root's for any other).
 // Outputs: the contract's Transfer (TransferOf), read by RetentionRows once, at its first output whose hold walk meets a written
 // unstated layer, so an ordinary call pays nothing; the outputs it writes (TransferWrites) and what an input keeps there (TransferKept).
 // Keys, each a published declaring identity, never a name or a file (SPEC 22.1): an Iterator's `next`, a callee for which `for`'s
@@ -29,10 +29,6 @@ public sealed partial class Binding
         KimiDeclarationId.Range, KimiDeclarationId.ClosedRange, KimiDeclarationId.ResolvedRange,
     ];
 
-    // The premise scope of the contract being computed: the one TyCtxt read an instance with an abstract part under, null for any other;
-    // every Retains sets it before RetentionOf, nothing clears it, and only TransferOf reads it, for a callee (RetainsErased has none).
-    private BindingScope? retentionPremises;
-
     // The published operations that transfer values (SPEC 15.6.4): none; one whose borrowed inputs keep only their chains; `exchange`, whose
     // result also keeps only its target's chain; a 4.9 operation, whose receiver's element storage also keeps only its added inputs.
     private enum Transfer : byte
@@ -53,8 +49,8 @@ public sealed partial class Binding
         _ => true,
     };
 
-    // The transfer key of a callee (the file's contract).
-    private Transfer TransferOf(FunctionKoto? callee, ReadOnlySpan<BoundType> inputs)
+    // The transfer key of a callee (the file's contract), its Iterator conformance proven under `premises` (null: the library root's).
+    private Transfer TransferOf(FunctionKoto? callee, ReadOnlySpan<BoundType> inputs, BindingScope? premises)
     {
         if (callee?.BoundSymbol is not { } symbol)
         {
@@ -83,9 +79,9 @@ public sealed partial class Binding
             return Transfer.None;
         }
 
-        var premises = this.retentionPremises ?? this.EffectPremises(null);
         return this.SelectsWitness(symbol, self, this.Library.Iterator) &&
-            this.ResolveConformance(self, this.Library.Iterator, premises, out _) == ConstraintProof.Proven ? Transfer.Values : Transfer.None;
+            this.ResolveConformance(self, this.Library.Iterator, premises ?? this.EffectPremises(null), out _) == ConstraintProof.Proven
+            ? Transfer.Values : Transfer.None;
     }
 
     // What input i, other than `output`, keeps at `output`'s written unstated layer: its own value and its chain; under a transfer

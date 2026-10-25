@@ -5725,7 +5725,7 @@ resumed by R4-M86 (2026-10-20).
     handle over a V holding an unstated layer is no longer untied (supersedes, for the result, BU-30's untie by every raw layer below
     a hold). The memo key is (Type, written, lent): at most two visits per position and output, still linear (supersedes BU-35's key
     sentence).
-  - One result hold: `RetentionOf` registers the result's whole Type; `RetentionWalk` registers writable positions only.
+  - One result hold: `BeginRetention` registers the result's whole Type; `RetentionWalk` registers writable positions only.
   - Rows from the input list after each output's hold walk: rule A (Unstated): every input i ≠ O keeps its own value and Chain, the
     written-through O its Chain only; R′ (Lent, not Unstated, the result): each raw input its own value and Chain. `Held` keeps a raw
     input's own value only at a layer stating an Origin or `static` and at an abstract part; at an unstated layer rule A decides,
@@ -5743,11 +5743,10 @@ resumed by R4-M86 (2026-10-20).
     3.
   - Transfer keys (`Binding.Retention.Transfers.cs`), read once per contract at the first output meeting Unstated, never by name:
     Iterator's `next` (`SelectsWitness(callee, Self, Iterator)` and `ResolveConformance(Self, Iterator)` Proven under TyCtxt's premise
-    scope for an instance with an abstract part, passed to `Binding.Retains`, else the library root's; that scope is
-    `retentionPremises`, the computation's state as `retentionInputs` is: every `Binding.Retains` sets it before `RetentionOf` (null
-    for an instance without an abstract part and for C8's closure path), nothing clears it, and only `TransferOf` reads it, for a
-    callee only, so `RetainsErased`, which has none, never reads a stale one); `exchange`, `swap` by their catalog IDs; 4.6–4.9 by
-    declaring identity (Array, Dictionary, Slice, UniqSlice, FromEnd, Start, End, Range, ClosedRange, ResolvedRange,
+    scope for an instance with an abstract part, passed to `Binding.Retains` and from it, as `RetentionRows`' parameter, to
+    `TransferOf` (null for an instance without an abstract part, for C8's closure path and from `RetainsErased`, which has no callee),
+    else the library root's; `exchange`, `swap` by their catalog IDs; 4.6–4.9 by declaring identity (Array, Dictionary, Slice,
+    UniqSlice, FromEnd, Start, End, Range, ClosedRange, ResolvedRange,
     `FixedArrayMembers`). Under them a borrowed input keeps its Chain only; `exchange`'s result only its target's Chain; for §4.9 only
     (Array, Dictionary) the receiver's storage keeps of the other inputs only the added ones: `KimiLibraryCatalog.Added` over
     `AddedRow(Id, Mask)` beside `WithinRows` (append, insertAt, insert, appendAll, appendCopies, tryInsert, insertOrReplace), with two
@@ -5768,7 +5767,9 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: A's Value-only rows for non-raw inputs (B-A1: a by-value Tuple, Option or struct loses its first read); A's
     set-then-clear own value (two rules on one fact); keying by name (`callee.Name == "next"`, 22.1); Order 3's keying at untied
     outputs; an output column for chains (exact only per output); B's receiver narrowing for every listed Type (15.6.4 scopes it to
-    4.9).
+    4.9); for the premise scope (the final review's B2), a field set by `Retains` past one member's six parameters, an argument bag,
+    and a transfer key read before the hold walk (every contract would pay it): each entry point (`Retains`, `RetainsErased`) runs its
+    own steps between `BeginRetention` and `EndRetention` and hands the scope to `RetentionRows`.
   - Open: N1 Chain on inputs with no raw or borrowed layer is vacuous (R4's closure decides); N2 "internal implementations" stay
     outside the keys (DictionaryStorage, HeapBuffer); N3 PLAN G255's C2 (the MIR literal's per-entry handle: multi-entry Dictionary
     literals of raw-holding values) and C3 (rule G's second pass against 4.9.6; R4's), not this unit's: `appendNullOk` and

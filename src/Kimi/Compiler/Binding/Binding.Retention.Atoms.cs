@@ -97,7 +97,7 @@ public sealed partial class Binding
     // belongs to admits (RawContent), and its atom is that Origin, as a borrow's; what a raw layer without one retains is the hold walk's
     // (Binding.Retention.Rows.cs). A callable Type stores nothing, and its per-call Origins belong to no value of it (SPEC 15.2.3). A
     // position of an input's writable storage whose Type is a raw layer, an abstract part, a struct or an enum is one of that input's
-    // holds; the result's one hold is its whole Type (RetentionOf).
+    // holds; the result's one hold is its whole Type (BeginRetention).
     private void RetentionWalk(BoundType type, RetentionAtom at, OriginVariance variance, bool callable)
     {
         var here = at with { Writable = at.Writable && variance == OriginVariance.Invariant };
