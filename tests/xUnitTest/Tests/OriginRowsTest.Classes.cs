@@ -24,6 +24,10 @@ public sealed partial class OriginRowsTest
         "func g(anchor: ref/i32, x: Option<i32>) -> i32\n    var t: ref/i32 during anchor = anchor\n    match x\n" +
         "        .Some(let v) if keep(t@uniq, v@ref) => return 1\n        _ => return 0\n";
 
+    // A mutable local whose omitted Origin is a region, its initializer the fixed input's row (SPEC 15.4.4; the twin of TypeBindingTest's
+    // LocalOmissionsRetainFixedVariablesAndInitializerConstraints, which reads Binding's obligation, 2a-4).
+    private const string LocalOmission = "func f(x: ref/i32)\n    var local: ref/i32 = x\n";
+
     // A callee's meet of its own Origins, judged with its Parameter atoms (2a0-D's rv/meet-trans-ok, PLAN G195).
     private const string MeetTrans = "func put(slot: uniq/(ref/i32 during (a and b)), v: ref/i32 during (a and b)) -> ()\n    slot@follow = v\n" +
         "func mt(x: ref/i32, y: ref/i32) -> i32\n    var t = x\n    put(t@uniq, y)\n    return 0\n";
@@ -56,6 +60,7 @@ public sealed partial class OriginRowsTest
     [InlineData(Pick + "func g(n: i32, r: i32 = pick(n@ref, 5@ref)) -> i32 => r\n", "g", "5@ref", "Finite", "Place")]
     [InlineData("func total(values: Slice<i32>) -> i32\n    var sum = 0\n    for v in values\n        sum = sum + v@follow\n    return sum\n", "total", "$for.iterator", "Finite", "Place")]
     [InlineData(MirOriginsTest.RepeatedSet, "run", "ref/Holder{x}", "Dependent", "None")]
+    [InlineData(LocalOmission, "f", "x", "Fixed", "None")]
     public void TheLongerEndOfARowTakesItsClass(string source, string body, string site, string kind, string role)
     {
         var (slice, row) = RowAt(source, body, site);
@@ -73,6 +78,7 @@ public sealed partial class OriginRowsTest
     [InlineData("func needsStatic(x: ref/i32 during static) -> i32 => x@follow\nfunc caller() -> i32\n    let local = 3\n    return needsStatic(local@ref)\n", "caller", "local@ref", "Fixed")]
     [InlineData(MirOriginsTest.FailedClause, "f", "local@ref", "Dependent")]
     [InlineData(MirOriginsTest.RepeatedSet, "run", "k", "Dependent")]
+    [InlineData(LocalOmission, "f", "x", "Inferred")]
     public void TheShorterEndOfARowTakesItsClass(string source, string body, string site, string kind)
     {
         var (slice, row) = RowAt(source, body, site);
