@@ -151,4 +151,96 @@ public class ClosureReceiverClassificationTest
     [Fact]
     public void AScalarReadThroughACapturedExclusiveReferenceIsShared()
         => ScalarEmissionTest.EmitFixture("ClosureReceiverScalarRead", "var n = 7\nlet view = n@uniq\nlet f = func [view] () => view@follow + 1\nlet r = f()\nrequire r == 8 and f() == 8 else => $abort(\"r\")", string.Empty);
+
+    private const string PairHead = "func f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n";
+    private const string PairMain = "public func main() -> ()\n    var n: i32 = 1\n    f(n)\n";
+
+    // SPEC 7.7.3, 8.14 (DECISIONS R4-M126 PD13): a bare acquisition of a captured pair layer Reborrows exactly in its exclusive cases,
+    // so the call is Exclusive there. A Closure publishes the receiver every case has and marks such captures; a case's receiver is
+    // the case-free one, raised to Exclusive where a marked capture's case Type is an exclusive layer, and Receiver is the strongest
+    // over the cases. Each row: per Closure in source order, the case-free receiver, the owner and uniq cases' receivers and the
+    // marked captures. A bare Reborrow of a Place reached through a capture counts in every case.
+    [Theory]
+    [InlineData("    var h = func [value] () -> ()\n        let local = value\n        _ = local\n    h()\n    h()\n", "Ref Ref Uniq [value]")]
+    [InlineData("    let h = func [value] () -> ()\n        let local = value\n        _ = local\n    h()\n    h()\n", "Ref Ref Uniq [value]")]
+    [InlineData("    var h = func [value] () -> ()\n        var g = func [value] () -> ()\n            _ = 1\n        g()\n    h()\n", "Ref Ref Uniq [value] | Ref Ref Ref []")]
+    [InlineData("    var h = func [value] () -> ()\n        var g = func [value] () -> ()\n            let local = value\n            _ = local\n        g()\n    h()\n", "Ref Ref Uniq [value] | Ref Ref Uniq [value]")]
+    [InlineData("    var k: i32 = 0\n    var h = func [value, var k] () -> ()\n        let local = value\n        k += 1\n", "Uniq Uniq Uniq [value]")]
+    [InlineData("    let text = \"abc\"\n    let h = func [value, text@move] () -> ()\n        let local = value\n        let t = text@move\n", "Owner Owner Owner [value]")]
+    [InlineData("    var h = func [value] () -> ()\n        _ = 1\n", "Ref Ref Ref []")]
+    [InlineData("    let pair = (value, 1)\n    var h = func [pair@move] () -> ()\n        let local = pair.0\n        _ = local\n", "Uniq Uniq Uniq []")]
+    public void EachAdmittedCaseHasTheReceiverItsFactsGive(string body, string expected)
+    {
+        var c = MinimalEmissionTest.Analyze(PairHead + body + PairMain);
+        var f = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => !x.IsAnonymous && x.Name == "f");
+        var target = f.SymbolOf()!.Schema!.GenericSlots[0].Symbol;
+        var facts = new List<string>();
+        foreach (var closure in KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(x => x.IsAnonymous).Select(x => x.ClosureOf()!))
+        {
+            var owner = CaseReceiver(c, closure, new(target, SemanticsKind.Owner));
+            var uniq = CaseReceiver(c, closure, new(target, SemanticsKind.Uniq));
+            Assert.True(closure.Classified);
+            Assert.Equal(uniq, closure.Receiver); // The strongest case here: only an exclusive case raises the receiver.
+            facts.Add($"{closure.CaseFreeReceiver} {owner} {uniq} [{string.Join(",", closure.Captures.Where(x => x.BareReborrows).Select(x => x.Environment.Name))}]");
+        }
+
+        Assert.Equal(expected, string.Join(" | ", facts));
+    }
+
+    // DECISIONS R4-M126 (N4 (a)): each binding of a Closure classifies its receiver once its body is bound, also when the Closure then
+    // fails, as an inferred result that borrows the call's own storage does; a rebinding classifies it again with the same facts.
+    [Theory]
+    [InlineData("var n = 1\nvar h = func [var n] () -> ()\n    n += 1\nh()", true)]
+    [InlineData("var n = 1\nvar h = func [var n] (x: i32)\n    n += 1\n    return x@ref", false)]
+    public void EveryBindingThatBoundTheBodyIsClassified(string source, bool complete)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Equal(complete, c.Binding.Result.IsComplete);
+        var function = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous);
+        for (var pass = 0; pass < 2; pass++)
+        {
+            var closure = BoundClosure.Of(function)!;
+            Assert.Equal((true, SemanticsKind.Uniq, SemanticsKind.Uniq, "n"), (closure.Classified, closure.CaseFreeReceiver, closure.Receiver, closure.ExclusiveUse?.ToString()));
+            Assert.Equal(complete, c.Bind().IsComplete);
+        }
+    }
+
+    // Warm rebinding classifies every Closure again from reused storage: the receiver facts allocate nothing and stay the same.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmClassificationAllocatesNothing()
+    {
+        var c = MinimalEmissionTest.Analyze(PairHead + "    let text = \"abc\"\n    var k: i32 = 0\n    var h = func [value, var k, text@move] () -> ()\n" +
+            "        var g = func [value] () -> ()\n            let local = value\n            _ = local\n        g()\n        k += 1\n        let t = text@move\n" +
+            "    var e = func [value] () -> ()\n        let local = value\n        _ = local\n    e()\n" + PairMain);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var valid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
+        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        var closures = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(x => x.IsAnonymous).Select(x => x.ClosureOf()!).ToArray();
+        Assert.Equal(
+            ["Owner Owner value", "Ref Uniq value", "Ref Uniq value"],
+            closures.Select(x => $"{x.CaseFreeReceiver} {x.Receiver} {string.Join(",", x.Captures.Where(y => y.BareReborrows).Select(y => y.Environment.Name))}"));
+        Assert.All(closures, x => Assert.True(x.Classified));
+    }
+
+    // SPEC 7.7.3: the receiver of one admitted case, read from the published facts as a view of that case reads it.
+    private static SemanticsKind CaseReceiver(Compilation c, BoundClosure closure, PairCase semantics)
+    {
+        if (closure.CaseFreeReceiver != SemanticsKind.Ref)
+        {
+            return closure.CaseFreeReceiver;
+        }
+
+        ReadOnlySpan<PairCase> cases = [semantics];
+        foreach (var capture in closure.Captures)
+        {
+            if (capture.BareReborrows && c.Binding.CaseType(capture.Environment.Type!, cases) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq })
+            {
+                return SemanticsKind.Uniq;
+            }
+        }
+
+        return SemanticsKind.Ref;
+    }
 }

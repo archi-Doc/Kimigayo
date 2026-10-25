@@ -11,9 +11,10 @@
 //   (Binding.ClosureResults.cs).
 // - Outputs: the literal's Type (its EnvironmentType) or its failure; BoundClosure's Storage, Signature, EnvironmentType and
 //   EvaluatingBody; a ClosureReceiverRefutation.
-// - Invariants: BindClosure clears the published Signature before a binding, and BindConcreteClosure starts from reset receiver
-//   facts (empty Storage, Shared, no exclusive cause); a header probe binds no parameter, visits no body and restores the enclosing
-//   probe on exit.
+// - Invariants: BindClosure clears the published Signature and Classified before a binding, and BindConcreteClosure starts from
+//   reset receiver facts (empty Storage, Shared, no exclusive cause) and has them classified right after the body is bound, before
+//   a failed result or parameter Type returns; a header probe binds no parameter, visits no body and restores the enclosing probe
+//   on exit.
 // - Prohibitions: no receiver classification, capture formation or capture record here (Binding.ClosureReceivers.cs,
 //   Binding.Captures.cs, Binding.CaptureDiagnostics.cs).
 
@@ -219,6 +220,7 @@ public sealed partial class Binding
         if (function.ClosureStorage is { } previous)
         {
             previous.Signature = null!; // BoundClosure.Of is this binding's definition, set once it is bound.
+            previous.Classified = false; // And its receiver facts this binding's, once it has classified them.
         }
 
         if (expected is not null && !this.ClosureSignatureFits(function, expected, openResult))
@@ -246,7 +248,7 @@ public sealed partial class Binding
         expected = expected is null ? null : this.ClosureExpectation(function, expected);
         var plan = function.ClosureStorage ??= new();
         plan.Storage.Clear();
-        plan.Receiver = SemanticsKind.Ref;
+        plan.Receiver = plan.CaseFreeReceiver = SemanticsKind.Ref;
         plan.ExclusiveUse = null;
         plan.ExclusiveReborrow = false;
         var symbol = this.symbols[function];
@@ -341,6 +343,9 @@ public sealed partial class Binding
             }
         }
 
+        // SPEC 7.7.3: the receiver is classified from the bound body on every path that bound it, a failed result or parameter
+        // included; classification reads neither the signature nor the environment Type.
+        (this.closureEffects ??= new(this)).Classify(function, plan);
         if (symbol.Type is null)
         {
             return Complete(function, null);
@@ -378,7 +383,6 @@ public sealed partial class Binding
             this.typeScratch.Return(buffer, clearArray: true);
         }
 
-        (this.closureEffects ??= new(this)).Classify(function, plan);
         if (function.ReturnType is null && (expected is null || openResult) && CallLocalOrigin(symbol.Type, function, plan.Receiver == SemanticsKind.Owner) is { } local)
         {
             // SPEC 15.8.2, 15.6.1: a result inferred from the body that borrows the call's own storage (a parameter, a body local,

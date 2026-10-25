@@ -3544,6 +3544,23 @@ and migration obligations remain in force; no numeric cap changes are authorized
     GXS before R4's exit or a hold for rule G's forms (OQ-F7-3 (b), (c)).
   - Numbering: R4-M126 is free on dev and every remote and local branch (R4-M118 on 2a-1c; R4-M120 and R4-M124 on 4b; R4-M125 on
     G241).
+- **R4-M128 C2's receiver facts on `BoundClosure` (2c-2)** (2026-10-25, R4's implementer lane under R4-M126 §2.1 and D-1, D-9;
+  publication only, no reader but tests until 2c-3B and 2c-3)
+  - Facts (SPEC 7.7.3, 8.14), written only by `ClosureEffects` (`Binding.ClosureReceivers`): `BoundCapture.BareReborrows`, a bare
+    acquisition of the environment binding itself, in the body or by a nested Closure's `Bare` entry, Reborrows in some admitted case;
+    `BoundClosure.CaseFreeReceiver`, the requirement from every other use (Consuming only from a transfer, so never by case);
+    `Receiver` keeps its meaning (the strongest over every case, read by acquisition, the body's receiver local, the ABI and R5),
+    derived once at the end of `Classify`: `CaseFreeReceiver` raised to Exclusive when a capture is marked. A view of one case reads
+    that case's receiver as `CaseFreeReceiver` unless Shared, else Exclusive where a marked capture's case Type is an exclusive layer
+    (2c-3's `TyCtxt.ClosureReceiverIn`). `Classified`: reset where `BindClosure` clears the Signature, set at the end of `Classify`.
+  - `Classify` runs right after the body binds, before the failed-result and failed-parameter returns (N4 (a)); its snapshots
+    (diagnostic, semantic with HIR and MIR, the mir ledger) are byte-equal to 2c-1's, so the move is 2c-2's (D-9). A use counts only
+    when it names one of this binding's environment bindings (identity in `Storage`).
+  - Limit: a bare Reborrow of a Place reached through a capture (a part `pair.0`, a referent `r@follow`) counts in every case, the
+    strongest receiver (PLAN G13): its cases are that Place's, not the capture's (the part forms are a located `Unsupported_Kd` on
+    the default, the referent form `TransferRequired_Kd` in its uniq case). A per-Place fact would be a new representation (2c-3's
+    planning). Rejected: the facts beside today's `Receiver` writes (two maxima); the bit on the environment `BindingSymbol`; a
+    computed `Receiver` (a capture loop per read). Numbering: R4-M128 is free on dev and every branch (R4-M127 on G245's U1).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
