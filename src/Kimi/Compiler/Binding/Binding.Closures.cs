@@ -345,8 +345,8 @@ public sealed partial class Binding
         }
 
         // SPEC 7.7.3: the receiver is classified from the bound body on every path that bound it, a failed result or parameter
-        // included; classification reads neither the signature nor the environment Type. A by-value use of a pair-layer capture the
-        // list does not decide, which could leave a case Shared, is a located Unsupported_Kd (the owner's net, DECISIONS R4-M128). The
+        // included; classification reads neither the signature nor the environment Type. A use of a pair-layer capture that no consumer
+        // takes, which could leave a case Shared, is a located Unsupported_Kd (the owner's net, DECISIONS R4-M145). The
         // relations that waited for the classification are judged then (SPEC 15.8.2, 23.1.2; DECISIONS R4-M126 §2.5).
         var effects = this.closureEffects ??= new(this);
         effects.Classify(function, plan);

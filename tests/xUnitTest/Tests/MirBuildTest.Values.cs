@@ -357,6 +357,44 @@ public sealed partial class MirBuildTest
         Assert.Equal(2, statements.Count(x => x.Kind == MirStatementKind.Assign && x.Place == h));
     }
 
+    // SPEC 14.2.2, 3.5 (DECISIONS R4-M145): a discarded Place is acquired by its plan row's bare acquisition, as at a value position, into
+    // its statement's temporary: a pair layer by case, a Copy, a stored exclusive reference Reborrowed in its own mode, and the Move a
+    // bare Non-Copy Place requires (its TransferRequired_Kd at it), which a later `title@move` reads moved (A1's MovedPlace_Kd).
+    [Fact]
+    public void ADiscardedPlaceIsAcquiredByItsBareAcquisition()
+    {
+        var c = Compile("func f<s/T>(value: s/T, count: i32, r: uniq/i32, title: string)\n    s is owner or uniq\n    T is Copy\n    value\n    count\n    r\n" +
+            "    title\npublic func main() => ()\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        var acquired = body.Statements.ToArray()
+            .Where(x => x.Kind == MirStatementKind.Assign && body.Locals[x.Place.Root].Kind == MirLocalKind.Temp && x.Rvalue.Kind is MirRvalueKind.Use or MirRvalueKind.Ref)
+            .Select(x => x.Rvalue.Kind == MirRvalueKind.Ref ? $"Ref {(MirRefKind)x.Rvalue.Op} {Steps(body, x.Rvalue.Place)}"
+                : $"{body.Operands[x.Rvalue.Start].Kind} {Steps(body, body.Operands[x.Rvalue.Start].Place)}");
+        Assert.Equal(["PairAcquire _1", "Copy _2", "Ref Uniq _3*", "Move _4"], acquired);
+    }
+
+    // SPEC 23.1.2 (DECISIONS R4-M145): a Place whose bare acquisition Binding left unset, a Place without a Type (its parameter's Type
+    // unresolved), is a derived Opaque with no record, discarded (its plan row unset) or as an item no consumer took (its Adjust unset,
+    // which the container reads as a discard), as any consumed child's unset Adjust is; a complete compilation has no such row
+    // (HirFormsTest.EveryDiscardedPlaceHasItsAcquisition).
+    [Fact]
+    public void AnUnsetDiscardRowIsDerivedFromABindingError()
+    {
+        var c = Compile("func f(b: Missing, n: i32)\n    b\n    n\nfunc g(b: Missing) -> i32\n    b\npublic func main() => ()\n");
+        Assert.Equal([DiagnosticCode.UnresolvedBinding_Kd, DiagnosticCode.UnresolvedBinding_Kd], c.Binding.Issues.Select(static x => x.Code));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records, static x => x.Subject.Module == 0);
+        foreach (var name in new[] { "f", "g" })
+        {
+            var body = program.Bodies.ToArray().Single(x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == name);
+            var b = Array.FindIndex(body.Locals.ToArray(), static x => x.Name == "b");
+            Assert.Equal([b], Assert.Single(Opaques(body)).Roots);
+        }
+    }
+
     // A body's Opaque values in order: their destination's Type and root, and the roots their sites name.
     private static (string Type, int Root, int[] Roots)[] Opaques(MirBody body) => [.. body.Statements.ToArray()
         .Where(static x => x.Kind == MirStatementKind.Assign && x.Rvalue.Kind == MirRvalueKind.Opaque)

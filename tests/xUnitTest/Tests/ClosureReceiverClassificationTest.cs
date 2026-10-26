@@ -15,6 +15,21 @@ public class ClosureReceiverClassificationTest
         "    public init(items: Array<i32>, label: Option<string>)\n        self.items = items@move\n        self.label = label@move\n" +
         "func total(values: ref/Array<i32>) -> i32 => 7\n";
 
+    // The valid bodies of f (PairHead) whose Closures TheMarksAreThePublishedByCaseTakes reads: by-value positions, a nested bare entry,
+    // the discarded forms, a shared use and none.
+    public static TheoryData<string> MarkedPrograms => new()
+    {
+        "    var h = func [value] () -> ()\n        let local = value\n        _ = local\n    h()\n",
+        "    var h = func [value] () -> ()\n        take(value)\n        take((value))\n    h()\n",
+        "    var h = func [value] (q: s/T) -> ()\n        var local = q\n        local = value\n        _ = local\n",
+        "    let g = func (y: s/T) -> () => ()\n    var h = func [value, g@ref] () -> ()\n        g(value)\n",
+        "    var h = func [value] () -> ()\n        let d: Dictionary<i32, s/T> = [1: value]\n",
+        "    var h = func [value] () -> ()\n        var g = func [value] () -> ()\n            let local = value\n            _ = local\n        g()\n    h()\n",
+        "    var h = func [value] (c: bool) -> ()\n        value\n        (value)\n        if c\n            value\n        match c\n            true => value\n            false => ()\n    h(true)\n",
+        "    var h = func [value] () -> ()\n        let k = value@ref\n        _ = k\n    h()\n",
+        "    var h = func [value] () -> ()\n        _ = 1\n",
+    };
+
     [Theory]
     [InlineData("ForSubject", Bag + "let b = Bag.init([1, 2], .Some(\"x\"))\nlet sum = func [b@move] () -> i32\n    var s: i32 = 0\n    for v in b.items\n        s += v@follow\n    return s\nrequire sum() == 3 and sum() == 3 else => $abort(\"sum\")")]
     [InlineData("MatchSubject", Bag + "let c = Bag.init([1], .Some(\"x\"))\nlet has = func [c@move] () -> bool\n    match c.label\n        .Some(let t) => return true\n        .None => return false\nrequire has() and has() else => $abort(\"has\")")]
@@ -182,14 +197,16 @@ public class ClosureReceiverClassificationTest
     private const string PairCall = "func pair<t/U>(a: i32, y: t/U)\n    t is owner or uniq\n    U is Copy\n    return\n";
     private const string UniqHead = "public func main() -> ()\n    var n: i32 = 1\n    let value = n@uniq\n";
     private const string MissingAndExclusive = "UnresolvedBinding_Kd missing; InvalidAssignment_Kd h";
-    private const string NetAndMissing = "Unsupported_Kd value; UnresolvedBinding_Kd missing";
+    private const string Node = "contract Loaded\n    func load(self: ref/Self) -> i32\ncontract Bump\n    func bump(self: uniq/Self)\n" +
+        "struct Node\n    Self is Copy\n    Self is Loaded\n    Self is Bump\n    public var weight: i32\n    public init(weight: i32) => self.weight = weight\n" +
+        "    public func load(self: ref/Self) -> i32 => self.weight\n    public func bump(self: uniq/Self) => self.weight += 1\n";
 
     // SPEC 7.7.3, 8.14 (DECISIONS R4-M126 PD13): a bare acquisition of a captured pair layer Reborrows exactly in its exclusive cases,
     // so the call is Exclusive there. A Closure publishes the receiver every case has and marks such captures; a case's receiver is
     // the case-free one, raised to Exclusive where a marked capture's case Type is an exclusive layer, and Receiver is the strongest
     // over the cases. Each row: per Closure in source order, the case-free receiver, the owner and uniq cases' receivers and the
-    // marked captures. A value position its consumer takes by value (Binding.AcquiredByValue: an argument of a call or a value call, an
-    // assignment's source, a Dictionary entry, through parentheses too) acquires as a bare use does; a Reborrow of a Place reached
+    // marked captures. A value position its consumer takes by value (ClosureEffects.ConsumedByValue: an argument of a call or a value
+    // call, an assignment's source, a Dictionary entry, through parentheses too) acquires as a bare use does; a Reborrow of a Place reached
     // through a capture, and an explicit case adaptation of a capture that is no pair layer, count in every case.
     [Theory]
     [InlineData("    var h = func [value] () -> ()\n        let local = value\n        _ = local\n    h()\n    h()\n", "Ref Ref Uniq [value]")]
@@ -244,34 +261,118 @@ public class ClosureReceiverClassificationTest
                 "public func main() -> ()\n    var n = 1\n    var m = 2\n    outer(n, m)\n",
             exclusive);
 
-    // SPEC 3.5, 14.2.2, 23.1.2 (DECISIONS R4-M128; the owner's third round, 2026-10-25): whether a use in Discard Context (a statement,
-    // a discarded selection body) acquires a captured pair layer is the SPEC session's open question (3.5 against 14.2.2; the MIR
-    // builder acquires it by case), so the list leaves it to the net, a located Unsupported_Kd under `let` and `var`. A use is explained
-    // only by its own failure or by the failure or dependency of the consumer whose operation decides its acquisition: an aggregate
-    // element's sibling explains nothing, so `(value, missing)`, `[value, missing]` and `(take(value), missing)` keep the mark and a
-    // `let` Closure's call stays Exclusive, and a dependent call `pair(missing, value)` without its own failure keeps the net away.
-    // A Discard Context use has no deciding consumer, so a failed sibling arm leaves the net's record (BU's re-check 3, N1); an
-    // assignment's failed target fixes its source's Type and explains it (the concrete twin is Shared).
-    // Each row: the records under `let h`, then under `var h`.
+    // SPEC 3.5, 14.2.2, 23.1.2 (DECISIONS R4-M145; the owner, 2026-10-26): a captured pair layer in Discard Context (a statement, in
+    // parentheses, a discarded selection body) is acquired by bare acquisition, as at a value position, so it Reborrows in its exclusive
+    // cases and a `let` Closure's call is Exclusive. A use is explained only by its own failure or by the failure or dependency of the
+    // consumer whose operation takes it: an aggregate element's sibling explains nothing, so `(value, missing)`, `[value, missing]` and
+    // `(take(value), missing)` keep the mark and a `let` Closure's call stays Exclusive, and a dependent call `pair(missing, value)`
+    // decides only a bare acquisition position, which its argument is not; a discarded use has no consumer whose failure explains it,
+    // so a failed sibling arm leaves the mark (BU's re-check 3, N1); an assignment's failed target fixes its source's Type and explains
+    // it (the concrete twin is Shared). Each row: the records under `let h`, then under `var h`.
     [Theory]
-    [InlineData("        value\n", "Unsupported_Kd value", "Unsupported_Kd value")]
-    [InlineData("        (value)\n", "Unsupported_Kd value", "Unsupported_Kd value")]
-    [InlineData("        if c\n            value\n", "Unsupported_Kd value", "Unsupported_Kd value")]
+    [InlineData("        value\n", "InvalidAssignment_Kd h", "")]
+    [InlineData("        (value)\n", "InvalidAssignment_Kd h", "")]
+    [InlineData("        if c\n            value\n", "InvalidAssignment_Kd h", "")]
     [InlineData("        let t = (value, missing)\n        _ = t\n", MissingAndExclusive, "UnresolvedBinding_Kd missing")]
     [InlineData("        let a = [value, missing]\n        _ = a\n", MissingAndExclusive, "UnresolvedBinding_Kd missing")]
     [InlineData("        let t = (take(value), missing)\n        _ = t\n", MissingAndExclusive, "UnresolvedBinding_Kd missing")]
     [InlineData("        pair(missing, value)\n", "UnresolvedBinding_Kd missing", "UnresolvedBinding_Kd missing")]
     [InlineData("        missing = value\n", "UnresolvedBinding_Kd missing", "UnresolvedBinding_Kd missing")]
-    [InlineData("        match c\n            true => value\n            false => missing\n", NetAndMissing, NetAndMissing)]
+    [InlineData("        match c\n            true => value\n            false => missing\n", MissingAndExclusive, "UnresolvedBinding_Kd missing")]
     [InlineData("        let t = \"\\(value)\"\n        _ = t\n", "UnprovenConstraint_Kd \"\\(value)\"", "UnprovenConstraint_Kd \"\\(value)\"")]
     [InlineData("        let b = Box(value)\n        _ = b\n", "UnresolvedBinding_Kd Box", "UnresolvedBinding_Kd Box")]
     [InlineData("        let k = value@copy\n        _ = k\n", "NonCopyOperand_Kd value@copy", "NonCopyOperand_Kd value@copy")]
     [InlineData("        let a: [2 of i32] = [1, 2]\n        let k = a[value]\n        _ = k\n", "TypeMismatch_Kd value", "TypeMismatch_Kd value")]
-    public void ADiscardedUseReachesTheNetAndOnlyItsDecidingConsumerExplainsAUse(string use, string letRecords, string varRecords)
+    public void ADiscardedUseIsABareAcquisitionAndOnlyItsDecidingConsumerExplainsAUse(string use, string letRecords, string varRecords)
     {
         var source = PairCall + PairHead + "    var h = func [value] (c: bool) -> ()\n" + use + "    h(true)\n" + PairMain;
         Assert.Equal(letRecords, Records(source.Replace("    var h = func", "    let h = func", StringComparison.Ordinal)));
         Assert.Equal(varRecords, Records(source));
+    }
+
+    // SPEC 14.2.2, 3.5, 3.5.1, 7.7.3 (DECISIONS R4-M145; PLAN G251 (7)): a captured Place in Discard Context is acquired as at a value
+    // position: a stored exclusive reference Reborrows, so its Closure is Exclusive and a `let` Closure's call invalid, as a statement,
+    // in parentheses and as a discarded `if` or `match` body, as `let k = value` is; a Copy capture is read and stays Shared; a bare
+    // Non-Copy capture needs its Move spelled, and `title@move` makes the call Consuming, so it needs `h@move`. Each row: the records
+    // under `let h`, under `var h`, and of the same use outside a Closure (a discarded Copy local's lint, DiscardedValue_Kd, there).
+    [Theory]
+    [InlineData("value\n", "InvalidAssignment_Kd h", "", "")]
+    [InlineData("(value)\n", "InvalidAssignment_Kd h", "", "")]
+    [InlineData("if c\n    value\n", "InvalidAssignment_Kd h", "", "")]
+    [InlineData("match c\n    true => value\n    false => ()\n", "InvalidAssignment_Kd h", "", "")]
+    [InlineData("let k = value\n_ = k@move\n", "InvalidAssignment_Kd h", "", "")]
+    [InlineData("count\n", "", "", "DiscardedValue_Kd count")]
+    [InlineData("title\n", "TransferRequired_Kd title", "TransferRequired_Kd title", "TransferRequired_Kd title")]
+    [InlineData("title@move\n", "TransferRequired_Kd h", "TransferRequired_Kd h", "")]
+    public void ADiscardedCapturedPlaceIsAcquiredAsAtAValuePosition(string use, string letRecords, string varRecords, string freeRecords)
+    {
+        var lines = use.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var source = "func run(value: uniq/i32, count: i32, title: string)\n    var h = func [value, count, title@move] (c: bool) -> ()\n" +
+            string.Concat(lines.Select(static x => "        " + x + "\n")) + "    h(true)\npublic func main() => ()\n";
+        var free = "func run(value: uniq/i32, count: i32, title: string, c: bool)\n" + string.Concat(lines.Select(static x => "    " + x + "\n")) +
+            "public func main() => ()\n";
+        Assert.Equal(
+            (letRecords, varRecords, freeRecords),
+            (Records(source.Replace("    var h = func", "    let h = func", StringComparison.Ordinal)), Records(source), Records(free)));
+    }
+
+    // SPEC 7.3.3, 3.5 (DECISIONS R4-M145, C1): a method call's receiver is its call's input, taken by the call's receiver operation: a
+    // `ref/Self` receiver borrows the captured pair layer, so its Closure stays Shared under `let` and `var`, also in parentheses; a
+    // `uniq/Self` receiver that the pair layer cannot supply is only the call's NoApplicableOverload_Kd, with no net record.
+    [Theory]
+    [InlineData("        let k = value.load()\n        _ = k\n", "")]
+    [InlineData("        let k = (value).load()\n        _ = k\n", "")]
+    [InlineData("        value.bump()\n", "NoApplicableOverload_Kd value.bump()")]
+    public void AReceiverIsTakenByItsCallsReceiverOperation(string use, string records)
+    {
+        var source = Node + "func f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy and Loaded and Bump\n    var h = func [value] () -> ()\n" + use +
+            "    h()\npublic func main() -> ()\n    var n = Node.init(1)\n    f(n)\n";
+        Assert.Equal((records, records), (Records(source.Replace("    var h = func", "    let h = func", StringComparison.Ordinal)), Records(source)));
+    }
+
+    // SPEC 3.5, 8.14 (DECISIONS R4-M145; R5's condition 2): the captures a Closure's classification marks are those the published HIR
+    // takes by case, under a pair layer that Reborrows in some admitted case: a use of the binding itself whose Adjust column or plan row
+    // (an earlier call's, a discarded Place's) is ByCase, or a nested Closure's bare entry.
+    [Theory]
+    [MemberData(nameof(MarkedPrograms))]
+    public void TheMarksAreThePublishedByCaseTakes(string body)
+    {
+        var c = MinimalEmissionTest.Analyze(PairHead + body + PairMain);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        HirTables.Publish(c);
+        foreach (var function in KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => x.IsAnonymous))
+        {
+            var taken = new HashSet<BindingSymbol>();
+            foreach (var node in KotoTree.Walk(function).Where(x => !ReferenceEquals(x, function) && ReferenceEquals(Enclosing(x), function)))
+            {
+                if (HirTables.ResOf(node) == HirRes.Capture && (HirTables.AdjustOf(node).Acquire == HirAcquire.ByCase || HirTables.PlanOf(node).Adjust.Acquire == HirAcquire.ByCase))
+                {
+                    taken.Add(HirTables.Symbol(node)!);
+                }
+                else if (node is FunctionKoto { IsAnonymous: true } nested)
+                {
+                    taken.UnionWith(nested.ClosureOf()!.Captures.Where(static x => x.Adjust.Acquire == HirAcquire.ByCase).Select(static x => x.Source));
+                }
+            }
+
+            var captures = function.ClosureOf()!.Captures;
+            Assert.Equal(
+                captures.Where(static x => x.BareReborrows).Select(static x => x.Environment.Name),
+                captures.Where(x => taken.Contains(x.Environment) && c.Binding.BareReborrows(x.Environment.Type!, function)).Select(static x => x.Environment.Name));
+        }
+
+        static FunctionKoto? Enclosing(Koto node)
+        {
+            for (var parent = node.Parent; parent is not null; parent = parent.Parent)
+            {
+                if (parent is FunctionKoto { IsAnonymous: true } function)
+                {
+                    return function;
+                }
+            }
+
+            return null;
+        }
     }
 
     // SPEC 3.5, 3.5.1, 12.4.3, 23.1.2 (PLAN G256): a Dictionary literal's key and value are bare acquisition positions, as a tuple or
