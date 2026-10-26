@@ -20,13 +20,15 @@ public sealed partial class Binding
     // The scratch of a position's typed Types or literal defaults, used by one SelectCommonType at a time.
     private readonly List<BoundType> partTypes = new();
 
-    // What prevents a Type formed part by part: typed parts (or shapes) that conflict, or literal defaults that do.
+    // What prevents a Type formed part by part: typed parts (or shapes) that conflict, literal defaults that do, or a part Binding
+    // rejected, whose own record the join rests on (BU-9 r1; SPEC 23.1.2).
     [Flags]
     private enum PartsConflict : byte
     {
         None = 0,
         Typed = 1,
         Defaults = 2,
+        Rejected = 4,
     }
 
     // The child positions of aggregate parts of one shape: a Tuple's elements, an array's or fill's element, a Dictionary's key and value.
@@ -53,7 +55,8 @@ public sealed partial class Binding
         => part is TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto && !Rejected(part) && (part.BoundType is null || this.AwaitsPosition(part));
 
     // Adds a part at a position: none for Never; the operand of the forms that deliver it; a result target that supplies no candidate
-    // through its sources other than Never (nested results propagate the same way).
+    // through its sources other than Never (nested results propagate the same way), unless Binding rejected it: a failed join is one
+    // part, no waiting part (BU-9 r1), on whose record the join rests.
     private void AddResultPart(Koto part)
     {
         if (ReferenceEquals(part.BoundType, BoundType.Never))
@@ -67,7 +70,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (DeliversResult(part) && (this.AwaitsPosition(part) || this.Deferred(part)))
+        if (DeliversResult(part) && !Rejected(part) && (this.AwaitsPosition(part) || this.Deferred(part)))
         {
             this.AddResults(part);
             return;
@@ -186,13 +189,14 @@ public sealed partial class Binding
     // SPEC 14.9.2 step 2: the common Type at the position [start, end): its typed parts' (PositionType); without one, its aggregate
     // parts' formed by their child positions (Tuples by element, list literals by element as Array<T>, fills by element at their
     // length, Dictionaries by key and value); without one, its literals' defaults' (SPEC 10.2); with no part, Never. Null when a
-    // conflict prevents it, or a part is still unbound without waiting.
+    // conflict or a rejected part prevents it, or a part is still unbound without waiting.
     private BoundType? CommonTypeByParts(int start, int end, BindingScope scope, ref PartsConflict conflict)
     {
         for (var i = start; i < end; i++)
         {
             if (Rejected(this.positionParts[i]))
             {
+                conflict |= PartsConflict.Rejected;
                 return null;
             }
         }
@@ -216,21 +220,18 @@ public sealed partial class Binding
             var children = this.RentTypes(count);
             try
             {
+                var formed = true;
                 for (var i = 0; i < count; i++)
                 {
                     var child = this.positionParts.Count;
                     this.AddPartsAt(start, end, i);
-                    var part = this.CommonTypeByParts(child, this.positionParts.Count, scope, ref conflict);
+                    var part = this.CommonTypeByParts(child, this.positionParts.Count, scope, ref conflict); // Every position, for its conflicts.
                     this.ClosePosition(child);
-                    if (part is null)
-                    {
-                        return null;
-                    }
-
-                    children[i] = part;
+                    formed &= part is not null;
+                    children[i] = part!;
                 }
 
-                return this.ShapeType(shape, children.AsSpan(0, count));
+                return formed ? this.ShapeType(shape, children.AsSpan(0, count)) : null;
             }
             finally
             {

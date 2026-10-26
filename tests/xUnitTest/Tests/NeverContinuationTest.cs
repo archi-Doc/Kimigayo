@@ -206,11 +206,13 @@ public class NeverContinuationTest
     }
 
     // SPEC 23.1.2: a conflict in a join formed part by part is one record, at the join whose sources conflict, also when a later use
-    // binds its declaration again (the survey of a bound source that awaits supplies no candidate, DECISIONS BU-43).
+    // binds its declaration again (the survey of a bound source that awaits supplies no candidate, DECISIONS BU-43), and when a nested
+    // join holding a waiting literal conflicts within itself: it fails at once, and its outer join rests on that part's record.
     [Theory]
     [InlineData("let t = if c => (if d => (a, (return 1)) else => ((return 2), c)) else => (a, a)")]
     [InlineData("let t = if c => (if d => (a, (return 1)) else => ((return 2), a)) else => (c, (return 3))")]
     [InlineData("let t = if c => (if d => (a, (return 1)) else => (c, (return 2))) else => (a, a)")]
+    [InlineData("let t = if c => (if d => (5, a) else => ((return 1), c)) else => ((return 2), a)")]
     public void AConflictInAJoinFormedPartByPartIsOneRecord(string statement)
     {
         var c = MirBuildTest.Compile(Joins + statement + "\n    return t.0\n");

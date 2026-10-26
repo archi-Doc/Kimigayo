@@ -6655,7 +6655,7 @@ resumed by R4-M86 (2026-10-20).
     part (`LateAdaptation`): its own Type where that fits, else its erasure or its one implicit operation, written only when the whole
     fits (`AdaptAtPosition`: `ErasePart`, `ExpectedAdaptation`); a bound list literal fits a fixed-array position of its count
     (`ConstructsAt`), which binds a length slot. An anonymous function among a call's control-flow argument's results waits for the
-    call (`WaitsForPosition` through `PositionTarget`; `Awaiting.Callable`); the late fit checks it by its signature
+    call (`WaitsForPosition` through `CallableTarget`; `Awaiting.Callable`); the late fit checks it by its signature
     (`ClosureSignatureFits`), and `TakeWaiting`'s join row completes it at its `F` as the Tuple-argument twin's element is, after
     which a join nothing else holds waiting is decided at once with no expectation (`DecideTaken`; `DecideWaiting` reads a source
     its call completed, `Completed`). A part Binding rejected is no waiting part (`IsAggregatePart`, `CommonTypeByParts`,
@@ -6676,7 +6676,15 @@ resumed by R4-M86 (2026-10-20).
     `first(if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), x))` with `first<T>((T, i64))`, its capture, nested and
     `else => (stop(), stop())` forms, and `applyArg(if c => (func [] (v) => v, x) else => (stop(), x))`, typed or not, bind as their
     Tuple-argument twins; a value read beside the function reads at the formed Type (`(func .., r)` beside `(stop(), x)`: i64); two
-    anonymous functions at one `T` or `F` are one `TypeMismatch_Kd` at the join.
+    anonymous functions at one `T` or `F` are one `TypeMismatch_Kd` at the join. Its part b (the planning session's decisions on
+    its findings): the forms through which a call completes a waiting anonymous function are one definition, `CallableParts` (a Tuple
+    or array literal's elements; a Dictionary literal is typed as a whole, DR3 C1), which both the wait (`CallableTarget`) and
+    `TakeWaiting` pass, so `takeD(if c => ["k": func [] (v: i64) -> i64 => v] else => stop())` is valid again (fix round 1 had made
+    it `UnresolvedBinding_Kd`). A join whose typed parts conflict fails at once also when nested (the formation visits every position
+    for its conflicts, also after one it cannot form), and a part Binding rejected, a failed nested join included, is no waiting part
+    (`AddResultPart`; `PartsConflict.Rejected`): its outer join stays unbound on that record and its call does not classify it, so
+    `let t = if c => (if c => (5, x) else => (stop(), true)) else => (stop(), x)` and its call forms report the inner conflict once,
+    at the inner join, as on dev (two records since commit (b)).
   - ③: a control-flow part is Literal when every result source other than Never is a literal, at least one (`ResultSurvey.Unknown` and
     `Never` split `Other`); an arithmetic operand's `AllLiteral` keeps Never as not literal (SPEC 12.3.3, 13.3.4).
   - Supersedes BU-2's owner decision (1), "a control-flow argument is Literal only when all its result sources are Literal", and the
@@ -6687,8 +6695,7 @@ resumed by R4-M86 (2026-10-20).
     R4-M134's 14.9.2 text and the owner's answers, and were left Open for G159.
   - Verdicts (both pipelines; probes in the unit's evidence): the SPEC-valid joins rejected before are Binding-valid; where a local
     follows a Never element the old analysis's `Unsupported_Kd` at that use remains (STATUS, Unreachable code; G159 (4)), spec-case
-    `14.9.2-part-by-part`'s old side (class (a)); a nested conflict is one record where the inner join decides itself (one that waited
-    and conflicts within itself is reported at both joins: Open). At calls, the `take`-like twins are valid and
+    `14.9.2-part-by-part`'s old side (class (a)); a nested conflict is one record. At calls, the `take`-like twins are valid and
     `identity(if c => (a, (return 1)) else => ((return 2), 5))` gives T = (i64, i32) after selection. Valid before, rejected now by the
     owner's answers: `tuples(if c => (5, 6) else => (7, 8))` and `tuples(if c => (stop(), 5) else => (6, stop()))` with overloads at
     (i32, i32) and (i64, i64) are `AmbiguousBinding_Kd`, as `tuples((5, 6))`; `keep(if c => (x, stop()) else => (x, stop()))` and
@@ -6702,11 +6709,19 @@ resumed by R4-M86 (2026-10-20).
     own Never); every nested join waiting (a call's join must stay classified by its own positions); a whole-Type late default at a
     call (`both(if c => (x, R) else => (R, 5))` with `both<T>((T, T))` needs element evidence).
   - Open: an array or Dictionary literal's element evidence keeps the awaiting elements' own common Type (a SPEC 4.3 question). The
-    review's late-fit opens (value read, erasure, length slot, `F`) are closed by fix round 1. Found in fix round 2: an anonymous
-    function inside a Dictionary result of a call's join waits for the call, which never takes it (`TakeWaiting` walks Tuple and array
-    literals), so `takeD(if c => ["k": func [] (v: i64) -> i64 => v] else => stop())`, valid on dev, is `UnresolvedBinding_Kd`; a
-    nested join that waited and conflicts within itself, `let t = if c => (if c => (5, x) else => (stop(), true)) else => (stop(), x)`,
-    is reported at both joins (one record on dev). Not temporary.
+    review's late-fit opens (value read, erasure, length slot, `F`) are closed by fix round 1. Language errors on valid forms, also on
+    dev, whose records other owners decide (fix round 2b's triage): a Tuple source holding a nested call that only its literal default
+    types supplies a candidate, the call taking its default when the source is bound (BU-2's nested call), so `first(if c => (x,
+    identity(5)) else => (stop(), x))` and `let t = if c => (x, identity(5)) else => (stop(), x)` are `TypeMismatch_Kd` (expected
+    (i64, i32)), where 10.5.1 makes `identity(5)` waiting and the join's Type (i64, i64) part by part. Not such an error: a join with a
+    candidate is typed as a whole (BU-4) and is an independently typable argument (10.5.1), so `takeT(if c => (y, x@ref) else => (stop(), x))` with
+    `takeT((i64, i64))` and `firstArr(if c => (x, [x, x]) else => (stop(), [x, x]))` with `firstArr<T>((T, [2 of i64]))` are
+    `NoApplicableOverload_Kd` while their Tuple twins are valid. That is the letter's record: `(y, x@ref)` is the only candidate
+    (14.9.2 step 2; `(stop(), x)` holds Never), step 3 propagates (i64, ref/i64) to `(stop(), x)`, whose `x` takes `ref/i64` by its
+    shared borrow as in a Tuple literal bound at that Type (R4-M52's α; the late fit since fix round 1, which moved dev's
+    `TypeMismatch_Kd` from the join to the call), and the call rejects (i64, ref/i64) at (i64, i64), as dev does for the literal twin
+    `takeT(if c => (y, x@ref) else => (5, x))`; `firstArr`'s candidate is (i64, Array<i64>) (4.3.1). Whether a Never part should
+    remove such a source from the candidates is PLAN G159's SPEC question. Not temporary.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

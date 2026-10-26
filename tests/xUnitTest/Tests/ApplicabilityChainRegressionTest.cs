@@ -24,7 +24,8 @@ public class ApplicabilityChainRegressionTest
         "func applyArg<F>(value: (F, i64)) -> ()\n    F is Callable<(i64) -> i64>\n    return ()\n" +
         "func applyOne<F>(value: F) -> ()\n    F is Callable<(i64) -> i64>\n    return ()\n" +
         "func takeF(value: (i64) -> i64) -> () => ()\nfunc takeFn(value: (() -> i64, i64)) -> () => ()\nfunc takeT(value: (i64, i64)) -> () => ()\n" +
-        "func process<length N>(values: [N of i64]) -> () => ()\nlet r = x@ref\n";
+        "func process<length N>(values: [N of i64]) -> () => ()\nlet r = x@ref\n" +
+        "func takeD<T>(value: Dictionary<string, T>) -> () => ()\nfunc takeA<T>(value: Array<T>) -> () => ()\n";
 
     [Theory]
     [InlineData(false, false, false)]
@@ -190,7 +191,8 @@ public class ApplicabilityChainRegressionTest
     // SPEC 10.5.1, 10.5.4 (DECISIONS BU-43): an anonymous function among a control-flow argument's results waits for the call, which
     // completes it as it completes a waiting argument at its position: at F it binds F, else it is checked against the selected
     // candidate's Type. A source holding it beside typed parts, also through a nested selection, waits with it and then takes the Type
-    // its join forms part by part (SPEC 14.9.2 steps 2-3), a value read included.
+    // its join forms part by part (SPEC 14.9.2 steps 2-3), a value read included. In a Dictionary literal, which is typed as a whole,
+    // it does not wait, as in a Dictionary literal argument (DR3 C1).
     [Theory]
     [InlineData("applyArg(if c => (func [] (v) => v, stop()) else => (stop(), x))")]
     [InlineData("applyOne(if c => func [] (v) => v else => stop())")]
@@ -210,6 +212,10 @@ public class ApplicabilityChainRegressionTest
     [InlineData("first(if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), x)) else => (stop(), x))")]
     [InlineData("applyArg(if c => (func [] (v) => v, x) else => (stop(), x))")]
     [InlineData("applyArg(if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), x))")]
+    [InlineData("takeD(if c => [\"k\": func [] (v: i64) -> i64 => v] else => stop())")]
+    [InlineData("takeD([\"k\": func [] (v: i64) -> i64 => v])")]
+    [InlineData("first(if c => ([\"k\": func [] (v: i64) -> i64 => v], x) else => (stop(), x))")]
+    [InlineData("takeA(if c => [func [] (v: i64) -> i64 => v] else => stop())")]
     public void AnAnonymousFunctionAmongAControlFlowArgumentsResultsWaitsForTheCall(string use)
     {
         var c = MinimalEmissionTest.Analyze(ControlFlowDeclarations + use);
@@ -243,6 +249,8 @@ public class ApplicabilityChainRegressionTest
     [InlineData("applyArg(if c => (func [] (v: bool) => v, x) else => (stop(), x))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "applyArg(if c => (func [] (v: bool) => v, x) else => (stop(), x))")]
     [InlineData("keep(if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), x))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep(if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), x))")]
     [InlineData("keep((func [] (v: i64) -> i64 => v, x))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep((func [] (v: i64) -> i64 => v, x))")]
+    [InlineData("first(if c => (if c => (5, x) else => (stop(), true)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (5, x) else => (stop(), true)")]
+    [InlineData("first(if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), true)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), true)")]
     public void AControlFlowArgumentRanksAsItsKind(string use, string code, string at)
     {
         var source = ControlFlowDeclarations + use + "\n";

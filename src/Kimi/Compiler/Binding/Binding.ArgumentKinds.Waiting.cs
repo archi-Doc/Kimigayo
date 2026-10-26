@@ -7,10 +7,12 @@ namespace Kimi.Compiler;
 // SPEC 10.5, 10.5.1, 10.5.4 (DECISIONS BU-2): the waiting-binds-F rule. A waiting callable at a position F, `ref/F` or `uniq/F`, F a slot
 // of the slot owner, binds F: F takes no evidence from it, and it is completed after the other evidence with the call signature S of F's
 // Callable Constraint, or without S when F has none. A position is an argument's or a payload's, or that of a Tuple or array literal
-// element within one. TakeWaiting is the one walk that finds such callables and CallableSlotType the one test of F; they read a pattern
-// and a slot owner only, so the queries of a call (UnsolvedSlots, WaitingPartsBind) and of a Case construction (UnsolvedPayloadSlots)
-// and the completions over a SlotSolution share them. Whether such an F is fixed with no outer expectation, so that a nested call's or
-// construction's result is typed without one, is FixesWithoutExpectation, read through OpenWaitingSlots by both (DECISIONS BU-2, D4).
+// element within one. TakeWaiting is the one walk that finds such callables, through the forms CallableParts defines, which also decide
+// where an anonymous function among a call's join results waits for its call (CallableTarget; DECISIONS BU-43), and CallableSlotType
+// the one test of F; they read a pattern and a slot owner only, so the queries of a call (UnsolvedSlots, WaitingPartsBind) and of a Case
+// construction (UnsolvedPayloadSlots) and the completions over a SlotSolution share them. Whether such an F is fixed with no outer
+// expectation, so that a nested call's or construction's result is typed without one, is FixesWithoutExpectation, read through
+// OpenWaitingSlots by both (DECISIONS BU-2, D4).
 public sealed partial class Binding
 {
     // A consumer of TakeWaiting: it takes each waiting callable at its position and slot F, and stops the walk by returning false.
@@ -27,9 +29,32 @@ public sealed partial class Binding
         return slot.Kind == BoundTypeKind.Parameter && ContainerSlot(owner, slot.Symbol!) >= 0 ? slot : null;
     }
 
-    // Each waiting callable of the part at an F of the owner, in source order: the part itself, an element of its Tuple or array literal
-    // at that element's position, or a result of a control-flow part its call classifies at the part's own position (ComposedJoin;
-    // DECISIONS BU-43). False when the taker stops.
+    // SPEC 10.5.1 (DECISIONS BU-43, DR3 C1): the parts of an aggregate at whose own positions its call completes a waiting callable in it,
+    // each classified as an argument there: a Tuple or array literal's elements; a Dictionary literal is typed as a whole, and a callable
+    // in it does not wait. The one definition of the forms both TakeWaiting and the wait (CallableTarget) pass.
+    private static List<Koto>? CallableParts(Koto node) => node switch
+    {
+        TupleLiteralKoto tuple => tuple.Elements,
+        ArrayLiteralKoto array => array.Elements,
+        _ => null,
+    };
+
+    // The result target at whose position its call completes a waiting callable, through the forms that deliver it and the aggregates
+    // whose parts TakeWaiting passes (CallableParts); null when there is none.
+    private static Koto? CallableTarget(Koto node)
+    {
+        var source = node;
+        while (source.Parent is { } parent && (ReferenceEquals(DeliveredOperand(parent), source) || CallableParts(parent) is not null))
+        {
+            source = parent;
+        }
+
+        return ResultTarget(source);
+    }
+
+    // Each waiting callable of the part at an F of the owner, in source order: the part itself, a part of its aggregate at that part's
+    // position (CallableParts, ChildPattern), or a result of a control-flow part its call classifies at the part's own position
+    // (ComposedJoin; DECISIONS BU-43). False when the taker stops.
     private bool TakeWaiting<T>(Koto part, BoundType pattern, Koto owner, in T taker)
         where T : IWaitingTaker, allows ref struct
     {
@@ -52,15 +77,11 @@ public sealed partial class Binding
             return taken;
         }
 
-        var elements = KotoHelper.UnwrapParentheses(part) switch
+        var aggregate = KotoHelper.UnwrapParentheses(part);
+        var parts = CallableParts(aggregate);
+        for (var i = 0; parts is not null && i < parts.Count; i++)
         {
-            TupleLiteralKoto tuple when pattern.Kind == BoundTypeKind.Tuple && pattern.Components.Count == tuple.Elements.Count => tuple.Elements,
-            ArrayLiteralKoto array when pattern.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray => array.Elements,
-            _ => null,
-        };
-        for (var i = 0; elements is not null && i < elements.Count; i++)
-        {
-            if (!this.TakeWaiting(elements[i], pattern.Components[pattern.Kind == BoundTypeKind.Tuple ? i : 0], owner, taker))
+            if (ChildPattern(aggregate, i, pattern) is { } position && !this.TakeWaiting(parts[i], position, owner, taker))
             {
                 return false;
             }

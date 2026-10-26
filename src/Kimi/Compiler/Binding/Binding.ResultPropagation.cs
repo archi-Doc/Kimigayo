@@ -191,12 +191,12 @@ public sealed partial class Binding
 
     // SPEC 14.9.2 step 3, 4.3, 10.5.1, 12.3: an unfitted literal reached without an expected Type waits, unbound, while its position's Type
     // is decided later (DecidedLater): it is no evidence, and it is bound once, at that Type or at its default (BindWaiting). An anonymous
-    // function that is a result of a call's control-flow argument waits for that call (SPEC 10.5.1: such an argument is Waiting;
-    // DECISIONS BU-43), which completes it as it completes a waiting argument (TakeWaiting).
+    // function that is a result of a call's control-flow argument, at a position its call completes (CallableTarget), waits for that call
+    // (SPEC 10.5.1: such an argument is Waiting; DECISIONS BU-43), which completes it as it completes a waiting argument (TakeWaiting).
     private bool WaitsForPosition(Koto node, BoundType? expected)
         => expected is null && node.BindingState == BindingState.Unvisited &&
             (IsUnfittedLiteral(node) ? this.DecidedLater(node) :
-                node is FunctionKoto { IsAnonymous: true } && this.PositionTarget(node, out _) is { } target && this.UnderArgumentProbe(target));
+                node is FunctionKoto { IsAnonymous: true } && CallableTarget(node) is { } target && this.UnderArgumentProbe(target));
 
     // The result target to which the position an expression supplies belongs, or null. The one walk passes the forms that deliver it
     // (DeliveredOperand) and the Tuple, array (a fill's included, DECISIONS BU-43) and dictionary literals it is a part of; `collecting`
@@ -317,25 +317,21 @@ public sealed partial class Binding
         return this.DecideResult(node, context);
     }
 
-    // SPEC 14.9.2 step 2 (DECISIONS BU-43): a join none of whose value sources supplies a candidate. It waits for its position's Type
-    // (true) when a source waited for its Type and that Type is decided later (DecidedLater), or when it is a call's control-flow
-    // argument whose results are not Dictionaries: its call classifies it (ClassifiedByCall, SPEC 10.5.1) and completes it at the
-    // selected candidate's Type, a conflict among its typed parts failing it at once. Otherwise its common Type is formed part by part
-    // (CommonTypeByParts) and is the join's one candidate; with none, its waiting sources take their defaults.
+    // SPEC 14.9.2 step 2 (DECISIONS BU-43): a join none of whose value sources supplies a candidate. A conflict among its typed parts
+    // fails it at once, a record of its own on which an outer join rests, and a part Binding rejected leaves it unbound on that part's
+    // record (SPEC 23.1.2). Otherwise it waits for its position's Type (true) when a source waited for its Type and that Type is
+    // decided later (DecidedLater), or when it is a call's control-flow argument whose results are not Dictionaries: its call classifies
+    // it (ClassifiedByCall, SPEC 10.5.1) and completes it at the selected candidate's Type. Otherwise its common Type is formed part by
+    // part (CommonTypeByParts) and is the join's one candidate; with none, its waiting sources take their defaults.
     private bool AwaitsWithoutCandidate(Koto node, ResultContext context, List<BoundType> types)
     {
-        var nested = DeliversResult(node) && this.DecidedLater(node);
+        var waited = false;
         var start = this.positionParts.Count;
         for (var i = 0; i < context.Sources.Count; i++)
         {
-            if (nested && context.Sources[i] is null && context.SourceNodes[i] is { } waited && this.Deferred(waited))
-            {
-                this.ClosePosition(start);
-                return context.Waiting = true;
-            }
-
             if (!ReferenceEquals(context.Sources[i], BoundType.Never) && context.SourceNodes[i] is { } source)
             {
+                waited |= context.Sources[i] is null && this.Deferred(source);
                 this.AddResultPart(source);
             }
         }
@@ -344,12 +340,13 @@ public sealed partial class Binding
         var common = this.CommonTypeByParts(start, this.positionParts.Count, this.ConstraintScope(node), ref conflict);
         var shape = this.PartsShape(start, this.positionParts.Count);
         this.ClosePosition(start);
-        if ((conflict & PartsConflict.Typed) == 0 && shape is not DictionaryLiteralKoto && this.ClassifiedByCall(node, shape))
+        if ((conflict & (PartsConflict.Typed | PartsConflict.Rejected)) == 0 &&
+            ((waited && DeliversResult(node) && this.DecidedLater(node)) || (shape is not DictionaryLiteralKoto && this.ClassifiedByCall(node, shape))))
         {
             return context.Waiting = true;
         }
 
-        context.Invalid |= conflict != PartsConflict.None;
+        context.Invalid |= (conflict & (PartsConflict.Typed | PartsConflict.Defaults)) != PartsConflict.None;
         for (var i = 0; common is null && i < context.Sources.Count; i++)
         {
             if (context.Sources[i] is null && context.SourceNodes[i] is { } source && this.Deferred(source))
