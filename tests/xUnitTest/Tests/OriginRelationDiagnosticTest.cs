@@ -32,6 +32,8 @@ public class OriginRelationDiagnosticTest
 
     private const string Entries = "    var entries: Dictionary<i32, uniq/i32 during a> = [1: value@move]\n";
 
+    private const string Captured = "func run() -> ()\n    var n: i32 = 1\n    let value = n@uniq\n";
+
     private const string Holder2 = "struct Holder2 {a}\n    public var link: uniq/i32 during a\n";
 
     private const string Box = "struct Box<T>\n    public var item: T\n";
@@ -194,6 +196,12 @@ public class OriginRelationDiagnosticTest
     [InlineData(View + "func f(h: uniq/(H2 during a) during s) -> objuniq/P during s\n    var x = h.o\n    return x\n")]
     [InlineData(View + "func f(h: uniq/(H2 during a) during s, c: bool) -> objuniq/P during s\n    let r = if c => h.o else => h.o\n    return r\n")]
     [InlineData(View + "struct H3 {a}\n    public var o: objuniq/P during a\n    public var l: uniq/i32 during a\nfunc f(h: uniq/(H3 during a) during s, c: bool) -> i32\n    var x = h.o\n    let y = if c => h.o else => h.o\n    var u = h.l\n    let w = if c => h.l else => h.l\n    return 0\n")]
+    // SPEC 3.5.1 (PLAN G256): a Dictionary literal's key and value are such positions too, so an unannotated literal takes the Reborrow's
+    // Type, which a Closure's call receiver contains, as an Array element and an annotated literal do, inside a Closure and outside.
+    [InlineData(Captured + "    var h = func [value] () -> ()\n        let d = [1: value]\n        _ = d@move\n    h()\n")]
+    [InlineData(Captured + "    var h = func [value] () -> ()\n        let a = [value]\n        _ = a@move\n    h()\n")]
+    [InlineData(Captured + "    var h = func [value] () -> ()\n        let d: Dictionary<i64, uniq/i32> = [1: value]\n        _ = d@move\n    h()\n")]
+    [InlineData(Captured + "    let d = [1: value]\n    _ = d@move\n")]
     // SPEC 15.6.3, 22.2.1: a LendingIterator's item may name the receiver borrow `step` that contains the Reborrow.
     [InlineData("struct Cursor {source}\n    Self is LendingIterator\n    associate LentItem(step) is ref/i32 during step\n    let value: uniq/i32 during source\n    public func next(self: uniq/Self during step) -> Option<ref/i32 during step> => .Some(self.value)\n")]
     public void AProvenRelationIsAccepted(string body)

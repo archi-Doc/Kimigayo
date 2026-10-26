@@ -23,9 +23,9 @@ public sealed partial class Binding
     // SPEC 3.5, 8.14 (DECISIONS R4-M128): whether the consumer of the value at `node` (its parentheses unwrapped) acquires it by value
     // without an operator, which a pair layer does per admitted case, read from the consumer where one decides: null in Discard Context
     // (a statement, a discarded body: SPEC 3.5 and 14.2.2 leave its acquisition open, and the MIR builder acquires it by case; R5's 2c-2
-    // round 3); false where an adaptation recorded at it decides; true where the position decides (AcquiredByPosition: a bare position,
-    // an aggregate element, a Dictionary literal's key or value) or at an input its consumer's operation takes by value (a receiver or
-    // argument of any callee's plan, an enum Case's payload); else by the consumer: true at an assignment's source, an `and`/`or`
+    // round 3); false where an adaptation recorded at it decides; true where the position decides (IsBareAcquisitionPosition, an
+    // aggregate element included) or at an input its consumer's operation takes by value (a receiver or argument of any callee's plan,
+    // an enum Case's payload); else by the consumer: true at an assignment's source, an `and`/`or`
     // operand, a Range's bound, a built-in index key and a conversion's operand under the bare rule, false at a write or update target,
     // an inspected operator operand (SPEC 13.4), a selection through it, a runtime test, a borrow, an address, a follow, a transfer, a
     // view upcast that borrows, a `for` or `match` Subject and a value call's callee; null at any other consumer, which this list, a copy
@@ -43,7 +43,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (AcquiredByPosition(target))
+        if (IsBareAcquisitionPosition(target))
         {
             return true;
         }
@@ -75,13 +75,13 @@ public sealed partial class Binding
     // SPEC 23.1.2 (the owner's third round on the list, 2026-10-25): whether a failure explains a use, its own or one of the consumer
     // whose operation decides its acquisition (a call or payload input, a conversion, an index, an operator): that consumer's failure
     // or its dependency on another failure (HasFailureCauses, the dependent-record rule). A position that decides the acquisition by
-    // itself (AcquiredByPosition), and a use in Discard Context, whose acquisition nothing decides (BU's re-check 3, N1), are explained
-    // by nothing else, so a failed sibling element or arm never explains them.
+    // itself (IsBareAcquisitionPosition), and a use in Discard Context, whose acquisition nothing decides (BU's re-check 3, N1), are
+    // explained by nothing else, so a failed sibling element or arm never explains them.
     internal bool ExplainedUse(Koto use)
     {
         var target = Grouped(use);
         return this.HasFailureCauses(use) ||
-            (KotoHelper.IsValueContext(target) && !AcquiredByPosition(target) && target.Parent is { } consumer && this.HasFailureCauses(consumer));
+            (KotoHelper.IsValueContext(target) && !IsBareAcquisitionPosition(target) && target.Parent is { } consumer && this.HasFailureCauses(consumer));
     }
 
     // The operation by which the method or accessor call whose receiver a Place is takes it (SPEC 7.3.3, 11.3), or null.
@@ -108,8 +108,9 @@ public sealed partial class Binding
         return call.ReceiverOperation;
     }
 
-    // SPEC 3.5, 10.2: the positions without a fixed expected Type that acquire any Place operand by bare acquisition.
-    // Arguments, assignment sources and results take their expected Type from the declaration and adapt there instead. A result source
+    // SPEC 3.5, 3.5.1, 10.2: the positions without a fixed expected Type that acquire any Place operand by bare acquisition, each
+    // aggregate element separately: a Tuple's or array's element and a Dictionary literal's key and value (PLAN G256). Arguments,
+    // assignment sources and results take their expected Type from the declaration and adapt there instead. A result source
     // (SPEC 14.9.1, 14.9.2) without a fixed Target Result Type is one: an anonymous function's expression body without a written or
     // expected result Type, a jump's operand, and a selection's or `do`'s body when its value is used (ResultTarget); the join's
     // common Type is chosen from the Types its sources take here.
@@ -120,7 +121,7 @@ public sealed partial class Binding
         {
             VariableKoto variable => ReferenceEquals(variable.InitializerKoto, target),
             DiscardKoto discard => ReferenceEquals(discard.Operand, target),
-            TupleLiteralKoto or ArrayLiteralKoto => true,
+            TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto => true,
             FunctionKoto { IsAnonymous: true } function => ReferenceEquals(function.ExpressionBody, target),
             JumpKoto jump => ReferenceEquals(jump.Expression, target),
             _ => ResultTarget(target) is IfKoto or MatchKoto or DoKoto && KotoHelper.IsValueContext(target),
@@ -137,10 +138,6 @@ public sealed partial class Binding
 
         return node;
     }
-
-    // SPEC 3.5: whether the position of `target` (its parentheses unwrapped) acquires its value by value itself, as StoredReborrow decides
-    // a bare acquisition: a bare position, an aggregate element or a Dictionary literal's key or value.
-    private static bool AcquiredByPosition(Koto target) => IsBareAcquisitionPosition(target) || target.Parent is DictionaryLiteralKoto;
 
     // The operation by which the consumer of `target` takes it: a receiver or argument of one of its calls, or an enum Case's payload.
     private BoundArgumentOperation? ConsumerInput(Koto target)

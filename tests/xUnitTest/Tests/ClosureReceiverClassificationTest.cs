@@ -180,6 +180,7 @@ public class ClosureReceiverClassificationTest
     private const string PairHead = "func take<t/U>(y: t/U)\n    t is owner or uniq\n    U is Copy\n    return\nfunc f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n";
     private const string PairMain = "public func main() -> ()\n    var n: i32 = 1\n    f(n)\n";
     private const string PairCall = "func pair<t/U>(a: i32, y: t/U)\n    t is owner or uniq\n    U is Copy\n    return\n";
+    private const string UniqHead = "public func main() -> ()\n    var n: i32 = 1\n    let value = n@uniq\n";
     private const string MissingAndExclusive = "UnresolvedBinding_Kd missing; InvalidAssignment_Kd h";
     private const string NetAndMissing = "Unsupported_Kd value; UnresolvedBinding_Kd missing";
 
@@ -271,8 +272,26 @@ public class ClosureReceiverClassificationTest
         var source = PairCall + PairHead + "    var h = func [value] (c: bool) -> ()\n" + use + "    h(true)\n" + PairMain;
         Assert.Equal(letRecords, Records(source.Replace("    var h = func", "    let h = func", StringComparison.Ordinal)));
         Assert.Equal(varRecords, Records(source));
+    }
 
-        static string Records(string source) => string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}"));
+    // SPEC 3.5, 3.5.1, 12.4.3, 23.1.2 (PLAN G256): a Dictionary literal's key and value are bare acquisition positions, as a tuple or
+    // array element is, so a failed key, value or sibling entry explains nothing: the pair layer and its concrete twin over `uniq/i32`
+    // both keep the use's acquisition, and a `let` Closure's call stays Exclusive. The valid literal is accepted in a `var` Closure.
+    // Each row: the records under `let h`, then under `var h`, the same for both twins.
+    [Theory]
+    [InlineData("        let d = [1: value]\n        _ = d@move\n", "InvalidAssignment_Kd h", "")]
+    [InlineData("        let d = [missing: value]\n        _ = d@move\n", MissingAndExclusive, "UnresolvedBinding_Kd missing")]
+    [InlineData("        let d = [1: value, 2: missing]\n        _ = d@move\n", MissingAndExclusive, "UnresolvedBinding_Kd missing")]
+    [InlineData("        let d = [1: missing, 2: value]\n        _ = d@move\n", MissingAndExclusive, "UnresolvedBinding_Kd missing")]
+    [InlineData("        let d = [1: value, 2: true]\n        _ = d@move\n", "TypeMismatch_Kd true; InvalidAssignment_Kd h", "TypeMismatch_Kd true")]
+    [InlineData("        let a = [[missing: value]]\n        _ = a@move\n", MissingAndExclusive, "UnresolvedBinding_Kd missing")]
+    public void AFailedPartOfAnAggregateLiteralExplainsNoSiblingOnEitherTwin(string use, string letRecords, string varRecords)
+    {
+        foreach (var (head, main) in new[] { (PairCall + PairHead, PairMain), (UniqHead, string.Empty) })
+        {
+            var source = head + "    var h = func [value] (c: bool) -> ()\n" + use + "    h(true)\n" + main;
+            Assert.Equal((letRecords, varRecords), (Records(source.Replace("    var h = func", "    let h = func", StringComparison.Ordinal)), Records(source)));
+        }
     }
 
     // SPEC 3.5 (2c-2 re-check R2, R3): an enum Case's payload is a listed input, so `.Some(value)` of a captured pair layer Reborrows in
@@ -329,6 +348,9 @@ public class ClosureReceiverClassificationTest
             closures.Select(x => $"{x.CaseFreeReceiver} {x.Receiver} {string.Join(",", x.Captures.Where(y => y.BareReborrows).Select(y => y.Environment.Name))}"));
         Assert.All(closures, x => Assert.True(x.Classified));
     }
+
+    // The records of a checked source: each one's code and the text at its span.
+    private static string Records(string source) => string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}"));
 
     // SPEC 7.7.3: the receiver of one admitted case, read from the published facts as a view of that case reads it.
     private static SemanticsKind CaseReceiver(Compilation c, BoundClosure closure, PairCase semantics)
