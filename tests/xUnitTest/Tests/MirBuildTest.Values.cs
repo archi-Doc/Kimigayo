@@ -357,6 +357,23 @@ public sealed partial class MirBuildTest
         Assert.Equal(2, statements.Count(x => x.Kind == MirStatementKind.Assign && x.Place == h));
     }
 
+    // SPEC 23.1.2 (PLAN G122): a char literal the lexer could not read is published Error, so its value is the derived Opaque of a node
+    // the lexer rejected, with no record; a published Literal is built as its constant.
+    [Fact]
+    public void ACharLiteralWithoutItsValueIsDerived()
+    {
+        var c = CompilationTestHelper.Parse("func f() -> char => '\\q'\nfunc g() -> char => 'a'\npublic func main() => ()\n");
+        Assert.Equal(nameof(DiagnosticCode.InvalidEscape_Kd), Assert.Single(TestDiagnostics.Of(c)).Code);
+        c.Bind();
+        _ = c.Binding.CheckStartup(OutputKind.Application);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records, static x => x.Subject.Module == 0);
+        var bodies = program.Bodies.ToArray().Where(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" or "g" })
+            .ToDictionary(static x => x.Key.Decl!.Name);
+        Assert.Equal(("char", 1, 0), (Assert.Single(Opaques(bodies["f"])).Type, Opaques(bodies["f"]).Length, Opaques(bodies["g"]).Length));
+    }
+
     // A body's Opaque values in order: their destination's Type and root, and the roots their sites name.
     private static (string Type, int Root, int[] Roots)[] Opaques(MirBody body) => [.. body.Statements.ToArray()
         .Where(static x => x.Kind == MirStatementKind.Assign && x.Rvalue.Kind == MirRvalueKind.Opaque)
