@@ -200,7 +200,7 @@ g(1@i32)                // g(x): steps 1–3 tie on x; step 4 prefers fewer defa
 
 Each argument of a call is exactly one of the following, except a Tuple or array literal argument, which is not classified itself: each of its elements is, one by one and recursively, as an argument at its element position.
 
-- **Literal**: an untyped literal, a literal-only expression ([§12.3](12-expressions.md#123-literal-typing)), or a control-flow expression whose result sources ([§14.9](14-control-flow.md#149-result-validation)) are all such. Each candidate's parameter Type propagates to every source; it is ranked by the Literal fitting row of [§10.2.2](#1022-inference-and-adaptation-classes); it is no evidence for a slot, and its default applies after selection ([§10.2.1](#1021-literals)).
+- **Literal**: an untyped literal, a literal-only expression ([§12.3](12-expressions.md#123-literal-typing)), or a control-flow expression whose result sources ([§14.9](14-control-flow.md#149-result-validation)) other than those of Type Never ([§14.9.2](14-control-flow.md#1492-target-result-type-and-expression-type)) are all such, at least one of them. Each candidate's parameter Type propagates to every source; it is ranked by the Literal fitting row of [§10.2.2](#1022-inference-and-adaptation-classes); it is no evidence for a slot, and its default applies after selection ([§10.2.1](#1021-literals)).
 - **Independently typable**: any other argument whose complete Type is fixed with no expectation from the call and no literal default, such as a typed value or Place (with any explicit `@` operation) or a function reference that does not need `S` ([§10.5.3](#1053-function-references)). A nested call qualifies only when it has exactly one applicable candidate without an expected result. An anonymous function never qualifies. Its Type is evidence for the outer candidate's slots.
 - **Waiting**: every other argument, such as an anonymous function, a function reference that needs `S`, or a nested call that is not independently typable. It is checked only against the expected Type shared by the remaining outer candidates, or that of the selected candidate, and is never evidence for an outer slot.
 
@@ -229,8 +229,10 @@ choose(if ready => 1 else => 2) // Error: ambiguous; both candidates fit the lit
 
 ```kimi
 func identity<T>(value: T) -> T => value@move
+func fail() -> Never => $abort("no value")
 func pick(ready: bool, large: i64) -> i64
     let both = identity(if ready => (large, (return 1)) else => ((return 2), 5))   // By position: T = (i64, i32).
+    let one = identity(if ready => 1 else => fail())                                // Literal: T = i32 after selection.
     return both.0
 ```
 
