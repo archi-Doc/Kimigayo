@@ -41,24 +41,16 @@ internal sealed partial class TyCtxt
     // C8: a Value callee's retention, read over the Callable signature it declares, whose abstract Origins are the call's fresh regions
     // (step 1). A closure's or item's is read under the premises of its declaration's body (Binding.SignatureOwner); any other is an
     // erased callable, which reads no declaration's premises: its key is the calling definition's scope, which only decides its pair
-    // layers' admitted cases. A Closure's contract has its call receiver at input 0 (HasReceiverInput; SPEC 15.8.2, DECISIONS R4-M148):
-    // the Type its body is checked against (Binding.ClosureReceiver), over its instance's environment, the definition's under the
-    // callee's closure context, whose Origins are the ones its signature names (the callee's own Type is the calling local's, whose
-    // Origins its initializer infers), keyed by that environment; one whose context does not substitute is CallRetention.Limit.
+    // layers' admitted cases. A Closure's contract has its call receiver at input 0 (HasReceiverInput; SPEC 15.8.2, DECISIONS R4-M148),
+    // the Type its body is checked against (Binding.ClosureReceiver), whose environment the walk reads as the body sees it
+    // (ClosureEnvironment); its key holds the instance, its definition and closure context.
     internal CallRetention Retains(BoundType callee, BoundType signature, BindingSymbol? definition)
     {
-        var owner = (FunctionKoto?)Binding.SignatureOwner(callee);
-        var use = binding.DefinitionUse(definition);
         var closure = Closure(callee);
-        var environment = closure is null ? null : BoundClosure.Of(owner!)!.EnvironmentType;
-        environment = closure?.ClosureContext is { } context ? this.Apply(environment!, context) : environment;
-        if (closure is not null && environment is null)
-        {
-            return CallRetention.Limit;
-        }
-
-        (object Callee, Subst? Types, object? Scope) key = environment is null ? (signature, null, owner ?? (object)binding.ConstraintScope(use))
-            : (environment, null, signature);
+        var owner = closure is null ? (FunctionKoto?)Binding.SignatureOwner(callee) : (FunctionKoto)closure.Symbol!.Declaration!;
+        var use = binding.DefinitionUse(definition);
+        (object Callee, Subst? Types, object? Scope) key = closure is null ? (signature, null, owner ?? (object)binding.ConstraintScope(use))
+            : (signature, closure.ClosureContext, owner);
         if (this.retentions.TryGetValue(key, out var known))
         {
             return known;
@@ -72,7 +64,7 @@ internal sealed partial class TyCtxt
         }
         else
         {
-            inputs = environment is null ? inputs : [binding.ClosureReceiver(owner, environment), .. inputs];
+            inputs = closure is null ? inputs : [binding.ClosureReceiver(owner, closure), .. inputs];
             binding.CallableBoundSignatures(owner, this.retentionBounds);
             retention = binding.Retains(owner, inputs, signature.Components[1], null, CollectionsMarshal.AsSpan(this.retentionBounds), premises: null);
         }
@@ -82,9 +74,24 @@ internal sealed partial class TyCtxt
     }
 
     // SPEC 15.8.2, 8.10 (DECISIONS R4-M126 D-6, R4-M148): whether a Value callee's contract has the call receiver input, input 0: the
-    // callee, read through one Semantics layer as SignatureOwner reads it, is a Closure whose definition is bound. The one predicate
-    // Retains and MirBorrows' slot mapping read; a Function value, a function item and a Callable-bounded value have none.
+    // callee, without its acquisition layer (Binding.CallableCore), is a Closure whose definition is bound. The one predicate Retains and
+    // MirBorrows' slot mapping read; a Function value, a function item and a Callable-bounded value have none.
     internal bool HasReceiverInput(BoundType callee) => Closure(callee) is not null;
+
+    // SPEC 15.8.2 (DECISIONS R4-M148): the environment a Closure Type's value holds as its body sees it, the one reading of every Closure
+    // part of a contract input (a Closure callee's receiver, Binding.RetentionInput; one nested in an input, RetentionParts): its definition's
+    // environment Type under the Type's closure context (ReadableInstance, DECISIONS BU-36, R4-M139; null where it does not substitute,
+    // CallRetention.Limit). A Closure Type a local's initializer inferred names the local's regions, not the Origins its signature and its
+    // body name. A Closure whose definition Binding did not bind is read as it is, a dependent of Binding's rejection.
+    internal BoundType? ClosureEnvironment(BoundType closure)
+    {
+        if (closure.Symbol?.Declaration is not FunctionKoto function || BoundClosure.Of(function)?.EnvironmentType is not { } environment)
+        {
+            return closure;
+        }
+
+        return closure.ClosureContext is { } context ? this.ReadableInstance(environment, context) : environment;
+    }
 
     // SPEC 7.7.3 (DECISIONS R4-M128, R4-M148): the call receiver a Closure Type's case admits, given a case Type of a view or the
     // instance: the definition's case-free receiver unless it is Shared, else Exclusive where a capture whose bare acquisition Reborrows
@@ -113,13 +120,10 @@ internal sealed partial class TyCtxt
 
     internal void ResetRetentions() => this.retentions.Clear();
 
-    // The Closure Type a Value callee is, through one Semantics layer, with a bound definition; null for any other callee.
+    // The Closure Type a Value callee is without its acquisition layer (Binding.CallableCore), with a bound definition; null for any other.
     private static BoundType? Closure(BoundType callee)
-    {
-        var owner = callee is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } borrowed ? borrowed.Components[0] : callee;
-        return owner is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto function } && BoundClosure.Of(function) is { EnvironmentType: not null }
-            ? owner : null;
-    }
+        => Binding.CallableCore(callee) is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto function } closure &&
+            BoundClosure.Of(function) is { EnvironmentType: not null } ? closure : null;
 
     private static bool HasAbstractPart(Subst types)
     {

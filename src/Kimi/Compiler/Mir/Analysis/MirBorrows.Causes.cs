@@ -13,9 +13,9 @@ namespace Kimi.Compiler.Mir;
 //   record appends as Cause facts (CauseFacts).
 // - Transfer rules, each where a value is formed (MirBorrows.Values, .Reach, .Calls, .Flow): an aggregate, a part step and a raw Deref
 //   mark; a read through a reference keeps a whole holder's state and marks a part's or E's (ReadThrough, for content and chain alike, a
-//   Closure call's receiver content included, DECISIONS R4-M148); a Call's Value row keeps its argument; an arrival into an escape holder is kept where MirOrigins.Fixed holds
-//   for the receiving Type, into a local where it replaces the local whole or writes through a reference whose direct Loans naming the
-//   local borrow its whole root.
+//   Closure call's receiver content included, DECISIONS R4-M148); a Call's Value row keeps its argument; an arrival into an escape
+//   holder is kept where MirOrigins.Fixed holds for the receiving Type, into a local where it replaces the local whole or writes through a
+//   reference whose direct Loans naming the local borrow its whole root.
 // - Inputs: MirOrigins' Causes, Refutes and Fixed for the body Judge just judged (read, never re-derived); the program's problems' views.
 // - Invariants: where MirOrigins.Refutes is false there is no W element, no marker and no query, so the run is exactly the rule-free one; a
 //   conflict is derived exactly when every conflicting candidate the check set takes is a W element no carrier keeps (R4-M96), its causes

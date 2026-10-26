@@ -16,9 +16,14 @@ public sealed partial class MirBorrowsTest
     // refer to, never in a `let` binding itself. The four forms of the difference ledger (exchangeBad, blockBad, holderBad, holderMovedBad),
     // a captured parameter (slotBad, slotMovedBad), an unwritten `var` binding (varBad), SPEC 15.8.2's `update` with its commented line
     // (updateBad) and a Closure called through a reference (refStoreBad, refExchangeBad, refTwiceBad: the receiver read through one
-    // Semantics layer) keep the argument's Loan in the environment, where the dev MIR accepted them; a store past a captured exclusive
-    // reference also stores the receiver's own content (rule G's self-store, OQ-F7-3 (a)), so the read of `holder` after the call errs.
-    // A `let` binding (letOk, updateOk), a read before the write (exchangeOk) and a Closure no later use reads (setOk) are valid: the
+    // Semantics layer) keep the argument's Loan in the environment, as a direct call storing a captured value through a captured exclusive
+    // referent keeps that value's Loan in the referent (directStoreBad, directStoreTypedBad: PLAN G269's class B), where the dev MIR
+    // accepted them all; a store past a captured exclusive reference also stores the receiver's own content (rule G's self-store, OQ-F7-3
+    // (a)), so the read of `holder` or `slot` after the call errs.
+    // A Closure captured into another Closure is read as its body sees it too (nestedVarStoreBad: the `var` local's own Type names the
+    // Origins its initializer infers, so its store into `last` was lost on the dev MIR and at 5c5d47ff2; BU's review B1).
+    // A `let` binding (letOk, updateOk), a read before the write (exchangeOk), a referent no later use reads (directStoreOk,
+    // directStoreTypedOk) and a Closure no later use reads (setOk, nestedVarStoreOk) are valid: the
     // Closure holds its environment's parts, so W stops at a holder whose parts no call may write past (with an opaque Closure W reached E
     // through `state`'s Φ_E and setOk and exchangeOk erred).
     [Fact]
@@ -27,7 +32,9 @@ public sealed partial class MirBorrowsTest
             ["exchangeBad: z@follow = 42", "blockBad: let y: i32 = 5", "holderBad: z@follow = 42", "holderBad: holder@follow",
                 "holderMovedBad: z@follow = 42", "holderMovedBad: holder@follow", "slotBad: z@follow = 42", "slotMovedBad: z@follow = 42",
                 "varBad: z@follow = 42", "updateBad: z@follow = 43", "refStoreBad: z@follow = 42", "refStoreBad: holder@follow",
-                "refExchangeBad: z@follow = 42", "refTwiceBad: z@follow = 42", "refTwiceBad: holder@follow"],
+                "refExchangeBad: z@follow = 42", "refTwiceBad: z@follow = 42", "refTwiceBad: holder@follow",
+                "directStoreBad: let short = 2", "directStoreBad: slot@follow", "directStoreTypedBad: let short = 2",
+                "directStoreTypedBad: slot@follow", "nestedVarStoreBad: z@follow = 42"],
             Problems("""
                 func exchangeBad(z: uniq/i32, x: ref/i32) -> i32
                     origin z outlives x
@@ -180,6 +187,75 @@ public sealed partial class MirBorrowsTest
                     v(z@follow@ref)
                     z@follow = 42
                     return holder@follow
+                func directStoreBad() -> i32
+                    let long = 1
+                    var slot = long@ref
+                    if true
+                        let short = 2
+                        let sq = short@ref
+                        var c = func [sq, slot@uniq] (p: Option<ref/(ref/i32 during sq) during slot>) -> i32
+                            slot@follow = sq
+                            return 0
+                        let n = c(Option.None)
+                    return slot@follow
+                func directStoreOk() -> i32
+                    let long = 1
+                    var slot = long@ref
+                    if true
+                        let short = 2
+                        let sq = short@ref
+                        var c = func [sq, slot@uniq] (p: Option<ref/(ref/i32 during sq) during slot>) -> i32
+                            slot@follow = sq
+                            return 0
+                        let n = c(Option.None)
+                    return 0
+                func directStoreTypedBad() -> i32
+                    let long = 1
+                    var slot = long@ref
+                    if true
+                        let short = 2
+                        let sq = short@ref
+                        var c = func [sq, slot@uniq] (p: Option<ref/(ref/i32 during sq) during slot>) -> i32
+                            slot@follow = sq
+                            return 0
+                        let none: Option<ref/(ref/i32 during sq) during slot> = Option.None
+                        let n = c(none)
+                    return slot@follow
+                func directStoreTypedOk() -> i32
+                    let long = 1
+                    var slot = long@ref
+                    if true
+                        let short = 2
+                        let sq = short@ref
+                        var c = func [sq, slot@uniq] (p: Option<ref/(ref/i32 during sq) during slot>) -> i32
+                            slot@follow = sq
+                            return 0
+                        let none: Option<ref/(ref/i32 during sq) during slot> = Option.None
+                        let n = c(none)
+                    return 0
+                func nestedVarStoreBad(z: uniq/i32, x: ref/i32) -> i32
+                    origin z outlives x
+                    var last: ref/i32 during x = x
+                    var remember = func [var last] (value: ref/i32 during x) -> ref/i32 during x
+                        let old = last
+                        last = value
+                        return old
+                    var outer = func [var remember@move] (b: ref/i32 during x) -> ref/i32 during x => remember(b)
+                    _ = outer(z@follow@ref)
+                    z@follow = 42
+                    let r = outer(x)
+                    return r@follow
+                func nestedVarStoreOk(z: uniq/i32, x: ref/i32) -> i32
+                    origin z outlives x
+                    var last: ref/i32 during x = x
+                    var remember = func [var last] (value: ref/i32 during x) -> ref/i32 during x
+                        let old = last
+                        last = value
+                        return old
+                    var outer = func [var remember@move] (b: ref/i32 during x) -> ref/i32 during x => remember(b)
+                    _ = outer(z@follow@ref)
+                    z@follow = 42
+                    return 0
                 """));
 
     // SPEC 15.8.2, 15.6.4: a Closure call's result follows its contract's rows: a parameter's (resultArgumentOk, where the dev MIR's
@@ -187,14 +263,16 @@ public sealed partial class MirBorrowsTest
     // (localBad, byRefBad, fixedBad, the raw forms, which the temporary rule alone rejected), and a fixed signature Origin through the
     // argument (signatureResultBad) or a capture the Origin or a premise relates to it (signatureCaptureBad, signaturePremiseBad): the
     // receiver's atoms are its environment's parts, and a Loan a fixed signature Origin carries reaches the result through those rows
-    // (DECISIONS R4-M148; the Closure Type's fixed signature Origins, SPEC 15.2.3, are F1's). A Function value keeps C8's contract, with no
-    // receiver input (functionBad, functionOk).
+    // (DECISIONS R4-M148; the Closure Type's fixed signature Origins, SPEC 15.2.3, are F1's); a Closure captured into another, from a `var`
+    // local whose Type names its initializer's inferred Origins, is read as its body sees it (nestedVarResultBad, which the dev MIR's
+    // temporary rule rejected and 5c5d47ff2 accepted, BU's review B1). A Function value keeps C8's contract, with no receiver input
+    // (functionBad, functionOk).
     [Fact]
     public void AClosureCallsResultFollowsItsRows()
         => Assert.Equal(
             ["localBad: n = 5", "byRefBad: n = 5", "fixedBad: x@follow = 5", "rawBad: y = 5", "rawTupleBad: y = 5",
                 "signatureResultBad: z@follow = 42", "signatureCaptureBad: z@follow = 42", "signaturePremiseBad: z@follow = 42",
-                "functionBad: n = 5"],
+                "functionBad: n = 5", "nestedVarResultBad: z@follow = 42"],
             Problems("""
                 func usep2<T>(p: raw/T) => ()
                 func resultArgumentOk() -> i32
@@ -303,6 +381,23 @@ public sealed partial class MirBorrowsTest
                     let r = g(n@ref)
                     n = 5
                     return r@follow
+                func nestedVarResultBad(z: uniq/i32, x: ref/i32) -> i32
+                    origin z outlives x
+                    let r: ref/i32 during x = z@follow@ref
+                    var get = func [r] () -> ref/i32 during x => r
+                    let outer = func [get@move] () -> ref/i32 during x => get()
+                    let v = outer()
+                    z@follow = 42
+                    return v@follow
+                func nestedVarResultOk(z: uniq/i32, x: ref/i32) -> i32
+                    origin z outlives x
+                    let r: ref/i32 during x = z@follow@ref
+                    var get = func [r] () -> ref/i32 during x => r
+                    let outer = func [get@move] () -> ref/i32 during x => get()
+                    let v = outer()
+                    let n = v@follow
+                    z@follow = 42
+                    return n
                 """));
 
     // PD13 (SPEC 7.7.3; DECISIONS R4-M126 (iii), R4-M148): a call acquires a Closure in its strongest receiver, so where the view's case
@@ -640,8 +735,8 @@ public sealed partial class MirBorrowsTest
     }
 
     // V16 (DECISIONS R4-M148): A5 on a program version it checked before allocates nothing at Closure calls: the receiver's rows over the
-    // memoized contract (its key the instance's environment; no Closure value carries a closure context before 2c-5, whose returned Closures
-    // Binding rejects today), a store into the receiver, PD13's hold and a Limit Closure.
+    // memoized contract (its key the instance's environment; no A5 callee carries a closure context before 2c-5, R4-M148), a store into
+    // the receiver, PD13's hold and a Limit Closure.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmClosureCallAllocatesNothing()

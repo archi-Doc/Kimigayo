@@ -4951,13 +4951,19 @@ and migration obligations remain in force; no numeric cap changes are authorized
     position. A store into the receiver takes rule G's W as any argument's (R4-M73, R4-M147: `Referents`, `Writes`, `Arrive`, the
     Limit's record; no hold, no empty-value rule): A3 erratum E18, ER-closure-stores (A3 §5's F7 line and P4's Closure clause replaced).
     A Closure contract has no referent stores, so C3's refs(S)-alone rule (R4-M143) never applies at the receiver.
-  - Env (a correction of the package §2.8's wording "the callee operand's instance Closure Type"): the definition's
-    `BoundClosure.EnvironmentType` under the callee Type's `ClosureContext` (none: the definition's; a context that does not substitute:
-    `CallRetention.Limit`). The callee operand's own Type is the calling local's, whose omitted Origins its initializer infers, so its
-    bindings name the local's regions and no parameter would reach them (the design's probe-table-caseenv: f7a, c-f7c2, f7o4,
-    `update`'s `z@follow = 43` and the reference callees stay accepted). The memo key is `(that environment, null, signature)`: it holds
-    the instance, separates generic instances and is shared by a body's views. No A5 body carries a closure context before 2c-5 (a
-    returned Closure is rejected by Binding today, review 3's rvCtx), so the Apply on lookup is unreached and unmeasured.
+  - Env (a correction of the package §2.8's wording "the callee operand's instance Closure Type"): every Closure part of a contract
+    input, the callee's call receiver and a Closure nested in any input (one captured into another Closure, from a `var` local
+    included), is read as its body sees it, one rule (`TyCtxt.ClosureEnvironment`): its definition's `BoundClosure.EnvironmentType`
+    under the part's `ClosureContext` (`ReadableInstance`, BU-36, R4-M139; none: the definition's; one that does not substitute:
+    `CallRetention.Limit`), at the walk's Closure step (`Binding.RetentionParts`) and the receiver's row (`RetentionInput`). A Closure
+    Type a local's initializer inferred names the local's regions, not the Origins its signature and body name, so read as it is no
+    parameter reaches its bindings (the design's probe-table-caseenv: f7a, c-f7c2, f7o4, `update`'s `z@follow = 43` and the reference
+    callees accepted; BU's review B1: nestedVarResultBad, which the dev MIR's temporary rule rejected, and nestedVarStoreBad, accepted
+    on both, when only input 0 was read so). The memo key is `(signature, the callee's closure context, its definition)`: it holds the
+    instance, separates generic instances, is shared by a body's views and reads no environment on lookup. No A5 callee carries a closure
+    context before 2c-5: A5 analyses definitions, whose Closure Types carry none, and a named function's `=>` result is not callable as a
+    Closure (`func mk(v: i32) => func [v] () -> i32 => v; mk(1)()`: `NotCallable_Kd`; implementation review 1's probes), so the
+    context's instance read is unreached. The callee is read without its acquisition layer through `Binding.CallableCore` (BU's B3).
   - D1 (R4-M126) at the receiver input only, decided from the input itself (its outer Origin is the receiver atom ρ of the Closure
     whose environment its referent is; `RetentionInput`): its bindings are Fields of the referent, a `var` binding written where the
     receiver is exclusive, what an exclusive layer in any binding refers to always, a `let` binding itself never; a by-value receiver is
@@ -5005,11 +5011,15 @@ and migration obligations remain in force; no numeric cap changes are authorized
     pair-case Closure that captures with `@uniq` a binding of abstract Type read after the call (selfPair), as the method analog does on
     dev (methodAbstract); they are not PLAN G147 (8i)'s and stay until GXS (PLAN G148 (2)): the package's "f7h2, f7n2 valid after 2c-4"
     changes permanently (the planning session's decision; not a library, milestone or corpus form).
+  - PLAN G269's class B closes on the MIR: a Closure called directly that stores a captured value through a captured exclusive referent
+    (n7d, n7f; directStoreBad, directStoreTypedBad) keeps that value's Loan in the referent, so its storage end errs (`let short = 2`, and
+    rule G's self-store at `slot@follow`), where the MIR accepted them at c37cfa1d4; the old path's miss stays PLAN G75 E7's.
   - Tests: `MirBorrowsTest.Closures` (new): `AClosureCallStoresIntoItsReceiver`, `AClosureCallsResultFollowsItsRows`,
     `AViewWhoseCaseAdmitsLessThanTheCallAcquiresIsHeld`, `RuleGsSelfStoreReachesAClosureReceiver`,
     `AStoreTheGuardLeavesUndecidedPastAClosureIsUnsupported`, `ARejectedClosureKeepsItsProgramsIndependentProblems`,
     `AValueCallWhoseSignatureDoesNotNumberItsOperandsIsABrokenContract`, V16 `AClosureCallsWorkStaysLinearInItsCapturesAndCalls` and
-    `AWarmClosureCallAllocatesNothing` (0 B); `RetentionTest`'s two closure rows renumbered (`0 Value result` to `1 Value result`: the
+    `AWarmClosureCallAllocatesNothing` (0 B) (the fix round adds directStore*, nestedVarStore* and nestedVarResult* rows); `RetentionTest`'s
+    two closure rows renumbered (`0 Value result` to `1 Value result`: the
     receiver at input 0, R4-M126's approved design) with `AClosuresCallReceiverIsInputZero` and
     `AClosureCalleeHasTheReceiverInputAndItsCaseReceiver`; `MirTypesTest.AClosureHoldsItsEnvironmentsParts`.
   - Not in this unit: results naming ρ and R1's gate (2c-5); the pair-carrier self-store rows (2c-4, BU's 0c); composing a Consuming

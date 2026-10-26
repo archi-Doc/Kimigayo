@@ -316,7 +316,10 @@ public sealed class RetentionTest
     // there), its bindings Fields of the referent: a `var` binding of an Exclusive receiver is written (exchange, varPair: `1 Value store 0`
     // and the receiver's own content, `0 Content store 0`), a `let` one never (letPair), what a captured exclusive reference refers to is
     // (holder); a result naming a binding's Origin is the receiver's content (exchange, shared, through `ref/`); a Consuming receiver is
-    // the environment by value, whose bindings are not written (consuming). No Closure contract has referent stores (a 4.6-4.9 operation's).
+    // the environment by value, whose bindings are not written (consuming). A Closure captured into another is read as its body sees it,
+    // also from a `var` local, whose own Type names its initializer's inferred Origins (nestedGet over get, nestedRemember over
+    // remember: BU's review B1). No
+    // Closure contract has referent stores (a 4.6-4.9 operation's).
     [Fact]
     public void AClosuresCallReceiverIsInputZero()
     {
@@ -330,10 +333,17 @@ public sealed class RetentionTest
             "    var holder: ref/i32 during x = x\n" +
             "    var store = func [holder@uniq] (b: ref/i32 during x) -> i32\n        holder@follow = b\n        return 0\n    _ = store(x)\n" +
             "    let n: i32 = 1\n    let consuming = func [n] () -> i32 => n@move\n    _ = consuming()\n" +
-            "    let shared = func [r] () => r\n    _ = shared()\n    let viaRef = shared@ref\n    _ = viaRef()\n    return 0\n");
+            "    let shared = func [r] () => r\n    _ = shared()\n    let viaRef = shared@ref\n    _ = viaRef()\n" +
+            "    var get = func [r] () -> ref/i32 during x => r\n    let nestedGet = func [get@move] () -> ref/i32 during x => get()\n" +
+            "    _ = nestedGet()\n" +
+            "    var remember = func [var r] (value: ref/i32 during x) -> ref/i32 during x\n        let old = r\n        r = value\n        return old\n" +
+            "    var nestedRemember = func [var remember@move] (b: ref/i32 during x) -> ref/i32 during x => remember(b)\n" +
+            "    _ = nestedRemember(x)\n    return 0\n");
         Assert.Equal(
             ["0 Content result, 1 Value result, 0 Content store 0, 1 Value store 0", string.Empty, "0 Content store 0, 1 Value store 0",
-                "0 Content store 0, 1 Value store 0", string.Empty, "0 Content result", "0 Content result"],
+                "0 Content store 0, 1 Value store 0", string.Empty, "0 Content result", "0 Content result", "0 Content result",
+                "0 Content result", "0 Content result, 1 Value result, 0 Content store 0, 1 Value store 0",
+                "0 Content result, 1 Value result, 0 Content store 0, 1 Value store 0"],
             ValueCalls(c));
     }
 

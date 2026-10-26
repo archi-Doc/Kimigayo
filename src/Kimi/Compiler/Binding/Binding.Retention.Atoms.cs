@@ -6,8 +6,9 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Call retention, atoms (SPEC 15.6.4 steps 1-4; contract in TyCtxt.Retention.cs): each input's and the result's Origin atoms and
-// carriers (RetentionInput, RetentionWalk), the content a raw layer's Origin lets the call write (RawContent) and the borrow a Type
-// refers through (BorrowReferent); Binding.Retention.cs reads them into premises, Binding.Retention.Rows.cs into rows.
+// carriers (RetentionInput, RetentionWalk), a Closure contract's call receiver input (ClosureReceiver) and every Closure part read as
+// its body sees it (ClosureEnvironment; DECISIONS R4-M148), the content a raw layer's Origin lets the call write (RawContent) and the
+// borrow a Type refers through (BorrowReferent); Binding.Retention.cs reads them into premises, Binding.Retention.Rows.cs into rows.
 public sealed partial class Binding
 {
     // SPEC 15.6.4 (DECISIONS R4-M116, BU-40): the raw inputs of the contract being computed with their Types, and the holds of its outputs,
@@ -17,12 +18,13 @@ public sealed partial class Binding
     private readonly List<(int Input, BoundType Type)> retentionRawInputs = new();
     private readonly List<(int Output, BoundType Type)> retentionHolds = new();
 
-    // SPEC 15.8.2 (DECISIONS R4-M148): a Closure contract's input 0, its call receiver as its body is checked against it (the MIR body's
-    // receiver local, MirBuilder): `R/Env during ρ`, R the strongest receiver (BoundClosure.Receiver) and ρ its receiver atom
-    // (ClosureValueSlot), Env the instance's environment; Env by value under `owner/Self`.
-    internal BoundType ClosureReceiver(FunctionKoto closure, BoundType environment)
-        => BoundClosure.Of(closure)!.Receiver is var receiver && receiver == SemanticsKind.Owner ? environment
-            : this.types.Reference(receiver, environment, this.OriginAtom(closure, OriginKind.Projection, ClosureValueSlot));
+    // SPEC 15.8.2 (DECISIONS R4-M148): a Closure contract's input 0, its call receiver as its body is checked against it: `R/Env during ρ`,
+    // R the strongest receiver (BoundClosure.Receiver), Env the callee's Closure Type, whose environment the walk reads as the body sees it
+    // (TyCtxt.ClosureEnvironment), and ρ its receiver atom (ClosureValueSlot); Env by value under `owner/Self`. The MIR body's receiver
+    // local has the same Type over the definition's environment, without ρ (MirBuilder).
+    internal BoundType ClosureReceiver(FunctionKoto closure, BoundType callee)
+        => BoundClosure.Of(closure)!.Receiver is var receiver && receiver == SemanticsKind.Owner ? callee
+            : this.types.Reference(receiver, callee, this.OriginAtom(closure, OriginKind.Projection, ClosureValueSlot));
 
     // Whether a position of the Type may hold a raw input's own value or a raw layer, at it or in its stored content (the hold walk,
     // Binding.Retention.Rows.cs): a raw layer, an abstract part (a pair layer among them), a struct or an enum.
@@ -84,11 +86,11 @@ public sealed partial class Binding
             var variance = exclusive ? OriginVariance.Invariant : OriginVariance.Covariant;
             if (outer is { Kind: OriginKind.Projection, Slot: ClosureValueSlot, Binder: FunctionKoto receiver })
             {
-                var captures = BoundClosure.Of(receiver)!.Captures;
-                for (var i = 0; i < referent.Components.Count; i++)
+                var (captures, environment) = (BoundClosure.Of(receiver)!.Captures, this.ClosureEnvironment(referent));
+                for (var i = 0; i < environment.Components.Count; i++)
                 {
                     var field = captures[i].Environment.MutableCapture ? variance : OriginVariance.Covariant;
-                    this.RetentionWalk(referent.Components[i], content, field, callable: false);
+                    this.RetentionWalk(environment.Components[i], content, field, callable: false);
                 }
 
                 return;
@@ -160,10 +162,12 @@ public sealed partial class Binding
     }
 
     // The walk below a Type's own layer at a position of `variance` (RetentionWalk): its components, writable, shared and past a raw
-    // layer's step as RetentionWalk states, and the content a raw layer's Origin lets the call write (RawContent). A raw input's walk
-    // starts here, past its own layer's atom (RetentionInput).
+    // layer's step as RetentionWalk states, and the content a raw layer's Origin lets the call write (RawContent); a Closure's components
+    // are its environment as its body sees it (TyCtxt.ClosureEnvironment, DECISIONS R4-M148; one that does not substitute is the
+    // contract's Limit). A raw input's walk starts here, past its own layer's atom (RetentionInput).
     private void RetentionParts(BoundType type, RetentionAtom at, OriginVariance variance, bool callable)
     {
+        type = type.Kind == BoundTypeKind.Closure ? this.ClosureEnvironment(type) : type;
         var writable = at.Writable && variance == OriginVariance.Invariant;
         var layer = this.BorrowReferent(type, out var outer, out _) is not null ? outer ?? at.Layer : at.Layer;
         var inside = callable || IsCallable(type);
@@ -184,6 +188,16 @@ public sealed partial class Binding
         {
             this.RetentionWalk(type.Components[i], below, ComposeVariance(variance, this.ComponentVariance(type, i)), inside);
         }
+    }
+
+    // A Closure part of a contract input as its body sees it (TyCtxt.ClosureEnvironment, DECISIONS R4-M148): its environment, read at every
+    // Closure part, the call receiver's (RetentionInput) and a nested one's (RetentionParts); one that does not substitute is the
+    // contract's Limit.
+    private BoundType ClosureEnvironment(BoundType closure)
+    {
+        var environment = this.types.ClosureEnvironment(closure);
+        this.retentionLimit |= environment is null;
+        return environment ?? closure;
     }
 
     // SPEC 5.7 Calls (D15; design-final §6.2): a raw parameter layer whose Origin steps Exclusive lets the call write what each borrow the
