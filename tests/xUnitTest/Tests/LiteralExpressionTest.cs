@@ -93,6 +93,7 @@ public class LiteralExpressionTest
     [InlineData("let t = if c => (n, 5) else => (6, n)", "(n, 5)", "(i64, i64)")]
     [InlineData("let t = if c => (n, 5) else => (6, 7)", "(6, 7)", "(i64, i32)")]
     [InlineData("let t = if c => [2 of 5] else => [2 of n]", "[2 of 5]", "[2 of i64]")]
+    [InlineData("let x: i32 = 1\n    let r = x@ref\n    let t = if c => r else => (if d => 6 else => (return 1))", "6", "i32")]
     [InlineData("let x = [[2 of 5], [2 of n]]", "[2 of 5]", "[2 of i64]")]
     [InlineData("let g = func [] (e: bool, a: i64)\n        if e => return (1, 2)\n        return (a, a)", "(1, 2)", "(i64, i64)")]
     [InlineData("let t = if c => [\"k\": p.x] else => [\"k\": 4000000000]", "[\"k\": 4000000000]", "Dictionary<string, i64>")]

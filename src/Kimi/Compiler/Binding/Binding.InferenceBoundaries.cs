@@ -57,9 +57,17 @@ public sealed partial class Binding
         return slots;
     }
 
+    private static void ReportUnboundSlots(Koto node, UnboundSlotFact fact, DiagnosticRequirement requirement, DiagnosticCode code)
+    {
+        (string Role, Koto At, string? Label)[] related = fact.Argument is { } argument
+            ? [("declaration", fact.Declaration, null), ("argument", argument, null)]
+            : [("declaration", fact.Declaration, null)];
+        node.Report(requirement, code, evidence: [fact.Slot], related: related, note: fact.Note);
+    }
+
     // SPEC 10.8: the required structural slots that no evidence binds, other than an F that a waiting argument binds (SPEC 10.5).
     // An unresolved length remains pending; structural slots have no fixed-width limit.
-    private static void UnsolvedSlots(InvocationKoto call, FunctionKoto function, BoundType?[] arguments, BoundLength?[] lengths, int[] mapping, ref SlotSet unsolved, out bool unrepresentable)
+    private void UnsolvedSlots(InvocationKoto call, FunctionKoto function, BoundType?[] arguments, BoundLength?[] lengths, int[] mapping, ref SlotSet unsolved, out bool unrepresentable)
     {
         unrepresentable = false;
         unsolved.Clear();
@@ -78,13 +86,13 @@ public sealed partial class Binding
         var waiting = new WaitingSlots(ref unsolved, CallSlotOwner(function));
         for (var a = 0; a < call.ArgumentNodes.Count; a++)
         {
-            TakeWaiting(call.ArgumentNodes[a], function.Parameters[mapping[a]].Type.BoundType!, CallSlotOwner(function), waiting);
+            this.TakeWaiting(call.ArgumentNodes[a], function.Parameters[mapping[a]].Type.BoundType!, CallSlotOwner(function), waiting);
         }
     }
 
     // Whether the waiting parts of an argument bind every slot of its parameter Type that no evidence binds (SPEC 10.5, 10.8), so the
     // position is completed with them after selection instead of left open. `rest` is scratch.
-    private static bool WaitingPartsBind(Koto part, BoundType pattern, FunctionKoto function, SlotSet unbound, ref SlotSet rest)
+    private bool WaitingPartsBind(Koto part, BoundType pattern, FunctionKoto function, SlotSet unbound, ref SlotSet rest)
     {
         rest.Clear();
         for (var g = 0; g < CallOwnSlots(function).Count; g++)
@@ -95,16 +103,8 @@ public sealed partial class Binding
             }
         }
 
-        TakeWaiting(part, pattern, CallSlotOwner(function), new WaitingSlots(ref rest, CallSlotOwner(function)));
+        this.TakeWaiting(part, pattern, CallSlotOwner(function), new WaitingSlots(ref rest, CallSlotOwner(function)));
         return !MentionsSlots(pattern, CallSlotOwner(function), rest);
-    }
-
-    private static void ReportUnboundSlots(Koto node, UnboundSlotFact fact, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        (string Role, Koto At, string? Label)[] related = fact.Argument is { } argument
-            ? [("declaration", fact.Declaration, null), ("argument", argument, null)]
-            : [("declaration", fact.Declaration, null)];
-        node.Report(requirement, code, evidence: [fact.Slot], related: related, note: fact.Note);
     }
 
     // The fixed expected call signature of a parameter (SPEC 10.5): the Callable signature of its F, `ref/F` or `uniq/F`, or its common
@@ -152,7 +152,7 @@ public sealed partial class Binding
     private BoundType? FailUnboundSlots(InvocationKoto call, FunctionKoto selected, BindingScope scope, BoundType?[] slots, BoundLength?[] lengths, int[] mapping, ReadOnlySpan<BoundArgumentOperation> operations, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType)
     {
         var unsolved = this.RentSlotSet(CallSlotCount(selected));
-        UnsolvedSlots(call, selected, slots, lengths, mapping, ref unsolved, out _);
+        this.UnsolvedSlots(call, selected, slots, lengths, mapping, ref unsolved, out _);
         var firstSlot = this.RentSlotSet(CallSlotCount(selected));
         try
         {

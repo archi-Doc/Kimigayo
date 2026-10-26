@@ -109,7 +109,7 @@ public sealed partial class Binding
         var waiting = new WaitingSlots(ref unsolved, solution.SlotOwner);
         for (var i = 0; i < payload.Length; i++)
         {
-            TakeWaiting(solution.Call.ArgumentNodes[i], payload[i].BoundType!, solution.SlotOwner, waiting);
+            solution.Binding.TakeWaiting(solution.Call.ArgumentNodes[i], payload[i].BoundType!, solution.SlotOwner, waiting);
         }
 
         return unbound;
@@ -370,7 +370,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < payload.Length && unsolved.IsEmpty; i++)
             {
-                if (!TakeWaiting(solution.Call.ArgumentNodes[i], payload[i].BoundType!, solution.SlotOwner, solution))
+                if (!this.TakeWaiting(solution.Call.ArgumentNodes[i], payload[i].BoundType!, solution.SlotOwner, solution))
                 {
                     Complete(use, null); // The callable's own failure, on which the construction rests.
                     return false;
@@ -400,7 +400,7 @@ public sealed partial class Binding
             var taker = new OpenWaitingSlots(ref open, solution);
             for (var i = 0; i < payload.Length; i++)
             {
-                TakeWaiting(solution.Call.ArgumentNodes[i], payload[i].BoundType!, solution.SlotOwner, taker);
+                this.TakeWaiting(solution.Call.ArgumentNodes[i], payload[i].BoundType!, solution.SlotOwner, taker);
             }
 
             return !open.IsEmpty;

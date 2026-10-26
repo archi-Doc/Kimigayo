@@ -27,14 +27,29 @@ public sealed partial class Binding
         return slot.Kind == BoundTypeKind.Parameter && ContainerSlot(owner, slot.Symbol!) >= 0 ? slot : null;
     }
 
-    // Each waiting callable of the part at an F of the owner, in source order: the part itself, or an element of its Tuple or array
-    // literal at that element's position. False when the taker stops.
-    private static bool TakeWaiting<T>(Koto part, BoundType pattern, Koto owner, in T taker)
+    // Each waiting callable of the part at an F of the owner, in source order: the part itself, an element of its Tuple or array literal
+    // at that element's position, or a result of a control-flow part its call classifies at the part's own position (ComposedJoin;
+    // DECISIONS BU-43). False when the taker stops.
+    private bool TakeWaiting<T>(Koto part, BoundType pattern, Koto owner, in T taker)
         where T : IWaitingTaker, allows ref struct
     {
         if (IsWaitingCallable(part))
         {
             return CallableSlotType(pattern, owner) is not { } slot || taker.Take(part, pattern, slot);
+        }
+
+        if (this.ComposedJoin(KotoHelper.UnwrapParentheses(part)) is { } join)
+        {
+            var start = this.positionParts.Count;
+            this.AddResults(join);
+            var taken = true;
+            for (var i = start; taken && i < this.positionParts.Count; i++)
+            {
+                taken = this.TakeWaiting(this.positionParts[i], pattern, owner, taker);
+            }
+
+            this.ClosePosition(start);
+            return taken;
         }
 
         var elements = KotoHelper.UnwrapParentheses(part) switch
@@ -45,7 +60,7 @@ public sealed partial class Binding
         };
         for (var i = 0; elements is not null && i < elements.Count; i++)
         {
-            if (!TakeWaiting(elements[i], pattern.Components[pattern.Kind == BoundTypeKind.Tuple ? i : 0], owner, taker))
+            if (!this.TakeWaiting(elements[i], pattern.Components[pattern.Kind == BoundTypeKind.Tuple ? i : 0], owner, taker))
             {
                 return false;
             }

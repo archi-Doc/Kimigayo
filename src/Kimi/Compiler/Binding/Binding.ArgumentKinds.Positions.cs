@@ -81,7 +81,7 @@ public sealed partial class Binding
                 this.positionParts.Add(array.Elements[index]);
                 return ChildPattern(array, index, pattern);
             default:
-                this.AddResultPart(this.ComposedJoin(part)!);
+                this.AddResults(this.ComposedJoin(part)!);
                 return pattern;
         }
     }
@@ -99,6 +99,11 @@ public sealed partial class Binding
         for (var i = start; i < end; i++)
         {
             var part = this.positionParts[i];
+            if (Rejected(part))
+            {
+                return ArgumentKind.Waiting; // No evidence, default or Type: the call rests on the part's own record.
+            }
+
             if (IsUnfittedLiteral(part))
             {
                 literal = true;

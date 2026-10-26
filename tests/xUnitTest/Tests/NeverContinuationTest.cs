@@ -3,6 +3,8 @@
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
+using Verification;
 using Xunit;
 
 namespace XunitTest;
@@ -145,6 +147,8 @@ public class NeverContinuationTest
     [InlineData("let t = if c => [2 of (a, (return 1))] else => [2 of ((return 2), a)]", "[2 of ((return 2), a)]", "[2 of (i64, i64)]")]
     [InlineData("let t = if c => [\"k\": (a, (return 1))] else => [\"k\": ((return 2), a)]", "[\"k\": ((return 2), a)]", "Dictionary<string, (i64, i64)>")]
     [InlineData("let t = if c => (a, (return 1)) else => (a, (return 2))", "(a, (return 2))", "(i64, Never)")]
+    [InlineData("let r = a@ref\n    let t = if c => (r, (return 1)) else => (a, (return 2))", "(r, (return 1))", "(i64, Never)")]
+    [InlineData("let t: (() -> i64, i64) = if c => (func [a] () => a, (return 1)) else => ((return 2), a)", "((return 2), a)", "(() -> i64, i64)")]
     [InlineData("let t = if c => (a, a) else => (a, (return 1))", "(a, (return 1))")]
     [InlineData("let t = if c => (a, (return 1)) else => (a, a)", "(a, (return 1))")]
     [InlineData("let t = match c\n        true => (a, a)\n        false => (a, (return 1))", "(a, (return 1))")]
@@ -212,6 +216,16 @@ public class NeverContinuationTest
         var c = MirBuildTest.Compile(Joins + statement + "\n    return t.0\n");
         var issue = Assert.Single(c.Binding.Issues);
         Assert.Equal(BindingFailure.TypeMismatch, issue.Failure);
+    }
+
+    // DECISIONS BU-9 r1, BU-43: a part Binding rejected is no waiting part, so no Type is formed over it and no literal is bound twice:
+    // the program keeps the rejected part's one record.
+    [Fact]
+    public void ARejectedPartIsNoWaitingPart()
+    {
+        const string Source = "func f(c: bool, a: i64) -> i64\n    let t = if c => ([], (return 1)) else => ((return 2), [a])\n    return 0\npublic func main() => ()\n";
+        var diagnostic = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.Unsupported_Kd), diagnostic.Code);
     }
 
     // SPEC 3.8: Never is a subtype of no other Type, at any depth: a Type holding Never relates only by identity, a Function Type's result

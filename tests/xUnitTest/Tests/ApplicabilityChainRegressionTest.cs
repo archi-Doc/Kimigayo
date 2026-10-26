@@ -20,7 +20,11 @@ public class ApplicabilityChainRegressionTest
         "func h(value: i8) -> () => ()\nfunc h(value: i64) -> () => ()\nfunc g(value: (i64, i64)) -> () => ()\nlet c = true\nlet x: i64 = 2\n" +
         "func both<T>(value: (T, T)) -> () => ()\nfunc first<T>(value: (T, i64)) -> () => ()\nfunc tuples(value: (i32, i32)) -> () => ()\n" +
         "func tuples(value: (i64, i64)) -> () => ()\nfunc takeArray(value: Array<i64>) -> () => ()\nfunc takeDict(value: Dictionary<string, (i64, i64)>) -> () => ()\n" +
-        "func takeDictI(value: Dictionary<string, i64>) -> () => ()\nfunc takeFill(value: [2 of i64]) -> () => ()\n";
+        "func takeDictI(value: Dictionary<string, i64>) -> () => ()\nfunc takeFill(value: [2 of i64]) -> () => ()\n" +
+        "func applyArg<F>(value: (F, i64)) -> ()\n    F is Callable<(i64) -> i64>\n    return ()\n" +
+        "func applyOne<F>(value: F) -> ()\n    F is Callable<(i64) -> i64>\n    return ()\n" +
+        "func takeF(value: (i64) -> i64) -> () => ()\nfunc takeFn(value: (() -> i64, i64)) -> () => ()\nfunc takeT(value: (i64, i64)) -> () => ()\n" +
+        "func process<length N>(values: [N of i64]) -> () => ()\nlet r = x@ref\n";
 
     [Theory]
     [InlineData(false, false, false)]
@@ -163,6 +167,9 @@ public class ApplicabilityChainRegressionTest
     [InlineData("g(if c => (x, stop()) else => (x, stop()))", "(i64, i64)")]
     [InlineData("takeArray(if c => [1, 2] else => [stop()])", "Array<i64>")]
     [InlineData("takeFill(if c => [2 of 5] else => [2 of stop()])", "[2 of i64]")]
+    [InlineData("takeT(if c => (r, stop()) else => (x, stop()))", "(i64, i64)")]
+    [InlineData("takeFn(if c => (func [x] () => x, stop()) else => (stop(), x))", "(() -> i64, i64)")]
+    [InlineData("process(if c => [x, stop()] else => [stop(), x])", "[2 of i64]")]
     [InlineData("both(if c => (x, stop()) else => (stop(), 5))", "(i64, i64)")]
     [InlineData("both(if c => (x, stop()) else => (x, stop()))", "(i64, i64)")]
     [InlineData("first(if c => (5, stop()) else => (6, x))", "(i32, i64)")]
@@ -180,6 +187,26 @@ public class ApplicabilityChainRegressionTest
         Assert.Equal(type, TyCtxt.Name(join.TypeOf()!));
     }
 
+    // SPEC 10.5.1, 10.5.4 (DECISIONS BU-43): an anonymous function among a control-flow argument's results waits for the call, which
+    // completes it as it completes a waiting argument at its position: at F it binds F, else it is checked against the selected
+    // candidate's Type. The forms accepted before, a typed anonymous function beside Never, stay accepted.
+    [Theory]
+    [InlineData("applyArg(if c => (func [] (v) => v, stop()) else => (stop(), x))")]
+    [InlineData("applyOne(if c => func [] (v) => v else => stop())")]
+    [InlineData("applyOne(if c => func [] (v: i64) -> i64 => v else => stop())")]
+    [InlineData("applyOne(if c => (if c => func [] (v) => v else => stop()) else => stop())")]
+    [InlineData("applyOne(if c => (if c => func [] (v: i64) -> i64 => v else => stop()) else => stop())")]
+    [InlineData("keep(if c => func [] (v: i64) -> i64 => v else => stop())")]
+    [InlineData("takeF(if c => func [] (v) => v else => stop())")]
+    [InlineData("takeF(if c => func [] (v) => v else => func [] (w) => w)")]
+    [InlineData("takeF(if c => func [] (v: i64) -> i64 => v else => func [] (w: i64) -> i64 => w)")]
+    [InlineData("takeFn(if c => (func [x] () => x, x) else => (func [x] () => x + 1, x))")]
+    public void AnAnonymousFunctionAmongAControlFlowArgumentsResultsWaitsForTheCall(string use)
+    {
+        var c = MinimalEmissionTest.Analyze(ControlFlowDeclarations + use);
+        Assert.Empty(c.Binding.Issues);
+    }
+
     // SPEC 10.5.1, 10.4: a Literal or waiting control-flow argument is no evidence and ranks equally at every candidate it fits; the
     // Literal fits a candidate only when every source does. Its results classified by position (the owner, 2026-10-26), a join ranks as
     // the Tuple argument of those positions does, a position Never in every source giving no Type at a slot that takes the whole.
@@ -192,6 +219,13 @@ public class ApplicabilityChainRegressionTest
     [InlineData("keep(if c => (x, stop()) else => (x, stop()))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep(if c => (x, stop()) else => (x, stop()))")]
     [InlineData("keep(if c => (5, stop()) else => (6, stop()))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep(if c => (5, stop()) else => (6, stop()))")]
     [InlineData("takeDictI(if c => [\"k\": 5] else => [\"k\": stop()])", nameof(DiagnosticCode.NoApplicableOverload_Kd), "takeDictI(if c => [\"k\": 5] else => [\"k\": stop()])")]
+    [InlineData("applyArg(if c => (func [] (v: bool) => v, stop()) else => (stop(), x))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "applyArg(if c => (func [] (v: bool) => v, stop()) else => (stop(), x))")]
+    [InlineData("takeF(if c => func [] (v: bool) => v else => stop())", nameof(DiagnosticCode.NoApplicableOverload_Kd), "takeF(if c => func [] (v: bool) => v else => stop())")]
+    [InlineData("applyArg(if c => func [] (v) => v else => stop())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "applyArg(if c => func [] (v) => v else => stop())")]
+    [InlineData("applyArg(func [] (v) => v)", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "applyArg(func [] (v) => v)")]
+    [InlineData("takeT(if c => (r, stop()) else => (true, stop()))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (r, stop()) else => (true, stop())")]
+    [InlineData("takeFn(if c => (func [x] () => true, stop()) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "true")]
+    [InlineData("process(if c => [x, stop()] else => [stop(), x, x])", nameof(DiagnosticCode.NoApplicableOverload_Kd), "process(if c => [x, stop()] else => [stop(), x, x])")]
     public void AControlFlowArgumentRanksAsItsKind(string use, string code, string at)
     {
         var source = ControlFlowDeclarations + use + "\n";

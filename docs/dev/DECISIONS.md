@@ -6630,19 +6630,38 @@ resumed by R4-M86 (2026-10-20).
     at their length, Dictionaries by key and value (any other mix conflicts); else the literals' defaults, which compete as before; no
     part, Never. It is the join's one candidate: `PropagateSources` binds the waiting sources at it and late-fits the bound ones. A
     nested join with a waiting literal still waits for its outer join; a Never-only one decides itself and its outer late-fits it
-    (with bu44 landed, waiting is no longer blocked by its array binder; it would differ only where the late fit adapted a part,
-    which it never does: open with that limit). The survey takes a bound source that awaits as no evidence (`ResultEvidence`), which
-    removes rv-g159-nested-cand's second record, and a transfer as Never. A fill's literal element waits for its position as a list
-    literal's does (`DecidedLater` passes fills; `BindArrayFill` waits with it), so `if c => [2 of 5] else => [2 of a]` is
+    (with bu44 landed, waiting is no longer blocked by its array binder). The survey takes a bound source that awaits as no evidence
+    (`ResultEvidence`), which removes rv-g159-nested-cand's second record, and a transfer as Never: SPEC 14.5.1's reading, a row of the
+    survey's own table, not confined to ③, so `if c => r else => (if d => 6 else => (return 1))` with `r: ref/i32` moves from two
+    `TypeMismatch_Kd` to valid, `6` at i32, as its `stop()` form was (fix round 1). A fill's literal element waits for its position
+    as a list literal's does (`DecidedLater` passes fills; `BindArrayFill` waits with it), so `if c => [2 of 5] else => [2 of a]` is
     `[2 of i64]` and `[[2 of 5], [2 of a]]` `Array<[2 of i64]>` (the owner's answer on fills, with R1).
   - A call (`Binding.ArgumentKinds`): its control-flow argument's join that supplies no candidate waits for the call
     (`ClassifiedByCall`) unless its results are Dictionaries, typed as a whole as a Dictionary literal argument is, or its typed parts
-    conflict, which fails it at once. With Tuple or array results it is recorded Composite and classified position by position
+    conflict, which fails it at once. With Tuple or array results, or with an anonymous function among its results (scalar or inside
+    Tuple or array results alike; SPEC 10.5.1: such an argument is Waiting, the planning session's answer to question 5 of fix round
+    1, realized as Composite with that function's position Waiting so that the forms accepted before stay accepted), it is recorded
+    Composite (`HoldsWaitingFunction`) and classified position by position
     (`Binding.ArgumentKinds.Positions`: `ChildPositions`, `AddChildPosition`, `PositionKind`): a typed position is evidence once, at its
     common Type; a literal one takes its first literal's default after selection, each of its literals checked (a misfit its own
     record); one Never in every source is no evidence and gives no Type at a slot that takes the whole (BU-2 U3's D6); one with a
     waiting part waits. It fits a candidate by its late fit, a waiting literal fitting as a literal and a waiting list or fill literal
     by the shape it constructs there (`LateArrayType`, `LateDictionaryType`); the selected candidate completes it (`DecideWaiting`).
+  - Fix round 1 (implementation review 1's B1 and B2): the late fit fits each bound part that does not await as a Tuple argument's
+    part (`LateAdaptation`): its own Type where that fits, else its erasure or its one implicit operation, written only when the whole
+    fits (`AdaptAtPosition`: `ErasePart`, `ExpectedAdaptation`); a bound list literal fits a fixed-array position of its count
+    (`ConstructsAt`), which binds a length slot. An anonymous function among a call's control-flow argument's results waits for the
+    call (`WaitsForPosition` through `PositionTarget`; `Awaiting.Callable`); the late fit checks it by its signature
+    (`ClosureSignatureFits`), and `TakeWaiting`'s join row completes it at its `F` as the Tuple-argument twin's element is, after
+    which a join nothing else holds waiting is decided at once with no expectation (`DecideTaken`; `DecideWaiting` reads a source
+    its call completed, `Completed`). A part Binding rejected is no waiting part (`IsAggregatePart`, `CommonTypeByParts`,
+    `PositionKind`: BU-9 r1), so `if c => ([], (return 1)) else => ((return 2), [a])` keeps one `Unsupported_Kd`. Verdicts: the
+    review's value-read, erasure, length and `F` forms are valid as their Tuple-argument twins; `applyOne(if c => func [] (v) => v
+    else => stop())` and its nested form, `UnresolvedBinding_Kd` before, are valid; `applyArg(if c => func [] (v) => v else =>
+    stop())` with `applyArg<F>((F, i64))` is `UnboundTypeArgument_Kd` as `applyArg(func [] (v) => v)` (was `UnresolvedBinding_Kd`);
+    two anonymous functions at one `F` are one `TypeMismatch_Kd` at the join (two Closure Types); `keep(if c => func [] (v: i64) ->
+    i64 => v else => 5)` keeps `UnboundTypeArgument_Kd` without base's second record at `5`. Typed anonymous functions beside Never
+    stay accepted.
     The argument walks recurse into positions (`InferPosition`, `DefaultPosition`, `IndependentPositionType`; the restructuring
     commit before, behavior unchanged).
   - ③: a control-flow part is Literal when every result source other than Never is a literal, at least one (`ResultSurvey.Unknown` and
@@ -6666,10 +6685,8 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a partial Type with holes joined by `SelectCommonType` (a new representation; a Type-only join would merge a typed part's
     own Never); every nested join waiting (a call's join must stay classified by its own positions); a whole-Type late default at a
     call (`both(if c => (x, R) else => (R, 5))` with `both<T>((T, T))` needs element evidence).
-  - Open: the late fit never adapts an awaiting literal's parts (value read, erasure: TypeMismatch_Kd with or without a candidate,
-    measured), so a value-read position is evidence once (`ref/i64` beside `i64` gives T = i64) yet fails the fit; a join position's
-    array literal binds no length slot; a waiting part of such a position takes no `F` (`TakeWaiting` has no join row); an array or
-    Dictionary literal's element evidence keeps the awaiting elements' own common Type (a SPEC 4.3 question). Not temporary.
+  - Open: an array or Dictionary literal's element evidence keeps the awaiting elements' own common Type (a SPEC 4.3 question). The
+    review's late-fit opens (value read, erasure, length slot, `F`) are closed by fix round 1. Not temporary.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

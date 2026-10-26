@@ -117,8 +117,10 @@ public sealed partial class Binding
 
     // SPEC 10.5.1 (the owner, 2026-10-26: element by element; DECISIONS BU-43): whether a join that supplies no candidate is the argument
     // probe's control flow, which its call classifies and completes at the selected candidate's Type. One of Tuple or array results
-    // (`shape`, its first aggregate part) is Composite, its results classified position by position (Binding.ArgumentKinds.Positions.cs),
-    // which replaces a Waiting a nested call deferred in one of its parts gave the probe; a scalar one keeps the kind its survey gave it.
+    // (`shape`, its first aggregate part), or one whose results hold an anonymous function, which waits for the call, is Composite: its
+    // results are classified position by position (Binding.ArgumentKinds.Positions.cs), a position holding the anonymous function
+    // Waiting, which replaces a Waiting a nested call deferred in one of its parts gave the probe; a scalar one of literals keeps the
+    // kind its survey gave it.
     private bool ClassifiedByCall(Koto join, Koto? shape)
     {
         if (this.argumentProbe is not { } probe || !ReferenceEquals(ControlFlowExpression(probe), join))
@@ -126,7 +128,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (shape is TupleLiteralKoto or ArrayLiteralKoto)
+        if (shape is TupleLiteralKoto or ArrayLiteralKoto || this.HoldsWaitingFunction(join))
         {
             this.argumentKinds[SourceRef.Of(probe)] = new(ArgumentKind.Composite, null);
         }
@@ -395,8 +397,9 @@ public sealed partial class Binding
     }
 
     // SPEC 10.5, 10.5.4: completes the selected candidate's waiting arguments against its Types, and the waiting callables of its Tuple
-    // and array literal arguments that bind an F, `ref/F` or `uniq/F` of it. A body or capture failure never retries another
-    // candidate, and an inferred result never supplies outer signature evidence. False when one fails.
+    // and array literal arguments and of its control-flow arguments' results that bind an F, `ref/F` or `uniq/F` of it, a join they alone
+    // kept waiting then decided (DecideTaken; DECISIONS BU-43). A body or capture failure never retries another candidate, and an
+    // inferred result never supplies outer signature evidence. False when one fails.
     private bool CompleteWaiting(ref CallEvaluation evaluation, int winner, bool[] completedWaiting, BoundType?[] waitingContexts)
     {
         var call = evaluation.Call;
@@ -420,9 +423,13 @@ public sealed partial class Binding
                         return false;
                     }
                 }
-                else if (!TakeWaiting(argument, pattern, solution.SlotOwner, solution))
+                else
                 {
-                    return false;
+                    var awaited = this.AwaitsPosition(argument);
+                    if (!this.TakeWaiting(argument, pattern, solution.SlotOwner, solution) || (awaited && !this.DecideTaken(argument)))
+                    {
+                        return false;
+                    }
                 }
             }
 

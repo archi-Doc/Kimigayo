@@ -47,9 +47,10 @@ public sealed partial class Binding
     };
 
     // SPEC 14.9.2: a Tuple, array, fill or Dictionary literal part whose Type is formed by its own parts: one waiting unbound or holding
-    // a part that awaits its position.
+    // a part that awaits its position. A part Binding rejected (Rejected) is no waiting part: the position it is at has no Type formed
+    // part by part (BU-9: a literal is bound once).
     private bool IsAggregatePart(Koto part)
-        => part is TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto && (part.BoundType is null || this.AwaitsPosition(part));
+        => part is TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto && !Rejected(part) && (part.BoundType is null || this.AwaitsPosition(part));
 
     // Adds a part at a position: none for Never; the operand of the forms that deliver it; a result target that supplies no candidate
     // through its sources other than Never (nested results propagate the same way).
@@ -68,19 +69,39 @@ public sealed partial class Binding
 
         if (DeliversResult(part) && this.AwaitsPosition(part))
         {
-            var context = this.resultContexts[part];
-            for (var i = 0; i < context.Sources.Count; i++)
-            {
-                if (!ReferenceEquals(context.Sources[i], BoundType.Never) && context.SourceNodes[i] is { } source)
-                {
-                    this.AddResultPart(source);
-                }
-            }
-
+            this.AddResults(part);
             return;
         }
 
         this.positionParts.Add(part);
+    }
+
+    // Adds a result target's results, its sources other than Never, as parts at its own position.
+    private void AddResults(Koto join)
+    {
+        var context = this.resultContexts[join];
+        for (var i = 0; i < context.Sources.Count; i++)
+        {
+            if (!ReferenceEquals(context.Sources[i], BoundType.Never) && context.SourceNodes[i] is { } source)
+            {
+                this.AddResultPart(source);
+            }
+        }
+    }
+
+    // SPEC 10.5.1 (DECISIONS BU-43): whether a join's results hold an anonymous function that waits for its call.
+    private bool HoldsWaitingFunction(Koto join)
+    {
+        var start = this.positionParts.Count;
+        this.AddResults(join);
+        var holds = false;
+        for (var i = start; !holds && i < this.positionParts.Count; i++)
+        {
+            holds = this.positionParts[i] is FunctionKoto { IsAnonymous: true, BindingState: BindingState.Unvisited };
+        }
+
+        this.ClosePosition(start);
+        return holds;
     }
 
     // The first aggregate part of [start, end), which stands for the position's shape; null when there is none.
@@ -168,6 +189,14 @@ public sealed partial class Binding
     // conflict prevents it, or a part is still unbound without waiting.
     private BoundType? CommonTypeByParts(int start, int end, BindingScope scope, ref PartsConflict conflict)
     {
+        for (var i = start; i < end; i++)
+        {
+            if (Rejected(this.positionParts[i]))
+            {
+                return null;
+            }
+        }
+
         var common = this.PositionType(start, end, scope, out var typed);
         if (typed)
         {

@@ -397,7 +397,7 @@ public sealed partial class Binding
                                 var adaptation = pattern.Kind == BoundTypeKind.Function && IsWaitingCallable(argument)
                                     ? ArgumentAdaptation.Erasure : ArgumentAdaptation.Exact;
                                 operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, adaptation, ParameterIndex: mapping[i]);
-                                if (WaitingPartsBind(argument, pattern, function, unboundSlots, ref unsolvedSlots))
+                                if (this.WaitingPartsBind(argument, pattern, function, unboundSlots, ref unsolvedSlots))
                                 {
                                     waitingCallables = true;
                                 }
@@ -474,7 +474,7 @@ public sealed partial class Binding
 
             // SPEC 10.8: required structural slots remain rankable. An unresolved length or an
             // open position closed by a later literal default still keeps the candidate pending.
-            UnsolvedSlots(call, function, arguments, lengths, mapping, ref unsolvedSlots, out var unrepresentable);
+            this.UnsolvedSlots(call, function, arguments, lengths, mapping, ref unsolvedSlots, out var unrepresentable);
             unrepresentable |= this.environmentEvidence;
             if ((!open.IsEmpty || !openSignatures.IsEmpty) &&
                 (unrepresentable || !this.OpenPositionsHold(solution, mapping, open, openSignatures, unsolvedSlots)))
