@@ -1,6 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-#pragma warning disable SA1402 // The formatting row is this concern's request vocabulary.
+#pragma warning disable SA1402 // The formatting row and the interpolation estimate are this concern's vocabulary.
 
 using System.Runtime.InteropServices;
 using static Kimi.Compiler.Backend.LlvmModuleText;
@@ -14,10 +14,64 @@ namespace Kimi.Compiler.Backend;
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal sealed record FormattingHelperRow(CompilerFunctionKind Kind, FunctionAbi Abi, HelperNeeds Needs);
 
+/// <summary>The legacy runtime's estimate of an owning interpolation's private buffer (SPEC 22.10.5; the old utf8-formatting §5.1 and §6.1;
+/// DECISIONS R3-10): its literal bytes plus each value's maximum encoded bytes (<see cref="LegacyRuntimeHelpers.FormatBound"/>), an
+/// unbounded value counted 0 and making the estimate unbounded, a sum past the maximum object size discarding it. The one rule both
+/// generators read: the old one over its writes, MIR code generation over an interpolation step's operands.</summary>
+/// <param name="Total">The sum, -1 once discarded.</param>
+/// <param name="Bounded">Whether every value added is bounded.</param>
+[Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
+internal readonly record struct FormatEstimate(long Total, bool Bounded)
+{
+    /// <summary>Gets the estimate of no bytes and no value.</summary>
+    internal static FormatEstimate Empty => new(0, Bounded: true);
+
+    /// <summary>Gets the capacity of the private heap buffer: the sum when bounded, else 0 (a buffer that starts unallocated).</summary>
+    internal long Capacity => this.Bounded && this.Total >= 0 ? this.Total : 0;
+
+    /// <summary>Gets the adapter's hint: the sum, 0 once discarded.</summary>
+    internal long Hint => this.Total < 0 ? 0 : this.Total;
+
+    /// <summary>Adds a literal's bytes or a value's maximum (-1 for an unbounded value).</summary>
+    /// <param name="amount">The bytes, or -1.</param>
+    /// <returns>The estimate with the amount added.</returns>
+    internal FormatEstimate Add(long amount)
+    {
+        var bytes = Math.Max(0, amount);
+        return new(this.Total < 0 || this.Total > long.MaxValue - bytes ? -1 : this.Total + bytes, this.Bounded && amount >= 0);
+    }
+
+    /// <summary>Gets whether the buffer is placed on the stack: an interpolation passed directly to <c>Console.writeLine</c>, bounded and
+    /// within <see cref="LegacyRuntimeHelpers.FormatStackLimit"/>.</summary>
+    /// <param name="direct">Whether the interpolation is the one argument of <c>Console.writeLine</c>.</param>
+    /// <returns>Whether it is formatted on the stack.</returns>
+    internal bool Stack(bool direct) => direct && this.Bounded && this.Total is >= 0 and <= LegacyRuntimeHelpers.FormatStackLimit;
+}
+
 /// <summary>SPEC 22.7, 22.9, 22.10: the UTF-8 buffer, writer, formatting and floating-point runtime and the wrappers over user
 /// formatting witnesses (Windows x64 profile).</summary>
 internal sealed partial class LegacyRuntimeHelpers
 {
+    /// <summary>The windows-x64 limit of an owning interpolation's stack buffer, its literal bytes and value maxima included: a direct,
+    /// bounded interpolation within it is formatted on the stack, after substitution as before (the old utf8-formatting §6.1; STATUS); any
+    /// other uses the heap buffer.</summary>
+    internal const int FormatStackLimit = 1024;
+
+    /// <summary>The runtime's hint of an internal adapter (<c>__kimi_format_hint</c>, SPEC 22.10.5): the bytes its later writes may still
+    /// reserve, which a growth adds.</summary>
+    internal static readonly FunctionAbi FormatHint = new("__kimi_format_hint", "void", [new("ptr", "writer"), new("i64", "hint")]);
+
+    /// <summary>The runtime's end of an owning interpolation (<c>__kimi_format_finish</c>, SPEC 22.10.3): the adapter's recorded failure
+    /// Aborts with <c>KIMI_E_FORMAT</c>, a pending literal is flushed, and the buffer's bytes become the result string.</summary>
+    internal static readonly FunctionAbi FormatFinish = new(
+        "__kimi_format_finish",
+        "void",
+        [new("ptr", "ret"), new("ptr", "buffer"), new("ptr", "writer"), new("ptr", "location"), new("i64", "location_length")]);
+
+    /// <summary>The end of an owning interpolation on the stack (<c>__kimi_format_stack_finish</c>): <see cref="FormatFinish"/>'s, the string
+    /// marked static, since its bytes are the frame's.</summary>
+    internal static readonly FunctionAbi FormatStackFinish = new("__kimi_format_stack_finish", "void", FormatFinish.Parameters);
+
     /// <summary>The runtime's test of an adapter (SPEC 22.10.1), true while it has recorded no failure, which a user formatter's write
     /// wrapper calls before and after the witness (MIR code generation; DECISIONS R5-M130).</summary>
     internal static readonly FunctionAbi FormatHealthy = new("__kimi_format_healthy", "i1", [new("ptr", "writer", LogicalIndex: 0)]);
@@ -31,6 +85,11 @@ internal sealed partial class LegacyRuntimeHelpers
 
     // The runtime templates with each row's routine definition spliced in once; read after the rows.
     private static readonly string FormattingRuntime = ReadFormattingRuntime();
+
+    // The maximum encoded bytes of a value by its formatting kind (FormatKind's numbering), the runtime's own __kimi_format_bounds, which
+    // __kimi_format_capacity reads (FunctionCodegenTest's FormatBoundsAreTheRuntimesTable ties them): kind 0 is no value, and a string or a
+    // view (16, 17) is unbounded.
+    private static readonly int[] FormatBounds = [0, 4, 3, 6, 5, 11, 10, 20, 20, 40, 39, 17, 24, 4, 5, 2];
 
     // The writer adapter's write wrapper of each user formatting witness, and the conversions over them, in request order.
     private readonly List<(FunctionAbi Wrapper, FunctionAbi Implementation)> formattingWrites = new();
@@ -72,6 +131,13 @@ internal sealed partial class LegacyRuntimeHelpers
             ReferenceEquals(type, BoundType.Boolean) ? 14 : ReferenceEquals(type, BoundType.Unit) ? 15 : ReferenceEquals(type, BoundType.String) ? 16 :
             type.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Slice ? 17 : -1;
     }
+
+    /// <summary>Gets the maximum encoded bytes of a value of a Type that SPEC 22.10.5 bounds (the old utf8-formatting §5.1): a primitive
+    /// integer's by its width and signedness, a wrapping integer's as its argument's, f32 17, f64 24, char 4, bool 5 and Unit 2.</summary>
+    /// <param name="type">A closed Type, or null.</param>
+    /// <returns>Its bound, or -1 for an unbounded Type: a string, a view, a user or library formatter's.</returns>
+    internal static int FormatBound(BoundType? type)
+        => type is not null && FormatKind(type) is var kind and > 0 && kind < FormatBounds.Length ? FormatBounds[kind] : -1;
 
     /// <summary>Gets the formatting runtime's writer kind of a <c>Text.writer</c> destination Type (SPEC 22.9.2, 22.9.4), the number
     /// <c>__kimi_text_writer</c> takes as its kind Context and <c>__kimi_writer_reserve</c> switches on, the legacy runtime's own numbering,
