@@ -4819,8 +4819,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Tests: `MirTableTest`: the listing bound (131 entries in 8,419 buckets, cleared one by one) and one past it (cleared whole); a
     resize after a sparse Clear, then the new bound; the V16 row "per-view clearing" (after a view of N entries, 64 views of 4 clear
     256 slots for N = 2¹⁰, 2¹², 2¹⁴; under the parent's rule, the whole storage each time, 123,584, 538,816 and 1,121,216); a warm fill
-    and clear on both paths allocates nothing. Every fill asserts that no key of an earlier view is held and reads its values back, and
-    every Clear its exact `Cleared`. The reset rows `MirLoanSetsTest.AViewAfterALargeOneGetsAFreshInstancesSets`,
+    and clear on both paths allocates nothing. Every fill asserts that no key of an earlier view is held and reads its values back; the
+    bound, one-past and resize rows assert each Clear's exact `Cleared`, the V16 row the sum of its small views' (which forces each),
+    and the warm row only its allocation. The reset rows `MirLoanSetsTest.AViewAfterALargeOneGetsAFreshInstancesSets`,
     `MirInitTest.ABodyAfterALargeOneGetsAFreshInstancesPaths` and `MirBorrowsTest.TheViewsAfterManyAddressesReportWhatTheyReportAlone`.
     Each row fails under the mutation that reaches it, run and recorded: the V16 row under the parent's rule; the bound row and the
     resize row under listing only below the bound (`count < listed`); the one-past row, the other side of the bound, under a whole
@@ -4839,7 +4840,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     - t7's probe shapes, each a cold single pass (the large view precedes the small ones within one pass; not the warm repeated runs
       of the first prototypes' figures), medians of the 24 reps: after a view of 1,500 borrows, the 512 small views' step 4 0.733 to
       0.397 ms (B/A ×0.54); bodies with only small views (8 × 64) 0.289 to 0.306 ms (×1.058; A′/A ×1.009), their step 2 equal; the
-      shapes' whole step 4 and step 2 B/A ×0.980 to ×1.017.
+      shapes' whole step 4 and step 2 B/A ×0.980 to ×1.017; after a view of 300 borrows, the 2,048 small views (32 × 64) 1.265 to
+      1.297 ms (×1.025; A′/A ×1.023, within the noise).
     - Warm runs allocate nothing.
   - Numbering: R4-M146 was reserved for 2x-E5 by the R4 planning session (R4-M145 S2, R4-M147 P13-1, R4-M148 2c-3).
 - **R4-M147 A5's per-part guard; P13's body hold removed (PLAN G148 (1), P13-1)** (2026-10-26; R4's lane B under design P13 v3,
@@ -4902,8 +4904,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     is a shared or parameter borrow is a Limit (`sharedSupplied`, valid, accepted on dev), until Binding publishes such a layer's step
     judged by its borrow, or the writing scope's members; a raw layer outside an instance reads its pointee, so `tupleW` (an Exclusive raw
     layer over u8 in a local Tuple) is accepted where the letter leaves it undecided (v3 §6 (1)). B6-for's `v@follow = x`, the wrong record
-    PLAN G147 (8i) owns (BU's unit 0c) on the branch's base, does not arise on dev, whose Array literal places its element through no
-    receiver store (R5-M129); its two ledger rows went at the merge (R4's window 7).
+    PLAN G147 (8i) owns (BU's unit 0c) on the branch's base, does not arise on dev: its Array literal is no call (R5-M129), so no
+    call's self-store row for the pair carrier (`TyCtxt.Retains`, `i Value -> i`) reaches it.
   - Evidence: the guard equals v3's prototype (variant 6) on its 30 probe programs and design review 3's r3-limits and r3-positions;
     the problems equal it but for two d2-pairs rows, which dev changed since fb3e4d883 (base d73012e72 lacks them too). The mir
     Functional ledger against `shared-base/5e5669d1b`, on the merge with dev a7eb51913: rows 3,222 to 3,209, 55 removed and 42 added in
