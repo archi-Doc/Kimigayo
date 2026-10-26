@@ -25,7 +25,7 @@ public sealed partial class Binding
             : subject.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq } ? HirAdaptation.ReferenceRead : HirAdaptation.SharedBorrow;
         var reborrow = subject.BoundType is { Kind: BoundTypeKind.Semantics, Components: [var stored] } own &&
             borrow is { Kind: BoundTypeKind.Semantics, Components: [var lent] } && own.Semantics == borrow.Semantics && ReferenceEquals(lent, stored);
-        uses.Write(subject, reborrow ? new(HirAcquire.Reborrow, HirAdaptation.None) : new(HirAcquire.None, mode));
+        uses.FixAdjust(subject, reborrow ? new(HirAcquire.Reborrow, HirAdaptation.None) : new(HirAcquire.None, mode));
     }
 
     // A Pattern binding its plan borrows, below a reference layer, designates the payload of its Case position or an element of its Tuple
@@ -40,7 +40,7 @@ public sealed partial class Binding
             {
                 var place = adjust.Acquire != HirAcquire.None || position.Parent < 0 ? HirPlaceKind.Unset
                     : plan.Positions[position.Parent].Kind == BoundPatternKind.Case ? HirPlaceKind.Downcast : HirPlaceKind.Field;
-                uses.Write(position.Source, adjust, new(place, (byte)position.ImplicitFollows));
+                uses.FixAdjust(position.Source, adjust, new(place, (byte)position.ImplicitFollows));
             }
         }
     }

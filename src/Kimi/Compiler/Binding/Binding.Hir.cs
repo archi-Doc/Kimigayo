@@ -55,7 +55,8 @@ public sealed partial class Binding
         private bool exclusive;
         private bool unresolvedOperation; // The parent is an operation Binding left unresolved (Keeps).
 
-        // The exclusive capability each consumed child's consumer needs, recorded where the consumer uses it (ExclusiveUse), by SyntaxId.
+        // By SyntaxId: whether a child's consumer needs exclusive capability of it, recorded where the consumer uses it (Use, FixAdjust) and
+        // read by ChildAdjust's claimed and ExclusiveUse.
         private bool[] claims = [];
 
         // Binding's structural completion with its Never evidence, one per body.
@@ -72,7 +73,7 @@ public sealed partial class Binding
             var unresolvedOperation = node.BindingState != BindingState.Resolved && op == HirOp.Error && !Rejected(node) && Operation(binding.KindOp(node));
             if (this.parentOp == HirOp.Error && position == HirPosition.Evaluated)
             {
-                this.Write(node, new(HirAcquire.None, HirAdaptation.None)); // A kept operand of an Error (Keeps), used in place.
+                this.FixAdjust(node, new(HirAcquire.None, HirAdaptation.None)); // A kept operand of an Error (Keeps), used in place.
             }
             else if (op == HirOp.Error)
             {
