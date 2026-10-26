@@ -20,6 +20,18 @@ public class PairAnnotationBindingTest
 
     private const string OuterOwnerUniq = "struct Outer<q/U> {b}\n    q is owner or uniq\n    public let h: Holder<q/U during b> during b\n";
 
+    // ABinderKeepsItsCasesAtAnyOrdinal's shapes, after 64 Type parameters or pair slots ({F}, their premises {Q}, 64 arguments {A}): Holder's
+    // slot used by its 65th binder; a nested Inner whose slot that binder of Outer uses; N storing a Holder at its 65th binder; an owner
+    // case's Loan.
+    private const string WideHolder = "struct Holder<{F}s/T> {a}\n{Q}    s is owner or uniq\n    public let item: s/T during a\n";
+
+    private const string WideOuter = "struct Outer<{F}s/T>\n{Q}    s is owner or uniq\n    public struct Inner {a}\n        public let x: s/T during a\n";
+
+    private const string WideNested = "struct N<q/U> {b}\n    q is owner or uniq\n    public let h: Holder<{A}q/U during b> during b\n";
+
+    private const string WideLoan = "func make(r: ref/i32) -> Holder<{A}i32> during r => $abort(\"x\")\nfunc use(h: ref/Holder<{A}i32>) => ()\n" +
+        "func run() -> i32\n    var y: i32 = 1\n    let h = make(y@ref)\n    y = 3\n    use(h@ref)\n    return y";
+
     [Theory]
     [InlineData("s/T during a")]
     [InlineData("s/(T) during a")]
@@ -195,36 +207,36 @@ public class PairAnnotationBindingTest
     public void AStaticSlotArgumentIsJudgedInTheInstancesCase(string declarations, string records)
         => Assert.Equal(records, string.Join(" | ", RawPointerSyntaxTest.Records(declarations)));
 
-    // DECISIONS BU-44 (SPEC 15.3.5): a slot's binder bits number the pair slots alone, so 64 Type parameters before the pair binder change
-    // nothing (the verdicts of the narrow Holder above): `static` binds its owner case and not its uniq one, a raw Field states a slot
-    // Phantom in its owner case, and the default pipeline keeps no Loan of the owner case.
+    // DECISIONS BU-44 (SPEC 15.3.5, 15.2.3, 6.1.3): a slot's binders are pair-slot ordinals with no width limit, so a binder keeps its
+    // cases at any ordinal, as in the narrow Holder above: after 64 Type parameters (`types`, which take none) and after 64 pair slots
+    // (`pairs`, each `is owner`), `static` binds its owner case and not its uniq one, a raw Field states a slot Phantom in its owner case and the
+    // default pipeline keeps no Loan of it; so through a nested declaration's inherited 65th binder, a nested instance's mapping of a
+    // 65th binder to a narrow one, and an outer 65th binder that a narrow nested slot maps to.
     [Theory]
-    [InlineData("func g() -> Holder<{0}i32> during static => $abort(\"u\")", "", "")]
-    [InlineData("func g(r: uniq/i32) -> Holder<{0}uniq/i32 during r> during static => $abort(\"u\")", "", "InvalidOriginBinding_Kd")]
-    [InlineData("", "    public let p: raw/i32 during a\n", "InvalidOriginBinding_Kd")]
+    [InlineData(WideHolder + "func g() -> Holder<{A}i32> during static => $abort(\"u\")", "types", "")]
+    [InlineData(WideHolder + "func g(r: uniq/i32) -> Holder<{A}uniq/i32 during r> during static => $abort(\"u\")", "types", "InvalidOriginBinding_Kd: Holder<{A}uniq/i32 during r> during static")]
+    [InlineData(WideHolder + "    public let p: raw/i32 during a", "types", "InvalidOriginBinding_Kd: raw/i32 during a")]
+    [InlineData(WideHolder + WideLoan, "types", "")]
+    [InlineData(WideHolder + "func g() -> Holder<{A}i32> during static => $abort(\"u\")", "pairs", "")]
+    [InlineData(WideHolder + "func g(r: uniq/i32) -> Holder<{A}uniq/i32 during r> during static => $abort(\"u\")", "pairs", "InvalidOriginBinding_Kd: Holder<{A}uniq/i32 during r> during static")]
+    [InlineData(WideHolder + "    public let p: raw/i32 during a", "pairs", "InvalidOriginBinding_Kd: raw/i32 during a")]
+    [InlineData(WideHolder + WideLoan, "pairs", "")]
+    [InlineData(WideOuter + "func g(r: uniq/i32) -> Outer<{A}uniq/i32 during r>.Inner during static => $abort(\"u\")", "pairs", "InvalidOriginBinding_Kd: Outer<{A}uniq/i32 during r>.Inner during static")]
+    [InlineData(WideOuter + "func g() -> Outer<{A}i32>.Inner during static => $abort(\"u\")", "pairs", "")]
+    [InlineData(WideHolder + WideNested + "func g(r: uniq/i32) -> N<uniq/i32 during r> during static => $abort(\"u\")", "pairs", "InvalidOriginBinding_Kd: N<uniq/i32 during r> during static")]
+    [InlineData(WideHolder + WideNested + "func g() -> N<i32> during static => $abort(\"u\")", "pairs", "")]
     [InlineData(
-        "func make(r: ref/i32) -> Holder<{0}i32> during r => $abort(\"x\")\nfunc use(h: ref/Holder<{0}i32>) => ()\nfunc run() -> i32\n    var y: i32 = 1\n" +
-        "    let h = make(y@ref)\n    y = 3\n    use(h@ref)\n    return y",
-        "",
-        "")]
-    public void TypeParametersTakeNoBinderBit(string use, string field, string codes)
+        HolderOwnerUniq + "struct O<{F}q/U> {b}\n{Q}    q is owner or uniq\n    public let h: Holder<q/U during b> during b\nfunc g(r: uniq/i32) -> O<{A}uniq/i32 during r> during static => $abort(\"u\")",
+        "pairs",
+        "InvalidOriginBinding_Kd: O<{A}uniq/i32 during r> during static")]
+    public void ABinderKeepsItsCasesAtAnyOrdinal(string template, string prefix, string records)
     {
-        var parameters = string.Join(", ", Enumerable.Range(0, 64).Select(static i => $"T{i}"));
-        var source = $"struct Holder<{parameters}, s/T> {{a}}\n    s is owner or uniq\n    public let item: s/T during a\n" + field +
-            string.Format(System.Globalization.CultureInfo.InvariantCulture, use, string.Concat(Enumerable.Repeat("i32, ", 64)));
-        Assert.Equal(codes, string.Join(" ", DiagnosticCorpus.Check(source + "\npublic func main() => ()\n").Diagnostics.Select(static x => x.Code)));
-    }
-
-    // DECISIONS BU-44: SlotRequirement numbers at most 64 pair slots; a declaration with Origin slots and more is one located Unsupported_Kd,
-    // and no slot fact of it is claimed, so `static` bound to its slot adds no record.
-    [Fact]
-    public void MoreThanSixtyFourPairSlotsAreUnsupported()
-    {
-        var binders = string.Join(", ", Enumerable.Range(0, 65).Select(static i => $"s{i}/T{i}"));
-        var premises = string.Concat(Enumerable.Range(0, 64).Select(static i => $"    s{i} is owner\n"));
-        var source = $"struct Wide<{binders}> {{a}}\n{premises}    s64 is owner or uniq\n    public let item: s64/T64 during a\n" +
-            $"func g(r: uniq/i32) -> Wide<{string.Concat(Enumerable.Repeat("i32, ", 64))}uniq/i32 during r> during static => $abort(\"u\")\npublic func main() => ()\n";
-        Assert.Equal([nameof(DiagnosticCode.Unsupported_Kd)], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+        var pairs = prefix == "pairs";
+        var parameters = string.Concat(Enumerable.Range(0, 64).Select(i => pairs ? $"p{i}/V{i}, " : $"T{i}, "));
+        var premises = pairs ? string.Concat(Enumerable.Range(0, 64).Select(static i => $"    p{i} is owner\n")) : string.Empty;
+        string Fill(string text) => text.Replace("{F}", parameters, StringComparison.Ordinal).Replace("{Q}", premises, StringComparison.Ordinal)
+            .Replace("{A}", string.Concat(Enumerable.Repeat("i32, ", 64)), StringComparison.Ordinal);
+        Assert.Equal(Fill(records), string.Join(" | ", RawPointerSyntaxTest.Records(Fill(template))));
     }
 
     // SPEC 8.1.2, 23.1.2: a pair occurrence's formation publishes each independent cause, a Language cause before a target role that

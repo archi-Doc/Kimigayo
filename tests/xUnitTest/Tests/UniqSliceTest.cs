@@ -22,7 +22,7 @@ public class UniqSliceTest(ITestOutputHelper output)
         Assert.Equal(OriginVariance.Invariant, Assert.Single(symbol.Schema!.GenericSlots).OriginVariance);
         var source = Assert.Single(symbol.Schema.Origins);
         Assert.Equal(OriginVariance.Covariant, source.Variance);
-        Assert.Equal(new SlotRequirement(LoanRequirement.Uniq, 0), source.Requirement);
+        Assert.Equal(new SlotRequirement(LoanRequirement.Uniq, default), source.Requirement);
         var view = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>(), static x => x.NameKoto.IdentifierName == "view");
         Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveCopy(view.TypeOf()!, view));
         // Ordinary local Origins are not proven to outlive static; the common Owned proof remains Unknown.

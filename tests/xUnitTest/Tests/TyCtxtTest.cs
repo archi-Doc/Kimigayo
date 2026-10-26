@@ -382,6 +382,45 @@ public sealed class TyCtxtTest
             [c.Types.RawStep(p[3], 1, []), c.Types.RawStep(p[4], 1, []), c.Types.RawStep(p[5], 1, []), c.Types.RawStep(p[6], 1, []), c.Types.RawStep(p[7], 0, []), c.Types.RawStep(p[8], 0, [])]);
     }
 
+    // DECISIONS BU-44: a binder after 64 pair slots keeps its cases (its ordinal has no width limit): a nested declaration's raw Field
+    // stating its enclosing slot steps by the holder's inherited 65th argument, after its own, and a raw Field of a wide Holder steps and
+    // keeps by that Holder's 65th argument.
+    [Fact]
+    public void ABinderAfterSixtyFourPairSlotsKeepsItsCases()
+    {
+        var (c, p) = WideLayers();
+        var types = c.Types;
+        var rows = new List<string>();
+        foreach (var (at, part) in new[] { (2, 1), (3, 1), (4, 1), (5, 1) })
+        {
+            var members = new List<RawMember>();
+            Assert.True(types.RawMembers(p[at], part, [], members));
+            rows.Add($"{types.RawStep(p[at], part, [])} [{string.Join(", ", members.Select(static x => x.Referent.Name + (x.Exclusive ? " excl" : string.Empty)))}]");
+        }
+
+        Assert.Equal(["Exclusive []", "Shared []", "Exclusive [i32 excl]", "Shared [i32]"], rows);
+    }
+
+    // DECISIONS BU-44: a warm rebind over binders beyond the 64th, and reading their steps and members again, allocates nothing: the
+    // fixed point reuses each slot's words and a Binding's one array per such ordinal.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmRebindOfWideBindersAllocatesNothing()
+    {
+        var (c, p) = WideLayers();
+        var types = c.Types;
+        var members = new List<RawMember>(8);
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Binding.Bind(BindingMode.Final);
+            members.Clear();
+            if (types.RawStep(p[2], 1, []) != RawStep.Exclusive || types.RawStep(p[5], 1, []) != RawStep.Shared || !types.RawMembers(p[4], 1, [], members))
+            {
+                throw new InvalidOperationException("Wide raw steps changed.");
+            }
+        }));
+    }
+
     // DECISIONS BU-44: reading those steps and members again, the conditional keepers by their holders' cases, allocates nothing (A5 reads
     // them per instance and pass).
     [Trait("Purpose", "Allocation")]
@@ -1158,6 +1197,23 @@ public sealed class TyCtxtTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var probe = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe");
         return (c.Types, probe.Parameters.Select(static x => x.Type.TypeOf()!).ToArray());
+    }
+
+    // The compilation and the parameter Types of a probe over 64 pair slots (each `is owner`) before a `ref or uniq` binder: r, q, then
+    // Outer<…>.Inner (its raw Field stating Outer's slot) under that binder's uniq and ref cases, then H's (its own raw Field) likewise.
+    private static (Compilation C, BoundType[] Parameters) WideLayers()
+    {
+        var pairs = string.Concat(Enumerable.Range(0, 64).Select(static i => $"p{i}/V{i}, "));
+        var premises = string.Concat(Enumerable.Range(0, 64).Select(static i => $"    p{i} is owner\n"));
+        var arguments = string.Concat(Enumerable.Repeat("i32, ", 64));
+        var c = MinimalEmissionTest.Analyze($"struct Outer<{pairs}s/T> {{a}}\n{premises}    s is ref or uniq\n    internal let item: s/T during a\n" +
+            "    internal struct Inner<U>\n        internal let u: U\n        internal var p: raw/i32 during a\n" +
+            $"struct H<{pairs}s/T> {{a}}\n{premises}    s is ref or uniq\n    internal let item: s/T during a\n    internal var at: raw/i32 during a\n" +
+            $"func probe(r: uniq/i32, q: ref/i32, iu: Outer<{arguments}uniq/i32 during r>.Inner<ref/i64 during q>, ir: Outer<{arguments}ref/i32 during q>.Inner<uniq/i64 during r>, " +
+            $"hu: H<{arguments}uniq/i32 during r>, hr: H<{arguments}ref/i32 during q>) => ()\npublic func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var probe = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe");
+        return (c, probe.Parameters.Select(static x => x.Type.TypeOf()!).ToArray());
     }
 
     // The Type context and the parameter Types of ConditionalSource's `probe`.

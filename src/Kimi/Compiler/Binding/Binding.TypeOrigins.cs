@@ -362,7 +362,7 @@ public sealed partial class Binding
             // a use of none still counts toward variance.
             var conditional = TryPairLayer(type, out var whole, out var target);
             var loan = IsExclusive(type.Semantics) ? LoanRequirement.Uniq : LoanRequirement.Ref;
-            var use = conditional ? this.ConditionalUse(schema, whole) : new SlotRequirement(loan, 0);
+            var use = conditional ? this.ConditionalUse(schema, whole) : new SlotRequirement(loan, default);
             this.AccumulateOrigin(origin, schema, polarity, use, ref changed);
             if (use != default)
             {
@@ -392,7 +392,7 @@ public sealed partial class Binding
             this.AccumulateOrigin(type.OriginArguments[i], schema, sign, use, ref changed);
             if (use != default)
             {
-                this.Keep(schema, type.OriginArguments[i], type, source, 0);
+                this.Keep(schema, type.OriginArguments[i], type, source, default);
             }
         }
 
@@ -442,11 +442,7 @@ public sealed partial class Binding
                 changed = true;
             }
 
-            if (parameter.Requirement.Join(use) is var joined && joined != parameter.Requirement)
-            {
-                parameter.Requirement = joined;
-                changed = true;
-            }
+            changed |= parameter.Absorb(use);
         }
     }
 

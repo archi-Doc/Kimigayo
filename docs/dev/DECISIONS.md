@@ -6763,16 +6763,16 @@ resumed by R4-M86 (2026-10-20).
   and `AccumulateRequirements` gave a pair layer's outer Origin `ref` (its Semantics is `Parameter`) whatever the binder admits: the
   `s is uniq` defect (a `uniq` case bound to `static` accepted; spec-cases `15.3.5-conditional-slot`'s (b) entries), an owner case
   counted as a use, and a nested slot's value copied whatever case the instance selects.
-  - Decision (design A's representation): `SlotRequirement(Unconditional, ulong Binders)` replaces `LoanRequirement` on
-    `OriginParameter` (a bit: a pair binder's ordinal among the pair slots of the schema listing the slot, own then inherited, Type
-    slots taking none; join: max and or). The fixed
-    point is its one writer: a pair layer's slot is a conditional use (`ConditionalUse`: its binder's bit; the binder's strongest
+  - Decision (design A's representation): `SlotRequirement(Unconditional, BinderSet Binders)` replaces `LoanRequirement` on
+    `OriginParameter` (a member: a pair binder's ordinal among the pair slots of the schema listing the slot, own then inherited, Type
+    slots taking none; join: max and union). The fixed
+    point is its one writer: a pair layer's slot is a conditional use (`ConditionalUse`: its binder; the binder's strongest
     class in every case where the schema lists no such binder, a function's or accessor's Container binder; no use where the binder
-    admits no borrow); a nested slot maps its bits through the instance's arguments (`NestedUse`: a pair layer of an outer binder is
+    admits no borrow); a nested slot maps its binders through the instance's arguments (`NestedUse`: a pair layer of an outer binder is
     that binder's conditional use, any other argument its strongest class, a Type parameter or projection nothing); a keeper of a pair
-    layer carries its bit. One reader, `Binding.RequirementAt(slot, instance)` → (Weakest, Strongest) over the cases the instance
+    layer carries its binder. One reader, `Binding.RequirementAt(slot, instance)` → (Weakest, Strongest) over the cases the instance
     selects (a concrete argument its Semantics, a pair layer its binder's admitted set, a family its case Types', no instance the
-    declaration's cases), in the instance's own-then-inherited order: the bits of an enclosing declaration's slot that a nested
+    declaration's cases), in the instance's own-then-inherited order: the binders of an enclosing declaration's slot that a nested
     declaration's Field states number the enclosing schema's pair slots and read the instance's inherited arguments, which follow its
     own (SPEC 6.1.3), so `Outer<ref/…>.Inner<uniq/i64…>`'s layer is Shared and `Outer<uniq/…>.Inner<ref/i64…>`'s Exclusive (5.2.1
     condition 3; review 1's F2, the base unsound on the second); a nested declaration's inherited copy of a slot numbers its own
@@ -6782,15 +6782,18 @@ resumed by R4-M86 (2026-10-20).
     decision), DeclaredStep (Shared when Strongest is ref; `Held` gains the holder as its sixth parameter and in its memo key where a
     written layer is read), SignatureStep's Statements, SlotMembers' mode and KeptReferents (a pair layer's keeper only where the owner
     selects a borrow case of its binder; nothing allocated per read).
-  - Two facts, two rules (revision 2): the per-case facts (requirement, keepers, Phantom) take a bit only for a binder admitting a
-    borrow, and (none, no bit) is no use; variance stays per declaration, every leaf and nested position counting as before, and a
+  - Two facts, two rules (revision 2): the per-case facts (requirement, keepers, Phantom) take a binder only where it admits a
+    borrow, and (none, no binder) is no use; variance stays per declaration, every leaf and nested position counting as before, and a
     Type declaration's slot Phantom in every admitted case (`(none, 0)`) closes as invariant, generalizing the Unused closure; function
     and accessor schemas keep the Unused closure. Struck from the choice: "nothing when the binder admits no borrow, which also fixes
     variance" (the leaf counts toward variance: r30 stays rejected).
-  - The bound (review 1's F1): a Type with Origin slots and more than 64 pair slots is one located Unsupported_Kd at its last own pair
-    parameter, decided in the fixed point (`PairSlotsFit`), and `RequirementAt` claims nothing for its slots; Type parameters take no
-    bit, so 64 of them before a pair binder change nothing (before, such a binder read as unconditional `uniq`). Function and accessor
-    schemas, whose requirements no reader reads, are not bounded.
+  - No bound (implementation reviews 1 and 2, one cause): a `ulong` of binders lost every ordinal past 63 (F1: such a binder read as
+    unconditional `uniq`), and fix round 1's limit on it needed a second decision site, which a nested Type without own pair slots
+    escaped silently (G1, ir18). `BinderSet` is the one representation of a slot's binders, with no width limit: ordinals below 64
+    inline, the others in words that the fixed point writes into each slot's own buffer, kept across passes (`OriginParameter.Absorb`,
+    `ResetRequirement`), or into one reused scratch buffer (`NestedUse`), a single ordinal past 63 sharing one array per ordinal and
+    Binding (`SingleBinder`); readers never allocate. Every binder operation (the union, the empty test of the fast path, iteration by
+    `Next`, the instance mapping, the case enumeration and the failing-case facts) goes through its members; no other form remains.
   - Records: both checks record the failing cases as a typed fact (`FailingCase`, `PairCase`s): per binder the instance leaves open,
     its cases of the failing class where they are some but not all of its cases; none when every case fails, so a concrete instance
     names none, as its twin. The record also carries its failing class, by which the adapter renders the cases (`CaseText`) in the
@@ -6809,10 +6812,12 @@ resumed by R4-M86 (2026-10-20).
     verdict effect: families come only from an expression's adaptation and the fixed point visits only written signature and Field
     Types (review 1: 175 programs, 0 families). An editorial "in any admitted Semantics case" in §5.7 Slots and ownership is optional
     (explicit SPEC scope only).
-  - Cost: src +441/−101 lines (code +295/−61; fix round 1 src +154/−74), above the design's +120/−35 by the case-fact records
-    (`FailingCase`, `CaseText`, design review 1's B3), the bound and the own-then-inherited mapping, and the readers' line wraps. Cold Bind allocation over the 44 milestones, PairCaseFamilies and 32 generated
-    pair declarations (base 2f2ed6a94): +1,872 B per program (+0.04%, the library's keepers grow 8 B each), −120 B on Milestone33,
-    +5,968 B on the generated workload (+0.10%); issue counts equal; warm reads allocate 0 B. Pinned warm Bind timing: the commit.
+  - Cost: src +560/−104 lines (code +367/−64), above the design's +120/−35 by the case-fact records (`FailingCase`, `CaseText`,
+    design review 1's B3), `BinderSet` (fix round 2), the own-then-inherited mapping and the readers' line wraps. Cold Bind allocation
+    over the 44 milestones, PairCaseFamilies and 32 generated pair declarations (base 2f2ed6a94): +3,288 B per program for most
+    (+0.07%: `SlotRequirement` and each keeper hold a set's word reference, the library's slots and keepers 8 B more each), +1,296 B
+    on Milestone33, +10,456 B on the generated workload (+0.17%); issue counts equal; warm reads and a warm rebind over binders past
+    the 64th allocate 0 B. Pinned warm Bind timing (5caf5e8f0): B/A 0.986–0.998, in its commit.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

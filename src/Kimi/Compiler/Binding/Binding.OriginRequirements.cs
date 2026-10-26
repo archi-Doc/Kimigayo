@@ -13,62 +13,31 @@ public sealed partial class Binding
     private uint originRequirementPass;
     private uint originRequirementConsumer;
 
+    // The words of one binder ordinal beyond 63 (SingleBinder), one array per ordinal, and the buffer NestedUse builds a use's binders
+    // into, both reused across passes (BinderSet.Union).
+    private ulong[]?[] binderSingles = [];
+    private ulong[]? binderScratch;
+
     // SPEC 15.3.5, 8.15.2 (DECISIONS BU-44): a declared slot's weakest and strongest Loan requirement over the Semantics cases `instance`
     // may select, or with no instance its declaration's admitted cases: Weakest `none` is Phantom in some case, Strongest `uniq` exclusive
-    // in some case. A slot of a schema with more than 64 pair slots claims nothing: its declaration is a located Unsupported_Kd
-    // (ComputeOriginRequirements). A slot without binders reads its unconditional part at once.
+    // in some case. A slot without binders reads its unconditional part at once.
     internal (LoanRequirement Weakest, LoanRequirement Strongest) RequirementAt(OriginParameter slot, BoundType? instance)
-    {
-        var schema = ListingSchema(slot, instance);
-        if (schema.GenericSlots.Count > 64 && !PairSlotsFit(schema))
-        {
-            return (LoanRequirement.Uniq, LoanRequirement.None);
-        }
+        => slot.Requirement.Binders.IsEmpty ? (slot.Requirement.Unconditional, slot.Requirement.Unconditional)
+            : this.RequirementOf(slot.Requirement, ListingSchema(slot, instance), instance);
 
-        return slot.Requirement.Binders == 0 ? (slot.Requirement.Unconditional, slot.Requirement.Unconditional)
-            : this.RequirementOf(slot.Requirement, schema, instance);
-    }
-
-    // The schema whose pair slots a slot's bits number (SlotRequirement): the one listing it, its declaring schema for its own slot and the
-    // instance's for an inherited copy, which records the nested declaration's own uses (SPEC 6.1.3).
+    // The schema whose pair slots a slot's binders number (SlotRequirement): the one listing it, its declaring schema for its own slot and
+    // the instance's for an inherited copy, which records the nested declaration's own uses (SPEC 6.1.3).
     private static DeclarationSchema ListingSchema(OriginParameter slot, BoundType? instance)
     {
         var declaring = slot.Origin.Binder!.BoundSymbol!.Schema!;
         return ReferenceEquals(declaring.Origins[slot.Slot], slot) || instance?.Symbol?.Schema is not { } listing ? declaring : listing;
     }
 
-    // Whether a schema's pair slots fit SlotRequirement's 64 bits (DECISIONS BU-44).
-    private static bool PairSlotsFit(DeclarationSchema schema)
+    // A pair binder's ordinal among the schema's pair slots, own then inherited (Type slots take none); -1 when the schema lists no such
+    // binder.
+    private static int PairOrdinal(DeclarationSchema schema, BoundType whole)
     {
-        var count = 0;
-        for (var k = 0; k < schema.GenericSlots.Count; k++)
-        {
-            count += schema.GenericSlots[k].Semantics is null ? 0 : 1;
-        }
-
-        return count <= 64;
-    }
-
-    // The header parameter at which a Type's pair slots pass SlotRequirement's 64 bits: its last own pair parameter (own slots come first);
-    // none when all its pair slots are inherited, as its enclosing declaration's then are, which reports.
-    private static Koto? OverflowingParameter(DeclarationContainerKoto container, DeclarationSchema schema)
-    {
-        for (var k = Math.Min(container.GenericParameterNodes.Count, schema.GenericSlots.Count) - 1; k >= 0; k--)
-        {
-            if (schema.GenericSlots[k].Semantics is not null)
-            {
-                return container.GenericParameterNodes[k];
-            }
-        }
-
-        return null;
-    }
-
-    // A pair binder's bit: its ordinal among the schema's pair slots, own then inherited (Type slots take none); 0 when the schema lists
-    // it among none of the first 64.
-    private static ulong PairBit(DeclarationSchema schema, BoundType whole)
-    {
-        for (int k = 0, ordinal = 0; k < schema.GenericSlots.Count && ordinal < 64; k++)
+        for (int k = 0, ordinal = 0; k < schema.GenericSlots.Count; k++)
         {
             if (schema.GenericSlots[k].Semantics is null)
             {
@@ -77,16 +46,16 @@ public sealed partial class Binding
 
             if (ReferenceEquals(schema.GenericSlots[k].Symbol.WholeType, whole))
             {
-                return 1UL << ordinal;
+                return ordinal;
             }
 
             ordinal++;
         }
 
-        return 0;
+        return -1;
     }
 
-    // The argument selecting the cases of the pair binder at bit `ordinal` of `schema` (PairBit): the instance's, in its own-then-inherited
+    // The argument selecting the cases of the pair binder at `ordinal` of `schema` (PairOrdinal): the instance's, in its own-then-inherited
     // order, where an enclosing declaration's slots follow a nested declaration's own (SPEC 6.1.3), or with no instance (or before a Type
     // is complete) the binder's own pair W, which selects every admitted case.
     private static BoundType Selecting(DeclarationSchema schema, int ordinal, BoundType? instance)
@@ -140,19 +109,12 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (node is DeclarationContainerKoto container && schema.Origins.Count != 0 && !PairSlotsFit(schema) &&
-                OverflowingParameter(container, schema) is { } parameter)
-            {
-                // DECISIONS BU-44: SlotRequirement numbers at most 64 pair slots, so no slot fact of this Type is claimed (RequirementAt).
-                this.Fail(parameter, BindingFailure.Unsupported);
-            }
-
             if (ReferenceEquals(node, this.Library.Slice.Declaration) && schema.Origins.Count == 1 && schema.GenericSlots.Count == 1)
             {
                 // The validated intrinsic has compiler-managed shared storage, not a
                 // user Phantom Origin; preserve its published dependency metadata.
                 schema.Origins[0].Variance = OriginVariance.Covariant;
-                schema.Origins[0].Requirement = new(LoanRequirement.Ref, 0);
+                schema.Origins[0].Requirement = new(LoanRequirement.Ref, default);
                 schema.GenericSlots[0].OriginVariance = OriginVariance.Covariant;
             }
 
@@ -315,13 +277,25 @@ public sealed partial class Binding
     }
 
     // SPEC 15.3.5 (DECISIONS BU-44): a conditional slot, the outer Origin of a pair layer of `whole`'s binder, is a use only in that
-    // binder's borrow cases: its bit when the binder admits a borrow and `schema` lists it, its strongest class in every case where the
-    // schema lists no such binder (a function's or accessor's use of its Container's), and no use where it admits no borrow.
+    // binder's borrow cases: that binder when it admits a borrow and `schema` lists it, its strongest class in every case where the schema
+    // lists no such binder (a function's or accessor's use of its Container's), and no use where it admits no borrow.
     private SlotRequirement ConditionalUse(DeclarationSchema schema, BoundType whole)
     {
         var strongest = this.ClassRange(whole).Strongest;
-        var bit = strongest == LoanRequirement.None ? 0 : PairBit(schema, whole);
-        return new(bit == 0 ? strongest : LoanRequirement.None, bit);
+        var ordinal = strongest == LoanRequirement.None ? -1 : PairOrdinal(schema, whole);
+        return ordinal < 0 ? new(strongest, default) : new(LoanRequirement.None, this.SingleBinder(ordinal));
+    }
+
+    // The binder set of one ordinal (BinderSet.Of), its words beyond 63 one array per ordinal for this Binding.
+    private BinderSet SingleBinder(int ordinal)
+    {
+        var index = ordinal - 64;
+        if (index >= this.binderSingles.Length)
+        {
+            Array.Resize(ref this.binderSingles, Math.Max(index + 1, 2 * this.binderSingles.Length));
+        }
+
+        return BinderSet.Of(ordinal, index < 0 ? null : (this.binderSingles[index] ??= new ulong[(index / 64) + 1]));
     }
 
     // A nested slot's requirement as a use in `outer` (SPEC 15.3.5): its unconditional part, and per binder of it the instance's argument:
@@ -329,27 +303,27 @@ public sealed partial class Binding
     // projection, which selects no case).
     private SlotRequirement NestedUse(SlotRequirement nested, BoundType instance, DeclarationSchema outer)
     {
-        var use = new SlotRequirement(nested.Unconditional, 0);
-        for (var bits = nested.Binders; bits != 0; bits &= bits - 1)
+        var use = new SlotRequirement(nested.Unconditional, default);
+        for (var ordinal = nested.Binders.Next(0); ordinal >= 0; ordinal = nested.Binders.Next(ordinal + 1))
         {
-            var argument = Selecting(instance.Symbol!.Schema!, BitOperations.TrailingZeroCount(bits), instance);
-            use = use.Join(TryPairLayer(argument, out var whole, out _)
-                ? this.ConditionalUse(outer, whole) : new(this.ClassRange(argument).Strongest, 0));
+            var argument = Selecting(instance.Symbol!.Schema!, ordinal, instance);
+            var part = TryPairLayer(argument, out var whole, out _) ? this.ConditionalUse(outer, whole) : new(this.ClassRange(argument).Strongest, default);
+            use = new(Max(use.Unconditional, part.Unconditional), use.Binders.Union(part.Binders, ref this.binderScratch, out _));
         }
 
-        return use;
+        return use; // Its binders may live in binderScratch until the next NestedUse: AccumulateRequirements reads them first.
     }
 
-    // The requirement over the cases `instance` selects of the binders in `requirement`, bits of `schema` (RequirementAt): the unconditional
+    // The requirement over the cases `instance` selects of the binders in `requirement`, ordinals of `schema` (RequirementAt): the unconditional
     // part joined per binder with the classes of its selected cases; an argument selecting none leaves no case, which claims nothing,
     // neither Phantom nor `uniq` (Uniq, None).
     private (LoanRequirement Weakest, LoanRequirement Strongest) RequirementOf(SlotRequirement requirement, DeclarationSchema schema, BoundType? instance)
     {
         var weakest = requirement.Unconditional;
         var strongest = weakest;
-        for (var bits = requirement.Binders; bits != 0; bits &= bits - 1)
+        for (var ordinal = requirement.Binders.Next(0); ordinal >= 0; ordinal = requirement.Binders.Next(ordinal + 1))
         {
-            var (least, most) = this.ClassRange(Selecting(schema, BitOperations.TrailingZeroCount(bits), instance));
+            var (least, most) = this.ClassRange(Selecting(schema, ordinal, instance));
             if (least > most)
             {
                 return (LoanRequirement.Uniq, LoanRequirement.None);
@@ -409,9 +383,10 @@ public sealed partial class Binding
         var (weakest, strongest) = this.RequirementAt(slot, instance);
         var schema = ListingSchema(slot, instance);
         var cases = new List<PairCase>();
-        for (var bits = weakest == strongest ? 0 : slot.Requirement.Binders; bits != 0; bits &= bits - 1)
+        var binders = weakest == strongest ? default : slot.Requirement.Binders;
+        for (var ordinal = binders.Next(0); ordinal >= 0; ordinal = binders.Next(ordinal + 1))
         {
-            var argument = Selecting(schema, BitOperations.TrailingZeroCount(bits), instance);
+            var argument = Selecting(schema, ordinal, instance);
             var modes = this.SelectedCases(argument, out var binder);
             var start = cases.Count;
             foreach (var mode in SemanticsOrder)

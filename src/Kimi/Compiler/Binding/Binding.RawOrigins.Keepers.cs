@@ -50,7 +50,7 @@ public sealed partial class Binding
     // (AccumulateRequirements), a borrow layer whose Origin is a slot of `schema` keeps that slot with its referent `kept`, a pair layer
     // only in the borrow cases of its binder `binders`, and an Origin argument bound to such a slot keeps it with the nested Type `kept`'s
     // slot `via`, whose keepers count as the slot's, substituted by that Type (Keepers). Kept per pass; a null referent keeps nothing.
-    private void Keep(DeclarationSchema schema, BoundOrigin origin, BoundType? kept, OriginParameter? via, ulong binders)
+    private void Keep(DeclarationSchema schema, BoundOrigin origin, BoundType? kept, OriginParameter? via, BinderSet binders)
     {
         for (var i = 0; i < origin.Operands.Count && origin.Kind == OriginKind.Intersection; i++)
         {
@@ -126,7 +126,7 @@ public sealed partial class Binding
         var complete = true;
         foreach (var keeper in this.Keepers(slot))
         {
-            if (keeper.Binders != 0 &&
+            if (!keeper.Binders.IsEmpty &&
                 this.RequirementOf(new(LoanRequirement.None, keeper.Binders), owner.Symbol!.Schema!, owner).Strongest == LoanRequirement.None)
             {
                 continue;
@@ -156,8 +156,8 @@ public sealed partial class Binding
     }
 
     // A slot's keeper: the referent of a borrow keeping it, or (Via) a nested Type whose slot Via keeps it; a pair layer's referent keeps
-    // it only in its binder's borrow cases (Binders, a bit of the slot's schema).
-    private readonly record struct Keeper(BoundType Type, OriginParameter? Via, ulong Binders);
+    // it only in its binder's borrow cases (Binders, of the slot's schema).
+    private readonly record struct Keeper(BoundType Type, OriginParameter? Via, BinderSet Binders);
 
     // A slot's keepers in one pass, without duplicates; reused across passes (a warm pass allocates nothing).
     private sealed class KeeperList

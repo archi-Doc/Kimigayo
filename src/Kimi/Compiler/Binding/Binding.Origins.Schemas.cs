@@ -130,7 +130,7 @@ public sealed partial class Binding
             {
                 var origin = schema.Origins[i];
                 origin.Variance = OriginVariance.Unused;
-                origin.Requirement = default;
+                origin.ResetRequirement();
                 if (i < origins.Count && scope.Parent is { } enclosing && FindAbstractOrigin(origin.Name, enclosing) is not null)
                 {
                     this.Fail(node, BindingFailure.Duplicate);

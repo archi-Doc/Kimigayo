@@ -54,18 +54,145 @@ public enum LoanRequirement : byte
 
 /// <summary>A declared slot's Loan requirement over the Semantics cases of its declaration's pair binders (SPEC 15.3.5; DECISIONS BU-44):
 /// <see cref="Unconditional"/> in every case, joined in one case with the class of each binder in <see cref="Binders"/> that the case
-/// gives a borrow Semantics (`ref` for ref and objref, `uniq` for uniq and objuniq). A bit is a pair binder's ordinal among the pair slots
-/// of the schema listing the slot (own then inherited; Type slots take none), for a binder admitting a borrow; a Type with more than 64
-/// pair slots is Unsupported_Kd. Binding.RequirementAt reads it at an instance.</summary>
+/// gives a borrow Semantics (`ref` for ref and objref, `uniq` for uniq and objuniq). A member is a pair binder's ordinal among the pair
+/// slots of the schema listing the slot (own then inherited; Type slots take none), for a binder admitting a borrow. Binding.RequirementAt
+/// reads it at an instance.</summary>
 /// <param name="Unconditional">The requirement in every case.</param>
 /// <param name="Binders">The pair binders whose borrow cases use the slot.</param>
-public readonly record struct SlotRequirement(LoanRequirement Unconditional, ulong Binders)
+public readonly record struct SlotRequirement(LoanRequirement Unconditional, BinderSet Binders);
+
+/// <summary>A set of pair-slot ordinals, the binders of a <see cref="SlotRequirement"/> (DECISIONS BU-44), with no width limit: ordinals
+/// below 64 inline and the others in words beyond them, word i holding ordinals 64 + 64i to 127 + 64i. Sets compare by their members.
+/// Every operation on binders goes through these members; only the requirement fixed point builds a set beyond 64 into a buffer, its
+/// slot's or a reused scratch one (<see cref="Union"/>).</summary>
+public readonly struct BinderSet : IEquatable<BinderSet>
 {
-    /// <summary>Joins two requirements (SPEC 15.3.5: uses propagate the stronger in each case).</summary>
-    /// <param name="other">The other requirement.</param>
-    /// <returns>The stronger unconditional part with both binder sets.</returns>
-    public SlotRequirement Join(SlotRequirement other)
-        => new(other.Unconditional > this.Unconditional ? other.Unconditional : this.Unconditional, this.Binders | other.Binders);
+    private readonly ulong low;
+    private readonly ulong[]? high;
+
+    internal BinderSet(ulong low, ulong[]? high) => (this.low, this.high) = (low, high);
+
+    /// <summary>Gets a value indicating whether the set has no member.</summary>
+    public bool IsEmpty => this.Next(0) < 0;
+
+    // The words beyond the 64th ordinal, the buffer a slot's own set is built into (OriginParameter.Absorb).
+    internal ulong[]? Words => this.high;
+
+    /// <summary>Tests two sets for equal members.</summary>
+    /// <param name="left">A set.</param>
+    /// <param name="right">Another set.</param>
+    /// <returns>Whether their members are equal.</returns>
+    public static bool operator ==(BinderSet left, BinderSet right) => left.Equals(right);
+
+    /// <summary>Tests two sets for different members.</summary>
+    /// <param name="left">A set.</param>
+    /// <param name="right">Another set.</param>
+    /// <returns>Whether their members differ.</returns>
+    public static bool operator !=(BinderSet left, BinderSet right) => !left.Equals(right);
+
+    /// <summary>Gets the least member at or after an ordinal, for iteration without allocation.</summary>
+    /// <param name="ordinal">The least ordinal to consider, 0 or more.</param>
+    /// <returns>The member, or -1 when none remains.</returns>
+    public int Next(int ordinal)
+    {
+        if (ordinal < 64 && (this.low >> ordinal) != 0)
+        {
+            return ordinal + System.Numerics.BitOperations.TrailingZeroCount(this.low >> ordinal);
+        }
+
+        for (var i = Math.Max(ordinal - 64, 0) / 64; this.high is not null && i < this.high.Length; i++)
+        {
+            var skip = Math.Max(ordinal - 64 - (64 * i), 0);
+            if ((this.high[i] >> skip) != 0)
+            {
+                return 64 + (64 * i) + skip + System.Numerics.BitOperations.TrailingZeroCount(this.high[i] >> skip);
+            }
+        }
+
+        return -1;
+    }
+
+    /// <inheritdoc/>
+    public bool Equals(BinderSet other)
+    {
+        for (var i = 0; i < Math.Max(this.high?.Length ?? 0, other.high?.Length ?? 0); i++)
+        {
+            if (Word(this.high, i) != Word(other.high, i))
+            {
+                return false;
+            }
+        }
+
+        return this.low == other.low;
+    }
+
+    /// <inheritdoc/>
+    public override bool Equals(object? obj) => obj is BinderSet other && this.Equals(other);
+
+    /// <inheritdoc/>
+    public override int GetHashCode()
+    {
+        var hash = this.low.GetHashCode();
+        for (var i = 0; this.high is not null && i < this.high.Length; i++)
+        {
+            hash = this.high[i] == 0 ? hash : HashCode.Combine(hash, i, this.high[i]);
+        }
+
+        return hash;
+    }
+
+    // The set of one ordinal; one beyond 63 in `words`, the caller's array for it (a Binding keeps one per ordinal, so a warm pass
+    // allocates nothing).
+    internal static BinderSet Of(int ordinal, ulong[]? words)
+    {
+        if (words is null)
+        {
+            return new(1UL << ordinal, null);
+        }
+
+        words[(ordinal - 64) / 64] = 1UL << ((ordinal - 64) % 64);
+        return new(0, words);
+    }
+
+    // The empty set over this set's words, cleared and kept for a new pass of the fixed point (OriginParameter.ResetRequirement).
+    internal BinderSet Cleared()
+    {
+        if (this.high is not null)
+        {
+            Array.Clear(this.high);
+        }
+
+        return new(0, this.high);
+    }
+
+    // The union with `other`, whether `other` added a member; beyond 64 built into `buffer`, the caller's (a slot's own words, a scratch
+    // one), reused and grown only when an ordinal needs a word it lacks. Each word is read before it is written, so either set may live
+    // there; a set another holds is never written.
+    internal BinderSet Union(BinderSet other, ref ulong[]? buffer, out bool added)
+    {
+        added = (other.low & ~this.low) != 0;
+        for (var i = 0; !added && other.high is not null && i < other.high.Length; i++)
+        {
+            added = (other.high[i] & ~Word(this.high, i)) != 0;
+        }
+
+        var words = Math.Max(this.high?.Length ?? 0, other.high?.Length ?? 0);
+        if (!added || words == 0)
+        {
+            return added ? new(this.low | other.low, null) : this;
+        }
+
+        var target = buffer is not null && buffer.Length >= words ? buffer : new ulong[words];
+        for (var i = 0; i < target.Length; i++)
+        {
+            target[i] = Word(this.high, i) | Word(other.high, i);
+        }
+
+        buffer = target;
+        return new(this.low | other.low, target);
+    }
+
+    private static ulong Word(ulong[]? words, int i) => words is not null && i < words.Length ? words[i] : 0;
 }
 
 public enum BindingObligationKind : byte
@@ -123,6 +250,24 @@ public sealed class OriginParameter(string name, int slot, BoundOrigin origin, S
     public OriginVariance Variance { get; internal set; }
 
     public SlotRequirement Requirement { get; internal set; }
+
+    // Joins a use into Requirement (SPEC 15.3.5: the stronger unconditional part, every binder), the requirement fixed point being its one
+    // writer; whether it changed.
+    internal bool Absorb(SlotRequirement use)
+    {
+        var words = this.Requirement.Binders.Words;
+        var binders = this.Requirement.Binders.Union(use.Binders, ref words, out var added);
+        if (!added && use.Unconditional <= this.Requirement.Unconditional)
+        {
+            return false;
+        }
+
+        this.Requirement = new(use.Unconditional > this.Requirement.Unconditional ? use.Unconditional : this.Requirement.Unconditional, binders);
+        return true;
+    }
+
+    // Starts a pass of the requirement fixed point: no requirement, its binders' words cleared and kept (BinderSet.Cleared).
+    internal void ResetRequirement() => this.Requirement = new(LoanRequirement.None, this.Requirement.Binders.Cleared());
 }
 
 /// <summary>Shared ordered generic and Origin binders for one declaration.</summary>

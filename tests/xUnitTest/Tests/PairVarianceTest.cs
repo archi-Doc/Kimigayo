@@ -60,21 +60,22 @@ public sealed class PairVarianceTest
     {
         var c = CompilationTestHelper.BindSuccess("struct W {s}\n    let keep: Loan<ref/i32 during s>\n    let p: raw/i32 during s\n");
         var schema = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.StructKoto>().Single().SymbolOf()!.Schema!;
-        Assert.Equal((OriginVariance.Covariant, new SlotRequirement(LoanRequirement.Ref, 0)), (schema.Origins[0].Variance, schema.Origins[0].Requirement));
+        Assert.Equal((OriginVariance.Covariant, new SlotRequirement(LoanRequirement.Ref, default)), (schema.Origins[0].Variance, schema.Origins[0].Requirement));
     }
 
-    // SPEC 15.3.5 (DECISIONS BU-44): a slot only a conditional pair slot uses publishes no unconditional requirement and its binder's bit,
-    // and its declaration's cases range from the binder's weakest to its strongest class; a binder admitting no borrow adds no bit.
+    // SPEC 15.3.5 (DECISIONS BU-44): a slot only a conditional pair slot uses publishes no unconditional requirement and its binder, and
+    // its declaration's cases range from the binder's weakest to its strongest class; a binder admitting no borrow is no member.
     [Theory]
-    [InlineData("uniq", 1UL, LoanRequirement.Uniq, LoanRequirement.Uniq)]
-    [InlineData("owner or uniq", 1UL, LoanRequirement.None, LoanRequirement.Uniq)]
-    [InlineData("ref or uniq", 1UL, LoanRequirement.Ref, LoanRequirement.Uniq)]
-    [InlineData("owner", 0UL, LoanRequirement.None, LoanRequirement.None)]
-    public void AConditionalSlotPublishesItsBinder(string semantics, ulong binders, LoanRequirement weakest, LoanRequirement strongest)
+    [InlineData("uniq", 0, LoanRequirement.Uniq, LoanRequirement.Uniq)]
+    [InlineData("owner or uniq", 0, LoanRequirement.None, LoanRequirement.Uniq)]
+    [InlineData("ref or uniq", 0, LoanRequirement.Ref, LoanRequirement.Uniq)]
+    [InlineData("owner", -1, LoanRequirement.None, LoanRequirement.None)]
+    public void AConditionalSlotPublishesItsBinder(string semantics, int binder, LoanRequirement weakest, LoanRequirement strongest)
     {
         var c = CompilationTestHelper.BindSuccess($"struct H<s/T> {{a}}\n    s is {semantics}\n    let item: s/T during a\n");
         var slot = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.StructKoto>().Single().SymbolOf()!.Schema!.Origins[0];
-        Assert.Equal((new SlotRequirement(LoanRequirement.None, binders), (weakest, strongest)), (slot.Requirement, c.Binding.RequirementAt(slot, null)));
+        var requirement = slot.Requirement;
+        Assert.Equal((LoanRequirement.None, binder, -1, (weakest, strongest)), (requirement.Unconditional, requirement.Binders.Next(0), requirement.Binders.Next(1), c.Binding.RequirementAt(slot, null)));
     }
 
     // SPEC 15.3.5 (DECISIONS BU-44): variance stays one per declaration, so every leaf and nested position counts toward it whatever
