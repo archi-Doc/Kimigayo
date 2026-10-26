@@ -9643,3 +9643,10 @@ structure is recorded here by the unit that first implements it.
     `WriteBuiltinComparison` text (per-instruction text C8c left in D5, R5-M118); `MirBodyKind.Shim` bodies (PD3); the builder expanding
     generic comparisons per instance (MIR is per template; held); new IntrinsicIds or catalog rows (PD21); Kimigayo bodies for built-in
     witnesses now (R8).
+- **R5-M127 The owner confirms C8f's departure** (owner, 2026-10-26, to the R5 planning session directly, on its explanation after
+  C8f's design; verbatim 「C8f の逸脱 (i)も承認します」; the consequences are the planning session's) The departure R5-M126 records is
+  confirmed: K package 4.3's Builtin row (and PropertyWitness's) gives "Representative: Self Type"; a shim item also records its
+  admitting call's substitution as its Representative, since Self alone does not instantiate a binary arithmetic requirement's signature
+  (`ref/Rhs`, `Self.Output`), and TyCtxt.Witness's Builtin and Storage targets carry the call's substitution for that (R5-M61). The key is
+  unchanged: every call of one key gives one Abi (its Self erases to one Type, references are pointers, SPEC 13.3.3 fixes a built-in numeric
+  Type's counterpart and Output). It leaves the list.
