@@ -3780,7 +3780,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     pointer may be used (B-N3).
   - State: tags by own-step entry (found at the check, its first Based or Stored holder, the next entry found on its root) and a list
     per root, so a departing access scans the entries found on its root (B §7: the conflict scan's density); an own-step entry makes its
-    root `borrowed`, so the root's accesses are listed, and its view a producer (D5).
+    root `borrowed`, so the root's accesses are listed, and its view a producer (D5; the producer clause superseded by R4-M141: a
+    producer only where an access may depart it).
   - Vocabulary: `DiagnosticCode.OwnStepDeparture_Kd` (Warning, Language, `case:Text` evidence as every A5 code); the requirement kind
     `OwnStepDeparture`, added against R5-M24's "no member is added" by the owner's OQ-2 (the enumeration's prohibition now reads "without
     the owner's approval"); `OwnershipIssue.Code` maps it, the requirement's one code that the ledger's consistency set reads (the old
@@ -4590,6 +4591,71 @@ and migration obligations remain in force; no numeric cap changes are authorized
     problems equal; A5's timed allocation +0.06 % (the growth past 431 Types).
   - Rejected: a cache in `MirTypes` (static, wrong across compilations) or in `TyCtxt` (a MIR fact on Binding's representation); keying
     the walk's own memo by stored part and positions (more code, a walk per local stays).
+- **R4-M141 Own-step entries make a view a producer only where an access may depart one (G258 D2)** (2026-10-26; R4's lane A under the
+  owner's 「D1・D2 を採用 (推奨)」 of 2026-10-26; the G258 report's §4 D2, option (a), its design review's ACCEPT with conditions N1–N4).
+  Supersedes R4-M124's State clause "and its view a producer (D5)" and adds a term to R4-M98's D5 producer list.
+  - Rule (`MirBorrows.OwnSteps.MayDepart`, read by `Addresses`' producer term): a view whose only producer input is its own-step entries
+    (no Loan, guard candidate, R3 drop, `PreparedInput` write or PQ-10 mark) is a producer only where some use of it, reached or not, as
+    Accesses' `KindOf` classifies it, is a destruction Accesses leaves `Unclassified` on a root the entries borrow, or an access other
+    than a read or a shared borrow that `Departs` an entry on its root. This is a superset of the Warning's condition: it reads no
+    liveness and no `Covered`, and it counts an Opaque site's uses, which the replay skips. A reborrow counts as its plain use, which is
+    exact because Binding forms no Uniq reborrow in such a view (a Reborrowing pair acquisition past a shared Deref issues no Loan), so
+    no activation exists either (G258 D2's design §3).
+  - Records such a view can have, all made only in a producing view:
+    - (a) `OwnStepDeparture_Kd`;
+    - (b) an unclassified destruction's located `Unsupported_Kd` on a root the entries borrow (kept: `MayDepart` holds);
+    - (c) a retention Limit's located `Unsupported_Kd` (`Locations.Check`, R4-M51);
+    - (d) `OwnershipStorageLimit_Kd` (`Solve`, R4-M15a).
+    Where no access may depart, (c) and (d) leave the view by D5's rule, "a body without a Loan, which no conflict can depend on,
+    reports neither" (R4-M36, R4-M51; `AnUnclassifiedDestructionOrCallIsUnsupported`'s `unlent`).
+  - Representation: the replay's per-root list (`ownRoots`, `ownTags[..].Next`). `MayDepart` restarts it and lists every own-step
+    entry on its root under the stamp `Listed` (-1), which no check uses, and the replay restarts it before its first check. A use tests
+    only its root's entries, the conflict scan's density: work O(keys + entries + uses + departing uses × entries on their root).
+    `KindOf` is Accesses' use classifier, which `Accessing` and `MayDepart` share (G258 D2's first, behavior-preserving commit; N1).
+  - Tests:
+    - `AnOwnStepViewIsAProducerOnlyWhereAnAccessMayDepart`: `ownLimit` records nothing, and fails first; `ownLimitLocal`,
+      `ownDeep` and `ownWriteThrough` keep their records;
+    - `AViewNoAccessMayDepartRunsNoStratum`: N reads of a layer, linear;
+    - `TheMayDepartScanStaysDense` (V16): N roots, linear;
+    - the departing rows are unchanged, and the warm rows stay 0 B.
+  - Measured (G258's host, 118 programs, base c35ab5377 (D1) and head in one process, pinned, tiering off, two runs of 8 rounds):
+    A5's cold time −2.7 % and −3.7 % (min-sum); Work −5.3 % (12,532,582 to 11,865,646), cold allocation −1.5 % (−691,440 B),
+    Loan-set Bytes −3.6 % (−9,912), problems equal. All of it is the library's, analyzed in every compilation (its Work 100,475 to
+    94,823); the corpus programs' own views are unchanged.
+  - Rejected:
+    - the report's (b), the same test fused into the pre-pass walk (+12 KB cold per compilation, equal time);
+    - (c), entries formed only at reads (the 7 Dictionary bodies stay producers);
+    - (d), a narrower stratum (a second carrying path);
+    - (e), a MirBody access summary (Full);
+    - the prototype's test of every address entry per use (R4-M124's rejected density);
+    - a copy of `Accessing`'s classification or Opaque skip (N1).
+  - Numbering: R4-M141 was reserved for G258 D2 by the R4 planning session (R4-M140 D1 on `claude/a5-g258-d1`, R4-M142 S1 on
+    `claude/a5-cbv-s1`; R4-M138 the last on dev).
+- **R4-M142 The Adjust rule as Binding's lasting component (consumed-by-value S1)** (2026-10-26; R4's lane A under the owner's design B
+  with the review's C1–C7 (OQ1 (a), 2026-10-25); the planning session's decision on the S1 reviews' N1, that no lasting member uses a
+  SPEC term with another meaning: SPEC 3.4's Take is a Place capability and Consume §15's static check).
+  - Representation: the rule of how a consumer acquires or uses each child, `Binding.AdjustChildren<T>(node, op, ref T uses) where T :
+    IHirUses` (`Binding.Hir.Adjust.cs`, its entry file with the contract; `.Patterns.cs` the Subject and Pattern bindings;
+    `.Operations.cs` the evaluated `OpOf` and `Covers`), with the child rule `ChildAdjust(child, adaptation, kind, claimed)`,
+    `EarlierAdjust` (R4-M109's plan row), `BareOf`, `IsPlace` and `SelectsUniq`. It reads Binding's facts and two facts of the record's
+    walk, the consumer's own capability (`UseExclusive`) and a child's claim (`claimed`: whether this use's operation's target needs
+    exclusive capability of the child, recorded by `IHirUses.Use(child, in operation)` before the rule reads it, or an earlier use of
+    it by the same consumer did, by its operation's target or by the Adjust fixed for it: an exclusive borrow, or a Reborrow or pair-case
+    acquisition of a child whose Type needs it; the record accumulates it per publish), and writes nothing. This use's own claim decides
+    that a part below a stored reference passed as a `uniq/Self` receiver is a Reborrow (`HirFormsTest.APartBelowAStoredReferenceIsAPlace`),
+    which S2's finder reproduces.
+  - `UseKind` (private: `Acquisition`, `InPlace`, `Inspection`; SPEC 3.5, 13.5.5, 13.4) replaces the publisher's two bools, which were
+    never set together. `IHirUses` (private: `UseExclusive`, `Call`, `Use`, `Use(in operation)`, `FixAdjust`) receives each child's use;
+    `FixAdjust` fixes a child's Adjust (an assignment target's in place, a transfer's Move, a Subject's Reborrow, a loop binding's Copy),
+    so it does not take SPEC 3.4's Write (initialize or replace the value); the publisher's member that records it is renamed with it
+    (`HirPublisher.FixAdjust`, R4-M109's `HirPublisher.Write`).
+  - `PublisherUses`, the HIR publisher's record, a struct so that `AdjustChildren` is specialized for it (the publisher passed as a class
+    measured about 2% slower on a warm publish); `[Transitional("R7")]` with the publisher's walk, which R7's inline writes replace.
+    S2's ClosureEffects finder is the second record (S2's entry, reserved R4-M145).
+  - Rejected: the publisher's own names (`Consume`, `Take`, `TakeKind`, `Write`) for a lasting component; a second copy of the
+    static-storage test (Binding's `IsStatic` serves the rule).
+  - Numbering: R4-M142 was reserved for S1 by the R4 planning session (R4-M139 G245 U2 and R4-M140 G258 D1 on dev, R4-M141 G258 D2
+    landing with it; R4-M143 G255 (C3)'s A5 part, R4-M144 G216's amendment and R4-M145 S2 reserved).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

@@ -15,9 +15,10 @@ namespace Kimi.Compiler.Mir;
 // carries Φ_E. A non-raw Borrow of a layer's Place or of a Tuple or fixed-array Place enclosing one inline, and a Copy or Move of such an
 // enclosing Place, mark its location for a located Unsupported_Kd and make the view a producer (PQ-10; registered for X-2, PD28; removal
 // stage: the Loan records the layer's own-step entry and positions). An own-step entry makes its root borrowed, so the root's accesses are
-// listed for its departures (MirBorrows.OwnSteps), and the view a producer (D5). The pre-pass runs once per view, after the Loans and
-// before the holders. It walks the view's uses only where Loans saw a raw Ref or a projection row may be or enclose a layer (Layer's and
-// Encloses' Type tests, once per row); elsewhere no use forms an address or a mark (G246).
+// listed for its departures (MirBorrows.OwnSteps), and the view a producer where an access may depart it (OwnSteps' MayDepart, D5,
+// R4-M141). The pre-pass runs once per view, after the Loans and before the holders. It walks the view's uses only where Loans saw a raw
+// Ref or a projection row may be or enclose a layer (Layer's and Encloses' Type tests, once per row); elsewhere no use forms an address
+// or a mark (G246).
 // Must not issue a Loan, carry a value (MirBorrows.Values) or record a problem (MirBorrows.Locations records PQ-10's).
 internal sealed partial class MirBorrows
 {
@@ -68,7 +69,7 @@ internal sealed partial class MirBorrows
             }
         }
 
-        this.producing |= this.ownEntries > 0; // The own-step Warning is a producer (D5).
+        this.producing = this.producing || (this.ownEntries > 0 && this.MayDepart()); // An entry an access may depart, the Warning's (D5).
         this.Work += locations;
     }
 

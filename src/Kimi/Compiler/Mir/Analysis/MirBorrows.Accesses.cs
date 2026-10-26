@@ -3,14 +3,48 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's accesses at a location (A3 5's access, E13 (1)): the accesses of borrowed roots that the location's uses make, each classified by
-// what it does (MirBorrows.Checks' AccessKind) and with the check set it takes, and a Call's or Drop's effect access after them
-// (MirBorrows.Effects); every write also goes to R26-access before the borrowed-root filter (MirBorrows.Defaults). Its classifiers Dropping
-// and Destruction are also read by MirBorrows.Liveness and MirBorrows.Activations.
+// what it does (KindOf, MirBorrows.Checks' AccessKind) and with the check set it takes, and a Call's or Drop's effect access after them
+// (MirBorrows.Effects); every write also goes to R26-access before the borrowed-root filter (MirBorrows.Defaults). Its classifier KindOf is
+// also read by MirBorrows.OwnSteps' MayDepart, and Dropping and Destruction by MirBorrows.Liveness and MirBorrows.Activations.
 // Must not compare an access with a Loan (MirBorrows.Checks) or record a problem (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
     private Access[] accesses = [];
     private int accessCount;
+
+    // What a use of a Place at a location does (A3 5's access, E13 (1)), none for a use that accesses nothing: Copy, FakeRead,
+    // Discriminant, Len and an index read; Move; a Ref borrows (Borrowing), as a Reborrowing PairAcquire does, which its reader passes as a
+    // borrow in its marker's mode; a destination is written; StorageDead destroys, and a Drop as Dropping says.
+    private AccessKind? KindOf(MirLocation at, MirPlace place, MirAccess access, MirRefKind kind)
+    {
+        if ((access & MirAccess.Kills) != 0)
+        {
+            return at.Index < this.body.Blocks[at.Block].Count && this.body.Statements[this.Location(at.Block, at.Index)].Kind == MirStatementKind.StorageDead
+                ? AccessKind.Destroy : null;
+        }
+
+        if ((access & MirAccess.DropUse) != 0)
+        {
+            return this.Dropping(at.Block, place);
+        }
+
+        if ((access & MirAccess.Writes) != 0)
+        {
+            return AccessKind.Write;
+        }
+
+        if ((access & MirAccess.Borrows) != 0)
+        {
+            return this.Borrowing(at, kind);
+        }
+
+        if ((access & MirAccess.Moves) != 0)
+        {
+            return AccessKind.Move;
+        }
+
+        return (access & MirAccess.Reads) != 0 ? AccessKind.Read : null;
+    }
 
     // How a Drop under the view destroys its Place (A3 5's access, R4-M6): observing what it holds where its case Type observes and A2 keeps
     // some of it (no group: only the checks reach it), else shallowly.
@@ -87,12 +121,11 @@ internal sealed partial class MirBorrows
     /// its operand's index from 0, TakesParents for a borrow, TakesValue for an observing destruction, else TakesStores.</summary>
     private readonly record struct Access(MirPlace Place, AccessKind Kind, bool Reborrow, int Taking);
 
-    // The accesses of one location (A3 5's access, E13 (1)): Copy, FakeRead, Discriminant, Len and an index read; Move; a Ref borrows
-    // (Borrowing), a Reborrowing PairAcquire too, as its Use's marker says (reborrow; TwoPhaseUniq reserves, a shared access); a
-    // destination is written, every write also R26-access's, whether its root is borrowed or not (MirBorrows.Defaults); StorageDead
-    // destroys, and a Drop as Dropping says. Each operand's accesses, its index locals' and its own, take its operand's check set. An Opaque
-    // site's roots are its problems' (derived, R4-M10).
-    private struct Accessing(MirBorrows owner, MirLocation at, MirStatementKind statement, MirRefKind reborrow) : IMirUses
+    // The accesses of one location (A3 5's access, E13 (1)), each as KindOf classifies its use: a Reborrowing PairAcquire's operand Place
+    // borrows as its Use's marker says (reborrow; TwoPhaseUniq reserves, a shared access); every write is also R26-access's, whether its root
+    // is borrowed or not (MirBorrows.Defaults). Each operand's accesses, its index locals' and its own, take its operand's check set. An
+    // Opaque site's roots are its problems' (derived, R4-M10).
+    private struct Accessing(MirBorrows owner, MirLocation at, MirRefKind reborrow) : IMirUses
     {
         private MirOperand operand;
         private int operands; // The operands reported: the current one's index plus 1.
@@ -111,7 +144,7 @@ internal sealed partial class MirBorrows
                 reborrow != MirRefKind.Raw && this.operand.Place == place);
             this.inOperand &= this.operand.Place != place; // An operand's index locals precede its Place.
             var opaque = (access & (MirAccess.Reads | MirAccess.Writes)) == (MirAccess.Reads | MirAccess.Writes);
-            if (!opaque && this.Kind(place, access, reborrows ? reborrow : kind, reborrows) is { } known)
+            if (!opaque && owner.KindOf(at, place, reborrows ? access | MirAccess.Borrows : access, reborrows ? reborrow : kind) is { } known)
             {
                 if (known == AccessKind.Write)
                 {
@@ -121,36 +154,6 @@ internal sealed partial class MirBorrows
                 taking = known == AccessKind.Observe ? TakesValue : reborrows || (access & MirAccess.Borrows) != 0 ? TakesParents : taking;
                 owner.Accessed(new(place, known, reborrows, taking));
             }
-        }
-
-        private readonly AccessKind? Kind(MirPlace place, MirAccess access, MirRefKind kind, bool reborrows)
-        {
-            if ((access & MirAccess.Kills) != 0)
-            {
-                return statement == MirStatementKind.StorageDead ? AccessKind.Destroy : null;
-            }
-
-            if ((access & MirAccess.DropUse) != 0)
-            {
-                return owner.Dropping(at.Block, place);
-            }
-
-            if ((access & MirAccess.Writes) != 0)
-            {
-                return AccessKind.Write;
-            }
-
-            if (reborrows || (access & MirAccess.Borrows) != 0)
-            {
-                return owner.Borrowing(at, kind);
-            }
-
-            if ((access & MirAccess.Moves) != 0)
-            {
-                return AccessKind.Move;
-            }
-
-            return (access & MirAccess.Reads) != 0 ? AccessKind.Read : null;
         }
     }
 }

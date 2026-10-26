@@ -10,15 +10,20 @@ namespace Kimi.Compiler.Mir;
 // with path S departs an entry with owning path O when S prefixes O step by step (15.6.2, MirBorrows.Checks' Meets) and it is a Move (a
 // Take of a raw Place included), a write or a destruction of any class with no borrow or raw Deref of O past S, or an exclusive borrow or
 // a call's activation of a reservation across any steps. A departure whose operation and formation lie in one inline default copy is its
-// template's (Covered). One record per location: every record at a location has its subject, which MirReport merges.
+// template's (Covered). One record per location: every record at a location has its subject, which MirReport merges. Before the holders,
+// a view whose only producer input is its own-step entries is a producer only where a use may depart one by the same test with no
+// liveness (MayDepart, D5, R4-M141): its other records, a retention Limit's and a storage limit's, then leave it as any view no conflict
+// can depend on.
 // Must not issue, end or conflict a Loan (an entry is never a candidate, D19), or record through the hold (MirBorrows.Reports' Departure
 // bypasses it: a Warning rejects nothing, PQ-8).
 internal sealed partial class MirBorrows
 {
-    // By address (entry − Loans): the check that found it, the holder its Based or Stored pass first found it in (None: only an operand's
-    // value), and the next entry found on its root at that check.
+    private const int Listed = -1; // The stamp of MayDepart's lists: every own-step entry on its root, before any check.
+
+    // By address (entry − Loans): the check that found it (Listed: MayDepart's), the holder its Based or Stored pass first found it in
+    // (None: only an operand's value), and the next entry found on its root at that check.
     private (int Stamp, int Via, int Next)[] ownTags = [];
-    private (int Stamp, int First)[] ownRoots = []; // By root key: the first own-step entry found on it at that check.
+    private (int Stamp, int First)[] ownRoots = []; // By root key: the first own-step entry found on it at that check (or listed).
     private int ownEntries; // The own-step entries of the view.
 
     // Restarts the tags for the view, where it has own-step entries.
@@ -109,6 +114,69 @@ internal sealed partial class MirBorrows
         return false;
     }
 
+    // Whether a view whose only producer input is its own-step entries may depart one, the pre-pass's producer term (D5, R4-M141): every
+    // use of the view, reached or not, as KindOf classifies it with no liveness, a destruction Accesses leaves unclassified on a root the
+    // entries borrow (its located Unsupported_Kd) or an access that departs an entry on its root. Each root's entries are listed under the
+    // stamp Listed, which no check uses, so a use tests only its root's.
+    private bool MayDepart()
+    {
+        this.RestampOwnSteps(this.body.Locals.Length + this.body.Statics.Length);
+        for (var entry = this.loanCount; entry < this.loanCount + this.addressCount; entry++)
+        {
+            if (this.loans[entry].OwnStep)
+            {
+                ref var root = ref this.ownRoots[this.loans[entry].Root];
+                this.ownTags[entry - this.loanCount] = (Listed, None, root.Stamp == Listed ? root.First : None);
+                root = (Listed, entry);
+            }
+        }
+
+        var visitor = new Departing(this);
+        for (var block = 0; block < this.body.Blocks.Length; block++)
+        {
+            for (var i = 0; i <= this.body.Blocks[block].Count; i++)
+            {
+                this.Work++;
+                visitor.At(new(block, i));
+                MirUses.ForEach(cases, new(block, i), ref visitor);
+                if (visitor.Found)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // Whether one use may depart an own-step entry listed on its root (MayDepart): an unclassified destruction, or an access other than a read
+    // or a shared borrow that departs one (Departs; a reborrow is its plain use, as no Loan exists).
+    private bool MayDepart(MirLocation at, MirPlace place, MirAccess access, MirRefKind kind)
+    {
+        var root = this.Key(place.Root);
+        if (this.ownRoots[root].Stamp != Listed || this.KindOf(at, place, access, kind) is not { } known || known is AccessKind.Read or AccessKind.SharedBorrow)
+        {
+            return false;
+        }
+
+        if (known == AccessKind.Unclassified)
+        {
+            return true;
+        }
+
+        var count = this.placeSteps.Walk(this.body, place, reborrow: false, ref this.accessSteps);
+        for (var entry = this.ownRoots[root].First; entry != None; entry = this.ownTags[entry - this.loanCount].Next)
+        {
+            this.Work++;
+            if (this.Departs(this.accessSteps.AsSpan(0, count), known, entry))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // Whether an access with path S ends the stay of an entry's owning value with path O: S prefixes O, and a Move, write or destruction
     // passes no borrow or raw Deref of O past S (moving or replacing a reference leaves its referent in its holder); an exclusive borrow or
     // an activation departs across any steps.
@@ -142,5 +210,25 @@ internal sealed partial class MirBorrows
         }
 
         return true;
+    }
+
+    // The departure test's uses of one location (MayDepart): each Place a use reports, until one may depart.
+    private struct Departing(MirBorrows owner) : IMirUses
+    {
+        private MirLocation at;
+
+        internal bool Found { get; private set; }
+
+        public readonly void Operand(in MirOperand operand)
+        {
+        }
+
+        public readonly void Effect(MirEffect effects, int site)
+        {
+        }
+
+        public void Place(MirPlace place, MirAccess access, MirRefKind kind) => this.Found = this.Found || owner.MayDepart(this.at, place, access, kind);
+
+        internal void At(MirLocation at) => this.at = at;
     }
 }
