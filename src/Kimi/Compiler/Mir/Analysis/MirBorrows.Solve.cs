@@ -32,7 +32,9 @@ internal sealed partial class MirBorrows
         this.Addresses();
         if (!this.producing)
         {
-            return; // No input of a Loan-stratum producer, no problem (A3 6.1, D5; E7's γ, R3, a slot write and PQ-10 need no Loan).
+            // No input of a Loan-stratum producer, no problem (A3 6.1, D5; E7's γ, R3, a slot write, PQ-10 and an own-step entry an access may
+            // depart need no Loan, R4-M141).
+            return;
         }
 
         this.Caused(); // Rule W's elements (MirBorrows.Causes), before any set holds a Loan.

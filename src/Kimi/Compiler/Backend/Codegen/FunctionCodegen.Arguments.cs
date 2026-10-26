@@ -55,9 +55,10 @@ internal sealed partial class FunctionCodegen
     };
 
     // Whether a parameter takes no operand but the next of the values its call writer is given (Pass, Forward): a runtime routine's
-    // slot-less value (a stride, a reason, a Value without a logical index), a Closure's environment or a context.
+    // slot-less value (a stride, a reason, a Value without a logical index), a Closure's environment or a context that names no parameter (a
+    // context naming one, a formatting row's capacity, is measured from it; FunctionCodegen.Formatting's Measure).
     private static bool Given(in AbiParameter parameter)
-        => parameter is { Kind: AbiParameterKind.Value, LogicalIndex: < 0 } or { Kind: AbiParameterKind.Environment or AbiParameterKind.Context };
+        => parameter is { Kind: AbiParameterKind.Value or AbiParameterKind.Context, LogicalIndex: < 0 } or { Kind: AbiParameterKind.Environment };
 
     // SPEC 3.5 with IMPL 21.3.1 (DECISIONS R5-M89): a Copy of a value in memory that a runtime-reached Call passes to a parameter by pointer,
     // which the callee owns from the call on, is copied into a copy slot of its own, so the callee never sees its source change; a string
@@ -148,14 +149,14 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // A legacy row's slots (DECISIONS R5-M116, R5-M121, R5-M124): a routine row's OwnedSlot parameters, as an intrinsic routine's; a row's in
-    // its function's instance (LegacyRow.InInstance) as a body callee's (OperandSlots), since its helper takes an element in memory by pointer
-    // and copies it after it grows (`a.append(a[0])`);
+    // A legacy row's slots (DECISIONS R5-M116, R5-M121, R5-M124, R5-M128): a fixed-symbol routine's OwnedSlot parameters (LegacyRow.Fixed:
+    // writeLine's, a formatting routine's), as an intrinsic routine's; a row's in its function's instance (LegacyRow.InInstance) as a body
+    // callee's (OperandSlots), since its helper takes an element in memory by pointer and copies it after it grows (`a.append(a[0])`);
     // a swap of a value in memory the one slot holding its first value (FunctionCodegen.Updates), numbered at its first operand, a reference,
     // which has no copy slot of its own; none for the others, which read their operands in place, no callee seeing them.
     private void RowSlots(in MirTerminator call, LegacyRow row, int block)
     {
-        if (row.Writer == LegacyWriter.Routine)
+        if (row.Fixed)
         {
             this.RoutineSlots(call, row.Routine);
             return;

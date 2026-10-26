@@ -13,7 +13,7 @@ namespace Kimi.Compiler.Backend;
 // offset (Pop: the Some Case's element at the Option record's Field 1) or the remainder record's Fields in declaration order (storage,
 // position, count, and OwnedRemainder's capacity) with Field 0's size; an Array's glue calls its glue item's Drop helper (ArrayDrop). Each
 // helper is made once per Write, its text then written to the helper buffer the frame writes before the definitions (PD8); Row requests the
-// Array runtime its row declares (LegacyRow.Needs, R5-M46: Needs.Arrays), for a helper, a capacity routine and placeEntry's Place helper
+// runtime its row declares (LegacyRow.Needs through Request, R5-M46: Needs.Arrays), for a helper, a capacity routine and placeEntry's Place helper
 // alike, whose routine is ModuleCodegen.Dictionaries' (DECISIONS R5-M124); a kept helper is reused while its descriptor matches, so a warm
 // module allocates nothing. An element or a record without its layout is a broken contract at the item's site (the collector laid them out).
 internal sealed partial class ModuleCodegen
@@ -39,11 +39,7 @@ internal sealed partial class ModuleCodegen
             return null;
         }
 
-        if ((row.Needs & HelperNeeds.ArrayRuntime) != 0)
-        {
-            this.Request(Needs.Arrays | Needs.Memory);
-        }
-
+        this.Request(row.Needs);
         if (row.Writer == LegacyWriter.Place)
         {
             return this.Dictionary(item, DictionaryHelperKind.Place)?.Abi;

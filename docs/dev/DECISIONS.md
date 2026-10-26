@@ -1904,7 +1904,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M73** (2026-10-19; owner, on the independent review of two designs and its completion, PLAN G148, R4-M76; P13's interim by the
   owner after three review rounds, below; A3 §12 E16). A Call's store row reaches every holder its argument reaches: ret(i, κ) joins
   every holder of W(val(a_j)) (A3 E16, rule G: SPEC 15.6.4's letter, no SPEC change), with no exclusion. It supersedes R4-M63's store
-  target, refs(val(a_j)) (A3 E14), and A3 §5's Calls line.
+  target, refs(val(a_j)) (A3 E14), and A3 §5's Calls line. Superseded in part by R4-M143: at a 4.6–4.9 operation's referent store whose
+  referent destroys shallowly the store reaches refs(S) alone, and P13's hold does not fire there.
   - Representation: `MirTypes.HoldsLoans`' one walk, each Type once per mode, also gives what a call may write past a value
     (`MirWrites`): the guard, passed concretely (`Through`; a callable and a part past the bound count so) or only through a struct's or
     enum's Type argument, a pair layer or an abstract part (`ThroughArgument`), and for a value that holds no Loan whether a raw pointer
@@ -3780,7 +3781,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     pointer may be used (B-N3).
   - State: tags by own-step entry (found at the check, its first Based or Stored holder, the next entry found on its root) and a list
     per root, so a departing access scans the entries found on its root (B §7: the conflict scan's density); an own-step entry makes its
-    root `borrowed`, so the root's accesses are listed, and its view a producer (D5).
+    root `borrowed`, so the root's accesses are listed, and its view a producer (D5; the producer clause superseded by R4-M141: a
+    producer only where an access may depart it).
   - Vocabulary: `DiagnosticCode.OwnStepDeparture_Kd` (Warning, Language, `case:Text` evidence as every A5 code); the requirement kind
     `OwnStepDeparture`, added against R5-M24's "no member is added" by the owner's OQ-2 (the enumeration's prohibition now reads "without
     the owner's approval"); `OwnershipIssue.Code` maps it, the requirement's one code that the ledger's consistency set reads (the old
@@ -4526,7 +4528,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     given; a callee-keyed rule is the test review §8 forbids, and dropping a 4.9 receiver's untied store is partial. C3 is a Full change
     with BU (Binding publishes those outputs; A5's W there is refs(S)). Until it lands, popLateOk is a pinned shadow false error (the
     closure reads pop's chain through the E an earlier receiver store reached; the default pipeline accepts it), named with C3 as its
-    removal unit beside appendNullOk and appendIntoOk; C3's rows (arrNode1Ok, arrNodeAppendOk, rawPairOk, arrNode2Ok, appendNullOk,
+    removal unit beside appendNullOk and appendIntoOk (answered by R4-M143: the three are valid on the MIR); C3's rows (arrNode1Ok, arrNodeAppendOk, rawPairOk, arrNode2Ok, appendNullOk,
     appendIntoOk, the probes' pop2Ok) are unchanged; dictNodeOk is C2's (the literal's internal `placeEntry`), not C3's.
   - V16: the Work Chain rows add beside the same body without them is linear for N calls over a depth-K pointer chain, a K-cycle, N
     vacuous rows (`Raw.allocate`'s count) after E holds M addresses, an M-way fan-out and N sparse rows, each joining {Φ_E} with one of
@@ -4590,6 +4592,130 @@ and migration obligations remain in force; no numeric cap changes are authorized
     problems equal; A5's timed allocation +0.06 % (the growth past 431 Types).
   - Rejected: a cache in `MirTypes` (static, wrong across compilations) or in `TyCtxt` (a MIR fact on Binding's representation); keying
     the walk's own memo by stored part and positions (more code, a walk per local stays).
+- **R4-M141 Own-step entries make a view a producer only where an access may depart one (G258 D2)** (2026-10-26; R4's lane A under the
+  owner's 「D1・D2 を採用 (推奨)」 of 2026-10-26; the G258 report's §4 D2, option (a), its design review's ACCEPT with conditions N1–N4).
+  Supersedes R4-M124's State clause "and its view a producer (D5)" and adds a term to R4-M98's D5 producer list.
+  - Rule (`MirBorrows.OwnSteps.MayDepart`, read by `Addresses`' producer term): a view whose only producer input is its own-step entries
+    (no Loan, guard candidate, R3 drop, `PreparedInput` write or PQ-10 mark) is a producer only where some use of it, reached or not, as
+    Accesses' `KindOf` classifies it, is a destruction Accesses leaves `Unclassified` on a root the entries borrow, or an access other
+    than a read or a shared borrow that `Departs` an entry on its root. This is a superset of the Warning's condition: it reads no
+    liveness and no `Covered`, and it counts an Opaque site's uses, which the replay skips. A reborrow counts as its plain use, which is
+    exact because Binding forms no Uniq reborrow in such a view (a Reborrowing pair acquisition past a shared Deref issues no Loan), so
+    no activation exists either (G258 D2's design §3).
+  - Records such a view can have, all made only in a producing view:
+    - (a) `OwnStepDeparture_Kd`;
+    - (b) an unclassified destruction's located `Unsupported_Kd` on a root the entries borrow (kept: `MayDepart` holds);
+    - (c) a retention Limit's located `Unsupported_Kd` (`Locations.Check`, R4-M51);
+    - (d) `OwnershipStorageLimit_Kd` (`Solve`, R4-M15a).
+    Where no access may depart, (c) and (d) leave the view by D5's rule, "a body without a Loan, which no conflict can depend on,
+    reports neither" (R4-M36, R4-M51; `AnUnclassifiedDestructionOrCallIsUnsupported`'s `unlent`).
+  - Representation: the replay's per-root list (`ownRoots`, `ownTags[..].Next`). `MayDepart` restarts it and lists every own-step
+    entry on its root under the stamp `Listed` (-1), which no check uses, and the replay restarts it before its first check. A use tests
+    only its root's entries, the conflict scan's density: work O(keys + entries + uses + departing uses × entries on their root).
+    `KindOf` is Accesses' use classifier, which `Accessing` and `MayDepart` share (G258 D2's first, behavior-preserving commit; N1).
+  - Tests:
+    - `AnOwnStepViewIsAProducerOnlyWhereAnAccessMayDepart`: `ownLimit` records nothing, and fails first; `ownLimitLocal`,
+      `ownDeep` and `ownWriteThrough` keep their records;
+    - `AViewNoAccessMayDepartRunsNoStratum`: N reads of a layer, linear;
+    - `TheMayDepartScanStaysDense` (V16): N roots, linear;
+    - the departing rows are unchanged, and the warm rows stay 0 B.
+  - Measured (G258's host, 118 programs, base c35ab5377 (D1) and head in one process, pinned, tiering off, two runs of 8 rounds):
+    A5's cold time −2.7 % and −3.7 % (min-sum); Work −5.3 % (12,532,582 to 11,865,646), cold allocation −1.5 % (−691,440 B),
+    Loan-set Bytes −3.6 % (−9,912), problems equal. All of it is the library's, analyzed in every compilation (its Work 100,475 to
+    94,823); the corpus programs' own views are unchanged.
+  - Rejected:
+    - the report's (b), the same test fused into the pre-pass walk (+12 KB cold per compilation, equal time);
+    - (c), entries formed only at reads (the 7 Dictionary bodies stay producers);
+    - (d), a narrower stratum (a second carrying path);
+    - (e), a MirBody access summary (Full);
+    - the prototype's test of every address entry per use (R4-M124's rejected density);
+    - a copy of `Accessing`'s classification or Opaque skip (N1).
+  - Numbering: R4-M141 was reserved for G258 D2 by the R4 planning session (R4-M140 D1 on `claude/a5-g258-d1`, R4-M142 S1 on
+    `claude/a5-cbv-s1`; R4-M138 the last on dev).
+- **R4-M142 The Adjust rule as Binding's lasting component (consumed-by-value S1)** (2026-10-26; R4's lane A under the owner's design B
+  with the review's C1–C7 (OQ1 (a), 2026-10-25); the planning session's decision on the S1 reviews' N1, that no lasting member uses a
+  SPEC term with another meaning: SPEC 3.4's Take is a Place capability and Consume §15's static check).
+  - Representation: the rule of how a consumer acquires or uses each child, `Binding.AdjustChildren<T>(node, op, ref T uses) where T :
+    IHirUses` (`Binding.Hir.Adjust.cs`, its entry file with the contract; `.Patterns.cs` the Subject and Pattern bindings;
+    `.Operations.cs` the evaluated `OpOf` and `Covers`), with the child rule `ChildAdjust(child, adaptation, kind, claimed)`,
+    `EarlierAdjust` (R4-M109's plan row), `BareOf`, `IsPlace` and `SelectsUniq`. It reads Binding's facts and two facts of the record's
+    walk, the consumer's own capability (`UseExclusive`) and a child's claim (`claimed`: whether this use's operation's target needs
+    exclusive capability of the child, recorded by `IHirUses.Use(child, in operation)` before the rule reads it, or an earlier use of
+    it by the same consumer did, by its operation's target or by the Adjust fixed for it: an exclusive borrow, or a Reborrow or pair-case
+    acquisition of a child whose Type needs it; the record accumulates it per publish), and writes nothing. This use's own claim decides
+    that a part below a stored reference passed as a `uniq/Self` receiver is a Reborrow (`HirFormsTest.APartBelowAStoredReferenceIsAPlace`),
+    which S2's finder reproduces.
+  - `UseKind` (private: `Acquisition`, `InPlace`, `Inspection`; SPEC 3.5, 13.5.5, 13.4) replaces the publisher's two bools, which were
+    never set together. `IHirUses` (private: `UseExclusive`, `Call`, `Use`, `Use(in operation)`, `FixAdjust`) receives each child's use;
+    `FixAdjust` fixes a child's Adjust (an assignment target's in place, a transfer's Move, a Subject's Reborrow, a loop binding's Copy),
+    so it does not take SPEC 3.4's Write (initialize or replace the value); the publisher's member that records it is renamed with it
+    (`HirPublisher.FixAdjust`, R4-M109's `HirPublisher.Write`).
+  - `PublisherUses`, the HIR publisher's record, a struct so that `AdjustChildren` is specialized for it (the publisher passed as a class
+    measured about 2% slower on a warm publish); `[Transitional("R7")]` with the publisher's walk, which R7's inline writes replace.
+    S2's ClosureEffects finder is the second record (S2's entry, reserved R4-M145).
+  - Rejected: the publisher's own names (`Consume`, `Take`, `TakeKind`, `Write`) for a lasting component; a second copy of the
+    static-storage test (Binding's `IsStatic` serves the rule).
+  - Numbering: R4-M142 was reserved for S1 by the R4 planning session (R4-M139 G245 U2 and R4-M140 G258 D1 on dev, R4-M141 G258 D2
+    landing with it; R4-M143 G255 (C3)'s A5 part, R4-M144 G216's amendment and R4-M145 S2 reserved).
+- **R4-M143 A5 reads Binding's referent stores: a 4.6–4.9 operation's receiver store reaches refs(S) alone, with a destruction guard
+  (G255 C3)** (2026-10-26; R4's lane A under the combined design's revision 1, items 1, 3, 4, 6, 7, and BU's design review 2, ACCEPT, with
+  its O5–O8; the fact is BU-42's `CallRetention.ReferentStores`; class Full with BU).
+  - Rule (SPEC 4.9.6, 15.6.4, which defers to 4.9.6; R4-M131): an operation of SPEC 4.6 to 4.9 writes, through its exclusive borrowed
+    receiver, only the storage that receiver refers to, and no layer stored there. So at a call's referent store, A5's rule G stores the
+    row's value into refs(S), W's first step (`MirBorrows.Referents`, split out of `Writes` behavior-preserving first), never W's passes.
+    The rule holds for every row at that output, an untied store's row with no input included.
+  - Reading the fact (`MirBorrows.CallRows.Rows`, `.Calls.Call`): the referent stores' positions, a scratch beside the rows, read as a
+    per-output membership. A referent store may have no row (`ResolvedRange.iterateUniq`, bu45's review O13), and then nothing is stored
+    there. Where the fact names no store (BU-42's uncovered conditional blocks), W stays.
+  - The destruction guard (O5, O6): the row leaves a destruction it causes to its callers (4.9.6). So refs(S) alone applies only where
+    the written argument's referent, the one `referent` rule W derives in `Call`, destroys shallowly by A5's one classifier
+    (`MirBorrows.Destruction` over `MirTypes.Observes`: `Destroy`). Anything else keeps W: a declared drop, a Function value, an abstract
+    part not proven Copy, an owning handle whose payload is not proven Sealed, and deep counts as observing. Removal condition: PLAN
+    G264 (A5 composes a destruction's retention at callers). Known false errors meanwhile: appendDrop2Ok, clearDrop2Ok, clearDropOk2,
+    clearObjOk.
+  - `Destruction` is memoized per case Type for the body's definition and the program version (a dictionary by reference, cleared when
+    either changes). `Observes` reads the definition's Copy and Sealed proofs, so the memo is never a bare per-Type memo across
+    definitions (O5). Every reader (Dropping, Activations, the guard) shares it, so the guard walks a Type once per body, never per call.
+  - R4-M73 (P13's interim) is superseded in part: at a referent store whose referent destroys shallowly, no target lies past a
+    by-argument holder (`Referents`' count is W's clean index), so the hold does not fire there. A generic body over a non-Copy Type
+    parameter keeps W and the hold at a 4.9 receiver, because its element Type observes (O8). Re-measured on G258's corpus of 118
+    programs: held views 2,725 to 1,781. In the library, analyzed in every compilation, 23 to 15: `intoIterator`, `iterateUniq`,
+    `splitAt`, `toArray`, `trySlice`, `trySplitAt`, one `iterate` and one `tryGet` are no longer held, while `appendAll` stays held. No
+    problem changes.
+  - Cost (G258's host, against the branch before this commit, pinned, tiering off, two runs): A5's cold time -0.8 % and -1.1 %, Work
+    -0.02 %, cold allocation +0.27 % (about 1 KB per compilation: the memo and the scratch), Bytes and problems equal. Warm runs
+    allocate nothing.
+  - Tests:
+    - `MirBorrowsTest.Referents`: `AReferentStoreWritesOnlyWhatItsReceiverRefersTo` holds the valid forms of the Array literal,
+      append, pop and swap, Dictionary `insertOrReplace`, an Array of exclusive references, a fixed array's `sliceUniq` and a
+      UniqSlice's `indexUniq`, with their twins and the edges `appendParamBad` and `userWriteBad`; it fails first.
+    - `ADestructionAReferentMayObserveKeepsW` pins the guard: clearObjBad errs, clearObjOk is a known false error, the drop forms
+      keep their errors, and clearGenOk and clearGenBad keep `Unsupported_Kd`, as O7 says.
+    - `TheReferentStoresStayDense` (V16) fails first.
+    - `reserve`'s referent store (bu45's review O15) is pinned by reserveLateOk, an explicit `reserve` over a non-empty Array, which errs
+      where `reserve` keeps W; the literal's `reserve` meets an empty Array, so no literal form depends on it.
+    - The memo's per-definition key is pinned by one generic struct's case Type in two methods, one proving its element Copy (refs(S)
+      alone, valid) and one not (W and the hold, `Unsupported_Kd`): a bare per-Type memo answers the second as the first.
+    - Deep counting as observing is pinned by no form (implementation review 1's N2): in every form found, a referent past the
+      destruction walk's bound (a `Nest` element) also passes Binding's storage bound, so the call's retention is a Limit, a located
+      `Unsupported_Kd` with no row read, whatever the guard says.
+    - `APopOverElementsAnUntiedStoreReachedIsValid` flips R4-M138's popLateOk pin.
+    - `AWarmRunAllocatesNothing` passes unchanged.
+  - Oracle (BU's design review 2 harness, 762 verdicts over 55 files): identical to the reviewer's guard prototype. Against dev,
+    exactly the 22 C3 forms change, to valid.
+  - Why witness and Shared-Callable user code needs no exclusion (owner, 2026-10-26, verbatim 「(1) 最初の修正版を維持 (推奨)」,
+    keeping revision 1 after R4's implementation review withdrew its B1): the user code a 4.6–4.9 operation runs inside itself is an
+    equality or comparison witness, which fixes `ref/Self`, a Position, which is closed (SPEC 4.6.1), a Copy body, which no user writes
+    (3.5.2), or a Callable-bounded callback, which is Shared (8.10). Its writes through what an element holds go through a pointer read
+    past a shared layer, which SPEC 5.2.1 condition 3's first limit gives no write authority (5.7 Authority: no error is required; a
+    writing closure is Exclusive by 7.7.3 and does not bind), or through a pointer it cannot trace (5.2.1 (5), 5.5). Destruction is
+    the only such user code with authority, and the guard keeps W there. So the five forms the review raised and their Ok twins are
+    undefined behavior, and dev's errors on them are conservative; no test pins them. A witness or callback copying an element's
+    pointer into static storage stays R4-M131's open item.
+  - Rejected: a second wrapper of `Observes` or a drop bit in Binding (O5; revision 1 item 4); a per-local memo keyed by the operand's
+    root (the operand may be a projection); deriving the referent a second time (O6).
+  - Numbering: R4-M143 was reserved for C3's A5 part by the R4 planning session (R4-M141 G258 D2, R4-M142 S1, R4-M144 G216's amendment
+    and R4-M145 S2 reserved; R4-M140 the last on dev).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -6461,6 +6587,13 @@ resumed by R4-M86 (2026-10-20).
     4.6–4.8 view's referent is its own handle, sound only while no 4.6–4.8 operation writes an element through a view, pinned by
     `KimiLibraryShapeTest.ReferentStoresWriteNoElementThroughAView` (the covered 4.6–4.8 operations' headers; none stores another
     input in its receiver's storage).
+  - Why witness and callback user code needs no exclusion (owner, 2026-10-26, keeping revision 1; R4-M143): user code a 4.6–4.9
+    operation runs inside itself other than the destruction it composes — equality and comparison witnesses (`ref/Self`) and
+    Callable-bounded callbacks (Shared, §8.10) — reaches what an element holds only through a pointer read past a shared layer, which
+    SPEC 5.2.1 condition 3's first limit gives no write authority (5.7 Authority: no error is required; a writing closure is Exclusive
+    by §7.7.3 and does not bind), or through a pointer it cannot trace (static storage, an integer round trip; 5.2.1 (5), 5.5);
+    destruction, whose `drop` has exclusive access, is the only such user code with authority, and A5 keeps W there. A witness or
+    callback copying an element's pointer into static storage stays R4-M131's open item.
   - Name: what the store writes, A5's `Referents` (one name in both phases); not `ElementStores` (a view's operation writes the
     view's own value), not `ReceiverStores` (true of every method's receiver).
   - Rejected: a Binding drop bit (design review 1's B1: a declared `drop` at a nominal hold position is narrower than SPEC 16.3.3's
@@ -8648,7 +8781,7 @@ structure is recorded here by the unit that first implements it.
     value `Put` at the storage, R5-M87's copy form); Slice (the storage and length put at the Slice record's Fields 0 and 1, the Unit
     backing ignored); Copy (transferBytes as `llvm.memcpy`: R5-M18 reversed PD23, the declaration rules out overlap, so `MoveBytes`'
     comment is corrected). Every other row is `Unwritten`, its unit named in the table: C4a DestroyValues (no producer: R5-M95); C6a MakeObj, MakeRc, MakeArc,
-    Clone, TypeTest; C7 StaticEnsure; C8d Capacity; C9a WriteStdout; C9b FormatFloat, ErasedWriter, ErasedReserve, FormatInteger128; C9c
+    Clone, TypeTest; C7 StaticEnsure; C8d Capacity; C9a WriteStdout (see R5-M128); C9b FormatFloat, ErasedWriter, ErasedReserve, FormatInteger128; C9c
     the format buffer rows; C10a and C10b the test rows. Stride and ReinterpretLoan have no MIR producer yet (no compiler function's
     disposition serves them; an open PLAN row), so their rows are written with their first producer. Allocate and Fail call through
     `Invoke`, which takes the values of a routine's slot-less parameters (the stride; the reason and the OS error) in order, the runtime
@@ -9112,7 +9245,7 @@ structure is recorded here by the unit that first implements it.
     row's unit's located `Unsupported_Kd`; any other function's is its body target (its body, a requirement Item's witness). `Pass` and
     `Forward` share `Given`. A Never callee leaves the entry's result slot unused and ends it `unreachable`.
   - Defect fixed (sel, wrong code without a record): a Value call of `Text.toString<V>` with a user witness called the format witness, and
-    `Text.writer<Sink>`'s the reserve witness, with the function's own operands; both are C9a's located `Unsupported_Kd` now.
+    `Text.writer<Sink>`'s the reserve witness, with the function's own operands; both are C9a's located `Unsupported_Kd` now (see R5-M128).
   - Deleted: `ModuleCodegen.Fits`, `Adapter`'s body lookup, both temporary located `Unsupported_Kd` arms, the Value call's arity test (Fail
     and Slice are no routine rows).
   - Departure (for the owner's departures list), confirmed by the owner (R5-M109): K package 4.3's `MonoKey` gains the erased target
@@ -9783,3 +9916,74 @@ structure is recorded here by the unit that first implements it.
   (`ref/Rhs`, `Self.Output`), and TyCtxt.Witness's Builtin and Storage targets carry the call's substitution for that (R5-M61). The key is
   unchanged: every call of one key gives one Abi (its Self erases to one Type, references are pointers, SPEC 13.3.3 fixes a built-in numeric
   Type's counterpart and Output). It leaves the list.
+- **R5-M128 The formatting runtime's rows in MIR code generation: Text, buffers, windows and the writer (C9a)** (2026-10-26, C lane;
+  plan C9a, package C 3.2, PD2, PD3, PD21, K package 4.5 row 2, audit rows :74-100 and :150; SPEC 22.5.1, 22.7, 22.9, 22.10.1, 22.10.2,
+  22.10.5; the planning session's go and rulings Q1-Q11 on C9a's design, `c9a-design.md`; under R5-M18 form 2 (G:format), R5-M30, R5-M73,
+  R5-M89, R5-M92, R5-M108, R5-M116 and R5-M126)
+  - Rows (rulings Q1 (a), Q6 (a), Q7 (a)): the 26 formatting kinds of the Body disposition (the plan's 25 and WriteLineUtf8, audit :37):
+    Text's fixed, heap, utf8, validateUtf8, toString, tryFormat and release, FixedBuffer's and HeapBuffer's six operations each,
+    WriteWindow's four, Utf8Writer's write and status, and writeLine(Utf8Slice). Each is a row of X39's map with one new writer,
+    `Formatting`: the call of P1d's row routine (`FormattingRow(kind).Abi`, one text, PD2) through the one call writer, at a direct call,
+    an Item's Value call and an adapter's entry (SPEC 7.7.4). Its module requests the formatting runtime the row declares (`LegacyRow.Needs`, R5-M30's
+    FormattingRuntime) through `ModuleCodegen.Request(HelperNeeds)`, the one map from a row's needs to the frame's parts (bp2). The runtime
+    is written once, after the Array runtime and before the helpers. `LegacyRow.Fixed` names the writers whose call is the row's own routine
+    (Routine, Formatting). Every Body-disposition kind now has a row, so `LegacyWriter.Unwritten` is deleted and `Row` throws for a Body
+    kind without one. WriteStdout, an intrinsic, has no MIR producer and keeps its unwritten intrinsic row (R8, PD21). No IntrinsicId,
+    CompilerFunctionKind, BindingFailure or item kind is added (PD21).
+  - Context words (rulings Q2 (a), Q8 (a); bp1): a capacity Context names, by its logical index, the parameter that receives the fixed
+    array it measures (Text.fixed 0, tryFormat 1). The call writer measures it from that operand's instance Type (`Pass`); an adapter's
+    entry measures it from its own input Type, its target Function Type's (`Forward`). So an erased `Text.fixed` or `Text.tryFormat` is
+    written, and no ownerless record remains. Refinement of Q8 (a), confirmed by the planning session: one rule (`Measure`: a capacity is
+    the length of the fixed array its parameter receives, at P1d's logical index, `AbiParameter`'s measured Context), measured where each
+    argument writer decodes its parameters, the adapter in `Forward`, not through `Runs`; `Runs` takes no steering parameter. A kind Context, which
+    names no parameter, is given: `LegacyRuntimeHelpers.FormatKind` of the witness target's Self, the Type K6 resolved below the published
+    `Formats` parameter (R5-M30). Code generation restates neither `On` nor the kind table.
+  - Witness targets (rulings Q4 (a), Q5 (a)): a call of write, toString or tryFormat carries the collector's target (K row 2), and the
+    target's kind decides:
+    - a Builtin item (BuiltinFormat on a built-in Type) runs through the row's built-in routine, given its Self's kind: SPEC 22.10.1's frame
+      around the runtime's built-in formatting, toString reserving its exact length once (SPEC 22.10.5);
+    - a Body item (a user or library formatter) needs C9b's wrapper, one located `Unsupported_Kd` at the requesting site (the call, or the
+      adapter's site);
+    - any other target, or none on a kind-bearing row, is `InternalInvariant_Kd`.
+    C9a writes no witness call. The BuiltinFormat item stays admitted, and its function is C9b's located record (C8f's frame): a
+    BuiltinFormat item records today once, at its first admitting site; C9b records it at each requesting site (C8f's R-2 rule: a site's
+    prerequisites are read at that site).
+  - Kind table (ruling Q3 (a); bp1): `LegacyRuntimeHelpers.FormatKind(BoundType)` is the legacy runtime's own numbering, which R8 removes
+    with the runtime. It is promoted from `BodyLowering.BuiltinFormatKind`, and both generators read it. LegacyRuntimeHelpers' contract
+    admits a built-in formattable Type for its kind. It reads Utf8Slice from the declaration table. Code generation's reader is
+    `FunctionCodegen.WitnessKind`, the target rule above giving a row's kind Context (one name per concept).
+  - Labels (not departures): R5-M92's "C9a WriteStdout" (no producer), and R5-M108's and PLAN G157 (22)'s `Text.writer` Item (the
+    ErasedWriter intrinsic, C9b). G157 (22)'s C9a part closes: a Builtin target's Item Value call and adapter are written. G157 (10) stays
+    C9b's or K's (ruling Q11).
+  - Facts:
+    - The sel ledger falls by 36 test rows, from 613 to 577 (format -29, C-frame -7: Utf8BufferTest 25, Utf8BorrowTest 4,
+      CompilerFunctionReferenceTest 6, ConversionReadTest 1). Their fixture families (`Utf8Buffer*`, `Utf8Borrow*`, `ConversionRead*`,
+      `CompilerReference*`, `Formatting*`) run natively under sel at O0 and O2.
+    - Most rows a C9a row touches keep their first cause in C9b or C9c (the design's census: 398 also wait for a BuiltinFormat item, 292
+      for interpolation). They stay in the ledger under those units, and G:format's group review after C9c checks the Utf* classes whole.
+    - Milestones 24, 30, 31, 33, 35 and 44 keep their first record at an interpolation or `$tryWrite` site, C9c's, then C9b's (24 at
+      10:16, 30 at 8:39, 31 at 41:23, 33 at 9:49, 35 at 10:31, 44 at 9:31; CLI, O0).
+  - Deleted: the located records of the 26 kinds, `LegacyWriter.Unwritten` and `Legacy`'s arm for it, `BodyLowering.BuiltinFormatKind`
+    (promoted), and the "C9a" labels on WriteStdout and TypeToken in code.
+  - Size, over the three commits (bp1, bp2, behavior): Backend +256/-80, Emission +2/-14, tests +265/-6, ledger -36, and this entry, ARCH
+    and CODEMAP. Net code is +164, over the plan's +100 by the Context words, the target rule and the frame's runtime request.
+  - Speed: one runtime call per row at its call, the old generator's form; no item or helper; one static runtime text per module that
+    requests it; the kind given through the reused slot-less span, so a warm Write allocates nothing; no pass over MIR.
+  - O2 (ruling Q9 (a), information): a temporary kernel over the buffer, window and view rows (2^24 rounds, a required checksum) optimizes
+    to the same loop under both generators (184 lines, the same calls; only the string glue's name differs, G182 (2)). CPU time B/A median
+    0.975 (0.79-1.14) against A/A 0.973 (0.85-1.17), 15 interleaved samples. Every corpus kernel also needs C9b and C9c, so the corpus A/Bs
+    stay at C9c.
+  - Rejected:
+    - the Routine writer for all 27 rows with needs derived from the routine (LegacyRow has no needs column, ARCH caps optional parameters at
+      two, and a name lookup would restate FormattingRow);
+    - a writer per Context shape, or arms by `CompilerFunctionKind` (the old lowering's clauses);
+    - the kind read from the value operand's referent (a second statement of the published `On`);
+    - Context words decided by their LLVM type;
+    - a Builtin target's write through its shim's function: an extra call, and toString would lose its exact reservation;
+    - a FunctionCodegen copy of the kind table;
+    - `Runs` taking the call's Types beside its result (a parameter that steers by path);
+    - new IntrinsicIds or AbiParameterKinds (PD21);
+    - LegacyRow items for fixed symbols (a K 4.3 item fixes an instance, and these symbols have none);
+    - the collector skipping the Builtin target (K row 2: the target decides the user-formatter case and names the Self);
+    - bringing C9b's BuiltinFormat shim forward (ruling Q4 (a), the plan's boundary);
+    - re-pointing the old lowering to the map (D5).

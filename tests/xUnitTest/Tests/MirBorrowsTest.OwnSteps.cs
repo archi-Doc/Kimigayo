@@ -255,6 +255,78 @@ public sealed partial class MirBorrowsTest
         Assert.True(Grows(bytes, 5), $"bytes {string.Join(", ", bytes)}");
     }
 
+    // D5 (DECISIONS R4-M141): own-step entries make a view a producer only where a use may depart one, so a view no access may depart
+    // records nothing, as any view no conflict can depend on: a retention Limit's call where no access departs the owner (ownLimit, as
+    // unlent in AnUnclassifiedDestructionOrCallIsUnsupported), while the same call where the local owner's destruction may depart it keeps
+    // its Unsupported_Kd (ownLimitLocal), as does a destruction past the walk's bound of a root the entries borrow (ownDeep: d.n's old
+    // value; DeepBuf.init's Limit stays too), and a departure warns (ownWriteThrough).
+    [Fact]
+    public void AnOwnStepViewIsAProducerOnlyWhereAnAccessMayDepart()
+    {
+        var c = MirBuildTest.Compile(Prelude + RawShapes + OwnStepShapes + """
+            struct DeepBuf
+                internal var data: raw/i32 during self
+                internal var n: Nest<i32>
+                public init()
+                    unsafe => self.data = Raw.allocate<i32>(1)@(raw/i32 during self)
+                    self.n = Nest<i32>.init(value: 1)
+            func ownLimit(b: uniq/Buf<i32>, x: ref/i32)
+                let p = b.data
+                let n = Nest<ref/i32>.init(value: x)
+                usep(p)
+            func ownLimitLocal(x: ref/i32)
+                var b = Buf<i32>.init(4)
+                let p = b.data
+                let n = Nest<ref/i32>.init(value: x)
+                usep(p)
+            func ownDeep(d: uniq/DeepBuf)
+                let p = d.data
+                d.n = Nest<i32>.init(value: 2)
+                usep(p)
+            func ownWriteThrough(b: uniq/Buf<i32>)
+                let p = b.data
+                b@follow = Buf<i32>.init(1)
+                usep(p)
+            """);
+        Assert.Equal(
+            [
+                "init: Nest<i32>.init(value: 1) Unsupported_Kd", "ownLimitLocal: Nest<ref/i32>.init(value: x) Unsupported_Kd",
+                "ownDeep: Nest<i32>.init(value: 2) Unsupported_Kd", "ownDeep: d.n = Nest<i32>.init(value: 2) Unsupported_Kd",
+                "ownWriteThrough: b@follow = Buf<i32>.init(1) OwnStepDeparture_Kd",
+            ],
+            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnStepDeparture_Kd]));
+    }
+
+    // D5 (DECISIONS R4-M141): a view that reads a `during self` layer N times and departs no own-step entry runs no stratum: it makes no
+    // Loan set at any N, and the pre-pass's work, the departure test's walk included, grows linearly.
+    [Fact]
+    public void AViewNoAccessMayDepartRunsNoStratum()
+    {
+        const string Shape = "func shape(b: uniq/Buf<i32>)\n«N:    let p{0} = b.data\n»«N:    usep(p{0})\n»";
+        var runs = new[] { 32, 64, 128 }.Select(n => this.Measured(Prelude + RawShapes + Expand(Shape, n, 0))).ToArray();
+        long[] work = [.. runs.Select(static x => x.Work)];
+        long[] bytes = [.. runs.Select(static x => x.Bytes)];
+        output.WriteLine($"N 32, 64, 128: work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}");
+        Assert.True(bytes[0] == bytes[1] && bytes[1] == bytes[2], $"bytes {string.Join(", ", bytes)}");
+        Assert.True(Grows(work, 2), $"work {string.Join(", ", work)}");
+    }
+
+    // V16 (DECISIONS R4-M141): N owner roots, each with its own-step entry and two writes of a Place inside its owner, which depart nothing:
+    // each write tests the entries on its own root only, so the departure test's work grows linearly in N (a test of every entry per write
+    // grows quadratically), and no stratum runs.
+    [Fact]
+    public void TheMayDepartScanStaysDense()
+    {
+        const string Shape = "func shape(«N:b{0}: uniq/Buf<i32>, »n: isize)\n«N:    let p{0} = b{0}.data\n»" +
+            "«N:    b{0}.length = n\n    b{0}.length = n + 1\n»«N:    usep(p{0})\n»";
+        var runs = new[] { 32, 64, 128 }.Select(n => this.Measured(Prelude + RawShapes + Expand(Shape, n, 0))).ToArray();
+        long[] work = [.. runs.Select(static x => x.Work)];
+        long[] bytes = [.. runs.Select(static x => x.Bytes)];
+        output.WriteLine($"N 32, 64, 128: work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}");
+        Assert.True(bytes[0] == bytes[1] && bytes[1] == bytes[2], $"bytes {string.Join(", ", bytes)}");
+        Assert.True(Grows(work, 2), $"work {string.Join(", ", work)}");
+    }
+
     // The own-step Warnings of a program's own bodies, with the raw and own-step shapes.
     private string[] Warnings(string source)
     {
