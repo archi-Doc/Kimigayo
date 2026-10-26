@@ -649,15 +649,15 @@ public sealed partial class Binding
                 selectedType = this.ConstructionType(selected, selectedType, scratch);
             }
 
-            if (selected.IsConstructor && selectedType is not null && callee is MemberAccessKoto constructorMember && this.inferredConstructorTargets.Contains(constructorMember.Left) &&
-                !this.ValidateFixedConstruction(call, scope, expected, selectedType, evaluated.AsSpan(0, count), winnerIndex, allMaps, mapping, scratch, lengthArguments, origins, inputs, allOrigins, allInputs, originSlots, inputSlots, operations, operationStride, completedWaiting, waitingContexts))
+            // SPEC 10.8.1: a constructor whose target Type the call infers from its arguments.
+            if (selected.IsConstructor && selectedType is not null && this.InferredConstructorTarget(callee) is { } target)
             {
-                return Complete(call, null);
-            }
+                if (!this.ValidateFixedConstruction(call, scope, expected, selectedType, evaluated.AsSpan(0, count), winnerIndex, allMaps, mapping, scratch, lengthArguments, origins, inputs, allOrigins, allInputs, originSlots, inputSlots, operations, operationStride, completedWaiting, waitingContexts))
+                {
+                    return Complete(call, null);
+                }
 
-            if (selected.IsConstructor && selectedType is not null && callee is MemberAccessKoto constructedMember && this.inferredConstructorTargets.Contains(constructedMember.Left))
-            {
-                Complete(constructedMember.Left, selectedType);
+                Complete(target, selectedType);
             }
 
             var result = winner.Type is { } returnType ? this.CallType(returnType, selected, scratch, scope, self, origins, inputs, selectedType, lengthArguments) : null;

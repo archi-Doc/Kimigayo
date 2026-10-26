@@ -370,6 +370,11 @@ public sealed partial class Binding
         return Complete(syntax, type);
     }
 
+    // SPEC 10.8.1: the target Type expression of a constructor call that infers it from the arguments (`T.init(...)` with `T` written
+    // without its arguments), or null.
+    private Koto? InferredConstructorTarget(Koto callee)
+        => callee is MemberAccessKoto member && this.inferredConstructorTargets.Contains(member.Left) ? member.Left : null;
+
     private BoundType? BindBaseConstructor(SyntaxFormKoto node, BindingScope scope)
     {
         if (node.Parent is InvocationKoto { Parent: FunctionKoto { IsConstructor: true } constructor } call &&
