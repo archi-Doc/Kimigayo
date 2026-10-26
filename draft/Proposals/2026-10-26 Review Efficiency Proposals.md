@@ -1,7 +1,8 @@
 # Review Efficiency Proposals (WORKFLOW, DECISIONS Q10)
 
 Status: proposal (the owner asked on 2026-10-26 for it to be placed here). Author: the R5 planning session. Scope: `docs/dev/WORKFLOW.md`
-"Review", "Repeated reviews" and the documentation exemption. Nothing here is adopted until the owner revises WORKFLOW.
+"Review", "Repeated reviews" and the documentation exemption; `docs/dev/VERIFICATION.md`'s checks (proposal 3); PLAN's open-issue rows
+(proposal 4). Nothing here is adopted until the owner revises WORKFLOW.
 
 Term: a **fold** is a commit that applies non-blocking review findings to a unit after its review returned ACCEPT and before it merges.
 
@@ -36,8 +37,7 @@ What costs more than it returns:
 ## 2. Proposals
 
 1. **Folds.** State in "Repeated reviews" that a fold gets the same reviewer's diff review and that this review does not count toward the
-   third-review hold (the hold stays for reviews of the unit's design and behavior). A fold that is format- or comment-only may instead be
-   left to the unit's next change.
+   third-review hold (the hold stays for reviews of the unit's design and behavior).
 2. **Owner records.** A DECISIONS entry that only records an owner's decision verbatim, with the consequences the owner's question already
    stated, joins the documentation-only changes that need no independent review.
 3. **Machine checks before review.** Limits a script can check (lines over 160 characters, COMPILER_ARCHITECTURE's structure limits) are
