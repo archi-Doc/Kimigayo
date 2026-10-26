@@ -177,9 +177,11 @@ public sealed partial class MirBorrowsTest
     // SPEC 5.7 Calls, 15.6.4 (DECISIONS R4-M147; the owner's Q2 (a) and 「進める (推奨)」): a stored raw layer is read by its step on the
     // instance holding it. `during self` admits the instance's Type arguments by their actual Types, so a bag erasing its element to
     // raw/u8 writes past itself as its typed twin does (erased, typed), and the write fact where the instance has an Origin argument (P1:
-    // keepPhantom's `y = 5`, which no part names; its `inspect(w)` errs on dev too); an Origin-less layer the declaration states takes the
-    // write fact (P2: rawBufDead, whose store reaches E, which may be used after every point). Dev held erased and accepted the P1 and P2
-    // records.
+    // keepPhantom's `y = 5`, which no part names; its `inspect(w)` errs on dev too); an Origin-less layer takes the write fact unless the
+    // parameter's Type expression writes it (SPEC 5.7 Calls' per-parameter rule, P2: rawBufDead, whose store reaches E, which may be used
+    // after every point). Dev held erased and accepted the P1 and P2 records. A layer written in a Type argument of the declaration's own
+    // Field or Case payload reads as supplied on the instance holding it (nestedDead, optionalDead): a known unsound acceptance, pinned until
+    // G148 (1)'s holder-relative revision (PLAN; DECISIONS R4-M147, Known limits).
     [Fact]
     public void AStoredRawLayerIsReadByItsStep()
     {
@@ -200,6 +202,17 @@ public sealed partial class MirBorrowsTest
             struct RawBuf
                 var data: raw/u8
                 public init() => self.data = null
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct Wrap<E>
+                var value: E
+                public init(value: E) => self.value = value@move
+            struct Holder2
+                var b: Wrap<raw/u8>
+                public init() => self.b = Wrap<raw/u8>.init(null)
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct HoldOpt
+                var o: Option<raw/u8>
+                public init() => self.o = .None
                 public func put<T>(self: uniq/Self, value: T) => ()
             func erased()
                 var x = 1
@@ -234,6 +247,16 @@ public sealed partial class MirBorrowsTest
                 var z = 3
                 var b = RawBuf.init()
                 b.put(z@ref)
+                z = 5
+            func nestedDead()
+                var z = 3
+                var h = Holder2.init()
+                h.put(z@ref)
+                z = 5
+            func optionalDead()
+                var z = 3
+                var h = HoldOpt.init()
+                h.put(z@ref)
                 z = 5
             """);
         Assert.Equal(

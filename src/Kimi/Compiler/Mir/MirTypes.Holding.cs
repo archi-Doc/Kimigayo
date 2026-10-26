@@ -72,8 +72,8 @@ internal static partial class MirTypes
     /// another Origin, an exclusive reference to its pointee and to each exclusive member's referent (TyCtxt.RawMembers), the Limit where
     /// the members are unpublished; none, SPEC 5.7 Calls' per-parameter rule: an exclusive reference to its pointee where the parameter's
     /// Type expression writes the layer, a Type argument's or a pair slot's argument's included (TyCtxt.RawSupplied on the holding
-    /// instance), and the write fact where a declaration states it in its own Fields, Case payloads or base; a layer a declaration writes
-    /// inside a nested instance's Type argument, Field payload or base clause reads as supplied until Binding publishes its provenance
+    /// instance), and the write fact where a declaration states it in its own Fields, Case payloads or base; a layer written in a Type
+    /// argument of the declaration's own Field, Case payload or base clause reads as supplied until Binding publishes its provenance
     /// relative to the holder (DECISIONS R4-M147, Known limits). Any other raw layer (a local's or parameter's own Type, an element or a
     /// Tuple outside an instance) is an exclusive reference to its pointee (DECISIONS R4-M120). Each Type is walked once per query and
     /// mode, a raw layer and the inline Tuples and fixed arrays of a stored part once per part, so a repeating recursive Type ends exactly;
@@ -222,7 +222,8 @@ internal static partial class MirTypes
         // own storage, the write fact where the instance has an Origin argument; a slot kept only by `ref`, nothing; `static`, an
         // exclusive reference to the pointee; another Origin, an exclusive reference to the pointee and to each exclusive member's
         // referent, the Limit where the members are unpublished; none, an exclusive reference to the pointee where the parameter's Type
-        // expression writes the layer (RawSupplied, R4-M147's gap aside), the write fact where a declaration states it. Any other layer: an
+        // expression writes the layer (RawSupplied), the write fact where a declaration states it, though a layer written in a Type argument
+        // of the declaration's own Field, Case payload or base clause reads as supplied (R4-M147, Known limits). Any other layer: an
         // exclusive reference to the pointee.
         private int Past(BoundType pointee, int depth)
         {

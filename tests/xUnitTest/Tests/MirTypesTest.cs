@@ -92,7 +92,8 @@ public sealed class MirTypesTest(ITestOutputHelper output)
     // layer a Type argument supplies whose Origin steps Exclusive publishes no members, so a Loan-free pointee leaves the guard undecided
     // (Limit; also past a shared parameter borrow, hs), while a pointee that may hold a Loan decides it (wr, orr, dr), as does an exclusive
     // part beside it (mixed, Through over Limit); the same layer with no Origin, `static` or a plain scalar pointee writes nothing past it
-    // (plain, plainA, plainE, st, dp).
+    // (plain, plainA, plainE, st, dp). A layer written in a Type argument of the declaration's own base clause reads as supplied on the
+    // instance holding it (ds: None), a known gap until G148 (1)'s holder-relative revision (DECISIONS R4-M147, Known limits).
     [Fact]
     public void TheGuardReadsEachStoredLayerOnItsInstance()
     {
@@ -101,13 +102,15 @@ public sealed class MirTypesTest(ITestOutputHelper output)
             "enum Opt2<P>\n    Has(Wrap<P>)\n    Not\nstruct Hold<P>\n    var items: Array<Wrap<P>>\nstruct OP<P>\n    var data: raw/Wrap<P> during self\n" +
             "struct ErasedBag<T>\n    var data: raw/u8 during self\nstruct Box1<P>\n    var b: ErasedBag<Wrap<P>>\n" +
             "open struct BaseW<P>\n    var w: Wrap<P>\nstruct Der<P> : BaseW<P>\n    var n: i32\n" +
+            "struct DerS : BaseW<raw/u8>\n    var n: i32\n" +
             "struct Mixed<E> {a}\n    var value: E\n    var u: uniq/(ref/i32 during a) during a\n" +
             "func probe(x: uniq/(ref/i32 during a) during a, q: ref/(ref/i32 during a) during a, w: Wrap<raw/u8 during x>, " +
             "wr: Wrap<raw/(ref/i32 during a) during x>, o: Outer<raw/u8 during x>, orr: Outer<raw/(ref/i32 during a) during x>, " +
             "t: Pair2<raw/u8 during x>, e: Opt2<raw/u8 during x>, h: Hold<raw/u8 during x>, op: OP<raw/u8 during x>, " +
             "bb: Box1<raw/u8 during x>, ow: Option<Wrap<raw/u8 during x>>, d: Der<raw/u8 during x>, bw: BaseW<raw/u8 during x>, " +
             "dr: Der<raw/(ref/i32 during a) during x>, hs: Wrap<raw/u8 during q>, mixed: Mixed<raw/u8 during x> during a, " +
-            "plain: Outer<raw/u8>, plainA: Hold<raw/u8>, plainE: Opt2<raw/u8>, st: Outer<raw/u8 during static>, dp: Der<raw/u8>)\n" +
+            "plain: Outer<raw/u8>, plainA: Hold<raw/u8>, plainE: Opt2<raw/u8>, st: Outer<raw/u8 during static>, dp: Der<raw/u8>, " +
+            "ds: DerS)\n" +
             "    return\n");
         var seen = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
         var members = new List<RawMember>();
@@ -116,7 +119,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
                 ("orr", MirWrites.Through), ("t", MirWrites.Limit), ("e", MirWrites.Limit), ("h", MirWrites.Limit), ("op", MirWrites.Limit),
                 ("bb", MirWrites.Limit), ("ow", MirWrites.Limit), ("d", MirWrites.Limit), ("bw", MirWrites.Limit), ("dr", MirWrites.Through),
                 ("hs", MirWrites.Limit), ("mixed", MirWrites.Through), ("plain", MirWrites.None), ("plainA", MirWrites.None),
-                ("plainE", MirWrites.None), ("st", MirWrites.None), ("dp", MirWrites.None)],
+                ("plainE", MirWrites.None), ("st", MirWrites.None), ("dp", MirWrites.None), ("ds", MirWrites.None)],
             Parameters(body).Select(x => (x.Name, Writes(x.Type))).ToArray());
         Assert.Empty(members);
 

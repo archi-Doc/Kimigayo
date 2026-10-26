@@ -4792,8 +4792,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
       value outranks it (review 2's C5).
     - Unstated, SPEC 5.7 Calls' per-parameter rule (P2): the pointee past an exclusive layer where the parameter's Type expression writes
       the layer, a Type argument's or a pair slot's argument's included (`TyCtxt.RawSupplied`, read on the instance holding the layer);
-      the write fact where a declaration states it in its own Fields, Case payloads or base. Gap (Known limits): a layer a declaration
-      writes inside a nested instance's Type argument reads as supplied.
+      the write fact where a declaration states it in its own Fields, Case payloads or base. Gap (Known limits): a layer written in a
+      Type argument of the declaration's own Field, Case payload or base clause reads as supplied.
     - A raw layer outside an instance (a local's or parameter's own Type, an element or a Tuple outside one): its pointee past an
       exclusive layer, as R4-M120 has it.
   - Representation: `MirWrites` is None, Through and Limit, with Through over Limit over None; `ThroughArgument`, the walk's `Argument`
@@ -4825,16 +4825,18 @@ and migration obligations remain in force; no numeric cap changes are authorized
     an exclusive reference" for a stored Own or Origin-less layer, whose instance's Type arguments are read by their actual Types (Q2
     (a)); R4-M143's O7 pin, now kept by the abstract-referent rule: clearGenOk is the located `Unsupported_Kd` at `a.clear()`,
     clearGenBad and Gen's `kept` that record and their true `y = 5`.
-  - Known limits: a raw layer without an Origin that a declaration writes as a Type argument of its own Field, Case payload or base
-    clause (`Holder2 { b: Wrap<raw/u8> }`, `HoldOpt { o: Option<raw/u8> }`, `DerS : BaseW<raw/u8>`, a user enum's payload, a Tuple in a
-    Type argument, deeper nesting, a base chain, a pair slot's argument) reads as supplied on the nested instance that holds it, so its
-    Loan-free pointee gives no write fact where SPEC 5.7 Calls gives one: an unsound acceptance, pre-existing (dev's MIR and the default
-    pipeline accept the same forms, and this unit newly accepts none), until Binding publishes the layer's provenance relative to the
-    holder (PLAN open issue; BU's proposed change (A), with a chain in `Past`). A store past a supplied Exclusive layer whose Origin is a
-    shared or parameter borrow is a Limit (`sharedSupplied`,
-    valid, accepted on dev), until Binding publishes such a layer's step judged by its borrow, or the writing scope's members; a raw
-    layer outside an instance reads its pointee, so `tupleW` (an Exclusive raw layer over u8 in a local Tuple) is accepted where the
-    letter leaves it undecided (v3 §6 (1)); B6-for's `v@follow = x` is the known wrong record PLAN G147 (8i) owns (BU's unit 0c).
+  - Known limits: a raw layer without an Origin that a declaration writes as a Type argument of its own Field, Case payload or base clause
+    (`Holder2 { b: Wrap<raw/u8> }`, `HoldOpt { o: Option<raw/u8> }`, `DerS : BaseW<raw/u8>`, `M<P> { w: Two<raw/u8, P> }` (a stated position
+    beside a supplied one), a user enum's payload, a Tuple in a Type argument, deeper nesting, a base chain, a pair slot's argument) reads
+    as supplied on the nested instance that holds it, so its Loan-free pointee gives no write fact where SPEC 5.7 Calls gives one: an
+    unsound acceptance, pre-existing (dev's MIR and the default pipeline accept the same forms, and this unit newly accepts none), until
+    Binding publishes the layer's provenance relative to the holder (PLAN open issue, G148 (1)'s holder-relative revision; BU's proposed
+    change (A), with a chain in `Past`). Pinned as accepted: `nestedDead` and `optionalDead`
+    (`MirBorrowsTest.AStoredRawLayerIsReadByItsStep`) and `ds: DerS` (`MirTypesTest`). A store past a supplied Exclusive layer whose Origin
+    is a shared or parameter borrow is a Limit (`sharedSupplied`, valid, accepted on dev), until Binding publishes such a layer's step
+    judged by its borrow, or the writing scope's members; a raw layer outside an instance reads its pointee, so `tupleW` (an Exclusive raw
+    layer over u8 in a local Tuple) is accepted where the letter leaves it undecided (v3 §6 (1)); B6-for's `v@follow = x` is the known wrong
+    record PLAN G147 (8i) owns (BU's unit 0c).
   - Evidence: the guard equals v3's prototype (variant 6) on its 30 probe programs and design review 3's r3-limits and r3-positions;
     the problems equal it but for two d2-pairs rows, which dev changed since fb3e4d883 (base d73012e72 lacks them too). The mir
     Functional ledger against `shared-base/5e5669d1b`, on the merge with dev a7eb51913: rows 3,222 to 3,209, 55 removed and 42 added in
