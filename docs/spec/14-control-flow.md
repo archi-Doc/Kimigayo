@@ -82,7 +82,7 @@ A discarded Place is acquired as at a value position:
 
 ```kimi
 func show(count: i32, r: uniq/i32, title: string)
-    count               // A Copy, discarded (the effect-free value warning, §17.5).
+    count               // A Copy, discarded (the effect-free value warning, §17.5.3).
     r                   // Reborrows a child of r and drops it.
     // title            // Error: a bare Non-Copy Place.
     title@move          // Transfers title; the value is destroyed.
