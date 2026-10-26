@@ -18,6 +18,14 @@ internal sealed record FormattingHelperRow(CompilerFunctionKind Kind, FunctionAb
 /// formatting witnesses (Windows x64 profile).</summary>
 internal sealed partial class LegacyRuntimeHelpers
 {
+    /// <summary>The runtime's test of an adapter (SPEC 22.10.1), true while it has recorded no failure, which a user formatter's write
+    /// wrapper calls before and after the witness (MIR code generation; DECISIONS R5-M130).</summary>
+    internal static readonly FunctionAbi FormatHealthy = new("__kimi_format_healthy", "i1", [new("ptr", "writer", LogicalIndex: 0)]);
+
+    /// <summary>The runtime's record of an adapter's failure into a write's result (SPEC 22.10.1): BufferFull, recorded once.</summary>
+    internal static readonly FunctionAbi WriterFail =
+        Slotted("__kimi_writer_fail", [new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "self", LogicalIndex: 0)]);
+
     // One row per formatting compiler function, indexed from TextFixed; a new kind adds a row.
     private static readonly FormattingHelperRow[] FormattingRows = CreateFormattingRows();
 

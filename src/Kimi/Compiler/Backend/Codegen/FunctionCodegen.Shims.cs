@@ -5,11 +5,11 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
 
-// The Builtin shims of FunctionCodegen (R5 plan C8f, PD3, K package 4.3; SPEC 12.4.3, 13.3.3, 13.4, 13.4.1, 22.5.1; DECISIONS R5-M126): a
-// Builtin item's function under its requirement's signature in its instance (ModuleCodegen.Shim: the admitting call's substitution, a
-// caller-location function), which a Requirement call, a requirement Item's Value call and its adapter entry call (FunctionCodegen.Calls'
-// Witness). Its operands are ref/Self addresses, read in place; a comparison acquires, destroys and reports nothing. By its function's
-// compiler function, one of the Shim disposition's closed kinds (PD21), as the collector's shim targets:
+// The Builtin shims of FunctionCodegen (R5 plans C8f and C9b, PD3, K package 4.3; SPEC 12.4.3, 13.3.3, 13.4, 13.4.1, 22.5.1, 22.10.1;
+// DECISIONS R5-M126, R5-M130): a Builtin item's function under its requirement's signature in its instance (ModuleCodegen.Shim: the
+// admitting call's substitution, a caller-location function), which a Requirement call, a requirement Item's Value call and its adapter
+// entry call (FunctionCodegen.Calls' Witness). Its operands are ref/Self addresses, read in place; a comparison acquires, destroys and
+// reports nothing. By its function's compiler function, one of the Shim disposition's closed kinds (PD21), as the collector's shim targets:
 // - BuiltinEquals and BuiltinCompare: TyCtxt.Comparison of its Contract (TyCtxt.Contract) on its Self under the Contract's mapping, the
 //   collector's tree, so its Witness leaves are the item's targets in order. A Tuple's parts left to right at their Field offsets, each
 //   but the last deciding when it is not equal (equals' false, compare's non-zero i32; SPEC 13.4.1), its value then returned; a ref
@@ -17,7 +17,7 @@ namespace Kimi.Compiler.Backend;
 //   its virtual slot included) on the two leaf addresses.
 // - BuiltinArithmetic: its Contract's MIR operator (BuiltinArithmetic, SPEC 13.3.3) through the operator table's row, as a statement's, on
 //   the loaded operands with its check, which Aborts at the location the shim received (SPEC 22.5.1).
-// - BuiltinFormat: C9b's row, one located Unsupported_Kd at the item's site.
+// - BuiltinFormat: the built-in formatting witness, its parameters forwarded to P1d's BuiltinFormat routine with its Self's kind (Format).
 // A node the collector refuses (Requirement, None, no tree) is its record at the item's admission, which stops generation; an arithmetic
 // operation the capability table refuses is the collector's record at each requesting site, whose edge admits no item.
 internal sealed partial class FunctionCodegen
@@ -32,7 +32,7 @@ internal sealed partial class FunctionCodegen
     {
         (this.collector, this.item, this.output, this.next, this.leaf) = (collector, item, output, 0, 0);
         var (function, self) = (collector.Set.Items[item].Key.Symbol!, collector.Set.Items[item].RepresentativeType!);
-        if (this.Shim(item, default) is not { } abi)
+        if (this.module.Shim(item) is not { } abi)
         {
             return; // Recorded at the item's site.
         }
@@ -41,26 +41,50 @@ internal sealed partial class FunctionCodegen
         output.Write(abi.GetDefinition(exported: false));
         output.Write("entry:\n");
         var contract = TyCtxt.Contract(function);
-        var value = function.CompilerFunction == CompilerFunctionKind.BuiltinArithmetic ? this.Arithmetic(contract, self)
-            : this.Compare(this.typeContext.Comparison(contract, self, operators: false), contract.LibraryDeclaration, new('p', 0), new('p', 1));
-        if (value is { } result)
+        switch (function.CompilerFunction)
         {
-            this.ReturnValue(result);
-            output.Write("}\n");
+            case CompilerFunctionKind.BuiltinFormat:
+                this.Format(self);
+                return;
+            case CompilerFunctionKind.BuiltinArithmetic:
+                this.Returned(this.Arithmetic(contract, self));
+                return;
+            default:
+                var tree = this.typeContext.Comparison(contract, self, operators: false);
+                this.Returned(this.Compare(tree, contract.LibraryDeclaration, new('p', 0), new('p', 1)));
+                return;
         }
     }
 
-    // A Builtin item's function (ModuleCodegen.Shim), which a call of it runs and its definition writes; a format shim's is C9b's row, one
-    // located Unsupported_Kd at the source (the item's site at its definition). Null after a record.
-    private FunctionAbi? Shim(int target, in SourceInfo source)
+    // SPEC 22.10.1-22.10.2 (DECISIONS R5-M130): a BuiltinFormat shim is the built-in formatting witness of its Self: its own parameters
+    // (format's value at logical index 0, the writer at 1, the received location) forwarded to P1d's BuiltinFormat routine (Forward) with the
+    // formatting runtime's kind of its Self (LegacyRuntimeHelpers.FormatKind; the collector admits a built-in formattable Self only, so another
+    // is a broken contract), the function then ended (End).
+    private void Format(BoundType self)
     {
-        if (this.collector.Set.Items[target].Key.Symbol!.CompilerFunction == CompilerFunctionKind.BuiltinFormat)
+        var row = LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.BuiltinFormat)!;
+        if (LegacyRuntimeHelpers.FormatKind(self) is not (>= 0 and var kind))
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, source); // C9b writes the format shim.
-            return null;
+            this.Report(DiagnosticCode.InternalInvariant_Kd, default);
+            return;
         }
 
-        return this.module.Shim(target);
+        this.module.Request(row.Needs);
+        this.slotless[0] = new('\0', kind);
+        if (this.Forward(row.Abi, this.slotless.AsSpan(0, 1), null, out var result))
+        {
+            this.End(row.Abi, result);
+        }
+    }
+
+    // A comparison's or an arithmetic operation's value returned (ReturnValue) and the function ended; nothing after a record (no value).
+    private void Returned(Value? value)
+    {
+        if (value is { } result)
+        {
+            this.ReturnValue(result);
+            this.output.Write("}\n");
+        }
     }
 
     // SPEC 13.4: the comparison of the values at two addresses by its node under Equatable or Comparable: equals' i1 or compare's i32; null
@@ -182,7 +206,7 @@ internal sealed partial class FunctionCodegen
         }
 
         _ = this.Location(default, out var site); // The shim's own location parameters (a caller-location function).
-        return this.CallWitness(run, [left, right], null, site);
+        return this.CallWitness(run, [left, right], null, site, out var value) ? value : null;
     }
 
     // SPEC 13.3.3: the built-in operation of an arithmetic shim's Contract, its MIR operator (BuiltinArithmetic) through the operator

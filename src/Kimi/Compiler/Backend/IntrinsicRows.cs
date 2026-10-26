@@ -37,6 +37,7 @@ internal enum IntrinsicWriter : byte
     Clone, // clone: Routine's, the runtime's retain of the result handle's counting (FunctionCodegen.Objects).
     Test, // A runtime Type test: its target's number in the module through the runtime's test, or false (FunctionCodegen.Objects).
     Capacity, // capacity: the legacy handle's capacity word through P2b's kernel (FunctionCodegen.Arrays; DECISIONS R5-M121).
+    Writer, // Text.writer: P1d's TextWriter routine, given its destination's writer kind and its reserve witness (FunctionCodegen.Formatting).
 }
 
 /// <summary>A row of the intrinsic table.</summary>
@@ -65,10 +66,15 @@ internal static class IntrinsicRows
         new(IntrinsicId.Abort, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Routine, RuntimeAbi.AbortMessage),
         new(IntrinsicId.Fail, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Fail, RuntimeAbi.Abort),
         new(IntrinsicId.WriteStdout, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // No MIR producer (R8, PD21).
-        new(IntrinsicId.FormatFloat, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9b.
-        new(IntrinsicId.ErasedWriter, IntrinsicTarget.Witness, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9b.
-        new(IntrinsicId.ErasedReserve, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9b.
-        new(IntrinsicId.FormatInteger128, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9b.
+        new(IntrinsicId.FormatFloat, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // No MIR producer (R8, PD21).
+        new(
+            IntrinsicId.ErasedWriter,
+            IntrinsicTarget.Witness,
+            LaysOutType: false,
+            IntrinsicWriter.Writer,
+            LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.TextWriter)!.Abi),
+        new(IntrinsicId.ErasedReserve, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // No MIR producer (R8, PD21).
+        new(IntrinsicId.FormatInteger128, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // No MIR producer (R8, PD21).
         new(IntrinsicId.MakeObj, IntrinsicTarget.Descriptor, LaysOutType: false, IntrinsicWriter.Create, null),
         new(IntrinsicId.MakeRc, IntrinsicTarget.Descriptor, LaysOutType: false, IntrinsicWriter.Create, null),
         new(IntrinsicId.MakeArc, IntrinsicTarget.Descriptor, LaysOutType: false, IntrinsicWriter.Create, null),

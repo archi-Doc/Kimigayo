@@ -4,15 +4,15 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The Call terminator of FunctionCodegen (R5 package C 3.2 I8, plan C3a, C3b, C8a, C5a, C6c, C8b, C8d, C8e, C9a; DECISIONS R5-M89, R5-M92,
-// R5-M93, R5-M102, R5-M114, R5-M116, R5-M121, R5-M124, R5-M128): a callee by its kind's row (a Value callee's in FunctionCodegen.Closures, a
+// The Call terminator of FunctionCodegen (R5 package C 3.2 I8, plan C3a, C3b, C8a, C5a, C6c, C8b, C8d, C8e, C9a, C9b; DECISIONS R5-M89,
+// R5-M92, R5-M93, R5-M102, R5-M114, R5-M116, R5-M121, R5-M124, R5-M128, R5-M130): a callee by its kind's row (a Value callee's in FunctionCodegen.Closures, a
 // compiler function's of the Body disposition by its legacy row's writer, Legacy), the collector's targets read by one forward cursor, each
 // once in its site's order, and the one call writer, which the legacy rows, the intrinsic rows, the glue items and the module's entry call
 // too; each argument is FunctionCodegen.Arguments' (its parameter's kind, a copy slot). A call that dispatches (SPEC 6.4.3, 6.4.6) runs
 // through a virtual slot, which only makes the callee value it writes (EntryOf): a Virtual callee, without a target (X5), under its slot's
 // signature (ModuleCodegen.Slot); a body target that implements a slot, a requirement's virtual witness (BodyRun); a Builtin target its
-// shim's function (FunctionCodegen.Shims; DECISIONS R5-M126). Rows not written yet: a format shim and a user formatter's wrapper (C9b), a
-// property witness (C3c), a requirement whose witness has no body (PLAN G157 (10)).
+// shim's function (FunctionCodegen.Shims; DECISIONS R5-M126, R5-M130). Rows not written yet: a property witness (C3c), a requirement whose
+// witness has no body (PLAN G157 (10), K's: the collector publishes no target for a body-less compiler function).
 internal sealed partial class FunctionCodegen
 {
     private int cursor; // The item's first target not passed yet (I8).
@@ -91,8 +91,8 @@ internal sealed partial class FunctionCodegen
 
     // SPEC 8.6.3-8.6.4, 6.4.6 (K package 4.5 rows 1, 3 and 5): what a call of a function's or a requirement's target item runs, the one rule
     // of a Requirement call and of a function Item's call and adapter (FunctionCodegen.Closures' Runs): a body item its body (BodyRun); a
-    // Builtin item its shim's function (FunctionCodegen.Shims; DECISIONS R5-M126), a format shim's C9b's located Unsupported_Kd; a property
-    // witness C3c's; any other item a broken contract. Null after a record at the source.
+    // Builtin item its shim's function (FunctionCodegen.Shims; DECISIONS R5-M126, R5-M130); a property witness C3c's; any other item a broken
+    // contract. Null after a record at the source.
     private Run? Witness(int target, in SourceInfo source)
     {
         switch (this.collector.Set.Items[target].Key.Kind)
@@ -100,7 +100,7 @@ internal sealed partial class FunctionCodegen
             case MonoKind.Body:
                 return this.BodyRun(target); // Null after a record.
             case MonoKind.Builtin:
-                return this.Shim(target, source) is { } shim ? new Run(shim, null) : null; // Null after a record.
+                return this.module.Shim(target) is { } shim ? new Run(shim, null) : null; // Null after a record.
             case MonoKind.PropertyWitness:
                 this.Report(DiagnosticCode.Unsupported_Kd, source); // C3c writes the property witnesses.
                 return null;
@@ -125,12 +125,13 @@ internal sealed partial class FunctionCodegen
         return new Run(signature, function is not null && VTableDef.SlotOf(function) >= 0 ? function : null);
     }
 
-    // SPEC 6.4.6, 8.6.3: the call of a witness's body a function writes itself around (BodyRun's run: a comparison shim's Witness leaf), each
-    // parameter by its kind: the result slot the slot given, a location parameter the site given, any other the input at its logical index;
-    // the call of the callee value its slot, if any, makes (EntryOf); its value. Null, with InternalInvariant_Kd, for a parameter the caller
-    // does not supply (a witness's signature is its requirement's).
-    private Value? CallWitness(Run run, ReadOnlySpan<Value> inputs, Value? slot, Site? site)
+    // SPEC 6.4.6, 8.6.3: the call of a witness's body a function writes itself around (BodyRun's run: a comparison shim's Witness leaf, a
+    // user formatter's write wrapper), each parameter by its kind: the result slot the slot given, a location parameter the site given, any
+    // other the input at its logical index; the call of the callee value its slot, if any, makes (EntryOf); its value into `result` (none for
+    // a void callee). False, with InternalInvariant_Kd, for a parameter the caller does not supply (a witness's signature is its requirement's).
+    private bool CallWitness(Run run, ReadOnlySpan<Value> inputs, Value? slot, Site? site, out Value? result)
     {
+        result = null;
         var parameters = run.Signature.Parameters;
         this.arguments = this.arguments.Length < parameters.Length ? new Value[parameters.Length] : this.arguments;
         for (var i = 0; i < parameters.Length; i++)
@@ -145,13 +146,14 @@ internal sealed partial class FunctionCodegen
             if (argument is not { } value)
             {
                 this.Report(DiagnosticCode.InternalInvariant_Kd, default);
-                return null;
+                return false;
             }
 
             this.arguments[i] = value;
         }
 
-        return this.WriteCall(run.Signature, this.arguments.AsSpan(0, parameters.Length), this.EntryOf(run.Signature, run.Slot));
+        result = this.WriteCall(run.Signature, this.arguments.AsSpan(0, parameters.Length), this.EntryOf(run.Signature, run.Slot));
+        return true;
     }
 
     // SPEC 6.4.3 (X5; DECISIONS R5-M114): a Virtual callee, which has no target: the original's slot under the call's substitution in the
@@ -278,7 +280,7 @@ internal sealed partial class FunctionCodegen
 
         if (row.InInstance || row.Fixed)
         {
-            return; // Recorded (Routine): a broken contract, or a user formatter's wrapper (C9b).
+            return; // Recorded (Routine): a broken contract.
         }
 
         switch (row.Writer)

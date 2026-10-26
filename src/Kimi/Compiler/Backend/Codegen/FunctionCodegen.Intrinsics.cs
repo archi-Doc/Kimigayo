@@ -4,10 +4,11 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The intrinsic rows of FunctionCodegen (R5 plans C8a, C5c and C6a, package C 3.2; DECISIONS R5-M92, R5-M108, R5-M110): a call of an
-// intrinsic by its row's writer (IntrinsicRows' writer column), over the closed IntrinsicWriter vocabulary: a routine row (Routine: a
+// The intrinsic rows of FunctionCodegen (R5 plans C8a, C5c, C6a and C9b, package C 3.2; DECISIONS R5-M92, R5-M108, R5-M110, R5-M130): a call
+// of an intrinsic by its row's writer (IntrinsicRows' writer column), over the closed IntrinsicWriter vocabulary: a routine row (Routine: a
 // runtime routine through the one call writer, Invoke, with its slot-less values; Raw.release, $abort, tryAllocateBytes, Raw.allocate with
-// its element stride, a creation's factory with its control value and a clone's retain, FunctionCodegen.Objects), which a compiler
+// its element stride, a creation's factory with its control value and a clone's retain, FunctionCodegen.Objects, Text.writer's routine with
+// its destination's writer kind and dispatch word, FunctionCodegen.Formatting), which a compiler
 // function's Value call and adapter entry also call by its disposition (Routine by kind), a Fail's Abort reason, Raw.initialize's copy,
 // Raw.slice's record, transferBytes' memcpy, a staticEnsure's state test (FunctionCodegen.Statics) and a runtime Type test
 // (FunctionCodegen.Objects). Each takes its operands at its declaration's slots (ArgumentPosition) and ends through Finish; a call whose
@@ -16,7 +17,7 @@ namespace Kimi.Compiler.Backend;
 // C3b's row (Location).
 internal sealed partial class FunctionCodegen
 {
-    private readonly Value[] slotless = new Value[1]; // A routine row's slot-less values (Routine), a formatting row's kind among them.
+    private readonly Value[] slotless = new Value[2]; // A routine row's slot-less values (Routine): a formatting row's kind, Text.writer's two.
 
     private void Intrinsic(in MirTerminator call, in IntrinsicRow row)
     {
@@ -50,7 +51,7 @@ internal sealed partial class FunctionCodegen
             case IntrinsicWriter.Capacity:
                 this.Capacity(call);
                 return;
-            case IntrinsicWriter.Create or IntrinsicWriter.Clone:
+            case IntrinsicWriter.Create or IntrinsicWriter.Clone or IntrinsicWriter.Writer:
                 return; // A broken contract, recorded by Routine.
             case IntrinsicWriter.Unwritten:
                 this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // Its row's unit (IntrinsicRows).
@@ -133,6 +134,8 @@ internal sealed partial class FunctionCodegen
                 return this.Create(result, target, out given);
             case IntrinsicWriter.Clone:
                 return this.Retain(result);
+            case IntrinsicWriter.Writer:
+                return this.Writer(row, argument, target, out given);
             default:
                 return null;
         }
