@@ -11,11 +11,12 @@ internal sealed partial class MirBuilder
     // The one operand of a group, a borrow, a conversion or a Deref.
     private static Koto Child(Koto node) => node switch { LabeledKoto label => label.Target, BinaryKoto binary => binary.Left, _ => ((UnaryKoto)node).Operand };
 
-    // The written exclusive borrow a node's value is, also in parentheses; null for another node.
+    // The written exclusive borrow a node's value is, also in parentheses; null for another node and for a borrow of an operand Binding
+    // rejected, which lends nothing (its value derived, Into).
     private static Koto? Lending(Koto node) => HirTables.Op(node) switch
     {
         HirOp.Group => Lending(Child(node)),
-        HirOp.Borrow when MirTypes.IsExclusive(TypeOf(node)) => node,
+        HirOp.Borrow when MirTypes.IsExclusive(TypeOf(node)) && !Rejected(Child(node)) => node,
         _ => null,
     };
 

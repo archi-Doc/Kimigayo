@@ -3110,6 +3110,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Invariant, both ways: (a) no consumer forms a Copy, Move, Reborrow, Ref, reservation or Loan on an Error node's value through the
     column, a plan-row Adjust or a located Place; each receives a derived value formed for it (an Opaque in a temp of its Type, moved
     into it, or formed in its destination). Its one exception is L1. (b) The derived value is held at the consumer's expected Type.
+    Amended by PLAN G247 (2026-10-26): a Borrow (`@ref`, `@uniq`, `@raw`) of an operand Binding rejected is such a consumer;
+    `MirBuilder.Into`'s one arm for an operation taking a rejected Place to write or lend it (an assignment's or update's target, a
+    Borrow's operand) forms its value in its destination, and the preparation path's `Lending` lends no such Borrow.
   - L1: an in-place step is not a consumer: an update whose accessor side is standard reads and writes its receiver's storage in place,
     for an Error receiver a Field of the located derived temp (R5-M63: an Error evaluated as its Place is a value in a temp); a
     getter-only update's Writeback reserves `&uniq two-phase` on that Field, which the update's own write activates (its window holds

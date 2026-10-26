@@ -111,6 +111,11 @@ internal sealed partial class MirBuilder
             case HirOp.Logical:
                 this.Logical(destination, (BinaryKoto)node);
                 break;
+            case HirOp.Assign or HirOp.CompoundAssign or HirOp.Borrow when Rejected(Child(node)):
+                // SPEC 23.1.2 (DECISIONS R4-M109 (a)): an operation taking a Place Binding rejected to write or lend it is derived from its
+                // error, its value formed in its destination: no Place of the operand, so no Ref, Loan, address or reservation.
+                this.Opaque(node, destination);
+                break;
             case HirOp.Borrow: // SPEC 13.5.6, 5.4: the operand's Place borrowed as the node's Type says, or its address.
                 this.Set(destination, this.Ref(this.Place(Child(node), input), TypeOf(node), input), node);
                 break;
@@ -119,9 +124,6 @@ internal sealed partial class MirBuilder
                 break;
             case HirOp.Aggregate:
                 this.Aggregate(destination, node, TypeOf(node));
-                break;
-            case HirOp.Assign or HirOp.CompoundAssign when Rejected(Child(node)): // An update of a target Binding rejected is derived from its error.
-                this.Opaque(node, destination);
                 break;
             case HirOp.Assign:
                 this.Replace(destination, (BinaryKoto)node);
