@@ -737,7 +737,9 @@ public sealed partial class Binding
                 }
             }
 
-            this.RequireResultPremises(selected, result, call); // SPEC 15.3.7: the callee's result premises.
+            // SPEC 15.3.7, 15.6.1: the callee's instantiated result and the Type arguments the call infers, none where it writes them.
+            this.RequireResultPremises(selected, result, call, generic is null ? scratch.AsSpan(0, CallSlotCount(selected)) : default);
+
             callee.BoundSymbol = winner;
             callee.BindingState = BindingState.Resolved;
             if (callee is MemberAccessKoto selectedMember)

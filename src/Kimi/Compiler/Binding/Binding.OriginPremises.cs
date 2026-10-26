@@ -185,9 +185,10 @@ public sealed partial class Binding
                     }
                 }
 
-                // SPEC 15.3.7: the result Type's intrinsic well-formedness is a premise of the definition (Binding.ResultPremises.cs).
-                if (!ReferenceEquals(signature, this.resultPremiseExcluded) &&
-                    signature is FunctionKoto { IsAnonymous: false, IsConstructor: false, BoundSymbol.Type: { } result })
+                // SPEC 15.3.7, 15.6.1: the result Type's intrinsic well-formedness is a premise of the definition (Binding.ResultPremises.cs),
+                // an anonymous function's written one too (DECISIONS R4-M144).
+                if (!ReferenceEquals(signature, this.resultPremiseExcluded) && signature is FunctionKoto { IsConstructor: false } function &&
+                    (function.IsAnonymous ? function.ReturnType?.BoundType : function.BoundSymbol?.Type) is { } result)
                 {
                     this.AddResultPremises(environment, result);
                 }
@@ -263,7 +264,6 @@ public sealed partial class Binding
 
         if (type.Kind == BoundTypeKind.Function)
         {
-            this.AddTypePremises(environment, type.Components[1], rule);
             return;
         }
 

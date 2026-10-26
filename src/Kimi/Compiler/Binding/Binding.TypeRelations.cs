@@ -94,7 +94,7 @@ public sealed partial class Binding
 
         if (actual.Kind == BoundTypeKind.Function && actual.Components.Count == 2)
         {
-            return FunctionFits(actual, expected, binding, use, invariant, new(actual, own ?? FunctionTypeBinder(actual), expected, FunctionTypeBinder(expected)), everywhere);
+            return FunctionFits(actual, expected, binding, use, invariant, ConversionInstance(actual, own, expected), everywhere);
         }
 
         for (var i = 0; i < actual.Components.Count; i++)
@@ -161,8 +161,20 @@ public sealed partial class Binding
             }
         }
 
-        return FitsTypeCore(actual.Components[1], expected.Components[1], binding, use, invariant, instance: instance, structural: everywhere, everywhere: everywhere);
+        if (!FitsTypeCore(actual.Components[1], expected.Components[1], binding, use, invariant, instance: instance, structural: everywhere, everywhere: everywhere))
+        {
+            return false;
+        }
+
+        // SPEC 15.6.1, 10.7, 15.3.7: the conversion proves the source's signature Types from the target's, outside applicability, which no
+        // premise decides (SPEC 15.6.1).
+        return binding is not { collectingFits: false, candidateTrials: 0 } || use is null || everywhere || binding.ProvesConversionPremises(actual, expected, instance, use);
     }
+
+    // SPEC 10.7: a Function value's conversion instantiates the implementation's call-time Origins at the required ones, one instance for
+    // its fit, its record (ConversionContractFailure) and its source's premises (ProvesConversionPremises).
+    private static CallableInstance ConversionInstance(BoundType actual, Koto? own, BoundType expected)
+        => new(actual, own ?? FunctionTypeBinder(actual), expected, FunctionTypeBinder(expected));
 
     // SPEC 10.7: within one Callable comparison, `a` outlives `b` after the implementation's call-time Origins are instantiated. The
     // required per-call Origins are rigid: one outlives another only at the same position, and a fixed Origin outlives one only when
@@ -244,7 +256,7 @@ public sealed partial class Binding
             return null;
         }
 
-        var instance = new CallableInstance(actual, own ?? FunctionTypeBinder(actual), expected, FunctionTypeBinder(expected));
+        var instance = ConversionInstance(actual, own, expected);
         var inputs = actual.Components[0];
         var required = expected.Components[0];
         for (var i = 0; i < inputs.Components.Count && i < required.Components.Count; i++)
@@ -259,8 +271,12 @@ public sealed partial class Binding
             }
         }
 
+        // A Function value's signature Types (ProvesConversionPremises); a named function's conditions, which its definition filters, are
+        // its own record (ConditionContractFailure, SPEC 15.3.7).
         return this.FailedInstancePart(actual.Components[1], expected.Components[1], false, instance, use) is { } result
-            ? new(at, "the result", result.Longer, result.Shorter, result.Equality) : null;
+            ? new(at, "the result", result.Longer, result.Shorter, result.Equality)
+            : own is not FunctionKoto { IsAnonymous: false } && !this.ProvesConversionPremises(actual, expected, instance, use) && this.failedResultPremise is { } premise
+            ? new(at, "the source's signature", premise.Longer, premise.Shorter, false) : null;
 
         static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
     }

@@ -54,6 +54,34 @@ public class OriginRelationDiagnosticTest
     private const string WrittenParameter = "func k(q: ref/i32, r: ref/i32, t: ref/(ref/i32 during a) during b, " +
         "f: (ref/(ref/i32 during q) during r) -> ref/i32 during r) -> ref/i32 during r\n    origin a outlives q\n    origin b outlives r\n";
 
+    // G216 (a): a named nested function, and a Closure, whose parameter names the enclosing q and r, which no declaration judges.
+    private const string InnerFunction = "    func inner(p: Option<ref/(ref/i32 during q) during r>, x: ref/i32 during q) -> ref/i32 during r => x\n";
+
+    private const string Inner = "func k(q: ref/i32, r: ref/i32) -> ref/i32 during r\n" + InnerFunction;
+
+    private const string NoneClosure = "    let c = func [] (p: Option<ref/(ref/i32 during q) during r>) -> i32 => 0\n";
+
+    private const string NoneInput = "func k(q: ref/i32, r: ref/i32) -> i32\n" + NoneClosure;
+
+    private const string NoneLocal = "    let none: Option<ref/(ref/i32 during q) during r> = Option.None\n";
+
+    private const string IllFormed = "Option<ref/(ref/i32 during q) during r>";
+
+    private const string IllFormedLayer = "ref/(ref/i32 during q) during r";
+
+    // An independent Loan conflict (SPEC 23.1.2).
+    private const string Conflict = "    var x = 1\n    let w = x@ref\n    x = 2\n    let u = w@follow\n";
+
+    private const string Unrelated = "func m() -> i32\n    let b: bool = 3\n    return 0\n";
+
+    // A named callee whose parameter names its own Origins, passed a local of the instantiated Type (BU's p1b).
+    private const string Pass = "func h(q: ref/i32, r: ref/i32, x: Option<ref/(ref/i32 during q) during r>) -> ref/i32 during r\n    return q\n" +
+        "func k(a: ref/i32, b: ref/i32) -> ref/i32 during b\n    let none: Option<ref/(ref/i32 during a) during b> = Option.None\n";
+
+    // BU's x4: k's call of its written parameter beside an unrelated Binding failure of a caller (an argument's constraint).
+    private const string WrittenParameterBeside = WrittenParameter + "    return f(t)\n" + KeepHead + "    if true\n        let short = 2\n        let sq = short@ref\n" +
+        "        let f = func [sq] (p: ref/(ref/i32 during sq) during lr) -> ref/i32 during lr => sq\n        keep = k(sq, lr, lr2@ref, f@move)\n    return keep@follow\n";
+
     // The same parameter with WrittenClosure's two inputs, passed the Closure by a body that keeps k's result past the block of `short`.
     private const string WrittenParameterCalled = "func k(q: ref/i32, r: ref/i32, t: ref/(ref/i32 during a) during b, " +
         "f: (ref/(ref/i32 during q) during r, ref/i32 during q) -> ref/i32 during r) -> ref/i32 during r\n" +
@@ -136,6 +164,12 @@ public class OriginRelationDiagnosticTest
     // block of `short` lets `keep` outlive it (the Loan conflict; valid called in one scope; beside a Binding error ownership records
     // nothing on either pipeline today), and a named function's written Function Type parameter, whose input premise is no premise of
     // the function's body, is Unknown at its call unless the body's clause proves it.
+    // DECISIONS R4-M144: at each call, every relation of the callee's instantiated parameter Type that names an Origin the call does not
+    // instantiate (an enclosing definition's q and r) is judged, by a named nested function or a Closure, for a contextually typed
+    // argument too; a position the argument kept over the call's own Origins is judged where it was formed (p1b's annotation, and its
+    // return fit). The records are located and fail no binding, so an independent Loan conflict stays beside them; beside an unrelated
+    // Binding failure they are lost, as an ownership record is (PLAN G56's limit; owner, 2026-10-26: 「G56 の制限として受け入れる (推奨)」;
+    // removed with G56's fix).
     [Theory]
     [InlineData("func g() -> i32\n    let h = func [] (p: ref/(ref/i32)) -> i32 => 1\n    return 0\n", "")]
     [InlineData("func k(q: ref/i32) -> i32\n    let h = func [] (p: ref/(ref/i32)) -> i32 => p@follow@follow\n    let x = 5\n    return h(x@ref@ref)\n", "")]
@@ -151,8 +185,23 @@ public class OriginRelationDiagnosticTest
     [InlineData(KeepHead + "    if true\n        let short = 2\n        let sq = short@ref\n        let f: " + WrittenInputs + " = " + WrittenClosure + "\n        keep = f(lr2@ref, sq)\n    let b: bool = 3\n    return keep@follow\n", "TypeMismatch_Kd 3")]
     [InlineData(WrittenParameter + "    origin q outlives r\n    return f(t)\n", "")]
     [InlineData(WrittenParameter + "    return f(t)\n", "UnprovenOriginRelation_Kd t")]
-    [InlineData(WrittenParameter + "    return f(t)\nfunc m() -> i32\n    let b: bool = 3\n    return 0\n", "UnprovenOriginRelation_Kd t; TypeMismatch_Kd 3")]
+    [InlineData(WrittenParameter + "    return f(t)\n" + Unrelated, "TypeMismatch_Kd 3")]
     [InlineData(WrittenParameterCalled, "UnprovenOriginRelation_Kd t")]
+    [InlineData(WrittenParameterBeside, "UnsatisfiedConstraint_Kd f@move")]
+    [InlineData(Inner + "    return inner(Option.None, q)\n", "UnprovenOriginRelation_Kd Option.None")]
+    [InlineData(Inner + "    return inner(.None, q)\n", "UnprovenOriginRelation_Kd .None")]
+    [InlineData("func k(q: ref/i32, r: ref/i32) -> ref/i32 during r\n    origin q outlives r\n" + InnerFunction + "    return inner(Option.None, q)\n", "")]
+    [InlineData(Inner + NoneLocal + "    return inner(none, q)\n", "UnprovenOriginRelation_Kd " + IllFormedLayer + "; UnprovenOriginRelation_Kd none")]
+    [InlineData(Inner + "    return inner(Option.None, q)\n" + Unrelated, "TypeMismatch_Kd 3")]
+    [InlineData(NoneInput + "    return c(Option.None)\n", "UnprovenOriginRelation_Kd Option.None")]
+    [InlineData(NoneInput + "    return c(.None)\n", "UnprovenOriginRelation_Kd .None")]
+    [InlineData("func k(q: ref/i32, r: ref/i32) -> i32\n    origin q outlives r\n" + NoneClosure + "    return c(Option.None)\n", "")]
+    [InlineData(NoneInput + NoneLocal + "    return c(none)\n", "UnprovenOriginRelation_Kd " + IllFormedLayer + "; UnprovenOriginRelation_Kd none")]
+    [InlineData(NoneInput + "    return c(" + IllFormed + ".None)\n", "UnprovenOriginRelation_Kd " + IllFormed + ".None; UnprovenOriginRelation_Kd " + IllFormedLayer)]
+    [InlineData(NoneInput + Conflict + "    return c(Option.None)\n", "ComparisonLoanConflict_Kd x = 2; UnprovenOriginRelation_Kd Option.None")]
+    [InlineData(NoneInput + NoneLocal + Conflict + "    return c(none)\n", "UnprovenOriginRelation_Kd " + IllFormedLayer + "; ComparisonLoanConflict_Kd x = 2; UnprovenOriginRelation_Kd none")]
+    [InlineData(Pass + "    return h(a, b, none)\n", "UnprovenOriginRelation_Kd h(a, b, none)")]
+    [InlineData(Pass + "    let y = h(a, b, none)\n    return b\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during a) during b")]
     public void ANestedSignaturesInputIsWellFormedByPremiseAndAtEachCall(string body, string records)
     {
         var source = body + Main;
@@ -282,10 +331,10 @@ public class OriginRelationDiagnosticTest
         Assert.All(errors, static x => Assert.Equal("requires b outlives a, which is not proven", x.Label));
     }
 
-    // SPEC 15.3.2, 15.3.4, 15.6.1 (DECISIONS BU-26): a declaration's Type occurrence (a Field's, payload's or base's declared Type, a nested
-    // Function Type part of a signature, which no premise covers) is judged by Binding from the premises visible at it: an unproven
-    // relation is Binding's wellFormed record there, one per failing operand of a meet. The valid twin writes the premise (a clause or a
-    // Semantics bound of the declaration) or, in a nested Function Type part, the Origin.
+    // SPEC 15.3.2, 15.3.4, 15.6.1 (DECISIONS BU-26): a declaration's Type occurrence (a Field's, payload's or base's declared Type) is
+    // judged by Binding from the premises visible at it: an unproven relation is Binding's wellFormed record there, one per failing operand
+    // of a meet. The valid twin writes the premise (a clause or a Semantics bound of the declaration). A nested Function Type part of a
+    // signature is that nested signature's own, judged at each call through it (DECISIONS R4-M144; ResultPremiseTest).
     [Theory]
     [InlineData("struct Pair {a, b}\n    public let x: ref/(ref/i32 during b) during a\n    public init(x: ref/(ref/i32 during b) during a) => self.x = x\n", "    public let", "    origin b outlives a\n    public let", "ref/(ref/i32 during b) during a", "self.b outlives self.a")]
     [InlineData("struct Pair {a, b, c}\n    public let x: ref/(ref/i32 during (b and c)) during a\n    public init(x: ref/(ref/i32 during (b and c)) during a) => self.x = x\n", "    public let", "    origin b outlives a\n    origin c outlives a\n    public let", "ref/(ref/i32 during (b and c)) during a", "self.b outlives self.a", "self.c outlives self.a")]
@@ -293,8 +342,6 @@ public class OriginRelationDiagnosticTest
     [InlineData("open struct B<T>\n    public init() => ()\nstruct D {a, b} : B<ref/(ref/i32 during b) during a>\n    public init() : base() => ()\n", "    public init() :", "    origin b outlives a\n    public init() :", "ref/(ref/i32 during b) during a", "self.b outlives self.a")]
     [InlineData("open struct Base<T>\n    public init() => ()\nstruct Holder {a, b}\n    public let item: objref/Base<ref/i32 during a> during b\n", "    public let", "    origin a outlives b\n    public let", "objref/Base<ref/i32 during a> during b", "self.a outlives self.b")]
     [InlineData("public struct Box<E>\n    public let item: E\n    public init(item: E) => self.item = item@move\nstruct View<s/T> {a}\n    s is ref\n    public let b: ref/Box<s/T> during a\n", "s is ref", "s is owner", "ref/Box<s/T> during a", "the omitted Origin of s/T outlives self.a")]
-    [InlineData("contract C\n    func f() -> (ref/i32) -> Option<ref/(ref/i32) during static>\n", "(ref/i32) during", "(ref/i32 during static) during", "ref/(ref/i32) during static", "the omitted Origin of ref/i32 outlives static")]
-    [InlineData("func g0(q: ref/i32) -> Option<ref/(ref/i32 during static) during static>\n    return .None\nfunc get() -> (ref/i32) -> Option<ref/(ref/i32) during static>\n    return g0\n", "(ref/i32) during", "(ref/i32 during static) during", "ref/(ref/i32) during static", "the omitted Origin of ref/i32 outlives static")]
     public void ADeclarationsRelationIsBindingsRecordAtItsTypeOccurrence(string body, string written, string premise, string text, params string[] relations)
     {
         var source = body + Main;

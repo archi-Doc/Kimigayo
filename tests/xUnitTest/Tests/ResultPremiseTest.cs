@@ -45,6 +45,23 @@ public class ResultPremiseTest
         "let a: i32 = 7\nvar other: i32 = 3\nlet top = leak\nlet pair = top(a@ref, other@ref)\nlet second = pair.1\n" +
         "require second@follow == 3 else => $abort(\"second\")\nConsole.writeLine(\"\\(run(a@ref)) \\(second@follow)\")\n";
 
+    // G216 (a) (BU's 2c-9 review 2, N4): a Function Type parameter whose result relates the enclosing q to r, and its producers.
+    private const string NestedResult = "func k(q: ref/i32, r: ref/i32, f: () -> Option<ref/(ref/i32 during q) during r>) -> ";
+
+    private const string Producer = "Option<ref/(ref/i32 during q) during r>";
+
+    // z1's caller: a block's local kept through k's result past its scope.
+    private const string NestedResultEscape = NestedResult + "ref/i32 during r\n    return q\nfunc bad() -> i32\n    let long = 1\n    let lr = long@ref\n    var keep = lr\n    if true\n" +
+        "        let short = 2\n        let sq = short@ref\n        keep = k(sq, lr, func [] () => Option.None)\n    return keep@follow\n";
+
+    private const string Hold = "struct Hold<F>\n    public var f: F\n";
+
+    private const string QClosure = "    let h = func [q] (p: ref/i32) -> Option<ref/(ref/i32 during q)> => Option.None\n";
+
+    private const string CallResult = "func call<F, R>(f: ref/F) -> R\n    F is Callable<() -> R>\n    return f()\n";
+
+    private const string Unrelated = "func m() -> i32\n    let b: bool = 3\n    return 0\n";
+
     // A result whose borrow layer stores a Function Type: the per-call input of `(ref/i32) -> ref/i32` is bound by that Type.
     private const string ActionBox = "func ident(x: ref/i32) -> ref/i32\n    return x\n\nstruct Box\n    public let action: (ref/i32) -> ref/i32\n\n" +
         "    public init(action: (ref/i32) -> ref/i32) => self.action = action@move\n\nfunc pick(b: ref/Box) -> ref/((ref/i32) -> ref/i32) during b\n    return b.action@ref\n\n";
@@ -245,11 +262,12 @@ public class ResultPremiseTest
             Assert.True(DiagnosticCorpus.Check(source.Replace("let g: (ref/i32) ->", "let g: (ref/i32 during static) ->", StringComparison.Ordinal)).Accepted);
         }
 
+        // The required Function Type's own well-formedness gives f's result premise, its input outlives static, which each call through it
+        // proves (owner, 2026-10-27: 「(a) 無名関数と同じ規則 (推奨)」; DECISIONS R4-M144; it was UnprovenOriginContract_Kd naming the premise,
+        // which ANestedFunctionTypesWellFormednessIsProvenAtEachCall keeps for a target that does not give it).
         var premise = "func f(q: ref/i32) -> (Option<ref/(ref/i32 during q) during static>, ref/i32 during static)\n    return (.None, q)\n\n" +
             "func use() -> i32\n    let g: (ref/i32) -> (Option<ref/(ref/i32) during static>, ref/i32 during static) = f\n    return 0\n" + Main;
-        var result = Assert.Single(DiagnosticCorpus.Check(premise).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginContract_Kd), "f"), (result.Code, Text(premise, result.Span)));
-        Assert.Equal("the result's well-formedness requires the omitted Origin of ref/i32 outlives static, which is not proven", result.Label);
+        Assert.True(DiagnosticCorpus.Check(premise).Accepted);
         Assert.True(DiagnosticCorpus.Check(premise.Replace("let g: (ref/i32) ->", "let g: (ref/i32 during static) ->", StringComparison.Ordinal)).Accepted);
 
         // A Callable argument proves the clause too: an Item whose clause the requirement cannot prove fails the Callable proof in its
@@ -405,23 +423,22 @@ public class ResultPremiseTest
         Assert.True(DiagnosticCorpus.Check(valid).Accepted);
     }
 
-    // SPEC 15.3.4, 15.3.7: a nested Function Type's per-call Origins cannot leave their binder, so the result premise stops at it. The
-    // well-formedness inside it stays the definition's obligation at its Type occurrence, as before the premise existed, never a call
-    // obligation no caller can prove or a bound that leaks the per-call Origin into the caller's Types.
+    // SPEC 15.3.4, 15.6.1 (DECISIONS R4-M144; owner, 2026-10-26: 「(A) 入れ子自身のもの (推奨)」): a nested Function Type's well-formedness
+    // is its own, never the enclosing definition's obligation at its Type occurrence: get's result is valid, and each call through it
+    // proves it for the instantiated Types, here Refuted at `g(local@ref)` (formerly get's record). The result premise still stops at a
+    // nested Function Type, never a bound that leaks the per-call Origin into the caller's Types.
     [Fact]
-    public void ANestedFunctionTypeKeepsItsWellFormednessAtTheDefinition()
+    public void ANestedFunctionTypesWellFormednessIsProvenAtEachCall()
     {
-        var getter = "func g0(q: ref/i32) -> Option<ref/(ref/i32 during static) during static>\n    return .None\n\n" +
-            "func get() -> (ref/i32) -> Option<ref/(ref/i32) during static>\n    return g0\n\n" +
-            "func make() -> i32\n    let local: i32 = 41\n    let g = get()\n    match g(local@ref)\n        .Some(let r) => return r@follow@follow\n        .None => return 0\n" + Main;
-        var definition = Assert.Single(DiagnosticCorpus.Check(getter).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "ref/(ref/i32) during static"), (definition.Code, Text(getter, definition.Span)));
-        Assert.Equal(getter.IndexOf("Option<ref/(ref/i32) during static>", StringComparison.Ordinal) + 7, definition.Span!.Value.Start); // In get's result, never at the call.
-        Assert.Equal("requires the omitted Origin of ref/i32 outlives static, which is not proven", definition.Label);
-        Assert.Equal(["outlives", "ref/i32", "static", "wellFormed"], definition.Reason!.Select(static x => x.Value));
-        var input = Assert.Single(definition.Related!);
-        Assert.Equal("origin", input.Role);
-        Assert.Equal(getter.IndexOf("-> (ref/i32) ->", StringComparison.Ordinal) + 4, input.Span!.Value.Start);
+        var get = "func g0(q: ref/i32) -> Option<ref/(ref/i32 during static) during static>\n    return .None\n\n" +
+            "func get() -> (ref/i32) -> Option<ref/(ref/i32) during static>\n    return g0\n\n";
+        var getter = get + "func make() -> i32\n    let local: i32 = 41\n    let g = get()\n    match g(local@ref)\n        .Some(let r) => return r@follow@follow\n        .None => return 0\n" + Main;
+        var call = Assert.Single(DiagnosticCorpus.Check(getter).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "g(local@ref)"), (call.Code, Text(getter, call.Span)));
+        Assert.Equal("requires the borrow local@ref outlives static, which is false", call.Label);
+        var related = Assert.Single(call.Related!);
+        Assert.Equal(("origin", "local@ref"), (related.Role, Text(getter, related.Span)));
+        Assert.True(DiagnosticCorpus.Check(get + Main).Accepted);
 
         // Two signatures with the same Function Type part each keep their own record; the forwarding call adds none.
         var forward = ActionBox + "func forward(bx: ref/Box) -> ref/((ref/i32) -> ref/i32) during bx\n    return pick(bx)\n\n" +
@@ -438,18 +455,65 @@ public class ResultPremiseTest
             [("ref/((ref/i32) -> ref/i32) during b", "wellFormed")],
             DiagnosticCorpus.Check(annotated).Diagnostics.Select(x => (Text(annotated, x.Span), x.Reason![3].Value)));
 
-        // A Function Item converted to a nested Function Type proves its premise from that Type's inputs alone: a per-call input
-        // cannot outlive `b`, and writing it over `b` converts. mk's own result Type is an independent record (SPEC 23.1.2, BU-26).
+        // A Function Item converted to a nested Function Type assumes that Type's own well-formedness, which each call through it proves, as
+        // a Function value does (owner, 2026-10-27: 「(a) 無名関数と同じ規則 (推奨)」; DECISIONS R4-M144): leak's premise, its second input
+        // outlives `b`, is the target result's, so `return leak` converts. The earlier reading, a premise proven "from that Type's inputs
+        // alone" because a per-call input cannot outlive `b`, is superseded under (A), and mk's result row with it. A target whose outer
+        // Origin `c` is shorter than `b` gives no such relation, so the conversion names leak's result premise.
         var converted = LeakItem + "func mk(b: ref/i32) -> (ref/i32 during b, ref/i32) -> (Option<ref/(ref/i32) during b>, ref/i32 during b)\n    return leak\n" + Main;
-        var records = DiagnosticCorpus.Check(converted).Diagnostics;
-        Assert.Equal(2, records.Length);
-        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "ref/(ref/i32) during b"), (records[0].Code, Text(converted, records[0].Span)));
-        var conversion = records[1];
-        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginContract_Kd), "leak"), (conversion.Code, Text(converted, conversion.Span)));
+        Assert.True(DiagnosticCorpus.Check(converted).Accepted);
+        var shorter = LeakItem + "func mk(b: ref/i32, c: ref/i32) -> (ref/i32 during b, ref/i32) -> (Option<ref/(ref/i32) during c>, ref/i32 during c)\n" +
+            "    origin b outlives c\n    return leak\n" + Main;
+        var conversion = Assert.Single(DiagnosticCorpus.Check(shorter).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginContract_Kd), "leak"), (conversion.Code, Text(shorter, conversion.Span)));
         Assert.Equal("the result's well-formedness requires the omitted Origin of ref/i32 outlives b, which is not proven", conversion.Label);
         Assert.Equal(["conversion", "the result's well-formedness", "outlives", "ref/i32", "b"], conversion.Reason!.Select(static x => x.Value));
-        Assert.Equal(converted.IndexOf("during b, ref/i32)", StringComparison.Ordinal) + 10, Assert.Single(conversion.Related!).Span!.Value.Start);
-        Assert.True(DiagnosticCorpus.Check(converted.Replace("(ref/i32 during b, ref/i32) ->", "(ref/i32 during b, ref/i32 during b) ->", StringComparison.Ordinal)).Accepted);
+        Assert.Equal(shorter.IndexOf("during b, ref/i32)", StringComparison.Ordinal) + 10, Assert.Single(conversion.Related!).Span!.Value.Start);
+    }
+
+    // SPEC 15.3.4, 15.6.1 (DECISIONS R4-M144; owner, 2026-10-26: 「(A) 入れ子自身のもの (推奨)」): a nested signature's Types, a Function
+    // Type's, a Callable's or an anonymous function's, are its own. The enclosing definition neither assumes them (`return q` under f's
+    // result relating q to r, also through a struct Type argument, was accepted) nor proves them where they are written (declarations,
+    // local annotations and Closures are valid); each call through the nested signature proves them for its instantiated Types, Unknown at
+    // the call unless a clause states the relation, and so does each call that infers a Type argument from one (a generic callee's `R`,
+    // also one bound only by a Constraint, or a `T` from a Closure's input). An anonymous function's body assumes its written result, as a
+    // named function's does (R3). The call records are located and fail no binding; beside an unrelated Binding failure they are lost
+    // (PLAN G56's limit; owner, 2026-10-26: 「G56 の制限として受け入れる (推奨)」).
+    [Theory]
+    [InlineData(NestedResult + "ref/i32 during r\n    return q\n", "UnprovenOriginRelation_Kd q")]
+    [InlineData(NestedResult + "ref/i32 during r\n    origin q outlives r\n    return q\n", "")]
+    [InlineData(NestedResult + "ref/i32 during r\n    return q\n" + Unrelated, "UnprovenOriginRelation_Kd q; TypeMismatch_Kd 3")]
+    [InlineData(NestedResultEscape, "UnprovenOriginRelation_Kd q")]
+    [InlineData(Hold + "func k(q: ref/i32, r: ref/i32, h: ref/Hold<() -> Option<ref/(ref/i32 during q) during r>>) -> ref/i32 during r\n    return q\n", "UnprovenOriginRelation_Kd q")]
+    [InlineData(Hold + "func k(q: ref/i32, r: ref/i32, h: ref/Hold<() -> Option<ref/(ref/i32 during q) during r>>) -> i32\n    let o = h.f()\n    return 0\n", "UnprovenOriginRelation_Kd h.f()")]
+    [InlineData(NestedResult + "i32 => 0\n", "")]
+    [InlineData(NestedResult + "i32\n    let o = f()\n    return 0\n", "UnprovenOriginRelation_Kd f()")]
+    [InlineData(NestedResult + "i32\n    origin q outlives r\n    let o = f()\n    return 0\n", "")]
+    [InlineData(NestedResult + "i32\n    let o = f()\n    return 0\n" + Unrelated, "TypeMismatch_Kd 3")]
+    [InlineData("func g(q: ref/i32, cb: (ref/i32) -> Option<ref/(ref/i32 during q)>) -> i32 => 0\n", "")]
+    [InlineData("func g(q: ref/i32, cb: (ref/i32) -> Option<ref/(ref/i32 during q)>, s: ref/i32) -> i32\n    let o = cb(s)\n    return 0\n", "UnprovenOriginRelation_Kd cb(s)")]
+    [InlineData("func g(q: ref/i32, cb: (ref/i32) -> Option<ref/(ref/i32 during q)>, s: ref/i32) -> i32\n    origin q outlives s\n    let o = cb(s)\n    return 0\n", "")]
+    [InlineData("func mk(q: ref/i32, r: ref/i32) -> () -> " + Producer + "\n    return func [] () => Option.None\n", "")]
+    [InlineData("func mk(q: ref/i32, r: ref/i32) -> () -> " + Producer + "\n    return func [] () => Option.None\nfunc use(q: ref/i32, r: ref/i32) -> i32\n    let f = mk(q, r)\n    let o = f()\n    return 0\n", "UnprovenOriginRelation_Kd f()")]
+    [InlineData("func k(q: ref/i32, r: ref/i32) -> i32\n    let g: () -> " + Producer + " = func [] () => Option.None\n    let o = g()\n    return 0\n", "UnprovenOriginRelation_Kd g()")]
+    [InlineData("func k(q: ref/i32) -> i32\n    var f: (ref/i32) -> Option<ref/(ref/i32 during q)>\n    return 0\n", "")]
+    [InlineData("func k(q: ref/i32) -> i32\n" + QClosure + "    return 0\n", "")]
+    [InlineData("func k(q: ref/i32) -> i32\n" + QClosure + "    let n = 1\n    let o = h(n@ref)\n    return 0\n", "")]
+    [InlineData("func k(q: ref/i32, s: ref/i32) -> i32\n" + QClosure + "    let o = h(s)\n    return 0\n", "UnprovenOriginRelation_Kd h(s)")]
+    [InlineData(CallResult + "func k(q: ref/i32, r: ref/i32) -> i32\n    let c = func [] () -> " + Producer + " => Option.None\n    let o = call(c@ref)\n    return 0\n", "UnprovenOriginRelation_Kd call(c@ref)")]
+    [InlineData(CallResult + "func k(q: ref/i32, r: ref/i32) -> i32\n    let c = func [] () -> Option<ref/(ref/i32 during q) during q> => Option.None\n    let o = call(c@ref)\n    return 0\n", "")]
+    [InlineData(CallResult + "func k(q: ref/i32, r: ref/i32) -> i32\n    let c = func [] () -> " + Producer + " => Option.None\n    let o = call(c@ref)\n    return 0\n" + Unrelated, "TypeMismatch_Kd 3")]
+    [InlineData("func map<U>(f: () -> U) -> U => f()\nfunc k(q: ref/i32, r: ref/i32) -> i32\n    let o = map(func [] () -> " + Producer + " => Option.None)\n    return 0\n", "UnprovenOriginRelation_Kd map(func [] () -> " + Producer + " => Option.None)")]
+    [InlineData("func map<U>(f: () -> U) -> U => f()\nfunc k(q: ref/i32, r: ref/i32) -> i32\n    origin q outlives r\n    let o = map(func [] () -> " + Producer + " => Option.None)\n    return 0\n", "")]
+    [InlineData("func run<F, R>(f: ref/F) -> i32\n    F is Callable<() -> R>\n    let o = f()\n    return 0\nfunc k(q: ref/i32, r: ref/i32) -> i32\n    let c = func [] () -> " + Producer + " => Option.None\n    return run(c@ref)\n", "UnprovenOriginRelation_Kd run(c@ref)")]
+    [InlineData("func run<F, T>(f: ref/F) -> i32\n    F is Callable<(T) -> i32>\n    return 0\nfunc k(q: ref/i32, r: ref/i32) -> i32\n    let c = func [] (p: ref/(ref/i32 during q) during r) -> i32 => 0\n    return run(c@ref)\n", "UnprovenOriginRelation_Kd run(c@ref)")]
+    [InlineData("contract C\n    func f() -> (ref/i32) -> Option<ref/(ref/i32) during static>\n", "")]
+    [InlineData("func k(q: ref/i32, r: ref/i32) -> i32\n    let c = func [q] () -> " + Producer + "\n        let x: ref/i32 during r = q\n        return .None\n    return 0\n", "")]
+    [InlineData("func k(q: ref/i32, r: ref/i32) -> i32\n    let c = func [q] () -> i32\n        let x: ref/i32 during r = q\n        return 0\n    return 0\n", "UnprovenOriginRelation_Kd q")]
+    public void ANestedSignaturesTypesAreProvenAtEachCall(string body, string records)
+    {
+        var source = body + Main;
+        Assert.Equal(records, string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {Text(source, x.Span).Split('\n')[0]}")));
     }
 
     // A result that holds a Function Type beside a premise keeps the premise outside it: the valid uses run, and the top-level result

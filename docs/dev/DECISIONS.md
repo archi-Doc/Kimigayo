@@ -4501,7 +4501,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     obligation; a named function's Function Type parameter keeps its result premise in that function's body, which no call proves: an
     unsound acceptance on both pipelines (BU's z1: `func k(q, r, f: () -> Option<ref/(ref/i32 during q) during r>) -> ref/i32 during
     r` returns `q`; a caller passing `func [] () => Option.None` keeps a pointer to a block's local after its scope; PLAN G216). After
-    this unit no body slice has a `CallBorrows` row.
+    this unit no body slice has a `CallBorrows` row. (Superseded by R4-M144: a nested signature's result, as its inputs, is its own,
+    proven at each call, and an anonymous function's body assumes its written result.)
   - Numbering: R4-M137 was reserved for 2c-9 (R4-M134-R4-M136 on dev and `claude/a5-2a-2`).
 - **R4-M138 A5's Chain closure (R4-M131 Order 3 as BU-40 restated it); G255's C3 apart** (2026-10-26; R4's lane A under the R4
   review of BU's N2 rows, §8; the R4 planning session's decision on the unit's stop: the closure lands now, C3 becomes its own Full
@@ -4719,6 +4720,64 @@ and migration obligations remain in force; no numeric cap changes are authorized
     root (the operand may be a projection); deriving the referent a second time (O6).
   - Numbering: R4-M143 was reserved for C3's A5 part by the R4 planning session (R4-M141 G258 D2, R4-M142 S1, R4-M144 G216's amendment
     and R4-M145 S2 reserved; R4-M140 the last on dev).
+- **R4-M144 G216 (a): a nested signature's Types are its own, proven at each call through it and at each conversion to it**
+  (2026-10-27; R4's lane B under the owner's reading (A), 2026-10-26, verbatim 「(A) 入れ子自身のもの (推奨)」, and the planning
+  session's revision-2 decisions, agreed with BU; for a Function Item, the owner's answer of 2026-10-27, verbatim 「(a) 無名関数と同じ規則
+  (推奨)」; for the located records beside an unrelated Binding failure, the owner's answer of 2026-10-26, verbatim 「G56 の制限として受け入れる
+  (推奨)」; for an Item's declared clause, the owner's answer of 2026-10-27, verbatim 「(1) 切り離して記録 (推奨)」). Supersedes R4-M137's Open item (the result half), BU-26's "a nested Function Type part" of a signature's well-formedness with
+  its E3 note ("leaving it unjudged would accept an escape": each call proves it now), and ResultPremiseTest's earlier reading that a
+  Function Item's conversion proves its premise from the target's inputs alone.
+  - Rule (SPEC 15.3.4, 15.6.1, 15.3.7, 10.7): a nested signature's (a Function Type's, a Callable's, an anonymous function's) Types are
+    its own. The enclosing definition neither assumes them (`AddTypePremises` ends at a Function Type entirely, as `AddResultPremises`
+    does) nor judges them where they are written (`CompleteOrigins` forms no row at a nested signature's Parameter or Result position,
+    R4-M137's guard widened). The nested definition assumes them, an anonymous function's written result included (R3,
+    `ExtractOriginPremises`). Each call proves them for the instantiated Types:
+    - its result (`RequireResultPremises` at every call: a named callee's declared pattern under its definition's filter, a nested
+      signature's whole instantiated result) and every Type argument a call or construction infers (`RequireResultPremises`'
+      `inferred`; a constructor's slots only where its target is inferred, `InferredConstructorTarget`), each a Type occurrence at the
+      call (`RequireResultOutlives`);
+    - its inputs: every well-formedness relation of the instantiated parameter Type that names an Origin the call does not instantiate
+      (`Instantiated`: neither the callee's binder's, a nested Function Type's, a container's nor static) and every position the fit
+      replaced, for a named and a nested callee alike; a position the argument kept over the call's own Origins is judged where it was
+      formed (BU-26).
+    - These records are located and fail no binding (the result's judge), so an independent Loan conflict stays beside them (SPEC
+      23.1.2); beside an unrelated Binding failure they are lost, as an ownership record is (PLAN G56's limit, accepted by the owner;
+      removed with G56's fix).
+  - Conversions: a Callable comparison against a Function Type assumes the target's own Types, its inputs' and result's well-formedness,
+    which each call through the target proves (`CollectTargetPremises`). A Function value's conversion (`FunctionFits`, and an argument
+    converted to a Function-typed parameter, `RequireArgumentConversion`) proves its source's signature Types from them
+    (`ProvesConversionPremises`, under the one `ConversionInstance` of the fit and its record); a Function Item's whole-contract
+    comparison (`ContractFits`: a conversion, a function reference, a Callable bound, a requirement item) proves the Item's premises,
+    its inputs' and result's well-formedness, from them (its Prove judgment `ProvesFromPremises`, collected after its solve), and its
+    record (`ConditionContractFailure`) reads the same premises for the result premise (`Converted`). A declared clause of the Item is
+    not covered (known limit below). Each operand of a meet at the longer end is its own relation (SPEC 15.6.1 Identity). A failure is `UnprovenOriginContract_Kd` at the converted value, naming "the source's signature" for
+    a Function value or the Item's condition; it fails binding, as a Closure's input conversion did on dev, so an independent Loan
+    conflict or the same value's transfer is lost beside it (G56), and a value call reports its argument's `NoApplicableOverload_Kd`
+    instead (PLAN open issue, owner BU: a value call's arguments are judged as a selected call's).
+  - Effect, both pipelines: z1 and its struct form err at `return q`; r3, v2 and a Closure's or a local Function Type's result (G216 (b))
+    are valid declarations, and the MIR's row-9 `Unsupported_Kd` for them goes; each call errs where nothing states the relation (v3,
+    v10, rv3b, n1–n3, nn1, a contextually typed `.None`); a weakening conversion of a Function value errs (c2b–c2f); rv1 (a Closure body
+    using its result's implied bound) and an Item or a Closure converted to a target whose own result gives its premise (cz3, cz5,
+    ResultPremiseTest's `converted` and `premise`) are valid; the getter's record moves from `get`'s result to `g(local@ref)`.
+  - Rejected: a `callee` steering parameter or an `ArgumentKinds` fact for inputs (BU's design review 2: the Origins decide); judging
+    every input position of a named call (rejects ClosureEnvironmentOriginTest's swap/same, whose Closure receiver premise is missing,
+    PLAN G270); an input judge that fails Binding (hid independent errors, R4's design review 2 B1); no R3 for an anonymous function with
+    a STATUS boundary (a conservative Language error, R4's design review 2 B2); a second instantiation for the conversion proof; the
+    conversion proof for Function values only (an Item with the same signature rejected, the owner's answer); for cl1, coverage at the
+    solve's final check (`converted` regressed) and no result-premise bounds in a comparison (rk4 regressed).
+  - Known limits: PLAN G269 (a call's relation between local regions reaches neither judge; n7, n7d, n7f stay accepted); PLAN G270.
+    An Item's declared clause that the target's Types give (cl1: `pin1` with `origin q outlives static` converted to
+    `(ref/i32) -> Option<ref/(ref/i32) during static>`) keeps dev's `UnprovenOriginContract_Kd`, though valid under the rule above; the
+    owner holds it out of this unit and accepts the pre-existing state until a separate unit (「(1) 切り離して記録 (推奨)」; PLAN open
+    issue). Cause: a declared clause is a bound of the comparison's solve (`SolveOriginInference`), and treating it as covered there
+    changes solutions through the result-premise bounds tried first (rk4, `leak` as `(ref/i32, ref/i32) -> (Option<ref/(ref/i32)>,
+    ref/i32)`, valid, became `UnprovenOriginContract_Kd`). Candidate fixes: a located `Unsupported_Kd` through one shared OriginContract
+    failure helper for every consumer of the record (cl5, an argument, is the call's applicability and stays open), or a solve that
+    separates premise-covered clauses without changing solutions. cl2 (a weaker target) and cl3/cl4 (selected calls) are as on dev.
+    One predicate for a constructor call's inferred target (`Binding.Structs.InferredConstructorTarget`, the unit's restructuring
+    commit) is read by BindCallCore and InitializeCallSlots; `Binding.ArgumentKinds.Solution.cs` keeps its copy until BU reads the helper
+    there (bu47's files, in flight at this unit).
+  - Numbering: R4-M144 was reserved for G216's amendment by the R4 planning session (free on dev and every open R4 branch).
 - **R4-M145 One consumed-by-value rule: ClosureEffects reads the Adjust rule, and a discarded Place's bare acquisition is its plan
   row (consumed-by-value S2)** (2026-10-26; R4's lane A under the owner's design B with the review's C1–C7 (OQ1 (a), 2026-10-25) and
   the owner's discard answer, verbatim 「(a) 素の取得とする (推奨)」 (SPEC 14.2.2 since dev 833209c38); the planning session's S2
@@ -5693,7 +5752,8 @@ resumed by R4-M86 (2026-10-20).
 - **BU-26** (2026-10-22; the BU planning session after the full process: designs A and B, the design review's merge M, R4
   agreeing; the owner's answers Q1 and Q2; PLAN G210, unit bu24) Binding judges every Origin relation it forms with no executable
   body, a declaration's row (R4-M101 E1, E2): a Field's, payload's or base's declared Type, a computed Property's header, a
-  signature's well-formedness (a requirement's, an override's, a specialization's, a nested Function Type part) and a clause's
+  signature's well-formedness (a requirement's, an override's, a specialization's; a nested Function Type part until R4-M144, which
+  makes it the nested signature's own, proven at each call through it) and a clause's
   unrepresentable end. `Binding.JudgeDeclarationRows`, at the end of `ValidateOriginRelations` in every pass, consumes each such row
   whose resolved ends are declaration atoms (E2's test; `DeclarationAtom` moved from the view to the judge, its only user): a `CallBorrows`
   row unjudged (each call's borrow formation; the old walk's skip); a row with an `Unbound` end that the judge does not prove is the
@@ -5713,7 +5773,8 @@ resumed by R4-M86 (2026-10-20).
     consumes the rows, so no deadline exists (a `Definition` deadline would state `Body` none twice, reach `FailTypeRole` without a
     kind arm and judge only in Final). E3's reading that signature rows need no judge overreached: a signature row is a tautology
     only where the catalog publishes its premise; a nested Function Type part's per-call Origin is none (SPEC 15.3.4, 15.6.1; R3
-    stops there), so leaving it unjudged would accept an escape once R6-check removes the old walk. The slice rule (declaration
+    stops there), so leaving it unjudged would accept an escape once R6-check removes the old walk (superseded by R4-M144: each call
+    and conversion proves it). The slice rule (declaration
     rows in no slice) stays R4-M101's.
   - Default pipeline: the record's requirement moves from `Ownership.UnprovenOrigin` to `Binding.OriginRelation` (code, span,
     label, Reason and related unchanged), and Binding is incomplete, so the old analysis stops for that compilation (G56). The owner

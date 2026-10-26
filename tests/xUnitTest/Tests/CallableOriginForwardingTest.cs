@@ -60,6 +60,39 @@ public class CallableOriginForwardingTest
 
     private const string Main = "public func main() => ()\n";
 
+    // G216 (a) revision 2: a Function value whose result relates q to r converted to one over q alone, and its uses.
+    private const string Source = "func k(q: ref/i32, r: ref/i32, f: () -> Option<ref/(ref/i32 during q) during r>) -> ";
+
+    private const string Weaker = "() -> Option<ref/(ref/i32 during q) during q>";
+
+    private const string Use1 = "func use1(q: ref/i32, g: () -> Option<ref/(ref/i32 during q) during q>) -> i32\n    let o = g()\n    return 0\n";
+
+    // An independent Loan conflict, and an unrelated Binding failure (SPEC 23.1.2).
+    private const string Conflict = "    var x = 1\n    let w = x@ref\n    x = 2\n    let u = w@follow\n";
+
+    private const string Unrelated = "func m() -> i32\n    let b: bool = 3\n    return 0\n";
+
+    // A Closure's input conversion, proven on dev already.
+    private const string AOutlivesB = "func k(a: ref/i32, b: ref/i32) -> i32\n    origin a outlives b\n";
+
+    private const string ClosureOverB = "func [] (p: ref/(ref/i32 during b)) -> ref/i32 => p@follow";
+
+    // A result whose omitted inner Origin is the meet of two inputs (`b` and the second's).
+    private const string TwoInputs = "(ref/i32 during b, ref/i32) -> (Option<ref/(ref/i32) during b>, ref/i32 during b)";
+
+    // A target whose result gives its input outlives static, and one writing static, against an Item and a Closure with that premise.
+    private const string StaticResult = "(ref/i32) -> Option<ref/(ref/i32) during static>";
+
+    private const string StaticWeaker = "(ref/i32) -> Option<ref/(ref/i32 during static) during static>";
+
+    private const string StaticItem = "func leak1(q: ref/i32) -> Option<ref/(ref/i32 during q) during static>\n    return .None\n";
+
+    private const string StaticClosure = "func [] (q: ref/i32) -> Option<ref/(ref/i32 during q) during static> => .None";
+
+    // The same premise written as a clause, which the target's Types give too (R4-M144's known limit, held out by the owner), and its
+    // selected calls.
+    private const string ClauseItem = "func pin1(q: ref/i32) -> Option<ref/(ref/i32 during q) during static>\n    origin q outlives static\n    return .None\n";
+
     private const string FixedFunctionValue = "func use(x: ref/i32, f: (ref/i32 during x) -> ref/i32 during x) -> i32\n    let g: (ref/i32) -> ref/i32 = f@move\n" +
         "    let local: i32 = 5\n    return g(local@ref)@follow\n";
 
@@ -133,6 +166,62 @@ public class CallableOriginForwardingTest
     [InlineData("func id(n: ref/i32) -> ref/i32 => n\nfunc use(x: ref/i32) -> ref/i32 during x\n    let g: (ref/i32 during x) -> ref/i32 during x = id\n    return g(x)\n")]
     public void AFittingContractConverts(string body)
         => Assert.Empty(DiagnosticCorpus.Check(body + "public func main() => ()\n").Diagnostics);
+
+    // SPEC 10.7, 15.3.7, 15.6.1 (DECISIONS R4-M144): a conversion of a Function value (a Function Type value or a Closure) or of a Function
+    // Item to another Function Type proves the source's signature Types, which its implementation assumes (an anonymous function's result
+    // included), from the target's own Types, which each call through the target proves (owner, 2026-10-27, for an Item: 「(a)
+    // 無名関数と同じ規則 (推奨)」): at a value, a returned value, a call or construction argument, each operand of an elided meet on its own.
+    // Known limit (R4-M144; owner, 2026-10-27: 「(1) 切り離して記録 (推奨)」, a separate unit): an Item's declared clause that the
+    // target's Types give is a bound of the comparison's solve, proven from the use's premises alone, so pin1 keeps dev's record (valid
+    // under the rule) where its implied-bound twin leak1 converts; its weaker twin and its selected calls are as on dev.
+    // A target that weakens the source's result relation is UnprovenOriginContract_Kd at the converted value, as a Closure's input conversion
+    // is; it fails binding, so an independent Loan conflict or the same value's transfer is lost beside it, as on dev (PLAN G56's limit), and
+    // a value call reports its argument's NoApplicableOverload_Kd instead (PLAN open issue: a value call's arguments are judged as a selected
+    // call's).
+    [Theory]
+    [InlineData(Source + "i32\n    origin r outlives q\n    let g: " + Weaker + " = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move")]
+    [InlineData(Source + "i32\n    origin r outlives q\n    origin q outlives r\n    let g: " + Weaker + " = f@move\n    return 0\n", "")]
+    [InlineData(Source + "i32\n    origin r outlives q\n    let g: " + Weaker + " = f@move\n    return 0\n" + Unrelated, "UnprovenOriginContract_Kd f@move; TypeMismatch_Kd 3")]
+    [InlineData(Source + "i32\n    origin r outlives q\n" + Conflict + "    let g: " + Weaker + " = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move")]
+    [InlineData(Source + "i32\n    origin r outlives q\n    let g: " + Weaker + " = f\n    return 0\n", "UnprovenOriginContract_Kd f")]
+    [InlineData(Source + Weaker + "\n    origin r outlives q\n    return f@move\n", "UnprovenOriginContract_Kd f@move")]
+    [InlineData(Use1 + Source + "i32\n    origin r outlives q\n    return use1(q, f@move)\n", "UnprovenOriginContract_Kd f@move")]
+    [InlineData(Use1 + Source + "i32\n    origin q outlives r\n    return use1(q, f@move)\n", "")]
+    [InlineData(Use1 + Source + "i32\n    origin r outlives q\n" + Conflict + "    return use1(q, f@move)\n", "UnprovenOriginContract_Kd f@move")]
+    [InlineData("struct H {q}\n    var g: " + Weaker + "\n    public init(g: " + Weaker + ") => self.g = g@move\n" + Source + "i32\n    origin r outlives q\n    let h = H.init(g: f@move)\n    return 0\n", "UnprovenOriginContract_Kd f@move")]
+    [InlineData(Source + "i32\n    origin r outlives q\n    let inner = func [] (n: Option<ref/(ref/i32 during q) during r>, g: " + Weaker + ") -> i32 => 0\n    return inner(Option.None, f@move)\n", "NoApplicableOverload_Kd inner(Option.None, f@move)")]
+    [InlineData(AOutlivesB + "    let f: (ref/(ref/i32 during a)) -> ref/i32 = " + ClosureOverB + "\n    return 0\n", "UnprovenOriginContract_Kd " + ClosureOverB)]
+    [InlineData(AOutlivesB + "    let f: (ref/(ref/i32 during a)) -> ref/i32 = func [] (p: ref/(ref/i32 during a)) -> ref/i32 => p@follow\n    return 0\n", "")]
+    [InlineData(AOutlivesB + Conflict + "    let f: (ref/(ref/i32 during a)) -> ref/i32 = " + ClosureOverB + "\n    return 0\n", "UnprovenOriginContract_Kd " + ClosureOverB)]
+    [InlineData("func k(b: ref/i32, f: " + TwoInputs + ") -> i32\n    let g: " + TwoInputs + " = f@move\n    return 0\n", "")]
+    [InlineData("func mk() -> i32\n    let g: " + StaticResult + " = " + StaticClosure + "\n    return 0\n", "")]
+    [InlineData("func mk() -> i32\n    let g: " + StaticWeaker + " = " + StaticClosure + "\n    return 0\n", "UnprovenOriginContract_Kd " + StaticClosure)]
+    [InlineData("func use(g: " + StaticResult + ") -> i32 => 0\nfunc mk() -> i32\n    return use(" + StaticClosure + ")\n", "")]
+    [InlineData(StaticItem + "func mk() -> i32\n    let g: " + StaticResult + " = leak1\n    return 0\n", "")]
+    [InlineData(StaticItem + "func mk() -> i32\n    let g: " + StaticWeaker + " = leak1\n    return 0\n", "UnprovenOriginContract_Kd leak1")]
+    [InlineData(StaticItem + "func mk() -> i32\n    let fr = leak1\n    let g: " + StaticResult + " = fr\n    return 0\n", "")]
+    [InlineData(StaticItem + "func use(g: " + StaticResult + ") -> i32 => 0\nfunc mk() -> i32\n    return use(leak1)\n", "")]
+    [InlineData(StaticItem + "func mk() -> " + StaticResult + "\n    return leak1\n", "")]
+    [InlineData(ClauseItem + "func mk() -> i32\n    let g: " + StaticResult + " = pin1\n    return 0\n", "UnprovenOriginContract_Kd pin1")]
+    [InlineData(ClauseItem + "func mk() -> i32\n    let g: " + StaticWeaker + " = pin1\n    return 0\n", "UnprovenOriginContract_Kd pin1")]
+    [InlineData(ClauseItem + "func mk() -> i32\n    let local = 1\n    let o = pin1(local@ref)\n    return 0\n", "UnsatisfiedOriginRelation_Kd local@ref")]
+    [InlineData(ClauseItem + "func mk(x: ref/i32) -> i32\n    let o = pin1(x)\n    return 0\n", "UnprovenOriginRelation_Kd x")]
+    public void AConversionProvesTheSourcesTypesFromTheTargets(string body, string records)
+    {
+        var source = body + "public func main() => ()\n";
+        Assert.Equal(records, string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty).Split('\n')[0]}")));
+    }
+
+    // SPEC 23.1 (DECISIONS R4-M144): the record names the source's signature and the relation that the target's Types do not give.
+    [Fact]
+    public void AConversionNamesTheSourcesSignature()
+    {
+        var source = Source + "i32\n    origin r outlives q\n    let g: " + Weaker + " = f@move\n    let o = g()\n    return 0\n" + Main;
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginContract_Kd), DiagnosticCategory.Proof), (error.Code, error.Category));
+        Assert.Equal("the source's signature requires q outlives r, which is not proven", error.Label);
+        Assert.Equal(["conversion", "the source's signature", "outlives", "q", "r"], error.Reason!.Select(static x => x.Value));
+    }
 
     private const string Add = "func add(a: ref/i32, b: ref/i32) -> i32 => a@follow + b@follow\n";
 

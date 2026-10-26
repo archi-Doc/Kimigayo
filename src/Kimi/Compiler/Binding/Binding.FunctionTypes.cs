@@ -388,29 +388,39 @@ public sealed partial class Binding
             return false;
         }
 
-        for (var i = 0; i < function.Parameters.Count; i++)
+        // SPEC 15.6.1, 10.7 (DECISIONS R4-M144): the implementation's Types are proven from the required Function Type's own, which each
+        // call through it proves, as a Function value's are (CollectTargetPremises).
+        var first = this.CollectTargetPremises(required, use);
+        try
         {
-            var parameter = Substitute(Bound(function.Parameters[i].Type.BoundType!)!);
-            if (HasUnsubstitutedOrigin(parameter, function) || !this.IsSubtypeAt(parameters.Components[i], parameter, use) ||
-                !this.ProvesInputPremises(parameter, parameters.Components[i], use))
+            for (var i = 0; i < function.Parameters.Count; i++)
             {
-                return false;
+                var parameter = Substitute(Bound(function.Parameters[i].Type.BoundType!)!);
+                if (HasUnsubstitutedOrigin(parameter, function) || !this.IsSubtypeAt(parameters.Components[i], parameter, use) ||
+                    !this.ProvesInputPremises(parameter, parameters.Components[i], use))
+                {
+                    return false;
+                }
+
+                if (!operations.IsEmpty)
+                {
+                    // Compare the same substituted contract that established applicability. In particular,
+                    // independently named per-call Origins are fixed to the required signature before ranking.
+                    // References insert no adaptations and use no defaults; results never rank candidates.
+                    operations[i] = new(null, null, parameter, ArgumentOperationKind.Value, ArgumentAdaptation.Exact);
+                }
             }
 
-            if (!operations.IsEmpty)
-            {
-                // Compare the same substituted contract that established applicability. In particular,
-                // independently named per-call Origins are fixed to the required signature before ranking.
-                // References insert no adaptations and use no defaults; results never rank candidates.
-                operations[i] = new(null, null, parameter, ArgumentOperationKind.Value, ArgumentAdaptation.Exact);
-            }
+            return this.CheckCallOriginRelations(function, origins, inputs, use, null) &&
+                symbol.Type is { } result && Bound(result) is { } boundResult &&
+                !HasUnsubstitutedOrigin(result = Substitute(boundResult), function) &&
+                this.IsSubtypeAt(result, CompatibleResult(result, required.Components[1]), use) &&
+                this.ProvesResultPremises(function, result, use);
         }
-
-        return this.CheckCallOriginRelations(function, origins, inputs, use, null) &&
-            symbol.Type is { } result && Bound(result) is { } boundResult &&
-            !HasUnsubstitutedOrigin(result = Substitute(boundResult), function) &&
-            this.IsSubtypeAt(result, CompatibleResult(result, required.Components[1]), use) &&
-            this.ProvesResultPremises(function, result, use);
+        finally
+        {
+            this.conversionPremises.RemoveRange(first, this.conversionPremises.Count - first);
+        }
 
         BoundType? Bound(BoundType type)
         {
