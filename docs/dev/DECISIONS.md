@@ -10120,14 +10120,22 @@ structure is recorded here by the unit that first implements it.
     the conversion text in `LegacyRuntimeHelpers` (8bb0e5aca); `CallWitness`, `Forward`'s lazy Function Type and `FunctionPrefix`
     (4847b53fd); an intrinsic row's Type argument (1a4118a5e).
   - Facts:
-    - The sel ledger falls by 113 test rows, from 577 to 464 (format 91, C-frame 10, object 6, C-drop 3, K-edges 3): the census's 112
+    - The sel ledger falls by 113 test rows, from 577 to 464 (format 91, C-frame 10, object 6, C-drop 3, K-edges 3), and gains 2 fixture
+      rows (below): the census's 112
       rows whose every record was C9b's, and `CompilerFunctionReferenceTest.WarmAdaptersReuseTheirPhysicalEntries`, which failed only
       because generation did. Every other ledger row still fails (the 277 that also need C9c among them) and nothing outside the ledger
       fails (the ledger's 90 classes, 3,321 tests). The plan row's Utf8Writer, Utf8Format, Utf8UserFormat, Utf8Conversion and Utf8Float
       classes pass whole under sel; Utf8TryWrite and Utf8Integration keep their interpolating rows for C9c.
     - Their fixture families (`Utf8Format*`, `Utf8Float*`, `Utf8Conversion*`, `Utf8TryWrite*`, `Utf8UserFormat*`, `CompilerReference*`,
       `Utf8Integration*`, `Utf8Writer*`, `RecursiveDefault*`, `SharedMatch*`, `NestedDefault*`, `OwnedDefault*`, `SharedGuard*`,
-      `ContentUpdate*`, `WholeValue*`, `Formatting*`) run natively under sel at O0 and O2.
+      `ContentUpdate*`, `WholeValue*`, `Formatting*`) run natively under sel at O0 and O2 but two fixtures sel generates for the first
+      time, which become fixture rows with their causes: `Utf8FloatOracle`, a harness cause (the test splices its oracle's call after the
+      old generator's `__kimi_entry_body` call, which sel's IR has not, so the oracle never runs; G157 (33)'s class), and
+      `Utf8TryWriteFailure`, a defect of the MIR builder's `$tryWrite` expansion (W1's window, or C9c's with its `$tryWrite` sites): it
+      tests each write's result but not the adapter's recorded failure before the first segment, so a `$tryWrite` on an already failed
+      adapter evaluates its embedded expression (SPEC 22.10.4: "if the adapter has already failed, later expressions are not evaluated";
+      the old generator tests `__kimi_format_healthy` before each segment); no sel module reached a `$tryWrite` before C9b wrote its
+      writer. Open (for PLAN): that builder defect and the oracle's splice.
     - Milestones (CLI, O0, sel): 30, 31, 33, 35 and 44 keep their first record, an interpolation's (C9c); 24's moves from 10:16 (a
       `$tryWrite` of an interpolated literal, now written) to 14:12, an owning interpolation (C9c).
     - O2 (ruling Q7 (a), information): a kernel over C9b's rows without interpolation (a user formatter's write, toString and tryFormat,
@@ -10136,7 +10144,7 @@ structure is recorded here by the unit that first implements it.
       each, 865 against 889 instructions); CPU time B/A median 1.00 (0.83-1.30) against A/A 1.00 (0.85-1.30), 20 interleaved samples
       of copies in one folder. The corpus A/Bs stay at C9c: every kernel's checksum line interpolates.
   - Size, over the four commits (bp1, bp2, bp3, behavior) by numstat: Backend +448/-163 (net +285; Codegen +368/-118, of which
-    `ModuleCodegen.Formatting` +109), Emission +1/-7, tests +165/-34, the ledger -113 rows, and this entry, ARCH and CODEMAP. Over the
+    `ModuleCodegen.Formatting` +109), Emission +1/-7, tests +165/-34, the ledger -113 test and +2 fixture rows, and this entry, ARCH and CODEMAP. Over the
     plan's +150 by the wrappers' signatures, requests and definitions, which R5-M30 left to code generation.
   - Deleted: the located records of a BuiltinFormat item, of a Body target at a kind-bearing row (and `Runs`' second record at the same
     site) and of ErasedWriter's call and Item; `FunctionCodegen.Shim`; the old generator's writer-kind switch (promoted); the C9b labels.
