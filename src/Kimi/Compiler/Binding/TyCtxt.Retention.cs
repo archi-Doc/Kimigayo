@@ -3,8 +3,9 @@
 // Owns call retention (SPEC 15.6.4; design A3 4.3, C1+C8): which outputs of a call may retain which arguments, as A5's Loan flow reads it.
 // Input: a callee with its call Subst, or a Value callee operand's Type (CallPlan.CalleeType, which MIR's operand reproduces) with the
 // Callable signature it declares (CallPlan.DeclaredSignature, DECISIONS R4-M41); the calling definition (null: top-level statements).
-// Output: an immutable CallRetention, rows Retention(Input, Kind, Output), Untied and UntiedStores, one per callee or signature, Type
-// instantiation and the premise scope or declaration it reads, for the latest Binding pass and reused by later passes until an edit;
+// Output: an immutable CallRetention, rows Retention(Input, Kind, Output), Untied, UntiedStores and ReferentStores, one per callee or
+// signature, Type instantiation and the premise scope or declaration it reads, for the latest Binding pass and reused by later passes
+// until an edit;
 // CallRetention.Limit, a genuine limit only, where the contract or a Type its hold walk reaches has storage past Binding's limits (nested
 // past its depth bound, which a growing recursive Type of SPEC 15.3.5 always reaches; Binding.StorageOutcome.Limit), the contract's
 // substitution does not complete (no reproducer), or a raw layer's member walk is incomplete (a keeper cycle that changes its Type
@@ -37,7 +38,8 @@
 // target's Chain, and a 4.9 operation's receiver storage, of the other inputs, only its added ones (KimiLibraryCatalog.Added; a member
 // without a receiver, construction, has no receiver storage, so its result keeps every input). It writes only its own outputs
 // (TransferWrites): a 4.9 operation its result and its receiver's element storage, `exchange` its result and its target; rule A forms
-// no row at another output.
+// no row at another output. An operation of SPEC 4.6 to 4.9 writes the store at its borrowed receiver only in the storage that receiver
+// refers to (ReferentStores; 4.9.6).
 // Content and Chain are two measures: Content what one read through the input carries (premises, step 4), Chain any chain of reads.
 // Files: this one (the contract and its records RetentionKind, Retention, CallRetention); TyCtxt.Retention.Calls.cs (TyCtxt.Retains
 // and its memo); Binding.Retention.cs with .Atoms.cs, .Rows.cs and .Transfers.cs (the computation).
@@ -66,7 +68,8 @@ internal enum RetentionKind : byte
 }
 
 /// <summary>One retention of a call: <see cref="Output"/>, the result (<see cref="Result"/>) or the writable storage of input j (j: its
-/// storage at invariant positions, such as an exclusive input's referent or a raw pointee), may retain <see cref="Input"/>. Inputs are
+/// storage at invariant positions, such as an exclusive input's referent or a raw pointee; at one of
+/// <see cref="CallRetention.ReferentStores"/> only the storage input j refers to), may retain <see cref="Input"/>. Inputs are
 /// the parameter slots <see cref="TyCtxt.Signature"/> numbers, the receiver at its written slot, or a Callable signature's input
 /// positions.</summary>
 internal readonly record struct Retention(int Input, RetentionKind Kind, int Output)
@@ -77,20 +80,21 @@ internal readonly record struct Retention(int Input, RetentionKind Kind, int Out
 /// <summary>A call's retention: its rows, by output (the result, then each written input) and input; whether the result is untied, so it
 /// may refer to storage the caller does not own (design A3's Φ_E): a result atom is reached from no input and is not <c>static</c>, or
 /// the result holds a raw layer stepping Static, or one stepping Unstated that is not lent (behind a borrow in the result, R′); and the
-/// inputs whose writable storage holds such a layer, where the call may write a pointer tied to no input (DECISIONS R4-M116 R-B2, BU-30, BU-40); or
-/// <see cref="Limit"/>, which has none of them.</summary>
-internal sealed class CallRetention(Retention[]? rows, bool untied, int[] untiedStores)
+/// inputs whose writable storage holds such a layer, where the call may write a pointer tied to no input (DECISIONS R4-M116 R-B2, BU-30, BU-40); the
+/// stores it writes only in the storage its receiver refers to (BU-42); or <see cref="Limit"/>, which has none of them.</summary>
+internal sealed class CallRetention(Retention[]? rows, bool untied, int[] untiedStores, int[] referentStores)
 {
     /// <summary>A genuine limit: the retention of a call whose contract, or a Type its hold walk reaches, has storage past Binding's limits
     /// under its Subst (nested past its depth bound, which a growing recursive Type of SPEC 15.3.5 always reaches), or whose raw layer's
     /// member walk is incomplete (a keeper cycle that changes its Type arguments), as A4's effects take it: no rows are computed, and A5
     /// records a located Unsupported_Kd at the call. Storage a Binding failure left Rejected is not a Limit (DECISIONS BU-36). Reading its
-    /// rows, Untied or UntiedStores is a broken contract.</summary>
-    internal static readonly CallRetention Limit = new(null, untied: false, []);
+    /// rows, Untied, UntiedStores or ReferentStores is a broken contract.</summary>
+    internal static readonly CallRetention Limit = new(null, untied: false, [], []);
 
     private readonly Retention[]? rows = rows;
     private readonly bool untied = untied;
     private readonly int[] untiedStores = untiedStores;
+    private readonly int[] referentStores = referentStores;
 
     internal bool IsLimit => this.rows is null;
 
@@ -103,4 +107,15 @@ internal sealed class CallRetention(Retention[]? rows, bool untied, int[] untied
     /// input's write targets.</summary>
     internal ReadOnlySpan<int> UntiedStores
         => this.rows is null ? throw new InvalidOperationException("The Limit retention has no UntiedStores.") : this.untiedStores;
+
+    /// <summary>Gets the stores, ascending, that the call writes only in the storage its receiver refers to (SPEC 4.9.6: the row of an
+    /// operation of 4.6 to 4.9 is its complete published effect; 15.6.4 defers to it, DECISIONS R4-M131): the store at the receiver of
+    /// such an operation (a fixed-array member's and a 4.6 to 4.8 view's included) when the receiver is an exclusive borrow
+    /// (Binding.Retention.Transfers.cs). The operation moves values into, out of and within that storage and writes through no layer
+    /// stored there, so A5 stores there into the receiver's referents, never past them. The user code a row lists (destruction, a
+    /// Callable argument's calls) is the callers' to compose (4.9.6): this states the row alone, and A5 guards a destruction it does not
+    /// compose (PLAN G264). A 4.6 to 4.8 view's referent is its own handle, which is sound only while no 4.6 to 4.8 operation writes an
+    /// element through a view (KimiLibraryShapeTest pins the operations this covers; DECISIONS BU-42).</summary>
+    internal ReadOnlySpan<int> ReferentStores
+        => this.rows is null ? throw new InvalidOperationException("The Limit retention has no ReferentStores.") : this.referentStores;
 }

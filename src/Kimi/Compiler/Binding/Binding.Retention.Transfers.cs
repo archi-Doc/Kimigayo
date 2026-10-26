@@ -5,16 +5,19 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Call retention, the transfer rule (SPEC 15.6.4 as DECISIONS R4-M131 states it; BU-40; contract in TyCtxt.Retention.cs).
-// Responsibility: which published operation transfers values, and how it narrows rule A's rows at a raw layer without an Origin.
+// Responsibility: which published operation transfers values, how it narrows rule A's rows at a raw layer without an Origin, and which
+// stores it writes only where its receiver refers (SPEC 4.9.6; DECISIONS BU-42).
 // Inputs: the callee of the contract being computed, its instantiated inputs, and the premise scope TyCtxt read an instance with an
-// abstract part under, RetentionRows' parameter, which it hands to TransferOf (the library root's for any other).
-// Outputs: the contract's Transfer (TransferOf), read by RetentionRows once, at its first output whose hold walk meets a written
-// unstated layer, so an ordinary call pays nothing; the outputs it writes (TransferWrites) and what an input keeps there (TransferKept).
-// Keys, each a published declaring identity, never a name or a file (SPEC 22.1): an Iterator's `next`, a callee for which `for`'s
-// witness test selects the Iterator conformance of its receiver's referent (SelectsWitness), that conformance proven under the premises
-// (a conditional one at the instance: OwningIterator<I> when I is Iterator); `exchange` and `swap` by their catalog IDs; an operation of
-// SPEC 4.6 to 4.9: a member of Array or Dictionary (4.9, whose receiver's element storage keeps only its added inputs,
-// KimiLibraryCatalog.Added), of a Type of TransferTypes, or of the fixed array (KimiLibrary.FixedArrayMembers).
+// abstract part under, RetentionRows' parameter, which it hands to IteratorTransfer (the library root's for any other).
+// Outputs: the contract's Transfer: its declaring-identity key (TransferKey), read by RetentionRows once per contract, and for a callee
+// that key does not name its Iterator key (IteratorTransfer), read once, at the first output whose hold walk meets a written unstated
+// layer, so an ordinary call pays two symbol reads; the outputs it writes (TransferWrites) and what an input keeps there (TransferKept);
+// from the identity key alone, the contract's CallRetention.ReferentStores (ReferentStores).
+// Keys, each a published declaring identity, never a name or a file (SPEC 22.1): `exchange` and `swap` by their catalog IDs; an operation
+// of SPEC 4.6 to 4.9: a member of Array or Dictionary (4.9, whose receiver's element storage keeps only its added inputs,
+// KimiLibraryCatalog.Added), of a Type of TransferTypes, or of the fixed array (KimiLibrary.FixedArrayMembers); an Iterator's `next`, a
+// callee for which `for`'s witness test selects the Iterator conformance of its receiver's referent (SelectsWitness), that conformance
+// proven under the premises (a conditional one at the instance: OwningIterator<I> when I is Iterator).
 // Invariant: TyCtxt memoizes a contract per callee, Subst and premise scope, so each key is read once per instance, never per call.
 // Must not: reach a library Type outside these sections (DictionaryStorage, HeapBuffer), or narrow a row rule A does not form.
 public sealed partial class Binding
@@ -49,13 +52,15 @@ public sealed partial class Binding
         _ => true,
     };
 
-    // Whether `output` is a 4.9 operation's receiver's element storage, the one fact TransferWrites and TransferKept read: a store output
-    // (an input's writable storage, never the result) at the callee's receiver. A member without a receiver (construction: its
+    // Whether `output` is the store at the callee's receiver (an input's writable storage, never the result), the one receiver predicate
+    // TransferWrites, TransferKept and ReferentStores read: a 4.9 operation's receiver's element storage, and for any operation of SPEC 4.6
+    // to 4.9 with a borrowed receiver the storage that receiver refers to (4.9.6). A member without a receiver (construction: its
     // ReceiverIndex is -1, which is Retention.Result) has none, so the receiver narrowing never reaches its result (SPEC 4.9.6, 15.6.4).
     private static bool ReceiverStorage(BindingSymbol callee, int output) => output >= 0 && output == callee.ReceiverIndex;
 
-    // The transfer key of a callee (the file's contract), its Iterator conformance proven under `premises` (null: the library root's).
-    private Transfer TransferOf(FunctionKoto? callee, ReadOnlySpan<BoundType> inputs, BindingScope? premises)
+    // The declaring-identity key of a callee (the file's contract): `exchange`, a 4.9 operation, `swap` or a 4.6 to 4.8 operation; None
+    // for any other, whose Iterator key IteratorTransfer reads.
+    private Transfer TransferKey(FunctionKoto? callee)
     {
         if (callee?.BoundSymbol is not { } symbol)
         {
@@ -73,13 +78,15 @@ public sealed partial class Binding
             return Transfer.Elements;
         }
 
-        if (symbol.LibraryDeclaration == KimiDeclarationId.Swap || ReferenceEquals(callee.Parent, this.Library.FixedArrayMembers) ||
-            (owner is { } type && Array.IndexOf(TransferTypes, type) >= 0))
-        {
-            return Transfer.Values;
-        }
+        return symbol.LibraryDeclaration == KimiDeclarationId.Swap || ReferenceEquals(callee.Parent, this.Library.FixedArrayMembers) ||
+            (owner is { } type && Array.IndexOf(TransferTypes, type) >= 0) ? Transfer.Values : Transfer.None;
+    }
 
-        if (symbol.ReceiverIndex < 0 || this.BorrowReferent(inputs[symbol.ReceiverIndex], out _, out _) is not { } self)
+    // The Iterator key of a callee TransferKey does not name (the file's contract), its Iterator conformance proven under `premises`
+    // (null: the library root's).
+    private Transfer IteratorTransfer(BindingSymbol? callee, ReadOnlySpan<BoundType> inputs, BindingScope? premises)
+    {
+        if (callee is not { ReceiverIndex: >= 0 } symbol || this.BorrowReferent(inputs[symbol.ReceiverIndex], out _, out _) is not { } self)
         {
             return Transfer.None;
         }
@@ -101,5 +108,16 @@ public sealed partial class Binding
         }
 
         return transfer == Transfer.None || this.BorrowReferent(input, out _, out _) is null ? Kept.Value | Kept.Chain : Kept.Chain;
+    }
+
+    // CallRetention.ReferentStores (SPEC 4.9.6; DECISIONS BU-42): under the identity key of an operation of SPEC 4.6 to 4.9 (`exchange` and
+    // `swap` have no receiver), the store at its receiver (ReceiverStorage) when the receiver is an exclusive borrow (BorrowReferent), whose
+    // referent is that storage; a shared borrow's storage is no store, and a receiver taken by value is the callee's own. The shared empty
+    // array for none.
+    private int[] ReferentStores(Transfer key, BindingSymbol? callee, ReadOnlySpan<BoundType> inputs)
+    {
+        var receiver = callee?.ReceiverIndex ?? Retention.Result;
+        return key is Transfer.Elements or Transfer.Values && ReceiverStorage(callee!, receiver) &&
+            this.BorrowReferent(inputs[receiver], out _, out var exclusive) is not null && exclusive ? [receiver] : [];
     }
 }
