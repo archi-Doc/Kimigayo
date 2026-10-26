@@ -4840,8 +4840,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (`MirBorrowsTest.AStoredRawLayerIsReadByItsStep`) and `ds: DerS` (`MirTypesTest`). A store past a supplied Exclusive layer whose Origin
     is a shared or parameter borrow is a Limit (`sharedSupplied`, valid, accepted on dev), until Binding publishes such a layer's step
     judged by its borrow, or the writing scope's members; a raw layer outside an instance reads its pointee, so `tupleW` (an Exclusive raw
-    layer over u8 in a local Tuple) is accepted where the letter leaves it undecided (v3 §6 (1)); B6-for's `v@follow = x` is the known wrong
-    record PLAN G147 (8i) owns (BU's unit 0c).
+    layer over u8 in a local Tuple) is accepted where the letter leaves it undecided (v3 §6 (1)). B6-for's `v@follow = x`, the wrong record
+    PLAN G147 (8i) owns (BU's unit 0c) on the branch's base, does not arise on dev, whose Array literal places its element through no
+    receiver store (R5-M129); its two ledger rows went at the merge (R4's window 7).
   - Evidence: the guard equals v3's prototype (variant 6) on its 30 probe programs and design review 3's r3-limits and r3-positions;
     the problems equal it but for two d2-pairs rows, which dev changed since fb3e4d883 (base d73012e72 lacks them too). The mir
     Functional ledger against `shared-base/5e5669d1b`, on the merge with dev a7eb51913: rows 3,222 to 3,209, 55 removed and 42 added in
@@ -4855,7 +4856,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     in A5 (the parts it keeps). No slowdown.
   - Tests: `MirTypesTest.TheGuardSaysWhatACallMayWritePastAValue` (value and layer Through, iterator and loan None, uniqKept Through)
     and `TheGuardReadsEachStoredLayerOnItsInstance` (every position below the holder; Limit, Through and None twins); the new
-    `MirBorrowsTest.Guard.cs`: `TheGuardReadsEachPart` (the former `AListedLossIsUnsupported`, with the B6-for pin),
+    `MirBorrowsTest.Guard.cs`: `TheGuardReadsEachPart` (the former `AListedLossIsUnsupported`; B6-for valid since R5-M129),
     `AStoredRawLayerIsReadByItsStep` (Own's Type arguments, P1, P2), `AStoreTheGuardLeavesUndecidedIsUnsupported` (the Limit's record
     per call, in a loop, at a constructor, `sharedSupplied`; Through twins; the `tupleW` pin) and `TheGuardsWalkAllocatesNothingWarm`
     (V16); the expectation changes in `ACallStoreFollowsSpecsPerArgumentRule`, `APairLayerAcquisitionBorrowsAsItsMarkerSays`,

@@ -19,8 +19,8 @@ public sealed partial class MirBorrowsTest
     // (writeQ) and E5's seed (seedRoute) are valid, as rustc says: an iterator's and a Loan's Type argument has no address. An abstract
     // Iterable's iterator may write past itself (the owner's Q1 (a)), so count's parameter end errs; a live iterator keeps the append's
     // activation (cleanRoute); and the conflicts no store causes stay (notHeld, emptyStore, heldDefault's Loan a copy's value keeps, R-a),
-    // a conflict inside an inline default copy its template's (heldCopy, dd3; R4-M69). The pair cases' B6-for (pairs) reports
-    // `v@follow = x`, a known wrong record (PLAN G147 (8i)), pinned so that BU's unit 0c flips it.
+    // a conflict inside an inline default copy its template's (heldCopy, dd3; R4-M69). The pair cases' B6-for (pairs) is valid: its Array
+    // literal places the child through no receiver store (DECISIONS R5-M129, as litPairOk), so PLAN G147 (8i)'s self-store does not reach it.
     [Fact]
     public void TheGuardReadsEachPart()
     {
@@ -168,7 +168,7 @@ public sealed partial class MirBorrowsTest
             """);
         Assert.Equal(
             [
-                "dd3: t = 2", "pairs: v@follow = x", "count: func count<S>(items: S) -> i32", "cleanRoute: xs.append(b) CallActivationConflict_Kd",
+                "dd3: t = 2", "count: func count<S>(items: S) -> i32", "cleanRoute: xs.append(b) CallActivationConflict_Kd",
                 "notHeld: x = 2", "heldDefault: k = 2", "emptyStore: k = 2",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
