@@ -14,7 +14,7 @@ namespace Kimi.Compiler.Backend;
 // operands (FunctionCodegen.Calls' Legacy; DECISIONS R5-M116), an intrinsic's when it is one runtime routine (Routine), else the row's
 // unit's; any other function's its body target, its function's body or a requirement Item's witness (through its slot when it
 // implements one, BodyRun); a virtual function's Item, which has no target (X5), its slot (SPEC 6.4.3); without one a later unit's row (a
-// requirement witness without a body, PLAN G157 (10); a format shim C9b; a property witness C3c). The slot only makes the callee
+// requirement witness without a body, PLAN G157 (10), K's; a property witness C3c). The slot only makes the callee
 // value the call writes (EntryOf), so an Item's call and its adapter's entry dispatch through the one call writer, and the adapter's entry
 // is the erased virtual Item's thunk. A common Function value (IMPL 21.1.3: its environment word, then its table) calls its table's entry
 // with its environment word and its table's context under the erased signature (ModuleCodegen.Erased). A Value call's operands are its
@@ -114,8 +114,8 @@ internal sealed partial class FunctionCodegen
 
     // SPEC 7.7.4 (DECISIONS R5-M108): what a call of a function Item runs, decided by its function, for its Value call and its adapter's
     // entry: a compiler function's call is its direct call's row whatever targets the row needs (a format witness, a descriptor), written
-    // when it is one runtime routine (Routine, its slot-less values from the call's result Type or its target into `given`, a formatting
-    // row's capacity measured by the adapter's entry, Forward; DECISIONS R5-M128); any other function's is what
+    // when it is one runtime routine (Routine, its slot-less values from the call's result Type, its Type argument or its target into
+    // `given`, a formatting row's capacity measured by the adapter's entry, Forward; DECISIONS R5-M128); any other function's is what
     // its target runs (the collector's: its function's body or a requirement Item's witness; FunctionCodegen.Calls' Witness, a virtual
     // witness through its slot); a virtual function's Item, which has no target (X5), runs its slot (SPEC 6.4.3) under the Item's own
     // substitution (ModuleCodegen.Slot).
@@ -135,7 +135,7 @@ internal sealed partial class FunctionCodegen
             return this.module.Slot(item, this.item) is { } slot ? new Run(slot, function) : null; // Null after a record.
         }
 
-        if (kind != CompilerFunctionKind.None && this.Routine(kind, result, target, source, out given) is { } routine)
+        if (kind != CompilerFunctionKind.None && this.Routine(item, result, target, source, out given) is { } routine)
         {
             return new Run(routine, null);
         }

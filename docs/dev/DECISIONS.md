@@ -10198,3 +10198,108 @@ structure is recorded here by the unit that first implements it.
     - reusing FixedArray for an Array (R4's one-meaning rule);
     - a separate `Collection` or `ArrayLiteral` path beside the aggregate's (design review 1's B1);
     - a new rvalue kind, CompilerFunctionKind or IntrinsicId (PD21).
+- **R5-M130 The BuiltinFormat shim, user-formatter wrappers and the erased writer in MIR code generation (C9b)** (2026-10-26, C lane; plan
+  C9b, package C 3.2, PD2, PD3, PD21, K package 4.5 rows 2 and 6; SPEC 6.4.6, 7.7.4, 8.6.3, 22.5.1, 22.9.2, 22.9.4, 22.10.1, 22.10.2,
+  22.10.5; the planning session's go and rulings Q1-Q8 on C9b's design, `c9b-design.md` and `c9b-go.md`; under R5-M18 form 2 (G:format),
+  R5-M30, R5-M67, R5-M92, R5-M108, R5-M114, R5-M126 and R5-M128; PLAN G157 (10), (22), (28))
+  - BuiltinFormat shim (ruling Q1 (a)): a BuiltinFormat item is C8f's `__kimi_builtin<item>` (R5-M126's form and signature, caller-location),
+    the built-in formatting witness of its Self: its own parameters (`format`'s value at logical index 0, the writer at 1, the received
+    location) forwarded through `Forward` to P1d's BuiltinFormat row routine (`__kimi_format_builtin`, R5-M30) with its Self's kind
+    (`LegacyRuntimeHelpers.FormatKind` of the representative Self; a Self without one is a broken contract, since the collector admits a
+    built-in formattable Self only). `Witness` keeps its one rule, a Builtin item its shim's function, so a Requirement call (SPEC 22.10.1's
+    direct `format`, without the adapter's guard), a requirement Item's Value call and its adapter call it. `FunctionCodegen.Shim`, the
+    record, is deleted. No capability row applies to formatting (i128 and u128 format through the runtime's kinds 9 and 10), so C8f's R-2
+    rule has nothing to read: R5-M128's "C9b records it at each requesting site" is superseded, the item is written and no site records.
+    K row 2's Builtin targets keep R5-M128's form (the row's built-in routine with the kind); their admitted item is defined and unused there
+    (R5-M128's deviation, dead at O0, dropped at O2).
+  - Wrappers (ruling Q2 (a)): a user or library formatter, the Body target of a kind-bearing row's call (WriterWrite, TextToString,
+    TextTryFormat; K row 2), runs through the row's wrapper over it, one per target and row, `ModuleCodegen.Wrapper` (new
+    `ModuleCodegen.Formatting`): named after the target item (`__kimi_write<item>`, `__kimi_tostring<item>`, `__kimi_tryformat<item>`),
+    kept across Writes, defined once in each Write that requests it after the items, with its row's needs; the direct call, the Item's Value
+    call and the adapter entry write one call to it as to a routine (`FunctionCodegen.Formatting`: the target rule of a kind-bearing row).
+    - The write wrapper (the old planner's ABI: result slot, adapter, value; no format witness takes a location, since none is
+      caller-location) is written by FunctionCodegen (`WriteWrapper`): SPEC 22.10.1's frame, the recorded failure tested through the runtime
+      (`__kimi_format_healthy`) before and after, a failure recorded and returned through `__kimi_writer_fail`, around one call of the witness
+      through `BodyRun` with its slot (G157 (28)), by `CallWitness`, the one witness-call helper the comparison shim's Witness leaf also calls
+      (restructured first).
+    - The conversions (toString, tryFormat: the row's routine less its kind Context, which the target replaces) are the old generator's text
+      over the target's write wrapper, `LegacyRuntimeHelpers.WriteFormattingConversion`, promoted once (PD2); a conversion's request also
+      requests the write wrapper.
+    - SPEC 22.10.1's user-formatter frame then exists twice until R6-gen: the old planner's `WriteFormattingWrite` (frozen, D5) and this
+      write wrapper; the old one goes with the old generator at R6-gen, its removal condition. The built-in formatter's frame is the legacy
+      runtime's `__kimi_writer_write_builtin` (P1d's text, `Utf8FormatRuntime.ll.in`, until R8), which both generators call, so it is one
+      copy. Two runtime ABIs are also stated twice until R6-gen, with the same removal condition: `LegacyRuntimeHelpers.FormatHealthy`
+      beside the frozen `BodyLowering.Interpolation.cs`'s `StatusFormatting`, and `ModuleCodegen.WriteParameters` (the write wrapper's ABI)
+      beside the old planner's wrapper ABI (`GenericStoragePlan.cs`, `__kimi_writer_write_user`).
+  - Erased writer (ruling Q3 (a)): `Text.writer`, the ErasedWriter intrinsic, has the row routine P1d's TextWriter (`__kimi_text_writer`)
+    and a new `IntrinsicWriter.Writer` (an internal writer column, as Ensure, Create, Clone, Test and Capacity were): its two Context words
+    are given from its destination W, the call's Type argument read as the collector reads it for K row 6's target (`TypeArgument`: a call's
+    substitution or an Item's own, `TyCtxt.SubstOfItem`, through `TypeOf`; BU-38), and from that target: the runtime's writer kind
+    (`LegacyRuntimeHelpers.WriterKind`, promoted from the old generator: FixedBuffer 0 and HeapBuffer 1, whose reserve is the runtime's own,
+    a body-less compiler function, so the call carries no target, with a null dispatch word; any other W 2, whose Body target, its reserve
+    witness, gives the dispatch word, its function `@__kimi_f<item>` under the runtime's dispatch signature `void (ptr, ptr, i64)`). Any
+    other pairing is a broken contract. Code generation resolves no witness. The call, the Item's Value call and the adapter entry are
+    written alike (G157 (22)'s `Text.writer` part closes).
+  - Virtual witnesses (ruling Q6): Binding admits no virtual `reserve` or `format` witness: a virtual function's receiver is `objref/Self`
+    or `objuniq/Self` (SPEC 6.4), which BufferWriter's `uniq/Self` and Utf8Format's `ref/Self` requirements reject or Binding leaves
+    Unsupported (probe programs: `uniq/Self` or `ref/Self` virtual, InvalidVirtualDeclaration_Kd and IncompatibleContractImplementation_Kd;
+    `objref/Self`, MissingContractImplementation_Kd; review 1's probe `q6/e`, a virtual `reserve(self: objuniq/Self)`: Unsupported_Kd and
+    MissingContractImplementation_Kd). The write wrapper calls through `BodyRun`, whose slot path exists (C6c); the dispatch word has no
+    virtual arm, a virtual pairing falling under the broken-contract rule. When Binding admits one, that arm is written (a PLAN item).
+  - Not rows (ruling Q4 (a)): FormatFloat, ErasedReserve and FormatInteger128 have no MIR producer (the runtime calls Ryu, a user Writer's
+    reserve through the dispatch word and its i128 decimal routine itself); their rows are "no MIR producer (R8, PD21)", as WriteStdout's,
+    and R5-M92's C9b labels on them are labels. G157 (10) (ruling Q5 (a)): a Requirement call whose witness is a body-less compiler function
+    (`w.reserve(n)` at a FixedBuffer or HeapBuffer) keeps its located `Unsupported_Kd` at the call; it needs the collector to publish such a
+    witness, which is K's; no ledger row reaches it.
+  - Boundaries: C9c's interpolation keeps FormatBuffer, FormatHint and FormatFinish, the literal fast path and the stack buffer, whose
+    adapter's writer kind (the old generator's switch from 1 to 0 for a stack-estimated interpolation) is C9c's with its buffer; `$tryWrite`
+    lowers to C9a's and C9b's rows, an interpolated argument being C9c's. C10a's test intrinsics and C3c's property witnesses do not overlap.
+  - Deviations (IR only, PD9): a user formatter's wrappers are named per target item and test the recorded failure through the runtime's
+    `__kimi_format_healthy` where the old wrapper reads offset 56 inline and is named by request count; a BuiltinFormat item reached only by
+    K row 2 is defined and unused.
+  - Restructured first, behavior unchanged (every `.ll` of the related classes' fixtures identical under both generators): `WriterKind` and
+    the conversion text in `LegacyRuntimeHelpers` (8bb0e5aca); `CallWitness`, `Forward`'s lazy Function Type and `FunctionPrefix`
+    (4847b53fd); an intrinsic row's Type argument (1a4118a5e).
+  - Facts:
+    - The sel ledger falls by 113 test rows, from 577 to 464 (format 91, C-frame 10, object 6, C-drop 3, K-edges 3), and gains 2 fixture
+      rows (below): the census's 112
+      rows whose every record was C9b's, and `CompilerFunctionReferenceTest.WarmAdaptersReuseTheirPhysicalEntries`, which failed only
+      because generation did. Every other ledger row still fails (the 277 that also need C9c among them) and nothing outside the ledger
+      fails (the ledger's 90 classes, 3,321 tests). The plan row's Utf8Writer, Utf8Format, Utf8UserFormat, Utf8Conversion and Utf8Float
+      classes pass whole under sel; Utf8TryWrite and Utf8Integration keep their interpolating rows for C9c.
+    - Their fixture families (`Utf8Format*`, `Utf8Float*`, `Utf8Conversion*`, `Utf8TryWrite*`, `Utf8UserFormat*`, `CompilerReference*`,
+      `Utf8Integration*`, `Utf8Writer*`, `RecursiveDefault*`, `SharedMatch*`, `NestedDefault*`, `OwnedDefault*`, `SharedGuard*`,
+      `ContentUpdate*`, `WholeValue*`, `Formatting*`) run natively under sel at O0 and O2 but two fixtures sel generates for the first
+      time, which become fixture rows with their causes: `Utf8FloatOracle`, a harness cause (the test splices its oracle's call after the
+      old generator's `__kimi_entry_body` call, which sel's IR has not, so the oracle never runs; G157 (33)'s class), and
+      `Utf8TryWriteFailure`, a defect of the MIR builder's `$tryWrite` expansion (W1's window, or C9c's with its `$tryWrite` sites): it
+      tests each write's result but not the adapter's recorded failure before the first segment, so a `$tryWrite` on an already failed
+      adapter evaluates its embedded expression (SPEC 22.10.4: "if the adapter has already failed, later expressions are not evaluated";
+      the old generator tests `__kimi_format_healthy` before each segment); no sel module reached a `$tryWrite` before C9b wrote its
+      writer. Open (for PLAN): that builder defect and the oracle's splice.
+    - Milestones (CLI, O0, sel): 30, 31, 33, 35 and 44 keep their first record, an interpolation's (C9c); 24's moves from 10:16 (a
+      `$tryWrite` of an interpolated literal, now written) to 14:12, an owning interpolation (C9c).
+    - O2 (ruling Q7 (a), information): a kernel over C9b's rows without interpolation (a user formatter's write, toString and tryFormat,
+      the format requirement at i32, Text.writer over a FixedBuffer, a HeapBuffer and a user Writer; 2^20 rounds, its checksum printed
+      equal under both generators): at O2 the shims, the wrappers and `__kimi_format_healthy` are inlined and dropped (10 definitions
+      each, 865 against 889 instructions); CPU time B/A median 1.00 (0.83-1.30) against A/A 1.00 (0.85-1.30), 20 interleaved samples
+      of copies in one folder. The corpus A/Bs stay at C9c: every kernel's checksum line interpolates.
+  - Size, over the four commits (bp1, bp2, bp3, behavior) by numstat: Backend +448/-163 (net +285; Codegen +368/-118, of which
+    `ModuleCodegen.Formatting` +109), Emission +1/-7, tests +165/-34, the ledger -113 test and +2 fixture rows, and this entry, ARCH and CODEMAP. Over the
+    plan's +150 by the wrappers' signatures, requests and definitions, which R5-M30 left to code generation.
+  - Deleted: the located records of a BuiltinFormat item, of a Body target at a kind-bearing row (and `Runs`' second record at the same
+    site) and of ErasedWriter's call and Item; `FunctionCodegen.Shim`; the old generator's writer-kind switch (promoted); the C9b labels.
+  - Speed: one call per write, the routine for a built-in Type and the wrapper for a user one, the old generator's form; one shim function per
+    BuiltinFormat item; wrapper signatures and names kept per item and the given words in the reused slot-less span, so a warm Write
+    allocates nothing; no pass over MIR.
+  - Rejected:
+    - inside the component: the shim's own forwarding loop (a second copy of `Forward`); a BuiltinFormat item without a function, its
+      callers given the routine and kind through `Witness` (a Run with given words for one form); the write wrapper as the old static text
+      (it calls the implementation by name, so no slot, G157 (28)); SPEC 22.10.1's frame inline at each call (an Item and an adapter need a
+      callee anyway); the conversions written in FunctionCodegen (a second statement of the old text); the writer kind measured as a capacity
+      is (an indexed Context with two measures by the Type's shape); the writer kind decided by resolving `BufferWriter.reserve` on W in code
+      generation (witness resolution is the collector's);
+    - shared structure: the collector targeting FixedBuffer's and HeapBuffer's body-less `reserve` with a LegacyRow item (G157 (10)'s form;
+      no ledger row needs it, and an item for a fixed symbol defines nothing, R5-M128's rejection); the collector skipping K row 2's Builtin
+      item (it names the Self); new IntrinsicIds, MonoKinds or collector items for the wrappers (R5-M30: the collector never sees a wrapper);
+      re-pointing the old planner to the new wrappers (D5).

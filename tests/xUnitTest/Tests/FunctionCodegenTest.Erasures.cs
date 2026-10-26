@@ -208,19 +208,27 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal([write.Parameters[1], write.Parameters[3], write.Parameters[4]], line.Operands);
     }
 
-    // SPEC 7.7.4 (DECISIONS R5-M108, R5-M128): a compiler function's call is its direct call's row, whatever targets the row needs:
+    // SPEC 7.7.4 (DECISIONS R5-M108, R5-M128, R5-M130): a compiler function's call is its direct call's row, whatever targets the row needs:
     // Text.toString's row runs the format witness and Text.writer's the reserve witness, but neither function is its witness, so their Items,
-    // called as values or erased, run their row: a user formatter's toString and Text.writer's ErasedWriter wait for C9b, one located
-    // Unsupported_Kd each (they called the witness with the function's operands before).
+    // called as values or erased, run their row: a user formatter's toString its conversion over the witness's write wrapper, which alone
+    // calls the witness, and Text.writer its routine, whose dispatch word names the witness, which nothing calls (they called the witness
+    // with the function's operands before).
     [Theory]
-    [InlineData(UserFormat + "public func run(n: ref/Value<i32>) -> string\n    let show = Text.toString<Value<i32>>\n    return show(n)\n", "show(n)")]
-    [InlineData(UserFormat + "public func run(n: ref/Value<i32>) -> string\n    let show: (ref/Value<i32>) -> string = Text.toString\n    return show(n)\n", "Text.toString")]
-    [InlineData(Sink + "public func run(s: uniq/Sink) -> Utf8Writer during s\n    let make = Text.writer<Sink>\n    return make(s)\n", "make(s)")]
-    public void ACompilerFunctionsItemRunsItsRowNotItsRowsWitness(string source, string site)
+    [InlineData(UserFormat + "public func run(n: ref/Value<i32>) -> string\n    let show = Text.toString<Value<i32>>\n    return show(n)\n", "format", 1)]
+    [InlineData(
+        UserFormat + "public func run(n: ref/Value<i32>) -> string\n    let show: (ref/Value<i32>) -> string = Text.toString\n    return show(n)\n",
+        "format",
+        1)]
+    [InlineData(Sink + "public func run(s: uniq/Sink) -> Utf8Writer during s\n    let make = Text.writer<Sink>\n    return make(s)\n", "reserve", 0)]
+    public void ACompilerFunctionsItemRunsItsRowNotItsRowsWitness(string source, string witness, int callers)
     {
         var c = Analyze(source, OutputKind.Library);
-        Assert.False(c.Generate(TextWriter.Null));
-        Assert.Equal([("Unsupported_Kd", (string?)site)], Records(c));
+        var text = Generate(c);
+        var ir = GeneratedIr.Parse(text);
+        var body = Assert.Single(FunctionsOf(ir, c, witness));
+        var calling = ir.Functions.Where(x => CalleesOf(x).Contains(body)).ToArray();
+        Assert.Equal(callers, calling.Length);
+        Assert.All(calling, x => Assert.Same(ir.Function(Regex.Match(text, @"define internal void @(__kimi_write\d+)\(").Groups[1].Value), x));
     }
 
     // SPEC 7.7.4, 10.7, 22.5.1 (DECISIONS R5-M108): erased compiler functions' Items and a Never Item erased into two results run natively, the

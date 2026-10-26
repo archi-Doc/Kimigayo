@@ -1,6 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// ModuleCodegen (R5 plan C0b1, K11, C3a, C5b, package C 3.3 and 3.9, design 2 2.3 and 2.12; DECISIONS R5-M65, R5-M77, R5-M89, R5-M104),
+// ModuleCodegen (R5 plan C0b1, K11, C3a, C5b, C9b, package C 3.3 and 3.9, design 2 2.3 and 2.12; DECISIONS R5-M65, R5-M77, R5-M89, R5-M104),
 // one per Compilation.
 // Responsibility: one module of a program version from its checked set: every Generated item in admission order, a body item written by
 // FunctionCodegen as __kimi_f<item> under its signature (Abi.Of, internal convention), which this owner gives from the item's own body to
@@ -14,8 +14,9 @@
 // ClosureErasure and ItemAdapter (__kimi_erase<item>, its entry under its target Function Type's erased signature, its table and its
 // heap environment's release, written by FunctionCodegen; R5-M108), the LegacyRow items of the Array rows and of placeEntry (their routines,
 // their helpers written before the definitions, ModuleCodegen.Arrays and ModuleCodegen.Dictionaries; R5-M121, R5-M124), the Builtin shims
-// (__kimi_builtin<item>, a comparison's or an arithmetic operation's function under its requirement's signature, Shim, written by
-// FunctionCodegen.Shims; R5-M126; a format shim C9b's), the property witnesses (C3c), K8's ObjectDescriptor items (the module's runtime
+// (__kimi_builtin<item>, a comparison's, an arithmetic operation's or a built-in formatting's function under its requirement's signature,
+// Shim, written by FunctionCodegen.Shims; R5-M126, R5-M130), a user or library formatter's wrappers (__kimi_write<item>, a conversion over
+// it; ModuleCodegen.Formatting, R5-M130), the property witnesses (C3c), K8's ObjectDescriptor items (the module's runtime
 // identities, a descriptor's constants, payload destructor and factory through ObjectRuntime, ModuleCodegen.Objects; R5-M110) and VTable
 // items, whose text is their descriptors' virtual tables (R5-M114), a test build's TestEntry (C10a).
 // Inputs: the program the generation gate passed (validated, analyzed and accepted); the instance collector's checked set, marked from the
@@ -34,9 +35,9 @@
 // partial module, use LINQ, Supports* or catch-alls.
 // Files: the items and the records (this file); the body, glue, Builtin, ensure and virtual slot signatures and the signature caches
 // (ModuleCodegen.Signatures.cs), the called imports' C signatures and declarations (ModuleCodegen.Imports.cs), the common Function values'
-// entries (ModuleCodegen.Erasures.cs), the object descriptors with their virtual tables (ModuleCodegen.Objects.cs), the Array rows'
-// routines and helpers (ModuleCodegen.Arrays.cs) and the Dictionary rows' (ModuleCodegen.Dictionaries.cs); the module frame and the output
-// form (ModuleCodegen.Frame.cs).
+// entries (ModuleCodegen.Erasures.cs), the formatting wrappers of formatter items (ModuleCodegen.Formatting.cs), the object descriptors
+// with their virtual tables (ModuleCodegen.Objects.cs), the Array rows' routines and helpers (ModuleCodegen.Arrays.cs) and the Dictionary
+// rows' (ModuleCodegen.Dictionaries.cs); the module frame and the output form (ModuleCodegen.Frame.cs).
 
 using System.Globalization;
 using Kimi.Compiler.Mir;
@@ -97,6 +98,7 @@ internal sealed partial class ModuleCodegen
         this.functions.GetStringBuilder().Clear();
         this.helperText.GetStringBuilder().Clear();
         this.externals.Clear();
+        this.wrapped.Clear();
         (this.set, this.program, this.collector, this.writes) = (collector.Set, program, collector, this.writes + 1);
         this.Number();
         for (var item = 0; item < this.set.Items.Length; item++)
@@ -106,6 +108,8 @@ internal sealed partial class ModuleCodegen
                 this.Item(program, collector, item);
             }
         }
+
+        this.WriteWrappers(collector);
 
         if (!this.Start(program, collector, startup, roots, out var start) || this.Records.Count != 0)
         {

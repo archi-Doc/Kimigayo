@@ -32,13 +32,7 @@ internal sealed partial class BodyLowering
             }
         }
 
-        var destination = input.Components[0];
-        kind = destination.Symbol?.LibraryDeclaration switch
-        {
-            KimiDeclarationId.FixedBuffer => 0,
-            KimiDeclarationId.HeapBuffer => 1,
-            _ => 2,
-        };
+        kind = LegacyRuntimeHelpers.WriterKind(input.Components[0]);
         if (kind != 2)
         {
             return true;
