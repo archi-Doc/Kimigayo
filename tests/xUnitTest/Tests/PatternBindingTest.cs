@@ -14,6 +14,7 @@ public class PatternBindingTest
 {
     private const string Selecting = "func g(o: Option<i32>, c: bool, v: i32) -> i32\n";
     private const string BothMissing = "UnresolvedBinding_Kd missing | UnresolvedBinding_Kd missing2";
+    private const string Use = "func h(v: i32) -> i32 => v\nfunc g(o: Option<i32>) -> ()\n";
 
     [Theory]
     [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(let n) => n\n    .None => 0")]
@@ -279,9 +280,14 @@ public class PatternBindingTest
         Assert.Equal(string.Empty, Records(Head.Replace("MISSING", "2", StringComparison.Ordinal) + use));
     }
 
-    // SPEC 23.1.2: a match whose pattern or guard failed rests on that located failure, the one record; the match adds none (each
-    // row's twin replaces `written` by `valid` and has no record).
+    // SPEC 23.1.2: a match whose pattern or guard failed rests on that located failure, the one record; the match adds none. A binding
+    // declared in a failed position rests on it, so a body's or guard's use of it adds none either (each row's twin replaces `written`
+    // by `valid` and has no record).
     [Theory]
+    [InlineData("func g(o: Option<i32>) -> i32\n    let k: i32 = match o\n        .Some(let a, let b) => a\n        _ => 0\n    return k", "InvalidPattern_Kd .Some(let a, let b)", "let a, let b", "let a")]
+    [InlineData("func g(o: Option<i32>) -> ()\n    match o\n        .Some(let a, let b) if a > 0 => ()\n        _ => ()", "InvalidPattern_Kd .Some(let a, let b)", "let a, let b", "let a")]
+    [InlineData(Use + "    match o\n        .Some(let a, let b) => h(a)\n        _ => ()", "InvalidPattern_Kd .Some(let a, let b)", "let a, let b", "let a")]
+    [InlineData(Use + "    match o\n        .Missing(let a) => h(a)\n        _ => ()", "UnresolvedBinding_Kd .Missing | InvalidPattern_Kd .Missing(let a)", ".Missing", ".Some")]
     [InlineData("func g(o: Option<i32>) => match o\n    .Some(let x) if x => ()\n    _ => ()", "TypeMismatch_Kd x", "if x =>", "if x > 0 =>")]
     [InlineData("func g(x: i32) => match x\n    true => ()\n    _ => ()", "InvalidPattern_Kd true", "true", "0")]
     [InlineData("func g(o: Option<i32>) => match o\n    .Missing => ()\n    _ => ()", "InvalidPattern_Kd .Missing | UnresolvedBinding_Kd .Missing", ".Missing", ".None")]
