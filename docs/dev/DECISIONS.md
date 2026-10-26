@@ -4590,6 +4590,45 @@ and migration obligations remain in force; no numeric cap changes are authorized
     problems equal; A5's timed allocation +0.06 % (the growth past 431 Types).
   - Rejected: a cache in `MirTypes` (static, wrong across compilations) or in `TyCtxt` (a MIR fact on Binding's representation); keying
     the walk's own memo by stored part and positions (more code, a walk per local stays).
+- **R4-M141 Own-step entries make a view a producer only where an access may depart one (G258 D2)** (2026-10-26; R4's lane A under the
+  owner's 「D1・D2 を採用 (推奨)」 of 2026-10-26; the G258 report's §4 D2, option (a), its design review's ACCEPT with conditions N1–N4).
+  Supersedes R4-M124's State clause "and its view a producer (D5)" and adds a term to R4-M98's D5 producer list.
+  - Rule (`MirBorrows.OwnSteps.MayDepart`, read by `Addresses`' producer term): a view whose only producer input is its own-step entries
+    (no Loan, guard candidate, R3 drop, `PreparedInput` write or PQ-10 mark) is a producer only where some use of it, reached or not, as
+    Accesses' `KindOf` classifies it, is a destruction Accesses leaves `Unclassified` on a root the entries borrow, or an access other
+    than a read or a shared borrow that `Departs` an entry on its root. This is a superset of the Warning's condition: it reads no
+    liveness and no `Covered`, and it counts an Opaque site's uses, which the replay skips. A reborrow counts as its plain use, which is
+    exact: no Loan exists there, so no Reborrow or activation does.
+  - Records such a view can have, all made only in a producing view:
+    - (a) `OwnStepDeparture_Kd`;
+    - (b) an unclassified destruction's located `Unsupported_Kd` on a root the entries borrow (kept: `MayDepart` holds);
+    - (c) a retention Limit's located `Unsupported_Kd` (`Locations.Check`, R4-M51);
+    - (d) `OwnershipStorageLimit_Kd` (`Solve`, R4-M15a).
+    Where no access may depart, (c) and (d) leave the view by D5's rule, "a body without a Loan, which no conflict can depend on,
+    reports neither" (R4-M36, R4-M51; `AnUnclassifiedDestructionOrCallIsUnsupported`'s `unlent`).
+  - Representation: the replay's per-root list (`ownRoots`, `ownTags[..].Next`). `MayDepart` restarts it and lists every own-step
+    entry on its root under the stamp `Listed` (-1), which no check uses, and the replay restarts it before its first check. A use tests
+    only its root's entries, the conflict scan's density: work O(keys + entries + uses + departing uses × entries on their root).
+    `KindOf` is Accesses' use classifier, which `Accessing` and `MayDepart` share (G258 D2's first, behavior-preserving commit; N1).
+  - Tests:
+    - `AnOwnStepViewIsAProducerOnlyWhereAnAccessMayDepart`: `ownLimit` records nothing, and fails first; `ownLimitLocal`,
+      `ownDeep` and `ownWriteThrough` keep their records;
+    - `AViewNoAccessMayDepartRunsNoStratum`: N reads of a layer, linear;
+    - `TheMayDepartScanStaysDense` (V16): N roots, linear;
+    - the departing rows are unchanged, and the warm rows stay 0 B.
+  - Measured (G258's host, 118 programs, base c35ab5377 (D1) and head in one process, pinned, tiering off, two runs of 8 rounds):
+    A5's cold time −2.7 % and −3.7 % (min-sum); Work −5.3 % (12,532,582 to 11,865,646), cold allocation −1.5 % (−691,440 B),
+    Loan-set Bytes −3.6 % (−9,912), problems equal. All of it is the library's, analyzed in every compilation (its Work 100,475 to
+    94,823); the corpus programs' own views are unchanged.
+  - Rejected:
+    - the report's (b), the same test fused into the pre-pass walk (+12 KB cold per compilation, equal time);
+    - (c), entries formed only at reads (the 7 Dictionary bodies stay producers);
+    - (d), a narrower stratum (a second carrying path);
+    - (e), a MirBody access summary (Full);
+    - the prototype's test of every address entry per use (R4-M124's rejected density);
+    - a copy of `Accessing`'s classification or Opaque skip (N1).
+  - Numbering: R4-M141 was reserved for G258 D2 by the R4 planning session (R4-M140 D1 on `claude/a5-g258-d1`, R4-M142 S1 on
+    `claude/a5-cbv-s1`; R4-M138 the last on dev).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
