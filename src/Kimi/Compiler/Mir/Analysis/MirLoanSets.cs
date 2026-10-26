@@ -10,7 +10,8 @@
 // equal exactly when their ids are; a node never changes once made. Each operation but Of and the n-ary Union is memoized by its operands,
 // so repeating it costs one lookup; Of's run is its own key, and the n-ary Union reads each element once and sorts the marker words it
 // sets, never the range between its least and greatest element (its caller memoizes it). Storage is pooled: Clear empties it per body
-// view and keeps its capacity, so a warm run of a sized workload allocates nothing.
+// view in proportion to the view's entries (MirTable, DECISIONS R4-M146) and keeps its capacity, so a warm run of a sized workload
+// allocates nothing.
 // Must not number or interpret elements, read MIR, or keep a set in another form.
 
 using System.Numerics;
@@ -23,11 +24,11 @@ namespace Kimi.Compiler.Mir;
 /// <see cref="Range"/> are memoized.</summary>
 internal sealed class MirLoanSets
 {
-    private readonly Dictionary<int, int> nodes; // Each node by its elements: an interned run maps to its own id.
-    private readonly Dictionary<(int Set, int Element), int> adds = new();
-    private readonly Dictionary<(int A, int B), int> unions = new(); // Keyed with A < B.
-    private readonly Dictionary<(int Set, int Removed), int> removes = new();
-    private readonly Dictionary<(int First, int Count), int> ranges = new();
+    private readonly MirTable<int> nodes; // Each node by its elements: an interned run maps to its own id.
+    private readonly MirTable<(int Set, int Element)> adds = new();
+    private readonly MirTable<(int A, int B)> unions = new(); // Keyed with A < B.
+    private readonly MirTable<(int Set, int Removed)> removes = new();
+    private readonly MirTable<(int First, int Count)> ranges = new();
     private int[] elements = []; // The runs of the nodes, in node order.
     private int[] starts = [0, 0]; // Each node's first element, then the end of the last node's run and of a candidate's.
     private ulong[] marker = []; // The n-ary Union's bit per element, clear between its calls.
@@ -35,7 +36,11 @@ internal sealed class MirLoanSets
     private int created = 1; // The nodes made; node 0 is the empty set.
 
     /// <summary>Initializes a new instance of the <see cref="MirLoanSets"/> class, holding the empty set.</summary>
-    internal MirLoanSets() => this.nodes = new(new Runs(this)) { [0] = 0 };
+    internal MirLoanSets()
+    {
+        this.nodes = new(new Runs(this));
+        this.nodes.Add(0, 0);
+    }
 
     /// <summary>Gets the element bytes of the nodes made since the last <see cref="Clear"/>, A3 §6.2's ν.</summary>
     internal long Bytes { get; private set; }
@@ -44,10 +49,10 @@ internal sealed class MirLoanSets
     /// smaller operand and the run it copies, and a Range's run.</summary>
     internal long Scanned { get; private set; }
 
-    /// <summary>Removes every set but the empty one, keeping the storage.</summary>
+    /// <summary>Removes every set but the empty one, keeping the storage, in proportion to the view's entries (MirTable).</summary>
     internal void Clear()
     {
-        this.nodes.Clear();
+        this.nodes.Clear(); // Before the runs are dropped: a node is found by its run.
         this.adds.Clear();
         this.unions.Clear();
         this.removes.Clear();
@@ -321,7 +326,7 @@ internal sealed class MirLoanSets
     {
         MirDataflow.Grow(ref this.starts, this.created + 2);
         this.starts[this.created + 1] = this.starts[this.created] + length;
-        ref var node = ref CollectionsMarshal.GetValueRefOrAddDefault(this.nodes, this.created, out var exists);
+        ref var node = ref this.nodes.Entry(this.created, out var exists);
         if (!exists)
         {
             node = this.created++;

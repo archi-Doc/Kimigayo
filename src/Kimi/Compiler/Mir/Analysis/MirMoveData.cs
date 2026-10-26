@@ -14,7 +14,6 @@
 
 #pragma warning disable SA1402 // The path record belongs to the paths.
 
-using System.Runtime.InteropServices;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
@@ -44,8 +43,8 @@ internal sealed class MirMoveData
     /// <summary>The Place is through a reference, an object handle or an index below its path: it has no Move Path.</summary>
     internal const int NoPath = 2;
 
-    private readonly Dictionary<(int Parent, MirProjectionKind Kind, int Arg), int> children = new(); // Each child by creation index.
-    private readonly Dictionary<MirPlace, int> places = new(); // Each projected Place's path by creation index << 2 | access.
+    private readonly MirTable<(int Parent, MirProjectionKind Kind, int Arg)> children = new(); // Each child by creation index.
+    private readonly MirTable<MirPlace> places = new(); // Each projected Place's path by creation index << 2 | access.
     private int[] parents = []; // By creation index; locals first.
     private (MirProjectionKind Kind, int Arg)[] steps = []; // By creation index: the step from the parent.
     private int[] sizes = [];
@@ -142,7 +141,7 @@ internal sealed class MirMoveData
     // The child of a path by a step, added at its first Place.
     private int Child(int parent, MirProjectionKind kind, int arg)
     {
-        ref var child = ref CollectionsMarshal.GetValueRefOrAddDefault(this.children, (parent, kind, arg), out var exists);
+        ref var child = ref this.children.Entry((parent, kind, arg), out var exists);
         if (!exists)
         {
             child = this.Add(parent);
