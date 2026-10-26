@@ -45,8 +45,8 @@ internal sealed partial class MirBuilder
     {
         switch (HirTables.Op(node))
         {
-            case HirOp.Literal when this.Literal(node) is var constant and >= 0:
-                this.Use(destination, MirOperand.Const(constant), node);
+            case HirOp.Literal:
+                this.Use(destination, this.Literal(node), node);
                 break;
             case HirOp.Name when HirTables.Symbol(node)?.Kind == BindingSymbolKind.Function && HirTables.Meaning(node) is BoundType item:
                 this.Use(destination, MirOperand.Const(this.body.Const(new(MirConstKind.FnItem, item))), node); // SPEC 7.7.4: a constant of its Item Type.
@@ -185,8 +185,7 @@ internal sealed partial class MirBuilder
         reserves |= input;
         if (InPlace(adjust))
         {
-            return HirTables.Op(node) == HirOp.Literal && this.Literal(node) is var constant and >= 0 ? MirOperand.Const(constant)
-                : MirOperand.Move(this.Value(node, into, reserves, expected));
+            return HirTables.Op(node) == HirOp.Literal ? this.Literal(node) : MirOperand.Move(this.Value(node, into, reserves, expected));
         }
 
         if (adjust.Acquire == HirAcquire.Unset || adjust.Adaptation == HirAdaptation.StorageProjection || (adjust.Adaptation == HirAdaptation.BaseBorrow &&
@@ -337,8 +336,10 @@ internal sealed partial class MirBuilder
         this.Use(target, MirOperand.Move(value), node);
     }
 
-    // SPEC 3.1: a literal's constant, a number's being the value Binding fitted (its plan row's Folded); -1 without one.
-    private int Literal(Koto node)
+    // SPEC 3.1: a published Literal's constant, a number's being the value Binding fitted (its plan row's Folded); a literal the lexer
+    // could not read is published Error (Binding.Rejected). A published Literal without its constant is a broken contract, the one check
+    // of that guarantee: InternalInvariant_Kd, the value a derived Opaque.
+    private MirOperand Literal(Koto node)
     {
         var type = TypeOf(node);
         MirConst? constant = node switch
@@ -352,7 +353,13 @@ internal sealed partial class MirBuilder
             _ => null,
         };
 
-        return constant is { } known ? this.body.Const(known) : -1;
+        if (constant is { } known)
+        {
+            return MirOperand.Const(this.body.Const(known));
+        }
+
+        this.program.Report(SourceRef.Of(node), DiagnosticCode.InternalInvariant_Kd);
+        return MirOperand.Move(this.Unsupported(node, derived: true));
     }
 
     // Appends the operands evaluated onto the argument stack from start to the body's operands together, and pops them.

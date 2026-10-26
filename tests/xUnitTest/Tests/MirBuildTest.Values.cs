@@ -448,6 +448,44 @@ public sealed partial class MirBuildTest
         }
     }
 
+    // SPEC 23.1.2 (PLAN G122): a char literal the lexer could not read is published Error, so its value is the derived Opaque of a node
+    // the lexer rejected, with no record; a published Literal is built as its constant.
+    [Fact]
+    public void ACharLiteralWithoutItsValueIsDerived()
+    {
+        var c = CompilationTestHelper.Parse("func f() -> char => '\\q'\nfunc g() -> char => 'a'\npublic func main() => ()\n");
+        Assert.Equal(nameof(DiagnosticCode.InvalidEscape_Kd), Assert.Single(TestDiagnostics.Of(c)).Code);
+        c.Bind();
+        _ = c.Binding.CheckStartup(OutputKind.Application);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records, static x => x.Subject.Module == 0);
+        var bodies = program.Bodies.ToArray().Where(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" or "g" })
+            .ToDictionary(static x => x.Key.Decl!.Name);
+        Assert.Equal(("char", 1, 0), (Assert.Single(Opaques(bodies["f"])).Type, Opaques(bodies["f"]).Length, Opaques(bodies["g"]).Length));
+    }
+
+    // SPEC 23.1.2 (PLAN G122; R5's condition on Literal's broken-contract arm): a user's literal error builds a derived value or the
+    // located Unsupported, never InternalInvariant_Kd: the lexer's unreadable char is published Error, a number Binding cannot fit fails
+    // in Binding (an Error), at a local, a parameter, a default or as a float, and a literal at an unresolved expected Type keeps its fit.
+    [Theory]
+    [InlineData("func f() -> char => '\\q'\n")]
+    [InlineData("func f()\n    let x: u8 = 300\n")]
+    [InlineData("func g(x: u8) => ()\nfunc f() => g(300)\n")]
+    [InlineData("func g(x: i8 = 300) => ()\nfunc f() => g()\n")]
+    [InlineData("func f() -> f32 => 1e39\n")]
+    [InlineData("func f()\n    let x: Missing = 5\n")]
+    public void ALiteralErrorBuildsNoInternalInvariant(string source)
+    {
+        var c = CompilationTestHelper.Parse(source + "public func main() => ()\n");
+        c.Bind();
+        _ = c.Binding.CheckStartup(OutputKind.Application);
+        var program = c.BuildMir();
+        Assert.NotEmpty(CompilationTestHelper.BindingErrors(c));
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records, static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
+    }
+
     // A body's Opaque values in order: their destination's Type and root, and the roots their sites name.
     private static (string Type, int Root, int[] Roots)[] Opaques(MirBody body) => [.. body.Statements.ToArray()
         .Where(static x => x.Kind == MirStatementKind.Assign && x.Rvalue.Kind == MirRvalueKind.Opaque)
