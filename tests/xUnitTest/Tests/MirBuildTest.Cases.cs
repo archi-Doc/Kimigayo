@@ -236,6 +236,27 @@ public sealed partial class MirBuildTest
         Assert.All(program.Bodies.ToArray().Where(static x => x.Source.Module == 0), static x => Assert.True(x.Key.Decl is null || x.Key.Decl.Name == "main", x.Key.ToString()));
     }
 
+    // SPEC 8.15 (DECISIONS R4-M139, R5's conditions): a call selects the view of its binder's case, the Semantics of the binder's whole
+    // Type in the call's instance, read as every reader reads one (TyCtxt.ReadableInstance). Over storage Binding rejected (Bad's Field) the case
+    // is the instance's, which no rejected part changes, so the view is the one its repair selects: one view, deterministic (before, every
+    // admitted view). In a complete compilation no instance is Rejected (TyCtxtTest's ARejectedVerdictIsReadableOnlyBesideABindingFailure).
+    [Theory]
+    [InlineData("b@move", 1UL)]
+    [InlineData("b@ref", 2UL)]
+    public void ACallOverRejectedStorageSelectsItsRepairsView(string argument, ulong view)
+    {
+        foreach (var field in new[] { "Missing", "i32" })
+        {
+            var c = Compile($"struct Bad\n    public var m: {field} = 0\n    public init() => ()\ngroup H\n    public func keep<s/T>(item: s/T)\n" +
+                $"        s is owner or ref\n        ()\nfunc g()\n    let b = Bad.init()\n    H.keep({argument})\n");
+            var program = c.BuildMir();
+            Assert.Empty(program.Findings);
+            var call = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "g").Blocks.ToArray().Select(static x => x.Terminator)
+                .Single(static x => x.Kind == MirTerminatorKind.Call && x.Callee.Symbol?.Name == "keep");
+            Assert.Equal(view, new MirCases(c.Types).Views(program.Callee(call.Callee)!, call.Callee.Subst));
+        }
+    }
+
     // What a location's PairAcquire operands and PairLayer steps are under the selected view, each step with its selected Place's case Type.
     private readonly struct Resolver(MirProjection[] projections, MirCases cases, List<string> log) : IMirUses
     {

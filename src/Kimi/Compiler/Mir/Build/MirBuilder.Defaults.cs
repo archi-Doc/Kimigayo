@@ -96,7 +96,8 @@ internal sealed partial class MirBuilder
     // of the earlier parameters' slots (a copy, of those its template reads): a copy of its template, a call of a recursive template
     // (every slot, its arguments), or an Opaque value reading those slots where its template failed (no record), the copy would take the
     // body past the limit (the call's Resource record) or the call's substitution does not instantiate it (Instantiates, decided before a
-    // copy is written: the call's Unsupported_Kd, SPEC 23.1.1, through Unsupported). A default that does not complete reaches no later
+    // copy is written, a Limit only: the call's Unsupported_Kd, SPEC 23.1.1, through Unsupported; over storage Binding rejected the copy
+    // is built, as a non-generic template over it is, DECISIONS R4-M139). A default that does not complete reaches no later
     // default and no callee at run time (SPEC 15.6.7); building goes on for the checks.
     private void Defaults(CallPlan call, BindingSymbol function, Subst? subst, int start, Koto node)
     {

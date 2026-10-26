@@ -12,15 +12,21 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirBuilder
 {
     private readonly List<int> folded = []; // A copy's scopes, locals and blocks in this body.
+    private readonly Dictionary<BoundType, BoundType> instances = []; // Each Type a copy folds, in the call's instance (Instantiates).
+    private readonly Dictionary<Subst, Subst> compositions = []; // Each callee substitution a copy holds, composed (Instantiates).
 
-    // SPEC 23.1.1 (DECISIONS R4-M127): whether the call's substitution instantiates a copy of the template, decided before any of it is
-    // written: each Type Inline folds (a local's other than the result's and the parameters', a constant's, an rvalue's) applies under
-    // it and each callee's substitution composes with it.
+    // SPEC 23.1.1 (DECISIONS R4-M127, R4-M139): whether the call's substitution instantiates a copy of the template, decided before any of
+    // it is written: each Type Inline folds (a local's other than the result's and the parameters', a constant's, an rvalue's) and each
+    // callee's substitution, in the call's instance as every reader of an instance reads it (TyCtxt.ReadableInstance, a composition by
+    // Readable over its deciding part: Prepared or Rejected, whose rejected parts hold nothing, never a Limit), each kept for Inline, which
+    // folds by them.
     private bool Instantiates(MirBody template, Subst subst)
     {
+        this.instances.Clear();
+        this.compositions.Clear();
         foreach (ref readonly var local in template.Locals)
         {
-            if (local.Kind is not (MirLocalKind.Return or MirLocalKind.Arg) && compilation.Types.Apply(local.Type, subst) is null)
+            if (local.Kind is not (MirLocalKind.Return or MirLocalKind.Arg) && !this.Instance(local.Type, subst))
             {
                 return false;
             }
@@ -28,7 +34,7 @@ internal sealed partial class MirBuilder
 
         foreach (ref readonly var constant in template.Consts)
         {
-            if (compilation.Types.Apply(constant.Type, subst) is null)
+            if (!this.Instance(constant.Type, subst))
             {
                 return false;
             }
@@ -36,7 +42,7 @@ internal sealed partial class MirBuilder
 
         foreach (ref readonly var statement in template.Statements)
         {
-            if (statement.Kind == MirStatementKind.Assign && statement.Rvalue.Type is { } type && compilation.Types.Apply(type, subst) is null)
+            if (statement.Kind == MirStatementKind.Assign && statement.Rvalue.Type is { } type && !this.Instance(type, subst))
             {
                 return false;
             }
@@ -44,12 +50,36 @@ internal sealed partial class MirBuilder
 
         foreach (ref readonly var block in template.Blocks)
         {
-            if (block.Terminator.Callee.Subst is { } inner && compilation.Types.Compose(inner, subst).Storage != Binding.StorageOutcome.Prepared)
+            if (block.Terminator.Callee.Subst is { } inner && !this.compositions.ContainsKey(inner))
             {
-                return false;
+                // A composition's verdict is its parts' (TyCtxt.Compose); the guard reads the part deciding it, none when Prepared.
+                if (compilation.Types.Compose(inner, subst) is not ({ } composed, var storage, var part) ||
+                    (part is not null && !compilation.Types.Readable(part, storage)))
+                {
+                    return false;
+                }
+
+                this.compositions.Add(inner, composed);
             }
         }
 
+        return true;
+    }
+
+    // A Type of a copy in the call's instance (Instantiates), each once.
+    private bool Instance(BoundType type, Subst subst)
+    {
+        if (this.instances.ContainsKey(type))
+        {
+            return true;
+        }
+
+        if (compilation.Types.ReadableInstance(type, subst) is not { } instance)
+        {
+            return false;
+        }
+
+        this.instances.Add(type, instance);
         return true;
     }
 
@@ -145,7 +175,7 @@ internal sealed partial class MirBuilder
             var place = call || terminator.Kind == MirTerminatorKind.Drop ? FoldPlace(terminator.Place) : default;
             var callee = terminator.Callee with
             {
-                Subst = terminator.Callee.Subst is { } inner && subst is not null ? compilation.Types.Compose(inner, subst).Subst : terminator.Callee.Subst,
+                Subst = terminator.Callee.Subst is { } inner && subst is not null ? this.compositions[inner] : terminator.Callee.Subst,
             };
             if (callee.Kind == MirCalleeKind.Value)
             {
@@ -179,7 +209,7 @@ internal sealed partial class MirBuilder
 
         SourceInfo FoldInfo(in SourceInfo info) => info with { Scope = (ushort)map[info.Scope] };
 
-        BoundType FoldType(BoundType type) => subst is null ? type : compilation.Types.Apply(type, subst)!; // Instantiates.
+        BoundType FoldType(BoundType type) => subst is null ? type : this.instances[type];
 
         MirPlace FoldPlace(MirPlace place)
         {

@@ -100,7 +100,7 @@ internal sealed partial class InstanceCollector
 
     // SPEC 23.1.2, DIAGNOSTICS rule 8 (DECISIONS BU-38): the record of a verdict resting on a part Binding rejected, TyCtxt's or Layout's
     // Rejected: none, a dependent of the Binding error, in an incomplete compilation; InternalInvariant_Kd in a complete one, which has no
-    // such part (R5's guard, as Binding.Retained's and R4-M118's).
+    // such part (R5's guard, as Binding.Readable's and R4-M118's).
     private DiagnosticCode? Derived => this.types.BindingComplete ? DiagnosticCode.InternalInvariant_Kd : null;
 
     /// <summary>Collects the checked set of a program version unless this version already was.</summary>
