@@ -19,7 +19,7 @@ namespace Kimi.Compiler.Mir;
 // Must not choose a Call's rows (MirBorrows.CallRows) or compute W (MirBorrows.Reach).
 internal sealed partial class MirBorrows
 {
-    private int[] argValues = [];
+    private int[] argValues = []; // A Call's operand values by position (Input), the callee operand's at call.Count.
     private bool limit; // Whether the replay's Call at the location made an undecided store (R4-M147), read and reset by Check.
 
     // Whether a value of a case Type is a borrow, through which a read reaches what it refers to (A3 5's ret): a reference or a pair layer,
@@ -34,14 +34,15 @@ internal sealed partial class MirBorrows
     // replay, an undecided store sets the location's limit.
     private void Call(ulong[] state, in MirTerminator call, bool checks)
     {
-        MirDataflow.Grow(ref this.argValues, call.Count);
+        MirDataflow.Grow(ref this.argValues, call.Count + 1);
         for (var i = 0; i < call.Count; i++)
         {
             this.argValues[i] = this.Operand(state, call.Start + i);
         }
 
         var callee = call.Callee;
-        var result = callee.Kind == MirCalleeKind.Value && call.Operand.Kind != MirOperandKind.Const ? this.Read(state, call.Operand.Place) : 0;
+        this.argValues[call.Count] = callee.Kind == MirCalleeKind.Value && call.Operand.Kind != MirOperandKind.Const ? this.Read(state, call.Operand.Place) : 0;
+        var result = this.argValues[call.Count];
         result = result != 0 && MirTypes.IsReference(this.TypeOf(call.Operand)) ? this.Content(state, result) : result;
         result = this.Indirect(result); // Rule W: a Value callee's environment is no Copy of an argument.
         this.Moves(call.Start, call.Count);
@@ -56,7 +57,7 @@ internal sealed partial class MirBorrows
         var (reach, undecided) = (0, false); // refs(S)'s count, and whether W past it rests on an abstract part's destruction.
         foreach (var row in retained)
         {
-            var value = row.Input == NoInput ? this.escapedSet : this.Retained(state, call.Start + row.Input, row.Input, row.Kind);
+            var value = row.Input == NoInput ? this.escapedSet : this.Retained(state, this.Input(call, row.Input), row.Input, row.Kind);
             if (row.Output == Retention.Result)
             {
                 result = this.sets.Union(result, value);
@@ -66,7 +67,7 @@ internal sealed partial class MirBorrows
             if (row.Output != writesOf)
             {
                 var stored = this.referentStores.AsSpan(0, this.referentCount).Contains(row.Output);
-                referent = (this.wCount > 0 || stored) && this.TypeOf(call.Start + row.Output) is { Kind: BoundTypeKind.Semantics, Components: [var to, ..] }
+                referent = (this.wCount > 0 || stored) && this.TypeOf(this.Input(call, row.Output)) is { Kind: BoundTypeKind.Semantics, Components: [var to, ..] }
                     ? to : null;
                 var unproven = false;
                 var shallow = stored && referent is not null && this.Destruction(referent, out unproven) == AccessKind.Destroy;
@@ -103,7 +104,7 @@ internal sealed partial class MirBorrows
 
     // ret(i, κ) (A3 5): Value, the argument's value and, for a borrow (a reference or a view handle, Borrows), a read through it; Content,
     // a read through it only; Chain, what any chain of reads through it carries (SPEC 15.6.4; DECISIONS BU-40, R4-M138), its closure.
-    private int Retained(ulong[] state, int operand, int position, RetentionKind kind)
+    private int Retained(ulong[] state, in MirOperand operand, int position, RetentionKind kind)
     {
         var value = this.argValues[position];
         if (kind == RetentionKind.Chain)
@@ -118,6 +119,10 @@ internal sealed partial class MirBorrows
 
         return Borrows(this.TypeOf(operand)) ? this.sets.Union(value, this.Content(state, value)) : value;
     }
+
+    // The operand at a position of a Call's rows, whose value argValues holds at that position: argument i at i, the callee operand at
+    // call.Count.
+    private MirOperand Input(in MirTerminator call, int position) => position < call.Count ? this.body.Operands[call.Start + position] : call.Operand;
 
     // An operand's case Type.
     private BoundType? TypeOf(int operand) => this.TypeOf(this.body.Operands[operand]);
