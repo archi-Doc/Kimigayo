@@ -4629,6 +4629,31 @@ and migration obligations remain in force; no numeric cap changes are authorized
     - a copy of `Accessing`'s classification or Opaque skip (N1).
   - Numbering: R4-M141 was reserved for G258 D2 by the R4 planning session (R4-M140 D1 on `claude/a5-g258-d1`, R4-M142 S1 on
     `claude/a5-cbv-s1`; R4-M138 the last on dev).
+- **R4-M142 The Adjust rule as Binding's lasting component (consumed-by-value S1)** (2026-10-26; R4's lane A under the owner's design B
+  with the review's C1–C7 (OQ1 (a), 2026-10-25); the planning session's decision on the S1 reviews' N1, that no lasting member uses a
+  SPEC term with another meaning: SPEC 3.4's Take is a Place capability and Consume §15's static check).
+  - Representation: the rule of how a consumer acquires or uses each child, `Binding.AdjustChildren<T>(node, op, ref T uses) where T :
+    IHirUses` (`Binding.Hir.Adjust.cs`, its entry file with the contract; `.Patterns.cs` the Subject and Pattern bindings;
+    `.Operations.cs` the evaluated `OpOf` and `Covers`), with the child rule `ChildAdjust(child, adaptation, kind, claimed)`,
+    `EarlierAdjust` (R4-M109's plan row), `BareOf`, `IsPlace` and `SelectsUniq`. It reads Binding's facts and two facts of the record's
+    walk, the consumer's own capability (`UseExclusive`) and a child's claim (`claimed`: whether this use's operation's target needs
+    exclusive capability of the child, recorded by `IHirUses.Use(child, in operation)` before the rule reads it, or an earlier use of
+    it by the same consumer did, by its operation's target or by the Adjust fixed for it: an exclusive borrow, or a Reborrow or pair-case
+    acquisition of a child whose Type needs it; the record accumulates it per publish), and writes nothing. This use's own claim decides
+    that a part below a stored reference passed as a `uniq/Self` receiver is a Reborrow (`HirFormsTest.APartBelowAStoredReferenceIsAPlace`),
+    which S2's finder reproduces.
+  - `UseKind` (private: `Acquisition`, `InPlace`, `Inspection`; SPEC 3.5, 13.5.5, 13.4) replaces the publisher's two bools, which were
+    never set together. `IHirUses` (private: `UseExclusive`, `Call`, `Use`, `Use(in operation)`, `FixAdjust`) receives each child's use;
+    `FixAdjust` fixes a child's Adjust (an assignment target's in place, a transfer's Move, a Subject's Reborrow, a loop binding's Copy),
+    so it does not take SPEC 3.4's Write (initialize or replace the value); the publisher's member that records it is renamed with it
+    (`HirPublisher.FixAdjust`, R4-M109's `HirPublisher.Write`).
+  - `PublisherUses`, the HIR publisher's record, a struct so that `AdjustChildren` is specialized for it (the publisher passed as a class
+    measured about 2% slower on a warm publish); `[Transitional("R7")]` with the publisher's walk, which R7's inline writes replace.
+    S2's ClosureEffects finder is the second record (S2's entry, reserved R4-M145).
+  - Rejected: the publisher's own names (`Consume`, `Take`, `TakeKind`, `Write`) for a lasting component; a second copy of the
+    static-storage test (Binding's `IsStatic` serves the rule).
+  - Numbering: R4-M142 was reserved for S1 by the R4 planning session (R4-M140 G258 D1 on `claude/a5-g258-d1`, R4-M141 G258 D2,
+    R4-M143 G255 (C3)'s A5 part, R4-M144 G216's amendment and R4-M145 S2 reserved; R4-M138 the last on dev).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
