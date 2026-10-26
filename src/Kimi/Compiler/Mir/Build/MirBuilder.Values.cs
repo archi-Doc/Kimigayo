@@ -46,7 +46,7 @@ internal sealed partial class MirBuilder
         switch (HirTables.Op(node))
         {
             case HirOp.Literal:
-                this.Use(destination, MirOperand.Const(this.Literal(node)), node);
+                this.Use(destination, this.Literal(node), node);
                 break;
             case HirOp.Name when HirTables.Symbol(node)?.Kind == BindingSymbolKind.Function && HirTables.Meaning(node) is BoundType item:
                 this.Use(destination, MirOperand.Const(this.body.Const(new(MirConstKind.FnItem, item))), node); // SPEC 7.7.4: a constant of its Item Type.
@@ -183,7 +183,7 @@ internal sealed partial class MirBuilder
         reserves |= input;
         if (InPlace(adjust))
         {
-            return HirTables.Op(node) == HirOp.Literal ? MirOperand.Const(this.Literal(node)) : MirOperand.Move(this.Value(node, into, reserves, expected));
+            return HirTables.Op(node) == HirOp.Literal ? this.Literal(node) : MirOperand.Move(this.Value(node, into, reserves, expected));
         }
 
         if (adjust.Acquire == HirAcquire.Unset || adjust.Adaptation == HirAdaptation.StorageProjection || (adjust.Adaptation == HirAdaptation.BaseBorrow &&
@@ -334,21 +334,29 @@ internal sealed partial class MirBuilder
         this.Use(target, MirOperand.Move(value), node);
     }
 
-    // SPEC 3.1: a published Literal's constant (Binding.HasFacts), a number's being the value Binding fitted (its plan row's Folded).
-    private int Literal(Koto node)
+    // SPEC 3.1: a published Literal's constant (Binding.HasFacts), a number's being the value Binding fitted (its plan row's Folded). A
+    // Literal without one is a broken contract: InternalInvariant_Kd, the value a derived Opaque.
+    private MirOperand Literal(Koto node)
     {
         var type = TypeOf(node);
-        MirConst constant = node switch
+        MirConst? constant = node switch
         {
             BoolLiteralKoto boolean => new(MirConstKind.Bool, type, boolean.Value ? 1 : 0),
             CharLiteralKoto { Value: { } character } => new(MirConstKind.Integer, type, character.Value),
             StringLiteralKoto text => new(MirConstKind.String, type, Value: text.Literal),
             UnitLiteralKoto => new(MirConstKind.Unit, type),
             NullLiteralKoto => new(MirConstKind.Integer, type),
-            _ => new(type.IsFloatingPoint ? MirConstKind.Float : MirConstKind.Integer, type, HirTables.PlanOf(node).Folded!.Value),
+            _ when HirTables.PlanOf(node).Folded is { } value => new(type.IsFloatingPoint ? MirConstKind.Float : MirConstKind.Integer, type, value),
+            _ => null,
         };
 
-        return this.body.Const(constant);
+        if (constant is { } known)
+        {
+            return MirOperand.Const(this.body.Const(known));
+        }
+
+        this.program.Report(SourceRef.Of(node), DiagnosticCode.InternalInvariant_Kd);
+        return MirOperand.Move(this.Unsupported(node, derived: true));
     }
 
     // Appends the operands evaluated onto the argument stack from start to the body's operands together, and pops them.
