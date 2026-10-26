@@ -3122,6 +3122,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     passing no expected Type (an operator's inspected operand, a formatting writer operand, a value call's callee without
     `AdaptedType`, an upcast's operand, a rejected jump's operand) holds a folded Error at its own Type; validator-clean (an Opaque
     temp's Type reads as unknown), no Loan; no censused failure site produces such a consumer over an Error. Both in PLAN G103.
+  - Amended by R4-M149 (PLAN G247, 2026-10-27): (a)'s Ref, Reborrow, reservation and Loan prohibition holds for every Place formed in an
+    Opaque temp, which no rvalue lends, and L1 extends to every in-place step on one.
   - Deleted: `MirBuilder.Expansions.cs`' copy of the getter's Adjust (`HirAdjust.Of(argument)` and its ByCase/None choice).
   - Rejected: design A's `(Unset, …)` (the column's default, which `Blocks.Result` reads as not consumed); A5 ignoring Loans on Opaque
     stand-ins (suppressing a derived report afterwards, and hiding a kept operand's Loans); failing the call (hides its independent
@@ -4928,6 +4930,68 @@ and migration obligations remain in force; no numeric cap changes are authorized
     store D″ leaves alone); `AHeldEffectIsUnsupportedRooted` becomes `AnEffectConflictIsALoanProblemRooted`; the hold-only
     `AHeldEffectIsUnsupported`, `AHeldViewKeepsTheWarning` and `AHeldTemplatesSlotProblemIsUnsupported` are deleted.
   - Numbering: R4-M147 was reserved for P13-1 by the R4 planning session.
+- **R4-M149 An Opaque temp is no storage (PLAN G247)** (2026-10-27; unit G247: design 2's option A, chosen by the planning session
+  over design 1's (C), design review ACCEPT, class Major; amends R4-M109 (a) and L1) SPEC 23.1.2, 3.4, 3.6, 13.5.6.
+  - Cause: where a consumer needs a Place for an Opaque value, the builder holds the value in a temp (`Value` for a node published
+    Error, R5-M63's "value in a temp"; `Unsupported` for a form no rule builds), and every lending rvalue over a Place rooted there lent
+    it: `Ref` (and through it a selection's guard, a Slice's backing and first element, a Writeback, a call input's reservation, an
+    adapted argument or receiver, a Subject, a runtime test's view, `Capacity`), `ByCase`'s PairAcquire and `Adapt`. The temp ends with
+    its statement, so a Borrow kept past it was a MIR-only `ComparisonLoanConflict_Kd` at the rejected root that neither the old path
+    nor the valid twin reports. R4-M109's fold reaches only consumers that take the Error node by an Adjust.
+  - Rule: an Opaque temp is a temp the builder creates to hold an Opaque value for its consumer: `Value`'s temp for a node published
+    Error and `Unsupported(node, derived, type)`'s temp (`MirBuilder.opaqueTemps`, per body). No rvalue lends a Place rooted at one: `Ref`,
+    a pair-case acquisition (`ByCase`) and a case adaptation (`Adapt`, which decides its payload before adding its operands) give their
+    consumer its derived value instead (`Unlent`), an Opaque of the rvalue's Type located at the temp's node whose site names only the
+    temp. Everything else builds as before: the receiver chain, indices, keys, range boundaries, arguments, assigned values and update
+    operands, so every independent record stays without an ordering rule, and no HIR, Binding or A5 change is made.
+  - Boundary (design review N1): membership is by creator. A temp that receives an Opaque by another path stays lendable: a group or
+    construct Binding resolves around an Error, filled in the place its consumer gave (design 2's O1); a Match whose Pattern Binding
+    rejected; `Into`'s default Unsupported in `Value`'s temp of a node not published Error; a pending slot taking a derived argument. Only
+    O1 could give a MIR-only record (a group has a Place shape in the twin and a Value shape in the failed program), and it is unreached:
+    Binding rejects every node of the failing Type (the group, the `if`, its blocks and names: probes v05, v06, v10, v11, o02, q18–q22)
+    and cuts a failed call's dependents to MissingType (v01–v03, q16, q17, q24–q26). PLAN G247's open issue keeps O1's condition.
+  - (a) and L1 (N6): (a)'s Ref, Reborrow, reservation and Loan prohibition holds for every Place formed in an Opaque temp, whatever path
+    formed it (a Field chain, a selection, a follow, an update's target). L1's "an in-place step is not a consumer" extends to every
+    in-place step on an Opaque temp: a Copy, Move, `Len`, read or write of its parts carries no Loan (O2). An update reads and writes
+    through a Deref of the derived reference (`_6 = opaque 3: uniq/i32`, then `(*_6) = Add(copy (*_6), const 1_i32)`), validator-clean;
+    that derived reference is L1's Writeback reservation now. The derived value's site names only the temp's root, not the roots
+    `SiteRoots` collects: a position or an index is built already and no record reads it again. R5-M63's "an Error evaluated as its
+    Place is a value in a temp" stands, that temp being an Opaque temp (R5 agreed; G121's rejected-target assignment, whose value's move
+    is lost on both twins, stays G121's).
+  - Grouping (N2): a requirement whose subject is a failed node's own value is not checked: under R4-M109 a failed node has no value, so
+    no Temporary is formed from it. So a group Binding rejects whole loses its twin's "temporary expired" conflict (`(w@move).v@ref` and
+    `(if … => w else => w).v@ref` kept; q20, q21), as a failed call's twin-true temporary conflicts are absent on both pipelines through
+    Binding's cut (q16, q17, q24–q26, v01–v03). The old path's silence is no evidence here: in these functions it reports no ownership
+    record at all. Pinned by `MirBorrowsTest.AnOpaqueTempKeepsTheIndependentRecords`' q20 row.
+  - Lost class (N3): a conflict between two uses Binding rejects of one local (a write of `w.v` while `p = w.v@uniq` lives; p11, c02,
+    q12, t10, in7n's r5; legacy-only in e03, e06, s01) stays lost, as on dev: each use is an Error with no Place (R4-M109). R4-M125
+    recovered this class for a rejected declaration's name, a typed symbol's one storage, against "A5 dropping Loans on Opaque temps"
+    (the lost records stay lost); these subjects are Error uses, not names of a typed symbol, so that reason does not apply. Its route,
+    uses that designate the declared local (BU), is a PLAN open issue.
+  - Status and name (N5, N7): `opaqueTemps` is the builder's private fact per local, final while the MIR does not carry it. A MIR local
+    role (design 2's option C, a vocabulary entry for the owner) replaces it if a validator check of the rule is wanted (O3). Until
+    then consumers trust the builder: MirValidator cannot check it, and a rule read from the MIR ("no lending of a temp whose every write
+    is an Opaque") would also flag pending slots and value temps the builder lends on purpose. A5 does not rely on it: a violation can
+    only add a false record to a program that already has an error record. One name, "Opaque temp" (R4-M125's term), which R4-M109's
+    "derived temp" and "Opaque stand-in" mean.
+  - Rejected: design 1's (C), Binding's HIR publication of every receiver form over an Error receiver as Error (Full, across phases,
+    for a fact the builder owns at the MIR level; it needs a value-first rule at an assignment over a derived target, a row for a kept
+    range key and a Broken exclusion, and while it reaches the conversions, case adaptations included, it reaches no Place-level
+    `Unsupported` stand-in, N4); design 2's B (the publisher deriving in-place consumers: A's rule is still needed for a consumer that
+    takes an Error by an Adjust and lends what it holds, an `Adapt`, and for `Unsupported` temps) and C (a `MirLocalRole` checked by
+    MirValidator: a vocabulary entry whose only reader is a validator row); Revision 1's builder walk at the HIR Place root
+    (`claude/a5-g247`, unmerged; consumers without other operands only); A5 ignoring Loans on Opaque temps and lengthening a temp's life
+    (settled: R4-M109, R4-M125).
+  - Deleted: the Closure's unbound capture's own stand-in pair (`Temp` and `Unsupported(node, place)`), now `Unsupported(node, type)`,
+    the one creator.
+  - Evidence: on design 1's and design 2's probe sets, the design review's and review 1's (294 programs), the implementation's records
+    and MIR equal design 2's prototype output line for line, which the design review compared with dev: each changed S2 program loses
+    MIR-only conflicts at its rejected root and nothing else, every independent `MovedPlace_Kd` stays, the i32 twins are byte-identical;
+    no Ref, PairAcquire or Adapt lends a temp an Opaque is assigned to (93 programs did on dev).
+  - Tests: `MirBuildTest.AnOpaqueTempLendsNothing` (the rule at the MIR, each form with its i32 twin; review 1's B1 literal Borrows
+    kept) and `MirBorrowsTest.AnOpaqueTempKeepsTheIndependentRecords` (A1's independent moves, an unrelated conflict, the lost class, the
+    grouping pin, a literal's temporary); 27 of their 36 cases fail before, the guards pass before and after.
+  - Numbering: the next free R4 number (R4-M148 is 2c-3's, R4-M150 G264's).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
