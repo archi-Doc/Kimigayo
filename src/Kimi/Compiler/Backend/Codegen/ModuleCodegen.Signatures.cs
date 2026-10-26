@@ -16,6 +16,9 @@ namespace Kimi.Compiler.Backend;
 // substitution is composed here (DECISIONS R5-M114).
 internal sealed partial class ModuleCodegen
 {
+    /// <summary>The name of a body item's function before its index (<see cref="Signature"/>).</summary>
+    internal const string FunctionPrefix = "__kimi_f";
+
     /// <summary>The name of a StaticInit item's slot before its index (SPEC 22.4.3); its state adds <see cref="StateSuffix"/>, its ensure
     /// function <c>_ensure</c>.</summary>
     internal const string StaticPrefix = "__kimi_static";
@@ -63,7 +66,7 @@ internal sealed partial class ModuleCodegen
         var closure = FunctionCodegen.OrderOf(body.Key.Kind) == FunctionCodegen.ArgumentOrder.Environment;
         var flags = (KimiLibraryCatalog.RequiresCallerLocation(body.Key.Decl) ? Abi.Flags.CallerLocation : Abi.Flags.None) |
             (closure ? Abi.Flags.ConcreteClosure : Abi.Flags.None);
-        return this.Define(item, "__kimi_f", flags, result, this.parameters.AsSpan(0, count));
+        return this.Define(item, FunctionPrefix, flags, result, this.parameters.AsSpan(0, count));
     }
 
     /// <summary>Gets the signature of a DropGlue item (package C 3.6), named <c>__kimi_drop</c> with its index: the previous one while it is

@@ -194,7 +194,8 @@ internal sealed partial class FunctionCodegen
 
     // An adapter's call of its callee (PD3): each callee parameter takes the adapter's own of its kind and logical index (a value, the
     // result slot, the location the erased call passed, SPEC 22.5.1), a capacity Context the length of the fixed array its parameter
-    // receives, measured from the entry's own input Type, its target Function Type's at that index (Measure; DECISIONS R5-M128), a parameter
+    // receives, measured from the entry's own input Type, its target Function Type's at that index (Measure; DECISIONS R5-M128; read only
+    // there, so an item without a Function Type forwards its parameters too when its callee measures nothing), a parameter
     // without an operand (Given: an environment, a context or a formatting row's kind) the next given value, then the call of its callee
     // value, which the slot it runs through, if any, makes (EntryOf); its value (none for a void callee). False, with InternalInvariant_Kd,
     // where the adapter has no such parameter.
@@ -202,7 +203,6 @@ internal sealed partial class FunctionCodegen
     {
         result = null;
         var parameters = callee.Parameters;
-        var inputs = this.collector.Set.Items[this.item].Key.Function!.Components[0].Components;
         this.arguments = this.arguments.Length < parameters.Length ? new Value[parameters.Length] : this.arguments;
         var next = 0;
         for (var i = 0; i < parameters.Length; i++)
@@ -215,7 +215,7 @@ internal sealed partial class FunctionCodegen
 
             if (parameters[i].Kind == AbiParameterKind.Context)
             {
-                if (this.Measure(inputs[parameters[i].LogicalIndex]) is not { } length)
+                if (this.Measure(this.collector.Set.Items[this.item].Key.Function!.Components[0].Components[parameters[i].LogicalIndex]) is not { } length)
                 {
                     return false; // Recorded.
                 }

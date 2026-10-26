@@ -125,6 +125,35 @@ internal sealed partial class FunctionCodegen
         return new Run(signature, function is not null && VTableDef.SlotOf(function) >= 0 ? function : null);
     }
 
+    // SPEC 6.4.6, 8.6.3: the call of a witness's body a function writes itself around (BodyRun's run: a comparison shim's Witness leaf), each
+    // parameter by its kind: the result slot the slot given, a location parameter the site given, any other the input at its logical index;
+    // the call of the callee value its slot, if any, makes (EntryOf); its value. Null, with InternalInvariant_Kd, for a parameter the caller
+    // does not supply (a witness's signature is its requirement's).
+    private Value? CallWitness(Run run, ReadOnlySpan<Value> inputs, Value? slot, Site? site)
+    {
+        var parameters = run.Signature.Parameters;
+        this.arguments = this.arguments.Length < parameters.Length ? new Value[parameters.Length] : this.arguments;
+        for (var i = 0; i < parameters.Length; i++)
+        {
+            Value? argument = parameters[i].Kind switch
+            {
+                AbiParameterKind.ResultSlot => slot,
+                AbiParameterKind.Location => site?.Text,
+                AbiParameterKind.LocationLength => site?.Length,
+                _ => (uint)parameters[i].LogicalIndex < (uint)inputs.Length ? inputs[parameters[i].LogicalIndex] : null,
+            };
+            if (argument is not { } value)
+            {
+                this.Report(DiagnosticCode.InternalInvariant_Kd, default);
+                return null;
+            }
+
+            this.arguments[i] = value;
+        }
+
+        return this.WriteCall(run.Signature, this.arguments.AsSpan(0, parameters.Length), this.EntryOf(run.Signature, run.Slot));
+    }
+
     // SPEC 6.4.3 (X5; DECISIONS R5-M114): a Virtual callee, which has no target: the original's slot under the call's substitution in the
     // item's instance (ModuleCodegen.Slot), its operands the original's (the receiver first), called through the original's slot.
     private void Virtual(in MirTerminator call)

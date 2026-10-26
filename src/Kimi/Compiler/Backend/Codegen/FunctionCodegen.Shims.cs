@@ -164,8 +164,8 @@ internal sealed partial class FunctionCodegen
     }
 
     // A Witness leaf: the shim's next target, its witness's body (BodyRun, through its virtual slot when it implements one; G157 (28)),
-    // called with the two leaf addresses at its logical inputs 0 and 1, the shared borrows its requirement takes (SPEC 13.4.1), and with
-    // the location the shim received at a caller-location body's location parameters; its value. Null after a record.
+    // called (CallWitness) with the two leaf addresses at its logical inputs 0 and 1, the shared borrows its requirement takes (SPEC 13.4.1),
+    // and with the location the shim received at a caller-location body's location parameters; its value. Null after a record.
     private Value? WitnessLeaf(Value left, Value right)
     {
         var targets = this.collector.Set.Targets(this.item);
@@ -175,26 +175,14 @@ internal sealed partial class FunctionCodegen
             return null;
         }
 
-        var parameters = callee.Parameters;
-        if (parameters.Length != 2 + (callee.CallerLocation ? 2 : 0) || callee.Result is not ("i1" or "i32"))
+        if (callee.Parameters.Length != 2 + (callee.CallerLocation ? 2 : 0) || callee.Result is not ("i1" or "i32"))
         {
             this.Report(DiagnosticCode.InternalInvariant_Kd, default); // A witness's signature is its requirement's (SPEC 8.6.3).
             return null;
         }
 
-        this.arguments = this.arguments.Length < parameters.Length ? new Value[parameters.Length] : this.arguments;
         _ = this.Location(default, out var site); // The shim's own location parameters (a caller-location function).
-        for (var i = 0; i < parameters.Length; i++)
-        {
-            this.arguments[i] = parameters[i].Kind switch
-            {
-                AbiParameterKind.Location => site.Text,
-                AbiParameterKind.LocationLength => site.Length,
-                _ => parameters[i].LogicalIndex == 0 ? left : right,
-            };
-        }
-
-        return this.WriteCall(callee, this.arguments.AsSpan(0, parameters.Length), this.EntryOf(callee, run.Slot));
+        return this.CallWitness(run, [left, right], null, site);
     }
 
     // SPEC 13.3.3: the built-in operation of an arithmetic shim's Contract, its MIR operator (BuiltinArithmetic) through the operator
