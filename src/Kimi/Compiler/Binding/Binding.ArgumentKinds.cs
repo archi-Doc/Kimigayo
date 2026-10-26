@@ -496,10 +496,11 @@ public sealed partial class Binding
         return false;
     }
 
-    // Obtain independent tuple/fill Types; with `fitLiterals`, a Literal part gives its default once DefaultArguments applied it.
-    private BoundType? IndependentAggregateType(Koto source, bool fitLiterals)
+    // The independent Type of the parts at a position (Binding.ArgumentKinds.Positions.cs): a tuple's or fill's from its children; with
+    // `fitLiterals`, a Literal part gives its default once DefaultArguments applied it.
+    private BoundType? IndependentPositionType(int position, bool fitLiterals)
     {
-        source = KotoHelper.UnwrapParentheses(source);
+        var source = KotoHelper.UnwrapParentheses(this.positionParts[position]);
         if (source.BoundType is { } actual)
         {
             return ReferenceEquals(actual, BoundType.Never) ? null : actual; // SPEC 10.8: a Never part supplies no evidence.
@@ -522,8 +523,7 @@ public sealed partial class Binding
             return this.types.Intern(BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, [start, end]);
         }
 
-        if (source is ArrayLiteralKoto { FillCount: { } length } fill &&
-            this.IndependentAggregateType(fill.Elements[0], fitLiterals) is { } elementType)
+        if (source is ArrayLiteralKoto { FillCount: { } length } && this.IndependentChildType(position, 0, fitLiterals) is { } elementType)
         {
             var count = length.IsConstant ? length.Value : 0;
             var expression = length.IsConstant ? null : length;
@@ -537,7 +537,7 @@ public sealed partial class Binding
             {
                 for (var i = 0; i < tuple.Elements.Count; i++)
                 {
-                    if (this.IndependentAggregateType(tuple.Elements[i], fitLiterals) is not { } element)
+                    if (this.IndependentChildType(position, i, fitLiterals) is not { } element)
                     {
                         return null;
                     }
@@ -554,6 +554,16 @@ public sealed partial class Binding
         }
 
         return fitLiterals ? this.DefaultOf(source) : null;
+    }
+
+    // The independent Type of child position `index` of the position at `start`.
+    private BoundType? IndependentChildType(int start, int index, bool fitLiterals)
+    {
+        var child = this.positionParts.Count;
+        this.AddChildPosition(start, index, null);
+        var type = this.IndependentPositionType(child, fitLiterals);
+        this.ClosePosition(child);
+        return type;
     }
 
     // The independent Type of a written range boundary: Start or End when omitted, the read Type of a typed one, or null for a
