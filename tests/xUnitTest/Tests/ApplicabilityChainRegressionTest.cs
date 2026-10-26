@@ -25,7 +25,7 @@ public class ApplicabilityChainRegressionTest
         "func applyOne<F>(value: F) -> ()\n    F is Callable<(i64) -> i64>\n    return ()\n" +
         "func takeF(value: (i64) -> i64) -> () => ()\nfunc takeFn(value: (() -> i64, i64)) -> () => ()\nfunc takeT(value: (i64, i64)) -> () => ()\n" +
         "func process<length N>(values: [N of i64]) -> () => ()\nlet r = x@ref\n" +
-        "func takeD<T>(value: Dictionary<string, T>) -> () => ()\nfunc takeA<T>(value: Array<T>) -> () => ()\n";
+        "func takeD<T>(value: Dictionary<string, T>) -> () => ()\nfunc takeA<T>(value: Array<T>) -> () => ()\nfunc takeCI(value: (char, i64)) -> () => ()\n";
 
     [Theory]
     [InlineData(false, false, false)]
@@ -216,6 +216,7 @@ public class ApplicabilityChainRegressionTest
     [InlineData("takeD([\"k\": func [] (v: i64) -> i64 => v])")]
     [InlineData("first(if c => ([\"k\": func [] (v: i64) -> i64 => v], x) else => (stop(), x))")]
     [InlineData("takeA(if c => [func [] (v: i64) -> i64 => v] else => stop())")]
+    [InlineData("first(if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), 5)) else => (stop(), 5))")]
     public void AnAnonymousFunctionAmongAControlFlowArgumentsResultsWaitsForTheCall(string use)
     {
         var c = MinimalEmissionTest.Analyze(ControlFlowDeclarations + use);
@@ -251,11 +252,27 @@ public class ApplicabilityChainRegressionTest
     [InlineData("keep((func [] (v: i64) -> i64 => v, x))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep((func [] (v: i64) -> i64 => v, x))")]
     [InlineData("first(if c => (if c => (5, x) else => (stop(), true)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (5, x) else => (stop(), true)")]
     [InlineData("first(if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), true)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), true)")]
+    [InlineData("first(if c => (func [] (v: i64) -> i64 => v, 5) else => (func [] (w: i64) -> i64 => w, 2.5))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, 5) else => (func [] (w: i64) -> i64 => w, 2.5)")]
+    [InlineData("takeD(if c => (if c => [\"k\": missing] else => [\"k\": stop()]) else => [\"k\": x])", nameof(DiagnosticCode.UnresolvedBinding_Kd), "missing")]
+    [InlineData("take(if c => ((if c => missing else => x), stop()) else => (stop(), x))", nameof(DiagnosticCode.UnresolvedBinding_Kd), "missing")]
+    [InlineData("applyArg(if c => ([\"k\": func [] (v) => v], x) else => (stop(), x))", nameof(DiagnosticCode.UnresolvedBinding_Kd), "v")]
+    [InlineData("applyArg(([\"k\": func [] (v) => v], x))", nameof(DiagnosticCode.UnresolvedBinding_Kd), "v")]
     public void AControlFlowArgumentRanksAsItsKind(string use, string code, string at)
     {
         var source = ControlFlowDeclarations + use + "\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((code, at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
+
+    // SPEC 23.1.2 (DECISIONS BU-43): an unreadable character literal in a call's join is bound as `char`, so the call keeps its own record
+    // beside the lexer's, as its Tuple twin does.
+    [Theory]
+    [InlineData("takeCI(if c => ('ab', stop()) else => (stop(), true))")]
+    [InlineData("takeCI(('ab', true))")]
+    public void AnUnreadableLiteralInAJoinKeepsItsCallsRecord(string use)
+    {
+        var source = ControlFlowDeclarations + use + "\n";
+        Assert.Contains(DiagnosticCorpus.Check(source).Diagnostics, static x => x.Code == nameof(DiagnosticCode.NoApplicableOverload_Kd));
     }
 
     // SPEC 23.1.2, 10.1: a call that selects no candidate, or whose selected candidate fails, still binds its Literal and waiting

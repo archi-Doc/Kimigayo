@@ -6884,6 +6884,34 @@ resumed by R4-M86 (2026-10-20).
     (`AddResultPart`; `PartsConflict.Rejected`): its outer join stays unbound on that record and its call does not classify it, so
     `let t = if c => (if c => (5, x) else => (stop(), true)) else => (stop(), x)` and its call forms report the inner conflict once,
     at the inner join, as on dev (two records since commit (b)).
+  - The outcome rule (implementation review 3's REVISE, B4 and B5; the owner's 「一段上で作り直す (推奨)」, 2026-10-27; the planning
+    session's redesign, Major): each join publishes one outcome, written once where it becomes true (`ResultContext.Outcome`,
+    `JoinOutcome`): `Waiting` for its position (an outer join, its call); `Conflict`, a typed or defaults conflict, a candidate
+    conflict or a misfit it found, its own record, once; `Dependent`, resting on a failed part or on the join it waited for
+    (`Cause`), with no record (SPEC 23.1.2); or `Decided`. Enclosing joins and calls read only that outcome: whether a part failed is
+    `PartFailed`, by who decides it (a result target's outcome or own failure; an aggregate's own failure, its parts being judged at
+    their positions; any other part's recorded cause), never HIR's `Rejected`, which since eb9134dc6 holds an unreadable character
+    literal that Binding binds as `char` (B4: `let t = if c => ('ab', (return 1)) else => ((return 2), 'x')` is (char, char), so
+    `let z: i64 = t.0` keeps its `TypeMismatch_Kd` and `takeCI(if c => ('ab', stop()) else => (stop(), true))` its
+    `NoApplicableOverload_Kd`). A failed join gives its waiting literals their defaults and lets each other waiting source rest on its
+    failure (`DefaultWaitingSources`); a waiting join decided with no Type reads the outcome of the join it waited for and, when that
+    one failed, is `Dependent` on it (`DecideWaiting`). A defaults conflict is therefore decided once, by the outermost join holding
+    the conflicting literals once outer constraints are known (SPEC 14.9.2: "a literal result is not fixed before outer
+    constraints"): `let t = if c => (if d => 5 else => 2.5) else => 2.5`, its triple and Tuple forms keep one `TypeMismatch_Kd`,
+    which moves from the inner join (dev) to the outer (B5). A completed source awaits nothing but its join's decision
+    (`SourcesAwait`, `LateType`), and a call that completes conflicting functions fails their join at once (`DecideTaken`,
+    `TypedConflict`). The walks to waiting callables read one definition, `CallableParts` (`TakeWaiting`, `CallableTarget`,
+    `Completed`). Supersedes fix round 1's "A part Binding rejected is no waiting part (IsAggregatePart, CommonTypeByParts,
+    PositionKind)", fix round 2's `Completed` list (Tuple, array and dictionary literals) and its part b's "a part Binding rejected, a
+    failed nested join included, is no waiting part (AddResultPart; PartsConflict.Rejected)": now `PartFailed` and
+    `PartsConflict.Failed`, and `PositionKind`'s row is deleted (a classified join holds no failed part). The sweep (bu47's
+    `sweep\`: 415 generated and 331 review programs, both pipelines, against dev ed450b4d6) moves records only by B5; it removes
+    s6's dependent `UnboundTypeArgument_Kd` (`applyArg(if c => (["k": func [] (v) => v], x) else => (stop(), x))`, now its twin's one
+    record) and the dependent second records of `takeD(if c => (if c => ["k": missing] else => ["k": stop()]) else => ["k": x])`,
+    `take(if c => ((if c => missing else => x), stop()) else => (stop(), x))` and `let t = if c => [] else => [(return 1)]` (one
+    record, where dev also reports the dependent array); `first(if c => (if c => (func .., x) else => (stop(), 5)) else => (stop(),
+    5))`, a lone `PrerequisiteUnavailable_Kd` before, is valid as on dev, and `first(if c => (func .., 5) else => (func .., 2.5))`
+    dev's `TypeMismatch_Kd`.
   - ③: a control-flow part is Literal when every result source other than Never is a literal, at least one (`ResultSurvey.Unknown` and
     `Never` split `Other`); an arithmetic operand's `AllLiteral` keeps Never as not literal (SPEC 12.3.3, 13.3.4).
   - Supersedes BU-2's owner decision (1), "a control-flow argument is Literal only when all its result sources are Literal", and the
@@ -6894,7 +6922,9 @@ resumed by R4-M86 (2026-10-20).
     R4-M134's 14.9.2 text and the owner's answers, and were left Open for G159.
   - Verdicts (both pipelines; probes in the unit's evidence): the SPEC-valid joins rejected before are Binding-valid; where a local
     follows a Never element the old analysis's `Unsupported_Kd` at that use remains (STATUS, Unreachable code; G159 (4)), spec-case
-    `14.9.2-part-by-part`'s old side (class (a)); a nested conflict is one record. At calls, the `take`-like twins are valid and
+    `14.9.2-part-by-part`'s old side (class (a)); a nested conflict is one record, at the join that finds it. At calls, a literal
+    position's misfit is each misfitting literal's own record (`takeA(if c => [5, stop()] else => [2.5])` at `2.5`, where dev records
+    the join), the `take`-like twins are valid and
     `identity(if c => (a, (return 1)) else => ((return 2), 5))` gives T = (i64, i32) after selection. Valid before, rejected now by the
     owner's answers: `tuples(if c => (5, 6) else => (7, 8))` and `tuples(if c => (stop(), 5) else => (6, stop()))` with overloads at
     (i32, i32) and (i64, i64) are `AmbiguousBinding_Kd`, as `tuples((5, 6))`; `keep(if c => (x, stop()) else => (x, stop()))` and
@@ -6912,7 +6942,9 @@ resumed by R4-M86 (2026-10-20).
     dev, whose records other owners decide (fix round 2b's triage): a Tuple source holding a nested call that only its literal default
     types supplies a candidate, the call taking its default when the source is bound (BU-2's nested call), so `first(if c => (x,
     identity(5)) else => (stop(), x))` and `let t = if c => (x, identity(5)) else => (stop(), x)` are `TypeMismatch_Kd` (expected
-    (i64, i32)), where 10.5.1 makes `identity(5)` waiting and the join's Type (i64, i64) part by part. Not such an error: a join with a
+    (i64, i32)), where 10.5.1 makes `identity(5)` waiting and the join's Type (i64, i64) part by part; at a position formed part by
+    part too (`applyArg(if c => (func [] (v) => v, identity(5)) else => (stop(), x))`: dev `UnresolvedBinding_Kd`); a holder of a
+    call-waiting part counted as waiting would change BU-2's deferral, so it stays open (the planning session). Not such an error: a join with a
     candidate is typed as a whole (BU-4) and is an independently typable argument (10.5.1), so `takeT(if c => (y, x@ref) else => (stop(), x))` with
     `takeT((i64, i64))` and `firstArr(if c => (x, [x, x]) else => (stop(), [x, x]))` with `firstArr<T>((T, [2 of i64]))` are
     `NoApplicableOverload_Kd` while their Tuple twins are valid. That is the letter's record: `(y, x@ref)` is the only candidate

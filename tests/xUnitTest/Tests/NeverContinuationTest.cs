@@ -220,13 +220,41 @@ public class NeverContinuationTest
         Assert.Equal(BindingFailure.TypeMismatch, issue.Failure);
     }
 
-    // DECISIONS BU-9 r1, BU-43: a part Binding rejected is no waiting part, so no Type is formed over it and no literal is bound twice:
-    // the program keeps the rejected part's one record.
-    [Fact]
-    public void ARejectedPartIsNoWaitingPart()
+    // SPEC 14.9.2 ("a literal result is not fixed before outer constraints"), 23.1.2 (DECISIONS BU-43): a conflict among literal defaults
+    // is decided by the outermost join holding the conflicting literals, once outer constraints are known; that join records it once,
+    // and every join that waited for it rests on that record.
+    [Theory]
+    [InlineData("let t = if c => (if d => 5 else => 2.5) else => 2.5")]
+    [InlineData("let t = if c => (if d => (if c => 5 else => 2.5) else => 2.5) else => 2.5")]
+    [InlineData("let t = if c => (if d => (5, (return 1)) else => (2.5, (return 2))) else => ((return 3), a)")]
+    public void ADefaultsConflictIsRecordedOnceAtTheOutermostJoin(string statement)
     {
-        const string Source = "func f(c: bool, a: i64) -> i64\n    let t = if c => ([], (return 1)) else => ((return 2), [a])\n    return 0\npublic func main() => ()\n";
-        var diagnostic = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
+        var c = MirBuildTest.Compile(Joins + statement + "\n    return 0\n");
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal(BindingFailure.TypeMismatch, issue.Failure);
+        Assert.Same(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IfKoto>().First(), issue.Node);
+    }
+
+    // SPEC 23.1.2 (DECISIONS BU-43): an unreadable character literal is bound as `char`, its lexer record standing for it, so a join
+    // forms its Type over it and a later use keeps its own record.
+    [Fact]
+    public void AnUnreadableLiteralIsATypedPartOfItsJoin()
+    {
+        const string Source = "func f(c: bool, a: i64) -> i64\n    let t = if c => ('ab', (return 1)) else => ((return 2), 'x')\n    let z: i64 = t.0\n    return 0\n" +
+            "public func main() => ()\n";
+        var codes = DiagnosticCorpus.Check(Source).Diagnostics.Select(static x => x.Code).Order();
+        Assert.Equal([nameof(DiagnosticCode.InvalidCharLiteral_Kd), nameof(DiagnosticCode.TypeMismatch_Kd)], codes);
+    }
+
+    // DECISIONS BU-9 r1, BU-43: a failed part is no waiting part, so no Type is formed over it and no literal is bound twice; its join
+    // rests on it, and so does each source of that join that holds no literal: the program keeps the failed part's one record.
+    [Theory]
+    [InlineData("let t = if c => ([], (return 1)) else => ((return 2), [a])")]
+    [InlineData("let t = if c => [] else => [(return 1)]")]
+    public void AFailedPartIsNoWaitingPart(string statement)
+    {
+        var source = "func f(c: bool, a: i64) -> i64\n    " + statement + "\n    return 0\npublic func main() => ()\n";
+        var diagnostic = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.Unsupported_Kd), diagnostic.Code);
     }
 

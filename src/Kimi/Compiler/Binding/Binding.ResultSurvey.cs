@@ -134,7 +134,11 @@ public sealed partial class Binding
             context.Expected = terminal;
         }
 
-        context.Invalid |= conflict;
+        if (conflict)
+        {
+            context.Conflict();
+        }
+
         context.Evidence.Clear();
         context.Collecting = true; // The survey binds what it reads at once; the sources bound after it collect.
     }

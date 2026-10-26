@@ -20,15 +20,18 @@ public sealed partial class Binding
     // The scratch of a position's typed Types or literal defaults, used by one SelectCommonType at a time.
     private readonly List<BoundType> partTypes = new();
 
-    // What prevents a Type formed part by part: typed parts (or shapes) that conflict, literal defaults that do, or a part Binding
-    // rejected, whose own record the join rests on (BU-9 r1; SPEC 23.1.2).
+    // The first failed part the last formation met (CommonTypeByParts), which a join that read it rests on; reset by the join.
+    private Koto? failedPart;
+
+    // What prevents a Type formed part by part: typed parts (or shapes) that conflict, literal defaults that do, or a failed part
+    // (PartFailed), whose own record the join rests on (BU-9 r1; SPEC 23.1.2).
     [Flags]
     private enum PartsConflict : byte
     {
         None = 0,
         Typed = 1,
         Defaults = 2,
-        Rejected = 4,
+        Failed = 4,
     }
 
     // The child positions of aggregate parts of one shape: a Tuple's elements, an array's or fill's element, a Dictionary's key and value.
@@ -49,13 +52,13 @@ public sealed partial class Binding
     };
 
     // SPEC 14.9.2: a Tuple, array, fill or Dictionary literal part whose Type is formed by its own parts: one waiting unbound or holding
-    // a part that awaits its position. A part Binding rejected (Rejected) is no waiting part: the position it is at has no Type formed
-    // part by part (BU-9: a literal is bound once).
+    // a part that awaits its position. A failed part (PartFailed) is no waiting part: the position it is at has no Type formed part by
+    // part (BU-9: a literal is bound once).
     private bool IsAggregatePart(Koto part)
-        => part is TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto && !Rejected(part) && (part.BoundType is null || this.AwaitsPosition(part));
+        => part is TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto && !this.PartFailed(part) && (part.BoundType is null || this.AwaitsPosition(part));
 
     // Adds a part at a position: none for Never; the operand of the forms that deliver it; a result target that supplies no candidate
-    // through its sources other than Never (nested results propagate the same way), unless Binding rejected it: a failed join is one
+    // through its sources other than Never (nested results propagate the same way), unless it failed (PartFailed): a failed join is one
     // part, no waiting part (BU-9 r1), on whose record the join rests.
     private void AddResultPart(Koto part)
     {
@@ -70,7 +73,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (DeliversResult(part) && !Rejected(part) && (this.AwaitsPosition(part) || this.Deferred(part)))
+        if (DeliversResult(part) && !this.PartFailed(part) && (this.AwaitsPosition(part) || this.Deferred(part)))
         {
             this.AddResults(part);
             return;
@@ -189,14 +192,15 @@ public sealed partial class Binding
     // SPEC 14.9.2 step 2: the common Type at the position [start, end): its typed parts' (PositionType); without one, its aggregate
     // parts' formed by their child positions (Tuples by element, list literals by element as Array<T>, fills by element at their
     // length, Dictionaries by key and value); without one, its literals' defaults' (SPEC 10.2); with no part, Never. Null when a
-    // conflict or a rejected part prevents it, or a part is still unbound without waiting.
+    // conflict or a failed part prevents it, or a part is still unbound without waiting.
     private BoundType? CommonTypeByParts(int start, int end, BindingScope scope, ref PartsConflict conflict)
     {
         for (var i = start; i < end; i++)
         {
-            if (Rejected(this.positionParts[i]))
+            if (this.PartFailed(this.positionParts[i]))
             {
-                conflict |= PartsConflict.Rejected;
+                conflict |= PartsConflict.Failed;
+                this.failedPart ??= this.positionParts[i];
                 return null;
             }
         }
