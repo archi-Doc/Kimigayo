@@ -183,7 +183,9 @@ internal sealed class AdtDef
         return array;
     }
 
-    /// <summary>The stored Types of one struct or enum instance under its substitution.</summary>
+    /// <summary>The stored Types of one struct or enum instance under its substitution, in two forms of the one substitution: the kept
+    /// parts with the raw Origins it gives (Parts, PartsBase; TyCtxt.StoredParts) and AdtDef's view, the same Types without them (Base,
+    /// Fields, Cases; DECISIONS BU-24, BU-41).</summary>
     internal sealed class InstanceStorage
     {
         internal BoundType? Base { get; set; }
@@ -192,6 +194,13 @@ internal sealed class AdtDef
 
         // An enum's Case payload Tuples by ordinal, null where one did not form (CaseTypes); empty for a struct.
         internal BoundType?[] Cases { get; set; } = [];
+
+        // A struct's Fields or an enum's Case payload Tuples with their raw Origins, `self` kept as Holder; null exactly where Fields or
+        // Cases are.
+        internal BoundType?[] Parts { get; set; } = [];
+
+        // The base with its raw Origins; null exactly where Base is.
+        internal BoundType? PartsBase { get; set; }
 
         // The pass that substituted these Types; not current otherwise.
         internal ulong Version { get; set; }

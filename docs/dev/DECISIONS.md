@@ -5544,7 +5544,7 @@ resumed by R4-M86 (2026-10-20).
     obligations unjudged); judging at formation (a Field's own Origins are still `Unbound`); "binder failed, no record" in the judge
     (`IsDerived` owns derivation). Open: A's `IsDerived` widening for an associated specification's record (review N1).
 
-- **BU-24** (superseded in part by BU-39) (2026-10-22; the BU planning session after the full process: designs A′ and B′, design review 2, design-final §14 "B′+";
+- **BU-24** (superseded in part by BU-39, BU-41) (2026-10-22; the BU planning session after the full process: designs A′ and B′, design review 2, design-final §14 "B′+";
   unit bu20 C1a; CR-R2) A raw layer's Origin (SPEC 5.7) is a role of its own: `BoundType.RawOrigin` beside `Origin`, one slot whose
   role the Semantics decides (0 B; a pinned interleaved A/B of the getters against C0d's build gave warm Bind minima 35.70 against
   35.41 ms over three milestones, inside the baseline's own 3% spread, and equal cold bytes, so B′'s +8 B field is not taken). `Origin`
@@ -6391,6 +6391,42 @@ resumed by R4-M86 (2026-10-20).
     while the hold walk keeps its untied store, two answers to "the call writes output j", conservative (one more Φ_E target).
     Pre-existing: a lent `static` layer unties; `unlinkOk` is SPEC-invalid (`Node.init` stores through the null `next` into storage
     the body does not own: R4's triage).
+- **BU-41 An instance keeps its stored parts with their raw Origins: `TyCtxt.StoredParts`, `RawSupplied`** (2026-10-26; the BU
+  planning session's design S1′, `p13u0/design-U0.md`, accepted with P13's v3 by R4's design review 3; PLAN G148 (1), P13's U0, unit
+  bu46; the owner's answers on P13, Q1 (a), Q2 (a) and 「進める (推奨)」, and SPEC 5.7's clarification ② of 2026-10-26) P13's per-part
+  guard (R4-M76) reads, for every raw layer in a holder's own storage at any depth, its step under the holder's substitution, whether
+  its declaration states it or a Type argument supplies it, and an Exclusive one's members. Below the holder a walk entered nested
+  instances through AdtDef's stored Types, which state no raw Origin (BU-24), and the instance reached there is an interned erased Type
+  shared by every holder (`Wrap<raw/u8>` below `Outer<raw/u8 during x>` and below `Outer<raw/u8>`): a supplied Exclusive layer read
+  Unstated, and no answer keyed by what the walk holds at a layer can tell the holders apart; only the part before erasure can.
+  `Substitute` computed those parts and dropped them, and `StoredLayer` and the hold walk (`Stores`) substituted them again per read.
+  - Decision: `AdtDef.InstanceStorage` keeps `Parts` (a struct's Fields or an enum's Case payload Tuples) and `PartsBase` as
+    `Substitute` makes them, with the raw Origins the substitution gives (`self` as Holder); `Fields`, `Cases` and `Base` are their
+    `WithoutRawOrigins`, the same Types by reference (TyCtxtTest). One substitution per instance and pass in two forms; an instance first
+    reached after Binding is substituted on that first read (`Instance`'s per-pass memo, as every instance A5 reaches), and a warm read
+    allocates nothing. `StoredLayer` reads the kept part instead of substituting (a layer of a Case that did not substitute, BU-37's
+    null part, is a broken contract), and `Stores` reads the kept Fields and payloads.
+  - TyCtxt (`TyCtxt.Raw.cs`, contracts there): `StoredParts(instance, out parent)`, the kept parts by the `part` RawStep takes and the
+    kept base, empty for any other Type; `RawSupplied(instance, part, positions)`, whether a Type argument supplies the layer (no layer
+    the declaration states there; a pair slot's included, BU-34), total where RawStep is. `RawStep`, `RawMembers`, RawStep's values and
+    `RawMember` are unchanged. A walk reads a layer it reaches through `StoredParts` only through these three on the instance holding it,
+    never its raw Origin (none is read in Mir/, ArchitectureRulesTest). No compiler reader until R4's P13-1.
+  - Kept from BU-24: AdtDef's stored Types state no raw Origin (the old paths' identity, R5-M39's property), and A5 reads raw Origins
+    only through TyCtxt's stored-layer readers and never substitutes. No owner approval: no closed vocabulary, no RawStep value.
+  - Supersedes, as its reason ("A5 does not rely on" a supplied layer's step below the holder) no longer holds since P13's guard (R4-M76,
+    Q2 (a)) does: BU-24 C1b's invariant clause "never in an instance's stored Types" (now never in AdtDef's stored Types; Holder is also
+    in the kept parts, whose readers read a raw layer by its step only); RawStep's contract clause that such a layer below the holding
+    value "reads Unstated (DECISIONS BU-24)" (now the holder's through StoredParts, Unstated through AdtDef's parts); BU-24 G160-2b's open
+    nested case; PLAN G160's Binding-limit line (the planning session edits PLAN).
+  - Cost (cold allocation over 120 census programs: the library, milestones, goldens and accepting SPEC variants, base e212d7590): Bind
+    about +1.6 KB per program (+0.03%), MIR build +1.08 MB (+0.30%), A5 +374 KB (+0.55%), from the `Parts` arrays of every instance
+    (1.14 MB retained in all) and the kept Case Tuples; the design's +176 KB counted the instances Bind creates only. A pinned
+    interleaved Bind A/B over Milestones 1, 20 and 33 gave warm minima within 0.5% and equal cold minima; warm reads allocate 0 B.
+  - Rejected: S1, a per-Binding cache re-substituting the parts with a stated bit (a second stored-parts form, a third substitution;
+    ×1.0146 A5, +1.66 MB); S2, a per-layer list (sound only if its descent repeats A5's walk: two walks); S3, an answer keyed by
+    (instance, part, layer) (unsound: the erased nested instance is shared); S4a, AdtDef's stored Types keeping raw Origins (reverses
+    BU-24: about 90 reads in 36 files, D5's identity, R5-M39's property); S4b, `Parts` aliasing `Fields` where equal (the in-place
+    refill would write through the alias).
 - **BU-42 A 4.6–4.9 operation writes its receiver's store only where the receiver refers: `CallRetention.ReferentStores`**
   (2026-10-26; the BU planning session with R4 after the full process: BU's and R4's designs combined, design review 1 REVISE (B1),
   revision 1, design review 2 ACCEPT; PLAN G255 (C3), its Binding part, unit bu45; the owner's go of 2026-10-26 within N2's rows,

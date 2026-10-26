@@ -10,20 +10,23 @@ namespace Kimi.Compiler;
 // - Responsibility: the written raw Origin in every position, the atom its name binds (WrittenRawOrigin), judged once after the last
 //   requirement fixed point (InvalidRawOrigin, from ValidateOriginRequirements: a Phantom slot, also through a written projection; an
 //   atom no borrow holds; a pair input admitting a non-borrow case); the step of a raw layer (StepOf, by its Origin's kind;
-//   DeclaredStep over StoredLayer, a Field's or Case payload's layer, which StoredStep and the hold walk read; SignatureStep, a
+//   DeclaredStep over StoredLayer, a Field's or Case payload's layer in the instance's kept part, which StoredStep, StoredSupplied and
+//   the hold walk read; SignatureStep, a
 //   signature's layer), which retention and A5 read, and the borrows its Origin belongs to (RawMembers), which retention and
 //   InvalidRawOrigin read, each slot keeper walked once, a keeper cycle that changes its Type arguments an incomplete answer
 //   (CallRetention.Limit), never a silent stop; the Origin a `during self` layer is read with at a Place (ReadHolder); a layer's
 //   OwnedOrigins member (OwnedOrigin); the relations with an unstated end (UnstatedRelation, rulings S4); the allowlist of a `during self`
 //   layer's Place reached through no dereference (HolderPlaceFailure, OQ-R1 (a)); the borrows keeping a declared slot (Keepers, D15);
-//   and a Type with every raw layer's Origin dropped (WithoutRawOrigins): an instance's stored Types (Instance, design-final §15) and,
-//   as the D5 exception (the owner's Q-O3, DECISIONS BU-24), the old analysis's view at its Type intake, removed with it at R6-check.
+//   and a Type with every raw layer's Origin dropped (WithoutRawOrigins): AdtDef's view of an instance's stored Types (Instance,
+//   design-final §15; its kept parts keep them, DECISIONS BU-41) and, as the D5 exception (the owner's Q-O3, DECISIONS BU-24), the old
+//   analysis's view at its Type intake, removed with it at R6-check.
 // - Inputs: bound Types; a declaration's schema and keepers after the requirement fixed point; a signature's input Types; PathOrigin.
 // - Outputs: raw Origins, steps, member borrows, relation verdicts and the OriginRelation failure facts of the allowlist.
-// - Invariants: Holder only in declared Field and payload Types, which every read replaces, never in an instance's stored Types;
-//   Unstated only in relations and their records, never in a Type, so no premise, obligation or row names Holder or Unstated
-//   (design-final §13 A2). A formed raw Origin is the Origin it is formed with; every step is total and never Shared by default, and
-//   only retention and the TyCtxt views read one, after Binding's last pass.
+// - Invariants: Holder only in declared Field and payload Types, which every read replaces, and in an instance's kept parts, whose
+//   readers read a raw layer by its step only (TyCtxt.StoredParts, DECISIONS BU-41), never in AdtDef's stored Types; Unstated only in
+//   relations and their records, never in a Type, so no premise, obligation or row names Holder or Unstated (design-final §13 A2). A
+//   formed raw Origin is the Origin it is formed with; every step is total and never Shared by default, and only retention and the
+//   TyCtxt views read one, after Binding's last pass.
 // - Files: this one (relations, claim fits, the Types without raw Origins); .Steps.cs (RawStep and its readers); .Written.cs (the written
 //   forms and their judgment); .Holder.cs (`during self` layers read and written at a Place); .Keepers.cs (member borrows and slot keepers).
 // - Prohibitions: no region, Loan or retention facts beyond the member borrows, no Place walk of its own (PathOrigin is PlaceAuthority's),
@@ -38,9 +41,10 @@ public sealed partial class Binding
     internal bool ClaimFits(ConversionKoto claim, BoundOrigin claimed)
         => this.ProvesOriginOutlives(claim.Left.BoundType?.RawOrigin ?? BoundOrigin.Unstated, claimed, claim);
 
-    // A Type with every raw layer's Origin dropped: an instance's stored Types (Instance; design-final §15), and the D5 exception (the
-    // owner's Q-O3, 2026-10-22; DECISIONS BU-24): the old analysis and Emission compare Types by reference, so they read each Type
-    // through this view at their Type intake (OwnershipAnalysis.Place, OwnershipBody.Resolve); removed with them at R6-check.
+    // A Type with every raw layer's Origin dropped: AdtDef's view of an instance's stored Types (Instance; design-final §15; DECISIONS
+    // BU-41), and the D5 exception (the owner's Q-O3, 2026-10-22; DECISIONS BU-24): the old analysis and Emission compare Types by
+    // reference, so they read each Type through this view at their Type intake (OwnershipAnalysis.Place, OwnershipBody.Resolve); removed
+    // with them at R6-check.
     internal BoundType? WithoutRawOrigins(BoundType? type)
     {
         if (type is null || !type.CarriesRawOrigin)

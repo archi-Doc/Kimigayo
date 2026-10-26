@@ -259,10 +259,10 @@ public sealed partial class Binding
     }
 
     // The hold walk (Held) of a struct's or enum's stored content (SPEC 5.7 Slots and ownership): its base, and its Fields and Case
-    // payloads with the Types their declarations write; what they met. A Case's payloads are walked only where its instance
-    // substituted that Case (set in CaseTypes), the part the storage verdict walked (DECISIONS BU-37): the per-part rule at the Case's
-    // grain, which bounds the walk, so a failed Case's other payloads hold nothing (walked by payload, a failed Case's growing siblings
-    // would not end).
+    // payloads, in the instance's kept parts (Instance, DECISIONS BU-41), with the Types their declarations write; what they met. A
+    // Case's payloads are walked only where its instance substituted that Case (its kept payload Tuple set), the part the storage verdict
+    // walked (DECISIONS BU-37): the per-part rule at the Case's grain, which bounds the walk, so a failed Case's other payloads hold
+    // nothing (walked by payload, a failed Case's growing siblings would not end).
     private Holding Stores(BoundType instance, int output, Kept[] kept, bool lent)
     {
         if (instance.Symbol?.Adt is not { } adt)
@@ -270,18 +270,19 @@ public sealed partial class Binding
             return Holding.None;
         }
 
+        var storage = this.Instance(instance);
         var met = AdtDef.Base(instance) is { } parent ? this.Held(parent, null, output, kept, lent) : Holding.None;
+        var parts = storage.Parts;
         for (var i = 0; AdtDef.IsStruct(instance) && i < adt.Fields.Length; i++)
         {
-            met |= this.Held(this.StoredType(adt.Fields[i], instance), WrittenType(adt.Fields[i]), output, kept, lent);
+            met |= this.Held(parts[i], WrittenType(adt.Fields[i]), output, kept, lent);
         }
 
-        var cases = AdtDef.CaseTypes(instance) ?? [];
-        for (var i = 0; i < cases.Length; i++)
+        for (var i = 0; AdtDef.IsEnum(instance) && i < parts.Length; i++)
         {
-            for (var j = 0; cases[i] is not null && adt.Cases[i] is { } selected && j < selected.Payload.Length; j++)
+            for (var j = 0; parts[i] is { } payloads && adt.Cases[i] is { } selected && j < selected.Payload.Length; j++)
             {
-                met |= this.Held(this.StoredType(selected.Payload[j], instance), WrittenType(selected.Payload[j]), output, kept, lent);
+                met |= this.Held(payloads.Components[j], WrittenType(selected.Payload[j]), output, kept, lent);
             }
         }
 
