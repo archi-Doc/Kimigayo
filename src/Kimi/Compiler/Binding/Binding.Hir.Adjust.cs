@@ -9,9 +9,9 @@
 //   DECISIONS BU-8), and a child's claim (ChildAdjust's `claimed`): whether this use's operation's target needs exclusive capability of
 //   the child (IHirUses.Use(child, in operation), recorded before the rule reads it), or an earlier use of it by the same consumer did,
 //   by its operation's target or by the Adjust fixed for it (an exclusive borrow, or a Reborrow or pair-case acquisition of a child whose
-//   Type needs it). The record accumulates it per publish (the publisher's claims); it decides whether Binding's recorded in-place
-//   shared read of a selection yields (SPEC 4.7.1, 7.3). This use's own claim decides that a part below a stored reference passed as a
-//   `uniq/Self` receiver is a Reborrow (HirFormsTest.APartBelowAStoredReferenceIsAPlace).
+//   Type needs it): the rule's Claims, which a record applies and accumulates per publish (the publisher's claims). It decides whether
+//   Binding's recorded in-place shared read of a selection yields (SPEC 4.7.1, 7.3). This use's own claim decides that a part below a
+//   stored reference passed as a `uniq/Self` receiver is a Reborrow (HirFormsTest.APartBelowAStoredReferenceIsAPlace).
 // - Outputs: each child's use, to an IHirUses; the HIR publisher writes them as the Adjust column and the plan rows.
 // - Invariants: a consumer's uses come in evaluation order, its calls' inputs last and in CallPlan.Of's order; the rule reads no other
 //   walk state.
@@ -259,6 +259,19 @@ public sealed partial class Binding
     private bool IsPlace(Koto child) => IsBarePlace(child) || ElementAccess.IsRawPlace(child) || child is FormattingKoto { Operation: FormattingOperation.Storage } ||
         IsStatic(KotoHelper.UnwrapParentheses(child).BoundSymbol);
 
+    // The claim a use's operation makes on its child (R4-M142's `claimed`): its target needs exclusive capability of what it takes.
+    private bool Claims(in BoundArgumentOperation operation) => this.Exclusive(operation.AdaptedType ?? operation.ParameterType);
+
+    // The claim a fixed Adjust makes on its child (SPEC 10.2, 4.7.2, 8.14): an exclusive borrow, or the Reborrow or pair-case acquisition of
+    // a child whose Type needs exclusive capability.
+    private bool Claims(Koto child, HirAdjust adjust) => adjust.Adaptation == HirAdaptation.ExclusiveBorrow ||
+        (adjust.Acquire is HirAcquire.Reborrow or HirAcquire.ByCase && this.Exclusive(child.BoundType));
+
+    // Whether an acquisition's target needs exclusive capability of what it takes (SPEC 4.7.1, 13.5.5): an exclusive reference or object
+    // view, or a pair layer admitting one, whose exclusive case does.
+    private bool Exclusive(BoundType? target) => target is { Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq } ||
+        (target is not null && (this.LayerAdmitted(target) & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0);
+
     // The publisher's record of the uses, a struct, so that AdjustChildren is specialized for it and calls it directly (the S1 publish A/B:
     // the publisher passed as itself, a class, made every use an interface call and a warm publish about 2% slower).
     [Transitional("R7", Reason = "R7 replaces the publisher walk with inline Binding writes.")]
@@ -285,10 +298,10 @@ public sealed partial class Binding
         internal void Call(int ordinal) => this.callOrdinal = ordinal;
 
         // A child an operation uses (a call's receiver or argument, a Case payload, a writer; SPEC 7.3, 10.2), as the operation adapts it and
-        // with the capability its target needs (Exclusive), which it claims.
+        // with the capability its target needs, which it claims (Claims).
         internal void Use(Koto? child, in BoundArgumentOperation operation)
         {
-            if (this.Exclusive(operation.AdaptedType ?? operation.ParameterType) && this.Owns(child))
+            if (binding.Claims(operation) && this.Owns(child))
             {
                 this.claims[child!.SyntaxId] = true;
             }
@@ -305,10 +318,9 @@ public sealed partial class Binding
             }
         }
 
-        // Only the nodes of the module being published; a call shared across modules names nodes of another. An exclusive borrow, and the
-        // Reborrow or pair-case acquisition of a Place whose Type needs exclusive capability (SPEC 10.2, 4.7.2, 8.14), is an exclusive use.
-        // At a call input the earlier call's Adjust (EarlierAdjust) is the input's plan-row Adjust, the column keeping the later; at any other
-        // call input the row states none, which also clears a row of an earlier pass.
+        // Only the nodes of the module being published; a call shared across modules names nodes of another. The Adjust's claim on the child
+        // (Claims) is recorded. At a call input the earlier call's Adjust (EarlierAdjust) is the input's plan-row Adjust, the column keeping
+        // the later; at any other call input the row states none, which also clears a row of an earlier pass.
         internal void FixAdjust(Koto? child, HirAdjust adjust, HirPlace place = default)
         {
             if (this.Owns(child))
@@ -321,8 +333,7 @@ public sealed partial class Binding
                 }
 
                 column = adjust;
-                this.claims[child.SyntaxId] |= adjust.Adaptation == HirAdaptation.ExclusiveBorrow ||
-                    (adjust.Acquire is HirAcquire.Reborrow or HirAcquire.ByCase && this.Exclusive(child.BoundType));
+                this.claims[child.SyntaxId] |= binding.Claims(child, adjust);
                 if (place.Kind != HirPlaceKind.Unset)
                 {
                     this.table.Hir.Places![child.SyntaxId] = place;
@@ -354,14 +365,9 @@ public sealed partial class Binding
         // follow selects through (SPEC 13.5.5, 15.6.2: past a shared layer only reads), unless that use is of a raw Place, whose capability its
         // path does not decide (SPEC 5.2). The parent is the node's while the node is visited.
         private bool ExclusiveUse(Koto node)
-            => (this.Owns(node) && this.claims[node.SyntaxId]) || (this.parentOp == HirOp.Borrow && this.Exclusive(this.parent!.BoundType)) ||
+            => (this.Owns(node) && this.claims[node.SyntaxId]) || (this.parentOp == HirOp.Borrow && binding.Exclusive(this.parent!.BoundType)) ||
             ((this.parentOp is HirOp.Assign or HirOp.CompoundAssign || (this.exclusive && (this.parentOp is HirOp.Field or HirOp.Index or HirOp.Deref ||
                 this.parent is ParenthesizedKoto) && !ElementAccess.IsRawPlace(this.parent!))) && ReferenceEquals(Operand(this.parent), node));
-
-        // Whether an acquisition's target needs exclusive capability of what it takes (SPEC 4.7.1, 13.5.5): an exclusive reference or object
-        // view, or a pair layer admitting one, whose exclusive case does.
-        private bool Exclusive(BoundType? target) => target is { Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq } ||
-            (target is not null && (binding.LayerAdmitted(target) & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0);
 
         // Whether a node is of the module being published.
         private bool Owns(Koto? node) => node is not null && ReferenceEquals(node.SyntaxOwner, this.table) && node.SyntaxId < this.table!.Hir.Adjusts!.Length;
