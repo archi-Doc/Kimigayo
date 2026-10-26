@@ -1,8 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the pooled tables of int values by an unmanaged key that a Mir/Analysis owner empties per view or per body and fills again, read and
-// filled only by lookup and insertion (V16; DECISIONS R4-M146): for example the Loan sets' nodes and memos (A5), the Move paths' children
-// and Places (A1, A2, A5) and A5's addresses (MirBorrows.Addresses). A pooled table of another contract is PLAN G136's.
+// Owns the pooled analysis tables: tables of int values by an unmanaged key that a Mir/Analysis owner empties per view or per body and
+// fills again, read and filled only by lookup and insertion (V16; DECISIONS R4-M146), for example the Loan sets' nodes and memos (A5), the
+// Move paths' children and Places (A1, A2, A5) and A5's addresses (MirBorrows.Addresses). A pooled table of another contract is PLAN G136's.
 // Input: the keys and the values its owner adds. Output: a key's value, an entry by reference, and Clear, which empties the table in
 // proportion to its entries; Cleared, the slots the last Clear wrote.
 // Invariants: Clear removes the entries one by one while they fill less than a 64th of the storage, else clears the storage whole (its
@@ -18,7 +18,7 @@ using System.Runtime.InteropServices;
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>A pooled table of int values whose <see cref="Clear"/> costs what its entries cost (V16, DECISIONS R4-M146).</summary>
+/// <summary>A pooled analysis table of int values whose <see cref="Clear"/> costs what its entries cost (V16, DECISIONS R4-M146).</summary>
 /// <typeparam name="TKey">The key, a plain value without references.</typeparam>
 /// <param name="comparer">The key comparer, or null for the default one.</param>
 internal sealed class MirTable<TKey>(IEqualityComparer<TKey>? comparer = null)

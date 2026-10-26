@@ -5,25 +5,12 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>The pooled tables a Mir/Analysis owner empties per view or per body (V16, DECISIONS R4-M146) through
+/// <summary>The pooled analysis tables, which a Mir/Analysis owner empties per view or per body (V16, DECISIONS R4-M146), through
 /// <see cref="MirTable{TKey}"/> itself: Clear removes the entries one by one while they fill less than a 64th of the storage, else
-/// clears it whole, so its work is its own view's, and leaves no entry on either path; a warm fill and clear allocates nothing.</summary>
+/// clears it whole, so its work is the emptied view's or body's own, and leaves no entry on either path; a warm fill and clear allocates
+/// nothing.</summary>
 public sealed class MirTableTest
 {
-    // R4-M146: Clear leaves no entry on either path, and Cleared is the slots it wrote: after a dense fill the storage's buckets, after a
-    // sparse fill of a large table its entries. A stale entry would be a wrong memo hit: each fill finds none of its keys held.
-    [Fact]
-    public void ClearLeavesNoEntryOnEitherPath()
-    {
-        var table = new MirTable<(int A, int B)>();
-        Fill(table, 4_096);
-        Assert.Equal(Buckets(4_096), Clear(table, 4_096));
-        Fill(table, 3);
-        Assert.Equal(3, Clear(table, 3));
-        Fill(table, 2);
-        Assert.Equal((0, 1), (table[(0, 0)], table[(1, -1)]));
-    }
-
     // R4-M146 (design review 2, N3): at the listing's bound, a view of ⌊(C − 1)/64⌋ entries in C buckets is cleared entry by entry, every
     // key listed; one more fills a 64th, and its Clear writes the C buckets.
     [Theory]
@@ -100,7 +87,8 @@ public sealed class MirTableTest
         }));
     }
 
-    // Fills a view of keys (i, -i) for i below a count, each valued i, alternately by Add and by Entry, none of them held before.
+    // Fills a view of keys (i, -i) for i below a count, each valued i, alternately by Add and by Entry, none of them held before, each
+    // value read back through the getter.
     private static void Fill(MirTable<(int A, int B)> table, int count)
     {
         for (var i = 0; i < count; i++)
@@ -116,6 +104,8 @@ public sealed class MirTableTest
                 Assert.False(exists);
                 value = i;
             }
+
+            Assert.True(table[(i, -i)] == i);
         }
     }
 

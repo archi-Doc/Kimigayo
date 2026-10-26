@@ -4781,9 +4781,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     reader. Rejected: a new column or `Flag` for the discard (a second fact for one form; `Result` and `Statement` both change); the
     builder testing Discard Context itself (a syntax decision the ratchet forbids); keeping the builder's ByCase (R5's condition 3).
   - Numbering: R4-M145 was reserved for S2 by the R4 planning session (R4-M142; R4-M146 is 2x-E5's, R4-M148 2c-3's).
-- **R4-M146 Pooled per-view tables: Clear costs the view's own entries (MirTable; PLAN G136, V16 "per-view clearing", 2x-E5)**
-  (2026-10-27; R4's lane A under 2x-E5's design with its Revisions 1 and 2, the planning session's decisions on design reviews 1 and 2,
-  both REVISE; the owner's acceptance of its cost, 2026-10-26: 「2x-E5 の +0.5% 程度のコストは受け入れます。再開後に実装を進めてください。」).
+- **R4-M146 Pooled analysis tables: a Clear costs the entries of the view or body it empties (MirTable; PLAN G136, V16 "per-view
+  clearing", 2x-E5)** (2026-10-27; R4's lane A under 2x-E5's design with its Revisions 1 and 2, the planning session's decisions on
+  design reviews 1 and 2, both REVISE, and design review 3, ACCEPT; the owner's acceptance of its cost, 2026-10-26:
+  「2x-E5 の +0.5% 程度のコストは受け入れます。再開後に実装を進めてください。」).
   - Cause: `Dictionary.Clear` clears the whole bucket array, and a pooled table keeps its largest capacity, so each view or body after
     a large one paid the large one's size: V16 failed for a body with many views after a large view.
   - Representation: `MirTable<TKey> where TKey : unmanaged` (`Mir/Analysis/MirTable.cs`, a canonical component), a pooled table of int
@@ -4795,8 +4796,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     used, to about twice as many, leaving the table at least about 2/5 full; so a table found sparse at Clear had no resize since the
     last one and listed every insertion. The contract names that growth as its assumption; `MirTableTest`'s boundary rows observe it.
   - Bound: the per-entry path costs the view's entries (for `nodes` also each run's hash, the view's elements); the whole path the C
-    buckets and the high-water entries, at most 64 per entry. The 64th: a removal costs about 100 bucket clears (2x-E5's first
-    prototype removed every entry, with no whole clear, and lost to `Dictionary.Clear` after a large view).
+    buckets and the high-water entries, at most 64 per entry. The 64th: a removal costs more than 64 bucket clears, measured on this
+    table at the bound of 17,519 buckets as 124 (±15 %: one Clear per sample on 100 ns ticks, and the whole clear includes its 274
+    high-water entries); the first prototype, which removed every entry with no whole clear, lost to `Dictionary.Clear` after a large
+    view.
   - Users, nine tables: `MirLoanSets`' `nodes`, `adds`, `unions`, `removes` and `ranges` (A5; R4-M53's keys, values and memo rule
     unchanged; `nodes` is cleared before node 0 is re-added, its runs intact, since a node is found by its run); `MirMoveData`'s
     `children` and `places` (Move paths, per body, read by A1, A2 and A5); `MirBorrows.Addresses`' `addressOf` and `ownAt` (A5, per
@@ -4813,18 +4816,31 @@ and migration obligations remain in force; no numeric cap changes are authorized
     program); re-creating a sparse table or `TrimExcess` (allocates on warm runs); removing every entry with no whole clear (the
     first prototype); listing a dense table's keys, which its Clear never reads (design review 1's N3); enumerating the table instead
     of listing (it costs the high-water entries since the last whole clear); a key list in each owner (copies of one rule).
-  - Tests: `MirTableTest`: both paths leave no entry, `Cleared` the bucket count or the entry count; the listing bound and one past
-    it; a resize after a sparse Clear, then the new bound; the V16 row "per-view clearing" (after a view of N entries, 64 views of 4
-    clear 256 slots for N = 2¹⁰, 2¹², 2¹⁴; under the parent's rule, the whole storage each time, 123,584, 538,816 and 1,121,216); a
-    warm fill and clear on both paths allocates nothing. The reset rows `MirLoanSetsTest.AViewAfterALargeOneGetsAFreshInstancesSets`,
+  - Tests: `MirTableTest`: the listing bound (131 entries in 8,419 buckets, cleared one by one) and one past it (cleared whole); a
+    resize after a sparse Clear, then the new bound; the V16 row "per-view clearing" (after a view of N entries, 64 views of 4 clear
+    256 slots for N = 2¹⁰, 2¹², 2¹⁴; under the parent's rule, the whole storage each time, 123,584, 538,816 and 1,121,216); a warm fill
+    and clear on both paths allocates nothing. Every fill asserts that no key of an earlier view is held and reads its values back, and
+    every Clear its exact `Cleared`. The reset rows `MirLoanSetsTest.AViewAfterALargeOneGetsAFreshInstancesSets`,
     `MirInitTest.ABodyAfterALargeOneGetsAFreshInstancesPaths` and `MirBorrowsTest.TheViewsAfterManyAddressesReportWhatTheyReportAlone`.
-    Each fails under a mutation, run and recorded: the parent's rule, listing only below the bound (`count < listed`), and a
-    per-entry path that removes nothing, in all tables or in one owner's.
-  - Measured: on G258's host (120 census programs, base e212d7590 against the tuned prototype of the first seven tables, A, A′ and B
-    interleaved, pinned, tiering off, 3 runs of 8, a quiet machine), A5's step 4 B/A ×1.0049 (A′/A ×0.9948); Work, Loan-set Bytes
-    and problems equal; cold allocation +1,872 B. Warm runs allocate nothing. The re-timing of this build with the Addresses tables, on
-    the census (steps 4 and 2) and on the probe shapes (one large view then many small views; bodies with only small views), is the
-    planning session's to schedule on a quiet machine, recorded here before landing.
+    Each row fails under the mutation that reaches it, run and recorded: the V16 row under the parent's rule; the bound row and the
+    resize row under listing only below the bound (`count < listed`); the one-past row, the other side of the bound, under a whole
+    path one entry late (`count·64 > C + 64`; the planning session's decision of 2026-10-27, correcting Revision 2's "each fails
+    under `count < listed`"); the reset rows under a per-entry path that removes nothing, in all tables or confined to one owner's.
+  - Measured on G258's host: A, A′ (a second copy of A) and B interleaved per program and rep, the side order rotated, CPU 6 pinned,
+    tiering off, 3 runs of 8 reps, a quiet machine; each program compiled and analyzed cold on fresh instances.
+    - t6 (2026-10-26): base e212d7590 against the tuned prototype of the first seven tables, 120 census programs, A5's step 4: B/A
+      ×1.0049, A′/A ×0.9948, each the sum over the programs of the minimum over all 24 reps (summing per-run medians: ×1.0028,
+      ×0.9925); cold allocation +1,872 B.
+    - t7 (2026-10-27): dev 2f2ed6a94 against 645ef008d, all nine tables, the 120 census programs. Step 4 (A5 and the Origin
+      findings): B/A ×1.0048, A′/A ×0.9997 by t6's aggregation (summing per-run medians: ×1.0013, ×0.9966). Step 2 (block order, Move
+      paths, A1, A2, A4's local facts): B/A ×1.0025, A′/A ×1.0003 (×1.0033, ×1.0015). Work, Loan-set Bytes and problem counts equal,
+      and the problem lists too (a separate one-rep run with the host's `--problems`). Cold allocation: +1,840 B in step 4 (of 47.1
+      MB), +32 B in step 2.
+    - t7's probe shapes, each a cold single pass (the large view precedes the small ones within one pass; not the warm repeated runs
+      of the first prototypes' figures), medians of the 24 reps: after a view of 1,500 borrows, the 512 small views' step 4 0.733 to
+      0.397 ms (B/A ×0.54); bodies with only small views (8 × 64) 0.289 to 0.306 ms (×1.058; A′/A ×1.009), their step 2 equal; the
+      shapes' whole step 4 and step 2 B/A ×0.980 to ×1.017.
+    - Warm runs allocate nothing.
   - Numbering: R4-M146 was reserved for 2x-E5 by the R4 planning session (R4-M145 S2, R4-M147 P13-1, R4-M148 2c-3).
 - **R4-M147 A5's per-part guard; P13's body hold removed (PLAN G148 (1), P13-1)** (2026-10-26; R4's lane B under design P13 v3,
   ACCEPT at its design review 3, on BU-41's view (U0, unit bu46); the planning session's ruling D″ of 2026-10-26 on an abstract
