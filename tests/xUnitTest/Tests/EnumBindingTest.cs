@@ -135,6 +135,22 @@ public class EnumBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TransferRequired_Kd);
     }
 
+    // SPEC 6.5.2, 3.5, 8.14 (PLAN G252, DECISIONS BU-45): a payload Place is acquired by its bare acquisition, so a pair layer Copies or
+    // Reborrows by case, and only a case without a plan (an owner whose target is not proven Copy, the exclusive case through a shared
+    // path) fails. Each row: Binding's errors.
+    [Theory]
+    [InlineData("value: s/T", "s is owner or uniq\n    T is Copy", "s/T", "value", "")]
+    [InlineData("value: s/T", "s is ref or uniq", "s/T", "value", "")]
+    [InlineData("value: s/T", "s is owner or uniq", "s/T", "value", "TransferRequired_Kd value")]
+    [InlineData("x: ref/(s/T during a) during b", "s is ref or uniq", "s/T during a", "x@follow", "TransferRequired_Kd x@follow")]
+    public void APairPayloadIsAcquiredByCase(string parameters, string constraints, string payloadType, string payload, string errors)
+    {
+        var source = $"func f<s/T>({parameters}) -> ()\n    {constraints}\n    let o: Option<{payloadType}> = .Some({payload})\n    _ = o@move\n";
+        var c = CompilationTestHelper.ParseSuccess(source);
+        c.Bind();
+        Assert.Equal(errors, string.Join("; ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
+    }
+
     [Theory]
     [InlineData("enum E<T>\n    Both(T, T)\nvar b: i8\nlet x = E.Both(1, b)")]
     [InlineData("enum E<T>\n    Both(T, T)\nvar b: i8\nlet x = E.Both(b, 1)")]
