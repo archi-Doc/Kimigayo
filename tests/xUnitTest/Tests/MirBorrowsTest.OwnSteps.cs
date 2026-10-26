@@ -173,29 +173,6 @@ public sealed partial class MirBorrowsTest
                     usep(p)
                 """));
 
-    // DECISIONS R4-M116 PQ-8: the Warning rejects nothing, so a view P13's hold takes (R4-M73: g1's generic loop then append) keeps it as
-    // OwnStepDeparture_Kd, while its Loan problems (`xs.append(b)`, `var xs`) are the hold's located Unsupported_Kd.
-    [Fact]
-    public void AHeldViewKeepsTheWarning()
-    {
-        var c = MirBuildTest.Compile(Prelude + RawShapes + OwnStepShapes + """
-            func heldWarn<T>(a: T, b: T)
-                T is Copy
-                var xs: Array<T> = []
-                xs.append(a)
-                for e in xs
-                    _ = e
-                xs.append(b)
-                var bf = Buf<i32>.init(4)
-                let p = bf.data
-                let moved = bf@move
-                usep(p)
-            """);
-        Assert.Equal(
-            ["heldWarn: xs.append(b) Unsupported_Kd", "heldWarn: bf OwnStepDeparture_Kd", "heldWarn: var xs: Array<T> = [] Unsupported_Kd"],
-            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnStepDeparture_Kd]));
-    }
-
     // DECISIONS R4-M116 OQ-2 (PD31's fact rows): the Anchor is the pointer's first formation (the location reading the layer); the witness
     // is a live holder's next use (none where that lies in a later chain, as past a copy), the store of a value E keeps, or the call for an
     // operand it takes; inside a copy the default's operation is Evaluated at the omitting call.

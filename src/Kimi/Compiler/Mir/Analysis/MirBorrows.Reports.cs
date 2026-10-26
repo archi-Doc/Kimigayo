@@ -8,11 +8,10 @@ namespace Kimi.Compiler.Mir;
 // its requirement with its code and facts, which MirBorrows.Witnesses builds: the Loan's or candidate's anchor, its witness (a holder's
 // next use in its chain, the location for a value an access takes, a transit value's or E's store; none for a destruction's own
 // hold, R3), an activation's reservation, the static Field an effect met and, inside an inline default copy, the default's operation
-// (Evaluated) with the outermost omitting call as subject (D13); a located Unsupported_Kd where the stratum classifies nothing, and in a
-// held view at every Loan problem's subject (P13's interim, R4-M73, until the guard reads each part). Every Loan-problem producer records
-// through Record(code, requirement, subject, facts), so the hold is one rule there: a Loan conflict through Report(code, anchor, via, at,
-// reservation, effect), A5-F9's template rules (MirBorrows.Defaults) with their parameter; the own-step Warning (OwnStepDeparture_Kd,
-// MirBorrows.OwnSteps), which is no Loan problem, through Departure, which the hold does not take (R4-M116 PQ-8).
+// (Evaluated) with the outermost omitting call as subject (D13); a located Unsupported_Kd where the stratum classifies nothing. Every
+// problem but a located Unsupported_Kd is recorded through Record(code, requirement, subject, facts): a Loan conflict through Report(code,
+// anchor, via, at, reservation, effect), A5-F9's template rules (MirBorrows.Defaults) with their parameter, and the own-step Warning
+// (OwnStepDeparture_Kd, MirBorrows.OwnSteps), which is no Loan problem, through Departure under its own requirement (R4-M116 PQ-8).
 // Must not decide a conflict (MirBorrows.Checks), derive a requirement from a code, or apply a derived-problem rule (MirReport's).
 internal sealed partial class MirBorrows
 {
@@ -34,26 +33,18 @@ internal sealed partial class MirBorrows
         this.Record(code, OwnershipRequirement.ComparisonLoanConflict, subject, this.facts.AsSpan(0, this.CauseFacts(count)));
     }
 
-    // A problem with its facts (D7, R4-M98): in a held view (R4-M73) the located Unsupported_Kd at its subject instead.
+    // A problem with its facts (D7, R4-M98).
     private void Record(DiagnosticCode code, OwnershipRequirement requirement, SourceRef subject, ReadOnlySpan<MirFact> facts)
     {
-        if (this.held)
-        {
-            this.Unsupported(subject);
-            return;
-        }
-
         this.program.Problems.Add(new(code, DiagnosticRequirement.Ownership(requirement), subject, this.body.Ordinal, this.views), facts);
     }
 
     // The own-step Warning at a location (SPEC 5.2.1 condition 3, MirBorrows.OwnSteps): its subject and facts as MirBorrows.Witnesses builds
-    // them for the entry's first formation and the witness, under its own requirement and never through the hold, since a Warning rejects
-    // nothing (PQ-8).
+    // them for the entry's first formation and the witness, under its own requirement (PQ-8).
     private void Departure(int entry, int via, MirLocation at)
     {
         var (subject, count) = this.Facts(this.Site(entry), via, at, -1, null);
-        var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.OwnStepDeparture);
-        this.program.Problems.Add(new(DiagnosticCode.OwnStepDeparture_Kd, requirement, subject, this.body.Ordinal, this.views), this.facts.AsSpan(0, count));
+        this.Record(DiagnosticCode.OwnStepDeparture_Kd, OwnershipRequirement.OwnStepDeparture, subject, this.facts.AsSpan(0, count));
     }
 
     // A located Unsupported_Kd at a location whose access or call the stratum does not classify; a limit record, which depends on the

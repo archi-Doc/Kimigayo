@@ -430,33 +430,6 @@ public sealed partial class MirBorrowsTest
                 """,
                 ["counter", "counter", "counter", "refs"]));
 
-    // R4-M73 (with R4-M92; AHeldEffectIsUnsupportedRooted): an effect conflict is a Loan problem, so in a view a call's by-argument store
-    // holds it is the located Unsupported_Kd at its call; the `var xs` record is the held view's own, with or without the static Loan.
-    // R4-M90 PQ-1: the static Loans here are receivers', Binding's Unsupported_Kd until P42, so only the held view's own record remains.
-    [Fact]
-    public void AHeldEffectIsUnsupported()
-        => Assert.Equal(
-            ["e17: var xs: Array<T> = [] Unsupported_Kd"],
-            Effects(
-                """
-                    public func e17<T>(a: T, g: () -> ())
-                        T is Copy
-                        var xs: Array<T> = []
-                        xs.append(a)
-                        for e in xs
-                            _ = e
-                        let c = counter.view()
-                        g()
-                        inspect(c)
-                    public func same(x: ref/i32 during a, y: ref/i32 during a = x) -> ref/i32 during a => y
-                    public func copied(g: () -> ())
-                        let r = same(counter.view())
-                        g()
-                        inspect(r)
-
-                """,
-                ["counter", "counter"]));
-
     // SPEC 15.6.4's widened effects (tests/diagnostics/spec-cases.json 15.6.4-widened-effects, its Borrow implicit; R4-M87;
     // AWidenedEffectMeetsTheLiveStaticLoansRooted): a summary that would keep an effect on a projection with a recursive base has unknown
     // environment effects, which conflict with every live mutable-static Loan. R4-M90 PQ-1: count's receiver Borrow is Binding's

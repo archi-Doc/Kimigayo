@@ -114,6 +114,21 @@ public sealed class TyCtxtTest
         "func held(view: View<i32> during static) -> View<i32> during static => view\n" +
         "func local(x: ref/i32) -> i32\n    let v = View<i32>.init(x)\n    let b = Block.init()\n    let c = Cell.None\n    return 0\n";
 
+    // Holders whose stored parts reach a raw layer a Type argument supplies below them: through a Field (Outer), an inline Tuple (Pair2), a
+    // Case payload (Opt2), an Array element (Hold), an Own layer's pointee (OP), an Own layer's Type argument (Box1), the base (Der), an
+    // Option, an enum with a stated and a supplied payload (E2), fixed arrays (FA), a Tuple (TP) and a pair slot (Holder).
+    private const string KeptSource = "struct Wrap<E>\n    var value: E\nstruct Outer<P>\n    var w: Wrap<P>\nstruct Pair2<P>\n    var p: (Wrap<P>, i32)\n" +
+        "enum Opt2<P>\n    Has(Wrap<P>)\n    Not\nstruct Hold<P>\n    var items: Array<Wrap<P>>\n" +
+        "struct OP<P>\n    var data: raw/Wrap<P> during self\n    public init() => self.data = null\n" +
+        "struct ErasedBag<T>\n    var data: raw/u8 during self\n    public init() => self.data = null\nstruct Box1<P>\n    var b: ErasedBag<Wrap<P>>\n" +
+        "open struct BaseW<P>\n    var w: Wrap<P>\nstruct Der<P> : BaseW<P>\n    var n: i32\nstruct OuterE<P>\n    var e: Option<P>\n" +
+        "enum E2<P>\n    A(raw/u8, P)\n    B\nstruct OuterE2<P>\n    var e: E2<P>\nstruct FA<P>\n    var cells: [2 of P]\n    var stated: [2 of raw/u8]\n" +
+        "struct OuterF<P>\n    var f: FA<P>\nstruct TP<P>\n    var t: (i32, P)\nstruct OuterT<P>\n    var t: TP<P>\n" +
+        "struct Holder<s/T>\n    internal let value: s/T\nstruct OuterH<P>\n    var h: Holder<P>\n" +
+        "func probe(x: uniq/i32, o: Outer<raw/u8 during x>, t: Pair2<raw/u8 during x>, e: Opt2<raw/u8 during x>, h: Hold<raw/u8 during x>, " +
+        "op: OP<raw/u8 during x>, bb: Box1<raw/u8 during x>, d: Der<raw/u8 during x>, plain: Outer<raw/u8>, oe: OuterE<raw/u8 during x>, " +
+        "oe2: OuterE2<raw/u8 during x>, of: OuterF<raw/u8 during x>, ot: OuterT<raw/u8 during x>, oh: OuterH<raw/u8 during x>) => ()\n";
+
     // Defaults that call a generic function, a length-generic one, one with an Origin, a requirement and, in a generic struct's method, a
     // function over the struct's Type parameter.
     private const string ComposeSource = "func copy<T>(x: T) -> T\n    T is Copy\n    return x\nfunc f<T>(x: T, y: T = copy(x)) -> T\n    T is Copy\n    return y\n" +
@@ -374,18 +389,19 @@ public sealed class TyCtxtTest
         Assert.Contains(layers[0].RawOrigin!.Kind, new[] { OriginKind.Inference, OriginKind.Projection });
     }
 
-    // SPEC 5.7 (design-final §15; DECISIONS BU-24): a raw layer an instance stores has the step of its declared Field Type or Case
+    // SPEC 5.7 (design-final §15; DECISIONS BU-24, BU-41): a raw layer an instance stores has the step of its declared Field Type or Case
     // payload under the instance's substitution, the one reader A5 has for it: `self` the holder's own, a `ref` slot Shared (also under
-    // `static`), a `uniq` slot Exclusive, an inline Tuple's or fixed array's layer by its positions; the instance's stored Types state
-    // none.
+    // `static`), a `uniq` slot Exclusive, an inline Tuple's or fixed array's layer by its positions; the declaration states each, so no
+    // Type argument supplies it; AdtDef's stored Types state none.
     [Fact]
     public void AStoredRawLayerHasItsDeclaredStep()
     {
         var (types, p) = StoredLayers();
+        (BoundType Instance, int Part, int[] Positions)[] layers = [(p[3], 0, []), (p[4], 0, [0]), (p[5], 1, []), (p[6], 1, []), (p[7], 0, []), (p[8], 0, [0]), (p[8], 1, [1])];
         Assert.Equal(
             [RawStep.Own, RawStep.Own, RawStep.Shared, RawStep.Shared, RawStep.Exclusive, RawStep.Own, RawStep.Own],
-            [types.RawStep(p[3], 0, []), types.RawStep(p[4], 0, [0]), types.RawStep(p[5], 1, []), types.RawStep(p[6], 1, []),
-                types.RawStep(p[7], 0, []), types.RawStep(p[8], 0, [0]), types.RawStep(p[8], 1, [1])]);
+            layers.Select(x => types.RawStep(x.Instance, x.Part, x.Positions)));
+        Assert.All(layers, x => Assert.False(types.RawSupplied(x.Instance, x.Part, x.Positions)));
         Assert.All([AdtDef.FieldType(p[3], 0)!, AdtDef.CaseTypes(p[4])![0]!.Components[0], AdtDef.FieldType(p[5], 1)!], static x => Assert.Null(x.RawOrigin));
     }
 
@@ -394,23 +410,105 @@ public sealed class TyCtxtTest
     // declared layer: it has the kind of the Origin the argument states (none Unstated, `static` Static, any other Exclusive), never the
     // stored cap, and a pair's raw case states none (SPEC 8.1.2), nor does a raw argument a pair slot binds (SPEC 8.1.1, DECISIONS BU-34:
     // `Holder<raw/i32 during y>` is `Holder<raw/i32>`). Its Origin's borrows are not the instance's, so an Exclusive one's members are
-    // incomplete. A path whose substituted part is no raw layer stays a broken contract.
+    // incomplete. RawSupplied answers each such layer. A path whose substituted part is no raw layer stays a broken contract.
     [Fact]
     public void ARawLayerATypeArgumentSuppliesStepsByItsOwnOrigin()
     {
         var (types, p) = StoredLayers();
+        (BoundType Instance, int Part, int[] Positions)[] layers =
+        [
+            (p[9], 0, []), (p[10], 0, []), (p[11], 0, []), (p[12], 0, []), (p[13], 0, []), (p[14], 1, []), (p[15], 0, [0]), (p[15], 1, [0]),
+            (p[16], 0, [0]), (p[17], 0, [0]), (p[18], 0, [0]), (p[19], 0, [0]), (p[21], 0, []),
+        ];
         Assert.Equal(
             [RawStep.Unstated, RawStep.Exclusive, RawStep.Static, RawStep.Unstated, RawStep.Unstated, RawStep.Unstated, RawStep.Unstated,
                 RawStep.Unstated, RawStep.Unstated, RawStep.Unstated, RawStep.Exclusive, RawStep.Exclusive, RawStep.Unstated],
-            [types.RawStep(p[9], 0, []), types.RawStep(p[10], 0, []), types.RawStep(p[11], 0, []), types.RawStep(p[12], 0, []),
-                types.RawStep(p[13], 0, []), types.RawStep(p[14], 1, []), types.RawStep(p[15], 0, [0]), types.RawStep(p[15], 1, [0]),
-                types.RawStep(p[16], 0, [0]), types.RawStep(p[17], 0, [0]), types.RawStep(p[18], 0, [0]), types.RawStep(p[19], 0, [0]),
-                types.RawStep(p[21], 0, [])]);
+            layers.Select(x => types.RawStep(x.Instance, x.Part, x.Positions)));
+        Assert.All(layers, x => Assert.True(types.RawSupplied(x.Instance, x.Part, x.Positions)));
         var members = new List<RawMember>();
         Assert.Equal((false, true, true), (types.RawMembers(p[10], 0, [], members), types.RawMembers(p[9], 0, [], members), types.RawMembers(p[21], 0, [], members)));
         Assert.Empty(members);
         Assert.Same(p[13], p[21]);
         Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.RawStep(p[20], 0, [])).Message, StringComparison.Ordinal);
+        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.RawSupplied(p[20], 0, [])).Message, StringComparison.Ordinal);
+    }
+
+    // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-41): an instance's stored parts (StoredParts) are its substitution of the declared Fields,
+    // Case payload Tuples and base with the raw Origins its Type arguments give, AdtDef's being these without them (the same Types by
+    // reference, null where AdtDef's are, also where Binding rejected a Field or a Case): below the holder, a layer a Type argument
+    // supplies keeps its Origin at a Field, an inline Tuple, a Case payload, an Array element, an Own layer's pointee and Type argument
+    // and the base; a holder whose argument states no Origin stores AdtDef's parts. A layer of a rejected Case's payload is no part
+    // Binding accepts (DECISIONS BU-37), so reading it is a broken contract, also where the layer's own payload substitutes.
+    [Fact]
+    public void AnInstancesStoredPartsKeepItsRawOrigins()
+    {
+        var (c, p) = KeptParts();
+        foreach (var holder in p[1..8])
+        {
+            Assert.Contains(Kept(c, holder), static x => x?.CarriesRawOrigin == true);
+            Assert.DoesNotContain(Stored(holder), static x => x?.CarriesRawOrigin == true);
+        }
+
+        var plain = Kept(c, p[8]);
+        Assert.Same(AdtDef.FieldType(p[8], 0), plain[0]);
+        var failed = MirBuildTest.Compile("struct Bad<P>\n    public var v: P\n    public var m: Missing\nenum E<P>\n    A(Missing, P)\n    B(P)\n" +
+            "func f(x: uniq/i32, b: Bad<raw/u8 during x>, e: E<raw/u8 during x>) => ()\n");
+        Assert.False(failed.Binding.Result.IsComplete);
+        var q = KotoTree.Walk(failed.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
+        Assert.Equal([false, true, true, true, false], Kept(failed, q[1]).Concat(Kept(failed, q[2])).Select(static x => x is null));
+        Assert.True(Kept(failed, q[1])[0]!.CarriesRawOrigin && Kept(failed, q[2])[1]!.CarriesRawOrigin);
+        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => failed.Types.RawStep(q[2], 0, [1])).Message, StringComparison.Ordinal);
+        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => failed.Types.RawSupplied(q[2], 0, [1])).Message, StringComparison.Ordinal);
+
+        // A struct's kept Fields and kept base, or an enum's kept Case payload Tuples, each AdtDef's WithoutRawOrigins.
+        static BoundType?[] Kept(Compilation c, BoundType holder)
+        {
+            var parts = c.Types.StoredParts(holder, out var parent).ToArray();
+            BoundType?[] kept = AdtDef.IsStruct(holder) ? [.. parts, parent] : parts;
+            var erased = Stored(holder).ToArray();
+            Assert.Equal(erased.Length, kept.Length);
+            for (var i = 0; i < kept.Length; i++)
+            {
+                Assert.Same(erased[i], c.Binding.WithoutRawOrigins(kept[i]));
+            }
+
+            return kept;
+        }
+    }
+
+    // SPEC 5.7 Calls, 15.6.4 (DECISIONS BU-41): a layer a Type argument supplies below the holder is read on the instance the holder's kept
+    // part reaches, which its first read substitutes: Outer<raw/u8 during x>'s `w` is Wrap<raw/u8 during x>, whose `value` is supplied
+    // and steps Exclusive with incomplete members, where AdtDef's Wrap<raw/u8> reads Unstated, and Opt2's payload reaches the same
+    // instance. RawSupplied is total where RawStep is: an Option's payload, an enum Case with a stated and a supplied payload, fixed array
+    // elements, a Tuple component and a pair slot's layer, which states no Origin (DECISIONS BU-34), so the holder stores AdtDef's part; a
+    // Case without its payload position, a component with no raw layer or one out of range is a broken contract.
+    [Fact]
+    public void AKeptNestedInstanceReadsItsSuppliedLayers()
+    {
+        var (c, p) = KeptParts();
+        var types = c.Types;
+        var members = new List<RawMember>();
+        var wrap = Kept(1);
+        Assert.Equal((RawStep.Exclusive, true, false), (types.RawStep(wrap, 0, []), types.RawSupplied(wrap, 0, []), types.RawMembers(wrap, 0, [], members)));
+        Assert.Equal(RawStep.Unstated, types.RawStep(AdtDef.FieldType(p[1], 0)!, 0, []));
+        Assert.Same(wrap, types.StoredParts(p[3], out _)[0]!.Components[0]);
+        var option = Kept(9);
+        var some = Array.FindIndex(option.Symbol!.Adt!.Cases, static x => x is { Payload.Length: 1 });
+        (BoundType Instance, int Part, int[] Positions)[] layers =
+            [(option, some, [0]), (Kept(10), 0, [0]), (Kept(10), 0, [1]), (Kept(11), 0, [1]), (Kept(11), 1, [0]), (Kept(12), 0, [1]), (Kept(13), 0, [])];
+        Assert.Equal(
+            ["Exclusive True False", "Unstated False True", "Exclusive True False", "Exclusive True False", "Unstated False True", "Exclusive True False",
+                "Unstated True True"],
+            layers.Select(x => $"{types.RawStep(x.Instance, x.Part, x.Positions)} {types.RawSupplied(x.Instance, x.Part, x.Positions)} " +
+                $"{types.RawMembers(x.Instance, x.Part, x.Positions, members)}"));
+        Assert.Empty(members);
+        Assert.Same(AdtDef.FieldType(p[13], 0), Kept(13));
+        (BoundType Instance, int Part, int[] Positions)[] broken = [(option, some, []), (Kept(12), 0, [0]), (Kept(12), 0, [5])];
+        Assert.All(broken, x => Assert.Contains(
+            "InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.RawSupplied(x.Instance, x.Part, x.Positions)).Message, StringComparison.Ordinal));
+
+        // The first kept part of the probe's parameter i.
+        BoundType Kept(int i) => types.StoredParts(p[i], out _)[0]!;
     }
 
     // SPEC 8.1.1, 8.2.3, 8.6.1 (DECISIONS BU-34): a pair slot binds a raw argument without its Origin, so an instance, a nested Type, a
@@ -438,16 +536,21 @@ public sealed class TyCtxtTest
         Assert.Same(references[0], references[1]);
     }
 
-    // design-final §15: the stored-layer reader allocates nothing when warm.
+    // design-final §15 (DECISIONS BU-41): the stored-layer readers and the kept parts allocate nothing when warm, also on a kept nested
+    // instance, which its first read substitutes.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmStoredRawLayerReadAllocatesNothing()
     {
         var (types, p) = StoredLayers();
+        var nested = types.StoredParts(p[22], out _)[0]!;
+        var members = new List<RawMember>();
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (types.RawStep(p[3], 0, []) != RawStep.Own || types.RawStep(p[6], 1, []) != RawStep.Shared || types.RawStep(p[8], 1, [1]) != RawStep.Own ||
-                types.RawStep(p[19], 0, [0]) != RawStep.Exclusive)
+                types.RawStep(p[19], 0, [0]) != RawStep.Exclusive || types.StoredParts(p[19], out _).Length != 2 ||
+                !ReferenceEquals(types.StoredParts(p[22], out _)[0], nested) || types.RawStep(nested, 0, []) != RawStep.Exclusive ||
+                !types.RawSupplied(nested, 0, []) || types.RawMembers(nested, 0, [], members) || types.RawSupplied(p[3], 0, []))
             {
                 throw new InvalidOperationException("Stored raw steps changed.");
             }
@@ -945,7 +1048,8 @@ public sealed class TyCtxtTest
 
     // A struct's Fields and base, or an enum's Case payloads.
     // The Type context and the parameter Types of `probe` in RawShapeSource with a `uniq` remainder and inline raw parts: x, y, z, then a
-    // Block, a Cell, Views under x and `static`, a remainder under y and the inline parts; then (9-21) raw layers Type arguments supply.
+    // Block, a Cell, Views under x and `static`, a remainder under y and the inline parts; then (9-21) raw layers Type arguments supply,
+    // and (22) one below the holder.
     private static (TyCtxt Types, BoundType[] Parameters) StoredLayers()
     {
         var c = MinimalEmissionTest.Analyze(RawShapeSource + "struct R<E> {source}\n    internal let at: raw/E during source\n    internal let loan: Loan<uniq/E during source>\n" +
@@ -958,10 +1062,20 @@ public sealed class TyCtxtTest
             "func probe<T>(x: ref/i32, y: uniq/i32, z: i32, b: Block, c: Cell, v: View<i32> during x, s: View<i32> during static, r: R<i32> during y, " +
             "p: Parts, ta: Local<raw/i32>, tb: Local<raw/i32 during y>, tc: Local<raw/i32 during static>, td: Local<raw/T>, te: Holder<raw/i32>, " +
             "tf: Anchored<raw/i32, i64> during x, tg: Choice<raw/i32, i64> during x, th: InTuple<raw/u8>, ti: InArray<raw/u8>, " +
-            "tj: Local<(raw/u8 during y, isize)>, tk: Option<raw/u8 during y>, tn: Local<i32>, to: Holder<raw/i32 during y>) => ()\n");
+            "tj: Local<(raw/u8 during y, isize)>, tk: Option<raw/u8 during y>, tn: Local<i32>, to: Holder<raw/i32 during y>, tp: Local<Local<raw/u8 during y>>) => ()\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var probe = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe");
         return (c.Types, probe.Parameters.Select(static x => x.Type.TypeOf()!).ToArray());
+    }
+
+    // The compilation of KeptSource and the parameter Types of its `probe`: x, then Outer, Pair2, Opt2, Hold, OP, Box1 and Der under x's
+    // Origin, Outer under none, then OuterE, OuterE2, OuterF, OuterT and OuterH under x's.
+    private static (Compilation C, BoundType[] Parameters) KeptParts()
+    {
+        var c = MinimalEmissionTest.Analyze(KeptSource);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var probe = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe");
+        return (c, probe.Parameters.Select(static x => x.Type.TypeOf()!).ToArray());
     }
 
     // The struct and enum instances the MIR locals hold, added to `instances`, and the names of those whose erased instance does not store

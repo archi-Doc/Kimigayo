@@ -1550,6 +1550,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Error keeps evaluated children); a `HirOp` member (40 of 40); a Binding failure written at publish (publishing decides nothing,
   `PublishIsInvisible`); non-nullable fact types now (R7's CallPlan and declaration-table scope). Lasting: `HasFacts` and
   `HirTables.Broken` are the publication contract; at R7 the publisher walk goes and Binding's inline Op writes call `HasFacts`.
+  Amended by PLAN G122 (2x-E3, 2026-10-26): a literal the lexer could not read (its published absence of a value, `CharLiteralKoto.Value`
+  null) is published Error, derived from the lexer's record, not Broken: the publisher's `Rejected` owns that rule. A published Literal
+  has its constant; the builder's `Literal` is the one check of it, a located `InternalInvariant_Kd` for a Literal without one.
 - **R4-M54** (2026-10-17; PLAN G92, implementing R4-M52's fold (owner) on the planning session's instruction of the same day;
   its pair-layer input amended by R4-M66)
   On the preparation path of an input that starts a reservation (`MirBuilder.Place` with `input`: `Operand` keeps it only for an
@@ -1905,7 +1908,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   owner after three review rounds, below; A3 §12 E16). A Call's store row reaches every holder its argument reaches: ret(i, κ) joins
   every holder of W(val(a_j)) (A3 E16, rule G: SPEC 15.6.4's letter, no SPEC change), with no exclusion. It supersedes R4-M63's store
   target, refs(val(a_j)) (A3 E14), and A3 §5's Calls line. Superseded in part by R4-M143: at a 4.6–4.9 operation's referent store whose
-  referent destroys shallowly the store reaches refs(S) alone, and P13's hold does not fire there.
+  referent destroys shallowly the store reaches refs(S) alone, and P13's hold does not fire there. Superseded in part by R4-M147:
+  the guard reads each part (`MirWrites` None, Through, Limit), and P13's interim, the body hold below, is removed.
   - Representation: `MirTypes.HoldsLoans`' one walk, each Type once per mode, also gives what a call may write past a value
     (`MirWrites`): the guard, passed concretely (`Through`; a callable and a part past the bound count so) or only through a struct's or
     enum's Type argument, a pair layer or an abstract part (`ThroughArgument`), and for a value that holds no Loan whether a raw pointer
@@ -2038,7 +2042,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     follows a shared Loan past a holder whose Type passes the guard only through a Type argument, a pair layer or an abstract
     part) is recovered by a representation, not a SPEC clause (OQ8 (b), for P13 in place of the earlier G148 answer's OQ8 (a)):
     until a step-2 unit makes the guard per part (it reads a generic Type's Fields and takes no Type argument as an exclusive
-    reference), before R4's exit (else OQ9's list), a conflict that depends on such a store is a located `Unsupported_Kd` (PD30).
+    reference; R4-M147, which reads a stored Own or Origin-less layer's instance's Type arguments by their actual Types, Q2 (a)), before
+    R4's exit (else OQ9's list), a conflict that depends on such a store is a located `Unsupported_Kd` (PD30).
     A precision refinement such as GXS stays an unscheduled candidate, as G127.
   - S5 (OQ13 made precise, superseding its "grows"; 2x-S5's question Q1): form (c). A parameter-dependent effect on a projection
     one of whose bases the premises of the summary's declaration prove to conform to a recursive Contract widens to unknown
@@ -3470,7 +3475,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     own. R-B4: "can hold a value of its Type" is normalized Type identity with Origins fitted. R-B5: G160-2c runs MirCensusTest and the
     Text, Utf8Writer and interpolation classes with the untied rule before merging, and a new problem stops it. R-N1 amends PQ-3: the
     guard's Exclusive row walks the pointee as a Type argument; where that is wider than the keepers it holds the view as a located
-    `Unsupported_Kd`.
+    `Unsupported_Kd` (superseded by R4-M147: the Exclusive row reads the layer's members, an unpublished list a Limit).
   - Owners and order: Binding's `RetentionInput` decides 15.6.4's row kinds, so raw arguments' rows are BU's G160-2c (B′ §3.2 as
     amended; it starts on the owner's word for BU) and A5's `Retained` is unchanged. Order: 4a (behavior-preserving splits of the due
     `MirBorrows.Values.cs`, `.Locations.cs`, `.Solve.cs` and `.Reports.cs`), BU's G160-2b (`RawStep` total), G160-2c, 4b (addresses;
@@ -3622,7 +3627,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Holders and the guard (`MirTypes.HoldsLoans(type, types, seen, out writes)`): a raw layer is a part that may hold a Loan; past one
     in the value's own storage a stored layer by `TyCtxt.RawStep`: Own the holding value's own storage, Shared nothing, Exclusive the
     pointee by argument (R-N1), Unstated or Static an exclusive reference to the pointee; any other layer an exclusive reference to its
-    pointee. The walk keeps the stored part it is inside; a raw layer and its part's inline Tuples bypass the per-(Type, mode) memo.
+    pointee (superseded by R4-M147's per-step rows, on the instance holding the layer; any other layer unchanged). The walk keeps the stored
+    part it is inside; a raw layer and its part's inline Tuples bypass the per-(Type, mode) memo.
   - Φ_E where a value may refer to storage the body does not own: G160-2c's untied results (S2), a row with no input per
     `CallRetention.UntiedStores` input whose W receives {Φ_E} (R-B2), and the untracked rule (S3, PQ-2) at raw formation, at a layer's
     read (on what `@raw` forms) and at a call result that may hold a raw pointer (`MirTypes.HoldsRaw`); and E's own state from the entry
@@ -4691,7 +4697,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
       append, pop and swap, Dictionary `insertOrReplace`, an Array of exclusive references, a fixed array's `sliceUniq` and a
       UniqSlice's `indexUniq`, with their twins and the edges `appendParamBad` and `userWriteBad`; it fails first.
     - `ADestructionAReferentMayObserveKeepsW` pins the guard: clearObjBad errs, clearObjOk is a known false error, the drop forms
-      keep their errors, and clearGenOk and clearGenBad keep `Unsupported_Kd`, as O7 says.
+      keep their errors, and clearGenOk and clearGenBad keep `Unsupported_Kd`, as O7 says (since R4-M147 by its abstract-referent
+      Limit at `a.clear()`, the hold removed).
     - `TheReferentStoresStayDense` (V16) fails first.
     - `reserve`'s referent store (bu45's review O15) is pinned by reserveLateOk, an explicit `reserve` over a non-empty Array, which errs
       where `reserve` keeps W; the literal's `reserve` meets an empty Array, so no literal form depends on it.
@@ -4774,6 +4781,90 @@ and migration obligations remain in force; no numeric cap changes are authorized
     reader. Rejected: a new column or `Flag` for the discard (a second fact for one form; `Result` and `Statement` both change); the
     builder testing Discard Context itself (a syntax decision the ratchet forbids); keeping the builder's ByCase (R5's condition 3).
   - Numbering: R4-M145 was reserved for S2 by the R4 planning session (R4-M142; R4-M146 is 2x-E5's, R4-M148 2c-3's).
+- **R4-M147 A5's per-part guard; P13's body hold removed (PLAN G148 (1), P13-1)** (2026-10-26; R4's lane B under design P13 v3,
+  ACCEPT at its design review 3, on BU-41's view (U0, unit bu46); the planning session's ruling D″ of 2026-10-26 on an abstract
+  referent; class Full with BU).
+  - Rule (SPEC 15.6.4, 5.7 Calls, 15.3.5; A3 E16): `MirTypes.HoldsLoans` reads the guard per part. A struct's or enum's Type argument
+    gives Loan facts only: it has no address and grants no access. An abstract part (the owner's Q1 (a)), a pair layer's exclusive case,
+    a callable and a part past the bound may be an exclusive reference. A struct's or enum's own storage is its stored parts as the
+    holder's substitution makes them, raw Origins kept (`TyCtxt.StoredParts`, BU-41). Each raw layer there is read by its step on the
+    instance holding it (`TyCtxt.RawStep`):
+    - Own (`during self`): the pointee and the instance's Type arguments by their actual Types, in the value's own storage (Q2 (a));
+      the write fact where the instance has an Origin argument (P1).
+    - Shared: nothing. Static: the pointee past an exclusive layer.
+    - Exclusive: the pointee and each exclusive member's referent past an exclusive layer (`TyCtxt.RawMembers`). Where the members are
+      unpublished (a Type argument supplies the layer, or the member walk is incomplete), the Limit fact; a write fact anywhere in the
+      value outranks it (review 2's C5).
+    - Unstated, SPEC 5.7 Calls' per-parameter rule (P2): the pointee past an exclusive layer where the parameter's Type expression writes
+      the layer, a Type argument's or a pair slot's argument's included (`TyCtxt.RawSupplied`, read on the instance holding the layer);
+      the write fact where a declaration states it in its own Fields, Case payloads or base. Gap (Known limits): a layer written in a
+      Type argument of the declaration's own Field, Case payload or base clause reads as supplied.
+    - A raw layer outside an instance (a local's or parameter's own Type, an element or a Tuple outside one): its pointee past an
+      exclusive layer, as R4-M120 has it.
+  - Representation: `MirWrites` is None, Through and Limit, with Through over Limit over None; `ThroughArgument`, the walk's `Argument`
+    mode and its `WriteByArgument` fact are removed, and the modes are Own, Exclusive and LoanOnly. `HoldsLoans(type, types, seen,
+    members, out writes)` takes a `List<RawMember>` scratch that `MirBorrows` owns, used in stack order. The destruction walk's answer
+    is one class, `MirObservation` (None, Unproven, Observes, Deep; `MirTypes.Observation`, which replaces `Observes` and its `out bool
+    deep`), so no member takes a second `out bool` (COMPILER_ARCHITECTURE's parameter limits). No vocabulary entry.
+  - The walk goes on past an abstract part not proven Copy (it stopped there before), so a Type that holds one and a part past the
+    depth bound is `Deep` (an unclassified destruction, a located `Unsupported_Kd`) where it was observing: conservative, with no
+    corpus effect (the census's problems are equal).
+  - The Limit's record: `MirBorrows.Writes`, now one pass from the Through holders, returns whether W reached a Limit holder. The checks
+    replay's Call sets the location's limit, and `Check` records it as one located `Unsupported_Kd` at the call through the rule that
+    records `CallRetention.Limit` (R4-M51). The view's other problems stay.
+  - An abstract referent (the planning session's ruling D″): at a referent store (R4-M143) whose referent's destruction observes only
+    through abstract parts not proven Copy (`MirTypes.Observation`'s `Unproven`, from its one walk, which now goes on past such a part;
+    memoized in `MirBorrows.Destruction`), W past refs(S) is undecided. A store whose undecided part past refs(S) would
+    add a Loan or an address (the row's value holds one: its sorted set's last element) is a Limit and stops at refs(S); a value of Φ_E
+    and markers only takes W as before. The rule has the shape of G264's revision 1 (skip only together with `Unsupported_Kd`).
+    Rejected: any W past refs(S) (it records at Array.appendAll's `source.reverse()` and `source.pop()` in every compilation: MirCensusTest
+    fails on the library, 44 milestones, 32 goldens and 43 SPEC variants); W reaching a holder other than E (W into E alone still
+    leaves a downstream conservative error that the hold hid).
+  - Removed: R4-M73's body hold (`held`, `Record`'s hold branch, its reset, W's second pass and its clean index) and its empty-value
+    rule. Every (body, view) it held gets the guard's verdict or the Limit's record. `Departure` records through `Record`, which is now
+    the one recorder of every problem but a located `Unsupported_Kd`.
+  - The owner's answers (verbatim): on Q1 and Q2, 「Q1・Q2 ともに推奨の (a) で進めて下さい」 (2026-10-25); on P1 and P2, 「進める (推奨)」
+    (2026-10-26). SPEC 5.7 Calls and 15.6.4 state P2's split since 833209c38.
+  - Supersedes: R4-M73's P13 interim (the body hold) and its `MirWrites` bullet (`ThroughArgument`); R4-M120's guard bullet (Exclusive
+    "the pointee by argument", Unstated "an exclusive reference to the pointee") and R4-M116's R-N1; R4-M76's "takes no Type argument as
+    an exclusive reference" for a stored Own or Origin-less layer, whose instance's Type arguments are read by their actual Types (Q2
+    (a)); R4-M143's O7 pin, now kept by the abstract-referent rule: clearGenOk is the located `Unsupported_Kd` at `a.clear()`,
+    clearGenBad and Gen's `kept` that record and their true `y = 5`.
+  - Known limits: a raw layer without an Origin that a declaration writes as a Type argument of its own Field, Case payload or base clause
+    (`Holder2 { b: Wrap<raw/u8> }`, `HoldOpt { o: Option<raw/u8> }`, `DerS : BaseW<raw/u8>`, `M<P> { w: Two<raw/u8, P> }` (a stated position
+    beside a supplied one), a user enum's payload, a Tuple in a Type argument, deeper nesting, a base chain, a pair slot's argument) reads
+    as supplied on the nested instance that holds it, so its Loan-free pointee gives no write fact where SPEC 5.7 Calls gives one: an
+    unsound acceptance, pre-existing (dev's MIR and the default pipeline accept the same forms, and this unit newly accepts none), until
+    Binding publishes the layer's provenance relative to the holder (PLAN open issue, G148 (1)'s holder-relative revision; BU's proposed
+    change (A), with a chain in `Past`). Pinned as accepted: `nestedDead` and `optionalDead`
+    (`MirBorrowsTest.AStoredRawLayerIsReadByItsStep`) and `ds: DerS` (`MirTypesTest`). A store past a supplied Exclusive layer whose Origin
+    is a shared or parameter borrow is a Limit (`sharedSupplied`, valid, accepted on dev), until Binding publishes such a layer's step
+    judged by its borrow, or the writing scope's members; a raw layer outside an instance reads its pointee, so `tupleW` (an Exclusive raw
+    layer over u8 in a local Tuple) is accepted where the letter leaves it undecided (v3 §6 (1)). B6-for's `v@follow = x`, the wrong record
+    PLAN G147 (8i) owns (BU's unit 0c) on the branch's base, does not arise on dev, whose Array literal places its element through no
+    receiver store (R5-M129); its two ledger rows went at the merge (R4's window 7).
+  - Evidence: the guard equals v3's prototype (variant 6) on its 30 probe programs and design review 3's r3-limits and r3-positions;
+    the problems equal it but for two d2-pairs rows, which dev changed since fb3e4d883 (base d73012e72 lacks them too). The mir
+    Functional ledger against `shared-base/5e5669d1b`, on the merge with dev a7eb51913: rows 3,222 to 3,209, 55 removed and 42 added in
+    19 sources, v3 §4.3's count and row for row the delta against d73012e72 before the merge: the hold's 44 `Unsupported_Kd` rows go (31
+    Language rows at the same locations, 11 paired with the old path's, B6-for's `var arr` twice recovered), no Limit record; open
+    blocking 109 and unclassified 10 (44 rows) unchanged; classification a5-p13 re-noted. MirCensusTest (library, milestones, goldens, accepted SPEC variants): no problem. Warm runs allocate nothing
+    (`TheGuardsWalkAllocatesNothingWarm`). Cost (the G258 host: A5 cold per program over the census's 120 programs, dev a7eb51913
+    against U0 and P13-1 merged on it (25cec9e11), separate binaries from sibling folders, A-A-B, three runs of 8 reps, CPU 6 pinned,
+    tiering off, beside one R5 heavy run): A5's min-sum 367.5 to 361.1 ms (0.9827; A/A 1.0087), median per-program ratio 0.9827, Work
+    0.9998, Loan-set bytes and problems equal; cold allocation +434,280 B (+0.93%), of which BU-41 measured about 374 KB as U0's share
+    in A5 (the parts it keeps). No slowdown.
+  - Tests: `MirTypesTest.TheGuardSaysWhatACallMayWritePastAValue` (value and layer Through, iterator and loan None, uniqKept Through)
+    and `TheGuardReadsEachStoredLayerOnItsInstance` (every position below the holder; Limit, Through and None twins); the new
+    `MirBorrowsTest.Guard.cs`: `TheGuardReadsEachPart` (the former `AListedLossIsUnsupported`; B6-for valid since R5-M129),
+    `AStoredRawLayerIsReadByItsStep` (Own's Type arguments, P1, P2), `AStoreTheGuardLeavesUndecidedIsUnsupported` (the Limit's record
+    per call, in a loop, at a constructor, `sharedSupplied`; Through twins; the `tupleW` pin) and `TheGuardsWalkAllocatesNothingWarm`
+    (V16); the expectation changes in `ACallStoreFollowsSpecsPerArgumentRule`, `APairLayerAcquisitionBorrowsAsItsMarkerSays`,
+    `AnAbstractDestructionOrTemporaryIsCheckedInItsDefinition`, `ACallOverRejectedStorageKeepsItsRows`' m1 row,
+    `ACopysFailureIsItsTemplatesOnlyWithinOneEvaluationRooted` and `ADestructionAReferentMayObserveKeepsW` (with `reversedGen`, the Φ_E
+    store D″ leaves alone); `AHeldEffectIsUnsupportedRooted` becomes `AnEffectConflictIsALoanProblemRooted`; the hold-only
+    `AHeldEffectIsUnsupported`, `AHeldViewKeepsTheWarning` and `AHeldTemplatesSlotProblemIsUnsupported` are deleted.
+  - Numbering: R4-M147 was reserved for P13-1 by the R4 planning session.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -5728,7 +5819,7 @@ resumed by R4-M86 (2026-10-20).
     obligations unjudged); judging at formation (a Field's own Origins are still `Unbound`); "binder failed, no record" in the judge
     (`IsDerived` owns derivation). Open: A's `IsDerived` widening for an associated specification's record (review N1).
 
-- **BU-24** (superseded in part by BU-39) (2026-10-22; the BU planning session after the full process: designs A′ and B′, design review 2, design-final §14 "B′+";
+- **BU-24** (superseded in part by BU-39, BU-41) (2026-10-22; the BU planning session after the full process: designs A′ and B′, design review 2, design-final §14 "B′+";
   unit bu20 C1a; CR-R2) A raw layer's Origin (SPEC 5.7) is a role of its own: `BoundType.RawOrigin` beside `Origin`, one slot whose
   role the Semantics decides (0 B; a pinned interleaved A/B of the getters against C0d's build gave warm Bind minima 35.70 against
   35.41 ms over three milestones, inside the baseline's own 3% spread, and equal cold bytes, so B′'s +8 B field is not taken). `Origin`
@@ -6576,6 +6667,51 @@ resumed by R4-M86 (2026-10-20).
     while the hold walk keeps its untied store, two answers to "the call writes output j", conservative (one more Φ_E target).
     Pre-existing: a lent `static` layer unties; `unlinkOk` is SPEC-invalid (`Node.init` stores through the null `next` into storage
     the body does not own: R4's triage).
+- **BU-41 An instance keeps its stored parts with their raw Origins: `TyCtxt.StoredParts`, `RawSupplied`** (2026-10-26; the BU
+  planning session's design S1′, `p13u0/design-U0.md`, accepted with P13's v3 by R4's design review 3; PLAN G148 (1), P13's U0, unit
+  bu46; the owner's answers on P13, Q1 (a), Q2 (a) and 「進める (推奨)」, and SPEC 5.7's clarification ② of 2026-10-26) P13's per-part
+  guard (R4-M76) reads, for every raw layer in a holder's own storage at any depth, its step under the holder's substitution, whether
+  its declaration states it or a Type argument supplies it, and an Exclusive one's members. Below the holder a walk entered nested
+  instances through AdtDef's stored Types, which state no raw Origin (BU-24), and the instance reached there is an interned erased Type
+  shared by every holder (`Wrap<raw/u8>` below `Outer<raw/u8 during x>` and below `Outer<raw/u8>`): a supplied Exclusive layer read
+  Unstated, and no answer keyed by what the walk holds at a layer can tell the holders apart; only the part before erasure can.
+  `Substitute` computed those parts and dropped them, and `StoredLayer` and the hold walk (`Stores`) substituted them again per read.
+  - Decision: `AdtDef.InstanceStorage` keeps `Parts` (a struct's Fields or an enum's Case payload Tuples) and `PartsBase` as
+    `Substitute` makes them, with the raw Origins the substitution gives (`self` as Holder); `Fields`, `Cases` and `Base` are their
+    `WithoutRawOrigins`, the same Types by reference (TyCtxtTest). One substitution per instance and pass in two forms; an instance first
+    reached after Binding is substituted on that first read (`Instance`'s per-pass memo, as every instance A5 reaches), and a warm read
+    allocates nothing. `StoredLayer` reads the kept part instead of substituting (a layer of a Case that did not substitute, BU-37's
+    null part, is a broken contract), and `Stores` reads the kept Fields and payloads.
+  - Retention (bu46's second commit): the hold walk read the erased base (`AdtDef.Base`), so a raw layer a Type argument supplies in a
+    base read Unstated (rule A) while its Field twin read its Origin's kind; `Stores` now reads the kept base. `f(x: uniq/i32, d:
+    uniq/Der<raw/i32 during x>, p: raw/i32)` keeps `0 Value store 1, 1 Content store 1, 2 Value store 1` and the `during static` twin
+    `1 Content store 1, 2 Value store 1, untied store 1`, their Field twins' rows (rule A's six rows before); `Der<raw/i32>` is
+    unchanged (RetentionTest). Over-strict before, not unsound.
+  - TyCtxt (`TyCtxt.Raw.cs`, contracts there): `StoredParts(instance, out parent)`, the kept parts by the `part` RawStep takes and the
+    kept base, empty for any other Type; `RawSupplied(instance, part, positions)`, whether a Type argument supplies the layer (no layer
+    the declaration states there; a pair slot's included, BU-34), total where RawStep is. `RawStep`, `RawMembers`, RawStep's values and
+    `RawMember` are unchanged. A walk reads a layer it reaches through `StoredParts` only through these three on the instance holding it,
+    never its raw Origin (none is read in Mir/, ArchitectureRulesTest). No compiler reader until R4's P13-1.
+  - Kept from BU-24: AdtDef's stored Types state no raw Origin (the old paths' identity, R5-M39's property), and A5 reads raw Origins
+    only through TyCtxt's stored-layer readers and never substitutes. No owner approval: no closed vocabulary, no RawStep value.
+  - Supersedes, as its reason ("A5 does not rely on" a supplied layer's step below the holder) no longer holds since P13's guard (R4-M76,
+    Q2 (a)) does: BU-24 C1b's invariant clause "never in an instance's stored Types" (now never in AdtDef's stored Types; Holder is also
+    in the kept parts, whose readers read a raw layer by its step only); RawStep's contract clause that such a layer below the holding
+    value "reads Unstated (DECISIONS BU-24)" (now the holder's through StoredParts, Unstated through AdtDef's parts); BU-24 G160-2b's open
+    nested case; PLAN G160's Binding-limit line (the planning session edits PLAN).
+  - Cost (cold allocation over 120 census programs: the library, milestones, goldens and accepting SPEC variants, base e212d7590): Bind
+    about +1.6 KB per program (+0.03%), MIR build +1.08 MB (+0.30%), A5 +374 KB (+0.55%): 1,650,464 B in all, all of it retained,
+    the `Parts` arrays of every instance (1,139,440 B) and 16 B on each of the 31,939 `InstanceStorage` objects (511,024 B); the kept
+    Case Tuples add none, and the design's +176 KB counted the instances Bind creates only. A pinned interleaved Bind A/B over
+    Milestones 1, 20 and 33 gave warm minima within 0.5% and equal cold minima; warm reads allocate 0 B.
+  - Rejected: S1, a per-Binding cache re-substituting the parts with a stated bit (a second stored-parts form, a third substitution;
+    ×1.0146 A5, +1.66 MB); S2, a per-layer list (sound only if its descent repeats A5's walk: two walks); S3, an answer keyed by
+    (instance, part, layer) (unsound: the erased nested instance is shared); S4a, AdtDef's stored Types keeping raw Origins (reverses
+    BU-24: about 90 reads in 36 files, D5's identity, R5-M39's property).
+  - Optional, not taken: S4b, `Parts` sharing the `Fields` or `Cases` array when equal. It is safe if `Parts` is that array only
+    when every kept part equals its erasure by reference and `Substitute`, the only writer, gives `Parts` its own array whenever a part
+    differs, before writing any slot; its measured saving, at most 532,216 B (13,981 of 24,155 non-empty instances), is the reason it
+    is not taken against a second representation state.
 - **BU-42 A 4.6–4.9 operation writes its receiver's store only where the receiver refers: `CallRetention.ReferentStores`**
   (2026-10-26; the BU planning session with R4 after the full process: BU's and R4's designs combined, design review 1 REVISE (B1),
   revision 1, design review 2 ACCEPT; PLAN G255 (C3), its Binding part, unit bu45; the owner's go of 2026-10-26 within N2's rows,
@@ -10166,3 +10302,108 @@ structure is recorded here by the unit that first implements it.
     - reusing FixedArray for an Array (R4's one-meaning rule);
     - a separate `Collection` or `ArrayLiteral` path beside the aggregate's (design review 1's B1);
     - a new rvalue kind, CompilerFunctionKind or IntrinsicId (PD21).
+- **R5-M130 The BuiltinFormat shim, user-formatter wrappers and the erased writer in MIR code generation (C9b)** (2026-10-26, C lane; plan
+  C9b, package C 3.2, PD2, PD3, PD21, K package 4.5 rows 2 and 6; SPEC 6.4.6, 7.7.4, 8.6.3, 22.5.1, 22.9.2, 22.9.4, 22.10.1, 22.10.2,
+  22.10.5; the planning session's go and rulings Q1-Q8 on C9b's design, `c9b-design.md` and `c9b-go.md`; under R5-M18 form 2 (G:format),
+  R5-M30, R5-M67, R5-M92, R5-M108, R5-M114, R5-M126 and R5-M128; PLAN G157 (10), (22), (28))
+  - BuiltinFormat shim (ruling Q1 (a)): a BuiltinFormat item is C8f's `__kimi_builtin<item>` (R5-M126's form and signature, caller-location),
+    the built-in formatting witness of its Self: its own parameters (`format`'s value at logical index 0, the writer at 1, the received
+    location) forwarded through `Forward` to P1d's BuiltinFormat row routine (`__kimi_format_builtin`, R5-M30) with its Self's kind
+    (`LegacyRuntimeHelpers.FormatKind` of the representative Self; a Self without one is a broken contract, since the collector admits a
+    built-in formattable Self only). `Witness` keeps its one rule, a Builtin item its shim's function, so a Requirement call (SPEC 22.10.1's
+    direct `format`, without the adapter's guard), a requirement Item's Value call and its adapter call it. `FunctionCodegen.Shim`, the
+    record, is deleted. No capability row applies to formatting (i128 and u128 format through the runtime's kinds 9 and 10), so C8f's R-2
+    rule has nothing to read: R5-M128's "C9b records it at each requesting site" is superseded, the item is written and no site records.
+    K row 2's Builtin targets keep R5-M128's form (the row's built-in routine with the kind); their admitted item is defined and unused there
+    (R5-M128's deviation, dead at O0, dropped at O2).
+  - Wrappers (ruling Q2 (a)): a user or library formatter, the Body target of a kind-bearing row's call (WriterWrite, TextToString,
+    TextTryFormat; K row 2), runs through the row's wrapper over it, one per target and row, `ModuleCodegen.Wrapper` (new
+    `ModuleCodegen.Formatting`): named after the target item (`__kimi_write<item>`, `__kimi_tostring<item>`, `__kimi_tryformat<item>`),
+    kept across Writes, defined once in each Write that requests it after the items, with its row's needs; the direct call, the Item's Value
+    call and the adapter entry write one call to it as to a routine (`FunctionCodegen.Formatting`: the target rule of a kind-bearing row).
+    - The write wrapper (the old planner's ABI: result slot, adapter, value; no format witness takes a location, since none is
+      caller-location) is written by FunctionCodegen (`WriteWrapper`): SPEC 22.10.1's frame, the recorded failure tested through the runtime
+      (`__kimi_format_healthy`) before and after, a failure recorded and returned through `__kimi_writer_fail`, around one call of the witness
+      through `BodyRun` with its slot (G157 (28)), by `CallWitness`, the one witness-call helper the comparison shim's Witness leaf also calls
+      (restructured first).
+    - The conversions (toString, tryFormat: the row's routine less its kind Context, which the target replaces) are the old generator's text
+      over the target's write wrapper, `LegacyRuntimeHelpers.WriteFormattingConversion`, promoted once (PD2); a conversion's request also
+      requests the write wrapper.
+    - SPEC 22.10.1's user-formatter frame then exists twice until R6-gen: the old planner's `WriteFormattingWrite` (frozen, D5) and this
+      write wrapper; the old one goes with the old generator at R6-gen, its removal condition. The built-in formatter's frame is the legacy
+      runtime's `__kimi_writer_write_builtin` (P1d's text, `Utf8FormatRuntime.ll.in`, until R8), which both generators call, so it is one
+      copy. Two runtime ABIs are also stated twice until R6-gen, with the same removal condition: `LegacyRuntimeHelpers.FormatHealthy`
+      beside the frozen `BodyLowering.Interpolation.cs`'s `StatusFormatting`, and `ModuleCodegen.WriteParameters` (the write wrapper's ABI)
+      beside the old planner's wrapper ABI (`GenericStoragePlan.cs`, `__kimi_writer_write_user`).
+  - Erased writer (ruling Q3 (a)): `Text.writer`, the ErasedWriter intrinsic, has the row routine P1d's TextWriter (`__kimi_text_writer`)
+    and a new `IntrinsicWriter.Writer` (an internal writer column, as Ensure, Create, Clone, Test and Capacity were): its two Context words
+    are given from its destination W, the call's Type argument read as the collector reads it for K row 6's target (`TypeArgument`: a call's
+    substitution or an Item's own, `TyCtxt.SubstOfItem`, through `TypeOf`; BU-38), and from that target: the runtime's writer kind
+    (`LegacyRuntimeHelpers.WriterKind`, promoted from the old generator: FixedBuffer 0 and HeapBuffer 1, whose reserve is the runtime's own,
+    a body-less compiler function, so the call carries no target, with a null dispatch word; any other W 2, whose Body target, its reserve
+    witness, gives the dispatch word, its function `@__kimi_f<item>` under the runtime's dispatch signature `void (ptr, ptr, i64)`). Any
+    other pairing is a broken contract. Code generation resolves no witness. The call, the Item's Value call and the adapter entry are
+    written alike (G157 (22)'s `Text.writer` part closes).
+  - Virtual witnesses (ruling Q6): Binding admits no virtual `reserve` or `format` witness: a virtual function's receiver is `objref/Self`
+    or `objuniq/Self` (SPEC 6.4), which BufferWriter's `uniq/Self` and Utf8Format's `ref/Self` requirements reject or Binding leaves
+    Unsupported (probe programs: `uniq/Self` or `ref/Self` virtual, InvalidVirtualDeclaration_Kd and IncompatibleContractImplementation_Kd;
+    `objref/Self`, MissingContractImplementation_Kd; review 1's probe `q6/e`, a virtual `reserve(self: objuniq/Self)`: Unsupported_Kd and
+    MissingContractImplementation_Kd). The write wrapper calls through `BodyRun`, whose slot path exists (C6c); the dispatch word has no
+    virtual arm, a virtual pairing falling under the broken-contract rule. When Binding admits one, that arm is written (a PLAN item).
+  - Not rows (ruling Q4 (a)): FormatFloat, ErasedReserve and FormatInteger128 have no MIR producer (the runtime calls Ryu, a user Writer's
+    reserve through the dispatch word and its i128 decimal routine itself); their rows are "no MIR producer (R8, PD21)", as WriteStdout's,
+    and R5-M92's C9b labels on them are labels. G157 (10) (ruling Q5 (a)): a Requirement call whose witness is a body-less compiler function
+    (`w.reserve(n)` at a FixedBuffer or HeapBuffer) keeps its located `Unsupported_Kd` at the call; it needs the collector to publish such a
+    witness, which is K's; no ledger row reaches it.
+  - Boundaries: C9c's interpolation keeps FormatBuffer, FormatHint and FormatFinish, the literal fast path and the stack buffer, whose
+    adapter's writer kind (the old generator's switch from 1 to 0 for a stack-estimated interpolation) is C9c's with its buffer; `$tryWrite`
+    lowers to C9a's and C9b's rows, an interpolated argument being C9c's. C10a's test intrinsics and C3c's property witnesses do not overlap.
+  - Deviations (IR only, PD9): a user formatter's wrappers are named per target item and test the recorded failure through the runtime's
+    `__kimi_format_healthy` where the old wrapper reads offset 56 inline and is named by request count; a BuiltinFormat item reached only by
+    K row 2 is defined and unused.
+  - Restructured first, behavior unchanged (every `.ll` of the related classes' fixtures identical under both generators): `WriterKind` and
+    the conversion text in `LegacyRuntimeHelpers` (8bb0e5aca); `CallWitness`, `Forward`'s lazy Function Type and `FunctionPrefix`
+    (4847b53fd); an intrinsic row's Type argument (1a4118a5e).
+  - Facts:
+    - The sel ledger falls by 113 test rows, from 577 to 464 (format 91, C-frame 10, object 6, C-drop 3, K-edges 3), and gains 2 fixture
+      rows (below): the census's 112
+      rows whose every record was C9b's, and `CompilerFunctionReferenceTest.WarmAdaptersReuseTheirPhysicalEntries`, which failed only
+      because generation did. Every other ledger row still fails (the 277 that also need C9c among them) and nothing outside the ledger
+      fails (the ledger's 90 classes, 3,321 tests). The plan row's Utf8Writer, Utf8Format, Utf8UserFormat, Utf8Conversion and Utf8Float
+      classes pass whole under sel; Utf8TryWrite and Utf8Integration keep their interpolating rows for C9c.
+    - Their fixture families (`Utf8Format*`, `Utf8Float*`, `Utf8Conversion*`, `Utf8TryWrite*`, `Utf8UserFormat*`, `CompilerReference*`,
+      `Utf8Integration*`, `Utf8Writer*`, `RecursiveDefault*`, `SharedMatch*`, `NestedDefault*`, `OwnedDefault*`, `SharedGuard*`,
+      `ContentUpdate*`, `WholeValue*`, `Formatting*`) run natively under sel at O0 and O2 but two fixtures sel generates for the first
+      time, which become fixture rows with their causes: `Utf8FloatOracle`, a harness cause (the test splices its oracle's call after the
+      old generator's `__kimi_entry_body` call, which sel's IR has not, so the oracle never runs; G157 (33)'s class), and
+      `Utf8TryWriteFailure`, a defect of the MIR builder's `$tryWrite` expansion (W1's window, or C9c's with its `$tryWrite` sites): it
+      tests each write's result but not the adapter's recorded failure before the first segment, so a `$tryWrite` on an already failed
+      adapter evaluates its embedded expression (SPEC 22.10.4: "if the adapter has already failed, later expressions are not evaluated";
+      the old generator tests `__kimi_format_healthy` before each segment); no sel module reached a `$tryWrite` before C9b wrote its
+      writer. Open (for PLAN): that builder defect and the oracle's splice.
+    - Milestones (CLI, O0, sel): 30, 31, 33, 35 and 44 keep their first record, an interpolation's (C9c); 24's moves from 10:16 (a
+      `$tryWrite` of an interpolated literal, now written) to 14:12, an owning interpolation (C9c).
+    - O2 (ruling Q7 (a), information): a kernel over C9b's rows without interpolation (a user formatter's write, toString and tryFormat,
+      the format requirement at i32, Text.writer over a FixedBuffer, a HeapBuffer and a user Writer; 2^20 rounds, its checksum printed
+      equal under both generators): at O2 the shims, the wrappers and `__kimi_format_healthy` are inlined and dropped (10 definitions
+      each, 865 against 889 instructions); CPU time B/A median 1.00 (0.83-1.30) against A/A 1.00 (0.85-1.30), 20 interleaved samples
+      of copies in one folder. The corpus A/Bs stay at C9c: every kernel's checksum line interpolates.
+  - Size, over the four commits (bp1, bp2, bp3, behavior) by numstat: Backend +448/-163 (net +285; Codegen +368/-118, of which
+    `ModuleCodegen.Formatting` +109), Emission +1/-7, tests +165/-34, the ledger -113 test and +2 fixture rows, and this entry, ARCH and CODEMAP. Over the
+    plan's +150 by the wrappers' signatures, requests and definitions, which R5-M30 left to code generation.
+  - Deleted: the located records of a BuiltinFormat item, of a Body target at a kind-bearing row (and `Runs`' second record at the same
+    site) and of ErasedWriter's call and Item; `FunctionCodegen.Shim`; the old generator's writer-kind switch (promoted); the C9b labels.
+  - Speed: one call per write, the routine for a built-in Type and the wrapper for a user one, the old generator's form; one shim function per
+    BuiltinFormat item; wrapper signatures and names kept per item and the given words in the reused slot-less span, so a warm Write
+    allocates nothing; no pass over MIR.
+  - Rejected:
+    - inside the component: the shim's own forwarding loop (a second copy of `Forward`); a BuiltinFormat item without a function, its
+      callers given the routine and kind through `Witness` (a Run with given words for one form); the write wrapper as the old static text
+      (it calls the implementation by name, so no slot, G157 (28)); SPEC 22.10.1's frame inline at each call (an Item and an adapter need a
+      callee anyway); the conversions written in FunctionCodegen (a second statement of the old text); the writer kind measured as a capacity
+      is (an indexed Context with two measures by the Type's shape); the writer kind decided by resolving `BufferWriter.reserve` on W in code
+      generation (witness resolution is the collector's);
+    - shared structure: the collector targeting FixedBuffer's and HeapBuffer's body-less `reserve` with a LegacyRow item (G157 (10)'s form;
+      no ledger row needs it, and an item for a fixed symbol defines nothing, R5-M128's rejection); the collector skipping K row 2's Builtin
+      item (it names the Self); new IntrinsicIds, MonoKinds or collector items for the wrappers (R5-M30: the collector never sees a wrapper);
+      re-pointing the old planner to the new wrappers (D5).

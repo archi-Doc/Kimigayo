@@ -27,13 +27,14 @@
 // writer (.Places.cs) and the loads, stores and copies through it (.Stores.cs); the rvalues (.Rvalues.cs) and aggregates (.Aggregates.cs),
 // operators (.Arithmetic.cs) and the string comparisons among them (.Strings.cs; DECISIONS R5-M118), casts by their kind (.Casts.cs) and
 // the scalar conversions (.Conversions.cs), calls (.Calls.cs) and value calls (.Closures.cs), the Builtin shims' functions (.Shims.cs;
-// DECISIONS R5-M126), intrinsics (.Intrinsics.cs), the Drop
+// DECISIONS R5-M126, R5-M130), intrinsics (.Intrinsics.cs), the Drop
 // terminator and A2's verdict rows (.Drops.cs) and drop flags (.Flags.cs); a value's destruction one level per Type, a DropGlue item's
 // function or an Open row's (.Glue.cs); the common Function values: erasure, the adapter items' functions and a Function value's glue row
 // (.Erasures.cs); a static's slot, its ensure function and an access's state test (.Statics.cs); the handle operations: a creation, a
 // clone, a runtime Type test and a virtual slot's entry (.Objects.cs); the whole-value updates, replace, exchange and swap (.Updates.cs),
 // and the inline storage kernels (.Storage.cs), the legacy rows of compiler functions (DECISIONS R5-M116); the formatting rows' Context
-// words and witness targets (.Formatting.cs; DECISIONS R5-M128); the Array rows written in place: an Array from none, setArrayLength,
+// words and witness targets, a user formatter's write wrapper and Text.writer's words (.Formatting.cs; DECISIONS R5-M128, R5-M130); the
+// Array rows written in place: an Array from none, setArrayLength,
 // capacity and an Array's glue level (.Arrays.cs; DECISIONS R5-M121); the Dictionary rows written in place: a Dictionary from none and a
 // Dictionary's glue level (.Dictionaries.cs; DECISIONS R5-M124).
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact or a case selection

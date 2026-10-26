@@ -180,7 +180,8 @@ public sealed partial class MirBuildTest
     // call reading the earlier slots, with the call's Unsupported_Kd: in a complete program past the storage depth, also a closed Type
     // there under a library group member's call (InstanceCollectorTest's former default; the collector then admits nothing of it). The
     // twin copies. Before, the copy kept the template's own Type (a validator finding) or callee (h<T> in the caller), and over the closed
-    // Type the Opaque value overwrote a copy the collector still admitted.
+    // Type the Opaque value overwrote a copy the collector still admitted. A literal default (f4's null) reports alike: a valid Literal is
+    // no rejection (PLAN G122); before, the builder read every Literal as rejected, and the call took a silent Opaque value.
     [Fact]
     public void ACopyTheCallDoesNotInstantiateIsAnOpaqueValue()
     {
@@ -192,6 +193,8 @@ public sealed partial class MirBuildTest
                 "record f(b) Unsupported_Kd",
             ],
             Callers(complete, "lim", "lim64", "n30"));
+        var literal = Compile(DefaultsOver + "func f4<T>(x: ref/T, k: raw/T = null) => ()\n" + Caller("lnull", Nested("Bx", 65), "f4"));
+        Assert.Equal(["lnull: f4; f4(b) reads PendingSlot", "record f4(b) Unsupported_Kd"], Callers(literal, "lnull"));
         var api = "public group Api\n    public func probe<T>(value: T) -> i32 => 0\n" +
             $"    public func take(x: i32, extra: i32 = probe<{Nested("Array", 65)}>([])) -> i32 => x + extra\n";
         var library = ModuleBindingTest.Create("public func main() -> ()\n    _ = Lib.Api.take(1)\n    return\n", api);

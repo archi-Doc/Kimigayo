@@ -22,8 +22,8 @@ namespace Kimi.Compiler.Mir;
 //   once per entry location in the checks replay (Entering), before its plan, at the entries the pre-pass finds (Entries: each copy's
 //   first location in the replay's order, which dominates the copy; MirValidator's Entry rule, R5-M90).
 // Input: the view's Loans with their steps and issue locations, the checks replay's state and live bits, the location's writes. Output:
-// each R26 record with the parameter, the PreparedInput's own location (its Type node, R4-M90 D6), as its Anchor fact, through Record, so
-// a held view's are Unsupported_Kd (R4-M73); Covered, which the conflicts relation's selection, err(ended) and R3 read (MirBorrows.Checks,
+// each R26 record with the parameter, the PreparedInput's own location (its Type node, R4-M90 D6), as its Anchor fact, through Record;
+// Covered, which the conflicts relation's selection, err(ended) and R3 read (MirBorrows.Checks,
 // MirBorrows.Effects).
 // Invariants: Covered holds only where a copy's template reports the failure in the view its case selects (the package's 5.6); a copy
 // that issues no Loan gets no gather, and a body without one pays one scan of its scopes.

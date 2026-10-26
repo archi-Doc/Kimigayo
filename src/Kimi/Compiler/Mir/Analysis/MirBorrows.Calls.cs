@@ -6,20 +6,21 @@ namespace Kimi.Compiler.Mir;
 // holder an argument's store reaches (W, MirBorrows.Reach), one W per output. At a referent store (CallRetention.ReferentStores, a
 // per-output membership: an operation of SPEC 4.6 to 4.9 writes through its exclusive receiver only what it refers to, 4.9.6) whose
 // referent destroys shallowly (Destruction), the store reaches refs(S) alone (W's first step, Referents; R4-M143); where the referent may
-// observe a destruction, which the row leaves to its callers, W stays, until A5 composes it there (PLAN G264).
+// observe a destruction, which the row leaves to its callers, W stays, until A5 composes it there (PLAN G264); where it observes only
+// through an abstract part not proven Copy, W past refs(S) is undecided for a Loan or an address (R4-M147).
 // Input: the state before the Call, its inspection Loans ended (R-a, MirBorrows.Endings), its terminator, and whether the checks replay
 // runs; the Call's rows.
 // Output: the Call's entries: its arguments' Moves, each row's value into the result or into the holders its W reaches ({Φ_E} for a row
 // with no input, an untied store), and the result into the destination; Φ_E for an untied result, and for a result that may hold a raw
-// pointer where it is untracked (MirBorrows.Addresses).
-// In the forward solve, a store of a non-empty value past a holder that passes the guard only by argument holds the view (P13's interim,
-// R4-M73).
-// Invariants: the forward solve holds the view, never the replay, which reports with the converged fact known.
+// pointer where it is untracked (MirBorrows.Addresses); in the checks replay, whether a store is undecided (R4-M147): its W reached a
+// holder the guard leaves undecided (MirWrites.Limit), or at a referent store whose referent observes only through an abstract part not
+// proven Copy (MirBorrows.Destruction's unproven), W past refs(S) would store a Loan or an address, which then stops at refs(S); the
+// location records it as a limit (MirBorrows.Locations).
 // Must not choose a Call's rows (MirBorrows.CallRows) or compute W (MirBorrows.Reach).
 internal sealed partial class MirBorrows
 {
     private int[] argValues = [];
-    private bool held; // Whether the view is held (R4-M73): a Call's W stored a non-empty value past a by-argument holder in the forward solve.
+    private bool limit; // Whether the replay's Call at the location made an undecided store (R4-M147), read and reset by Check.
 
     // Whether a value of a case Type is a borrow, through which a read reaches what it refers to (A3 5's ret): a reference or a pair layer,
     // or a view handle, whose Index is a borrow Deref (E6).
@@ -29,9 +30,8 @@ internal sealed partial class MirBorrows
     // value (at a referent store whose referent destroys shallowly, its refs(S)), {Φ_E} for a row with no input (an untied store, R-B2),
     // then the result into the destination; Φ_E for an untied result and, by
     // the untracked rule, for a result whose Type may hold a raw pointer (B′ §4.2). A Value callee's environment, its value or what a
-    // reference to it refers to, reaches the result too (its captures; temporary until F7 reads TyCtxt.Closure, unit 2c). In the forward
-    // solve, never in the checks replay, a non-empty value that W stores past a by-argument holder holds the view (R4-M73): the solve
-    // applies every chain at its converged state, so the fact includes the fixpoint's, and the replay reports with it known.
+    // reference to it refers to, reaches the result too (its captures; temporary until F7 reads TyCtxt.Closure, unit 2c). In the checks
+    // replay, an undecided store sets the location's limit.
     private void Call(ulong[] state, in MirTerminator call, bool checks)
     {
         MirDataflow.Grow(ref this.argValues, call.Count);
@@ -52,8 +52,8 @@ internal sealed partial class MirBorrows
 
         var retained = this.Rows(call, out var untied);
         var writesOf = Retention.Result; // The output whose writable holders the targets are.
-        var clean = 0; // The first target W reaches only past a by-argument holder.
         BoundType? referent = null; // Rule W: the Type the written argument refers to, every part of which may receive the value.
+        var (reach, undecided) = (0, false); // refs(S)'s count, and whether W past it rests on an abstract part's destruction.
         foreach (var row in retained)
         {
             var value = row.Input == NoInput ? this.escapedSet : this.Retained(state, call.Start + row.Input, row.Input, row.Kind);
@@ -68,14 +68,20 @@ internal sealed partial class MirBorrows
                 var stored = this.referentStores.AsSpan(0, this.referentCount).Contains(row.Output);
                 referent = (this.wCount > 0 || stored) && this.TypeOf(call.Start + row.Output) is { Kind: BoundTypeKind.Semantics, Components: [var to, ..] }
                     ? to : null;
-                clean = stored && referent is not null && this.Destruction(referent) == AccessKind.Destroy
-                    ? this.Referents(this.argValues[row.Output]) : this.Writes(state, this.argValues[row.Output]);
-                writesOf = row.Output;
+                var unproven = false;
+                var shallow = stored && referent is not null && this.Destruction(referent, out unproven) == AccessKind.Destroy;
+                reach = this.Referents(this.argValues[row.Output]);
+                this.limit |= !shallow && this.Writes(state, this.argValues[row.Output]) && checks;
+                (undecided, writesOf) = (unproven && this.targets.Count > reach, row.Output);
             }
 
-            this.held |= !checks && value != 0 && clean < this.targets.Count;
-            foreach (var target in this.targets)
+            // An undecided store of a Loan or an address (R4-M147; V16: one read, the sorted set's last element) stops at refs(S), a limit at
+            // the call.
+            var count = undecided && this.sets.Elements(value) is [.., var last] && last >= this.loanBase ? reach : this.targets.Count;
+            this.limit |= count < this.targets.Count && checks;
+            for (var t = 0; t < count; t++)
             {
+                var target = this.targets[t];
                 this.AddSlot(target, this.Arrive(target, referent, false, this.argValues[row.Output], value), 0, Joined, issue: false);
             }
         }

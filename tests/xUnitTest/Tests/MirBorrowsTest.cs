@@ -757,17 +757,16 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     _ = buffer.text()
                 """));
 
-    // SPEC 15.6.4, 15.6 (A3 E16, DECISIONS R4-M73): retention is decided per argument, never per Origin, and E may be used after every
-    // point, so a call's store reaches the holders of its argument's route with every Loan it stores, the route's own included; rustc
-    // accepts each of these, and SPEC's letter rejects them (no loss; PLAN's G148-X precision candidate would recover the first three).
-    // Through a concrete route they are Language problems: a self-row returning a route's own Loan to its holder, read twice
-    // (twoLayersRead, acrossLayersRead). Where the route passes a holder whose Type passes the guard only through a Type argument (an
-    // iterator's Loan<uniq/T>), the store holds its view, so each is a located Unsupported_Kd until the guard reads each part (P13's
-    // body hold, R4-M73): an exclusive iteration over a local collection of shared references, then reads (iterated), or over
-    // exclusive elements, then a shared one (exclusiveElements, MemberThroughLayersTest's program, with the ends of b and the array, whose
-    // Loans the iterator's stores carry to E: its value names b's exclusive Loan, b holding none, so it carries Φ_E by the untracked rule,
-    // R4-M116 PQ-2), and an exclusive parameter's iteration whose stores reach E, then an append (bumpRefs, its Loan met once, where the
-    // loop's Borrow of values is formed, R4-M68).
+    // SPEC 15.6.4, 15.6 (A3 E16, DECISIONS R4-M73, R4-M147): retention is decided per argument, never per Origin, and E may be used after
+    // every point, so a call's store reaches the holders of its argument's route with every Loan it stores, the route's own included;
+    // rustc accepts each of these, and SPEC's letter rejects them (no loss; PLAN's G148-X precision candidate would recover the first
+    // three). Each is a Language problem: a self-row returning a route's own Loan to its holder, read twice (twoLayersRead,
+    // acrossLayersRead); and through an iterator, whose stored raw layer steps Exclusive and passes the guard through its members' referents
+    // (R4-M147), an exclusive iteration over a local collection of shared references, then reads (iterated), or over exclusive elements,
+    // then a shared one (exclusiveElements, MemberThroughLayersTest's program, with the ends of b and the array, whose Loans the iterator's
+    // stores carry to E: its value names b's exclusive Loan, b holding none, so it carries Φ_E by the untracked rule, R4-M116 PQ-2), and an
+    // exclusive parameter's iteration whose stores reach E, then an append (bumpRefs, its Loan met once, where the loop's Borrow of values
+    // is formed, R4-M68).
     [Fact]
     public void ACallStoreFollowsSpecsPerArgumentRule()
     {
@@ -812,9 +811,8 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         Assert.Equal(
             [
                 "twoLayersRead: w@follow@ref", "twoLayersRead: w@follow@ref", "acrossLayersRead: w@follow@ref", "acrossLayersRead: w@follow@ref",
-                "iterated: refs@ref Unsupported_Kd", "iterated: refs@ref Unsupported_Kd", "exclusiveElements: exclusive Unsupported_Kd",
-                "exclusiveElements: var exclusive: [1 of uniq/Data] = [b@uniq] Unsupported_Kd", "exclusiveElements: var b = Data.init() Unsupported_Kd",
-                "bumpRefs: values Unsupported_Kd",
+                "iterated: refs@ref", "iterated: refs@ref", "exclusiveElements: exclusive",
+                "exclusiveElements: var exclusive: [1 of uniq/Data] = [b@uniq]", "exclusiveElements: var b = Data.init()", "bumpRefs: values",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
@@ -1525,8 +1523,8 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // checked for every instance, so a holder of an abstract Type may observe its Loans when it is destroyed: replacing `local` while the
     // iterator it lent is live conflicts in `hold<C>`, as in its twin over a Bin whose iterator's drop observes the source, while the twin
     // over Array<i32>, whose iterator observes nothing, is valid; and a borrow of an abstract call's temporary ends with its full
-    // expression, so a later use errs, as in its twin over Array<i32>. hold<C>'s body is held (its abstract iterator's next stores past the
-    // by-argument iterator, DECISIONS R4-M73), so its conflict is the located Unsupported_Kd, the body hold's cost (the owner, 2026-10-19).
+    // expression, so a later use errs, as in its twin over Array<i32>. hold<C>'s abstract iterator passes the guard (an abstract part may
+    // be an exclusive reference, the owner's Q1 (a), DECISIONS R4-M147), so its conflict is the Language problem its twin's is.
     [Fact]
     public void AnAbstractDestructionOrTemporaryIsCheckedInItsDefinition()
     {
@@ -1574,7 +1572,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     inspect(r)
                 """);
         Assert.Equal(
-            ["hold: local = second@move Unsupported_Kd", "holdBin: local = second@move", "keep: make()", "keepArray: make()"],
+            ["hold: local = second@move", "holdBin: local = second@move", "keep: make()", "keepArray: make()"],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
@@ -1839,9 +1837,8 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // SPEC 8.14, 15.6.7 (A3 E13 (3), (4), review N3; prototype 132, 134, 138, 139): a pair-layer acquisition is its own Assign's borrow in its
     // marker's mode: an invocation's input reserves in its exclusive case, activated at its Call, so a shared borrow of its Place before
     // the Call is valid; elsewhere (a local, a tuple's element, a capture) it is a live exclusive borrow; and in a view where the pair
-    // layer is a reference its step is a borrow Deref's, so a borrow through the layer meets it. Each body errs in its uniq view. p139d's
-    // uniq view is held (inner11's self-row stores past the abstract x, DECISIONS R4-M73), so its conflict at `x@ref`, which no store
-    // causes, is the located Unsupported_Kd, the body hold's cost (the owner, 2026-10-19).
+    // layer is a reference its step is a borrow Deref's, so a borrow through the layer meets it. Each body errs in its uniq view, p139d at
+    // `x@ref`, which no store causes (an Unsupported_Kd until R4-M147 removed P13's body hold).
     [Fact]
     public void APairLayerAcquisitionBorrowsAsItsMarkerSays()
     {
@@ -1922,7 +1919,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 "p132a: inner2(v@ref, v) CallActivationConflict_Kd", "p132c: inner3(v, v@ref) CallActivationConflict_Kd",
                 "p132h: inner9(v, v) CallReservationConflict_Kd", "p132m: innerR(v, u) CallActivationConflict_Kd", "p134a: v",
                 "p134c: v@follow@ref", "p134e: v@follow@ref", ": func [v, u]() => ()", ": func [u, v]() => ()", "p138d: v@follow@ref",
-                "p139d: x@ref Unsupported_Kd", "pN3: v@follow@ref",
+                "p139d: x@ref", "pN3: v@follow@ref",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
@@ -1971,178 +1968,6 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         Assert.Equal(
             ["Unsupported_Kd func deep(n: Nest<ref/i32 during a>)", "Unsupported_Kd Nest<ref/i32>.init(value: y@ref)"],
             program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0).Select(x => $"{x.Code} {Line(c, x.Subject)}"));
-    }
-
-    // A3's listed loss P13 under its interim, the owner's body hold (DECISIONS R4-M73, R4-M76, PD30; until the guard reads each part,
-    // before R4's exit): the guard is per holder, so a call's store follows what a holder carries past a holder whose Type passes it only
-    // through a Type argument, a pair layer or an abstract part, and a (body, view) where a Call's W stores a non-empty value so is held:
-    // every Loan problem it owns is a located Unsupported_Kd at its access, never a Language problem, whatever route the conflict takes.
-    // The conflicts that depend on such a store: a generic loop over a local Array<T>, then an append (g1), the same over Array<s/T>
-    // (pairs, the pair cases' B6-for), an abstract Iterable's parameter end (count), a shared loop over a local Array<uniq/(ref/i32)>
-    // (sharedOverExclusive; its twin without next is valid), a Loan<…> holder's stores reached through the closure (closureRoute) and
-    // through err(ended)'s γ (guardP13), through a later write through a reference (writeQ) and through E5's seed (seedRoute), the three
-    // routes the interim's taint missed. The cost: a held body's Language problem that does not depend on the store is Unsupported_Kd too
-    // (cleanRoute's append, which the live iterator keeps clean; g1's `var xs`), while a body that is not held keeps it (notHeld, an
-    // iterator whose Type holds no exclusive reference; emptyStore, whose by-argument store's value is empty). A conflict inside an
-    // inline default copy stays its template's (R4-M69): the template reports it and the held caller adds nothing for the copy
-    // (heldCopy, dd3); a Loan a copy's value keeps is the held caller's own problem at its access (heldDefault, R-a).
-    [Fact]
-    public void AListedLossIsUnsupported()
-    {
-        var c = MirBuildTest.Compile(Prelude + """
-            func storeL(l: uniq/Loan<uniq/(ref/(ref/i32 during p) during q) during a>, v: ref/(ref/i32 during p) during q) => ()
-            func storeD(l: uniq/Loan<uniq/(ref/Data during q) during a>, v: ref/Data during q) -> bool => true
-            func storeU(l: uniq/Loan<uniq/(uniq/(ref/i32 during p) during q) during a>, v: uniq/(ref/i32 during p) during q) => ()
-            struct WQ {a}
-                public var p: uniq/(ref/i32 during a) during a
-                public var q: ref/(ref/i32 during a) during a
-                public init(p: uniq/(ref/i32 during a) during a, q: ref/(ref/i32 during a) during a)
-                    self.p = p
-                    self.q = q
-            func storeQ(l: uniq/Loan<uniq/WQ during q> during m, v: ref/(ref/i32 during p) during q) => ()
-            func dd3(n: i32, m: i32 = (do
-                var t = n
-                let r = t@ref
-                t = 2
-                yield size(r)
-            )) => ()
-            func sameD(x: ref/i32 during a, y: ref/i32 during a = x) -> ref/i32 during a => y
-            func g1<T>(a: T, b: T)
-                T is Copy
-                var xs: Array<T> = []
-                xs.append(a)
-                for e in xs
-                    _ = e
-                xs.append(b)
-            func pairs<s/T>(value: s/T, x: T)
-                s is owner or uniq
-                T is Copy
-                var v = value@move
-                let child = v
-                do
-                    var arr: Array<s/T> = [child@move]
-                    for e in arr
-                        _ = e@follow@follow
-                v@follow = x
-            func count<S>(items: S) -> i32
-                S is Iterable
-                var n: i32 = 0
-                for _ in items
-                    n += 1
-                return n
-            func sharedOverExclusive()
-                var x = 1
-                var w = x@ref
-                do
-                    var arr: Array<uniq/(ref/i32)> = [w@uniq]
-                    for e in arr
-                        _ = e
-                inspect(w)
-            func sharedOverExclusiveTwin()
-                var x = 1
-                var w = x@ref
-                do
-                    var arr: Array<uniq/(ref/i32)> = [w@uniq]
-                    var it = arr.iterate()
-                    _ = it@uniq
-                inspect(w)
-            func closureRoute()
-                var x = 1
-                var y = 2
-                var z: ref/i32 = x@ref
-                var w: ref/(ref/i32) = z@ref
-                var lh = Loan<uniq/(ref/(ref/i32))>.init(w@uniq)
-                var b: ref/i32 = y@ref
-                storeL(lh@uniq, b@ref)
-                y = 5
-                inspect(w)
-            func guardP13()
-                let packet: Packet = .Data(Data.init())
-                let other = Data.init()
-                var saved = other@ref
-                var lh = Loan<uniq/(ref/Data)>.init(saved@uniq)
-                match packet
-                    .Data(let d) if storeD(lh@uniq, d) => ()
-                    _ => ()
-                inspect(saved)
-            func writeQ()
-                var x = 1
-                var y = 2
-                var c = 3
-                var z: ref/i32 = x@ref
-                var z2: ref/i32 = x@ref
-                var zz = z2@ref
-                var w = WQ.init(p: z@uniq, q: zz)
-                var lh = Loan<uniq/WQ>.init(w@uniq)
-                var b: ref/i32 = y@ref
-                storeQ(lh@uniq, b@ref)
-                w.p@follow = c@ref
-                c = 5
-                inspect(b)
-            func seedRoute()
-                var x = 1
-                var y = 2
-                var z: ref/i32 = x@ref
-                var w: uniq/(ref/i32) = z@uniq
-                var lh = Loan<uniq/(uniq/(ref/i32))>.init(w@uniq)
-                var b: ref/i32 = y@ref
-                storeU(lh@uniq, b@uniq)
-                let r = w@follow@follow@ref
-                inspect(r)
-            func cleanRoute<T>(a: T, b: T)
-                T is Copy
-                var xs: Array<T> = []
-                xs.append(a)
-                var it = xs.iterate()
-                _ = it.next()
-                xs.append(b)
-                _ = it.next()
-            func notHeld()
-                var x = 1
-                var xs: Array<ref/i32> = []
-                xs.append(x@ref)
-                var it = xs.iterate()
-                _ = it.next()
-                x = 2
-                _ = it.next()
-            func heldCopy<T>(a: T, b: T)
-                T is Copy
-                var xs: Array<T> = []
-                xs.append(a)
-                for e in xs
-                    _ = e
-                xs.append(b)
-                dd3(1)
-            func heldDefault<T>(a: T, b: T)
-                T is Copy
-                var xs: Array<T> = []
-                xs.append(a)
-                for e in xs
-                    _ = e
-                var k = 1
-                let r = sameD(k@ref)
-                k = 2
-                inspect(r)
-            func emptyStore<T>()
-                var xs: Array<Option<T>> = []
-                xs.append(.None)
-                var k = 1
-                let r = k@ref
-                k = 2
-                inspect(r)
-            """);
-        Assert.Equal(
-            [
-                "dd3: t = 2", "g1: xs.append(b) Unsupported_Kd", "g1: var xs: Array<T> = [] Unsupported_Kd",
-                "pairs: var arr: Array<s/T> = [child@move] Unsupported_Kd", "pairs: v@follow = x Unsupported_Kd",
-                "count: func count<S>(items: S) -> i32 Unsupported_Kd", "sharedOverExclusive: var arr: Array<uniq/(ref/i32)> = [w@uniq] Unsupported_Kd",
-                "sharedOverExclusive: inspect(w) Unsupported_Kd", "closureRoute: y = 5 Unsupported_Kd", "closureRoute: inspect(w) Unsupported_Kd",
-                "guardP13: let d Unsupported_Kd", "guardP13: inspect(saved) Unsupported_Kd", "writeQ: c = 5 Unsupported_Kd",
-                "seedRoute: w@follow@follow@ref Unsupported_Kd", "cleanRoute: xs.append(b) Unsupported_Kd", "cleanRoute: var xs: Array<T> = [] Unsupported_Kd",
-                "notHeld: x = 2", "heldCopy: xs.append(b) Unsupported_Kd", "heldCopy: var xs: Array<T> = [] Unsupported_Kd",
-                "heldDefault: k = 2 Unsupported_Kd", "heldDefault: var xs: Array<T> = [] Unsupported_Kd", "emptyStore: k = 2",
-            ],
-            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
     // R4-M70 (SPEC 23.1.2, R4-M10): an Opaque site's value is {Φ_E}. The site rests on a recorded error, so a conflict found only through it

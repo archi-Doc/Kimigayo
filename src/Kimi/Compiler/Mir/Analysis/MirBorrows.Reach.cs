@@ -4,9 +4,9 @@ using System.Runtime.InteropServices;
 
 namespace Kimi.Compiler.Mir;
 
-// A5's reach on a state (A3 5's content and refs, E16's W, DECISIONS R4-M73, R4-M116): the holders a set refers to (those its direct
-// Loans and addresses name, and E where it carries Φ_E or no direct one), its content, the holders a call's store through it writes (W,
-// whose first step alone is Referents), and the guard's per-local MirWrites (MirTypes.HoldsLoans); its chain (SPEC 15.6.4's "what any
+// A5's reach on a state (A3 5's content and refs, E16's W, DECISIONS R4-M73, R4-M116, R4-M147): the holders a set refers to (those its
+// direct Loans and addresses name, and E where it carries Φ_E or no direct one), its content, the holders a call's store through it writes
+// (W, whose first step alone is Referents), and the guard's per-local MirWrites (MirTypes.HoldsLoans); its chain (SPEC 15.6.4's "what any
 // chain of reads through it carries", a Chain row's measure), the least fixed point of a read from it, each holder read once per closure.
 // On the state a location's plan reads, a set's content and chain are each read once (E13 (5)), however many operands and retention rows
 // read them; whether a local is a holder, and its MirWrites, are walked once per distinct case Type and program version (the holding memo,
@@ -22,6 +22,7 @@ internal sealed partial class MirBorrows
     private readonly List<int> chained = []; // A closure's holders to read, each queued once (Chain).
     private readonly List<int> parts = []; // The states a closure read, each through rule W's clause, which one n-ary union joins.
     private readonly Dictionary<BoundType, byte> walked = new(ReferenceEqualityComparer.Instance); // HoldsLoans' scratch.
+    private readonly List<RawMember> members = []; // HoldsLoans' scratch for a stored raw layer's members.
     // Holding's memo: each case Type's answer for the program version holdingVersion names, by reference.
     private readonly Dictionary<BoundType, (bool Holds, MirWrites Writes)> holding = new(HoldingCapacity, ReferenceEqualityComparer.Instance);
     private (int Content, int Chain)[] reads = []; // By set: its content and its chain at the location, each plus 1 (0: not read there).
@@ -196,15 +197,15 @@ internal sealed partial class MirBorrows
         ref var known = ref CollectionsMarshal.GetValueRefOrAddDefault(this.holding, type, out var exists);
         if (!exists)
         {
-            known.Holds = MirTypes.HoldsLoans(type, types, this.walked, out known.Writes);
+            known.Holds = MirTypes.HoldsLoans(type, types, this.walked, this.members, out known.Writes);
         }
 
         this.writable[local] = known.Writes;
         return known.Holds;
     }
 
-    // W's first step (A3 E14): refs(S) into the targets, each holder once, at a new W walk; their count, which is also W's index of the first
-    // target past a by-argument holder where there is none. A referent store's whole reach (MirBorrows.Calls).
+    // W's first step (A3 E14): refs(S) into the targets, each holder once, at a new W walk; their count. A referent store's whole reach
+    // (MirBorrows.Calls).
     private int Referents(int set)
     {
         this.Refs(set);
@@ -225,36 +226,27 @@ internal sealed partial class MirBorrows
         return count;
     }
 
-    // W(S) (A3 E16, DECISIONS R4-M73, R4-M116) into the targets, the holders a call's store through S writes: refs(S) (Referents); and, from each
-    // holder h ≠ E of W whose Type passes the guard, the holder each direct Loan or address of σ(h) names, in any mode, and E where σ(h)
-    // carries Φ_E. The first pass steps from the holders that pass it concretely (MirWrites.Through), the second from those that pass it
-    // only through a Type argument, a pair layer, an abstract part or a stored raw layer stepping Exclusive (MirWrites.ThroughArgument) and
-    // from what only they reach: those targets come last, from the index returned (the count where none), and a Call that stores a
-    // non-empty value into one holds its view (P13's interim, R4-M73). Every store path (a Call's rows, its untied stores among them;
-    // A5-F7's capture stores, unit 2c; A5-F6's desc(c) stores, 2f) takes W here and sets the hold so, except a 4.6 to 4.9 operation's
-    // referent store whose referent destroys shallowly, which takes refs(S) alone (Referents; DECISIONS R4-M143).
-    private int Writes(ulong[] state, int set)
+    // W(S) (A3 E16, DECISIONS R4-M73, R4-M116, R4-M147) into the targets, the holders a call's store through S writes: past refs(S), which
+    // Referents put there first, from each holder h ≠ E of W whose Type passes the guard (MirWrites.Through), the holder each direct Loan or
+    // address of σ(h) names, in any mode, and E where σ(h) carries Φ_E. Whether W reached a holder the guard leaves undecided
+    // (MirWrites.Limit): the call's location records it as a limit (MirBorrows.Calls, .Locations). Every store path (a Call's rows, its
+    // untied stores among them; A5-F7's capture stores, unit 2c; A5-F6's desc(c) stores, 2f) takes W here, except a 4.6 to 4.9
+    // operation's referent store whose referent destroys shallowly, which takes refs(S) alone (Referents; DECISIONS R4-M143).
+    private bool Writes(ulong[] state, int set)
     {
-        this.Referents(set);
-        this.Write(set); // The kinds of refs(S)'s holders.
-        var clean = int.MaxValue;
-        var argument = false;
-        for (var pass = 0; pass == 0 || (pass == 1 && argument); pass++)
+        this.Write(set); // The kinds of refs(S)'s holders, which Referents put in the targets.
+        var limited = false;
+        for (var i = 0; i < this.targets.Count; i++)
         {
-            for (var i = 0; i < this.targets.Count; i++)
+            var kind = this.writingKind[this.targets[i]];
+            limited |= kind == MirWrites.Limit;
+            if (kind == MirWrites.Through)
             {
-                var kind = this.writingKind[this.targets[i]];
-                argument |= kind == MirWrites.ThroughArgument;
-                if (kind == MirWrites.Through ? pass == 0 || i >= clean : kind == MirWrites.ThroughArgument && pass == 1)
-                {
-                    this.Write((int)state[this.targets[i]]);
-                }
+                this.Write((int)state[this.targets[i]]);
             }
-
-            clean = pass == 0 ? this.targets.Count : clean;
         }
 
-        return clean;
+        return limited;
     }
 
     // A step of W from a set (Writes): E where it carries Φ_E, and the holder each direct Loan or address names. A value that may refer to
