@@ -64,7 +64,7 @@ internal static class IntrinsicRows
         new(IntrinsicId.ReinterpretLoan, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // No MIR producer yet (an open PLAN row).
         new(IntrinsicId.Abort, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Routine, RuntimeAbi.AbortMessage),
         new(IntrinsicId.Fail, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Fail, RuntimeAbi.Abort),
-        new(IntrinsicId.WriteStdout, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9a.
+        new(IntrinsicId.WriteStdout, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // No MIR producer (R8, PD21).
         new(IntrinsicId.FormatFloat, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9b.
         new(IntrinsicId.ErasedWriter, IntrinsicTarget.Witness, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9b.
         new(IntrinsicId.ErasedReserve, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9b.

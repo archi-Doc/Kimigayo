@@ -42,9 +42,10 @@
 // writer: writeLine's runtime routine, the whole-value updates, the fixed-array storage kernel, the Array operations and storage kinds in
 // their function's instance (Instance: the Array helper of its kind, or a capacity routine, through its call's LegacyRow item; DECISIONS
 // R5-M121), setArrayLength's length, placeEntry in its function's instance (Place: the Dictionary Place helper, which calls the item's
-// declared callee, append) and the other Dictionary storage kinds as the P2a kernels over their call's entry layout (DECISIONS R5-M124),
-// every other kind its unit's row not written yet (C9a).
-// Invariants: a new helper kind adds a row; a kind without a row fails; a request's runtime flags come from its row; each
+// declared callee, append), the other Dictionary storage kinds as the P2a kernels over their call's entry layout (DECISIONS R5-M124) and
+// the Text, buffer, window and writer kinds and WriteLineUtf8 as their formatting routines (Formatting; DECISIONS R5-M128).
+// Invariants: a new helper kind adds a row; a kind without a row fails, a Body-disposition compiler function's included; a request's
+// runtime flags come from its row; each
 // requested helper is written once (the planner requests each formatting wrapper once), in request order, after the runtimes its
 // row declares;
 // the legacy writer's .ll stays byte-identical while it shares this text; warm writes allocate nothing; a Dictionary helper's
@@ -87,11 +88,13 @@ internal enum HelperNeeds : byte
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal enum LegacyWriter : byte
 {
-    /// <summary>A later unit's row (<see cref="LegacyRuntimeHelpers.Row"/> names it): one located Unsupported_Kd at the call.</summary>
-    Unwritten,
-
     /// <summary>The row's runtime routine through the one call writer.</summary>
     Routine,
+
+    /// <summary>SPEC 22.7, 22.9, 22.10.1: the row's routine in the formatting runtime through the one call writer, its capacity Context the
+    /// length of the fixed array its operand refers to and its kind Context its witness target's Self's (FunctionCodegen.Formatting;
+    /// DECISIONS R5-M128).</summary>
+    Formatting,
 
     /// <summary>SPEC 15.7: the target's old value destroyed in place, then the new one put (FunctionCodegen.Updates).</summary>
     Replace,
@@ -139,8 +142,8 @@ internal enum LegacyWriter : byte
 /// <summary>The legacy row of a compiler function of the Body disposition (X39): its writer, a routine row's runtime routine and an Instance
 /// row's Array helper kind.</summary>
 /// <param name="Writer">How MIR code generation writes a call.</param>
-/// <param name="Routine">The runtime routine of a <see cref="LegacyWriter.Routine"/> row, or an <see cref="LegacyWriter.Instance"/> row's
-/// capacity routine.</param>
+/// <param name="Routine">The runtime routine of a <see cref="LegacyRow.Fixed"/> row, or an <see cref="LegacyWriter.Instance"/> row's capacity
+/// routine.</param>
 /// <param name="Helper">The Array helper kind of an <see cref="LegacyWriter.Instance"/> row without a routine.</param>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal readonly record struct LegacyRow(LegacyWriter Writer, FunctionAbi? Routine = null, ArrayHelperKind? Helper = null)
@@ -152,16 +155,22 @@ internal readonly record struct LegacyRow(LegacyWriter Writer, FunctionAbi? Rout
     /// DECISIONS R5-M121, R5-M124): the one place that names those writers.</summary>
     internal bool InInstance => this.Writer is LegacyWriter.Instance or LegacyWriter.Place;
 
+    /// <summary>Gets a value indicating whether the row's call is its row's own fixed-symbol routine (writeLine's, a formatting routine;
+    /// DECISIONS R5-M128): the one place that names those writers.</summary>
+    internal bool Fixed => this.Writer is LegacyWriter.Routine or LegacyWriter.Formatting;
+
     /// <summary>Gets a value indicating whether the row is a Dictionary storage kernel (DECISIONS R5-M124): the one place that names them.</summary>
     internal bool DictionaryKernel => this.Writer is >= LegacyWriter.DictionaryLayout and <= LegacyWriter.ValueAt;
 
-    /// <summary>Gets the needs a row in its function's instance declares (X4; DECISIONS R5-M46, R5-M121, R5-M124): an Array helper kind's row's,
-    /// the Array runtime for a capacity routine, which is that runtime's, or placeEntry's Place row's.</summary>
+    /// <summary>Gets the runtime needs a row declares (X4; DECISIONS R5-M46, R5-M121, R5-M124, R5-M128): an Array helper kind's row's, the
+    /// Array runtime for a capacity routine, which is that runtime's, placeEntry's Place row's, or the formatting runtime for a formatting
+    /// routine, the need every formatting row declares (FormattingRow; DECISIONS R5-M30).</summary>
     internal HelperNeeds Needs => this switch
     {
         { Helper: { } kind } => LegacyRuntimeHelpers.ArrayRow(kind).Needs,
         { Writer: LegacyWriter.Instance } => HelperNeeds.ArrayRuntime,
         { Writer: LegacyWriter.Place } => LegacyRuntimeHelpers.DictionaryRow(DictionaryHelperKind.Place).Needs,
+        { Writer: LegacyWriter.Formatting } => HelperNeeds.FormattingRuntime,
         _ => HelperNeeds.None,
     };
 
@@ -300,8 +309,10 @@ internal sealed partial class LegacyRuntimeHelpers
         CompilerFunctionKind.StorageKeyAt => new(LegacyWriter.KeyAt),
         CompilerFunctionKind.StorageValueAt => new(LegacyWriter.ValueAt),
 
-        // C9a: the text, buffer, window and writer rows and WriteLineUtf8.
-        _ when IntrinsicDisposition.Of(kind).Kind == DispositionKind.Body => new(LegacyWriter.Unwritten),
+        // SPEC 22.7, 22.9, 22.10.1 (DECISIONS R5-M128): the Text, buffer, window and writer kinds and WriteLineUtf8, their formatting routines
+        // (P1d's rows, one text); a Body-disposition kind without a row is a fault.
+        _ when IntrinsicDisposition.Of(kind).Kind == DispositionKind.Body =>
+            new(LegacyWriter.Formatting, FormattingRow(kind)?.Abi ?? throw new InvalidOperationException($"The compiler function {kind} has no legacy row.")),
         _ => null,
     };
 

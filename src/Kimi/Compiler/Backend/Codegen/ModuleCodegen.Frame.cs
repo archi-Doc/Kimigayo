@@ -7,10 +7,11 @@ namespace Kimi.Compiler.Backend;
 
 // The module frame of ModuleCodegen (R5 package C 3.3, IMPL 21.4.2): the output form around the output roots, and the complete module
 // through LlvmModuleText in the old generator's order: the header with the pooled constants, the runtime, the external declarations, the
-// zero-sized symbol, the overflow declarations, the memory declarations, the Array runtime and the Array helpers, the nullable Alloc, the
-// string-comparison routines, the buffered definitions, the entry, the object runtime and the footer. The external declarations, the imports
-// a definition calls (Import, DECISIONS R5-M89), the zero-sized symbol, the memory declarations, the Array runtime (DECISIONS R5-M121), the
-// nullable Alloc (DECISIONS R5-M92), the string-comparison routines (DECISIONS R5-M118) and the object runtime (DECISIONS R5-M110) are
+// zero-sized symbol, the overflow declarations, the memory declarations, the Array runtime, the formatting runtime and the Array helpers, the
+// nullable Alloc, the string-comparison routines, the buffered definitions, the entry, the object runtime and the footer. The external
+// declarations, the imports a definition calls (Import, DECISIONS R5-M89), the zero-sized symbol, the memory declarations, the Array runtime
+// (DECISIONS R5-M121), the formatting runtime (DECISIONS R5-M128), the nullable Alloc (DECISIONS R5-M92), the string-comparison routines
+// (DECISIONS R5-M118) and the object runtime (DECISIONS R5-M110) are
 // written only when a definition requested them (Request; package C 3.2's requests, DECISIONS R5-M87), the Array helpers (ModuleCodegen.Arrays)
 // before every definition (PD8). The entry calls its root through FunctionCodegen's one call writer (PD3).
 internal sealed partial class ModuleCodegen
@@ -48,21 +49,30 @@ internal sealed partial class ModuleCodegen
         /// <summary>The Array runtime (LegacyRuntimeHelpers.WriteArrayRuntime: the capacity routines), for an Array row that declares it (DECISIONS
         /// R5-M46, R5-M121).</summary>
         Arrays = 32,
+
+        /// <summary>The formatting runtime (LegacyRuntimeHelpers.WriteFormattingRuntime), for a formatting row (DECISIONS R5-M30, R5-M128).</summary>
+        Formatting = 64,
     }
 
     /// <summary>Requests a module part for the module being written.</summary>
     /// <param name="need">The part.</param>
     internal void Request(Needs need) => this.needs |= need;
 
-    /// <summary>Requests the module parts that a legacy row's declared runtime needs name (X4; DECISIONS R5-M46), the one map from a row's
-    /// needs to the frame's parts: the Array runtime with the memory declarations. The other needs name no part: the element glue is an
-    /// item, the collector's target, and the Dictionary runtime is the old lowering's (MIR code generation calls initialize's body).</summary>
+    /// <summary>Requests the module parts that a legacy row's declared runtime needs name (X4; DECISIONS R5-M46, R5-M128), the one map from a
+    /// row's needs to the frame's parts: the Array runtime and the formatting runtime, each with the memory declarations. The other needs name
+    /// no part: the element glue is an item, the collector's target, and the Dictionary runtime is the old lowering's (MIR code generation
+    /// calls initialize's body).</summary>
     /// <param name="needs">The row's needs.</param>
     internal void Request(HelperNeeds needs)
     {
         if ((needs & HelperNeeds.ArrayRuntime) != 0)
         {
             this.Request(Needs.Arrays | Needs.Memory);
+        }
+
+        if ((needs & HelperNeeds.FormattingRuntime) != 0)
+        {
+            this.Request(Needs.Formatting | Needs.Memory);
         }
     }
 
@@ -86,6 +96,11 @@ internal sealed partial class ModuleCodegen
         if ((this.needs & Needs.Arrays) != 0)
         {
             LegacyRuntimeHelpers.WriteArrayRuntime(output);
+        }
+
+        if ((this.needs & Needs.Formatting) != 0)
+        {
+            LegacyRuntimeHelpers.WriteFormattingRuntime(output);
         }
 
         output.Write(this.helperText.GetStringBuilder());
