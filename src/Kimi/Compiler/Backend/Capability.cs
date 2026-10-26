@@ -9,8 +9,9 @@
 // container's included (DECISIONS R5-M82, superseding R5-M60's access row); the operation rows of IMPL
 // 21.3.3's 128-bit subset, division and remainder of i128 and u128 (a compound form builds as the same operation) and numeric conversions
 // between them and f32 or f64 (a direct literal conversion is a constant, Binding having fitted the literal, so it is no Cast).
-// Input: for an operation, its MIR rvalue and its first operand's closed Type. Output: a gap's record, Unsupported_Kd at the subject the
-// collector's location rule gives (a declaration row's: the declaration), once per subject.
+// Input: for an operation, its MIR rvalue, or its kind, operator and Cast target (an arithmetic shim's, BuiltinArithmetic), and its first
+// operand's closed Type. Output: a gap's record, Unsupported_Kd at the subject the collector's location rule gives (a declaration row's:
+// the declaration), once per subject.
 // Must not: be restated in a Supports* gate or another table, or decide acceptance.
 
 using Kimi.Compiler.Mir;
@@ -62,11 +63,20 @@ internal static class Capability
     /// <param name="rvalue">The operation: a Cast's Type is its target.</param>
     /// <param name="operand">The closed Type of its first operand.</param>
     /// <returns>The row, or null.</returns>
-    internal static CapabilityGap? Of(in MirRvalue rvalue, BoundType operand) => rvalue.Kind switch
+    internal static CapabilityGap? Of(in MirRvalue rvalue, BoundType operand) => Of(rvalue.Kind, rvalue.Op, operand, rvalue.Type);
+
+    /// <summary>Gets the row of an operation the backend does not generate (IMPL 21.3.3), or none, by its kind and operator: a statement's
+    /// or an arithmetic shim's (BuiltinArithmetic).</summary>
+    /// <param name="kind">The operation's rvalue kind.</param>
+    /// <param name="op">Its operator or cast kind.</param>
+    /// <param name="operand">The closed Type of its first operand.</param>
+    /// <param name="target">A Cast's target Type.</param>
+    /// <returns>The row, or null.</returns>
+    internal static CapabilityGap? Of(MirRvalueKind kind, byte op, BoundType operand, BoundType? target) => kind switch
     {
-        MirRvalueKind.BinaryOp when (MirBinaryOp)rvalue.Op is MirBinaryOp.Div or MirBinaryOp.Rem && ScalarTypes.Width(operand) == 128 =>
+        MirRvalueKind.BinaryOp when (MirBinaryOp)op is MirBinaryOp.Div or MirBinaryOp.Rem && ScalarTypes.Width(operand) == 128 =>
             CapabilityGap.WideDivision,
-        MirRvalueKind.Cast when (MirCastKind)rvalue.Op == MirCastKind.Numeric && IsWideFloat(operand, rvalue.Type!) => CapabilityGap.WideFloatConversion,
+        MirRvalueKind.Cast when (MirCastKind)op == MirCastKind.Numeric && IsWideFloat(operand, target!) => CapabilityGap.WideFloatConversion,
         _ => null,
     };
 

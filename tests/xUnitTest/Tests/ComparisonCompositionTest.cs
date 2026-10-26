@@ -150,6 +150,75 @@ public class ComparisonCompositionTest
         require same(3, 3) and before(4, 5) else => $abort("generic")
         """;
 
+    // SPEC 13.4, 13.4.1, 12.4.3 (DECISIONS R5-M126, plan C8f's NaN and ±0 tuple fixture): the Contract's mapping on Tuples through a
+    // generic comparison, which MIR code generation runs as a Builtin shim: an equality NaN-reflexive whatever the NaN's payload and sign,
+    // both zeros equal, a later part deciding, nested Tuples, a ref layer and f32, while the built-in operators on the same Tuples stay IEEE
+    // (FloatingSource); a part that is not equal decides, so a later part's witness is not called (its Abort would end the run); a compare
+    // over integer, string and char parts; a Dictionary's key equality, the same mapping (SPEC 12.4.3), keeping one entry for NaNs of either
+    // sign and one for both zeros.
+    private const string ContractFloatingSource = """
+        struct Probe
+            Self is Equatable
+            public let number: i32
+            public init(number: i32) => self.number = number
+            public func equals(self: ref/Self, other: ref/Self) -> bool
+                require self.number >= 0 else => $abort("a decided comparison called a later witness")
+                return self.number == other.number
+        func equal<T>(left: ref/T, right: ref/T) -> bool
+            T is Equatable
+            return left == right
+        func same<T>(left: ref/T, right: ref/T) -> bool
+            T is Equatable
+            return left.equals(right)
+        func order<T>(left: ref/T, right: ref/T) -> i32
+            T is Comparable
+            return left.compare(right)
+        let nan: f64 = 0.0 / 0.0
+        let other: f64 = -nan
+        let zero: f64 = 0.0
+        let negativeZero: f64 = -0.0
+        let a = (nan, 1)
+        let b = (other, 1)
+        let c = (nan, 2)
+        require equal(a@ref, b@ref) and same(a@ref, b@ref) and not equal(a@ref, c@ref) else => $abort("NaN tuple")
+        require not (a == b) and a != b else => $abort("IEEE tuple")
+        let z = (zero, 1)
+        let n = (negativeZero, 1)
+        let d = (1.0, 1)
+        require equal(z@ref, n@ref) and z == n and not equal(z@ref, d@ref) and not equal(a@ref, z@ref) else => $abort("zero tuple")
+        let nested = ((nan, 1), zero)
+        let alike = ((other, 1), negativeZero)
+        require equal(nested@ref, alike@ref) and not (nested == alike) else => $abort("nested tuple")
+        let small: f32 = 0.0 / 0.0
+        let pair = (small, -small)
+        let flipped = (-small, small)
+        require equal(pair@ref, flipped@ref) else => $abort("f32 tuple")
+        let x = (nan@ref, 3)
+        let y = (other@ref, 3)
+        require equal(x@ref, y@ref) else => $abort("ref layer")
+        let first = (Probe.init(1), Probe.init(-1))
+        let second = (Probe.init(2), Probe.init(-1))
+        require not equal(first@ref, second@ref) else => $abort("early exit")
+        let low = (1, "b", 'c')
+        let high = (1, "b", 'd')
+        require order(low@ref, high@ref) < 0 and order(high@ref, low@ref) > 0 and order(low@ref, low@ref) == 0 else => $abort("order")
+        var keys: Dictionary<(f64, i32), i32> = [:]
+        var added = 0
+        match keys.tryInsert((nan, 1), 10)
+            .Ok(_) => added += 1
+            .Err(_) => ()
+        match keys.tryInsert((other, 1), 20)
+            .Ok(_) => added += 1
+            .Err(_) => ()
+        match keys.tryInsert((negativeZero, 2), 30)
+            .Ok(_) => added += 1
+            .Err(_) => ()
+        let hit = (zero, 2)
+        let found = (other, 1)
+        require added == 2 and keys.length == 2 and keys[hit] == 30 and keys[found] == 10 else => $abort("Dictionary keys")
+        Console.writeLine("Contract mapping on tuples kept.")
+        """;
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void RecursiveGenericWitnessCompositionReusesThePreparedHelper()
@@ -173,6 +242,10 @@ public class ComparisonCompositionTest
     [Fact]
     public void FloatingTupleOperatorsPreservePartialOrderingAndShortCircuit()
         => NativeAllocationAudit.WriteFixture("ComparisonCompositionFloating", FloatingSource, 0, 0, 0);
+
+    [Fact]
+    public void ContractMappingOnFloatingTuplesIsNaNReflexive()
+        => ScalarEmissionTest.EmitFixture("ComparisonCompositionContractFloating", ContractFloatingSource, "Contract mapping on tuples kept.\n");
 
     [Theory]
     [InlineData("let x = (1, true) < (1, false)")]

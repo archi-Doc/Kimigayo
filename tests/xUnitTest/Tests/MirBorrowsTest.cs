@@ -2572,12 +2572,14 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     }
 
     // V16: A5 on a program version it checked before allocates nothing: its sets, tables, call rows (an intrinsic's too), addresses (a raw
-    // Ref's, a `during self` layer's), the own-step Warning's tags and the dataflow keep their storage.
+    // Ref's, a `during self` layer's), a Chain row's closure, the own-step Warning's tags and the dataflow keep their storage.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmRunAllocatesNothing()
     {
-        var c = MirBuildTest.Compile(Prelude + RawShapes + "func addressed()\n    var y = 1\n    var w: ref/i32 = y@ref\n    let p = w@raw\n    y = 2\n" +
+        var c = MirBuildTest.Compile(Prelude + RawShapes + ChainShapes + "func chained()\n    var y = 1\n    var w: ref/i32 = y@ref\n" +
+            "    var h: raw/u8 = w@raw@raw/u8\n    var h2: raw/(raw/u8) = h@raw\n    let r = getRRR(h2@raw)\n    usep(r)\n" +
+            "func addressed()\n    var y = 1\n    var w: ref/i32 = y@ref\n    let p = w@raw\n    y = 2\n" +
             "    _ = p == null\nfunc selfRead()\n    var y = 1\n    var b = Buf<ref/i32>.init(4)\n    b.push(y@ref)\n    let p = b.data\n    y = 2\n" +
             "    _ = p == null\nfunc loopCarry(flag: bool)\n    var x = 1\n    var y = 2\n    var r = y@ref\n    while flag\n" +
             "        x = 3\n        inspect(r)\n        r = x@ref\nfunc stored()\n    var x = 1\n    var y = 2\n    var slot = y@ref\n" +
@@ -2593,6 +2595,23 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
         Assert.Equal(9, program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code)));
         Assert.Single(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.OwnStepDeparture_Kd && x.Subject.Module == 0);
+    }
+
+    // V16 (DECISIONS R4-M140): the holding memo answers for one program version; a rebind's version clears it, and A5's views over the new
+    // version fill it again within the capacity it keeps, so a warm rebind, its MIR build and A5 over a program and the library allocate
+    // nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void ARebindRefillsTheHoldingMemoWithoutAllocating()
+    {
+        var (c, _) = SemanticSnapshotTest.Bind("milestone/Milestone34");
+        var stratum = new Stratum(c.Types);
+        stratum.Run(c.BuildMir());
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Binding.Bind(BindingMode.Final);
+            stratum.Run(c.BuildMir());
+        }));
     }
 
     // The Loan problems of a program's own bodies.
@@ -2654,7 +2673,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     }
 
     // Whether a measure grows from N = 64 to 128 at most a factor times as much as from 32 to 64, with a constant's slack.
-    private static bool Grows(long[] measure, int factor) => measure[2] - measure[1] <= (factor * (measure[1] - measure[0])) + 64;
+    private static bool Grows(long[] measure, double factor) => measure[2] - measure[1] <= (factor * (measure[1] - measure[0])) + 64;
 
     // A5's work and Loan-set bytes on a shape's body at N = 32, 64 and 128: its head, then N each lines, a Tuple of N operands where one is
     // given, and N after lines ({0} the index, {1} the index plus one), with no Loan problem.

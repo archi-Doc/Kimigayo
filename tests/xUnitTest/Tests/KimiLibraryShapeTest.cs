@@ -376,6 +376,43 @@ public class KimiLibraryShapeTest
         static bool Borrowed(BoundType type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq };
     }
 
+    // SPEC 4.9.6, 4.8 (DECISIONS BU-42): CallRetention.ReferentStores takes a 4.6 to 4.8 view's referent as its own handle, sound only
+    // while no 4.6 to 4.8 operation writes an element through a view. The 4.6 to 4.8 operations the fact covers (a library function with
+    // a referent store, not a member of Array, Dictionary or the fixed array) are exactly these, each lending or advancing its receiver,
+    // and none retains another input in its receiver's storage, so an operation that would store a value through a view, or a parameter
+    // added to one of these, fails here first.
+    [Fact]
+    public void ReferentStoresWriteNoElementThroughAView()
+    {
+        var c = Library.Value;
+        var covered = new List<string>();
+        foreach (var function in KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<FunctionKoto>())
+        {
+            var symbol = function.SymbolOf()!;
+            var retention = c.Types.Retains(symbol, null, null);
+            if (retention.ReferentStores.IsEmpty || ReferenceEquals(function.Parent, c.Library.FixedArrayMembers) ||
+                function.Parent?.SymbolOf()?.LibraryDeclaration is KimiDeclarationId.Array or KimiDeclarationId.Dictionary)
+            {
+                continue;
+            }
+
+            var receiver = Assert.Single(retention.ReferentStores.ToArray());
+            Assert.DoesNotContain(retention.Rows.ToArray(), x => x.Output == receiver && x.Input != receiver);
+            covered.Add($"{Path(Container(function))}: {Line(function)}");
+        }
+
+        Assert.Equal(
+            [
+                "ResolvedRange: public func iterateUniq(self: uniq/Self during source) -> RangeIterator<isize>",
+                "Slice: public func iterateUniq(self: uniq/Self during handle) -> SliceIterator<T> during source",
+                "UniqSlice: public func sliceUniq(self: uniq/Self) -> UniqSlice<T> during self",
+                "UniqSlice: public func sliceUniq<R>(self: uniq/Self, range: R) -> UniqSlice<T> during self",
+                "UniqSlice: public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self",
+                "UniqSlice: internal func indexPositionUniq<P>(self: uniq/Self, key: P) -> uniq/T during self",
+            ],
+            covered);
+    }
+
     [Theory]
     [MemberData(nameof(CompilerFunctions))]
     public void CompilerFunctionShapesAreFixed(KimiDeclarationId id, string shape)

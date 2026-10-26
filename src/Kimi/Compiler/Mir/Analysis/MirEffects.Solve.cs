@@ -162,7 +162,9 @@ internal sealed partial class MirEffects
             for (var a = this.atomStarts[node]; a < this.atomStarts[node] + this.atomCounts[node]; a++)
             {
                 var atom = this.atoms[a];
-                var type = subst is null ? atom.Type : types.Apply(atom.Type, subst);
+                // An atom in the call's instance as every reader reads one (TyCtxt.ReadableInstance, DECISIONS R4-M139): Rejected storage is the
+                // instance, whose rejected parts destroy nothing (MirTypes.Destruction); null, a Limit.
+                var type = subst is null ? atom.Type : types.ReadableInstance(atom.Type, subst);
                 this.Process(type is null ? null : cases.Type(type), atom.Kind, atom.Requirement);
             }
         }

@@ -6,7 +6,8 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler.Mir;
 
 // Derived and unsupported values (plan 5.4, SPEC 23.1.2): the one located Unsupported path, and the Opaque value that replaces a node
-// Binding rejected or no rule builds, its site naming the roots the node's syntax reads, writes or borrows (MirBuilder.Opaque.Roots.cs).
+// Binding rejected, a form no rule builds, or a default its call does not instantiate (Defaults; SPEC 23.1.1, DECISIONS R4-M127), its
+// site naming the roots the node's syntax reads, writes or borrows (MirBuilder.Opaque.Roots.cs) or a default's earlier slots.
 internal sealed partial class MirBuilder
 {
     // Whether the published facts say the lexer or Binding rejected a node the builder reaches: an Error, a value without a Type (a name of

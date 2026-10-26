@@ -123,6 +123,27 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 23.1.2: a use of a symbol without a Type consults the declaration part that gives it one: a parameter's written Type, an
+    // accessor parameter's annotation or Property Type, or a Pattern's or loop's binding, which rests on the failure that left it
+    // Type-less (RestOnFailure, BindIteration). A local's declaration is consulted where the use binds it (BindVariable).
+    private void ConsultTypeSource(BindingSymbol symbol)
+    {
+        if (symbol is { Kind: BindingSymbolKind.Parameter, Declaration: FunctionKoto function, Slot: var slot } && (uint)slot < (uint)function.Parameters.Count)
+        {
+            this.Consulted(function.Parameters[slot].Type);
+        }
+        else if (symbol is { Kind: BindingSymbolKind.Parameter, Declaration: PropertyAccessorKoto accessorSyntax })
+        {
+            var accessor = Accessor(accessorSyntax);
+            var annotation = ReferenceEquals(symbol, accessor.SelfSymbol) ? accessorSyntax.ReceiverType : accessorSyntax.ValueType;
+            this.Consulted(annotation ?? accessor.Property.Declaration.TypeKoto ?? accessor.Property.Declaration);
+        }
+        else if (symbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.PatternCandidate, Declaration: not VariableKoto })
+        {
+            this.Consulted(symbol.Declaration);
+        }
+    }
+
     // A recovery node derives from its syntax error, and so does every failure of a check that consulted a recovery node,
     // directly or through unresolved operands: the parser's guess explains what the check combined (DIAGNOSTICS.md §4.3).
     // A failure that reports missing information is derived when the check consulted prerequisites that stayed unresolved;

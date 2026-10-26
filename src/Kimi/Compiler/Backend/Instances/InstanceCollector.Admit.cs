@@ -93,8 +93,10 @@ internal sealed partial class InstanceCollector
     // K 4.3, 4.8: the item of a type-driven key (its kind, a property witness's Field and a shim's variant) requested at a site, admitted
     // once per erased Type whose layout verdict is Ok, a DropGlue's with its collection elements' (X34; a failure is the Type's record, or
     // derived), and represented by the first unerased Type that requests it, which is closed (an open one is a broken contract,
-    // InternalInvariant_Kd); past the depth limit GenerationResourceLimit_Kd. -1 when refused.
-    private int AdmitType(int parent, SourceRef site, MonoKey key, BoundType type)
+    // InternalInvariant_Kd), and by that request's substitution, a shim's: its admitting call's, whose storage verdict the call's edge read
+    // (Made), so TypeOf gives the shim's signature in its instance (DECISIONS R5-M126); null for another kind. Past the depth limit
+    // GenerationResourceLimit_Kd. -1 when refused.
+    private int AdmitType(int parent, SourceRef site, MonoKey key, BoundType type, Subst? representative)
     {
         var set = this.Set;
         if (type.ContainsParameter)
@@ -122,7 +124,11 @@ internal sealed partial class InstanceCollector
         }
 
         this.Work++;
-        return set.Add(new() { Key = key, RepresentativeType = type, BodyOrdinal = -1, Parent = parent, Depth = (ushort)depth, Site = site });
+        return set.Add(new()
+        {
+            Key = key, Representative = representative, RepresentativeType = type, BodyOrdinal = -1, Parent = parent, Depth = (ushort)depth,
+            Site = site,
+        });
     }
 
     // K 4.3, 4.5 row 2 (DECISIONS R5-M121, R5-M124): the LegacyRow item of a bodyless compiler function whose legacy row writes its call in its

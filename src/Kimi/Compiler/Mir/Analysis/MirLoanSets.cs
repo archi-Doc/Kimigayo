@@ -1,23 +1,26 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns interned immutable Loan sets: Add, Union, Remove, Range, Of; the only Loan-set form in Mir (design A3 §6.1; DECISIONS R4-M53).
+// Owns interned immutable Loan sets: Add, Union (of two or of any number), Remove, Range, Of; the only Loan-set form in Mir (design A3 §6.1;
+// DECISIONS R4-M53).
 // Input: the elements, the Loan and marker ids A5 numbers. Output: each set as a node id, 0 the empty set; Add, Union and Remove (a \ b) of
 // sets, the set of a Range of consecutive elements and the set of an ascending run (Of, interned in one pass, R4-M132) as node ids,
 // Contains, Count and a set's elements in ascending order; Bytes, the element bytes of the nodes made (A3 §6.2's ν), and Scanned, the
 // elements its operations read and wrote, which A5's work counts.
 // Invariants: a node's elements are a strictly ascending run in one pooled array, and nodes are interned by their elements, so two sets are
-// equal exactly when their ids are; a node never changes once made. Each operation but Of is memoized by its operands, so repeating it
-// costs one lookup; Of's run is its own key. Storage is pooled: Clear empties it per body view and keeps its capacity, so a warm run of a
-// sized workload allocates nothing.
+// equal exactly when their ids are; a node never changes once made. Each operation but Of and the n-ary Union is memoized by its operands,
+// so repeating it costs one lookup; Of's run is its own key, and the n-ary Union reads each element once and sorts the marker words it
+// sets, never the range between its least and greatest element (its caller memoizes it). Storage is pooled: Clear empties it per body
+// view and keeps its capacity, so a warm run of a sized workload allocates nothing.
 // Must not number or interpret elements, read MIR, or keep a set in another form.
 
+using System.Numerics;
 using System.Runtime.InteropServices;
 
 namespace Kimi.Compiler.Mir;
 
 /// <summary>Interned immutable Loan sets (design A3 §6.1, DECISIONS R4-M53): a set is a node id, 0 the empty set, and equal sets have one
-/// id, so a set is stored and compared as an int; <see cref="Add"/>, <see cref="Union"/>, <see cref="Remove"/> and <see cref="Range"/> are
-/// memoized.</summary>
+/// id, so a set is stored and compared as an int; <see cref="Add"/>, <see cref="Union(int, int)"/>, <see cref="Remove"/> and
+/// <see cref="Range"/> are memoized.</summary>
 internal sealed class MirLoanSets
 {
     private readonly Dictionary<int, int> nodes; // Each node by its elements: an interned run maps to its own id.
@@ -27,6 +30,8 @@ internal sealed class MirLoanSets
     private readonly Dictionary<(int First, int Count), int> ranges = new();
     private int[] elements = []; // The runs of the nodes, in node order.
     private int[] starts = [0, 0]; // Each node's first element, then the end of the last node's run and of a candidate's.
+    private ulong[] marker = []; // The n-ary Union's bit per element, clear between its calls.
+    private int[] touched = []; // The marker words an n-ary Union set, in the order it set them.
     private int created = 1; // The nodes made; node 0 is the empty set.
 
     /// <summary>Initializes a new instance of the <see cref="MirLoanSets"/> class, holding the empty set.</summary>
@@ -111,6 +116,66 @@ internal sealed class MirLoanSets
         }
 
         return union;
+    }
+
+    /// <summary>Gets the union of any number of sets in one pass (R4-M138): each element is set once in a reused bit marker, whose words
+    /// set are listed as they are first set, then sorted and read back in ascending order, each cleared; one or no distinct set is
+    /// returned as it is. Its work is the elements read, the words touched times their logarithm and the set made, never the range between
+    /// the least element and the greatest.</summary>
+    /// <param name="parts">The sets.</param>
+    /// <returns>The elements of any.</returns>
+    internal int Union(ReadOnlySpan<int> parts)
+    {
+        var (first, distinct, total, high) = (0, false, 0, -1);
+        foreach (var part in parts)
+        {
+            if (part != 0)
+            {
+                distinct |= first != 0 && part != first;
+                first = first == 0 ? part : first;
+                var run = this.Elements(part);
+                (total, high) = (total + run.Length, Math.Max(high, run[^1]));
+            }
+        }
+
+        if (!distinct)
+        {
+            return first;
+        }
+
+        MirDataflow.Grow(ref this.marker, (high >> 6) + 1);
+        MirDataflow.Grow(ref this.touched, total);
+        var words = 0;
+        foreach (var part in parts)
+        {
+            foreach (var element in this.Elements(part))
+            {
+                ref var word = ref this.marker[element >> 6];
+                if (word == 0)
+                {
+                    this.touched[words++] = element >> 6;
+                }
+
+                word |= 1UL << element;
+            }
+        }
+
+        var listed = this.touched.AsSpan(0, words);
+        listed.Sort();
+        var merged = this.Candidate(total);
+        var length = 0;
+        foreach (var index in listed)
+        {
+            for (var bits = this.marker[index]; bits != 0; bits &= bits - 1)
+            {
+                merged[length++] = (index << 6) | BitOperations.TrailingZeroCount(bits);
+            }
+
+            this.marker[index] = 0;
+        }
+
+        this.Scanned += total + (words * (BitOperations.Log2((uint)words) + 1)) + length;
+        return this.Intern(length);
     }
 
     /// <summary>Gets a set without the elements of another, a \ b: the Loans a point ends, removed from each holder's set. It scans the

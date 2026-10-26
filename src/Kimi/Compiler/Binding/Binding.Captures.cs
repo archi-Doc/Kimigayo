@@ -70,7 +70,8 @@ public sealed partial class Binding
             _ => false,
         };
 
-    // An unsupported captured Type is reported at the written capture entry when there is one.
+    // The environment binding of `source` in `function`, null when it cannot hold it, or `source` itself when its Type failed. An
+    // unsupported captured Type is reported at the written capture entry when there is one.
     private BindingSymbol? Capture(FunctionKoto function, BindingSymbol source, BindingScope scope, CaptureKoto? entry = null)
     {
         if (entry is null && IsContextualBinding(source))
@@ -95,13 +96,19 @@ public sealed partial class Binding
             this.BindVariable(variable, source.Scope);
         }
 
-        // Concrete environments preserve complete captured Types and dependencies.
-        // Common-function erasure retains its independent Owned requirement.
-        if (source.Kind is not (BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture) || source.Type is not { } type)
+        if (source.Kind is not (BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture))
         {
             return null;
         }
 
+        // SPEC 23.1.2: no environment holds a binding whose Type failed; a use of the source itself rests on its declaration.
+        if (source.Type is not { } type)
+        {
+            return source;
+        }
+
+        // Concrete environments preserve complete captured Types and dependencies.
+        // Common-function erasure retains its independent Owned requirement.
         // SPEC 7.7.2: an environment holds any Type with slot storage, including enums (Option, Result), Arrays, Dictionaries,
         // Slices, object Views and raw pointers. All safe borrows use the same representation boundary.
         if (!(ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) ||
@@ -197,7 +204,7 @@ public sealed partial class Binding
 
     // SPEC 7.7.2: a use, in an omitted-list Closure, of a binding of an enclosing activation captures it as the Closure's environment
     // binding; null when no environment holds it (a named function, an explicit list, a binding Capture refuses, or a value that carries
-    // the helper borrow, whose use fails as a contextual binding's does, SPEC 16.3.1).
+    // the helper borrow, whose use fails as a contextual binding's does, SPEC 16.3.1); the binding itself when its Type failed.
     private BindingSymbol? CaptureOuterUse(Koto use, BindingSymbol symbol, BindingScope scope)
         => scope.Function is { IsAnonymous: true, Captures: null } closure && !this.FailHelperUse(closure, symbol, use)
             ? this.Capture(closure, symbol, this.scopes[closure]) : null;
