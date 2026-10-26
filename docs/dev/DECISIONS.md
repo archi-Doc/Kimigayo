@@ -3780,7 +3780,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     pointer may be used (B-N3).
   - State: tags by own-step entry (found at the check, its first Based or Stored holder, the next entry found on its root) and a list
     per root, so a departing access scans the entries found on its root (B §7: the conflict scan's density); an own-step entry makes its
-    root `borrowed`, so the root's accesses are listed, and its view a producer (D5).
+    root `borrowed`, so the root's accesses are listed, and its view a producer (D5; the producer clause superseded by R4-M141: a
+    producer only where an access may depart it).
   - Vocabulary: `DiagnosticCode.OwnStepDeparture_Kd` (Warning, Language, `case:Text` evidence as every A5 code); the requirement kind
     `OwnStepDeparture`, added against R5-M24's "no member is added" by the owner's OQ-2 (the enumeration's prohibition now reads "without
     the owner's approval"); `OwnershipIssue.Code` maps it, the requirement's one code that the ledger's consistency set reads (the old
@@ -4598,7 +4599,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Accesses' `KindOf` classifies it, is a destruction Accesses leaves `Unclassified` on a root the entries borrow, or an access other
     than a read or a shared borrow that `Departs` an entry on its root. This is a superset of the Warning's condition: it reads no
     liveness and no `Covered`, and it counts an Opaque site's uses, which the replay skips. A reborrow counts as its plain use, which is
-    exact: no Loan exists there, so no Reborrow or activation does.
+    exact because Binding forms no Uniq reborrow in such a view (a Reborrowing pair acquisition past a shared Deref issues no Loan), so
+    no activation exists either (G258 D2's design §3).
   - Records such a view can have, all made only in a producing view:
     - (a) `OwnStepDeparture_Kd`;
     - (b) an unclassified destruction's located `Unsupported_Kd` on a root the entries borrow (kept: `MayDepart` holds);
@@ -4652,8 +4654,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     S2's ClosureEffects finder is the second record (S2's entry, reserved R4-M145).
   - Rejected: the publisher's own names (`Consume`, `Take`, `TakeKind`, `Write`) for a lasting component; a second copy of the
     static-storage test (Binding's `IsStatic` serves the rule).
-  - Numbering: R4-M142 was reserved for S1 by the R4 planning session (R4-M140 G258 D1 on `claude/a5-g258-d1`, R4-M141 G258 D2,
-    R4-M143 G255 (C3)'s A5 part, R4-M144 G216's amendment and R4-M145 S2 reserved; R4-M138 the last on dev).
+  - Numbering: R4-M142 was reserved for S1 by the R4 planning session (R4-M139 G245 U2 and R4-M140 G258 D1 on dev, R4-M141 G258 D2
+    landing with it; R4-M143 G255 (C3)'s A5 part, R4-M144 G216's amendment and R4-M145 S2 reserved).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
