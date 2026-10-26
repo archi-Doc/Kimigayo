@@ -4504,6 +4504,22 @@ and migration obligations remain in force; no numeric cap changes are authorized
     tells Content from Chain keying: under an Origin-stated premise the content holds a Loan on each holder a second read passes (a
     `raw/T during source` Field needs its `Loan` Field), so replacing it, or writing what it refers to, conflicts either way. Numbering: R4-M138
     is free on dev and every open R4 branch (R4-M137 is 2c-9's).
+- **R4-M140 A5's holding memo: the holder rule once per case Type and program version (G258 D1)** (2026-10-26; R4's lane A under the
+  owner's 「D1・D2 を採用 (推奨)」 of 2026-10-26, which accepts D1's cold allocation; the G258 report's §4 D1, option (a)).
+  - Representation: `MirBorrows.holding`, a `Dictionary<BoundType, (bool Holds, MirWrites Writes)>` by reference beside the walk's
+    scratch (`MirBorrows.Reach.cs`), which `Holding` reads before it walks: `MirTypes.HoldsLoans` runs once per distinct case Type of a
+    program version, not once per local of every producing view (1,491 queries for about 350 Types per compilation).
+  - Key and validity: the walk reads only the Type, its Fields, base and payloads and Binding's stored raw steps
+    (`TyCtxt.RawStep(instance, part, positions)`, every argument derived from the key); no body, view, definition or premise. Its answer
+    is a function of the interned case Type and of the Binding pass, which `MirProgram.Version` names (the HIR publish version).
+  - Lifetime: the stratum's (one per `MirAnalysis`, one `TyCtxt`); cleared, keeping its capacity, when `Holding` sees another program
+    version, so a new pass's steps are read anew and a warm rebind allocates nothing (`ARebindRefillsTheHoldingMemoWithoutAllocating`).
+  - Size: presized to 384 (431 buckets, 12,200 B per compilation, cold and retained): the library's 339 distinct case Types and a
+    program's own (339 to 461, median 346, on G258's corpus); a larger program grows it once.
+  - Measured (G258's host, 118 programs, pinned, tiering off, two runs): A5's cold time −4.1 % and −2.9 %; Work, Loan-set Bytes and
+    problems equal; A5's timed allocation +0.06 % (the growth past 431 Types).
+  - Rejected: a cache in `MirTypes` (static, wrong across compilations) or in `TyCtxt` (a MIR fact on Binding's representation); keying
+    the walk's own memo by stored part and positions (more code, a walk per local stays).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
