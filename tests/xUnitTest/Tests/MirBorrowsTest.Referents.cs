@@ -339,9 +339,12 @@ public sealed partial class MirBorrowsTest
     // through its base's handle (whose payload is not proven Sealed), errs at `y = 5` (clearObjBad), as its twin does where the slot is
     // used before (clearObjOk, a known false error until G264); a destruction a struct, an Option, a Tuple, a nested Array or a Dictionary
     // runs keeps its error (clearLeafBad, clearWrapBad, clearOptBad, clearTupBad, clearArrBad, dictClearBad, dictReplaceBad); over an
-    // abstract `T` not proven Copy, W stays and P13's hold reports the store (clearGenOk, clearGenBad). The classifier answers per
-    // definition: one generic struct's element Type destroys shallowly in a method proving it Copy (copied) and not in one that does not
-    // (kept), which keeps W and the hold.
+    // abstract `T` not proven Copy, whose instance decides, W past refs(S) is undecided where it would store a Loan or an address
+    // (R4-M147): `a.clear()`, whose receiver holds the element's addresses, is the located Unsupported_Kd and stores into refs(S) alone, so
+    // clearGenOk reports nothing else and clearGenBad its true `y = 5` (append met an empty Array); where it would store only Φ_E, W stays
+    // and changes nothing (reversedGen, Array.appendAll's form, valid). The classifier answers per definition: one generic struct's element
+    // Type destroys shallowly in a method proving it Copy (copied, valid) and not in one that does not (kept: the record, and the true
+    // `y = 5` its Array's later drop causes).
     [Fact]
     public void ADestructionAReferentMayObserveKeepsW()
     {
@@ -480,6 +483,9 @@ public sealed partial class MirBorrowsTest
                 consume(a@move)
                 usep(slot)
                 y = 5
+            func reversedGen<T>(other: Array<T>)
+                var source = other@move
+                source.reverse()
             struct Gen<E>
                 E is MakeW
                 public init() => ()
@@ -507,9 +513,9 @@ public sealed partial class MirBorrowsTest
             """);
         Assert.Equal(
             [
-                "kept: y = 5 Unsupported_Kd", "clearObjBad: y = 5", "clearObjOk: y = 5", "clearLeafBad: y = 5", "clearWrapBad: y = 5",
+                "kept: a.clear() Unsupported_Kd", "kept: y = 5", "clearObjBad: y = 5", "clearObjOk: y = 5", "clearLeafBad: y = 5", "clearWrapBad: y = 5",
                 "clearOptBad: y = 5", "clearTupBad: y = 5", "clearArrBad: y = 5", "dictClearBad: y = 5", "dictReplaceBad: y = 5",
-                "clearGenBad: y = 5 Unsupported_Kd", "clearGenOk: y = 5 Unsupported_Kd",
+                "clearGenBad: a.clear() Unsupported_Kd", "clearGenBad: y = 5", "clearGenOk: a.clear() Unsupported_Kd",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }

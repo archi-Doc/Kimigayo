@@ -52,14 +52,17 @@ internal static partial class MirTypes
     /// <param name="seen">Scratch for the Types walked, cleared first.</param>
     /// <param name="deep">Whether the walk reached a part past its depth bound, which this implementation does not follow (SPEC 8.15):
     /// the caller's located Unsupported_Kd.</param>
+    /// <param name="unproven">Whether it may observe only through an abstract part not proven Copy, whose instance decides: no other
+    /// part may observe (DECISIONS R4-M147).</param>
     /// <returns>Whether the destruction may observe them; true when deep.</returns>
-    internal static bool Observes(BoundType? type, TyCtxt types, BindingSymbol? definition, HashSet<BoundType> seen, out bool deep)
+    internal static bool Observes(BoundType? type, TyCtxt types, BindingSymbol? definition, HashSet<BoundType> seen, out bool deep, out bool unproven)
     {
         seen.Clear();
         var observer = new Observer(types, definition, seen);
-        var observes = Destruction(type, ref observer);
+        var known = Destruction(type, ref observer);
         deep = observer.Beyond;
-        return observes;
+        unproven = !known && observer.Unproven;
+        return known || observer.Unproven;
     }
 
     /// <summary>Walks what destroying a value of a Type does (SPEC 16.3), the one walk of its inline storage that drop elaboration and the
@@ -142,11 +145,14 @@ internal static partial class MirTypes
         public bool Deep() => true;
     }
 
-    // Observes' visitor: a reported part that may observe, and past the walk's depth bound one it does not follow. A string's or a
-    // sequence's own release observes nothing; its elements are parts of their own.
+    // Observes' visitor: a reported part that may observe, and past the walk's depth bound one it does not follow; an abstract part not
+    // proven Copy is noted and the walk goes on, since another part may be known to observe. A string's or a sequence's own release
+    // observes nothing; its elements are parts of their own.
     private struct Observer(TyCtxt types, BindingSymbol? definition, HashSet<BoundType> seen) : IMirDestruction
     {
         internal bool Beyond { get; private set; }
+
+        internal bool Unproven { get; private set; }
 
         public readonly bool First(BoundType type) => seen.Add(type);
 
@@ -154,7 +160,8 @@ internal static partial class MirTypes
         {
             if (type.IsAbstract)
             {
-                return !types.Copy(definition, type);
+                this.Unproven |= !types.Copy(definition, type);
+                return false;
             }
 
             if (type.Kind == BoundTypeKind.Function || AdtDef.Destructor(type) is not null)

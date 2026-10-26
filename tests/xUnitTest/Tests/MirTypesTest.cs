@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>The Type facts A5 reads (docs/dev/DECISIONS.md R4-M36, R4-M73): which values may hold a Loan and what a call may write past them
+/// <summary>The Type facts A5 reads (docs/dev/DECISIONS.md R4-M36, R4-M73, R4-M147): which values may hold a Loan and what a call may write past them
 /// (<see cref="MirTypes.HoldsLoans"/>), and which destructions may observe what they hold (<see cref="MirTypes.Observes"/>), over the
 /// parameter Types of one function.</summary>
 public sealed class MirTypesTest(ITestOutputHelper output)
@@ -40,16 +40,17 @@ public sealed class MirTypesTest(ITestOutputHelper output)
                 ("borrow", true), ("borrows", true), ("tuple", true), ("fixed", true), ("table", true), ("option", true),
                 ("holder", true), ("handle", true), ("slice", true), ("view", true), ("loan", true), ("iterator", true), ("action", true),
                 ("layer", true), ("nest", true)],
-            Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, c.Types, seen, out _))).ToArray());
+            Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, c.Types, seen, [], out _))).ToArray());
     }
 
-    // A3 E16 (SPEC 15.6, 15.6.2, 15.6.4; DECISIONS R4-M73, R4-M116): a call may write past a value that may hold, past no shared layer,
-    // an exclusive reference to storage that may hold a Loan: an exclusive reference, in an Array, a payload or a Field, a UniqSlice's
-    // elements, a Function value, a raw parameter's pointee (the guard); only through a Type argument, a pair layer or an abstract part,
-    // which may be one (P13's interim, R4-M76); not past a shared reference, or through an exclusive reference or a raw pointer to
-    // Loan-free storage (a scalar, Utf8Writer's Loan<uniq/u8> and raw Fields). A stored raw layer is classed by its step (design B′
-    // §4.4): a slot kept only by `ref` writes nothing past it, another slot its pointee by argument, `during self` the holding value's own
-    // storage, and an unstated one an exclusive reference to its pointee.
+    // A3 E16 (SPEC 15.6, 15.6.2, 15.6.4, 15.3.5; DECISIONS R4-M73, R4-M147): a call may write past a value that may hold, past no shared
+    // layer, an exclusive reference to storage that may hold a Loan: an exclusive reference, in an Array, a payload or a Field, a
+    // UniqSlice's elements, a Function value, a raw parameter's pointee, an abstract part (the owner's Q1 (a)) and a pair layer's exclusive
+    // case (the guard); not past a shared reference, through an exclusive reference or a raw pointer to Loan-free storage (a scalar,
+    // Utf8Writer's Loan<uniq/u8> and raw Fields), or through a struct's or enum's Type argument, which has no address (an iterator's, a
+    // Loan's). A stored raw layer is read by its step on its instance: a slot kept only by `ref` writes nothing past it, another slot its
+    // pointee and its exclusive members' referents (uniqKept), `during self` the holding instance's Type arguments by their actual Types
+    // (owned, ownedUniq), and an Origin-less layer its declaration states the write fact (cursor).
     [Fact]
     public void TheGuardSaysWhatACallMayWritePastAValue()
     {
@@ -72,15 +73,56 @@ public sealed class MirTypesTest(ITestOutputHelper output)
             [("borrow", MirWrites.None), ("scalar", MirWrites.None), ("writer", MirWrites.None), ("shared", MirWrites.None),
                 ("unique", MirWrites.Through), ("array", MirWrites.Through), ("option", MirWrites.Through), ("slot", MirWrites.Through),
                 ("view", MirWrites.Through), ("scalars", MirWrites.None), ("action", MirWrites.Through), ("toRaw", MirWrites.Through),
-                ("value", MirWrites.ThroughArgument), ("layer", MirWrites.ThroughArgument), ("iterator", MirWrites.ThroughArgument),
-                ("loan", MirWrites.ThroughArgument), ("raw", MirWrites.Through), ("rawScalar", MirWrites.None), ("number", MirWrites.None),
-                ("refKept", MirWrites.None), ("uniqKept", MirWrites.ThroughArgument), ("owned", MirWrites.None),
+                ("value", MirWrites.Through), ("layer", MirWrites.Through), ("iterator", MirWrites.None),
+                ("loan", MirWrites.None), ("raw", MirWrites.Through), ("rawScalar", MirWrites.None), ("number", MirWrites.None),
+                ("refKept", MirWrites.None), ("uniqKept", MirWrites.Through), ("owned", MirWrites.None),
                 ("ownedUniq", MirWrites.Through), ("cursor", MirWrites.Through)],
             Parameters(body).Select(x => (x.Name, Writes(x.Type))).ToArray());
 
         MirWrites Writes(BoundType type)
         {
-            _ = MirTypes.HoldsLoans(type, c.Types, seen, out var writes);
+            _ = MirTypes.HoldsLoans(type, c.Types, seen, [], out var writes);
+            return writes;
+        }
+    }
+
+    // SPEC 5.7 Calls, 15.6.4 (DECISIONS R4-M147, BU-41): a raw layer a holder stores at any depth below it is read on the instance holding it,
+    // as the holder's substitution makes that instance: a Field (w), a nested instance's Field (o), an inline Tuple (t), a Case payload (e,
+    // ow), an Array element in a Field (h), an Own layer's pointee (op) and its Type argument in a nested Field (bb), and a base (d, bw). A
+    // layer a Type argument supplies whose Origin steps Exclusive publishes no members, so a Loan-free pointee leaves the guard undecided
+    // (Limit; also past a shared parameter borrow, hs), while a pointee that may hold a Loan decides it (wr, orr, dr), as does an exclusive
+    // part beside it (mixed, Through over Limit); the same layer with no Origin, `static` or a plain scalar pointee writes nothing past it
+    // (plain, plainA, plainE, st, dp).
+    [Fact]
+    public void TheGuardReadsEachStoredLayerOnItsInstance()
+    {
+        var (body, c) = Probe(
+            "struct Wrap<E>\n    var value: E\nstruct Outer<P>\n    var w: Wrap<P>\nstruct Pair2<P>\n    var p: (P, i32)\n" +
+            "enum Opt2<P>\n    Has(Wrap<P>)\n    Not\nstruct Hold<P>\n    var items: Array<Wrap<P>>\nstruct OP<P>\n    var data: raw/Wrap<P> during self\n" +
+            "struct ErasedBag<T>\n    var data: raw/u8 during self\nstruct Box1<P>\n    var b: ErasedBag<Wrap<P>>\n" +
+            "open struct BaseW<P>\n    var w: Wrap<P>\nstruct Der<P> : BaseW<P>\n    var n: i32\n" +
+            "struct Mixed<E> {a}\n    var value: E\n    var u: uniq/(ref/i32 during a) during a\n" +
+            "func probe(x: uniq/(ref/i32 during a) during a, q: ref/(ref/i32 during a) during a, w: Wrap<raw/u8 during x>, " +
+            "wr: Wrap<raw/(ref/i32 during a) during x>, o: Outer<raw/u8 during x>, orr: Outer<raw/(ref/i32 during a) during x>, " +
+            "t: Pair2<raw/u8 during x>, e: Opt2<raw/u8 during x>, h: Hold<raw/u8 during x>, op: OP<raw/u8 during x>, " +
+            "bb: Box1<raw/u8 during x>, ow: Option<Wrap<raw/u8 during x>>, d: Der<raw/u8 during x>, bw: BaseW<raw/u8 during x>, " +
+            "dr: Der<raw/(ref/i32 during a) during x>, hs: Wrap<raw/u8 during q>, mixed: Mixed<raw/u8 during x> during a, " +
+            "plain: Outer<raw/u8>, plainA: Hold<raw/u8>, plainE: Opt2<raw/u8>, st: Outer<raw/u8 during static>, dp: Der<raw/u8>)\n" +
+            "    return\n");
+        var seen = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
+        var members = new List<RawMember>();
+        Assert.Equal(
+            [("x", MirWrites.Through), ("q", MirWrites.None), ("w", MirWrites.Limit), ("wr", MirWrites.Through), ("o", MirWrites.Limit),
+                ("orr", MirWrites.Through), ("t", MirWrites.Limit), ("e", MirWrites.Limit), ("h", MirWrites.Limit), ("op", MirWrites.Limit),
+                ("bb", MirWrites.Limit), ("ow", MirWrites.Limit), ("d", MirWrites.Limit), ("bw", MirWrites.Limit), ("dr", MirWrites.Through),
+                ("hs", MirWrites.Limit), ("mixed", MirWrites.Through), ("plain", MirWrites.None), ("plainA", MirWrites.None),
+                ("plainE", MirWrites.None), ("st", MirWrites.None), ("dp", MirWrites.None)],
+            Parameters(body).Select(x => (x.Name, Writes(x.Type))).ToArray());
+        Assert.Empty(members);
+
+        MirWrites Writes(BoundType type)
+        {
+            _ = MirTypes.HoldsLoans(type, c.Types, seen, members, out var writes);
             return writes;
         }
     }
@@ -102,7 +144,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
                 ("atomic", false, false), ("based", true, false), ("action", true, false), ("value", true, false), ("copied", false, false),
                 ("chain", false, false), ("tree", false, false), ("forest", false, false), ("table", false, false), ("logged", true, false),
                 ("nest", true, true)],
-            Parameters(body).Select(x => (x.Name, MirTypes.Observes(x.Type, c.Types, body.Key.Decl, seen, out var deep), deep)).ToArray());
+            Parameters(body).Select(x => (x.Name, MirTypes.Observes(x.Type, c.Types, body.Key.Decl, seen, out var deep, out _), deep)).ToArray());
     }
 
     // SPEC 8.11.2 (DECISIONS R4-M58): a value holds raw authority where a part is a raw pointer or an rc handle; each Type is walked once
@@ -136,8 +178,8 @@ public sealed class MirTypesTest(ITestOutputHelper output)
         Assert.False(MirTypes.Destruction(pairs, ref walk));
         Assert.Equal((26, 51), (seen.Count, walk.Met)); // P24..P0 and i32; each struct's two Fields met once each.
         Assert.False(MirTypes.MayNeedDrop(pairs, seen));
-        Assert.False(MirTypes.Observes(pairs, c.Types, body.Key.Decl, seen, out var deep) || deep);
-        Assert.False(MirTypes.HoldsRaw(pairs, seen) || MirTypes.HoldsLoans(pairs, c.Types, new(ReferenceEqualityComparer.Instance), out _));
+        Assert.False(MirTypes.Observes(pairs, c.Types, body.Key.Decl, seen, out var deep, out _) || deep);
+        Assert.False(MirTypes.HoldsRaw(pairs, seen) || MirTypes.HoldsLoans(pairs, c.Types, new(ReferenceEqualityComparer.Instance), [], out _));
     }
 
     // R4-M36, R4-M116: every local Type of every library body is classified and none is deep; a borrow or raw layer always holds a Loan.
@@ -153,10 +195,10 @@ public sealed class MirTypesTest(ITestOutputHelper output)
         {
             foreach (var local in body.Locals.ToArray())
             {
-                var holds = MirTypes.HoldsLoans(local.Type, c.Types, walked, out _);
+                var holds = MirTypes.HoldsLoans(local.Type, c.Types, walked, [], out _);
                 var raw = local.Type.Semantics == Kimi.Compiler.Parsing.SemanticsKind.Raw;
                 Assert.True(holds || !(raw || MirTypes.IsReference(local.Type)), $"{body.Key.Decl?.Name}: {local.Name}");
-                var observes = MirTypes.Observes(local.Type, c.Types, body.Key.Decl, seen, out var deep);
+                var observes = MirTypes.Observes(local.Type, c.Types, body.Key.Decl, seen, out var deep, out _);
                 Assert.False(deep, $"{body.Key.Decl?.Name}: {local.Name}");
                 (locals, holding, observing) = (locals + 1, holding + (holds ? 1 : 0), observing + (observes ? 1 : 0));
             }

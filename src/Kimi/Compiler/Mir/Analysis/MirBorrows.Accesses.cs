@@ -12,7 +12,8 @@ namespace Kimi.Compiler.Mir;
 // Must not compare an access with a Loan (MirBorrows.Checks) or record a problem (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
-    private readonly Dictionary<BoundType, AccessKind> destructions = new(ReferenceEqualityComparer.Instance); // Destruction's, by case Type.
+    // Destruction's, by case Type: the access and whether it observes only through an abstract part not proven Copy.
+    private readonly Dictionary<BoundType, (AccessKind Kind, bool Unproven)> destructions = new(ReferenceEqualityComparer.Instance);
     private (BindingSymbol? Definition, ulong Version) destructionsOf; // The definition and program version the destructions are for.
     private Access[] accesses = [];
     private int accessCount;
@@ -61,12 +62,13 @@ internal sealed partial class MirBorrows
             return AccessKind.Destroy;
         }
 
-        return this.Destruction(cases.Type(this.body.TypeOf(place)!));
+        return this.Destruction(cases.Type(this.body.TypeOf(place)!), out _);
     }
 
-    // How destroying a value of a case Type accesses it (MirTypes.Observes): observing, unclassified past the walk's bound, or shallowly;
-    // once per case Type for the body's definition and the program version (Observes reads the definition's Copy and Sealed proofs).
-    private AccessKind Destruction(BoundType type)
+    // How destroying a value of a case Type accesses it (MirTypes.Observes): observing, unclassified past the walk's bound, or shallowly,
+    // and whether it observes only through an abstract part not proven Copy (unproven); once per case Type for the body's definition and
+    // the program version (Observes reads the definition's Copy and Sealed proofs).
+    private AccessKind Destruction(BoundType type, out bool unproven)
     {
         if (this.destructionsOf != (this.body.Key.Decl, this.program.Version))
         {
@@ -74,14 +76,15 @@ internal sealed partial class MirBorrows
             this.destructions.Clear();
         }
 
-        ref var kind = ref CollectionsMarshal.GetValueRefOrAddDefault(this.destructions, type, out var known);
+        ref var entry = ref CollectionsMarshal.GetValueRefOrAddDefault(this.destructions, type, out var known);
         if (!known)
         {
-            kind = !MirTypes.Observes(type, types, this.body.Key.Decl, this.seen, out var deep) ? AccessKind.Destroy
-                : deep ? AccessKind.Unclassified : AccessKind.Observe;
+            var observes = MirTypes.Observes(type, types, this.body.Key.Decl, this.seen, out var deep, out var abstractOnly);
+            entry = (!observes ? AccessKind.Destroy : deep ? AccessKind.Unclassified : AccessKind.Observe, abstractOnly && !deep);
         }
 
-        return kind;
+        unproven = entry.Unproven;
+        return entry.Kind;
     }
 
     // A Ref's access: a unique one borrows exclusively, the destroying reservation reads its target (A3 4's destroying(site)), another

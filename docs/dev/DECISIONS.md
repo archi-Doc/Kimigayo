@@ -1905,7 +1905,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   owner after three review rounds, below; A3 §12 E16). A Call's store row reaches every holder its argument reaches: ret(i, κ) joins
   every holder of W(val(a_j)) (A3 E16, rule G: SPEC 15.6.4's letter, no SPEC change), with no exclusion. It supersedes R4-M63's store
   target, refs(val(a_j)) (A3 E14), and A3 §5's Calls line. Superseded in part by R4-M143: at a 4.6–4.9 operation's referent store whose
-  referent destroys shallowly the store reaches refs(S) alone, and P13's hold does not fire there.
+  referent destroys shallowly the store reaches refs(S) alone, and P13's hold does not fire there. Superseded in part by R4-M147:
+  the guard reads each part (`MirWrites` None, Through, Limit), and P13's interim, the body hold below, is removed.
   - Representation: `MirTypes.HoldsLoans`' one walk, each Type once per mode, also gives what a call may write past a value
     (`MirWrites`): the guard, passed concretely (`Through`; a callable and a part past the bound count so) or only through a struct's or
     enum's Type argument, a pair layer or an abstract part (`ThroughArgument`), and for a value that holds no Loan whether a raw pointer
@@ -2038,7 +2039,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     follows a shared Loan past a holder whose Type passes the guard only through a Type argument, a pair layer or an abstract
     part) is recovered by a representation, not a SPEC clause (OQ8 (b), for P13 in place of the earlier G148 answer's OQ8 (a)):
     until a step-2 unit makes the guard per part (it reads a generic Type's Fields and takes no Type argument as an exclusive
-    reference), before R4's exit (else OQ9's list), a conflict that depends on such a store is a located `Unsupported_Kd` (PD30).
+    reference; R4-M147, which reads a stored Own or Origin-less layer's instance's Type arguments by their actual Types, Q2 (a)), before
+    R4's exit (else OQ9's list), a conflict that depends on such a store is a located `Unsupported_Kd` (PD30).
     A precision refinement such as GXS stays an unscheduled candidate, as G127.
   - S5 (OQ13 made precise, superseding its "grows"; 2x-S5's question Q1): form (c). A parameter-dependent effect on a projection
     one of whose bases the premises of the summary's declaration prove to conform to a recursive Contract widens to unknown
@@ -3470,7 +3472,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     own. R-B4: "can hold a value of its Type" is normalized Type identity with Origins fitted. R-B5: G160-2c runs MirCensusTest and the
     Text, Utf8Writer and interpolation classes with the untied rule before merging, and a new problem stops it. R-N1 amends PQ-3: the
     guard's Exclusive row walks the pointee as a Type argument; where that is wider than the keepers it holds the view as a located
-    `Unsupported_Kd`.
+    `Unsupported_Kd` (superseded by R4-M147: the Exclusive row reads the layer's members, an unpublished list a Limit).
   - Owners and order: Binding's `RetentionInput` decides 15.6.4's row kinds, so raw arguments' rows are BU's G160-2c (B′ §3.2 as
     amended; it starts on the owner's word for BU) and A5's `Retained` is unchanged. Order: 4a (behavior-preserving splits of the due
     `MirBorrows.Values.cs`, `.Locations.cs`, `.Solve.cs` and `.Reports.cs`), BU's G160-2b (`RawStep` total), G160-2c, 4b (addresses;
@@ -3622,7 +3624,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Holders and the guard (`MirTypes.HoldsLoans(type, types, seen, out writes)`): a raw layer is a part that may hold a Loan; past one
     in the value's own storage a stored layer by `TyCtxt.RawStep`: Own the holding value's own storage, Shared nothing, Exclusive the
     pointee by argument (R-N1), Unstated or Static an exclusive reference to the pointee; any other layer an exclusive reference to its
-    pointee. The walk keeps the stored part it is inside; a raw layer and its part's inline Tuples bypass the per-(Type, mode) memo.
+    pointee (superseded by R4-M147's per-step rows, on the instance holding the layer; any other layer unchanged). The walk keeps the stored
+    part it is inside; a raw layer and its part's inline Tuples bypass the per-(Type, mode) memo.
   - Φ_E where a value may refer to storage the body does not own: G160-2c's untied results (S2), a row with no input per
     `CallRetention.UntiedStores` input whose W receives {Φ_E} (R-B2), and the untracked rule (S3, PQ-2) at raw formation, at a layer's
     read (on what `@raw` forms) and at a call result that may hold a raw pointer (`MirTypes.HoldsRaw`); and E's own state from the entry
@@ -4690,7 +4693,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
       append, pop and swap, Dictionary `insertOrReplace`, an Array of exclusive references, a fixed array's `sliceUniq` and a
       UniqSlice's `indexUniq`, with their twins and the edges `appendParamBad` and `userWriteBad`; it fails first.
     - `ADestructionAReferentMayObserveKeepsW` pins the guard: clearObjBad errs, clearObjOk is a known false error, the drop forms
-      keep their errors, and clearGenOk and clearGenBad keep `Unsupported_Kd`, as O7 says.
+      keep their errors, and clearGenOk and clearGenBad keep `Unsupported_Kd`, as O7 says (since R4-M147 by its abstract-referent
+      Limit at `a.clear()`, the hold removed).
     - `TheReferentStoresStayDense` (V16) fails first.
     - `reserve`'s referent store (bu45's review O15) is pinned by reserveLateOk, an explicit `reserve` over a non-empty Array, which errs
       where `reserve` keeps W; the literal's `reserve` meets an empty Array, so no literal form depends on it.
@@ -4716,6 +4720,70 @@ and migration obligations remain in force; no numeric cap changes are authorized
     root (the operand may be a projection); deriving the referent a second time (O6).
   - Numbering: R4-M143 was reserved for C3's A5 part by the R4 planning session (R4-M141 G258 D2, R4-M142 S1, R4-M144 G216's amendment
     and R4-M145 S2 reserved; R4-M140 the last on dev).
+- **R4-M147 A5's per-part guard; P13's body hold removed (PLAN G148 (1), P13-1)** (2026-10-26; R4's lane B under design P13 v3,
+  ACCEPT at its design review 3, on BU-41's view (U0, unit bu46); the planning session's ruling D″ of 2026-10-26 on an abstract
+  referent; class Full with BU).
+  - Rule (SPEC 15.6.4, 5.7 Calls, 15.3.5; A3 E16): `MirTypes.HoldsLoans` reads the guard per part. A struct's or enum's Type argument
+    gives Loan facts only: it has no address and grants no access. An abstract part (the owner's Q1 (a)), a pair layer's exclusive case,
+    a callable and a part past the bound may be an exclusive reference. A struct's or enum's own storage is its stored parts as the
+    holder's substitution makes them, raw Origins kept (`TyCtxt.StoredParts`, BU-41). Each raw layer there is read by its step on the
+    instance holding it (`TyCtxt.RawStep`):
+    - Own (`during self`): the pointee and the instance's Type arguments by their actual Types, in the value's own storage (Q2 (a));
+      the write fact where the instance has an Origin argument (P1).
+    - Shared: nothing. Static: the pointee past an exclusive layer.
+    - Exclusive: the pointee and each exclusive member's referent past an exclusive layer (`TyCtxt.RawMembers`). Where the members are
+      unpublished (a Type argument supplies the layer, or the member walk is incomplete), the Limit fact; a write fact anywhere in the
+      value outranks it (review 2's C5).
+    - Unstated: the write fact where the declaration states the layer (P2); the pointee past an exclusive layer where a Type argument
+      supplies it (`TyCtxt.RawSupplied`).
+    - A raw layer outside an instance (a local's or parameter's own Type, an element or a Tuple outside one): its pointee past an
+      exclusive layer, as R4-M120 has it.
+  - Representation: `MirWrites` is None, Through and Limit, with Through over Limit over None; `ThroughArgument`, the walk's `Argument`
+    mode and its `WriteByArgument` fact are removed, and the modes are Own, Exclusive and LoanOnly. `HoldsLoans(type, types, seen,
+    members, out writes)` takes a `List<RawMember>` scratch that `MirBorrows` owns, used in stack order. No vocabulary entry.
+  - The Limit's record: `MirBorrows.Writes`, now one pass from the Through holders, returns whether W reached a Limit holder. The checks
+    replay's Call sets the location's limit, and `Check` records it as one located `Unsupported_Kd` at the call through the rule that
+    records `CallRetention.Limit` (R4-M51). The view's other problems stay.
+  - An abstract referent (the planning session's ruling D″): at a referent store (R4-M143) whose referent's destruction observes only
+    through abstract parts not proven Copy (`MirTypes.Observes`' `unproven`, from its one walk, which now goes on past such a part;
+    memoized with the access in `MirBorrows.Destruction`), W past refs(S) is undecided. A store whose undecided part past refs(S) would
+    add a Loan or an address (the row's value holds one: its sorted set's last element) is a Limit and stops at refs(S); a value of Φ_E
+    and markers only takes W as before. The rule has the shape of G264's revision 1 (skip only together with `Unsupported_Kd`).
+    Rejected: any W past refs(S) (it records at Array.appendAll's `source.reverse()` and `source.pop()` in every compilation: MirCensusTest
+    fails on the library, 44 milestones, 32 goldens and 43 SPEC variants); W reaching a holder other than E (W into E alone still
+    leaves a downstream conservative error that the hold hid).
+  - Removed: R4-M73's body hold (`held`, `Record`'s hold branch, its reset, W's second pass and its clean index) and its empty-value
+    rule. Every (body, view) it held gets the guard's verdict or the Limit's record. `Departure` records through `Record`, which is now
+    the one recorder of every problem but a located `Unsupported_Kd`.
+  - The owner's answers (verbatim): on Q1 and Q2, 「Q1・Q2 ともに推奨の (a) で進めて下さい」 (2026-10-25); on P1 and P2, 「進める (推奨)」
+    (2026-10-26). SPEC 5.7 Calls and 15.6.4 state P2's split since 833209c38.
+  - Supersedes: R4-M73's P13 interim (the body hold) and its `MirWrites` bullet (`ThroughArgument`); R4-M120's guard bullet (Exclusive
+    "the pointee by argument", Unstated "an exclusive reference to the pointee") and R4-M116's R-N1; R4-M76's "takes no Type argument as
+    an exclusive reference" for a stored Own or Origin-less layer, whose instance's Type arguments are read by their actual Types (Q2
+    (a)); R4-M143's O7 pin, now kept by the abstract-referent rule: clearGenOk is the located `Unsupported_Kd` at `a.clear()`,
+    clearGenBad and Gen's `kept` that record and their true `y = 5`.
+  - Known limits: a store past a supplied Exclusive layer whose Origin is a shared or parameter borrow is a Limit (`sharedSupplied`,
+    valid, accepted on dev), until Binding publishes such a layer's step judged by its borrow, or the writing scope's members; a raw
+    layer outside an instance reads its pointee, so `tupleW` (an Exclusive raw layer over u8 in a local Tuple) is accepted where the
+    letter leaves it undecided (v3 §6 (1)); B6-for's `v@follow = x` is the known wrong record PLAN G147 (8i) owns (BU's unit 0c).
+  - Evidence: the guard equals v3's prototype (variant 6) on its 30 probe programs and design review 3's r3-limits and r3-positions;
+    the problems equal it but for two d2-pairs rows, which dev changed since fb3e4d883 (base d73012e72 lacks them too). The mir
+    Functional ledger against d73012e72 (`r4-p13-1-base-d73012e72`): rows 3,213 to 3,200, 55 removed and 42 added in 19 sources, v3
+    §4.3's count: the hold's 44 `Unsupported_Kd` rows go (31 Language rows at the same locations, 11 paired with the old path's, B6-for's
+    `var arr` twice recovered), no Limit record; open blocking 110 and unclassified 12 (46 rows) unchanged; classification a5-p13
+    re-noted. MirCensusTest (library, milestones, goldens, accepted SPEC variants): no problem. Warm runs allocate nothing
+    (`TheGuardsWalkAllocatesNothingWarm`). A5's timing by G246's method and the census's cold allocation are not yet measured.
+  - Tests: `MirTypesTest.TheGuardSaysWhatACallMayWritePastAValue` (value and layer Through, iterator and loan None, uniqKept Through)
+    and `TheGuardReadsEachStoredLayerOnItsInstance` (every position below the holder; Limit, Through and None twins); the new
+    `MirBorrowsTest.Guard.cs`: `TheGuardReadsEachPart` (the former `AListedLossIsUnsupported`, with the B6-for pin),
+    `AStoredRawLayerIsReadByItsStep` (Own's Type arguments, P1, P2), `AStoreTheGuardLeavesUndecidedIsUnsupported` (the Limit's record
+    per call, in a loop, at a constructor, `sharedSupplied`; Through twins; the `tupleW` pin) and `TheGuardsWalkAllocatesNothingWarm`
+    (V16); the expectation changes in `ACallStoreFollowsSpecsPerArgumentRule`, `APairLayerAcquisitionBorrowsAsItsMarkerSays`,
+    `AnAbstractDestructionOrTemporaryIsCheckedInItsDefinition`, `ACallOverRejectedStorageKeepsItsRows`' m1 row,
+    `ACopysFailureIsItsTemplatesOnlyWithinOneEvaluationRooted` and `ADestructionAReferentMayObserveKeepsW` (with `reversedGen`, the Φ_E
+    store D″ leaves alone); `AHeldEffectIsUnsupportedRooted` becomes `AnEffectConflictIsALoanProblemRooted`; the hold-only
+    `AHeldEffectIsUnsupported`, `AHeldViewKeepsTheWarning` and `AHeldTemplatesSlotProblemIsUnsupported` are deleted.
+  - Numbering: R4-M147 was reserved for P13-1 by the R4 planning session.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

@@ -463,12 +463,13 @@ public sealed partial class MirBorrowsTest
 
                 """));
 
-    // AHeldEffectIsUnsupported on rooted bodies (R4-M73, R4-M92, R-a): an effect conflict in a held view is the located Unsupported_Kd at its
-    // call (e17, beside the hold's own record); a static Loan a default's copy keeps meets the call's unknown effect (copied).
+    // R4-M92, R-a on rooted bodies: an effect conflict is a Loan problem at its call, also after a generic loop whose iterator's store the
+    // per-part guard decides (e17, a located Unsupported_Kd under P13's body hold until R4-M147); a static Loan a default's copy keeps meets
+    // the call's unknown effect (copied).
     [Fact]
-    public void AHeldEffectIsUnsupportedRooted()
+    public void AnEffectConflictIsALoanProblemRooted()
         => Assert.Equal(
-            ["e17: g() Unsupported_Kd", "e17: var xs: Array<T> = [] Unsupported_Kd", "copied: g()"],
+            ["e17: g()", "copied: g()"],
             RootedEffects("""
                     public func e17<T>(a: T, g: () -> ())
                         T is Copy
@@ -688,10 +689,11 @@ public sealed partial class MirBorrowsTest
     // 23.1.1; R4-M97): a failure found in a copy is the caller's unless every event taking part lies in one evaluation of one copy, recorded at
     // the outermost omitting call with the default's operation as its Evaluated fact: the copy's poke activating against the caller's
     // reservation (g171; facts Reservation and Evaluated), its effect form (fx), the access in a copy nested in an explicit argument's copy
-    // (n1, at State.f()), two calls (twiceBoth), a two-view generic caller (gen: both views), a held caller (held, the hold's U at the omitting
-    // call too). Kept: the disjoint, read and explicit twins; a Limit inside a copy, at its operation (limit, so the record names addl's
-    // Lim.run()). Template-owned: f2's own Loan met in g's copy, f2's record at its State.g() (facts Anchor, Use, Reservation, Evaluated), and
-    // effOwn's effect conflict on its own Loan, omitted in its callers alone and in a loop; addh's held template.
+    // (n1, at State.f()), two calls (twiceBoth), a two-view generic caller (gen: both views), and a caller whose own conflict precedes a
+    // copy of addh, whose generic loop the per-part guard decides (held: its reservation conflict at the omitting call; held under P13's body
+    // hold until R4-M147). Kept: the disjoint, read and explicit twins; a Limit inside a copy, at its operation (limit, so the record names
+    // addl's Lim.run()). Template-owned: f2's own Loan met in g's copy, f2's record at its State.g() (facts Anchor, Use, Reservation,
+    // Evaluated), and effOwn's effect conflict on its own Loan, omitted in its callers alone and in a loop; addh's activation conflict.
     [Fact]
     public void ACopysFailureIsItsTemplatesOnlyWithinOneEvaluationRooted()
     {
@@ -755,11 +757,11 @@ public sealed partial class MirBorrowsTest
         var program = AnalyzeRooted(c);
         Assert.Equal(
             [
-                "f2: State.g() CallActivationConflict_Kd", "addh: State.poke(sc@uniq) Unsupported_Kd", "effOwn: State.touch()",
+                "f2: State.g() CallActivationConflict_Kd", "addh: State.poke(sc@uniq) CallActivationConflict_Kd", "effOwn: State.touch()",
                 "g171: State.add(sc@uniq) CallReservationConflict_Kd", "g171Explicit: State.poke(sc@uniq) CallReservationConflict_Kd",
                 "fx: sc.add() CallReservationConflict_Kd", "fxExplicit: State.touch() CallReservationConflict_Kd", "n1: State.f() CallReservationConflict_Kd",
                 "twiceBoth: State.add(sc@uniq) CallReservationConflict_Kd", "twiceBoth: State.add(sc@uniq) CallReservationConflict_Kd",
-                "gen: State.addg(v, sc@uniq) CallReservationConflict_Kd", "held: y0 = 2 Unsupported_Kd", "held: State.addh(sc@uniq) Unsupported_Kd",
+                "gen: State.addg(v, sc@uniq) CallReservationConflict_Kd", "held: y0 = 2", "held: State.addh(sc@uniq) CallReservationConflict_Kd",
                 "addl: Lim.run() Unsupported_Kd", "limit: y0 = 2",
             ],
             Problems(c, program, DefaultCodes));
