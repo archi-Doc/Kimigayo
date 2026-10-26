@@ -222,15 +222,34 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
         ScalarEmissionTest.EmitFixture("DictionaryStoredReferenceResume" + name, source, string.Empty);
     }
 
-    // PLAN G231, a pinned limit until R6-check: SPEC 3.5.1 forbids a second Reborrow of a stored reference reached through an exclusive
-    // parameter's Field, and a write through that Field, while a Reborrow of it in a Dictionary literal is live. Both pipelines accept
-    // these forms, as they accept their Array and `let` twins (STATUS Loans). G231's fix flips these rows.
+    // Expects the old rule (PLAN G231, until R6-check): SPEC 3.5.1 forbids a second Reborrow of a stored reference reached through an
+    // exclusive parameter's Field, and a write through that Field, while a Reborrow of it in a Dictionary literal is live. The old analysis
+    // accepts these forms, as it accepts their Array and `let` twins (STATUS Loans); A5 rejects them with a ComparisonLoanConflict_Kd at the
+    // second Reborrow or at the write (DECISIONS R4-M136: each row's ledger key and MIR target side). G231's fix flips the old side.
     [Theory]
-    [InlineData("func f(h: uniq/(H3 during a) during s) -> i32\n    let d = [1: h.l, 2: h.l]\n    _ = d@move\n    return 0\n")]
-    [InlineData("func f(h: uniq/(H2 during a) during s) -> i32\n    let d = [1: h.o, 2: h.o]\n    _ = d@move\n    return 0\n")]
-    [InlineData("func f(h: uniq/(H3 during a) during s) -> i32\n    let d = [1: h.l]\n    h.l@follow = 3\n    _ = d@move\n    return 0\n")]
-    public void AFieldReborrowConflictInADictionaryLiteralIsG231sKnownAcceptance(string body)
-        => Assert.True(DiagnosticCorpus.Check(FieldHolders + body + "public func main() => ()\n").Accepted);
+    [Trait("OldRule", "ledger:1b737830afa3:9")]
+    [Trait("OldRule", "ledger:bf266bcef6ad:10")]
+    [InlineData("    let d = [1: h.l, 2: h.l]\n    _ = d@move\n", "2: h.l]", "h.l")]
+    [InlineData("    let d = [1: h.l]\n    h.l@follow = 3\n    _ = d@move\n", "h.l@follow = 3", null)]
+    public void AFieldReborrowConflictInADictionaryLiteralIsG231sKnownAcceptance(string body, string conflict, string? subject)
+    {
+        var c = AnalyzedFieldReborrow("func f(h: uniq/(H3 during a) during s) -> i32\n" + body);
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At(conflict, subject)));
+    }
+
+    // The `objuniq/P` Field's form of AFieldReborrowConflictInADictionaryLiteralIsG231sKnownAcceptance: A5 also reports an
+    // UnprovenOriginRelation_Kd at each Reborrow (as at the valid `[1: h.o]`, PLAN G256's review R2-N1).
+    [Fact]
+    [Trait("OldRule", "ledger:e877352d188e:9")]
+    public void AnObjectViewFieldReborrowConflictInADictionaryLiteralIsG231sKnownAcceptance()
+    {
+        var c = AnalyzedFieldReborrow("func f(h: uniq/(H2 during a) during s) -> i32\n    let d = [1: h.o, 2: h.o]\n    _ = d@move\n");
+        MirTargetSide.Check(
+            c,
+            (DiagnosticCode.UnprovenOriginRelation_Kd, MirTargetSide.At("[1: h.o", "h.o")),
+            (DiagnosticCode.UnprovenOriginRelation_Kd, MirTargetSide.At("2: h.o]", "h.o")),
+            (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At("2: h.o]", "h.o")));
+    }
 
     // The Conditional form is ABorrowPastAResultKeepsTheContainersLoan's.
     [Theory]
@@ -336,5 +355,13 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
             : Header + "    let found = entries[1]@follow@ref\n    require found == 42 else => $abort(\"value\")\n    entries.clear()");
         Assert.True(c.Analyze().IsVerified);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
+    }
+
+    // A G231 row's analyzed Program.kimi compilation, the function returning 0 after the given lines, and its old side: accepted.
+    private static Compilation AnalyzedFieldReborrow(string function)
+    {
+        var c = MinimalEmissionTest.Analyze(FieldHolders + function + "    return 0\npublic func main() => ()\n", "Program.kimi");
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        return c;
     }
 }
