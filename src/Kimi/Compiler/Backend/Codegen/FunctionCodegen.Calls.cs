@@ -10,9 +10,9 @@ namespace Kimi.Compiler.Backend;
 // the one call writer, which the legacy rows, the intrinsic rows, the glue items and the module's entry call too; each argument is
 // FunctionCodegen.Arguments' (its parameter's kind, a copy slot). A call that dispatches (SPEC 6.4.3, 6.4.6) runs through a virtual slot,
 // which only makes the callee value it writes (EntryOf): a Virtual callee, without a target (X5), under its slot's signature
-// (ModuleCodegen.Slot); a body target that implements a slot, a requirement's virtual witness (BodyRun). Rows not written yet: a Builtin
-// shim (C8f, C9b), a property witness (C3c), a requirement whose witness has no body (PLAN G157 (10)), the other compiler functions' legacy
-// rows (C9a; LegacyRuntimeHelpers.Row).
+// (ModuleCodegen.Slot); a body target that implements a slot, a requirement's virtual witness (BodyRun); a Builtin target its shim's
+// function (FunctionCodegen.Shims; DECISIONS R5-M126). Rows not written yet: a format shim (C9b), a property witness (C3c), a requirement
+// whose witness has no body (PLAN G157 (10)), the other compiler functions' legacy rows (C9a; LegacyRuntimeHelpers.Row).
 internal sealed partial class FunctionCodegen
 {
     private int cursor; // The item's first target not passed yet (I8).
@@ -55,11 +55,11 @@ internal sealed partial class FunctionCodegen
     }
 
     // A Fn or Requirement callee by the collector's target at the call (I8; a requirement's is the witness K6 resolved, SPEC 8.6.3-8.6.4,
-    // whose signature is the call's, since compatibility inserts no conversion): a Fn callee's body item is called by its signature
-    // (ModuleCodegen.Signature), a caller-location one given the call's location (Invoke), whatever it implements (a direct base call, SPEC
-    // 6.4.4); a Requirement callee's runs as a witness does (BodyRun); a Builtin shim is C8f's and C9b's, a property witness C3c's. Without a
-    // target, a #LibraryImport function is called by its C signature (SPEC 22.6), a requirement's witness has no body (R5-M67; a row not
-    // written yet, PLAN G157 (10)), and any other callee is a broken contract.
+    // whose signature is the call's, since compatibility inserts no conversion): what the target runs (Witness), a body item by its
+    // signature (ModuleCodegen.Signature) with its operands in its body's order, a caller-location one given the call's location (Invoke); a
+    // Fn callee calls the function it names whatever it implements (a direct base call, SPEC 6.4.4), a Requirement callee through the
+    // virtual slot its witness runs. Without a target, a #LibraryImport function is called by its C signature (SPEC 22.6), a requirement's
+    // witness has no body (R5-M67; a row not written yet, PLAN G157 (10)), and any other callee is a broken contract.
     private void Function(in MirTerminator call)
     {
         var target = this.Target(new(this.at, this.body.Blocks[this.at].Count));
@@ -81,20 +81,32 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
+        if (this.Witness(target, call.Source) is { } run)
+        {
+            var ordinal = this.collector.Set.Items[target].BodyOrdinal; // A shim's operands are its requirement's, in their own order.
+            var key = ordinal >= 0 ? this.program.Bodies[ordinal].Key : new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
+            this.Invoke(call, run.Signature, key, default, call.Callee.Kind == MirCalleeKind.Requirement ? run.Slot : null);
+        }
+    }
+
+    // SPEC 8.6.3-8.6.4, 6.4.6 (K package 4.5 rows 1, 3 and 5): what a call of a function's or a requirement's target item runs, the one rule
+    // of a Requirement call and of a function Item's call and adapter (FunctionCodegen.Closures' Runs): a body item its body (BodyRun); a
+    // Builtin item its shim's function (FunctionCodegen.Shims; DECISIONS R5-M126), a format shim's C9b's located Unsupported_Kd; a property
+    // witness C3c's; any other item a broken contract. Null after a record at the source.
+    private Run? Witness(int target, in SourceInfo source)
+    {
         switch (this.collector.Set.Items[target].Key.Kind)
         {
-            case MonoKind.Body when this.BodyRun(target) is { } run:
-                var key = this.program.Bodies[this.collector.Set.Items[target].BodyOrdinal].Key;
-                this.Invoke(call, run.Signature, key, default, call.Callee.Kind == MirCalleeKind.Requirement ? run.Slot : null);
-                return;
             case MonoKind.Body:
-                return; // A broken contract, recorded.
-            case MonoKind.Builtin or MonoKind.PropertyWitness:
-                this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // C8f and C9b write the Builtin shims, C3c the property witnesses.
-                return;
+                return this.BodyRun(target); // Null after a record.
+            case MonoKind.Builtin:
+                return this.Shim(target, source) is { } shim ? new Run(shim, null) : null; // Null after a record.
+            case MonoKind.PropertyWitness:
+                this.Report(DiagnosticCode.Unsupported_Kd, source); // C3c writes the property witnesses.
+                return null;
             default:
-                this.Report(DiagnosticCode.InternalInvariant_Kd, call.Source); // A Fn call targets a body, a shim or a witness (K package 4.5).
-                return;
+                this.Report(DiagnosticCode.InternalInvariant_Kd, source); // A call targets a body, a shim or a witness (K package 4.5).
+                return null;
         }
     }
 

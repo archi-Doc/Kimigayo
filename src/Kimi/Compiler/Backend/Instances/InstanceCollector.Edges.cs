@@ -209,7 +209,7 @@ internal sealed partial class InstanceCollector
     // K 4.5 row 8 (DECISIONS R5-M74, R5-M111): a creation's target, its payload's object descriptor, admitted with the payload's layout
     // verdict (InstanceCollector.Objects.cs): a creation intrinsic's, an Item of its function's, a case adaptation's that creates.
     private int Descriptor(int item, SourceRef subject, BoundType payload)
-        => this.AdmitType(item, subject, new(MonoKind.ObjectDescriptor, default, null, null, 0, null), payload);
+        => this.AdmitType(item, subject, new(MonoKind.ObjectDescriptor, default, null, null, 0, null), payload, null);
 
     // SPEC 13.6.2, 8.14 (DECISIONS R5-M111): an Adapt whose operation in the item's instance (TyCtxt.Adaptation from its source token's
     // Type to its target, the rule MirCases.Adapt reads under the item's view) creates an object targets its payload's descriptor, as every
@@ -272,6 +272,6 @@ internal sealed partial class InstanceCollector
 
         var adapter = closed.Kind == BoundTypeKind.Closure ? MonoKind.ClosureErasure : MonoKind.ItemAdapter;
         return this.In(item, subject, rvalue.Type!) is { } function && this.LaysOutSignature(subject, function)
-            ? this.AdmitType(item, subject, new(adapter, default, null, null, 0, this.types.Erase(function)), closed) : -1;
+            ? this.AdmitType(item, subject, new(adapter, default, null, null, 0, this.types.Erase(function)), closed, null) : -1;
     }
 }

@@ -14,9 +14,10 @@
 // ClosureErasure and ItemAdapter (__kimi_erase<item>, its entry under its target Function Type's erased signature, its table and its
 // heap environment's release, written by FunctionCodegen; R5-M108), the LegacyRow items of the Array rows and of placeEntry (their routines,
 // their helpers written before the definitions, ModuleCodegen.Arrays and ModuleCodegen.Dictionaries; R5-M121, R5-M124), the Builtin shims
-// (C8f, C9b), the property witnesses (C3c), K8's ObjectDescriptor items (the module's runtime identities, a descriptor's constants, payload
-// destructor and factory through ObjectRuntime, ModuleCodegen.Objects; R5-M110) and VTable items, whose text is their descriptors' virtual
-// tables (R5-M114), a test build's TestEntry (C10a).
+// (__kimi_builtin<item>, a comparison's or an arithmetic operation's function under its requirement's signature, Shim, written by
+// FunctionCodegen.Shims; R5-M126; a format shim C9b's), the property witnesses (C3c), K8's ObjectDescriptor items (the module's runtime
+// identities, a descriptor's constants, payload destructor and factory through ObjectRuntime, ModuleCodegen.Objects; R5-M110) and VTable
+// items, whose text is their descriptors' virtual tables (R5-M114), a test build's TestEntry (C10a).
 // Inputs: the program the generation gate passed (validated, analyzed and accepted); the instance collector's checked set, marked from the
 // output roots the generation entry gives (K package 4.10), TypeOf and location rule (K package 4.9); the compilation's Layout and runtime
 // location texts (Compilation.Locations); the startup selection.
@@ -31,7 +32,7 @@
 // item) is a broken contract, InternalInvariant_Kd at the item's site.
 // Must not decide acceptance (the gate) or what is generated (the generation entry's mark), read syntax, HIR or the old Emission, write a
 // partial module, use LINQ, Supports* or catch-alls.
-// Files: the items and the records (this file); the body, glue, ensure and virtual slot signatures and the signature caches
+// Files: the items and the records (this file); the body, glue, Builtin, ensure and virtual slot signatures and the signature caches
 // (ModuleCodegen.Signatures.cs), the called imports' C signatures and declarations (ModuleCodegen.Imports.cs), the common Function values'
 // entries (ModuleCodegen.Erasures.cs), the object descriptors with their virtual tables (ModuleCodegen.Objects.cs), the Array rows'
 // routines and helpers (ModuleCodegen.Arrays.cs) and the Dictionary rows' (ModuleCodegen.Dictionaries.cs); the module frame and the output
@@ -143,8 +144,11 @@ internal sealed partial class ModuleCodegen
             case MonoKind.ClosureErasure or MonoKind.ItemAdapter:
                 this.bodies.WriteAdapter(collector, item, this.functions);
                 return;
-            case MonoKind.Builtin or MonoKind.PropertyWitness:
-                this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // C3c writes property witnesses; C8f and C9b the Builtin shims (R5-M67).
+            case MonoKind.Builtin:
+                this.bodies.WriteShim(collector, item, this.functions); // Its shim's function (FunctionCodegen.Shims; R5-M126).
+                return;
+            case MonoKind.PropertyWitness:
+                this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // C3c writes property witnesses (R5-M67).
                 return;
             case MonoKind.ObjectDescriptor:
                 this.Descriptor(item);

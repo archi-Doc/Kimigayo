@@ -747,6 +747,24 @@ public sealed class TyCtxtTest
         Assert.Equal(storage == Binding.StorageOutcome.Limit, subst is null);
     }
 
+    // SPEC 8.6.1 (DECISIONS R5-M126; PLAN G157 (16)): the Contract that declares a requirement, also of the built-in target a requirement
+    // call on a built-in Type runs, which keeps its requirement's scope: Equatable's equals, Comparable's compare and Addable's added on i32.
+    [Fact]
+    public void ContractDeclaresARequirementAndItsBuiltinTarget()
+    {
+        var c = MinimalEmissionTest.Analyze("let x = 1\n");
+        foreach (var id in new[] { KimiDeclarationId.Equatable, KimiDeclarationId.Comparable, KimiDeclarationId.Addable })
+        {
+            var contract = c.Library.GetSymbol(id)!;
+            var requirement = contract.Contract!.OwnRequirement()!;
+            var target = c.Types.Witness(requirement, contract, c.Types.Synthesized(requirement, BoundType.I32, contract.Type!));
+            Assert.Equal(RequirementTargetKind.Builtin, target.Kind);
+            Assert.NotSame(requirement, target.Target);
+            Assert.Same(contract, TyCtxt.Contract(requirement));
+            Assert.Same(contract, TyCtxt.Contract(target.Target!));
+        }
+    }
+
     // SPEC 6.5.1, 23.1.2 (G242; DECISIONS BU-37): an enum instance publishes each Case its substitution forms, and a Case whose payload
     // does not substitute is null, as a Field is: E's B and C beside its failed A, and G<i32>'s B, whose growth the storage verdict then
     // meets beside the failed A (fail-before: no Case published, and G<i32> Rejected).

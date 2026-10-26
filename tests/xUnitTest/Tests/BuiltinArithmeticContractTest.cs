@@ -100,16 +100,19 @@ public class BuiltinArithmeticContractTest
         ScalarEmissionTest.EmitFixture("BuiltinArithmeticWidth" + integer, program.ToString(), string.Empty);
     }
 
+    // IMPL 21.3.3 (DECISIONS R5-M54, R5-M126): a 128-bit division through Dividable conforms, but the backend does not generate it; under
+    // MIR code generation the shim's operation is the checked set's record, so check rejects the program (K13a), also when only an unused
+    // function reaches the instance; the old generator accepts it at check and refuses it at generation.
     [Theory]
-    [InlineData("i128")]
-    [InlineData("Wrapping<u128>")]
-    public void NativeDivisionBoundaryDoesNotRemoveLanguageConformance(string type)
+    [InlineData("let value: i128 = 6\nlet result = quotient(value, 2)")]
+    [InlineData("let value: Wrapping<u128> = 6\nlet result = quotient(value, 2)")]
+    [InlineData("func unused(a: ref/i128, b: ref/i128) -> i128 => quotient(a, b)\nlet result = 1")]
+    public void NativeDivisionBoundaryDoesNotRemoveLanguageConformance(string uses)
     {
-        var declarations = Source[..Source.IndexOf("require sum", StringComparison.Ordinal)];
-        var source = declarations + "let value: " + type + " = 6\nlet result = quotient(value, 2)";
+        var source = Source[..Source.IndexOf("require sum", StringComparison.Ordinal)] + uses;
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified);
+        Assert.Equal(Codegen.Expect(false, true, CodegenDeviations.CheckedSetAtCheck), c.Analysis.IsVerified);
         Assert.False(c.WriteIr(TextWriter.Null, out _));
 
         // The old generator's refusal, on a compilation pinned to it (DECISIONS R5-M85; it goes by G4 at the latest).

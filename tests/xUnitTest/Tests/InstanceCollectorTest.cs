@@ -49,6 +49,20 @@ public sealed class InstanceCollectorTest
     // The first line of CLayoutP's constructor, the subject of its instance's by-value uses.
     private const string Init = "public init(n: i32, value: T)";
 
+    // Generic functions that request an arithmetic shim: a requirement call, an operator, a function item's formation and call, and a
+    // requirement call in a body instantiated per tag Type.
+    private const string ShimQuotient = "func quotient<T>(left: ref/T, right: ref/T) -> T\n    T is Dividable<T>\n    T.(Dividable<T>).Output is T\n" +
+        "    return left.divided(right)\n";
+
+    private const string ShimHalf = "func half<T>(value: ref/T, two: ref/T) -> T\n    T is Dividable<T>\n    T.(Dividable<T>).Output is T\n" +
+        "    return value / two\n";
+
+    private const string ShimItem = "func viaItem<T>(left: ref/T, right: ref/T) -> T\n    T is Dividable<T>\n    T.(Dividable<T>).Output is T\n" +
+        "    let operation = T.divided\n    return operation(left, right)\n";
+
+    private const string ShimTagged = "func tagged<T, U>(left: ref/T, right: ref/T, tag: U) -> T\n    T is Dividable<T>\n    T.(Dividable<T>).Output is T\n" +
+        "    return left.divided(right)\n";
+
     // Exactly 2^63 - 1 bytes (649657 * 92737 * 153092023), every count within 2^31 - 1.
     private const string Big = "[649657 of [92737 of [153092023 of u8]]]";
 
@@ -1064,6 +1078,35 @@ public sealed class InstanceCollectorTest
         Assert.Equal(2, shims.Select(x => set.Find(x.Key)).Distinct().Count());
     }
 
+    // K 4.3 (DECISIONS R5-M126, its departure (i)): a shim item is represented by its Self and by the substitution of the call that first
+    // admits it, so its requirement's signature in its instance (TyCtxt.Signature through TypeOf) is closed, also a binary arithmetic
+    // requirement's, whose Rhs and Output its Self alone leaves open; a second call of one key keeps the item (fail-before: no representative,
+    // added's right operand ref/Rhs and its result open).
+    [Fact]
+    public void AShimItemIsRepresentedByItsAdmittingCall()
+    {
+        var c = MirBuildTest.Compile(
+            "func sum<T>(left: ref/T, right: ref/T) -> T\n    T is Addable<T>\n    T.(Addable<T>).Output is T\n    return left + right\n" +
+            "func same<T>(left: ref/T, right: ref/T) -> bool\n    T is Equatable\n    return left == right\n" +
+            "let a = 2\nlet b = 3\nrequire sum(a@ref, b@ref) == 5 and same(a@ref, a@ref) and not same(b@ref, a@ref) else => $abort(\"shims\")\n");
+        var program = c.BuildMir();
+        var collector = new InstanceCollector(c.Types, c.Layout);
+        var set = collector.Run(program, 1);
+        Assert.Empty(set.Records);
+        var shims = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.Builtin).ToArray();
+        var labels = shims.Select(x => Label(program, set.Items[x])).Order(StringComparer.Ordinal);
+        Assert.Equal(["Builtin i32 BuiltinArithmetic", "Builtin i32 BuiltinEquals"], labels);
+        foreach (var shim in shims)
+        {
+            var (function, representative) = (set.Items[shim].Key.Symbol!, set.Items[shim].Representative);
+            Assert.Same(set.Items[shim].RepresentativeType, representative?.Self);
+            _ = TyCtxt.Signature(function, null, int.MaxValue, out var count);
+            var expected = function.CompilerFunction == CompilerFunctionKind.BuiltinEquals ? "bool" : "i32";
+            var types = Enumerable.Range(-1, count + 1).Select(x => TyCtxt.Name(collector.TypeOf(shim, TyCtxt.Signature(function, null, x, out _)!)!));
+            Assert.Equal([expected, "ref/i32", "ref/i32"], types);
+        }
+    }
+
     // PLAN G157 (4), PD30: a requirement call whose Self nests past Binding's storage bound in the instance (Box^65<i32>, storage depth 65;
     // no local of the body stores it) is the storage-nesting gap at the call, while the twin one level below is its witness's instance.
     [Theory]
@@ -1560,6 +1603,46 @@ public sealed class InstanceCollectorTest
         Assert.Equal(expected, set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
     }
 
+    // K 4.7 instance stage, IMPL 21.3.3 (DECISIONS R5-M54, R5-M126): an arithmetic shim's operation, its Contract's MIR operator
+    // (BuiltinArithmetic) on its Self, is checked at each site that requests the shim, in Requirement's refusal decision: a division or
+    // remainder of an i128, u128 or Wrapping<u128> Self is Unsupported_Kd at the requesting site (K 4.9), also when only an unused function
+    // reaches it. Two sites requesting one key are two records, as two statements' divisions are: a requirement call and an operator; a
+    // function item's formation and its call (SPEC 23.1.2 leaves a dependent failure's report implementation-defined); one site in two
+    // instances is one (fail-before: once per item, at its first site). A refused edge admits no item, so a gap key has none; an addition
+    // of i128 and a division of i64 have no record and their shim is admitted.
+    [Theory]
+    [InlineData(ShimQuotient + "func unused(a: ref/i128, b: ref/i128) -> i128 => quotient(a, b)\n", "left.divided(right)")]
+    [InlineData(
+        "func rest<T>(left: ref/T, right: ref/T) -> T\n    T is RemainderProvider<T>\n    T.(RemainderProvider<T>).Output is T\n    return left % right\n" +
+        "let a: u128 = 7\nlet b: u128 = 2\nlet r = rest(a@ref, b@ref)\n",
+        "left % right")]
+    [InlineData(ShimQuotient + "let a: Wrapping<u128> = 7\nlet r = quotient(a@ref, a@ref)\n", "left.divided(right)")]
+    [InlineData(ShimQuotient + ShimHalf + "func unused(a: ref/i128, b: ref/i128) -> i128 => quotient(a, b) + half(a, b)\n", "left.divided(right)|value / two")]
+    [InlineData(ShimItem + "func unused(a: ref/i128, b: ref/i128) -> i128 => viaItem(a, b)\n", "T.divided|operation(left, right)")]
+    [InlineData(
+        ShimQuotient + ShimItem + "func unused(a: ref/i128, b: ref/i128) -> i128 => quotient(a, b) + viaItem(a, b)\n",
+        "left.divided(right)|T.divided|operation(left, right)")]
+    [InlineData(ShimTagged + "func unused(a: ref/i128, b: ref/i128) -> i128 => tagged(a, b, 1) + tagged(a, b, true)\n", "left.divided(right)")]
+    [InlineData(
+        "func third<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value / 3\nfunc fifth<T>(value: T) -> T\n    T is PrimitiveInteger\n" +
+        "    return value / 5\nfunc unused(a: i128) -> i128 => third(a) + fifth(a)\n",
+        "value / 3|value / 5")]
+    [InlineData(
+        "func sum<T>(left: ref/T, right: ref/T) -> T\n    T is Addable<T>\n    T.(Addable<T>).Output is T\n    return left.added(right)\n" +
+        "func unused(a: ref/i128, b: ref/i128) -> i128 => sum(a, b)\n",
+        "")]
+    [InlineData(ShimQuotient + ShimHalf + "func unused(a: ref/i64, b: ref/i64) -> i64 => quotient(a, b) + half(a, b)\n", "")]
+    public void AnArithmeticShimsOperationOfTheTableIsAGapAtEachRequestingSite(string source, string refused)
+    {
+        var c = MirBuildTest.Compile(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        var expected = refused.Length == 0 ? [] : refused.Split('|').Select(static x => (DiagnosticCode.Unsupported_Kd, x)).Order().ToArray();
+        Assert.Equal(expected, set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())).Order());
+        var shims = set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.Builtin);
+        Assert.Equal(refused.Length == 0, shims.Any(static x => x.Key.Symbol!.CompilerFunction == CompilerFunctionKind.BuiltinArithmetic));
+    }
+
     // K 4.8, SPEC 6.7.1, 8.15.3, DECISIONS R5-M55: a by-value use whose Type places a C-layout instance storing a zero-sized Field, at any
     // depth, is InvalidCLayout_Kd at each such use (one record per subject): an inferred instance in a generic body (make(())) and at the
     // top level (P.init(1, ()), P.init(1, Q.init()) for a zero-sized struct Q), with the instance's constructor, a written parameter of an
@@ -1889,6 +1972,37 @@ public sealed class InstanceCollectorTest
             [IntrinsicId.DestroyValues, IntrinsicId.ErasedWriter, IntrinsicId.MakeObj, IntrinsicId.MakeRc, IntrinsicId.MakeArc, IntrinsicId.StaticEnsure],
             targets);
         Assert.Throws<InvalidOperationException>(static () => IntrinsicRows.Of(IntrinsicId.None));
+    }
+
+    // SPEC 13.3.3 (DECISIONS R5-M126): the Backend's statement of the table (BuiltinArithmetic) and Binding's ArithmeticContracts.Operator,
+    // composed with the MIR builder's operator for that token, agree: each Contract with a built-in witness on i32 has the MIR operation the
+    // builder writes for its operator on i32 operands, one each; any other Contract, a comparison or a Left one, has none.
+    [Fact]
+    public void TheBuiltinArithmeticRowsAreTheBuildersOperators()
+    {
+        var contracts = Enum.GetValues<KimiDeclarationId>().Where(static x => ArithmeticContracts.Supports(BoundType.Primitives["i32"], x)).ToArray();
+        Assert.Equal(6, contracts.Length);
+        foreach (var contract in contracts)
+        {
+            var token = ArithmeticContracts.Operator(contract);
+            var spelling = token switch
+            {
+                KotoKind.Plus => "+",
+                KotoKind.Minus or KotoKind.PrefixMinus => "-",
+                KotoKind.Asterisk => "*",
+                KotoKind.Slash => "/",
+                KotoKind.Percent => "%",
+                _ => throw new InvalidOperationException($"{contract} has no operator."),
+            };
+            var source = token == KotoKind.PrefixMinus ? $"func f(a: i32) -> i32 => {spelling}a\n" : $"func f(a: i32, b: i32) -> i32 => a {spelling} b\n";
+            var body = Assert.Single(MirBuildTest.Compile(source).BuildMir().Bodies.ToArray(), static x => x.Key.Decl?.Name == "f");
+            var rvalue = Assert.Single(body.Statements.ToArray(), static x => x.Rvalue.Kind is MirRvalueKind.BinaryOp or MirRvalueKind.UnaryOp).Rvalue;
+            Assert.Equal((rvalue.Kind, rvalue.Op), BuiltinArithmetic.Operation(contract));
+        }
+
+        Assert.Equal(contracts.Length, contracts.Select(static x => BuiltinArithmetic.Operation(x)).Distinct().Count());
+        var others = Enum.GetValues<KimiDeclarationId>().Except(contracts);
+        Assert.All(others, static x => Assert.Throws<InvalidOperationException>(() => BuiltinArithmetic.Operation(x)));
     }
 
     // R5-M39 (DECISIONS BU-24): a raw Origin enters no instance key, so variants of a generic callee that differ in raw Origins alone are

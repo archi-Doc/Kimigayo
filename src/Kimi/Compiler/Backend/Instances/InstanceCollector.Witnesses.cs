@@ -13,14 +13,18 @@ internal sealed partial class InstanceCollector
     // call recorded and the call's closed substitution (X16): a requirement call's composed one, a compiler function's call on a Self or a
     // requirement Item's call. A Body's function item, the implementation its instance selects (SPEC 8.13.3; -1 without a body); a Builtin's
     // shim item, keyed by its compiler function and the erased Self; a Storage witness's property-witness item, keyed by its Field, the
-    // erased Self and its operation (X14, X28), whose key's signature agrees with the requirement's in the instance (a Builtin's and a
-    // Storage witness's substitution is the call's). OCC-X's refusal and a Self whose storage does not complete are capability gaps at the
-    // call; None, no answer for the closed Self of an accepted program, and a Storage witness whose signature disagrees are broken
-    // contracts; a kind without a row is a fault.
+    // erased Self and its operation (X14, X28), whose key's signature agrees with the requirement's in the instance; a shim item represented
+    // by the call's substitution, a Builtin's and a Storage witness's, whose bound reference instantiates the requirement's signature (one
+    // Abi for every call of a key: its Self erases to one Type, references are pointers, SPEC 13.3.3 fixes a built-in numeric Type's
+    // counterpart and Output; DECISIONS R5-M126). OCC-X's refusal, a Self whose storage does not complete and an arithmetic shim whose
+    // operation the capability table refuses (ArithmeticGap; IMPL 21.3.3) are capability gaps at the call, each requesting site's, and
+    // refuse the edge; None, no answer for the closed Self of an accepted program, and a Storage witness whose signature disagrees are
+    // broken contracts; a kind without a row is a fault.
     private int Requirement(MirProgram program, int item, SourceRef subject, BindingSymbol requirement, in RequirementTarget target)
     {
         DiagnosticCode? refused = target.Kind switch
         {
+            RequirementTargetKind.Builtin when ArithmeticGap(target) is { } gap => Capability.Code(gap),
             RequirementTargetKind.Body or RequirementTargetKind.Builtin => null,
             RequirementTargetKind.Storage when this.Agrees(requirement, target) => null,
             RequirementTargetKind.Storage or RequirementTargetKind.None => DiagnosticCode.InternalInvariant_Kd,
@@ -42,7 +46,7 @@ internal sealed partial class InstanceCollector
 
         var key = target.Kind == RequirementTargetKind.Builtin ? new MonoKey(MonoKind.Builtin, default, null, target.Target, 0, null)
             : new MonoKey(MonoKind.PropertyWitness, default, null, target.Target, (byte)target.Access, null);
-        return this.AdmitType(item, subject, key, target.Subst!.Self!);
+        return this.AdmitType(item, subject, key, target.Subst!.Self!, target.Subst);
     }
 
     // K 4.5 rows 2 and 6, F 4.5: a compiler function's call of a requirement on a Type of the item's instance, through the requirement's own
@@ -50,7 +54,7 @@ internal sealed partial class InstanceCollector
     // or Edge's Compose).
     private int Runs(MirProgram program, int item, SourceRef subject, BindingSymbol requirement, BoundType self)
     {
-        var contract = requirement.Scope.Owner.BoundSymbol!;
+        var contract = TyCtxt.Contract(requirement);
         var call = this.types.Synthesized(requirement, self, contract.Type!);
         return this.Requirement(program, item, subject, requirement, this.types.Witness(requirement, contract, call));
     }
@@ -112,7 +116,7 @@ internal sealed partial class InstanceCollector
         switch (key.Symbol!.CompilerFunction)
         {
             case CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare:
-                this.Leaves(program, item, site, this.types.Comparison(key.Symbol.Scope.Owner.BoundSymbol!, self, operators: false));
+                this.Leaves(program, item, site, this.types.Comparison(TyCtxt.Contract(key.Symbol), self, operators: false));
                 return;
             case CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinArithmetic:
                 return;
