@@ -4,8 +4,8 @@ namespace Kimi.Compiler.Mir;
 
 // A5's accesses at a location (A3 5's access, E13 (1)): the accesses of borrowed roots that the location's uses make, each classified by
 // what it does (KindOf, MirBorrows.Checks' AccessKind) and with the check set it takes, and a Call's or Drop's effect access after them
-// (MirBorrows.Effects); every write also goes to R26-access before the borrowed-root filter (MirBorrows.Defaults). Its classifiers Dropping
-// and Destruction are also read by MirBorrows.Liveness and MirBorrows.Activations.
+// (MirBorrows.Effects); every write also goes to R26-access before the borrowed-root filter (MirBorrows.Defaults). Its classifier KindOf is
+// also read by MirBorrows.OwnSteps' MayDepart, and Dropping and Destruction by MirBorrows.Liveness and MirBorrows.Activations.
 // Must not compare an access with a Loan (MirBorrows.Checks) or record a problem (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
