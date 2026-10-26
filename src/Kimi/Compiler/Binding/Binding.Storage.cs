@@ -20,10 +20,12 @@ public sealed partial class Binding
     private bool storagePrepared;
 
     // The stored Types of a struct or enum instance: its declaration's base, Fields and Case payloads under the instance's
-    // substitution. They are substituted once per pass after PrepareStorage refilled the declaration, and on every request before.
-    // They state no raw Origin (DECISIONS BU-24; design-final §15): an erased instance is often the user's own Type (no Origins, or only
-    // `static`), so the erasure of a stored Type is the stored Type of the erased instance only then (R5-M39); a raw layer's Origin in
-    // storage is read from the declared Field Type or payload, never from an instance.
+    // substitution. They are substituted once per pass after PrepareStorage refilled the declaration, and on every request before; an
+    // instance first requested after the last pass on that request. One substitution, two forms (DECISIONS BU-41): the kept parts
+    // (Parts, PartsBase; TyCtxt.StoredParts) with the raw Origins it gives, `self` as Holder, which StoredLayer and the hold walk read,
+    // and AdtDef's view, the same Types WithoutRawOrigins (DECISIONS BU-24; design-final §15): an erased instance is often the user's own
+    // Type (no Origins, or only `static`), so the erasure of an AdtDef stored Type is the stored Type of the erased instance only then
+    // (R5-M39).
     internal AdtDef.InstanceStorage Instance(BoundType type)
     {
         var adt = type.Symbol!.Adt;
@@ -73,16 +75,18 @@ public sealed partial class Binding
     {
         if (type.Symbol!.Declaration is StructKoto declaration)
         {
-            instance.Base = declaration.Bases.Count == 1 ? this.WithoutRawOrigins(this.StoredType(declaration.Bases[0], type)) : null;
+            instance.PartsBase = declaration.Bases.Count == 1 ? this.StoredType(declaration.Bases[0], type) : null;
+            instance.Base = this.WithoutRawOrigins(instance.PartsBase);
             var count = adt?.Fields.Length ?? 0;
             if (instance.Fields.Length != count)
             {
-                instance.Fields = new BoundType?[count];
+                (instance.Fields, instance.Parts) = (new BoundType?[count], new BoundType?[count]);
             }
 
             for (var i = 0; i < count; i++)
             {
-                instance.Fields[i] = this.WithoutRawOrigins(this.StoredType(adt!.Fields[i], type));
+                instance.Parts[i] = this.StoredType(adt!.Fields[i], type);
+                instance.Fields[i] = this.WithoutRawOrigins(instance.Parts[i]);
             }
 
             return;
@@ -91,16 +95,18 @@ public sealed partial class Binding
         var cases = adt?.Cases ?? [];
         if (instance.Cases.Length != cases.Length)
         {
-            instance.Cases = new BoundType?[cases.Length];
+            (instance.Cases, instance.Parts) = (new BoundType?[cases.Length], new BoundType?[cases.Length]);
         }
 
         for (var i = 0; i < cases.Length; i++)
         {
-            instance.Cases[i] = cases[i] is { } selected ? this.PayloadTuple(selected, type) : null;
+            instance.Parts[i] = cases[i] is { } selected ? this.PayloadTuple(selected, type) : null;
+            instance.Cases[i] = this.WithoutRawOrigins(instance.Parts[i]);
         }
     }
 
-    // A Case's payload Types under an instance's substitution as one Tuple; null when one does not substitute.
+    // A Case's payload Types under an instance's substitution, with the raw Origins it gives, as one Tuple; null when one does not
+    // substitute.
     private BoundType? PayloadTuple(BoundEnumCase selected, BoundType type)
     {
         this.enumPayloadTypes.Clear();
@@ -112,7 +118,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            this.enumPayloadTypes.Add(this.WithoutRawOrigins(payload)!);
+            this.enumPayloadTypes.Add(payload);
         }
 
         var tuple = this.types.Tuple(CollectionsMarshal.AsSpan(this.enumPayloadTypes));

@@ -33,8 +33,10 @@ public sealed partial class Binding
     // of an unresolved one, such as a definition beyond the case bound (Binding.CaseLimits), are not verified.
     private static bool PartsPublished(Koto definition) => definition.BindingState == BindingState.Resolved;
 
-    // Whether the lexer, the parser or Binding rejected a node: a recovery, a #switch that selected no arm (SPEC 19.3) or a failure.
-    private static bool Rejected(Koto node) => IsRecovery(node, out _) || node is CompileTimeSwitchKoto || node.BindingFailure != BindingFailure.None;
+    // Whether the lexer, the parser or Binding rejected a node: a recovery, a #switch that selected no arm (SPEC 19.3), a failure, or a
+    // literal the lexer could not read, which keeps its Type and lacks only its value (its published absence, CharLiteralKoto.Value).
+    private static bool Rejected(Koto node) => IsRecovery(node, out _) || node is CompileTimeSwitchKoto or CharLiteralKoto { Value: null } ||
+        node.BindingFailure != BindingFailure.None;
 
     // Whether a parent covers a child, which it does not evaluate as a value: the callee of a selected call or construction (a value call's
     // callee is evaluated unless its receiver operation uses what the callee reaches), any child of a macro (its call shape), the name

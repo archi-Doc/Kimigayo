@@ -14,7 +14,7 @@ public sealed partial class OwnershipAnalysis
     private int cleanupQuery;
 
     // SPEC 15.6.6, 16.3.3, 8.15.1: whether destroying a value of the Type may observe the Loans it holds: through a struct that declares a
-    // drop, or an abstract part not proven Copy, whose destruction every instance decides (MirTypes.Observes, DECISIONS R4-M36).
+    // drop, or an abstract part not proven Copy, whose destruction every instance decides (MirTypes.Observation, DECISIONS R4-M36).
     private bool CleanupObservesBorrows(BoundType type, Koto source)
     {
         if (++this.cleanupQuery == int.MaxValue)

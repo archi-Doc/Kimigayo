@@ -90,6 +90,9 @@ public sealed class RetentionTest
     // A struct with an unstated raw Field, which a Field holds through an rc or arc handle (the G160-2c review's R2).
     private const string Shared = "struct Bx\n    public var v: raw/i32\n    public init(v: raw/i32) => self.v = v\n";
 
+    // A derived struct whose base stores a Type argument at a Field (P13's U0 review: a supplied raw layer in a base).
+    private const string Derived = "open struct BaseW<P>\n    public var v: P\nstruct Der<P> : BaseW<P>\n    public var n: i32\n";
+
     // A struct whose Field states no Origin for a raw-of-raw pointer (the N2 review's getSR).
     private const string Pp = "struct Pp\n    public var p: raw/(raw/u8)\n    public init(p: raw/(raw/u8)) => self.p = p\n";
 
@@ -593,7 +596,9 @@ public sealed class RetentionTest
     // and every argument but the one written through by its own value (rule A, DECISIONS R4-M131, BU-40), and one stepping Unstated or
     // Static unties the output: a direct referent (`uniq/(raw/i32)`, `static` alike) as an Option's payload, an
     // allocated pointer in an rc's payload, a regular recursive Type's own Field. One Type at two positions steps by each (BU-35): H's
-    // `at`, written with a `ref` slot, is Shared; the same `raw/i32 during static` its `a` holds through T steps Static and unties.
+    // `at`, written with a `ref` slot, is Shared; the same `raw/i32 during static` its `a` holds through T steps Static and unties. A base
+    // is walked as the instance's substitution keeps it (DECISIONS BU-41): a raw layer its Type argument supplies there steps by its Origin
+    // as at a Field, Exclusive under a local's (no rule A) and Static under `static`, and an unstated one by rule A.
     [Theory]
     [InlineData("struct S {a}\n    public var r: uniq/(raw/i32) during a\nfunc f(s: uniq/S, p: raw/i32)\n    s.r@follow = p", "0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0")]
     [InlineData("struct R\n    public var q: raw/(raw/i32)\nfunc f(r: uniq/R, p: raw/i32)\n    unsafe => Raw.initialize(r.q, p)", "0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0")]
@@ -621,6 +626,11 @@ public sealed class RetentionTest
         "struct H<T> {s}\n    internal let loan: Loan<ref/i32 during s>\n    internal var at: raw/i32 during s\n    internal var a: T\n" +
         "func f(y: ref/i32, h: uniq/(H<raw/i32 during static> during static), p: raw/i32) => ()",
         "1 Content store 1, 2 Value store 1, untied store 1")]
+    [InlineData(Derived + "func f(x: uniq/i32, d: uniq/Der<raw/i32 during x>, p: raw/i32) => ()", "0 Value store 1, 1 Content store 1, 2 Value store 1")]
+    [InlineData(Derived + "func f(x: uniq/i32, d: uniq/Der<raw/i32 during static>, p: raw/i32) => ()", "1 Content store 1, 2 Value store 1, untied store 1")]
+    [InlineData(
+        Derived + "func f(x: uniq/i32, d: uniq/Der<raw/i32>, p: raw/i32) => ()",
+        "0 Value store 1, 0 Chain store 1, 1 Chain store 1, 2 Value store 1, 2 Chain store 1, untied store 1")]
     public void OneWalkReachesWhatACallMayWrite(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
