@@ -22,8 +22,8 @@ namespace Kimi.Compiler.Mir;
 // Must not issue a Loan, carry a value (MirBorrows.Values) or record a problem (MirBorrows.Locations records PQ-10's).
 internal sealed partial class MirBorrows
 {
-    private readonly Dictionary<(int Root, int Owner), int> addressOf = []; // A root's plain address (Owner -1) and its own-step entries.
-    private readonly Dictionary<(int Root, int Layer), int> ownAt = []; // By a raw Place: its layer's own-step entry, -1 for no layer.
+    private readonly MirTable<(int Root, int Owner)> addressOf = new(); // A root's plain address (Owner -1) and its own-step entries.
+    private readonly MirTable<(int Root, int Layer)> ownAt = new(); // By a raw Place: its layer's own-step entry, -1 for no layer.
     private int[] positions = []; // An owner's inline positions, from the part on.
     private bool[] layerBorrowed = []; // By location: PQ-10's located Unsupported_Kd.
     private int addressCount;

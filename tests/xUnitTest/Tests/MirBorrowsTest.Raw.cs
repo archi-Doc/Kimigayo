@@ -144,6 +144,41 @@ public sealed partial class MirBorrowsTest
                     y = 5
                 """));
 
+    // SPEC 15.6 Addresses (DECISIONS R4-M146): A5 empties the addresses and layer entries of a view that formed many whole and a small
+    // view's entry by entry (MirTable), so the views after one with 400 of each report what they report alone (the test above).
+    [Fact]
+    public void TheViewsAfterManyAddressesReportWhatTheyReportAlone()
+    {
+        var many = new StringBuilder("func many()\n");
+        for (var i = 0; i < 400; i++)
+        {
+            many.Append($"    var v{i}: i32 = {i}\n    let c{i} = Cursor.init(p: v{i}@raw)\n    let p{i} = c{i}.p\n");
+        }
+
+        Assert.Equal(
+            ["readThrough: y = 5", "chain: x = 5"],
+            Problems(RawShapes + many + """
+                func readThrough()
+                    var y: i32 = 1
+                    var v: i32 = 2
+                    var w: ref/i32 = y@ref
+                    let p = w@raw
+                    var q: ref/i32 = v@ref
+                    unsafe => q = *p
+                    y = 5
+                    inspect(q)
+                func chain()
+                    var x: i32 = 1
+                    var y: i32 = 2
+                    var w: ref/i32 = y@ref
+                    let p = w@raw
+                    let c = p@raw
+                    unsafe => Raw.initialize(*c, x@ref)
+                    x = 5
+                    inspect(w)
+                """));
+    }
+
     // SPEC 5.7 Calls, 15.6, 15.6.4 (G160 (a), (c), (d); D6, D10; DECISIONS R4-M116 S2): a call stores through a raw Field what its contract
     // says, reaching what the holder's pointer reaches; a result whose Type stores a raw Field stating no Origin is tied to no argument (a
     // hidden pointer, condition 5), so such a holder's pointer reaches storage the body does not own: by uniq, by value, past two uniq
