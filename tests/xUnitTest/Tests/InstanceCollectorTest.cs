@@ -999,11 +999,8 @@ public sealed class InstanceCollectorTest
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Empty(set.Records);
         Assert.Equal(
-            [
-                "LegacyRow Array<i32> ArrayReserve", "LegacyRow Array<i32> ArrayAppend", "LegacyRow Array<i32> ArrayAppend", "PropertyWitness Bag StorageSet",
-                "DropGlue Array<i32>", "PropertyWitness Bag StorageBorrow",
-            ],
-            Targets(program, set, "Fn refill [Bag]")); // `[1, 2]` reserves, then appends twice (DECISIONS R5-M121).
+            ["PropertyWitness Bag StorageSet", "DropGlue Array<i32>", "PropertyWitness Bag StorageBorrow"],
+            Targets(program, set, "Fn refill [Bag]")); // `[1, 2]` is one Array aggregate, which targets no routine (DECISIONS R5-M129).
         Assert.Equal(["DropGlue Array<i32>"], Targets(program, set, "PropertyWitness Bag StorageSet"));
         Assert.Empty(Targets(program, set, "PropertyWitness Bag StorageBorrow"));
         Assert.All(set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.PropertyWitness), static x => Assert.Equal("items", x.Key.Symbol!.Name));

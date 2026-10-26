@@ -47,21 +47,23 @@ public sealed partial class MirBuildTest
         """;
 
     // SPEC 15.6.7: every exclusive borrow that produces an invocation's argument or receiver is reserved (TwoPhaseUniq): a written @uniq,
-    // also in parentheses, the Reborrow of a stored uniq at a uniq parameter and a synthesized receiver (an Array literal's reserve and
-    // appends); a written @uniq on a receiver's path is not formed (DECISIONS R4-M52), so the receiver has one reservation, at its lending
-    // point; a borrow saved in storage or a control-flow result is live when formed (Uniq).
+    // also in parentheses, the Reborrow of a stored uniq at a uniq parameter and a synthesized receiver (a Dictionary literal's entry
+    // layout; an Array literal is one aggregate and borrows nothing, DECISIONS R5-M129); a written @uniq on a receiver's path is not formed
+    // (DECISIONS R4-M52), so the receiver has one reservation, at its lending point; a borrow saved in storage or a control-flow result is
+    // live when formed (Uniq).
     [Fact]
     public void ReservedCallInputsAreTwoPhase()
     {
         var source = "func take(a: uniq/i32, b: i32) => ()\nfunc f()\n    var p: i32 = 1\n    take(p@uniq, p + 1)\n    take((p@uniq), 2)\n" +
-            "    var r = p@uniq\n    take(r, 3)\n    let values = [1, 2]\nstruct Counter\n    var count: i32\n    public init() => self.count = 0\n" +
+            "    var r = p@uniq\n    take(r, 3)\n    let values = [1, 2]\n    let table = [1: 2]\n" +
+            "struct Counter\n    var count: i32\n    public init() => self.count = 0\n" +
             "    public func bump(self: uniq/Self, by: i32) => self.count = self.count + by\nstruct Holder\n    public var c: Counter\n" +
             "    public init() => self.c = Counter.init()\nfunc g(h: uniq/Holder)\n    h@follow@uniq.c.bump(1)\n    h@follow@uniq.c@uniq.bump(2)\nfunc chosen()\n    var p: i32 = 1\n" +
             "    take(if p > 0 => p@uniq else => p@uniq, 4)\nstruct Bag\n    public var items: Array<i32>\n    public var count: i32\n" +
             "    public init()\n        self.items = []\n        self.count = 0\nfunc fill()\n    var bag = Bag.init()\n    bag@uniq.items.append(bag.count)\n";
         Assert.Equal(
-            [MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq, MirRefKind.Uniq, MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq,
-                MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq],
+            [MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq, MirRefKind.Uniq, MirRefKind.TwoPhaseUniq, MirRefKind.Shared, MirRefKind.Shared,
+                MirRefKind.TwoPhaseUniq],
             Refs(Body(source, "f")).Select(static x => x.Kind));
         var g = Body(source, "g");
         var lent = Refs(g).ToArray();

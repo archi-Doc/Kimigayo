@@ -7,8 +7,9 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler.Mir;
 
 // Expansions (plan 5.3): the forms whose calls ExpansionPlan and CallPlan.Of name and whose other steps the intrinsic table serves: for
-// loops, compound assignments and the dynamic collection literals (keyed and range selections: MirBuilder.Selections.cs). Each evaluates
-// an operand once; a later step reads the Place it was located at (Located) or the value it gave (a call's given argument).
+// loops, compound assignments and the Dictionary literal (keyed and range selections: MirBuilder.Selections.cs; an Array literal is an
+// aggregate, MirBuilder.Values.cs). Each evaluates an operand once; a later step reads the Place it was located at (Located) or the value
+// it gave (a call's given argument).
 internal sealed partial class MirBuilder
 {
     private readonly List<(Koto Node, MirPlace Place)> located = []; // The Places the expansions being built located, innermost last.
@@ -259,38 +260,6 @@ internal sealed partial class MirBuilder
         this.body.AddOperand(right);
         this.Set(test, MirRvalue.Binary(op, operands, proven: true), node);
         this.Pass(MirOperand.Copy(test), 1, fail, node);
-    }
-
-    // SPEC 4.9.5, 12.4.1: a dynamic Array literal: its elements evaluated in order, each before the last that builds code secured where it
-    // is evaluated (SPEC 12.2), then the empty Array, an aggregate of no operand, reserved for their count and each appended (ArrayReserve,
-    // ArrayAppend: R3 decision 5).
-    private void Collection(MirPlace destination, ArrayLiteralKoto array, BoundType type)
-    {
-        var start = this.arguments.Count;
-        var last = array.Elements.FindLastIndex(Builds);
-        for (var i = 0; i < array.Elements.Count; i++)
-        {
-            var operand = this.Operand(array.Elements[i], type.Components[0]);
-            this.arguments.Add(i < last ? this.Secure(operand, array.Elements[i]) : operand);
-        }
-
-        var count = this.arguments.Count - start;
-        this.Set(destination, MirRvalue.Aggregate(MirAggregateKind.FixedArray, this.body.Operands.Length, 0, type), array);
-        if (count > 0)
-        {
-            var unit = this.Hold(BoundType.Unit, array);
-            for (var i = -1; i < count; i++)
-            {
-                var at = this.arguments.Count;
-                this.arguments.Add(this.Borrow(SemanticsKind.Uniq, destination, array));
-                this.arguments.Add(i < 0 ? MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize, count))) : this.arguments[start + i]);
-                this.Serve(unit, i < 0 ? CompilerFunctionKind.ArrayReserve : CompilerFunctionKind.ArrayAppend, type, [], at, array);
-            }
-
-            this.Made(unit);
-        }
-
-        this.arguments.RemoveRange(start, count);
     }
 
     // SPEC 12.4.3: a dictionary literal: the empty Dictionary, then each entry in source order: its key evaluated once and retained, looked
