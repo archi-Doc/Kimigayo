@@ -37,16 +37,21 @@ public sealed partial class Binding
         };
     }
 
-    // The outermost parentheses around `node`, the node its consumer takes.
+    // The outermost group around `node`, the node its consumer takes (DECISIONS R4-M145): IsBareAcquisitionPosition, ClosureEffects'
+    // ConsumedByValue and the HIR publisher's discard rows read this one rule.
     private static Koto Grouped(Koto node)
     {
-        while (node.Parent is ParenthesizedKoto parenthesized)
+        while (IsGroup(node.Parent))
         {
-            node = parenthesized;
+            node = node.Parent!;
         }
 
         return node;
     }
+
+    // Whether a node is a group, which passes its operand to its consumer as it is (its Op is Group): parentheses, and a label, which
+    // wraps only a control-flow construct (SPEC 14.4), never a Place.
+    private static bool IsGroup(Koto? node) => node is ParenthesizedKoto or LabeledKoto;
 
     // SPEC 3.5.1: the bare acquisition of a Place storing an exclusive reference, `uniq/T` or `objuniq/T`, Reborrows it in its own
     // Semantics, exactly as an annotation of the same complete Type would; the Reborrow's Type is Binding's name for it (DECISIONS

@@ -4622,23 +4622,28 @@ and migration obligations remain in force; no numeric cap changes are authorized
   decisions (the discard row as `PlanRow.Adjust`; Discard Context a bare acquisition position) and R5's three requirements on them).
   Supersedes R4-M128's interim by-value list and its Discard Context net.
   - Representation: `ClosureEffects.ConsumedByValue(place)` (`Binding.ClosureReceivers`), computed once per use (C7), reads the Adjust
-    rule (R4-M142) instead of a list: the place's groups taken through; its own failure gives false; in Discard Context the
-    container's discard, `Binding.Discarded` (`ChildAdjust` with no adaptation, an acquisition, no claim); else the consumer, the
-    nearest ancestor its parent does not cover (`Covers`, C1), the Closure under classification taken as `HirOp.Closure` (C3). A
-    consumer with failure causes (`HasFailureCauses`, BU's pick) decides only a bare acquisition position with no recorded adaptation
-    (C2, the folded `IsBareAcquisitionPosition`); a consumer of Op Unset, Error or Syntax takes nothing, as in the publisher's walk;
-    another runs `AdjustChildren` with the finder `ConsumedTakes`, an `IHirUses` struct keeping the child's last take and the earlier
-    call's, each completed by the claim its consumer's uses made (R4-M142), under both capabilities of the consumer's own use: by
-    value (Copy, Move, Reborrow or ByCase; no adaptation or an erasure) gives true, another take false, no take or a user index pair
-    that disagrees (B-3) null, the net's one row (no form reaches it).
+    rule (R4-M142) instead of a list: the place's groups taken through (`Binding.Grouped`: parentheses and a label, whose Op is Group;
+    the one rule `IsBareAcquisitionPosition` and the publisher's discard rows read too); its own failure gives false; in Discard
+    Context the container's discard, `Binding.Discarded` (`ChildAdjust` with no adaptation, an acquisition, no claim); else the
+    consumer, the nearest ancestor its parent does not cover (`Covers`, C1), the Closure under classification taken as `HirOp.Closure`
+    (C3). A consumer with failure causes (`HasFailureCauses`, BU's pick) decides only a bare acquisition position with no recorded
+    adaptation (C2, the folded `IsBareAcquisitionPosition`); a consumer of Op Unset, Error or Syntax takes nothing, as in the
+    publisher's walk; another runs `AdjustChildren` with the finder `ConsumedTakes`, an `IHirUses` struct keeping the child's last
+    take and the earlier call's, each completed by the claim its consumer's uses made (R4-M142), under both capabilities of the
+    consumer's own use: by value (Copy, Move, Reborrow or ByCase; no adaptation or an erasure) gives true, another take false, no take
+    or a user index pair that disagrees (B-3) null, the net's one row (no form reaches it). The finder applies the claim as the rule
+    does, but no ClosureEffects result depends on it today: a claim decides only a synthesized in-place read (a receiver or compared
+    operand below an element), and every operation that claims such a receiver lends it exclusively, which `NeedsExclusively` decides
+    first, so no test pins it (R4's implementation review 1, N1).
   - The discard row (R5's condition 3): `IsBareAcquisitionPosition` includes a Place in Discard Context, so `StoredReborrow` records
     the Reborrow of a discarded stored exclusive reference as at a value position. The HIR publisher writes each Place in Discard
     Context's `Discarded` take as its `PlanRow.Adjust`, whose contract is one meaning, the node's Adjust that the Adjust column cannot
     hold: the earlier of two calls' (R4-M109) or a discarded Place's bare acquisition, the column's unset value staying the container
     discarding its item (`MirBuilder.Result` unchanged; `HirFormsTest.ADiscardedPlaceIsTakenByItsBareAcquisitionInItsPlanRow` pins
-    both). It asks for the context only of a Place without an Adjust or a group's operand, the only Places a discarded one can be: a
-    warm publish (Milestone34 and the library, pinned, tiering off, interleaved) measured about 1.4% slower asking every Place, about
-    0.5% (within matched runs) so. `MirBuilder.Values.cs`' Place case reads the row through the one `Operand` path, as any consumed
+    both). It asks for the context only of a Place without an Adjust or a group's operand (`Binding.IsGroup`), the only Places a
+    discarded one can be. A warm publish (Milestone34 and the library, pinned, tiering off, base and candidate interleaved; no A/A
+    control) measured a median of about +1.2% over 6 pairs asking every Place, and +0.5% over 3 pairs (one base outlier among them,
+    0.909, 1.013, 1.000) so. `MirBuilder.Values.cs`' Place case reads the row through the one `Operand` path, as any consumed
     child's Adjust, and decides nothing; its own ByCase is deleted, so one decision has two readers.
   - R5's requirement 2, read with R5 (2026-10-26): an unset row is no `InternalInvariant_Kd` but the derived value of a Place Binding
     failed, the same published fact as every consumed child's (`BareOf`: no Type, or an Error Copy proof; SPEC 23.1.2), which
