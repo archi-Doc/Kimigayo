@@ -4781,6 +4781,51 @@ and migration obligations remain in force; no numeric cap changes are authorized
     reader. Rejected: a new column or `Flag` for the discard (a second fact for one form; `Result` and `Statement` both change); the
     builder testing Discard Context itself (a syntax decision the ratchet forbids); keeping the builder's ByCase (R5's condition 3).
   - Numbering: R4-M145 was reserved for S2 by the R4 planning session (R4-M142; R4-M146 is 2x-E5's, R4-M148 2c-3's).
+- **R4-M146 Pooled per-view tables: Clear costs the view's own entries (MirTable; PLAN G136, V16 "per-view clearing", 2x-E5)**
+  (2026-10-27; R4's lane A under 2x-E5's design with its Revisions 1 and 2, the planning session's decisions on design reviews 1 and 2,
+  both REVISE; the owner's acceptance of its cost, 2026-10-26: 「2x-E5 の +0.5% 程度のコストは受け入れます。再開後に実装を進めてください。」).
+  - Cause: `Dictionary.Clear` clears the whole bucket array, and a pooled table keeps its largest capacity, so each view or body after
+    a large one paid the large one's size: V16 failed for a body with many views after a large view.
+  - Representation: `MirTable<TKey> where TKey : unmanaged` (`Mir/Analysis/MirTable.cs`, a canonical component), a pooled table of int
+    values that a Mir/Analysis owner empties per view or per body and fills again, read and filled only by lookup and insertion
+    (`TryGetValue`, `Add`, `Entry`, the getter). `Clear` removes the entries one by one while they fill less than a 64th of the storage,
+    else clears it whole; the keys are listed only while the table is sparse (at most ⌊(C − 1)/64⌋ for C buckets, set at each Clear),
+    the only state whose Clear reads them. `Cleared` is the slots the last Clear wrote: the entries, or the buckets.
+  - Soundness: between two Clears the entries only grow (no single removal), and `Dictionary` resizes only when every entry slot is
+    used, to about twice as many, leaving the table at least about 2/5 full; so a table found sparse at Clear had no resize since the
+    last one and listed every insertion. The contract names that growth as its assumption; `MirTableTest`'s boundary rows observe it.
+  - Bound: the per-entry path costs the view's entries (for `nodes` also each run's hash, the view's elements); the whole path the C
+    buckets and the high-water entries, at most 64 per entry. The 64th: a removal costs about 100 bucket clears (2x-E5's first
+    prototype removed every entry, with no whole clear, and lost to `Dictionary.Clear` after a large view).
+  - Users, nine tables: `MirLoanSets`' `nodes`, `adds`, `unions`, `removes` and `ranges` (A5; R4-M53's keys, values and memo rule
+    unchanged; `nodes` is cleared before node 0 is re-added, its runs intact, since a node is found by its run); `MirMoveData`'s
+    `children` and `places` (Move paths, per body, read by A1, A2 and A5); `MirBorrows.Addresses`' `addressOf` and `ownAt` (A5, per
+    view). B1 of design review 2: the Addresses tables join this unit, the original exclusion (lane A's D2 held the file) having
+    lapsed when D2 landed.
+  - Deleted: the nine `Dictionary` fields, `MirLoanSets`' collection initializer, `MirMoveData`'s `CollectionsMarshal` use.
+  - The pooled tables of another contract are PLAN G136's common unit (a proposed Full change): reference keys and their retention
+    (`MirOrigins.Causes`' `owns` and `parts`, `MirBorrows.Reach.walked`, `MirBorrows.seen`, `MirDrops.walked`, `MirEffects`' `glued`,
+    `MirBuilder.locals`, `MirBorrows.Accesses.destructions`), `Reach.walked`'s byte value, the set form, `MirTypes`' walk-scratch
+    signatures, P6's `MirBuilder.walked`, and `MirBuilder.trees` (this contract, but Mir/Build may not read Mir/Analysis).
+  - Rejected: per-slot stamps (a custom open-addressing table, more code); a stamp in each value, Binding's `TypeMemo` form (Mir may
+    not read Binding's internals, so a second copy of the pattern; `Runs` would compare a candidate with a stale id's run in the
+    current storage, a stale id equal to the candidate's own a false hit; the memos would keep every view's keys and grow with the
+    program); re-creating a sparse table or `TrimExcess` (allocates on warm runs); removing every entry with no whole clear (the
+    first prototype); listing a dense table's keys, which its Clear never reads (design review 1's N3); enumerating the table instead
+    of listing (it costs the high-water entries since the last whole clear); a key list in each owner (copies of one rule).
+  - Tests: `MirTableTest`: both paths leave no entry, `Cleared` the bucket count or the entry count; the listing bound and one past
+    it; a resize after a sparse Clear, then the new bound; the V16 row "per-view clearing" (after a view of N entries, 64 views of 4
+    clear 256 slots for N = 2¹⁰, 2¹², 2¹⁴; under the parent's rule, the whole storage each time, 123,584, 538,816 and 1,121,216); a
+    warm fill and clear on both paths allocates nothing. The reset rows `MirLoanSetsTest.AViewAfterALargeOneGetsAFreshInstancesSets`,
+    `MirInitTest.ABodyAfterALargeOneGetsAFreshInstancesPaths` and `MirBorrowsTest.TheViewsAfterManyAddressesReportWhatTheyReportAlone`.
+    Each fails under a mutation, run and recorded: the parent's rule, listing only below the bound (`count < listed`), and a
+    per-entry path that removes nothing, in all tables or in one owner's.
+  - Measured: on G258's host (120 census programs, base e212d7590 against the tuned prototype of the first seven tables, A, A′ and B
+    interleaved, pinned, tiering off, 3 runs of 8, a quiet machine), A5's step 4 B/A ×1.0049 (A′/A ×0.9948); Work, Loan-set Bytes
+    and problems equal; cold allocation +1,872 B. Warm runs allocate nothing. The re-timing of this build with the Addresses tables, on
+    the census (steps 4 and 2) and on the probe shapes (one large view then many small views; bodies with only small views), is the
+    planning session's to schedule on a quiet machine, recorded here before landing.
+  - Numbering: R4-M146 was reserved for 2x-E5 by the R4 planning session (R4-M145 S2, R4-M147 P13-1, R4-M148 2c-3).
 - **R4-M147 A5's per-part guard; P13's body hold removed (PLAN G148 (1), P13-1)** (2026-10-26; R4's lane B under design P13 v3,
   ACCEPT at its design review 3, on BU-41's view (U0, unit bu46); the planning session's ruling D″ of 2026-10-26 on an abstract
   referent; class Full with BU).
