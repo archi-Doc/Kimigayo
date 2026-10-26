@@ -12,6 +12,10 @@ namespace XunitTest;
 
 public class PatternBindingTest
 {
+    private const string Selecting = "func g(o: Option<i32>, c: bool, v: i32) -> i32\n";
+    private const string BothMissing = "UnresolvedBinding_Kd missing | UnresolvedBinding_Kd missing2";
+    private const string Use = "func h(v: i32) -> i32 => v\nfunc g(o: Option<i32>) -> ()\n";
+
     [Theory]
     [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(let n) => n\n    .None => 0")]
     [InlineData("func f(x: Option<i32>) -> i32 => match x\n    Option<i32>.Some(let n,) => n\n    Option<i32>.None => 0")]
@@ -262,6 +266,65 @@ public class PatternBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
     }
 
+    // SPEC 14.8.3, 23.1.2 (PLAN G259): a failed arm makes no pattern unreachable. A use of a local whose Type its failed match left
+    // unknown binds the declaration again, and the match rebuilds its plan each time it is bound, so no arm is counted twice.
+    [Theory]
+    [InlineData("    return h(k)")]
+    [InlineData("    return h(k) + h(k)")]
+    [InlineData("    let z = k\n    return z")]
+    [InlineData("    let z = (k, k)\n    return z.0")]
+    public void ARebindOfAFailedMatchCountsEachArmOnce(string use)
+    {
+        const string Head = "func h(v: i32) -> i32 => v\nfunc g(c: bool) -> i32\n    let k = match c\n        true => 1\n        false => MISSING\n";
+        Assert.Equal("UnresolvedBinding_Kd missing", Records(Head.Replace("MISSING", "missing", StringComparison.Ordinal) + use));
+        Assert.Equal(string.Empty, Records(Head.Replace("MISSING", "2", StringComparison.Ordinal) + use));
+    }
+
+    // SPEC 23.1.2: a match whose pattern or guard failed rests on that located failure, the one record; the match adds none. A binding
+    // declared in a failed position rests on it, so a body's or guard's use of it adds none either (each row's twin replaces `written`
+    // by `valid` and has no record).
+    [Theory]
+    [InlineData("func g(o: Option<i32>) -> i32\n    let k: i32 = match o\n        .Some(let a, let b) => a\n        _ => 0\n    return k", "InvalidPattern_Kd .Some(let a, let b)", "let a, let b", "let a")]
+    [InlineData("func g(o: Option<i32>) -> ()\n    match o\n        .Some(let a, let b) if a > 0 => ()\n        _ => ()", "InvalidPattern_Kd .Some(let a, let b)", "let a, let b", "let a")]
+    [InlineData(Use + "    match o\n        .Some(let a, let b) => h(a)\n        _ => ()", "InvalidPattern_Kd .Some(let a, let b)", "let a, let b", "let a")]
+    [InlineData(Use + "    match o\n        .Missing(let a) => h(a)\n        _ => ()", "UnresolvedBinding_Kd .Missing | InvalidPattern_Kd .Missing(let a)", ".Missing", ".Some")]
+    [InlineData("func g(o: Option<i32>) => match o\n    .Some(let x) if x => ()\n    _ => ()", "TypeMismatch_Kd x", "if x =>", "if x > 0 =>")]
+    [InlineData("func g(x: i32) => match x\n    true => ()\n    _ => ()", "InvalidPattern_Kd true", "true", "0")]
+    [InlineData("func g(o: Option<i32>) => match o\n    .Missing => ()\n    _ => ()", "InvalidPattern_Kd .Missing | UnresolvedBinding_Kd .Missing", ".Missing", ".None")]
+    [InlineData("func g(o: Option<i32>) => match o\n    .Missing => ()\n    .None => ()", "InvalidPattern_Kd .Missing | UnresolvedBinding_Kd .Missing", ".Missing", ".Some(_)")]
+    [InlineData("func g(o: Option<i32>) => match o\n    Missing.A => ()\n    _ => ()", "InvalidPattern_Kd Missing.A", "Missing.A", "Option<i32>.None")]
+    [InlineData("func g(o: Option<i32>) -> i32 => match o\n    .Some(_, _) => 1\n    _ => 2", "InvalidPattern_Kd .Some(_, _)", "(_, _)", "(_)")]
+    [InlineData("func g(x: (i32, i32)) => match x\n    (let n, let n) => ()", "DuplicateBinding_Kd let n", "let n)", "let m)")]
+    public void AMatchRestsOnItsFailedPatternOrGuard(string source, string records, string written, string valid)
+    {
+        Assert.Equal(records, Records(source));
+        Assert.Equal(string.Empty, Records(source.Replace(written, valid, StringComparison.Ordinal)));
+    }
+
+    // SPEC 23.1.2 (PLAN G260): a failed Subject, of a match or a try, is the prerequisite of its positions, bindings, coverage and
+    // result only. Guards and bodies are bound, so their own failures (`missing2`) are reported, and a use of a binding rests on it
+    // through the binding's declaration, as a use of a local rests on a failed initializer. Each row's twin writes `subject` for
+    // SUBJECT and `other` for OTHER and reports `twin`.
+    [Theory]
+    [InlineData(Selecting + "    match SUBJECT\n        _ => OTHER\n    return 0", BothMissing, "o", "()", "")]
+    [InlineData(Selecting + "    let k: i32 = match SUBJECT\n        _ => OTHER\n    return k", BothMissing, "o", "1", "")]
+    [InlineData(Selecting + "    let k: i32 = match SUBJECT\n        .Some(let x) => x + OTHER\n        .None => 0\n    return k", BothMissing, "o", "1", "")]
+    [InlineData(Selecting + "    let k: i32 = match SUBJECT\n        .Some(let x) if x > 0 => x\n        _ if OTHER => 1\n        _ => 0\n    return k", BothMissing, "o", "c", "")]
+    [InlineData(Selecting + "    match SUBJECT\n        .Some(let x) => match x\n            0 => ()\n            _ => OTHER\n        .None => ()\n    return 0", BothMissing, "o", "()", "")]
+    [InlineData(Selecting + "    let k: i32 = match f(SUBJECT)\n        .Some(let x) => x + OTHER\n        .None => 0\n    return k", BothMissing, "v", "1", "")]
+    [InlineData(Selecting + "    match SUBJECT\n        .Some(let x) => OTHER\n    return 0", BothMissing, "o", "()", "NonExhaustiveMatch_Kd match o\n        .Some(let x) => ()")]
+    [InlineData(Selecting + "    match SUBJECT\n        .Some(let x) => x.foo()\n        _ => ()\n    return 0", "UnresolvedBinding_Kd missing", "o", "", "UnresolvedBinding_Kd x.foo")]
+    [InlineData(Selecting + "    let k: i32 = match SUBJECT\n        .Some(let x) if x.foo() => 1\n        _ => 0\n    return k", "UnresolvedBinding_Kd missing", "o", "", "UnresolvedBinding_Kd x.foo")]
+    [InlineData(Selecting + "    match SUBJECT\n        .Some(let x)\n            let w = func () -> i32 => x\n            h(w())\n        _ => ()\n    return 0", "UnresolvedBinding_Kd missing", "o", "", "")]
+    [InlineData("func t(v: i32) -> Option<i32>\n    let r = try f(SUBJECT)\n    return .Some(r + OTHER)", BothMissing, "v", "1", "")]
+    [InlineData("func t(v: i32) -> Option<i32>\n    let r = try SUBJECT\n    return .Some(r.foo())", "UnresolvedBinding_Kd missing", "f(v)", "", "UnresolvedBinding_Kd r.foo")]
+    public void AFailedSubjectLeavesItsGuardsAndBodiesIndependent(string body, string records, string subject, string other, string twin)
+    {
+        const string Head = "func f(v: i32) -> Option<i32> => .Some(v)\nfunc h(v: i32) -> i32 => v\n";
+        Assert.Equal(records, Records(Head + body.Replace("SUBJECT", "missing", StringComparison.Ordinal).Replace("OTHER", "missing2", StringComparison.Ordinal)));
+        Assert.Equal(twin, Records(Head + body.Replace("SUBJECT", subject, StringComparison.Ordinal).Replace("OTHER", other, StringComparison.Ordinal)));
+    }
+
     [Fact]
     public void SharedAccessBindsAReferenceToTheCopyPayload()
     {
@@ -415,6 +478,15 @@ public class PatternBindingTest
     }
 
     private static string Describe(Compilation c) => string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"));
+
+    // The records a Final Binding publishes for a program, as code and source text in result order.
+    private static string Records(string source)
+    {
+        var c = Parse(source);
+        c.Bind();
+        c.Binding.ReportDiagnostics();
+        return string.Join(" | ", TestDiagnostics.Of(c).Select(static x => $"{x.Code} {x.Text}"));
+    }
 
     [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]

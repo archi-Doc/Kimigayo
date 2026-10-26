@@ -848,17 +848,9 @@ public sealed partial class Binding
         {
             type = this.StoredType(type, declaringType);
         }
-        else if (type is null && symbol is { Kind: BindingSymbolKind.Parameter, Declaration: FunctionKoto function, Slot: var slot } &&
-            (uint)slot < (uint)function.Parameters.Count)
+        else if (type is null)
         {
-            // A parameter's Type is bound with its function's header; a use without a Type consulted it.
-            this.Consulted(function.Parameters[slot].Type);
-        }
-        else if (type is null && symbol is { Kind: BindingSymbolKind.Parameter, Declaration: PropertyAccessorKoto accessorSyntax })
-        {
-            var accessor = Accessor(accessorSyntax);
-            var annotation = ReferenceEquals(symbol, accessor.SelfSymbol) ? accessorSyntax.ReceiverType : accessorSyntax.ValueType;
-            this.Consulted(annotation ?? accessor.Property.Declaration.TypeKoto ?? accessor.Property.Declaration);
+            this.ConsultTypeSource(symbol);
         }
 
         return Complete(node, node is MemberAccessKoto && type is not null ? this.ReadHolder(type, node, node) : type);

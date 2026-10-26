@@ -18,7 +18,7 @@ public sealed partial class Binding
     private readonly List<Koto> previousCandidateScopes = new();
     private readonly List<PatternWarning> patternWarnings = new();
     private PatternMarker? patternMarker;
-    private PatternMarker? unsupportedMarker;
+    private UnsupportedMarker? unsupportedMarker;
 
     /// <summary>Gets warnings without changing Binding validity.</summary>
     public IReadOnlyList<PatternWarning> PatternWarnings => this.patternWarnings;
@@ -186,20 +186,45 @@ public sealed partial class Binding
         }
     }
 
-    private void MarkPatternTree(Koto pattern)
-        => (this.patternMarker ??= new(false)).Visit(pattern);
+    // A pattern under the failed Subject `failure`, when there is one, is left unbound and rests on it (PatternMarker).
+    private void MarkPatternTree(Koto pattern, Koto? failure)
+        => (this.patternMarker ??= new(this)).Mark(pattern, failure);
 
     /// <summary>Marks an unbound guard/body so later analyses see unknown Types instead of a fabricated Unit.</summary>
     private void MarkUnsupportedTree(Koto node)
-        => (this.unsupportedMarker ??= new(true)).Visit(node);
+        => (this.unsupportedMarker ??= new()).Visit(node);
+
+    // SPEC 23.1.2: a pattern node no position bound rests on the failure above it. A binding it declares, for the body or as a guard
+    // candidate, has no Type, as a local rests on a failed initializer, so a use of it consults this declaration (ConsultTypeSource).
+    private void RestOnFailure(Koto node, Koto failure)
+    {
+        if (node is SyntaxFormKoto { Akind: KotoKind.BindingPattern, BoundSymbol: { } symbol } binding)
+        {
+            symbol.Type = null;
+            if (this.symbols.TryGetValue(binding.Operands[0], out var candidate) && candidate.Kind == BindingSymbolKind.PatternCandidate)
+            {
+                candidate.Type = null;
+            }
+        }
+
+        this.CompleteDependent(node, failure);
+    }
 
     private BoundType? BindMatch(MatchKoto match, BindingScope scope, BoundType? expected)
     {
+        // An Unresolved match is bound again, such as when a use rebinds the declaration it initializes: the plan is this binding's.
         var plan = this.matches[match];
+        plan.Reset(match);
         var subject = this.BindNode(match.Expression, scope);
         if (match is TryKoto propagation)
         {
-            if (subject?.Kind != BoundTypeKind.Constructed || subject.Semantics != SemanticsKind.Owner || (subject.Symbol != this.Library.Option && subject.Symbol != this.Library.Result))
+            if (subject is null)
+            {
+                // SPEC 23.1.2: a failed operand is the try's prerequisite; its Type selects the try's arms.
+                return this.Fail(match, BindingFailure.Unsupported, true);
+            }
+
+            if (subject.Kind != BoundTypeKind.Constructed || subject.Semantics != SemanticsKind.Owner || (subject.Symbol != this.Library.Option && subject.Symbol != this.Library.Result))
             {
                 return this.Fail(match, BindingFailure.TypeMismatch);
             }
@@ -221,20 +246,18 @@ public sealed partial class Binding
         }
 
         var resultContext = this.BeginResult(match, scope, expected, deferEvidence: true);
-        if (subject is null)
-        {
-            plan.Pending = true;
-            return this.Fail(match, BindingFailure.Unsupported, true);
-        }
-
         for (var i = 0; i < match.Arms.Count; i++)
         {
+            // SPEC 23.1.2: a failed Subject is the prerequisite of an arm's positions and bindings, never of its guard or body.
             var arm = match.Arms[i];
-            // SPEC 15.1.6: the Subject Place of a ByValue Subject is owned by the match; a bare Place's is a borrow of it.
-            var reach = new PatternReach(PatternAccessMode.Owned, null, OwnedPart: plan.Mode == SubjectMode.ByValue);
-            var root = this.BindPattern(arm.Pattern, subject, scope, plan, -1, 0, reach);
-            plan.ArmStorage.Add(new(arm, root));
-            this.MarkPatternTree(arm.Pattern);
+            if (subject is not null)
+            {
+                // SPEC 15.1.6: the Subject Place of a ByValue Subject is owned by the match; a bare Place's is a borrow of it.
+                var reach = new PatternReach(PatternAccessMode.Owned, null, OwnedPart: plan.Mode == SubjectMode.ByValue);
+                plan.ArmStorage.Add(new(arm, this.BindPattern(arm.Pattern, subject, scope, plan, -1, 0, reach)));
+            }
+
+            this.MarkPatternTree(arm.Pattern, subject is null ? match.Expression : null);
         }
 
         // Pattern bindings must have their Subject Types before collecting result evidence.
@@ -288,12 +311,9 @@ public sealed partial class Binding
             return Complete(match, null);
         }
 
-        if (plan.Invalid)
-        {
-            return this.Fail(match, BindingFailure.InvalidPattern);
-        }
-
-        if (plan.Pending || pendingBody)
+        // SPEC 23.1.2: a failed Subject, and an invalid plan's located failures at a position or a guard, were consulted; the match
+        // rests on them.
+        if (subject is null || plan.Invalid || plan.Pending || pendingBody)
         {
             return this.Fail(match, BindingFailure.Unsupported, true);
         }
@@ -358,7 +378,13 @@ public sealed partial class Binding
         var index = plan.PositionStorage.Count;
         plan.PositionStorage.Add(new(syntax, matched, BoundPatternKind.Invalid, parent, element, index + 1));
         var position = plan.PositionStorage[index];
-        plan.Invalid |= syntax.BindingState == BindingState.Invalid;
+        if (syntax.BindingState == BindingState.Invalid)
+        {
+            // A position that failed before the plan, such as a repeated binding name, is a part the match consulted.
+            plan.Invalid = true;
+            this.Consulted(syntax);
+        }
+
         if (!this.ValidatePatternType(plan, syntax, matched, outer))
         {
             return index;
@@ -631,9 +657,10 @@ public sealed partial class Binding
         }
     }
 
-    private void CalculateMatchCoverage(BoundMatch plan, BoundType subject)
+    private void CalculateMatchCoverage(BoundMatch plan, BoundType? subject)
     {
-        if (plan.Invalid || plan.Pending)
+        // A failed Subject leaves the coverage Pending, as an unproven position does.
+        if (subject is null || plan.Invalid || plan.Pending)
         {
             plan.Coverage = new(plan.Invalid ? MatchCoverageState.Invalid : MatchCoverageState.Pending);
             return;
@@ -716,21 +743,51 @@ public sealed partial class Binding
         }
     }
 
-    private sealed class PatternMarker(bool unsupported) : KotoVisitor
+    // Completes what BindPattern left unvisited: Unit, or resting on the nearest failure above it, a failed position or the failed
+    // Subject it starts from (RestOnFailure).
+    private sealed class PatternMarker(Binding binding) : KotoVisitor
+    {
+        private Koto? failure;
+
+        public void Mark(Koto pattern, Koto? subject)
+        {
+            this.failure = subject;
+            this.Visit(pattern);
+            this.failure = null;
+        }
+
+        public override void Visit(Koto node)
+        {
+            var outer = this.failure;
+            if (node.BindingState == BindingState.Unvisited)
+            {
+                if (outer is null)
+                {
+                    Complete(node, BoundType.Unit);
+                }
+                else
+                {
+                    binding.RestOnFailure(node, outer);
+                }
+            }
+            else if (node.BindingFailure != BindingFailure.None)
+            {
+                this.failure = node;
+            }
+
+            node.VisitChildren(this);
+            this.failure = outer;
+        }
+    }
+
+    private sealed class UnsupportedMarker : KotoVisitor
     {
         public override void Visit(Koto node)
         {
             if (node.BindingState == BindingState.Unvisited)
             {
-                if (unsupported)
-                {
-                    // Unknown, not failed: the enclosing guard/body reports the single Unsupported diagnostic.
-                    node.BindingState = BindingState.Unresolved;
-                }
-                else
-                {
-                    Complete(node, BoundType.Unit);
-                }
+                // Unknown, not failed: the enclosing guard/body reports the single Unsupported diagnostic.
+                node.BindingState = BindingState.Unresolved;
             }
 
             node.VisitChildren(this);
