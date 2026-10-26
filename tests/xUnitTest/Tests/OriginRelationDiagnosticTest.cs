@@ -202,6 +202,12 @@ public class OriginRelationDiagnosticTest
     [InlineData(Captured + "    var h = func [value] () -> ()\n        let a = [value]\n        _ = a@move\n    h()\n")]
     [InlineData(Captured + "    var h = func [value] () -> ()\n        let d: Dictionary<i64, uniq/i32> = [1: value]\n        _ = d@move\n    h()\n")]
     [InlineData(Captured + "    let d = [1: value]\n    _ = d@move\n")]
+    // A stored `objuniq/P` or `uniq/i32` reached through an exclusive parameter's Field is Reborrowed into a Dictionary literal as into an
+    // array literal (formerly TransferRequired_Kd and UnprovenOriginRelation_Kd in the Dictionary).
+    [InlineData(View + "func f(h: uniq/(H2 during a) during s) -> i32\n    let d = [1: h.o]\n    _ = d@move\n    return 0\n")]
+    [InlineData(View + "func f(h: uniq/(H2 during a) during s) -> i32\n    let d = [h.o]\n    _ = d@move\n    return 0\n")]
+    [InlineData(Holder2 + "func f(h: uniq/(Holder2 during a) during s) -> i32\n    let d = [1: h.link]\n    _ = d@move\n    return 0\n")]
+    [InlineData(Holder2 + "func f(h: uniq/(Holder2 during a) during s) -> i32\n    let d = [h.link]\n    _ = d@move\n    return 0\n")]
     // SPEC 15.6.3, 22.2.1: a LendingIterator's item may name the receiver borrow `step` that contains the Reborrow.
     [InlineData("struct Cursor {source}\n    Self is LendingIterator\n    associate LentItem(step) is ref/i32 during step\n    let value: uniq/i32 during source\n    public func next(self: uniq/Self during step) -> Option<ref/i32 during step> => .Some(self.value)\n")]
     public void AProvenRelationIsAccepted(string body)

@@ -17,6 +17,9 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
 
     private const string Compound = "func run(value: uniq/i32 during a)\n    var entries = [1: (value@move, 7)]\n    let found = ";
 
+    private const string FieldHolders = "struct P\n    public var x: i32 = 0\n    public init() => ()\nstruct H2 {a}\n    public var o: objuniq/P during a\n" +
+        "struct H3 {a}\n    public var l: uniq/i32 during a\n";
+
     // The `OldRule` tests below expect the rule before Loan identity by base (A5 S1). Now a Borrow carries the Loans of the
     // references it follows, from the last shared one on (SPEC 15.6.3), among them the Loan that the `index`, `indexUniq`
     // or `tryGet` result keeps on `entries`; clearing or removing from `entries` while `found` is live is then an error.
@@ -218,6 +221,16 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
         var source = Header + "    let found = entries[1]@follow@ref\n    require found == 42 else => $abort(\"value\")\n    " + mutation + "\nvar value = 42\nrun(value@uniq)\nrequire value == 99 else => $abort(\"changed\")";
         ScalarEmissionTest.EmitFixture("DictionaryStoredReferenceResume" + name, source, string.Empty);
     }
+
+    // PLAN G231, a pinned limit until R6-check: SPEC 3.5.1 forbids a second Reborrow of a stored reference reached through an exclusive
+    // parameter's Field, and a write through that Field, while a Reborrow of it in a Dictionary literal is live. Both pipelines accept
+    // these forms, as they accept their Array and `let` twins (STATUS Loans). G231's fix flips these rows.
+    [Theory]
+    [InlineData("func f(h: uniq/(H3 during a) during s) -> i32\n    let d = [1: h.l, 2: h.l]\n    _ = d@move\n    return 0\n")]
+    [InlineData("func f(h: uniq/(H2 during a) during s) -> i32\n    let d = [1: h.o, 2: h.o]\n    _ = d@move\n    return 0\n")]
+    [InlineData("func f(h: uniq/(H3 during a) during s) -> i32\n    let d = [1: h.l]\n    h.l@follow = 3\n    _ = d@move\n    return 0\n")]
+    public void AFieldReborrowConflictInADictionaryLiteralIsG231sKnownAcceptance(string body)
+        => Assert.True(DiagnosticCorpus.Check(FieldHolders + body + "public func main() => ()\n").Accepted);
 
     // The Conditional form is ABorrowPastAResultKeepsTheContainersLoan's.
     [Theory]

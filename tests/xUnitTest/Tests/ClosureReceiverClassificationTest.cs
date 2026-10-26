@@ -276,11 +276,10 @@ public class ClosureReceiverClassificationTest
 
     // SPEC 3.5, 3.5.1, 12.4.3, 23.1.2 (PLAN G256): a Dictionary literal's key and value are bare acquisition positions, as a tuple or
     // array element is, so a failed key, value or sibling entry explains nothing: the pair layer and its concrete twin over `uniq/i32`
-    // both keep the use's acquisition, and a `let` Closure's call stays Exclusive. The valid literal is accepted in a `var` Closure. An
+    // both keep the use's acquisition, and a `let` Closure's call stays Exclusive (the valid literal: OriginRelationDiagnosticTest). An
     // independent array literal binds every element after a failed one, so its later element is acquired too (SPEC 4.3).
     // Each row: the records under `let h`, then under `var h`, the same for both twins.
     [Theory]
-    [InlineData("        let d = [1: value]\n        _ = d@move\n", "InvalidAssignment_Kd h", "")]
     [InlineData("        let d = [missing: value]\n        _ = d@move\n", MissingAndExclusive, "UnresolvedBinding_Kd missing")]
     [InlineData("        let d = [1: value, 2: missing]\n        _ = d@move\n", MissingAndExclusive, "UnresolvedBinding_Kd missing")]
     [InlineData("        let d = [1: missing, 2: value]\n        _ = d@move\n", MissingAndExclusive, "UnresolvedBinding_Kd missing")]

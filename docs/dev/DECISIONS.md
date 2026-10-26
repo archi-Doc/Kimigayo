@@ -4114,7 +4114,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     builder takes by case (`MirBuilder.Values.cs`; R5's round 3 B2: answering false, round 2's R1, brought back `acquire (*_1).0` past
     `ref/closure` on three valid forms), so the net covers it until the SPEC session settles 3.5 against 14.2.2; false where an
     adaptation recorded at the use decides; true where the position decides (`AcquiredByPosition`: a bare position, an aggregate
-    element, a Dictionary entry; since bu44, PLAN G256, `IsBareAcquisitionPosition`, the one list, holding the same set), or at an input its consumer's operation takes by value (a receiver or argument of any callee kind's
+    element, a Dictionary entry; since bu44, PLAN G256, `IsBareAcquisitionPosition`, the one list, holding the same set), or at
+    an input its consumer's operation takes by value (a receiver or argument of any callee kind's
     plan, an enum Case's payload, SPEC 3.5's payloads); else by the consumer, the specific rows before the general binary one (an
     index, a selection and a conversion are binary nodes; re-check R3): true at
     an assignment's or compound assignment's source, an `and`/`or` operand, a Range bound, a built-in index key and a conversion
