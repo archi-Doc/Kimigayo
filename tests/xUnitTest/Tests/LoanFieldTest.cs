@@ -97,6 +97,11 @@ public class LoanFieldTest
         "let z = y",
         nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
     [InlineData(
+        PairAnnotationBindingTest.HolderOwnerUniq + "func make(r: uniq/i32, k: uniq/i32) -> Holder<uniq/i32 during r> during k => $abort(\"x\")\nfunc use(h: ref/Holder<uniq/i32 during q>) => ()\n",
+        "x@uniq, y@uniq",
+        "y = 3",
+        nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
+    [InlineData(
         PairAnnotationBindingTest.HolderUniq + "func make(r: uniq/i32, k: uniq/i32) -> Holder<uniq/i32 during r> during k => $abort(\"x\")\nfunc use(h: ref/Holder<uniq/i32 during q>) => ()\n",
         "x@uniq, y@uniq",
         "let z = y",

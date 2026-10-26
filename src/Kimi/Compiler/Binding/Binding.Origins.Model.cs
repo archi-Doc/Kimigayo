@@ -54,8 +54,9 @@ public enum LoanRequirement : byte
 
 /// <summary>A declared slot's Loan requirement over the Semantics cases of its declaration's pair binders (SPEC 15.3.5; DECISIONS BU-44):
 /// <see cref="Unconditional"/> in every case, joined in one case with the class of each binder in <see cref="Binders"/> that the case
-/// gives a borrow Semantics (`ref` for ref and objref, `uniq` for uniq and objuniq). Bits are the GenericSlots indexes of the schema
-/// listing the slot, own then inherited, of pair binders admitting a borrow; Binding.RequirementAt reads it at an instance.</summary>
+/// gives a borrow Semantics (`ref` for ref and objref, `uniq` for uniq and objuniq). A bit is a pair binder's ordinal among the pair slots
+/// of the schema listing the slot (own then inherited; Type slots take none), for a binder admitting a borrow; a Type with more than 64
+/// pair slots is Unsupported_Kd. Binding.RequirementAt reads it at an instance.</summary>
 /// <param name="Unconditional">The requirement in every case.</param>
 /// <param name="Binders">The pair binders whose borrow cases use the slot.</param>
 public readonly record struct SlotRequirement(LoanRequirement Unconditional, ulong Binders)

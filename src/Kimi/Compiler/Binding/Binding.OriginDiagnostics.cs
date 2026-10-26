@@ -337,11 +337,13 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 23.1.2 (DECISIONS BU-44): the Semantics cases a slot's check recorded (Binding.FailingCase), as ` in the Semantics case s =
-    // owner`: per binder, its Semantics joined by `or`, binders joined by `, ` in a product (a Phantom slot's) or listed by `; ` in a
-    // union (a `uniq` slot's); empty for none, a failure in every case.
-    private static string CaseText(PairCase[] cases, bool union)
+    // SPEC 23.1.2 (DECISIONS BU-44): the Semantics cases a slot's check recorded (Binding.FailingCase) where its requirement is `failing`,
+    // as ` in the Semantics case s = owner`: per binder, its Semantics joined by `or`; binders joined by `, ` where every binder must give
+    // the class (`none`, the weakest: a product) and listed by `; ` where one suffices (`uniq`, the strongest: a union); empty for none, a
+    // failure in every case.
+    private static string CaseText(LoanRequirement failing, PairCase[] cases)
     {
+        var union = failing == LoanRequirement.Uniq;
         var text = new StringBuilder();
         var several = false;
         for (var i = 0; i < cases.Length; i++)
@@ -472,7 +474,7 @@ public sealed partial class Binding
         if (this.invalidStaticOriginSlots?.TryGetValue(node, out var invalid) == true)
         {
             var slot = invalid.Slot;
-            var found = CaseText(invalid.Cases, union: true);
+            var found = CaseText(invalid.Failing, invalid.Cases);
             node.Report(
                 requirement,
                 code,
@@ -485,7 +487,7 @@ public sealed partial class Binding
         if (this.phantomRawOrigins?.TryGetValue(node, out var phantom) == true)
         {
             var slot = phantom.Slot;
-            var found = CaseText(phantom.Cases, union: false);
+            var found = CaseText(phantom.Failing, phantom.Cases);
             var note = $"a raw layer states a slot that no stored safe reference or Loan<T> Field keeps{found}; add a Loan Field over {slot.Name}";
             node.Report(
                 requirement,

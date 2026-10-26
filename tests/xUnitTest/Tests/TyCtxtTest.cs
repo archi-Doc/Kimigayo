@@ -363,6 +363,25 @@ public sealed class TyCtxtTest
             rows);
     }
 
+    // SPEC 15.3.5, 5.2.1 condition 3, 6.1.3 (DECISIONS BU-44): a nested declaration's raw Field stating its enclosing declaration's slot
+    // steps by the case the holder's inherited argument selects, which follows the holder's own arguments: Outer's `a` is `ref` in the ref
+    // case and `uniq` in the uniq one, so the Field is Shared under `Outer<ref/…>` and Exclusive under `Outer<uniq/…>`, whatever Inner's
+    // own argument is, and so for a nested declaration without own generics.
+    [Fact]
+    public void AnInheritedSlotsLayerStepsByItsHoldersCase()
+    {
+        var c = MinimalEmissionTest.Analyze("struct Outer<s/T> {a}\n    s is ref or uniq\n    internal let item: s/T during a\n" +
+            "    internal struct Inner<U>\n        internal let u: U\n        internal var p: raw/i32 during a\n    internal struct Plain\n        internal var p: raw/i32 during a\n" +
+            "func probe(r: uniq/i32, q: ref/i32, z: ref/i64, iu: Outer<uniq/i32 during r>.Inner<i64>, ir: Outer<ref/i32 during q>.Inner<i64>, " +
+            "iuz: Outer<uniq/i32 during r>.Inner<ref/i64 during z>, irz: Outer<ref/i32 during q>.Inner<uniq/i64 during r>, " +
+            "pu: Outer<uniq/i32 during r>.Plain, pr: Outer<ref/i32 during q>.Plain) => ()\npublic func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
+        Assert.Equal(
+            [RawStep.Exclusive, RawStep.Shared, RawStep.Exclusive, RawStep.Shared, RawStep.Exclusive, RawStep.Shared],
+            [c.Types.RawStep(p[3], 1, []), c.Types.RawStep(p[4], 1, []), c.Types.RawStep(p[5], 1, []), c.Types.RawStep(p[6], 1, []), c.Types.RawStep(p[7], 0, []), c.Types.RawStep(p[8], 0, [])]);
+    }
+
     // DECISIONS BU-44: reading those steps and members again, the conditional keepers by their holders' cases, allocates nothing (A5 reads
     // them per instance and pass).
     [Trait("Purpose", "Allocation")]

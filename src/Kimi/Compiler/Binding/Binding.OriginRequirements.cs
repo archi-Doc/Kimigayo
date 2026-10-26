@@ -15,51 +15,110 @@ public sealed partial class Binding
 
     // SPEC 15.3.5, 8.15.2 (DECISIONS BU-44): a declared slot's weakest and strongest Loan requirement over the Semantics cases `instance`
     // may select, or with no instance its declaration's admitted cases: Weakest `none` is Phantom in some case, Strongest `uniq` exclusive
-    // in some case. Its bits index the GenericSlots of the schema listing it, the instance's, or its binder's with no instance (an inherited
-    // slot is read through an instance of the nested declaration). A slot without binders reads its unconditional part at once.
+    // in some case. A slot of a schema with more than 64 pair slots claims nothing: its declaration is a located Unsupported_Kd
+    // (ComputeOriginRequirements). A slot without binders reads its unconditional part at once.
     internal (LoanRequirement Weakest, LoanRequirement Strongest) RequirementAt(OriginParameter slot, BoundType? instance)
-        => slot.Requirement.Binders == 0 ? (slot.Requirement.Unconditional, slot.Requirement.Unconditional)
-            : this.RequirementOf(slot.Requirement, (instance?.Symbol ?? slot.Origin.Binder!.BoundSymbol)!.Schema!, instance);
+    {
+        var schema = ListingSchema(slot, instance);
+        if (schema.GenericSlots.Count > 64 && !PairSlotsFit(schema))
+        {
+            return (LoanRequirement.Uniq, LoanRequirement.None);
+        }
 
-    // A pair binder's bit among a schema's GenericSlots; 0 when the schema lists it at none of the first 64.
+        return slot.Requirement.Binders == 0 ? (slot.Requirement.Unconditional, slot.Requirement.Unconditional)
+            : this.RequirementOf(slot.Requirement, schema, instance);
+    }
+
+    // The schema whose pair slots a slot's bits number (SlotRequirement): the one listing it, its declaring schema for its own slot and the
+    // instance's for an inherited copy, which records the nested declaration's own uses (SPEC 6.1.3).
+    private static DeclarationSchema ListingSchema(OriginParameter slot, BoundType? instance)
+    {
+        var declaring = slot.Origin.Binder!.BoundSymbol!.Schema!;
+        return ReferenceEquals(declaring.Origins[slot.Slot], slot) || instance?.Symbol?.Schema is not { } listing ? declaring : listing;
+    }
+
+    // Whether a schema's pair slots fit SlotRequirement's 64 bits (DECISIONS BU-44).
+    private static bool PairSlotsFit(DeclarationSchema schema)
+    {
+        var count = 0;
+        for (var k = 0; k < schema.GenericSlots.Count; k++)
+        {
+            count += schema.GenericSlots[k].Semantics is null ? 0 : 1;
+        }
+
+        return count <= 64;
+    }
+
+    // The header parameter at which a Type's pair slots pass SlotRequirement's 64 bits: its last own pair parameter (own slots come first);
+    // none when all its pair slots are inherited, as its enclosing declaration's then are, which reports.
+    private static Koto? OverflowingParameter(DeclarationContainerKoto container, DeclarationSchema schema)
+    {
+        for (var k = Math.Min(container.GenericParameterNodes.Count, schema.GenericSlots.Count) - 1; k >= 0; k--)
+        {
+            if (schema.GenericSlots[k].Semantics is not null)
+            {
+                return container.GenericParameterNodes[k];
+            }
+        }
+
+        return null;
+    }
+
+    // A pair binder's bit: its ordinal among the schema's pair slots, own then inherited (Type slots take none); 0 when the schema lists
+    // it among none of the first 64.
     private static ulong PairBit(DeclarationSchema schema, BoundType whole)
     {
-        for (var k = 0; k < schema.GenericSlots.Count && k < 64; k++)
+        for (int k = 0, ordinal = 0; k < schema.GenericSlots.Count && ordinal < 64; k++)
         {
-            if (schema.GenericSlots[k].Semantics is not null && ReferenceEquals(schema.GenericSlots[k].Symbol.WholeType, whole))
+            if (schema.GenericSlots[k].Semantics is null)
             {
-                return 1UL << k;
+                continue;
             }
+
+            if (ReferenceEquals(schema.GenericSlots[k].Symbol.WholeType, whole))
+            {
+                return 1UL << ordinal;
+            }
+
+            ordinal++;
         }
 
         return 0;
     }
 
-    // The argument selecting binder k's cases: the instance's, or the declaring binder's own pair W with no instance (or before a Type is
-    // complete), which selects every admitted case.
-    private static BoundType Selecting(DeclarationSchema schema, int k, BoundType? instance)
-        => instance is not null && k < instance.Components.Count ? instance.Components[k] : schema.GenericSlots[k].Symbol.WholeType!;
+    // The argument selecting the cases of the pair binder at bit `ordinal` of `schema` (PairBit): the instance's, in its own-then-inherited
+    // order, where an enclosing declaration's slots follow a nested declaration's own (SPEC 6.1.3), or with no instance (or before a Type
+    // is complete) the binder's own pair W, which selects every admitted case.
+    private static BoundType Selecting(DeclarationSchema schema, int ordinal, BoundType? instance)
+    {
+        var k = -1;
+        for (var seen = -1; seen < ordinal;)
+        {
+            seen += schema.GenericSlots[++k].Semantics is null ? 0 : 1;
+        }
 
-    // The Semantics a concrete Type takes, a layer's or owner.
+        var at = (instance?.Symbol?.Schema?.GenericSlots.Count ?? 0) - schema.GenericSlots.Count + k;
+        return instance is not null && (uint)at < (uint)instance.Components.Count ? instance.Components[at] : schema.GenericSlots[k].Symbol.WholeType!;
+    }
+
+    // The Semantics a case Type takes, a layer's or owner.
     private static SemanticsMask CaseSemantics(BoundType type) => type.Kind == BoundTypeKind.Semantics ? type.Semantics.ToMask() : SemanticsMask.Owner;
 
-    // The strongest and weakest Loan class of a set of Semantics (SPEC 15.3.5: `ref` for ref and objref, `uniq` for uniq and objuniq,
-    // `none` otherwise); over no Semantics, `none` and `uniq`.
-    private static LoanRequirement Strongest(SemanticsMask mask) => mask switch
+    // The Semantics an argument takes in its case `mode` (SelectedCases): a family's case Type's, any other's the case's own.
+    private static SemanticsMask Taken(BoundType argument, SemanticsKind mode)
+        => argument.Kind == BoundTypeKind.SemanticsAdaptation && FamilyCase(argument, mode) is { } child ? CaseSemantics(child) : mode.ToMask();
+
+    // The Loan class of a Semantics (SPEC 15.3.5): `uniq` for uniq and objuniq, `ref` for ref and objref, `none` otherwise.
+    private static LoanRequirement ClassOf(SemanticsMask semantics) => semantics switch
     {
-        _ when (mask & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0 => LoanRequirement.Uniq,
-        _ when (mask & (SemanticsMask.Ref | SemanticsMask.ObjRef)) != 0 => LoanRequirement.Ref,
+        SemanticsMask.Uniq or SemanticsMask.ObjUniq => LoanRequirement.Uniq,
+        SemanticsMask.Ref or SemanticsMask.ObjRef => LoanRequirement.Ref,
         _ => LoanRequirement.None,
     };
 
-    private static LoanRequirement Weakest(SemanticsMask mask) => mask switch
-    {
-        _ when (mask & ~SemanticsMask.Borrow) != 0 => LoanRequirement.None,
-        _ when (mask & (SemanticsMask.Ref | SemanticsMask.ObjRef)) != 0 => LoanRequirement.Ref,
-        _ => LoanRequirement.Uniq,
-    };
-
     private static LoanRequirement Max(LoanRequirement a, LoanRequirement b) => a < b ? b : a;
+
+    private static LoanRequirement Min(LoanRequirement a, LoanRequirement b) => a < b ? a : b;
 
     private void ComputeOriginRequirements()
     {
@@ -79,6 +138,13 @@ public sealed partial class Binding
             if (schema.Origins.Count == 0 && schema.GenericSlots.Count == 0)
             {
                 continue;
+            }
+
+            if (node is DeclarationContainerKoto container && schema.Origins.Count != 0 && !PairSlotsFit(schema) &&
+                OverflowingParameter(container, schema) is { } parameter)
+            {
+                // DECISIONS BU-44: SlotRequirement numbers at most 64 pair slots, so no slot fact of this Type is claimed (RequirementAt).
+                this.Fail(parameter, BindingFailure.Unsupported);
             }
 
             if (ReferenceEquals(node, this.Library.Slice.Declaration) && schema.Origins.Count == 1 && schema.GenericSlots.Count == 1)
@@ -253,9 +319,9 @@ public sealed partial class Binding
     // schema lists no such binder (a function's or accessor's use of its Container's), and no use where it admits no borrow.
     private SlotRequirement ConditionalUse(DeclarationSchema schema, BoundType whole)
     {
-        var borrows = this.LayerAdmitted(whole) & SemanticsMask.Borrow;
-        var bit = borrows == SemanticsMask.None ? 0 : PairBit(schema, whole);
-        return new(bit == 0 ? Strongest(borrows) : LoanRequirement.None, bit);
+        var strongest = this.ClassRange(whole).Strongest;
+        var bit = strongest == LoanRequirement.None ? 0 : PairBit(schema, whole);
+        return new(bit == 0 ? strongest : LoanRequirement.None, bit);
     }
 
     // A nested slot's requirement as a use in `outer` (SPEC 15.3.5): its unconditional part, and per binder of it the instance's argument:
@@ -268,85 +334,95 @@ public sealed partial class Binding
         {
             var argument = Selecting(instance.Symbol!.Schema!, BitOperations.TrailingZeroCount(bits), instance);
             use = use.Join(TryPairLayer(argument, out var whole, out _)
-                ? this.ConditionalUse(outer, whole) : new(Strongest(this.SelectedSemantics(argument)), 0));
+                ? this.ConditionalUse(outer, whole) : new(this.ClassRange(argument).Strongest, 0));
         }
 
         return use;
     }
 
     // The requirement over the cases `instance` selects of the binders in `requirement`, bits of `schema` (RequirementAt): the unconditional
-    // part joined per binder with the classes of its selected Semantics; an argument selecting none leaves no case, which claims nothing,
+    // part joined per binder with the classes of its selected cases; an argument selecting none leaves no case, which claims nothing,
     // neither Phantom nor `uniq` (Uniq, None).
     private (LoanRequirement Weakest, LoanRequirement Strongest) RequirementOf(SlotRequirement requirement, DeclarationSchema schema, BoundType? instance)
     {
-        var (weakest, strongest) = (requirement.Unconditional, requirement.Unconditional);
+        var weakest = requirement.Unconditional;
+        var strongest = weakest;
         for (var bits = requirement.Binders; bits != 0; bits &= bits - 1)
         {
-            var selected = this.SelectedSemantics(Selecting(schema, BitOperations.TrailingZeroCount(bits), instance));
-            if (selected == SemanticsMask.None)
+            var (least, most) = this.ClassRange(Selecting(schema, BitOperations.TrailingZeroCount(bits), instance));
+            if (least > most)
             {
                 return (LoanRequirement.Uniq, LoanRequirement.None);
             }
 
-            (weakest, strongest) = (Max(weakest, Weakest(selected)), Max(strongest, Strongest(selected)));
+            (weakest, strongest) = (Max(weakest, least), Max(strongest, most));
         }
 
         return (weakest, strongest);
     }
 
-    // The Semantics an argument of a pair slot takes over the cases it selects (SPEC 8.15.2): a pair layer's, its binder's admitted set; a
-    // family's, its case Types'; a concrete Type's own; none for a Type parameter or projection, which never passes formation.
-    private SemanticsMask SelectedSemantics(BoundType argument)
+    // The Semantics cases an argument of a pair slot selects (SPEC 8.15.2), by the Semantics of the binder naming each (`binder`): a pair
+    // layer's admitted set and a family's, by their pair binder; a concrete Type's own Semantics, by none; no case for a Type parameter or
+    // projection, which never passes formation. Each case takes the Semantics Taken gives.
+    private SemanticsMask SelectedCases(BoundType argument, out BindingSymbol? binder)
     {
+        binder = argument.Symbol;
+        if (argument.Kind == BoundTypeKind.SemanticsAdaptation)
+        {
+            return (SemanticsMask)argument.Length;
+        }
+
         if (TryPairLayer(argument, out _, out _))
         {
             return this.LayerAdmitted(argument);
         }
 
-        if (argument.Kind != BoundTypeKind.SemanticsAdaptation)
+        binder = null;
+        return argument.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection
+            ? SemanticsMask.None : CaseSemantics(argument);
+    }
+
+    // The weakest and strongest Loan class over the cases an argument selects (SelectedCases, Taken); over no case (uniq, none).
+    private (LoanRequirement Weakest, LoanRequirement Strongest) ClassRange(BoundType argument)
+    {
+        var cases = this.SelectedCases(argument, out _);
+        var weakest = LoanRequirement.Uniq;
+        var strongest = LoanRequirement.None;
+        foreach (var mode in SemanticsOrder)
         {
-            return argument.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection
-                ? SemanticsMask.None : CaseSemantics(argument);
+            if ((cases & mode.ToMask()) != 0)
+            {
+                var loan = ClassOf(Taken(argument, mode));
+                (weakest, strongest) = (Min(weakest, loan), Max(strongest, loan));
+            }
         }
 
-        var selected = SemanticsMask.None;
-        for (var i = 0; i < argument.Components.Count; i++)
-        {
-            selected |= CaseSemantics(argument.Components[i]);
-        }
-
-        return selected;
+        return (weakest, strongest);
     }
 
     // SPEC 23.1.2, 15.3.5 (DECISIONS BU-44): the Semantics cases a slot's requirement is `failing` in at an instance, its failure's typed
-    // fact: per binder of it that the instance leaves open (a pair layer's or a family's, or the declaring binder with no instance), its
-    // cases of that class where they are some but not all of its cases; none when every case fails, as the concrete twin's record names
-    // none. A Phantom failure (`none`) holds in the product of the named cases, a `uniq` one in their union. Formed only on failure.
+    // fact: per binder of it that the instance leaves open (SelectedCases: a pair layer's or a family's, or the declaring binder with no
+    // instance), its cases of that class where they are some but not all of its cases; none when every case fails, as the concrete twin's
+    // record names none. Formed only on failure.
     private PairCase[] FailingCase(OriginParameter slot, BoundType? instance, LoanRequirement failing)
     {
         var (weakest, strongest) = this.RequirementAt(slot, instance);
+        var schema = ListingSchema(slot, instance);
         var cases = new List<PairCase>();
         for (var bits = weakest == strongest ? 0 : slot.Requirement.Binders; bits != 0; bits &= bits - 1)
         {
-            var argument = Selecting((instance?.Symbol ?? slot.Origin.Binder!.BoundSymbol)!.Schema!, BitOperations.TrailingZeroCount(bits), instance);
-            var family = argument.Kind == BoundTypeKind.SemanticsAdaptation;
-            if (!family && !TryPairLayer(argument, out _, out _))
-            {
-                continue; // A concrete argument fails in its one case or in none.
-            }
-
+            var argument = Selecting(schema, BitOperations.TrailingZeroCount(bits), instance);
+            var modes = this.SelectedCases(argument, out var binder);
             var start = cases.Count;
-            var admitted = family ? (SemanticsMask)argument.Length : this.LayerAdmitted(argument);
-            foreach (var semantics in SemanticsOrder)
+            foreach (var mode in SemanticsOrder)
             {
-                var taken = family && FamilyCase(argument, semantics) is { } child ? CaseSemantics(child) : semantics.ToMask();
-                if ((admitted & semantics.ToMask()) != 0 && Strongest(taken) == failing)
+                if (binder is not null && (modes & mode.ToMask()) != 0 && ClassOf(Taken(argument, mode)) == failing)
                 {
-                    cases.Add(new(argument.Symbol!, semantics));
+                    cases.Add(new(binder, mode));
                 }
             }
 
-            if (cases.Count - start == BitOperations.PopCount((uint)admitted))
+            if (cases.Count - start == BitOperations.PopCount((uint)modes))
             {
                 cases.RemoveRange(start, cases.Count - start); // Each case of this binder fails: the record names none of it.
             }

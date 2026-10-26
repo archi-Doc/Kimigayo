@@ -6764,14 +6764,19 @@ resumed by R4-M86 (2026-10-20).
   `s is uniq` defect (a `uniq` case bound to `static` accepted; spec-cases `15.3.5-conditional-slot`'s (b) entries), an owner case
   counted as a use, and a nested slot's value copied whatever case the instance selects.
   - Decision (design A's representation): `SlotRequirement(Unconditional, ulong Binders)` replaces `LoanRequirement` on
-    `OriginParameter` (bits: GenericSlots indexes, own then inherited, of the schema listing the slot; join: max and or). The fixed
+    `OriginParameter` (a bit: a pair binder's ordinal among the pair slots of the schema listing the slot, own then inherited, Type
+    slots taking none; join: max and or). The fixed
     point is its one writer: a pair layer's slot is a conditional use (`ConditionalUse`: its binder's bit; the binder's strongest
     class in every case where the schema lists no such binder, a function's or accessor's Container binder; no use where the binder
     admits no borrow); a nested slot maps its bits through the instance's arguments (`NestedUse`: a pair layer of an outer binder is
     that binder's conditional use, any other argument its strongest class, a Type parameter or projection nothing); a keeper of a pair
     layer carries its bit. One reader, `Binding.RequirementAt(slot, instance)` → (Weakest, Strongest) over the cases the instance
     selects (a concrete argument its Semantics, a pair layer its binder's admitted set, a family its case Types', no instance the
-    declaration's cases); `Binders == 0` returns the unconditional part at once (the whole library). An argument selecting no Semantics
+    declaration's cases), in the instance's own-then-inherited order: the bits of an enclosing declaration's slot that a nested
+    declaration's Field states number the enclosing schema's pair slots and read the instance's inherited arguments, which follow its
+    own (SPEC 6.1.3), so `Outer<ref/…>.Inner<uniq/i64…>`'s layer is Shared and `Outer<uniq/…>.Inner<ref/i64…>`'s Exclusive (5.2.1
+    condition 3; review 1's F2, the base unsound on the second); a nested declaration's inherited copy of a slot numbers its own
+    schema. `Binders == 0` returns the unconditional part at once (the whole library). An argument selecting no Semantics
     (after UnprovenConstraint_Kd) empties the case set: (uniq, none), no claim for any reader. Readers: ValidateOriginRequirements and
     the omitted slot argument (Strongest), InvalidRawOrigin (Weakest none: Phantom in any admitted case, 8.15.2 and 5.7, no owner
     decision), DeclaredStep (Shared when Strongest is ref; `Held` gains the holder as its sixth parameter and in its memo key where a
@@ -6782,10 +6787,15 @@ resumed by R4-M86 (2026-10-20).
     Type declaration's slot Phantom in every admitted case (`(none, 0)`) closes as invariant, generalizing the Unused closure; function
     and accessor schemas keep the Unused closure. Struck from the choice: "nothing when the binder admits no borrow, which also fixes
     variance" (the leaf counts toward variance: r30 stays rejected).
+  - The bound (review 1's F1): a Type with Origin slots and more than 64 pair slots is one located Unsupported_Kd at its last own pair
+    parameter, decided in the fixed point (`PairSlotsFit`), and `RequirementAt` claims nothing for its slots; Type parameters take no
+    bit, so 64 of them before a pair binder change nothing (before, such a binder read as unconditional `uniq`). Function and accessor
+    schemas, whose requirements no reader reads, are not bounded.
   - Records: both checks record the failing cases as a typed fact (`FailingCase`, `PairCase`s): per binder the instance leaves open,
     its cases of the failing class where they are some but not all of its cases; none when every case fails, so a concrete instance
-    names none, as its twin. The adapter renders them (`CaseText`) in the reason and Note: a Phantom slot's product (`s = owner,
-    t = owner`), a `uniq` slot's union as a list (`q = uniq; p = uniq`).
+    names none, as its twin. The record also carries its failing class, by which the adapter renders the cases (`CaseText`) in the
+    reason and Note: for `none`, the weakest, a product (`s = owner, t = owner`), for `uniq`, the strongest, a union listed (`q = uniq;
+    p = uniq`). Both the reader and the record enumerate an argument's cases once (`SelectedCases`, `Taken`).
   - The owner's D5 exception: the old analysis's two reads (`AddType`, `NamedOriginRequirement`) read Strongest through
     `RequirementAt` (`OwnershipBody.SlotLoanRequirement`; an empty case set none), removed with the old analysis at R6-check. The
     default pipeline accepts the forms the MIR accepts (an owner case, `s is owner`, a nested `Inner<i32>`: b-loan-owner, r14, r15) and
@@ -6795,12 +6805,12 @@ resumed by R4-M86 (2026-10-20).
     code); a re-read under the instance's case (B′: a side table, a second fixed point); revision 1's skip of a nested position that is
     no use (it dropped that position's variance, r23 and r28); the floored old path (review 1's B1: unsound, r11–r13 and r16 accepted).
   - Refines, superseding nothing: BU-24's stored cap reads the slot's requirement in the holder's cases; RawStep.Shared's contract.
-  - Open: O2, a nested declaration's Field stating an inherited slot: NamedSlot gives the enclosing declaration's parameter, whose bits
-    index that schema, while DeclaredStep pairs it with the nested instance (unreachable: an inherited slot in a signature is
-    Unsupported_Kd); a family argument of a nested slot is unconditional at its strongest class (Phantom under-read in its owner
-    cases). An editorial "in any admitted Semantics case" in §5.7 Slots and ownership is optional (explicit SPEC scope only).
-  - Cost: src +361/−101 lines (code +238/−61), above the design's +120/−35 by the case-fact records (`FailingCase`, `CaseText`,
-    review 1's B3) and the readers' line wraps. Cold Bind allocation over the 44 milestones, PairCaseFamilies and 32 generated
+  - Open: a family argument of a nested slot is unconditional at its strongest class (Phantom under-read in its owner cases), with no
+    verdict effect: families come only from an expression's adaptation and the fixed point visits only written signature and Field
+    Types (review 1: 175 programs, 0 families). An editorial "in any admitted Semantics case" in §5.7 Slots and ownership is optional
+    (explicit SPEC scope only).
+  - Cost: src +441/−101 lines (code +295/−61; fix round 1 src +154/−74), above the design's +120/−35 by the case-fact records
+    (`FailingCase`, `CaseText`, design review 1's B3), the bound and the own-then-inherited mapping, and the readers' line wraps. Cold Bind allocation over the 44 milestones, PairCaseFamilies and 32 generated
     pair declarations (base 2f2ed6a94): +1,872 B per program (+0.04%, the library's keepers grow 8 B each), −120 B on Milestone33,
     +5,968 B on the generated workload (+0.10%); issue counts equal; warm reads allocate 0 B. Pinned warm Bind timing: the commit.
 

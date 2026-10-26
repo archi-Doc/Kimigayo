@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private Dictionary<Koto, (OriginParameter Slot, PairCase[] Cases)>? invalidStaticOriginSlots;
+    private Dictionary<Koto, (OriginParameter Slot, LoanRequirement Failing, PairCase[] Cases)>? invalidStaticOriginSlots;
 
     // Complete stored Origin identity, including declared slots and intersections; shared by fitting and diagnostics.
     internal static bool ContainsOrigin(BoundType type, BoundOrigin origin)
@@ -479,7 +479,7 @@ public sealed partial class Binding
                         var site = OriginFormationSite(node, type);
                         var slot = schema.Origins[i];
                         var cases = this.FailingCase(slot, type, LoanRequirement.Uniq);
-                        this.FailExplained(ref this.invalidStaticOriginSlots, site, BindingFailure.InvalidOrigin, (slot, cases));
+                        this.FailExplained(ref this.invalidStaticOriginSlots, site, BindingFailure.InvalidOrigin, (slot, LoanRequirement.Uniq, cases));
                         if (!ReferenceEquals(site, node))
                         {
                             this.CompleteDependent(node, site);
