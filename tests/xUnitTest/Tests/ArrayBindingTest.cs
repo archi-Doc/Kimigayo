@@ -92,6 +92,14 @@ public class ArrayBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
     }
 
+    // SPEC 4.3, 23.1.2: an independent literal binds every element after a failed one, as a Tuple or Dictionary literal does, so each
+    // element's own failure is reported: a second unresolved Name, and a second element that does not fit the established Type.
+    [Theory]
+    [InlineData("let a = [missing, missing2]\n", "UnresolvedBinding_Kd missing; UnresolvedBinding_Kd missing2")]
+    [InlineData("var k: i32 = 1\nlet a = [k, true, false]\n", "TypeMismatch_Kd true; TypeMismatch_Kd false")]
+    public void AnIndependentLiteralBindsEveryElementAfterAFailedOne(string source, string records)
+        => Assert.Equal(records, string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}")));
+
     // Each inferred inner Array owns its own buffer, destroyed recursively with the outer Array.
     [Fact]
     public void NestedIndependentLiteralsHaveRecursiveStorage()

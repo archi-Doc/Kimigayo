@@ -4116,7 +4116,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     builder takes by case (`MirBuilder.Values.cs`; R5's round 3 B2: answering false, round 2's R1, brought back `acquire (*_1).0` past
     `ref/closure` on three valid forms), so the net covers it until the SPEC session settles 3.5 against 14.2.2; false where an
     adaptation recorded at the use decides; true where the position decides (`AcquiredByPosition`: a bare position, an aggregate
-    element, a Dictionary entry), or at an input its consumer's operation takes by value (a receiver or argument of any callee kind's
+    element, a Dictionary entry; since bu44, PLAN G256, `IsBareAcquisitionPosition`, the one list, holding the same set), or at
+    an input its consumer's operation takes by value (a receiver or argument of any callee kind's
     plan, an enum Case's payload, SPEC 3.5's payloads); else by the consumer, the specific rows before the general binary one (an
     index, a selection and a conversion are binary nodes; re-check R3): true at
     an assignment's or compound assignment's source, an `and`/`or` operand, a Range bound, a built-in index key and a conversion
@@ -5839,8 +5840,9 @@ resumed by R4-M86 (2026-10-20).
   referent, its Origin being Binding's name, the Type its consumer expects: a receiver's, argument's or payload's AdaptedType, a value
   call's callee operation's, the Subject borrow (`Hir.Patterns.Subject` tests Semantics and referent, not Type identity), the `$tryWrite`
   writer operation's (`MirBuilder.Formatting` now passes it), an object upcast's operand at `Reference(view Semantics, payload,
-  type.Origin)` (`MirBuilder.Operators.Convert`, bu31), or the destination's Type at a bare `let`/`var`/`return`, a tuple or
-  array element, a Match binding or a capture (G227 states the capture's), and at an `if`, `match` or `do` result, whose common Type
+  type.Origin)` (`MirBuilder.Operators.Convert`, bu31), or the destination's Type at a bare `let`/`var`/`return`, a tuple, array or
+  Dictionary-literal element (amended by bu44, PLAN G256: a Dictionary literal's key and value are bare acquisition positions too,
+  SPEC 3.5.1), a Match binding or a capture (G227 states the capture's), and at an `if`, `match` or `do` result, whose common Type
   (SPEC 14.9.2) is chosen from the Types its sources supply: a result source without a fixed Target Result Type (a selection's or
   `do`'s body value, a jump's operand) is a bare acquisition position (SPEC 10.2; `Binding.BareAcquisition`'s
   IsBareAcquisitionPosition), where `StoredReborrow`, the one rule for a stored `uniq/T` and `objuniq/T` (3.5.1) at every such
