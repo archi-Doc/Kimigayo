@@ -5,11 +5,11 @@ using System.Runtime.InteropServices;
 namespace Kimi.Compiler.Mir;
 
 // A5's reach on a state (A3 5's content and refs, E16's W, DECISIONS R4-M73, R4-M116): the holders a set refers to (those its direct
-// Loans and addresses name, and E where it carries Φ_E or no direct one), its content, the holders a call's store through it writes, and
-// the guard's per-local MirWrites (MirTypes.HoldsLoans); its chain (SPEC 15.6.4's "what any chain of reads through it carries", a Chain
-// row's measure), the least fixed point of a read from it, each holder read once per closure. On the state a location's plan reads, a set's
-// content and chain are each read once (E13 (5)), however many operands and retention rows read them. Must not form a value or a Loan
-// (MirBorrows.Values).
+// Loans and addresses name, and E where it carries Φ_E or no direct one), its content, the holders a call's store through it writes (W,
+// whose first step alone is Referents), and the guard's per-local MirWrites (MirTypes.HoldsLoans); its chain (SPEC 15.6.4's "what any
+// chain of reads through it carries", a Chain row's measure), the least fixed point of a read from it, each holder read once per closure.
+// On the state a location's plan reads, a set's content and chain are each read once (E13 (5)), however many operands and retention rows
+// read them. Must not form a value or a Loan (MirBorrows.Values).
 internal sealed partial class MirBorrows
 {
     private readonly List<int> targets = []; // The holders a reference's value refers to (refs), or a call's store writes (W).
@@ -179,14 +179,9 @@ internal sealed partial class MirBorrows
         return MirTypes.HoldsLoans(cases.Type(this.body.Locals[local].Type), types, this.walked, out this.writable[local]);
     }
 
-    // W(S) (A3 E16, DECISIONS R4-M73, R4-M116) into the targets, the holders a call's store through S writes: refs(S) (E14); and, from each
-    // holder h ≠ E of W whose Type passes the guard, the holder each direct Loan or address of σ(h) names, in any mode, and E where σ(h)
-    // carries Φ_E. The first pass steps from the holders that pass it concretely (MirWrites.Through), the second from those that pass it
-    // only through a Type argument, a pair layer, an abstract part or a stored raw layer stepping Exclusive (MirWrites.ThroughArgument) and
-    // from what only they reach: those targets come last, from the index returned (the count where none), and a Call that stores a
-    // non-empty value into one holds its view (P13's interim, R4-M73). Every store path (a Call's rows, its untied stores among them;
-    // A5-F7's capture stores, unit 2c; A5-F6's desc(c) stores, 2f) takes W here and sets the hold so.
-    private int Writes(ulong[] state, int set)
+    // W's first step (A3 E14): refs(S) into the targets, each holder once, at a new W walk; their count, which is also W's index of the first
+    // target past a by-argument holder where there is none.
+    private int Referents(int set)
     {
         this.Refs(set);
         MirDataflow.Grow(ref this.writing, this.holderCount);
@@ -203,6 +198,19 @@ internal sealed partial class MirBorrows
         }
 
         this.targets.RemoveRange(count, this.targets.Count - count);
+        return count;
+    }
+
+    // W(S) (A3 E16, DECISIONS R4-M73, R4-M116) into the targets, the holders a call's store through S writes: refs(S) (Referents); and, from each
+    // holder h ≠ E of W whose Type passes the guard, the holder each direct Loan or address of σ(h) names, in any mode, and E where σ(h)
+    // carries Φ_E. The first pass steps from the holders that pass it concretely (MirWrites.Through), the second from those that pass it
+    // only through a Type argument, a pair layer, an abstract part or a stored raw layer stepping Exclusive (MirWrites.ThroughArgument) and
+    // from what only they reach: those targets come last, from the index returned (the count where none), and a Call that stores a
+    // non-empty value into one holds its view (P13's interim, R4-M73). Every store path (a Call's rows, its untied stores among them;
+    // A5-F7's capture stores, unit 2c; A5-F6's desc(c) stores, 2f) takes W here and sets the hold so.
+    private int Writes(ulong[] state, int set)
+    {
+        this.Referents(set);
         this.Write(set); // The kinds of refs(S)'s holders.
         var clean = int.MaxValue;
         var argument = false;
