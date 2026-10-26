@@ -1904,7 +1904,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M73** (2026-10-19; owner, on the independent review of two designs and its completion, PLAN G148, R4-M76; P13's interim by the
   owner after three review rounds, below; A3 §12 E16). A Call's store row reaches every holder its argument reaches: ret(i, κ) joins
   every holder of W(val(a_j)) (A3 E16, rule G: SPEC 15.6.4's letter, no SPEC change), with no exclusion. It supersedes R4-M63's store
-  target, refs(val(a_j)) (A3 E14), and A3 §5's Calls line.
+  target, refs(val(a_j)) (A3 E14), and A3 §5's Calls line. Superseded in part by R4-M143: at a 4.6–4.9 operation's referent store whose
+  referent destroys shallowly the store reaches refs(S) alone, and P13's hold does not fire there.
   - Representation: `MirTypes.HoldsLoans`' one walk, each Type once per mode, also gives what a call may write past a value
     (`MirWrites`): the guard, passed concretely (`Through`; a callable and a part past the bound count so) or only through a struct's or
     enum's Type argument, a pair layer or an abstract part (`ThroughArgument`), and for a value that holds no Loan whether a raw pointer
@@ -4527,7 +4528,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     given; a callee-keyed rule is the test review §8 forbids, and dropping a 4.9 receiver's untied store is partial. C3 is a Full change
     with BU (Binding publishes those outputs; A5's W there is refs(S)). Until it lands, popLateOk is a pinned shadow false error (the
     closure reads pop's chain through the E an earlier receiver store reached; the default pipeline accepts it), named with C3 as its
-    removal unit beside appendNullOk and appendIntoOk; C3's rows (arrNode1Ok, arrNodeAppendOk, rawPairOk, arrNode2Ok, appendNullOk,
+    removal unit beside appendNullOk and appendIntoOk (answered by R4-M143: the three are valid on the MIR); C3's rows (arrNode1Ok, arrNodeAppendOk, rawPairOk, arrNode2Ok, appendNullOk,
     appendIntoOk, the probes' pop2Ok) are unchanged; dictNodeOk is C2's (the literal's internal `placeEntry`), not C3's.
   - V16: the Work Chain rows add beside the same body without them is linear for N calls over a depth-K pointer chain, a K-cycle, N
     vacuous rows (`Raw.allocate`'s count) after E holds M addresses, an M-way fan-out and N sparse rows, each joining {Φ_E} with one of
@@ -4656,6 +4657,65 @@ and migration obligations remain in force; no numeric cap changes are authorized
     static-storage test (Binding's `IsStatic` serves the rule).
   - Numbering: R4-M142 was reserved for S1 by the R4 planning session (R4-M139 G245 U2 and R4-M140 G258 D1 on dev, R4-M141 G258 D2
     landing with it; R4-M143 G255 (C3)'s A5 part, R4-M144 G216's amendment and R4-M145 S2 reserved).
+- **R4-M143 A5 reads Binding's referent stores: a 4.6–4.9 operation's receiver store reaches refs(S) alone, with a destruction guard
+  (G255 C3)** (2026-10-26; R4's lane A under the combined design's revision 1, items 1, 3, 4, 6, 7, and BU's design review 2, ACCEPT, with
+  its O5–O8; the fact is BU-42's `CallRetention.ReferentStores`; class Full with BU).
+  - Rule (SPEC 4.9.6, 15.6.4, which defers to 4.9.6; R4-M131): an operation of SPEC 4.6 to 4.9 writes, through its exclusive borrowed
+    receiver, only the storage that receiver refers to, and no layer stored there. So at a call's referent store, A5's rule G stores the
+    row's value into refs(S), W's first step (`MirBorrows.Referents`, split out of `Writes` behavior-preserving first), never W's passes.
+    The rule holds for every row at that output, an untied store's row with no input included.
+  - Reading the fact (`MirBorrows.CallRows.Rows`, `.Calls.Call`): the referent stores' positions, a scratch beside the rows, read as a
+    per-output membership. A referent store may have no row (`ResolvedRange.iterateUniq`, bu45's review O13), and then nothing is stored
+    there. Where the fact names no store (BU-42's uncovered conditional blocks), W stays.
+  - The destruction guard (O5, O6): the row leaves a destruction it causes to its callers (4.9.6). So refs(S) alone applies only where
+    the written argument's referent, the one `referent` rule W derives in `Call`, destroys shallowly by A5's one classifier
+    (`MirBorrows.Destruction` over `MirTypes.Observes`: `Destroy`). Anything else keeps W: a declared drop, a Function value, an abstract
+    part not proven Copy, an owning handle whose payload is not proven Sealed, and deep counts as observing. Removal condition: PLAN
+    G264 (A5 composes a destruction's retention at callers). Known false errors meanwhile: appendDrop2Ok, clearDrop2Ok, clearDropOk2,
+    clearObjOk.
+  - `Destruction` is memoized per case Type for the body's definition and the program version (a dictionary by reference, cleared when
+    either changes). `Observes` reads the definition's Copy and Sealed proofs, so the memo is never a bare per-Type memo across
+    definitions (O5). Every reader (Dropping, Activations, the guard) shares it, so the guard walks a Type once per body, never per call.
+  - R4-M73 (P13's interim) is superseded in part: at a referent store whose referent destroys shallowly, no target lies past a
+    by-argument holder (`Referents`' count is W's clean index), so the hold does not fire there. A generic body over a non-Copy Type
+    parameter keeps W and the hold at a 4.9 receiver, because its element Type observes (O8). Re-measured on G258's corpus of 118
+    programs: held views 2,725 to 1,781. In the library, analyzed in every compilation, 23 to 15: `intoIterator`, `iterateUniq`,
+    `splitAt`, `toArray`, `trySlice`, `trySplitAt`, one `iterate` and one `tryGet` are no longer held, while `appendAll` stays held. No
+    problem changes.
+  - Cost (G258's host, against the branch before this commit, pinned, tiering off, two runs): A5's cold time -0.8 % and -1.1 %, Work
+    -0.02 %, cold allocation +0.27 % (about 1 KB per compilation: the memo and the scratch), Bytes and problems equal. Warm runs
+    allocate nothing.
+  - Tests:
+    - `MirBorrowsTest.Referents`: `AReferentStoreWritesOnlyWhatItsReceiverRefersTo` holds the valid forms of the Array literal,
+      append, pop and swap, Dictionary `insertOrReplace`, an Array of exclusive references, a fixed array's `sliceUniq` and a
+      UniqSlice's `indexUniq`, with their twins and the edges `appendParamBad` and `userWriteBad`; it fails first.
+    - `ADestructionAReferentMayObserveKeepsW` pins the guard: clearObjBad errs, clearObjOk is a known false error, the drop forms
+      keep their errors, and clearGenOk and clearGenBad keep `Unsupported_Kd`, as O7 says.
+    - `TheReferentStoresStayDense` (V16) fails first.
+    - `reserve`'s referent store (bu45's review O15) is pinned by reserveLateOk, an explicit `reserve` over a non-empty Array, which errs
+      where `reserve` keeps W; the literal's `reserve` meets an empty Array, so no literal form depends on it.
+    - The memo's per-definition key is pinned by one generic struct's case Type in two methods, one proving its element Copy (refs(S)
+      alone, valid) and one not (W and the hold, `Unsupported_Kd`): a bare per-Type memo answers the second as the first.
+    - Deep counting as observing is pinned by no form (implementation review 1's N2): in every form found, a referent past the
+      destruction walk's bound (a `Nest` element) also passes Binding's storage bound, so the call's retention is a Limit, a located
+      `Unsupported_Kd` with no row read, whatever the guard says.
+    - `APopOverElementsAnUntiedStoreReachedIsValid` flips R4-M138's popLateOk pin.
+    - `AWarmRunAllocatesNothing` passes unchanged.
+  - Oracle (BU's design review 2 harness, 762 verdicts over 55 files): identical to the reviewer's guard prototype. Against dev,
+    exactly the 22 C3 forms change, to valid.
+  - Why witness and Shared-Callable user code needs no exclusion (owner, 2026-10-26, verbatim 「(1) 最初の修正版を維持 (推奨)」,
+    keeping revision 1 after R4's implementation review withdrew its B1): the user code a 4.6–4.9 operation runs inside itself is an
+    equality or comparison witness, which fixes `ref/Self`, a Position, which is closed (SPEC 4.6.1), a Copy body, which no user writes
+    (3.5.2), or a Callable-bounded callback, which is Shared (8.10). Its writes through what an element holds go through a pointer read
+    past a shared layer, which SPEC 5.2.1 condition 3's first limit gives no write authority (5.7 Authority: no error is required; a
+    writing closure is Exclusive by 7.7.3 and does not bind), or through a pointer it cannot trace (5.2.1 (5), 5.5). Destruction is
+    the only such user code with authority, and the guard keeps W there. So the five forms the review raised and their Ok twins are
+    undefined behavior, and dev's errors on them are conservative; no test pins them. A witness or callback copying an element's
+    pointer into static storage stays R4-M131's open item.
+  - Rejected: a second wrapper of `Observes` or a drop bit in Binding (O5; revision 1 item 4); a per-local memo keyed by the operand's
+    root (the operand may be a projection); deriving the referent a second time (O6).
+  - Numbering: R4-M143 was reserved for C3's A5 part by the R4 planning session (R4-M141 G258 D2, R4-M142 S1, R4-M144 G216's amendment
+    and R4-M145 S2 reserved; R4-M140 the last on dev).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -6482,6 +6542,13 @@ resumed by R4-M86 (2026-10-20).
     4.6–4.8 view's referent is its own handle, sound only while no 4.6–4.8 operation writes an element through a view, pinned by
     `KimiLibraryShapeTest.ReferentStoresWriteNoElementThroughAView` (the covered 4.6–4.8 operations' headers; none stores another
     input in its receiver's storage).
+  - Why witness and callback user code needs no exclusion (owner, 2026-10-26, keeping revision 1; R4-M143): user code a 4.6–4.9
+    operation runs inside itself other than the destruction it composes — equality and comparison witnesses (`ref/Self`) and
+    Callable-bounded callbacks (Shared, §8.10) — reaches what an element holds only through a pointer read past a shared layer, which
+    SPEC 5.2.1 condition 3's first limit gives no write authority (5.7 Authority: no error is required; a writing closure is Exclusive
+    by §7.7.3 and does not bind), or through a pointer it cannot trace (static storage, an integer round trip; 5.2.1 (5), 5.5);
+    destruction, whose `drop` has exclusive access, is the only such user code with authority, and A5 keeps W there. A witness or
+    callback copying an element's pointer into static storage stays R4-M131's open item.
   - Name: what the store writes, A5's `Referents` (one name in both phases); not `ElementStores` (a view's operation writes the
     view's own value), not `ReceiverStores` (true of every method's receiver).
   - Rejected: a Binding drop bit (design review 1's B1: a declared `drop` at a nominal hold position is narrower than SPEC 16.3.3's

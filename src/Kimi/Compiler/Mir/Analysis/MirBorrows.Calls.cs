@@ -3,7 +3,10 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's Call transfer (A3 5, Calls; E14, E16): a Call's rows (MirBorrows.CallRows) carry its inputs' values into its result or into every
-// holder an argument's store reaches (W, MirBorrows.Reach), one W per output.
+// holder an argument's store reaches (W, MirBorrows.Reach), one W per output. At a referent store (CallRetention.ReferentStores, a
+// per-output membership: an operation of SPEC 4.6 to 4.9 writes through its exclusive receiver only what it refers to, 4.9.6) whose
+// referent destroys shallowly (Destruction), the store reaches refs(S) alone (W's first step, Referents; R4-M143); where the referent may
+// observe a destruction, which the row leaves to its callers, W stays, until A5 composes it there (PLAN G264).
 // Input: the state before the Call, its inspection Loans ended (R-a, MirBorrows.Endings), its terminator, and whether the checks replay
 // runs; the Call's rows.
 // Output: the Call's entries: its arguments' Moves, each row's value into the result or into the holders its W reaches ({Φ_E} for a row
@@ -23,7 +26,8 @@ internal sealed partial class MirBorrows
     private static bool Borrows(BoundType? type) => MirTypes.IsReference(type) || MirTypes.View(type) is not null;
 
     // A Call (A3 5, Calls; E14, E16): its arguments' Moves, then each row of its retention (Rows) into the result or into W of an argument's
-    // value, {Φ_E} for a row with no input (an untied store, R-B2), then the result into the destination; Φ_E for an untied result and, by
+    // value (at a referent store whose referent destroys shallowly, its refs(S)), {Φ_E} for a row with no input (an untied store, R-B2),
+    // then the result into the destination; Φ_E for an untied result and, by
     // the untracked rule, for a result whose Type may hold a raw pointer (B′ §4.2). A Value callee's environment, its value or what a
     // reference to it refers to, reaches the result too (its captures; temporary until F7 reads TyCtxt.Closure, unit 2c). In the forward
     // solve, never in the checks replay, a non-empty value that W stores past a by-argument holder holds the view (R4-M73): the solve
@@ -61,9 +65,12 @@ internal sealed partial class MirBorrows
 
             if (row.Output != writesOf)
             {
-                clean = this.Writes(state, this.argValues[row.Output]);
+                var stored = this.referentStores.AsSpan(0, this.referentCount).Contains(row.Output);
+                referent = (this.wCount > 0 || stored) && this.TypeOf(call.Start + row.Output) is { Kind: BoundTypeKind.Semantics, Components: [var to, ..] }
+                    ? to : null;
+                clean = stored && referent is not null && this.Destruction(referent) == AccessKind.Destroy
+                    ? this.Referents(this.argValues[row.Output]) : this.Writes(state, this.argValues[row.Output]);
                 writesOf = row.Output;
-                referent = this.wCount > 0 && this.TypeOf(call.Start + row.Output) is { Kind: BoundTypeKind.Semantics, Components: [var to, ..] } ? to : null;
             }
 
             this.held |= !checks && value != 0 && clean < this.targets.Count;

@@ -114,7 +114,13 @@ internal sealed class CallRetention(Retention[]? rows, bool untied, int[] untied
     /// (Binding.Retention.Transfers.cs). The operation moves values into, out of and within that storage and writes through no layer
     /// stored there, so A5 stores there into the receiver's referents, never past them. The user code a row lists (destruction, a
     /// Callable argument's calls) is the callers' to compose (4.9.6): this states the row alone, and A5 guards a destruction it does not
-    /// compose (PLAN G264). A 4.6 to 4.8 view's referent is its own handle, which is sound only while no 4.6 to 4.8 operation writes an
+    /// compose (PLAN G264). User code such an operation runs inside itself other than the destruction it composes, equality and
+    /// comparison witnesses (<c>ref/Self</c>) and Callable-bounded callbacks (Shared, SPEC 8.10), reaches what an element holds only
+    /// through a pointer read past a shared layer, which SPEC 5.2.1 condition 3's first limit gives no write authority (5.7: no error is
+    /// required; a writing closure is Exclusive by 7.7.3 and does not bind), or through a pointer it cannot trace (static storage, an
+    /// integer round trip; 5.2.1 (5), 5.5); destruction, whose <c>drop</c> has exclusive access, is the only such user code with
+    /// authority, and A5 keeps W there. A witness or callback copying an element's pointer into static storage is open (DECISIONS
+    /// R4-M131). A 4.6 to 4.8 view's referent is its own handle, which is sound only while no 4.6 to 4.8 operation writes an
     /// element through a view (KimiLibraryShapeTest pins the operations this covers; DECISIONS BU-42).</summary>
     internal ReadOnlySpan<int> ReferentStores
         => this.rows is null ? throw new InvalidOperationException("The Limit retention has no ReferentStores.") : this.referentStores;
