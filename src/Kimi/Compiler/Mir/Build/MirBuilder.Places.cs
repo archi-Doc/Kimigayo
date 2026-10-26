@@ -11,12 +11,30 @@ internal sealed partial class MirBuilder
     // The one operand of a group, a borrow, a conversion or a Deref.
     private static Koto Child(Koto node) => node switch { LabeledKoto label => label.Target, BinaryKoto binary => binary.Left, _ => ((UnaryKoto)node).Operand };
 
-    // The written exclusive borrow a node's value is, also in parentheses; null for another node and for a borrow of an operand Binding
-    // rejected, which lends nothing (its value derived, Into).
+    // SPEC 3.4: the node at the root of a Place, reached through its stored Fields, Derefs, pair layers and constant positions (a group of
+    // a Place being that Place); a name, also of an accessor's storage, is its own root.
+    private static Koto PlaceRoot(Koto node)
+    {
+        while (HirTables.Op(node) != HirOp.Name && HirTables.PlaceOf(node).Kind is HirPlaceKind.Field or HirPlaceKind.Deref or
+            HirPlaceKind.PairLayer or HirPlaceKind.ConstIndex)
+        {
+            node = Child(node);
+        }
+
+        return node;
+    }
+
+    // SPEC 23.1.2 (DECISIONS R4-M109 (a)): the Error node at the root of a Place (PlaceRoot), whose value each consumer of the Place takes
+    // as its own derived value at the Type it expects, forming no Place of it: an acquisition (Operand), and a borrow or a conversion of
+    // its one operand (Into); null for a Place with storage.
+    private static Koto? FailedRoot(Koto node) => PlaceRoot(node) is var root && HirTables.Op(root) == HirOp.Error ? root : null;
+
+    // The written exclusive borrow a node's value is, also in parentheses; null for another node and for a borrow of a Place rooted at an
+    // Error node, which lends nothing (FailedRoot).
     private static Koto? Lending(Koto node) => HirTables.Op(node) switch
     {
         HirOp.Group => Lending(Child(node)),
-        HirOp.Borrow when MirTypes.IsExclusive(TypeOf(node)) && !Rejected(Child(node)) => node,
+        HirOp.Borrow when MirTypes.IsExclusive(TypeOf(node)) && FailedRoot(Child(node)) is null => node,
         _ => null,
     };
 

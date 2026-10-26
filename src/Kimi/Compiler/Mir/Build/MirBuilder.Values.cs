@@ -20,14 +20,7 @@ internal sealed partial class MirBuilder
             return HirTables.Op(node) != HirOp.Literal;
         }
 
-        var read = Reads(adjust);
-        while (read && HirTables.Op(node) != HirOp.Name && HirTables.PlaceOf(node).Kind is HirPlaceKind.Field or HirPlaceKind.Deref or
-            HirPlaceKind.PairLayer or HirPlaceKind.ConstIndex)
-        {
-            node = Child(node);
-        }
-
-        return !read || HirTables.PlaceOf(node).Kind != HirPlaceKind.Local;
+        return !Reads(adjust) || HirTables.PlaceOf(PlaceRoot(node)).Kind != HirPlaceKind.Local;
     }
 
     // Whether an acquisition reads its Place as it is (Copied, Moved or through its referent), so it builds no code of its own (Builds).
@@ -111,10 +104,8 @@ internal sealed partial class MirBuilder
             case HirOp.Logical:
                 this.Logical(destination, (BinaryKoto)node);
                 break;
-            case HirOp.Assign or HirOp.CompoundAssign or HirOp.Borrow when Rejected(Child(node)):
-                // SPEC 23.1.2 (DECISIONS R4-M109 (a)): an operation taking a Place Binding rejected to write or lend it is derived from its
-                // error, its value formed in its destination: no Place of the operand, so no Ref, Loan, address or reservation.
-                this.Opaque(node, destination);
+            case HirOp.Borrow or HirOp.Convert when FailedRoot(Child(node)) is { } root: // SPEC 23.1.2: its operand's root's derived value.
+                this.Opaque(root, destination);
                 break;
             case HirOp.Borrow: // SPEC 13.5.6, 5.4: the operand's Place borrowed as the node's Type says, or its address.
                 this.Set(destination, this.Ref(this.Place(Child(node), input), TypeOf(node), input), node);
@@ -124,6 +115,9 @@ internal sealed partial class MirBuilder
                 break;
             case HirOp.Aggregate:
                 this.Aggregate(destination, node, TypeOf(node));
+                break;
+            case HirOp.Assign or HirOp.CompoundAssign when Rejected(Child(node)): // An update of a target Binding rejected is derived from its error.
+                this.Opaque(node, destination);
                 break;
             case HirOp.Assign:
                 this.Replace(destination, (BinaryKoto)node);
@@ -194,6 +188,12 @@ internal sealed partial class MirBuilder
             // An Error proof or a Place without a Type (Bare) leaves a consumed child's acquisition unset, so its value is derived from
             // that error (SPEC 23.1.2); a projected receiver's storage is its Field's (Member), and the other adaptations are not built yet.
             return MirOperand.Move(this.Unsupported(node, adjust.Acquire == HirAcquire.Unset, expected));
+        }
+
+        // SPEC 23.1.2: a Place rooted at an Error node gives the derived value of that root, as a folded input's.
+        if (FailedRoot(node) is { } root)
+        {
+            return MirOperand.Move(this.Value(root, into, reserves, expected ?? TypeOf(node)));
         }
 
         var place = adjust.Acquire == HirAcquire.Temporary ? this.Value(node, input: input) : this.Place(node, input);
