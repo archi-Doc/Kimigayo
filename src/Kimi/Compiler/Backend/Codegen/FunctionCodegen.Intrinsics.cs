@@ -21,7 +21,7 @@ internal sealed partial class FunctionCodegen
     private void Intrinsic(in MirTerminator call, in IntrinsicRow row)
     {
         var target = row.Target == IntrinsicTarget.None ? -1 : this.Target(new(this.at, this.body.Blocks[this.at].Count));
-        if (this.Routine(row, this.InstanceType(call.Place), target, out var given) is { } routine)
+        if (this.Routine(row, this.InstanceType(call.Place), this.TypeArgument(call.Callee.Subst), target, out var given) is { } routine)
         {
             this.Invoke(call, routine, new(call.Callee.Symbol, MirBodyKind.Fn), given);
             return;
@@ -60,16 +60,19 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // SPEC 7.7.4 (DECISIONS R5-M108, R5-M116): a compiler function's routine row by its disposition, what its adapter's entry calls
-    // (FunctionCodegen.Closures' Runs) with the target it carries, and an intrinsic's Value call: an intrinsic's routine row (below), a Body
-    // disposition's legacy routine (LegacyRuntimeHelpers.Row); null for any other row, which is not one routine call or not written yet (a
-    // Shim's, an instruction writer's, an unwritten row's), and after a record at the source.
-    private FunctionAbi? Routine(CompilerFunctionKind kind, BoundType? result, int target, SourceInfo source, out ReadOnlySpan<Value> given)
+    // SPEC 7.7.4 (DECISIONS R5-M108, R5-M116): a compiler function's routine row by its disposition, what its Item's adapter entry calls
+    // (FunctionCodegen.Closures' Runs) with the target it carries, and its Item's Value call: an intrinsic's routine row (below) with the
+    // Item's Type argument (its own substitution's, TyCtxt.SubstOfItem), a Body disposition's legacy routine (LegacyRuntimeHelpers.Row); null
+    // for any other row, which is not one routine call or not written yet (a Shim's, an instruction writer's, an unwritten row's), and after
+    // a record at the source.
+    private FunctionAbi? Routine(BoundType item, BoundType? result, int target, SourceInfo source, out ReadOnlySpan<Value> given)
     {
         given = default;
+        var kind = item.Symbol?.CompilerFunction ?? CompilerFunctionKind.None;
         return IntrinsicDisposition.Of(kind) switch
         {
-            { Kind: DispositionKind.Intrinsic, Id: var id } => this.Routine(IntrinsicRows.Of(id), result, target, out given),
+            { Kind: DispositionKind.Intrinsic, Id: var id } =>
+                this.Routine(IntrinsicRows.Of(id), result, this.TypeArgument(this.typeContext.SubstOfItem(item)), target, out given),
             _ => LegacyRuntimeHelpers.Row(kind) is { } row ? this.Routine(row, target, source, out given) : null,
         };
     }
@@ -106,12 +109,13 @@ internal sealed partial class FunctionCodegen
     }
 
     // A routine row, a call that is one runtime routine: its routine, after its module request (TryAllocate's), and its slot-less values in
-    // order into `given`, from the call's result Type in the item's instance and the target it carries (-1: none). Raw.allocate<T>(count)
-    // (SPEC 5.6) is __kimi_raw_allocate, which checks the count and the byte size and gives a nonnull aligned address for zero bytes, with
-    // T's stride; no Layout alignment exceeds the heap's 16 (DECISIONS R5-M92), so no T is refused. A creation is its target descriptor's
-    // factory and a clone its handle's retain (FunctionCodegen.Objects). Null for any other writer, and after a broken contract's record. A
-    // result without its element's layout is a broken contract, recorded by Laid (its stride 0, in a module then not written).
-    private FunctionAbi? Routine(IntrinsicRow row, BoundType? result, int target, out ReadOnlySpan<Value> given)
+    // order into `given`, from the call's result Type and its Type argument in the item's instance (TypeArgument) and the target it carries
+    // (-1: none). Raw.allocate<T>(count) (SPEC 5.6) is __kimi_raw_allocate, which checks the count and the byte size and gives a nonnull
+    // aligned address for zero bytes, with T's stride; no Layout alignment exceeds the heap's 16 (DECISIONS R5-M92), so no T is refused. A
+    // creation is its target descriptor's factory and a clone its handle's retain (FunctionCodegen.Objects). Null for any other writer, and
+    // after a broken contract's record. A T without its layout is a broken contract, recorded by Laid (its stride 0, in a module then not
+    // written).
+    private FunctionAbi? Routine(IntrinsicRow row, BoundType? result, BoundType? argument, int target, out ReadOnlySpan<Value> given)
     {
         given = default;
         switch (row.Writer)
@@ -122,7 +126,7 @@ internal sealed partial class FunctionCodegen
                 this.module.Request(ModuleCodegen.Needs.TryAllocate);
                 return row.Routine;
             case IntrinsicWriter.Allocate:
-                this.slotless[0] = new('\0', this.Laid(result is { Components: [var element] } ? element : null)?.Layout.Stride ?? 0);
+                this.slotless[0] = new('\0', this.Laid(argument)?.Layout.Stride ?? 0);
                 given = this.slotless.AsSpan(0, 1);
                 return row.Routine;
             case IntrinsicWriter.Create:
@@ -133,6 +137,12 @@ internal sealed partial class FunctionCodegen
                 return null;
         }
     }
+
+    // K package 4.5 rows 6-9 (DECISIONS R5-M74): an intrinsic's Type argument in the item's instance, the one operand form its rows read, as
+    // the collector reads it for the row's target (InstanceCollector.Intrinsic): a call's substitution's or an Item's own (SubstOfItem); null
+    // without one.
+    private BoundType? TypeArgument(Subst? subst)
+        => subst is not null && subst.Types.Length > 0 && subst.Types[0] is { } first ? this.collector.TypeOf(this.item, first) : null;
 
     // SPEC 17.4, 22.5.2: a Fail Aborts through the runtime Abort with its fixed code's reason (AbortReasons.Of; its one operand, the code,
     // names a reason or the MIR is broken) and no OS error (RuntimeAbi.NoOsError), the routine's slot-less parameters, at the call's
