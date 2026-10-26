@@ -5,12 +5,14 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Call retention, the transfer rule (SPEC 15.6.4 as DECISIONS R4-M131 states it; BU-40; contract in TyCtxt.Retention.cs).
-// Responsibility: which published operation transfers values, and how it narrows rule A's rows at a raw layer without an Origin.
+// Responsibility: which published operation transfers values, how it narrows rule A's rows at a raw layer without an Origin, and which
+// stores it writes only where its receiver refers (SPEC 4.9.6; DECISIONS BU-42).
 // Inputs: the callee of the contract being computed, its instantiated inputs, and the premise scope TyCtxt read an instance with an
 // abstract part under, RetentionRows' parameter, which it hands to IteratorTransfer (the library root's for any other).
 // Outputs: the contract's Transfer: its declaring-identity key (TransferKey), read by RetentionRows once per contract, and for a callee
 // that key does not name its Iterator key (IteratorTransfer), read once, at the first output whose hold walk meets a written unstated
-// layer, so an ordinary call pays two symbol reads; the outputs it writes (TransferWrites) and what an input keeps there (TransferKept).
+// layer, so an ordinary call pays two symbol reads; the outputs it writes (TransferWrites) and what an input keeps there (TransferKept);
+// from the identity key alone, the contract's CallRetention.ReferentStores (ReferentStores).
 // Keys, each a published declaring identity, never a name or a file (SPEC 22.1): `exchange` and `swap` by their catalog IDs; an operation
 // of SPEC 4.6 to 4.9: a member of Array or Dictionary (4.9, whose receiver's element storage keeps only its added inputs,
 // KimiLibraryCatalog.Added), of a Type of TransferTypes, or of the fixed array (KimiLibrary.FixedArrayMembers); an Iterator's `next`, a
@@ -51,9 +53,9 @@ public sealed partial class Binding
     };
 
     // Whether `output` is the store at the callee's receiver (an input's writable storage, never the result), the one receiver predicate
-    // TransferWrites and TransferKept read: a 4.9 operation's receiver's element storage, and for any operation of SPEC 4.6 to 4.9 with a
-    // borrowed receiver the storage that receiver refers to (4.9.6). A member without a receiver (construction: its ReceiverIndex is -1,
-    // which is Retention.Result) has none, so the receiver narrowing never reaches its result (SPEC 4.9.6, 15.6.4).
+    // TransferWrites, TransferKept and ReferentStores read: a 4.9 operation's receiver's element storage, and for any operation of SPEC 4.6
+    // to 4.9 with a borrowed receiver the storage that receiver refers to (4.9.6). A member without a receiver (construction: its
+    // ReceiverIndex is -1, which is Retention.Result) has none, so the receiver narrowing never reaches its result (SPEC 4.9.6, 15.6.4).
     private static bool ReceiverStorage(BindingSymbol callee, int output) => output >= 0 && output == callee.ReceiverIndex;
 
     // The declaring-identity key of a callee (the file's contract): `exchange`, a 4.9 operation, `swap` or a 4.6 to 4.8 operation; None
@@ -106,5 +108,16 @@ public sealed partial class Binding
         }
 
         return transfer == Transfer.None || this.BorrowReferent(input, out _, out _) is null ? Kept.Value | Kept.Chain : Kept.Chain;
+    }
+
+    // CallRetention.ReferentStores (SPEC 4.9.6; DECISIONS BU-42): under the identity key of an operation of SPEC 4.6 to 4.9 (`exchange` and
+    // `swap` have no receiver), the store at its receiver (ReceiverStorage) when the receiver is an exclusive borrow (BorrowReferent), whose
+    // referent is that storage; a shared borrow's storage is no store, and a receiver taken by value is the callee's own. The shared empty
+    // array for none.
+    private int[] ReferentStores(Transfer key, BindingSymbol? callee, ReadOnlySpan<BoundType> inputs)
+    {
+        var receiver = callee?.ReceiverIndex ?? Retention.Result;
+        return key is Transfer.Elements or Transfer.Values && ReceiverStorage(callee!, receiver) &&
+            this.BorrowReferent(inputs[receiver], out _, out var exclusive) is not null && exclusive ? [receiver] : [];
     }
 }

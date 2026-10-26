@@ -13,7 +13,8 @@ namespace XunitTest;
 /// <summary>Call retention, the Binding view A5's Loan flow reads for calls (<c>TyCtxt.Retains</c>, design A3 4.3 C1+C8, DECISIONS
 /// R4-M51): which outputs of a call may retain which arguments under the premises the callee's body is checked under (SPEC 15.6.4), as
 /// rows <c>input kind output</c> (the result, or <c>store j</c>, the storage input j's exclusive, raw or invariant layers let the call
-/// write), and whether the result is untied.</summary>
+/// write), whether the result is untied, the untied stores and the stores written only in the receiver's referent (<c>referent store
+/// j</c>, DECISIONS BU-42).</summary>
 public sealed class RetentionTest
 {
     // A struct B that stores its Type argument, and B^64<i32> and B^65<i32>, whose storage heights are 64 and 65 (DECISIONS BU-12's bound
@@ -101,6 +102,10 @@ public sealed class RetentionTest
 
     private const string RawLend = "struct RawLend\n    Self is LendingIterator\n    associate LendingIterator.LentItem(step) is raw/u8\n    var items: Array<raw/u8>\n" +
         "    public init(items: Array<raw/u8>) => self.items = items@move\n    public func next(self: uniq/Self during step) -> Option<raw/u8> => self.items.pop()\n";
+
+    // A user Type whose `drop` writes through a raw layer it holds (the C3 designs' clearDrop2 forms).
+    private const string Writer = "struct Writer\n    public var p: raw/(raw/u8)\n    public var q: raw/u8\n    public init(q: raw/u8)\n" +
+        "        self.p = null\n        self.q = q\n    drop\n        unsafe => *self.p = self.q\n";
 
     // A function whose body relies on its enclosing function's premise c outlives o (y's well-formedness), called while *q is written.
     private const string Enclosing = "func outer(y: ref/(ref/i32 during c) during o, q: uniq/i32 during c) -> i32\n";
@@ -190,7 +195,7 @@ public sealed class RetentionTest
             "var e: Array<S> = []\ne.append(S.init(r: x@ref))\nvar o: Array<obj/S> = []\no.append(Kimi.Intrinsics.makeObj(S.init(r: x@ref)))\n" +
             "var p: Array<rc/S> = []\np.append(Kimi.Intrinsics.makeRc(S.init(r: x@ref)))\n" +
             "var q: Array<arc/S> = []\nq.append(Kimi.Intrinsics.makeArc(S.init(r: x@ref)))\n");
-        Assert.Equal(Enumerable.Repeat("0 Content store 0, 1 Value store 0", 4), Calls(c, "append"));
+        Assert.Equal(Enumerable.Repeat("0 Content store 0, 1 Value store 0, referent store 0", 4), Calls(c, "append"));
     }
 
     // SPEC 15.6.4: a method writing through `uniq/Self` stores an input into the receiver's referent; one reading through it is
@@ -228,7 +233,7 @@ public sealed class RetentionTest
             "func keep(view: Slice<ref/i32 during q>, v: ref/i32 during q) -> Option<ref/i32 during q> => .None\n" +
             "func put(view: UniqSlice<ref/i32 during q>, v: ref/i32 during q) => ()\nfunc first(view: UniqSlice<ref/i32 during q>) -> Option<ref/i32 during q> => .None\n");
         Assert.Equal(["0 Content result"], Calls(c, "toArray"));
-        Assert.Equal(["0 Content store 0, 1 Content store 0"], Calls(c, "appendCopies"));
+        Assert.Equal(["0 Content store 0, 1 Content store 0, referent store 0"], Calls(c, "appendCopies"));
         Assert.Equal("0 Content result, 1 Value result", Declared(c, "keep"));
         Assert.Equal("0 Content store 0, 1 Value store 0", Declared(c, "put"));
         Assert.Equal("0 Content result, 0 Content store 0", Declared(c, "first"));
@@ -696,6 +701,8 @@ public sealed class RetentionTest
     // declaring identities: a LendingIterator-only `next`, a user `pop` and a user `swap` keep every argument (A's cost, R4-M131 Open), and
     // `exchange` over a borrow keeps its rows. A 4.9 operation and `exchange` form none at an output they do not write (SPEC 4.9.6's
     // complete published effect; PLAN G255's C4): an added `raw/(raw/u8)`'s pointee, `exchange`'s `with` (fail-before: `0 Chain store 1`).
+    // A 4.9 operation writes its receiver's store only in the storage the receiver refers to (`referent store 0`, DECISIONS BU-42);
+    // construction, `exchange`, `swap`, an Iterator's `next` and a user `trade` or `pop` have no such store.
     [Theory]
     [InlineData("var x: raw/u8 = null\nvar y: raw/u8 = null\nKimi.Intrinsics.swap(x@uniq, y@uniq)\n", "swap", "0 Chain store 0, 1 Chain store 0, 0 Chain store 1, 1 Chain store 1, untied store 0, untied store 1")]
     [InlineData(
@@ -704,21 +711,21 @@ public sealed class RetentionTest
         "0 Chain store 0, 1 Value store 0, 1 Chain store 0, 0 Value store 1, 0 Chain store 1, 1 Chain store 1, untied store 0, untied store 1")]
     [InlineData("var x: raw/u8 = null\nlet old = Kimi.Intrinsics.exchange(x@uniq, with: null)\n", "exchange", "0 Chain result, 0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied, untied store 0")]
     [InlineData("var a = 1\nvar b = 2\nvar x = a@ref\nlet old = Kimi.Intrinsics.exchange(x@uniq, with: b@ref)\n", "exchange", "0 Content result, 1 Value result, 0 Content store 0, 1 Value store 0")]
-    [InlineData("var a: Array<raw/u8> = [null]\nlet x = a.pop()\n", "pop", "0 Chain result, 0 Chain store 0, untied, untied store 0")]
+    [InlineData("var a: Array<raw/u8> = [null]\nlet x = a.pop()\n", "pop", "0 Chain result, 0 Chain store 0, untied, untied store 0, referent store 0")]
     [InlineData(
         RawStack + "var s = RawStack.init(items: [null])\nlet x = s.pop()\n",
         "pop",
-        "0 Chain result, 0 Chain store 0, untied, untied store 0 | 0 Value result, 0 Chain result, 0 Chain store 0, untied, untied store 0")]
-    [InlineData("var d: Dictionary<i32, raw/u8> = [:]\nlet k = 1\nlet x = d.remove(k@ref)\n", "remove", "0 Chain result, 1 Chain result, 0 Chain store 0, untied, untied store 0")]
-    [InlineData("var a: Array<raw/u8> = []\na.insert(0, null)\n", "insert", "0 Chain store 0, 2 Value store 0, 2 Chain store 0, untied store 0")]
-    [InlineData("var a: Array<raw/(raw/u8)> = []\nvar h: raw/u8 = null\na.append(h@raw)\n", "append", "0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0, untied store 1")]
+        "0 Chain result, 0 Chain store 0, untied, untied store 0, referent store 0 | 0 Value result, 0 Chain result, 0 Chain store 0, untied, untied store 0")]
+    [InlineData("var d: Dictionary<i32, raw/u8> = [:]\nlet k = 1\nlet x = d.remove(k@ref)\n", "remove", "0 Chain result, 1 Chain result, 0 Chain store 0, untied, untied store 0, referent store 0")]
+    [InlineData("var a: Array<raw/u8> = []\na.insert(0, null)\n", "insert", "0 Chain store 0, 2 Value store 0, 2 Chain store 0, untied store 0, referent store 0")]
+    [InlineData("var a: Array<raw/(raw/u8)> = []\nvar h: raw/u8 = null\na.append(h@raw)\n", "append", "0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0, untied store 1, referent store 0")]
     [InlineData(
         "var x: raw/(raw/u8) = null\nlet old = Kimi.Intrinsics.exchange(x@uniq, with: null)\n",
         "exchange",
         "0 Chain result, 0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied, untied store 0, untied store 1")]
-    [InlineData("var a: Array<raw/u8> = []\nvar b: Array<raw/u8> = [null]\na.appendAll(b@move)\n", "appendAll", "0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0")]
-    [InlineData("var a: Array<raw/u8> = []\nlet b: Array<raw/u8> = [null]\na.appendCopies(b.slice())\n", "appendCopies", "0 Chain store 0, 1 Chain store 0, untied store 0")]
-    [InlineData("var a: Array<raw/u8> = [null]\nvar bias = 1\nlet b = bias@ref\na.sort(by: func (x, y) => b@follow)\n", "sort", "0 Chain store 0, untied store 0")]
+    [InlineData("var a: Array<raw/u8> = []\nvar b: Array<raw/u8> = [null]\na.appendAll(b@move)\n", "appendAll", "0 Chain store 0, 1 Value store 0, 1 Chain store 0, untied store 0, referent store 0")]
+    [InlineData("var a: Array<raw/u8> = []\nlet b: Array<raw/u8> = [null]\na.appendCopies(b.slice())\n", "appendCopies", "0 Chain store 0, 1 Chain store 0, untied store 0, referent store 0")]
+    [InlineData("var a: Array<raw/u8> = [null]\nvar bias = 1\nlet b = bias@ref\na.sort(by: func (x, y) => b@follow)\n", "sort", "0 Chain store 0, untied store 0, referent store 0")]
     [InlineData("let a = Array<raw/u8>.init(repeating: null, count: 2)\n", "initRepeating", "0 Value result, 0 Chain result, 1 Value result, 1 Chain result, untied")]
     [InlineData("let a = Array<(raw/u8, i32)>.init(repeating: (null, 1), count: 2)\n", "initRepeating", "0 Value result, 0 Chain result, 1 Value result, 1 Chain result, untied")]
     [InlineData("let a = Array<raw/u8>.init(capacity: 2)\n", "initCapacity", "0 Value result, 0 Chain result, untied")]
@@ -727,6 +734,55 @@ public sealed class RetentionTest
     [InlineData("let a: Array<raw/u8> = [null]\nvar it = Iteration.owning(a@move.intoIterator())\nlet x = it.next()\n", "next", "0 Chain result, 0 Chain store 0, untied, untied store 0")]
     [InlineData("let a: Array<raw/u8> = [null]\nvar it = a.iterate()\nlet x = it.next()\n", "next", "0 Content result, 0 Chain store 0, untied store 0")]
     public void TransferOperationsRetainBorrowedArgumentsByTheirChains(string source, string callee, string expected)
+        => Assert.Equal(expected, string.Join(" | ", Calls(Bind(source), callee)));
+
+    // SPEC 4.9.6, 15.6.4 (DECISIONS BU-42, PLAN G255's C3): an operation of SPEC 4.6 to 4.9 writes the store at its receiver, an
+    // exclusive borrow, only in the storage the receiver refers to (CallRetention.ReferentStores, `referent store j`), by declaring
+    // identity whatever its element Type: an Array holding no raw layer (`Array<ref/i32>`; `Array<uniq/(ref/i32)>`, whose premise rows
+    // at the added input stay ordinary stores), one whose element's `drop` writes through a raw layer (`Array<Writer>`,
+    // `Array<raw/Writer>`: the destruction is the callers' to compose, A5's guard), Array `swap`, a 4.6 to 4.8 operation (Slice
+    // `iterateUniq`, UniqSlice `sliceUniq` after Array's and `indexUniq`, ResolvedRange `iterateUniq`, whose contract has no row) and the
+    // fixed array's (`sliceUniq`, `iterateUniq`, `tryGetPairUniq`). None where the receiver is no exclusive borrow (Array `slice`, a
+    // shared one; `intoIterator`, by value, though its elements' pointees are a store) or the callee no such operation (SliceIterator's
+    // `next`). Fail-before: no row prints it.
+    [Theory]
+    [InlineData("var a: Array<ref/i32> = []\nvar x = 1\na.append(x@ref)\n", "append", "0 Content store 0, 1 Value store 0, referent store 0")]
+    [InlineData(
+        "var a: Array<uniq/(ref/i32)> = []\nvar x = 1\nvar r = x@ref\na.append(r@uniq)\n",
+        "append",
+        "0 Content store 0, 1 Value store 0, 0 Content store 1, 1 Content store 1, referent store 0")]
+    [InlineData(Writer + "var a: Array<Writer> = []\na.clear()\n", "clear", "0 Chain store 0, untied store 0, referent store 0")]
+    [InlineData(Writer + "var a: Array<raw/Writer> = []\na.clear()\n", "clear", "0 Chain store 0, untied store 0, referent store 0")]
+    [InlineData("var a: Array<raw/u8> = [null]\na.swap(0, 0)\n", "swap", "0 Chain store 0, untied store 0, referent store 0")]
+    [InlineData(
+        "let a: Array<raw/u8> = [null]\nvar s = a.slice()\nlet it = s.iterateUniq()\n",
+        "iterateUniq",
+        "0 Chain result, 0 Chain store 0, untied, untied store 0, referent store 0")]
+    [InlineData(
+        "var a: Array<raw/u8> = [null]\nvar s = a.sliceUniq()\nlet t = s.sliceUniq()\n",
+        "sliceUniq",
+        "0 Value result, 0 Chain store 0, untied store 0, referent store 0 | 0 Value result, 0 Chain store 0, untied store 0, referent store 0")]
+    [InlineData(
+        "var a: Array<raw/u8> = [null]\nvar s = a.sliceUniq()\nlet t = s.indexUniq(0)\n",
+        "indexUniq",
+        "0 Value result, 0 Chain store 0, 1 Chain store 0, untied store 0, referent store 0")]
+    [InlineData("var r = (0..2).resolve(5)\nlet it = r.iterateUniq()\n", "iterateUniq", "referent store 0")]
+    [InlineData("var f: [2 of raw/u8] = [null, null]\nlet s = f.sliceUniq()\n", "sliceUniq", "0 Value result, 0 Chain store 0, untied store 0, referent store 0")]
+    [InlineData(
+        "var f: [2 of raw/u8] = [null, null]\nlet it = f.iterateUniq()\n",
+        "iterateUniq",
+        "0 Value result, 0 Chain result, 0 Chain store 0, untied, untied store 0, referent store 0")]
+    [InlineData(
+        "var f: [2 of raw/u8] = [null, null]\nlet p = f.tryGetPairUniq(first: 0, second: 1)\n",
+        "tryGetPairUniq",
+        "0 Value result, 0 Chain store 0, 1 Value store 0, 1 Chain store 0, 2 Value store 0, 2 Chain store 0, untied store 0, referent store 0")]
+    [InlineData("let a: Array<raw/u8> = [null]\nlet s = a.slice()\n", "slice", "0 Value result")]
+    [InlineData(
+        "let a: Array<raw/(raw/u8)> = [null]\nlet it = a@move.intoIterator()\n",
+        "intoIterator",
+        "0 Value result, 0 Chain result, 0 Chain store 0, untied, untied store 0")]
+    [InlineData("let a: Array<raw/u8> = [null]\nvar it = a.slice().iterate()\nlet x = it.next()\n", "next", "0 Content result, 0 Chain store 0, untied store 0")]
+    public void AnOperationWritesItsBorrowedReceiversStoreOnlyInItsReferent(string source, string callee, string expected)
         => Assert.Equal(expected, string.Join(" | ", Calls(Bind(source), callee)));
 
     // SPEC 15.3.5, 15.6.4 (the G160-2c reviews' R1 and R4's B1): a Type whose storage grows through an indirection (a raw pointer, an
@@ -1020,5 +1076,6 @@ public sealed class RetentionTest
 
     private static string Show(CallRetention retention)
         => retention.IsLimit ? "limit" : string.Join(", ", retention.Rows.ToArray().Select(static x => $"{x.Input} {x.Kind} {(x.Output == Retention.Result ? "result" : $"store {x.Output}")}")
-            .Append(retention.Untied ? "untied" : null).OfType<string>().Concat(retention.UntiedStores.ToArray().Select(static x => $"untied store {x}")));
+            .Append(retention.Untied ? "untied" : null).OfType<string>().Concat(retention.UntiedStores.ToArray().Select(static x => $"untied store {x}"))
+            .Concat(retention.ReferentStores.ToArray().Select(static x => $"referent store {x}")));
 }
