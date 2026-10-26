@@ -102,7 +102,7 @@ internal sealed partial class FunctionCodegen
     // argument (LegacyRuntimeHelpers.WriterKind), and the dispatch word: null for a FixedBuffer or a HeapBuffer, whose reserve the runtime runs
     // itself (a body-less compiler function, so the call carries no target), else the function of W's reserve witness, the call's Body target,
     // whose signature is the runtime's dispatch call (Dispatches). Any other pairing is a broken contract: Binding admits no virtual reserve
-    // witness (a virtual function's receiver is objref/Self, BufferWriter's uniq/Self). Null after a record.
+    // witness (a virtual function's receiver is objref/Self or objuniq/Self, which Binding rejects or leaves Unsupported there). Null after a record.
     private FunctionAbi? Writer(IntrinsicRow row, BoundType? destination, int target, out ReadOnlySpan<Value> given)
     {
         given = default;

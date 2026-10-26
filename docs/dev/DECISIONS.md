@@ -10089,8 +10089,12 @@ structure is recorded here by the unit that first implements it.
     - The conversions (toString, tryFormat: the row's routine less its kind Context, which the target replaces) are the old generator's text
       over the target's write wrapper, `LegacyRuntimeHelpers.WriteFormattingConversion`, promoted once (PD2); a conversion's request also
       requests the write wrapper.
-    - SPEC 22.10.1's frame then exists twice until R6-gen: the old planner's `WriteFormattingWrite` (frozen, D5) and this write wrapper. The
-      old one goes with the old generator at R6-gen, its removal condition; there is no other copy.
+    - SPEC 22.10.1's user-formatter frame then exists twice until R6-gen: the old planner's `WriteFormattingWrite` (frozen, D5) and this
+      write wrapper; the old one goes with the old generator at R6-gen, its removal condition. The built-in formatter's frame is the legacy
+      runtime's `__kimi_writer_write_builtin` (P1d's text, `Utf8FormatRuntime.ll.in`, until R8), which both generators call, so it is one
+      copy. Two runtime ABIs are also stated twice until R6-gen, with the same removal condition: `LegacyRuntimeHelpers.FormatHealthy`
+      beside the frozen `BodyLowering.Interpolation.cs`'s `StatusFormatting`, and `ModuleCodegen.WriteParameters` (the write wrapper's ABI)
+      beside the old planner's wrapper ABI (`GenericStoragePlan.cs`, `__kimi_writer_write_user`).
   - Erased writer (ruling Q3 (a)): `Text.writer`, the ErasedWriter intrinsic, has the row routine P1d's TextWriter (`__kimi_text_writer`)
     and a new `IntrinsicWriter.Writer` (an internal writer column, as Ensure, Create, Clone, Test and Capacity were): its two Context words
     are given from its destination W, the call's Type argument read as the collector reads it for K row 6's target (`TypeArgument`: a call's
@@ -10100,11 +10104,12 @@ structure is recorded here by the unit that first implements it.
     witness, gives the dispatch word, its function `@__kimi_f<item>` under the runtime's dispatch signature `void (ptr, ptr, i64)`). Any
     other pairing is a broken contract. Code generation resolves no witness. The call, the Item's Value call and the adapter entry are
     written alike (G157 (22)'s `Text.writer` part closes).
-  - Virtual witnesses (ruling Q6): Binding admits no virtual `reserve` or `format` witness: a virtual function's receiver is `objref/Self`,
-    which BufferWriter's `uniq/Self` and Utf8Format's `ref/Self` requirements reject (probe programs: `uniq/Self` or `ref/Self` virtual,
-    InvalidVirtualDeclaration_Kd and IncompatibleContractImplementation_Kd; `objref/Self`, MissingContractImplementation_Kd). The write
-    wrapper calls through `BodyRun`, whose slot path exists (C6c); the dispatch word has no virtual arm, a virtual pairing falling under the
-    broken-contract rule. When Binding admits one, that arm is written (a PLAN item).
+  - Virtual witnesses (ruling Q6): Binding admits no virtual `reserve` or `format` witness: a virtual function's receiver is `objref/Self`
+    or `objuniq/Self` (SPEC 6.4), which BufferWriter's `uniq/Self` and Utf8Format's `ref/Self` requirements reject or Binding leaves
+    Unsupported (probe programs: `uniq/Self` or `ref/Self` virtual, InvalidVirtualDeclaration_Kd and IncompatibleContractImplementation_Kd;
+    `objref/Self`, MissingContractImplementation_Kd; review 1's probe `q6/e`, a virtual `reserve(self: objuniq/Self)`: Unsupported_Kd and
+    MissingContractImplementation_Kd). The write wrapper calls through `BodyRun`, whose slot path exists (C6c); the dispatch word has no
+    virtual arm, a virtual pairing falling under the broken-contract rule. When Binding admits one, that arm is written (a PLAN item).
   - Not rows (ruling Q4 (a)): FormatFloat, ErasedReserve and FormatInteger128 have no MIR producer (the runtime calls Ryu, a user Writer's
     reserve through the dispatch word and its i128 decimal routine itself); their rows are "no MIR producer (R8, PD21)", as WriteStdout's,
     and R5-M92's C9b labels on them are labels. G157 (10) (ruling Q5 (a)): a Requirement call whose witness is a body-less compiler function

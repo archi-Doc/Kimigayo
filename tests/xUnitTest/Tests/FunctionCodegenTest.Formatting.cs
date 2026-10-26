@@ -277,6 +277,16 @@ public sealed partial class FunctionCodegenTest
         Assert.Contains(Assert.Single(FunctionsOf(ir, c, "apItem")), callers);
     }
 
+    // SPEC 22.10.1 (DECISIONS R5-M130): a module whose only formatting is one direct write of an i32 through a writer adapter reaches the i32
+    // BuiltinFormat item once (K row 2's Builtin target) and defines its function once, with no record.
+    [Fact]
+    public void ADirectBuiltinWriteDefinesItsItemOnce()
+    {
+        var text = Generate(Analyze("func one(writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write(1)\n", OutputKind.Library));
+        var shim = Assert.Single(ShimsOf(GeneratedIr.Parse(text), text));
+        Assert.Equal("call void @(ptr %, ptr %, ptr %, i32 5, ptr %, i64 %)", Assert.Single(CallsOf(shim)).Shape);
+    }
+
     // SPEC 22.10.1, 22.9.2, 7.7.4 (DECISIONS R5-M130): a user formatter's write, toString and tryFormat run through its wrappers, one per row,
     // whatever calls them: the write wrapper is SPEC 22.10.1's frame (the runtime's failure test before and after, its failure record)
     // around one call of the witness with the value and the adapter; a conversion is the old generator's text over that write wrapper; the
