@@ -472,29 +472,8 @@ fn reslice @138
 fn make @154
   _0: Array<i32> return @154
   _1: i32 arg first @154
-  _2: () temp @160
-  _3: uniq/Array<i32> temp @160
-  _4: uniq/Array<i32> temp @160
-  _5: uniq/Array<i32> temp @160
   bb0:
-    * _0 = FixedArray(): Array<i32> @160
-      StorageLive(_2) @160
-      StorageLive(_3) @160
-      _3 = &uniq two-phase _0: uniq/Array<i32> @160
-      _2 = reserve(move _3, const 2_isize) -> bb1 @160
-  bb1:
-      StorageLive(_4) @160
-      _4 = &uniq two-phase _0: uniq/Array<i32> @160
-      _2 = append(move _4, copy _1) -> bb2 @160
-  bb2:
-      StorageLive(_5) @160
-      _5 = &uniq two-phase _0: uniq/Array<i32> @160
-      _2 = append(move _5, const 2_i32) -> bb3 @160
-  bb3:
-      StorageDead(_5) @160
-      StorageDead(_4) @160
-      StorageDead(_3) @160
-      StorageDead(_2) @160
+    * _0 = Array(copy _1, const 2_i32): Array<i32> @160
       return @160
 fn table @163
   _0: Dictionary<i32, bool> return @163

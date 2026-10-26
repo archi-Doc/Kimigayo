@@ -9809,3 +9809,54 @@ structure is recorded here by the unit that first implements it.
     - the collector skipping the Builtin target (K row 2: the target decides the user-formatter case and names the Self);
     - bringing C9b's BuiltinFormat shim forward (ruling Q4 (a), the plan's boundary);
     - re-pointing the old lowering to the map (D5).
+- **R5-M129 The Array literal is one MIR aggregate (alit)** (2026-10-26, R5 planning session; the owner's 「a) 設計して直す お願いします」
+  (2026-10-26, on G:library-2's held review: design and fix) and 「いずれも承認します」 (2026-10-26, to "MIR の語彙に新しい集約の種類
+  MirAggregateKind.Array を加えてよいですか？"); G:library-2's B1; a Full change: designs 1 and 2, the planning session's choice of design
+  2's P3, design review 1 REVISE (B1: a row of the aggregate path) and its revision R-1, with R4's view; SPEC 4.3.1, 4.9.5, 4.9.6, 12.2,
+  12.4.1, 16.2.1, 22.5.1, IMPL 21.3.3; partly supersedes R5-M121 and R3-5's interim mapping for the Array literal)
+  - Cause: the MIR built `[e1..en]` as an empty Array, `reserve(n)` and n `append` calls (R3-5's interim mapping, "R3 decision 5"), which
+    code generation wrote by their contracts. At O2, `__kimi_array_grow` kept n+1 call sites per literal, so it stayed out of line and each
+    element reloaded the handle and called it (lit8: 9 calls per literal, B/A 1.30; lit64 2.85), where the old generator allocates once.
+  - Rule: an Array literal of n >= 0 elements, `[]` included, is one aggregate, `MirAggregateKind.Array` (the owner's vocabulary entry;
+    ARCH's closed-vocabulary table gains `MirAggregateKind`, 6 entries). `MirBuilder.Aggregate` builds it as every aggregate: the elements
+    in source order, each before the last that builds code secured where it is evaluated (SPEC 12.2), so an interrupted literal destroys
+    the elements secured so far in reverse acquisition order (SPEC 16.2.1), as before. Its contract: the elements move into one buffer
+    allocated for their count, none for `[]` (SPEC 4.9.5); the allocation may Abort at the literal (22.5.1); no user code runs (4.9.6).
+  - Its row: `MirDescriptors.Of(MirAggregateKind)`, one row per aggregate kind, Array's `Allocation | Abort`, the others none; `MirUses`
+    reports an aggregate's row when it has an operand. This is effect parity with the calls it replaces: no `IMirUses` visitor reads
+    Allocation or Abort, and reserve and append published no Runs or Destroys, so no A4 summary changes.
+  - A5 reads the aggregate rule (the operands' union under rule W's Indirect), the Array's content where an Index step reads it. A literal's
+    own buffer carries no escape marker: its elements are placed at construction, and nothing earlier is stored there. An appended element
+    carries the untied-store marker of the receiver store (R4-M116). So the literal is exact, popLateOk and rawPairOk are accepted, and a
+    later unit must not give the literal an append's marker back (R4's finding (4)).
+  - Code generation: one Array row of the aggregate writer, in Fill's shape after the shared operand evaluation and Destination
+    (`FunctionCodegen.Arrays.ArrayBuffer`). It writes the runtime's empty handle, then for n elements one `__kimi_array_grow(stride, n)`, the
+    old generator's call, with the Array runtime requested through `Request(HelperNeeds.ArrayRuntime)`, and the length n in the handle's
+    length word (`Layout.LengthWord`, which `setArrayLength` now reads too). The aggregate writer then puts each element in the buffer by
+    `Component`'s fixed-array rule.
+  - R5-M121's IR-only literal deviation is replaced, not deleted: MIR code generation now grows once like the old generator, then puts the
+    elements directly (aligned stores) and the length once, where the old generator calls P1b's Place helper per element (PD9 information).
+  - Superseded: R5-M121's rejected "the builder writing grow and place (held, R3 decision 5)". The reason that no longer holds: the form is
+    now one MIR aggregate whose row carries the construction contract (R4's one-meaning rule), not builder-written grow and place calls.
+  - R5-M8's "fixed in codegen": the generated code is fixed, through the MIR's form and code generation, never by a tolerance.
+  - FixedArray keeps one Type-decided meaning, "a Dictionary from none" (its codegen, validator and collector arms), until PLAN G255 (C2)
+    gives the Dictionary literal its form; that is its removal condition (R4's finding (5)).
+  - Corpus: R5-M8's O2 corpus had no literal kernel, which let B1 through. It gains `ArrayLiteral` (1, 8 and 32 `i64` elements and 4
+    structs per round; checksum compared in place and printed as a fixed line, no interpolation), whose A/B runs from this unit on.
+  - Deleted: `MirBuilder.Collection` and `Aggregate`'s one-form clause; the literal's 1 + n Uniq borrows, Calls and LegacyRow targets;
+    FixedArray's Array-from-none meaning with its codegen and validator arms; `EmptyArray`; `DynamicArrayCostTest`'s legacy-only guard.
+  - Measured:
+    - O2: lit8's module is legacy's (191 instructions, 0 grow calls); beside an append loop, 2 grow calls (legacy 2, before 10).
+    - Native, one folder, CPU cycles, 15 interleaved samples: lit8 B/A 1.02 (A/A 1.00), lit1 0.98, lit64 1.01 (was 2.85), strings 0.97.
+      `ArrayLiteral` kernel: B/A 0.98 (min 1.00), A/A 0.97, 21 samples; dev's sel 1.72, so the corpus now sees a literal regression.
+    - `check` of 1,500 literals under `-Pipeline mir`: x0.825 (MIR: 3n+6 statements, n+1 Calls and n+2 blocks per literal become one
+      statement).
+    - Size: Mir and Backend +95/-78 lines (with comments), tests +273/-43, the kernel, this entry, ARCH and CODEMAP.
+  - Rejected:
+    - the Append helper's inline capacity test (P1: lit8 1.11-1.16, lit64 1.5-1.7, more code, and the old generator's text changes);
+    - Proven appends (a field on every Call that one row reads);
+    - raw placements through `borrowStorageUniq` and `Raw.initialize` (P4: new A5 errors, in SPEC 5.7's accepted `raw-pairs` example too;
+      G255 (C2)'s class);
+    - reusing FixedArray for an Array (R4's one-meaning rule);
+    - a separate `Collection` or `ArrayLiteral` path beside the aggregate's (design review 1's B1);
+    - a new rvalue kind, CompilerFunctionKind or IntrinsicId (PD21).

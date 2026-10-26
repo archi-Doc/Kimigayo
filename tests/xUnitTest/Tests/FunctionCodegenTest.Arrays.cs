@@ -82,6 +82,32 @@ public sealed partial class FunctionCodegenTest
             "require values.length == 5 else => $abort(\"items\")\nConsole.writeLine(\"done\")\n",
             "a\nb\nc\nr3\nr2\nr1\ncleared\nitem\nf1\nf2\npopped\ntoken\ndone\ntoken\ntoken\nr4\n"
         },
+        {
+            // SPEC 4.3.1, 4.9.5, 12.4.1, 16.2.1 (DECISIONS R5-M129): literals of 1, 8 and 64 elements, of strings, of a drop-needing struct
+            // (complete: destroyed from the last; interrupted by `try`: the elements secured so far, from the last), generic, empty, zero-sized,
+            // nested, of fixed arrays, Tuples and Closures.
+            "ArrayLiterals",
+            "struct Res\n    public let name: string\n    public init(name: string) => self.name = name@move\n    drop => Console.writeLine(self.name)\n" +
+            "func third(ok: bool) -> Result<Res, i32>\n    if ok => return .Ok(Res.init(\"c\"))\n    return .Err(7)\n" +
+            "func build(ok: bool) -> Result<isize, i32>\n    let values: Array<Res> = [Res.init(\"a\"), Res.init(\"b\"), try third(ok)]\n" +
+            "    Console.writeLine(\"built\")\n    return .Ok(values.length)\n" +
+            "func pair<T>(a: T, b: T) -> Array<T> => [a@move, b@move]\nfunc none<T>() -> Array<T> => []\n" +
+            "match build(true)\n    .Ok(let n) => require n == 3 else => $abort(\"three\")\n    .Err(_) => $abort(\"ok\")\n" +
+            "match build(false)\n    .Ok(_) => $abort(\"err\")\n    .Err(let e) => require e == 7 else => $abort(\"seven\")\n" +
+            "let one: Array<isize> = [41]\nlet eight: Array<isize> = [1, 2, 3, 4, 5, 6, 7, 8]\n" +
+            "let wide: Array<isize> = [" + string.Join(", ", Enumerable.Range(0, 64)) + "]\n" +
+            "require one[0] + eight[7] + wide[63] == 112 and wide.length == 64 else => $abort(\"ints\")\n" +
+            "let texts: Array<string> = [\"x\", \"yy\"]\nConsole.writeLine(texts[1])\nlet names = pair(\"p\", \"q\")\nConsole.writeLine(names[0])\n" +
+            "let empty = none<isize>()\nrequire empty.length == 0 and empty.capacity == 0 else => $abort(\"empty\")\n" +
+            "let units: Array<()> = [(), (), ()]\nrequire units.length == 3 else => $abort(\"units\")\n" +
+            "let nested: Array<Array<isize>> = [[1], [], [2, 3]]\nvar lengths: isize = 0\nfor row in nested => lengths = lengths * 10 + row.length\n" +
+            "require lengths == 102 else => $abort(\"nested\")\n" +
+            "let fixed: Array<[2 of isize]> = [[1, 2], [3, 4]]\nrequire fixed[1][0] == 3 else => $abort(\"fixed\")\n" +
+            "let tuples: Array<(string, isize)> = [(\"t\", 1), (\"u\", 2)]\nConsole.writeLine(tuples[1].0)\n" +
+            "let k: isize = 5\nlet closures: Array<(isize) -> isize> = [func (v) => v + k, func (v) => v * k]\n" +
+            "require closures[0](1) + closures[1](2) == 16 else => $abort(\"closures\")\nConsole.writeLine(\"done\")\n",
+            "built\nc\nb\na\nb\na\nyy\np\nu\ndone\n"
+        },
     };
 
     [Theory]
@@ -178,6 +204,56 @@ public sealed partial class FunctionCodegenTest
         var owns = FunctionsOf(ir, c, "intoIterator").SelectMany(CallsOf).Where(static x => x.Callee!.Signature == "internal void (ptr, ptr)");
         Assert.Contains(owns, static x => x.Callee!.Instructions.Count(static y => y.Opcode == "store") == 4); // Storage, position, count, capacity.
         Assert.Contains(FunctionsOf(ir, c, "intoIterator").SelectMany(CallsOf), static x => x.Shape == "call void @(ptr %, i64 3, ptr %)");
+    }
+
+    // SPEC 4.3.1, 4.9.5, 12.4.1 (DECISIONS R5-M129): an Array literal is the runtime's empty handle at its Place, one growth to its count
+    // given the element's stride, its length, and each element put in the buffer at its position, with no helper call; `[]` is the empty
+    // handle alone, and a zero-sized element is put nowhere (fail-before: a reserve call and one append helper call per element).
+    [Fact]
+    public void AnArrayLiteralGrowsOnceAndPutsItsElements()
+    {
+        const string Literals = "func arLit(x: i32) -> Array<i32> => [x, 2, 3]\nfunc arLitUnits() -> Array<()> => [(), ()]\n" +
+            "func arLitNone() -> Array<i32> => []\nfunc arLitTexts(s: string) -> Array<string> => [s@move, \"t\"]\n";
+        var c = Analyze(Literals, OutputKind.Library);
+        var text = Generate(c);
+        var ir = GeneratedIr.Parse(text);
+        var (init, grow) = (ir.Function("__kimi_array_init"), ir.Function("__kimi_array_grow"));
+        foreach (var (name, site, stride, count, stores) in new[]
+        {
+            ("arLit", "[x, 2, 3]", 4, 3,
+                new[] { "store i64 3, ptr %, align 8", "store i32 %, ptr %, align 4", "store i32 2, ptr %, align 4", "store i32 3, ptr %, align 4" }),
+            ("arLitUnits", "[(), ()]", 0, 2, ["store i64 2, ptr %, align 8"]),
+        })
+        {
+            var function = Assert.Single(FunctionsOf(ir, c, name));
+            var calls = CallsOf(function);
+            Assert.Equal([init, grow], calls.Select(static x => x.Callee));
+            Assert.Equal($"call void @(ptr %, i64 {stride}, i64 {count}, ptr @, i64 {LocationText(Literals, site).Length})", calls[1].Shape);
+            Assert.Equal(stores, function.Instructions.SkipWhile(x => x != calls[1]).Where(static x => x.Opcode == "store").Select(static x => x.Shape));
+        }
+
+        Assert.Equal([init], CallsOf(Assert.Single(FunctionsOf(ir, c, "arLitNone"))).Select(static x => x.Callee));
+        var texts = CallsOf(Assert.Single(FunctionsOf(ir, c, "arLitTexts")));
+        Assert.Equal([init, grow], texts.Where(x => x.Callee == init || x.Callee == grow).Select(static x => x.Callee));
+        Assert.Equal($"call void @(ptr %, i64 24, i64 2, ptr @, i64 {LocationText(Literals, "[s@move, \"t\"]").Length})", texts.Single(x => x.Callee == grow).Shape);
+        Assert.DoesNotContain("@__kimi_array_append_", text, StringComparison.Ordinal);
+    }
+
+    // SPEC 4.9.5, R5-M8 (DECISIONS R5-M129): at O2, through the build's own pipeline (the manifest built by NativeToolchain, its
+    // `opt -passes=default<O2>`), an 8-element literal grows once: a module whose other growth site is an append loop keeps one grow call for
+    // the literal beside the loop's, and lit8's program keeps no per-element grow call (fail-before: 10 and 9 calls of __kimi_array_grow).
+    [Fact]
+    public async Task AnArrayLiteralGrowsOnceAtO2()
+    {
+        const string Lit8 = "var total: isize = 0\nvar i = 0\nwhile i < 20\n    let values: Array<isize> = [1, 2, 3, 4, 5, 6, 7, 8]\n" +
+            "    total += values[i % 8]\n    i += 1\nrequire total == 90 else => $abort(\"total\")\n";
+        const string Grows = "func grows(n: isize) -> Array<isize>\n    var values: Array<isize> = []\n    var i: isize = 0\n    while i < n\n" +
+            "        values.append(i)\n        i += 1\n    return values@move\nlet a: Array<isize> = [1, 2, 3, 4, 5, 6, 7, 8]\nlet b = grows(1000)\n" +
+            "require a[7] + b[999] == 1007 else => $abort(\"sum\")\n";
+        Assert.InRange(GrowCalls(await Optimized(Lit8)), 0, 1);
+        Assert.Equal(2, GrowCalls(await Optimized(Grows)));
+
+        static int GrowCalls(string ir) => Regex.Count(ir, @"call (fastcc )?void @__kimi_array_grow\(");
     }
 
     // SPEC 7.7.4 (DECISIONS R5-M108, R5-M121): an Item's Value call and an erased Item's adapter entry call what its direct call calls, the
@@ -296,5 +372,29 @@ public sealed partial class FunctionCodegenTest
         Assert.False(FunctionCodegen.Passes(shared, new("i64", "b", AbiParameterKind.Value, 1)));
         Assert.False(FunctionCodegen.Passes(shared, new("ptr", "b", AbiParameterKind.OwnedSlot, 1)));
         Assert.False(FunctionCodegen.Passes(new("ptr", "a", AbiParameterKind.OwnedSlot, 1), new("ptr", "b", AbiParameterKind.Value, 1)));
+    }
+
+    // The optimized IR of an Application under MIR code generation as `kimi build` makes it at O2: its module and manifest published, then the
+    // manifest built by NativeToolchain with the repository's toolchain.
+    private static async Task<string> Optimized(string source)
+    {
+        var c = Analyze(source);
+        var directory = Path.Combine(Path.GetTempPath(), "kimi-alit-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            c.Project.Directory = directory;
+            c.Project.Name = "Hello";
+            c.Project.ProjectFile.OutputPath = "out/Hello.ll";
+            c.Project.ProjectFile.Optimization = "O2";
+            Assert.True(EmissionArtifacts.Publish(c, out var path, out var error), error);
+            await NativeToolchain.BuildManifest(
+                Path.ChangeExtension(path!, ".link.json"), DiagnosticCorpus.RepositoryPath("toolchain"), null, (_, _) => { }, TestContext.Current.CancellationToken);
+            return await File.ReadAllTextAsync(Path.Combine(directory, "out", "Hello.O2.ll"), TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
     }
 }

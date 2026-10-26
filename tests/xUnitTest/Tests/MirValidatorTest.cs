@@ -24,14 +24,18 @@ public sealed class MirValidatorTest
 
     public static TheoryData<string> Rules => new(Enum.GetNames<MirViolation>());
 
-    // Each closed vocabulary and the intrinsic table have one overload of MirDescriptors.Of, and each member a row; a value outside the
-    // enumeration and IntrinsicId.None have none.
+    // Each closed vocabulary, the aggregate kinds (DECISIONS R5-M129) and the intrinsic table have one overload of MirDescriptors.Of, and each
+    // member a row; a value outside the enumeration and IntrinsicId.None have none.
     [Fact]
     public void EveryKindHasADescriptorRow()
     {
         var overloads = typeof(MirDescriptors).GetMethods(BindingFlags.Static | BindingFlags.NonPublic).Where(static x => x.Name == nameof(MirDescriptors.Of)).ToArray();
         Assert.Equal(
-            new[] { typeof(IntrinsicId), typeof(MirOperandKind), typeof(MirProjectionKind), typeof(MirRvalueKind), typeof(MirStatementKind), typeof(MirTerminatorKind) },
+            new[]
+            {
+                typeof(IntrinsicId), typeof(MirAggregateKind), typeof(MirOperandKind), typeof(MirProjectionKind), typeof(MirRvalueKind), typeof(MirStatementKind),
+                typeof(MirTerminatorKind),
+            },
             overloads.Select(static x => x.GetParameters()[0].ParameterType).OrderBy(static x => x.Name, StringComparer.Ordinal));
         foreach (var overload in overloads)
         {
@@ -202,19 +206,24 @@ public sealed class MirValidatorTest
         Assert.All(findings, x => Assert.Equal((Enum.Parse<MirViolation>(rule), Broken.Syntax), (x.Rule, x.Subject)));
     }
 
-    // SPEC 4.3.1, 4.3.3, 4.3.4 (DECISIONS R4-M81): a fixed array's aggregate has one operand per element or none (noinit, the only count at
-    // a generic length, where no element literal binds), and a Fill one, at a fixed-array Type; any other count is an Arity finding
-    // (fail-before: a generic length admitted any count, and no Fill was valid).
+    // SPEC 4.3.1, 4.3.3, 4.3.4, 12.4.1 (DECISIONS R4-M81, R5-M129): a fixed array's aggregate has one operand per element or none (noinit,
+    // the only count at a generic length, where no element literal binds), and a Fill one, at a fixed-array Type; an Array's any number, none
+    // for `[]`, at an Array Type, which no FixedArray aggregate builds any more; any other count or Type is an Arity finding (fail-before: a
+    // generic length admitted any count, and no Fill was valid; an Array was a FixedArray aggregate of no operand).
     [Theory]
     [InlineData("FixedArray", 3, "b", false)]
     [InlineData("FixedArray", 0, "b", false)]
     [InlineData("FixedArray", 0, "a", false)]
     [InlineData("Fill", 1, "b", false)]
     [InlineData("Fill", 1, "a", false)]
+    [InlineData("Array", 2, "d", false)]
+    [InlineData("Array", 0, "d", false)]
     [InlineData("FixedArray", 1, "b", true)]
     [InlineData("FixedArray", 1, "a", true)]
     [InlineData("Fill", 2, "b", true)]
     [InlineData("Fill", 1, "d", true)]
+    [InlineData("FixedArray", 0, "d", true)]
+    [InlineData("Array", 3, "b", true)]
     public void AnArraysAggregateHasTheOperandsItsKindSays(string kind, int count, string parameter, bool broken)
     {
         var c = MirBuildTest.Compile("func w<length N>(a: [N of i32], b: [3 of i32], d: Array<i32>) -> i32 => 1\n");
@@ -231,6 +240,35 @@ public sealed class MirValidatorTest
         var findings = new List<MirFinding>();
         new MirValidator(c.Types).Validate(body, findings);
         Assert.Equal(broken ? [MirViolation.Arity] : [], findings.Select(static x => x.Rule));
+    }
+
+    // SPEC 4.9.5, 4.9.6, 22.5.1 (DECISIONS R5-M129): an Array aggregate of elements publishes its buffer's allocation and its Abort through
+    // its kind's row, the effects the reserve and append calls it replaces had; `[]` allocates nothing and reports none, and a fixed array is
+    // placed in its own storage (fail-before: no aggregate kind had a row).
+    [Fact]
+    public void AnArrayAggregateReportsItsAllocationAndAbort()
+    {
+        var c = MirBuildTest.Compile("func w(b: [3 of i32], d: Array<i32>) -> i32 => 1\n");
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "w");
+        var body = new MirBody();
+        body.Reset(new(function.SymbolOf()!, MirBodyKind.Fn), default);
+        body.AddLocal(new(BoundType.I32, MirLocalKind.Return, At));
+        var fixedArray = MirModelTest.Local(body, function.Parameters[0].Type.TypeOf()!);
+        var array = MirModelTest.Local(body, function.Parameters[1].Type.TypeOf()!);
+        var one = MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.I32, 1)));
+        var block = body.AddBlock();
+        void Assign(MirPlace place, MirAggregateKind kind, MirOperand[] operands)
+            => body.Push(block, MirStatement.Assign(place, MirRvalue.Aggregate(kind, AddOperands(body, operands), operands.Length, body.TypeOf(place)!), At));
+        Assign(array, MirAggregateKind.Array, [one, one]);
+        Assign(array, MirAggregateKind.Array, []);
+        Assign(fixedArray, MirAggregateKind.FixedArray, [one, one, one]);
+        body.Terminate(block, MirTerminator.Return(At));
+        var findings = new List<MirFinding>();
+        new MirValidator(c.Types).Validate(body, findings);
+        Assert.Empty(findings);
+        Assert.Equal(["Const", "Const", "Abort, Allocation -1", "2 Writes, Defines"], Uses(body, block, 0));
+        Assert.Equal(["2 Writes, Defines"], Uses(body, block, 1));
+        Assert.Equal(["Const", "Const", "Const", "1 Writes, Defines"], Uses(body, block, 2));
     }
 
     // SPEC 8.2, 15.3: Types that differ only by their Origins agree, and so do Types a body's Type-identity premise equates (E and S under

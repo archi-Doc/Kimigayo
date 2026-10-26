@@ -70,7 +70,7 @@ internal interface IMirUses
     void Effect(MirEffect effects, int site);
 }
 
-/// <summary>The descriptor table (plan 5.4): one row per statement, rvalue, terminator, operand, projection and intrinsic kind. The analyses
+/// <summary>The descriptor table (plan 5.4): one row per statement, rvalue, aggregate, terminator, operand, projection and intrinsic kind. The analyses
 /// enumerate operands and effects through it (<see cref="MirUses"/>), and <see cref="MirValidator"/> rejects a kind without a row.</summary>
 internal static class MirDescriptors
 {
@@ -85,7 +85,8 @@ internal static class MirDescriptors
     };
 
     // The access to the rvalue's Place: a Ref's, Discriminant's or Len's, an Adapt's payload, or an Opaque site's roots, which the replaced
-    // syntax may have read, written or borrowed. An operator or a checked Cast aborts unless Proven; an Adapt may create an object.
+    // syntax may have read, written or borrowed. An operator or a checked Cast aborts unless Proven; an Adapt may create an object; an
+    // aggregate's effects are its kind's row's.
     internal static MirDescriptor Of(MirRvalueKind kind) => kind switch
     {
         MirRvalueKind.Use => Row(MirAccess.None, effects: MirEffect.None),
@@ -98,6 +99,19 @@ internal static class MirDescriptors
         MirRvalueKind.Len => Row(MirAccess.Reads, effects: MirEffect.None),
         MirRvalueKind.Opaque => Row(MirAccess.Reads | MirAccess.Writes | MirAccess.Borrows, MirEffect.Unknown),
         MirRvalueKind.Adapt => Row(MirAccess.CaseDependent, MirEffect.Allocation),
+        _ => default,
+    };
+
+    // The effects of an aggregate of at least one operand, by its kind (DECISIONS R5-M129): an Array's buffer allocated for its elements,
+    // which may Abort (SPEC 4.9.5, 22.5.1); every other aggregate is placed in the Place's own storage.
+    internal static MirDescriptor Of(MirAggregateKind kind) => kind switch
+    {
+        MirAggregateKind.Tuple => Row(MirAccess.None, effects: MirEffect.None),
+        MirAggregateKind.Adt => Row(MirAccess.None, effects: MirEffect.None),
+        MirAggregateKind.FixedArray => Row(MirAccess.None, effects: MirEffect.None),
+        MirAggregateKind.Closure => Row(MirAccess.None, effects: MirEffect.None),
+        MirAggregateKind.Fill => Row(MirAccess.None, effects: MirEffect.None),
+        MirAggregateKind.Array => Row(MirAccess.None, MirEffect.Allocation | MirEffect.Abort),
         _ => default,
     };
 
@@ -296,6 +310,9 @@ internal static class MirUses
         {
             case MirRvalueKind.Ref or MirRvalueKind.Discriminant or MirRvalueKind.Len:
                 Place(body, rvalue.Place, row.Access, (MirRefKind)rvalue.Op, ref visitor);
+                break;
+            case MirRvalueKind.Aggregate when rvalue.Count > 0: // `[]` allocates nothing (SPEC 4.9.5).
+                Effect(MirDescriptors.Of((MirAggregateKind)rvalue.Op).Effects, -1, ref visitor);
                 break;
             case MirRvalueKind.BinaryOp or MirRvalueKind.UnaryOp when !rvalue.Proven:
                 Effect(row.Effects, -1, ref visitor);
