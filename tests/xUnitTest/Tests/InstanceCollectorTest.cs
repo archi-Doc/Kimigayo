@@ -1608,7 +1608,8 @@ public sealed class InstanceCollectorTest
     // remainder of an i128, u128 or Wrapping<u128> Self is Unsupported_Kd at the requesting site (K 4.9), also when only an unused function
     // reaches it. Two sites requesting one key are two records, as two statements' divisions are: a requirement call and an operator; a
     // function item's formation and its call (SPEC 23.1.2 leaves a dependent failure's report implementation-defined); one site in two
-    // instances is one (fail-before: once per item, at its first site). An addition of i128 and a division of i64 have none.
+    // instances is one (fail-before: once per item, at its first site). A refused edge admits no item, so a gap key has none; an addition
+    // of i128 and a division of i64 have no record and their shim is admitted.
     [Theory]
     [InlineData(ShimQuotient + "func unused(a: ref/i128, b: ref/i128) -> i128 => quotient(a, b)\n", "left.divided(right)")]
     [InlineData(
@@ -1638,6 +1639,8 @@ public sealed class InstanceCollectorTest
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         var expected = refused.Length == 0 ? [] : refused.Split('|').Select(static x => (DiagnosticCode.Unsupported_Kd, x)).Order().ToArray();
         Assert.Equal(expected, set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())).Order());
+        var shims = set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.Builtin);
+        Assert.Equal(refused.Length == 0, shims.Any(static x => x.Key.Symbol!.CompilerFunction == CompilerFunctionKind.BuiltinArithmetic));
     }
 
     // K 4.8, SPEC 6.7.1, 8.15.3, DECISIONS R5-M55: a by-value use whose Type places a C-layout instance storing a zero-sized Field, at any
