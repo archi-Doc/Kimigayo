@@ -8,7 +8,8 @@ namespace Kimi.Compiler.Mir;
 // intrinsic's library declaration included, or a Value callee's declared signature) and the intrinsic table's retained operand beyond a
 // declaration (MirDescriptors); a default template's call (MirCalleeKind.Fn, Arg > 0) needs neither.
 // Output: Rows, a Call's rows (input position, kind, output: the result or an argument whose store W reaches), each output's together, in
-// a reused scratch, with whether the result is untied; Retaining, the CallRetention of a callee's contract.
+// a reused scratch, with whether the result is untied and the outputs the call writes only where their receiver refers to (its referent
+// stores, CallRetention.ReferentStores, by position); Retaining, the CallRetention of a callee's contract.
 // - A callee's contract: its rows, slots to positions, a row with no input (NoInput, Value) for each input whose writable storage the
 //   call may write a pointer tied to no input into (UntiedStores, R4-M116 R-B2), and an intrinsic's row for the operand the builder adds
 //   beyond its declaration.
@@ -24,6 +25,8 @@ internal sealed partial class MirBorrows
     private const int NoInput = -1; // A row's input: none; its value is {Φ_E}, a pointer tied to no input (CallRetention.UntiedStores).
 
     private Retention[] rows = []; // A Call's retention rows by operand position (Rows).
+    private int[] referentStores = []; // A Call's referent stores by operand position (Rows; CallRetention.ReferentStores).
+    private int referentCount;
 
     // A Call's retention rows by operand position, each output's together, into the scratch (A3 E14): its callee's contract (Retaining),
     // slots to positions, each untied store's row with no input before its output's other rows, with an intrinsic's row for the operand the
@@ -32,6 +35,7 @@ internal sealed partial class MirBorrows
     private ReadOnlySpan<Retention> Rows(in MirTerminator call, out bool untied)
     {
         var (callee, count) = (call.Callee, 0);
+        this.referentCount = 0;
         if (callee is { Kind: MirCalleeKind.Fn, Arg: > 0 })
         {
             MirDataflow.Grow(ref this.rows, call.Count);
@@ -48,6 +52,13 @@ internal sealed partial class MirBorrows
         var declared = retention is null ? default : retention.Rows;
         var stores = retention is null ? default : retention.UntiedStores;
         untied = retention?.Untied == true;
+        var referents = retention is null ? default : retention.ReferentStores;
+        MirDataflow.Grow(ref this.referentStores, referents.Length);
+        foreach (var slot in referents)
+        {
+            this.referentStores[this.referentCount++] = MirCallee.Position(callee.Symbol, slot);
+        }
+
         MirDataflow.Grow(ref this.rows, declared.Length + stores.Length + 1);
         var s = 0;
         foreach (var row in declared)

@@ -204,7 +204,7 @@ internal sealed partial class MirBorrows
     }
 
     // W's first step (A3 E14): refs(S) into the targets, each holder once, at a new W walk; their count, which is also W's index of the first
-    // target past a by-argument holder where there is none.
+    // target past a by-argument holder where there is none. A referent store's whole reach (MirBorrows.Calls).
     private int Referents(int set)
     {
         this.Refs(set);

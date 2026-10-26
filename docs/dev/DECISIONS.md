@@ -4589,6 +4589,49 @@ and migration obligations remain in force; no numeric cap changes are authorized
     problems equal; A5's timed allocation +0.06 % (the growth past 431 Types).
   - Rejected: a cache in `MirTypes` (static, wrong across compilations) or in `TyCtxt` (a MIR fact on Binding's representation); keying
     the walk's own memo by stored part and positions (more code, a walk per local stays).
+- **R4-M143 A5 reads Binding's referent stores: a 4.6–4.9 operation's receiver store reaches refs(S) alone, with a destruction guard
+  (G255 C3)** (2026-10-26; R4's lane A under the combined design's revision 1, items 1, 3, 4, 6, 7, and BU's design review 2, ACCEPT, with
+  its O5–O8; the fact is BU-42's `CallRetention.ReferentStores`; class Full with BU).
+  - Rule (SPEC 4.9.6, 15.6.4, which defers to 4.9.6; R4-M131): an operation of SPEC 4.6 to 4.9 writes, through its exclusive borrowed
+    receiver, only the storage that receiver refers to, and no layer stored there. So at a call's referent store, A5's rule G stores the
+    row's value into refs(S), W's first step (`MirBorrows.Referents`, split out of `Writes` behavior-preserving first), never W's passes.
+    The rule holds for every row at that output, an untied store's row with no input included.
+  - Reading the fact (`MirBorrows.CallRows.Rows`, `.Calls.Call`): the referent stores' positions, a scratch beside the rows, read as a
+    per-output membership. A referent store may have no row (`ResolvedRange.iterateUniq`, bu45's review O13), and then nothing is stored
+    there. Where the fact names no store (BU-42's uncovered conditional blocks), W stays.
+  - The destruction guard (O5, O6): the row leaves a destruction it causes to its callers (4.9.6). So refs(S) alone applies only where
+    the written argument's referent, the one `referent` rule W derives in `Call`, destroys shallowly by A5's one classifier
+    (`MirBorrows.Destruction` over `MirTypes.Observes`: `Destroy`). Anything else keeps W: a declared drop, a Function value, an abstract
+    part not proven Copy, an owning handle whose payload is not proven Sealed, and deep counts as observing. Removal condition: PLAN
+    G264 (A5 composes a destruction's retention at callers). Known false errors meanwhile: appendDrop2Ok, clearDrop2Ok, clearDropOk2,
+    clearObjOk.
+  - `Destruction` is memoized per case Type for the body's definition and the program version (a dictionary by reference, cleared when
+    either changes). `Observes` reads the definition's Copy and Sealed proofs, so the memo is never a bare per-Type memo across
+    definitions (O5). Every reader (Dropping, Activations, the guard) shares it, so the guard walks a Type once per body, never per call.
+  - R4-M73 (P13's interim) is superseded in part: at a referent store whose referent destroys shallowly, no target lies past a
+    by-argument holder (`Referents`' count is W's clean index), so the hold does not fire there. A generic body over a non-Copy Type
+    parameter keeps W and the hold at a 4.9 receiver, because its element Type observes (O8). Re-measured on G258's corpus of 118
+    programs: held views 2,725 to 1,781. In the library, analyzed in every compilation, 23 to 15: `intoIterator`, `iterateUniq`,
+    `splitAt`, `toArray`, `trySlice`, `trySplitAt`, one `iterate` and one `tryGet` are no longer held, while `appendAll` stays held. No
+    problem changes.
+  - Cost (G258's host, against the branch before this commit, pinned, tiering off, two runs): A5's cold time -0.8 % and -1.1 %, Work
+    -0.02 %, cold allocation +0.27 % (about 1 KB per compilation: the memo and the scratch), Bytes and problems equal. Warm runs
+    allocate nothing.
+  - Tests:
+    - `MirBorrowsTest.Referents`: `AReferentStoreWritesOnlyWhatItsReceiverRefersTo` holds the valid forms of the Array literal,
+      append, pop and swap, Dictionary `insertOrReplace`, an Array of exclusive references, a fixed array's `sliceUniq` and a
+      UniqSlice's `indexUniq`, with their twins and the edges `appendParamBad` and `userWriteBad`; it fails first.
+    - `ADestructionAReferentMayObserveKeepsW` pins the guard: clearObjBad errs, clearObjOk is a known false error, the drop forms
+      keep their errors, and clearGenOk and clearGenBad keep `Unsupported_Kd`, as O7 says.
+    - `TheReferentStoresStayDense` (V16) fails first.
+    - `APopOverElementsAnUntiedStoreReachedIsValid` flips R4-M138's popLateOk pin.
+    - `AWarmRunAllocatesNothing` passes unchanged.
+  - Oracle (BU's design review 2 harness, 762 verdicts over 55 files): identical to the reviewer's guard prototype. Against dev,
+    exactly the 22 C3 forms change, to valid.
+  - Rejected: a second wrapper of `Observes` or a drop bit in Binding (O5; revision 1 item 4); a per-local memo keyed by the operand's
+    root (the operand may be a projection); deriving the referent a second time (O6).
+  - Numbering: R4-M143 was reserved for C3's A5 part by the R4 planning session (R4-M141 G258 D2, R4-M142 S1, R4-M144 G216's amendment
+    and R4-M145 S2 reserved; R4-M140 the last on dev).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
