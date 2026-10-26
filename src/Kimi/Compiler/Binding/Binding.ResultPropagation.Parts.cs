@@ -67,7 +67,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (DeliversResult(part) && this.AwaitsPosition(part))
+        if (DeliversResult(part) && (this.AwaitsPosition(part) || this.Deferred(part)))
         {
             this.AddResults(part);
             return;

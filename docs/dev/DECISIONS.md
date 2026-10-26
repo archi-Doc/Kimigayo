@@ -6642,8 +6642,10 @@ resumed by R4-M86 (2026-10-20).
     (`ClassifiedByCall`) unless its results are Dictionaries, typed as a whole as a Dictionary literal argument is, or its typed parts
     conflict, which fails it at once. With Tuple or array results, or with an anonymous function among its results (scalar or inside
     Tuple or array results alike; SPEC 10.5.1: such an argument is Waiting, the planning session's answer to question 5 of fix round
-    1, realized as Composite with that function's position Waiting so that the forms accepted before stay accepted), it is recorded
-    Composite (`HoldsWaitingFunction`) and classified position by position
+    1, whose whole-join Waiting is implemented as Composite with that function's position Waiting, which implementation review 2
+    accepted as the same meaning: a scalar join is no evidence, is checked at the selected candidate and binds its `F` through
+    `TakeWaiting`, and Tuple or array results are classified as revised 10.5.1 states, where a whole-join Waiting kind would drop the
+    typed positions' evidence), it is recorded Composite (`HoldsWaitingFunction`) and classified position by position
     (`Binding.ArgumentKinds.Positions`: `ChildPositions`, `AddChildPosition`, `PositionKind`): a typed position is evidence once, at its
     common Type; a literal one takes its first literal's default after selection, each of its literals checked (a misfit its own
     record); one Never in every source is no evidence and gives no Type at a slot that takes the whole (BU-2 U3's D6); one with a
@@ -6662,10 +6664,19 @@ resumed by R4-M86 (2026-10-20).
     else => stop())` and its nested form, `UnresolvedBinding_Kd` before, are valid; `applyArg(if c => func [] (v) => v else =>
     stop())` with `applyArg<F>((F, i64))` is `UnboundTypeArgument_Kd` as `applyArg(func [] (v) => v)` (was `UnresolvedBinding_Kd`);
     two anonymous functions at one `F` are one `TypeMismatch_Kd` at the join (two Closure Types); `keep(if c => func [] (v: i64) ->
-    i64 => v else => 5)` keeps `UnboundTypeArgument_Kd` without base's second record at `5`. Typed anonymous functions beside Never
-    stay accepted.
+    i64 => v else => 5)` keeps `UnboundTypeArgument_Kd` without base's second record at `5`. A typed anonymous function stays
+    accepted beside Never and, since fix round 2, beside typed parts of its own source.
     The argument walks recurse into positions (`InferPosition`, `DefaultPosition`, `IndependentPositionType`; the restructuring
     commit before, behavior unchanged).
+  - Fix round 2 (implementation review 2's B3): a source holding what its call completed stays `Deferred` until its join is decided
+    (`Completed`: bound, or through the forms that deliver it, Tuple, array and dictionary literals with parts and waiting result
+    targets, all completed; `AddResultPart` passes such a nested join), so the join, none of whose sources supplies a candidate, forms
+    its Type part by part and binds the source at it (SPEC 14.9.2 steps 2-3). Before, a source holding the function and a typed part
+    was neither bound nor awaiting, and the join failed with no cause (a lone `PrerequisiteUnavailable_Kd`; SPEC 23.1.2). Now
+    `first(if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), x))` with `first<T>((T, i64))`, its capture, nested and
+    `else => (stop(), stop())` forms, and `applyArg(if c => (func [] (v) => v, x) else => (stop(), x))`, typed or not, bind as their
+    Tuple-argument twins; a value read beside the function reads at the formed Type (`(func .., r)` beside `(stop(), x)`: i64); two
+    anonymous functions at one `T` or `F` are one `TypeMismatch_Kd` at the join.
   - ③: a control-flow part is Literal when every result source other than Never is a literal, at least one (`ResultSurvey.Unknown` and
     `Never` split `Other`); an arithmetic operand's `AllLiteral` keeps Never as not literal (SPEC 12.3.3, 13.3.4).
   - Supersedes BU-2's owner decision (1), "a control-flow argument is Literal only when all its result sources are Literal", and the
@@ -6676,11 +6687,14 @@ resumed by R4-M86 (2026-10-20).
     R4-M134's 14.9.2 text and the owner's answers, and were left Open for G159.
   - Verdicts (both pipelines; probes in the unit's evidence): the SPEC-valid joins rejected before are Binding-valid; where a local
     follows a Never element the old analysis's `Unsupported_Kd` at that use remains (STATUS, Unreachable code; G159 (4)), spec-case
-    `14.9.2-part-by-part`'s old side (class (a)); a nested conflict is one record. At calls, the `take`-like twins are valid and
+    `14.9.2-part-by-part`'s old side (class (a)); a nested conflict is one record where the inner join decides itself (one that waited
+    and conflicts within itself is reported at both joins: Open). At calls, the `take`-like twins are valid and
     `identity(if c => (a, (return 1)) else => ((return 2), 5))` gives T = (i64, i32) after selection. Valid before, rejected now by the
     owner's answers: `tuples(if c => (5, 6) else => (7, 8))` and `tuples(if c => (stop(), 5) else => (6, stop()))` with overloads at
     (i32, i32) and (i64, i64) are `AmbiguousBinding_Kd`, as `tuples((5, 6))`; `keep(if c => (x, stop()) else => (x, stop()))` and
-    `keep(if c => (5, stop()) else => (6, stop()))` are `UnboundTypeArgument_Kd`, as `keep((x, stop()))`. By ③,
+    `keep(if c => (5, stop()) else => (6, stop()))` are `UnboundTypeArgument_Kd`, as `keep((x, stop()))`, and so is
+    `keep(if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), x))`, as `keep((func [] (v: i64) -> i64 => v, x))` (implementation
+    review 2). By ③,
     ApplicabilityChainRegressionTest's `keep(if c => 1 else => stop())` (`UnboundTypeArgument_Kd`) is valid with T = i32 and
     `h(if c => 200 else => stop())` (`AmbiguousBinding_Kd`) selects `h(i64)`. `keep(if c => (1, stop()) else => (2.5, x))` reports the
     literal's own record at `2.5`, as the scalar form does, beside a derived `PrerequisiteUnavailable_Kd` the scalar form does not show.
@@ -6688,7 +6702,11 @@ resumed by R4-M86 (2026-10-20).
     own Never); every nested join waiting (a call's join must stay classified by its own positions); a whole-Type late default at a
     call (`both(if c => (x, R) else => (R, 5))` with `both<T>((T, T))` needs element evidence).
   - Open: an array or Dictionary literal's element evidence keeps the awaiting elements' own common Type (a SPEC 4.3 question). The
-    review's late-fit opens (value read, erasure, length slot, `F`) are closed by fix round 1. Not temporary.
+    review's late-fit opens (value read, erasure, length slot, `F`) are closed by fix round 1. Found in fix round 2: an anonymous
+    function inside a Dictionary result of a call's join waits for the call, which never takes it (`TakeWaiting` walks Tuple and array
+    literals), so `takeD(if c => ["k": func [] (v: i64) -> i64 => v] else => stop())`, valid on dev, is `UnresolvedBinding_Kd`; a
+    nested join that waited and conflicts within itself, `let t = if c => (if c => (5, x) else => (stop(), true)) else => (stop(), x)`,
+    is reported at both joins (one record on dev). Not temporary.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

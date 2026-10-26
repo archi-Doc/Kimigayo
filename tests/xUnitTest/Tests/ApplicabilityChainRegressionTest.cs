@@ -189,7 +189,8 @@ public class ApplicabilityChainRegressionTest
 
     // SPEC 10.5.1, 10.5.4 (DECISIONS BU-43): an anonymous function among a control-flow argument's results waits for the call, which
     // completes it as it completes a waiting argument at its position: at F it binds F, else it is checked against the selected
-    // candidate's Type. The forms accepted before, a typed anonymous function beside Never, stay accepted.
+    // candidate's Type. A source holding it beside typed parts, also through a nested selection, waits with it and then takes the Type
+    // its join forms part by part (SPEC 14.9.2 steps 2-3), a value read included.
     [Theory]
     [InlineData("applyArg(if c => (func [] (v) => v, stop()) else => (stop(), x))")]
     [InlineData("applyOne(if c => func [] (v) => v else => stop())")]
@@ -201,10 +202,19 @@ public class ApplicabilityChainRegressionTest
     [InlineData("takeF(if c => func [] (v) => v else => func [] (w) => w)")]
     [InlineData("takeF(if c => func [] (v: i64) -> i64 => v else => func [] (w: i64) -> i64 => w)")]
     [InlineData("takeFn(if c => (func [x] () => x, x) else => (func [x] () => x + 1, x))")]
+    [InlineData("first(if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), stop()))")]
+    [InlineData("first(if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), x))")]
+    [InlineData("first(if c => (func [x] () -> i64 => x, x) else => (stop(), x))")]
+    [InlineData("first(if c => (func [] (v: i64) -> i64 => v, r) else => (stop(), x))")]
+    [InlineData("first(if c => (func [] (v: i64) -> i64 => v, if c => x else => stop()) else => (stop(), x))")]
+    [InlineData("first(if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), x)) else => (stop(), x))")]
+    [InlineData("applyArg(if c => (func [] (v) => v, x) else => (stop(), x))")]
+    [InlineData("applyArg(if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), x))")]
     public void AnAnonymousFunctionAmongAControlFlowArgumentsResultsWaitsForTheCall(string use)
     {
         var c = MinimalEmissionTest.Analyze(ControlFlowDeclarations + use);
         Assert.Empty(c.Binding.Issues);
+        Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IfKoto>(), join => Assert.NotNull(join.TypeOf())); // Each join is decided.
     }
 
     // SPEC 10.5.1, 10.4: a Literal or waiting control-flow argument is no evidence and ranks equally at every candidate it fits; the
@@ -226,6 +236,13 @@ public class ApplicabilityChainRegressionTest
     [InlineData("takeT(if c => (r, stop()) else => (true, stop()))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (r, stop()) else => (true, stop())")]
     [InlineData("takeFn(if c => (func [x] () => true, stop()) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "true")]
     [InlineData("process(if c => [x, stop()] else => [stop(), x, x])", nameof(DiagnosticCode.NoApplicableOverload_Kd), "process(if c => [x, stop()] else => [stop(), x, x])")]
+    [InlineData("first(if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)")]
+    [InlineData("applyArg(if c => (func [] (v) => v, x) else => (func [] (w) => w, x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v) => v, x) else => (func [] (w) => w, x)")]
+    [InlineData("first(if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), true))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), true)")]
+    [InlineData("first(if c => (func [] (v: i64) -> i64 => v, r) else => (stop(), true))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, r) else => (stop(), true)")]
+    [InlineData("applyArg(if c => (func [] (v: bool) => v, x) else => (stop(), x))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "applyArg(if c => (func [] (v: bool) => v, x) else => (stop(), x))")]
+    [InlineData("keep(if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), x))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep(if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), x))")]
+    [InlineData("keep((func [] (v: i64) -> i64 => v, x))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep((func [] (v: i64) -> i64 => v, x))")]
     public void AControlFlowArgumentRanksAsItsKind(string use, string code, string at)
     {
         var source = ControlFlowDeclarations + use + "\n";

@@ -22,7 +22,7 @@ namespace Kimi.Compiler;
 //   (Binding.ResultPropagation.Parts.cs) or, for a call's control-flow argument, the wait for the call that classifies it
 //   (AwaitsWithoutCandidate; DECISIONS BU-43), whose late fit takes a waiting literal and a waiting list or fill literal by the shape
 //   it constructs, writing nothing; an anonymous function among its results waits for the call, which completes it (TakeWaiting) and
-//   then decides the join (DecideTaken).
+//   then decides the join part by part, the sources holding it waiting until then (Completed, DecideTaken).
 // - Inputs: the bound expression, its parts' Types, the value sources a join recorded (ResultContext.SourceNodes) and whether it still
 //   collects them (ResultContext.Collecting), the literal collecting its element evidence (collectingElements), the target Type.
 // - Outputs: LateTypeOf, the Type the expression takes at the target, computed from its parts: an array or dictionary literal its
@@ -224,17 +224,19 @@ public sealed partial class Binding
                 (this.resultContexts.TryGetValue(target, out var context) && context.Collecting && context.Expected is null)
             : collecting;
 
-    // A part that waited for its position's Type: unbound, without a failure of its own, and awaiting its position.
+    // A part that waited for its position's Type: unbound, without a failure of its own, and awaiting its position or holding what its
+    // call completed since (Completed), which it waits to take with the rest of its join (SPEC 14.9.2 steps 2-3; DECISIONS BU-43).
     private bool Deferred(Koto source)
         => source.BindingState is BindingState.Unvisited or BindingState.Unresolved && source.BindingFailure == BindingFailure.None &&
-            this.AwaitsPosition(source);
+            (this.AwaitsPosition(source) || this.Completed(source));
 
     // A result target that waits for its position's Type (AwaitsWithoutCandidate).
     private ResultContext? WaitingResult(Koto node)
         => DeliversResult(node) && this.resultContexts.TryGetValue(node, out var context) && context.Waiting ? context : null;
 
-    // SPEC 10.5.1 (DECISIONS BU-43): whether a source that waited was completed since by its call (TakeWaiting): bound, a form that
-    // delivers one, or a waiting result target each of whose waited sources was.
+    // SPEC 10.5.1 (DECISIONS BU-43): whether a source that waited was completed since by its call (TakeWaiting), through the forms that
+    // made its anonymous functions wait (PositionTarget): bound, a form that delivers one, a waiting Tuple, array or dictionary literal
+    // (IsAggregatePart) each of whose parts was, at least one, or a waiting result target each of whose waited sources was.
     private bool Completed(Koto source)
     {
         if (DeliveredOperand(source) is { } operand)
@@ -244,7 +246,7 @@ public sealed partial class Binding
 
         if (this.WaitingResult(source) is not { } context)
         {
-            return source.BindingState == BindingState.Resolved;
+            return source.BoundType is not null || (this.IsAggregatePart(source) && this.PartsCompleted(source));
         }
 
         for (var i = 0; i < context.Sources.Count; i++)
@@ -258,22 +260,50 @@ public sealed partial class Binding
         return true;
     }
 
+    private bool PartsCompleted(Koto aggregate)
+    {
+        if (aggregate is DictionaryLiteralKoto dictionary)
+        {
+            foreach (var entry in dictionary.Entries)
+            {
+                if (!this.Completed(entry.Key) || !this.Completed(entry.Value))
+                {
+                    return false;
+                }
+            }
+
+            return dictionary.Entries.Count > 0;
+        }
+
+        var parts = aggregate is TupleLiteralKoto tuple ? tuple.Elements : ((ArrayLiteralKoto)aggregate).Elements;
+        foreach (var part in parts)
+        {
+            if (!this.Completed(part))
+            {
+                return false;
+            }
+        }
+
+        return parts.Count > 0;
+    }
+
     // SPEC 10.5.1 (DECISIONS BU-43): a call's waiting join that awaited its position for the anonymous functions among its results, which
-    // its call completed (TakeWaiting), is decided at once with no expectation; its call then fits it as a bound argument. False when
-    // that decision fails, on which the call rests.
+    // its call completed (TakeWaiting), is decided at once with no expectation, as a join none of whose sources supplies a candidate:
+    // the sources holding them are Deferred, so its Type is formed part by part and they take it; its call then fits it as a bound
+    // argument. False when that decision fails, on which the call rests.
     private bool DecideTaken(Koto argument)
         => ControlFlowExpression(argument) is not { } join || this.WaitingResult(join) is null || this.AwaitsPosition(join) ||
             this.BindNode(join, this.ConstraintScope(join), null) is not null;
 
     // SPEC 14.9.2: a result target that waited for its position is decided when its position binds it: its sources take the Type the
-    // position supplies, as a Target Result Type fixed by an outer expectation, or, without one, their defaults; one its call completed
-    // meanwhile (Completed) supplies the Type it took.
+    // position supplies, as a Target Result Type fixed by an outer expectation, or, without one, their defaults; one its call bound
+    // meanwhile supplies the Type it took, and one holding what its call completed is Deferred (Completed).
     private BoundType? DecideWaiting(Koto node, ResultContext context, BoundType? expected)
     {
         context.Waiting = false;
         for (var i = 0; i < context.Sources.Count; i++)
         {
-            if (context.Sources[i] is null && context.SourceNodes[i] is { } source && this.Completed(source))
+            if (context.Sources[i] is null && context.SourceNodes[i] is { BoundType: not null } source)
             {
                 context.Sources[i] = this.BindWaiting(source, null);
             }
