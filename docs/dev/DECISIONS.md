@@ -1904,7 +1904,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M73** (2026-10-19; owner, on the independent review of two designs and its completion, PLAN G148, R4-M76; P13's interim by the
   owner after three review rounds, below; A3 §12 E16). A Call's store row reaches every holder its argument reaches: ret(i, κ) joins
   every holder of W(val(a_j)) (A3 E16, rule G: SPEC 15.6.4's letter, no SPEC change), with no exclusion. It supersedes R4-M63's store
-  target, refs(val(a_j)) (A3 E14), and A3 §5's Calls line.
+  target, refs(val(a_j)) (A3 E14), and A3 §5's Calls line. Superseded in part by R4-M143: at a 4.6–4.9 operation's referent store whose
+  referent destroys shallowly the store reaches refs(S) alone, and P13's hold does not fire there.
   - Representation: `MirTypes.HoldsLoans`' one walk, each Type once per mode, also gives what a call may write past a value
     (`MirWrites`): the guard, passed concretely (`Through`; a callable and a part past the bound count so) or only through a struct's or
     enum's Type argument, a pair layer or an abstract part (`ThroughArgument`), and for a value that holds no Loan whether a raw pointer
@@ -4525,7 +4526,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     given; a callee-keyed rule is the test review §8 forbids, and dropping a 4.9 receiver's untied store is partial. C3 is a Full change
     with BU (Binding publishes those outputs; A5's W there is refs(S)). Until it lands, popLateOk is a pinned shadow false error (the
     closure reads pop's chain through the E an earlier receiver store reached; the default pipeline accepts it), named with C3 as its
-    removal unit beside appendNullOk and appendIntoOk; C3's rows (arrNode1Ok, arrNodeAppendOk, rawPairOk, arrNode2Ok, appendNullOk,
+    removal unit beside appendNullOk and appendIntoOk (answered by R4-M143: the three are valid on the MIR); C3's rows (arrNode1Ok, arrNodeAppendOk, rawPairOk, arrNode2Ok, appendNullOk,
     appendIntoOk, the probes' pop2Ok) are unchanged; dictNodeOk is C2's (the literal's internal `placeEntry`), not C3's.
   - V16: the Work Chain rows add beside the same body without them is linear for N calls over a depth-K pointer chain, a K-cycle, N
     vacuous rows (`Raw.allocate`'s count) after E holds M addresses, an M-way fan-out and N sparse rows, each joining {Φ_E} with one of
@@ -4624,6 +4625,13 @@ and migration obligations remain in force; no numeric cap changes are authorized
     - `ADestructionAReferentMayObserveKeepsW` pins the guard: clearObjBad errs, clearObjOk is a known false error, the drop forms
       keep their errors, and clearGenOk and clearGenBad keep `Unsupported_Kd`, as O7 says.
     - `TheReferentStoresStayDense` (V16) fails first.
+    - `reserve`'s referent store (bu45's review O15) is pinned by reserveLateOk, an explicit `reserve` over a non-empty Array, which errs
+      where `reserve` keeps W; the literal's `reserve` meets an empty Array, so no literal form depends on it.
+    - The memo's per-definition key is pinned by one generic struct's case Type in two methods, one proving its element Copy (refs(S)
+      alone, valid) and one not (W and the hold, `Unsupported_Kd`): a bare per-Type memo answers the second as the first.
+    - Deep counting as observing is pinned by no form (implementation review 1's N2): in every form found, a referent past the
+      destruction walk's bound (a `Nest` element) also passes Binding's storage bound, so the call's retention is a Limit, a located
+      `Unsupported_Kd` with no row read, whatever the guard says.
     - `APopOverElementsAnUntiedStoreReachedIsValid` flips R4-M138's popLateOk pin.
     - `AWarmRunAllocatesNothing` passes unchanged.
   - Oracle (BU's design review 2 harness, 762 verdicts over 55 files): identical to the reviewer's guard prototype. Against dev,

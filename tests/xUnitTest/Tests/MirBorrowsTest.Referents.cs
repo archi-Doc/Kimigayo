@@ -51,17 +51,18 @@ public sealed partial class MirBorrowsTest
         """;
 
     // SPEC 4.9.6, 15.6.4: an Array's literal and append (arrNode1Ok, arrNodeAppendOk, rawPairOk, appendNullOk, appendIntoOk, appendMiddleOk),
-    // pop (pop2Ok), swap (arrSwapOk), a Dictionary's insertOrReplace (dictInsertOk), an Array of exclusive references (safeElemOk), a fixed
-    // array's sliceUniq (fixedSliceOk) and a UniqSlice's indexUniq (uniqSliceIndexOk) write only their receiver's element storage, so a Loan
-    // an element's pointee keeps is not written into the receiver's other holders: each is valid, and its twin that uses the elements after
-    // `y = 5` (`t = q@ref`) errs there. A store past the referent stays W's: a receiver reaching E (appendParamBad) and a user function's
-    // store (userWriteBad).
+    // pop (pop2Ok), an explicit reserve over a non-empty Array (reserveLateOk: the literal's reserve meets an empty one), swap (arrSwapOk),
+    // a Dictionary's insertOrReplace (dictInsertOk), an Array of exclusive references (safeElemOk), a fixed array's sliceUniq (fixedSliceOk)
+    // and a UniqSlice's indexUniq (uniqSliceIndexOk) write only their receiver's element storage, so a Loan an element's pointee keeps is not
+    // written into the receiver's other holders: each is valid, and its twin that uses the elements after `y = 5` (`t = q@ref`) errs there.
+    // A store past the referent stays W's: a receiver reaching E (appendParamBad) and a user function's store (userWriteBad).
     [Fact]
     public void AReferentStoreWritesOnlyWhatItsReceiverRefersTo()
         => Assert.Equal(
             [
-                "arrNode1Bad: y = 5", "arrNodeAppendBad: y = 5", "rawPairBad: y = 5", "appendMiddleBad: y = 5", "pop2Bad: y = 5", "arrSwapBad: y = 5",
-                "dictInsertBad: y = 5", "safeElemBad: t = q@ref", "fixedSliceBad: y = 5", "appendParamBad: y = 5", "userWriteBad: y = 5",
+                "arrNode1Bad: y = 5", "arrNodeAppendBad: y = 5", "rawPairBad: y = 5", "appendMiddleBad: y = 5", "pop2Bad: y = 5",
+                "reserveLateBad: y = 5", "arrSwapBad: y = 5", "dictInsertBad: y = 5", "safeElemBad: t = q@ref", "fixedSliceBad: y = 5",
+                "appendParamBad: y = 5", "userWriteBad: y = 5",
             ],
             Problems(RawShapes + ReferentShapes + """
                 func arrNode1Ok()
@@ -185,6 +186,31 @@ public sealed partial class MirBorrowsTest
                     y = 5
                     inspect(x)
                     inspect(z)
+                func reserveLateOk()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    var h: raw/u8 = null
+                    var a: Array<raw/(raw/u8)> = []
+                    a.append(h@raw)
+                    h = w@raw@raw/u8
+                    a.reserve(4)
+                    let x = a.pop()
+                    inspect(a)
+                    h = null
+                    inspect(x)
+                    y = 5
+                func reserveLateBad()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    var h: raw/u8 = null
+                    var a: Array<raw/(raw/u8)> = []
+                    a.append(h@raw)
+                    h = w@raw@raw/u8
+                    a.reserve(4)
+                    let x = a.pop()
+                    inspect(a)
+                    y = 5
+                    inspect(x)
                 func arrSwapOk()
                     var y: i32 = 1
                     var w: ref/i32 = y@ref
@@ -313,7 +339,9 @@ public sealed partial class MirBorrowsTest
     // through its base's handle (whose payload is not proven Sealed), errs at `y = 5` (clearObjBad), as its twin does where the slot is
     // used before (clearObjOk, a known false error until G264); a destruction a struct, an Option, a Tuple, a nested Array or a Dictionary
     // runs keeps its error (clearLeafBad, clearWrapBad, clearOptBad, clearTupBad, clearArrBad, dictClearBad, dictReplaceBad); over an
-    // abstract `T` not proven Copy, W stays and P13's hold reports the store (clearGenOk, clearGenBad).
+    // abstract `T` not proven Copy, W stays and P13's hold reports the store (clearGenOk, clearGenBad). The classifier answers per
+    // definition: one generic struct's element Type destroys shallowly in a method proving it Copy (copied) and not in one that does not
+    // (kept), which keeps W and the hold.
     [Fact]
     public void ADestructionAReferentMayObserveKeepsW()
     {
@@ -452,11 +480,36 @@ public sealed partial class MirBorrowsTest
                 consume(a@move)
                 usep(slot)
                 y = 5
+            struct Gen<E>
+                E is MakeW
+                public init() => ()
+                public func copied(self: ref/Self)
+                    E is Copy
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    var slot: raw/u8 = null
+                    var a: Array<E> = []
+                    a.append(E.make(p: slot@raw, q: w@raw@raw/u8))
+                    a.clear()
+                    let gone = a@move
+                    let used = slot == null
+                    y = 5
+                public func kept(self: ref/Self)
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    var slot: raw/u8 = null
+                    var a: Array<E> = []
+                    a.append(E.make(p: slot@raw, q: w@raw@raw/u8))
+                    a.clear()
+                    let gone = a@move
+                    let used = slot == null
+                    y = 5
             """);
         Assert.Equal(
             [
-                "clearObjBad: y = 5", "clearObjOk: y = 5", "clearLeafBad: y = 5", "clearWrapBad: y = 5", "clearOptBad: y = 5", "clearTupBad: y = 5",
-                "clearArrBad: y = 5", "dictClearBad: y = 5", "dictReplaceBad: y = 5", "clearGenBad: y = 5 Unsupported_Kd", "clearGenOk: y = 5 Unsupported_Kd",
+                "kept: y = 5 Unsupported_Kd", "clearObjBad: y = 5", "clearObjOk: y = 5", "clearLeafBad: y = 5", "clearWrapBad: y = 5",
+                "clearOptBad: y = 5", "clearTupBad: y = 5", "clearArrBad: y = 5", "dictClearBad: y = 5", "dictReplaceBad: y = 5",
+                "clearGenBad: y = 5 Unsupported_Kd", "clearGenOk: y = 5 Unsupported_Kd",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
