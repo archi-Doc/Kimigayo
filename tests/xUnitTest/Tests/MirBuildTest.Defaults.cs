@@ -202,9 +202,10 @@ public sealed partial class MirBuildTest
     }
 
     // SPEC 23.1.1, 23.1.2 (DECISIONS R4-M139): a copy over storage Binding rejected is built in the call's instance, as every reader of an
-    // instance reads one (TyCtxt.Readable) and as a non-generic template over that storage is: dep, dep3 and dep2 copy like their twins
+    // instance reads one (TyCtxt.ReadableInstance) and as a non-generic template over that storage is: dep, dep3 and dep2 copy like their twins
     // with no builder record (BU-38's x3, `d(b)`, is dep's form); dep's copy holds `.None` of Option<Bad>, and dep2's calls `h<Bad>`.
-    // Before, the Rejected instance read as a limit: an Opaque value and the call's Unsupported_Kd.
+    // Before, the Rejected instance read as a limit: an Opaque value and the call's Unsupported_Kd. Such a copy in a confined witness is
+    // MirEffectsTest's ACopyInAConfinedWitnessOverRejectedStorageIsItsRepairs.
     [Fact]
     public void ACopyOverRejectedStorageIsBuilt()
     {

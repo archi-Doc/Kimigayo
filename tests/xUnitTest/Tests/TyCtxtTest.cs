@@ -670,7 +670,9 @@ public sealed class TyCtxtTest
 
         var instance = new CallPlan();
         instance.Set(outer.Target, outer.ReturnType, null, [], [nested]);
-        Assert.Equal((null, Binding.StorageOutcome.Limit), c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(instance)!));
+        var composed = c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(instance)!);
+        Assert.Equal((null, Binding.StorageOutcome.Limit), (composed.Subst, composed.Storage));
+        Assert.Same(nested, composed.Part);
         Assert.Null(c.Binding.InstantiateForwardedCall(inner, instance));
     }
 
@@ -710,6 +712,43 @@ public sealed class TyCtxtTest
         Assert.Equal(Binding.StorageOutcome.Prepared, identity.Storage);
     }
 
+    // DECISIONS R4-M139: ReadableInstance is the instance every reader of one reads, Instance then Readable: f's `uniq/T` at i32 (Prepared)
+    // and at Bad<i32> beside its failed Field (Rejected) is the instance, at B^65<i32> (a Limit, which has an instance) null; Rejected
+    // storage in a complete compilation, a broken contract, throws (a call there at the failed compilation's Bad<i32>). A warm rebind reads
+    // the same instances and allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AReadableInstanceIsTheInstanceReadablePasses()
+    {
+        var c = MirBuildTest.Compile(RetentionTest.Box + "struct Bad<T>\n    public var v: T\n    public var m: Missing\nfunc f<T>(b: uniq/T) => ()\n" +
+            $"func g(i: uniq/i32, b: uniq/Bad<i32>, t: uniq/{RetentionTest.Box65})\n    f(i)\n    f(b)\n    f(t)\n");
+        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf()!).Where(static x => x.Target.Name == "f").ToArray();
+        var declared = ((FunctionKoto)calls[0].Target.Declaration).Parameters[0].Type.TypeOf()!;
+        var outcomes = calls.Select(x => c.Types.Instance(declared, c.Types.SubstOf(x)!)).ToArray();
+        var instances = calls.Select(x => c.Types.ReadableInstance(declared, c.Types.SubstOf(x)!)).ToArray();
+        Assert.Equal([Binding.StorageOutcome.Prepared, Binding.StorageOutcome.Rejected, Binding.StorageOutcome.Limit], outcomes.Select(static x => x.Storage));
+        Assert.Equal([outcomes[0].Type, outcomes[1].Type, null], instances);
+        Assert.NotNull(outcomes[2].Type);
+        var changed = 0;
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Binding.Bind(BindingMode.Final);
+            for (var i = 0; i < calls.Length; i++)
+            {
+                changed += ReferenceEquals(c.Types.ReadableInstance(declared, c.Types.SubstOf(calls[i])!), instances[i]) ? 0 : 1;
+            }
+        }));
+        Assert.Equal(0, changed);
+
+        var complete = MirBuildTest.Compile("func f<T>(b: uniq/T) => ()\nfunc g(i: uniq/i32) => f(i)\n");
+        Assert.True(complete.Binding.Result.IsComplete);
+        var target = KotoTree.Walk(complete.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf()!).Single(static x => x.Target.Name == "f");
+        var call = new CallPlan();
+        call.Set(target.Target, target.ReturnType, null, [], [c.Types.SubstOf(calls[1])!.Types[0]]);
+        var parameter = ((FunctionKoto)target.Target.Declaration).Parameters[0].Type.TypeOf()!;
+        Assert.Throws<InvalidOperationException>(() => complete.Types.ReadableInstance(parameter, complete.Types.SubstOf(call)!));
+    }
+
     // DECISIONS BU-36, R4-M139: a reader of an instance may read Prepared and Rejected storage, not a Limit (Readable, which retention,
     // the MIR builder, A4 and MirCases read); Rejected rests on a Binding failure, so in a complete compilation it is a broken contract
     // (the guard, as the collector's Derived): an incomplete compilation reads it, a complete one throws.
@@ -745,19 +784,22 @@ public sealed class TyCtxtTest
     // DECISIONS BU-38: Compose carries the worst verdict of its parts' storage in the outer instance. inner's call in outer's instance at
     // Bad<i32>, whose Field m did not bind, is Rejected with the substitution of Binding's forwarded call; beside a Type argument nested past
     // the bound it is a Limit without a substitution in either order, as its repair's is (before: null for each, which the collector
-    // published as the storage-nesting gap).
+    // published as the storage-nesting gap). The verdict's deciding part (R4-M139) is the first part reaching it, none when Prepared: Bad<i32>
+    // when Rejected, also before Bad<i64>, and the nested Type beside it in either order.
     [Theory]
-    [InlineData("i32", "i32", "Prepared")]
-    [InlineData("Bad<i32>", "i32", "Rejected")]
-    [InlineData("Bad<i32>", RetentionTest.Box65, "Limit")]
-    [InlineData(RetentionTest.Box65, "Bad<i32>", "Limit")]
-    public void ComposeHasTheWorstVerdictOfItsParts(string first, string second, string expected)
+    [InlineData("i32", "i32", "Prepared", -1)]
+    [InlineData("Bad<i32>", "i32", "Rejected", 0)]
+    [InlineData("Bad<i32>", "Bad<i64>", "Rejected", 0)]
+    [InlineData("Bad<i32>", RetentionTest.Box65, "Limit", 1)]
+    [InlineData(RetentionTest.Box65, "Bad<i32>", "Limit", 0)]
+    public void ComposeHasTheWorstVerdictOfItsParts(string first, string second, string expected, int part)
     {
         var c = MirBuildTest.Compile(RetentionTest.Box + "struct Bad<T>\n    public var v: T\n    public var m: Missing\nfunc inner<A, B>(a: uniq/A, b: uniq/B) => ()\n" +
             $"func outer<A, B>(a: uniq/A, b: uniq/B) => inner(a, b)\nfunc g(x: uniq/{first}, y: uniq/{second}) => outer(x, y)\n");
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf()!).ToDictionary(static x => x.Target.Name);
-        var (subst, storage) = c.Types.Compose(c.Types.SubstOf(calls["inner"])!, c.Types.SubstOf(calls["outer"])!);
+        var (subst, storage, decided) = c.Types.Compose(c.Types.SubstOf(calls["inner"])!, c.Types.SubstOf(calls["outer"])!);
         Assert.Equal(expected, storage.ToString());
+        Assert.Same(part < 0 ? null : c.Types.SubstOf(calls["outer"])!.Types[part], decided);
         Assert.Same(subst is null ? null : c.Types.SubstOf(c.Binding.InstantiateForwardedCall(calls["inner"], calls["outer"])!), subst);
         Assert.Equal(storage == Binding.StorageOutcome.Limit, subst is null);
     }

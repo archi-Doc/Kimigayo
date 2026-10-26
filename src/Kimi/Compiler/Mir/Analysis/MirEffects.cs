@@ -211,13 +211,12 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     }
 
     // SPEC 4.9.6: the Type below a callee's parameter under the call's substitution in the view, what a published row runs on or
-    // destroys: the declared Type's instance as every reader reads one (TyCtxt.Readable, DECISIONS R4-M139), Rejected storage included;
+    // destroys: the declared Type's instance as every reader reads one (TyCtxt.ReadableInstance, DECISIONS R4-M139), Rejected storage included;
     // null where the substitution does not instantiate it or its storage is a Limit.
     private BoundType? Below(BindingSymbol callee, Subst? subst, int slot)
     {
         var declared = TyCtxt.Signature(callee, null, slot, out _);
-        var parameter = declared is null || subst is null ? declared
-            : types.Instance(declared, subst) is ({ } instance, var storage) && types.Readable(instance, storage) ? instance : null;
+        var parameter = declared is null || subst is null ? declared : types.ReadableInstance(declared, subst);
         _ = TyCtxt.Layer(parameter is null ? null : cases.Type(parameter), out var below, out _);
         return below;
     }
@@ -246,7 +245,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     {
         var node = rows[row];
         var next = row + 1;
-        if (node.Verdict is MirDropVerdict.Keep or MirDropVerdict.Flag && type is not null)
+        if (node.Verdict is MirDropVerdict.Keep or MirDropVerdict.Flag)
         {
             this.Item(type, Drop);
         }

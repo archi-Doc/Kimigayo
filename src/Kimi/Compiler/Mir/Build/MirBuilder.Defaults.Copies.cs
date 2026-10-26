@@ -17,8 +17,9 @@ internal sealed partial class MirBuilder
 
     // SPEC 23.1.1 (DECISIONS R4-M127, R4-M139): whether the call's substitution instantiates a copy of the template, decided before any of
     // it is written: each Type Inline folds (a local's other than the result's and the parameters', a constant's, an rvalue's) and each
-    // callee's substitution, in the call's instance as every reader of an instance reads it (TyCtxt.Readable: Prepared or Rejected, whose
-    // rejected parts hold nothing, never a Limit), each kept for Inline, which folds by them.
+    // callee's substitution, in the call's instance as every reader of an instance reads it (TyCtxt.ReadableInstance, a composition by
+    // Readable over its deciding part: Prepared or Rejected, whose rejected parts hold nothing, never a Limit), each kept for Inline, which
+    // folds by them.
     private bool Instantiates(MirBody template, Subst subst)
     {
         this.instances.Clear();
@@ -51,8 +52,9 @@ internal sealed partial class MirBuilder
         {
             if (block.Terminator.Callee.Subst is { } inner && !this.compositions.ContainsKey(inner))
             {
-                // A composition's verdict is its parts' (TyCtxt.Compose); the guard names the callee whose substitution it composes.
-                if (compilation.Types.Compose(inner, subst) is not ({ } composed, var storage) || !compilation.Types.Readable(inner.Target.Type!, storage))
+                // A composition's verdict is its parts' (TyCtxt.Compose); the guard reads the part deciding it, none when Prepared.
+                if (compilation.Types.Compose(inner, subst) is not ({ } composed, var storage, var part) ||
+                    (part is not null && !compilation.Types.Readable(part, storage)))
                 {
                     return false;
                 }
@@ -72,7 +74,7 @@ internal sealed partial class MirBuilder
             return true;
         }
 
-        if (compilation.Types.Instance(type, subst) is not ({ } instance, var storage) || !compilation.Types.Readable(instance, storage))
+        if (compilation.Types.ReadableInstance(type, subst) is not { } instance)
         {
             return false;
         }

@@ -237,7 +237,7 @@ public sealed partial class MirBuildTest
     }
 
     // SPEC 8.15 (DECISIONS R4-M139, R5's conditions): a call selects the view of its binder's case, the Semantics of the binder's whole
-    // Type in the call's instance, read as every reader reads one (TyCtxt.Readable). Over storage Binding rejected (Bad's Field) the case
+    // Type in the call's instance, read as every reader reads one (TyCtxt.ReadableInstance). Over storage Binding rejected (Bad's Field) the case
     // is the instance's, which no rejected part changes, so the view is the one its repair selects: one view, deterministic (before, every
     // admitted view). In a complete compilation no instance is Rejected (TyCtxtTest's ARejectedVerdictIsReadableOnlyBesideABindingFailure).
     [Theory]

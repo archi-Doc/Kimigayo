@@ -127,11 +127,10 @@ internal sealed partial class TyCtxt
 
     // A declared Type as the Types instantiate it, under `scope`'s premises when given (TyCtxt.Premised's rule); null where its storage is a
     // Limit or the substitution does not complete. Rejected storage is read as instantiated: its parts that do not substitute hold nothing
-    // (Readable, DECISIONS BU-36).
+    // (ReadableInstance, DECISIONS BU-36, R4-M139).
     private BoundType? Instance(BoundType declared, Subst? types, BindingScope? scope)
     {
-        var type = types is null ? declared
-            : this.Instance(declared, types) is ({ } instance, var storage) && this.Readable(instance, storage) ? instance : null;
+        var type = types is null ? declared : this.ReadableInstance(declared, types);
         return type is null || scope is null ? type : binding.CallableContractType(type, scope);
     }
 }
