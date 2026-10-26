@@ -191,6 +191,7 @@ public class NeverContinuationTest
     [InlineData("let t = if c => (a, (return 1)) else => [a, (return 2)]")]
     [InlineData("let t = if c => (if d => (a, (return 1)) else => ((return 2), c)) else => (a, a)")]
     [InlineData("let t = if c => [2 of (a, (return 1))] else => [3 of ((return 2), a)]")]
+    [InlineData("let t = if c => [2 of 5] else => [3 of a]")]
     [InlineData("let t = if c => [2 of (a, (return 1))] else => [((return 2), a), ((return 3), a)]")]
     [InlineData("let t = if c => [\"k\": (a, (return 1))] else => [\"k\": (c, (return 2))]")]
     [InlineData("let t = if c => (1, (return 1)) else => (2.5, a)")]

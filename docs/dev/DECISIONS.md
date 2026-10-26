@@ -6575,7 +6575,9 @@ resumed by R4-M86 (2026-10-20).
     nested join with a waiting literal still waits for its outer join; a Never-only one decides itself and its outer late-fits it
     (with bu44 landed, waiting is no longer blocked by its array binder; it would differ only where the late fit adapted a part,
     which it never does: open with that limit). The survey takes a bound source that awaits as no evidence (`ResultEvidence`), which
-    removes rv-g159-nested-cand's second record, and a transfer as Never.
+    removes rv-g159-nested-cand's second record, and a transfer as Never. A fill's literal element waits for its position as a list
+    literal's does (`DecidedLater` passes fills; `BindArrayFill` waits with it), so `if c => [2 of 5] else => [2 of a]` is
+    `[2 of i64]` and `[[2 of 5], [2 of a]]` `Array<[2 of i64]>` (the owner's answer on fills, with R1).
   - A call (`Binding.ArgumentKinds`): its control-flow argument's join that supplies no candidate waits for the call
     (`ClassifiedByCall`) unless its results are Dictionaries, typed as a whole as a Dictionary literal argument is, or its typed parts
     conflict, which fails it at once. With Tuple or array results it is recorded Composite and classified position by position

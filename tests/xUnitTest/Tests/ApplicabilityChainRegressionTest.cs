@@ -20,7 +20,7 @@ public class ApplicabilityChainRegressionTest
         "func h(value: i8) -> () => ()\nfunc h(value: i64) -> () => ()\nfunc g(value: (i64, i64)) -> () => ()\nlet c = true\nlet x: i64 = 2\n" +
         "func both<T>(value: (T, T)) -> () => ()\nfunc first<T>(value: (T, i64)) -> () => ()\nfunc tuples(value: (i32, i32)) -> () => ()\n" +
         "func tuples(value: (i64, i64)) -> () => ()\nfunc takeArray(value: Array<i64>) -> () => ()\nfunc takeDict(value: Dictionary<string, (i64, i64)>) -> () => ()\n" +
-        "func takeDictI(value: Dictionary<string, i64>) -> () => ()\n";
+        "func takeDictI(value: Dictionary<string, i64>) -> () => ()\nfunc takeFill(value: [2 of i64]) -> () => ()\n";
 
     [Theory]
     [InlineData(false, false, false)]
@@ -162,6 +162,7 @@ public class ApplicabilityChainRegressionTest
     [InlineData("g(if c => (5, 6) else => (7, 8))", "(i64, i64)")]
     [InlineData("g(if c => (x, stop()) else => (x, stop()))", "(i64, i64)")]
     [InlineData("takeArray(if c => [1, 2] else => [stop()])", "Array<i64>")]
+    [InlineData("takeFill(if c => [2 of 5] else => [2 of stop()])", "[2 of i64]")]
     [InlineData("both(if c => (x, stop()) else => (stop(), 5))", "(i64, i64)")]
     [InlineData("both(if c => (x, stop()) else => (x, stop()))", "(i64, i64)")]
     [InlineData("first(if c => (5, stop()) else => (6, x))", "(i32, i64)")]

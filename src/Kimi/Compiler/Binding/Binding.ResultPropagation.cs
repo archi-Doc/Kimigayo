@@ -188,7 +188,8 @@ public sealed partial class Binding
         => expected is null && node.BindingState == BindingState.Unvisited && IsUnfittedLiteral(node) && this.DecidedLater(node);
 
     // Whether the Type of the position an expression supplies is decided after the expression is reached. The one walk passes the forms
-    // that deliver it (DeliveredOperand) and the Tuple, array and dictionary literals it is a part of; the Type is decided by an array or
+    // that deliver it (DeliveredOperand) and the Tuple, array (a fill's included, DECISIONS BU-43) and dictionary literals it is a part
+    // of; the Type is decided by an array or
     // dictionary literal that collects its element evidence (collectingElements, SPEC 4.3), by the call whose argument probe a join it
     // supplies is under (WaitsForCall, SPEC 10.5.1), or by that join while it collects its sources without a Target Result Type (SPEC
     // 14.9.2).
@@ -196,7 +197,7 @@ public sealed partial class Binding
     {
         var source = node;
         while (source.Parent is { } parent &&
-            (ReferenceEquals(DeliveredOperand(parent), source) || parent is TupleLiteralKoto or ArrayLiteralKoto { FillLength: null } or DictionaryLiteralKoto))
+            (ReferenceEquals(DeliveredOperand(parent), source) || parent is TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto))
         {
             if (ReferenceEquals(parent, this.collectingElements))
             {
