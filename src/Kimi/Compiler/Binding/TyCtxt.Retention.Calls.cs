@@ -41,13 +41,25 @@ internal sealed partial class TyCtxt
     // C8: a Value callee's retention, read over the Callable signature it declares, whose abstract Origins are the call's fresh regions
     // (step 1). A closure's or item's is read under the premises of its declaration's body (Binding.SignatureOwner); any other is an
     // erased callable, which reads no declaration's premises: its key is the calling definition's scope, which only decides its pair
-    // layers' admitted cases.
+    // layers' admitted cases. A Closure's contract has its call receiver at input 0 (HasReceiverInput; SPEC 15.8.2, DECISIONS R4-M148):
+    // the Type its body is checked against (Binding.ClosureReceiver), over its instance's environment, the definition's under the
+    // callee's closure context, whose Origins are the ones its signature names (the callee's own Type is the calling local's, whose
+    // Origins its initializer infers), keyed by that environment; one whose context does not substitute is CallRetention.Limit.
     internal CallRetention Retains(BoundType callee, BoundType signature, BindingSymbol? definition)
     {
         var owner = (FunctionKoto?)Binding.SignatureOwner(callee);
         var use = binding.DefinitionUse(definition);
-        var key = owner ?? (object)binding.ConstraintScope(use);
-        if (this.retentions.TryGetValue((signature, null, key), out var known))
+        var closure = Closure(callee);
+        var environment = closure is null ? null : BoundClosure.Of(owner!)!.EnvironmentType;
+        environment = closure?.ClosureContext is { } context ? this.Apply(environment!, context) : environment;
+        if (closure is not null && environment is null)
+        {
+            return CallRetention.Limit;
+        }
+
+        (object Callee, Subst? Types, object? Scope) key = environment is null ? (signature, null, owner ?? (object)binding.ConstraintScope(use))
+            : (environment, null, signature);
+        if (this.retentions.TryGetValue(key, out var known))
         {
             return known;
         }
@@ -60,15 +72,54 @@ internal sealed partial class TyCtxt
         }
         else
         {
+            inputs = environment is null ? inputs : [binding.ClosureReceiver(owner, environment), .. inputs];
             binding.CallableBoundSignatures(owner, this.retentionBounds);
             retention = binding.Retains(owner, inputs, signature.Components[1], null, CollectionsMarshal.AsSpan(this.retentionBounds), premises: null);
         }
 
-        this.retentions.Add((signature, null, key), retention);
+        this.retentions.Add(key, retention);
         return retention;
     }
 
+    // SPEC 15.8.2, 8.10 (DECISIONS R4-M126 D-6, R4-M148): whether a Value callee's contract has the call receiver input, input 0: the
+    // callee, read through one Semantics layer as SignatureOwner reads it, is a Closure whose definition is bound. The one predicate
+    // Retains and MirBorrows' slot mapping read; a Function value, a function item and a Callable-bounded value have none.
+    internal bool HasReceiverInput(BoundType callee) => Closure(callee) is not null;
+
+    // SPEC 7.7.3 (DECISIONS R4-M128, R4-M148): the call receiver a Closure Type's case admits, given a case Type of a view or the
+    // instance: the definition's case-free receiver unless it is Shared, else Exclusive where a capture whose bare acquisition Reborrows
+    // by case (BoundCapture.BareReborrows) has an exclusive layer as its component in this Type (`uniq`, `objuniq`, or a pair layer
+    // admitting one), else Shared; the instance gives Receiver. PD13's hold compares a call's acquisition with it (MirBorrows.CallRows).
+    internal SemanticsKind ClosureReceiverIn(BoundType closure)
+    {
+        var definition = BoundClosure.Of((FunctionKoto)closure.Symbol!.Declaration!)!;
+        if (definition.CaseFreeReceiver != SemanticsKind.Ref)
+        {
+            return definition.CaseFreeReceiver;
+        }
+
+        for (var i = 0; i < definition.Captures.Count; i++)
+        {
+            if (definition.Captures[i].BareReborrows && closure.Components[i] is var component &&
+                (component is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq } ||
+                (binding.LayerAdmitted(component) & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0))
+            {
+                return SemanticsKind.Uniq;
+            }
+        }
+
+        return SemanticsKind.Ref;
+    }
+
     internal void ResetRetentions() => this.retentions.Clear();
+
+    // The Closure Type a Value callee is, through one Semantics layer, with a bound definition; null for any other callee.
+    private static BoundType? Closure(BoundType callee)
+    {
+        var owner = callee is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } borrowed ? borrowed.Components[0] : callee;
+        return owner is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto function } && BoundClosure.Of(function) is { EnvironmentType: not null }
+            ? owner : null;
+    }
 
     private static bool HasAbstractPart(Subst types)
     {

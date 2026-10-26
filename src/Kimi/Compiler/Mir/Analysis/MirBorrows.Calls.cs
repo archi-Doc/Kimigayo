@@ -3,7 +3,9 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's Call transfer (A3 5, Calls; E14, E16): a Call's rows (MirBorrows.CallRows) carry its inputs' values into its result or into every
-// holder an argument's store reaches (W, MirBorrows.Reach), one W per output. At a referent store (CallRetention.ReferentStores, a
+// holder an argument's store reaches (W, MirBorrows.Reach), one W per output; a Closure callee's call receiver is its input at position
+// call.Count, the callee operand, read before the Moves, and a store into it takes W as any argument's (ER-closure-stores; SPEC 15.8.2,
+// DECISIONS R4-M148). At a referent store (CallRetention.ReferentStores, a
 // per-output membership: an operation of SPEC 4.6 to 4.9 writes through its exclusive receiver only what it refers to, 4.9.6) whose
 // referent destroys shallowly (Destruction), the store reaches refs(S) alone (W's first step, Referents; R4-M143); where the referent may
 // observe a destruction, which the row leaves to its callers, W stays, until A5 composes it there (PLAN G264); where it observes only
@@ -28,10 +30,9 @@ internal sealed partial class MirBorrows
 
     // A Call (A3 5, Calls; E14, E16): its arguments' Moves, then each row of its retention (Rows) into the result or into W of an argument's
     // value (at a referent store whose referent destroys shallowly, its refs(S)), {Φ_E} for a row with no input (an untied store, R-B2),
-    // then the result into the destination; Φ_E for an untied result and, by
-    // the untracked rule, for a result whose Type may hold a raw pointer (B′ §4.2). A Value callee's environment, its value or what a
-    // reference to it refers to, reaches the result too (its captures; temporary until F7 reads TyCtxt.Closure, unit 2c). In the checks
-    // replay, an undecided store sets the location's limit.
+    // then the result into the destination; Φ_E for an untied result and, by the untracked rule, for a result whose Type may hold a raw
+    // pointer (B′ §4.2). A Value callee's value is read with the arguments', the callee operand's position (Input): a Closure's call
+    // receiver (R4-M148). In the checks replay, an undecided store sets the location's limit.
     private void Call(ulong[] state, in MirTerminator call, bool checks)
     {
         MirDataflow.Grow(ref this.argValues, call.Count + 1);
@@ -42,9 +43,6 @@ internal sealed partial class MirBorrows
 
         var callee = call.Callee;
         this.argValues[call.Count] = callee.Kind == MirCalleeKind.Value && call.Operand.Kind != MirOperandKind.Const ? this.Read(state, call.Operand.Place) : 0;
-        var result = this.argValues[call.Count];
-        result = result != 0 && MirTypes.IsReference(this.TypeOf(call.Operand)) ? this.Content(state, result) : result;
-        result = this.Indirect(result); // Rule W: a Value callee's environment is no Copy of an argument.
         this.Moves(call.Start, call.Count);
         if (callee.Kind == MirCalleeKind.Value && call.Operand is { Kind: MirOperandKind.Move, Place: { Projection: 0 } moved })
         {
@@ -52,6 +50,7 @@ internal sealed partial class MirBorrows
         }
 
         var retained = this.Rows(call, out var untied);
+        var result = 0;
         var writesOf = Retention.Result; // The output whose writable holders the targets are.
         BoundType? referent = null; // Rule W: the Type the written argument refers to, every part of which may receive the value.
         var (reach, undecided) = (0, false); // refs(S)'s count, and whether W past it rests on an abstract part's destruction.
@@ -67,8 +66,8 @@ internal sealed partial class MirBorrows
             if (row.Output != writesOf)
             {
                 var stored = this.referentStores.AsSpan(0, this.referentCount).Contains(row.Output);
-                referent = (this.wCount > 0 || stored) && this.TypeOf(this.Input(call, row.Output)) is { Kind: BoundTypeKind.Semantics, Components: [var to, ..] }
-                    ? to : null;
+                var written = this.Input(call, row.Output);
+                referent = (this.wCount > 0 || stored) && this.TypeOf(written) is { Kind: BoundTypeKind.Semantics, Components: [var to, ..] } ? to : null;
                 var unproven = false;
                 var shallow = stored && referent is not null && this.Destruction(referent, out unproven) == AccessKind.Destroy;
                 reach = this.Referents(this.argValues[row.Output]);

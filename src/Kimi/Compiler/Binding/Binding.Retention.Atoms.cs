@@ -17,6 +17,13 @@ public sealed partial class Binding
     private readonly List<(int Input, BoundType Type)> retentionRawInputs = new();
     private readonly List<(int Output, BoundType Type)> retentionHolds = new();
 
+    // SPEC 15.8.2 (DECISIONS R4-M148): a Closure contract's input 0, its call receiver as its body is checked against it (the MIR body's
+    // receiver local, MirBuilder): `R/Env during ρ`, R the strongest receiver (BoundClosure.Receiver) and ρ its receiver atom
+    // (ClosureValueSlot), Env the instance's environment; Env by value under `owner/Self`.
+    internal BoundType ClosureReceiver(FunctionKoto closure, BoundType environment)
+        => BoundClosure.Of(closure)!.Receiver is var receiver && receiver == SemanticsKind.Owner ? environment
+            : this.types.Reference(receiver, environment, this.OriginAtom(closure, OriginKind.Projection, ClosureValueSlot));
+
     // Whether a position of the Type may hold a raw input's own value or a raw layer, at it or in its stored content (the hold walk,
     // Binding.Retention.Rows.cs): a raw layer, an abstract part (a pair layer among them), a struct or an enum.
     private static bool MayHold(BoundType type)
@@ -60,17 +67,34 @@ public sealed partial class Binding
 
     // An input's atoms: a borrowed input (BorrowReferent) gives Value through its outer Origin and Content through its referent (SPEC
     // 15.6.4 step 4), which an exclusive one lets the call write, its referent invariant there (SPEC 15.3.5), and a shared one's lies
-    // past a shared layer (SPEC 5.7, 8.11.4 rule 1). A raw input is retained as a borrowed one, its pointee as the referent (SPEC 15.6.4,
-    // DECISIONS R4-M116): its parts are Content, walked by its step (RetentionParts); its own layer's Origin is an atom of no kind, which
-    // places it among the premises as a borrow's outer Origin is but gives no row (R-B3: RawContent's rows and its own value decide), and
-    // its own value is retained by its Type (RetentionRows, over retentionRawInputs).
+    // past a shared layer (SPEC 5.7, 8.11.4 rule 1); a Closure's borrowed call receiver, the input whose outer Origin is its receiver atom
+    // ρ, has its environment bindings as Fields of the referent, each written as SPEC 7.7.2 lets the call (SPEC 15.8.2, DECISIONS R4-M148,
+    // D1): a `var` binding where the receiver is exclusive, what an exclusive layer in any binding refers to, a `let` binding itself never
+    // ("no Closure body can replace its environment"; a by-value receiver writes no binding, as any by-value input). A raw input is
+    // retained as a borrowed one, its pointee as the referent (SPEC 15.6.4, DECISIONS R4-M116): its parts are Content, walked by its step
+    // (RetentionParts); its own layer's Origin is an atom of no kind, which places it among the premises as a borrow's outer Origin is but
+    // gives no row (R-B3: RawContent's rows and its own value decide), and its own value is retained by its Type (RetentionRows, over
+    // retentionRawInputs).
     private void RetentionInput(BoundType input, int index)
     {
         if (this.BorrowReferent(input, out var outer, out var exclusive) is { } referent)
         {
             this.AddRetentionAtom(new(index, RetentionKind.Value, Writable: false, outer, null, null), callable: false);
             var content = new RetentionAtom(index, RetentionKind.Content, exclusive, null, null, outer, Shared: !exclusive);
-            this.RetentionWalk(referent, content, exclusive ? OriginVariance.Invariant : OriginVariance.Covariant, callable: false);
+            var variance = exclusive ? OriginVariance.Invariant : OriginVariance.Covariant;
+            if (outer is { Kind: OriginKind.Projection, Slot: ClosureValueSlot, Binder: FunctionKoto receiver })
+            {
+                var captures = BoundClosure.Of(receiver)!.Captures;
+                for (var i = 0; i < referent.Components.Count; i++)
+                {
+                    var field = captures[i].Environment.MutableCapture ? variance : OriginVariance.Covariant;
+                    this.RetentionWalk(referent.Components[i], content, field, callable: false);
+                }
+
+                return;
+            }
+
+            this.RetentionWalk(referent, content, variance, callable: false);
         }
         else if (input is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
         {
