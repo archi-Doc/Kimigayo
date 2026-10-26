@@ -5,8 +5,9 @@
 // Input: CallPlans, Closure and function item Types, a binder, a target with its slot bindings; Binding's storage instantiation, length
 // substitution and Origin forwarding.
 // Output: interned Subst values, identity being equality, kept as long as the TyCtxt; a Type or a substitution in an instance with its
-// storage verdict (Instance, Compose; DECISIONS BU-36, BU-38), Apply the instance when Prepared; Binding's completeness, the premise of
-// a Rejected verdict's contract (BindingComplete).
+// storage verdict (Instance; Compose with the part deciding it; DECISIONS BU-36, BU-38, R4-M139), Apply the instance when Prepared;
+// Binding's completeness, the premise of a Rejected verdict's contract (BindingComplete); whether a reader may read a verdict, guarded by
+// it (Readable), and the instance a reader of an instance reads (ReadableInstance: Instance, then Readable; R4-M139).
 // Invariants: one Subst per (target, Self, declaring Type, Types, lengths, Origins, inputs), with one length entry per slot; the scratch
 // arrays Fit grows are reused.
 // Must not: clear its interning, resolve source expressions, or construct a Subst outside Intern.
@@ -32,8 +33,17 @@ internal sealed partial class TyCtxt
     private BoundLength?[] noLengths = [];
 
     // DIAGNOSTICS rule 8 (DECISIONS BU-38): whether Binding is complete, so has rejected no part: a Rejected storage verdict (Instance,
-    // Compose) met in a complete compilation is a broken contract, the premise of Binding.Retained's guard and R4-M118's OriginFinding.
+    // Compose) met in a complete compilation is a broken contract, the premise of Readable's guard and R4-M118's OriginFinding.
     internal bool BindingComplete => binding.Result.IsComplete;
+
+    // Whether a reader of an instance may read a Type whose storage has this verdict (Binding.Readable; DECISIONS BU-36, R4-M139):
+    // Prepared or Rejected, not a Limit; Rejected in a complete compilation throws, a broken contract.
+    internal bool Readable(BoundType type, Binding.StorageOutcome storage) => binding.Readable(type, storage);
+
+    // DECISIONS R4-M139: a declared Type in the instance a substitution makes, as every reader of an instance reads one: Instance, then
+    // Readable; null where Readable refuses (a Limit) or the substitution does not complete, throwing where it throws.
+    internal BoundType? ReadableInstance(BoundType type, Subst subst)
+        => this.Instance(type, subst) is ({ } instance, var storage) && this.Readable(instance, storage) ? instance : null;
 
     // SPEC 8.1.3, 10.5: a selected call's substitution, as its selection committed it; a value call has none. A direct base call's is its
     // implementation's in the Type implementing it, which it calls (virtual-dispatch 4).
@@ -125,15 +135,19 @@ internal sealed partial class TyCtxt
     // a generic body (InstantiateForwardedCall), so Instance(t, Compose(inner, outer).Subst) is that call's instantiation of t; with the
     // verdict of its parts' storage in the outer instance (Instance), the worst one, so a limit wins (DECISIONS BU-36, BU-38). Rejected
     // keeps the composed substitution, as the forwarded call keeps its Types; null and Limit when the outer instance does not substitute an
-    // inner Type, length, conforming Self or declaring Type, or one's storage is a limit.
-    internal (Subst? Subst, Binding.StorageOutcome Storage) Compose(Subst inner, Subst outer)
+    // inner Type, length, conforming Self or declaring Type, or one's storage is a limit. Part is the verdict's deciding part (R4-M139):
+    // the instance of the first part reaching it in the order Compose walks (conforming Self, declaring Type, Types by index); null when
+    // Prepared, when a length decides, or when that part has no instance. Instance gives a Limit exactly where it gives no instance, so
+    // Part is never null when Rejected.
+    internal (Subst? Subst, Binding.StorageOutcome Storage, BoundType? Part) Compose(Subst inner, Subst outer)
     {
         if (outer.IsIdentity)
         {
-            return (inner, Binding.StorageOutcome.Prepared);
+            return (inner, Binding.StorageOutcome.Prepared, null);
         }
 
         var storage = Binding.StorageOutcome.Prepared;
+        var part = default(BoundType);
         var types = Fit(ref this.composedTypes, inner.Types.Length);
         var lengths = Fit(ref this.composedLengths, inner.Lengths.Length);
         var origins = Fit(ref this.composedOrigins, inner.Origins.Length + inner.Inputs.Length);
@@ -147,12 +161,15 @@ internal sealed partial class TyCtxt
         for (var i = 0; i < lengths.Length; i++)
         {
             lengths[i] = inner.Lengths[i] is { } length ? binding.SubstituteLength(length, outer.Binder, outer.Lengths) : null;
-            storage = lengths[i] is null && inner.Lengths[i] is not null ? Binding.StorageOutcome.Limit : storage;
+            if (lengths[i] is null && inner.Lengths[i] is not null && storage != Binding.StorageOutcome.Limit)
+            {
+                (storage, part) = (Binding.StorageOutcome.Limit, null);
+            }
         }
 
         if (storage == Binding.StorageOutcome.Limit)
         {
-            return (null, storage);
+            return (null, storage, part);
         }
 
         for (var i = 0; i < origins.Length; i++)
@@ -161,13 +178,18 @@ internal sealed partial class TyCtxt
                 ? binding.ForwardOrigin(origin, outer.Target, outer.Declaring, outer.Origins, outer.Inputs, outer.Types) : null!;
         }
 
-        return (this.Intern(inner.Target, self, declaring, types, lengths, origins[..inner.Origins.Length], origins[inner.Origins.Length..]), storage);
+        return (this.Intern(inner.Target, self, declaring, types, lengths, origins[..inner.Origins.Length], origins[inner.Origins.Length..]), storage, part);
 
-        // A part in the outer instance; its verdict joins the composition's in the verdicts' order (a limit, then Rejected).
+        // A part in the outer instance; its verdict joins the composition's in the verdicts' order (a limit, then Rejected), the first part
+        // reaching the worst one deciding it.
         BoundType? Part(BoundType type)
         {
             var (instance, verdict) = this.Instance(type, outer);
-            storage = verdict > storage ? verdict : storage;
+            if (verdict > storage)
+            {
+                (storage, part) = (verdict, instance);
+            }
+
             return instance;
         }
     }

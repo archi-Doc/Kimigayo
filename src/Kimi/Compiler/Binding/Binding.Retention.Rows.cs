@@ -37,11 +37,11 @@ public sealed partial class Binding
         Chain = 2,
     }
 
-    // Whether a retention reads a Type whose storage has this verdict (SPEC 23.1.2; DECISIONS BU-36): Prepared, and Rejected, whose parts
-    // that do not substitute hold nothing, so the rows that hold whatever they are stay; a Limit gives CallRetention.Limit. Rejected
-    // storage rests on a Binding failure (DIAGNOSTICS rule 8: a part Binding did not bind makes it incomplete), so in a complete
-    // compilation it is a broken contract.
-    internal bool Retained(BoundType type, StorageOutcome storage)
+    // Whether a reader may read a Type whose storage has this verdict (SPEC 23.1.2; DECISIONS BU-36, R4-M139): Prepared, and Rejected, whose
+    // parts that do not substitute hold, place and destroy nothing, so what holds whatever they are stays; not a Limit (retention's
+    // CallRetention.Limit, the MIR's own limit). Rejected storage rests on a Binding failure (DIAGNOSTICS rule 8: a part Binding did not
+    // bind makes it incomplete), so in a complete compilation it is a broken contract. TyCtxt.Readable publishes it to the MIR.
+    internal bool Readable(BoundType type, StorageOutcome storage)
     {
         if (storage == StorageOutcome.Rejected && this.Result.IsComplete)
         {
@@ -211,7 +211,7 @@ public sealed partial class Binding
     // on its Type, `written` and `lent` alone and only accumulates, so each position is walked at most once per lent bit and output
     // (retentionMet): the work is linear in the distinct positions, not in the paths to them through the interned Types (V16). A struct or
     // enum whose storage is a Limit, a growing one among them (PrepareTypeStorage's limits, DECISIONS BU-12), makes the contract
-    // CallRetention.Limit; Rejected storage is walked as far as it substitutes, a part that does not (null) holding nothing (Retained,
+    // CallRetention.Limit; Rejected storage is walked as far as it substitutes, a part that does not (null) holding nothing (Readable,
     // BU-36).
     private Holding Held(BoundType? type, BoundType? written, int output, Kept[] kept, bool lent)
     {
@@ -227,7 +227,7 @@ public sealed partial class Binding
         }
 
         var nominal = AdtDef.IsStruct(type) || AdtDef.IsEnum(type);
-        if (nominal && !this.Retained(type, this.PrepareTypeStorage(type)))
+        if (nominal && !this.Readable(type, this.PrepareTypeStorage(type)))
         {
             this.retentionLimit = true;
             return Holding.None;

@@ -3901,7 +3901,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     whose resource limit arises inside the copy (`grow<u8>(1, 3)`), its expectation exact; the former form is MirBuildTest's.
   - Shared reading (R4-M125): the builder builds what Binding published, derives only what Binding rejected, and reports an instance it
     cannot make as `Unsupported_Kd` at its use. Until U2, `Apply`'s null conflates storage Binding rejected with a genuine limit, so a
-    Rejected instance also skips its copy; U2 copies it through G240's instance with its outcome (`TyCtxt.Instance`, BU-36).
+    Rejected instance also skips its copy; U2 copies it through G240's instance with its outcome (`TyCtxt.Instance`, BU-36; done by
+    R4-M139).
   - Hand-off: the enum sites of the family (an Adt aggregate's Arity and a pattern's Downcast, over a case Binding substituted beside
     one it did not) are BU's G242 (per-case `InstanceStorage.Cases`, design A1, full process), not the builder's.
   - Rejected: builder guards deriving at the construct (they derive forms Binding accepted, losing a copy's caller Loans, R4-M10); a
@@ -4541,6 +4542,53 @@ and migration obligations remain in force; no numeric cap changes are authorized
     tells Content from Chain keying: under an Origin-stated premise the content holds a Loan on each holder a second read passes (a
     `raw/T during source` Field needs its `Loan` Field), so replacing it, or writing what it refers to, conflicts either way. Numbering: R4-M138
     is free on dev and every open R4 branch (R4-M137 is 2c-9's).
+- **R4-M139 Every reader of an instance reads it by one rule: Rejected storage passes through, a Limit does not (G245 U2)** (2026-10-26;
+  PLAN G245's unit U2, the R4 planning session's design B1-2 with its option (A); BU agreeing the member and its name, R5 its two
+  conditions for MirCases) SPEC 23.1.1, 23.1.2; BU-36, BU-37, BU-38.
+  - Cause: `TyCtxt.Apply` is the instance only when its storage is Prepared (BU-38 keeps it so), and the MIR's readers took its null,
+    which also covers storage Binding rejected, as a limit. The builder skipped a default's copy over a Rejected instance (the call's
+    `Unsupported_Kd`, BU-38's x3 and r8); A4 composed a callee's atom (`MirEffects.Solve`) and read a published row's parameter
+    (`MirEffects.Below`, through `TyCtxt.Signature`) as Limit; `MirCases.Views` selected every admitted view. A4's `Destroyed` read a
+    part Binding rejected (a null Field or Case, BU-37) as Limit too. Each limit hid the repair's records (a destructor's effect).
+  - Rule: one reading of a verdict, `Binding.Readable(type, storage)` (BU-36's `Retained`, renamed for its general meaning; Prepared and
+    Rejected, not a Limit; Rejected in a complete compilation throws, DIAGNOSTICS rule 8), published as `TyCtxt.Readable`, and one
+    reading of an instance, `TyCtxt.ReadableInstance(type, subst)`: `Instance`, then `Readable` (the instance where it passes, null
+    where it refuses, throwing where it throws; review 1: the composite stood at five sites). Retention (`TyCtxt.Retention.Calls`), the
+    builder's `Instantiates` (each Type), A4's atom and `Below`, and `MirCases.Views` read it; the builder's composed substitution reads
+    `Readable` over `Compose`'s deciding part, `(Subst, Storage, Part)`: the instance of the first part reaching the verdict in the
+    order Compose walks (conforming Self, declaring Type, Types by index), null when Prepared, when a length decides or when that part
+    has none (BU's review 1: the guard named the callee's declared Type, not the part judged). Each keeps its own meaning of a Limit (no
+    copy and the call's `Unsupported_Kd`, R4-M127; A4's Limit class; every view). A4's `Destroyed` trusts A2's rows: a Keep or Flag row
+    has a Type (`MayNeedDrop`), so it has no null guard. The collector keeps its `Made` (R5: another consumer contract). A part
+    Binding rejected destroys nothing in A4, as `MirTypes.Destruction` reads it. `Views` over Rejected storage selects the instance's
+    case, which no rejected part changes: its repair's view.
+  - Builder: `Instantiates` keeps each instance and composition in two reused maps (identity keys), which `Inline` folds by, so the fold
+    sites are listed once and `FoldType`'s `!` goes; a missing key is a broken contract. `MirBuilder.Opaque`'s header names the
+    uninstantiable default (U1's reviews).
+  - Rejected: no guard (R5's condition 1); a guard in `Views` only or a MIR-local helper (second copies of Retained's rule); A4's
+    Derived class for a rejected part (it suppresses rule W's causes in `MirBorrows.Checks` and could hide an independent record;
+    BU-37 fixes "destroys nothing"); changing `TyCtxt.Signature` (BU's; its other readers, the validator and the builder's direct base
+    call receiver, record nothing and stay for R7 with `Apply`).
+  - Completes R4-M127's "Until U2" clause, BU-38's "x3 and r8", PLAN G240's R4 readers, BU-36's Open item for A4's `Solve`,
+    `MirCases.Views` and the builder's `FoldType`, and BU-37's Open item for `Destroyed`'s null part (departing from its "a dependent
+    by R4-M118": the Derived class is rejected above); each stays and names this entry.
+  - Numbering: R4-M139 is free on dev and every open R4 branch (R4-M137 2c-9, R4-M138 the N2 closure).
+- **R4-M140 A5's holding memo: the holder rule once per case Type and program version (G258 D1)** (2026-10-26; R4's lane A under the
+  owner's 「D1・D2 を採用 (推奨)」 of 2026-10-26, which accepts D1's cold allocation; the G258 report's §4 D1, option (a)).
+  - Representation: `MirBorrows.holding`, a `Dictionary<BoundType, (bool Holds, MirWrites Writes)>` by reference beside the walk's
+    scratch (`MirBorrows.Reach.cs`), which `Holding` reads before it walks: `MirTypes.HoldsLoans` runs once per distinct case Type of a
+    program version, not once per local of every producing view (1,491 queries for about 350 Types per compilation).
+  - Key and validity: the walk reads only the Type, its Fields, base and payloads and Binding's stored raw steps
+    (`TyCtxt.RawStep(instance, part, positions)`, every argument derived from the key); no body, view, definition or premise. Its answer
+    is a function of the interned case Type and of the Binding pass, which `MirProgram.Version` names (the HIR publish version).
+  - Lifetime: the stratum's (one per `MirAnalysis`, one `TyCtxt`); cleared, keeping its capacity, when `Holding` sees another program
+    version, so a new pass's steps are read anew and a warm rebind allocates nothing (`ARebindRefillsTheHoldingMemoWithoutAllocating`).
+  - Size: presized to 384 (431 buckets, 12,200 B per compilation, cold and retained): the library's 339 distinct case Types and a
+    program's own (339 to 461, median 346, on G258's corpus); a larger program grows it once.
+  - Measured (G258's host, 118 programs, pinned, tiering off, two runs): A5's cold time −4.1 % and −2.9 %; Work, Loan-set Bytes and
+    problems equal; A5's timed allocation +0.06 % (the growth past 431 Types).
+  - Rejected: a cache in `MirTypes` (static, wrong across compilations) or in `TyCtxt` (a MIR fact on Binding's representation); keying
+    the walk's own memo by stored part and positions (more code, a walk per local stays).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -6073,8 +6121,8 @@ resumed by R4-M86 (2026-10-20).
   - Residual R1: `CallPlan.TypeArguments`, `Subst.Types` and closure contexts keep W, so one instance has two Substs and a call displays
     `id<raw/i32 during x>` where its Item is `id<raw/i32>`. Rule: a reader takes a slot's binding only through `Apply` (the arm). It
     governs A5's `MirBorrows.CallRows.Retaining` (`TyCtxt.Retains` over `MirCallee.Subst`, read only through `Apply`), A4's
-    `Apply(atom.Type, subst)` and `MirCases.Views`; an A5 change reading `Subst.Types` or `CallPlan.TypeArguments` as a binding departs
-    from it. Removal: canonical Substs once R7's CallPlan pipeline reads Substs only.
+    `Apply(atom.Type, subst)` and `MirCases.Views` (both now `TyCtxt.ReadableInstance`, R4-M139); an A5 change reading `Subst.Types`
+    or `CallPlan.TypeArguments` as a binding departs from it. Removal: canonical Substs once R7's CallPlan pipeline reads Substs only.
   - Rejected: A's `PairArguments` in Binding.PairCases (the component walk and scratch outside the interner, one more raw-role site);
     the arm alone (two Types for one instance, rows keeping the dropped Origin); the Intern pre-pass alone (a function's slots keep W);
     canonical argument lists at every binding site (six or more copies, result Types formed before most); a split (s, T, o)
@@ -6141,7 +6189,8 @@ resumed by R4-M86 (2026-10-20).
     `CallRetention.Limit` is a genuine limit only: BU-12's height and path, a keeper cycle (BU-24), and a contract substitution that
     does not complete (no reproducer). BU-24's keeper clause (a keeper Type `StoredType` does not instantiate makes the walk incomplete)
     stays Limit and is unreached: a failed keeper Field registers no keeper.
-  - Guard: `Binding.Retained` throws for Rejected storage in a complete compilation (DIAGNOSTICS rule 8 makes a part Binding did not bind
+  - Guard: `Binding.Retained` (renamed `Readable` and published as `TyCtxt.Readable` by R4-M139) throws for Rejected storage in a
+    complete compilation (DIAGNOSTICS rule 8 makes a part Binding did not bind
     an incomplete Binding), the established broken-contract form at this site (`TyCtxt.Instance`'s contract without its Type,
     `CallRetention`'s Limit rows), which ends the check as `CheckFaulted_Kd` (rule 9).
   - A5 changes only its comments (R4's F3). Monotonicity (R4's review): the located failures only grow with rows (Loan conflicts, Φ_E and
@@ -6163,8 +6212,8 @@ resumed by R4-M86 (2026-10-20).
     B(raw/i32) }` gives no row where its repair gives `1 Value store 0, untied store 0`; growth in another case is unseen), whose shared
     fix (R4's G244 A1) replaces this unit's enum clause in `StorageParts` and rule in `Stores`; Dispatch's K6 Witness Limit and the
     collector's StorageNesting `Unsupported_Kd` over Rejected storage, published under MIR code generation (BU, R5; closed by BU-38); A4's
-    `MirEffects.Solve` and `MirCases.Views` over `Apply`'s null (R4, PLAN G240's row); the builder's default copy `FoldType` and the
-    Arity finding on a Rejected enum's case (G244).
+    `MirEffects.Solve` and `MirCases.Views` over `Apply`'s null (R4, PLAN G240's row); the builder's default copy `FoldType` (these
+    three closed by R4-M139) and the Arity finding on a Rejected enum's case (G244).
 
 - **BU-37 An enum instance publishes each Case it substitutes** (2026-10-25; the BU planning session after the full process: designs A
   (R4's A1) and B, the design review's choice of B with A's MIR rows and its required changes R1-R5; R4's A5/MIR review, no blocking
@@ -6197,7 +6246,8 @@ resumed by R4-M86 (2026-10-20).
     consumers re-substituting a Case (MIR cannot); an Error placeholder Type (a vocabulary entry every Type walker reads).
   - Open (PLAN G242): the residual at the payload grain, a Case with one failed payload publishing none of its payloads (`A(Missing,
     raw/i32)` keeps no row, the growth in the p16 form is unseen; BU with R4 for `MirTypes.Holding` and R5 for Layout; option 2:
-    payloads published and walked per payload); A4's `MirEffects.Destroyed` reads a null part as Limit, a dependent by R4-M118 (R4); the
+    payloads published and walked per payload); A4's `MirEffects.Destroyed` reads a null part as Limit, a dependent by R4-M118 (R4;
+    closed by R4-M139: the part destroys nothing, A4's Derived class for it rejected); the
     collector's `Unsupported_Kd` over Rejected storage, now visible on enum forms under sel, is G242's Dispatch part (BU, next; closed by
     BU-38).
 
@@ -6219,10 +6269,10 @@ resumed by R4-M86 (2026-10-20).
     witness's target, whose instance is its reader's to admit; `Comparison`'s null and the collector's requirement Limit row (R5-M67)
     are genuine limits, and a tuple operator over Rejected storage builds its leaf calls.
   - Composition (bu40 2/2, after R5's C8d, with R5's review of the collector and R4's of the builder): `TyCtxt.Compose` gives
-    `(Subst?, StorageOutcome)`, each part by `Instance`, the greatest verdict (`StorageOutcome`'s order is the precedence), a length
-    that does not substitute a Limit. A Limit has no substitution; Rejected keeps the composed one, the forwarded call's (review A4,
-    for G245 U2). Its readers: the collector's Edge and the builder's `Instantiates` (`Storage != Prepared`) and `Inline` (`.Subst`,
-    reached only after `Instantiates`), both behavior-preserving.
+    `(Subst?, StorageOutcome)` (and the deciding part: R4-M139), each part by `Instance`, the greatest verdict (`StorageOutcome`'s
+    order is the precedence), a length that does not substitute a Limit. A Limit has no substitution; Rejected keeps the composed one,
+    the forwarded call's (review A4, for G245 U2). Its readers: the collector's Edge and the builder's `Instantiates` (`Storage !=
+    Prepared`) and `Inline` (`.Subst`, reached only after `Instantiates`), both behavior-preserving.
   - Collector: one reading of a verdict at its requesting site, `InstanceCollector.Made`: Prepared makes the edge, a Limit is the
     storage-nesting gap, Rejected a dependent dropped without a record. Its readers: `In` (one `Instance` path with `TypeOf`),
     `Instantiable` (every local read, so a limit wins in either order; Admit's private `Instance` enum goes), Edge's `Compose`, and
@@ -6249,7 +6299,8 @@ resumed by R4-M86 (2026-10-20).
     records; Admit's private `Instance.Rejected` (a second copy of the verdict); `Apply` over Rejected for `TypeOf` (R7's).
   - Open: e3 (BU, PLAN G242; a failed call, not storage): the effect summary reads a call Binding did not bind as `UnclassifiedCall`,
     so an unbound call in a confined witness publishes a dependent `IncompatibleContractImplementation_Kd` on every pipeline. x3 and
-    r8 (R4, G245 U2): the builder's default copy over Rejected storage keeps its `Unsupported_Kd` (`Instantiates` reads `Apply`). The
+    r8 (R4, G245 U2): the builder's default copy over Rejected storage keeps its `Unsupported_Kd` (`Instantiates` reads `Apply`; closed
+    by R4-M139). The
     residual (R7): a record that exists only inside an instance the collector drops stays unseen.
 
 - **BU-39 TyCtxt keeps only the raw readers of a stored layer** (2026-10-25; the BU planning session; PLAN G160, unit bu42; one
