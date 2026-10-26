@@ -84,6 +84,32 @@ public sealed partial class MirBorrowsTest
         }
     }
 
+    // SPEC 23.1.2 (PLAN G247; DECISIONS R4-M109 (a)): a Borrow of an operand Binding rejected (each use of `h` fails its Type's constraint,
+    // S2 being no Dictionary key) forms no Ref, address or Loan, its value derived in its destination, so A5 reports no conflict derived
+    // from the failed operand: kept past its statement, exclusive and copied, in parentheses, in a Tuple or followed (fail-before:
+    // ComparisonLoanConflict_Kd at `h`, its derived temp borrowed and dropped at its statement). The valid twin (an i32 key) borrows the
+    // local and keeps its true conflict with a write while the Borrow lives. Each row: the failed and the valid records.
+    [Theory]
+    [InlineData("    let p = h@ref\n    inspect(p)\n", "")]
+    [InlineData("    let p = h@uniq\n    let q = p\n    _ = q\n", "")]
+    [InlineData("    let p = (h)@ref\n    inspect(p)\n", "")]
+    [InlineData("    let t = (h@ref, 1)\n    _ = t\n", "")]
+    [InlineData("    let p = h@ref\n    let n = p@follow.length\n    _ = n\n", "")]
+    [InlineData("    let p = h@ref\n    h = [:]\n    inspect(p)\n", "f: h = [:]")]
+    public void ABorrowOfARejectedOperandFormsNoLoan(string body, string valid)
+    {
+        foreach (var (key, expected) in new[] { ("S2", string.Empty), ("i32", valid) })
+        {
+            var c = MirBuildTest.Compile(Prelude + "struct S2\n    public var v: i32 = 0\n    public init() => ()\nfunc f()\n    var h: Dictionary<" + key +
+                ", i32> = [:]\n" + body);
+            Assert.Equal(key == "S2", c.Binding.Issues.Any());
+            var program = c.BuildMir();
+            Assert.Empty(program.Findings);
+            new Stratum(c.Types).Run(program);
+            Assert.Equal(expected.Split('|', StringSplitOptions.RemoveEmptyEntries), Problems(c, program, LoanCodes));
+        }
+    }
+
     // SPEC 23.1.2 (G240; DECISIONS BU-36): a call over storage whose part Binding did not bind keeps the rows that hold whatever the part
     // is, so A5 reports its repaired program's Loan conflicts beside it and no Unsupported_Kd at the call (fail-before: Unsupported_Kd at
     // keep2, stash and choose; i-field's at D.init), with no builder record or validator finding. A conflict that rests on the failed

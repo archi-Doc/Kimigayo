@@ -357,6 +357,33 @@ public sealed partial class MirBuildTest
         Assert.Equal(2, statements.Count(x => x.Kind == MirStatementKind.Assign && x.Place == h));
     }
 
+    // SPEC 23.1.2 (PLAN G247; DECISIONS R4-M109 (a)): a Borrow, an exclusive Borrow, an address and a parenthesized Borrow of an operand
+    // Binding rejected (each use of `h` fails its Type's constraint, S2 being no Dictionary key) are each an Opaque of the Borrow's Type
+    // formed in its destination, its site naming the operand's local, with no Ref (fail-before: a Ref of the operand's derived temp, which
+    // its statement drops); the valid twin (an i32 key) borrows the local itself.
+    [Fact]
+    public void ABorrowOfARejectedOperandIsDerived()
+    {
+        foreach (var (key, expected) in new (string, string[])[]
+        {
+            ("S2", ["p opaque ref/Dictionary<S2, i32> h", "q opaque uniq/Dictionary<S2, i32> h", "a opaque raw/Dictionary<S2, i32> h", "r opaque ref/Dictionary<S2, i32> h"]),
+            ("i32", ["p Shared h", "q Uniq h", "a Raw h", "r Shared h"]),
+        })
+        {
+            var c = Compile("struct S2\n    public var v: i32 = 0\n    public init() => ()\nfunc f()\n    var h: Dictionary<" + key + ", i32> = [:]\n" +
+                "    let p = h@ref\n    let q = h@uniq\n    let a = h@raw\n    let r = (h)@ref\npublic func main() => ()\n");
+            Assert.Equal(key == "S2", c.Binding.Issues.Any());
+            var program = c.BuildMir();
+            Assert.Empty(program.Findings);
+            var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+            var locals = body.Locals.ToArray();
+            Assert.Equal(expected, body.Statements.ToArray()
+                .Where(x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref or MirRvalueKind.Opaque } && locals[x.Place.Root].Name is "p" or "q" or "a" or "r")
+                .Select(x => $"{locals[x.Place.Root].Name} " + (x.Rvalue.Kind == MirRvalueKind.Ref ? $"{(MirRefKind)x.Rvalue.Op} {locals[x.Rvalue.Place.Root].Name ?? "temp"}"
+                    : $"opaque {TyCtxt.Name(x.Rvalue.Type!)} {string.Join(" ", body.OpaqueRoots.Slice(body.OpaqueSites[x.Rvalue.Arg].Start, body.OpaqueSites[x.Rvalue.Arg].Count).ToArray().Select(r => locals[r].Name))}")));
+        }
+    }
+
     // SPEC 14.2.2, 3.5 (DECISIONS R4-M145): a discarded Place is acquired by its plan row's bare acquisition, as at a value position, into
     // its statement's temporary: a pair layer by case, a Copy, a stored exclusive reference Reborrowed in its own mode, and the Move a
     // bare Non-Copy Place requires (its TransferRequired_Kd at it), which a later `title@move` reads moved (A1's MovedPlace_Kd).
