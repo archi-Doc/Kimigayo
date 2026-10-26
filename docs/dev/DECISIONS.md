@@ -6406,6 +6406,11 @@ resumed by R4-M86 (2026-10-20).
     reached after Binding is substituted on that first read (`Instance`'s per-pass memo, as every instance A5 reaches), and a warm read
     allocates nothing. `StoredLayer` reads the kept part instead of substituting (a layer of a Case that did not substitute, BU-37's
     null part, is a broken contract), and `Stores` reads the kept Fields and payloads.
+  - Retention (bu46's second commit): the hold walk read the erased base (`AdtDef.Base`), so a raw layer a Type argument supplies in a
+    base read Unstated (rule A) while its Field twin read its Origin's kind; `Stores` now reads the kept base. `f(x: uniq/i32, d:
+    uniq/Der<raw/i32 during x>, p: raw/i32)` keeps `0 Value store 1, 1 Content store 1, 2 Value store 1` and the `during static` twin
+    `1 Content store 1, 2 Value store 1, untied store 1`, their Field twins' rows (rule A's six rows before); `Der<raw/i32>` is
+    unchanged (RetentionTest). Over-strict before, not unsound.
   - TyCtxt (`TyCtxt.Raw.cs`, contracts there): `StoredParts(instance, out parent)`, the kept parts by the `part` RawStep takes and the
     kept base, empty for any other Type; `RawSupplied(instance, part, positions)`, whether a Type argument supplies the layer (no layer
     the declaration states there; a pair slot's included, BU-34), total where RawStep is. `RawStep`, `RawMembers`, RawStep's values and

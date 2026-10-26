@@ -258,8 +258,8 @@ public sealed partial class Binding
         return met;
     }
 
-    // The hold walk (Held) of a struct's or enum's stored content (SPEC 5.7 Slots and ownership): its base, and its Fields and Case
-    // payloads, in the instance's kept parts (Instance, DECISIONS BU-41), with the Types their declarations write; what they met. A
+    // The hold walk (Held) of a struct's or enum's stored content (SPEC 5.7 Slots and ownership): its base, Fields and Case payloads in
+    // the instance's kept parts (Instance, DECISIONS BU-41), the latter with the Types their declarations write; what they met. A
     // Case's payloads are walked only where its instance substituted that Case (its kept payload Tuple set), the part the storage verdict
     // walked (DECISIONS BU-37): the per-part rule at the Case's grain, which bounds the walk, so a failed Case's other payloads hold
     // nothing (walked by payload, a failed Case's growing siblings would not end).
@@ -271,7 +271,7 @@ public sealed partial class Binding
         }
 
         var storage = this.Instance(instance);
-        var met = AdtDef.Base(instance) is { } parent ? this.Held(parent, null, output, kept, lent) : Holding.None;
+        var met = storage.PartsBase is { } parent ? this.Held(parent, null, output, kept, lent) : Holding.None;
         var parts = storage.Parts;
         for (var i = 0; AdtDef.IsStruct(instance) && i < adt.Fields.Length; i++)
         {
