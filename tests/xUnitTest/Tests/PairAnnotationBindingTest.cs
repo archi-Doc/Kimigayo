@@ -9,6 +9,17 @@ namespace XunitTest;
 
 public class PairAnnotationBindingTest
 {
+    // Structs whose slot only a conditional pair slot uses (SPEC 15.3.5), by what the binder admits, and nested users of them.
+    internal const string HolderUniq = "struct Holder<s/T> {a}\n    s is uniq\n    public let item: s/T during a\n";
+
+    internal const string HolderOwnerUniq = "struct Holder<s/T> {a}\n    s is owner or uniq\n    public let item: s/T during a\n";
+
+    internal const string HolderRefUniq = "struct Holder<s/T> {a}\n    s is ref or uniq\n    public let item: s/T during a\n";
+
+    internal const string InnerOwnerUniq = "struct Inner<r/U> {b}\n    r is owner or uniq\n    public let x: r/U during b\n";
+
+    private const string OuterOwnerUniq = "struct Outer<q/U> {b}\n    q is owner or uniq\n    public let h: Holder<q/U during b> during b\n";
+
     [Theory]
     [InlineData("s/T during a")]
     [InlineData("s/(T) during a")]
@@ -147,6 +158,42 @@ public class PairAnnotationBindingTest
         Assert.False(c.Bind().IsComplete);
         Assert.Equal([DiagnosticCode.InvalidOriginBinding_Kd], c.Binding.Issues.Select(static x => x.Code));
     }
+
+    // SPEC 15.3.5, 15.2.3, 8.15.2 (DECISIONS BU-44): a slot only a conditional pair slot uses is `uniq` in its binder's `uniq` cases and
+    // none elsewhere, so `static` binds it only where the instance's case stores no exclusive Loan: a concrete argument selects its case
+    // (`s is uniq`'s only case included), a pair layer of a binder in scope that binder's cases, each of which must be valid, through a
+    // nested Type, an enclosing declaration's binder, an enum's Case or a method's Container binder too; a Type parameter selects no case
+    // and adds no record beside its UnprovenConstraint_Kd.
+    [Theory]
+    [InlineData(HolderUniq + "func g(r: uniq/i32) -> Holder<uniq/i32 during r> during static => $abort(\"u\")", "InvalidOriginBinding_Kd: Holder<uniq/i32 during r> during static")]
+    [InlineData(HolderOwnerUniq + "func g() -> Holder<i32> during static => $abort(\"u\")", "")]
+    [InlineData(HolderRefUniq + "func g(r: ref/i32) -> Holder<ref/i32 during r> during static => $abort(\"u\")", "")]
+    [InlineData(HolderRefUniq + "func g(r: uniq/i32) -> Holder<uniq/i32 during r> during static => $abort(\"u\")", "InvalidOriginBinding_Kd: Holder<uniq/i32 during r> during static")]
+    [InlineData(HolderOwnerUniq + "func g<q/U>(x: q/U) -> Holder<q/U> during static\n    q is owner or uniq\n    $abort(\"u\")", "InvalidOriginBinding_Kd: Holder<q/U> during static")]
+    [InlineData(HolderOwnerUniq + "func g<q/U>(x: q/U) -> Holder<q/U> during static\n    q is owner\n    $abort(\"u\")", "")]
+    [InlineData(HolderOwnerUniq + OuterOwnerUniq + "func g(r: uniq/i32) -> Outer<uniq/i32 during r> during static => $abort(\"u\")", "InvalidOriginBinding_Kd: Outer<uniq/i32 during r> during static")]
+    [InlineData(HolderOwnerUniq + OuterOwnerUniq + "func g() -> Outer<i32> during static => $abort(\"u\")", "")]
+    [InlineData(InnerOwnerUniq + "struct Outer {a, c}\n    let j: Inner<uniq/i32 during c>{v}\n        origin v.b == a\nfunc lent(h: Outer{w}) -> i32\n    origin w.a == static\n    return 0", "InvalidOriginBinding_Kd: Outer{w}")]
+    [InlineData(InnerOwnerUniq + "struct Outer {a}\n    let j: Inner<i32> during a\nfunc cached(h: Outer during static) => ()", "")]
+    [InlineData(
+        "struct Outer<s/T>\n    s is owner or uniq\n    public struct Inner<U> {a}\n        public let u: U\n        public let x: s/T during a\n" +
+        "func g(r: uniq/i32) -> Outer<uniq/i32 during r>.Inner<i64> during static => $abort(\"u\")\nfunc h() -> Outer<i32>.Inner<i64> during static => $abort(\"u\")",
+        "InvalidOriginBinding_Kd: Outer<uniq/i32 during r>.Inner<i64> during static")]
+    [InlineData(
+        "struct M<s/T, t/U> {a}\n    s is owner or uniq\n    t is owner or ref\n    public let x: s/T during a\n    public let y: t/U during a\nfunc f1() -> M<i32, i32> during static => $abort(\"u\")\n" +
+        "func f2(r: ref/i32) -> M<i32, ref/i32 during r> during static => $abort(\"u\")\nfunc f3(r: uniq/i32) -> M<uniq/i32 during r, i32> during static => $abort(\"u\")",
+        "InvalidOriginBinding_Kd: M<uniq/i32 during r, i32> during static")]
+    [InlineData(
+        "enum E<s/T> {a}\n    s is owner or uniq\n    One(s/T during a)\n    Two\nfunc g(r: uniq/i32) -> E<uniq/i32 during r> during static => $abort(\"u\")\nfunc h() -> E<i32> during static => $abort(\"u\")",
+        "InvalidOriginBinding_Kd: E<uniq/i32 during r> during static")]
+    [InlineData(
+        "struct Holder<s/T> {a}\n    s is owner or uniq\n    public let item: s/T during a\n    public func peek(self: ref/Self, w: s/T during b) => ()\nfunc g(r: uniq/i32) -> Holder<uniq/i32 during r> during static => $abort(\"u\")",
+        "InvalidOriginBinding_Kd: Holder<uniq/i32 during r> during static")]
+    [InlineData(
+        "struct Holder<s/T> {a}\n    s is owner or ref or uniq\n    public let item: s/T during a\nstruct Outer<U> {b}\n    public let h: Holder<U> during b\nfunc g() -> Outer<i32> during static => $abort(\"u\")",
+        "UnprovenConstraint_Kd: let h: Holder<U> during b | UnprovenConstraint_Kd: h | UnprovenConstraint_Kd: Holder<U> | UnprovenConstraint_Kd: Holder<U> during b")]
+    public void AStaticSlotArgumentIsJudgedInTheInstancesCase(string declarations, string records)
+        => Assert.Equal(records, string.Join(" | ", RawPointerSyntaxTest.Records(declarations)));
 
     // SPEC 8.1.2, 23.1.2: a pair occurrence's formation publishes each independent cause, a Language cause before a target role that
     // is not proven: a missing slot under an admitted borrow is MissingOriginBinding_Kd, as for its concrete twin, and an unproven Object

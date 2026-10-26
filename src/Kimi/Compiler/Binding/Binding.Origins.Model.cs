@@ -52,6 +52,21 @@ public enum LoanRequirement : byte
     Uniq,
 }
 
+/// <summary>A declared slot's Loan requirement over the Semantics cases of its declaration's pair binders (SPEC 15.3.5; DECISIONS BU-44):
+/// <see cref="Unconditional"/> in every case, joined in one case with the class of each binder in <see cref="Binders"/> that the case
+/// gives a borrow Semantics (`ref` for ref and objref, `uniq` for uniq and objuniq). Bits are the GenericSlots indexes of the schema
+/// listing the slot, own then inherited, of pair binders admitting a borrow; Binding.RequirementAt reads it at an instance.</summary>
+/// <param name="Unconditional">The requirement in every case.</param>
+/// <param name="Binders">The pair binders whose borrow cases use the slot.</param>
+public readonly record struct SlotRequirement(LoanRequirement Unconditional, ulong Binders)
+{
+    /// <summary>Joins two requirements (SPEC 15.3.5: uses propagate the stronger in each case).</summary>
+    /// <param name="other">The other requirement.</param>
+    /// <returns>The stronger unconditional part with both binder sets.</returns>
+    public SlotRequirement Join(SlotRequirement other)
+        => new(other.Unconditional > this.Unconditional ? other.Unconditional : this.Unconditional, this.Binders | other.Binders);
+}
+
 public enum BindingObligationKind : byte
 {
     OriginOutlives,
@@ -106,7 +121,7 @@ public sealed class OriginParameter(string name, int slot, BoundOrigin origin, S
 
     public OriginVariance Variance { get; internal set; }
 
-    public LoanRequirement LoanRequirement { get; internal set; }
+    public SlotRequirement Requirement { get; internal set; }
 }
 
 /// <summary>Shared ordered generic and Origin binders for one declaration.</summary>

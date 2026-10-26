@@ -14,6 +14,7 @@
 //   formed.
 // - Prohibitions: no inference, proof or judgment re-run to explain a failure; no failure decided here.
 
+using System.Text;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -336,6 +337,33 @@ public sealed partial class Binding
         return false;
     }
 
+    // SPEC 23.1.2 (DECISIONS BU-44): the Semantics cases a slot's check recorded (Binding.FailingCase), as ` in the Semantics case s =
+    // owner`: per binder, its Semantics joined by `or`, binders joined by `, ` in a product (a Phantom slot's) or listed by `; ` in a
+    // union (a `uniq` slot's); empty for none, a failure in every case.
+    private static string CaseText(PairCase[] cases, bool union)
+    {
+        var text = new StringBuilder();
+        var several = false;
+        for (var i = 0; i < cases.Length; i++)
+        {
+            if (i > 0 && ReferenceEquals(cases[i].Target, cases[i - 1].Target))
+            {
+                text.Append(" or ");
+                several = true;
+            }
+            else
+            {
+                var separator = union ? "; " : ", ";
+                text.Append(i == 0 ? string.Empty : separator).Append(cases[i].Target.Pair?.Name ?? cases[i].Target.Name).Append(" = ");
+                several |= union && i > 0;
+            }
+
+            text.Append(cases[i].Semantics.ToText());
+        }
+
+        return cases.Length == 0 ? string.Empty : (several ? " in the Semantics cases " : " in the Semantics case ") + text;
+    }
+
     // SPEC 15.4.3, 15.6.1: a result fitting or Origin failure whose omitted result Origin defaulted to static because the only
     // matching borrow sits inside an Option input explains that boundary in the Note. Run only while publishing failures.
     private string? OmittedResultNote(Koto node)
@@ -437,24 +465,34 @@ public sealed partial class Binding
         => (this.absentSlotProjections ??= new(ReferenceEqualityComparer.Instance))[projection] = type;
 
     // SPEC 15.2.3: a static Origin bound to a slot that requires uniq (ValidateOriginRequirements); SPEC 5.7: a Phantom slot a raw layer
-    // states (InvalidRawOrigin); each with that slot related.
+    // states (InvalidRawOrigin); each with that slot related and, for a conditional slot, the Semantics cases its check recorded
+    // (CaseText; SPEC 23.1.2, DECISIONS BU-44).
     private bool ReportInvalidOriginSlot(Koto node, DiagnosticRequirement requirement, DiagnosticCode code)
     {
-        if (this.invalidStaticOriginSlots?.TryGetValue(node, out var slot) == true)
+        if (this.invalidStaticOriginSlots?.TryGetValue(node, out var invalid) == true)
         {
-            node.Report(requirement, code, evidence: [$"static cannot supply uniq for Origin slot {slot!.Name}"], note: $"Origin slot {slot.Name} requires uniq and cannot bind to static; a static Origin admits no exclusive loan (SPEC 15.2.3)", relatedSpans: [("Origin slot", slot.Origin.Binder!, slot.Span, "requires uniq")]);
+            var slot = invalid.Slot;
+            var found = CaseText(invalid.Cases, union: true);
+            node.Report(
+                requirement,
+                code,
+                evidence: [$"static cannot supply uniq for Origin slot {slot.Name}{found}"],
+                note: $"Origin slot {slot.Name} requires uniq{found} and cannot bind to static; a static Origin admits no exclusive loan (SPEC 15.2.3)",
+                relatedSpans: [("Origin slot", slot.Origin.Binder!, slot.Span, "requires uniq")]);
             return true;
         }
 
         if (this.phantomRawOrigins?.TryGetValue(node, out var phantom) == true)
         {
-            var note = $"a raw layer states a slot that no stored safe reference or Loan<T> Field keeps; add a Loan Field over {phantom!.Name}";
+            var slot = phantom.Slot;
+            var found = CaseText(phantom.Cases, union: false);
+            var note = $"a raw layer states a slot that no stored safe reference or Loan<T> Field keeps{found}; add a Loan Field over {slot.Name}";
             node.Report(
                 requirement,
                 code,
-                evidence: [$"Origin slot {phantom.Name} is Phantom"],
+                evidence: [$"Origin slot {slot.Name} is Phantom{found}"],
                 note: note + " (SPEC 5.7, 15.3.5)",
-                relatedSpans: [("Origin slot", phantom.Origin.Binder!, phantom.Span, "Phantom")]);
+                relatedSpans: [("Origin slot", slot.Origin.Binder!, slot.Span, "Phantom")]);
             return true;
         }
 
