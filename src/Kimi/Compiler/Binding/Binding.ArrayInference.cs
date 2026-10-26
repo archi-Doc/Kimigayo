@@ -235,7 +235,8 @@ public sealed partial class Binding
 
     // SPEC 4.3: without a fixed-array expectation an independent literal constructs an Array whose element Type is the
     // one complete Type its elements establish; unfitted numeric literals follow ordinary inference. Call arguments keep
-    // candidate-local fitting and never take this default. While it collects that evidence, its parts' literals wait for it.
+    // candidate-local fitting and never take this default. While it collects that evidence, its parts' literals wait for it. Every
+    // element is bound, also after a failed one (SPEC 23.1.2), as a Dictionary literal's parts are (IndependentDictionaryType).
     private BoundType? BindIndependentArrayLiteral(ArrayLiteralKoto literal, BindingScope scope)
     {
         BoundType? established = null;
@@ -243,9 +244,9 @@ public sealed partial class Binding
         var collecting = this.collectingElements;
         this.collectingElements = literal;
         var collected = true;
-        for (var i = 0; collected && i < literal.Elements.Count; i++)
+        for (var i = 0; i < literal.Elements.Count; i++)
         {
-            collected = this.CollectLiteralElementEvidence(literal.Elements[i], scope, ref established, ref literalDefault);
+            collected &= this.CollectLiteralElementEvidence(literal.Elements[i], scope, ref established, ref literalDefault);
         }
 
         this.collectingElements = collecting;
