@@ -761,12 +761,7 @@ public sealed partial class Binding
 
         if (symbol.Property is { } property)
         {
-            var target = node;
-            while (target.Parent is ParenthesizedKoto parentheses)
-            {
-                target = parentheses;
-            }
-
+            var target = Grouped(node);
             var assignment = target.Parent is BinaryKoto binary && ReferenceEquals(binary.Left, target) && binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
             var write = assignment && target.Parent!.Akind == KotoKind.Equals;
             var update = (assignment && !write) || target.Parent?.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement;
@@ -848,17 +843,9 @@ public sealed partial class Binding
         {
             type = this.StoredType(type, declaringType);
         }
-        else if (type is null && symbol is { Kind: BindingSymbolKind.Parameter, Declaration: FunctionKoto function, Slot: var slot } &&
-            (uint)slot < (uint)function.Parameters.Count)
+        else if (type is null)
         {
-            // A parameter's Type is bound with its function's header; a use without a Type consulted it.
-            this.Consulted(function.Parameters[slot].Type);
-        }
-        else if (type is null && symbol is { Kind: BindingSymbolKind.Parameter, Declaration: PropertyAccessorKoto accessorSyntax })
-        {
-            var accessor = Accessor(accessorSyntax);
-            var annotation = ReferenceEquals(symbol, accessor.SelfSymbol) ? accessorSyntax.ReceiverType : accessorSyntax.ValueType;
-            this.Consulted(annotation ?? accessor.Property.Declaration.TypeKoto ?? accessor.Property.Declaration);
+            this.ConsultTypeSource(symbol);
         }
 
         return Complete(node, node is MemberAccessKoto && type is not null ? this.ReadHolder(type, node, node) : type);

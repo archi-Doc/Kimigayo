@@ -25,6 +25,8 @@ public class CaptureDiagnosticTest
 
     private const string Text = "let start = 0\nvar text = func [var start] () -> string\n    start += 1\n    return \"a\"\n";
 
+    private const string Main = "\npublic func main() => ()";
+
     // SPEC 7.7.2: a capture name that a later entry, or a parameter, repeats is one DuplicateBinding_Kd at the later name, with the
     // entry it repeats related; it was located at the whole closure. A later call of the closure rests on it.
     [Theory]
@@ -157,6 +159,24 @@ public class CaptureDiagnosticTest
         {
             Assert.Equal(source.LastIndexOf("(text)", StringComparison.Ordinal) + 1, output.Diagnostics[1].Span!.Value.Start);
         }
+    }
+
+    // SPEC 7.7.2, 23.1.2 (PLAN G260): an omitted list captures no binding whose Type failed, and the use rests on the binding's
+    // declaration, as a written entry does: a local's failed initializer, a loop's failed iterable, a parameter's failed Type, also
+    // through an enclosing omitted list. A use that an explicit list does not hold stays its own error. Each twin writes `valid`.
+    [Theory]
+    [InlineData("func g() -> i32\n    let z = MISSING\n    let w = func () -> i32 => z\n    return w()", "missing", "1", "", "")]
+    [InlineData("func g() -> i32\n    for i in MISSING\n        let w = func () => i\n        _ = w()\n    return 0", "missing", "0..3", "", "")]
+    [InlineData("func g(p: MISSING) -> i32\n    let w = func () -> i32 => p\n    return w()", "Missing", "i32", "", "")]
+    [InlineData("func g() -> i32\n    let z = MISSING\n    let w = func () -> i32\n        let u = func () -> i32 => z\n        return u()\n    return w()", "missing", "1", "", "")]
+    [InlineData("func g() -> i32\n    let z = MISSING\n    let y = 1\n    let w = func [y] () -> i32 => z\n    return w()", "missing", "1", " | InvalidCaptureBinding_Kd z", "InvalidCaptureBinding_Kd z")]
+    public void AnOmittedListCapturesNoBindingWhoseTypeFailed(string source, string failed, string valid, string other, string twin)
+    {
+        Assert.Equal($"UnresolvedBinding_Kd {failed}{other}", Records(source.Replace("MISSING", failed, StringComparison.Ordinal) + Main));
+        Assert.Equal(twin, Records(source.Replace("MISSING", valid, StringComparison.Ordinal) + Main));
+
+        static string Records(string source)
+            => string.Join(" | ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}"));
     }
 
     // SPEC 7.7.3, 8.10: a closure argument whose minimum call receiver its Callable Constraint does not permit names both receivers in

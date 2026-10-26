@@ -208,9 +208,10 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal([write.Parameters[1], write.Parameters[3], write.Parameters[4]], line.Operands);
     }
 
-    // SPEC 7.7.4 (DECISIONS R5-M108): a compiler function's call is its direct call's row, whatever targets the row needs: Text.toString's
-    // row runs the format witness and Text.writer's the reserve witness, but neither function is its witness, so their Items, called as
-    // values or erased, wait for C9a's rows, one located Unsupported_Kd each (they called the witness with the function's operands before).
+    // SPEC 7.7.4 (DECISIONS R5-M108, R5-M128): a compiler function's call is its direct call's row, whatever targets the row needs:
+    // Text.toString's row runs the format witness and Text.writer's the reserve witness, but neither function is its witness, so their Items,
+    // called as values or erased, run their row: a user formatter's toString and Text.writer's ErasedWriter wait for C9b, one located
+    // Unsupported_Kd each (they called the witness with the function's operands before).
     [Theory]
     [InlineData(UserFormat + "public func run(n: ref/Value<i32>) -> string\n    let show = Text.toString<Value<i32>>\n    return show(n)\n", "show(n)")]
     [InlineData(UserFormat + "public func run(n: ref/Value<i32>) -> string\n    let show: (ref/Value<i32>) -> string = Text.toString\n    return show(n)\n", "Text.toString")]

@@ -16,7 +16,7 @@ namespace Kimi.Compiler.Backend;
 // C3b's row (Location).
 internal sealed partial class FunctionCodegen
 {
-    private readonly Value[] slotless = new Value[1]; // A routine row's slot-less values (Routine).
+    private readonly Value[] slotless = new Value[1]; // A routine row's slot-less values (Routine), a formatting row's kind among them.
 
     private void Intrinsic(in MirTerminator call, in IntrinsicRow row)
     {
@@ -63,33 +63,39 @@ internal sealed partial class FunctionCodegen
     // SPEC 7.7.4 (DECISIONS R5-M108, R5-M116): a compiler function's routine row by its disposition, what its adapter's entry calls
     // (FunctionCodegen.Closures' Runs) with the target it carries, and an intrinsic's Value call: an intrinsic's routine row (below), a Body
     // disposition's legacy routine (LegacyRuntimeHelpers.Row); null for any other row, which is not one routine call or not written yet (a
-    // Shim's, an instruction writer's, an unwritten row's).
-    private FunctionAbi? Routine(CompilerFunctionKind kind, BoundType? result, int target, out ReadOnlySpan<Value> given)
+    // Shim's, an instruction writer's, an unwritten row's), and after a record at the source.
+    private FunctionAbi? Routine(CompilerFunctionKind kind, BoundType? result, int target, SourceInfo source, out ReadOnlySpan<Value> given)
     {
         given = default;
         return IntrinsicDisposition.Of(kind) switch
         {
             { Kind: DispositionKind.Intrinsic, Id: var id } => this.Routine(IntrinsicRows.Of(id), result, target, out given),
-            _ => LegacyRuntimeHelpers.Row(kind) is { } row ? this.Routine(row, target, out given) : null,
+            _ => LegacyRuntimeHelpers.Row(kind) is { } row ? this.Routine(row, target, source, out given) : null,
         };
     }
 
-    // A legacy row's routine (DECISIONS R5-M116, R5-M121, R5-M124), the one path its direct call, its Item's Value call and its adapter's
-    // entry take, its slot-less values into `given`: a Routine row's (writeLine); a row's in its function's instance (LegacyRow.InInstance),
-    // its call site's LegacyRow item's (ModuleCodegen.Row: the item's Array helper or its row's capacity routine, given the element's stride
-    // or a fixed array's length, or placeEntry's Place helper, which takes no given value); null for any other row, and after a record (such
-    // a row's call targets its item, K 4.5 row 2).
-    private FunctionAbi? Routine(LegacyRow row, int target, out ReadOnlySpan<Value> given)
+    // A legacy row's routine (DECISIONS R5-M116, R5-M121, R5-M124, R5-M128), the one path its direct call, its Item's Value call and its
+    // adapter's entry take, its slot-less values into `given`: a Routine row's (writeLine); a Formatting row's, given its witness target's kind
+    // (FunctionCodegen.Formatting); a row's in its function's instance (LegacyRow.InInstance), its call site's LegacyRow item's
+    // (ModuleCodegen.Row: the item's Array helper or its row's capacity routine, given the element's stride or a fixed array's length, or
+    // placeEntry's Place helper, which takes no given value); null for any other row, and after a record at the source (such a row's call
+    // targets its item, K 4.5 row 2).
+    private FunctionAbi? Routine(LegacyRow row, int target, SourceInfo source, out ReadOnlySpan<Value> given)
     {
         given = default;
         if (!row.InInstance)
         {
-            return row.Writer == LegacyWriter.Routine ? row.Routine : null;
+            return row.Writer switch
+            {
+                LegacyWriter.Routine => row.Routine,
+                LegacyWriter.Formatting => this.Formatting(row, target, source, out given),
+                _ => null,
+            };
         }
 
         if (target < 0 || this.collector.Set.Items[target].Key.Kind != MonoKind.LegacyRow)
         {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The collector targets an Instance row's call at its LegacyRow item.
+            this.Report(DiagnosticCode.InternalInvariant_Kd, source); // The collector targets an Instance row's call at its LegacyRow item.
             return null;
         }
 

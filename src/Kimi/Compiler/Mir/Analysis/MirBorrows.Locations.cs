@@ -22,7 +22,7 @@ internal sealed partial class MirBorrows
         this.accessCount = 0;
         var at = new MirLocation(block, index);
         var statement = index < this.body.Blocks[block].Count ? this.body.Statements[location] : default;
-        var visitor = new Accessing(this, at, index < this.body.Blocks[block].Count ? statement.Kind : MirStatementKind.Assign, this.Reborrowing(statement));
+        var visitor = new Accessing(this, at, this.Reborrowing(statement));
         MirUses.ForEach(cases, at, ref visitor);
         var (accessed, scope) = (this.accessCount, this.Source(location).Scope); // The location's own accesses; its effect access follows them.
         this.Effecting(block, index);

@@ -4,15 +4,15 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The Call terminator of FunctionCodegen (R5 package C 3.2 I8, plan C3a, C3b, C8a, C5a, C6c, C8b, C8d, C8e; DECISIONS R5-M89, R5-M92, R5-M93,
-// R5-M102, R5-M114, R5-M116, R5-M121, R5-M124): a callee by its kind's row (a Value callee's in FunctionCodegen.Closures, a compiler function's of the Body
-// disposition by its legacy row's writer, Legacy), the collector's targets read by one forward cursor, each once in its site's order, and
-// the one call writer, which the legacy rows, the intrinsic rows, the glue items and the module's entry call too; each argument is
-// FunctionCodegen.Arguments' (its parameter's kind, a copy slot). A call that dispatches (SPEC 6.4.3, 6.4.6) runs through a virtual slot,
-// which only makes the callee value it writes (EntryOf): a Virtual callee, without a target (X5), under its slot's signature
-// (ModuleCodegen.Slot); a body target that implements a slot, a requirement's virtual witness (BodyRun); a Builtin target its shim's
-// function (FunctionCodegen.Shims; DECISIONS R5-M126). Rows not written yet: a format shim (C9b), a property witness (C3c), a requirement
-// whose witness has no body (PLAN G157 (10)), the other compiler functions' legacy rows (C9a; LegacyRuntimeHelpers.Row).
+// The Call terminator of FunctionCodegen (R5 package C 3.2 I8, plan C3a, C3b, C8a, C5a, C6c, C8b, C8d, C8e, C9a; DECISIONS R5-M89, R5-M92,
+// R5-M93, R5-M102, R5-M114, R5-M116, R5-M121, R5-M124, R5-M128): a callee by its kind's row (a Value callee's in FunctionCodegen.Closures, a
+// compiler function's of the Body disposition by its legacy row's writer, Legacy), the collector's targets read by one forward cursor, each
+// once in its site's order, and the one call writer, which the legacy rows, the intrinsic rows, the glue items and the module's entry call
+// too; each argument is FunctionCodegen.Arguments' (its parameter's kind, a copy slot). A call that dispatches (SPEC 6.4.3, 6.4.6) runs
+// through a virtual slot, which only makes the callee value it writes (EntryOf): a Virtual callee, without a target (X5), under its slot's
+// signature (ModuleCodegen.Slot); a body target that implements a slot, a requirement's virtual witness (BodyRun); a Builtin target its
+// shim's function (FunctionCodegen.Shims; DECISIONS R5-M126). Rows not written yet: a format shim and a user formatter's wrapper (C9b), a
+// property witness (C3c), a requirement whose witness has no body (PLAN G157 (10)).
 internal sealed partial class FunctionCodegen
 {
     private int cursor; // The item's first target not passed yet (I8).
@@ -149,8 +149,9 @@ internal sealed partial class FunctionCodegen
 
     // A call's arguments in its signature's parameter order, into `arguments` (IMPL 21.3.1, SPEC 22.6): each parameter's argument (Argument),
     // the destination's address as the result slot, the call's location for the location parameters (SPEC 22.5.1, Location; DECISIONS
-    // R5-M92, R5-M93), a parameter without an operand (Given: a runtime routine's stride or reason, a Closure's environment and context)
-    // the next of the given values. The operands are in the order the callee's key gives (ArgumentPosition). A result slot is the destination, a fresh
+    // R5-M92, R5-M93), a capacity Context the length of the fixed array its operand refers to (Measure; DECISIONS R5-M128), a parameter
+    // without an operand (Given: a runtime routine's stride or reason, a formatting row's kind, a Closure's environment and context) the
+    // next of the given values. The operands are in the order the callee's key gives (ArgumentPosition). A result slot is the destination, a fresh
     // temp or local, never a pointer argument: a Move's Place is moved out and a Copy's a copy slot (DECISIONS R5-M89). False after a record.
     private bool Pass(in MirTerminator call, FunctionAbi signature, MirDefKey callee, ReadOnlySpan<Value> given)
     {
@@ -178,6 +179,17 @@ internal sealed partial class FunctionCodegen
             }
 
             var index = call.Start + ArgumentPosition(callee, parameter.LogicalIndex);
+            if (parameter.Kind == AbiParameterKind.Context)
+            {
+                if (this.Measure(this.InstanceType(this.body.Operands[index])) is not { } length)
+                {
+                    return false; // Recorded.
+                }
+
+                this.arguments[i] = length;
+                continue;
+            }
+
             var found = parameter.Kind == AbiParameterKind.ResultSlot ? this.Address(call.Place, out this.arguments[i])
                 : this.Argument(this.body.Operands[index], this.copyOf[index], parameter.Kind, out this.arguments[i]);
             if (!found)
@@ -211,10 +223,10 @@ internal sealed partial class FunctionCodegen
     // A compiler function the backend serves from its legacy row until R8 writes its body (the Body disposition; LegacyRuntimeHelpers.Row,
     // DECISIONS R5-M116), by the row's writer, at its direct call and at its Item's Value call (SPEC 7.7.4), with the target the call site
     // carries: a runtime routine through the one call writer (Invoke), the row's or, for an Array operation or storage kind and placeEntry,
-    // its call's LegacyRow item's in the function's instance (Routine; DECISIONS R5-M121, R5-M124), the call's operands at its parameters'
-    // slots placed by the call's own key and the call site's location; a whole-value update (FunctionCodegen.Updates); a fixed array's or a
-    // Dictionary's storage kernel (FunctionCodegen.Storage); setArrayLength's length (FunctionCodegen.Arrays); a row not written yet, its
-    // unit's located Unsupported_Kd.
+    // its call's LegacyRow item's in the function's instance (Routine; DECISIONS R5-M121, R5-M124) or a formatting routine
+    // (FunctionCodegen.Formatting; DECISIONS R5-M128), the call's operands at its parameters' slots placed by the call's own key and the call
+    // site's location; a whole-value update (FunctionCodegen.Updates); a fixed array's or a Dictionary's storage kernel
+    // (FunctionCodegen.Storage); setArrayLength's length (FunctionCodegen.Arrays).
     private void Legacy(in MirTerminator call, LegacyRow row, int target)
     {
         if (row.Updates)
@@ -229,15 +241,15 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        if (this.Routine(row, target, out var given) is { } routine)
+        if (this.Routine(row, target, call.Source, out var given) is { } routine)
         {
             this.Invoke(call, routine, new(call.Callee.Symbol, MirBodyKind.Fn), given);
             return;
         }
 
-        if (row.InInstance)
+        if (row.InInstance || row.Fixed)
         {
-            return; // A broken contract, recorded (Routine).
+            return; // Recorded (Routine): a broken contract, or a user formatter's wrapper (C9b).
         }
 
         switch (row.Writer)
@@ -247,9 +259,6 @@ internal sealed partial class FunctionCodegen
                 return;
             case LegacyWriter.Length:
                 this.ArrayLength(call);
-                return;
-            case LegacyWriter.Unwritten:
-                this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // Its row's unit (LegacyRuntimeHelpers.Row).
                 return;
             default:
                 throw new InvalidOperationException($"The legacy writer {row.Writer} has no code generation row.");

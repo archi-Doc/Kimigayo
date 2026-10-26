@@ -29,6 +29,14 @@ public class DiagnosticPrecisionTest
         Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
+    // SPEC 23.1.2 (PLAN G260): a loop binding of a failed iterable rests on it, as a pattern binding rests on a failed Subject, so a
+    // check of its use publishes nothing more; over a valid iterable the same use's missing member is its own error.
+    [Theory]
+    [InlineData("missing", "UnresolvedBinding_Kd missing")]
+    [InlineData("0..3", "UnresolvedBinding_Kd i.foo")]
+    public void ALoopBindingRestsOnItsFailedIterable(string iterable, string records)
+        => Assert.Equal(records, string.Join(" | ", PublishedErrors(MinimalEmissionTest.Analyze($"public func main()\n    for i in {iterable}\n        i.foo()")).Select(static x => $"{x.Code} {x.Text}")));
+
     // DIAGNOSTICS.md rule 3: an implementation limit is Unsupported where it is met; a check that rests on a failed Type
     // (expected Type, candidate signature, generic Name) is derived and published only through that failure.
     [Theory]
