@@ -4644,8 +4644,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     failed, the same published fact as every consumed child's (`BareOf`: no Type, or an Error Copy proof; SPEC 23.1.2), which
     `Operand` derives with no record; a trailing item whose column is unset so reaches the same case (`Result`), as the semantic case
     `syntax/parameter-without-type` does (its MIR now that derived Opaque instead of a Copy).
-    `HirFormsTest.EveryDiscardedPlaceHasItsAcquisition` pins that a program Binding accepts has no unset row there,
-    `MirBuildTest.AnUnsetDiscardRowIsDerivedFromABindingError` the derived reading beside an unresolved parameter Type.
+    `HirFormsTest.EveryDiscardedPlaceHasItsAcquisition` (discard forms) and `.AnAcceptedProgramLeavesNoDiscardRowUnset` (the SPEC
+    examples both paths accept, the library and the milestones) pin that a program Binding accepts has no unset row there,
+    `MirBuildTest.AnUnsetDiscardRowIsDerivedFromABindingError` the derived reading beside an unresolved parameter Type. The rows'
+    gate, a Place with no Adjust or a group's operand, is the builder's reach: a label wraps only a control-flow construct.
   - Behavior: a discarded bare Non-Copy Place is the Move it requires, so A1 reports the old path's dependent `MovedPlace_Kd` at a
     later `title@move` (spec case 14.2.2-discarded-place; ledger row b9587fd3dc91 closes by agreement); a discarded pair-layer capture
     Reborrows by case and a discarded concrete `uniq` capture Reborrows (PLAN G251 (7)), so a `let` Closure's call of either is

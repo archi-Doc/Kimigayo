@@ -14,6 +14,36 @@ namespace XunitTest;
 /// HirFormsTest.Errors.cs. Each program also satisfies the corpus contract (HirColumnsTest).</summary>
 public sealed partial class HirFormsTest
 {
+    // The programs AnAcceptedProgramLeavesNoDiscardRowUnset sweeps: every SPEC example variant without an expected record that the old
+    // path accepts too (Binding records none), the library and the milestone programs.
+    public static TheoryData<string> AcceptedPrograms
+    {
+        get
+        {
+            var data = new TheoryData<string>();
+            foreach (var example in DiagnosticCorpus.SpecCases)
+            {
+                for (var i = 0; i < example.Variants.Length; i++)
+                {
+                    if (example.Variants[i] is { Expected.Length: 0 } variant && (variant.Old?.Records.Length ?? 0) == 0)
+                    {
+                        data.Add($"spec/{example.Name}/{i}");
+                    }
+                }
+            }
+
+            foreach (var name in SemanticSnapshotTest.CaseNames())
+            {
+                if (name == "library" || name.StartsWith("milestone/", StringComparison.Ordinal))
+                {
+                    data.Add(name);
+                }
+            }
+
+            return data;
+        }
+    }
+
     // SPEC 7.2.3: a later default reads the slot its call prepared for an earlier parameter; a closure there reads its capture.
     [Fact]
     public void ParametersReadInLaterDefaultsAreThePreparedSlots()
@@ -569,7 +599,8 @@ public sealed partial class HirFormsTest
     // SPEC 14.2.2, 23.1.2 (DECISIONS R4-M145): in a program Binding accepts, every Place the MIR builder takes as its value by its plan
     // row (a Place no consumer's Adjust takes, or a group's operand in Discard Context) has its bare acquisition there, so the builder's
     // derived reading of an unset row arises only beside a Binding error (MirBuildTest.AnUnsetDiscardRowIsDerivedFromABindingError).
-    // The library and the milestone programs discard no Place.
+    // The forms below each discard a Place; a group's operand is a parenthesized one (a label wraps only a control-flow construct, never
+    // a Place: Parser's label rule).
     [Theory]
     [InlineData("func f(count: i32, r: uniq/i32, items: [2 of i32])\n    count\n    r\n    (r)\n    ((count))\n    items[1]\n")]
     [InlineData("func f<s/T>(value: s/T, c: bool)\n    s is owner or uniq\n    T is Copy\n    value\n    if c\n        value\n    match c\n        true => value\n        false => ()\n")]
@@ -580,10 +611,39 @@ public sealed partial class HirFormsTest
         var c = MinimalEmissionTest.Analyze(source + "public func main() => ()\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         HirTables.Publish(c);
-        var built = Reachable(c.Kotonoha).Where(static x => HirTables.Op(x) is HirOp.Name or HirOp.Field or HirOp.Index or HirOp.Deref or HirOp.Call &&
-            HirTables.PlaceOf(x).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value) &&
-            (HirTables.AdjustOf(x).Acquire == HirAcquire.Unset || (x.Parent is ParenthesizedKoto or LabeledKoto && !KotoHelper.IsValueContext(x)))).ToArray();
+        var built = BuiltByTheirRow(c.Kotonoha).ToArray();
         Assert.NotEmpty(built);
         Assert.All(built, static x => Assert.NotEqual(HirAcquire.Unset, HirTables.PlanOf(x).Adjust.Acquire));
     }
+
+    // The same over the accepted SPEC examples and the corpus (R5's sweep): no Place the builder reads by its row has it unset.
+    [Theory]
+    [MemberData(nameof(AcceptedPrograms))]
+    public void AnAcceptedProgramLeavesNoDiscardRowUnset(string name)
+    {
+        Kotonoha module;
+        if (name.StartsWith("spec/", StringComparison.Ordinal))
+        {
+            var example = DiagnosticCorpus.SpecCases.Single(x => x.Name == name[5..name.LastIndexOf('/')]);
+            var variant = example.Variants[int.Parse(name[(name.LastIndexOf('/') + 1)..], CultureInfo.InvariantCulture)];
+            var c = VerifiedSpecExampleTest.Bind(DiagnosticCorpus.Source(example, variant));
+            Assert.True(c.Binding.Result.IsComplete, name);
+            module = c.Kotonoha;
+        }
+        else
+        {
+            module = SemanticSnapshotTest.Bind(name).Module;
+        }
+
+        HirTables.Publish(module.Compilation);
+        var unset = BuiltByTheirRow(module).Where(static x => HirTables.PlanOf(x).Adjust.Acquire == HirAcquire.Unset);
+        Assert.Empty(unset.Select(static x => $"{x.Span.Start} {x}"));
+    }
+
+    // The Places the MIR builder acquires by their plan row (MirBuilder.Into's Place case): a Place no consumer's Adjust takes (a
+    // discarded item, or an item no consumer took), or a group's operand in Discard Context, as the publisher writes them.
+    private static IEnumerable<Koto> BuiltByTheirRow(Kotonoha module) => Reachable(module).Where(static x =>
+        HirTables.Op(x) is HirOp.Name or HirOp.Field or HirOp.Index or HirOp.Deref or HirOp.Call &&
+        HirTables.PlaceOf(x).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value) && (HirTables.AdjustOf(x).Acquire == HirAcquire.Unset ||
+        (x.Parent is { } parent && HirTables.Op(parent) == HirOp.Group && !KotoHelper.IsValueContext(x))));
 }
