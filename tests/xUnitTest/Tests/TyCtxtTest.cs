@@ -437,7 +437,8 @@ public sealed class TyCtxtTest
     // Case payload Tuples and base with the raw Origins its Type arguments give, AdtDef's being these without them (the same Types by
     // reference, null where AdtDef's are, also where Binding rejected a Field or a Case): below the holder, a layer a Type argument
     // supplies keeps its Origin at a Field, an inline Tuple, a Case payload, an Array element, an Own layer's pointee and Type argument
-    // and the base; a holder whose argument states no Origin stores AdtDef's parts.
+    // and the base; a holder whose argument states no Origin stores AdtDef's parts. A layer of a rejected Case's payload is no part
+    // Binding accepts (DECISIONS BU-37), so reading it is a broken contract, also where the layer's own payload substitutes.
     [Fact]
     public void AnInstancesStoredPartsKeepItsRawOrigins()
     {
@@ -450,12 +451,14 @@ public sealed class TyCtxtTest
 
         var plain = Kept(c, p[8]);
         Assert.Same(AdtDef.FieldType(p[8], 0), plain[0]);
-        var failed = MirBuildTest.Compile("struct Bad<P>\n    public var v: P\n    public var m: Missing\nenum E<P>\n    A(Missing)\n    B(P)\n" +
+        var failed = MirBuildTest.Compile("struct Bad<P>\n    public var v: P\n    public var m: Missing\nenum E<P>\n    A(Missing, P)\n    B(P)\n" +
             "func f(x: uniq/i32, b: Bad<raw/u8 during x>, e: E<raw/u8 during x>) => ()\n");
         Assert.False(failed.Binding.Result.IsComplete);
         var q = KotoTree.Walk(failed.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
         Assert.Equal([false, true, true, true, false], Kept(failed, q[1]).Concat(Kept(failed, q[2])).Select(static x => x is null));
         Assert.True(Kept(failed, q[1])[0]!.CarriesRawOrigin && Kept(failed, q[2])[1]!.CarriesRawOrigin);
+        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => failed.Types.RawStep(q[2], 0, [1])).Message, StringComparison.Ordinal);
+        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => failed.Types.RawSupplied(q[2], 0, [1])).Message, StringComparison.Ordinal);
 
         // A struct's kept Fields and kept base, or an enum's kept Case payload Tuples, each AdtDef's WithoutRawOrigins.
         static BoundType?[] Kept(Compilation c, BoundType holder)

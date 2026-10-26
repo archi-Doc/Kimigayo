@@ -6424,14 +6424,18 @@ resumed by R4-M86 (2026-10-20).
     value "reads Unstated (DECISIONS BU-24)" (now the holder's through StoredParts, Unstated through AdtDef's parts); BU-24 G160-2b's open
     nested case; PLAN G160's Binding-limit line (the planning session edits PLAN).
   - Cost (cold allocation over 120 census programs: the library, milestones, goldens and accepting SPEC variants, base e212d7590): Bind
-    about +1.6 KB per program (+0.03%), MIR build +1.08 MB (+0.30%), A5 +374 KB (+0.55%), from the `Parts` arrays of every instance
-    (1.14 MB retained in all) and the kept Case Tuples; the design's +176 KB counted the instances Bind creates only. A pinned
-    interleaved Bind A/B over Milestones 1, 20 and 33 gave warm minima within 0.5% and equal cold minima; warm reads allocate 0 B.
+    about +1.6 KB per program (+0.03%), MIR build +1.08 MB (+0.30%), A5 +374 KB (+0.55%): 1,650,464 B in all, all of it retained,
+    the `Parts` arrays of every instance (1,139,440 B) and 16 B on each of the 31,939 `InstanceStorage` objects (511,024 B); the kept
+    Case Tuples add none, and the design's +176 KB counted the instances Bind creates only. A pinned interleaved Bind A/B over
+    Milestones 1, 20 and 33 gave warm minima within 0.5% and equal cold minima; warm reads allocate 0 B.
   - Rejected: S1, a per-Binding cache re-substituting the parts with a stated bit (a second stored-parts form, a third substitution;
     ×1.0146 A5, +1.66 MB); S2, a per-layer list (sound only if its descent repeats A5's walk: two walks); S3, an answer keyed by
     (instance, part, layer) (unsound: the erased nested instance is shared); S4a, AdtDef's stored Types keeping raw Origins (reverses
-    BU-24: about 90 reads in 36 files, D5's identity, R5-M39's property); S4b, `Parts` aliasing `Fields` where equal (the in-place
-    refill would write through the alias).
+    BU-24: about 90 reads in 36 files, D5's identity, R5-M39's property).
+  - Optional, not taken: S4b, `Parts` sharing the `Fields` or `Cases` array when equal. It is safe if `Parts` is that array only
+    when every kept part equals its erasure by reference and `Substitute`, the only writer, gives `Parts` its own array whenever a part
+    differs, before writing any slot; its measured saving, at most 532,216 B (13,981 of 24,155 non-empty instances), is the reason it
+    is not taken against a second representation state.
 - **BU-42 A 4.6–4.9 operation writes its receiver's store only where the receiver refers: `CallRetention.ReferentStores`**
   (2026-10-26; the BU planning session with R4 after the full process: BU's and R4's designs combined, design review 1 REVISE (B1),
   revision 1, design review 2 ACCEPT; PLAN G255 (C3), its Binding part, unit bu45; the owner's go of 2026-10-26 within N2's rows,
