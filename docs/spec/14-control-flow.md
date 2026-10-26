@@ -56,7 +56,7 @@ nextOperation()
 
 ### 14.2.2. Evaluation contexts and body results
 
-**Value Context** covers initializers, arguments, conditions, `match` and `for` Subjects, and operator and transfer operands. **Discard Context** covers standalone expressions and the direct expressions of indented bodies. Parentheses keep the context and expected Type. None of an expected Unit, non-use, reachability or optimization makes a Value Context a Discard Context. Discarding destroys the result at its normal lifetime; it is not a conversion to Unit, and every check still applies, including the discarded-`Result` warning ([§17.5](17-failure-handling.md#175-warnings)).
+**Value Context** covers initializers, arguments, conditions, `match` and `for` Subjects, and operator and transfer operands. **Discard Context** covers standalone expressions and the direct expressions of indented bodies. Parentheses keep the context and expected Type. None of an expected Unit, non-use, reachability or optimization makes a Value Context a Discard Context. A Place in Discard Context is acquired by bare acquisition, as at a value position ([§3.5](03-types-and-values.md#35-copy-and-move)), and the acquired value is discarded. Discarding destroys the result at its normal lifetime; it is not a conversion to Unit, and every check still applies, including the discarded-`Result` warning ([§17.5](17-failure-handling.md#175-warnings)).
 
 The direct expressions of an indented body, including the last, are discarded; **structural end arrival**, the normal completion of the body's item sequence, supplies Unit where the owner uses the body result. A single-item body follows this table; these rules are fixed before the body is checked:
 
@@ -76,6 +76,16 @@ let bad: i32 = if ready
     compute()                    // Error: discarded; the implicit Unit does not fit i32.
 else => 0
 loop => exit 1                   // Error: a discarded loop requires Unit exits.
+```
+
+A discarded Place is acquired as at a value position:
+
+```kimi
+func show(count: i32, r: uniq/i32, title: string)
+    count               // A Copy, discarded (the effect-free value warning, §17.5).
+    r                   // Reborrows a child of r and drops it.
+    // title            // Error: a bare Non-Copy Place.
+    title@move          // Transfers title; the value is destroyed.
 ```
 
 ### 14.2.3. Conditions
