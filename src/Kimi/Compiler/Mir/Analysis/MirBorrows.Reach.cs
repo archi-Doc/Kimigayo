@@ -8,15 +8,22 @@ namespace Kimi.Compiler.Mir;
 // Loans and addresses name, and E where it carries Φ_E or no direct one), its content, the holders a call's store through it writes, and
 // the guard's per-local MirWrites (MirTypes.HoldsLoans); its chain (SPEC 15.6.4's "what any chain of reads through it carries", a Chain
 // row's measure), the least fixed point of a read from it, each holder read once per closure. On the state a location's plan reads, a set's
-// content and chain are each read once (E13 (5)), however many operands and retention rows read them. Must not form a value or a Loan
-// (MirBorrows.Values).
+// content and chain are each read once (E13 (5)), however many operands and retention rows read them; whether a local is a holder, and its
+// MirWrites, are walked once per distinct case Type and program version (the holding memo, DECISIONS R4-M140). Must not form a value or a
+// Loan (MirBorrows.Values).
 internal sealed partial class MirBorrows
 {
+    // The holding memo's presized capacity: a compilation's distinct case Types of holder queries, the library's 339 and a program's own
+    // (339 to 461, median 346, on the G258 corpus); a larger program grows it once.
+    private const int HoldingCapacity = 384;
+
     private readonly List<int> targets = []; // The holders a reference's value refers to (refs), or a call's store writes (W).
     private readonly List<int> read = []; // The sets whose content or chain the location read, reset by Plan.
     private readonly List<int> chained = []; // A closure's holders to read, each queued once (Chain).
     private readonly List<int> parts = []; // The states a closure read, each through rule W's clause, which one n-ary union joins.
     private readonly Dictionary<BoundType, byte> walked = new(ReferenceEqualityComparer.Instance); // HoldsLoans' scratch.
+    // Holding's memo: each case Type's answer for the program version holdingVersion names, by reference.
+    private readonly Dictionary<BoundType, (bool Holds, MirWrites Writes)> holding = new(HoldingCapacity, ReferenceEqualityComparer.Instance);
     private (int Content, int Chain)[] reads = []; // By set: its content and its chain at the location, each plus 1 (0: not read there).
     private int[] queuedBy = []; // By holder: the closure that queued it.
     private int[] partlyBy = []; // By holder: the closure that reached it through a part or E (rule W's read-through clause).
@@ -25,6 +32,7 @@ internal sealed partial class MirBorrows
     private int[] writing = []; // By slot: the W walk that reached it.
     private MirWrites[] writingKind = []; // By slot: its local's MirWrites, at that walk.
     private int walks; // The W walks made.
+    private ulong holdingVersion; // The program version whose case Types the holding memo answers (0: none).
 
     // Whether a direct Loan's Place is its holder's whole value, through which rule W's read-through clause reads a Copy (ReadThrough).
     private static bool Whole(in Loan loan) => loan.Count == 0;
@@ -172,11 +180,27 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // Whether a local's case Type may hold a Loan, with what a call may write past it (MirTypes.HoldsLoans, one walk).
+    // Whether a local's case Type may hold a Loan, with what a call may write past it (MirTypes.HoldsLoans, one walk per distinct case Type
+    // and program version): the answer is a function of the interned Type and of Binding's stored raw steps (TyCtxt.RawStep), which a
+    // version fixes, so the memo is cleared when the program's version changes (DECISIONS R4-M140).
     private bool Holding(int local)
     {
         MirDataflow.Grow(ref this.writable, this.body.Locals.Length);
-        return MirTypes.HoldsLoans(cases.Type(this.body.Locals[local].Type), types, this.walked, out this.writable[local]);
+        if (this.holdingVersion != this.program.Version)
+        {
+            this.holdingVersion = this.program.Version;
+            this.holding.Clear();
+        }
+
+        var type = cases.Type(this.body.Locals[local].Type);
+        ref var known = ref CollectionsMarshal.GetValueRefOrAddDefault(this.holding, type, out var exists);
+        if (!exists)
+        {
+            known.Holds = MirTypes.HoldsLoans(type, types, this.walked, out known.Writes);
+        }
+
+        this.writable[local] = known.Writes;
+        return known.Holds;
     }
 
     // W(S) (A3 E16, DECISIONS R4-M73, R4-M116) into the targets, the holders a call's store through S writes: refs(S) (E14); and, from each

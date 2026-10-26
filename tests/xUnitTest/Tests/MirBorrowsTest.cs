@@ -2597,6 +2597,23 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         Assert.Single(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.OwnStepDeparture_Kd && x.Subject.Module == 0);
     }
 
+    // V16 (DECISIONS R4-M140): the holding memo answers for one program version; a rebind's version clears it, and A5's views over the new
+    // version fill it again within the capacity it keeps, so a warm rebind, its MIR build and A5 over a program and the library allocate
+    // nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void ARebindRefillsTheHoldingMemoWithoutAllocating()
+    {
+        var (c, _) = SemanticSnapshotTest.Bind("milestone/Milestone34");
+        var stratum = new Stratum(c.Types);
+        stratum.Run(c.BuildMir());
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Binding.Bind(BindingMode.Final);
+            stratum.Run(c.BuildMir());
+        }));
+    }
+
     // The Loan problems of a program's own bodies.
     private static string[] Problems(string source)
     {
