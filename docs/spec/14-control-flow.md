@@ -421,7 +421,7 @@ let conflict = loop
 The **Target Result Type** is found independently of source order:
 
 1. Use the declared Type, the Type fixed by [§14.2.2](#1422-evaluation-contexts-and-body-results) or a fixed outer expectation.
-2. Otherwise find one common Type of the independently typable sources ([§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries)). Source Types are compared by their structural part only ([§15.6.1](15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness)): the common Type's Origins are local regions, and each source's fit to it yields ordinary Origin relations, never a Type mismatch. Never supplies no candidate. Neither does a Tuple, array or Dictionary literal that holds a part of Type Never, also within such a literal part, nor a selection, `do` or `loop` none of whose sources supplies one. When no source supplies a candidate, the common Type is formed part by part over those sources other than Never: Tuples of one length by element, arrays by element (an array literal source constructs `Array<T>` here, [§4.3.1](04-arrays-indexing-and-slices.md#431-array-literals-and-annotation-holes)), Dictionaries by key and value, and a selection, `do` or `loop` through its own sources; each part's common Type is found as this step finds one, from the parts in that position that are not Never, and a part that is Never in every source is Never. Sources that differ only in safe reference layers over one Type, or are literals of it ([§12.3](12-expressions.md#123-literal-typing)), have that common Type and are value-read ([§3.5.3](03-types-and-values.md#353-value-read)). A control-flow expression used as a call argument is classified by the Argument kinds rule of [§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries).
+2. Otherwise find one common Type of the independently typable sources ([§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries)). Source Types are compared by their structural part only ([§15.6.1](15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness)): the common Type's Origins are local regions, and each source's fit to it yields ordinary Origin relations, never a Type mismatch. Never supplies no candidate. Neither does a Tuple, array or Dictionary literal or a fill ([§4.3.3](04-arrays-indexing-and-slices.md#433-fill-construction)) that holds a part of Type Never, also within such a literal or fill part, nor a selection, `do` or `loop` none of whose sources supplies one. When no source supplies a candidate, the common Type is formed part by part over those sources other than Never: Tuples of one length by element, arrays by element (an array literal source constructs `Array<T>` here, [§4.3.1](04-arrays-indexing-and-slices.md#431-array-literals-and-annotation-holes); fills of one length construct `[N of T]`, and a fill beside an array literal source has none, their Types differing, [§4.3.3](04-arrays-indexing-and-slices.md#433-fill-construction)), Dictionaries by key and value, and a selection, `do` or `loop` through its own sources; each part's common Type is found as this step finds one, from the parts in that position that are not Never, and a part that is Never in every source is Never. Sources that differ only in safe reference layers over one Type, or are literals of it ([§12.3](12-expressions.md#123-literal-typing)), have that common Type and are value-read ([§3.5.3](03-types-and-values.md#353-value-read)). A control-flow expression used as a call argument is classified by the Argument kinds rule of [§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries).
 3. Propagate the Type to sources checkable against it (such as `0..3` beside `0..n`); literal defaults apply as [§10.2](10-overload-resolution-and-inference.md#102-common-adaptation) states.
 4. Check every source. A call, anonymous function or empty literal that still lacks a Type needs an annotation.
 
@@ -447,6 +447,13 @@ let b = loop
 func pick(ready: bool, large: i64) -> i64
     let both = if ready => (large, (return 1)) else => ((return 2), large)   // (i64, i64): formed part by part.
     return both.0
+```
+
+```kimi
+func pickFill(ready: bool, large: i64) -> i64
+    let fills = if ready => [2 of (large, (return 1))] else => [2 of ((return 2), large)]  // [2 of (i64, i64)].
+    // let mixed = if ready => [2 of (large, (return 3))] else => [3 of ((return 4), large)]   // Error: two lengths.
+    return fills[0].0
 ```
 
 ### 14.9.3. Reachability

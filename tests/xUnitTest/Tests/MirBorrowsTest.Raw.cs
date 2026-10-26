@@ -572,17 +572,16 @@ public sealed partial class MirBorrowsTest
     public void AChainRowsErrorStandsBesideAnUnrelatedError()
         => Assert.Equal(["getRRRRepl: y = 5"], RejectedProblems(RawShapes + ChainShapes + ChainRepl + "    let unrelated: bool = 3\n"));
 
-    // PLAN G255 (C3), a pinned limit until C3's unit: popLateOk is SPEC-valid (SPEC 4.9.6; the pointee is replaced and the popped pointer
-    // used before `y = 5`), and the default pipeline accepts it, but the MIR reports `y = 5`: the literal's receiver store reaches E through
-    // the Φ_E an earlier untied store of the Array left (rule G's W second pass), and pop's Chain row then reads through E. C3's unit
-    // (W at a published operation's own element storage is refs(S), a published Binding fact) removes it and flips this row.
+    // PLAN G255 (C3; DECISIONS R4-M143): popLateOk is SPEC-valid (SPEC 4.9.6; the pointee is replaced and the popped pointer used before
+    // `y = 5`), as the default pipeline accepts it: the literal's receiver store, a referent store, reaches refs(S) only, so it writes nothing
+    // past the elements the Φ_E of an earlier untied store reached, and pop's Chain row reads no E.
     [Fact]
-    public void APopOverElementsAnUntiedStoreReachedIsC3sLimit()
+    public void APopOverElementsAnUntiedStoreReachedIsValid()
     {
         const string PopLateOk = "func popLateOk()\n    var y: i32 = 1\n    var w: ref/i32 = y@ref\n    var h: raw/u8 = null\n" +
             "    var a: Array<raw/(raw/u8)> = [h@raw]\n    h = w@raw@raw/u8\n    let x = a.pop()\n    inspect(a)\n    h = null\n    inspect(x)\n" +
             "    y = 5\n";
-        Assert.Equal(["popLateOk: y = 5"], Problems(RawShapes + PopLateOk));
+        Assert.Empty(Problems(RawShapes + PopLateOk));
         Assert.Empty(MinimalEmissionTest.Analyze("func inspect<T>(value: ref/T) => ()\n" + PopLateOk + "public func main() => ()\n").Problems);
     }
 
