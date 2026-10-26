@@ -235,25 +235,9 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal([init], CallsOf(Assert.Single(FunctionsOf(ir, c, "arLitNone"))).Select(static x => x.Callee));
         var texts = CallsOf(Assert.Single(FunctionsOf(ir, c, "arLitTexts")));
         Assert.Equal([init, grow], texts.Where(x => x.Callee == init || x.Callee == grow).Select(static x => x.Callee));
-        Assert.Equal($"call void @(ptr %, i64 24, i64 2, ptr @, i64 {LocationText(Literals, "[s@move, \"t\"]").Length})", texts.Single(x => x.Callee == grow).Shape);
+        Assert.Equal(
+            $"call void @(ptr %, i64 24, i64 2, ptr @, i64 {LocationText(Literals, "[s@move, \"t\"]").Length})", texts.Single(x => x.Callee == grow).Shape);
         Assert.DoesNotContain("@__kimi_array_append_", text, StringComparison.Ordinal);
-    }
-
-    // SPEC 4.9.5, R5-M8 (DECISIONS R5-M129): at O2, through the build's own pipeline (the manifest built by NativeToolchain, its
-    // `opt -passes=default<O2>`), an 8-element literal grows once: a module whose other growth site is an append loop keeps one grow call for
-    // the literal beside the loop's, and lit8's program keeps no per-element grow call (fail-before: 10 and 9 calls of __kimi_array_grow).
-    [Fact]
-    public async Task AnArrayLiteralGrowsOnceAtO2()
-    {
-        const string Lit8 = "var total: isize = 0\nvar i = 0\nwhile i < 20\n    let values: Array<isize> = [1, 2, 3, 4, 5, 6, 7, 8]\n" +
-            "    total += values[i % 8]\n    i += 1\nrequire total == 90 else => $abort(\"total\")\n";
-        const string Grows = "func grows(n: isize) -> Array<isize>\n    var values: Array<isize> = []\n    var i: isize = 0\n    while i < n\n" +
-            "        values.append(i)\n        i += 1\n    return values@move\nlet a: Array<isize> = [1, 2, 3, 4, 5, 6, 7, 8]\nlet b = grows(1000)\n" +
-            "require a[7] + b[999] == 1007 else => $abort(\"sum\")\n";
-        Assert.InRange(GrowCalls(await Optimized(Lit8)), 0, 1);
-        Assert.Equal(2, GrowCalls(await Optimized(Grows)));
-
-        static int GrowCalls(string ir) => Regex.Count(ir, @"call (fastcc )?void @__kimi_array_grow\(");
     }
 
     // SPEC 7.7.4 (DECISIONS R5-M108, R5-M121): an Item's Value call and an erased Item's adapter entry call what its direct call calls, the
@@ -372,29 +356,5 @@ public sealed partial class FunctionCodegenTest
         Assert.False(FunctionCodegen.Passes(shared, new("i64", "b", AbiParameterKind.Value, 1)));
         Assert.False(FunctionCodegen.Passes(shared, new("ptr", "b", AbiParameterKind.OwnedSlot, 1)));
         Assert.False(FunctionCodegen.Passes(new("ptr", "a", AbiParameterKind.OwnedSlot, 1), new("ptr", "b", AbiParameterKind.Value, 1)));
-    }
-
-    // The optimized IR of an Application under MIR code generation as `kimi build` makes it at O2: its module and manifest published, then the
-    // manifest built by NativeToolchain with the repository's toolchain.
-    private static async Task<string> Optimized(string source)
-    {
-        var c = Analyze(source);
-        var directory = Path.Combine(Path.GetTempPath(), "kimi-alit-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(directory);
-        try
-        {
-            c.Project.Directory = directory;
-            c.Project.Name = "Hello";
-            c.Project.ProjectFile.OutputPath = "out/Hello.ll";
-            c.Project.ProjectFile.Optimization = "O2";
-            Assert.True(EmissionArtifacts.Publish(c, out var path, out var error), error);
-            await NativeToolchain.BuildManifest(
-                Path.ChangeExtension(path!, ".link.json"), DiagnosticCorpus.RepositoryPath("toolchain"), null, (_, _) => { }, TestContext.Current.CancellationToken);
-            return await File.ReadAllTextAsync(Path.Combine(directory, "out", "Hello.O2.ll"), TestContext.Current.CancellationToken);
-        }
-        finally
-        {
-            Directory.Delete(directory, true);
-        }
     }
 }

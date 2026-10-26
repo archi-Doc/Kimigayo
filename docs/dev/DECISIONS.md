@@ -9964,7 +9964,9 @@ structure is recorded here by the unit that first implements it.
     own buffer carries no escape marker: its elements are placed at construction, and nothing earlier is stored there. An appended element
     carries the untied-store marker of the receiver store (R4-M116). So the literal is exact: C3's literal rows (R4-M143: arrNode1,
     rawPair, pop2 and popLate, with their Bad twins) keep their verdicts, now by this rule, and a later unit must not give the literal an
-    append's marker back (R4's finding (4)).
+    append's marker back (R4's finding (4)). The MIR shadow rejected litDropBad, litObjBad and litScopeBad (an element whose drop stores
+    through its raw slot, the slot used after `y = 5`) only through reserve's W and now accepts them: PLAN G264's known gap, which gains an
+    Array-literal row, and whose U2 must reject them.
   - Code generation: one Array row of the aggregate writer, in Fill's shape after the shared operand evaluation and Destination
     (`FunctionCodegen.Arrays.ArrayBuffer`). It writes the runtime's empty handle, then for n elements one `__kimi_array_grow(stride, n)`, the
     old generator's call, with the Array runtime requested through `Request(HelperNeeds.ArrayRuntime)`, and the length n in the handle's
@@ -9981,10 +9983,17 @@ structure is recorded here by the unit that first implements it.
     structs per round; checksum compared in place and printed as a fixed line, no interpolation), whose A/B runs from this unit on.
   - Deleted: `MirBuilder.Collection` and `Aggregate`'s one-form clause; the literal's 1 + n Uniq borrows, Calls and LegacyRow targets;
     FixedArray's Array-from-none meaning with its codegen and validator arms; `EmptyArray`; `DynamicArrayCostTest`'s legacy-only guard.
+  - Tests: the rule is pinned where it is decided, each row failing first: the builder (`MirBuildTest.AnArrayLiteralIsOneAggregateOfItsElements`),
+    the validator's rows and the MirUses pin of the row, the `expansions` golden, the interrupted order (`MirDropTest`), the writer
+    (`FunctionCodegenTest.AnArrayLiteralGrowsOnceAndPutsItsElements`) and A5 (`MirBorrowsTest.AnArrayLiteralPlacesItsElementsThroughNoReceiverStore`:
+    litDropOk, lit2DropOk, litObjOk and a generic `[child@move]`, the mir ledger's two rows). The O2 effect is a performance property,
+    held by the `ArrayLiteral` corpus kernel (R5-M8). No managed test asserts O2 code: one would make the functional suite depend on the
+    native toolchain, a VERIFICATION policy change.
   - Measured:
-    - O2: lit8's module is legacy's (191 instructions, 0 grow calls); beside an append loop, 2 grow calls (legacy 2, before 10).
-    - Native, one folder, CPU cycles, 15 interleaved samples: lit8 B/A 1.02 (A/A 1.00), lit1 0.98, lit64 1.01 (was 2.85), strings 0.97.
-      `ArrayLiteral` kernel: B/A 0.98 (min 1.00), A/A 0.97, 21 samples; dev's sel 1.72, so the corpus now sees a literal regression.
+    - O2 (CLI probes): lit8's module is legacy's (191 instructions, 0 grow calls); beside an append loop, 2 grow calls (legacy 2, before
+      10). Over the Array, DynamicArray, Comparison and Arithmetic fixtures, sel's out-of-line grow call sites equal legacy's (166 each).
+    - Native, the merged head, one folder, CPU cycles: the `ArrayLiteral` kernel B/A 1.00 (A/A 0.99, 21 samples; dev's sel 1.72, so the
+      corpus now sees a literal regression); lit8 0.99 and lit64 1.03 (min 1.00; dev 2.85), 15 samples.
     - `check` of 1,500 literals under `-Pipeline mir`: x0.825 (MIR: 3n+6 statements, n+1 Calls and n+2 blocks per literal become one
       statement).
     - Size: Mir and Backend +95/-78 lines (with comments), tests +273/-43, the kernel, this entry, ARCH and CODEMAP.

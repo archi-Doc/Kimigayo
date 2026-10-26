@@ -515,6 +515,59 @@ public sealed partial class MirBorrowsTest
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
+    // DECISIONS R5-M129: an Array literal is one aggregate, which places its elements at construction through no receiver store, so their
+    // Loans reach only the Array: litDropOk, lit2DropOk (another element first) and litObjOk (an object through its base's handle), whose
+    // element's drop stores through its raw slot, consumed, then the slot used before `y = 5`, and litPairOk, a generic literal of a pair
+    // layer's value removed again, are valid (fail-before: each erred at `y = 5` or `v@follow = x`, the literal's reserve and append keeping
+    // W). Their twins that use the slot after `y = 5` are accepted on the MIR until PLAN G264 (a destruction's retention at callers).
+    [Fact]
+    public void AnArrayLiteralPlacesItsElementsThroughNoReceiverStore()
+        => Assert.Empty(Problems(RawShapes + ReferentShapes + """
+            func litDropOk()
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var slot: raw/u8 = null
+                var x = Writer.init(q: w@raw@raw/u8)
+                x.p = slot@raw
+                var a: Array<Writer> = [x@move]
+                consume(a@move)
+                usep(slot)
+                y = 5
+            func lit2DropOk()
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var slot: raw/u8 = null
+                var x = Writer.init(q: w@raw@raw/u8)
+                x.p = slot@raw
+                var z = Writer.init(q: null)
+                var a: Array<Writer> = [z@move, x@move]
+                consume(a@move)
+                usep(slot)
+                y = 5
+            func litObjOk()
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var slot: raw/u8 = null
+                var o: obj/WLeaf = Kimi.Intrinsics.makeObj<WLeaf>(WLeaf.init(q: w@raw@raw/u8))
+                o.p = slot@raw
+                var b: obj/WBase = o@move@obj/WBase
+                var a: Array<obj/WBase> = [b@move]
+                consume(a@move)
+                usep(slot)
+                y = 5
+            func litPairOk<s/T>(value: s/T, x: T) -> ()
+                s is owner or uniq
+                T is Copy
+                var v = value@move
+                let child = v
+                do
+                    var arr: Array<s/T> = [child@move]
+                    let e = arr@uniq.remove(0)
+                    _ = e@follow
+                v@follow = x
+
+            """));
+
     // V16 (DECISIONS R4-M143): N appends of distinct Nodes' addresses onto one Array<raw/Node>. Each append's store reaches the receiver's
     // referent only, so the work's growth per doubling stays within the receiver's states the rows read (on dev each append's W passes wrote
     // the receiver's growing chain into every element's holder, ×7 per doubling).

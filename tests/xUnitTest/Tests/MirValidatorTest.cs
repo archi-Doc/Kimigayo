@@ -33,8 +33,8 @@ public sealed class MirValidatorTest
         Assert.Equal(
             new[]
             {
-                typeof(IntrinsicId), typeof(MirAggregateKind), typeof(MirOperandKind), typeof(MirProjectionKind), typeof(MirRvalueKind), typeof(MirStatementKind),
-                typeof(MirTerminatorKind),
+                typeof(IntrinsicId), typeof(MirAggregateKind), typeof(MirOperandKind), typeof(MirProjectionKind), typeof(MirRvalueKind),
+                typeof(MirStatementKind), typeof(MirTerminatorKind),
             },
             overloads.Select(static x => x.GetParameters()[0].ParameterType).OrderBy(static x => x.Name, StringComparer.Ordinal));
         foreach (var overload in overloads)
