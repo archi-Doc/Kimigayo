@@ -8603,7 +8603,7 @@ structure is recorded here by the unit that first implements it.
     value `Put` at the storage, R5-M87's copy form); Slice (the storage and length put at the Slice record's Fields 0 and 1, the Unit
     backing ignored); Copy (transferBytes as `llvm.memcpy`: R5-M18 reversed PD23, the declaration rules out overlap, so `MoveBytes`'
     comment is corrected). Every other row is `Unwritten`, its unit named in the table: C4a DestroyValues (no producer: R5-M95); C6a MakeObj, MakeRc, MakeArc,
-    Clone, TypeTest; C7 StaticEnsure; C8d Capacity; C9a WriteStdout; C9b FormatFloat, ErasedWriter, ErasedReserve, FormatInteger128; C9c
+    Clone, TypeTest; C7 StaticEnsure; C8d Capacity; C9a WriteStdout (see R5-M128); C9b FormatFloat, ErasedWriter, ErasedReserve, FormatInteger128; C9c
     the format buffer rows; C10a and C10b the test rows. Stride and ReinterpretLoan have no MIR producer yet (no compiler function's
     disposition serves them; an open PLAN row), so their rows are written with their first producer. Allocate and Fail call through
     `Invoke`, which takes the values of a routine's slot-less parameters (the stride; the reason and the OS error) in order, the runtime
@@ -9067,7 +9067,7 @@ structure is recorded here by the unit that first implements it.
     row's unit's located `Unsupported_Kd`; any other function's is its body target (its body, a requirement Item's witness). `Pass` and
     `Forward` share `Given`. A Never callee leaves the entry's result slot unused and ends it `unreachable`.
   - Defect fixed (sel, wrong code without a record): a Value call of `Text.toString<V>` with a user witness called the format witness, and
-    `Text.writer<Sink>`'s the reserve witness, with the function's own operands; both are C9a's located `Unsupported_Kd` now.
+    `Text.writer<Sink>`'s the reserve witness, with the function's own operands; both are C9a's located `Unsupported_Kd` now (see R5-M128).
   - Deleted: `ModuleCodegen.Fits`, `Adapter`'s body lookup, both temporary located `Unsupported_Kd` arms, the Value call's arity test (Fail
     and Slice are no routine rows).
   - Departure (for the owner's departures list), confirmed by the owner (R5-M109): K package 4.3's `MonoKey` gains the erased target
@@ -9738,3 +9738,74 @@ structure is recorded here by the unit that first implements it.
   (`ref/Rhs`, `Self.Output`), and TyCtxt.Witness's Builtin and Storage targets carry the call's substitution for that (R5-M61). The key is
   unchanged: every call of one key gives one Abi (its Self erases to one Type, references are pointers, SPEC 13.3.3 fixes a built-in numeric
   Type's counterpart and Output). It leaves the list.
+- **R5-M128 The formatting runtime's rows in MIR code generation: Text, buffers, windows and the writer (C9a)** (2026-10-26, C lane;
+  plan C9a, package C 3.2, PD2, PD3, PD21, K package 4.5 row 2, audit rows :74-100 and :150; SPEC 22.5.1, 22.7, 22.9, 22.10.1, 22.10.2,
+  22.10.5; the planning session's go and rulings Q1-Q11 on C9a's design, `c9a-design.md`; under R5-M18 form 2 (G:format), R5-M30, R5-M73,
+  R5-M89, R5-M92, R5-M108, R5-M116 and R5-M126)
+  - Rows (rulings Q1 (a), Q6 (a), Q7 (a)): the 26 formatting kinds of the Body disposition (the plan's 25 and WriteLineUtf8, audit :37):
+    Text's fixed, heap, utf8, validateUtf8, toString, tryFormat and release, FixedBuffer's and HeapBuffer's six operations each,
+    WriteWindow's four, Utf8Writer's write and status, and writeLine(Utf8Slice). Each is a row of X39's map with one new writer,
+    `Formatting`: the call of P1d's row routine (`FormattingRow(kind).Abi`, one text, PD2) through the one call writer, at a direct call,
+    an Item's Value call and an adapter's entry (SPEC 7.7.4). Its module requests the formatting runtime the row declares (`LegacyRow.Needs`, R5-M30's
+    FormattingRuntime) through `ModuleCodegen.Request(HelperNeeds)`, the one map from a row's needs to the frame's parts (bp2). The runtime
+    is written once, after the Array runtime and before the helpers. `LegacyRow.Fixed` names the writers whose call is the row's own routine
+    (Routine, Formatting). Every Body-disposition kind now has a row, so `LegacyWriter.Unwritten` is deleted and `Row` throws for a Body
+    kind without one. WriteStdout, an intrinsic, has no MIR producer and keeps its unwritten intrinsic row (R8, PD21). No IntrinsicId,
+    CompilerFunctionKind, BindingFailure or item kind is added (PD21).
+  - Context words (rulings Q2 (a), Q8 (a); bp1): a capacity Context names, by its logical index, the parameter that receives the fixed
+    array it measures (Text.fixed 0, tryFormat 1). The call writer measures it from that operand's instance Type (`Pass`); an adapter's
+    entry measures it from its own input Type, its target Function Type's (`Forward`). So an erased `Text.fixed` or `Text.tryFormat` is
+    written, and no ownerless record remains. Refinement of Q8 (a), confirmed by the planning session: one rule (`Measure`: a capacity is
+    the length of the fixed array its parameter receives, at P1d's logical index, `AbiParameter`'s measured Context), measured where each
+    argument writer decodes its parameters, the adapter in `Forward`, not through `Runs`; `Runs` takes no steering parameter. A kind Context, which
+    names no parameter, is given: `LegacyRuntimeHelpers.FormatKind` of the witness target's Self, the Type K6 resolved below the published
+    `Formats` parameter (R5-M30). Code generation restates neither `On` nor the kind table.
+  - Witness targets (rulings Q4 (a), Q5 (a)): a call of write, toString or tryFormat carries the collector's target (K row 2), and the
+    target's kind decides:
+    - a Builtin item (BuiltinFormat on a built-in Type) runs through the row's built-in routine, given its Self's kind: SPEC 22.10.1's frame
+      around the runtime's built-in formatting, toString reserving its exact length once (SPEC 22.10.5);
+    - a Body item (a user or library formatter) needs C9b's wrapper, one located `Unsupported_Kd` at the requesting site (the call, or the
+      adapter's site);
+    - any other target, or none on a kind-bearing row, is `InternalInvariant_Kd`.
+    C9a writes no witness call. The BuiltinFormat item stays admitted, and its function is C9b's located record (C8f's frame): a
+    BuiltinFormat item records today once, at its first admitting site; C9b records it at each requesting site (C8f's R-2 rule: a site's
+    prerequisites are read at that site).
+  - Kind table (ruling Q3 (a); bp1): `LegacyRuntimeHelpers.FormatKind(BoundType)` is the legacy runtime's own numbering, which R8 removes
+    with the runtime. It is promoted from `BodyLowering.BuiltinFormatKind`, and both generators read it. LegacyRuntimeHelpers' contract
+    admits a built-in formattable Type for its kind. It reads Utf8Slice from the declaration table. Code generation's reader is
+    `FunctionCodegen.WitnessKind`, the target rule above giving a row's kind Context (one name per concept).
+  - Labels (not departures): R5-M92's "C9a WriteStdout" (no producer), and R5-M108's and PLAN G157 (22)'s `Text.writer` Item (the
+    ErasedWriter intrinsic, C9b). G157 (22)'s C9a part closes: a Builtin target's Item Value call and adapter are written. G157 (10) stays
+    C9b's or K's (ruling Q11).
+  - Facts:
+    - The sel ledger falls by 36 test rows, from 613 to 577 (format -29, C-frame -7: Utf8BufferTest 25, Utf8BorrowTest 4,
+      CompilerFunctionReferenceTest 6, ConversionReadTest 1). Their fixture families (`Utf8Buffer*`, `Utf8Borrow*`, `ConversionRead*`,
+      `CompilerReference*`, `Formatting*`) run natively under sel at O0 and O2.
+    - Most rows a C9a row touches keep their first cause in C9b or C9c (the design's census: 398 also wait for a BuiltinFormat item, 292
+      for interpolation). They stay in the ledger under those units, and G:format's group review after C9c checks the Utf* classes whole.
+    - Milestones 24, 30, 31, 33, 35 and 44 keep their first record at an interpolation or `$tryWrite` site, C9c's, then C9b's (24 at
+      10:16, 30 at 8:39, 31 at 41:23, 33 at 9:49, 35 at 10:31, 44 at 9:31; CLI, O0).
+  - Deleted: the located records of the 26 kinds, `LegacyWriter.Unwritten` and `Legacy`'s arm for it, `BodyLowering.BuiltinFormatKind`
+    (promoted), and the "C9a" labels on WriteStdout and TypeToken in code.
+  - Size, over the three commits (bp1, bp2, behavior): Backend +256/-80, Emission +2/-14, tests +265/-6, ledger -36, and this entry, ARCH
+    and CODEMAP. Net code is +164, over the plan's +100 by the Context words, the target rule and the frame's runtime request.
+  - Speed: one runtime call per row at its call, the old generator's form; no item or helper; one static runtime text per module that
+    requests it; the kind given through the reused slot-less span, so a warm Write allocates nothing; no pass over MIR.
+  - O2 (ruling Q9 (a), information): a temporary kernel over the buffer, window and view rows (2^24 rounds, a required checksum) optimizes
+    to the same loop under both generators (184 lines, the same calls; only the string glue's name differs, G182 (2)). CPU time B/A median
+    0.975 (0.79-1.14) against A/A 0.973 (0.85-1.17), 15 interleaved samples. Every corpus kernel also needs C9b and C9c, so the corpus A/Bs
+    stay at C9c.
+  - Rejected:
+    - the Routine writer for all 27 rows with needs derived from the routine (LegacyRow has no needs column, ARCH caps optional parameters at
+      two, and a name lookup would restate FormattingRow);
+    - a writer per Context shape, or arms by `CompilerFunctionKind` (the old lowering's clauses);
+    - the kind read from the value operand's referent (a second statement of the published `On`);
+    - Context words decided by their LLVM type;
+    - a Builtin target's write through its shim's function: an extra call, and toString would lose its exact reservation;
+    - a FunctionCodegen copy of the kind table;
+    - `Runs` taking the call's Types beside its result (a parameter that steers by path);
+    - new IntrinsicIds or AbiParameterKinds (PD21);
+    - LegacyRow items for fixed symbols (a K 4.3 item fixes an instance, and these symbols have none);
+    - the collector skipping the Builtin target (K row 2: the target decides the user-formatter case and names the Self);
+    - bringing C9b's BuiltinFormat shim forward (ruling Q4 (a), the plan's boundary);
+    - re-pointing the old lowering to the map (D5).

@@ -12,18 +12,6 @@ internal sealed partial class BodyLowering
     private static readonly (string Name, int Offset)[] FormattingWriterOffsets =
         [("destination", 0), ("dispatch", 8), ("kind", 16), ("failed", 56), ("hint", 24), ("pending", 32), ("pendingLength", 40), ("logicalLength", 48)];
 
-    internal static int BuiltinFormatKind(BoundType type)
-    {
-        var width = ScalarTypes.Width(type);
-        if (width != 0)
-        {
-            return width switch { 8 => 0, 16 => 2, 32 => 4, 64 => 6, _ => 8 } + (ScalarTypes.Signed(type) ? 1 : 2);
-        }
-
-        return ReferenceEquals(type, BoundType.F32) ? 11 : ReferenceEquals(type, BoundType.F64) ? 12 : ReferenceEquals(type, BoundType.Char) ? 13 : ReferenceEquals(type, BoundType.Boolean) ? 14 : ReferenceEquals(type, BoundType.Unit) ? 15 :
-            ReferenceEquals(type, BoundType.String) ? 16 : FormattingTypes.IsUtf8Slice(type) ? 17 : -1;
-    }
-
     internal bool PrepareWriterDispatch(CallPlan call, EmissionFunction function, BoundType result, out long kind, out EmissionOperand dispatch, out string? failure)
     {
         kind = -1;
@@ -90,6 +78,6 @@ internal sealed partial class BodyLowering
             return -1;
         }
 
-        return BuiltinFormatKind(reference.Components[0]);
+        return LegacyRuntimeHelpers.FormatKind(reference.Components[0]);
     }
 }

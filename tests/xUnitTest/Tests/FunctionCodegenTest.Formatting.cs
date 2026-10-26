@@ -1,0 +1,290 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+using System.Text.RegularExpressions;
+using Kimi.Compiler;
+using Kimi.Compiler.Backend;
+using Xunit;
+
+namespace XunitTest;
+
+// The formatting rows of MIR code generation (R5 C9a; SPEC 22.7, 22.9, 22.10.1, 22.10.2, 22.10.5; DECISIONS R5-M128): a Text, buffer, window
+// or writer call, and writeLine of a view, calls its row's routine in the formatting runtime with its operands by parameter kind, its result
+// slot and location, a capacity Context the length of the fixed array its operand refers to and a kind Context its witness target's Self's,
+// the runtime written once on request, at a direct call, an Item's Value call and an adapter's entry; a user formatter's write, toString or
+// tryFormat is C9b's located record; natively under both generators. The kind is the formatting runtime's own numbering, the one table both
+// generators read.
+public sealed partial class FunctionCodegenTest
+{
+    // A Library calling every formatting row without a witness target: the fixed and heap buffers' operations, the windows', utf8,
+    // validateUtf8, writeLine of a view, a writer's status, Text.fixed's Item called and erased.
+    private const string Buffers =
+        "func fxRun(storage: uniq/[8 of u8]) -> Result<isize, BufferFull>\n    var buffer = Text.fixed(storage)\n" +
+        "    var window = try (buffer@uniq).reserve(2)\n    try (window@uniq).push(65)\n    let pair: [2 of u8] = [66, 67]\n" +
+        "    try (window@uniq).append(pair[..])\n    let limited = (window@move).limit(4)\n    let written = (limited@move).commit()\n" +
+        "    let count = buffer.bytes().length\n    _ = buffer.text()\n    _ = (buffer@uniq).validate()\n    (buffer@uniq).clear()\n" +
+        "    _ = (buffer@move).intoText()\n    return .Ok(written + count)\n" +
+        "func hpRun(n: isize) -> Result<isize, BufferFull>\n    var buffer = Text.heap(n)\n    var window = try (buffer@uniq).reserve(1)\n" +
+        "    try (window@uniq).push(65)\n    _ = (window@move).commit()\n    let count = buffer.bytes().length\n    _ = buffer.text()\n" +
+        "    _ = (buffer@uniq).validate()\n    (buffer@uniq).clear()\n    _ = (buffer@move).intoString()\n    return .Ok(count)\n" +
+        "func vwLength(text: ref/string) -> isize => Text.utf8(text).length\n" +
+        "func vwCheck(bytes: Slice<u8>) -> bool\n    match Text.validateUtf8(bytes)@move\n        .Ok(_) => return true\n        .Err(_) => return false\n" +
+        "func vwShow(text: Text.Utf8Slice) => Console.writeLine(text)\n" +
+        "func wrStatus(writer: ref/Utf8Writer) -> bool\n    match writer.status()@move\n        .Ok(_) => return true\n        .Err(_) => return false\n" +
+        "func itFixed(storage: uniq/[4 of u8]) -> isize\n    let f = Text.fixed<4>\n    return f(storage).capacity\n" +
+        "func itErasedFixed() -> (uniq/[4 of u8]) -> Text.FixedBuffer => Text.fixed<4>\n";
+
+    // A Library whose formatting rows carry witness targets: built-in values written, converted and formatted into an array (their
+    // BuiltinFormat items are C9b's records at their admitting calls).
+    private const string Formats =
+        "func ctWriteI64(writer: uniq/Utf8Writer, n: i64) -> Result<(), BufferFull> => writer.write(n)\n" +
+        "func ctWriteU8(writer: uniq/Utf8Writer, n: u8) -> Result<(), BufferFull> => writer.write(n)\n" +
+        "func ctWriteText(writer: uniq/Utf8Writer, s: ref/string) -> Result<(), BufferFull> => writer.write(s)\n" +
+        "func ctWriteView(writer: uniq/Utf8Writer, v: Text.Utf8Slice) -> Result<(), BufferFull> => writer.write(v)\n" +
+        "func ctWriteBool(writer: uniq/Utf8Writer, b: bool) -> Result<(), BufferFull> => writer.write(b)\n" +
+        "func ctWriteChar(writer: uniq/Utf8Writer, c: char) -> Result<(), BufferFull> => writer.write(c)\n" +
+        "func ctWriteF64(writer: uniq/Utf8Writer, f: f64) -> Result<(), BufferFull> => writer.write(f)\n" +
+        "func ctText(n: u16) -> string => Text.toString(n)\n" +
+        "func ctTry(n: i32, bytes: uniq/[4 of u8]) -> bool\n    match Text.tryFormat(n, bytes)@move\n        .Ok(_) => return true\n" +
+        "        .Err(_) => return false\n" +
+        "func itText(n: ref/i32) -> string\n    let show = Text.toString<i32>\n    return show(n)\n";
+
+    // A user formatter, whose formatting rows need C9b's wrapper.
+    private const string UserFormats =
+        "struct Shown\n    Self is Utf8Format\n    public init() => ()\n" +
+        "    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => .Ok(())\n" +
+        "func usWrite(writer: uniq/Utf8Writer, s: ref/Shown) -> Result<(), BufferFull> => writer.write(s)\n" +
+        "func usText(s: ref/Shown) -> string => Text.toString(s)\n" +
+        "func usTry(s: ref/Shown, bytes: uniq/[8 of u8]) -> bool\n    match Text.tryFormat(s, bytes)@move\n        .Ok(_) => return true\n" +
+        "        .Err(_) => return false\n";
+
+    // SPEC 22.7, 22.9 (DECISIONS R5-M128): the buffers, windows, views, validation and a view's writeLine natively under both generators,
+    // with Text.fixed's and Text.heap's Items called and a window's limit Aborting at the invoking expression.
+    public static TheoryData<string, string, string, int, string> FormattingPrograms => new()
+    {
+        {
+            "FormattingRows",
+            "func fill() -> Result<isize, BufferFull>\n    var storage = [4 of 0@u8]\n    var buffer = Text.fixed(storage@uniq)\n" +
+            "    var window = try (buffer@uniq).reserve(3)\n    try (window@uniq).push(72)\n    let pair: [2 of u8] = [105, 33]\n" +
+            "    try (window@uniq).append(pair[..])\n    match (window@uniq).append(pair[..])@move\n        .Ok(_) => $abort(\"atomic\")\n" +
+            "        .Err(_) => ()\n    let limited = (window@move).limit(4)\n    let written = (limited@move).commit()\n" +
+            "    match buffer.text()@move\n        .Ok(let text) => Console.writeLine(text)\n        .Err(_) => $abort(\"text\")\n" +
+            "    let count = buffer.bytes().length\n    match (buffer@uniq).validate()@move\n        .Ok(_) => ()\n" +
+            "        .Err(_) => $abort(\"validate\")\n    match (buffer@move).intoText()@move\n        .Ok(let text) => Console.writeLine(text)\n" +
+            "        .Err(_) => $abort(\"intoText\")\n    return .Ok(written + count)\n" +
+            "func grow() -> Result<isize, BufferFull>\n    var buffer = Text.heap(1)\n    var window = try (buffer@uniq).reserve(5)\n" +
+            "    let word: [5 of u8] = [104, 101, 97, 112, 33]\n    try (window@uniq).append(word[..])\n    _ = (window@move).commit()\n" +
+            "    let length = buffer.length\n    match buffer.text()@move\n        .Ok(let text) => Console.writeLine(text)\n" +
+            "        .Err(_) => $abort(\"text\")\n    (buffer@uniq).clear()\n    var again = try (buffer@uniq).reserve(2)\n" +
+            "    try (again@uniq).push(111)\n    try (again@uniq).push(107)\n    _ = (again@move).commit()\n" +
+            "    match (buffer@uniq).validate()@move\n        .Ok(_) => ()\n        .Err(_) => $abort(\"validate\")\n" +
+            "    require buffer.bytes().length == 2 else => $abort(\"bytes\")\n    match (buffer@move).intoString()@move\n" +
+            "        .Ok(let text) => Console.writeLine(text)\n        .Err(_) => $abort(\"intoString\")\n    return .Ok(length)\n" +
+            "match fill()@move\n    .Ok(let n) => require n == 6 else => $abort(\"fill\")\n    .Err(_) => $abort(\"full\")\n" +
+            "match grow()@move\n    .Ok(let n) => require n == 5 else => $abort(\"grow\")\n    .Err(_) => $abort(\"full\")\n" +
+            "let bad: [2 of u8] = [0xC0@u8, 0x80]\nmatch Text.validateUtf8(bad[..])@move\n    .Ok(_) => $abort(\"invalid accepted\")\n" +
+            "    .Err(_) => Console.writeLine(\"invalid\")\nlet good: [2 of u8] = [0xC2@u8, 0x80]\n" +
+            "match Text.validateUtf8(good[..])@move\n    .Ok(let view) => require view.length == 2 else => $abort(\"view\")\n" +
+            "    .Err(_) => $abort(\"valid rejected\")\nlet name = \"kimi\"\nConsole.writeLine(Text.utf8(name))\n" +
+            "let make = Text.fixed<4>\nvar small = [4 of 0@u8]\nlet tiny = make(small@uniq)\n" +
+            "require tiny.capacity == 4 and tiny.length == 0 else => $abort(\"item\")\nlet heap = Text.heap\nlet spare = heap(3)\n" +
+            "require spare.capacity >= 3 else => $abort(\"heap item\")\nConsole.writeLine(\"done\")\n",
+            "Hi!\nHi!\nheap!\nok\ninvalid\nkimi\ndone\n",
+            0,
+            string.Empty
+        },
+        {
+            "FormattingLimit",
+            "func cut() -> Result<(), BufferFull>\n    var storage = [4 of 0@u8]\n    var buffer = Text.fixed(storage@uniq)\n" +
+            "    var window = try (buffer@uniq).reserve(2)\n    try (window@uniq).push(1)\n    try (window@uniq).push(2)\n" +
+            "    _ = (window@move).limit(1)\n    return .Ok(())\n_ = cut()\n",
+            string.Empty,
+            1,
+            "Hello.kimi:7:9: abort KIMI_E_ARG_RANGE: Argument out of range\n"
+        },
+    };
+
+    [Theory]
+    [MemberData(nameof(FormattingPrograms))]
+    public void FormattingProgramsRun(string name, string source, string stdout, int exit, string stderr)
+        => ScalarEmissionTest.EmitFixture(name, source, stdout, exit, stderr);
+
+    // SPEC 22.9 (DECISIONS R5-M128): each row calls its formatting routine, the symbol P1d's row names, with its operands by parameter kind (a
+    // reference's pointer, an owned operand's Place or its copy slot, its result slot) and the call's location where it takes one; rows that
+    // share a symbol call it under their own row ABI (FixedBuffer.text and intoText).
+    [Fact]
+    public void FormattingRowsCallTheirRoutine()
+    {
+        var c = Analyze(Buffers, OutputKind.Library);
+        var ir = GeneratedIr.Parse(Generate(c));
+        Assert.Equal(
+            Routines(
+            [
+                CompilerFunctionKind.TextFixed, CompilerFunctionKind.FixedBufferReserve, CompilerFunctionKind.WindowPush,
+                CompilerFunctionKind.WindowAppend, CompilerFunctionKind.WindowLimit, CompilerFunctionKind.WindowCommit,
+                CompilerFunctionKind.FixedBufferBytes, CompilerFunctionKind.FixedBufferText, CompilerFunctionKind.FixedBufferValidate,
+                CompilerFunctionKind.FixedBufferClear, CompilerFunctionKind.FixedBufferIntoText,
+            ]),
+            FormattingCalls(ir, c, "fxRun"));
+        Assert.Equal(
+            Routines(
+            [
+                CompilerFunctionKind.TextHeap, CompilerFunctionKind.HeapBufferReserve, CompilerFunctionKind.WindowPush,
+                CompilerFunctionKind.WindowCommit, CompilerFunctionKind.HeapBufferBytes, CompilerFunctionKind.HeapBufferText,
+                CompilerFunctionKind.HeapBufferValidate, CompilerFunctionKind.HeapBufferClear, CompilerFunctionKind.HeapBufferIntoString,
+            ]),
+            FormattingCalls(ir, c, "hpRun"));
+        foreach (var (name, kind, shape) in new[]
+        {
+            ("fxRun", CompilerFunctionKind.TextFixed, "call void @(ptr %, ptr %, i64 8)"),
+            ("fxRun", CompilerFunctionKind.FixedBufferReserve, $"call void @(ptr %, ptr %, i64 2, ptr @, i64 {Located(Buffers, "(buffer@uniq).reserve(2)")})"),
+            ("fxRun", CompilerFunctionKind.WindowPush, "call void @(ptr %, ptr %, i8 65)"),
+            ("hpRun", CompilerFunctionKind.TextHeap, $"call void @(ptr %, i64 %, ptr @, i64 {Located(Buffers, "Text.heap(n)")})"),
+            ("vwLength", CompilerFunctionKind.TextUtf8, "call void @(ptr %, ptr noundef nonnull align 8 dereferenceable(24) %)"),
+            ("vwCheck", CompilerFunctionKind.TextValidateUtf8, "call void @(ptr %, ptr %)"),
+            ("vwShow", CompilerFunctionKind.WriteLineUtf8, $"call void @(ptr %, ptr @, i64 {Located(Buffers, "Console.writeLine(text)")})"),
+            ("wrStatus", CompilerFunctionKind.WriterStatus, "call void @(ptr %, ptr %)"),
+            ("itFixed", CompilerFunctionKind.TextFixed, "call void @(ptr %, ptr %, i64 4)"),
+        })
+        {
+            var call = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, name))), x => x.Callee == ir.Function(Routines(kind)[0]));
+            Assert.Equal(shape, call.Shape);
+        }
+
+        var validate = ir.Function(Routines(CompilerFunctionKind.TextValidateUtf8)[0]);
+        var check = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "vwCheck"))), x => x.Callee == validate);
+        Assert.Equal("alloca", check.Operands[1].Opcode); // The Copy Slice's own slot, which the routine owns from the call on (R5-M89).
+    }
+
+    // SPEC 22.9.2, 7.7.4 (DECISIONS R5-M128): an erased Text.fixed Item's adapter measures its capacity from its entry's own input Type, the
+    // target Function Type's, and calls the routine with its own parameters.
+    [Fact]
+    public void AnErasedFixedItemMeasuresItsInput()
+    {
+        var c = Analyze(Buffers, OutputKind.Library);
+        var text = Generate(c);
+        var ir = GeneratedIr.Parse(text);
+        var entry = ir.Function(TableOf(text, Assert.Single(ItemTexts(c, "itErasedFixed"))).Entry);
+        var call = Assert.Single(CallsOf(entry));
+        Assert.Same(ir.Function(Routines(CompilerFunctionKind.TextFixed)[0]), call.Callee);
+        Assert.Equal("call void @(ptr %, ptr %, i64 4)", call.Shape);
+        Assert.Equal([entry.Parameters[1], entry.Parameters[2]], call.Operands); // Its result slot and its input, after the environment word.
+    }
+
+    // SPEC 22.9.2, 22.10.5, 7.7.4 (DECISIONS R5-M128): an erased Builtin toString<i32> and tryFormat<i32, 4> call their built-in routines from
+    // their adapters' entries, given the target Self's kind and, for tryFormat, the capacity measured from the entry's input at index 1; the
+    // module's one record is the BuiltinFormat item's, C9b's, at its first admitting site, so the entries are read directly.
+    [Fact]
+    public void ErasedBuiltinFormatItemsGiveTheirKindAndCapacity()
+    {
+        var c = Analyze(
+            "func erText() -> (ref/i32) -> string => Text.toString<i32>\n" +
+            "func erTry() -> (ref/i32, uniq/[4 of u8]) -> Result<Text.Utf8Slice, BufferFull> => Text.tryFormat<i32, 4>\n",
+            OutputKind.Library);
+        Assert.False(c.Generate(TextWriter.Null));
+        Assert.Equal([("Unsupported_Kd", "Text.toString<i32>")], Records(c));
+        var entries = AdapterTexts(c);
+        Assert.Equal(2, entries.Length);
+        Assert.Contains(entries, static x => x.Contains(
+            $"call void @{Routines(CompilerFunctionKind.TextToString)[0]}(ptr %ret, ptr %a0, i32 5, ptr %location, i64 %location_length)\n",
+            StringComparison.Ordinal));
+        Assert.Contains(entries, static x => x.Contains(
+            $"call void @{Routines(CompilerFunctionKind.TextTryFormat)[0]}(ptr %ret, ptr %a0, ptr %a1, i64 4, i32 5, ptr %location, i64 %location_length)\n",
+            StringComparison.Ordinal));
+    }
+
+    // SPEC 22.10.1-22.10.2, 22.10.5 (DECISIONS R5-M128): a write, a conversion and a formatting into an array of a built-in value call their
+    // row's built-in routine given the Self's kind (and the array's capacity), at a direct call and an Item's Value call; each BuiltinFormat
+    // item stays C9b's record at its admitting call, so the definitions are read directly.
+    [Fact]
+    public void FormattingRowsGiveTheirTargetsKind()
+    {
+        var c = Analyze(Formats, OutputKind.Library);
+        Assert.False(c.Generate(TextWriter.Null));
+        Assert.All(Records(c), static x => Assert.Equal("Unsupported_Kd", x.Code));
+        foreach (var (name, kind, words) in new[]
+        {
+            ("ctWriteI64", CompilerFunctionKind.WriterWrite, "i32 7"),
+            ("ctWriteU8", CompilerFunctionKind.WriterWrite, "i32 2"),
+            ("ctWriteText", CompilerFunctionKind.WriterWrite, "i32 16"),
+            ("ctWriteView", CompilerFunctionKind.WriterWrite, "i32 17"),
+            ("ctWriteBool", CompilerFunctionKind.WriterWrite, "i32 14"),
+            ("ctWriteChar", CompilerFunctionKind.WriterWrite, "i32 13"),
+            ("ctWriteF64", CompilerFunctionKind.WriterWrite, "i32 12"),
+            ("ctText", CompilerFunctionKind.TextToString, "i32 4"),
+            ("ctTry", CompilerFunctionKind.TextTryFormat, "i64 4, i32 5"),
+            ("itText", CompilerFunctionKind.TextToString, "i32 5"),
+        })
+        {
+            var call = Assert.Single(Regex.Matches(Assert.Single(ItemTexts(c, name)), $@"call void @{Routines(kind)[0]}\((.*)\)"));
+            Assert.Contains(words + ", ptr @", call.Groups[1].Value);
+        }
+    }
+
+    // SPEC 22.10.1 (DECISIONS R5-M128): a user formatter's write, toString and tryFormat need C9b's wrapper: one located Unsupported_Kd at each
+    // call, and nothing else.
+    [Fact]
+    public void AUserFormattersRowIsOneLocatedRecord()
+    {
+        var c = Analyze(UserFormats, OutputKind.Library);
+        Assert.False(c.Generate(TextWriter.Null));
+        Assert.Equal(
+            [("Unsupported_Kd", "writer.write(s)"), ("Unsupported_Kd", "Text.toString(s)"), ("Unsupported_Kd", "Text.tryFormat(s, bytes)")],
+            Records(c));
+    }
+
+    // DECISIONS R5-M30, R5-M128: the formatting runtime is written once, only in a module that calls a formatting row, and is the text the
+    // old generator writes.
+    [Fact]
+    public void TheFormattingRuntimeIsWrittenOnRequest()
+    {
+        using var runtime = new StringWriter();
+        LegacyRuntimeHelpers.WriteFormattingRuntime(runtime);
+        var text = Generate(Analyze(Buffers, OutputKind.Library));
+        var at = text.IndexOf(runtime.ToString(), StringComparison.Ordinal);
+        Assert.True(at >= 0);
+        Assert.Equal(at, text.LastIndexOf(runtime.ToString(), StringComparison.Ordinal));
+        Assert.DoesNotContain("@" + Routines(CompilerFunctionKind.TextFixed)[0] + "(", Generate(Analyze("func one() -> i32 => 1\n", OutputKind.Library)));
+    }
+
+    // SPEC 22.10.2: an integer's kind by its width and signedness (a wrapping integer's by its argument, an isize's as i64's), then f32, f64,
+    // char, bool, Unit and string; -1 exactly for a Type without built-in formatting.
+    [Fact]
+    public void FormatKindsAreTheRuntimesNumbering()
+    {
+        string[] names = ["i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64", "i128", "u128", "isize", "usize", "f32", "f64", "char"];
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 7, 8, 11, 12, 13], names.Select(static x => LegacyRuntimeHelpers.FormatKind(BoundType.Primitives[x])));
+        Assert.Equal([14, 15, 16], new[] { BoundType.Boolean, BoundType.Unit, BoundType.String }.Select(LegacyRuntimeHelpers.FormatKind));
+        Assert.Equal(2, LegacyRuntimeHelpers.FormatKind(BoundType.WrappingOf(BoundType.Primitives["u8"])));
+        Assert.Equal(-1, LegacyRuntimeHelpers.FormatKind(BoundType.Range));
+        Assert.All(
+            BoundType.Primitives.Values.Concat(BoundType.WrappingScalars.Values),
+            static x => Assert.Equal(FormattingTypes.IsBuiltin(x), LegacyRuntimeHelpers.FormatKind(x) >= 0));
+    }
+
+    // The routine symbols of formatting rows (P1d's FormattingRow), in order.
+    private static string[] Routines(params CompilerFunctionKind[] kinds) => [.. kinds.Select(static x => LegacyRuntimeHelpers.FormattingRow(x)!.Abi.Name)];
+
+    // A function's calls of the formatting runtime's routines, their symbols in order.
+    private static string[] FormattingCalls(GeneratedIr ir, Compilation c, string name)
+    {
+        var routines = Enumerable.Range((int)CompilerFunctionKind.TextFixed, CompilerFunctionKind.BuiltinFormat - CompilerFunctionKind.TextFixed + 1)
+            .Select(static x => LegacyRuntimeHelpers.FormattingRow((CompilerFunctionKind)x)!.Abi.Name).Distinct().ToDictionary(ir.Function);
+        return [.. CalleesOf(Assert.Single(FunctionsOf(ir, c, name))).Where(routines.ContainsKey).Select(x => routines[x])];
+    }
+
+    // The definitions of a program's ItemAdapter items, each written directly whatever records the module's other items make (ItemTexts).
+    private static string[] AdapterTexts(Compilation c)
+    {
+        var (_, collector, module, _) = WrittenModule(c);
+        var set = collector.Set;
+        return [.. Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.ItemAdapter).Select(x =>
+        {
+            using var writer = new StringWriter();
+            new FunctionCodegen(module, c.Types).WriteAdapter(collector, x, writer);
+            return writer.ToString();
+        })];
+    }
+
+    // The byte length of a site's location text (SPEC 22.5.1).
+    private static int Located(string source, string site) => LocationText(source, site).Length;
+}

@@ -47,6 +47,28 @@ internal sealed partial class LegacyRuntimeHelpers
         return FormattingRows[index] is { } row && row.Kind == kind ? row : throw new InvalidOperationException("A formatting compiler function has no row.");
     }
 
+    /// <summary>Gets the formatting runtime's kind of a built-in formattable Type (SPEC 22.10.2), the number its built-in routines take as
+    /// their kind Context and switch on (<c>__kimi_format_builtin</c>), the legacy runtime's own numbering, which R8 removes with it: an
+    /// integer's by its width and signedness, then f32, f64, char, bool, Unit, string and Utf8Slice. The one table both generators read.</summary>
+    /// <param name="type">A closed Type.</param>
+    /// <returns>Its kind, or -1 for a Type without built-in formatting (a user or library formatter's).</returns>
+    internal static int FormatKind(BoundType type)
+    {
+        var width = ScalarTypes.Width(type);
+        if (width != 0)
+        {
+            return width switch { 8 => 0, 16 => 2, 32 => 4, 64 => 6, _ => 8 } + (ScalarTypes.Signed(type) ? 1 : 2);
+        }
+
+        return ReferenceEquals(type, BoundType.F32) ? 11 : ReferenceEquals(type, BoundType.F64) ? 12 : ReferenceEquals(type, BoundType.Char) ? 13 :
+            ReferenceEquals(type, BoundType.Boolean) ? 14 : ReferenceEquals(type, BoundType.Unit) ? 15 : ReferenceEquals(type, BoundType.String) ? 16 :
+            type.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Slice ? 17 : -1;
+    }
+
+    /// <summary>Writes the formatting runtime: the templates with each row's routine defined once (both generators' one text).</summary>
+    /// <param name="output">The module text.</param>
+    internal static void WriteFormattingRuntime(TextWriter output) => output.Write(FormattingRuntime);
+
     /// <summary>Registers the writer adapter's write wrapper over a user formatting witness (SPEC 22.10.1): it is written in
     /// request order, and the needs of WriterWrite's row join the module's. The planner requests each wrapper once.</summary>
     /// <param name="wrapper">The wrapper's ABI.</param>
@@ -81,7 +103,7 @@ internal sealed partial class LegacyRuntimeHelpers
     {
         if (this.NeedsFormattingRuntime)
         {
-            output.Write(FormattingRuntime);
+            WriteFormattingRuntime(output);
         }
 
         foreach (var (wrapper, implementation) in this.formattingWrites)
@@ -109,7 +131,8 @@ internal sealed partial class LegacyRuntimeHelpers
         var location = RuntimeAbi.Location;
         var length = RuntimeAbi.LocationLength;
         var amount = new AbiParameter("i64", "amount", LogicalIndex: 1);
-        var capacity = new AbiParameter("i64", "capacity", AbiParameterKind.Context);
+        // A capacity Context is the length of the fixed array its logical index's pointer parameter receives (SPEC 22.9.2's N).
+        var capacity = new AbiParameter("i64", "capacity", AbiParameterKind.Context, 0);
         Add(CompilerFunctionKind.TextFixed, Slotted("__kimi_text_fixed", [ret, reference, capacity]), Runtime);
         Add(CompilerFunctionKind.TextHeap, Slotted("__kimi_text_heap", [ret, new("i64", "capacity", LogicalIndex: 0), location, length]), Runtime);
         Add(
@@ -128,7 +151,9 @@ internal sealed partial class LegacyRuntimeHelpers
         Add(CompilerFunctionKind.TextToString, Slotted("__kimi_text_to_string", [ret, value, builtin, location, length]), Runtime);
         Add(
             CompilerFunctionKind.TextTryFormat,
-            Slotted("__kimi_text_try_format", [ret, value, new("ptr", "destination", LogicalIndex: 1), capacity, builtin, location, length]),
+            Slotted(
+                "__kimi_text_try_format",
+                [ret, value, new("ptr", "destination", LogicalIndex: 1), capacity with { LogicalIndex = 1 }, builtin, location, length]),
             Runtime);
         Add(CompilerFunctionKind.TextRelease, new("__kimi_text_release", "void", [reference, location, length]), Runtime);
         Add(CompilerFunctionKind.TextUtf8, Slotted("__kimi_text_utf8", [ret, new("ptr", "self", AbiParameterKind.SharedReference, 0)]), Runtime);
