@@ -1,3 +1,0 @@
-test	XunitTest.ScalarTemporaryBorrowTest.ExecutesScalarTemporaryBorrows	XunitTest.ScalarTemporaryBorrowTest.ExecutesScalarTemporaryBorrows(name: \"Interpolated\", source: \"let c = true\\nlet x: i32 = 4\\nConsole.writeLine(\\\"\\\\(if c => 5 else => 6) \\\\(do => 7) \\\\(x > 1 and x < 9)\\\")\", output: \"5 7 true\\n\")
-test	XunitTest.WrappingIntegerTest.GenericBodiesUseTheWrappingScalarOfEachInstance	XunitTest.WrappingIntegerTest.GenericBodiesUseTheWrappingScalarOfEachInstance
-test	XunitTest.WrappingIntegerTest.WrappingValuesFormatAndStoreLikeTheirArgument	XunitTest.WrappingIntegerTest.WrappingValuesFormatAndStoreLikeTheirArgument

@@ -1313,6 +1313,13 @@ public sealed partial class FunctionCodegenTest
         new[] { "w.reserve(4)" })]
     [InlineData("func show(text: Text.Utf8Slice) => Console.writeLine(text)\n", OutputKind.Library, new string[0])]
     [InlineData("func show(x: i32) -> string => Text.toString(x)\n", OutputKind.Library, new string[0])]
+    [InlineData("func show(x: i32) -> string => \"x=\\(x)\"\n", OutputKind.Library, new string[0])]
+    [InlineData("func show(s: ref/string) -> string => \"\\(s)\"\n", OutputKind.Library, new string[0])]
+    [InlineData("func show(s: ref/string) -> string => \"x=\\(s)\"\n", OutputKind.Library, new[] { "\"x=\\(s)\"" })]
+    [InlineData(
+        "func show<T>(value: ref/T)\n    T is Utf8Format\n    Console.writeLine(\"x=\\(value)\")\nfunc use() -> ()\n    show(1)\n    show(\"s\")\n",
+        OutputKind.Library,
+        new[] { "\"x=\\(value)\"" })]
     [InlineData(ForLoop, OutputKind.Library, new string[0])]
     [InlineData(DictionaryLoop, OutputKind.Library, new string[0])]
     [InlineData("group Registry\n    public let limit: i32 = 4\n", OutputKind.Library, new string[0])]
@@ -1367,6 +1374,7 @@ public sealed partial class FunctionCodegenTest
     [InlineData(FormatShims, OutputKind.Library)]
     [InlineData(UserFormats, OutputKind.Library)]
     [InlineData(Writers, OutputKind.Library)]
+    [InlineData(Interpolations, OutputKind.Library)]
     public void GenerationIsDeterministic(string source, OutputKind output)
     {
         var first = Generate(Analyze(source, output));
@@ -1474,6 +1482,7 @@ public sealed partial class FunctionCodegenTest
     [InlineData(FormatShims, OutputKind.Library)]
     [InlineData(UserFormats, OutputKind.Library)]
     [InlineData(Writers, OutputKind.Library)]
+    [InlineData(Interpolations, OutputKind.Library)]
     public void WarmGenerationAllocatesNothing(string source, OutputKind output)
     {
         var c = Analyze(source, output);

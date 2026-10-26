@@ -69,7 +69,8 @@ internal sealed partial class FunctionCodegen
     // factory (its payload, DECISIONS R5-M110), so a Fail's code or Raw.initialize's value gets none; a compiler function of the Body
     // disposition, called directly or as an Item's Value call, by its legacy row (RowSlots; DECISIONS R5-M116). A Value call's callee
     // operand passed by value is its environment, which a Consuming body owns (SPEC 7.7.3: a Consuming call Copies a Copy Closure; DECISIONS
-    // R5-M102): its slot is numbered after the body's operands by its block (CalleeCopy), since a block's terminator is its one call.
+    // R5-M102): its slot is numbered after the body's operands by its block (CalleeCopy), since a block's terminator is its one call. The same
+    // pass gives an interpolation buffer its Region home when its estimate places it on the frame (FunctionCodegen.Interpolation's Region).
     private void Copies()
     {
         var count = this.body.Operands.Length + this.body.Blocks.Length;
@@ -110,6 +111,12 @@ internal sealed partial class FunctionCodegen
             // A creation's factory takes its payload at its kind, as a body callee does (ModuleCodegen.Factory; DECISIONS R5-M110).
             var payload = call.Start + ArgumentPosition(new(call.Callee.Symbol, MirBodyKind.Fn), 0);
             this.CopySlot(this.body.Operands[payload], payload);
+            return;
+        }
+
+        if (row.Writer == IntrinsicWriter.Buffer)
+        {
+            this.Region(call); // An interpolation buffer's home: its frame's region when its estimate places it there (DECISIONS R5-M131).
             return;
         }
 

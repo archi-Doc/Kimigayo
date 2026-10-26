@@ -27,10 +27,13 @@ internal readonly record struct FormatEstimate(long Total, bool Bounded)
     internal static FormatEstimate Empty => new(0, Bounded: true);
 
     /// <summary>Gets the capacity of the private heap buffer: the sum when bounded, else 0 (a buffer that starts unallocated).</summary>
-    internal long Capacity => this.Bounded && this.Total >= 0 ? this.Total : 0;
+    internal long Capacity => this.Unbounded ? 0 : this.Total;
 
     /// <summary>Gets the adapter's hint: the sum, 0 once discarded.</summary>
     internal long Hint => this.Total < 0 ? 0 : this.Total;
+
+    /// <summary>Gets a value indicating whether the estimate bounds no buffer: a value is unbounded or the sum was discarded.</summary>
+    internal bool Unbounded => !this.Bounded || this.Total < 0;
 
     /// <summary>Adds a literal's bytes or a value's maximum (-1 for an unbounded value).</summary>
     /// <param name="amount">The bytes, or -1.</param>

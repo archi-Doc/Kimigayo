@@ -17,8 +17,9 @@ internal sealed partial class MirBuilder
         => Binding.WritesText(write) ? Encoding.UTF8.GetByteCount(((StringLiteralKoto)write.ArgumentOperations[1].Source!).Literal) : -1;
 
     // SPEC 22.10.3, 22.10.4: the writes of a formatting plan in order (CallPlan.Of), each through an exclusive borrow of its adapter, a failed
-    // one leaving them: a $tryWrite's adapter is its writer operand, acquired once and Reborrowed, and a failure goes to its result, the writer's
-    // status. An owning interpolation's is the internal adapter (its second call) over an exclusive borrow of the private buffer FormatBuffer
+    // one leaving them: a $tryWrite's adapter is its writer operand, acquired once and Reborrowed, its status tested before a first segment
+    // that is an embedded expression, and a failure goes to its result, the writer's status. An owning interpolation's is the internal adapter
+    // (its second call) over an exclusive borrow of the private buffer FormatBuffer
     // gives of the capacity its instance estimates from the literal bytes and the values' Types (5.1), on the stack where it is passed directly to
     // writeLine and its instance bounds it within the limit (6.1); each write follows FormatHint of the later literal bytes and values' Types, a
     // failure Aborts with KIMI_E_FORMAT, and FormatFinish ends the adapter and takes the buffer's bytes as the string, which leaves the buffer
@@ -45,6 +46,14 @@ internal sealed partial class MirBuilder
                 this.current = done;
                 CollectionsMarshal.SetCount(this.located, mark);
                 return;
+            }
+
+            if (!Binding.WritesText(CallPlan.Of(node, 0)!))
+            {
+                // SPEC 22.10.4: an embedded expression is evaluated only after a test that the adapter is healthy, the previous write's Ok
+                // result or, before the first segment, the adapter's status (the plan's last call); a text's write returns the recorded
+                // failure itself (SPEC 22.10.1).
+                this.Tested(CallPlan.Of(node, HirTables.PlanOf(node).Formatting!.Writes.Count)!, done, node, storage: null, default);
             }
         }
         else
@@ -81,11 +90,7 @@ internal sealed partial class MirBuilder
                 this.Estimate(unit, IntrinsicId.FormatHint, later, values, at, node);
             }
 
-            var result = this.Hold(write.ReturnType, node);
-            var discriminant = this.Hold(BoundType.ISize, node);
-            this.Call(result, write, node, null, first > 0 ? storage : null, first > 0 ? this.Borrow(SemanticsKind.Uniq, writer, node) : default);
-            this.Set(discriminant, MirRvalue.Discriminant(this.Made(result)), node);
-            this.Pass(MirOperand.Copy(this.Made(discriminant)), 0, done, node);
+            this.Tested(write, done, node, first > 0 ? storage : null, writer);
         }
 
         if (first == 0)
@@ -104,6 +109,17 @@ internal sealed partial class MirBuilder
 
         CollectionsMarshal.SetCount(this.located, mark);
         CollectionsMarshal.SetCount(this.formatTypes, start);
+    }
+
+    // A write's or a $tryWrite's status call (SPEC 22.10.1, 22.10.4), its Result tested: Ok continues, a failure goes to done. An owning
+    // interpolation's write takes its adapter, an exclusive borrow of the internal adapter at its storage's argument.
+    private void Tested(CallPlan call, int done, Koto node, Koto? storage, MirPlace adapter)
+    {
+        var result = this.Hold(call.ReturnType, node);
+        var discriminant = this.Hold(BoundType.ISize, node);
+        this.Call(result, call, node, null, storage, storage is null ? default : this.Borrow(SemanticsKind.Uniq, adapter, node));
+        this.Set(discriminant, MirRvalue.Discriminant(this.Made(result)), node);
+        this.Pass(MirOperand.Copy(this.Made(discriminant)), 0, done, node);
     }
 
     // An owning interpolation's intrinsic on the operands pushed since at, then its estimate (SPEC 22.10.5, 22.7): the literal bytes and a
