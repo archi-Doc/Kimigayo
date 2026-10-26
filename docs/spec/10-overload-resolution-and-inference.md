@@ -204,7 +204,7 @@ Each argument of a call is exactly one of the following, except a Tuple or array
 - **Independently typable**: any other argument whose complete Type is fixed with no expectation from the call and no literal default, such as a typed value or Place (with any explicit `@` operation) or a function reference that does not need `S` ([§10.5.3](#1053-function-references)). A nested call qualifies only when it has exactly one applicable candidate without an expected result. An anonymous function never qualifies. Its Type is evidence for the outer candidate's slots.
 - **Waiting**: every other argument, such as an anonymous function, a function reference that needs `S`, or a nested call that is not independently typable. It is checked only against the expected Type shared by the remaining outer candidates, or that of the selected candidate, and is never evidence for an outer slot.
 
-A Tuple or array literal argument is fitted per candidate ([§4.3.1](04-arrays-indexing-and-slices.md#431-array-literals-and-annotation-holes)): a Literal element fits the Type at its position and is no evidence, an independently typable element is evidence for the slots at its position, and a waiting element is checked there as a waiting argument is. A slot that takes the whole literal is bound from it only when every element is evidence. A control-flow argument whose Type is formed part by part ([§14.9.2](14-control-flow.md#1492-target-result-type-and-expression-type) step 2) is classified and fitted as such a literal argument is, each position taking the parts its sources hold there, other than Never, as the sources of one control-flow argument.
+A Tuple or array literal argument is fitted per candidate ([§4.3.1](04-arrays-indexing-and-slices.md#431-array-literals-and-annotation-holes)): a Literal element fits the Type at its position and is no evidence, an independently typable element is evidence for the slots at its position, and a waiting element is checked there as a waiting argument is. A slot that takes the whole literal is bound from it only when every element is evidence. A control-flow argument whose Tuple or array result, a fill's included, is formed part by part ([§14.9.2](14-control-flow.md#1492-target-result-type-and-expression-type) step 2) is classified and fitted as such a literal argument is, each position taking the parts its sources hold there, other than Never, as the sources of one control-flow argument.
 
 Inner calls are never resolved once per outer candidate. Eliminated candidates are not revived. A waiting nested call that neither a shared expectation nor an already selected candidate types requires an annotation, explicit Type arguments or a typed binding; anonymous functions follow [§10.5.4](#1054-anonymous-functions).
 
@@ -231,7 +231,7 @@ choose(if ready => 1 else => 2) // Error: ambiguous; both candidates fit the lit
 func identity<T>(value: T) -> T => value@move
 func fail() -> Never => $abort("no value")
 func pick(ready: bool, large: i64) -> i64
-    let both = identity(if ready => (large, (return 1)) else => ((return 2), 5))   // By position: T = (i64, i32).
+    let both = identity(if ready => (large, (return 1)) else => ((return 2), 5))   // T = (i64, i32) after selection.
     let one = identity(if ready => 1 else => fail())                                // Literal: T = i32 after selection.
     return both.0
 ```
