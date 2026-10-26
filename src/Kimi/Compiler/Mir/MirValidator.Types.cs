@@ -138,10 +138,10 @@ internal sealed partial class MirValidator
         }
 
         // The Type of an aggregate's operand, as the Place it initializes projects it: a Tuple's element, a Closure's capture, a struct's base
-        // then its own Fields, a Case's payload, a fixed array's or a Fill's element.
+        // then its own Fields, a Case's payload, a fixed array's, a Fill's or an Array's element.
         private readonly BoundType? Component(in MirRvalue rvalue, int index) => (MirAggregateKind)rvalue.Op switch
         {
-            MirAggregateKind.FixedArray or MirAggregateKind.Fill => rvalue.Type!.Components[0],
+            MirAggregateKind.FixedArray or MirAggregateKind.Fill or MirAggregateKind.Array => rvalue.Type!.Components[0],
             MirAggregateKind.Adt when AdtDef.IsEnum(rvalue.Type) => body.ProjectedType(
                 body.ProjectedType(
                     rvalue.Type,

@@ -199,22 +199,17 @@ internal sealed partial class MirBuilder
         return this.Acquire(adjust, place, expected, reserves, node, into);
     }
 
-    // SPEC 3.2, 4.3.1, 4.3.3, 6.6: a Tuple, a fixed array or an enum Case value from its operands in order, an enum's payloads as its
-    // construction acquires them, a fill from its value acquired once, which every element of its Type's length copies (Fill, DECISIONS
-    // R4-M81); a dynamic Array literal the calls of its built-in form (Collection).
+    // SPEC 3.2, 4.3.1, 4.3.3, 6.6, 12.4.1: a Tuple, a fixed array, an Array or an enum Case value from its operands in order, an enum's
+    // payloads as its construction acquires them, a fill from its value acquired once, which every element of its Type's length copies
+    // (Fill, DECISIONS R4-M81); an Array's elements moved into the one buffer its aggregate allocates (DECISIONS R5-M129).
     private void Aggregate(MirPlace destination, Koto node, BoundType type)
     {
         var construction = BoundEnumConstruction.Of(node);
-        if (node is ArrayLiteralKoto { FillLength: null } literal && type.Kind == BoundTypeKind.Array)
-        {
-            this.Collection(destination, literal, type);
-            return;
-        }
-
         var elements = node switch
         {
             TupleLiteralKoto tuple => tuple.Elements,
             ArrayLiteralKoto array when type.Kind == BoundTypeKind.FixedArray => array.Elements,
+            ArrayLiteralKoto { FillLength: null } array when type.Kind == BoundTypeKind.Array => array.Elements,
             _ => null,
         };
         if (construction is null && elements is null)
@@ -259,7 +254,12 @@ internal sealed partial class MirBuilder
         }
         else
         {
-            kind = type.Kind == BoundTypeKind.FixedArray ? MirAggregateKind.FixedArray : MirAggregateKind.Tuple; // A Tuple's may be Unit.
+            kind = type.Kind switch
+            {
+                BoundTypeKind.FixedArray => MirAggregateKind.FixedArray,
+                BoundTypeKind.Array => MirAggregateKind.Array, // SPEC 4.9.5: one allocation for its elements, none for `[]`.
+                _ => MirAggregateKind.Tuple, // A Tuple's may be Unit.
+            };
         }
 
         var count = this.arguments.Count - start;

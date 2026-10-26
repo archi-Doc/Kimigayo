@@ -573,8 +573,8 @@ public sealed partial class MirBorrowsTest
         => Assert.Equal(["getRRRRepl: y = 5"], RejectedProblems(RawShapes + ChainShapes + ChainRepl + "    let unrelated: bool = 3\n"));
 
     // PLAN G255 (C3; DECISIONS R4-M143): popLateOk is SPEC-valid (SPEC 4.9.6; the pointee is replaced and the popped pointer used before
-    // `y = 5`), as the default pipeline accepts it: the literal's receiver store, a referent store, reaches refs(S) only, so it writes nothing
-    // past the elements the Φ_E of an earlier untied store reached, and pop's Chain row reads no E.
+    // `y = 5`), as the default pipeline accepts it: its literal is one aggregate (DECISIONS R5-M129), which writes no receiver store and leaves
+    // no Φ_E in its elements, so pop's Chain row reads no E; built by appends, each receiver store, a referent store, reaches refs(S) only.
     [Fact]
     public void APopOverElementsAnUntiedStoreReachedIsValid()
     {
