@@ -8,7 +8,7 @@ using Xunit;
 namespace XunitTest;
 
 /// <summary>The Type facts A5 reads (docs/dev/DECISIONS.md R4-M36, R4-M73, R4-M147): which values may hold a Loan and what a call may write past them
-/// (<see cref="MirTypes.HoldsLoans"/>), and which destructions may observe what they hold (<see cref="MirTypes.Observes"/>), over the
+/// (<see cref="MirTypes.HoldsLoans"/>), and what destructions may observe of what they hold (<see cref="MirTypes.Observation"/>), over the
 /// parameter Types of one function.</summary>
 public sealed class MirTypesTest(ITestOutputHelper output)
 {
@@ -128,9 +128,9 @@ public sealed class MirTypesTest(ITestOutputHelper output)
     }
 
     // SPEC 15.6.6, 16.3.3: destroying a value observes what it holds where its destruction runs a user drop (Logger, also as an element
-    // or a Sealed handle's payload), destroys a Function value or an abstract part not proven Copy, or releases a handle whose payload is
-    // not Sealed; a Sealed recursive handle ends. A part past the walk's depth bound, also below a growing recursive handle, is deep: the
-    // caller's located Unsupported.
+    // or a Sealed handle's payload), destroys a Function value, or releases a handle whose payload is not Sealed; an abstract part not
+    // proven Copy, whose instance decides, is Unproven (DECISIONS R4-M147); a Sealed recursive handle ends. A part past the walk's depth
+    // bound, also below a growing recursive handle, is Deep: the caller's located Unsupported.
     [Fact]
     public void DestructionObservesUserDropsAndUnknownParts()
     {
@@ -140,11 +140,12 @@ public sealed class MirTypesTest(ITestOutputHelper output)
             "nest: Nest<i32>)\n    C is Copy\n    return\n");
         var seen = new HashSet<BoundType>(ReferenceEqualityComparer.Instance);
         Assert.Equal(
-            [("holder", false, false), ("logger", true, false), ("loggers", true, false), ("owned", true, false), ("shared", false, false),
-                ("atomic", false, false), ("based", true, false), ("action", true, false), ("value", true, false), ("copied", false, false),
-                ("chain", false, false), ("tree", false, false), ("forest", false, false), ("table", false, false), ("logged", true, false),
-                ("nest", true, true)],
-            Parameters(body).Select(x => (x.Name, MirTypes.Observes(x.Type, c.Types, body.Key.Decl, seen, out var deep, out _), deep)).ToArray());
+            [("holder", MirObservation.None), ("logger", MirObservation.Observes), ("loggers", MirObservation.Observes),
+                ("owned", MirObservation.Observes), ("shared", MirObservation.None), ("atomic", MirObservation.None),
+                ("based", MirObservation.Observes), ("action", MirObservation.Observes), ("value", MirObservation.Unproven),
+                ("copied", MirObservation.None), ("chain", MirObservation.None), ("tree", MirObservation.None), ("forest", MirObservation.None),
+                ("table", MirObservation.None), ("logged", MirObservation.Observes), ("nest", MirObservation.Deep)],
+            Parameters(body).Select(x => (x.Name, MirTypes.Observation(x.Type, c.Types, body.Key.Decl, seen))).ToArray());
     }
 
     // SPEC 8.11.2 (DECISIONS R4-M58): a value holds raw authority where a part is a raw pointer or an rc handle; each Type is walked once
@@ -178,7 +179,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
         Assert.False(MirTypes.Destruction(pairs, ref walk));
         Assert.Equal((26, 51), (seen.Count, walk.Met)); // P24..P0 and i32; each struct's two Fields met once each.
         Assert.False(MirTypes.MayNeedDrop(pairs, seen));
-        Assert.False(MirTypes.Observes(pairs, c.Types, body.Key.Decl, seen, out var deep, out _) || deep);
+        Assert.Equal(MirObservation.None, MirTypes.Observation(pairs, c.Types, body.Key.Decl, seen));
         Assert.False(MirTypes.HoldsRaw(pairs, seen) || MirTypes.HoldsLoans(pairs, c.Types, new(ReferenceEqualityComparer.Instance), [], out _));
     }
 
@@ -198,8 +199,9 @@ public sealed class MirTypesTest(ITestOutputHelper output)
                 var holds = MirTypes.HoldsLoans(local.Type, c.Types, walked, [], out _);
                 var raw = local.Type.Semantics == Kimi.Compiler.Parsing.SemanticsKind.Raw;
                 Assert.True(holds || !(raw || MirTypes.IsReference(local.Type)), $"{body.Key.Decl?.Name}: {local.Name}");
-                var observes = MirTypes.Observes(local.Type, c.Types, body.Key.Decl, seen, out var deep, out _);
-                Assert.False(deep, $"{body.Key.Decl?.Name}: {local.Name}");
+                var observation = MirTypes.Observation(local.Type, c.Types, body.Key.Decl, seen);
+                Assert.NotEqual(MirObservation.Deep, observation);
+                var observes = observation != MirObservation.None;
                 (locals, holding, observing) = (locals + 1, holding + (holds ? 1 : 0), observing + (observes ? 1 : 0));
             }
         }

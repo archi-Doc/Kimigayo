@@ -4790,19 +4790,26 @@ and migration obligations remain in force; no numeric cap changes are authorized
     - Exclusive: the pointee and each exclusive member's referent past an exclusive layer (`TyCtxt.RawMembers`). Where the members are
       unpublished (a Type argument supplies the layer, or the member walk is incomplete), the Limit fact; a write fact anywhere in the
       value outranks it (review 2's C5).
-    - Unstated: the write fact where the declaration states the layer (P2); the pointee past an exclusive layer where a Type argument
-      supplies it (`TyCtxt.RawSupplied`).
+    - Unstated, SPEC 5.7 Calls' per-parameter rule (P2): the pointee past an exclusive layer where the parameter's Type expression writes
+      the layer, a Type argument's or a pair slot's argument's included (`TyCtxt.RawSupplied`, read on the instance holding the layer);
+      the write fact where a declaration states it in its own Fields, Case payloads or base. Gap (Known limits): a layer a declaration
+      writes inside a nested instance's Type argument reads as supplied.
     - A raw layer outside an instance (a local's or parameter's own Type, an element or a Tuple outside one): its pointee past an
       exclusive layer, as R4-M120 has it.
   - Representation: `MirWrites` is None, Through and Limit, with Through over Limit over None; `ThroughArgument`, the walk's `Argument`
     mode and its `WriteByArgument` fact are removed, and the modes are Own, Exclusive and LoanOnly. `HoldsLoans(type, types, seen,
-    members, out writes)` takes a `List<RawMember>` scratch that `MirBorrows` owns, used in stack order. No vocabulary entry.
+    members, out writes)` takes a `List<RawMember>` scratch that `MirBorrows` owns, used in stack order. The destruction walk's answer
+    is one class, `MirObservation` (None, Unproven, Observes, Deep; `MirTypes.Observation`, which replaces `Observes` and its `out bool
+    deep`), so no member takes a second `out bool` (COMPILER_ARCHITECTURE's parameter limits). No vocabulary entry.
+  - The walk goes on past an abstract part not proven Copy (it stopped there before), so a Type that holds one and a part past the
+    depth bound is `Deep` (an unclassified destruction, a located `Unsupported_Kd`) where it was observing: conservative, with no
+    corpus effect (the census's problems are equal).
   - The Limit's record: `MirBorrows.Writes`, now one pass from the Through holders, returns whether W reached a Limit holder. The checks
     replay's Call sets the location's limit, and `Check` records it as one located `Unsupported_Kd` at the call through the rule that
     records `CallRetention.Limit` (R4-M51). The view's other problems stay.
   - An abstract referent (the planning session's ruling D″): at a referent store (R4-M143) whose referent's destruction observes only
-    through abstract parts not proven Copy (`MirTypes.Observes`' `unproven`, from its one walk, which now goes on past such a part;
-    memoized with the access in `MirBorrows.Destruction`), W past refs(S) is undecided. A store whose undecided part past refs(S) would
+    through abstract parts not proven Copy (`MirTypes.Observation`'s `Unproven`, from its one walk, which now goes on past such a part;
+    memoized in `MirBorrows.Destruction`), W past refs(S) is undecided. A store whose undecided part past refs(S) would
     add a Loan or an address (the row's value holds one: its sorted set's last element) is a Limit and stops at refs(S); a value of Φ_E
     and markers only takes W as before. The rule has the shape of G264's revision 1 (skip only together with `Unsupported_Kd`).
     Rejected: any W past refs(S) (it records at Array.appendAll's `source.reverse()` and `source.pop()` in every compilation: MirCensusTest
@@ -4818,16 +4825,22 @@ and migration obligations remain in force; no numeric cap changes are authorized
     an exclusive reference" for a stored Own or Origin-less layer, whose instance's Type arguments are read by their actual Types (Q2
     (a)); R4-M143's O7 pin, now kept by the abstract-referent rule: clearGenOk is the located `Unsupported_Kd` at `a.clear()`,
     clearGenBad and Gen's `kept` that record and their true `y = 5`.
-  - Known limits: a store past a supplied Exclusive layer whose Origin is a shared or parameter borrow is a Limit (`sharedSupplied`,
+  - Known limits: a raw layer without an Origin that a declaration writes as a Type argument of its own Field, Case payload or base
+    clause (`Holder2 { b: Wrap<raw/u8> }`, `HoldOpt { o: Option<raw/u8> }`, `DerS : BaseW<raw/u8>`, a user enum's payload, a Tuple in a
+    Type argument, deeper nesting, a base chain, a pair slot's argument) reads as supplied on the nested instance that holds it, so its
+    Loan-free pointee gives no write fact where SPEC 5.7 Calls gives one: an unsound acceptance, pre-existing (dev's MIR and the default
+    pipeline accept the same forms, and this unit newly accepts none), until Binding publishes the layer's provenance relative to the
+    holder (PLAN open issue; BU's proposed change (A), with a chain in `Past`). A store past a supplied Exclusive layer whose Origin is a
+    shared or parameter borrow is a Limit (`sharedSupplied`,
     valid, accepted on dev), until Binding publishes such a layer's step judged by its borrow, or the writing scope's members; a raw
     layer outside an instance reads its pointee, so `tupleW` (an Exclusive raw layer over u8 in a local Tuple) is accepted where the
     letter leaves it undecided (v3 §6 (1)); B6-for's `v@follow = x` is the known wrong record PLAN G147 (8i) owns (BU's unit 0c).
   - Evidence: the guard equals v3's prototype (variant 6) on its 30 probe programs and design review 3's r3-limits and r3-positions;
     the problems equal it but for two d2-pairs rows, which dev changed since fb3e4d883 (base d73012e72 lacks them too). The mir
-    Functional ledger against d73012e72 (`r4-p13-1-base-d73012e72`): rows 3,213 to 3,200, 55 removed and 42 added in 19 sources, v3
-    §4.3's count: the hold's 44 `Unsupported_Kd` rows go (31 Language rows at the same locations, 11 paired with the old path's, B6-for's
-    `var arr` twice recovered), no Limit record; open blocking 110 and unclassified 12 (46 rows) unchanged; classification a5-p13
-    re-noted. MirCensusTest (library, milestones, goldens, accepted SPEC variants): no problem. Warm runs allocate nothing
+    Functional ledger against `shared-base/5e5669d1b`, on the merge with dev a7eb51913: rows 3,222 to 3,209, 55 removed and 42 added in
+    19 sources, v3 §4.3's count and row for row the delta against d73012e72 before the merge: the hold's 44 `Unsupported_Kd` rows go (31
+    Language rows at the same locations, 11 paired with the old path's, B6-for's `var arr` twice recovered), no Limit record; open
+    blocking 109 and unclassified 10 (44 rows) unchanged; classification a5-p13 re-noted. MirCensusTest (library, milestones, goldens, accepted SPEC variants): no problem. Warm runs allocate nothing
     (`TheGuardsWalkAllocatesNothingWarm`). Cost (the G258 host: A5 cold per program over the census's 120 programs, dev a7eb51913
     against U0 and P13-1 merged on it (25cec9e11), separate binaries from sibling folders, A-A-B, three runs of 8 reps, CPU 6 pinned,
     tiering off, beside one R5 heavy run): A5's min-sum 367.5 to 361.1 ms (0.9827; A/A 1.0087), median per-program ratio 0.9827, Work
