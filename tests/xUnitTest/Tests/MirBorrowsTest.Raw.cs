@@ -573,8 +573,8 @@ public sealed partial class MirBorrowsTest
         => Assert.Equal(["getRRRRepl: y = 5"], RejectedProblems(RawShapes + ChainShapes + ChainRepl + "    let unrelated: bool = 3\n"));
 
     // PLAN G255 (C3; DECISIONS R4-M143): popLateOk is SPEC-valid (SPEC 4.9.6; the pointee is replaced and the popped pointer used before
-    // `y = 5`), as the default pipeline accepts it: the literal's receiver store, a referent store, reaches refs(S) only, so it writes nothing
-    // past the elements the Φ_E of an earlier untied store reached, and pop's Chain row reads no E.
+    // `y = 5`), as the default pipeline accepts it: its literal is one aggregate (DECISIONS R5-M129), which writes no receiver store and leaves
+    // no Φ_E in its elements, so pop's Chain row reads no E; built by appends, each receiver store, a referent store, reaches refs(S) only.
     [Fact]
     public void APopOverElementsAnUntiedStoreReachedIsValid()
     {
@@ -583,79 +583,6 @@ public sealed partial class MirBorrowsTest
             "    y = 5\n";
         Assert.Empty(Problems(RawShapes + PopLateOk));
         Assert.Empty(MinimalEmissionTest.Analyze("func inspect<T>(value: ref/T) => ()\n" + PopLateOk + "public func main() => ()\n").Problems);
-    }
-
-    // SPEC 4.3.1, 4.9.6, 12.4.1 (DECISIONS R5-M129): an Array literal is one aggregate, whose elements are its own buffer's from its
-    // construction (A5's aggregate rule: their union under rule W's Indirect, where an Index step reads it), so a Loan an element's pointee
-    // keeps is held by the Array and reaches no other holder: popLateOk, rawPairOk and cellOk are valid, and their twins, which use the
-    // Array or its element after `y = 5`, err there (fail-before: popLateOk and rawPairOk erred, the literal's appended receiver store
-    // reaching E through the earlier element's untied store, G255 (C3)'s limit).
-    [Fact]
-    public void AnArrayLiteralsElementsAreItsOwnFromItsConstruction()
-    {
-        const string Literals = """
-            struct Cell
-                public var next: raw/Cell
-                public var data: raw/u8
-                public init(next: raw/Cell, data: raw/u8)
-                    self.next = next
-                    self.data = data
-            func popLateOk()
-                var y: i32 = 1
-                var w: ref/i32 = y@ref
-                var h: raw/u8 = null
-                var a: Array<raw/(raw/u8)> = [h@raw]
-                h = w@raw@raw/u8
-                let x = a.pop()
-                inspect(a)
-                h = null
-                inspect(x)
-                y = 5
-            func popLateBad()
-                var y: i32 = 1
-                var w: ref/i32 = y@ref
-                var h: raw/u8 = null
-                var a: Array<raw/(raw/u8)> = [h@raw]
-                h = w@raw@raw/u8
-                let x = a.pop()
-                h = null
-                y = 5
-                inspect(x)
-            func rawPairOk()
-                var y: i32 = 1
-                var w: ref/i32 = y@ref
-                var h2: raw/u8 = w@raw@raw/u8
-                var h1: raw/(raw/u8) = h2@raw
-                let a = [h1, h1]
-                inspect(a)
-                y = 5
-            func rawPairBad()
-                var y: i32 = 1
-                var w: ref/i32 = y@ref
-                var h2: raw/u8 = w@raw@raw/u8
-                var h1: raw/(raw/u8) = h2@raw
-                let a = [h1, h1]
-                y = 5
-                inspect(a)
-            func cellOk()
-                var y: i32 = 1
-                var w: ref/i32 = y@ref
-                var n = Cell.init(next: null, data: null)
-                n.data = w@raw@raw/u8
-                let a = [n@raw]
-                inspect(a)
-                y = 5
-            func cellBad()
-                var y: i32 = 1
-                var w: ref/i32 = y@ref
-                var n = Cell.init(next: null, data: null)
-                n.data = w@raw@raw/u8
-                let a = [n@raw]
-                y = 5
-                inspect(a)
-
-            """;
-        Assert.Equal(["popLateBad: y = 5", "rawPairBad: y = 5", "cellBad: y = 5"], Problems(RawShapes + Literals));
     }
 
     // Content rows stay one read (SPEC 15.6.4's premises; R4-M138 keys the closure on the row's kind only): an Array iterator's `next`

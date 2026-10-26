@@ -50,8 +50,9 @@ public sealed partial class MirBorrowsTest
 
         """;
 
-    // SPEC 4.9.6, 15.6.4: an Array's literal and append (arrNode1Ok, arrNodeAppendOk, rawPairOk, appendNullOk, appendIntoOk, appendMiddleOk),
-    // pop (pop2Ok), an explicit reserve over a non-empty Array (reserveLateOk: the literal's reserve meets an empty one), swap (arrSwapOk),
+    // SPEC 4.9.6, 15.6.4: an Array's append (arrNodeAppendOk, appendNullOk, appendIntoOk, appendMiddleOk) and literal (arrNode1Ok, rawPairOk:
+    // one aggregate since DECISIONS R5-M129, which writes no receiver store), pop (pop2Ok), an explicit reserve over a non-empty Array
+    // (reserveLateOk; a literal reserves nothing since R5-M129), swap (arrSwapOk),
     // a Dictionary's insertOrReplace (dictInsertOk), an Array of exclusive references (safeElemOk), a fixed array's sliceUniq (fixedSliceOk)
     // and a UniqSlice's indexUniq (uniqSliceIndexOk) write only their receiver's element storage, so a Loan an element's pointee keeps is not
     // written into the receiver's other holders: each is valid, and its twin that uses the elements after `y = 5` (`t = q@ref`) errs there.

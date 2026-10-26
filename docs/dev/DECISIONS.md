@@ -3930,7 +3930,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     earlier-held temp uses Hold and Made, none is left on the old order): `Value` (operand temps: call, method, accessor, constructor and
     operator results, aggregates, closures, interpolations, selections' values, receivers), `Referent`, `Statement`, `Discard`,
     `Result`'s input, a `match` Subject, a guard's, a condition's and a verification's bool, a Literal Pattern's test, a `for` iterator
-    and step Subject, `Count`'s range, a compound update's read, result and setter Unit, an Array literal's Unit, a Dictionary entry's
+    and step Subject, `Count`'s range, a compound update's read, result and setter Unit, an Array literal's Unit (until R5-M129), a Dictionary entry's
     key, value, link, test and handle, a Contract comparison's result and leaf value, `and`/`or`'s left, an Abrupt conversion's operand,
     Formatting's writer, hint Unit, write result and discriminant, a verification's issue and message, an acquisition's Never value, a
     constructor's body value, a defer's result, a keyed selection's result, `Replace`'s value; and `Defaults`' explicit-argument slot
@@ -4694,6 +4694,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     - `TheReferentStoresStayDense` (V16) fails first.
     - `reserve`'s referent store (bu45's review O15) is pinned by reserveLateOk, an explicit `reserve` over a non-empty Array, which errs
       where `reserve` keeps W; the literal's `reserve` meets an empty Array, so no literal form depends on it.
+    - These tests, the oracle and the held-view census were measured with Array literals built as appends. Since R5-M129 a literal is
+      one aggregate, which writes no receiver store and reserves nothing, so its rows hold by R5-M129, not by this rule.
     - The memo's per-definition key is pinned by one generic struct's case Type in two methods, one proving its element Copy (refs(S)
       alone, valid) and one not (W and the hold, `Unsupported_Kd`): a bare per-Type memo answers the second as the first.
     - Deep counting as observing is pinned by no form (implementation review 1's N2): in every form found, a referent past the
@@ -9960,8 +9962,9 @@ structure is recorded here by the unit that first implements it.
     Allocation or Abort, and reserve and append published no Runs or Destroys, so no A4 summary changes.
   - A5 reads the aggregate rule (the operands' union under rule W's Indirect), the Array's content where an Index step reads it. A literal's
     own buffer carries no escape marker: its elements are placed at construction, and nothing earlier is stored there. An appended element
-    carries the untied-store marker of the receiver store (R4-M116). So the literal is exact, popLateOk and rawPairOk are accepted, and a
-    later unit must not give the literal an append's marker back (R4's finding (4)).
+    carries the untied-store marker of the receiver store (R4-M116). So the literal is exact: C3's literal rows (R4-M143: arrNode1,
+    rawPair, pop2 and popLate, with their Bad twins) keep their verdicts, now by this rule, and a later unit must not give the literal an
+    append's marker back (R4's finding (4)).
   - Code generation: one Array row of the aggregate writer, in Fill's shape after the shared operand evaluation and Destination
     (`FunctionCodegen.Arrays.ArrayBuffer`). It writes the runtime's empty handle, then for n elements one `__kimi_array_grow(stride, n)`, the
     old generator's call, with the Array runtime requested through `Request(HelperNeeds.ArrayRuntime)`, and the length n in the handle's
