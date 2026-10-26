@@ -4987,7 +4987,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Evidence: on design 1's and design 2's probe sets, the design review's and review 1's (294 programs), the implementation's records
     and MIR equal design 2's prototype output line for line, which the design review compared with dev: each changed S2 program loses
     MIR-only conflicts at its rejected root and nothing else, every independent `MovedPlace_Kd` stays, the i32 twins are byte-identical;
-    no Ref, PairAcquire or Adapt lends a temp an Opaque is assigned to (93 programs did on dev).
+    no Ref, PairAcquire or Adapt lends a temp an Opaque is assigned to (92 of the 294 did on dev).
   - Tests: `MirBuildTest.AnOpaqueTempLendsNothing` (the rule at the MIR, each form with its i32 twin; review 1's B1 literal Borrows
     kept) and `MirBorrowsTest.AnOpaqueTempKeepsTheIndependentRecords` (A1's independent moves, an unrelated conflict, the lost class, the
     grouping pin, a literal's temporary); 27 of their 36 cases fail before, the guards pass before and after.

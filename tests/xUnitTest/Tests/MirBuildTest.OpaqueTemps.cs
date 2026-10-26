@@ -18,9 +18,10 @@ public sealed partial class MirBuildTest
     // a write; a Slice's backing and first element; `.capacity`; a runtime Type test; an update's Writeback, also a getter-only Property's
     // standard side (whose getter takes its own derived value of the receiver located in the temp, DECISIONS R4-M109); a method's receiver;
     // a Subject; a pair-case acquisition; a case adaptation (fail-before: each a Ref, PairAcquire or Adapt of a Place in the temp). The
-    // valid twin (an i32 key) lends the local each time; a literal's Borrow, valid in both, lends its
-    // materialized temporary (implementation review 1's B1). Each row: f's lending rvalues and derived values in order, a lent root by
-    // name, `opaque` for a temp an Opaque is assigned to, else `temp`; `derived` for an Opaque naming one such temp.
+    // valid twin (an i32 key) lends the local each time and holds no Opaque value or construction record (R5's guard that a complete
+    // compilation never reaches Unlent); a literal's Borrow, valid in both, lends its materialized temporary (implementation review 1's
+    // B1). Each row: f's lending rvalues and derived values in order, a lent root by name, `opaque` for a temp an Opaque is assigned to,
+    // else `temp`; `derived` for an Opaque naming one such temp.
     [Theory]
     [InlineData("let p = w.v@ref", "derived", "Shared w")]
     [InlineData("let p = w.inner.n@uniq", "derived", "Uniq w")]
@@ -56,6 +57,12 @@ public sealed partial class MirBuildTest
             Assert.Empty(program.Findings);
             var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
             Assert.Equal(expected.Split(" | "), Lending(c, body, RejectedRoots(key).Length));
+            if (key == "i32")
+            {
+                // A complete compilation holds no Opaque value and no construction record, so none of its rvalues reaches Unlent.
+                Assert.DoesNotContain(program.Bodies.ToArray(), static x => x.HasOpaque);
+                Assert.Empty(program.Records);
+            }
         }
     }
 
@@ -122,7 +129,8 @@ public sealed partial class MirBuildTest
         {
             { Kind: MirRvalueKind.Ref } borrow => $"{(MirRefKind)borrow.Op} {Root(borrow.Place.Root)}",
             { Kind: MirRvalueKind.Adapt } adapt => $"adapt {Root(adapt.Place.Root)}",
-            { Kind: MirRvalueKind.Use } use when body.Operands[use.Start] is { Kind: MirOperandKind.PairAcquire } operand => $"acquire {Root(operand.Place.Root)}",
+            { Kind: MirRvalueKind.Use } use when body.Operands[use.Start] is { Kind: MirOperandKind.PairAcquire } operand =>
+                $"acquire {Root(operand.Place.Root)}",
             { Kind: MirRvalueKind.Opaque } derived when body.OpaqueSites[derived.Arg] is { Count: 1 } site &&
                 Root(body.OpaqueRoots[site.Start]) == "opaque" => "derived",
             _ => null,
