@@ -137,7 +137,8 @@ internal sealed partial class TyCtxt
     // keeps the composed substitution, as the forwarded call keeps its Types; null and Limit when the outer instance does not substitute an
     // inner Type, length, conforming Self or declaring Type, or one's storage is a limit. Part is the verdict's deciding part (R4-M139):
     // the instance of the first part reaching it in the order Compose walks (conforming Self, declaring Type, Types by index); null when
-    // Prepared, when a length decides, or when that part has no instance.
+    // Prepared, when a length decides, or when that part has no instance. Instance gives a Limit exactly where it gives no instance, so
+    // Part is never null when Rejected.
     internal (Subst? Subst, Binding.StorageOutcome Storage, BoundType? Part) Compose(Subst inner, Subst outer)
     {
         if (outer.IsIdentity)

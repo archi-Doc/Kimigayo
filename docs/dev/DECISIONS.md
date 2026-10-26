@@ -6068,8 +6068,8 @@ resumed by R4-M86 (2026-10-20).
   - Residual R1: `CallPlan.TypeArguments`, `Subst.Types` and closure contexts keep W, so one instance has two Substs and a call displays
     `id<raw/i32 during x>` where its Item is `id<raw/i32>`. Rule: a reader takes a slot's binding only through `Apply` (the arm). It
     governs A5's `MirBorrows.CallRows.Retaining` (`TyCtxt.Retains` over `MirCallee.Subst`, read only through `Apply`), A4's
-    `Apply(atom.Type, subst)` and `MirCases.Views` (both now `TyCtxt.ReadableInstance`, R4-M139); an A5 change reading `Subst.Types` or `CallPlan.TypeArguments` as a binding departs
-    from it. Removal: canonical Substs once R7's CallPlan pipeline reads Substs only.
+    `Apply(atom.Type, subst)` and `MirCases.Views` (both now `TyCtxt.ReadableInstance`, R4-M139); an A5 change reading `Subst.Types`
+    or `CallPlan.TypeArguments` as a binding departs from it. Removal: canonical Substs once R7's CallPlan pipeline reads Substs only.
   - Rejected: A's `PairArguments` in Binding.PairCases (the component walk and scratch outside the interner, one more raw-role site);
     the arm alone (two Types for one instance, rows keeping the dropped Origin); the Intern pre-pass alone (a function's slots keep W);
     canonical argument lists at every binding site (six or more copies, result Types formed before most); a split (s, T, o)
@@ -6216,10 +6216,10 @@ resumed by R4-M86 (2026-10-20).
     witness's target, whose instance is its reader's to admit; `Comparison`'s null and the collector's requirement Limit row (R5-M67)
     are genuine limits, and a tuple operator over Rejected storage builds its leaf calls.
   - Composition (bu40 2/2, after R5's C8d, with R5's review of the collector and R4's of the builder): `TyCtxt.Compose` gives
-    `(Subst?, StorageOutcome)` (and the deciding part: R4-M139), each part by `Instance`, the greatest verdict (`StorageOutcome`'s order is the precedence), a length
-    that does not substitute a Limit. A Limit has no substitution; Rejected keeps the composed one, the forwarded call's (review A4,
-    for G245 U2). Its readers: the collector's Edge and the builder's `Instantiates` (`Storage != Prepared`) and `Inline` (`.Subst`,
-    reached only after `Instantiates`), both behavior-preserving.
+    `(Subst?, StorageOutcome)` (and the deciding part: R4-M139), each part by `Instance`, the greatest verdict (`StorageOutcome`'s
+    order is the precedence), a length that does not substitute a Limit. A Limit has no substitution; Rejected keeps the composed one,
+    the forwarded call's (review A4, for G245 U2). Its readers: the collector's Edge and the builder's `Instantiates` (`Storage !=
+    Prepared`) and `Inline` (`.Subst`, reached only after `Instantiates`), both behavior-preserving.
   - Collector: one reading of a verdict at its requesting site, `InstanceCollector.Made`: Prepared makes the edge, a Limit is the
     storage-nesting gap, Rejected a dependent dropped without a record. Its readers: `In` (one `Instance` path with `TypeOf`),
     `Instantiable` (every local read, so a limit wins in either order; Admit's private `Instance` enum goes), Edge's `Compose`, and

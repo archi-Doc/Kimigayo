@@ -785,7 +785,7 @@ public sealed class TyCtxtTest
     // Bad<i32>, whose Field m did not bind, is Rejected with the substitution of Binding's forwarded call; beside a Type argument nested past
     // the bound it is a Limit without a substitution in either order, as its repair's is (before: null for each, which the collector
     // published as the storage-nesting gap). The verdict's deciding part (R4-M139) is the first part reaching it, none when Prepared: Bad<i32>
-    // when Rejected, also before Bad<i64>, and the nested Type beside it in either order.
+    // when Rejected, also before Bad<i64>, and the nested Type beside it in either order; a Rejected composition always has one.
     [Theory]
     [InlineData("i32", "i32", "Prepared", -1)]
     [InlineData("Bad<i32>", "i32", "Rejected", 0)]
@@ -800,6 +800,7 @@ public sealed class TyCtxtTest
         var (subst, storage, decided) = c.Types.Compose(c.Types.SubstOf(calls["inner"])!, c.Types.SubstOf(calls["outer"])!);
         Assert.Equal(expected, storage.ToString());
         Assert.Same(part < 0 ? null : c.Types.SubstOf(calls["outer"])!.Types[part], decided);
+        Assert.True(storage != Binding.StorageOutcome.Rejected || decided is not null);
         Assert.Same(subst is null ? null : c.Types.SubstOf(c.Binding.InstantiateForwardedCall(calls["inner"], calls["outer"])!), subst);
         Assert.Equal(storage == Binding.StorageOutcome.Limit, subst is null);
     }
