@@ -14,8 +14,7 @@ namespace Kimi.Compiler.Mir;
 // a view whose only producer input is its own-step entries is a producer only where a use may depart one by the same test with no
 // liveness (MayDepart, D5, R4-M141): its other records, a retention Limit's and a storage limit's, then leave it as any view no conflict
 // can depend on.
-// Must not issue, end or conflict a Loan (an entry is never a candidate, D19), or record through the hold (MirBorrows.Reports' Departure
-// bypasses it: a Warning rejects nothing, PQ-8).
+// Must not issue, end or conflict a Loan (an entry is never a candidate, D19).
 internal sealed partial class MirBorrows
 {
     private const int Listed = -1; // The stamp of MayDepart's lists: every own-step entry on its root, before any check.

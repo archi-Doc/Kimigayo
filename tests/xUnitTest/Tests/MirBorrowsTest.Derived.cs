@@ -12,7 +12,8 @@ namespace XunitTest;
 /// records beside it stay.</summary>
 public sealed partial class MirBorrowsTest
 {
-    // R4's m1: st's kept row stores x's borrow past c, a by-argument holder (P13), beside a Bad input, then y written while r lives.
+    // R4's m1: st's kept row stores x's borrow into c, whose Type argument gives Loan facts only (R4-M147), beside a Bad input, then y
+    // written while r lives.
     private const string Kept = RetentionTest.Bad + "struct Ph<T>\n    public var n: i32 = 0\n    public init() => ()\n" +
         "func st(c: uniq/Ph<uniq/(ref/i32 during a) during e>, v: ref/i32 during a, b: uniq/Bad) => ()\nfunc g(b: uniq/Bad)\n    var x = 1\n" +
         "    var y = 2\n    let r = y@ref\n    var c = Ph<uniq/(ref/i32)>.init()\n    st(c@uniq, x@ref, b)\n    y = 3\n    let k = r@follow\n";
@@ -87,8 +88,8 @@ public sealed partial class MirBorrowsTest
     // SPEC 23.1.2 (G240; DECISIONS BU-36): a call over storage whose part Binding did not bind keeps the rows that hold whatever the part
     // is, so A5 reports its repaired program's Loan conflicts beside it and no Unsupported_Kd at the call (fail-before: Unsupported_Kd at
     // keep2, stash and choose; i-field's at D.init), with no builder record or validator finding. A conflict that rests on the failed
-    // part is its dependent and goes (q1: `result` holds `first` only through the failed payload, its repair's conflict). A held view
-    // stays held (m1: the kept store row holds it, its repair's P13 hold). A genuine limit stays the Unsupported_Kd at the call beside the
+    // part is its dependent and goes (q1: `result` holds `first` only through the failed payload, its repair's conflict). An independent
+    // conflict stays (m1: y written while r lives, also in its repair). A genuine limit stays the Unsupported_Kd at the call beside the
     // failed part (a Field of height 66, a growing Field) and in its repair, and so do X and T, which reach T's Box^64 Field.
     [Theory]
     [InlineData(RetentionTest.Keep2, "Missing", "i32", "g: v = 2")]
@@ -96,7 +97,7 @@ public sealed partial class MirBorrowsTest
     [InlineData(RetentionTest.Pick, "missing", "s", "g: x = 2")]
     [InlineData(RetentionTest.Handle, "Missing", "i32", "")]
     [InlineData(RetentionTest.Selection + "    first.value = 5\n    inspect(result@ref)\n", "missing", "source", "", "run: first.value = 5")]
-    [InlineData(Kept, "Missing", "i32", "g: y = 3 Unsupported_Kd | g: var x = 1 Unsupported_Kd")]
+    [InlineData(Kept, "Missing", "i32", "g: y = 3")]
     [InlineData(RetentionTest.Fielded, "C{x}\n        origin x.s == zz", "C{x}\n        origin x.s == s", "")]
     [InlineData(RetentionTest.Fielded, "Missing", "C{x}\n        origin x.s == s", "")]
     [InlineData(RetentionTest.Tall, "Missing", "i32", "g: f(b, null) Unsupported_Kd")]

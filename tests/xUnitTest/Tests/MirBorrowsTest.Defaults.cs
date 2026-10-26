@@ -405,25 +405,6 @@ public sealed partial class MirBorrowsTest
                 $"{Line(c, x.x.Subject)}: {string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)}"))}"));
     }
 
-    // R4-M73 (R4-M98 D7): R26 records through the body hold, so a held template's (g1's loop inside the default) is the located
-    // Unsupported_Kd at the Borrow, beside the hold's own record.
-    [Fact]
-    public void AHeldTemplatesSlotProblemIsUnsupported()
-        => Assert.Equal(
-            ["heldT: xs.append(b) Unsupported_Kd", "heldT: var xs: Array<T> = [] Unsupported_Kd", "heldT: x Unsupported_Kd"],
-            AllProblems("""
-                func heldT<T>(a: T, b: T, x: uniq/i32 during q, y: ref/i32 during q = label w: do
-                    var xs: Array<T> = []
-                    xs.append(a)
-                    for e in xs
-                        _ = e
-                    xs.append(b)
-                    exit to w x
-                ) -> ()
-                    T is Copy
-                    return
-                """));
-
     // V16 "F9 prepared inputs" (A3 6.2; VERIFICATION has no V16 table): a default keeping a Reborrow of each of N preceding parameters in its
     // result. Its work is dense, as its twin's, a function returning the same Tuple: each Reborrow's check scans the temps live across it
     // (shape 8's accesses × distinct live nodes); the template rules' own work, the template's over its twin's (R26-borrow's one gather per
@@ -693,7 +674,7 @@ public sealed partial class MirBorrowsTest
     // its argument exclusively, touch writes counter (A4's key), peek and peekCount read it. Templates: add's default pokes counter (PLAN
     // G171; addOther and addRead the disjoint and read-only twins, Counter.add the effect form), f's omits g's (§4 row 1), f2 keeps its own
     // Loan across g's copy (row 2), g5 and add5 conflict inside themselves (r before the poke),
-    // f5 omits g5's (row 5), local3 conflicts on its own local, addg is generic, addh is held (e17's store prefix, then g5's conflict), addl's
+    // f5 omits g5's (row 5), local3 conflicts on its own local, addg is generic, addh has e17's generic loop, then g5's conflict, addl's
     // default passes A4's Limit, setd replaces a static whose old value's drop reads it (R3), gd's guard lets its candidate escape, keepd
     // copies a preceding argument (DefaultAccessTest :17's form) and effOwn's touch meets its own Loan of counter (err(effect)).
     private const string Copies = """
@@ -797,8 +778,8 @@ public sealed partial class MirBorrowsTest
     // default or a caller or a receiver's (fx), as the located Unsupported_Kd, so A5 meets none of their Loans: the caller-owned rows (G171,
     // its effect form, n1, twiceBoth, first, gen, held's omitting call) and the templates' static conflicts (f2, g5, add5, addh, effOwn, the
     // Limit addl's copy meets) are ACopysFailureIsItsTemplatesOnlyWithinOneEvaluationRooted's (R4-M107). Kept, with local Loans only: local3's
-    // own conflict, held's and limit's callers' own conflicts (held's no longer held, as its call rests on its written Borrow's record and
-    // inlines no copy) and a guard across a copy (guardAcross, the caller's EndBorrow); template-owned
+    // own conflict, held's and limit's callers' own conflicts (held's call rests on its written Borrow's record and inlines no copy) and a
+    // guard across a copy (guardAcross, the caller's EndBorrow); template-owned
     // and omitted in the caller with the template's record: R3 in a copy (setd) and a guard escaping inside a copy (gd). Not Binding-valid, as
     // their earlier or sibling Loan rides in a default's value (SPEC 15.6: a Borrow of mutable static storage is bounded by the body): dc20-n3,
     // -n3top, -n4, -sib, -twice, -indep, dc20-loop, -loop-nested and the review's loop rows (dc20r-loop-e, -fx, -slot, -closure,

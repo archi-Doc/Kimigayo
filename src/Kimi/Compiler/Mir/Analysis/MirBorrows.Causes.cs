@@ -19,7 +19,7 @@ namespace Kimi.Compiler.Mir;
 // - Inputs: MirOrigins' Causes, Refutes and Fixed for the body Judge just judged (read, never re-derived); the program's problems' views.
 // - Invariants: where MirOrigins.Refutes is false there is no W element, no marker and no query, so the run is exactly the rule-free one; a
 //   conflict is derived exactly when every conflicting candidate the check set takes is a W element no carrier keeps (R4-M96), its causes
-//   their causes' union; a held view's Unsupported_Kd and every located limit carry no cause.
+//   their causes' union; a located Unsupported_Kd, a limit's included, carries no cause.
 // - Prohibitions: no Origin judged or class read here (MirOrigins'), no problem dropped, no merge of reports (MirReport's).
 internal sealed partial class MirBorrows
 {
