@@ -10,10 +10,10 @@ namespace Kimi.Compiler.Mir;
 // site naming the roots the node's syntax reads, writes or borrows (MirBuilder.Opaque.Roots.cs) or a default's earlier slots.
 internal sealed partial class MirBuilder
 {
-    // Whether the published facts say the lexer or Binding rejected a node the builder reaches: an Error, a value without a Type (a name of
-    // a local whose rejected declaration has none too), or a literal without its constant (an invalid escape, a number that does not fit).
-    // A name of a local whose rejected declaration has a Type is its local's (Let).
-    private static bool Rejected(Koto node) => HirTables.Op(node) is HirOp.Error or HirOp.Literal || HirTables.Meaning(node) is null;
+    // Whether the published facts say the lexer or Binding rejected a node the builder reaches: an Error (a literal the lexer could not
+    // read among them, Binding.Rejected) or a value without a Type (a name of a local whose rejected declaration has none too). A name of
+    // a local whose rejected declaration has a Type is its local's (Let).
+    private static bool Rejected(Koto node) => HirTables.Op(node) == HirOp.Error || HirTables.Meaning(node) is null;
 
     // The one way a form without a building rule is built (plan 5.4, 6.2): an Opaque value in its place, its site naming the roots the
     // node's syntax reads, writes or borrows (SiteRoots), and its located record.

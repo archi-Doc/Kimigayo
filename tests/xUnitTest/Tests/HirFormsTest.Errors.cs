@@ -122,6 +122,29 @@ public sealed partial class HirFormsTest
         Assert.All(nodes.Where(x => !ReferenceEquals(x, error)), static x => Assert.Equal(new HirAdjust(HirAcquire.None, HirAdaptation.SharedBorrow), HirTables.AdjustOf(x)));
     }
 
+    // SPEC 23.1.2 (PLAN G122): a char literal the lexer could not read has no value (the lexer's published absence,
+    // CharLiteralKoto.Value): the HIR publishes it Error, derived from the lexer's record, not Broken, while Binding binds and checks it
+    // as a `char`, so its consumer's record stays (TypeMismatch_Kd at an `i32` initializer, whose failed declaration replaces it); a
+    // char literal with its value is a Literal (fail-before: the malformed one was a Literal without its constant).
+    [Theory]
+    [InlineData("'\\q'", "InvalidEscape_Kd")]
+    [InlineData("''", "InvalidCharLiteral_Kd")]
+    [InlineData("'ab'", "InvalidCharLiteral_Kd")]
+    [InlineData("'\\u{D800}'", "InvalidUnicodeEscape_Kd")]
+    [InlineData("'\\u{110000}'", "InvalidUnicodeEscape_Kd")]
+    public void ACharLiteralTheLexerCouldNotReadIsAnError(string literal, string code)
+    {
+        var c = MinimalEmissionTest.Analyze($"func f() -> char => {literal}\nfunc g()\n    let x: i32 = {literal}\n    let y = 'a'\n");
+        HirTables.Publish(c);
+        Assert.Equal(
+            [$"{literal} Error", $"{literal} Syntax", "'a' Literal"],
+            Reachable(c.Kotonoha).OfType<CharLiteralKoto>().Select(static x => $"{x} {HirTables.Op(x)}"));
+        Assert.Empty(c.Kotonoha.Syntax.Hir.Broken!);
+        Assert.Equal(
+            new[] { code, code, "TypeMismatch_Kd" }.Order(StringComparer.Ordinal),
+            CompilationTestHelper.BindingErrors(c).Select(static x => x.Code).Order(StringComparer.Ordinal));
+    }
+
     // SPEC 13.7.2, 11.3 (DECISIONS R4-M109): a compound update's getter and setter take its receiver; where they take it by different
     // Adjusts, the column keeps the setter's and the receiver's plan row the getter's, and an input one call takes has none; an Error
     // receiver's both are its derived value (fail-before: no plan-row Adjust, and the Error receiver kept the setter's Reborrow).
