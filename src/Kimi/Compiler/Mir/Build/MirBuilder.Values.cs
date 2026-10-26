@@ -334,8 +334,9 @@ internal sealed partial class MirBuilder
         this.Use(target, MirOperand.Move(value), node);
     }
 
-    // SPEC 3.1: a published Literal's constant (Binding.HasFacts), a number's being the value Binding fitted (its plan row's Folded). A
-    // Literal without one is a broken contract: InternalInvariant_Kd, the value a derived Opaque.
+    // SPEC 3.1: a published Literal's constant, a number's being the value Binding fitted (its plan row's Folded); a literal the lexer
+    // could not read is published Error (Binding.Rejected). A published Literal without its constant is a broken contract, the one check
+    // of that guarantee: InternalInvariant_Kd, the value a derived Opaque.
     private MirOperand Literal(Koto node)
     {
         var type = TypeOf(node);

@@ -40,9 +40,7 @@ public sealed partial class Binding
     /// adapter (or a <c>$tryWrite</c>'s status) and writes, each with its two arguments and a value's Type; a for loop its Type and a
     /// user loop's entry, step, iterator symbol and decomposition (a counted one its bindings' symbols); a match its current plan; a
     /// dictionary literal its lookup; a closure its definition; a conversion its binding (a case adaptation its plan); a Tuple or array
-    /// literal its Type and an enum Case construction its plan; a declared local and a name their symbols; a literal its constant (a char
-    /// literal its scalar value, which the lexer publishes or reports absent; a number the value Binding fitted, which the publisher
-    /// folds).</summary>
+    /// literal its Type and an enum Case construction its plan; a declared local and a name their symbols.</summary>
     /// <param name="node">An evaluated node.</param>
     /// <param name="op">The Op its form calls for.</param>
     /// <returns>Whether the node has its facts.</returns>
@@ -96,8 +94,6 @@ public sealed partial class Binding
             case HirOp.Aggregate:
                 return node is TupleLiteralKoto or ArrayLiteralKoto ? HirTables.Meaning(node) is not null
                     : BoundEnumConstruction.Of(node) is { } construction && Sourced(construction.PayloadOperations);
-            case HirOp.Literal:
-                return node is not CharLiteralKoto { Value: null };
             case HirOp.Let:
                 return HirTables.Symbol(node) is not null;
             case HirOp.Name:

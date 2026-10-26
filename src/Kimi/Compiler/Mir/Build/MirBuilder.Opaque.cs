@@ -11,7 +11,7 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirBuilder
 {
     // Whether the published facts say the lexer or Binding rejected a node the builder reaches: an Error (a literal the lexer could not
-    // read among them, Binding.HasFacts) or a value without a Type (a name of a local whose rejected declaration has none too). A name of
+    // read among them, Binding.Rejected) or a value without a Type (a name of a local whose rejected declaration has none too). A name of
     // a local whose rejected declaration has a Type is its local's (Let).
     private static bool Rejected(Koto node) => HirTables.Op(node) == HirOp.Error || HirTables.Meaning(node) is null;
 
