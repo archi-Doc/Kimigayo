@@ -3,8 +3,8 @@
 // The evaluated Op classification and what a node's parent covers, part of the Adjust column's rule (Binding.Hir.Adjust), and the HIR
 // publisher's Transitional evaluation positions.
 // - The rule (lasting): a node's evaluated Op (OpOf: Body, Syntax, Error or the Op its form and Binding's facts give, published only with
-//   the facts it guarantees, HasFacts) and Covers, the children their parent covers (a selected call's callee, a macro's operand, a
-//   generic's name). Inputs: syntax slots and completed Binding facts; it classifies only existing Binding decisions.
+//   the facts it guarantees, HasFacts) and Covers, whether a parent covers a child. Inputs: syntax slots and completed Binding facts; it
+//   classifies only existing Binding decisions.
 // - The publisher's walk (Transitional, R7): each child's position (PositionOf), the parts an Error or a closure keeps (Keeps, Parts) and the
 //   Op at a position; the publisher owns the walk, retained storage and column writes.
 // Must not resolve syntax again or change the facts each Op guarantees (Binding.HasFacts).
@@ -15,10 +15,9 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // Where a node stands: evaluated, inside a Pattern (its match plan describes it), covered by its parent (the callee of a selected
-    // call or construction, the call shape of a formatting macro, the name Type arguments apply to), or inside an Error, whose value the
-    // builder replaces (DECISIONS R5-M63 keeps a closure definition's parts and a failed compound Place's resolved operands, R4-M88 an
-    // unresolved operation's operands).
+    // Where a node stands: evaluated, inside a Pattern (its match plan describes it), covered by its parent (Covers), or inside an Error,
+    // whose value the builder replaces (DECISIONS R5-M63 keeps a closure definition's parts and a failed compound Place's resolved
+    // operands, R4-M88 an unresolved operation's operands).
     [Flags]
     [Transitional("R7", Reason = "R7 replaces the publisher walk with inline Binding writes.")]
     private enum HirPosition : byte
@@ -38,8 +37,8 @@ public sealed partial class Binding
     private static bool Rejected(Koto node) => IsRecovery(node, out _) || node is CompileTimeSwitchKoto || node.BindingFailure != BindingFailure.None;
 
     // Whether a parent covers a child, which it does not evaluate as a value: the callee of a selected call or construction (a value call's
-    // callee is evaluated unless its receiver operation takes what the callee reaches), the call shape of a formatting macro, the name Type
-    // arguments apply to.
+    // callee is evaluated unless its receiver operation uses what the callee reaches), any child of a macro (its call shape), the name
+    // Type arguments apply to.
     private static bool Covers(Koto parent, Koto child) => parent switch
     {
         InvocationKoto call => ReferenceEquals(child, call.Method) && (CallPlan.Of(call) is not { Kind: CalleeKind.Value } plan ||
@@ -64,7 +63,7 @@ public sealed partial class Binding
         null => node is MemberAccessKoto { BindingState: BindingState.Resolved } ? HirOp.PrimitiveOp : HirOp.Name, // The metadata of a sequence.
         BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture or BindingSymbolKind.PatternCandidate or
             BindingSymbolKind.Storage or BindingSymbolKind.LengthParameter or BindingSymbolKind.Function => HirOp.Name,
-        BindingSymbolKind.Property => CallPlan.Of(node) is not null ? HirOp.Call : IsStaticStorage(node) ? HirOp.Name : HirOp.Field,
+        BindingSymbolKind.Property => CallPlan.Of(node) is not null ? HirOp.Call : IsStatic(node.BoundSymbol) ? HirOp.Name : HirOp.Field,
         BindingSymbolKind.EnumCase => HirOp.Aggregate,
         _ => HirOp.Syntax,
     };

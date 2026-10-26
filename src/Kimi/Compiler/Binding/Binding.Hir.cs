@@ -55,7 +55,7 @@ public sealed partial class Binding
         private bool exclusive;
         private bool unresolvedOperation; // The parent is an operation Binding left unresolved (Keeps).
 
-        // The exclusive capability each consumed child's consumer needs, recorded where the consumer takes it (ExclusiveUse), by SyntaxId.
+        // The exclusive capability each consumed child's consumer needs, recorded where the consumer uses it (ExclusiveUse), by SyntaxId.
         private bool[] claims = [];
 
         // Binding's structural completion with its Never evidence, one per body.
@@ -76,7 +76,7 @@ public sealed partial class Binding
             }
             else if (op == HirOp.Error)
             {
-                this.Derived(node); // Any other consumer takes it as its derived value (DECISIONS R4-M109).
+                this.Derived(node); // Any other consumer uses it as its derived value (DECISIONS R4-M109).
             }
 
             if (op == HirOp.Body)
@@ -107,15 +107,15 @@ public sealed partial class Binding
             if (parts is not (HirOp.Unset or HirOp.Error) &&
                 (parts != HirOp.Syntax || (node is FunctionKoto function && PartsPublished(function) && (position & HirPosition.Replaced) == 0)))
             {
-                // The selection by which Consume takes a user index's inputs, recorded for its ExpansionPlan (SPEC 4.7.1).
+                // The selection by which AdjustChildren uses a user index's inputs, recorded for its ExpansionPlan (SPEC 4.7.1).
                 if (node is IndexKoto)
                 {
                     var uniq = binding.SelectsUniq(node, this.exclusive);
                     HirTables.PlanFor(node, uniq).Mode = uniq ? (byte)1 : (byte)0;
                 }
 
-                var taker = new PublisherTaker(this);
-                binding.Consume(node, parts, ref taker);
+                var uses = new PublisherUses(this);
+                binding.AdjustChildren(node, parts, ref uses);
             }
 
             (this.parent, this.parentOp, this.position, this.unresolvedOperation) = (node, parts, parts == op ? position : HirPosition.None, unresolvedOperation);
@@ -208,7 +208,7 @@ public sealed partial class Binding
                 case BindingSymbolKind.Storage:
                     return HirRes.Field;
                 case BindingSymbolKind.Property:
-                    return IsStaticStorage(node) ? HirRes.Static : HirRes.Field;
+                    return IsStatic(symbol) ? HirRes.Static : HirRes.Field;
                 case BindingSymbolKind.EnumCase:
                     return HirRes.Variant;
                 default:

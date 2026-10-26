@@ -4460,6 +4460,22 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the helper); comparing by line as the SPEC-example oracle does (R5's condition: the exact record at its subject).
   - Numbering: R4-M136 is free on dev and every branch (R4-M133 2c-3B, R4-M134 the spec-rest session, R4-M135 the owner's withdrawal of
     the 70% rule).
+- **R4-M142 The Adjust rule as Binding's lasting component (consumed-by-value S1)** (2026-10-26; R4's lane A under the owner's design B
+  with the review's C1–C7 (OQ1 (a), 2026-10-25); the planning session's decision on the S1 reviews' N1, that no lasting member uses a
+  SPEC term with another meaning: SPEC 3.4's Take is a Place capability and Consume §15's static check).
+  - Representation: the rule of how a consumer acquires or uses each child, `Binding.AdjustChildren<T>(node, op, ref T uses) where T :
+    IHirUses` (`Binding.Hir.Adjust.cs`, its entry file with the contract; `.Patterns.cs` the Subject and Pattern bindings;
+    `.Operations.cs` the evaluated `OpOf` and `Covers`), with the child rule `ChildAdjust(child, adaptation, kind, claimed)`,
+    `EarlierAdjust` (R4-M109's plan row), `BareOf`, `IsPlace` and `SelectsUniq`. It reads Binding's facts and two facts of the record's
+    walk, the consumer's own capability (`UseExclusive`) and a child's claim (`claimed`: whether an earlier use needed exclusive
+    capability of it), and writes nothing.
+  - `UseKind` (private: `Acquisition`, `InPlace`, `Inspection`; SPEC 3.5, 13.5.5, 13.4) replaces the publisher's two bools, which were
+    never set together. `IHirUses` (private: `UseExclusive`, `Call`, `Use`, `Use(in operation)`, `Write`) receives each child's use.
+  - `PublisherUses`, the HIR publisher's record, a struct so that `AdjustChildren` is specialized for it (the publisher passed as a class
+    measured about 2% slower on a warm publish); `[Transitional("R7")]` with the publisher's walk, which R7's inline writes replace.
+    S2's ClosureEffects finder is the second record (DECISIONS R4-M145).
+  - Rejected: the publisher's own names (`Consume`, `Take`, `TakeKind`) for a lasting component; a second copy of the static-storage test
+    (Binding's `IsStatic` serves the rule).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
