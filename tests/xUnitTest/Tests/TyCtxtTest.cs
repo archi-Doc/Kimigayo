@@ -177,6 +177,23 @@ public sealed class TyCtxtTest
     private const string RejectedRing = "struct X\n    public var t: Option<rc/Y>\n    public var f: MISSING\nstruct Y\n    public var x: Option<rc/X>\n" +
         "struct Z\n    public var y: Y\n";
 
+    // Slots only conditional pair slots use (SPEC 15.3.5), each stated by a raw Field: H's (`ref or uniq`), M's beside a `ref` Field and
+    // G's beside a Loan Field (`owner or uniq`), an inherited binder's (Outer<s/T>.Inner), N's through a nested Holder bound to its pair
+    // argument, and W's of two binders (`ref or uniq`, `owner or ref`).
+    private const string ConditionalSource = "struct H<s/T> {a}\n    s is ref or uniq\n    internal let item: s/T during a\n    internal var at: raw/i32 during a\n" +
+        "struct M<s/T> {a}\n    s is owner or uniq\n    internal let item: s/T during a\n    internal let keep: ref/i32 during a\n    internal var at: raw/i32 during a\n" +
+        "struct G<s/T> {a}\n    s is owner or uniq\n    internal let loan: Loan<ref/bool during a>\n    internal let item: s/T during a\n    internal var at: raw/i32 during a\n" +
+        "struct Outer<s/T>\n    s is ref or uniq\n    internal struct Inner {a}\n        internal let x: s/T during a\n        internal var at: raw/i32 during a\n" +
+        "struct N<q/U> {b}\n    q is ref or uniq\n    internal let h: H<q/U during b> during b\n    internal var at: raw/i32 during b\n" +
+        "struct W<s/T, t/U> {a}\n    s is ref or uniq\n    t is owner or ref\n    internal let x: s/T during a\n    internal let y: t/U during a\n    internal var at: raw/i32 during a\n" +
+        "func probe(r: uniq/i32, q: ref/i32, z: uniq/i64, hu: H<uniq/i32 during r> during r, hr: H<ref/i32 during q> during q, mo: M<i32> during r, " +
+        "mu: M<uniq/i64 during z> during r, gu: G<uniq/i32 during r> during r, go: G<i32> during r, iu: Outer<uniq/i32 during r>.Inner during r, " +
+        "ir: Outer<ref/i32 during q>.Inner during q, nu: N<uniq/i32 during r> during r, nr: N<ref/i32 during q> during q, " +
+        "wu: W<uniq/i32 during r, i32> during r, wr: W<ref/i32 during q, ref/i64 during q> during q) => ()\npublic func main() => ()\n";
+
+    // The parameter of ConditionalSource's probe and the part of its raw Field, in its order.
+    private static readonly (int At, int Part)[] ConditionalRows = [(3, 1), (4, 1), (5, 2), (6, 2), (7, 2), (8, 2), (9, 1), (10, 1), (11, 1), (12, 1), (13, 2), (14, 2)];
+
     // SPEC 8.1.3, 8.15.1: the declared parameter and result Types of the function a call's substitution instantiates are the call's
     // instantiation (SPEC 8.4.1, 8.6.4: a requirement's under its conforming Self and the bound Contract reference it dispatches through, which
     // SubstOf records as its declaring Type; SPEC 6.4.4: a direct base call's function is the implementation it runs, in the Type
@@ -321,6 +338,120 @@ public sealed class TyCtxtTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
         Assert.Equal([RawStep.Static, RawStep.Shared, RawStep.Exclusive], [c.Types.RawStep(p[1], 0, []), c.Types.RawStep(p[2], 1, []), c.Types.RawStep(p[3], 1, [])]);
+    }
+
+    // SPEC 15.3.5, 5.2.1 condition 3, 5.7 Origins (DECISIONS BU-44): a raw layer stating a slot only conditional pair slots use steps by
+    // the case its holder selects, Shared only where the slot is `ref` in every such case, through an enclosing declaration's binder
+    // (Outer<…>.Inner), a nested pair argument (N's Holder) and two binders (W) too; its members are the slot's keepers in those cases,
+    // a pair layer's referent only in its binder's borrow cases (M's i64, G's i32) beside a Field that keeps it in every case, each
+    // exclusive where the slot is `uniq` in some case.
+    [Fact]
+    public void AConditionalSlotsLayerStepsAndKeepsByItsHoldersCase()
+    {
+        var (types, p) = ConditionalLayers();
+        var rows = new List<string>();
+        foreach (var (at, part) in ConditionalRows)
+        {
+            var members = new List<RawMember>();
+            Assert.True(types.RawMembers(p[at], part, [], members));
+            rows.Add($"{types.RawStep(p[at], part, [])} [{string.Join(", ", members.Select(static x => x.Referent.Name + (x.Exclusive ? " excl" : string.Empty)))}]");
+        }
+
+        Assert.Equal(
+            ["Exclusive [i32 excl]", "Shared [i32]", "Shared [i32]", "Exclusive [i64 excl, i32 excl]", "Exclusive [bool excl, i32 excl]", "Shared [bool]",
+                "Exclusive [i32 excl]", "Shared [i32]", "Exclusive [i32 excl, i32 excl]", "Shared [i32, i32]", "Exclusive [i32 excl]", "Shared [i32, i64]"],
+            rows);
+    }
+
+    // SPEC 15.3.5, 5.2.1 condition 3, 6.1.3 (DECISIONS BU-44): a nested declaration's raw Field stating its enclosing declaration's slot
+    // steps by the case the holder's inherited argument selects, which follows the holder's own arguments: Outer's `a` is `ref` in the ref
+    // case and `uniq` in the uniq one, so the Field is Shared under `Outer<ref/…>` and Exclusive under `Outer<uniq/…>`, whatever Inner's
+    // own argument is, and so for a nested declaration without own generics.
+    [Fact]
+    public void AnInheritedSlotsLayerStepsByItsHoldersCase()
+    {
+        var c = MinimalEmissionTest.Analyze("struct Outer<s/T> {a}\n    s is ref or uniq\n    internal let item: s/T during a\n" +
+            "    internal struct Inner<U>\n        internal let u: U\n        internal var p: raw/i32 during a\n    internal struct Plain\n        internal var p: raw/i32 during a\n" +
+            "func probe(r: uniq/i32, q: ref/i32, z: ref/i64, iu: Outer<uniq/i32 during r>.Inner<i64>, ir: Outer<ref/i32 during q>.Inner<i64>, " +
+            "iuz: Outer<uniq/i32 during r>.Inner<ref/i64 during z>, irz: Outer<ref/i32 during q>.Inner<uniq/i64 during r>, " +
+            "pu: Outer<uniq/i32 during r>.Plain, pr: Outer<ref/i32 during q>.Plain) => ()\npublic func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
+        Assert.Equal(
+            [RawStep.Exclusive, RawStep.Shared, RawStep.Exclusive, RawStep.Shared, RawStep.Exclusive, RawStep.Shared],
+            [c.Types.RawStep(p[3], 1, []), c.Types.RawStep(p[4], 1, []), c.Types.RawStep(p[5], 1, []), c.Types.RawStep(p[6], 1, []), c.Types.RawStep(p[7], 0, []), c.Types.RawStep(p[8], 0, [])]);
+    }
+
+    // DECISIONS BU-44: a binder after 64 pair slots keeps its cases (its ordinal has no width limit): a nested declaration's raw Field
+    // stating its enclosing slot steps by the holder's inherited 65th argument, after its own, and a raw Field of a wide Holder steps and
+    // keeps by that Holder's 65th argument.
+    [Fact]
+    public void ABinderAfterSixtyFourPairSlotsKeepsItsCases()
+    {
+        var (c, p) = WideLayers();
+        var types = c.Types;
+        var rows = new List<string>();
+        foreach (var (at, part) in new[] { (2, 1), (3, 1), (4, 1), (5, 1) })
+        {
+            var members = new List<RawMember>();
+            Assert.True(types.RawMembers(p[at], part, [], members));
+            rows.Add($"{types.RawStep(p[at], part, [])} [{string.Join(", ", members.Select(static x => x.Referent.Name + (x.Exclusive ? " excl" : string.Empty)))}]");
+        }
+
+        Assert.Equal(["Exclusive []", "Shared []", "Exclusive [i32 excl]", "Shared [i32]"], rows);
+    }
+
+    // DECISIONS BU-44: a warm rebind over binders beyond the 64th, and reading their steps and members again, allocates nothing: the
+    // fixed point reuses each slot's words and a Binding's one array per such ordinal.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmRebindOfWideBindersAllocatesNothing()
+    {
+        var (c, p) = WideLayers();
+        var types = c.Types;
+        var members = new List<RawMember>(8);
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Binding.Bind(BindingMode.Final);
+            members.Clear();
+            if (types.RawStep(p[2], 1, []) != RawStep.Exclusive || types.RawStep(p[5], 1, []) != RawStep.Shared || !types.RawMembers(p[4], 1, [], members))
+            {
+                throw new InvalidOperationException("Wide raw steps changed.");
+            }
+        }));
+    }
+
+    // DECISIONS BU-44: reading those steps and members again, the conditional keepers by their holders' cases, allocates nothing (A5 reads
+    // them per instance and pass).
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmConditionalSlotReadAllocatesNothing()
+    {
+        var (types, p) = ConditionalLayers();
+        var members = new List<RawMember>(16);
+        var steps = 0;
+        foreach (var (at, part) in ConditionalRows)
+        {
+            steps += (int)types.RawStep(p[at], part, []);
+            types.RawMembers(p[at], part, [], members);
+        }
+
+        var count = members.Count;
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            members.Clear();
+            var again = 0;
+            foreach (var (at, part) in ConditionalRows)
+            {
+                again += (int)types.RawStep(p[at], part, []);
+                types.RawMembers(p[at], part, [], members);
+            }
+
+            if (again != steps || members.Count != count)
+            {
+                throw new InvalidOperationException("Conditional raw steps changed.");
+            }
+        }));
     }
 
     // SPEC 5.7 Origins, Calls (G160-4's (3a)): the borrows a stored raw layer's Origin belongs to are the keepers of the slot the instance
@@ -1063,6 +1194,32 @@ public sealed class TyCtxtTest
             "p: Parts, ta: Local<raw/i32>, tb: Local<raw/i32 during y>, tc: Local<raw/i32 during static>, td: Local<raw/T>, te: Holder<raw/i32>, " +
             "tf: Anchored<raw/i32, i64> during x, tg: Choice<raw/i32, i64> during x, th: InTuple<raw/u8>, ti: InArray<raw/u8>, " +
             "tj: Local<(raw/u8 during y, isize)>, tk: Option<raw/u8 during y>, tn: Local<i32>, to: Holder<raw/i32 during y>, tp: Local<Local<raw/u8 during y>>) => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var probe = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe");
+        return (c.Types, probe.Parameters.Select(static x => x.Type.TypeOf()!).ToArray());
+    }
+
+    // The compilation and the parameter Types of a probe over 64 pair slots (each `is owner`) before a `ref or uniq` binder: r, q, then
+    // Outer<…>.Inner (its raw Field stating Outer's slot) under that binder's uniq and ref cases, then H's (its own raw Field) likewise.
+    private static (Compilation C, BoundType[] Parameters) WideLayers()
+    {
+        var pairs = string.Concat(Enumerable.Range(0, 64).Select(static i => $"p{i}/V{i}, "));
+        var premises = string.Concat(Enumerable.Range(0, 64).Select(static i => $"    p{i} is owner\n"));
+        var arguments = string.Concat(Enumerable.Repeat("i32, ", 64));
+        var c = MinimalEmissionTest.Analyze($"struct Outer<{pairs}s/T> {{a}}\n{premises}    s is ref or uniq\n    internal let item: s/T during a\n" +
+            "    internal struct Inner<U>\n        internal let u: U\n        internal var p: raw/i32 during a\n" +
+            $"struct H<{pairs}s/T> {{a}}\n{premises}    s is ref or uniq\n    internal let item: s/T during a\n    internal var at: raw/i32 during a\n" +
+            $"func probe(r: uniq/i32, q: ref/i32, iu: Outer<{arguments}uniq/i32 during r>.Inner<ref/i64 during q>, ir: Outer<{arguments}ref/i32 during q>.Inner<uniq/i64 during r>, " +
+            $"hu: H<{arguments}uniq/i32 during r>, hr: H<{arguments}ref/i32 during q>) => ()\npublic func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var probe = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe");
+        return (c, probe.Parameters.Select(static x => x.Type.TypeOf()!).ToArray());
+    }
+
+    // The Type context and the parameter Types of ConditionalSource's `probe`.
+    private static (TyCtxt Types, BoundType[] Parameters) ConditionalLayers()
+    {
+        var c = MinimalEmissionTest.Analyze(ConditionalSource);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var probe = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe");
         return (c.Types, probe.Parameters.Select(static x => x.Type.TypeOf()!).ToArray());

@@ -9,11 +9,11 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // The rows of the contract being computed, the inputs whose writable storage may receive a pointer tied to no input, and the positions
-    // the hold walk of an output has met (Held: a Type with the Type its declaration writes there, both interned, so compared by
-    // reference, and whether it is lent), reused.
+    // the hold walk of an output has met (Held: a Type with the Type its declaration writes there and, where it writes one, the instance
+    // holding it, all interned, so compared by reference, and whether it is lent), reused.
     private readonly List<Retention> retentionRows = new();
     private readonly List<int> retentionUntiedStores = new();
-    private readonly HashSet<(BoundType Type, BoundType? Written, bool Lent)> retentionMet = new();
+    private readonly HashSet<(BoundType Type, BoundType? Written, BoundType? Holder, bool Lent)> retentionMet = new();
 
     // What an output's hold walk met (SPEC 15.6.4, 5.7 Calls; DECISIONS BU-40): a raw layer without an Origin the call may write (rule
     // A), a `static` one, and one without an Origin behind a borrow or a stated raw layer in the result (R′: lent, not written). The
@@ -123,7 +123,7 @@ public sealed partial class Binding
             var met = Holding.None;
             foreach (var (at, type) in this.retentionHolds)
             {
-                met |= at == output ? this.Held(type, null, output, kept, lent: false) : Holding.None;
+                met |= at == output ? this.Held(type, null, null, output, kept, lent: false) : Holding.None;
             }
 
             if ((met & Holding.Unstated) != 0)
@@ -197,7 +197,8 @@ public sealed partial class Binding
     // SPEC 15.6.4, 5.7 Calls (DECISIONS R4-M116 items 2 and 5, R-B2, BU-30, BU-35, BU-40), the hold walk: a position of `output` the call
     // may write or lend, a hold (retentionHolds: the result's whole Type, or a position of input j's writable storage) or a position below
     // one, with `written`, the Type a struct's Field or an enum's Case payload declares there while it is a Tuple, a fixed array or a raw
-    // layer (null elsewhere: off a declaration, or below a Type parameter or another part it does not write inline), and whether it is
+    // layer (null elsewhere: off a declaration, or below a Type parameter or another part it does not write inline), the instance holding
+    // it there (`holder`, whose case a declared slot's step reads, SPEC 15.3.5; DECISIONS BU-44), and whether it is
     // `lent`: below a borrow in the result (BorrowReferent: a borrow layer, a pair layer admitting only borrows, a Slice's or UniqSlice's
     // elements) or below a result raw layer stating an input's or slot's Origin (stepping Exclusive or Shared: it retains as that borrow
     // would, SPEC 5.7 Calls, so what it addresses is that borrow's storage, 5.2.1; PLAN G255's C1). Each raw input other than `output`
@@ -208,12 +209,12 @@ public sealed partial class Binding
     // what the call writes there (Holding.Unstated) or lends (Holding.Lent), and Static is storage the body does not own (Holding.Static,
     // lent or not). A value stored at a writable position brings its whole Type (BU-1), so the walk goes below every layer that stores
     // (IsCallable), as RetentionParts' writable positions do, and into a struct's or enum's stored content. What a position gives depends
-    // on its Type, `written` and `lent` alone and only accumulates, so each position is walked at most once per lent bit and output
+    // on its Type, `written`, its holder and `lent` alone and only accumulates, so each position is walked at most once per lent bit and output
     // (retentionMet): the work is linear in the distinct positions, not in the paths to them through the interned Types (V16). A struct or
     // enum whose storage is a Limit, a growing one among them (PrepareTypeStorage's limits, DECISIONS BU-12), makes the contract
     // CallRetention.Limit; Rejected storage is walked as far as it substitutes, a part that does not (null) holding nothing (Readable,
     // BU-36).
-    private Holding Held(BoundType? type, BoundType? written, int output, Kept[] kept, bool lent)
+    private Holding Held(BoundType? type, BoundType? written, BoundType? holder, int output, Kept[] kept, bool lent)
     {
         if (type is null)
         {
@@ -221,7 +222,8 @@ public sealed partial class Binding
         }
 
         written = ReferenceTypes.IsPointer(written) || written?.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray ? written : null;
-        if (!this.retentionMet.Add((type, written, lent)))
+        holder = written is null ? null : holder;
+        if (!this.retentionMet.Add((type, written, holder, lent)))
         {
             return Holding.None;
         }
@@ -233,7 +235,7 @@ public sealed partial class Binding
             return Holding.None;
         }
 
-        RawStep? step = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } ? DeclaredStep(type, written) : null;
+        RawStep? step = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } ? this.DeclaredStep(type, written, holder) : null;
         foreach (var (input, pointer) in this.retentionRawInputs)
         {
             var holds = type.IsAbstract || (step is not (null or RawStep.Unstated) && ReferenceEquals(this.types.Erase(type), this.types.Erase(pointer)));
@@ -252,7 +254,7 @@ public sealed partial class Binding
         met |= nominal ? this.Stores(type, output, kept, below) : Holding.None;
         for (var i = 0; !IsCallable(type) && i < type.Components.Count; i++)
         {
-            met |= this.Held(type.Components[i], InlinePart(written, i), output, kept, below);
+            met |= this.Held(type.Components[i], InlinePart(written, i), holder, output, kept, below);
         }
 
         return met;
@@ -271,18 +273,18 @@ public sealed partial class Binding
         }
 
         var storage = this.Instance(instance);
-        var met = storage.PartsBase is { } parent ? this.Held(parent, null, output, kept, lent) : Holding.None;
+        var met = storage.PartsBase is { } parent ? this.Held(parent, null, null, output, kept, lent) : Holding.None;
         var parts = storage.Parts;
         for (var i = 0; AdtDef.IsStruct(instance) && i < adt.Fields.Length; i++)
         {
-            met |= this.Held(parts[i], WrittenType(adt.Fields[i]), output, kept, lent);
+            met |= this.Held(parts[i], WrittenType(adt.Fields[i]), instance, output, kept, lent);
         }
 
         for (var i = 0; AdtDef.IsEnum(instance) && i < parts.Length; i++)
         {
             for (var j = 0; parts[i] is { } payloads && adt.Cases[i] is { } selected && j < selected.Payload.Length; j++)
             {
-                met |= this.Held(payloads.Components[j], WrittenType(selected.Payload[j]), output, kept, lent);
+                met |= this.Held(payloads.Components[j], WrittenType(selected.Payload[j]), instance, output, kept, lent);
             }
         }
 
