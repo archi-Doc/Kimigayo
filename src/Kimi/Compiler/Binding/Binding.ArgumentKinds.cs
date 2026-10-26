@@ -4,14 +4,15 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// Argument kinds (SPEC 10.5.1; DECISIONS BU-2): what each argument part is to the candidates of a call.
+// Argument kinds (SPEC 10.5.1; DECISIONS BU-2, BU-43): what each argument part is to the candidates of a call.
 // - Responsibility: the kind of every argument part: a call argument and, recursively, an element of a Tuple or array literal
 //   argument, a written boundary of a mixed range and a payload of a Case construction. Literal: an unfitted literal (SPEC 12.3), or
-//   control flow whose result sources are all such (SPEC 14.9.1). Composite: a Tuple or array literal or a mixed range, whose parts
-//   are classified instead. Waiting: an anonymous function, a function reference that needs S, a contextual `.Case(...)` (it resolves
-//   only in its expected enum), a nested call or construction the argument probe deferred, or control flow whose literals have only
-//   Never or unknown sources beside them or whose source call the probe deferred, until the selected candidate completes it.
-//   Typed: every other part.
+//   control flow whose result sources other than Never are all such, at least one (SPEC 14.9.1). Composite: a Tuple or array literal
+//   or a mixed range, whose parts are classified instead, and a control-flow part whose join supplies no candidate and has Tuple or
+//   array results (ClassifiedByCall), whose results are classified position by position (Binding.ArgumentKinds.Positions.cs).
+//   Waiting: an anonymous function, a function reference that needs S, a contextual `.Case(...)` (it resolves only in its expected
+//   enum), a nested call or construction the argument probe deferred, or control flow whose literals have an unknown source beside
+//   them or whose source call the probe deferred, until the selected candidate completes it. Typed: every other part.
 // - Inputs: the part's syntax and binding state; ControlFlow's survey of a control-flow part's result sources (SurveyResult); the
 //   argument probe (BindIndependentArgument), which reaches the result sources of a control-flow part (UnderArgumentProbe) and under
 //   which each part that is not a Composite is bound: a nested call that only an outer expectation could type defers (DeferNestedCall)
@@ -66,7 +67,7 @@ public sealed partial class Binding
             return ArgumentKind.Literal;
         }
 
-        if (IsAggregateArgument(part))
+        if (IsAggregateArgument(part) || (part.BoundType is null && this.RecordedFact(KotoHelper.UnwrapParentheses(part)).Kind == ArgumentKind.Composite))
         {
             return ArgumentKind.Composite;
         }
@@ -113,6 +114,25 @@ public sealed partial class Binding
     // its call decides the Type its literal sources take (DecidedLater).
     private bool WaitsForCall(Koto target)
         => this.argumentProbe is { } probe && this.RecordedFact(probe).Kind is ArgumentKind.Literal or ArgumentKind.Waiting && this.UnderArgumentProbe(target);
+
+    // SPEC 10.5.1 (the owner, 2026-10-26: element by element; DECISIONS BU-43): whether a join that supplies no candidate is the argument
+    // probe's control flow, which its call classifies and completes at the selected candidate's Type. One of Tuple or array results
+    // (`shape`, its first aggregate part) is Composite, its results classified position by position (Binding.ArgumentKinds.Positions.cs),
+    // which replaces a Waiting a nested call deferred in one of its parts gave the probe; a scalar one keeps the kind its survey gave it.
+    private bool ClassifiedByCall(Koto join, Koto? shape)
+    {
+        if (this.argumentProbe is not { } probe || !ReferenceEquals(ControlFlowExpression(probe), join))
+        {
+            return false;
+        }
+
+        if (shape is TupleLiteralKoto or ArrayLiteralKoto)
+        {
+            this.argumentKinds[SourceRef.Of(probe)] = new(ArgumentKind.Composite, null);
+        }
+
+        return true;
+    }
 
     // SPEC 23.1.2, 10.1: a call that ends unresolved, with no selected candidate or one that failed before completing its arguments,
     // binds each argument part still unbound on its own under the argument probe, so that the part's own problems are reported once
@@ -229,15 +249,16 @@ public sealed partial class Binding
         if (part.CodeContext.RecoveryCause(part) is null && ControlFlowExpression(part) is { } flow &&
             this.SurveyResult(flow, scope) is { Literal: true, Typed: false } survey)
         {
-            // SPEC 10.5.1 (owner decision (1), DECISIONS BU-2): control flow is Literal when every result source is a literal; with only
-            // Never or unknown sources beside its literals it needs an expectation or a default, so it waits. It is bound once its call
-            // selects a candidate, as an anonymous function is. A recovered part is bound as any other.
-            this.argumentKinds[SourceRef.Of(KotoHelper.UnwrapParentheses(part))] = new(survey.Other ? ArgumentKind.Waiting : ArgumentKind.Literal, null);
+            // SPEC 10.5.1 (DECISIONS BU-2, its owner decision (1) as the owner revised it on 2026-10-26, BU-43): control flow is Literal
+            // when every result source other than Never is a literal, since Never supplies nothing at any position; with an unknown
+            // source beside its literals it needs an expectation or a default, so it waits. It is bound once its call selects a
+            // candidate, as an anonymous function is. A recovered part is bound as any other.
+            this.argumentKinds[SourceRef.Of(KotoHelper.UnwrapParentheses(part))] = new(survey.Unknown ? ArgumentKind.Waiting : ArgumentKind.Literal, null);
             return true;
         }
 
         if ((this.KindOf(part) == ArgumentKind.Literal && part.CodeContext.RecoveryCause(part) is null) ||
-            this.BindIndependentArgument(part, scope) is not null || this.IsWaitingPart(part))
+            this.BindIndependentArgument(part, scope) is not null || this.IsWaitingPart(part) || this.KindOf(part) == ArgumentKind.Composite)
         {
             return true;
         }
@@ -496,12 +517,25 @@ public sealed partial class Binding
         return false;
     }
 
-    // The independent Type of the parts at a position (Binding.ArgumentKinds.Positions.cs): a tuple's or fill's from its children; with
-    // `fitLiterals`, a Literal part gives its default once DefaultArguments applied it.
+    // The independent Type of the parts at a position (Binding.ArgumentKinds.Positions.cs): a Tuple's, a fill's, a join's or a join
+    // position's from its children; with `fitLiterals`, a Literal part gives its default once DefaultArguments applied it. A part of
+    // Type Never, also a position Never in every source, gives none (SPEC 10.8; DECISIONS BU-2 U3's D6).
     private BoundType? IndependentPositionType(int position, bool fitLiterals)
     {
+        var end = this.positionParts.Count;
+        if (end - position != 1)
+        {
+            return this.PositionKind(position, end, out var type) switch
+            {
+                ArgumentKind.Typed => type,
+                ArgumentKind.Literal => fitLiterals ? this.DefaultOf(this.FirstLiteral(position, end)) : null,
+                ArgumentKind.Composite => this.IndependentShapeType(position, end, this.PartsShape(position, end)!, fitLiterals),
+                _ => null,
+            };
+        }
+
         var source = KotoHelper.UnwrapParentheses(this.positionParts[position]);
-        if (source.BoundType is { } actual)
+        if (source.BoundType is { } actual && !this.AwaitsPosition(source))
         {
             return ReferenceEquals(actual, BoundType.Never) ? null : actual; // SPEC 10.8: a Never part supplies no evidence.
         }
@@ -511,56 +545,61 @@ public sealed partial class Binding
             // SPEC 4.6.2: without an expected range, a literal-only boundary takes the integer Type of the typed one; its default (rule 3)
             // applies only to the selected candidate (SPEC 10.2.1).
             var start = this.IndependentRangeBoundary(range.Start, this.StartType);
-            var end = this.IndependentRangeBoundary(range.End, this.EndType);
-            start ??= this.DefaultOf(range.Start!) ?? this.RangeTyping(range.Start!, end);
-            end ??= this.DefaultOf(range.End!) ?? this.RangeTyping(range.End!, start);
-            if (start is null || end is null)
+            var last = this.IndependentRangeBoundary(range.End, this.EndType);
+            start ??= this.DefaultOf(range.Start!) ?? this.RangeTyping(range.Start!, last);
+            last ??= this.DefaultOf(range.End!) ?? this.RangeTyping(range.End!, start);
+            if (start is null || last is null)
             {
                 return null;
             }
 
             var symbol = range.IsInclusive ? this.Library.ClosedRange : this.Library.Range;
-            return this.types.Intern(BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, [start, end]);
+            return this.types.Intern(BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, [start, last]);
         }
 
-        if (source is ArrayLiteralKoto { FillCount: { } length } && this.IndependentChildType(position, 0, fitLiterals) is { } elementType)
+        if (source is TupleLiteralKoto or ArrayLiteralKoto { FillCount: not null })
         {
-            var count = length.IsConstant ? length.Value : 0;
-            var expression = length.IsConstant ? null : length;
-            return this.types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [elementType], count, lengthExpression: expression);
+            return this.IndependentShapeType(position, end, source, fitLiterals);
         }
 
-        if (source is TupleLiteralKoto tuple)
+        if (this.ComposedJoin(source) is not null)
         {
-            var elements = this.RentTypes(tuple.Elements.Count);
-            try
-            {
-                for (var i = 0; i < tuple.Elements.Count; i++)
-                {
-                    if (this.IndependentChildType(position, i, fitLiterals) is not { } element)
-                    {
-                        return null;
-                    }
-
-                    elements[i] = element;
-                }
-
-                return this.types.Tuple(elements.AsSpan(0, tuple.Elements.Count));
-            }
-            finally
-            {
-                this.typeScratch.Return(elements, clearArray: true);
-            }
+            return this.IndependentChildType(position, end, 0, fitLiterals);
         }
 
         return fitLiterals ? this.DefaultOf(source) : null;
     }
 
-    // The independent Type of child position `index` of the position at `start`.
-    private BoundType? IndependentChildType(int start, int index, bool fitLiterals)
+    // The independent Type an aggregate shape forms from its child positions' (ShapeType), none when one has none.
+    private BoundType? IndependentShapeType(int start, int end, Koto shape, bool fitLiterals)
+    {
+        var count = this.ChildPositions(start, end);
+        var children = this.RentTypes(count);
+        try
+        {
+            for (var i = 0; i < count; i++)
+            {
+                if (this.IndependentChildType(start, end, i, fitLiterals) is not { } child)
+                {
+                    return null;
+                }
+
+                children[i] = child;
+            }
+
+            return this.ShapeType(shape, children.AsSpan(0, count));
+        }
+        finally
+        {
+            this.typeScratch.Return(children, clearArray: true);
+        }
+    }
+
+    // The independent Type of child position `index` of [start, end).
+    private BoundType? IndependentChildType(int start, int end, int index, bool fitLiterals)
     {
         var child = this.positionParts.Count;
-        this.AddChildPosition(start, index, null);
+        this.AddChildPosition(start, end, index, null);
         var type = this.IndependentPositionType(child, fitLiterals);
         this.ClosePosition(child);
         return type;

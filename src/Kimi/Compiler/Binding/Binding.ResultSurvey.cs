@@ -65,7 +65,7 @@ public sealed partial class Binding
         this.resultLocalEvidence.Clear();
         this.FindResultEvidence(target, scope, context);
         var survey = new ResultSurvey(
-            context.HasLiteral, context.Evidence.Count > 0, context.PartialEvidence || context.HasNever, !context.LiteralMisfit, context.LiteralDefault);
+            context.HasLiteral, context.Evidence.Count > 0, context.PartialEvidence, context.HasNever, !context.LiteralMisfit, context.LiteralDefault);
         if (this.resultCursor == cursor + 1)
         {
             this.resultCursor = cursor;
@@ -144,7 +144,8 @@ public sealed partial class Binding
         source = KotoHelper.UnwrapParentheses(source);
         if (source.BoundType is { } known)
         {
-            return known;
+            // SPEC 14.9.2 step 2: a source that awaits its position, a literal holding a Never part included, supplies no candidate.
+            return this.AwaitsPosition(source) ? null : known;
         }
 
         switch (source)
@@ -152,6 +153,8 @@ public sealed partial class Binding
             case TryKoto propagation:
                 var operand = this.ResultEvidence(propagation.Expression, scope);
                 return operand?.Kind == BoundTypeKind.Constructed && (operand.Symbol == this.Library.Option || operand.Symbol == this.Library.Result) ? operand.Components[0] : null;
+            case JumpKoto:
+                return BoundType.Never; // SPEC 14.5.1: a transfer is an expression of Type Never.
             case BoolLiteralKoto or IsKoto { IsRuntimeTest: true }:
                 return BoundType.Boolean;
             case StringLiteralKoto or InterpolatedStringKoto:
@@ -440,12 +443,13 @@ public sealed partial class Binding
         this.resultChildren.RemoveRange(start, end - start);
     }
 
-    // A survey of result sources (SPEC 14.9.1): whether one is a literal, whether one is typed, whether one is Never or not known
-    // without binding, whether every literal fits the surveyed Type, and the first literal's default. AllLiteral is SPEC 10.5.1's
-    // Literal control flow, every source a literal.
-    private readonly record struct ResultSurvey(bool Literal, bool Typed, bool Other, bool Fits, BoundType? Default)
+    // A survey of result sources (SPEC 14.9.1): whether one is a literal, whether one is typed, whether one is not known without
+    // binding, whether one is Never, whether every literal fits the surveyed Type, and the first literal's default. SPEC 10.5.1's
+    // Literal control flow is every source other than Never a literal (the owner, 2026-10-26: Never supplies nothing at any position);
+    // AllLiteral, an arithmetic operand's Literal control flow (SPEC 12.3.3, 13.3.4), is every source a literal.
+    private readonly record struct ResultSurvey(bool Literal, bool Typed, bool Unknown, bool Never, bool Fits, BoundType? Default)
     {
-        internal bool AllLiteral => this.Literal && !this.Typed && !this.Other;
+        internal bool AllLiteral => this.Literal && !this.Typed && !this.Unknown && !this.Never;
     }
 
     private sealed class ResultCollector(List<Koto> children) : KotoVisitor

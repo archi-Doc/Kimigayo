@@ -17,7 +17,10 @@ public class ApplicabilityChainRegressionTest
     private const string ControlFlowDeclarations =
         "func identity<T>(value: T) -> T => value@move\nfunc keep<T>(value: T) -> T => value@move\nfunc stop() -> Never => $abort(\"stop\")\n" +
         "func take(value: i64) -> () => ()\nfunc choose(value: i32) -> () => ()\nfunc choose(value: i64) -> () => ()\n" +
-        "func h(value: i8) -> () => ()\nfunc h(value: i64) -> () => ()\nfunc g(value: (i64, i64)) -> () => ()\nlet c = true\nlet x: i64 = 2\n";
+        "func h(value: i8) -> () => ()\nfunc h(value: i64) -> () => ()\nfunc g(value: (i64, i64)) -> () => ()\nlet c = true\nlet x: i64 = 2\n" +
+        "func both<T>(value: (T, T)) -> () => ()\nfunc first<T>(value: (T, i64)) -> () => ()\nfunc tuples(value: (i32, i32)) -> () => ()\n" +
+        "func tuples(value: (i64, i64)) -> () => ()\nfunc takeArray(value: Array<i64>) -> () => ()\nfunc takeDict(value: Dictionary<string, (i64, i64)>) -> () => ()\n" +
+        "func takeDictI(value: Dictionary<string, i64>) -> () => ()\n";
 
     [Theory]
     [InlineData(false, false, false)]
@@ -142,13 +145,52 @@ public class ApplicabilityChainRegressionTest
         Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
     }
 
+    // SPEC 10.5.1 (the owner, 2026-10-26; DECISIONS BU-43): a control-flow argument is Literal when every result source other than Never
+    // is a literal, Never supplying nothing at any position, and its default applies after selection; a join of Tuple or array results
+    // that supplies no candidate is classified position by position, as a Tuple argument's elements are: a typed position is evidence at
+    // its common Type, a literal one takes its default after selection, one Never in every source is none, and the selected candidate's
+    // Type completes it. A join of Dictionary results is typed as a whole, as a Dictionary literal argument is.
+    [Theory]
+    [InlineData("keep(if c => (x, stop()) else => (stop(), x))", "(i64, i64)")]
+    [InlineData("keep(if c => (x, stop()) else => (stop(), 5))", "(i64, i32)")]
+    [InlineData("keep(if c => (x, stop()) else => (x, 5))", "(i64, i32)")]
+    [InlineData("keep(if c => (5, 6) else => (7, 8))", "(i32, i32)")]
+    [InlineData("keep(if c => [1, 2] else => [stop()])", "Array<i32>")]
+    [InlineData("let o = Option.Some(if c => (5, 6) else => (7, 8))", "(i32, i32)")]
+    [InlineData("g(if c => (x, stop()) else => (stop(), 5))", "(i64, i64)")]
+    [InlineData("g(if c => (x, stop()) else => (x, 5))", "(i64, i64)")]
+    [InlineData("g(if c => (5, 6) else => (7, 8))", "(i64, i64)")]
+    [InlineData("g(if c => (x, stop()) else => (x, stop()))", "(i64, i64)")]
+    [InlineData("takeArray(if c => [1, 2] else => [stop()])", "Array<i64>")]
+    [InlineData("both(if c => (x, stop()) else => (stop(), 5))", "(i64, i64)")]
+    [InlineData("both(if c => (x, stop()) else => (x, stop()))", "(i64, i64)")]
+    [InlineData("first(if c => (5, stop()) else => (6, x))", "(i32, i64)")]
+    [InlineData("keep((if c => (5, 6) else => (7, 8), x))", "(i32, i32)")]
+    [InlineData("keep(if c => 5 else => stop())", "i32")]
+    [InlineData("h(if c => 200 else => stop())", "i64")]
+    [InlineData("keep(if c => [\"k\": (x, stop())] else => [\"k\": (stop(), x)])", "Dictionary<string, (i64, i64)>")]
+    [InlineData("takeDict(if c => [\"k\": (x, stop())] else => [\"k\": (stop(), x)])", "Dictionary<string, (i64, i64)>")]
+    [InlineData("keep(if c => [\"k\": 5] else => [\"k\": stop()])", "Dictionary<string, i32>")]
+    public void AControlFlowArgumentsResultsAreClassifiedByPosition(string use, string type)
+    {
+        var c = MinimalEmissionTest.Analyze(ControlFlowDeclarations + use);
+        Assert.Empty(c.Binding.Issues);
+        var join = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IfKoto>().Last();
+        Assert.Equal(type, TyCtxt.Name(join.TypeOf()!));
+    }
+
     // SPEC 10.5.1, 10.4: a Literal or waiting control-flow argument is no evidence and ranks equally at every candidate it fits; the
-    // Literal fits a candidate only when every source does.
+    // Literal fits a candidate only when every source does. Its results classified by position (the owner, 2026-10-26), a join ranks as
+    // the Tuple argument of those positions does, a position Never in every source giving no Type at a slot that takes the whole.
     [Theory]
     [InlineData("choose(if c => 1 else => 2)", nameof(DiagnosticCode.AmbiguousBinding_Kd), "choose(if c => 1 else => 2)")]
-    [InlineData("h(if c => 200 else => stop())", nameof(DiagnosticCode.AmbiguousBinding_Kd), "h(if c => 200 else => stop())")]
+    [InlineData("h(if c => 100 else => stop())", nameof(DiagnosticCode.AmbiguousBinding_Kd), "h(if c => 100 else => stop())")]
     [InlineData("g((if c => 1 else => 2.0, x))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "g((if c => 1 else => 2.0, x))")]
-    [InlineData("keep(if c => 1 else => stop())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep(if c => 1 else => stop())")]
+    [InlineData("tuples(if c => (5, 6) else => (7, 8))", nameof(DiagnosticCode.AmbiguousBinding_Kd), "tuples(if c => (5, 6) else => (7, 8))")]
+    [InlineData("tuples(if c => (stop(), 5) else => (6, stop()))", nameof(DiagnosticCode.AmbiguousBinding_Kd), "tuples(if c => (stop(), 5) else => (6, stop()))")]
+    [InlineData("keep(if c => (x, stop()) else => (x, stop()))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep(if c => (x, stop()) else => (x, stop()))")]
+    [InlineData("keep(if c => (5, stop()) else => (6, stop()))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep(if c => (5, stop()) else => (6, stop()))")]
+    [InlineData("takeDictI(if c => [\"k\": 5] else => [\"k\": stop()])", nameof(DiagnosticCode.NoApplicableOverload_Kd), "takeDictI(if c => [\"k\": 5] else => [\"k\": stop()])")]
     public void AControlFlowArgumentRanksAsItsKind(string use, string code, string at)
     {
         var source = ControlFlowDeclarations + use + "\n";
@@ -163,12 +205,24 @@ public class ApplicabilityChainRegressionTest
     [InlineData("missingCall(if ready => 1 else => 0)", nameof(DiagnosticCode.UnresolvedBinding_Kd), "missingCall")]
     [InlineData("choose(identity(if ready => 1 else => 0))", nameof(DiagnosticCode.AmbiguousBinding_Kd), "choose(identity(if ready => 1 else => 0))")]
     [InlineData("pair((if ready => 1 else => 2, 3))", nameof(DiagnosticCode.AmbiguousBinding_Kd), "pair((if ready => 1 else => 2, 3))")]
-    [InlineData("keep(if ready => 1 else => stop())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep(if ready => 1 else => stop())")]
     public void AFailedCallStillReportsItsPartsOwnProblems(string use, string code, string at)
     {
         var source = ControlFlowDeclarations + "func pair(value: (i32, i32)) -> () => ()\nfunc pair(value: (i64, i64)) -> () => ()\n" + use + "\n";
         var found = DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, source.Substring(x.Span!.Value.Start, x.Span.Value.Length)));
         Assert.Equal([(code, at), (nameof(DiagnosticCode.UnresolvedBinding_Kd), "ready")], found);
+    }
+
+    // SPEC 10.5.1, 10.2.1 (the owner, 2026-10-26): a literal position of a join argument takes its first literal's default after
+    // selection, which each of its literals must fit: the misfit is the literal's own record, as for a scalar control-flow argument.
+    [Theory]
+    [InlineData("keep(if c => 1 else => 2.5)")]
+    [InlineData("keep(if c => (1, stop()) else => (2.5, x))")]
+    public void ALiteralPositionsDefaultIsCheckedAtEachLiteral(string use)
+    {
+        var source = ControlFlowDeclarations + use + "\n";
+        var errors = DiagnosticCorpus.Check(source).Diagnostics.Where(static x => x.Code != nameof(DiagnosticCode.PrerequisiteUnavailable_Kd));
+        var error = Assert.Single(errors);
+        Assert.Equal((nameof(DiagnosticCode.TypeMismatch_Kd), "2.5"), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
     }
 
     [Fact]

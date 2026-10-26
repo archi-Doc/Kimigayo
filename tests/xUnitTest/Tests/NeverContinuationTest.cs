@@ -127,9 +127,24 @@ public class NeverContinuationTest
 
     // SPEC 14.9.2 step 3, 3.8: a literal whose element is Never awaits its position: beside a source that supplies a candidate it supplies
     // none, and it takes the Target Result Type once the join selects it, nested, in parentheses, as an array element, a dictionary value,
-    // a part of a Tuple, array or dictionary literal source and a call argument too, which its published Type shows; one holding only
-    // Never parts takes the Type a literal source's default supplies; MIR builds it at that Type with no record and no finding.
+    // a part of a Tuple, array or dictionary literal source and a call argument too, which its published Type shows; where no source
+    // supplies a candidate, the Type is formed part by part over the sources other than Never (step 2; DECISIONS R4-M134, BU-43): Tuples
+    // by element, arrays as Array<T>, fills at their length and Dictionaries by key and value, through nested selections, `do` and `loop`;
+    // MIR builds it at that Type with no record and no finding.
     [Theory]
+    [InlineData("let t = if c => (a, (return 1)) else => ((return 2), a)", "((return 2), a)")]
+    [InlineData("let t = match c\n        true => (a, (return 1))\n        false => ((return 2), a)", "((return 2), a)")]
+    [InlineData("let t = if c => (if d => (a, (return 1)) else => ((return 2), a)) else => (a, a)", "((return 2), a)")]
+    [InlineData("let t = if c => (if d => (a, (return 1)) else => ((return 2), a)) else => ((return 3), a)", "((return 3), a)")]
+    [InlineData("let t = if c => (a, (return 1)) else if d => ((return 2), a) else => ((return 3), (return 4))", "((return 2), a)")]
+    [InlineData("let t = if c => (do => (a, (return 1))) else => ((return 2), a)", "(a, (return 1))")]
+    [InlineData("let t = loop\n        if c => exit (a, (return 1))\n        exit ((return 2), a)", "((return 2), a)")]
+    [InlineData("let g = func [a] (e: bool) => if e => (a, $abort(\"x\")) else => ($abort(\"y\"), a)", "($abort(\"y\"), a)")]
+    [InlineData("let t = if c => ((a, (return 1)), a) else => (((return 2), a), a)", "((return 2), a)")]
+    [InlineData("let t = if c => [(a, (return 1))] else => [((return 2), a)]", "[((return 2), a)]", "Array<(i64, i64)>")]
+    [InlineData("let t = if c => [2 of (a, (return 1))] else => [2 of ((return 2), a)]", "[2 of ((return 2), a)]", "[2 of (i64, i64)]")]
+    [InlineData("let t = if c => [\"k\": (a, (return 1))] else => [\"k\": ((return 2), a)]", "[\"k\": ((return 2), a)]", "Dictionary<string, (i64, i64)>")]
+    [InlineData("let t = if c => (a, (return 1)) else => (a, (return 2))", "(a, (return 2))", "(i64, Never)")]
     [InlineData("let t = if c => (a, a) else => (a, (return 1))", "(a, (return 1))")]
     [InlineData("let t = if c => (a, (return 1)) else => (a, a)", "(a, (return 1))")]
     [InlineData("let t = match c\n        true => (a, a)\n        false => (a, (return 1))", "(a, (return 1))")]
@@ -171,10 +186,31 @@ public class NeverContinuationTest
     [InlineData("let t = if c => [\"k\": (a, a)] else => [\"k\": (a, (return 1)), \"j\": (a, true)]")]
     [InlineData("let t = if c => (a, a) else => (a, (return 1))@move")]
     [InlineData("let t: (i64, i64) = if c => (a, a) else => (a, (return 1))@move")]
+    [InlineData("let t = if c => (a, (return 1)) else => (c, a)")]
+    [InlineData("let t = if c => (a, (return 1)) else => ((return 2), a, a)")]
+    [InlineData("let t = if c => (a, (return 1)) else => [a, (return 2)]")]
+    [InlineData("let t = if c => (if d => (a, (return 1)) else => ((return 2), c)) else => (a, a)")]
+    [InlineData("let t = if c => [2 of (a, (return 1))] else => [3 of ((return 2), a)]")]
+    [InlineData("let t = if c => [2 of (a, (return 1))] else => [((return 2), a), ((return 3), a)]")]
+    [InlineData("let t = if c => [\"k\": (a, (return 1))] else => [\"k\": (c, (return 2))]")]
+    [InlineData("let t = if c => (1, (return 1)) else => (2.5, a)")]
     public void ANeverElementLiteralThatDoesNotFitItsJoinIsAMismatch(string statement)
     {
         var c = MirBuildTest.Compile(Joins + statement + "\n    return 0\n");
         Assert.Contains(c.Binding.Issues, static x => x.Node is IfKoto && x.Failure == BindingFailure.TypeMismatch);
+    }
+
+    // SPEC 23.1.2: a conflict in a join formed part by part is one record, at the join whose sources conflict, also when a later use
+    // binds its declaration again (the survey of a bound source that awaits supplies no candidate, DECISIONS BU-43).
+    [Theory]
+    [InlineData("let t = if c => (if d => (a, (return 1)) else => ((return 2), c)) else => (a, a)")]
+    [InlineData("let t = if c => (if d => (a, (return 1)) else => ((return 2), a)) else => (c, (return 3))")]
+    [InlineData("let t = if c => (if d => (a, (return 1)) else => (c, (return 2))) else => (a, a)")]
+    public void AConflictInAJoinFormedPartByPartIsOneRecord(string statement)
+    {
+        var c = MirBuildTest.Compile(Joins + statement + "\n    return t.0\n");
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal(BindingFailure.TypeMismatch, issue.Failure);
     }
 
     // SPEC 3.8: Never is a subtype of no other Type, at any depth: a Type holding Never relates only by identity, a Function Type's result

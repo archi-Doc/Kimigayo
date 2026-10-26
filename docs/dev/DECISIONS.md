@@ -6427,6 +6427,58 @@ resumed by R4-M86 (2026-10-20).
     ClosedRange's members in conditional conformance blocks (`iterate`, `iterateUniq`, `intoIterator`) are outside the identity key,
     as before (their parent is the block); their stores hold no Loan.
 
+- **BU-43 Where no source supplies a candidate, a join's Type is formed part by part; a call classifies such a join's results by
+  position; Never supplies nothing at any position** (2026-10-26; the BU planning session; PLAN G159 (2), unit bu47; design bu47
+  Revisions 1, 1b and 2, design review 3 ACCEPT with C1 and C2; SPEC 14.9.2 step 2 (R4-M134) and 10.5.1 as R4's SPEC revision 2
+  writes ② and ③; the owner's answers of 2026-10-26 in BU's dialog, verbatim: fills 「(a) 配列リテラルと同様 (推奨)」, a control-flow
+  argument's results 「(b) 要素ごとに統一 (推奨)」, the scalar rule 「(a) どの位置でも Never は供給なし (推奨)」, its consequences
+  「はい、Tuple 引数に揃える (推奨)」)
+  - The join (`Binding.ResultPropagation.Parts`): where no value source supplies a candidate, `CommonTypeByParts` forms the Type over
+    the parts at each position other than Never, found through the forms that deliver them and the selections, `do` and `loop` none of
+    whose sources supplies one (`AddResultPart`): the typed parts' common Type (`PositionType`, value reads included); else the
+    aggregate parts by shape, Tuples of one length by element, list literals by element as `Array<T>`, fills of one length by element
+    at their length, Dictionaries by key and value (any other mix conflicts); else the literals' defaults, which compete as before; no
+    part, Never. It is the join's one candidate: `PropagateSources` binds the waiting sources at it and late-fits the bound ones. A
+    nested join with a waiting literal still waits for its outer join; a Never-only one decides itself and its outer late-fits it
+    (with bu44 landed, waiting is no longer blocked by its array binder; it would differ only where the late fit adapted a part,
+    which it never does: open with that limit). The survey takes a bound source that awaits as no evidence (`ResultEvidence`), which
+    removes rv-g159-nested-cand's second record, and a transfer as Never.
+  - A call (`Binding.ArgumentKinds`): its control-flow argument's join that supplies no candidate waits for the call
+    (`ClassifiedByCall`) unless its results are Dictionaries, typed as a whole as a Dictionary literal argument is, or its typed parts
+    conflict, which fails it at once. With Tuple or array results it is recorded Composite and classified position by position
+    (`Binding.ArgumentKinds.Positions`: `ChildPositions`, `AddChildPosition`, `PositionKind`): a typed position is evidence once, at its
+    common Type; a literal one takes its first literal's default after selection, each of its literals checked (a misfit its own
+    record); one Never in every source is no evidence and gives no Type at a slot that takes the whole (BU-2 U3's D6); one with a
+    waiting part waits. It fits a candidate by its late fit, a waiting literal fitting as a literal and a waiting list or fill literal
+    by the shape it constructs there (`LateArrayType`, `LateDictionaryType`); the selected candidate completes it (`DecideWaiting`).
+    The argument walks recurse into positions (`InferPosition`, `DefaultPosition`, `IndependentPositionType`; the restructuring
+    commit before, behavior unchanged).
+  - ③: a control-flow part is Literal when every result source other than Never is a literal, at least one (`ResultSurvey.Unknown` and
+    `Never` split `Other`); an arithmetic operand's `AllLiteral` keeps Never as not literal (SPEC 12.3.3, 13.3.4).
+  - Supersedes BU-2's owner decision (1), "a control-flow argument is Literal only when all its result sources are Literal", and the
+    Never half of its U4 sentence "Literals beside only Never or unknown sources (...) need an expectation or a default, so the part
+    waits" (③; an unknown source beside literals still waits); BU-4 U3's "when none supplies one, the sources' own Types compete", U4's
+    "without a candidate, the defaulted literal sources supply the candidates" and its Open "a join whose every source holds Never
+    compares their own Types (E10(2))"; BU-9's Open "a join whose every source awaits compares their own Types". Why: they predate
+    R4-M134's 14.9.2 text and the owner's answers, and were left Open for G159.
+  - Verdicts (both pipelines; probes in the unit's evidence): the SPEC-valid joins rejected before are Binding-valid; where a local
+    follows a Never element the old analysis's `Unsupported_Kd` at that use remains (STATUS, Unreachable code; G159 (4)), spec-case
+    `14.9.2-part-by-part`'s old side (class (a)); a nested conflict is one record. At calls, the `take`-like twins are valid and
+    `identity(if c => (a, (return 1)) else => ((return 2), 5))` gives T = (i64, i32) after selection. Valid before, rejected now by the
+    owner's answers: `tuples(if c => (5, 6) else => (7, 8))` and `tuples(if c => (stop(), 5) else => (6, stop()))` with overloads at
+    (i32, i32) and (i64, i64) are `AmbiguousBinding_Kd`, as `tuples((5, 6))`; `keep(if c => (x, stop()) else => (x, stop()))` and
+    `keep(if c => (5, stop()) else => (6, stop()))` are `UnboundTypeArgument_Kd`, as `keep((x, stop()))`. By ③,
+    ApplicabilityChainRegressionTest's `keep(if c => 1 else => stop())` (`UnboundTypeArgument_Kd`) is valid with T = i32 and
+    `h(if c => 200 else => stop())` (`AmbiguousBinding_Kd`) selects `h(i64)`. `keep(if c => (1, stop()) else => (2.5, x))` reports the
+    literal's own record at `2.5`, as the scalar form does, beside a derived `PrerequisiteUnavailable_Kd` the scalar form does not show.
+  - Rejected: a partial Type with holes joined by `SelectCommonType` (a new representation; a Type-only join would merge a typed part's
+    own Never); every nested join waiting (a call's join must stay classified by its own positions); a whole-Type late default at a
+    call (`both(if c => (x, R) else => (R, 5))` with `both<T>((T, T))` needs element evidence).
+  - Open: the late fit never adapts an awaiting literal's parts (value read, erasure: TypeMismatch_Kd with or without a candidate,
+    measured), so a value-read position is evidence once (`ref/i64` beside `i64` gives T = i64) yet fails the fit; a join position's
+    array literal binds no length slot; a waiting part of such a position takes no `F` (`TakeWaiting` has no join row); an array or
+    Dictionary literal's element evidence keeps the awaiting elements' own common Type (a SPEC 4.3 question). Not temporary.
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and

@@ -18,7 +18,10 @@ namespace Kimi.Compiler;
 //   (AwaitsPosition: a Tuple, array or dictionary literal with a part of Type Never or a part that awaits; a result target every value
 //   source of which awaits or has Type Never; through parentheses, labels and expression bodies), which is no evidence
 //   beside one that is (SPEC 14.9.2 step 2, 4.3, 10.8) and takes the Type that a join, its literal's element evidence or its selected
-//   call decides (TryPropagate).
+//   call decides (TryPropagate); (4) where no source supplies a candidate, the join's Type formed part by part
+//   (Binding.ResultPropagation.Parts.cs) or, for a call's control-flow argument, the wait for the call that classifies it
+//   (AwaitsWithoutCandidate; DECISIONS BU-43), whose late fit takes a waiting literal and a waiting list or fill literal by the shape
+//   it constructs, writing nothing.
 // - Inputs: the bound expression, its parts' Types, the value sources a join recorded (ResultContext.SourceNodes) and whether it still
 //   collects them (ResultContext.Collecting), the literal collecting its element evidence (collectingElements), the target Type.
 // - Outputs: LateTypeOf, the Type the expression takes at the target, computed from its parts: an array or dictionary literal its
@@ -50,6 +53,10 @@ public sealed partial class Binding
         CodeBlockKoto { IsExpressionBody: true } block => block.Items[0],
         _ => null,
     };
+
+    private static bool SameArrayShape(BoundType own, BoundType target)
+        => own.Kind == target.Kind && ReferenceEquals(own.Symbol, target.Symbol) && own.Length == target.Length &&
+            ReferenceEquals(own.LengthExpression, target.LengthExpression);
 
     // SPEC 3.8: a Never element fits its expected element Type, which the literal's Type takes; `elements` holds the elements' Types and
     // receives the fitted ones.
@@ -229,56 +236,55 @@ public sealed partial class Binding
         return this.DecideResult(node, context);
     }
 
-    // SPEC 14.9.2 step 3: a join whose every value source awaits has no candidate of its own. When a source waited for its Type and the
-    // join's own Type is decided later (DecidedLater), it waits for that Type (true); otherwise the waiting sources holding literals take
-    // their defaults (SPEC 10.2), which supply the candidates, those holding only Never parts then taking the decided Type; with no
-    // literal, the sources' own Types compete.
+    // SPEC 14.9.2 step 2 (DECISIONS BU-43): a join none of whose value sources supplies a candidate. It waits for its position's Type
+    // (true) when a source waited for its Type and that Type is decided later (DecidedLater), or when it is a call's control-flow
+    // argument whose results are not Dictionaries: its call classifies it (ClassifiedByCall, SPEC 10.5.1) and completes it at the
+    // selected candidate's Type, a conflict among its typed parts failing it at once. Otherwise its common Type is formed part by part
+    // (CommonTypeByParts) and is the join's one candidate; with none, its waiting sources take their defaults.
     private bool AwaitsWithoutCandidate(Koto node, ResultContext context, List<BoundType> types)
     {
         var nested = DeliversResult(node) && this.DecidedLater(node);
-        var defaulted = this.flagScratch.Rent(context.Sources.Count);
-        try
+        var start = this.positionParts.Count;
+        for (var i = 0; i < context.Sources.Count; i++)
         {
-            var literal = false;
-            for (var i = 0; i < context.Sources.Count; i++)
+            if (nested && context.Sources[i] is null && context.SourceNodes[i] is { } waited && this.Deferred(waited))
             {
-                defaulted[i] = context.Sources[i] is null && context.SourceNodes[i] is { } source && this.Deferred(source);
-                if (defaulted[i] && nested)
-                {
-                    return context.Waiting = true;
-                }
-
-                literal |= defaulted[i] && this.SuppliesDefault(context.SourceNodes[i]!);
+                this.ClosePosition(start);
+                return context.Waiting = true;
             }
 
-            var any = false;
-            for (var i = 0; i < context.Sources.Count; i++)
+            if (!ReferenceEquals(context.Sources[i], BoundType.Never) && context.SourceNodes[i] is { } source)
             {
-                // A source holding only Never parts takes the Type the defaulted literals supply (PropagateSources); without one, its own.
-                defaulted[i] = defaulted[i] && (!literal || this.SuppliesDefault(context.SourceNodes[i]!));
-                if (defaulted[i])
-                {
-                    context.Sources[i] = this.BindWaiting(context.SourceNodes[i]!, null);
-                    context.Pending |= context.Sources[i] is null;
-                    any = true;
-                }
+                this.AddResultPart(source);
             }
-
-            types.Clear(); // A nested result decided above reused the list.
-            for (var i = 0; i < context.Sources.Count; i++)
-            {
-                if (context.Sources[i] is { } source && !ReferenceEquals(source, BoundType.Never) && (defaulted[i] || !any))
-                {
-                    types.Add(source);
-                }
-            }
-
-            return false;
         }
-        finally
+
+        var conflict = PartsConflict.None;
+        var common = this.CommonTypeByParts(start, this.positionParts.Count, this.ConstraintScope(node), ref conflict);
+        var shape = this.PartsShape(start, this.positionParts.Count);
+        this.ClosePosition(start);
+        if ((conflict & PartsConflict.Typed) == 0 && shape is not DictionaryLiteralKoto && this.ClassifiedByCall(node, shape))
         {
-            this.flagScratch.Return(defaulted);
+            return context.Waiting = true;
         }
+
+        context.Invalid |= conflict != PartsConflict.None;
+        for (var i = 0; common is null && i < context.Sources.Count; i++)
+        {
+            if (context.Sources[i] is null && context.SourceNodes[i] is { } source && this.Deferred(source))
+            {
+                context.Sources[i] = this.BindWaiting(source, null);
+                context.Pending |= context.Sources[i] is null;
+            }
+        }
+
+        types.Clear(); // A nested result decided above reused the list.
+        if (common is not null)
+        {
+            types.Add(common);
+        }
+
+        return false;
     }
 
     // SPEC 14.9.2 step 3: binds a source that waited at `type` (null: its defaults). Returns the Type the source supplies, null when it fails.
@@ -422,16 +428,18 @@ public sealed partial class Binding
             TupleLiteralKoto tuple => this.LateTupleType(tuple, target),
             ArrayLiteralKoto array => this.LateArrayType(array, target),
             DictionaryLiteralKoto dictionary => this.LateDictionaryType(dictionary, target),
-            _ => DeliversResult(node) ? this.LateResultType(node, target) : null, // A bound expression that awaits holds no waiting literal.
+            _ when IsUnfittedLiteral(node) => this.FitsInputLiteral(node, target, this.ConstraintScope(node)) ? target : null, // A waiting literal.
+            _ => DeliversResult(node) ? this.LateResultType(node, target) : null,
         };
 
         return this.LateWrite(node, late);
     }
 
-    // Records the write of a late Type to the node.
+    // Records the write of a late Type to a bound node; a waiting one, which a call's waiting join holds (ClassifiedByCall), is bound at
+    // its join's decision instead.
     private BoundType? LateWrite(Koto node, BoundType? late)
     {
-        if (late is not null)
+        if (late is not null && node.BoundType is not null)
         {
             this.lateWrites.Add((node, late));
         }
@@ -467,15 +475,12 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 4.3: an array literal of the target's shape takes the target's element Type when every element fits it.
+    // SPEC 4.3: an array literal of the target's shape takes the target's element Type when every element fits it; one waiting unbound
+    // has the shape it constructs at the target: a list literal an Array or a fixed array of its count, a fill a fixed array of its
+    // length (SPEC 4.3.1, 4.3.3).
     private BoundType? LateArrayType(ArrayLiteralKoto array, BoundType target)
     {
-        if (array.BoundType is not { } own || own.Kind != target.Kind || !ReferenceEquals(own.Symbol, target.Symbol) || target.Components.Count != 1)
-        {
-            return null;
-        }
-
-        if (own.Length != target.Length || !ReferenceEquals(own.LengthExpression, target.LengthExpression))
+        if (target.Components.Count != 1 || (array.BoundType is { } own ? !SameArrayShape(own, target) : !this.ConstructsAt(array, target)))
         {
             return null;
         }
@@ -491,10 +496,23 @@ public sealed partial class Binding
         return target;
     }
 
-    // SPEC 12.4.3: a dictionary literal takes the target's key and value Types when every key and value fits them.
+    // The shape a waiting array literal constructs at the target (SPEC 4.3.1, 4.3.3).
+    private bool ConstructsAt(ArrayLiteralKoto array, BoundType target)
+    {
+        if (target.Kind != BoundTypeKind.FixedArray)
+        {
+            return array.FillLength is null && target.Kind == BoundTypeKind.Array && ReferenceEquals(target.Symbol, this.Library.DynamicArray);
+        }
+
+        return array.FillCount is not { } count
+            ? array.FillLength is null && target.LengthExpression is null && target.Length == array.Elements.Count
+            : count.IsConstant ? target.LengthExpression is null && target.Length == count.Value : ReferenceEquals(target.LengthExpression, count);
+    }
+
+    // SPEC 12.4.3: a dictionary literal takes the target's key and value Types when every key and value fits them, also one waiting.
     private BoundType? LateDictionaryType(DictionaryLiteralKoto dictionary, BoundType target)
     {
-        if (dictionary.BoundType?.Kind != BoundTypeKind.Dictionary || target.Kind != BoundTypeKind.Dictionary || target.Components.Count != 2)
+        if (dictionary.BoundType is { Kind: not BoundTypeKind.Dictionary } || target.Kind != BoundTypeKind.Dictionary || target.Components.Count != 2)
         {
             return null;
         }
