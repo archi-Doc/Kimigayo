@@ -131,6 +131,32 @@ public sealed partial class MirBuildTest
         }
     }
 
+    // SPEC 4.3.1, 4.9.5, 12.2, 12.4.1 (DECISIONS R5-M129): an Array literal is one Array aggregate of its elements in source order, `[]` one
+    // of none, an inner literal its own, and an element before the last that builds code secured where it is evaluated (A1 moves each
+    // operand at the one Assign); no call, record or Opaque value (fail-before: the empty Array from a FixedArray aggregate, then reserve and
+    // one append per element).
+    [Theory]
+    [InlineData("Array<i32>", "[x, 2]", "_3 = Array(copy _1, const 2_i32): Array<i32>")]
+    [InlineData("Array<i32>", "[]", "_3 = Array(): Array<i32>")]
+    [InlineData("Array<i32>", "[x, g(), 3]", "_3 = Array(move _4, move _5, const 3_i32): Array<i32>")]
+    [InlineData("Array<Array<i32>>", "[[x], []]", "_4 = Array(copy _1): Array<i32>|_5 = Array(): Array<i32>|_3 = Array(move _4, move _5): Array<Array<i32>>")]
+    [InlineData("Array<(string, i32)>", "[(s, x)]", "_4 = Tuple(move _2, copy _1): (string, i32)|_3 = Array(move _4): Array<(string, i32)>")]
+    public void AnArrayLiteralIsOneAggregateOfItsElements(string type, string literal, string aggregates)
+    {
+        var c = Compile($"func g() -> i32 => 1\nfunc f(x: i32, s: string) -> i32\n    let a: {type} = {literal}\n    return 0\n");
+        Assert.Empty(c.Binding.Issues);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Records);
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        Assert.False(body.HasOpaque);
+        var text = new StringBuilder();
+        MirDump.Write(body, text, program.Drops, body.Ordinal);
+        var built = Regex.Matches(text.ToString(), @"(_\d+ = (?:Array|Tuple|FixedArray)\(.*?\): .*?) @\d+").Select(static x => x.Groups[1].Value);
+        Assert.Equal(aggregates.Split('|'), built);
+        Assert.DoesNotContain(body.Blocks.ToArray(), x => x.Terminator.Kind == MirTerminatorKind.Call && x.Terminator.Callee.Symbol?.Name != "g");
+    }
+
     // SPEC 4.3.3, IMPL 21.3.2 (DECISIONS R4-M81): a fill's MIR does not grow with its length (fail-before: [1048576 of 0@u8] had 1,048,580
     // operands, [4 of 0@u8] 8).
     [Fact]

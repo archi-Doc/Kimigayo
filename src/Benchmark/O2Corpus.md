@@ -14,6 +14,7 @@ invertible, so a wrong value in any round changes the line. Each runs a few tent
 | Kernel | Work |
 | --- | --- |
 | `Array` | `Array<T>` of a two-Field struct grown from empty by 1,024 appends, shared iteration, strided indexing, `swap`, `pop` and `clear`, 131,072 rounds |
+| `ArrayLiteral` | Array literals of 1, 8 and 32 `i64` elements and of 4 two-Field structs, each built (one allocation), indexed and destroyed, 2,097,152 rounds; its checksum is compared in place and printed as a fixed line (DECISIONS R5-M129) |
 | `Dictionary` | `Dictionary<i64, i64>` of 64 entries (insertion, lookup, removal, shared iteration) and one of 32 entries keyed by a user `Equatable` struct, 16,384 rounds; lookup is a linear search |
 | `Interpolation` | An interpolated owning string with a user `Utf8Format` value, and `$tryWrite` into a cleared fixed buffer, 1,048,576 times |
 | `Iterators` | A user Iterator through a generic consumer, Slice iteration and `Iteration.owning`, 8,388,608 rounds |

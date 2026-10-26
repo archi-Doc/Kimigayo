@@ -3930,7 +3930,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     earlier-held temp uses Hold and Made, none is left on the old order): `Value` (operand temps: call, method, accessor, constructor and
     operator results, aggregates, closures, interpolations, selections' values, receivers), `Referent`, `Statement`, `Discard`,
     `Result`'s input, a `match` Subject, a guard's, a condition's and a verification's bool, a Literal Pattern's test, a `for` iterator
-    and step Subject, `Count`'s range, a compound update's read, result and setter Unit, an Array literal's Unit, a Dictionary entry's
+    and step Subject, `Count`'s range, a compound update's read, result and setter Unit, an Array literal's Unit (until R5-M129), a Dictionary entry's
     key, value, link, test and handle, a Contract comparison's result and leaf value, `and`/`or`'s left, an Abrupt conversion's operand,
     Formatting's writer, hint Unit, write result and discriminant, a verification's issue and message, an acquisition's Never value, a
     constructor's body value, a defer's result, a keyed selection's result, `Replace`'s value; and `Defaults`' explicit-argument slot
@@ -4695,6 +4695,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     - `TheReferentStoresStayDense` (V16) fails first.
     - `reserve`'s referent store (bu45's review O15) is pinned by reserveLateOk, an explicit `reserve` over a non-empty Array, which errs
       where `reserve` keeps W; the literal's `reserve` meets an empty Array, so no literal form depends on it.
+    - These tests, the oracle and the held-view census were measured with Array literals built as appends. Since R5-M129 a literal is
+      one aggregate, which writes no receiver store and reserves nothing, so its rows hold by R5-M129, not by this rule.
     - The memo's per-definition key is pinned by one generic struct's case Type in two methods, one proving its element Copy (refs(S)
       alone, valid) and one not (W and the hold, `Unsupported_Kd`): a bare per-Type memo answers the second as the first.
     - Deep counting as observing is pinned by no form (implementation review 1's N2): in every form found, a referent past the
@@ -9999,3 +10001,64 @@ structure is recorded here by the unit that first implements it.
     - the collector skipping the Builtin target (K row 2: the target decides the user-formatter case and names the Self);
     - bringing C9b's BuiltinFormat shim forward (ruling Q4 (a), the plan's boundary);
     - re-pointing the old lowering to the map (D5).
+- **R5-M129 The Array literal is one MIR aggregate (alit)** (2026-10-26, R5 planning session; the owner's 「a) 設計して直す お願いします」
+  (2026-10-26, on G:library-2's held review: design and fix) and 「いずれも承認します」 (2026-10-26, to "MIR の語彙に新しい集約の種類
+  MirAggregateKind.Array を加えてよいですか？"); G:library-2's B1; a Full change: designs 1 and 2, the planning session's choice of design
+  2's P3, design review 1 REVISE (B1: a row of the aggregate path) and its revision R-1, with R4's view; SPEC 4.3.1, 4.9.5, 4.9.6, 12.2,
+  12.4.1, 16.2.1, 22.5.1, IMPL 21.3.3; partly supersedes R5-M121 and R3-5's interim mapping for the Array literal)
+  - Cause: the MIR built `[e1..en]` as an empty Array, `reserve(n)` and n `append` calls (R3-5's interim mapping, "R3 decision 5"), which
+    code generation wrote by their contracts. At O2, `__kimi_array_grow` kept n+1 call sites per literal, so it stayed out of line and each
+    element reloaded the handle and called it (lit8: 9 calls per literal, B/A 1.30; lit64 2.85), where the old generator allocates once.
+  - Rule: an Array literal of n >= 0 elements, `[]` included, is one aggregate, `MirAggregateKind.Array` (the owner's vocabulary entry;
+    ARCH's closed-vocabulary table gains `MirAggregateKind`, 6 entries). `MirBuilder.Aggregate` builds it as every aggregate: the elements
+    in source order, each before the last that builds code secured where it is evaluated (SPEC 12.2), so an interrupted literal destroys
+    the elements secured so far in reverse acquisition order (SPEC 16.2.1), as before. Its contract: the elements move into one buffer
+    allocated for their count, none for `[]` (SPEC 4.9.5); the allocation may Abort at the literal (22.5.1); no user code runs (4.9.6).
+  - Its row: `MirDescriptors.Of(MirAggregateKind)`, one row per aggregate kind, Array's `Allocation | Abort`, the others none; `MirUses`
+    reports an aggregate's row when it has an operand. This is effect parity with the calls it replaces: no `IMirUses` visitor reads
+    Allocation or Abort, and reserve and append published no Runs or Destroys, so no A4 summary changes.
+  - A5 reads the aggregate rule (the operands' union under rule W's Indirect), the Array's content where an Index step reads it. A literal's
+    own buffer carries no escape marker: its elements are placed at construction, and nothing earlier is stored there. An appended element
+    carries the untied-store marker of the receiver store (R4-M116). So the literal is exact: C3's literal rows (R4-M143: arrNode1,
+    rawPair, pop2 and popLate, with their Bad twins) keep their verdicts, now by this rule, and a later unit must not give the literal an
+    append's marker back (R4's finding (4)). The MIR shadow rejected litDropBad, litObjBad and litScopeBad (an element whose drop stores
+    through its raw slot, the slot used after `y = 5`) only through reserve's W and now accepts them: PLAN G264's known gap, which gains an
+    Array-literal row, and whose U2 must reject them.
+  - Code generation: one Array row of the aggregate writer, in Fill's shape after the shared operand evaluation and Destination
+    (`FunctionCodegen.Arrays.ArrayBuffer`). It writes the runtime's empty handle, then for n elements one `__kimi_array_grow(stride, n)`, the
+    old generator's call, with the Array runtime requested through `Request(HelperNeeds.ArrayRuntime)`, and the length n in the handle's
+    length word (`Layout.LengthWord`, which `setArrayLength` now reads too). The aggregate writer then puts each element in the buffer by
+    `Component`'s fixed-array rule.
+  - R5-M121's IR-only literal deviation is replaced, not deleted: MIR code generation now grows once like the old generator, then puts the
+    elements directly (aligned stores) and the length once, where the old generator calls P1b's Place helper per element (PD9 information).
+  - Superseded: R5-M121's rejected "the builder writing grow and place (held, R3 decision 5)". The reason that no longer holds: the form is
+    now one MIR aggregate whose row carries the construction contract (R4's one-meaning rule), not builder-written grow and place calls.
+  - R5-M8's "fixed in codegen": the generated code is fixed, through the MIR's form and code generation, never by a tolerance.
+  - FixedArray keeps one Type-decided meaning, "a Dictionary from none" (its codegen, validator and collector arms), until PLAN G255 (C2)
+    gives the Dictionary literal its form; that is its removal condition (R4's finding (5)).
+  - Corpus: R5-M8's O2 corpus had no literal kernel, which let B1 through. It gains `ArrayLiteral` (1, 8 and 32 `i64` elements and 4
+    structs per round; checksum compared in place and printed as a fixed line, no interpolation), whose A/B runs from this unit on.
+  - Deleted: `MirBuilder.Collection` and `Aggregate`'s one-form clause; the literal's 1 + n Uniq borrows, Calls and LegacyRow targets;
+    FixedArray's Array-from-none meaning with its codegen and validator arms; `EmptyArray`; `DynamicArrayCostTest`'s legacy-only guard.
+  - Tests: the rule is pinned where it is decided, each row failing first: the builder (`MirBuildTest.AnArrayLiteralIsOneAggregateOfItsElements`),
+    the validator's rows and the MirUses pin of the row, the `expansions` golden, the interrupted order (`MirDropTest`), the writer
+    (`FunctionCodegenTest.AnArrayLiteralGrowsOnceAndPutsItsElements`) and A5 (`MirBorrowsTest.AnArrayLiteralPlacesItsElementsThroughNoReceiverStore`:
+    litDropOk, lit2DropOk, litObjOk and a generic `[child@move]`, the mir ledger's two rows). The O2 effect is a performance property,
+    held by the `ArrayLiteral` corpus kernel (R5-M8). No managed test asserts O2 code: one would make the functional suite depend on the
+    native toolchain, a VERIFICATION policy change.
+  - Measured:
+    - O2 (CLI probes): lit8's module is legacy's (191 instructions, 0 grow calls); beside an append loop, 2 grow calls (legacy 2, before
+      10). Over the Array, DynamicArray, Comparison and Arithmetic fixtures, sel's out-of-line grow call sites equal legacy's (166 each).
+    - Native, the merged head, one folder, CPU cycles: the `ArrayLiteral` kernel B/A 1.00 (A/A 0.99, 21 samples; dev's sel 1.72, so the
+      corpus now sees a literal regression); lit8 0.99 and lit64 1.03 (min 1.00; dev 2.85), 15 samples.
+    - `check` of 1,500 literals under `-Pipeline mir`: x0.825 (MIR: 3n+6 statements, n+1 Calls and n+2 blocks per literal become one
+      statement).
+    - Size: Mir and Backend +95/-78 lines (with comments), tests +273/-43, the kernel, this entry, ARCH and CODEMAP.
+  - Rejected:
+    - the Append helper's inline capacity test (P1: lit8 1.11-1.16, lit64 1.5-1.7, more code, and the old generator's text changes);
+    - Proven appends (a field on every Call that one row reads);
+    - raw placements through `borrowStorageUniq` and `Raw.initialize` (P4: new A5 errors, in SPEC 5.7's accepted `raw-pairs` example too;
+      G255 (C2)'s class);
+    - reusing FixedArray for an Array (R4's one-meaning rule);
+    - a separate `Collection` or `ArrayLiteral` path beside the aggregate's (design review 1's B1);
+    - a new rvalue kind, CompilerFunctionKind or IntrinsicId (PD21).

@@ -10,8 +10,8 @@
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>A MIR statement (plan 5.4). The six kind vocabularies of MIR are closed (COMPILER_ARCHITECTURE, Closed vocabularies):
-/// a new member needs a SPEC basis and owner approval, and every member has a row in <see cref="MirDescriptors"/>.</summary>
+/// <summary>A MIR statement (plan 5.4). The six kind vocabularies of MIR and its aggregate kinds are closed (COMPILER_ARCHITECTURE, Closed
+/// vocabularies): a new member needs a SPEC basis and owner approval, and every member has a row in <see cref="MirDescriptors"/>.</summary>
 internal enum MirStatementKind : byte
 {
     Assign, // Place = Rvalue.
@@ -30,7 +30,7 @@ internal enum MirRvalueKind : byte
     BinaryOp,
     UnaryOp,
     Cast, // The operand converted to the Type (MirCastKind).
-    Aggregate, // A Tuple, struct or enum Case, fixed array, fill or Closure environment from the operands (MirAggregateKind).
+    Aggregate, // A Tuple, struct or enum Case, fixed array, fill, Closure environment or Array from the operands (MirAggregateKind).
     Discriminant, // The Case ordinal of an enum Place.
     Len, // The length of a sequence Place.
     Opaque, // A value of the Type that a Binding error or an Unsupported form replaced; its site lists the Places it touched.
@@ -132,11 +132,13 @@ internal enum MirAggregateKind : byte
 {
     Tuple,
     Adt, // A struct (its base first, then its own Fields) or the Case its ordinal names.
-    FixedArray, // A fixed array from its elements, one operand each, or from none (noinit); an Array or a Dictionary from none, the empty
-    // collection its literal's calls fill.
+    FixedArray, // A fixed array from its elements, one operand each, or from none (noinit); a Dictionary from none, the empty Dictionary
+    // its literal's calls fill (until PLAN G255 (C2) gives the Dictionary literal its form; DECISIONS R5-M129).
     Closure, // A Closure environment from its captures.
     Fill, // SPEC 4.3.3: a fixed array whose every element is a copy of its one operand, the value acquired once, also for length 0; its
     // length is its Type's, which an instance closes (DECISIONS R4-M81).
+    Array, // SPEC 4.3.1, 4.9.5, 4.9.6, 12.4.1: an Array from its elements, one operand each in source order, moved into one buffer allocated
+    // for their count, none for no element (`[]`); the allocation may Abort, and no user code runs (DECISIONS R5-M129).
 }
 
 internal enum MirConstKind : byte

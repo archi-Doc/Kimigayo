@@ -32,6 +32,25 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
         Assert.Equal(["drop _3 -> bb3 [elide]", "drop _1 -> bb4 [elide]"], Lines(Resource + "func f()\n    let r = make()\n    consume(r@move)\n", "f"));
     }
 
+    // SPEC 12.2, 16.2.1 (DECISIONS R5-M129): an Array literal's elements, each one before the last that builds code secured where it is
+    // evaluated (_3, _4), are moved by its one aggregate (Elide after it); a transfer out of a later element (`try`'s Err) destroys those
+    // secured so far in reverse acquisition order (_4, then _3) and not the unbuilt Array, whose flag the aggregate sets.
+    [Fact]
+    public void AnInterruptedArrayLiteralDestroysItsSecuredElementsInReverse()
+    {
+        Assert.Equal(
+            [
+                "flags 1", "StorageLive(_2) [clear f0]", "drop _6 -> bb22 [open ((_ as case 1) elide, (_ as case 0) open (.0 elide))]",
+                "drop _8 -> bb7 [elide]", "drop _2 -> bb13 [flag f0] [clear f0]", "StorageDead(_2) [clear f0]", "drop _4 -> bb15 [keep]",
+                "drop _3 -> bb16 [keep]", "drop _6 -> bb18 [keep]", "_2 = Array(move _3, move _4, move _5): Array<Resource> [set f0]",
+                "drop _5 -> bb23 [elide]", "drop _4 -> bb24 [elide]", "drop _3 -> bb25 [elide]",
+            ],
+            Lines(
+                Resource + "func third(ok: bool) -> Result<Resource, i32>\n    if ok => return .Ok(make())\n    return .Err(7)\n" +
+                    "func f(ok: bool) -> Result<i32, i32>\n    let a: Array<Resource> = [make(), make(), try third(ok)]\n    return .Ok(0)\n",
+                "f"));
+    }
+
     // SPEC 15, 16.2.1: a value moved on some paths only is destroyed under a flag, which mirrors its initialization: set where it is
     // defined (an argument at the entry), cleared where it is moved, dropped or its storage begins or ends. A drop tree node shared by two
     // exits, one after the Move, has one verdict; reinitializing on the moving path makes it Keep again.

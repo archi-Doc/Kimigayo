@@ -6,9 +6,10 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 namespace Kimi.Compiler.Backend;
 
 // The aggregates of FunctionCodegen (R5 package C 3.2, plans C2a, C2b and C5a; DECISIONS R5-M83, R5-M87, R4-M81, R5-M102): a Tuple, struct,
-// enum Case, Closure environment or fixed array put by its components (a string constant written whole, DECISIONS R5-M118), and a Fill's
-// one value at each element by one counted loop, the loop writer (Loop) the glue shares; an Array from none is FunctionCodegen.Arrays'
-// (DECISIONS R5-M121), a Dictionary from none FunctionCodegen.Dictionaries' (DECISIONS R5-M124).
+// enum Case, Closure environment or fixed array put by its components (a string constant written whole, DECISIONS R5-M118), an Array's
+// elements put the same way in the buffer its storage row allocates (FunctionCodegen.Arrays' ArrayBuffer; DECISIONS R5-M129), and a Fill's
+// one value at each element by one counted loop, the loop writer (Loop) the glue shares; a Dictionary from none is
+// FunctionCodegen.Dictionaries' (DECISIONS R5-M124).
 internal sealed partial class FunctionCodegen
 {
     // One pass of a counted loop (Loop): its labels' stem and its work from the pass's element offset.
@@ -24,8 +25,8 @@ internal sealed partial class FunctionCodegen
     // each element by one counted loop (DECISIONS R4-M81); noinit, from no operand, and a zero-sized Place store none. A string constant has
     // nothing to evaluate: it is written whole at its component once the Place is located (Evaluate and Put, the Use row's rule). A Closure's
     // environment is the Closure value, its captures placed as a Tuple's elements in the Place's own storage at every size, so forming it
-    // allocates nothing (DECISIONS R5-M102). An Array from none is the runtime's empty handle (EmptyArray), a Dictionary's its initialize call
-    // (EmptyDictionary).
+    // allocates nothing (DECISIONS R5-M102). An Array's elements are put in the buffer ArrayBuffer makes for them, by the fixed-array rule
+    // (DECISIONS R5-M129); a Dictionary from none is its initialize call (EmptyDictionary).
     private void Aggregate(in MirStatement statement)
     {
         var rvalue = statement.Rvalue;
@@ -33,12 +34,9 @@ internal sealed partial class FunctionCodegen
         var kind = (MirAggregateKind)rvalue.Op;
         switch (kind)
         {
-            case MirAggregateKind.Tuple or MirAggregateKind.Adt or MirAggregateKind.Closure:
+            case MirAggregateKind.Tuple or MirAggregateKind.Adt or MirAggregateKind.Closure or MirAggregateKind.Array:
             case MirAggregateKind.FixedArray or MirAggregateKind.Fill when type.Kind == BoundTypeKind.FixedArray:
                 break;
-            case MirAggregateKind.FixedArray when type.Kind == BoundTypeKind.Array:
-                this.EmptyArray(statement); // An Array from none (FunctionCodegen.Arrays).
-                return;
             case MirAggregateKind.FixedArray when type.Kind == BoundTypeKind.Dictionary:
                 this.EmptyDictionary(statement); // A Dictionary from none (FunctionCodegen.Dictionaries).
                 return;
@@ -68,6 +66,16 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
+        if (kind == MirAggregateKind.Array)
+        {
+            if (this.ArrayBuffer(statement.Source, address, type, record, operands.Length) is not { } buffer)
+            {
+                return; // Recorded.
+            }
+
+            address = buffer; // Its elements are put in its buffer by the fixed-array rule (Component).
+        }
+
         if (kind == MirAggregateKind.Adt && AdtDef.IsEnum(type))
         {
             this.StoreAt(address, Layout.Tag.Layout, new('\0', rvalue.Arg)); // The Case ordinal, at the record's offset 0.
@@ -87,15 +95,15 @@ internal sealed partial class FunctionCodegen
 
     // The component of an aggregate its index-th operand initializes (IMPL 21.1.2; the validator's Component), in the aggregate's record:
     // its offset and its Type in the item's instance. A Tuple's element, a Closure's capture and a struct's own Field are at the record's
-    // Field offsets, a
-    // struct's base first and at 0 (its complete base is a prefix, X1); an enum Case's payload element is at the payload's offset, the
-    // record's Field 1, plus its offset in the Case's payload Tuple; a fixed array's element is at its position times the element's stride.
+    // Field offsets, a struct's base first and at 0 (its complete base is a prefix, X1); an enum Case's payload element is at the payload's
+    // offset, the record's Field 1, plus its offset in the Case's payload Tuple; a fixed array's element, and an Array's in its buffer, is at
+    // its position times the element's stride.
     private (long Offset, BoundType Type) Component(MirAggregateKind kind, BoundType type, ValueLowering record, int ordinal, int index)
     {
         var offsets = record.Layout.FieldOffsets.Span;
         switch (kind)
         {
-            case MirAggregateKind.FixedArray:
+            case MirAggregateKind.FixedArray or MirAggregateKind.Array:
                 return (index * (long)(this.Laid(type.Components[0])?.Layout.Stride ?? 0), type.Components[0]);
             case MirAggregateKind.Tuple or MirAggregateKind.Closure:
                 return (offsets[index], type.Components[index]);
