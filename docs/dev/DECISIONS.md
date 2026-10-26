@@ -4828,7 +4828,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
     §4.3's count: the hold's 44 `Unsupported_Kd` rows go (31 Language rows at the same locations, 11 paired with the old path's, B6-for's
     `var arr` twice recovered), no Limit record; open blocking 110 and unclassified 12 (46 rows) unchanged; classification a5-p13
     re-noted. MirCensusTest (library, milestones, goldens, accepted SPEC variants): no problem. Warm runs allocate nothing
-    (`TheGuardsWalkAllocatesNothingWarm`). A5's timing by G246's method and the census's cold allocation are not yet measured.
+    (`TheGuardsWalkAllocatesNothingWarm`). Cost (the G258 host: A5 cold per program over the census's 120 programs, dev a7eb51913
+    against U0 and P13-1 merged on it (25cec9e11), separate binaries from sibling folders, A-A-B, three runs of 8 reps, CPU 6 pinned,
+    tiering off, beside one R5 heavy run): A5's min-sum 367.5 to 361.1 ms (0.9827; A/A 1.0087), median per-program ratio 0.9827, Work
+    0.9998, Loan-set bytes and problems equal; cold allocation +434,280 B (+0.93%), of which BU-41 measured about 374 KB as U0's share
+    in A5 (the parts it keeps). No slowdown.
   - Tests: `MirTypesTest.TheGuardSaysWhatACallMayWritePastAValue` (value and layer Through, iterator and loan None, uniqKept Through)
     and `TheGuardReadsEachStoredLayerOnItsInstance` (every position below the holder; Limit, Through and None twins); the new
     `MirBorrowsTest.Guard.cs`: `TheGuardReadsEachPart` (the former `AListedLossIsUnsupported`, with the B6-for pin),
