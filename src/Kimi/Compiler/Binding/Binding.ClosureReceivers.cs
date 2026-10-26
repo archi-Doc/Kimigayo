@@ -229,7 +229,7 @@ public sealed partial class Binding
                 }
 
                 _ = NextPathStep(place.Parent!, out var next);
-                if (!(place.Parent is ParenthesizedKoto || ReferenceEquals(next, place)))
+                if (!(IsGroup(place.Parent) || ReferenceEquals(next, place)))
                 {
                     return new(false, false, byValue);
                 }

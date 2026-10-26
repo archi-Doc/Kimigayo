@@ -49,8 +49,9 @@ public sealed partial class Binding
         return node;
     }
 
-    // Whether a node is a group, which passes its operand to its consumer as it is (its Op is Group): parentheses, and a label, which
-    // wraps only a control-flow construct (SPEC 14.4), never a Place.
+    // Whether a node passes its operand to its consumer as it is: parentheses, and a label, which wraps only a control-flow construct
+    // (SPEC 14.4; the parser's label rule), never a Place. HirOp.Group is wider: an identity or transfer conversion, which acquires its
+    // operand, is no such group.
     private static bool IsGroup(Koto? node) => node is ParenthesizedKoto or LabeledKoto;
 
     // SPEC 3.5.1: the bare acquisition of a Place storing an exclusive reference, `uniq/T` or `objuniq/T`, Reborrows it in its own

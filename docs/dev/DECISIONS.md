@@ -4622,8 +4622,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
   decisions (the discard row as `PlanRow.Adjust`; Discard Context a bare acquisition position) and R5's three requirements on them).
   Supersedes R4-M128's interim by-value list and its Discard Context net.
   - Representation: `ClosureEffects.ConsumedByValue(place)` (`Binding.ClosureReceivers`), computed once per use (C7), reads the Adjust
-    rule (R4-M142) instead of a list: the place's groups taken through (`Binding.Grouped`: parentheses and a label, whose Op is Group;
-    the one rule `IsBareAcquisitionPosition` and the publisher's discard rows read too); its own failure gives false; in Discard
+    rule (R4-M142) instead of a list: the place's groups taken through (`Binding.Grouped` over `IsGroup`: parentheses and a label, which
+    wraps only a control-flow construct, never a Place; `HirOp.Group` is wider, an identity or transfer conversion acquiring its operand;
+    the one rule `IsBareAcquisitionPosition`, `UsesExclusively`'s path walk and the publisher's discard rows read too); its own failure
+    gives false; in Discard
     Context the container's discard, `Binding.Discarded` (`ChildAdjust` with no adaptation, an acquisition, no claim); else the
     consumer, the nearest ancestor its parent does not cover (`Covers`, C1), the Closure under classification taken as `HirOp.Closure`
     (C3). A consumer with failure causes (`HasFailureCauses`, BU's pick) decides only a bare acquisition position with no recorded
@@ -4636,15 +4638,17 @@ and migration obligations remain in force; no numeric cap changes are authorized
     operand below an element), and every operation that claims such a receiver lends it exclusively, which `NeedsExclusively` decides
     first, so no test pins it (R4's implementation review 1, N1).
   - The discard row (R5's condition 3): `IsBareAcquisitionPosition` includes a Place in Discard Context, so `StoredReborrow` records
-    the Reborrow of a discarded stored exclusive reference as at a value position. The HIR publisher writes each Place in Discard
+    the Reborrow of a discarded stored exclusive reference as at a value position; this amends BU-27's list of bare acquisition
+    positions (BU agreeing). The HIR publisher writes each Place in Discard
     Context's `Discarded` take as its `PlanRow.Adjust`, whose contract is one meaning, the node's Adjust that the Adjust column cannot
     hold: the earlier of two calls' (R4-M109) or a discarded Place's bare acquisition, the column's unset value staying the container
     discarding its item (`MirBuilder.Result` unchanged; `HirFormsTest.ADiscardedPlaceIsTakenByItsBareAcquisitionInItsPlanRow` pins
     both). It asks for the context only of a Place without an Adjust or a group's operand (`Binding.IsGroup`), the only Places a
-    discarded one can be. A warm publish (Milestone34 and the library, pinned, tiering off, base and candidate interleaved; no A/A
-    control) measured a median of about +1.2% over 6 pairs asking every Place, and +0.5% over 3 pairs (one base outlier among them,
-    0.909, 1.013, 1.000) so. `MirBuilder.Values.cs`' Place case reads the row through the one `Operand` path, as any consumed
-    child's Adjust, and decides nothing; its own ByCase is deleted, so one decision has two readers.
+    discarded one can be. Publish timing (warm, Milestone34 and the library, pinned, tiering off): BU's review measured about +1.2%
+    from one folder (ABBA), inside the base's spread; the implementer's runs (6 pairs asking every Place, 3 pairs gated) had A and B
+    built from two paths of different lengths, a known artefact here, so they are no evidence; no A/A control. `MirBuilder.Values.cs`'
+    Place case reads the row through the one `Operand` path, as any consumed child's Adjust, and decides nothing; its own ByCase is
+    deleted, so one decision has two readers.
   - R5's requirement 2, read with R5 (2026-10-26): an unset row is no `InternalInvariant_Kd` but the derived value of a Place Binding
     failed, the same published fact as every consumed child's (`BareOf`: no Type, or an Error Copy proof; SPEC 23.1.2), which
     `Operand` derives with no record; a trailing item whose column is unset so reaches the same case (`Result`), as the semantic case
@@ -4653,6 +4657,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
     examples both paths accept, the library and the milestones) pin that a program Binding accepts has no unset row there,
     `MirBuildTest.AnUnsetDiscardRowIsDerivedFromABindingError` the derived reading beside an unresolved parameter Type. The rows'
     gate, a Place with no Adjust or a group's operand, is the builder's reach: a label wraps only a control-flow construct.
+  - Open (PLAN G233): `_ = h.link` and a bare statement `h.link` (`link: uniq/i32 during a`, `h: uniq/(H during a) during s`) still
+    type their temporary and its Ref by HIR Meaning's stored `uniq/i32 @a`, the stored Type BU-27 says never, while `(h.link)` gets
+    Binding's name `@(s & a)`: the Type depends on parentheses until the adapted Type is published to a discard. A5 reports
+    `UnprovenOriginRelation_Kd` at those two forms on the MIR, a shadow false error the default pipeline does not report (probe
+    `artifacts/verify/r4-cbv-s2/g233`).
   - Behavior: a discarded bare Non-Copy Place is the Move it requires, so A1 reports the old path's dependent `MovedPlace_Kd` at a
     later `title@move` (spec case 14.2.2-discarded-place; ledger row b9587fd3dc91 closes by agreement); a discarded pair-layer capture
     Reborrows by case and a discarded concrete `uniq` capture Reborrows (PLAN G251 (7)), so a `let` Closure's call of either is
@@ -5887,7 +5896,8 @@ resumed by R4-M86 (2026-10-20).
   exclusive reference. Open (PLAN at merge): that nested case (nested paths in the reader, full process, or shapes that keep Type
   arguments' raw Origins; for Type slots since BU-34); Binding keeps a pair argument's raw Origin, which SPEC 8.1.1's raw row drops:
   superseded by BU-34.
-- **BU-27** (2026-10-23; the BU planning session after the full process: designs A and B, the design review with R4's A5 part, the
+- **BU-27** (2026-10-23; amended by R4-M145: a Place in Discard Context is a bare acquisition position; the BU planning session
+  after the full process: designs A and B, the design review with R4's A5 part, the
   planning session's choice of B with A's `objuniq` Follow and A's residual issues; PLAN G226, G204, G192; unit bu27) A Borrow reached
   through safe borrow layers (`ref`, `uniq`, `objref`, `objuniq`, a pair layer by its admitted cases) is contained in each from its
   last dereference outward up to and including the first shared one, every one when none is shared (SPEC 15.6.3); its own Origin is
