@@ -217,8 +217,7 @@ internal sealed partial class FunctionCodegen
             {
                 if (this.Measure(inputs[parameters[i].LogicalIndex]) is not { } length)
                 {
-                    this.Report(DiagnosticCode.InternalInvariant_Kd, default); // A capacity measures a fixed array (Binding's).
-                    return false;
+                    return false; // Recorded.
                 }
 
                 this.arguments[i] = length;

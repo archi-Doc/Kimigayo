@@ -170,6 +170,28 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal([entry.Parameters[1], entry.Parameters[2]], call.Operands); // Its result slot and its input, after the environment word.
     }
 
+    // SPEC 22.9.2, 22.10.5, 7.7.4 (DECISIONS R5-M128): an erased Builtin toString<i32> and tryFormat<i32, 4> call their built-in routines from
+    // their adapters' entries, given the target Self's kind and, for tryFormat, the capacity measured from the entry's input at index 1; the
+    // module's one record is the BuiltinFormat item's, C9b's, at its first admitting site, so the entries are read directly.
+    [Fact]
+    public void ErasedBuiltinFormatItemsGiveTheirKindAndCapacity()
+    {
+        var c = Analyze(
+            "func erText() -> (ref/i32) -> string => Text.toString<i32>\n" +
+            "func erTry() -> (ref/i32, uniq/[4 of u8]) -> Result<Text.Utf8Slice, BufferFull> => Text.tryFormat<i32, 4>\n",
+            OutputKind.Library);
+        Assert.False(c.Generate(TextWriter.Null));
+        Assert.Equal([("Unsupported_Kd", "Text.toString<i32>")], Records(c));
+        var entries = AdapterTexts(c);
+        Assert.Equal(2, entries.Length);
+        Assert.Contains(entries, static x => x.Contains(
+            $"call void @{Routines(CompilerFunctionKind.TextToString)[0]}(ptr %ret, ptr %a0, i32 5, ptr %location, i64 %location_length)\n",
+            StringComparison.Ordinal));
+        Assert.Contains(entries, static x => x.Contains(
+            $"call void @{Routines(CompilerFunctionKind.TextTryFormat)[0]}(ptr %ret, ptr %a0, ptr %a1, i64 4, i32 5, ptr %location, i64 %location_length)\n",
+            StringComparison.Ordinal));
+    }
+
     // SPEC 22.10.1-22.10.2, 22.10.5 (DECISIONS R5-M128): a write, a conversion and a formatting into an array of a built-in value call their
     // row's built-in routine given the Self's kind (and the array's capacity), at a direct call and an Item's Value call; each BuiltinFormat
     // item stays C9b's record at its admitting call, so the definitions are read directly.
@@ -248,6 +270,19 @@ public sealed partial class FunctionCodegenTest
         var routines = Enumerable.Range((int)CompilerFunctionKind.TextFixed, CompilerFunctionKind.BuiltinFormat - CompilerFunctionKind.TextFixed + 1)
             .Select(static x => LegacyRuntimeHelpers.FormattingRow((CompilerFunctionKind)x)!.Abi.Name).Distinct().ToDictionary(ir.Function);
         return [.. CalleesOf(Assert.Single(FunctionsOf(ir, c, name))).Where(routines.ContainsKey).Select(x => routines[x])];
+    }
+
+    // The definitions of a program's ItemAdapter items, each written directly whatever records the module's other items make (ItemTexts).
+    private static string[] AdapterTexts(Compilation c)
+    {
+        var (_, collector, module, _) = WrittenModule(c);
+        var set = collector.Set;
+        return [.. Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.ItemAdapter).Select(x =>
+        {
+            using var writer = new StringWriter();
+            new FunctionCodegen(module, c.Types).WriteAdapter(collector, x, writer);
+            return writer.ToString();
+        })];
     }
 
     // The byte length of a site's location text (SPEC 22.5.1).

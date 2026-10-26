@@ -1516,6 +1516,19 @@ public sealed partial class FunctionCodegenTest
     // output root.
     private static string[] ItemTexts(Compilation c, string? name)
     {
+        var (program, collector, module, bodies) = WrittenModule(c);
+        return [.. bodies.Where(x => collector.Set.Items[x].Key.Body.Def.Decl?.Name == name).Select(x =>
+        {
+            using var writer = new StringWriter();
+            new FunctionCodegen(module, c.Types).Write(program, collector, x, writer);
+            return writer.ToString();
+        })];
+    }
+
+    // A program's module written with every body item an output root (ItemTexts), whatever records it makes: its MIR, collector, module and
+    // body items, whose items a test then writes directly.
+    private static (MirProgram Program, InstanceCollector Collector, ModuleCodegen Module, int[] Bodies) WrittenModule(Compilation c)
+    {
         var program = c.BuildMir();
         var collector = new InstanceCollector(c.Types, c.Layout);
         var set = collector.Run(program, 1);
@@ -1523,12 +1536,7 @@ public sealed partial class FunctionCodegenTest
         set.Mark(bodies);
         var module = new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports);
         _ = module.Write(program, collector, c.Binding.Startup, bodies, TextWriter.Null);
-        return [.. bodies.Where(x => set.Items[x].Key.Body.Def.Decl?.Name == name).Select(x =>
-        {
-            using var writer = new StringWriter();
-            new FunctionCodegen(module, c.Types).Write(program, collector, x, writer);
-            return writer.ToString();
-        })];
+        return (program, collector, module, bodies);
     }
 
     // A Library program's IR and text: a Library generates every root (K11).

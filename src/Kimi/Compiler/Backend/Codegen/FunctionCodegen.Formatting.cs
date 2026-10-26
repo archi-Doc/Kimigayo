@@ -11,7 +11,7 @@ namespace Kimi.Compiler.Backend;
 //   22.9.2's N): measured by the call writer from the operand's instance Type (Pass), or by an adapter's entry from its own input Type, its
 //   target Function Type's (Forward) (Measure);
 // - a kind Context, which names none, is the formatting runtime's kind of the call's witness target's Self (LegacyRuntimeHelpers.FormatKind),
-//   the Type K6 resolved below the published Formats row's parameter (DECISIONS R5-M30), given here (Formatting).
+//   the Type K6 resolved below the published Formats row's parameter (DECISIONS R5-M30), given here (Formatting's WitnessKind).
 // A row whose call carries a witness target (WriterWrite, TextToString, TextTryFormat; K package 4.5 row 2) is decided by the target's kind:
 // a Builtin item (BuiltinFormat on a built-in formattable Type) runs through the row's built-in routine, which is SPEC 22.10.1's frame around
 // the runtime's built-in formatting of that kind, toString reserving its exact length once (SPEC 22.10.5); a Body item, a user or library
@@ -29,7 +29,7 @@ internal sealed partial class FunctionCodegen
         {
             if (parameter is { Kind: AbiParameterKind.Context, LogicalIndex: < 0 })
             {
-                if (this.FormatKind(target, source) is not { } kind)
+                if (this.WitnessKind(target, source) is not { } kind)
                 {
                     return null; // Recorded.
                 }
@@ -49,10 +49,10 @@ internal sealed partial class FunctionCodegen
         return row.Routine;
     }
 
-    // SPEC 22.10.1-22.10.2: the kind of a formatting row's witness target, the formatting runtime's number of its Builtin item's Self; a Body
-    // item's is C9b's located Unsupported_Kd (a user or library formatter's wrapper); no target, another item or a Self without a kind is a
-    // broken contract. Null after a record.
-    private Value? FormatKind(int target, in SourceInfo source)
+    // SPEC 22.10.1-22.10.2: a formatting row's witness kind, the kind Context of its witness target, the formatting runtime's number of its
+    // Builtin item's Self (LegacyRuntimeHelpers.FormatKind); a Body item's is C9b's located Unsupported_Kd (a user or library formatter's
+    // wrapper); no target, another item or a Self without a kind is a broken contract. Null after a record.
+    private Value? WitnessKind(int target, in SourceInfo source)
     {
         var entry = target >= 0 ? this.collector.Set.Items[target] : default;
         if (target >= 0 && entry.Key.Kind == MonoKind.Body)
@@ -72,8 +72,22 @@ internal sealed partial class FunctionCodegen
         return new Value('\0', kind);
     }
 
-    // SPEC 22.9.2: a capacity Context's word, the length of the fixed array below the reference its parameter receives; null for another
-    // Type, a broken contract (Binding admits only uniq/[N of u8] there), which the caller records.
+    // SPEC 22.9.2: a capacity Context's word, the length of the fixed array below the reference its parameter receives; null after one
+    // InternalInvariant_Kd for another Type, a broken contract (Binding admits only uniq/[N of u8] there): Referent's for a Type without a
+    // reference layer, else this one.
     private Value? Measure(BoundType? reference)
-        => this.Referent(reference) is { Kind: BoundTypeKind.FixedArray, Length: >= 0 } array ? new Value('\0', array.Length) : null;
+    {
+        if (this.Referent(reference) is not { } referent)
+        {
+            return null; // Recorded.
+        }
+
+        if (referent is { Kind: BoundTypeKind.FixedArray, Length: >= 0 })
+        {
+            return new Value('\0', referent.Length);
+        }
+
+        this.Report(DiagnosticCode.InternalInvariant_Kd, default); // A capacity measures a fixed array (Binding's).
+        return null;
+    }
 }

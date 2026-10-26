@@ -183,8 +183,7 @@ internal sealed partial class FunctionCodegen
             {
                 if (this.Measure(this.InstanceType(this.body.Operands[index])) is not { } length)
                 {
-                    this.Report(DiagnosticCode.InternalInvariant_Kd, call.Source); // A capacity measures a fixed array (Binding's).
-                    return false;
+                    return false; // Recorded.
                 }
 
                 this.arguments[i] = length;

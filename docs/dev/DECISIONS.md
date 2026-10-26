@@ -9718,8 +9718,9 @@ structure is recorded here by the unit that first implements it.
   - Context words (rulings Q2 (a), Q8 (a); bp1): a capacity Context names, by its logical index, the parameter that receives the fixed
     array it measures (Text.fixed 0, tryFormat 1). The call writer measures it from that operand's instance Type (`Pass`); an adapter's
     entry measures it from its own input Type, its target Function Type's (`Forward`). So an erased `Text.fixed` or `Text.tryFormat` is
-    written, and no ownerless record remains. Refinement of Q8 (a): the adapter reads the Type where it reads its entry's parameters, in
-    `Forward`, not through `Runs`. Each argument writer reads its own source, and `Runs` takes no steering parameter. A kind Context, which
+    written, and no ownerless record remains. Refinement of Q8 (a), confirmed by the planning session: one rule (`Measure`: a capacity is
+    the length of the fixed array its parameter receives, at P1d's logical index, `AbiParameter`'s measured Context), measured where each
+    argument writer decodes its parameters, the adapter in `Forward`, not through `Runs`; `Runs` takes no steering parameter. A kind Context, which
     names no parameter, is given: `LegacyRuntimeHelpers.FormatKind` of the witness target's Self, the Type K6 resolved below the published
     `Formats` parameter (R5-M30). Code generation restates neither `On` nor the kind table.
   - Witness targets (rulings Q4 (a), Q5 (a)): a call of write, toString or tryFormat carries the collector's target (K row 2), and the
@@ -9729,11 +9730,13 @@ structure is recorded here by the unit that first implements it.
     - a Body item (a user or library formatter) needs C9b's wrapper, one located `Unsupported_Kd` at the requesting site (the call, or the
       adapter's site);
     - any other target, or none on a kind-bearing row, is `InternalInvariant_Kd`.
-    C9a writes no witness call. The BuiltinFormat item stays admitted, and its function is C9b's located record at its admitting site
-    (C8f's frame). C9b applies C8f's R-2 lesson when it writes the shim: a requesting site's prerequisites are read at that site.
+    C9a writes no witness call. The BuiltinFormat item stays admitted, and its function is C9b's located record (C8f's frame): a
+    BuiltinFormat item records today once, at its first admitting site; C9b records it at each requesting site (C8f's R-2 rule: a site's
+    prerequisites are read at that site).
   - Kind table (ruling Q3 (a); bp1): `LegacyRuntimeHelpers.FormatKind(BoundType)` is the legacy runtime's own numbering, which R8 removes
     with the runtime. It is promoted from `BodyLowering.BuiltinFormatKind`, and both generators read it. LegacyRuntimeHelpers' contract
-    admits a built-in formattable Type for its kind. It reads Utf8Slice from the declaration table.
+    admits a built-in formattable Type for its kind. It reads Utf8Slice from the declaration table. Code generation's reader is
+    `FunctionCodegen.WitnessKind`, the target rule above giving a row's kind Context (one name per concept).
   - Labels (not departures): R5-M92's "C9a WriteStdout" (no producer), and R5-M108's and PLAN G157 (22)'s `Text.writer` Item (the
     ErasedWriter intrinsic, C9b). G157 (22)'s C9a part closes: a Builtin target's Item Value call and adapter are written. G157 (10) stays
     C9b's or K's (ruling Q11).
