@@ -54,6 +54,18 @@ internal sealed partial class ModuleCodegen
     /// <param name="need">The part.</param>
     internal void Request(Needs need) => this.needs |= need;
 
+    /// <summary>Requests the module parts that a legacy row's declared runtime needs name (X4; DECISIONS R5-M46), the one map from a row's
+    /// needs to the frame's parts: the Array runtime with the memory declarations. The other needs name no part: the element glue is an
+    /// item, the collector's target, and the Dictionary runtime is the old lowering's (MIR code generation calls initialize's body).</summary>
+    /// <param name="needs">The row's needs.</param>
+    internal void Request(HelperNeeds needs)
+    {
+        if ((needs & HelperNeeds.ArrayRuntime) != 0)
+        {
+            this.Request(Needs.Arrays | Needs.Memory);
+        }
+    }
+
     // The complete module around the buffered definitions, an Application's entry calling its startup root.
     private void Assemble(TextWriter output, FunctionAbi? start)
     {
