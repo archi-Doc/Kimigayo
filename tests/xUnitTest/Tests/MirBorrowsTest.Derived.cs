@@ -84,24 +84,24 @@ public sealed partial class MirBorrowsTest
         }
     }
 
-    // SPEC 23.1.2 (PLAN G247; DECISIONS R4-M109 (a)): a Borrow of an operand Binding rejected (each use of `h` fails its Type's constraint,
-    // S2 being no Dictionary key) forms no Ref, address or Loan, its value derived in its destination, so A5 reports no conflict derived
-    // from the failed operand: kept past its statement, exclusive and copied, in parentheses, in a Tuple or followed (fail-before:
-    // ComparisonLoanConflict_Kd at `h`, its derived temp borrowed and dropped at its statement). The valid twin (an i32 key) borrows the
-    // local and keeps its true conflict with a write while the Borrow lives. Each row: the failed and the valid records.
+    // SPEC 23.1.2, 3.6 (PLAN G247; DECISIONS R4-M109 (a)): a Borrow, written or an argument's implicit one, of a Place rooted at an Error
+    // node (MirBuildTest.RejectedRoots: each use of `h` and `w` fails its Type's constraint) is derived, with no Loan, so A5 reports no
+    // conflict derived from the failed root where the Borrow is kept past its statement, also a write of the root while it lives
+    // (fail-before: ComparisonLoanConflict_Kd at `h` and `w`, their derived temps borrowed and dropped at their statements;
+    // MirBuildTest.ABorrowOfARejectedPlaceIsDerived observes the consumers). The valid twin (an i32 key) keeps its true conflict with the
+    // write, and a literal's Borrow kept past its statement keeps its temporary's conflict in both. Each row: the failed and the valid
+    // records.
     [Theory]
-    [InlineData("    let p = h@ref\n    inspect(p)\n", "")]
-    [InlineData("    let p = h@uniq\n    let q = p\n    _ = q\n", "")]
-    [InlineData("    let p = (h)@ref\n    inspect(p)\n", "")]
-    [InlineData("    let t = (h@ref, 1)\n    _ = t\n", "")]
-    [InlineData("    let p = h@ref\n    let n = p@follow.length\n    _ = n\n", "")]
-    [InlineData("    let p = h@ref\n    h = [:]\n    inspect(p)\n", "f: h = [:]")]
-    public void ABorrowOfARejectedOperandFormsNoLoan(string body, string valid)
+    [InlineData("    let p = h@ref\n    inspect(p)\n", "", "")]
+    [InlineData("    let p = h@ref\n    h = [:]\n    inspect(p)\n", "", "f: h = [:]")]
+    [InlineData("    let p = w.v@uniq\n    w.v = 4\n    p@follow = 3\n", "", "f: w.v = 4")]
+    [InlineData("    let p = keep(w.v)\n    w.v = 5\n    inspect(p)\n", "", "f: w.v = 5")]
+    [InlineData("    let p = 1@ref\n    let k = p@follow\n", "f: 1", "f: 1")]
+    public void ABorrowOfARejectedPlaceFormsNoLoan(string body, string failed, string valid)
     {
-        foreach (var (key, expected) in new[] { ("S2", string.Empty), ("i32", valid) })
+        foreach (var (key, expected) in new[] { ("S2", failed), ("i32", valid) })
         {
-            var c = MirBuildTest.Compile(Prelude + "struct S2\n    public var v: i32 = 0\n    public init() => ()\nfunc f()\n    var h: Dictionary<" + key +
-                ", i32> = [:]\n" + body);
+            var c = MirBuildTest.Compile(Prelude + MirBuildTest.RejectedRoots(key, "f()") + body);
             Assert.Equal(key == "S2", c.Binding.Issues.Any());
             var program = c.BuildMir();
             Assert.Empty(program.Findings);

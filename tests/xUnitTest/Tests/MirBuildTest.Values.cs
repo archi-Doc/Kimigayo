@@ -383,30 +383,58 @@ public sealed partial class MirBuildTest
         Assert.Equal(2, statements.Count(x => x.Kind == MirStatementKind.Assign && x.Place == h));
     }
 
-    // SPEC 23.1.2 (PLAN G247; DECISIONS R4-M109 (a)): a Borrow, an exclusive Borrow, an address and a parenthesized Borrow of an operand
-    // Binding rejected (each use of `h` fails its Type's constraint, S2 being no Dictionary key) are each an Opaque of the Borrow's Type
-    // formed in its destination, its site naming the operand's local, with no Ref (fail-before: a Ref of the operand's derived temp, which
-    // its statement drops); the valid twin (an i32 key) borrows the local itself.
-    [Fact]
-    public void ABorrowOfARejectedOperandIsDerived()
+    // SPEC 23.1.2, 13.5.6 (PLAN G247; DECISIONS R4-M109 (a)): a consumer of a Place rooted at an Error node (each use of `h` and `w` fails
+    // its Type's constraint, S2 being neither a Dictionary key nor Equatable) takes that root's derived value at the Type it expects, its
+    // site naming the root's local, and forms no Place of it: a Borrow, directly, in parentheses or through stored Fields, shared,
+    // exclusive or an address, also a call's receiver; an argument's or a receiver's implicit borrow; a Copy and a Move; a conversion: a
+    // cast, an upcast to a view and a case adaptation (fail-before: a Ref of a Field of the root's derived temp, which its statement drops,
+    // a two-phase reservation on one, a Copy or Move out of one, and a conversion of one). The valid twin (an i32 key) takes the local's
+    // Place; a literal's Borrow, valid in both, is a Ref of its materialized temporary. Each row: f's Refs, Opaque values, casts and
+    // adaptations after the declarations.
+    [Theory]
+    [InlineData("let p = h@ref", "p opaque ref/Dictionary<S2, i32> h", "p Shared h")]
+    [InlineData("let p = h@uniq", "p opaque uniq/Dictionary<S2, i32> h", "p Uniq h")]
+    [InlineData("let p = h@raw", "p opaque raw/Dictionary<S2, i32> h", "p Raw h")]
+    [InlineData("let p = (h)@ref", "p opaque ref/Dictionary<S2, i32> h", "p Shared h")]
+    [InlineData("let p = w.v@ref", "p opaque ref/i32 w", "p Shared w")]
+    [InlineData("let p = w.v@uniq", "p opaque uniq/i32 w", "p Uniq w")]
+    [InlineData("let p = (w.v)@ref", "p opaque ref/i32 w", "p Shared w")]
+    [InlineData("let p = w.inner@ref", "p opaque ref/In w", "p Shared w")]
+    [InlineData("let p = w.v@raw", "p opaque raw/i32 w", "p Raw w")]
+    [InlineData("w.inner@uniq.mutate()", "temp opaque uniq/In w", "temp TwoPhaseUniq w")]
+    [InlineData("let p = hold(w.v)", "temp opaque ref/i32 w", "temp Shared w")]
+    [InlineData("let r = w.inner.pick()", "temp opaque ref/In w", "temp Shared w")]
+    [InlineData("let x = w.v", "x opaque i32 w", "")]
+    [InlineData("let x = w.inner", "x opaque In w", "")]
+    [InlineData("let x = w.v@i64", "x opaque i64 w", "x cast w")]
+    [InlineData("let view = w.sq@objref/Shape", "view opaque objref/Shape w", "temp Shared w | view cast temp")]
+    [InlineData("let r = w.v@s", "r opaque s/i32 w", "r adapt w")]
+    [InlineData("let p = 1@ref", "p Shared temp", "p Shared temp")]
+    [InlineData("let p = \"abc\"@ref", "p Shared temp", "p Shared temp")]
+    [InlineData("let p = 5@uniq", "p Uniq temp", "p Uniq temp")]
+    [InlineData("let p = -1@ref", "p Shared temp", "p Shared temp")]
+    [InlineData("let p = (1)@ref", "p Shared temp", "p Shared temp")]
+    public void ABorrowOfARejectedPlaceIsDerived(string statement, string failed, string valid)
     {
-        foreach (var (key, expected) in new (string, string[])[]
+        foreach (var (key, expected) in new[] { ("S2", failed), ("i32", valid) })
         {
-            ("S2", ["p opaque ref/Dictionary<S2, i32> h", "q opaque uniq/Dictionary<S2, i32> h", "a opaque raw/Dictionary<S2, i32> h", "r opaque ref/Dictionary<S2, i32> h"]),
-            ("i32", ["p Shared h", "q Uniq h", "a Raw h", "r Shared h"]),
-        })
-        {
-            var c = Compile("struct S2\n    public var v: i32 = 0\n    public init() => ()\nfunc f()\n    var h: Dictionary<" + key + ", i32> = [:]\n" +
-                "    let p = h@ref\n    let q = h@uniq\n    let a = h@raw\n    let r = (h)@ref\npublic func main() => ()\n");
+            var c = Compile(RejectedRoots(key, "f<s/T>()\n    s is owner or ref or object") + "    " + statement + "\npublic func main() => ()\n");
             Assert.Equal(key == "S2", c.Binding.Issues.Any());
             var program = c.BuildMir();
             Assert.Empty(program.Findings);
             var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
             var locals = body.Locals.ToArray();
-            Assert.Equal(expected, body.Statements.ToArray()
-                .Where(x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref or MirRvalueKind.Opaque } && locals[x.Place.Root].Name is "p" or "q" or "a" or "r")
-                .Select(x => $"{locals[x.Place.Root].Name} " + (x.Rvalue.Kind == MirRvalueKind.Ref ? $"{(MirRefKind)x.Rvalue.Op} {locals[x.Rvalue.Place.Root].Name ?? "temp"}"
-                    : $"opaque {TyCtxt.Name(x.Rvalue.Type!)} {string.Join(" ", body.OpaqueRoots.Slice(body.OpaqueSites[x.Rvalue.Arg].Start, body.OpaqueSites[x.Rvalue.Arg].Count).ToArray().Select(r => locals[r].Name))}")));
+            string Name(int local) => locals[local].Name ?? "temp";
+            Assert.Equal(expected.Split(" | ", StringSplitOptions.RemoveEmptyEntries), body.Statements.ToArray()
+                .Where(x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref or MirRvalueKind.Opaque or MirRvalueKind.Cast or MirRvalueKind.Adapt } &&
+                    Name(x.Place.Root) is not ("h" or "w"))
+                .Select(x => $"{Name(x.Place.Root)} " + x.Rvalue.Kind switch
+                {
+                    MirRvalueKind.Ref => $"{(MirRefKind)x.Rvalue.Op} {Name(x.Rvalue.Place.Root)}",
+                    MirRvalueKind.Opaque => $"opaque {TyCtxt.Name(x.Rvalue.Type!)} " +
+                        string.Join(" ", body.OpaqueRoots.Slice(body.OpaqueSites[x.Rvalue.Arg].Start, body.OpaqueSites[x.Rvalue.Arg].Count).ToArray().Select(Name)),
+                    _ => $"{x.Rvalue.Kind.ToString().ToLowerInvariant()} {Name(body.Operands[x.Rvalue.Start].Place.Root)}",
+                }));
         }
     }
 
@@ -485,6 +513,18 @@ public sealed partial class MirBuildTest
         Assert.Empty(program.Findings);
         Assert.DoesNotContain(program.Records, static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
     }
+
+    // A function of a signature whose locals are `h`, a Dictionary, and `w`, a struct, over a key Type: S2, neither a Dictionary key nor
+    // Equatable, so that each use of `h` and `w` fails its Type's constraint, or i32, the valid twin (ABorrowOfARejectedPlaceIsDerived,
+    // MirBorrowsTest's ABorrowOfARejectedPlaceFormsNoLoan); its statements follow.
+    internal static string RejectedRoots(string key, string signature) => "open struct Shape\n    public var size: i32\n" +
+        "    protected init(size: i32) => self.size = size\nstruct Square : Shape\n    public init(size: i32) : base(size) => ()\n" +
+        "struct S2\n    public var v: i32 = 0\n    public init() => ()\nstruct In\n    public var n: i32 = 0\n    public init() => ()\n" +
+        "    public func mutate(self: uniq/Self) => ()\n    public func pick(self: ref/Self) -> ref/i32 during self => self.n@ref\n" +
+        "struct W<K>\n    K is Equatable\n    public var v: i32 = 0\n    public var inner: In = In.init()\n" +
+        "    public var sq: obj/Square = Kimi.Intrinsics.makeObj<Square>(Square.init(3))\n    public init() => ()\n" +
+        $"func hold(value: ref/i32) -> ref/i32 during value => value\nfunc {signature}\n    var h: Dictionary<{key}, i32> = [:]\n" +
+        $"    var w: W<{key}> = W<{key}>.init()\n";
 
     // A body's Opaque values in order: their destination's Type and root, and the roots their sites name.
     private static (string Type, int Root, int[] Roots)[] Opaques(MirBody body) => [.. body.Statements.ToArray()
