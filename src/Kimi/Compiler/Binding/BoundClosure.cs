@@ -1,6 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// The published closure definition (C2; ClosureDef, plan 5.3; DECISIONS R4-M126, R4-M128).
+// The published closure definition (C2; ClosureDef, plan 5.3; DECISIONS R4-M126, R4-M145).
 // - Responsibility: what a binding of an anonymous function publishes: each capture's source and environment binding (Storage), the
 //   environment Type, the signature, the evaluating body, and the call receiver facts (SPEC 7.7.3): the strongest requirement over
 //   every admitted case (Receiver), the requirement every case has (CaseFreeReceiver), each capture whose acquisition by value
@@ -27,9 +27,9 @@ public readonly record struct BoundCapture(BindingSymbol Source, BindingSymbol E
     // How the entry initializes its environment binding (SPEC 7.7.2), as the HIR Adjust column states acquisitions.
     internal HirAdjust Adjust => HirAdjust.Of(this.Environment.CaptureAcquisition);
 
-    // SPEC 7.7.3, 8.14: an acquisition of the environment binding itself by value without an operator, in the body (at a value
-    // position its consumer takes it by value, Binding.AcquiredByValue) or by a nested Closure's bare entry, Reborrows in some admitted
-    // case, so the call is Exclusive exactly in the cases where the binding's case Type is exclusive.
+    // SPEC 7.7.3, 8.14: an acquisition of the environment binding itself by value without an operator, in the body (as the Adjust
+    // rule takes it from its consumer, a discarded Place included: ClosureEffects.ConsumedByValue) or by a nested Closure's bare
+    // entry, Reborrows in some admitted case, so the call is Exclusive exactly in the cases where the binding's case Type is exclusive.
     internal bool BareReborrows { get; init; }
 }
 

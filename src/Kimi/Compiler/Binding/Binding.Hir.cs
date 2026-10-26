@@ -101,6 +101,16 @@ public sealed partial class Binding
                 if (completions[node.SyntaxId] != HirCompletion.Unset)
                 {
                     places[node.SyntaxId] = new(this.KindOf(node, op, res[node.SyntaxId]), this.Layers(node));
+
+                    // SPEC 14.2.2 (DECISIONS R4-M145): a Place in Discard Context is acquired by bare acquisition, its plan row's Adjust
+                    // (Discarded). No consumer takes such a Place but the group around it (Grouped's IsGroup), so only a Place with no
+                    // Adjust or a group's operand is asked for its context, the builder's reach, not every Place.
+                    if (places[node.SyntaxId].Kind != HirPlaceKind.Value && (HirTables.AdjustOf(node).Acquire == HirAcquire.Unset || IsGroup(node.Parent)) &&
+                        !KotoHelper.IsValueContext(node))
+                    {
+                        var discarded = binding.Discarded(node);
+                        HirTables.PlanFor(node, discarded != default).Adjust = discarded;
+                    }
                 }
             }
 

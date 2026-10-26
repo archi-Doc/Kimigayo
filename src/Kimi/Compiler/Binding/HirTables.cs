@@ -200,10 +200,11 @@ internal struct PlanRow
     internal byte Mode;
     internal bool Flag;
 
-    /// <summary>The Adjust by which the earlier of two calls of one consumer takes the node where the two take it by different Adjusts, whose
-    /// later one the Adjust column keeps: a compound update's getter, beside its setter (SPEC 13.7.2, 11.3; DECISIONS R4-M109). Default
-    /// otherwise: the publisher writes it at each call input of each pass. A node three or more calls take (a <c>$tryWrite</c>'s storage) has
-    /// no defined value here (PLAN G103).</summary>
+    /// <summary>The node's Adjust that the Adjust column cannot hold (DECISIONS R4-M145): the earlier of two calls of one consumer that take
+    /// it by different Adjusts, whose later one the column keeps, a compound update's getter beside its setter (SPEC 13.7.2, 11.3; DECISIONS
+    /// R4-M109), written at each call input of each pass; or a Place in Discard Context's bare acquisition (SPEC 14.2.2), written at each such
+    /// Place of each pass, where the column's unset value is the container discarding its item. Default otherwise. A node three or more
+    /// calls take (a <c>$tryWrite</c>'s storage) has no defined value here (PLAN G103).</summary>
     internal HirAdjust Adjust;
 
     // An Int128 would align the row to 16 bytes; two halves keep it at 48.
