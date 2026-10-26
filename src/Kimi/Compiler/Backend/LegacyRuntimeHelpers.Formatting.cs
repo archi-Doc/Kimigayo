@@ -65,9 +65,65 @@ internal sealed partial class LegacyRuntimeHelpers
             type.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Slice ? 17 : -1;
     }
 
+    /// <summary>Gets the formatting runtime's writer kind of a <c>Text.writer</c> destination Type (SPEC 22.9.2, 22.9.4), the number
+    /// <c>__kimi_text_writer</c> takes as its kind Context and <c>__kimi_writer_reserve</c> switches on, the legacy runtime's own numbering,
+    /// which R8 removes with it: a FixedBuffer 0 and a HeapBuffer 1, whose buffers the runtime reserves itself, and any other destination 2,
+    /// whose <c>reserve</c> witness the runtime calls through the adapter's dispatch word. The one table both generators read.</summary>
+    /// <param name="destination">The closed destination Type.</param>
+    /// <returns>Its writer kind.</returns>
+    internal static int WriterKind(BoundType destination) => destination.Symbol?.LibraryDeclaration switch
+    {
+        KimiDeclarationId.FixedBuffer => 0,
+        KimiDeclarationId.HeapBuffer => 1,
+        _ => 2,
+    };
+
     /// <summary>Writes the formatting runtime: the templates with each row's routine defined once (both generators' one text).</summary>
     /// <param name="output">The module text.</param>
     internal static void WriteFormattingRuntime(TextWriter output) => output.Write(FormattingRuntime);
+
+    /// <summary>Writes a <c>Text.toString</c> or <c>Text.tryFormat</c> conversion over a user formatter's write wrapper (SPEC 22.9.2):
+    /// toString formats through a heap buffer and Aborts on BufferFull at its call's location; tryFormat formats into the caller's array and
+    /// returns its bytes or BufferFull. Both generators' one text (the old planner's conversions, MIR code generation's wrappers).</summary>
+    /// <param name="output">The module text.</param>
+    /// <param name="wrapper">The conversion's ABI, its row's routine less the kind Context: the result slot, the value, tryFormat's
+    /// destination and capacity, and the location.</param>
+    /// <param name="write">The write wrapper it calls: the result slot, the adapter and the value.</param>
+    /// <param name="fixedBuffer">Whether it is tryFormat's, into the caller's array.</param>
+    internal static void WriteFormattingConversion(TextWriter output, FunctionAbi wrapper, FunctionAbi write, bool fixedBuffer)
+    {
+        output.Write(wrapper.GetDefinition(exported: false));
+        output.Write("entry:\n  %buffer = alloca [32 x i8], align 8\n  %writer = alloca [64 x i8], align 8\n  %result = alloca i32, align 4\n");
+        output.Write(fixedBuffer
+            ? "  call void @__kimi_text_fixed(ptr %buffer, ptr %destination, i64 %capacity)\n"
+            : "  call void @__kimi_text_heap(ptr %buffer, i64 0, ptr %location, i64 %location_length)\n");
+        output.Write("  call void @__kimi_text_writer(ptr %writer, ptr %buffer, i64 ");
+        output.Write(fixedBuffer ? "0" : "1");
+        output.Write(", ptr null)\n  call void @");
+        output.Write(write.Name);
+        output.Write("""
+            (ptr %result, ptr %writer, ptr %value)
+              %tag = load i32, ptr %result, align 4
+              %ok = icmp eq i32 %tag, 0
+              br i1 %ok, label %success, label %failure
+            success:
+
+            """);
+        output.Write(fixedBuffer
+            ? "  store i32 0, ptr %ret, align 4\n  %payload = getelementptr i8, ptr %ret, i64 8\n  call void @__kimi_buffer_bytes(ptr %payload, ptr %buffer)\n"
+            : "  call void @__kimi_format_take_string(ptr %ret, ptr %buffer)\n");
+        output.Write("  ret void\nfailure:\n");
+        if (fixedBuffer)
+        {
+            output.Write("  store i32 1, ptr %ret, align 4\n  ret void\n}\n");
+        }
+        else
+        {
+            output.Write("  call void @__kimi_abort(i32 ");
+            WriteNumber(output, AbortReasons.Format);
+            output.Write(", ptr %location, i64 %location_length, i64 -2)\n  unreachable\n}\n");
+        }
+    }
 
     /// <summary>Registers the writer adapter's write wrapper over a user formatting witness (SPEC 22.10.1): it is written in
     /// request order, and the needs of WriterWrite's row join the module's. The planner requests each wrapper once.</summary>
@@ -248,42 +304,5 @@ internal sealed partial class LegacyRuntimeHelpers
             }
 
             """);
-    }
-
-    // SPEC 22.9.2: toString formats through a heap buffer and Aborts on BufferFull; tryFormat formats into the caller's array and
-    // returns its bytes or BufferFull.
-    private static void WriteFormattingConversion(TextWriter output, FunctionAbi wrapper, FunctionAbi write, bool fixedBuffer)
-    {
-        output.Write(wrapper.GetDefinition(exported: false));
-        output.Write("entry:\n  %buffer = alloca [32 x i8], align 8\n  %writer = alloca [64 x i8], align 8\n  %result = alloca i32, align 4\n");
-        output.Write(fixedBuffer
-            ? "  call void @__kimi_text_fixed(ptr %buffer, ptr %destination, i64 %capacity)\n"
-            : "  call void @__kimi_text_heap(ptr %buffer, i64 0, ptr %location, i64 %location_length)\n");
-        output.Write("  call void @__kimi_text_writer(ptr %writer, ptr %buffer, i64 ");
-        output.Write(fixedBuffer ? "0" : "1");
-        output.Write(", ptr null)\n  call void @");
-        output.Write(write.Name);
-        output.Write("""
-            (ptr %result, ptr %writer, ptr %value)
-              %tag = load i32, ptr %result, align 4
-              %ok = icmp eq i32 %tag, 0
-              br i1 %ok, label %success, label %failure
-            success:
-
-            """);
-        output.Write(fixedBuffer
-            ? "  store i32 0, ptr %ret, align 4\n  %payload = getelementptr i8, ptr %ret, i64 8\n  call void @__kimi_buffer_bytes(ptr %payload, ptr %buffer)\n"
-            : "  call void @__kimi_format_take_string(ptr %ret, ptr %buffer)\n");
-        output.Write("  ret void\nfailure:\n");
-        if (fixedBuffer)
-        {
-            output.Write("  store i32 1, ptr %ret, align 4\n  ret void\n}\n");
-        }
-        else
-        {
-            output.Write("  call void @__kimi_abort(i32 ");
-            WriteNumber(output, AbortReasons.Format);
-            output.Write(", ptr %location, i64 %location_length, i64 -2)\n  unreachable\n}\n");
-        }
     }
 }
