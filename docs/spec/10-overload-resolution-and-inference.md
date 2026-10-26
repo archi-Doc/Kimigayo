@@ -231,7 +231,7 @@ choose(if ready => 1 else => 2) // Error: ambiguous; both candidates fit the lit
 func identity<T>(value: T) -> T => value@move
 func fail() -> Never => $abort("no value")
 func pick(ready: bool, large: i64) -> i64
-    let both = identity(if ready => (large, (return 1)) else => ((return 2), 5))   // T = (i64, i32) after selection.
+    let both = identity(if ready => (large, (return 1)) else => (large, 5))         // T = (i64, i32) after selection.
     let one = identity(if ready => 1 else => fail())                                // Literal: T = i32 after selection.
     return both.0
 ```
