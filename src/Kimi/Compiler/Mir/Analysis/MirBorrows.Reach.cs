@@ -231,7 +231,8 @@ internal sealed partial class MirBorrows
     // only through a Type argument, a pair layer, an abstract part or a stored raw layer stepping Exclusive (MirWrites.ThroughArgument) and
     // from what only they reach: those targets come last, from the index returned (the count where none), and a Call that stores a
     // non-empty value into one holds its view (P13's interim, R4-M73). Every store path (a Call's rows, its untied stores among them;
-    // A5-F7's capture stores, unit 2c; A5-F6's desc(c) stores, 2f) takes W here and sets the hold so.
+    // A5-F7's capture stores, unit 2c; A5-F6's desc(c) stores, 2f) takes W here and sets the hold so, except a 4.6 to 4.9 operation's
+    // referent store whose referent destroys shallowly, which takes refs(S) alone (Referents; DECISIONS R4-M143).
     private int Writes(ulong[] state, int set)
     {
         this.Referents(set);

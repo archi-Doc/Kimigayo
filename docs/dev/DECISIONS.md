@@ -4703,6 +4703,15 @@ and migration obligations remain in force; no numeric cap changes are authorized
     - `AWarmRunAllocatesNothing` passes unchanged.
   - Oracle (BU's design review 2 harness, 762 verdicts over 55 files): identical to the reviewer's guard prototype. Against dev,
     exactly the 22 C3 forms change, to valid.
+  - Why witness and Shared-Callable user code needs no exclusion (owner, 2026-10-26, verbatim 「(1) 最初の修正版を維持 (推奨)」,
+    keeping revision 1 after R4's implementation review withdrew its B1): the user code a 4.6–4.9 operation runs inside itself is an
+    equality or comparison witness, which fixes `ref/Self`, a Position, which is closed (SPEC 4.6.1), a Copy body, which no user writes
+    (3.5.2), or a Callable-bounded callback, which is Shared (8.10). Its writes through what an element holds go through a pointer read
+    past a shared layer, which SPEC 5.2.1 condition 3's first limit gives no write authority (5.7 Authority: no error is required; a
+    writing closure is Exclusive by 7.7.3 and does not bind), or through a pointer it cannot trace (5.2.1 (5), 5.5). Destruction is
+    the only such user code with authority, and the guard keeps W there. So the five forms the review raised and their Ok twins are
+    undefined behavior, and dev's errors on them are conservative; no test pins them. A witness or callback copying an element's
+    pointer into static storage stays R4-M131's open item.
   - Rejected: a second wrapper of `Observes` or a drop bit in Binding (O5; revision 1 item 4); a per-local memo keyed by the operand's
     root (the operand may be a projection); deriving the referent a second time (O6).
   - Numbering: R4-M143 was reserved for C3's A5 part by the R4 planning session (R4-M141 G258 D2, R4-M142 S1, R4-M144 G216's amendment
@@ -6533,6 +6542,13 @@ resumed by R4-M86 (2026-10-20).
     4.6–4.8 view's referent is its own handle, sound only while no 4.6–4.8 operation writes an element through a view, pinned by
     `KimiLibraryShapeTest.ReferentStoresWriteNoElementThroughAView` (the covered 4.6–4.8 operations' headers; none stores another
     input in its receiver's storage).
+  - Why witness and callback user code needs no exclusion (owner, 2026-10-26, keeping revision 1; R4-M143): user code a 4.6–4.9
+    operation runs inside itself other than the destruction it composes — equality and comparison witnesses (`ref/Self`) and
+    Callable-bounded callbacks (Shared, §8.10) — reaches what an element holds only through a pointer read past a shared layer, which
+    SPEC 5.2.1 condition 3's first limit gives no write authority (5.7 Authority: no error is required; a writing closure is Exclusive
+    by §7.7.3 and does not bind), or through a pointer it cannot trace (static storage, an integer round trip; 5.2.1 (5), 5.5);
+    destruction, whose `drop` has exclusive access, is the only such user code with authority, and A5 keeps W there. A witness or
+    callback copying an element's pointer into static storage stays R4-M131's open item.
   - Name: what the store writes, A5's `Referents` (one name in both phases); not `ElementStores` (a view's operation writes the
     view's own value), not `ReceiverStores` (true of every method's receiver).
   - Rejected: a Binding drop bit (design review 1's B1: a declared `drop` at a nominal hold position is narrower than SPEC 16.3.3's
