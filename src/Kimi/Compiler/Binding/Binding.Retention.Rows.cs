@@ -66,10 +66,11 @@ public sealed partial class Binding
     // each position once per lent bit, BU-35, BU-40) keeps a raw input's own value where a layer with an Origin or an abstract part can
     // hold it (R4-M116 R-B4), and reports the raw layers it met: one the call writes without an Origin keeps every input by rule A
     // (WrittenUnstated), one the result lends keeps the raw inputs (R′), and one stepping Unstated or Static, not lent, unties the
-    // output (Untied, UntiedStores). The work is what the closures reach, each node with its incoming premises once per closure, and the
-    // hold walks; the transfer key is read once, at the first output that meets a written unstated layer, under `premises`, the scope
-    // TyCtxt read an instance with an abstract part under (null: none, or an erased callable's, which has no callee). CallRetention.Limit
-    // where the hold walk meets storage past its limits (Held).
+    // output (Untied, UntiedStores). The transfer key by declaring identity also gives the stores written only where the receiver refers
+    // (ReferentStores). The work is what the closures reach, each node with its incoming premises once per closure, and the hold walks;
+    // the identity key is read once per contract, and for a callee it does not name the Iterator key once, at the first output that meets
+    // a written unstated layer, under `premises`, the scope TyCtxt read an instance with an abstract part under (null: none, or an erased
+    // callable's, which has no callee). CallRetention.Limit where the hold walk meets storage past its limits (Held).
     private CallRetention RetentionRows(
         OriginPremiseEnvironment environment,
         int[] nodes,
@@ -95,6 +96,7 @@ public sealed partial class Binding
         this.retentionUntiedStores.Clear();
         var untied = false;
         var within = KimiLibraryCatalog.Within(callee?.BoundSymbol);
+        var key = this.TransferKey(callee);
         Transfer? transfer = null;
         var kinds = new RetentionKind?[inputs.Length];
         var kept = new Kept[inputs.Length];
@@ -126,7 +128,7 @@ public sealed partial class Binding
 
             if ((met & Holding.Unstated) != 0)
             {
-                transfer ??= this.TransferOf(callee, inputs, premises);
+                transfer ??= key == Transfer.None ? this.IteratorTransfer(callee?.BoundSymbol, inputs, premises) : key;
                 this.WrittenUnstated(kept, output, inputs, transfer.Value, callee?.BoundSymbol);
             }
             else if ((met & Holding.Lent) != 0)
@@ -158,7 +160,8 @@ public sealed partial class Binding
             }
         }
 
-        return this.retentionLimit ? CallRetention.Limit : new(rows.ToArray(), untied, [.. this.retentionUntiedStores]);
+        return this.retentionLimit ? CallRetention.Limit
+            : new(rows.ToArray(), untied, [.. this.retentionUntiedStores], this.ReferentStores(key, callee?.BoundSymbol, inputs));
     }
 
     // SPEC 15.6.4's rule A (DECISIONS R4-M131, BU-40): at a raw layer without an Origin that the call may write in `output`, every input

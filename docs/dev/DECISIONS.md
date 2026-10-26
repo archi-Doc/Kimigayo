@@ -6376,9 +6376,9 @@ resumed by R4-M86 (2026-10-20).
     set-then-clear own value (two rules on one fact); keying by name (`callee.Name == "next"`, 22.1); Order 3's keying at untied
     outputs; an output column for chains (exact only per output); B's receiver narrowing for every listed Type (15.6.4 scopes it to
     4.9); for the premise scope (the final review's B2), a field set by `Retains` past one member's six parameters, an argument bag,
-    and a transfer key read before the hold walk (every contract would pay it): each entry point (`Retains`, `RetainsErased`) runs its
-    own steps between `BeginRetention` and `EndRetention` and hands the scope to `RetentionRows`; for construction's result (B1), a
-    second comparison in each reader of `ReceiverIndex` (one fact, one predicate).
+    and a transfer key read before the hold walk (every contract would pay it; superseded in part by BU-42): each entry point
+    (`Retains`, `RetainsErased`) runs its own steps between `BeginRetention` and `EndRetention` and hands the scope to
+    `RetentionRows`; for construction's result (B1), a second comparison in each reader of `ReceiverIndex` (one fact, one predicate).
   - Open: N1 Chain on inputs with no raw or borrowed layer is vacuous (R4's closure decides); N2 "internal implementations" stay
     outside the keys (DictionaryStorage, HeapBuffer); N3 PLAN G255's C2 (the MIR literal's per-entry handle: multi-entry Dictionary
     literals of raw-holding values) and C3 (rule G's second pass against 4.9.6; R4's), not this unit's: `appendNullOk` and
@@ -6389,6 +6389,41 @@ resumed by R4-M86 (2026-10-20).
     while the hold walk keeps its untied store, two answers to "the call writes output j", conservative (one more Φ_E target).
     Pre-existing: a lent `static` layer unties; `unlinkOk` is SPEC-invalid (`Node.init` stores through the null `next` into storage
     the body does not own: R4's triage).
+- **BU-42 A 4.6–4.9 operation writes its receiver's store only where the receiver refers: `CallRetention.ReferentStores`**
+  (2026-10-26; the BU planning session with R4 after the full process: BU's and R4's designs combined, design review 1 REVISE (B1),
+  revision 1, design review 2 ACCEPT; PLAN G255 (C3), its Binding part, unit bu45; the owner's go of 2026-10-26 within N2's rows,
+  「はい、進めて (推奨)」; BU-41 is reserved for P13's U0) SPEC 4.9.6 makes the row of an operation of 4.6 to 4.9 its complete
+  published effect (15.6.4 defers to it, R4-M131): through its borrowed receiver the operation writes only the storage that receiver
+  refers to, never through a layer stored there. `CallRetention`'s Output j says only "input j's writable storage at every depth",
+  so A5's rule G maps such a store with W's passes (R4-M73) into the elements' pointees, referents and E; the fact that the store is
+  written in place is the published contract's, decided where the transfer key is read (A5 may not key on the callee, 22.1).
+  - The fact: `CallRetention.ReferentStores`, the stores a call writes only in the storage its receiver refers to: under a
+    declaring-identity key of 4.6 to 4.9 (Array and Dictionary members; the Types of `TransferTypes`; the fixed-array members), the
+    store at the receiver (`ReceiverStorage`, the one receiver predicate `TransferWrites` and `TransferKept` also read) where the
+    receiver is an exclusive borrow (`BorrowReferent`'s exclusive bit: a shared borrow's storage is no store; a receiver by value is
+    the callee's own); `exchange` and `swap` have no receiver (R4-M73's `swapped` untouched). Read for every contract by identity
+    alone, no Iterator test and no Unstated condition (`Array<uniq/(ref/i32)>` meets no unstated layer): the transfer key splits
+    into `TransferKey`, read once per contract, and `IteratorTransfer`, lazy as before (supersedes, for the identity part, BU-40's
+    rejection of a key read before the hold walk: two symbol reads per contract instance). Not through `TransferWrites`, whose Values
+    branch answers rule A's question (BU-40 N5), so UniqSlice's internal `init(state:)` has none.
+  - Representation as `UntiedStores`: ascending input slots, the shared empty array for none, an `int[]` only when non-empty,
+    memoized with the contract (warm reads allocate nothing); Limit has none and the accessor throws on Limit. Not R4's `int` with
+    −1: −1 is `Retention.Result` and construction's `ReceiverIndex` (bu41's B1).
+  - Contract (TyCtxt.Retention.cs): 4.9.6's caveat, the user code a row lists (destruction, a Callable argument's calls) is the
+    callers' to compose, so the destruction guard is A5's on `MirTypes.Destruction` (R4's entry; removal condition PLAN G264); a
+    4.6–4.8 view's referent is its own handle, sound only while no 4.6–4.8 operation writes an element through a view, pinned by
+    `KimiLibraryShapeTest.ReferentStoresWriteNoElementThroughAView` (the covered 4.6–4.8 operations' headers; none stores another
+    input in its receiver's storage).
+  - Name: what the store writes, A5's `Referents` (one name in both phases); not `ElementStores` (a view's operation writes the
+    view's own value), not `ReceiverStores` (true of every method's receiver).
+  - Rejected: a Binding drop bit (design review 1's B1: a declared `drop` at a nominal hold position is narrower than SPEC 16.3.3's
+    destructions, a second copy of `MirTypes.Destruction`); `TransferWrites`' scope (it marks a 4.6–4.8 member's stores whatever its
+    receiver); R4's `int` (above); a per-row or encoded Output marker (every reader of Output would decode it).
+  - Consequences: no reader until R4's A5 unit, so no verdict changes; RetentionTest's `Show` prints `referent store j`.
+  - Open: `TransferWrites` keeps rule A's rows at a 4.9 receiver taken by value (`Array<raw/(raw/u8)>.intoIterator`'s
+    `0 Chain store 0`, its elements' pointees), which 4.9.6 does not write: conservative, BU-40 N5's family. Range's and
+    ClosedRange's members in conditional conformance blocks (`iterate`, `iterateUniq`, `intoIterator`) are outside the identity key,
+    as before (their parent is the block); their stores hold no Loan.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
