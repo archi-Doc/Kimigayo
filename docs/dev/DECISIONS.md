@@ -4108,7 +4108,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - `Classify` runs right after the body binds, before the failed-result and failed-parameter returns (N4 (a)); its snapshots
     (diagnostic, semantic with HIR and MIR, the mir ledger) are byte-equal to 2c-1's, so the move is 2c-2's (D-9). A use counts only
     when it names one of this binding's environment bindings (identity in `Storage`).
-  - By-value positions (2c-1 review O1, 2c-2 review B1, the family's second round; the owner, 2026-10-25, verbatim 「(a)
+  - By-value positions, superseded with the net's Discard Context row by R4-M145 (consumed-by-value S2) (2c-1 review O1, 2c-2 review
+    B1, the family's second round; the owner, 2026-10-25, verbatim 「(a)
     表現で直す。それまでは許可リスト (推奨)」): until one Binding-time "consumed by value" fact that `ClosureEffects` and the HIR
     publisher's `Consume` both read (the planning session's separate full process, which removes this list), `AcquiredByValue`
     (`Binding.BareAcquisition`, the owner of bare positions) names SPEC 3.5's value positions as `Consume` takes them: null in
@@ -4615,6 +4616,45 @@ and migration obligations remain in force; no numeric cap changes are authorized
     static-storage test (Binding's `IsStatic` serves the rule).
   - Numbering: R4-M142 was reserved for S1 by the R4 planning session (R4-M140 G258 D1 on `claude/a5-g258-d1`, R4-M141 G258 D2,
     R4-M143 G255 (C3)'s A5 part, R4-M144 G216's amendment and R4-M145 S2 reserved; R4-M138 the last on dev).
+- **R4-M145 One consumed-by-value rule: ClosureEffects reads the Adjust rule, and a discarded Place's bare acquisition is its plan
+  row (consumed-by-value S2)** (2026-10-26; R4's lane A under the owner's design B with the review's C1–C7 (OQ1 (a), 2026-10-25) and
+  the owner's discard answer, verbatim 「(a) 素の取得とする (推奨)」 (SPEC 14.2.2 since dev 833209c38); the planning session's S2
+  decisions (the discard row as `PlanRow.Adjust`; Discard Context a bare acquisition position) and R5's three requirements on them).
+  Supersedes R4-M128's interim by-value list and its Discard Context net.
+  - Representation: `ClosureEffects.ConsumedByValue(place)` (`Binding.ClosureReceivers`), computed once per use (C7), reads the Adjust
+    rule (R4-M142) instead of a list: the place's groups taken through; its own failure gives false; in Discard Context the
+    container's discard, `Binding.Discarded` (`ChildAdjust` with no adaptation, an acquisition, no claim); else the consumer, the
+    nearest ancestor its parent does not cover (`Covers`, C1), the Closure under classification taken as `HirOp.Closure` (C3). A
+    consumer with failure causes (`HasFailureCauses`, BU's pick) decides only a bare acquisition position with no recorded adaptation
+    (C2, the folded `IsBareAcquisitionPosition`); a consumer of Op Unset, Error or Syntax takes nothing, as in the publisher's walk;
+    another runs `AdjustChildren` with the finder `ConsumedTakes`, an `IHirUses` struct keeping the child's last take and the earlier
+    call's, each completed by the claim its consumer's uses made (R4-M142), under both capabilities of the consumer's own use: by
+    value (Copy, Move, Reborrow or ByCase; no adaptation or an erasure) gives true, another take false, no take or a user index pair
+    that disagrees (B-3) null, the net's one row (no form reaches it).
+  - The discard row (R5's condition 3): `IsBareAcquisitionPosition` includes a Place in Discard Context, so `StoredReborrow` records
+    the Reborrow of a discarded stored exclusive reference as at a value position. The HIR publisher writes each Place in Discard
+    Context's `Discarded` take as its `PlanRow.Adjust`, whose contract is one meaning, the node's Adjust that the Adjust column cannot
+    hold: the earlier of two calls' (R4-M109) or a discarded Place's bare acquisition, the column's unset value staying the container
+    discarding its item (`MirBuilder.Result` unchanged; `HirFormsTest.ADiscardedPlaceIsTakenByItsBareAcquisitionInItsPlanRow` pins
+    both). It asks for the context only of a Place without an Adjust or a group's operand, the only Places a discarded one can be: a
+    warm publish (Milestone34 and the library, pinned, tiering off, interleaved) measured about 1.4% slower asking every Place, about
+    0.5% (within matched runs) so. `MirBuilder.Values.cs`' Place case reads the row through the one `Operand` path, as any consumed
+    child's Adjust, and decides nothing; its own ByCase is deleted, so one decision has two readers.
+  - R5's requirement 2, read with R5 (2026-10-26): an unset row is no `InternalInvariant_Kd` but the derived value of a Place Binding
+    failed, the same published fact as every consumed child's (`BareOf`: no Type, or an Error Copy proof; SPEC 23.1.2), which
+    `Operand` derives with no record; a trailing item whose column is unset so reaches the same case (`Result`), as the semantic case
+    `syntax/parameter-without-type` does (its MIR now that derived Opaque instead of a Copy).
+    `HirFormsTest.EveryDiscardedPlaceHasItsAcquisition` pins that a program Binding accepts has no unset row there,
+    `MirBuildTest.AnUnsetDiscardRowIsDerivedFromABindingError` the derived reading beside an unresolved parameter Type.
+  - Behavior: a discarded bare Non-Copy Place is the Move it requires, so A1 reports the old path's dependent `MovedPlace_Kd` at a
+    later `title@move` (spec case 14.2.2-discarded-place; ledger row b9587fd3dc91 closes by agreement); a discarded pair-layer capture
+    Reborrows by case and a discarded concrete `uniq` capture Reborrows (PLAN G251 (7)), so a `let` Closure's call of either is
+    `InvalidAssignment_Kd` instead of the net's `Unsupported_Kd` or an acceptance; a discarded stored `uniq` reached through a part
+    (`pair.0`) or a follow (`value@follow`) is valid as its `let` twin is, where it was `Unsupported_Kd` or `TransferRequired_Kd`.
+  - Deleted: `Binding.AcquiredByValue`, `ConsumerInput`, `ExplainedUse`; `ReceiverOperation` moved into `ClosureEffects`, its only
+    reader. Rejected: a new column or `Flag` for the discard (a second fact for one form; `Result` and `Statement` both change); the
+    builder testing Discard Context itself (a syntax decision the ratchet forbids); keeping the builder's ByCase (R5's condition 3).
+  - Numbering: R4-M145 was reserved for S2 by the R4 planning session (R4-M142; R4-M146 is 2x-E5's, R4-M148 2c-3's).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
