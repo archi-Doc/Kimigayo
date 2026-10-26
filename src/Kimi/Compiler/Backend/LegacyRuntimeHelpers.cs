@@ -13,7 +13,8 @@
 // write the helpers through this component (promoted, never copied).
 // Input: helper records built from FunctionAbi, ValueLowering, StoredValue (drop routine name, text flag), the Option payload
 // offset and remainder Field offsets; the compiled ABIs of the DictionaryStorage functions the Dictionary helpers call, keyed
-// by DictionaryCallee; the formatting wrappers' ABIs and the compiled functions they call; the runtime templates (.ll.in); for
+// by DictionaryCallee; the formatting wrappers' ABIs and the compiled functions they call; a built-in formattable Type, whose
+// formatting kind it gives (FormatKind); the runtime templates (.ll.in); for
 // an inline storage kernel, StorageKernelInput (the spellings of the address it reads and of its result, its number, its
 // result record's Field offsets, the number naming its temporaries); a writer, LLVM SSA names and sizes.
 // Output: the module's request state, in request order, and LLVM text written to the writer; per helper kind one row, readable
@@ -29,9 +30,11 @@
 // for it; the Dictionary runtime (the duplicate-key adapter and the initialization bridge) has no row but declares the callee a
 // Dictionary's construction runs (Construction, initialize), and the old lowering also requests it for a Dictionary's construction.
 // Each formatting compiler function's row
-// (FormattingRow; P1d) holds its routine's ABI and HelperNeeds (the formatting runtime) and declares no library callee, since the
-// formatting runtime calls none; the formatting witness WriterWrite, TextToString and TextTryFormat run is the need their
-// published library rows state (Formats, SPEC 4.9.6), which the collector reads there. Each inline storage kernel's row
+// (FormattingRow; P1d) holds its routine's ABI, whose capacity Context names by its logical index the parameter receiving the fixed array
+// it measures, and HelperNeeds (the formatting runtime) and declares no library callee, since the formatting runtime calls none; the
+// formatting witness WriterWrite, TextToString and TextTryFormat run is the need their published library rows state (Formats, SPEC
+// 4.9.6), which the collector reads there; the kind Context of a built-in formattable Type is the runtime's own numbering (FormatKind).
+// Each inline storage kernel's row
 // (StorageRow; P2a) holds its writer over StorageKernelInput and HelperNeeds, which are none: its text is loads, stores and
 // address arithmetic in the caller's body, so it declares no callee and nothing is requested for it. The Raw.slice and capacity
 // kernels (P2b) are plain writers without a row: their calls are intrinsics, whose rows are IntrinsicRows'. The one map from a compiler
@@ -47,7 +50,8 @@
 // the legacy writer's .ll stays byte-identical while it shares this text; warm writes allocate nothing; a Dictionary helper's
 // Related index and the callees its row declares resolve before writing; whether a value travels as a scalar is decided once,
 // by StoredValue.TravelsAsScalar.
-// Must not take AggregateLayout, EmissionModule, BoundType, syntax or MIR types, branch on the generator, or use LINQ.
+// Must not take AggregateLayout, EmissionModule, syntax or MIR types, or a BoundType but a built-in formattable Type for its kind
+// (FormatKind), branch on the generator, or use LINQ.
 
 #pragma warning disable SA1402 // The helper records and the element descriptor are this component's request vocabulary.
 

@@ -223,7 +223,7 @@ internal sealed class CompilerFunctionAdapters
         if (physical.Type == "i32" && kind is CompilerFunctionKind.WriterWrite or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat)
         {
             var input = kind == CompilerFunctionKind.WriterWrite ? 1 : 0;
-            var format = inputs[input].Components.Count == 1 ? BodyLowering.BuiltinFormatKind(inputs[input].Components[0]) : -1;
+            var format = inputs[input].Components.Count == 1 ? LegacyRuntimeHelpers.FormatKind(inputs[input].Components[0]) : -1;
             operand = new(EmissionOperandKind.Integer, format);
             return format >= 0;
         }
