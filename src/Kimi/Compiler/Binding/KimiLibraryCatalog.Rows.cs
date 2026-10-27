@@ -3,9 +3,12 @@
 namespace Kimi.Compiler;
 
 // SPEC 4.9.6, 12.4.3: the user-code effects a library operation publishes beside its input accesses, allocation and Abort: the requirement
-// of Contract Runs on the Type below parameter On, and a destruction of the Type below parameter Destroys (-1: none). InPlace: the
-// destruction destroys that target in place (SPEC 15.6.3, 15.7: `replace`), which ends the children based in it (design A3 4.1).
-internal readonly record struct PublishedRow(KimiDeclarationId? Runs = null, sbyte On = -1, sbyte Destroys = -1, bool InPlace = false);
+// of Contract Runs on the Type below parameter On, a destruction of the Type below parameter Destroys (-1: none), and the calls of the
+// by-value Callable input at parameter Calls (-1: none; `removeAll`'s `matching`), which the operation calls through a shared borrow of it,
+// the receiver its Callable premise declares (SPEC 8.11.4), and destroys after the last call (SPEC 15.6.4, 16.3.3: a by-value input's
+// cleanup is the callee's); callers compose those calls and that destruction through the actual argument. InPlace: the destruction
+// destroys that target in place (SPEC 15.6.3, 15.7: `replace`), which ends the children based in it (design A3 4.1).
+internal readonly record struct PublishedRow(KimiDeclarationId? Runs = null, sbyte On = -1, sbyte Destroys = -1, bool InPlace = false, sbyte Calls = -1);
 
 // SPEC 5.6, 5.7 (D14): an Origin relation a library operation publishes beyond its signature: its result Origin lies within the Origin
 // that the argument of parameter Within states before its fit to that parameter (Raw.slice's storage).

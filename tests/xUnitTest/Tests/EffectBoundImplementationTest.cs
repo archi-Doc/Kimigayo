@@ -143,8 +143,9 @@ public partial class EffectBoundImplementationTest
     }
 
     // SPEC 4.9.6: the Kimi body of each operation that publishes its summary stays within its row with abstract Type parameters,
-    // under confined; `K` equality is the only parameter-dependent requirement a row publishes, and the capacity and clear rows
-    // publish none at Binding (destructions are checked after ownership analysis).
+    // under confined; `K` equality is the only parameter-dependent requirement a row publishes, `removeAll`'s `matching` the only
+    // Callable input one publishes (its row's `Calls`, read from the row), and the capacity, clear and truncate rows publish none at
+    // Binding (destructions are checked after ownership analysis).
     [Fact]
     public void PublishedOperationBodiesStayWithinTheirRows()
     {
@@ -174,7 +175,7 @@ public partial class EffectBoundImplementationTest
             operations++;
         }
 
-        Assert.Equal(11, operations);
+        Assert.Equal(13, operations);
     }
 
     // SPEC 8.11.3, 8.11.2: confined is judged over every body the witness reaches, which its calls select: a helper, a recursive generic

@@ -196,4 +196,5 @@ public enum KimiDeclarationId : byte
     DictionaryStorageFindEntry,
     ArrayInsertPosition,
     ArrayAppendAll,
+    ArrayRemoveAll,
 }

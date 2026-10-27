@@ -15,14 +15,16 @@ public sealed partial class Binding
     private EffectSummary? cleanupCollector;
 
     /// <summary>SPEC 4.9.6: summarizes the body of a Kimi operation that publishes its summary, under its own premises with abstract
-    /// Type parameters, as its published row permits: the parameter-dependent requirement the row names is covered.</summary>
+    /// Type parameters, as its published row permits: the parameter-dependent requirement the row names and the calls through the
+    /// Callable input it names (`PublishedRow.Calls`) are covered.</summary>
     /// <param name="operation">The operation.</param>
     /// <param name="published">The requirement whose effects the row publishes, such as `K` equality, or null.</param>
     /// <returns>Whether the body stays within confined, and the first effect that does not.</returns>
     internal (bool Valid, EffectViolation Violation, Koto? Node) SummarizePublishedOperation(BindingSymbol operation, BindingSymbol? published)
     {
         var summary = this.effectSummary ??= new(this);
-        var valid = summary.Check(operation, this.ConstraintScope(operation.Declaration), false, implementationBody: true, published: published);
+        var callable = KimiLibraryCatalog.Row(operation) is { Calls: >= 0 } row ? TyCtxt.Signature(operation, null, row.Calls, out _) : null;
+        var valid = summary.Check(operation, this.ConstraintScope(operation.Declaration), false, implementationBody: true, published: published, publishedCallable: callable);
         return (valid, summary.Violation, summary.ViolationNode);
     }
 
@@ -150,6 +152,7 @@ public sealed partial class Binding
         private bool valid;
         private bool destructions;
         private BindingSymbol? published;
+        private BoundType? publishedCallable; // SPEC 4.9.6: the Callable input whose calls the checked operation's row publishes.
         private OwnershipBody? cleanupSource;
         private OwnershipBody? subjectBody;
         private InterpretationContext subjectContext;
@@ -293,9 +296,10 @@ public sealed partial class Binding
 
         // SPEC 8.3.3: confined is judged in the conformance scope (D and the conditions P). With `destructions`, the values each
         // reached body destroys are summarized too.
-        internal bool Check(BindingSymbol implementation, BindingScope scope, bool destructions, BoundType? callable = null, SemanticsKind receiver = SemanticsKind.Ref, bool implementationBody = false, BindingSymbol? published = null)
+        internal bool Check(BindingSymbol implementation, BindingScope scope, bool destructions, BoundType? callable = null, SemanticsKind receiver = SemanticsKind.Ref, bool implementationBody = false, BindingSymbol? published = null, BoundType? publishedCallable = null)
         {
             this.published = published;
+            this.publishedCallable = publishedCallable;
             this.scope = scope;
             this.valid = true;
             this.destructions = destructions;
@@ -698,6 +702,11 @@ public sealed partial class Binding
             {
                 this.Violate(EffectViolation.Limit, use);
                 return;
+            }
+
+            if (ReferenceEquals(type, this.publishedCallable))
+            {
+                return; // SPEC 4.9.6: the calls of the Callable input the operation's row publishes.
             }
 
             if (type.Kind is BoundTypeKind.FunctionItem or BoundTypeKind.Closure && type.Symbol is { } symbol)
