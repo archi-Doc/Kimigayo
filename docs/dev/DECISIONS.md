@@ -7131,7 +7131,8 @@ resumed by R4-M86 (2026-10-20).
     without a plan, R6's move of TransferRequired (it moves the old path's records at every bare position). Not temporary.
 - **BU-47 A destruction retains as a call of its drops: a `drop`'s receiver at input 0, `TyCtxt.RetainsErasedDestruction`**
   (2026-10-27; R4's design 2 for PLAN G264, chosen by the planning session, design review 1 REVISE (B1, N1–N4), revision 1, design
-  review 2 ACCEPT; its unit U0, BU's, unit bu51; the owner's 「はい、G86 の後に (推奨)」 of 2026-10-26, R4-M150) SPEC 15.6.4 (the
+  review 2 ACCEPT; its unit U0, BU's, unit bu51; the owner's 「はい、G86 の後に (推奨)」 of 2026-10-26, R4-M150 (G264's R4 side, to
+  come)) SPEC 15.6.4 (the
   owner's sentence of 2026-10-26): a destruction retains as a call of each `drop` it runs, whose `self` is a `uniq/Self` receiver
   referring to the destroyed part (16.3.1), and 16.4 "retains as that call does"; 16.3.3: an erased destruction has unknown effects.
   `TyCtxt.Retains` gave a drop no row, since `TyCtxt.Signature` numbers declared parameters and a drop declares none (the same body

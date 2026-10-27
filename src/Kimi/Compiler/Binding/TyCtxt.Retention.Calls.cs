@@ -168,18 +168,8 @@ internal sealed partial class TyCtxt
             return null;
         }
 
-        var inputs = new BoundType[count];
-        for (var i = 0; i < count; i++)
-        {
-            if (this.Instance(callee, types, i, scope, out _) is not { } input)
-            {
-                return null;
-            }
-
-            inputs[i] = input;
-        }
-
         var declaration = (FunctionKoto)callee.Declaration;
+        BoundType[] inputs;
         if (declaration.IsDestructor)
         {
             if (this.Instance(AdtDef.ReceiverType(declaration)!, types, scope) is not { } layer)
@@ -188,6 +178,19 @@ internal sealed partial class TyCtxt
             }
 
             inputs = [this.DestructionReceiver(layer)];
+        }
+        else
+        {
+            inputs = new BoundType[count];
+            for (var i = 0; i < count; i++)
+            {
+                if (this.Instance(callee, types, i, scope, out _) is not { } input)
+                {
+                    return null;
+                }
+
+                inputs[i] = input;
+            }
         }
 
         var bounds = this.retentionBounds;
