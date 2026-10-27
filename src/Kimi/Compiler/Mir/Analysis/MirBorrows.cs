@@ -4,7 +4,7 @@
 // case view.
 // Input: a validated body, its dataflow (MirDataflow, begun) and move paths (MirMoveData, built), the selected view (MirCases), A2's
 // verdicts (MirProgram.Drops), Binding's call retention (TyCtxt.Retains), published rows (TyCtxt.Published), stored parts and their raw
-// layers' steps, members and supply (TyCtxt.StoredParts, RawStep, RawMembers, RawSupplied), A4's key rows of the program version
+// layers' steps, members and statement (TyCtxt.StoredParts, RawStep, RawMembers, RawStated), A4's key rows of the program version
 // (MirEffects.Keys), and the Origin stratum's causes and classes of the body it judged before (MirOrigins.Causes, Refutes, Fixed; rule W,
 // R4-M132).
 // Output: each Loan conflict at its access, activation or Call's or Drop's effects, coded by A3 5's A6 table (CallReservationConflict_Kd
@@ -14,7 +14,9 @@
 // copy, the default's operation (Evaluated, the problem at the outermost omitting call; R4-M97) as facts, a failure whose events all lie in
 // one evaluation of a copy left to its template; Unsupported_Kd at a destruction, a call or a Borrow or read it does not classify (a
 // destruction walk past its bound, a call whose W reaches a holder the guard leaves undecided, MirWrites.Limit, R4-M147, and the cases of
-// the rules below), a limit record at its operation also inside a copy, through MirReport; the own-step Warning OwnStepDeparture_Kd at an
+// the rules below), a limit record at its operation also inside a copy, and in a view PD13 holds (a Closure call acquiring more than the
+// view's case admits, R4-M148) every rejection at its subject, through MirReport; InternalInvariant_Kd at a Value call whose declared
+// signature does not number its operands (G136, R4-M148); the own-step Warning OwnStepDeparture_Kd at an
 // operation that may end an owning value's stay in its holder while a pointer formed through its own step may still be used, with its
 // anchor, witness and Evaluated facts (SPEC 5.2.1 condition 3); a Loan conflict caused only by Refuted Origin relations (SPEC 15.6.5) with
 // their problems as Cause facts; and Work, the steps it took (A3 6.2).
@@ -25,7 +27,8 @@
 // - the effect rule and its initialization proof: MirBorrows.Effects;
 // - a default template's slot-rooted test, R26-borrow and R26-access, and the copy disposition: MirBorrows.Defaults;
 // - a Place's steps and their classes, E17's Inline row included: MirSteps (R4-M100);
-// - the problems' codes and facts: MirBorrows.Reports;
+// - the problems' codes and facts, and PD13's held view: MirBorrows.Reports, its fact MirBorrows.CallRows' (R4-M148);
+// - a Call's rows, a Closure callee's call receiver at the callee operand among them: MirBorrows.CallRows (R4-M148);
 // - rule W, its elements, indirect markers, escape holders and causes: MirBorrows.Causes (R4-M132).
 // Invariants: a holder is a root local whose case Type may hold a Loan (MirTypes.HoldsLoans, a raw layer included), or E, the storage the
 // body does not own, static storage included (a direct Loan on a static names E); its state is a MirLoanSets node of Loans, addresses and

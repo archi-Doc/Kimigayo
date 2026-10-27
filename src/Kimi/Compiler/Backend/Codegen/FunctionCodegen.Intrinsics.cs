@@ -4,17 +4,16 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The intrinsic rows of FunctionCodegen (R5 plans C8a, C5c, C6a and C9b, package C 3.2; DECISIONS R5-M92, R5-M108, R5-M110, R5-M130): a call
-// of an intrinsic by its row's writer (IntrinsicRows' writer column), over the closed IntrinsicWriter vocabulary: a routine row (Routine: a
-// runtime routine through the one call writer, Invoke, with its slot-less values; Raw.release, $abort, tryAllocateBytes, Raw.allocate with
-// its element stride, a creation's factory with its control value and a clone's retain, FunctionCodegen.Objects, Text.writer's routine with
-// its destination's writer kind and dispatch word, FunctionCodegen.Formatting), which a compiler
-// function's Value call and adapter entry also call by its disposition (Routine by kind), a Fail's Abort reason, Raw.initialize's copy,
-// Raw.slice's record, transferBytes' memcpy, a staticEnsure's state test (FunctionCodegen.Statics) and a runtime Type test
-// (FunctionCodegen.Objects). Each takes its operands at its declaration's slots (ArgumentPosition) and ends through Finish; a call whose
-// row's Target column names an item carries the collector's target, read once by the cursor (I8) and given to the row's writer; a row not
-// written yet is one located Unsupported_Kd at the call, its owning unit named in IntrinsicRows. In a caller-location body a location is
-// C3b's row (Location).
+// The intrinsic rows of FunctionCodegen (R5 plans C8a, C5c, C6a, C9b and C9c, package C 3.2; DECISIONS R5-M92, R5-M108, R5-M110, R5-M130, R5-M131): a call of
+// an intrinsic by its row's writer (IntrinsicRows' writer column), over the closed IntrinsicWriter vocabulary: a routine row (Routine: a runtime routine
+// through the one call writer, Invoke, with its slot-less values; Raw.release, $abort, tryAllocateBytes, Raw.allocate with its element stride, a creation's
+// factory with its control value and a clone's retain, FunctionCodegen.Objects, Text.writer's routine with its destination's writer kind and dispatch word,
+// FunctionCodegen.Formatting), which a compiler function's Value call and adapter entry also call by its disposition (Routine by kind), a Fail's Abort reason,
+// Raw.initialize's copy, Raw.slice's record, transferBytes' memcpy, a staticEnsure's state test (FunctionCodegen.Statics), a runtime Type test
+// (FunctionCodegen.Objects) and an owning interpolation's buffer, segment steps and end (FunctionCodegen.Interpolation). Each takes its operands at its
+// declaration's slots (ArgumentPosition) and ends through Finish; a call whose row's Target column names an item carries the collector's target, read once by
+// the cursor (I8) and given to the row's writer; a row not written yet is one located Unsupported_Kd at the call, its owning unit named in IntrinsicRows. In a
+// caller-location body a location is C3b's row (Location).
 internal sealed partial class FunctionCodegen
 {
     private readonly Value[] slotless = new Value[2]; // A routine row's slot-less values (Routine): a formatting row's kind, Text.writer's two.
@@ -50,6 +49,15 @@ internal sealed partial class FunctionCodegen
                 return;
             case IntrinsicWriter.Capacity:
                 this.Capacity(call);
+                return;
+            case IntrinsicWriter.Buffer:
+                this.FormatBuffer(call, row);
+                return;
+            case IntrinsicWriter.Segment:
+                this.FormatSegment(call, row);
+                return;
+            case IntrinsicWriter.Finish:
+                this.FormatFinish(call, row);
                 return;
             case IntrinsicWriter.Create or IntrinsicWriter.Clone or IntrinsicWriter.Writer:
                 return; // A broken contract, recorded by Routine.

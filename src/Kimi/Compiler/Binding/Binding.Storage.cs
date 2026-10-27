@@ -22,8 +22,9 @@ public sealed partial class Binding
     // The stored Types of a struct or enum instance: its declaration's base, Fields and Case payloads under the instance's
     // substitution. They are substituted once per pass after PrepareStorage refilled the declaration, and on every request before; an
     // instance first requested after the last pass on that request. One substitution, two forms (DECISIONS BU-41): the kept parts
-    // (Parts, PartsBase; TyCtxt.StoredParts) with the raw Origins it gives, `self` as Holder, which StoredLayer and the hold walk read,
-    // and AdtDef's view, the same Types WithoutRawOrigins (DECISIONS BU-24; design-final §15): an erased instance is often the user's own
+    // (Parts, PartsBase; TyCtxt.StoredParts) with the raw Origins it gives, `self` as Holder and Unstated on each raw layer the declaration
+    // writes without `during` (KeptType, DECISIONS BU-46), which StoredLayer and the hold walk read, and AdtDef's view, the same Types
+    // WithoutRawOrigins (DECISIONS BU-24; design-final §15): an erased instance is often the user's own
     // Type (no Origins, or only `static`), so the erasure of an AdtDef stored Type is the stored Type of the erased instance only then
     // (R5-M39).
     internal AdtDef.InstanceStorage Instance(BoundType type)
@@ -75,7 +76,7 @@ public sealed partial class Binding
     {
         if (type.Symbol!.Declaration is StructKoto declaration)
         {
-            instance.PartsBase = declaration.Bases.Count == 1 ? this.StoredType(declaration.Bases[0], type) : null;
+            instance.PartsBase = declaration.Bases.Count == 1 ? this.KeptType(declaration.Bases[0], type) : null;
             instance.Base = this.WithoutRawOrigins(instance.PartsBase);
             var count = adt?.Fields.Length ?? 0;
             if (instance.Fields.Length != count)
@@ -85,7 +86,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < count; i++)
             {
-                instance.Parts[i] = this.StoredType(adt!.Fields[i], type);
+                instance.Parts[i] = this.KeptType(adt!.Fields[i], type);
                 instance.Fields[i] = this.WithoutRawOrigins(instance.Parts[i]);
             }
 
@@ -105,6 +106,56 @@ public sealed partial class Binding
         }
     }
 
+    // The kept part of a declared Field, Case payload or base clause (Substitute): its written Type with each raw layer it writes without
+    // `during` stating Unstated (WithUnstatedOrigins), under the instance's substitution; null where it does not substitute. The one
+    // producer of a Type stating Unstated (DECISIONS BU-46).
+    private BoundType? KeptType(Koto syntax, BoundType owner)
+        => WrittenType(syntax) is { } written && owner.Symbol is not null ? this.StoredType(this.WithUnstatedOrigins(written), owner) : null;
+
+    // SPEC 5.7 Fits, Calls (DECISIONS BU-46): a declared Type with each raw layer it writes without `during` stating Unstated, the Origin
+    // such a layer counts as stating, so that a kept part tells a layer a declaration writes from one a Type argument supplies at any depth.
+    // Provenance follows the binding: substitution copies a layer with its mark (a Type slot's argument, a component), and a layer formed
+    // from a pair binder's binding reads it through TyCtxt.PairBinding, which keeps the mark (`s/T`, and `s/U` in ApplySemantics). A layer
+    // stating an Origin, an abstract part but a pair binder's application `s/U` (whose `U` the declaration writes) and a callable are kept
+    // as written; an Unbound layer, a reported error's dependent, is not marked. A declared part is never a Semantics family (a family
+    // comes only from an expression's adaptation): one is a broken contract.
+    private BoundType WithUnstatedOrigins(BoundType declared)
+    {
+        if (declared.Kind == BoundTypeKind.SemanticsAdaptation)
+        {
+            throw new InvalidOperationException($"A declared part `{declared}` is a Semantics family (InternalInvariant; DECISIONS BU-46).");
+        }
+
+        if (declared.Components.Count == 0 || (declared.IsAbstract && declared.Kind != BoundTypeKind.SemanticsApplication) ||
+            declared.Kind is BoundTypeKind.Function or BoundTypeKind.Closure or BoundTypeKind.FunctionItem)
+        {
+            return declared;
+        }
+
+        var components = this.RentTypes(declared.Components.Count);
+        try
+        {
+            var changed = false;
+            for (var i = 0; i < declared.Components.Count; i++)
+            {
+                components[i] = this.WithUnstatedOrigins(declared.Components[i]);
+                changed |= !ReferenceEquals(components[i], declared.Components[i]);
+            }
+
+            var parts = components.AsSpan(0, declared.Components.Count);
+            if (declared is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, RawOrigin: null })
+            {
+                return this.types.Pointer(parts[0], BoundOrigin.Unstated);
+            }
+
+            return changed ? this.types.Rebuild(declared, parts, declared.Origin, (BoundOrigin[])declared.OriginArguments) : declared;
+        }
+        finally
+        {
+            this.typeScratch.Return(components, clearArray: true);
+        }
+    }
+
     // A Case's payload Types under an instance's substitution, with the raw Origins it gives, as one Tuple; null when one does not
     // substitute.
     private BoundType? PayloadTuple(BoundEnumCase selected, BoundType type)
@@ -112,7 +163,7 @@ public sealed partial class Binding
         this.enumPayloadTypes.Clear();
         foreach (var syntax in selected.Payload)
         {
-            if (this.StoredType(syntax, type) is not { } payload)
+            if (this.KeptType(syntax, type) is not { } payload)
             {
                 this.enumPayloadTypes.Clear();
                 return null;

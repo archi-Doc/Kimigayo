@@ -13,8 +13,8 @@ internal enum MirWrites : byte
     None,
 
     /// <summary>Some part gives the write fact: past no shared layer, an exclusive reference to storage that may hold a Loan (a raw
-    /// layer whose step lets a call write past it counting as one), an abstract part, or a Function or Closure value or a part past the
-    /// walk's bound, which may be one (the guard).</summary>
+    /// layer whose step lets a call write past it counting as one), an abstract part, or a Function value or a part past the walk's
+    /// bound, which may be one (the guard); a Closure value by its environment's parts (DECISIONS R4-M148).</summary>
     Through,
 
     /// <summary>No part gives the write fact, and a stored raw layer stepping Exclusive whose members Binding does not publish (a Type
@@ -56,12 +56,13 @@ internal static partial class MirTypes
 
     /// <summary>Gets whether a value of a Type may hold a Loan (SPEC 15.6), so that A5 tracks it: a part of it is a borrow, pair or raw
     /// layer (a raw pointer carries the holders it addresses and the Loans it was formed through, SPEC 15.6 Addresses), a Slice, a Function
-    /// or Closure value, or an abstract Type, whose instance may store a borrow its Origins do not show. Its parts are its own storage, a
+    /// value, or an abstract Type, whose instance may store a borrow its Origins do not show. Its parts are its own storage, a
     /// struct's Fields and base and an enum's payloads (a Field or Case Binding did not substitute holds nothing, a dependent of Binding's
-    /// rejection; <see cref="AdtDef.CaseTypes"/>), and its components: elements, an owning handle's payload, and a Type argument, which its
+    /// rejection; <see cref="AdtDef.CaseTypes"/>), and its components: elements, a Closure's environment bindings (SPEC 15.8.2, a Tuple of
+    /// them, IMPL 21.1.2; DECISIONS R4-M148), an owning handle's payload, and a Type argument, which its
     /// storage may hold behind a raw pointer (a library collection, its iterators) or as a Loan or a Weak (SPEC 3.2.2, 15.3.5); a function
     /// item holds none. The same walk gives what a call may write past the value (A3 E16): its guard, whether it may hold, past no shared
-    /// layer, an exclusive reference (a pair layer's exclusive case and an abstract part counting, as do a Function or Closure value and a
+    /// layer, an exclusive reference (a pair layer's exclusive case and an abstract part counting, as do a Function value and a
     /// part past the bound) to storage that may hold a Loan; a struct's or enum's Type argument, which has no address and grants no access
     /// (SPEC 15.3.5), adds only whether the value may hold one. A struct's or enum's own storage is its stored parts as the holding value's
     /// substitution makes them, raw Origins kept (TyCtxt.StoredParts, DECISIONS BU-41), so a raw layer below the holder is read on the
@@ -70,12 +71,12 @@ internal static partial class MirTypes
     /// the holding instance's Type arguments by their actual Types in the value's own storage, the write fact where the instance has an
     /// Origin argument (the owner's 「進める (推奨)」); a slot kept only by `ref`, nothing; `static`, an exclusive reference to its pointee;
     /// another Origin, an exclusive reference to its pointee and to each exclusive member's referent (TyCtxt.RawMembers), the Limit where
-    /// the members are unpublished; none, SPEC 5.7 Calls' per-parameter rule: an exclusive reference to its pointee where the parameter's
-    /// Type expression writes the layer, a Type argument's or a pair slot's argument's included (TyCtxt.RawSupplied on the holding
-    /// instance), and the write fact where a declaration states it in its own Fields, Case payloads or base; a layer written in a Type
-    /// argument of the declaration's own Field, Case payload or base clause reads as supplied until Binding publishes its provenance
-    /// relative to the holder (DECISIONS R4-M147, Known limits). Any other raw layer (a local's or parameter's own Type, an element or a
-    /// Tuple outside an instance) is an exclusive reference to its pointee (DECISIONS R4-M120). Each Type is walked once per query and
+    /// the members are unpublished; none, SPEC 5.7 Calls' per-parameter rule: the write fact where a declaration writes the layer, at any
+    /// depth below the holder, which its kept part states (TyCtxt.RawStated; DECISIONS BU-46, R4-M151), else an exclusive reference to its
+    /// pointee, the parameter's Type expression writing the layer (a Type argument's or a pair slot's argument's included). Any other raw
+    /// layer (a local's or parameter's own Type, an element or a Tuple outside an instance) is read by the same rule: the write fact where
+    /// a declaration wrote it (an Array element of a Field, a `self` pointee's content), else an exclusive reference to its pointee
+    /// (DECISIONS R4-M120). Each Type is walked once per query and
     /// mode, a raw layer and the inline Tuples and fixed arrays of a stored part once per part, so a repeating recursive Type ends exactly;
     /// past depth 32, where one grows (SPEC 15.3.5), the answer is yes.</summary>
     /// <param name="type">The Type.</param>
@@ -150,7 +151,7 @@ internal static partial class MirTypes
 
         // The facts a part adds in its mode, each (Type, mode) once per query (a LoanOnly mode not after its full one), a raw layer and an
         // inline Tuple or fixed array of a stored part once per part. A part that may hold a Loan (a borrow, pair or raw layer, a Slice, a
-        // Function or Closure value, an abstract part, a part past the bound) gives Loan in the value's own storage, and Write past an
+        // Function value, an abstract part, a part past the bound) gives Loan in the value's own storage, and Write past an
         // exclusive reference from it, but in a LoanOnly mode. In the value's own storage an exclusive reference, a UniqSlice's elements, a
         // pair layer's exclusive case and what lies past a raw layer by its step (Past) are walked past, and an abstract part (the owner's
         // Q1 (a)), a callable and a part past the bound may be such a reference; a struct's or enum's Type arguments are walked LoanOnly. A
@@ -167,7 +168,7 @@ internal static partial class MirTypes
             var met = own ? Loan : exclusive;
             if (type.Semantics == SemanticsKind.Raw)
             {
-                return met | (own && exclusive != 0 && type.Components.Count > 0 ? this.Past(type.Components[0], depth + 1) : 0);
+                return met | (own && exclusive != 0 && type.Components.Count > 0 ? this.Past(type, depth + 1) : 0);
             }
 
             var inline = this.instance is not null && type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray;
@@ -178,7 +179,7 @@ internal static partial class MirTypes
             }
 
             modes |= (byte)(inline ? 0 : 1 << mode);
-            if (depth > Bound || type.Kind is BoundTypeKind.Function or BoundTypeKind.Closure)
+            if (depth > Bound || type.Kind == BoundTypeKind.Function)
             {
                 return met | (own ? exclusive : 0);
             }
@@ -221,25 +222,21 @@ internal static partial class MirTypes
         // instance holding it (TyCtxt.RawStep): `self`, the pointee and the instance's Type arguments by their actual Types in the value's
         // own storage, the write fact where the instance has an Origin argument; a slot kept only by `ref`, nothing; `static`, an
         // exclusive reference to the pointee; another Origin, an exclusive reference to the pointee and to each exclusive member's
-        // referent, the Limit where the members are unpublished; none, an exclusive reference to the pointee where the parameter's Type
-        // expression writes the layer (RawSupplied), the write fact where a declaration states it, though a layer written in a Type argument
-        // of the declaration's own Field, Case payload or base clause reads as supplied (R4-M147, Known limits). Any other layer: an
-        // exclusive reference to the pointee.
-        private int Past(BoundType pointee, int depth)
+        // referent, the Limit where the members are unpublished; none, and any layer outside a stored part, one rule (DECISIONS R4-M151):
+        // the write fact where a declaration wrote the layer, which the kept parts state (TyCtxt.RawStated, DECISIONS BU-46), else an
+        // exclusive reference to the pointee (the walk's own Type wrote it, or it states an Origin outside a stored part).
+        private int Past(BoundType layer, int depth)
         {
-            if (this.instance is not { } stored)
+            var stored = this.instance;
+            var pointee = layer.Components[0];
+            ReadOnlySpan<int> at = stored is null ? default : this.positions[this.start..this.top];
+            return (stored is null ? RawStep.Unstated : types.RawStep(stored, this.part, at)) switch
             {
-                return this.Part(pointee, Exclusive, depth);
-            }
-
-            var at = this.positions[this.start..this.top];
-            return types.RawStep(stored, this.part, at) switch
-            {
-                RawStep.Own => stored.OriginArguments.Count > 0 ? Write : this.Admitted(stored, pointee, depth),
+                RawStep.Own => stored!.OriginArguments.Count > 0 ? Write : this.Admitted(stored, pointee, depth),
                 RawStep.Shared => 0,
                 RawStep.Static => this.Part(pointee, Exclusive, depth),
-                RawStep.Exclusive => this.Members(stored, at, depth) | this.Part(pointee, Exclusive, depth),
-                _ => types.RawSupplied(stored, this.part, at) ? this.Part(pointee, Exclusive, depth) : Write, // Unstated.
+                RawStep.Exclusive => this.Members(stored!, at, depth) | this.Part(pointee, Exclusive, depth),
+                _ => TyCtxt.RawStated(layer) ? Write : this.Part(pointee, Exclusive, depth),
             };
         }
 

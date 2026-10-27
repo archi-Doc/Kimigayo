@@ -539,9 +539,11 @@ public sealed partial class Binding
                     plan.IsValid = false;
                     this.Fail(entry.Key, BindingFailure.InvalidConstraint);
                 }
-                else if (proof != ConstraintProof.Proven && operation.Kind == ArgumentOperationKind.Value && operation.Source is { } payloadSource && IsBarePlace(payloadSource))
+                else if (operation.Kind == ArgumentOperationKind.Value && operation.Source is { } payloadSource && IsBarePlace(payloadSource) &&
+                    this.BareAcquire(operation.SourceType!, payloadSource, out _) == HirAcquire.Move)
                 {
-                    // SPEC 6.5.2, 3.5: a bare Non-Copy or Copy-unproven Place never Moves into a payload; write value@move.
+                    // SPEC 6.5.2, 3.5, 8.14: a payload Place is acquired by its bare acquisition, by case for a pair layer; one without a
+                    // plan never Moves into a payload; write value@move.
                     plan.IsValid = false;
                     this.FailAcquisition(payloadSource, BindingFailure.TransferRequired, payloadSource);
                 }

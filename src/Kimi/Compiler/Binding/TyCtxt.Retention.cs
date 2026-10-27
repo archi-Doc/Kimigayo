@@ -3,6 +3,9 @@
 // Owns call retention (SPEC 15.6.4; design A3 4.3, C1+C8): which outputs of a call may retain which arguments, as A5's Loan flow reads it.
 // Input: a callee with its call Subst, or a Value callee operand's Type (CallPlan.CalleeType, which MIR's operand reproduces) with the
 // Callable signature it declares (CallPlan.DeclaredSignature, DECISIONS R4-M41); the calling definition (null: top-level statements).
+// A Closure callee's contract has its call receiver at input 0 (HasReceiverInput; SPEC 15.8.2, DECISIONS R4-M148): `R/Env during ρ`, `Env`
+// by value under `owner/Self`, its `let` bindings never written (D1); every Closure part of an input is read as its body sees it, its
+// definition's environment under its closure context (ClosureEnvironment), one that does not substitute a CallRetention.Limit.
 // Output: an immutable CallRetention, rows Retention(Input, Kind, Output), Untied, UntiedStores and ReferentStores, one per callee or
 // signature, Type instantiation and the premise scope or declaration it reads, for the latest Binding pass and reused by later passes
 // until an edit;

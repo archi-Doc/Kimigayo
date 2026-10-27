@@ -7,7 +7,8 @@ namespace Kimi.Compiler.Mir;
 // activates; one gather of their check sets (MirBorrows.CheckSets); each access compared with the Loans on its root by the conflicts
 // relation, its first conflict recorded by MirBorrows.Reports; then a guard candidate's EndBorrow (err(ended)), a call's retention Limit or
 // its W's (MirWrites.Limit, R4-M147, MirBorrows.Calls) and a Borrow or read the addresses do not classify (PQ-10, MirBorrows.Addresses),
-// each a located Unsupported_Kd, the location's activations (MirBorrows.Activations), its own-step departures (MirBorrows.OwnSteps), its
+// each a located Unsupported_Kd, a Value call whose contract is broken (G136, MirBorrows.CallRows' Broken) InternalInvariant_Kd, the
+// location's activations (MirBorrows.Activations), its own-step departures (MirBorrows.OwnSteps), its
 // effects (MirBorrows.Effects, whose keys select other case views) and at a default template's Return R26-borrow.
 // Must not decide whether an access meets a Loan (MirBorrows.Checks) or which problem a conflict becomes (MirBorrows.Reports).
 internal sealed partial class MirBorrows
@@ -54,11 +55,17 @@ internal sealed partial class MirBorrows
             this.Ended(at, statement.Place.Root);
         }
 
-        var limit = index == this.body.Blocks[block].Count && (this.limit || this.Retaining(this.body.Blocks[block].Terminator) is { IsLimit: true });
+        var terminator = index == this.body.Blocks[block].Count;
+        var limit = terminator && (this.limit || this.Retaining(this.body.Blocks[block].Terminator) is { IsLimit: true });
         this.limit = false;
         if (limit || this.layerBorrowed[location])
         {
             this.Unsupported(at); // A retention limit (TyCtxt.Retention.cs) or W's; a `during self` layer's enclosing Place (PQ-10, MirBorrows.Addresses).
+        }
+
+        if (terminator && this.Broken(this.body.Blocks[block].Terminator))
+        {
+            this.Internal(at); // G136 (R4-M148).
         }
 
         this.Activations(at);

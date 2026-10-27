@@ -35,12 +35,17 @@ internal sealed partial class FunctionCodegen
         this.Branch(drop.Target);
     }
 
-    // SPEC 16.2.1 (R4-M6a): the dropped value destroyed by its group's first row, exactly when its instance Type may need a drop
-    // (MirTypes.MayNeedDrop, the rule the collector targets a Drop's glue by, K package 4.5 row 9): refuted, nothing is written, no test
-    // either; else by the collector's target, the Type's DropGlue item, on the Place's address with the Drop's location, and a missing
-    // target is a broken contract (package C 3.2 I8). False after a record.
+    // SPEC 16.2.1 (R4-M6a): the dropped value, when it owns storage (OwnsStorage), destroyed by its group's first row, exactly when its
+    // instance Type may need a drop (MirTypes.MayNeedDrop, the rule the collector targets a Drop's glue by, K package 4.5 row 9): refuted,
+    // nothing is written, no test either; else by the collector's target, the Type's DropGlue item, on the Place's address with the Drop's
+    // location, and a missing target is a broken contract (package C 3.2 I8). False after a record.
     private bool DestroyPlace(in MirTerminator drop, int group)
     {
+        if (!this.OwnsStorage(drop.Place))
+        {
+            return true; // A Region's bytes are the frame's (FunctionCodegen.Frame).
+        }
+
         if (this.body.TypeOf(drop.Place) is not { } dropped || this.collector.TypeOf(this.item, dropped) is not { } type)
         {
             this.Report(DiagnosticCode.InternalInvariant_Kd, drop.Source); // The collector made every Type of an admitted item.
