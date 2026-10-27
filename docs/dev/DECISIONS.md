@@ -11249,8 +11249,9 @@ structure is recorded here by the unit that first implements it.
     initialization, where the old generator reports body or cleanup. IR (PD9): one window per block run, not one per operation, and none
     around a Drop that destroys nothing. R5-M136's "until C10b" cleanup-phase deviation closes.
   - Records: none new. The collector adds no target; a window is written or not, never refused; scopes are validated MIR.
-  - Size: bp1 Testing +51/-7, Emission +2/-6, Mir +9/-2, tests +53; bp2 -6; behavior Backend +99/-19 (`FunctionCodegen.Phases`
-    +65), tests +129/-1, this entry, ARCH and CODEMAP. Deleted: the old writer's own phase text, the worker's phase literals, two
+  - Size, by numstat: bp1 Testing +51/-7, Emission +2/-6, Mir +9/-2, tests +53; bp2 -6; behavior Backend +101/-20
+    (`FunctionCodegen.Phases` +65), tests +129/-1; review 1's fold tests +10 (the runtime's initial phase tied to
+    `TestRuntime.Phase.Body`); this entry, ARCH and CODEMAP. Deleted: the old writer's own phase text, the worker's phase literals, two
     IntrinsicIds and their rows, and three copies of the terminator-completion expression.
   - Speed: in a test build, one load and two stores per window and a scope walk per Assign and Call. A product build pays one bool test.
     No pass over MIR; a warm test build allocates nothing (`WarmGenerationAllocatesNothing` with the `Phases` source).

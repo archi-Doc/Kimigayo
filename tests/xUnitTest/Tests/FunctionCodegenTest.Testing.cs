@@ -282,6 +282,7 @@ public sealed partial class FunctionCodegenTest
 
     // The instruction after one in its function's text.
     private static IrValue NextOf(IrFunction function, IrValue instruction) => function.Instructions[function.Instructions.IndexOf(instruction) + 1];
+
     // A test build of test-only sources analyzed under MIR code generation and accepted, its catalog not discovered yet.
     private static Compilation TestBuild(params (string File, string Source)[] sources)
     {

@@ -2,6 +2,7 @@
 
 using System.Buffers.Binary;
 using System.Text;
+using System.Text.RegularExpressions;
 using Kimi.Testing;
 using Xunit;
 
@@ -113,6 +114,15 @@ public class TestProtocolTest
         Assert.Equal("abort", outcome.Termination);
         Assert.Equal(name, outcome.Failures[0].Phase);
         Assert.Equal(name, outcome.TerminationPhase);
+    }
+
+    // The test runtime starts each case in the body phase: its phase's initial value is TestRuntime.Phase.Body, and the runtime text sets no
+    // other phase (code generation's windows do, TestRuntime.WritePhase; DECISIONS R5-M137).
+    [Fact]
+    public void TheRuntimeStartsInTheBodyPhase()
+    {
+        Assert.Single(Regex.Matches(TestRuntime.Text, $"(?m)^@__kimi_test_phase = internal global i32 {(int)TestRuntime.Phase.Body}$"));
+        Assert.DoesNotMatch(@"store i32 [^\n]*, ptr @__kimi_test_phase", TestRuntime.Text);
     }
 
     [Fact]
