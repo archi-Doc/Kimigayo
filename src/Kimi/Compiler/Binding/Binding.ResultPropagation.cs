@@ -22,7 +22,13 @@ namespace Kimi.Compiler;
 //   (Binding.ResultPropagation.Parts.cs) or, for a call's control-flow argument, the wait for the call that classifies it
 //   (AwaitsWithoutCandidate; DECISIONS BU-43), whose late fit takes a waiting literal and a waiting list or fill literal by the shape
 //   it constructs, writing nothing; an anonymous function among its results waits for the call, which completes it (TakeWaiting) and
-//   then decides the join part by part, the sources holding it waiting until then (Completed, DecideTaken).
+//   then decides the join part by part, the sources holding it waiting until then (Completed, DecideTaken); (5) the join's one
+//   outcome (ResultContext.Outcome, DECISIONS BU-43), written once where it becomes true: Waiting; Conflict, a conflict it found,
+//   its own record; Dependent, resting on a failed part, on waiting joins that record conflicts of their own, or on the join whose
+//   Conflict was found over its own parts (Cause), with no record (SPEC 23.1.2); Decided. A part's failure is read from who decides
+//   it (PartFailed). A waiting join decided with no Type rests on its position only when that join found a Conflict over this join's
+//   parts and records it; otherwise it decides by itself and records its own conflict. A formation's conflicts are recorded once
+//   each: one, by the forming join, the outermost holding its literals (SPEC 14.9.2); more, each by its own join (FoundConflict).
 // - Inputs: the bound expression, its parts' Types, the value sources a join recorded (ResultContext.SourceNodes) and whether it still
 //   collects them (ResultContext.Collecting), the literal collecting its element evidence (collectingElements), the target Type.
 // - Outputs: LateTypeOf, the Type the expression takes at the target, computed from its parts: an array or dictionary literal its
@@ -308,38 +314,35 @@ public sealed partial class Binding
     }
 
     // SPEC 10.5.1 (DECISIONS BU-43): a call's waiting join that awaited its position for the anonymous functions among its results, which
-    // its call completed (TakeWaiting), is decided at once with no expectation when nothing else in it awaits or when those functions,
-    // now typed parts, conflict (TypedConflict: it fails at once, its own record), as a join none of whose sources supplies a candidate:
-    // the sources holding them are Deferred, so its Type is formed part by part and they take it; its call then fits it as a bound
-    // argument. False when that decision fails, on which the call rests.
+    // its call completed (TakeWaiting), decides again: with nothing else awaiting, at once with no expectation, as a join none of whose
+    // sources supplies a candidate (the sources holding them are Deferred, so its Type is formed part by part and they take it), its
+    // call then fitting it as a bound argument; otherwise under its call's argument probe, where its one formation fails it at once
+    // when those functions, now typed parts, conflict, and else it waits for its call again. False when it fails, on which the call
+    // rests.
     private bool DecideTaken(Koto argument)
         => ControlFlowExpression(argument) is not { } join || this.WaitingResult(join) is null ||
-            (this.AwaitsPosition(join) && !this.TypedConflict(join)) || this.BindNode(join, this.ConstraintScope(join), null) is not null;
-
-    // Whether a join's typed parts conflict when its Type is formed part by part (CommonTypeByParts).
-    private bool TypedConflict(Koto join)
-    {
-        var start = this.positionParts.Count;
-        this.AddResults(join);
-        var conflict = PartsConflict.None;
-        this.CommonTypeByParts(start, this.positionParts.Count, this.ConstraintScope(join), ref conflict);
-        this.ClosePosition(start);
-        return (conflict & PartsConflict.Typed) != PartsConflict.None;
-    }
+            (this.AwaitsPosition(join)
+                ? this.BindIndependentArgument(argument, this.ConstraintScope(join)) is not null || this.WaitingResult(join) is not null
+                : this.BindNode(join, this.ConstraintScope(join), null) is not null);
 
     // SPEC 14.9.2: a result target that waited for its position is decided when its position binds it: its sources take the Type the
     // position supplies, as a Target Result Type fixed by an outer expectation, or, without one, their defaults; one its call bound
-    // meanwhile supplies the Type it took, and one holding what its call completed is Deferred (Completed). When the join it waited
-    // for failed, it is Dependent on that join (SPEC 23.1.2): its waiting sources take their defaults, bound once, and it forms nothing.
+    // meanwhile supplies the Type it took, and one holding what its call completed is Deferred (Completed). With no Type, when the
+    // join it waited for found a Conflict over this join's own parts and records it (its Cause, FoundConflict), it is Dependent on
+    // that join (SPEC 23.1.2): its waiting sources take their defaults, bound once, and it forms nothing; in every other case it
+    // decides by itself, a join with no outer constraint, and records its own conflict.
     private BoundType? DecideWaiting(Koto node, ResultContext context, BoundType? expected)
     {
         context.Outcome = JoinOutcome.Undecided;
-        if (expected is null && this.PositionTarget(node, out _) is { } position && this.PartFailed(position))
+        if (expected is null && context.Cause is { } cover && this.resultContexts.TryGetValue(cover, out var found) &&
+            found.Outcome == JoinOutcome.Conflict)
         {
-            context.RestOn(position);
+            context.RestOn(cover);
             this.DefaultWaitingSources(node, context);
-            return this.CompleteDependent(node, position);
+            return this.CompleteDependent(node, cover);
         }
+
+        context.Cause = null;
 
         for (var i = 0; i < context.Sources.Count; i++)
         {
@@ -378,12 +381,11 @@ public sealed partial class Binding
         }
 
         var conflict = PartsConflict.None;
-        this.failedPart = null;
-        var common = this.CommonTypeByParts(start, this.positionParts.Count, this.ConstraintScope(node), ref conflict);
-        var failedPart = this.failedPart;
+        Koto? cause = null;
+        var common = this.CommonTypeByParts(start, this.positionParts.Count, this.ConstraintScope(node), ref conflict, ref cause);
         var shape = this.PartsShape(start, this.positionParts.Count);
         this.ClosePosition(start);
-        if ((conflict & (PartsConflict.Typed | PartsConflict.Failed)) == 0 && context.Outcome == JoinOutcome.Undecided &&
+        if ((conflict & (PartsConflict.Typed | PartsConflict.Failed | PartsConflict.Several)) == 0 && context.Outcome == JoinOutcome.Undecided &&
             ((waited && DeliversResult(node) && this.DecidedLater(node)) || (shape is not DictionaryLiteralKoto && this.ClassifiedByCall(node, shape))))
         {
             context.Outcome = JoinOutcome.Waiting;
@@ -394,9 +396,14 @@ public sealed partial class Binding
         {
             context.Conflict();
         }
-        else if (failedPart is not null)
+        else if ((conflict & (PartsConflict.Held | PartsConflict.Several)) == PartsConflict.Held)
         {
-            context.RestOn(failedPart);
+            context.Conflict(); // Its only conflict, held by one waiting join, is its record, which that join rests on (SPEC 14.9.2).
+            this.resultContexts[cause!].Cause = node;
+        }
+        else if (cause is not null)
+        {
+            context.RestOn(cause);
         }
 
         if (common is null)

@@ -7040,6 +7040,36 @@ resumed by R4-M86 (2026-10-20).
     record, where dev also reports the dependent array); `first(if c => (if c => (func .., x) else => (stop(), 5)) else => (stop(),
     5))`, a lone `PrerequisiteUnavailable_Kd` before, is valid as on dev, and `first(if c => (func .., 5) else => (func .., 2.5))`
     dev's `TypeMismatch_Kd`.
+  - The cover rule (implementation review 4's REVISE, B6; the owner's 「もう 1 回だけ直す (推奨)」, 2026-10-27): a waiting join
+    decided with no Type rests on the join it waited for only when that join records a conflict it found over this join's own parts
+    (`Cause`, written by the formation's `FoundConflict`); when that join failed for another cause or is only `Dependent`, the
+    waiting join decides by itself, as a join with no outer constraint, and records its own conflict (SPEC 23.1.2: an independent
+    failure "is reported, even when another check fails"). A formation records each conflict it finds once: parts of one waiting
+    join that conflict by themselves (`ConflictsAlone`) are that join's conflict. A typed one (functions its call completed) it
+    records itself, the forming join resting on it as on a failed part (`first(if c => (if c => (func .., 5) else => (func .., 6))
+    else => (stop(), x))`: at the inner join, as on dev). A defaults one (`PartsConflict.Held`), when it is the formation's only
+    one, the forming join, the outermost holding those literals, takes as its own and covers that join (B5's move stays, SPEC
+    14.9.2); when the formation finds conflicts of two or more joins (`Several`: two waiting joins', or one beside the forming
+    join's own), each records its own and the forming join rests on them. So
+    `let t = if c => (if d => 5 else => 2.5) else => bad` and review 4's other B6 forms (`missing()`, `identity(bad)`, the swapped
+    order, a failed sibling join, `bad` at the same Tuple position, array, Dictionary, deep, at a call) report the inner conflict
+    beside `bad`'s record as on dev, the deep form at the middle join, the outermost holding the literals that decides by itself
+    (dev: the innermost); review 4's e21, `let t = if c => ((if d => 5 else => 2.5), (if d => 6 else => 3.5)) else => ((return 1),
+    (return 2))`, gives dev's two records at the inner joins, and `let t = if c => ((if d => 5 else => 2.5), x, (return 1)) else => ((return 2), true, (return 3))` two independent
+    records (dev: one, at the inner join). e12: in `func [] (b: bool) => if b => (if b => 5 else => 2.5) else => 2.5` the one
+    record is at the anonymous function, its body's result target and the outermost join holding the literals (dev: the inner
+    join). `DecideTaken` decides a completed join again under its call's argument probe, whose one formation fails it on
+    conflicting functions; `TypedConflict`'s second formation and the `failedPart` field are deleted (the formation returns its
+    cause). The two-failure sweep (bu47 `sweep\gen2\`, 560 programs: a typed, defaults, unreadable or no conflict in a waiting join
+    beside an unresolved name, a failed call or argument, an empty literal, a second typed or defaults conflict, or nothing, in
+    eight nestings at `let`, `identity`, `first` and `take`; `sweep\gen3\`, 162: a waiting anonymous function beside each such
+    conflict or failure in three nestings at `applyArg`, `first` and `let`; with the 415 generated, 331 review-3 and 64 review-4/5
+    programs; both pipelines, which agree, against dev 861ffe95b) rejects no dev-clean program and loses no record of dev's but
+    dependent ones: a `let`'s derived `PrerequisiteUnavailable_Kd` beside its join's failed part; dev's `UnresolvedBinding_Kd` at the
+    parameters of two anonymous functions a call completes at one `F` (their join's `TypeMismatch_Kd` stands for them, as above),
+    and that of a waiting function beside a failed part (dependent on its call's failure). The 415 and 331 programs keep the outcome
+    rule's records. Supersedes the outcome rule's "when that one failed, is `Dependent` on it (`DecideWaiting`)" and its
+    `TypedConflict`.
   - ③: a control-flow part is Literal when every result source other than Never is a literal, at least one (`ResultSurvey.Unknown` and
     `Never` split `Other`); an arithmetic operand's `AllLiteral` keeps Never as not literal (SPEC 12.3.3, 13.3.4).
   - Supersedes BU-2's owner decision (1), "a control-flow argument is Literal only when all its result sources are Literal", and the

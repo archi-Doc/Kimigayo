@@ -227,12 +227,37 @@ public class NeverContinuationTest
     [InlineData("let t = if c => (if d => 5 else => 2.5) else => 2.5")]
     [InlineData("let t = if c => (if d => (if c => 5 else => 2.5) else => 2.5) else => 2.5")]
     [InlineData("let t = if c => (if d => (5, (return 1)) else => (2.5, (return 2))) else => ((return 3), a)")]
+    [InlineData("let t = if c => (if d => 5 else => 2.5) else => (return 3)")]
     public void ADefaultsConflictIsRecordedOnceAtTheOutermostJoin(string statement)
     {
         var c = MirBuildTest.Compile(Joins + statement + "\n    return 0\n");
         var issue = Assert.Single(c.Binding.Issues);
         Assert.Equal(BindingFailure.TypeMismatch, issue.Failure);
         Assert.Same(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IfKoto>().First(), issue.Node);
+    }
+
+    // SPEC 23.1.2 (DECISIONS BU-43): a waiting join rests on its position only when that join records a conflict found over its own
+    // parts; when the enclosing join fails for another cause, or its formation finds conflicts of two or more joins, the waiting join
+    // decides by itself and its conflict, independent of the other failures, is reported beside them.
+    [Theory]
+    [InlineData("let t = if c => (if d => 5 else => 2.5) else => nope", 1)]
+    [InlineData("let t = if c => (if d => 5 else => 2.5) else => missing()", 1)]
+    [InlineData("let t = if c => (if d => 5 else => 2.5) else => id(nope)", 1)]
+    [InlineData("let t = if c => nope else => (if d => 5 else => 2.5)", 1)]
+    [InlineData("let t = if c => ((if d => 5 else => 2.5), (return 1)) else => (nope, (return 2))", 1)]
+    [InlineData("let t = if c => (if d => (5, (return 1)) else => (2.5, (return 2))) else => (if d => (a, a) else => (true, a))", 2)]
+    [InlineData("let t = if c => [(if d => 5 else => 2.5)] else => [nope]", 1)]
+    [InlineData("let t = if c => [\"k\": (if d => 5 else => 2.5)] else => [\"k\": nope]", 1)]
+    [InlineData("let t = if c => (if d => (if c => 5 else => 2.5) else => 2.5) else => nope", 1)]
+    [InlineData("let t = if c => ((if d => 5 else => 2.5), (if d => 6 else => 3.5)) else => ((return 1), (return 2))", 2)]
+    [InlineData("let t = if c => ((if d => 5 else => 2.5), a, (return 1)) else => ((return 2), true, (return 3))", 2)]
+    public void AWaitingJoinsOwnConflictIsReportedBesideAnotherFailure(string statement, int conflicts)
+    {
+        var source = Joins + statement + "\n    return 0\npublic func main() => ()\n";
+        var codes = DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code).ToArray();
+        Assert.Equal(conflicts, codes.Count(static x => x == nameof(DiagnosticCode.TypeMismatch_Kd)));
+        Assert.Equal(statement.Contains("nope") || statement.Contains("missing") ? 1 : 0, codes.Count(static x => x == nameof(DiagnosticCode.UnresolvedBinding_Kd)));
+        Assert.Equal(codes.Length, codes.Count(static x => x is nameof(DiagnosticCode.TypeMismatch_Kd) or nameof(DiagnosticCode.UnresolvedBinding_Kd)));
     }
 
     // SPEC 23.1.2 (DECISIONS BU-43): an unreadable character literal is bound as `char`, its lexer record standing for it, so a join
