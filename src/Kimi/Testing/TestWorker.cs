@@ -177,7 +177,7 @@ internal static class TestWorker
             var site = BinaryPrimitives.ReadInt32LittleEndian(header[16..]);
             var phase = BinaryPrimitives.ReadInt32LittleEndian(header[20..]);
             var count = BinaryPrimitives.ReadUInt64LittleEndian(header[24..]);
-            if (version != 1 || state == 3 || count < outcome.FailureCount || phase is < 1 or > 4)
+            if (version != 1 || state == 3 || count < outcome.FailureCount || phase is < (int)TestRuntime.Phase.Body or > (int)TestRuntime.Phase.Shutdown)
             {
                 throw new InvalidDataException("Invalid test frame version, order or counter.");
             }
@@ -345,5 +345,11 @@ internal static class TestWorker
         return omitted;
     }
 
-    private static string Phase(int phase) => phase switch { 2 => "cleanup", 3 => "initialization", 4 => "shutdown", _ => "body" };
+    private static string Phase(int phase) => (TestRuntime.Phase)phase switch
+    {
+        TestRuntime.Phase.Cleanup => "cleanup",
+        TestRuntime.Phase.Initialization => "initialization",
+        TestRuntime.Phase.Shutdown => "shutdown",
+        _ => "body",
+    };
 }

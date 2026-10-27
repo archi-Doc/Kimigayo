@@ -129,9 +129,11 @@ internal sealed partial class FunctionCodegen
         output.Write('\n');
     }
 
-    // Return (IMPL 21.3.1): void for a zero-sized result or a result slot, else local 0's value in its computation representation.
+    // Return (IMPL 21.3.1): void for a zero-sized result or a result slot, else local 0's value in its computation representation; the
+    // block's window closed before it (FunctionCodegen.Phases).
     private void Return()
     {
+        this.Close();
         if (this.abi.ResultSlot || this.slots[0].Home == Home.None)
         {
             this.output.Write("  ret void\n");

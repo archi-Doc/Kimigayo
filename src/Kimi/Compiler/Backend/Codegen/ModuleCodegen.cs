@@ -5,7 +5,8 @@
 // Responsibility: one module of a program version from its checked set: every Generated item in admission order, a body item written by
 // FunctionCodegen as __kimi_f<item> under its signature (Abi.Of, internal convention), which this owner gives from the item's own body to
 // its definition and every call (Signature), a called #LibraryImport function's C signature and declaration (Import), the output form
-// around the output roots (IMPL 21.4.2: an Application's __kimi_start calls its startup root and exits with 0, a Library has no entry) and
+// around the output roots (IMPL 21.4.2: an Application's __kimi_start calls its startup root and exits with 0, a Library has no entry, a
+// test build's is the test runtime's, which runs the case the runner selects, each test root called in catalog order; DECISIONS R5-M136) and
 // the module frame through LlvmModuleText in the old generator's order (header with the pooled constants, runtime, the called imports'
 // declarations, overflow declarations, functions, entry, footer); the coverage rows (PD11) of the item kinds and output forms: DropGlue
 // (__kimi_drop<item>, written by FunctionCodegen by its Type's row, DropGlue.Row: a string's (R5-M78), a struct's, Tuple's, enum's or fixed
@@ -18,10 +19,11 @@
 // Shim, written by FunctionCodegen.Shims; R5-M126, R5-M130), a user or library formatter's wrappers (__kimi_write<item>, a conversion over
 // it; ModuleCodegen.Formatting, R5-M130), the property witnesses (C3c), K8's ObjectDescriptor items (the module's runtime
 // identities, a descriptor's constants, payload destructor and factory through ObjectRuntime, ModuleCodegen.Objects; R5-M110) and VTable
-// items, whose text is their descriptors' virtual tables (R5-M114), a test build's TestEntry (C10a).
+// items, whose text is their descriptors' virtual tables (R5-M114).
 // Inputs: the program the generation gate passed (validated, analyzed and accepted); the instance collector's checked set, marked from the
 // output roots the generation entry gives (K package 4.10), TypeOf and location rule (K package 4.9); the compilation's Layout and runtime
-// location texts (Compilation.Locations); the startup selection.
+// location texts (Compilation.Locations); the startup selection; the test catalog, a test build's cases, identity and verification site
+// numbers (Compilation.Tests, discovered for the version; DECISIONS R5-M136).
 // Output: the complete module written to the caller's writer, or nothing and the Records of why: one Unsupported_Kd per subject of a
 // row not written yet (until the R5 plan's unit X2), gate step 2's refusal of a body A1 or A2 left inexact (its problem's code at its
 // subject, FunctionCodegen.Write; DECISIONS R5-M96), InternalInvariant_Kd at a broken input contract; no record only for a broken contract
@@ -64,10 +66,12 @@ internal sealed partial class ModuleCodegen
     /// <param name="locations">The compilation's runtime location texts.</param>
     /// <param name="types">The compilation's Type context, which FunctionCodegen's case views read.</param>
     /// <param name="imports">Binding's validated <c>#LibraryImport</c> declarations, kept current across its passes.</param>
-    internal ModuleCodegen(Layout layout, SourceLocationTable locations, TyCtxt types, IReadOnlyList<LibraryImport> imports)
+    /// <param name="tests">The compilation's test catalog, which a test build's discovery fills.</param>
+    internal ModuleCodegen(Layout layout, SourceLocationTable locations, TyCtxt types, IReadOnlyList<LibraryImport> imports, Testing.TestCatalog tests)
     {
-        (this.Layout, this.Locations, this.types, this.imports) = (layout, locations, types, imports);
+        (this.Layout, this.Locations, this.types, this.imports, this.Tests) = (layout, locations, types, imports, tests);
         this.bodies = new(this, types);
+        this.caseCall = (output, index) => this.bodies.WriteEntryCall(output, this.cases[index]);
     }
 
     /// <summary>Gets the layout of the compilation's Types.</summary>
@@ -75,6 +79,13 @@ internal sealed partial class ModuleCodegen
 
     /// <summary>Gets the runtime location texts (SPEC 22.5.1) a runtime routine receives.</summary>
     internal SourceLocationTable Locations { get; }
+
+    /// <summary>Gets the test catalog: a test build's cases and identity, and the numbers of its verification sites (TestCatalog.SiteOf).</summary>
+    internal Testing.TestCatalog Tests { get; }
+
+    /// <summary>Gets a value indicating whether the latest <see cref="Write"/> writes a test build, whose runtime is the test runtime and
+    /// whose code reports its phases (FunctionCodegen.Phases).</summary>
+    internal bool IsTestBuild { get; private set; }
 
     /// <summary>Gets the module's private UTF-8 constants, which the header defines.</summary>
     internal LlvmConstantPool Constants => this.constants;
@@ -100,6 +111,7 @@ internal sealed partial class ModuleCodegen
         this.externals.Clear();
         this.wrapped.Clear();
         (this.set, this.program, this.collector, this.writes) = (collector.Set, program, collector, this.writes + 1);
+        this.IsTestBuild = startup.Kind == StartupKind.Test;
         this.Number();
         for (var item = 0; item < this.set.Items.Length; item++)
         {
