@@ -561,8 +561,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   are computed per instance in R5; the failure check reads each write's own Result. Rejected: internal library
   declarations with three more `CompilerFunctionKind` members (grows the vocabulary R8 shrinks); deferring with an R3
   gate exception. R8 removes all three; with R3-9 the `IntrinsicId` limit returns from 34 to 30.
-  - `FormatHint` is renamed `FormatSegment`, carrying the segment's literal text, and a literal segment is no write: R5-M133 (supersedes
-    "the hint before each write" and, for literal text, "the failure check reads each write's own Result").
+  - `FormatHint` is renamed `FormatSegment`, which carries the segment's literal text beside the estimates that "take the literal byte
+    count and a TypeToken of the values' Types", and a literal segment is no write, so "the failure check reads each write's own Result"
+    holds for value writes: R5-M133.
 
 ## R4 (accepted 2026-10-11)
 
@@ -10696,8 +10697,9 @@ structure is recorded here by the unit that first implements it.
 - **R5-M133 An owning interpolation's literal text is its segment step's operand: FormatSegment and the literal path (C9d)** (2026-10-27, C
   lane; a Full change: design 2 (`c9d-design-2.md`, Option B), the planning session's choice (`c9d-choice.md`, the rename), revisions R-1
   and R-2 (rule (d)), design reviews 1-3 (REVISE, REVISE, ACCEPT) and R4's A1-A5 view (no blocking finding); departure (i) confirmed by the
-  owner, R5-M134; departure (ii) withdrawn with rule (d); SPEC 3.1, 22.10.1, 22.10.3, 22.10.5; supersedes R3-10's "the hint before each
-  write" and, for literal text, "the failure check reads each write's own Result", and R5-M131's interim; under R5-M18 form 2 (G:format))
+  owner, R5-M134; departure (ii) withdrawn with rule (d); SPEC 3.1, 22.10.1, 22.10.3, 22.10.5; supersedes R3-10's `FormatHint` (renamed;
+  its estimates still "take the literal byte count and a TypeToken of the values' Types") and, for literal text, "the failure check
+  reads each write's own Result", and R5-M131's interim; under R5-M18 form 2 (G:format))
   - Cause: SPEC 22.10.5 bounds `"abc\(s)def"` to one allocation, which needs the old generator's deferral of literal text to the next
     reservation (`__kimi_format_literal`); R3-10's MIR wrote a literal segment as an ordinary `write<string>`, the form of a `$tryWrite`'s
     or a formatter's write, so no fact told code generation to defer (R5-M131's interim `Unsupported_Kd`).
@@ -10736,7 +10738,8 @@ structure is recorded here by the unit that first implements it.
     owner's FormatSegment decision, not a weakened check.
   - Facts: the sel ledger falls by the 17 interim rows, 203 to 186 (format 12, C-frame 4, C-aggregate 1), as C9c's census; the 16
     literal-path fixtures and the 4 new audits run natively under sel at O0 and O2 with the old generator's counts and bytes (the 7 pinned
-    audits included). The golden `interpolations` loses its 13 literal writes (353/706 lines).
+    audits included). The golden `interpolations` loses its 13 literal writes (353/706 lines). Milestones 24, 30 and 33 (C9c's interim)
+    and 31, 35 and 44 pass under sel; the mir ledger equals the shared base's (517ffd229: 3,239 rows, 245 signatures, every count).
   - Tests: `MirBuildTest.AnOwningInterpolationsLiteralTextIsItsSegmentStep` (a literal segment, an embedded string literal, text alone)
     and `TextAloneKeepsTheProgramsOtherErrors`; `FunctionCodegenTest.ASegmentWritesItsLiteralTextAfterItsHint`
     (deferred before a value, written at the end, each checked); `Utf8InterpolationTest.DeferredLiteralTextKeepsTheOldGeneratorsAllocations`
@@ -10750,7 +10753,15 @@ structure is recorded here by the unit that first implements it.
   - Speed: per literal segment MIR loses 5 locals, about 15 statements and 3 blocks (design 2's prototype: -3.7 % and -4.6 % of MIR
     statements on Milestones 30 and 31); code generation writes the old generator's three calls per literal; warm generation allocates
     nothing (M9 with the new lines).
-  - O2: the seven corpus kernels' A/Bs (R5-M8, with R5-M135's aligned control) follow with the final evidence.
+  - O2 (R5-M8, R5-M135; C9c's method): each kernel built at O2 by the old generator (A) and MIR code generation (B) at the fixed head,
+    A, B and a copy of A in one folder, 21 interleaved samples of CPU cycles; B/A and A=A medians with their ranges. Unaligned:
+    Interpolation 0.994 (A=A 0.997), SharedHandles 1.004 (1.001), Dictionary 1.000 (0.999) and ErasedCalls 0.999 (1.000) are within
+    A=A; Array 1.121, VirtualDispatch 1.078 and Iterators 1.167 are beyond it (A=A 0.998, 1.001, 1.004). Aligned alike
+    (`llc --align-loops=64 --align-all-functions=6` on each generator's own O2 IR): Interpolation 0.988, SharedHandles 1.004, Array
+    1.000, Dictionary 1.001, ErasedCalls 0.991, VirtualDispatch 1.004 and Iterators 1.019, all within A=A (0.990-1.004, Iterators'
+    range 0.908-1.207). So by R5-M135 the unaligned gaps are code placement (C9c's VirtualDispatch and Iterators, and now Array, whose
+    checksum line gains the deferral calls); both are recorded and the unit continues. The Interpolation kernel's hot line, whose
+    allocations and bytes equal the old generator's, runs at parity.
   - Rejected: a fourth temporary intrinsic `FormatLiteral` (design 1: a vocabulary entry for a fact an existing per-segment intrinsic
     carries); a `MirLocalRole` (it carries no estimate); code generation reading MIR shape (C9c Q4 (b)); runtime changes (a declared legacy
     `.ll` change, PD2); a Binding or library `writeLiteral` (PD21; R8's form); rule (a), deferring only before an unbounded value (its
