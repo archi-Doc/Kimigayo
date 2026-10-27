@@ -176,9 +176,9 @@ internal sealed partial class MirBuilder
     private MirPlace Field(MirPlace receiver, BindingSymbol? field, Koto node)
     {
         var type = this.body.TypeOf(receiver);
-        var (depth, index) = (-1, -1);
-        var layer = type is null ? null : AdtDef.FieldOwner(type, field, out depth, out index);
-        return layer is not null && this.Stored(receiver, layer, depth, index) is { } place ? place : this.Unsupported(node, layer is not null);
+        var owner = type is null ? null : AdtDef.FieldOwner(type, field);
+        return owner is { } found && this.Stored(receiver, found.Layer, found.Depth, found.Index) is { } place
+            ? place : this.Unsupported(node, owner is not null);
     }
 
     // The Place of the stored Field at an own index of the layer `depth` Base steps up from a struct Place (the receiver's
