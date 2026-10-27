@@ -546,8 +546,9 @@ public sealed partial class HirFormsTest
     }
 
     // SPEC 23.1.2 (DECISIONS R5-M63): a closure whose definition Binding completed keeps its parts as a Closure wherever its creation
-    // stands, the kept operand of a failed Index included, whose creation is evaluated there (a Closure, in place); a closure whose
-    // capture list failed was never bound, so its body stays replaced. An inferred result over the call's own storage keeps the Closure's
+    // stands: inside a parent Binding rejects for its own reason (a let whose Type annotation fails, the parent replaced), or the
+    // kept operand of a failed Index, whose creation is evaluated there (a Closure, in place); a closure whose capture list failed was
+    // never bound, so its body stays replaced. An inferred result over the call's own storage keeps the Closure's
     // Type and fails only the returned value (DECISIONS R4-M152): the `return` statement, or an expression body, which its own Consume
     // takes.
     [Fact]
@@ -555,14 +556,15 @@ public sealed partial class HirFormsTest
     {
         const string Source = "func take(a: string, b: string) -> i32 => 1\nfunc f(m: i32)\n" +
             "    _ = func (n: i32)\n        let t = \"x\"\n        _ = take(t@move, t@move)\n        return n@ref\n" +
-            "    let g = func (k: i32)\n        return k@ref\n    _ = func (s: string) => s@ref\n    let w = \"w\"\n    _ = func [w] () => 1\n" +
+            "    let g = func (k: i32)\n        return k@ref\n    let h: Missing = func (k: i32)\n        return k\n" +
+            "    _ = func (s: string) => s@ref\n    let w = \"w\"\n    _ = func [w] () => 1\n" +
             "    _ = m[func (k: i32) -> i32 => k]\n";
         var c = MinimalEmissionTest.Analyze(Source);
         HirTables.Publish(c);
         var closures = Reachable(c.Kotonoha).OfType<FunctionKoto>().Where(static x => x.IsAnonymous).ToArray();
         var rows = closures.Select(static x => (Koto?)x.Body ?? x.ExpressionBody!)
             .Select(static x => $"{HirTables.Op(x.Parent!)} {HirTables.Op(x)} {HirTables.AdjustOf(x).Acquire}");
-        Assert.Equal(["Closure Block Unset", "Closure Block Unset", "Closure Error Temporary", "Error Syntax Unset", "Closure Name Copy"], rows);
+        Assert.Equal(["Closure Block Unset", "Closure Block Unset", "Syntax Block Unset", "Closure Error Temporary", "Error Syntax Unset", "Closure Name Copy"], rows);
         Assert.Equal(new HirAdjust(HirAcquire.None, HirAdaptation.None), HirTables.AdjustOf(closures[^1]));
         var statements = Reachable(c.Kotonoha).Where(x => x.Parent is CodeBlockKoto && IsWithin(x, closures[0])).Select(static x => HirTables.Op(x));
         Assert.Equal([HirOp.Let, HirOp.Discard, HirOp.Error], statements);

@@ -651,7 +651,9 @@ public class ClosureEnvironmentOriginTest
 
     // The receiver's well-formedness (DECISIONS R4-M152, PLAN G270) gives only that each Origin stored in the environment outlives ρ: two
     // captured references of independent Origins are not equal (`swap` and `swap3` instantiate one `T`), and a Borrow of a Closure local
-    // stored into an environment binding does not outlive that binding's Origin. Each keeps its record on both pipelines.
+    // stored into an environment binding does not outlive that binding's Origin. Under `owner/Self` the receiver is the environment by
+    // value, with no ρ, so a captured reference returned as a static one stays Unproven (BU's own3, the guard's twin). Each keeps its
+    // record on both pipelines.
     [Theory]
     [InlineData(
         "func swap<T>(x: uniq/T, y: uniq/T) => ()\n" + IndependentCaptures + "    var c = func [var a, var b] () -> ()\n        swap(a@uniq, b@uniq)\n" +
@@ -665,6 +667,10 @@ public class ClosureEnvironmentOriginTest
         ExclusiveClause + "func use(p: ref/i32) -> i32\n    let a = p\n    var c = func [var a] () -> ()\n        let local: i32 = 1\n" +
             "        var l = local@ref\n        fu(l@uniq)\n        a = l\n    c()\n    return 0\n",
         "l\n")]
+    [InlineData(
+        Consume + "func use(p: ref/i32) -> i32\n    let a = p\n    let t = \"t\"\n    let c = func [a, t@move] () -> ref/i32\n        consumeText(t@move)\n" +
+            "        return a\n    _ = c@move()\n    return 0\n",
+        "a\n")]
     public void TheReceiversWellFormednessProvesOnlyItsStoredOrigins(string function, string at)
     {
         var source = function + "public func main() => ()\n";

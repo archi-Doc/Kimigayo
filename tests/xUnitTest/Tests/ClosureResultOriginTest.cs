@@ -11,6 +11,8 @@ namespace XunitTest;
 
 public class ClosureResultOriginTest
 {
+    private const string Inspect = "func inspect(value: ref/i32) => ()\n";
+
     private const string Captured = "let n = 7\nlet values: [1 of ref/i32] = [n@ref]\nlet f = func [values] () => values[0]\n";
 
     [Theory]
@@ -72,10 +74,12 @@ public class ClosureResultOriginTest
     }
 
     // SPEC 15.8.2 (DECISIONS R4-M152, the owner's 「2c-5 F1: (c')」): a Closure value returned from another Closure's call names that
-    // Closure's receiver atoms in its signature, which no representation maps to the receiver of the call that returned it, so a call of it
-    // outside that Closure's body is the located Unsupported_Kd on both pipelines (F1's boundary, until F1's representation unit): a
-    // nested bare entry (n1, both calls), under a Consuming maker, an inner `[n@ref]` of the maker's binding and a call through a
-    // captured maker. The maker's calls bind: n1's second `outer()` is the MIR's Loan conflict (MirBorrowsTest).
+    // Closure's atoms in its signature, its receiver's or an input's, which no representation maps to the receiver and arguments of the
+    // call that returned it, so a call of it outside that Closure's body is the located Unsupported_Kd on both pipelines (F1's boundary,
+    // until F1's representation unit): a nested bare entry (n1, both calls), under a Consuming maker, an inner `[n@ref]` of the maker's
+    // binding, a call through a captured maker, and a capture of the maker's input (BU's f1in, f1inbad and f1inok: a false
+    // UnprovenOriginRelation_Kd, the default's acceptance of a dangling read, and a valid twin). The maker's calls bind: n1's second
+    // `outer()` is the MIR's Loan conflict (MirBorrowsTest), and an inner Closure called in its maker's body is valid.
     [Theory]
     [InlineData(
         "var x: i32 = 1\nlet u = x@uniq\nvar outer = func [u] () => func [u] () => u@move\nlet a = outer()\nlet b = outer()\nlet pa = a@move()\n" +
@@ -87,14 +91,30 @@ public class ClosureResultOriginTest
         "a@move()")]
     [InlineData("let n: i32 = 4\nlet outer = func [n] () => func [n@ref] () => n\nlet a = outer()\nlet r = a()\nlet s = r@follow", "a()")]
     [InlineData("let n: i32 = 4\nlet outer = func [n] () => func [n@ref] () => n\nlet wrap = func [outer] () => outer()()\nlet r = wrap()", "outer()()")]
-    public void AReturnedClosuresCallOverItsMakersReceiverIsUnsupported(string source, string calls)
+    [InlineData("func h(p: ref/i32) -> ref/i32 during p\n    let outer = func (x: ref/i32) => func [x] () => x\n    let a = outer(p)\n    return a()\nlet k = 0", "a()")]
+    [InlineData(Inspect + "var local: i32 = 1\nlet outer = func (x: ref/i32) => func [x] () => x\nlet a = outer(local@ref)\nlet r = a()\nlocal = 2\ninspect(r)", "a()")]
+    [InlineData(Inspect + "var local: i32 = 1\nlet outer = func (x: ref/i32) => func [x] () => x\nlet a = outer(local@ref)\nlet r = a()\ninspect(r)\nlocal = 2", "a()")]
+    [InlineData(Inspect + "var local: i32 = 1\nlet outer = func (x: ref/i32) -> i32\n    let inner = func [x] () => x\n    return inner()@follow\ninspect(outer(local@ref)@ref)", "")]
+    public void AReturnedClosuresCallOverItsMakersAtomsIsUnsupported(string source, string calls)
     {
         foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
         {
             var records = ContextualCaptureTest.PublishedRecords(source, pipeline);
             Assert.All(records, static x => Assert.Equal(nameof(DiagnosticCode.Unsupported_Kd), x.Code));
-            Assert.Equal(calls.Split('|'), records.Select(x => source.Substring(x.Span.Start, x.Span.Length)));
+            Assert.Equal(calls.Split('|', StringSplitOptions.RemoveEmptyEntries), records.Select(x => source.Substring(x.Span.Start, x.Span.Length)));
         }
+    }
+
+    // SPEC 15.8.2, 13.5.6 (DECISIONS R4-M152): a Closure literal's own temporary is its ClosureValueSlot atom, the receiver Origin ρ of a
+    // call on the literal, so a Borrow of it kept past its statement is the Loan conflict at its storage end on the default pipeline too
+    // (its slot 0 read as the literal's parameter, which the old analysis rooted nowhere); used within its statement it is valid.
+    [Theory]
+    [InlineData(Inspect + "let n: i32 = 1\nlet r = (func [n] () => n)@ref\ninspect(r()@ref)", "ComparisonLoanConflict_Kd let r = (func [n] () => n)@ref")]
+    [InlineData(Inspect + "let n: i32 = 1\ninspect((func [n] () => n)@ref()@ref)", "")]
+    public void AClosureLiteralsTemporaryIsItsReceiverAtom(string source, string records)
+    {
+        var found = DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {source.Substring(x.Span!.Value.Start, x.Span.Value.Length)}");
+        Assert.Equal(records, string.Join("; ", found));
     }
 
     [Fact]

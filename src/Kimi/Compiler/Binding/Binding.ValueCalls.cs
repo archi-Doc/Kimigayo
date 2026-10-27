@@ -1,5 +1,17 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Value calls (SPEC 7.7, 8.10, 15.6.4, 15.8.2; DECISIONS R4-M148, R4-M152): a call of a callable value, a Function value or a Closure.
+// - Responsibility: the callee's acquisition by its receiver mode (AcquireValueCallee), each argument bound and adapted
+//   (AcquireValueCallArguments), the per-call inputs solved and substituted, and the result (ValueCallResult). P9: a Closure's result
+//   naming its call receiver ρ takes the receiver acquisition's Origin (ReceiverImage) and its call result atom the call's Unbound atom,
+//   images of the Closure binder's reserved atoms built only where the result names them (CallAtomsOf, PerCallImages); a result naming
+//   an atom of a Closure that does not enclose the call is F1's located Unsupported_Kd; R1's condition is the old analysis's gate fact.
+// - Inputs: the call, the callee's call signature (TryCallable) and its receiver mode. Outputs: the call's plan (CallPlan.SetValue) and
+//   its result Type, or a failure at the call.
+// - Invariants: a bound call's result names no input or reserved atom of its callee's binder (otherwise the call is Unsupported_Kd);
+//   the images are this call's alone.
+// - Prohibitions: no judgment of the callee's body; no second copy of the substitution (Binding.Storage's SubstituteStoredOrigins).
+
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -205,9 +217,10 @@ public sealed partial class Binding
     }
 
     // The atoms of Closures a value call's result names (SPEC 15.8.2; DECISIONS R4-M152): its callee Closure's call receiver ρ and call
-    // result, each of which the call substitutes, and F1's located limit, a receiver atom (ρ or an environment binding's) of another
-    // Closure that does not enclose the call: a Closure value returned from that Closure's call, whose signature names that Closure's
-    // atoms, which no representation maps to the receiver of the call that returned the value (the owner's 「2c-5 F1: (c')」).
+    // result, each of which the call substitutes, and F1's located limit, an atom of another Closure that does not enclose the call (its
+    // receiver's, an environment binding's or an input's): a Closure value returned from that Closure's call, whose signature names that
+    // Closure's atoms, which no representation maps to the receiver and arguments of the call that returned the value (the owner's
+    // 「2c-5 F1: (c')」).
     private static CallAtoms CallAtomsOf(BoundType type, FunctionKoto closure, Koto call)
     {
         if (!type.CarriesAnyOrigin)
@@ -242,17 +255,18 @@ public sealed partial class Binding
             atoms |= CallAtomsOf(origin.Operands[i], closure, call);
         }
 
-        if (origin.Kind != OriginKind.Projection || origin.Binder is not FunctionKoto { IsAnonymous: true } binder)
+        if (origin.Kind is not (OriginKind.Projection or OriginKind.Input or OriginKind.Parameter) ||
+            origin.Binder is not FunctionKoto { IsAnonymous: true } binder)
         {
             return atoms;
         }
 
         if (!ReferenceEquals(binder, closure))
         {
-            return ReceiverAtom(origin) && !IsWithin(call, binder) ? atoms | CallAtoms.Foreign : atoms;
+            return IsWithin(call, binder) ? atoms : atoms | CallAtoms.Foreign;
         }
 
-        return atoms | origin.Slot switch
+        return origin.Kind != OriginKind.Projection ? atoms : atoms | origin.Slot switch
         {
             ClosureValueSlot => CallAtoms.Receiver,
             CallResultSlot => CallAtoms.Result,
@@ -262,8 +276,8 @@ public sealed partial class Binding
 
     // SPEC 7.7.3, 15.8.2 (DECISIONS R4-M152): the Origin of a Closure call's receiver acquisition, which a result naming ρ takes: the
     // acquisition AcquireValueCallee publishes (a payload's borrow, TryPayloadReceiver; a stored exclusive callee's Reborrow, BU-27);
-    // through any other reference callee its referent's (ReferentOrigin: `ref/F`, and a Shared Closure read through `uniq/F`); the
-    // Closure literal itself keeps ρ, in its evaluating body the literal's own temporary; any other owned callee's Borrow (PlaceOrigin).
+    // through any other reference callee its referent's (ReferentOrigin: `ref/F`, and a Shared Closure read through `uniq/F`); any
+    // owned callee's Borrow (PlaceOrigin), for the Closure literal itself its own temporary, which is ρ's atom in its evaluating body.
     private BoundOrigin ReceiverImage(InvocationKoto call, FunctionKoto closure, in BoundArgumentOperation acquisition)
     {
         if (acquisition.AdaptedType?.Origin is { } adapted)
@@ -277,8 +291,7 @@ public sealed partial class Binding
             return referent;
         }
 
-        return ReferenceEquals(KotoHelper.UnwrapParentheses(call.Method), closure)
-            ? this.OriginAtom(closure, OriginKind.Projection, ClosureValueSlot) : this.PlaceOrigin(call.Method);
+        return this.PlaceOrigin(call.Method);
     }
 
     private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver) => this.TryCallable(type, scope, out signature, out receiver, out _);
