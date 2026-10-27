@@ -9,6 +9,18 @@ namespace Kimi.Compiler.Backend;
 // DECISIONS R5-M61, R5-M67, R5-M70) and the targets of the shim items.
 internal sealed partial class InstanceCollector
 {
+    /// <summary>Gets a Type of the signature a property-witness item's key fixes (<see cref="StorageSignature(BoundType, BindingSymbol?,
+    /// PropertyWitnessKind, int, out int)"/>), over its representative Self: the one its shim's function takes (C3c).</summary>
+    /// <param name="item">The PropertyWitness item.</param>
+    /// <param name="slot">The parameter slot, or -1 for the result.</param>
+    /// <param name="count">The number of parameter slots.</param>
+    /// <returns>The erased Type; null where the representative Self stores no such Field.</returns>
+    internal BoundType? StorageSignature(int item, int slot, out int count)
+    {
+        var entry = this.Set.Items[item];
+        return this.StorageSignature(entry.RepresentativeType!, entry.Key.Symbol, (PropertyWitnessKind)entry.Key.Variant, slot, out count);
+    }
+
     // K 4.5 rows 2, 3, 5, 6, 12 and 13: what a requirement runs in the item's instance, TyCtxt.Witness of it with the Contract reference its
     // call recorded and the call's closed substitution (X16): a requirement call's composed one, a compiler function's call on a Self or a
     // requirement Item's call. A Body's function item, the implementation its instance selects (SPEC 8.13.3; -1 without a body); a Builtin's
@@ -59,36 +71,51 @@ internal sealed partial class InstanceCollector
         return this.Requirement(program, item, subject, requirement, this.types.Witness(requirement, contract, call));
     }
 
-    // F 4.5: C3c writes a property-witness shim from its key alone, since Binding admits a standard witness only with a ref/Self getter or a
-    // uniq/Self setter, a result F or ref/F and a setter's input F (Binding.PropertyMatching.cs:102-117), F the Field's Type in Self; the
-    // requirement's signature in the call's instance (TyCtxt.Signature) is the key's, Type for Type up to Origins (Erase).
-    private bool Agrees(BindingSymbol requirement, in RequirementTarget target)
+    // F 4.5, X14: the signature a property-witness key fixes, the one statement of it, which K6's agreement (Agrees) and the shim's function
+    // (ModuleCodegen.Shim) read: Binding admits a standard witness only with a ref/Self getter or a uniq/Self setter, a result F or ref/F and
+    // a setter's input F (Binding.PropertyMatching.cs:102-117), F the Field's Type in Self (AdtDef.FindField), and SPEC 11.3.1 puts the
+    // receiver first: slot 0 the receiver, a Set's slot 1 its input, the result (-1) F (Copy), ref/F (Borrow) or Unit (Set); each erased.
+    // Null where Self stores no such Field.
+    private BoundType? StorageSignature(BoundType self, BindingSymbol? field, PropertyWitnessKind access, int slot, out int count)
     {
-        var subst = target.Subst!;
-        var self = subst.Self!;
-        if (!AdtDef.FindField(self, target.Target, out var field, out _))
+        var set = access == PropertyWitnessKind.StorageSet;
+        count = set ? 2 : 1;
+        if (!AdtDef.FindField(self, field, out var stored, out _))
         {
-            return false;
+            return null;
         }
 
-        var set = target.Access == PropertyWitnessKind.StorageSet;
-        var receiver = this.types.Reference(set ? SemanticsKind.Uniq : SemanticsKind.Ref, self);
-        var result = target.Access switch
+        var type = slot switch
         {
-            PropertyWitnessKind.StorageCopy => field!,
-            PropertyWitnessKind.StorageBorrow => this.types.Reference(SemanticsKind.Ref, field!),
-            PropertyWitnessKind.StorageSet => BoundType.Unit,
-            _ => throw new InvalidOperationException($"A Storage witness has the operation {target.Access}."),
+            0 => this.types.Reference(set ? SemanticsKind.Uniq : SemanticsKind.Ref, self),
+            1 when set => stored!,
+            -1 => access switch
+            {
+                PropertyWitnessKind.StorageCopy => stored!,
+                PropertyWitnessKind.StorageBorrow => this.types.Reference(SemanticsKind.Ref, stored!),
+                PropertyWitnessKind.StorageSet => BoundType.Unit,
+                _ => throw new InvalidOperationException($"A Storage witness has the operation {access}."),
+            },
+            _ => throw new InvalidOperationException($"A {access} witness has no slot {slot}."),
         };
-        var agrees = Same(TyCtxt.Signature(requirement, subst, -1, out var count), result) && count == (set ? 2 : 1);
+        return this.types.Erase(type);
+    }
+
+    // F 4.5: C3c writes a property-witness shim from its key alone (StorageSignature), so the requirement's signature in the call's instance
+    // (TyCtxt.Signature) must be the key's, Type for Type up to Origins (Erase).
+    private bool Agrees(BindingSymbol requirement, in RequirementTarget target)
+    {
+        var (subst, field, access) = (target.Subst!, target.Target, target.Access);
+        var agrees = Same(TyCtxt.Signature(requirement, subst, -1, out var count), this.StorageSignature(subst.Self!, field, access, -1, out var slots)) &&
+            count == slots;
         for (var slot = 0; agrees && slot < count; slot++)
         {
-            agrees = Same(TyCtxt.Signature(requirement, subst, slot, out _), slot == requirement.ReceiverIndex ? receiver : field!);
+            agrees = Same(TyCtxt.Signature(requirement, subst, slot, out _), this.StorageSignature(subst.Self!, field, access, slot, out _));
         }
 
         return agrees;
 
-        bool Same(BoundType? declared, BoundType expected) => declared is not null && ReferenceEquals(this.types.Erase(declared), this.types.Erase(expected));
+        bool Same(BoundType? declared, BoundType? key) => declared is not null && key is not null && ReferenceEquals(this.types.Erase(declared), key);
     }
 
     // K 4.3: a shim's targets, at its default site: a comparison shim's are its leaf witnesses (SPEC 13.4) by TyCtxt.Comparison of its

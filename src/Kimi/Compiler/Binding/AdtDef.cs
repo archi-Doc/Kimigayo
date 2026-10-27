@@ -2,7 +2,8 @@
 
 // Owns the stored shape of one struct or enum declaration.
 // Input: its bound declaration. Output: ordered fields, cases, destructor, inline storage types, whether it has C layout and whether
-// it lies on an inline storage cycle; a struct's dispatch shape (VTableDef).
+// it lies on an inline storage cycle; a struct's dispatch shape (VTableDef); a stored Field's owner in an instance, its layer and own
+// index (FieldOwner, the one walk by Field), and its storage position (FindField).
 // Binding fills the shape once per pass before bodies; field and case ordinals stay consistent.
 // Must not make MIR or Backend rediscover storage from declaration syntax.
 
@@ -67,25 +68,40 @@ internal sealed class AdtDef
     internal static int StorageCount(BoundType type)
         => Count(type) + (Base(type) is { } parent ? StorageCount(parent) : 0);
 
-    internal static bool FindField(BoundType type, BindingSymbol? symbol, out BoundType? fieldType, out int position)
+    // SPEC 6.2.2, 11.2.2: the Field owner of a struct instance's stored Field: the layer that stores it (the instance itself or the base
+    // instance Depth Base steps up) and the Field's own index among that layer's stored Fields; null when no layer stores it. The one walk
+    // over a struct's layers by Field: FindField's storage position and the MIR builder's Base steps derive from it.
+    internal static (BoundType Layer, int Depth, int Index)? FieldOwner(BoundType type, BindingSymbol? symbol)
     {
-        for (var layer = type; layer is not null; layer = Base(layer))
+        var depth = 0;
+        for (var layer = type; layer is not null; layer = Base(layer), depth++)
         {
             var fields = Struct(layer)?.Fields;
             for (var i = 0; fields is not null && i < fields.Length; i++)
             {
                 if (ReferenceEquals(fields[i].BoundSymbol, symbol))
                 {
-                    position = i + (Base(layer) is { } parent ? StorageCount(parent) : 0);
-                    fieldType = FieldType(layer, i);
-                    return fieldType is not null;
+                    return (layer, depth, i);
                 }
             }
         }
 
-        position = -1;
-        fieldType = null;
-        return false;
+        return null;
+    }
+
+    // A Field's storage position, its owning layer's own index after its bases' Fields (base first), and its stored Type in the instance:
+    // false where no layer stores it (position -1) or Binding formed no stored Type for it.
+    internal static bool FindField(BoundType type, BindingSymbol? symbol, out BoundType? fieldType, out int position)
+    {
+        if (FieldOwner(type, symbol) is not { } owner)
+        {
+            (fieldType, position) = (null, -1);
+            return false;
+        }
+
+        position = owner.Index + (Base(owner.Layer) is { } parent ? StorageCount(parent) : 0);
+        fieldType = FieldType(owner.Layer, owner.Index);
+        return fieldType is not null;
     }
 
     internal static bool HasDestructorOnPath(BoundType type, BindingSymbol? field)

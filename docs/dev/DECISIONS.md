@@ -11445,3 +11445,65 @@ structure is recorded here by the unit that first implements it.
   - Unverified: a test build with a 128-bit check (its runtime's text is unchanged, H); O2 timing (no kernel, identical code).
   - Outside scope (H, Binding): check refuses `p + n` and `p - n` for `p: ref/raw/i32` with TypeMismatch_Kd, though SPEC 13.3.4 follows
     safe layers to the terminal before the raw-pointer route; perhaps a conservative Language error for a valid form.
+- **R5-M141 The property-witness Storage shim in MIR code generation (C3c)** (2026-10-27, C lane; plan C3c, package C 3.12, F package
+  4.5, K package 4.3, 4.7 and 4.9, PD3, PD21; SPEC 11.3.1, 11.9.2, 13.7.1, 16.2, 22.5.1; the planning session's go and rulings Q1-Q7 on
+  C3c's design, `c3c-design.md` and `c3c-go.md`; under R5-M18 (G:C-drop), R5-M44, R5-M67, R5-M126, R5-M127 and R5-M130)
+  - Form (rulings Q1 (a), Q4 (a), Q5): a PropertyWitness item (R5-M67's key: the Field, the erased Self, the `PropertyWitnessKind`) is one
+    function, `__kimi_witness<item>`, under its key's signature and the internal convention, caller-location as every shim (R5-M126's
+    one ABI rule), `ModuleCodegen.Shim`'s PropertyWitness row, written by `FunctionCodegen.Shims`' `Storage`, with no MIR body (PD3). A
+    Requirement call reaches it through `FunctionCodegen.Witness`, the one target rule a requirement Item's Value call and its adapter
+    entry share with it (C8f's, C9b's); no form names a property requirement as an Item (`T.count` is UnresolvedBinding_Kd), and the
+    library declares no property requirement, so K rows 2, 5, 6, 12 and 13 do not reach one.
+  - One rule over the three rows: the Field's address is the receiver (input 0) plus its offset in the layer that stores it, that layer's
+    `Layout.Of` record (the complete base is a prefix, X1); a Set first destroys the value there through the item's target, the Field
+    Type's glue (when `MirTypes.MayNeedDrop`, the collector's admission rule), at the location the function received, then puts its
+    input (an OwnedSlot input from its address; a zero-sized one has no parameter); the row gives only its result's form: the value
+    (Copy; a result slot by `Put`, a bool narrowed), the address (Borrow) or none (Set).
+  - The key's signature (ruling Q2 (a)) is stated once, `InstanceCollector.StorageSignature`: slot 0 `ref/Self` (Copy, Borrow) or
+    `uniq/Self` (Set), a Set's slot 1 `F`, the result `F`, `ref/F` or Unit, each erased, `F` the Field's Type in Self (Binding admits a
+    standard witness only so, `Binding.PropertyMatching.cs:102-117`; SPEC 11.3.1 puts the receiver first). K6's agreement (`Agrees`, at
+    each requesting call, `InternalInvariant_Kd` otherwise) compares the requirement's instance signature with it, and code generation
+    reads its item form beside `TypeOf`. Departure, approved by the owner (the owner's R5-M142): K package 4.3's "CheckedSet API for
+    codegen" gains this query.
+  - The layer (ruling Q3 (a)): `AdtDef.FieldOwner(type, field)`, the Field owner `(Layer, Depth, Index)?`, is the one walk over a
+    struct's layers by Field; `FindField`'s storage position and the MIR builder's Field Place (its Base steps) derive from it
+    (restructured first, `6b2883987`, folded in `dce01bbfc`; BU's review ACCEPT). The builder's inverse walk of the position
+    (`MirBuilder.Places.cs`' `Stored`; `MirBuilder.Constructors.cs` only computed a position for it) answered the same question, so it
+    is replaced and deleted on the planning session's instruction (AGENTS: a new concept replaces every existing use in the same unit),
+    which supersedes the go's "no W1 file"; R4 reviewed that hunk (ACCEPT) and the MIR goldens stayed byte-identical.
+    `HasDestructorOnPath` answers another question (the layers down to a member's declaring scope, computed Properties included, for
+    the old analysis) and stays.
+  - Records (K 4.7, 4.9; BU-38): the collector records nothing new: Storage is never Refused (OCC-X refuses accessor-call witnesses
+    only), a Self's storage Limit is TyCtxt's earlier row, the Field's layout is the Self's admission verdict (R5-M44), and no capability
+    row applies (no operation; C8f's R-2 has nothing to read). Code generation records only broken contracts (`InternalInvariant_Kd` at
+    the item's site): a Field the representative Self does not store, a layout not Ok, a droppable Field without its target.
+  - Deviation (R5-M6 (d), an intended change; SPEC 22.5.1, 13.7.1): a Set's glue receives the invoking assignment's location, as a
+    direct `s.item = v` does, where the old bridge passes the contract's `set` declaration. It is not observable: a destructor's own
+    Abort reports its own location under both generators at O0 and O2 (probe `r5\c3c\cli\dev`: `Main.kimi:6:13` four times), and a
+    glue reports the location it receives only when the runtime's release itself fails (`__kimi_free`'s HeapFree), which no program
+    can cause; it also reaches a Dictionary glue's caller-location `DictionaryStorage.clearEntries` and
+    `Storage.destroyDictionaryEntries`, whose loops cannot Abort, and no user destructor (not caller-location). IR deviations only
+    (PD9): the names; two location parameters Copy and Borrow do not read; one copy where the old copies through a temporary; a Set
+    reads its input's slot after the glue; a zero-sized Field's address is computed though unread (O2 removes it).
+  - Correction (not a design change): package C 3.12's "Fixture families `Counted*` and `Own*`" names no property witness; C3c's
+    families are `PropertyWitness*` (27 fixtures, 21 written first under sel) and milestone 36, which declares the one property
+    requirement of the milestones, corpus kernels, workloads and library.
+  - Facts: the sel ledger loses `PropertyWitnessEmissionTest`'s 23 rows (146 → 123 test rows; all C-frame, all C3c's alone in the
+    census, taken again on each merged dev); its pending-ledger filing row is C-drop's; milestone 36 runs under sel.
+    `FunctionCodegenTest`'s PropertyWitness rows (`EachPropertyWitnessIsOneCallerLocationFunction`,
+    `AnInheritedWitnessReadsItsLayersOffset`, the M9 and I1 rows) fail before the behavior commit as located records.
+    `AnUncoveredFormIsOneLocatedUnsupportedRecord` keeps its purpose: its property-witness row moves to a form still unwritten, a
+    requirement Item's Value call whose witness has no body (G157 (10)'s `reserve`, one record at `reserve(w, 4)`).
+  - Size (bp1, its fold and the behavior): code +271/-106 (Codegen +173/-38, the collector +48/-21, AdtDef +36/-20, the MIR builder
+    +14/-27); tests +123/-7; the ledger -23 test rows and one filing row.
+  - Deleted: the two located `Unsupported_Kd` records (the requesting call's and the item's) and the C3c labels; `Agrees`' inline
+    Types; `FindField`'s own loop; `MirBuilder.Stored`'s position walk. Superseded labels: R5-M65's PropertyWitness arm, R5-M89's
+    "property witnesses (C3c)", and R5-M93's, R5-M102's and R5-M126's "a property witness C3c's located `Unsupported_Kd`".
+  - Speed: one function per key; its signature kept while it matches; no new pass over MIR; a warm Write allocates nothing
+    (`WarmGenerationAllocatesNothing`'s witness row, the ledger's two `…AreReused` Allocation rows under sel).
+  - Rejected: one function per row (three copies of the address and the return); code generation walking `AdtDef.Base` for the layer
+    (a second walk); `ModuleCodegen` stating the key's Types (a second statement beside K6's assertion); location parameters on a Set
+    only (a per-kind ABI mode); a Set's glue at the item's first-admission site (wrong for every other caller) or at the Field's
+    declaration (a syntax read); a MIR body for the bridge (PD3); the requirement in the key, so `Declared` gives the signature (K's
+    key; one item per requirement, not per key, X14); flat-position offsets in `Layout` (a second offset table); `TyCtxt` stating the
+    key's signature (a hold file, not the key's owner); a Backend table beside `BuiltinArithmetic` (a new component).
