@@ -7,11 +7,11 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 namespace Kimi.Compiler.Backend;
 
 // The operator rows (R5 plan C1a, C1b, C8a, C8c, package C 3.2 I5 and I9; DECISIONS R5-M76, R5-M80, R5-M92, R5-M118): a BinaryOp or UnaryOp
-// into its Place through LlvmScalarText (P4a), by one table keyed by the operator and its left operand's Type class; a string comparison
-// through its row's routine (FunctionCodegen.Strings). A Proven operation (MirRvalue.Proven, the builder's IMPL 21.3.3 fact) writes no check;
-// any other check Aborts at the statement's location text (SPEC 22.5.1-22.5.2). A checked 128-bit operation requests its overflow
-// intrinsics' declarations, which the frame's fixed set omits (ModuleCodegen.Needs.WideOverflow); an operand Type with no entry is one
-// located Unsupported_Kd (DECISIONS R5-M143).
+// into its Place through LlvmScalarText (P4a), by one table keyed by the operator and its left operand's terminal Type class, each operand
+// read at its terminal Place through its safe value-reference layers (SPEC 13.4); a string comparison through its row's routine
+// (FunctionCodegen.Strings). A Proven operation (MirRvalue.Proven, the builder's IMPL 21.3.3 fact) writes no check; any other check Aborts
+// at the statement's location text (SPEC 22.5.1-22.5.2). A checked 128-bit operation requests its overflow intrinsics' declarations, which
+// the frame's fixed set omits (ModuleCodegen.Needs.WideOverflow); an operator with no entry is a broken contract (DECISIONS R5-M143).
 internal sealed partial class FunctionCodegen
 {
     // The string column of the table (Column).
@@ -104,18 +104,19 @@ internal sealed partial class FunctionCodegen
     // wrapping integer's and a floating-point Type's own.
     private static ReadOnlySpan<byte> Unchecked => [2, 3, 2, 3, 4, 5, StringColumn];
 
-    // The entry an operand Type takes (SPEC 3.1, 3.1.1, 13.4, 5.1): an integer's or a wrapping integer's by its signedness, a
-    // floating-point Type's, bool's and char's the unsigned integer's, a raw pointer's; a string's, below its safe value-reference layers
-    // (Terminal: SPEC 13.4 compares the terminal, which MIR inspects through shared borrows, DECISIONS R5-M75) or a string constant's; -1 for
-    // a Type with no operator.
+    // The entry an operand Type takes, by its terminal below its safe value-reference layers (Terminal; SPEC 13.4: a comparison operand
+    // denotes its terminal Place, and MIR leaves the layers on an operand whose terminal it inspects in place, a string's or a raw pointer's;
+    // DECISIONS R5-M75, R5-M143) (SPEC 3.1, 3.1.1, 13.4, 5.1): an integer's or a wrapping integer's by its signedness, a floating-point
+    // Type's, bool's and char's the unsigned integer's, a raw pointer's, a string's; -1 for a Type with no operator.
     private static int Column(BoundType type)
     {
+        type = Terminal(type, out _, out _)!;
         if (type.Semantics == SemanticsKind.Raw)
         {
             return 5;
         }
 
-        if (ReferenceEquals(Terminal(type, out _, out _), BoundType.String))
+        if (ReferenceEquals(type, BoundType.String))
         {
             return StringColumn;
         }
@@ -148,9 +149,9 @@ internal sealed partial class FunctionCodegen
         return complete ? rows : throw new InvalidOperationException("The operator table needs a row per MIR operator and an entry per column.");
     }
 
-    // An operator into its Place: its row and the entry for the left operand's Type (its column, decided before any operand is read), its
-    // operands in their computation representation, a raw pointer's displacement (Displace, which stores it) or the operation (Apply), and
-    // the result stored in the Place's storage representation (bool widened).
+    // An operator into its Place: its row and the entry for the left operand's terminal Type (its column, decided before any operand is
+    // read), its operands each read through its layers in their computation representation (Compute), a raw pointer's displacement
+    // (Displace, which stores it) or the operation (Apply), and the result stored in the Place's storage representation (bool widened).
     private void Operator(in MirStatement statement)
     {
         var rvalue = statement.Rvalue;
@@ -203,9 +204,10 @@ internal sealed partial class FunctionCodegen
         var check = proven ? Check.None : entry.Check;
         if (entry.Operator is null)
         {
-            // An operand Type with no entry, which an accepted program still reaches: a raw pointer compared through a ref layer, whose
-            // Type is the layer's (column -1), not written yet (DECISIONS R5-M143).
-            this.Report(DiagnosticCode.Unsupported_Kd, source);
+            // No entry: an operator Binding admits on no operand of this terminal Type (a raw pointer's ordering, product, negation or
+            // bitwise operator, a floating-point remainder, bitwise or shift operator, a Type without a column), so no accepted program
+            // reaches it: a broken contract (DECISIONS R5-M143).
+            this.Report(DiagnosticCode.InternalInvariant_Kd, source);
             return null;
         }
 
@@ -295,9 +297,10 @@ internal sealed partial class FunctionCodegen
         this.Store(statement, result);
     }
 
-    // A covered operand's value in its computation representation (I4: a local loaded, bool narrowed; a constant its literal), its Type
-    // and that Type's representation in the item's instance; false for a form not covered yet, true without a representation after a
-    // broken contract's record.
+    // A covered operand's value in its computation representation (I4: a local loaded, bool narrowed; a constant its literal), read at its
+    // terminal Place through its safe value-reference layers (Referent; SPEC 13.4: only a comparison's operand has any, MIR's contract), its
+    // terminal Type and that Type's representation in the item's instance; false for a form not covered yet, true without a representation
+    // after a broken contract's record.
     private bool Compute(in MirOperand operand, out Computed computed)
     {
         computed = default;
@@ -306,20 +309,26 @@ internal sealed partial class FunctionCodegen
             return false;
         }
 
-        if (this.LoweringOf(operand) is { } lowering)
+        if (this.Referent(operand, value, default, out var terminal, out var references) is not { } place)
         {
+            return true; // A broken contract, recorded.
+        }
+
+        if ((references == 0 ? this.LoweringOf(operand) : this.Laid(terminal)) is { } lowering)
+        {
+            var read = references == 0 || lowering.Layout.Size == 0 ? place : this.LoadAt(place, lowering.Layout);
             var constant = operand.Kind == MirOperandKind.Const;
-            computed = new(constant || lowering.Layout.Size == 0 ? value : this.Narrow(lowering, value), this.InstanceType(operand)!, lowering);
+            computed = new(constant || lowering.Layout.Size == 0 ? read : this.Narrow(lowering, read), terminal!, lowering);
         }
 
         return true;
     }
 
-    // An operand of an operator: its value, closed Type and representation.
+    // An operand of an operator: its value, closed terminal Type and that Type's representation.
     private readonly record struct Computed(Value Value, BoundType Type, ValueLowering? Lowering);
 
-    // An entry of the table: the LLVM operator (null: no row yet), the check, a unary operator's fixed operand and a raw pointer
-    // displacement's sign.
+    // An entry of the table: the LLVM operator (null: none, an operator Binding admits on no operand of the column's Types), the check, a
+    // unary operator's fixed operand and a raw pointer displacement's sign.
     private readonly record struct Entry(string? Operator, Check Check, sbyte Displacement, string? Left = null, string? Right = null);
 
     // A row of the table: the entries by column, the result on equal operands and a comparison's string routine (the string column's).

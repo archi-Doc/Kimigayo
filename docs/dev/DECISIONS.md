@@ -9231,7 +9231,7 @@ structure is recorded here by the unit that first implements it.
   - Rows not written yet (located `Unsupported_Kd`, PD11): floating-point operands (C1b, with Float constants), raw-pointer equality
     and displacement (C8a, whose raw memory rows bring the stride addressing; no raw pointer reaches a generated program before
     them), string borrows (C8c), and checked 128-bit add, subtract, multiply and negate, whose `WideOverflowDeclarations` are
-    `ModuleCodegen`'s module-level request (open issue; `ModuleCodegen.cs` was held by K11). 128-bit division is the collector's
+    `ModuleCodegen`'s module-level request (open issue; `ModuleCodegen.cs` was held by K11; superseded by R5-M143). 128-bit division is the collector's
     capability gap and never reaches codegen.
   - Rejected: arms per operator (the old `BodyLowering.Graph` shape); deriving the check from (operator, signedness, wrapping) in
     code beside the table (a second copy of SPEC 13.3.1's rule); a Proven test in codegen (it would re-derive the builder's fact);
@@ -10708,7 +10708,8 @@ structure is recorded here by the unit that first implements it.
     two records, one site in two instances one. A function item's formation (`let operation = T.divided`) is itself a requesting site, so
     the Item form records at the formation and at the call (SPEC 23.1.2 leaves a dependent failure's report implementation-defined; a
     test pins both). Code generation decides no capability: a gap reaching it is a broken contract (R5-M37's rule). Checked 128-bit
-    addition, subtraction, multiplication and negation in a shim keep G157 (14)'s located record (ruling Q8 (a)).
+    addition, subtraction, multiplication and negation in a shim keep G157 (14)'s located record (ruling Q8 (a); superseded by
+    R5-M143).
   - `TyCtxt.Contract(requirement)` (ruling Q6 (a), BU's review): SPEC 8.6.1's declaring Contract, also of a built-in target, which keeps its
     requirement's scope; a symbol outside a Contract is a broken contract (`InvalidOperationException`). The collector's two
     `Scope.Owner` reads go through it: G157 (16)'s first half closes.
@@ -11338,42 +11339,57 @@ structure is recorded here by the unit that first implements it.
     old-value destruction, an A2 Drop like every other, runs in cleanup (the old generator: body; SPEC 13.7.1 calls it cleanup), and a
     static initializer runs in initialization, phase 3, which the old generator never writes (PD22, PLAN10 §5.6.7). PD22's "avoids
     per-pipeline kimi test failure output" is not met for these two labels. Both leave the list.
-- **R5-M143 Checked 128-bit arithmetic in MIR code generation (wide)** (2026-10-27, C lane; PLAN G157 (14); package C 3.2 and 3.3, PD2,
-  PD9, PD11; SPEC 13.3.1, 13.3.3, 22.5.1-22.5.2, IMPL 21.3.3; the planning session's go and rulings Q1-Q6 on `wide-design.md`; under
-  R5-M18, R5-M76, R5-M87 and R5-M126; supersedes R5-M76's open issue "checked 128-bit add, subtract, multiply and negate, whose
-  `WideOverflowDeclarations` are `ModuleCodegen`'s module-level request" and R5-M126's "keep G157 (14)'s located record (ruling Q8 (a))")
-  - Rule (rulings Q1, Q2): the operator table's integer entries are width-generic overflow stems, so a checked i128 or u128 add, subtract,
-    multiply or negate (increment, decrement, compound and element updates, and an arithmetic shim, which applies the same row) is written
-    by `Apply` as at any width. Its intrinsics' declarations, `LlvmModuleText.WideOverflowDeclarations` (the old generator's text, PD2), are
-    one more frame part, `ModuleCodegen.Needs.WideOverflow`, which `Apply` requests where it writes a 128-bit overflow check (the one site of
-    the inline operators and C8f's shims) and the frame writes after the fixed declarations, the old generator's place, so a module's frame
-    text equals the old generator's. No runtime routine (llc expands the multiply inline), no IntrinsicRows, BuiltinArithmetic or
-    vocabulary row; `Needs` is no closed vocabulary.
-  - The remaining record (ruling Q3, by reachability): `Apply`'s record now covers only an operand Type with no entry. An accepted program
-    reaches it: a raw pointer compared through a ref layer (`func same(p: ref/raw/i32, q: raw/i32) -> bool => p == q`, whose left operand's
-    Type is the layer's, column -1; the old generator fails it as GenerationFailed_Kd, "Inconsistent scalar operator or operand Types"). So
-    it stays one located `Unsupported_Kd`, pinned by the coverage theory's row of that form.
+- **R5-M143 Checked 128-bit arithmetic and layered comparison operands in MIR code generation (wide)** (2026-10-27, C lane; PLAN G157
+  (14); package C 3.2 and 3.3, PD2, PD9, PD11; SPEC 13.3.1, 13.3.3, 13.4, 3.4.3, 5.1, 22.5.1-22.5.2, IMPL 21.3.3; the planning session's
+  go and rulings Q1-Q6 on `wide-design.md` and its rulings on implementation review 1 (B1, B2); under R5-M18, R5-M75, R5-M76, R5-M87,
+  R5-M92 and R5-M126; supersedes R5-M76's open issue "checked 128-bit add, subtract, multiply and negate, whose `WideOverflowDeclarations`
+  are `ModuleCodegen`'s module-level request" and R5-M126's "keep G157 (14)'s located record (ruling Q8 (a))")
+  - 128-bit rule (rulings Q1, Q2): the operator table's integer entries are width-generic overflow stems, so a checked i128 or u128 add,
+    subtract, multiply or negate (increment, decrement, compound and element updates, and an arithmetic shim, which applies the same row)
+    is written by `Apply` as at any width. Its intrinsics' declarations, `LlvmModuleText.WideOverflowDeclarations` (the old generator's
+    text, PD2), are one more frame part, `ModuleCodegen.Needs.WideOverflow`, which `Apply` requests where it writes a 128-bit overflow check
+    (the one site of the inline operators and C8f's shims) and the frame writes after the fixed declarations, the old generator's place,
+    so a module's frame text equals the old generator's. No runtime routine (llc expands the multiply inline), no IntrinsicRows,
+    BuiltinArithmetic or vocabulary row; `Needs` is no closed vocabulary, but its `byte` is now full: the next frame part widens it.
+  - Comparison rule (review B2, the cause of B1 and B2): SPEC 13.4 says an operand of safe value-reference layers (`ref`, `uniq`,
+    qualifying pair layers) denotes its terminal Place, and the terminal Types' comparison applies; MIR keeps those layers on an operand
+    whose terminal it inspects in place, a string's or a raw pointer's (`MirValidator.Types`: a comparison's operands agree below their
+    layers), and reads a scalar terminal itself (`copy (*_1)`). Code generation followed them for a string only (`Column` by `Terminal`,
+    `Bytes`), so `raw/i32 != ref/raw/i32` compared the reference's own address, a wrong result under sel since C8a (R5-M92), and the mirror
+    order was a located `Unsupported_Kd`. Now every operator operand is read at its terminal Place: `Column` takes the left operand's
+    terminal, and `Compute` reads each operand through its layers by `Referent`, the one walk (the referent of the outer ref or uniq layer
+    through the pointer each further one stores) that a string's `Bytes` takes too, so the string path is an instance of the rule. Only a
+    comparison's operand has layers (MIR's contract), so arithmetic and conversions read as before. The old generator refuses both raw
+    orders with GenerationFailed_Kd ("Inconsistent scalar operator or operand Types"), a support limit for STATUS.
+  - The remaining record (ruling Q3, review B1): with the rule, `Apply`'s `entry.Operator is null` is reached only by an operator Binding
+    admits on no operand of that terminal Type (a raw pointer's `<`, `*`, unary `-` or `&`; a floating-point `%`, `&`, `<<` or `not`; a
+    Type without a column), which check refuses (OperatorNotDefined_Kd, NonIntegerOperand_Kd, TypeMismatch_Kd), so it is a broken
+    contract: `InternalInvariant_Kd` at the operator (G157 (38)'s pattern). No accepted program in the census classes reaches it.
   - Tests (rulings Q4, Q5): `CheckedArithmeticAbortsAtItsOperator` gains six 128-bit rows (sadd, uadd, usub, smul, umul and negation's
-    ssub) and asserts the 128-bit declarations exactly where a 128-bit check is written; the six fail before. The shim form is the two
-    flipped `BuiltinArithmeticContractTest` rows. The coverage pair (K11's Library row and its Application counterpart) and
-    `ARefusalLeavesTheOtherBodiesGapsRecorded` move from i128 `a + a` to the raw-pointer comparison above, still unwritten under sel. The
-    pending ledger loses 26 test rows (C-frame 22, C-aggregate 4), the census's count; 25 new sel fixtures in the `Wide*`, `ElementUpdate*`,
-    `BuiltinArithmetic*`, `IntegerRange*` and `PrimitiveInteger*` families run natively with the old generator's outcomes.
-  - Size (numstat): code +30 / -12 (`FunctionCodegen.Arithmetic` +11 / -3: the request and the record's comment; `ModuleCodegen.Frame`
-    +19 / -9: the row, the conditional write and the header reflowed); tests +17 / -7; ledger -26 rows.
-  - Deleted: the 128-bit clause of `Apply`'s record and its located record, inline and in a shim; the coverage theory's "leave checked
-    128-bit arithmetic to ModuleCodegen's wide overflow declarations".
-  - Speed: one flag request per 128-bit check, no pass over MIR or output, constant text; warm 0 B
+    ssub) and asserts the 128-bit declarations exactly where a 128-bit check is written. `AComparisonReadsEachOperandAtItsTerminal` counts
+    the loads to each compared raw pointer (a ref layer left, right, both, a uniq one borrowed); `LayeredComparisonsRun` writes the
+    `RawComparisonLayers` fixture under MIR code generation in every run: both raw orders and `ref/i32` against `i32`, `==` and `!=`. All of
+    these fail before. The shim form is the two flipped `BuiltinArithmeticContractTest` rows. The coverage theory's `ref/raw/i32 == raw/i32`
+    row is written; K11's Application counterpart and `ARefusalLeavesTheOtherBodiesGapsRecorded` move to G157 (10)'s reserve call, still
+    unwritten under sel (`Reserve`). The pending ledger loses 26 test rows (C-frame 22, C-aggregate 4), the census's count.
+  - Size (numstat against 838e11b43, both commits): code +89 / -42 (`FunctionCodegen.Arithmetic` +39 / -22, `FunctionCodegen.Strings` +31 / -11,
+    `ModuleCodegen.Frame` +19 / -9, comments included); tests +55 / -13; ledger -26 rows.
+  - Deleted: the 128-bit clause of `Apply`'s record and its located record, inline and in a shim; `Column`'s string-only walk and `Bytes`'
+    own copy of it; the coverage theory's "leave checked 128-bit arithmetic to ModuleCodegen's wide overflow declarations".
+  - Speed: one flag request per 128-bit check and one pointer load per followed layer, no pass over MIR or output; warm 0 B
     (`WideIntegerEmissionTest.WarmWidePlansAndFormattingAllocateNothing` passes under sel). O2 (information; no corpus kernel or milestone
-    reaches a 128-bit check, so R5-M8 and R5-M135 are not triggered): both generators' optimized IR of checked i128 add, i128 and u128
-    multiply and i128 negation is identical but for names, 13, 59 and 33 instructions for sadd, smul and umul in both; HashChecked (u128
-    multiply in its loop) prints the same at O2 under both, its check folded in both.
+    reaches a 128-bit check or a layered comparison, so R5-M8 and R5-M135 are not triggered): both generators' optimized IR of checked i128
+    add, i128 and u128 multiply and i128 negation is identical but for names, 13, 59 and 33 instructions for sadd, smul and umul in both;
+    HashChecked (u128 multiply in its loop) prints the same at O2 under both, its check folded in both.
   - Rejected: inside the component, (B) the frame writing the 128-bit declarations always (no width test, a few lines shorter): its
     prototype changed the text of all 1,505 sel fixtures of the census classes, which voids `compare-fixtures.ps1`'s byte comparison, and
-    departs from R5-M76's request; the declarations written from `FunctionCodegen` (R5-M76); a scan of MIR or output for 128-bit checks (the
-    old generator's form, a second pass); the request in `Write`'s Overflow arm by the Type's text. Shared structure: the 128-bit
-    declarations merged into the fixed `OverflowDeclarations` for both generators (every legacy `.ll` changes, against `LlvmModuleText`'s
-    byte-identity invariant, and frozen Emission's scan is edited, D5); a runtime routine for the multiply (a second copy of the operation);
-    a capability row refusing checked 128-bit arithmetic (IMPL 21.3.3 supports it).
-  - Open (proposed): a raw pointer compared through a ref layer is accepted but written by neither generator (above); its operand reaches
-    code generation as the layer, where a scalar one is read through it.
+    departs from R5-M76's request; the declarations written from `FunctionCodegen` (R5-M76); a scan of MIR or output for 128-bit checks;
+    the request in `Write`'s Overflow arm by the Type's text; a raw-pointer clause beside the string one in `Column` (a second copy of the
+    walk, the right operand still unread); keeping the null-entry arm `Unsupported_Kd` (it hid the wrong code's sibling). Shared structure:
+    the 128-bit declarations merged into the fixed `OverflowDeclarations` for both generators (every legacy `.ll` changes, against
+    `LlvmModuleText`'s byte-identity invariant, and frozen Emission's scan is edited, D5); a runtime routine for the multiply; a
+    capability row refusing checked 128-bit arithmetic (IMPL 21.3.3 supports it); MIR reading a raw-pointer terminal itself (held MIR,
+    and strings keep the in-place form anyway).
+  - Unverified: a test build with a 128-bit check (its runtime's text is unchanged, H); O2 timing (no kernel, identical code).
+  - Outside scope (H, Binding): check refuses `p + n` and `p - n` for `p: ref/raw/i32` with TypeMismatch_Kd, though SPEC 13.3.4 follows
+    safe layers to the terminal before the raw-pointer route; perhaps a conservative Language error for a valid form.
