@@ -2,7 +2,8 @@
 
 // Owns the test runtime of a test build (SPEC 17.6, 20.6; IMPL 21.4.2), one text both code generators write (R5 PD2): its routines (Text:
 // the selected case, the frames to the runner, a verification's observation, message and Abort, the temporary directory, an observed
-// scalar's frame), the entry that runs the selected case (WriteEntry) and the kind an observed scalar's frame gives its Type (ValueKind).
+// scalar's frame, and the compared values held until the observation that numbers their failure sends them, DECISIONS R5-M136), the entry
+// that runs the selected case (WriteEntry) and the kind an observed scalar's frame gives its Type (ValueKind).
 // Input: the catalog Discover filled; a writer of each case's call, so a code generator calls its case functions its own way.
 // Output: LLVM text; a frame kind.
 // Invariants: the cases run in the catalog's order; the routines' signatures are RuntimeAbi's; warm writes allocate nothing (numbers on

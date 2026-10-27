@@ -1375,6 +1375,7 @@ public sealed partial class FunctionCodegenTest
     [InlineData(UserFormats, OutputKind.Library)]
     [InlineData(Writers, OutputKind.Library)]
     [InlineData(Interpolations, OutputKind.Library)]
+    [InlineData(Verifications, OutputKind.Application)]
     public void GenerationIsDeterministic(string source, OutputKind output)
     {
         var first = Generate(Analyze(source, output));
@@ -1401,7 +1402,7 @@ public sealed partial class FunctionCodegenTest
         var set = collector.Run(program, 1);
         var (start, unused) = (Of(set, null), Of(set, "unused"));
         set.Mark([start]);
-        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports);
+        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports, c.Tests);
         Assert.True(module.Write(program, collector, c.Binding.Startup, [start], TextWriter.Null));
         new FunctionCodegen(module, c.Types).Write(program, collector, unused, TextWriter.Null);
         Assert.Equal([new(DiagnosticCode.InternalInvariant_Kd, set.Items[unused].Site)], module.Records);
@@ -1483,6 +1484,7 @@ public sealed partial class FunctionCodegenTest
     [InlineData(UserFormats, OutputKind.Library)]
     [InlineData(Writers, OutputKind.Library)]
     [InlineData(Interpolations, OutputKind.Library)]
+    [InlineData(Verifications, OutputKind.Application)]
     public void WarmGenerationAllocatesNothing(string source, OutputKind output)
     {
         var c = Analyze(source, output);
@@ -1510,17 +1512,30 @@ public sealed partial class FunctionCodegenTest
         return (c, [.. generated.Where(x => set.Items[x].Key.Kind == MonoKind.Body).Select(x => set.Items[x].Key.Body.Def.Decl?.Declaration).OfType<Koto>()]);
     }
 
-    // A program analyzed under MIR code generation (sel) for an output form.
+    // A program analyzed under MIR code generation (sel) for an output form; a source that declares a test is a test build's test-only
+    // source, its catalog discovered after acceptance as Project discovers it.
     private static Compilation Analyze(string source, OutputKind output = OutputKind.Application)
     {
         var c = Compilation.CreateForTest();
         c.Pipeline = CompilerPipeline.Mir;
         c.Codegen = CompilerCodegen.Mir;
+        c.IsTestBuild = source.Contains("#Test", StringComparison.Ordinal);
         Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source, isTestOnly: c.IsTestBuild));
         c.Bind();
-        c.Binding.CheckStartup(output);
-        c.Analyze();
+        if (!c.IsTestBuild)
+        {
+            c.Binding.CheckStartup(output);
+            c.Analyze();
+            return c;
+        }
+
+        c.Binding.CheckTestStartup();
+        if (c.Analyze().IsVerified)
+        {
+            c.Tests.Discover(c);
+        }
+
         return c;
     }
 
@@ -1549,7 +1564,7 @@ public sealed partial class FunctionCodegenTest
         var set = collector.Run(program, 1);
         var bodies = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.Body).ToArray();
         set.Mark(bodies);
-        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports);
+        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports, c.Tests);
         _ = module.Write(program, collector, c.Binding.Startup, bodies, TextWriter.Null);
         return (program, collector, module, bodies);
     }

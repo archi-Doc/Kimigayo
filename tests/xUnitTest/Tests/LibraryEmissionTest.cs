@@ -106,7 +106,13 @@ public class LibraryEmissionTest
             c.Binding.CheckStartup(OutputKind.Library);
         }
 
-        c.Analyze();
+        // A test build's catalog is discovered after acceptance, as Project discovers it: MIR code generation reads the discovery of the
+        // version it generates (DECISIONS R5-M136).
+        if (c.Analyze().IsVerified && testBuild)
+        {
+            c.Tests.Discover(c);
+        }
+
         return c;
     }
 }

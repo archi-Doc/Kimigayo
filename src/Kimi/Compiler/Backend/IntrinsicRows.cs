@@ -41,6 +41,7 @@ internal enum IntrinsicWriter : byte
     Buffer, // FormatBuffer: an owning interpolation's private buffer, on its frame's region or the heap by its estimate (FunctionCodegen.Interpolation).
     Segment, // FormatSegment: the hint routine given its estimate's hint, then a literal segment's text, the adapter checked (FunctionCodegen.Interpolation).
     Finish, // FormatFinish: the routine, or its stack form, over the adapter's buffer (FunctionCodegen.Interpolation).
+    Record, // TestRecordValue: the test runtime holds the value for its observation: its kind, width and bits (FunctionCodegen.Intrinsics).
 }
 
 /// <summary>A row of the intrinsic table.</summary>
@@ -84,13 +85,13 @@ internal static class IntrinsicRows
         new(IntrinsicId.Clone, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Clone, null), // Payload-independent (IMPL 21.1.3).
         // TypeTest acquires nothing (SPEC 13.6.4); code generation numbers its target (R5-M74, R5-M110).
         new(IntrinsicId.TypeTest, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Test, null),
-        new(IntrinsicId.TestObserve, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10a.
-        new(IntrinsicId.TestMessage, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10a.
-        new(IntrinsicId.TestRequireAbort, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10a.
-        new(IntrinsicId.TestRecordValue, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10a.
+        new(IntrinsicId.TestObserve, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Routine, RuntimeAbi.TestObserve),
+        new(IntrinsicId.TestMessage, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Routine, RuntimeAbi.TestMessage),
+        new(IntrinsicId.TestRequireAbort, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Routine, RuntimeAbi.TestRequireAbort),
+        new(IntrinsicId.TestRecordValue, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Record, RuntimeAbi.TestValue),
         new(IntrinsicId.TestPhaseEnter, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10b.
         new(IntrinsicId.TestPhaseLeave, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10b.
-        new(IntrinsicId.TestTempDirectory, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10a.
+        new(IntrinsicId.TestTempDirectory, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Routine, RuntimeAbi.TestTempDirectory),
         new(IntrinsicId.StaticEnsure, IntrinsicTarget.StaticInit, LaysOutType: false, IntrinsicWriter.Ensure, null),
         new(IntrinsicId.Capacity, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Capacity, null),
         new(

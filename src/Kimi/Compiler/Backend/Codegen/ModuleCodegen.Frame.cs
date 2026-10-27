@@ -13,7 +13,9 @@ namespace Kimi.Compiler.Backend;
 // (DECISIONS R5-M121), the formatting runtime (DECISIONS R5-M128), the nullable Alloc (DECISIONS R5-M92), the string-comparison routines
 // (DECISIONS R5-M118) and the object runtime (DECISIONS R5-M110) are
 // written only when a definition requested them (Request; package C 3.2's requests, DECISIONS R5-M87), the Array helpers (ModuleCodegen.Arrays)
-// before every definition (PD8). The entry calls its root through FunctionCodegen's one call writer (PD3).
+// before every definition (PD8). The entry calls its root through FunctionCodegen's one call writer (PD3): an Application's its startup
+// root, a test build's each test root in catalog order inside the test runtime's entry (TestRuntime.WriteEntry; DECISIONS R5-M136), whose
+// runtime is the template's test variant followed by the test runtime's routines (TestRuntime.Text, with the memory declarations it calls).
 internal sealed partial class ModuleCodegen
 {
     /// <summary>The zero-sized symbol, the home of every zero-sized local: one 16-aligned address (IMPL 21.1.3: a borrow of a zero-sized
@@ -22,7 +24,10 @@ internal sealed partial class ModuleCodegen
 
     private const string ZeroSizedDefinition = "@" + ZeroSized + " = private unnamed_addr constant [1 x i8] zeroinitializer, align 16\n";
 
+    private readonly List<FunctionAbi> cases = []; // A test build's test roots' signatures, in catalog order (Start), kept across Writes.
+    private readonly Action<TextWriter, int> caseCall; // The test entry's call of a case's root, through the one call writer.
     private Needs needs; // The module parts the definitions of the latest Write requested.
+    private string? testRuntime; // The latest Write's test runtime routines: a test build's (TestRuntime.Text), else null.
 
     /// <summary>The module parts a definition requests, which the frame writes only when requested.</summary>
     [Flags]
@@ -80,8 +85,8 @@ internal sealed partial class ModuleCodegen
     private void Assemble(TextWriter output, FunctionAbi? start)
     {
         LlvmModuleText.WriteHeader(output, this.constants);
-        LlvmModuleText.WriteRuntime(output, testRuntime: null);
-        LlvmModuleText.WriteExternals(output, CollectionsMarshal.AsSpan(this.externals), testRuntime: null);
+        LlvmModuleText.WriteRuntime(output, this.testRuntime);
+        LlvmModuleText.WriteExternals(output, CollectionsMarshal.AsSpan(this.externals), this.testRuntime);
         if ((this.needs & Needs.ZeroSized) != 0)
         {
             output.Write(ZeroSizedDefinition);
@@ -120,6 +125,10 @@ internal sealed partial class ModuleCodegen
         {
             this.WriteStart(output, start);
         }
+        else if (this.testRuntime is not null)
+        {
+            Testing.TestRuntime.WriteEntry(output, this.Tests, this.caseCall);
+        }
 
         if ((this.needs & Needs.Objects) != 0)
         {
@@ -141,18 +150,31 @@ internal sealed partial class ModuleCodegen
     }
 
     // The output form (IMPL 21.4.2) around the output roots: an Application's entry calls its startup root; a Library has none; a test
-    // build's TestEntry is a row not written yet (C10a), at each test root. False for an Application whose startup root has no signature
-    // while nothing explains it: a broken contract without a subject.
+    // build's is the test runtime's entry, which calls each test root, in the catalog's case order as the generation entry gives the roots,
+    // under its signature: a Test body takes no parameter and returns Unit, so another signature is a broken contract at the root's subject.
+    // False for an Application whose startup root has no signature while nothing explains it: a broken contract without a subject.
     private bool Start(MirProgram program, InstanceCollector collector, in StartupResult startup, ReadOnlySpan<int> roots, out FunctionAbi? entry)
     {
         entry = null;
+        this.testRuntime = null;
         if (startup.Kind == StartupKind.Test)
         {
+            this.cases.Clear();
             foreach (var root in roots)
             {
-                this.Report(DiagnosticCode.Unsupported_Kd, collector.Subject(root, program.Bodies[this.set.Items[root].BodyOrdinal], default));
+                var signature = this.Signature(root); // Null after its record.
+                if (signature is { Result: "void", Parameters.Length: 0 })
+                {
+                    this.cases.Add(signature);
+                }
+                else if (signature is not null)
+                {
+                    this.Report(DiagnosticCode.InternalInvariant_Kd, collector.Subject(root, program.Bodies[this.set.Items[root].BodyOrdinal], default));
+                }
             }
 
+            this.testRuntime = Testing.TestRuntime.Text;
+            this.Request(Needs.Memory); // The test runtime copies the temporary directory's text (llvm.memcpy).
             return true;
         }
 

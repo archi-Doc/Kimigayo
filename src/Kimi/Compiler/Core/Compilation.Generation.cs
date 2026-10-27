@@ -20,7 +20,8 @@
 // closure of its output roots over runtime targets (CheckedSet.Mark): an Application's startup body, a test build's discovered tests (the
 // catalog Project discovers after acceptance, never discovered again here) or a Library's every root but the body of a closed virtual or
 // override whose slot Applies refutes (InstanceCollector.Generates, checked only, R4-M28); a root without an item or with an undecided slot
-// is a broken contract.
+// is a broken contract, as is a test build whose catalog was not discovered for the version generated (its version stamp; PLAN G157 (15),
+// DECISIONS R5-M136): its roots and its verification sites' numbers are that discovery's.
 // Invariants: every product generation request (EmissionArtifacts.Publish, and through Project.PublishArtifacts kimi build and kimi test)
 // and the out-string adapters pass this gate, and under sel none of them runs the old generator. Outside the gate until G7 deletes
 // LlvmEmitter, and with it Compilation.Emission: its direct readers in tests (TryPrepare inspections and failure facts, which G5 deletes)
@@ -43,6 +44,10 @@ public partial class Compilation
     /// and the analysis complete without errors, and no Error in any front-end partition (their error state, never the displayed list).</summary>
     internal bool Accepts => this.Binding.Result.IsComplete && this.Binding.Startup.IsComplete && this.Analysis.IsVerified &&
         !this.Diagnostics.HasErrorsThrough(DiagnosticPartition.Ownership);
+
+    /// <summary>Gets the version of the latest MIR program (0: none), which a test build's discovery stamps on its catalog
+    /// (TestCatalog.Version) and MIR code generation requires of it.</summary>
+    internal ulong ProgramVersion => this.mir?.Version ?? 0;
 
     /// <summary>Writes inspection IR after checking the latest analysis; it does not certify a published artifact or native execution.</summary>
     /// <param name="writer">The caller-owned output.</param>
@@ -123,14 +128,14 @@ public partial class Compilation
             return false;
         }
 
-        if (!this.OutputRoots(collector))
+        if (!this.OutputRoots(program, collector))
         {
             return false;
         }
 
         var roots = CollectionsMarshal.AsSpan(this.outputRoots);
         collector.Set.Mark(roots);
-        var generator = this.moduleCodegen ??= new(this.Layout, this.Locations, this.Types, this.Binding.LibraryImports);
+        var generator = this.moduleCodegen ??= new(this.Layout, this.Locations, this.Types, this.Binding.LibraryImports, this.Tests);
         if (generator.Write(program, collector, this.Binding.Startup, roots, writer))
         {
             return true;
@@ -157,15 +162,21 @@ public partial class Compilation
     }
 
     // K package 4.10: the items of the output roots, an Application's startup body, a test build's discovered tests or a Library's every
-    // root the collector generates; false, recorded, when one has no item (at the project) or its slot is undecided (at the root's site, as
-    // the collector records it at a VTable's).
-    private bool OutputRoots(Backend.InstanceCollector collector)
+    // root the collector generates; false, recorded, when one has no item or a test build's catalog is another version's (at the project) or
+    // a slot is undecided (at the root's site, as the collector records it at a VTable's).
+    private bool OutputRoots(Mir.MirProgram program, Backend.InstanceCollector collector)
     {
         var (roots, set) = (this.outputRoots, collector.Set);
         roots.Clear();
         var startup = this.Binding.Startup;
         if (startup.Kind == StartupKind.Test)
         {
+            if (this.Tests.Version != program.Version)
+            {
+                this.Diagnostics.Report(DiagnosticPartition.Emission, DiagnosticCode.InternalInvariant_Kd, this.Project.FilePath);
+                return false;
+            }
+
             foreach (var test in this.Tests.Cases)
             {
                 roots.Add(set.Find(new(Backend.MonoKind.Body, new(new(test.Symbol, Mir.MirBodyKind.Test), null), null, null, 0, null)));

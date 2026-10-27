@@ -10,7 +10,8 @@ namespace Kimi.Compiler.Backend;
 // factory with its control value and a clone's retain, FunctionCodegen.Objects, Text.writer's routine with its destination's writer kind and dispatch word,
 // FunctionCodegen.Formatting), which a compiler function's Value call and adapter entry also call by its disposition (Routine by kind), a Fail's Abort reason,
 // Raw.initialize's copy, Raw.slice's record, transferBytes' memcpy, a staticEnsure's state test (FunctionCodegen.Statics), a runtime Type test
-// (FunctionCodegen.Objects) and an owning interpolation's buffer, segment steps and end (FunctionCodegen.Interpolation). Each takes its operands at its
+// (FunctionCodegen.Objects), an owning interpolation's buffer, segment steps and end (FunctionCodegen.Interpolation) and a verification's
+// compared value, which the test runtime holds for its observation (Record; DECISIONS R5-M136). Each takes its operands at its
 // declaration's slots (ArgumentPosition) and ends through Finish; a call whose row's Target column names an item carries the collector's target, read once by
 // the cursor (I8) and given to the row's writer; a row not written yet is one located Unsupported_Kd at the call, its owning unit named in IntrinsicRows. In a
 // caller-location body a location is C3b's row (Location).
@@ -58,6 +59,9 @@ internal sealed partial class FunctionCodegen
                 return;
             case IntrinsicWriter.Finish:
                 this.FormatFinish(call, row);
+                return;
+            case IntrinsicWriter.Record:
+                this.Record(call, row.Routine!);
                 return;
             case IntrinsicWriter.Create or IntrinsicWriter.Clone or IntrinsicWriter.Writer:
                 return; // A broken contract, recorded by Routine.
@@ -168,6 +172,39 @@ internal sealed partial class FunctionCodegen
         }
 
         this.Invoke(call, routine, new(call.Callee.Symbol, MirBodyKind.Fn), [new('\0', reason), new('\0', RuntimeAbi.NoOsError)]);
+    }
+
+    // SPEC 17.6.3 (PD22; DECISIONS R5-M136): a verification's compared Scalar, which the builder records before its comparison (F8b), is held
+    // by the test runtime until its observation numbers the failure: its side (operand 0), its Type's frame kind (TestRuntime.ValueKind) and
+    // width (1 for bool, else its size in bits) and its bits as i128, a float's reinterpreted as an integer, then zero-extended. A value of
+    // another Type is a broken contract: the builder records Scalars only.
+    private void Record(in MirTerminator call, FunctionAbi routine)
+    {
+        var key = new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
+        var operand = this.body.Operands[call.Start + ArgumentPosition(key, 1)];
+        if (this.InstanceType(operand) is not { } type || !ScalarTypes.Supports(type) || this.LoweringOf(operand) is not { } lowering)
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, call.Source);
+            return;
+        }
+
+        if (!this.Operand(operand, out var value))
+        {
+            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
+            return;
+        }
+
+        var bits = this.Narrow(lowering, value);
+        var width = lowering.ComputationType == "i1" ? 1 : 8 * lowering.Layout.Size;
+        var integer = lowering.ComputationType;
+        if (type.IsFloatingPoint)
+        {
+            integer = width == 32 ? "i32" : "i64";
+            bits = this.Convert("bitcast ", lowering.ComputationType, bits, integer);
+        }
+
+        bits = this.Convert("zext ", integer, bits, "i128");
+        this.Invoke(call, routine, key, [new('\0', Testing.TestRuntime.ValueKind(type)), new('\0', width), bits]);
     }
 
     // SPEC 5.6: Raw.initialize(storage, value) moves the value into the storage, which holds none, so nothing is destroyed: the value put

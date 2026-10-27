@@ -106,7 +106,8 @@ internal static class RuntimeAbi
     internal static readonly FunctionAbi AbortMessage = new("__kimi_abort_message", Unit.ComputationType, OwnedStringParameters) { NoReturn = true };
 
     // The test runtime's routines (Kimi.Testing's TestRuntime.ll, SPEC 17.6): a verification's observation, which numbers a failure's issue
-    // from its condition and the site's number in the test catalog; the issue's message, a borrowed string; a $require's Abort of the case.
+    // from its condition and the site's number in the test catalog and sends the values held for it; the issue's message, a borrowed string;
+    // a $require's Abort of the case; a compared value held until the observation, by its side, its frame kind and width and its bits.
     internal static readonly FunctionAbi TestTempDirectory =
         new("__kimi_test_temp", "void", [new("ptr", "result", AbiParameterKind.ResultSlot)]) { ResultSlot = true };
 
@@ -120,6 +121,11 @@ internal static class RuntimeAbi
         "__kimi_test_require_abort",
         "void",
         [new("i64", "issue", AbiParameterKind.Value, 0), new("i32", "site", AbiParameterKind.Value, 1)]) { NoReturn = true };
+
+    internal static readonly FunctionAbi TestValue = new(
+        "__kimi_test_value",
+        "void",
+        [new("i32", "which", AbiParameterKind.Value, 0), new("i16", "kind"), new("i16", "width"), new("i128", "bits")]);
 
     /// <summary>Gets the compiler-facing runtime definitions expanded into WindowsRuntime.ll.in.</summary>
     internal static readonly FunctionAbi[] RuntimeDefinitions = [Exit, DestroyString, WriteLine, Abort, AbortMessage, ArrayInit, ArrayFree];
