@@ -223,7 +223,7 @@ internal sealed partial class BodyLowering
         if (plan.Target.CompilerFunction == CompilerFunctionKind.WriterWrite && call.Parent is InterpolatedStringKoto { Formatting: { } formattingRoot } &&
             call.ArgumentNodes.Count == 2 && call.ArgumentNodes[1] is StringLiteralKoto && this.EstimateFormatting(formattingRoot).Capacity == 0)
         {
-            callee = LiteralFormatting;
+            callee = LegacyRuntimeHelpers.FormatLiteral;
         }
 
         if (plan.Target.CompilerFunction is CompilerFunctionKind.WriterWrite or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat && this.FormattingCalls?.GetValueOrDefault(plan) is { } userFormat)

@@ -8,10 +8,6 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
-    private static readonly FunctionAbi CheckFormatting = new("__kimi_format_check", "void", [new("ptr", "writer"), new("ptr", "location"), new("i64", "location_length")]);
-    private static readonly FunctionAbi LiteralFormatting =
-        new("__kimi_format_literal", "void", WindowsLowering.GetCompilerFunction(CompilerFunctionKind.WriterWrite)!.Parameters) { ResultSlot = true };
-
     private readonly Dictionary<BoundFormatting, FormattingEstimate> formattingEstimates = new(ReferenceEqualityComparer.Instance);
     private readonly List<FormattingEstimate> formattingEstimateStorage = new();
 
@@ -57,7 +53,7 @@ internal sealed partial class BodyLowering
                 }
                 else
                 {
-                    function.AddCall(id, CheckFormatting, [this.PhysicalOperand(body, input), new(EmissionOperandKind.ConstantAddress, location), new(EmissionOperandKind.ConstantLength, location)]);
+                    function.AddCall(id, LegacyRuntimeHelpers.FormatCheck, [this.PhysicalOperand(body, input), new(EmissionOperandKind.ConstantAddress, location), new(EmissionOperandKind.ConstantLength, location)]);
                 }
 
                 return true;
