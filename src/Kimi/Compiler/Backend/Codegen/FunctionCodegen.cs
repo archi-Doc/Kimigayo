@@ -41,7 +41,9 @@
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact or a case selection
 // (MirCases decides a PairLayer under the item's view), compose a Subst or a Type (TypeOf does), resolve a callee, or use LINQ, Supports*,
 // out-string failures or catch-alls. An Opaque value (the gate admits none), a Type TypeOf cannot make and a Layout outcome other than
-// Ok are broken contracts: InternalInvariant_Kd.
+// Ok are broken contracts: InternalInvariant_Kd; but a generated, uncalled constructor's construction receiver, which the collector does not
+// lay out (DECISIONS BU-48), takes the record RecordOf gives its outcome: a CLayout or oversized one Unsupported_Kd, a limit its Resource
+// record.
 
 using Kimi.Compiler.Mir;
 using static Kimi.Compiler.Backend.LlvmModuleText;

@@ -51,7 +51,8 @@ public partial class LayoutAttributeBindingTest
             Assert.Contains(type, c.Binding.DerivedIssues);
             var key = Assert.Single(c.Binding.FailureCauses(type)!);
             Assert.Equal(type.KeyOf(Kimi.Diagnostics.DiagnosticRequirement.Binding(BindingFailure.InvalidOrigin)), key);
-            Assert.Equal(["ConflictingLayout_Kd", "MissingOriginBinding_Kd"], CompilationTestHelper.BindingErrors(c).Select(x => x.Code).Order(StringComparer.Ordinal));
+            var codes = CompilationTestHelper.BindingErrors(c).Select(x => x.Code).Order(StringComparer.Ordinal);
+            Assert.Equal(["ConflictingLayout_Kd", "MissingOriginBinding_Kd"], codes);
         }
 
         Assert.True(type.RemoveAttribute(Assert.IsType<AttributeKoto>(type.AttributeChain)));

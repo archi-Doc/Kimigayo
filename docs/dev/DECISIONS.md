@@ -7245,12 +7245,17 @@ resumed by R4-M86 (2026-10-20).
     storage the construction allocates before the constructor runs (6.3.2, 6.3.3); inside the body `self` is reached only for its own
     Fields' access, as a `uniq/Self` receiver is (6.3.4), and the body returns Unit (6.3.5); the synthesized constructor behaves as
     `init() => ()` (6.3.6). So a constructor's MIR Return local, its construction receiver, is no by-value use, written and synthesized
-    alike: the builder publishes it as `MirLocalRole.Receiver` (R4's shape: only a constructor's `_0`; the validator rejects the role on
-    any other local), `InstanceCollector.LayOutLocals` skips it beside drop flags, and the caller's construction expression is the use.
+    alike: the builder publishes it as `MirLocalRole.Receiver` (R4's shape: exactly a constructor's `_0`; the validator rejects the role
+    on any other local and its absence on a constructor's `_0`), `InstanceCollector.LayOutLocals` skips it beside drop flags, and the
+    caller's construction expression is the use.
     Any other value of the struct's Type in a constructor body stays a use. Code generation, which lays out every local of a generated
-    item, records a receiver without a layout (an uncalled constructor generated as a Library root) as a located `Unsupported_Kd` at the
-    constructor (8.15.3's last sentence), never `InternalInvariant_Kd`. The judge's `i-init` and `i-toplevel` rows lost their record at
+    item, maps a receiver without a layout (an uncalled constructor generated as a Library root) through the collector's one mapping
+    (`RecordOf`): a CLayout or oversized one is a located `Unsupported_Kd` at the constructor (8.15.3's last sentence), a limit its
+    Resource record (IMPL 21.3.2), anything else `InternalInvariant_Kd`. The judge's `i-init` and `i-toplevel` rows lost their record at
     `init` in their own commit under this reading.
+  - Vocabulary (O1, a MIR vocabulary member): `MirLocalRole.Receiver`. The owner approved it (2026-10-27; BU's question 「G158 (3) の修正で、
+    MIR の語彙に `MirLocalRole.Receiver` … を 1 つ追加しました … 承認しますか？」, the answer 「承認する (推奨)」), as R4-M132 recorded
+    `MirLocalRole.Result`'s.
   - Locations (settled by BU and R5, 2026-10-27): (a) a parameter's record at its Type occurrence and a result's at its result Type
     occurrence: the builder sources each written parameter's Arg local and a function's Return local at their written Type (an accessor's
     arguments, a Closure's environment, a constructor's or destructor's `self` and a result without a written Type stay at the
@@ -7270,6 +7275,11 @@ resumed by R4-M86 (2026-10-20).
     `AdtDef.IsOpen` with `Base` and `Count` (syntax facts Binding has at the attribute; one bit replaces one); excluding the implicit
     constructor from the roots (the candidate's first form: it hid only the synthesized form, changed K 4.4 and hid a Field
     initializer's construction); "local 0 of a constructor" inferred by the collector (a consumer deciding what the builder publishes).
+  - Landing order: G271 (DECISIONS BU-50, `claude/bu53-g271`) lands on dev before this unit, because the collector at every `check` would
+    otherwise fault on a stored projection Field (`TypeDagScalingTest.AnInstanceWithAProjectionFieldChecks`, `CheckFaulted_Kd`: Layout
+    has no row for an unsubstituted `S.Element`), a latent fault under sel before this unit.
+  - Size (net lines, the unit against fc3334cbe, the shared tests excluded): src −62 (Binding −135, Backend +43, Core +21, Mir +12,
+    Diagnostics −3), tests +54 (the 32 MIR goldens' 202 lines changed in place), docs +73.
   - Cost (KIMI_CPU=2, tiering off; bytes deterministic over rounds): cold Bind −40 B on Hello and Milestone26, warm 0 B; cold Analyze on
     the default pipeline Hello 15,864 → 2,933,728 B (about 50 µs → 4.4 ms) and Milestone26 216,216 → 3,235,656 B (0.3 → 5.3 ms), under mir
     Hello +41,024 B and Milestone26 +45,704 B (the collector), under sel unchanged; warm Analyze 0 B everywhere. Quiet-slot timing is the
@@ -7277,9 +7287,9 @@ resumed by R4-M86 (2026-10-20).
   - Open: part (1), a record naming the instance (a catalog fact); part (2), Never, judged by Layout alone (the kept-apart rows pass); a
     bodyless import's by-value parameter (the owner's); `f(s: ref/S) => s.n`, a Field projection through a borrow or raw pointer of an
     unavailable Type, is no checked-set use and should be a located `Unsupported_Kd` at the projection (R5's PLAN item; R5 reports the
-    SPEC gap); a program with validator findings gets no checked-set record until G2; the old generator lowers an uncalled implicit
-    constructor of an empty C struct and fails `build` with `GenerationFailed_Kd` after an accepted `check` until R6-gen (STATUS; MIR
-    code generation builds such an Application).
+    SPEC gap); a program with validator findings gets no checked-set record until G2; the old generator lowers any uncalled constructor,
+    written or synthesized, of any struct whose C layout is unavailable, so `check` accepts and the default `emit` and `build` fail with
+    `GenerationFailed_Kd` until R6-gen (STATUS; MIR code generation builds such an Application).
 
 - **BU-43 Where no source supplies a candidate, a join's Type is formed part by part; a call classifies such a join's results by
   position; Never supplies nothing at any position** (2026-10-26; the BU planning session; PLAN G159 (2), unit bu47; design bu47

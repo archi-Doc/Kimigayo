@@ -15,8 +15,8 @@
 // internal error. The collector (InstanceCollector) alone maps the outcomes (and, until G8, the old AggregateLayout.Represent onto its
 // own failures): a limit to a Resource record at the Type's first use (R5-M44), CLayout to InvalidCLayout_Kd and Oversized to
 // OversizedLayout_Kd at each use (R5-M55, R5-M52), Rejected to a derived failure without a record (InternalInvariant_Kd in a complete
-// compilation, DECISIONS BU-38); codegen after acceptance treats any outcome but Ok as a broken contract (InternalInvariant_Kd). No size is
-// published.
+// compilation, DECISIONS BU-38); codegen after acceptance treats any outcome but Ok as a broken contract (InternalInvariant_Kd), except for
+// a construction receiver the collector does not lay out, whose outcome it maps through RecordOf (DECISIONS BU-48). No size is published.
 // After a failed Binding: Rejected for a declaration with InlineCycle, a null stored Field Type or Case (BU-37), or a fixed array with
 // Length < 0; an unresolved base,
 // which Binding publishes as no base, is laid out without it (Ok; no record follows a failed Binding).

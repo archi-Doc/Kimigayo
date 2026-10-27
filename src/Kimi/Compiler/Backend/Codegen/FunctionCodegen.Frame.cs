@@ -33,12 +33,18 @@ internal sealed partial class FunctionCodegen
 
         for (var i = 0; i < locals.Length; i++)
         {
-            if (this.collector.TypeOf(this.item, locals[i].Type) is not { } type || this.module.Layout.Of(type).Value is not { } value)
+            if (this.collector.TypeOf(this.item, locals[i].Type) is not { } type)
+            {
+                this.Report(DiagnosticCode.InternalInvariant_Kd, locals[i].Source);
+                return null;
+            }
+
+            var result = this.module.Layout.Of(type);
+            if (result.Value is not { } value)
             {
                 // The collector laid out every local of an admitted item but a constructor's construction receiver, which its callers lay out
-                // (DECISIONS BU-48): a generated, uncalled constructor whose receiver has no layout is a form not generated (SPEC 8.15.3).
-                var code = locals[i].Role == MirLocalRole.Receiver ? DiagnosticCode.Unsupported_Kd : DiagnosticCode.InternalInvariant_Kd;
-                this.Report(code, locals[i].Source);
+                // (DECISIONS BU-48), so only a generated, uncalled constructor's receiver reaches here without a layout.
+                this.Report(locals[i].Role == MirLocalRole.Receiver ? this.ReceiverRecord(result) : DiagnosticCode.InternalInvariant_Kd, locals[i].Source);
                 return null;
             }
 
@@ -46,6 +52,24 @@ internal sealed partial class FunctionCodegen
         }
 
         return this.module.Signature(this.item);
+    }
+
+    // A construction receiver's layout failure, by the record the collector's one mapping (RecordOf) gives its outcome at a use: a Language
+    // obligation (a CLayout, or a layout over 2^63 - 1 bytes) is a form not generated, Unsupported_Kd (SPEC 8.15.3's last sentence); a limit
+    // keeps its Resource record (IMPL 21.3.2); any other outcome is a broken contract (DECISIONS BU-48).
+    private DiagnosticCode ReceiverRecord(in Layout.Result result)
+    {
+        if (result.Oversized)
+        {
+            return DiagnosticCode.Unsupported_Kd;
+        }
+
+        return this.collector.RecordOf(result.Outcome) switch
+        {
+            DiagnosticCode.InvalidCLayout_Kd => DiagnosticCode.Unsupported_Kd,
+            DiagnosticCode.GenerationResourceLimit_Kd => DiagnosticCode.GenerationResourceLimit_Kd,
+            _ => DiagnosticCode.InternalInvariant_Kd,
+        };
     }
 
     // The entry block (I2): a pointer-passed argument and the result slot are their locals' homes; one aligned alloca per other local of

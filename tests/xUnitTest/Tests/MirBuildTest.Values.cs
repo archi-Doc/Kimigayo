@@ -56,7 +56,9 @@ public sealed partial class MirBuildTest
     // struct Binding rejected was the derived Opaque's row until DECISIONS R4-M134 Q8 made such a declaration no Binding error.)
     [Theory]
     [InlineData("struct S\n    var item: Missing = 7\n    var other: i32 = 1\n", "UnresolvedBinding_Kd")]
-    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry\n    var tag = Tags.tagOf<Entry>()\n", "UnprovenConstraint_Kd")]
+    [InlineData(
+        "group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry\n    var tag = Tags.tagOf<Entry>()\n",
+        "UnprovenConstraint_Kd")]
     [InlineData("func f<T>() -> T\n    T is Copy\n", "FunctionFallthrough_Kd")]
     public void ValuesBindingDidNotFormAreDerived(string source, string code)
     {
