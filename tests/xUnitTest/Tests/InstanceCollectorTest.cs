@@ -16,7 +16,7 @@ namespace XunitTest;
 /// erased writer the witness they run in the instance, a comparison shim its leaf witnesses, a callee only the checks reach is in the checked
 /// set, a dropped value its Type's glue and a static access its initializer, the admission limits and Binding's storage bound are located
 /// records, the work grows linearly and collecting again allocates nothing.</summary>
-public sealed class InstanceCollectorTest
+public sealed partial class InstanceCollectorTest
 {
     // A generic function over a Copy T, and a generic struct over one, whose bodies the cases complete.
     private const string Outer = "func outer<T>(x: T) -> T\n    T is Copy\n";

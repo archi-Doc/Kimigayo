@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-public class LayoutAttributeBindingTest
+public partial class LayoutAttributeBindingTest
 {
     [Theory]
     [InlineData("#Layout(\"bad\")\nstruct S", "InvalidLayoutAttribute_Kd")]
