@@ -27,11 +27,10 @@ internal enum RawStep : byte
     Exclusive,
 }
 
-// Raw Origins, steps (SPEC 5.7, 5.2.1 condition 3; DECISIONS BU-24, BU-41; contract in Binding.RawOrigins.cs): the authority a raw
-// layer's Origin can keep, which retention and the TyCtxt views read after Binding: by its kind (StepOf), a signature's layer
-// (SignatureStep) and a layer an instance stores (StoredStep, its members StoredMembers, whether a Type argument supplies it
-// StoredSupplied, all over StoredLayer, which reads the instance's kept part; the step from the layer its declaration states,
-// DeclaredStep, which StoredStep and the hold walk read).
+// Raw Origins, steps (SPEC 5.7, 5.2.1 condition 3; DECISIONS BU-24, BU-41, BU-46; contract in Binding.RawOrigins.cs): the authority a
+// raw layer's Origin can keep, which retention and the TyCtxt views read after Binding: by its kind (StepOf), a signature's layer
+// (SignatureStep) and a layer an instance stores (StoredStep and its members StoredMembers, both over StoredLayer, which reads the
+// instance's kept part; the step from the layer its declaration states, DeclaredStep, which StoredStep and the hold walk read).
 public sealed partial class Binding
 {
     // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-24; R4's constraint 2): the authority a raw layer's Origin can keep where no declaration
@@ -76,14 +75,6 @@ public sealed partial class Binding
         var layer = this.StoredLayer(instance, part, positions, out var declared);
         return layer.RawOrigin is not { } origin || StepOf(origin) != RawStep.Exclusive ||
             (declared is not null && this.RawMembers(origin, new ReadOnlySpan<BoundType>(in instance), members));
-    }
-
-    // SPEC 5.7 Calls, 15.6.4: whether a Type argument supplies the raw layer an instance stores (StoredLayer's `declared` null), the
-    // declaration stating a Type parameter or a pair layer at the path or above it, and no declaration above states it (TyCtxt.RawStated).
-    internal bool StoredSupplied(BoundType instance, int part, ReadOnlySpan<int> positions)
-    {
-        var layer = this.StoredLayer(instance, part, positions, out var declared);
-        return declared is null && !TyCtxt.RawStated(layer);
     }
 
     // The declared slot a raw Origin names: an Input atom's target slot (a projection `x.s` whose slot argument is omitted) with the

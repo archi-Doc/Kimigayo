@@ -271,8 +271,9 @@ public sealed partial class MirBorrowsTest
     // SPEC 5.7 Calls (DECISIONS BU-46, R4-M151): a raw layer without an Origin that a declaration writes at any depth below the holder gives
     // the write fact, as the holder's own layer does (direct), so a call storing a borrow in the holder keeps its Loan in E and `z = 5`
     // errs: beside a supplied argument (pairM), in a user enum's payload (enumHeld), a Tuple in a Type argument (tupleWrap), a nested holder
-    // (deeper), a pair slot's argument (pairSlot, also stated `static`, hpst) and its application `s/U` (hpu); where the parameter's Type
-    // expression writes it over a Loan-free pointee, nothing past it, so the store holds no Loan (supplied, pairM2, pu, wrap).
+    // (deeper), a pair slot's argument (pairSlot, also stated `static`, hpst) and its application `s/U` (hpu), and outside a stored part,
+    // an Array element of a Field (hold2) and a `during self` pointee's content (selfBuf); where the parameter's Type expression writes it
+    // over a Loan-free pointee, nothing past it, so the store holds no Loan (supplied, pairM2, pu, wrap).
     [Fact]
     public void ALayerADeclarationWritesGivesTheWriteFact()
     {
@@ -343,6 +344,14 @@ public sealed partial class MirBorrowsTest
                 var p: PU<raw/u8>
                 public init() => self.p = PU<raw/u8>.init(null)
                 public func put<T>(self: uniq/Self, value: T) => ()
+            struct Hold2
+                var items: Array<raw/u8>
+                public init() => self.items = [null]
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct SB
+                var data: raw/(raw/u8) during self
+                public init() => self.data = null
+                public func put<T>(self: uniq/Self, value: T) => ()
             func direct()
                 var z = 3
                 var h = RawBuf.init()
@@ -383,6 +392,16 @@ public sealed partial class MirBorrowsTest
                 var h = HPU.init()
                 h.put(z@ref)
                 z = 5
+            func hold2()
+                var z = 3
+                var h = Hold2.init()
+                h.put(z@ref)
+                z = 5
+            func selfBuf()
+                var z = 3
+                var h = SB.init()
+                h.put(z@ref)
+                z = 5
             func supplied()
                 var z = 3
                 var h = Outer<raw/u8>.init(Wrap<raw/u8>.init(null))
@@ -405,7 +424,10 @@ public sealed partial class MirBorrowsTest
                 z = 5
             """);
         Assert.Equal(
-            ["direct: z = 5", "pairM: z = 5", "enumHeld: z = 5", "tupleWrap: z = 5", "deeper: z = 5", "pairSlot: z = 5", "hpst: z = 5", "hpu: z = 5"],
+            [
+                "direct: z = 5", "pairM: z = 5", "enumHeld: z = 5", "tupleWrap: z = 5", "deeper: z = 5", "pairSlot: z = 5", "hpst: z = 5", "hpu: z = 5",
+                "hold2: z = 5", "selfBuf: z = 5",
+            ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 

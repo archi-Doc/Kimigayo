@@ -545,8 +545,8 @@ public sealed class TyCtxtTest
 
     // SPEC 5.7 (design-final §15; DECISIONS BU-24, BU-41): a raw layer an instance stores has the step of its declared Field Type or Case
     // payload under the instance's substitution, the one reader A5 has for it: `self` the holder's own, a `ref` slot Shared (also under
-    // `static`), a `uniq` slot Exclusive, an inline Tuple's or fixed array's layer by its positions; the declaration states each, so no
-    // Type argument supplies it; AdtDef's stored Types state none.
+    // `static`), a `uniq` slot Exclusive, an inline Tuple's or fixed array's layer by its positions; the declaration states each with an
+    // Origin, so none states Unstated (RawStated); AdtDef's stored Types state none.
     [Fact]
     public void AStoredRawLayerHasItsDeclaredStep()
     {
@@ -555,7 +555,7 @@ public sealed class TyCtxtTest
         Assert.Equal(
             [RawStep.Own, RawStep.Own, RawStep.Shared, RawStep.Shared, RawStep.Exclusive, RawStep.Own, RawStep.Own],
             layers.Select(x => types.RawStep(x.Instance, x.Part, x.Positions)));
-        Assert.All(layers, x => Assert.False(types.RawSupplied(x.Instance, x.Part, x.Positions)));
+        Assert.All(layers, x => Assert.False(TyCtxt.RawStated(KeptLayer(types, x.Instance, x.Part, x.Positions))));
         Assert.All([AdtDef.FieldType(p[3], 0)!, AdtDef.CaseTypes(p[4])![0]!.Components[0], AdtDef.FieldType(p[5], 1)!], static x => Assert.Null(x.RawOrigin));
     }
 
@@ -564,7 +564,7 @@ public sealed class TyCtxtTest
     // declared layer: it has the kind of the Origin the argument states (none Unstated, `static` Static, any other Exclusive), never the
     // stored cap, and a pair's raw case states none (SPEC 8.1.2), nor does a raw argument a pair slot binds (SPEC 8.1.1, DECISIONS BU-34:
     // `Holder<raw/i32 during y>` is `Holder<raw/i32>`). Its Origin's borrows are not the instance's, so an Exclusive one's members are
-    // incomplete. RawSupplied answers each such layer. A path whose substituted part is no raw layer stays a broken contract.
+    // incomplete. No declaration states such a layer (RawStated). A path whose substituted part is no raw layer stays a broken contract.
     [Fact]
     public void ARawLayerATypeArgumentSuppliesStepsByItsOwnOrigin()
     {
@@ -578,13 +578,12 @@ public sealed class TyCtxtTest
             [RawStep.Unstated, RawStep.Exclusive, RawStep.Static, RawStep.Unstated, RawStep.Unstated, RawStep.Unstated, RawStep.Unstated,
                 RawStep.Unstated, RawStep.Unstated, RawStep.Unstated, RawStep.Exclusive, RawStep.Exclusive, RawStep.Unstated],
             layers.Select(x => types.RawStep(x.Instance, x.Part, x.Positions)));
-        Assert.All(layers, x => Assert.True(types.RawSupplied(x.Instance, x.Part, x.Positions)));
+        Assert.All(layers, x => Assert.False(TyCtxt.RawStated(KeptLayer(types, x.Instance, x.Part, x.Positions))));
         var members = new List<RawMember>();
         Assert.Equal((false, true, true), (types.RawMembers(p[10], 0, [], members), types.RawMembers(p[9], 0, [], members), types.RawMembers(p[21], 0, [], members)));
         Assert.Empty(members);
         Assert.Same(p[13], p[21]);
         Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.RawStep(p[20], 0, [])).Message, StringComparison.Ordinal);
-        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.RawSupplied(p[20], 0, [])).Message, StringComparison.Ordinal);
     }
 
     // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-41): an instance's stored parts (StoredParts) are its substitution of the declared Fields,
@@ -612,7 +611,6 @@ public sealed class TyCtxtTest
         Assert.Equal([false, true, true, true, false], Kept(failed, q[1]).Concat(Kept(failed, q[2])).Select(static x => x is null));
         Assert.True(Kept(failed, q[1])[0]!.CarriesRawOrigin && Kept(failed, q[2])[1]!.CarriesRawOrigin);
         Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => failed.Types.RawStep(q[2], 0, [1])).Message, StringComparison.Ordinal);
-        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => failed.Types.RawSupplied(q[2], 0, [1])).Message, StringComparison.Ordinal);
 
         // A struct's kept Fields and kept base, or an enum's kept Case payload Tuples, each AdtDef's WithoutRawOrigins.
         static BoundType?[] Kept(Compilation c, BoundType holder)
@@ -633,9 +631,10 @@ public sealed class TyCtxtTest
     // SPEC 5.7 Calls, 15.6.4 (DECISIONS BU-41): a layer a Type argument supplies below the holder is read on the instance the holder's kept
     // part reaches, which its first read substitutes: Outer<raw/u8 during x>'s `w` is Wrap<raw/u8 during x>, whose `value` is supplied
     // and steps Exclusive with incomplete members, where AdtDef's Wrap<raw/u8> reads Unstated, and Opt2's payload reaches the same
-    // instance. RawSupplied is total where RawStep is: an Option's payload, an enum Case with a stated and a supplied payload, fixed array
-    // elements, a Tuple component and a pair slot's layer, which states no Origin (DECISIONS BU-34), so the holder stores AdtDef's part; a
-    // Case without its payload position, a component with no raw layer or one out of range is a broken contract.
+    // instance. Each layer, also an Option's payload, an enum Case with a stated and a supplied payload, fixed array elements, a Tuple
+    // component and a pair slot's layer, which states no Origin (DECISIONS BU-34, so the holder stores AdtDef's part), is stated by no
+    // declaration (RawStated) but E2's and FA's own `raw/u8` (DECISIONS BU-46); a Case without its payload position, a component with no
+    // raw layer or one out of range is a broken contract.
     [Fact]
     public void AKeptNestedInstanceReadsItsSuppliedLayers()
     {
@@ -643,7 +642,9 @@ public sealed class TyCtxtTest
         var types = c.Types;
         var members = new List<RawMember>();
         var wrap = Kept(1);
-        Assert.Equal((RawStep.Exclusive, true, false), (types.RawStep(wrap, 0, []), types.RawSupplied(wrap, 0, []), types.RawMembers(wrap, 0, [], members)));
+        Assert.Equal(
+            (RawStep.Exclusive, false, false),
+            (types.RawStep(wrap, 0, []), TyCtxt.RawStated(KeptLayer(types, wrap, 0, [])), types.RawMembers(wrap, 0, [], members)));
         Assert.Equal(RawStep.Unstated, types.RawStep(AdtDef.FieldType(p[1], 0)!, 0, []));
         Assert.Same(wrap, types.StoredParts(p[3], out _)[0]!.Components[0]);
         var option = Kept(9);
@@ -651,15 +652,15 @@ public sealed class TyCtxtTest
         (BoundType Instance, int Part, int[] Positions)[] layers =
             [(option, some, [0]), (Kept(10), 0, [0]), (Kept(10), 0, [1]), (Kept(11), 0, [1]), (Kept(11), 1, [0]), (Kept(12), 0, [1]), (Kept(13), 0, [])];
         Assert.Equal(
-            ["Exclusive True False", "Unstated False True", "Exclusive True False", "Exclusive True False", "Unstated False True", "Exclusive True False",
-                "Unstated True True"],
-            layers.Select(x => $"{types.RawStep(x.Instance, x.Part, x.Positions)} {types.RawSupplied(x.Instance, x.Part, x.Positions)} " +
+            ["Exclusive False False", "Unstated True True", "Exclusive False False", "Exclusive False False", "Unstated True True",
+                "Exclusive False False", "Unstated False True"],
+            layers.Select(x => $"{types.RawStep(x.Instance, x.Part, x.Positions)} {TyCtxt.RawStated(KeptLayer(types, x.Instance, x.Part, x.Positions))} " +
                 $"{types.RawMembers(x.Instance, x.Part, x.Positions, members)}"));
         Assert.Empty(members);
         Assert.Same(AdtDef.FieldType(p[13], 0), Kept(13));
         (BoundType Instance, int Part, int[] Positions)[] broken = [(option, some, []), (Kept(12), 0, [0]), (Kept(12), 0, [5])];
         Assert.All(broken, x => Assert.Contains(
-            "InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.RawSupplied(x.Instance, x.Part, x.Positions)).Message, StringComparison.Ordinal));
+            "InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.RawStep(x.Instance, x.Part, x.Positions)).Message, StringComparison.Ordinal));
 
         // The first kept part of the probe's parameter i.
         BoundType Kept(int i) => types.StoredParts(p[i], out _)[0]!;
@@ -772,7 +773,8 @@ public sealed class TyCtxtTest
             if (types.RawStep(p[3], 0, []) != RawStep.Own || types.RawStep(p[6], 1, []) != RawStep.Shared || types.RawStep(p[8], 1, [1]) != RawStep.Own ||
                 types.RawStep(p[19], 0, [0]) != RawStep.Exclusive || types.StoredParts(p[19], out _).Length != 2 ||
                 !ReferenceEquals(types.StoredParts(p[22], out _)[0], nested) || types.RawStep(nested, 0, []) != RawStep.Exclusive ||
-                !types.RawSupplied(nested, 0, []) || types.RawMembers(nested, 0, [], members) || types.RawSupplied(p[3], 0, []))
+                TyCtxt.RawStated(types.StoredParts(nested, out _)[0]!) || types.RawMembers(nested, 0, [], members) ||
+                TyCtxt.RawStated(types.StoredParts(p[3], out _)[0]!))
             {
                 throw new InvalidOperationException("Stored raw steps changed.");
             }
@@ -1340,6 +1342,19 @@ public sealed class TyCtxtTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var probe = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe");
         return (c, probe.Parameters.Select(static x => x.Type.TypeOf()!).ToArray());
+    }
+
+    // The raw layer an instance stores at a part and inline positions, as RawStep reads it: its kept part (an enum Case's payload Tuple),
+    // then per position a Tuple's component or a fixed array's element.
+    private static BoundType KeptLayer(TyCtxt types, BoundType instance, int part, int[] positions)
+    {
+        var layer = types.StoredParts(instance, out _)[part]!;
+        foreach (var position in positions)
+        {
+            layer = layer.Kind == BoundTypeKind.Tuple ? layer.Components[position] : layer.Components[0];
+        }
+
+        return layer;
     }
 
     // The compilation of DeclaredSource and its `probe`'s parameter Types by name.

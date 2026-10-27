@@ -3,11 +3,11 @@
 namespace Kimi.Compiler;
 
 // A5's views of the raw layers an instance stores (SPEC 5.7, 5.2.1 condition 3; DECISIONS BU-24, BU-39, BU-41, BU-46; R4's constraint
-// 2): the authority such a layer's Origin can keep (RawStep, which A5 and MirTypes.Holding read), the borrows it belongs to (RawMembers),
-// whether a Type argument supplies it (RawSupplied) and whether a declaration states it without an Origin (RawStated), with the stored
-// parts through which a walk reaches the instance storing it (StoredParts), for G148 (1)'s per-part guard (R4-M76), read after Binding
-// over Raw Origins (Binding.RawOrigins.Steps.cs, .Keepers.cs) and Binding's instance storage (Binding.Storage.cs); and whether a Type
-// states Unstated (StatesUnstated), which only a kept part does (MirValidator's Local row).
+// 2): the authority such a layer's Origin can keep (RawStep, which A5 and MirTypes.Holding read), the borrows it belongs to (RawMembers)
+// and whether a declaration states it without an Origin (RawStated), with the stored parts through which a walk reaches the instance
+// storing it (StoredParts), for G148 (1)'s per-part guard (R4-M76), read after Binding over Raw Origins (Binding.RawOrigins.Steps.cs,
+// .Keepers.cs) and Binding's instance storage (Binding.Storage.cs); and whether a Type states Unstated (StatesUnstated), which only a kept
+// part does (MirValidator's Local row).
 internal sealed partial class TyCtxt
 {
     // SPEC 5.7 Calls, Fits (DECISIONS BU-46): whether a declaration states a raw layer without an Origin: true exactly for a layer a Field,
@@ -48,9 +48,9 @@ internal sealed partial class TyCtxt
     // whose Loan requirement is `ref`, else the kind of its Origin under the instance's substitution, `self` the holding value's own step;
     // A5 never reads an instance's FieldType or CaseTypes for a raw Origin (they state none) nor substitutes one itself. Cost: one read of
     // the instance's kept part (StoredParts), allocating nothing when warm. Total over what Binding accepts: an Unbound slot argument gives
-    // Unstated, an erased instance answers with its erased arguments, and a layer a Type argument supplies (RawSupplied) has the kind of
-    // the Origin it states on the instance it is read on (a pair slot's argument states none, PairBinding, so it reads Unstated; Unstated
-    // when a declaration above states it, RawStated), never the cap: through AdtDef's parts, which state no raw Origin, Unstated; through
+    // Unstated, an erased instance answers with its erased arguments, and a layer a Type argument supplies has the kind of the Origin it
+    // states on the instance it is read on (a pair slot's argument states none, PairBinding, so it reads Unstated; Unstated when a
+    // declaration above states it, RawStated), never the cap: through AdtDef's parts, which state no raw Origin, Unstated; through
     // StoredParts, the holder's (DECISIONS BU-41). A path that ends at no raw layer is a broken contract.
     internal RawStep RawStep(BoundType instance, int part, ReadOnlySpan<int> positions) => binding.StoredStep(instance, part, positions);
 
@@ -65,18 +65,13 @@ internal sealed partial class TyCtxt
     internal bool RawMembers(BoundType instance, int part, ReadOnlySpan<int> positions, List<RawMember> members)
         => binding.StoredMembers(instance, part, positions, members);
 
-    // SPEC 5.7 Calls, 15.6.4: whether a Type argument supplies the raw layer an instance stores (positions as for RawStep): the declaration
-    // states a Type parameter or a pair layer at the path or above it (a pair slot's argument included, DECISIONS BU-34); false where the
-    // declaration states the layer. One read of the kept part; total where RawStep is.
-    internal bool RawSupplied(BoundType instance, int part, ReadOnlySpan<int> positions) => binding.StoredSupplied(instance, part, positions);
-
     // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-24, BU-41, BU-46; G148 (1)): a struct's or enum's stored parts under its substitution with
     // the raw Origins it gives, `self` as Holder and Unstated on each raw layer its declaration writes without `during` (RawStated), by the
     // `part` RawStep and RawMembers take (a struct's Fields, an enum's Case payload Tuples), its base in `parent`; empty for any other
     // Type. AdtDef's FieldType, CaseTypes and Base are these WithoutRawOrigins, null exactly where they are. A walk reaches through them
-    // the instance that stores a raw layer as the holding value's substitution makes it, and reads that layer only through RawStep,
-    // RawMembers and RawSupplied on that instance and RawStated, never its Origin otherwise, so no premise, obligation or row names Holder
-    // or Unstated (design-final §13 A2). Binding's one substitution per instance and pass, an instance first reached after Binding
+    // the instance that stores a raw layer as the holding value's substitution makes it, and reads that layer only through RawStep and
+    // RawMembers on that instance and RawStated on the layer, never its Origin otherwise, so no premise, obligation or row names Holder or
+    // Unstated (design-final §13 A2). Binding's one substitution per instance and pass, an instance first reached after Binding
     // substituted on that first read; a warm read allocates nothing.
     internal ReadOnlySpan<BoundType?> StoredParts(BoundType instance, out BoundType? parent)
     {

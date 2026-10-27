@@ -3610,7 +3610,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: one implementer and one reviewer below the guard (the pace above; kept as the fallback above it); two implementers and
     one reviewer (two designs and a review still cannot overlap); counting agents without a cap on heavy runs (the load, not the count,
     slows the machine).
-- **R4-M120 G160-4's 4b: A5's raw addresses** (2026-10-25; unit 4b of R4-M116's design B′ as amended, the planning session's rulings
+- **R4-M120 G160-4's 4b: A5's raw addresses** (superseded in part by R4-M151) (2026-10-25; unit 4b of R4-M116's design B′ as amended, the planning session's rulings
   PQ-1 to PQ-13; its two departures, the last two bullets, are the planning session's rulings of 2026-10-25 amending B′: W keeps "E
   where the set carries Φ_E", and the untracked rule is narrowed to addresses and exclusive Loans, sound by SPEC 5.2.1 condition 3's
   first and second limits)
@@ -4854,7 +4854,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
       1.297 ms (×1.025; A′/A ×1.023, within the noise).
     - Warm runs allocate nothing.
   - Numbering: R4-M146 was reserved for 2x-E5 by the R4 planning session (R4-M145 S2, R4-M147 P13-1, R4-M148 2c-3).
-- **R4-M147 A5's per-part guard; P13's body hold removed (PLAN G148 (1), P13-1)** (2026-10-26; R4's lane B under design P13 v3,
+- **R4-M147 A5's per-part guard; P13's body hold removed (PLAN G148 (1), P13-1)** (superseded in part by R4-M151) (2026-10-26; R4's lane B under design P13 v3,
   ACCEPT at its design review 3, on BU-41's view (U0, unit bu46); the planning session's ruling D″ of 2026-10-26 on an abstract
   referent; class Full with BU).
   - Rule (SPEC 15.6.4, 5.7 Calls, 15.3.5; A3 E16): `MirTypes.HoldsLoans` reads the guard per part. A struct's or enum's Type argument
@@ -5090,6 +5090,25 @@ and migration obligations remain in force; no numeric cap changes are authorized
     kept) and `MirBorrowsTest.AnOpaqueTempKeepsTheIndependentRecords` (A1's independent moves, an unrelated conflict, the lost class, the
     grouping pin, a literal's temporary); 27 of their 36 cases fail before, the guards pass before and after.
   - Numbering: the next free R4 number (R4-M148 is 2c-3's, R4-M150 G264's).
+- **R4-M151 A5's `Past` reads an Origin-less raw layer by Binding's statement mark (U0's revision; supersedes R4-M147's P2 bullet and
+  its Known limits' supplied-layer gap, and R4-M120's outside-instance pointee for layers a declaration writes)** (2026-10-27; the R4
+  planning session; implemented in BU's U0 revision commit beside DECISIONS BU-46; design-U0r-1r1 with design 2's findings, R4's design
+  review 2 ACCEPT; the owner's 「許可して設計 1 (推奨)」 of 2026-10-27)
+  `MirTypes.Holding.Past(layer, depth)` reads an Origin-less raw layer by one rule wherever it is: its Unstated kind is a write fact
+  exactly when `TyCtxt.RawStated(layer)` says a declaration wrote the layer without `during` (BU-46), else the layer's pointee — for a
+  stored layer read through `RawStep` and for a layer outside a stored part alike. SPEC 5.7 Calls' "supplied" is thereby decided per
+  parameter Type expression, through Binding's mark, not per nested instance: the forms R4-M147 recorded as an unsound acceptance
+  (`Holder2 { b: Wrap<raw/u8> }`, `HoldOpt { o: Option<raw/u8> }`, `DerS : BaseW<raw/u8>`, `M<raw/u8>` with `w: Two<raw/u8, P>`, a user
+  enum's payload, a Tuple in a Type argument, deeper nesting, a base chain, a pair slot's argument, `PU<raw/u8>` below `HPU`) are errors
+  on the MIR, and R4-M120's pointee reading holds only for the layers the walk's own Type writes (an Array element of a Field and a
+  `self` pointee's content were the same defect). The guard memo stays keyed by the kept Type: every fact it reads is a function of that
+  Type, the mark included.
+  - Supersedes: R4-M147's P2 bullet (the per-nested-instance reading) and the first sentence of its Known limits (the supplied-layer
+    gap); its pins `nestedDead`, `optionalDead` (`MirBorrowsTest.AStoredRawLayerIsReadByItsStep`) and `ds: DerS` (`MirTypesTest`) flip to
+    errors; R4-M120's outside-instance pointee for the layers a declaration writes.
+  - Rejected: direction (A)'s chain in `Past` (order-dependent under the per-Type memo); a route-keyed memo (unbounded, V16).
+  - Not covered: `ha`, an associate binding behind an uncompleted projection (PLAN G271, BU). The default pipeline still accepts the
+    stated forms until R6-check (STATUS).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -7099,6 +7118,11 @@ resumed by R4-M86 (2026-10-20).
     producer of the mark, an associate binding a declaration writes); `sharedSupplied` (a layer stating a slot inside a nested argument,
     `HS {s} { b: Wrap<raw/i32 during s> }`, stays R4-M147's Limit); the default pipeline accepts the stated forms until R6-check (it
     reads AdtDef's view).
+  - Cost (Release, dev f6e7ceef0 against this unit, census of 120 programs: library, milestones, goldens, accepting SPEC variants; two
+    runs each): no census program has a marked part; cold Bind 609,963,032 B against 609,961,520 and 609,962,048 B (noise), BuildMir
+    with A5 426,939,216 B on both, instances 32,183 and problems 7 on both; a program of 22 marked parts, +4,544 B cold Bind (+0.09%).
+    Warm: `Bind(Final)` and 39 guard walks over marked holders allocate 0 B (also `TyCtxtTest.AWarmStoredRawLayerReadAllocatesNothing`).
+    The pinned interleaved timing is the planning session's quiet-window run.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
