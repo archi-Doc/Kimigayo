@@ -3887,6 +3887,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     GXS before R4's exit or a hold for rule G's forms (OQ-F7-3 (b), (c)).
   - Numbering: R4-M126 is free on dev and every remote and local branch (R4-M118 on 2a-1c; R4-M120 and R4-M124 on 4b; R4-M125 on
     G241).
+  - Superseded in part by R4-M148 (2c-3): (iii)'s host is PD13's own view hold, R4-M147 having removed R4-M73's (the substance is
+    unchanged); the package §2.8's Env is the definition's environment under the callee's closure context, and D1 is read at the
+    receiver input only; the owner views of f7h1, f7h2, f7n1 and f7n2 stay rejected by rule G's self-store over an abstract part until
+    GXS, not 2c-4.
 - **R4-M127 A default's copy is decided before it is written** (2026-10-25; PLAN G245's unit U1, the R4 planning session's design B1,
   R5 agreeing that R4 takes the builder site and reviewing its hunk) SPEC 7.2.3, 23.1.1, 23.1.2.
   - Cause: `MirBuilder.Inline` wrote a copy before it knew whether the call's substitution instantiates it. A null `TyCtxt.Apply` or
@@ -4234,6 +4238,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     dropping derived conflicts (R4-M104).
   - Numbering: R4-M132 is free on dev and every branch (R4-M128 2c-2, R4-M129 G248, R4-M130 2c-1 on dev, R4-M131 reserved for the N2
     SPEC session).
+  - Superseded in part by R4-M148: a Value callee's environment is no marking site (the temporary rule is deleted); a Closure call's
+    result is marked as a method's.
 - **R4-M134 SPEC rest: the later SPEC session's items after N2** (owner, 2026-10-25, the R4 planning session's dialog, verbatim:
   RZ1 「(a) 借用のモードで (推奨)」, RZ3 「(a) その場で破棄 (推奨)」, RZ5 「(b) 閉じた一覧 (推奨)」, RZ7 「(a) 宣言された型に合わせる (推奨)」,
   element storage 「(a) 集合型の Loan も及ぶ (推奨)」, G86 「(a) 場合ごとに (推奨)」, G159 (2) 「(b) 部分ごとに (推奨)」, §15.4.2 「(a)
@@ -4728,6 +4734,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     root (the operand may be a projection); deriving the referent a second time (O6).
   - Numbering: R4-M143 was reserved for C3's A5 part by the R4 planning session (R4-M141 G258 D2, R4-M142 S1, R4-M144 G216's amendment
     and R4-M145 S2 reserved; R4-M140 the last on dev).
+  - R4-M148: a Closure contract has no referent stores, so its receiver takes W; a Closure argument a 4.6–4.9 operation calls inside
+    itself is composed at the caller through that Closure contract (this family).
 - **R4-M145 One consumed-by-value rule: ClosureEffects reads the Adjust rule, and a discarded Place's bare acquisition is its plan
   row (consumed-by-value S2)** (2026-10-26; R4's lane A under the owner's design B with the review's C1–C7 (OQ1 (a), 2026-10-25) and
   the owner's discard answer, verbatim 「(a) 素の取得とする (推奨)」 (SPEC 14.2.2 since dev 833209c38); the planning session's S2
@@ -4930,6 +4938,96 @@ and migration obligations remain in force; no numeric cap changes are authorized
     store D″ leaves alone); `AHeldEffectIsUnsupportedRooted` becomes `AnEffectConflictIsALoanProblemRooted`; the hold-only
     `AHeldEffectIsUnsupported`, `AHeldViewKeepsTheWarning` and `AHeldTemplatesSlotProblemIsUnsupported` are deleted.
   - Numbering: R4-M147 was reserved for P13-1 by the R4 planning session.
+  - Superseded in part by R4-M148: `Record` again applies a view hold, PD13's, so the own-step Warning records without it; a Closure
+    value is walked by its environment's parts, no longer counted as possibly an exclusive reference.
+- **R4-M148 A5-F7's rule: a Closure call is a receiver call, with PD13's own view hold (2c-3)** (2026-10-27; R4's implementer under
+  R4-M126's package §2.8–§2.10, the unit's design revision 2, ACCEPTed by its design review 3 with N12–N18 applied; class Full with BU,
+  BU reviewing the Binding hunk, R5 AR-2)
+  - Rule (SPEC 15.8.2, 7.7.2, 7.7.3, 15.6.4): a Closure's call contract (`TyCtxt.Retains` over a Value callee) has its call receiver at
+    input 0, the Type its body is checked against (`Binding.ClosureReceiver`; the MIR body's receiver local): `R/Env during ρ`, R the
+    strongest receiver and ρ its receiver atom (R4-M133), `Env` by value under `owner/Self`; its parameters follow. One predicate,
+    `TyCtxt.HasReceiverInput`, reads the callee through one Semantics layer as `SignatureOwner` does (a Closure called through `ref/` or
+    `uniq/` has the input; a Function value, a function item and a Callable-bounded value do not, C8 unchanged); `Retains` and A5 read
+    only it. A5 maps slot 0 to the callee operand at position `call.Count` and slot i to argument i − 1 through one
+    `CallRows.Position`, which the rows, the untied stores and the referent stores share, and `Calls.Input` gives the operand at a
+    position. A store into the receiver takes rule G's W as any argument's (R4-M73, R4-M147: `Referents`, `Writes`, `Arrive`, the
+    Limit's record; no hold, no empty-value rule): A3 erratum E18, ER-closure-stores (A3 §5's F7 line and P4's Closure clause replaced).
+    A Closure contract has no referent stores, so C3's refs(S)-alone rule (R4-M143) never applies at the receiver.
+  - Env (a correction of the package §2.8's wording "the callee operand's instance Closure Type"): every Closure part of a contract
+    input, the callee's call receiver and a Closure nested in any input (one captured into another Closure, from a `var` local
+    included), is read as its body sees it, one rule (`TyCtxt.ClosureEnvironment`): its definition's `BoundClosure.EnvironmentType`
+    under the part's `ClosureContext` (`ReadableInstance`, BU-36, R4-M139; none: the definition's; one that does not substitute:
+    `CallRetention.Limit`), at the walk's Closure step (`Binding.RetentionParts`) and the receiver's row (`RetentionInput`). A Closure
+    Type a local's initializer inferred names the local's regions, not the Origins its signature and body name, so read as it is no
+    parameter reaches its bindings (the design's probe-table-caseenv: f7a, c-f7c2, f7o4, `update`'s `z@follow = 43` and the reference
+    callees accepted; BU's review B1: nestedVarResultBad, which the dev MIR's temporary rule rejected, and nestedVarStoreBad, accepted
+    on both, when only input 0 was read so). The memo key is `(signature, the callee's closure context, its definition)`: it holds the
+    instance, separates generic instances, is shared by a body's views and reads no environment on lookup. No A5 callee carries a closure
+    context before 2c-5: A5 analyses definitions, whose Closure Types carry none, and a named function's `=>` result is not callable as a
+    Closure (`func mk(v: i32) => func [v] () -> i32 => v; mk(1)()`: `NotCallable_Kd`; implementation review 1's probes), so the
+    context's instance read is unreached. The callee is read without its acquisition layer through `Binding.CallableCore` (BU's B3).
+  - D1 (R4-M126) at the receiver input only, decided from the input itself (its outer Origin is the receiver atom ρ of the Closure
+    whose environment its referent is; `RetentionInput`): its bindings are Fields of the referent, a `var` binding written where the
+    receiver is exclusive, what an exclusive layer in any binding refers to always, a `let` binding itself never; a by-value receiver is
+    any by-value input. The package placed D1 in `RetentionParts` for every Closure-kind Type; SPEC 15.8.2 gives it as the call's own
+    receiver rule ("no Closure body can replace its environment"), and another operation that writes a whole Closure value through
+    `uniq/T` writes `let` bindings too. No form distinguishes the two placements (review 3's rvPutClosure, rvPutClosureVar: no store
+    row either way): the reason is SPEC's reading, unverified by a program.
+  - The receiver's atoms are its environment's parts. The Closure Type's fixed signature Origins (SPEC 15.2.3, O-own) join with F1's
+    `OwnedOrigins` function (BU's PLAN row; the planning session's decision): leaving them out loses no Loan, since a value a fixed
+    signature Origin carries reaches the result or a store through the argument's rows or the environment's, by the premises
+    (`MirBorrowsTest.AClosureCallsResultFollowsItsRows`: signatureResultBad, signatureCaptureBad and signaturePremiseBad err, their Ok
+    twins are valid).
+  - Results come from the rows (a capture's Origin: the receiver's Content; a result naming ρ: its Value row, reachable from 2c-5), so the
+    temporary environment-to-result rule (`MirBorrows.Calls`, the callee's value or referent `Indirect` into every Value call's result) is
+    deleted for every Value callee kind: the five Closure forms only it rejected stay rejected through the rows, and a Function value
+    loses nothing (SPEC 7.7.4's erasure admits no tracked Loan into a common Function value; review 1's erasure probes). R4-M132's marking
+    site "a Value callee's environment" goes: a Closure call's result is marked as a method's (a read through a reference to the whole
+    holder keeps).
+  - What a Closure holds (`MirTypes.HoldsLoans`, IMPL 21.1.2): its environment's parts, walked as a Tuple outside a stored part; a
+    Function value stays opaque. On R4-M147's walk an environment is Through where a part may be an exclusive reference to Loan-capable
+    storage (a captured `uniq` reference, an abstract binding, a Function value, a Loan-capable raw pointee), Limit where its only such
+    part is a stored raw layer stepping Exclusive with unpublished members (`Wrap<raw/u8>`: the call's located `Unsupported_Kd`, as a
+    Tuple's; the opaque Closure wrote past it and erred at the later use), None otherwise, and no holder where no part may hold a Loan.
+    With the opaque Closure kept, W reached E through a `var` binding of a parameter's reference and exchangeOk and setOk erred.
+  - PD13 (supersedes R4-M126 (iii)'s wording "R4-M73's view hold", whose host R4-M147 removed; the owner-approved substance unchanged):
+    `CallRows` sets `held` at a Value call whose acquired receiver, the Semantics of its callee operand's case Type, is Exclusive while
+    `TyCtxt.ClosureReceiverIn` of the callee's case Closure Type is Shared (C2's facts, R4-M128, R4-M145: `CaseFreeReceiver` unless
+    Shared, else Exclusive where a capture with `BareReborrows` has an exclusive layer, or a pair layer admitting one, as its case
+    component). For every call Binding accepts the acquired receiver is the strongest one (the callee's Adjust; a Shared Closure through
+    `u: uniq/Env` is acquired by a shared reference to the referent), so this is "acquired stronger than the case receiver". Rows sets it in
+    the forward solve, which plans every reachable Call before the checks replay records a problem; `Run` resets it per view.
+    `Reports.Record`, the one recorder of every rejection, records in a held view the located `Unsupported_Kd` at its subject: R4-M73's
+    former branch; the own-step Warning records without it (it rejects nothing; R4-M147's "Departure records through Record" is
+    superseded in that part). A body no view decides is checked in view 0 for every view, so view 0's case decides for all: view 0
+    Shared holds every view's rejections (heldMove, `s is owner or uniq`; heldMoveRef, `s is ref or uniq`), view 0 Exclusive holds none and
+    its Language error stands for every view (exclusiveMoveRaw, `s is uniq or raw`), while a view-dependent body is held per view
+    (heldBad, heldRowRaw: the uniq view Language, the raw view `Unsupported_Kd`). R4-M73's hold read represented views the same way.
+    Removal: per-case callee acquisition (PLAN G13).
+  - G136: where `Rows` maps a Value call, a declared signature numbering inputs other than its operands is a broken contract: no row is
+    mapped and the checks record `InternalInvariant_Kd` (`Ownership.Internal`) at the call; the validator is unchanged (a constructed
+    body pins it).
+  - Rule G's self-store (OQ-F7-3 (a)): the receiver's Content stored into its own writable storage rejects a read of a binding captured
+    `@uniq` after a call storing through it (v4 / c-f7c-ok) and gives f7c, f7d and the reference callees a second record. Over an abstract
+    part, which R4-M147's Q1 (a) lets be an exclusive reference, the same row reaches the owner views of f7h1, f7h2, f7n1 and f7n2 and any
+    pair-case Closure that captures with `@uniq` a binding of abstract Type read after the call (selfPair), as the method analog does on
+    dev (methodAbstract); they are not PLAN G147 (8i)'s and stay until GXS (PLAN G148 (2)): the package's "f7h2, f7n2 valid after 2c-4"
+    changes permanently (the planning session's decision; not a library, milestone or corpus form).
+  - PLAN G269's class B closes on the MIR: a Closure called directly that stores a captured value through a captured exclusive referent
+    (n7d, n7f; directStoreBad, directStoreTypedBad) keeps that value's Loan in the referent, so its storage end errs (`let short = 2`, and
+    rule G's self-store at `slot@follow`), where the MIR accepted them at c37cfa1d4; the old path's miss stays PLAN G75 E7's.
+  - Tests: `MirBorrowsTest.Closures` (new): `AClosureCallStoresIntoItsReceiver`, `AClosureCallsResultFollowsItsRows`,
+    `AViewWhoseCaseAdmitsLessThanTheCallAcquiresIsHeld`, `RuleGsSelfStoreReachesAClosureReceiver`,
+    `AStoreTheGuardLeavesUndecidedPastAClosureIsUnsupported`, `ARejectedClosureKeepsItsProgramsIndependentProblems`,
+    `AValueCallWhoseSignatureDoesNotNumberItsOperandsIsABrokenContract`, V16 `AClosureCallsWorkStaysLinearInItsCapturesAndCalls` and
+    `AWarmClosureCallAllocatesNothing` (0 B) (the fix round adds directStore*, nestedVarStore* and nestedVarResult* rows); `RetentionTest`'s
+    two closure rows renumbered (`0 Value result` to `1 Value result`: the
+    receiver at input 0, R4-M126's approved design) with `AClosuresCallReceiverIsInputZero` and
+    `AClosureCalleeHasTheReceiverInputAndItsCaseReceiver`; `MirTypesTest.AClosureHoldsItsEnvironmentsParts`.
+  - Not in this unit: results naming ρ and R1's gate (2c-5); the pair-carrier self-store rows (2c-4, BU's 0c); composing a Consuming
+    Closure call's environment destruction at callers (PLAN G264); a Closure argument a 4.6–4.9 operation calls inside itself is composed
+    at the caller through the same Closure contract (R4-M143's family).
+  - Numbering: R4-M148 was reserved for 2c-3 by the R4 planning session.
 - **R4-M149 An Opaque temp is no storage (PLAN G247)** (2026-10-27; unit G247: design 2's option A, chosen by the planning session
   over design 1's (C), design review ACCEPT, class Major; amends R4-M109 (a) and L1) SPEC 23.1.2, 3.4, 3.6, 13.5.6.
   - Cause: where a consumer needs a Place for an Opaque value, the builder holds the value in a temp (`Value` for a node published

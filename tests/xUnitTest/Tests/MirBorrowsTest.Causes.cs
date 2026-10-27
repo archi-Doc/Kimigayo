@@ -406,7 +406,6 @@ public sealed partial class MirBorrowsTest
             .Where(static x => LoanCodes.Contains(x.Problem.Code) && x.Problem.Subject.Module == 0)
             .Select(x => $"{Function(c.SyntaxOf(x.Problem.Subject))}: {Line(c, x.Problem.Subject)}{Code(x.Problem.Code)}" + Causes(c, program, x.Index))];
 
-        static string? Function(Koto node) => node is FunctionKoto function ? function.Name : node.Parent is { } parent ? Function(parent) : null;
         static string Code(DiagnosticCode code) => code == DiagnosticCode.ComparisonLoanConflict_Kd ? string.Empty : " " + code;
     }
 
