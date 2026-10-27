@@ -337,6 +337,11 @@ public sealed class CallPlan
         }
     }
 
+    // R1's condition at this value call's binding (DECISIONS R4-M152): its result depends on its call receiver, which the old analysis's
+    // gate reports as the located Unsupported_Kd (Binding.ValueCallGate).
+    [Transitional("R6-check", Reason = "The old analysis's gate (DECISIONS R4-M152) goes with the old analysis.")]
+    internal bool ReceiverDependentResult { get; set; }
+
     internal void SetValue(Koto callee, BoundType signature, ReadOnlySpan<BoundArgumentOperation> arguments, BoundType declaredSignature, in BoundArgumentOperation receiverOperation, SemanticsKind receiverKind)
     {
         this.Kind = CalleeKind.Value;

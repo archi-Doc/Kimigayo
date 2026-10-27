@@ -546,9 +546,10 @@ public sealed partial class HirFormsTest
     }
 
     // SPEC 23.1.2 (DECISIONS R5-M63): a closure whose definition Binding completed keeps its parts as a Closure wherever its creation
-    // stands: failed (an Error: its inferred result names its parameter), inside a replaced parent (a let Binding rejected) or rejected
-    // with an expression body, whose result its own Consume takes, or the kept operand of a failed Index, whose creation is evaluated there
-    // (a Closure, in place); a closure whose capture list failed was never bound, so its body stays replaced.
+    // stands, the kept operand of a failed Index included, whose creation is evaluated there (a Closure, in place); a closure whose
+    // capture list failed was never bound, so its body stays replaced. An inferred result over the call's own storage keeps the Closure's
+    // Type and fails only the returned value (DECISIONS R4-M152): the `return` statement, or an expression body, which its own Consume
+    // takes.
     [Fact]
     public void AClosureDefinitionIsPublishedWhereverItsCreationStands()
     {
@@ -561,10 +562,10 @@ public sealed partial class HirFormsTest
         var closures = Reachable(c.Kotonoha).OfType<FunctionKoto>().Where(static x => x.IsAnonymous).ToArray();
         var rows = closures.Select(static x => (Koto?)x.Body ?? x.ExpressionBody!)
             .Select(static x => $"{HirTables.Op(x.Parent!)} {HirTables.Op(x)} {HirTables.AdjustOf(x).Acquire}");
-        Assert.Equal(["Error Block Unset", "Syntax Block Unset", "Error Borrow Temporary", "Error Syntax Unset", "Closure Name Copy"], rows);
+        Assert.Equal(["Closure Block Unset", "Closure Block Unset", "Closure Error Temporary", "Error Syntax Unset", "Closure Name Copy"], rows);
         Assert.Equal(new HirAdjust(HirAcquire.None, HirAdaptation.None), HirTables.AdjustOf(closures[^1]));
         var statements = Reachable(c.Kotonoha).Where(x => x.Parent is CodeBlockKoto && IsWithin(x, closures[0])).Select(static x => HirTables.Op(x));
-        Assert.Equal([HirOp.Let, HirOp.Discard, HirOp.Jump], statements);
+        Assert.Equal([HirOp.Let, HirOp.Discard, HirOp.Error], statements);
     }
 
     // SPEC 14.2.2, 3.5 (DECISIONS R4-M145): a Place in Discard Context is acquired by bare acquisition, as at a value position, and

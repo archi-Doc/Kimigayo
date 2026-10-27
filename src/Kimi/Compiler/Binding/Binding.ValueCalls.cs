@@ -194,6 +194,74 @@ public sealed partial class Binding
         }
     }
 
+    // F1's located limit (SPEC 15.8.2; DECISIONS R4-M152, the owner's 「2c-5 F1: (c')」): a Closure's call result naming a receiver atom
+    // (ρ or an environment binding's) of another Closure that does not enclose the call, a Closure value returned from that Closure's
+    // call. Its signature names that Closure's atoms, which no representation maps to the receiver of the call that returned the value.
+    private static bool ForeignReceiverAtom(BoundType type, FunctionKoto closure, Koto call)
+    {
+        if (Foreign(type.Origin, closure, call))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (Foreign(type.OriginArguments[i], closure, call))
+            {
+                return true;
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (ForeignReceiverAtom(type.Components[i], closure, call))
+            {
+                return true;
+            }
+        }
+
+        return false;
+
+        static bool Foreign(BoundOrigin? origin, FunctionKoto closure, Koto call)
+        {
+            if (origin is null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (Foreign(origin.Operands[i], closure, call))
+                {
+                    return true;
+                }
+            }
+
+            return ReceiverAtom(origin) && !ReferenceEquals(origin.Binder, closure) && !IsWithin(call, origin.Binder!);
+        }
+    }
+
+    // SPEC 7.7.3, 15.8.2 (DECISIONS R4-M152): the Origin of a Closure call's receiver acquisition, which a result naming ρ takes: the
+    // acquisition AcquireValueCallee publishes (a payload's borrow, TryPayloadReceiver; a stored exclusive callee's Reborrow, BU-27);
+    // through any other reference callee its referent's (ReferentOrigin: `ref/F`, and a Shared Closure read through `uniq/F`); the
+    // Closure literal itself keeps ρ, in its evaluating body the literal's own temporary; any other owned callee's Borrow (PlaceOrigin).
+    private BoundOrigin ReceiverImage(InvocationKoto call, FunctionKoto closure, in BoundArgumentOperation acquisition)
+    {
+        if (acquisition.AdaptedType?.Origin is { } adapted)
+        {
+            return adapted;
+        }
+
+        var callee = call.Method.BoundType!;
+        if (callee.Kind == BoundTypeKind.Semantics && this.ReferentOrigin(call.Method, callee) is { } referent)
+        {
+            return referent;
+        }
+
+        return ReferenceEquals(KotoHelper.UnwrapParentheses(call.Method), closure)
+            ? this.OriginAtom(closure, OriginKind.Projection, ClosureValueSlot) : this.PlaceOrigin(call.Method);
+    }
+
     private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver) => this.TryCallable(type, scope, out signature, out receiver, out _);
 
     // SPEC 8.10, 10.5: the one call signature of a callable value. Distinct Callable signatures on one F are call candidates
@@ -403,7 +471,8 @@ public sealed partial class Binding
         // Fresh input Origins and fixed shared capture results retain their complete call contracts. A result over the
         // per-call inputs alone takes the arguments' Origins, as an ordinary call's does (SPEC 15.6.4). A per-call input is one
         // bound by the callee's own binder; an input or result written over a fixed Origin of the calling body is fitted as written.
-        // A result over the closure's environment depends on the call receiver (SPEC 15.8.2), which needs region inference.
+        // A Closure's result naming its call receiver ρ takes the receiver acquisition's Origin and its call result the call's Unbound
+        // atom (SPEC 15.8.2; DECISIONS R4-M152). `dependent` is R1's condition, which the old analysis's gate reads (ValueCallGate).
         var ownBinder = CalleeBinder(call.Method.BoundType, signature);
         var inputBinder = (Koto?)null;
         var dependent = false;
@@ -503,15 +572,18 @@ public sealed partial class Binding
             this.PublishCallRelations();
 
             var result = signature.Components[1];
-            if (dependent || (inputBinder is not null && HasEnvironmentOrigin(result, inputBinder)))
+            var receiverDependent = dependent || (inputBinder is not null && HasEnvironmentOrigin(result, inputBinder));
+            var closure = ownBinder is FunctionKoto { IsAnonymous: true, BoundClosure: not null } closureBinder ? closureBinder : null;
+            if (closure is not null && ForeignReceiverAtom(result, closure, call))
             {
-                return this.Fail(call, BindingFailure.Unsupported);
+                return this.Fail(call, BindingFailure.Unsupported); // F1's located limit (DECISIONS R4-M152): the owner's (c').
             }
 
-            if (inputBinder is not null)
+            if (inputBinder is not null || closure is not null)
             {
-                result = this.SubstituteStoredOrigins(result, inputBinder, origins.AsSpan(0, originCount), argumentOrigins.AsSpan(0, inputCount));
-                if (HasUnsubstitutedInput(result, inputBinder))
+                ReadOnlySpan<BoundOrigin> reserved = closure is null ? default : [this.ReceiverImage(call, closure, receiverOperation), this.OriginAtom(call, OriginKind.Unbound, 0)];
+                result = this.SubstituteStoredOrigins(result, ownBinder!, origins.AsSpan(0, originCount), argumentOrigins.AsSpan(0, inputCount), reserved: reserved);
+                if (inputBinder is not null && HasUnsubstitutedInput(result, inputBinder))
                 {
                     return this.Fail(call, BindingFailure.Unsupported);
                 }
@@ -526,6 +598,7 @@ public sealed partial class Binding
             var declaredSignature = signature;
             signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, result]);
             (call.CallStorage ??= new()).SetValue(call.Method, signature, operations.AsSpan(0, count), declaredSignature, receiverOperation, receiver);
+            this.RecordReceiverDependence(call, receiverDependent);
             return Complete(call, result);
         }
         finally

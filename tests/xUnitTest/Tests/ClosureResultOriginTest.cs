@@ -47,10 +47,13 @@ public class ClosureResultOriginTest
     public void StoredObjectResultsKeepHeaderIdentityAndTheOwner()
         => NativeAllocationAudit.WriteFixture("ClosureResultOriginObject", "struct Item\n    public let id: i32 = 7\n    drop => Console.writeLine(\"drop\")\nlet owner = Kimi.Intrinsics.makeObj(Item.init())\nlet values: [1 of objref/Item] = [owner@objref]\nlet f = func [values] () => values[0]\nlet result = f()\nrequire result.id == 7 else => $abort(\"result\")", 1, 1, 20, "drop\n");
 
-    // SPEC 15.8.2, 15.6.4, 7.7.3: a call's result over the closure's environment depends on the call receiver, which needs region
-    // inference, so each such call is one Unsupported_Kd: a borrow of an environment binding, through a reference receiver, a Reborrow
-    // through a captured exclusive reference, a result beside a per-call input, a temporary closure, a Consuming call that moves a
-    // captured reference out and a returned closure that borrows the environment (compiler reduction R1; they ran since G65).
+    // SPEC 15.8.2, 15.6.4, 7.7.3: a call's result over the closure's environment depends on the call receiver. Binding binds it with the
+    // receiver's Origin (DECISIONS R4-M152), and the old analysis, which cannot judge it, keeps R1's verdict through its gate: each such
+    // call is one located Unsupported_Kd in a program Binding accepts, its code and span R1's, until R6-check (the MIR judges them, MirBorrowsTest):
+    // a borrow of an environment binding, through a reference receiver, a Reborrow through a captured exclusive reference, a result
+    // beside a per-call input, a temporary closure, a Consuming call that moves a captured reference out, a returned closure that borrows
+    // the environment, a call inside a closure argument (bound under a consultation, gated by its final binding: F4) and a nested
+    // Closure's call in its maker's body.
     [Theory]
     [InlineData("let n = 7\nlet f = func [n] () => n@ref\nlet r = f()", "f()")]
     [InlineData("let n = 7\nlet f = func [n] () => n@ref\nlet g = f@ref\nlet r = g()", "g()")]
@@ -60,10 +63,38 @@ public class ClosureResultOriginTest
     [InlineData("var n = 7\nlet view = n@uniq\nvar f = func [view] () => view\nlet r = f()", "f()")]
     [InlineData("var n = 7\nlet view = n@uniq\nlet take = func [view@move] () => view@move\nlet r = take@move()", "take@move()")]
     [InlineData("let n = 7\nlet outer = func [n] () => func [n@ref] () => n\nlet inner = outer()", "outer()")]
+    [InlineData("func apply(f: () -> i32) -> i32 => f()\nlet n: i32 = 4\nlet get = func [n] () => n@ref\nlet r = apply(func [get] () => get()@follow)", "get()")]
+    [InlineData("var x: i32 = 1\nlet u = x@uniq\nvar outer = func [u] () -> i32\n    let i = func [u] () => u@move\n    let p = i@move()\n    p@follow = 2\n    return 0\n_ = outer()", "i@move()")]
     public void AResultOverTheEnvironmentIsUnsupported(string source, string call)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), call), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
+
+    // SPEC 15.8.2 (DECISIONS R4-M152, the owner's 「2c-5 F1: (c')」): a Closure value returned from another Closure's call names that
+    // Closure's receiver atoms in its signature, which no representation maps to the receiver of the call that returned it, so a call of it
+    // outside that Closure's body is the located Unsupported_Kd on both pipelines (F1's boundary, until F1's representation unit): a
+    // nested bare entry (n1, both calls), under a Consuming maker, an inner `[n@ref]` of the maker's binding and a call through a
+    // captured maker. The maker's calls bind: n1's second `outer()` is the MIR's Loan conflict (MirBorrowsTest).
+    [Theory]
+    [InlineData(
+        "var x: i32 = 1\nlet u = x@uniq\nvar outer = func [u] () => func [u] () => u@move\nlet a = outer()\nlet b = outer()\nlet pa = a@move()\n" +
+            "let pb = b@move()\npa@follow = 1\npb@follow = 2",
+        "a@move()|b@move()")]
+    [InlineData(
+        "func makeText() -> string => \"a\"\nfunc consumeText(value: string) => ()\nfunc f(u: uniq/i32) -> uniq/i32 during u\n    let t = makeText()\n" +
+            "    let outer = func [u, t@move] ()\n        consumeText(t@move)\n        return func [u] () => u@move\n    let a = outer@move()\n    return a@move()\nlet k = 0",
+        "a@move()")]
+    [InlineData("let n: i32 = 4\nlet outer = func [n] () => func [n@ref] () => n\nlet a = outer()\nlet r = a()\nlet s = r@follow", "a()")]
+    [InlineData("let n: i32 = 4\nlet outer = func [n] () => func [n@ref] () => n\nlet wrap = func [outer] () => outer()()\nlet r = wrap()", "outer()()")]
+    public void AReturnedClosuresCallOverItsMakersReceiverIsUnsupported(string source, string calls)
+    {
+        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
+        {
+            var records = ContextualCaptureTest.PublishedRecords(source, pipeline);
+            Assert.All(records, static x => Assert.Equal(nameof(DiagnosticCode.Unsupported_Kd), x.Code));
+            Assert.Equal(calls.Split('|'), records.Select(x => source.Substring(x.Span.Start, x.Span.Length)));
+        }
     }
 
     [Fact]

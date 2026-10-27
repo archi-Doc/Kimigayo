@@ -88,6 +88,11 @@ public sealed partial class OwnershipAnalysis
             return this.Result;
         }
 
+        if (this.GateReceiverDependentCalls(binding))
+        {
+            return this.Result = new(false, 0, this.issues.Count);
+        }
+
         if (this.ReportUnprovenOriginObligations())
         {
             // An unchecked Origin obligation that is not a relation rejects the program with a diagnostic at its use, never silently.
@@ -157,6 +162,25 @@ public sealed partial class OwnershipAnalysis
         this.invalidDefaults.Clear();
         this.checkedDefaults.Clear();
         this.candidates.Clear();
+    }
+
+    // SPEC 15.8.2 (DECISIONS R4-M126 §2.13, R4-M152; the owner's D5 exception, OQ-F7-1 (vi)): Binding binds a value call whose result
+    // depends on its call receiver, which this analysis cannot judge, so a program with one gets the located Unsupported_Kd at each such
+    // call, the call's current plan deciding (F4), and nothing else of it is analyzed, as R1's Binding failure left it.
+    [Transitional("R6-check", Reason = "The old analysis's gate goes with the old analysis.")]
+    private bool GateReceiverDependentCalls(Binding binding)
+    {
+        var gated = false;
+        foreach (var call in binding.ReceiverDependentCalls)
+        {
+            if (call.BoundValueCall is { ReceiverDependentResult: true })
+            {
+                this.issues.Add(new(call, OwnershipRequirement.Unsupported));
+                gated = true;
+            }
+        }
+
+        return gated;
     }
 
     private void ReportDiagnostics(IReadOnlyList<OwnershipIssue> reportedIssues, DiagnosticRequirement? requirementOverride = null, string? instanceContext = null, Koto? instanceSite = null)

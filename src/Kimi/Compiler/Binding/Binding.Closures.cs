@@ -361,9 +361,12 @@ public sealed partial class Binding
             return Complete(function, null);
         }
 
-        if (function.ReturnType is null && (expected is null || openResult))
+        // SPEC 15.8.2 (DECISIONS R4-M126 P8, R4-M152): an inferred result is published once the receiver is classified.
+        var publishes = function.ReturnType is null && (expected is null || openResult);
+        var closureBody = new ExecutableBody(symbol);
+        if (publishes)
         {
-            symbol.Type = this.ResolveLocalResultOrigins(symbol.Type);
+            symbol.Type = this.PublishedResult(function, plan.Receiver, closureBody, this.ResolveLocalResultOrigins(symbol.Type));
         }
 
         var buffer = this.typeScratch.Rent(Math.Max(function.Parameters.Count, plan.Storage.Count));
@@ -393,13 +396,9 @@ public sealed partial class Binding
             this.typeScratch.Return(buffer, clearArray: true);
         }
 
-        if (function.ReturnType is null && (expected is null || openResult) && CallLocalOrigin(symbol.Type, function, plan.Receiver == SemanticsKind.Owner) is { } local)
+        if (publishes)
         {
-            // SPEC 15.8.2, 15.6.1: a result inferred from the body that borrows the call's own storage (a parameter, a body local,
-            // or an environment binding the call consumes) cannot outlive the call; the relation is Refuted at that Borrow.
-            var at = function.ExpressionBody ?? function.Body ?? (Koto)function;
-            var fact = new OriginRelationFact(at, local, this.SuppliedAtUse(local, at), this.CallResultOrigin(function), false, null, true);
-            return this.FailExplained(ref this.originRelations, function, BindingFailure.OriginRelation, fact);
+            this.FitResultSources(function, closureBody, symbol.Type); // A returned value over the call's own storage is Refuted where it returns.
         }
 
         return Complete(function, plan.EnvironmentType);

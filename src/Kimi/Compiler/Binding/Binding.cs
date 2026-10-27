@@ -302,6 +302,7 @@ public sealed partial class Binding
         this.argumentKinds.Clear();
         this.argumentProbe = null;
         this.resultContexts.Clear();
+        this.receiverDependentCalls.Clear();
         this.resultLocalEvidence.Clear();
         this.resultCursor = 0;
         this.ResetStartup();

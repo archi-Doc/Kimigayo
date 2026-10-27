@@ -216,7 +216,9 @@ first. IntrinsicId returns to 28 at R8.
   G160-3's `raw/Dictionary<K, V>` handle in place of `raw/u8` until R6-gen (`BodyLowering.DictionaryStorage`,
   `BodyLowering.Dictionaries`; DECISIONS BU-24), and the owner's exception for G86 (2026-10-26, 「(a) 場合ごとの読みを許可 (推奨)」):
   the old analysis's `AddType` and `NamedOriginRequirement` read a slot's Loan requirement in the strongest Semantics case its Type
-  selects (`Binding.RequirementAt` through `OwnershipBody.SlotLoanRequirement`) until R6-check (DECISIONS BU-44), and the owner's exception for Abstract
+  selects (`Binding.RequirementAt` through `OwnershipBody.SlotLoanRequirement`) until R6-check (DECISIONS BU-44), and the owner's exception for A5-F7's 2c-5
+  (OQ-F7-1 (vi), 2026-10-25): the old analysis's gate reports `Unsupported_Kd` at each value call whose result depends on its call
+  receiver and analyzes nothing else of the program until R6-check (DECISIONS R4-M126, R4-M152), and the owner's exception for Abstract
   Calls Reach by Paths (2026-10-22): the old Analysis, Binding's `EffectSummary` and `PublishesIndependentResults` drop rule 1's Origin reach, rule 3
   and `preserves results` (units U1, U2), so the default pipeline accepts the forms that proposal makes valid and rejects G193's
   forms by containment; a form U1 or U2 newly accepts that SPEC does not make valid stops the unit for the owner (DECISIONS
@@ -236,7 +238,9 @@ first. IntrinsicId returns to 28 at R8.
   intrinsics `Capacity`, `FormatBuffer`, `FormatSegment` (`FormatHint` until C9d, DECISIONS R5-M133) and `FormatFinish` that the owner admitted on 2026-10-11
   (`IntrinsicId` limit 34, back to 28 in R8; DECISIONS R3-9, R3-10, R5-M137); the `Compilation.Analyzed` event, the difference
   ledger's observation point, and `Binding.IsEffectRecord` and `Binding.IsTwinRecord`, the ledger's old-side effect and twin subsets (R6, the
-  twin set with the twins at H11; DECISIONS R4-M17, R4-M23, R4-M111);
+  twin set with the twins at H11; DECISIONS R4-M17, R4-M23, R4-M111); the old analysis's receiver-dependence gate, its
+  `CallPlan.ReceiverDependentResult` fact and `Binding.ValueCallGate` (R6-check; DECISIONS R4-M152); F1's located `Unsupported_Kd`
+  at a returned Closure's call, `Binding.ValueCalls.ForeignReceiverAtom` (F1's representation unit; DECISIONS R4-M152);
   `LegacyRuntimeHelpers`, the Backend's Array, Dictionary, formatting and string-comparison runtime text and its requests
   and the legacy row map of the Body-disposition compiler functions, with the formatting runtime's kind numberings (`FormatKind`,
   `WriterKind`), its interpolation estimate (`FormatBound`, `FormatEstimate`) and the conversion text both generators write (R8, DECISIONS

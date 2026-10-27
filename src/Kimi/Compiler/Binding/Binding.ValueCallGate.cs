@@ -1,13 +1,17 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// A value call's result independent of its call receiver (SPEC 15.6.4, 15.8.2; DECISIONS R4-M126 §2.13).
-// - Responsibility: ResultFixedForCall, whether a value call's result that names none of the callee's per-call inputs is fixed for the
-//   call: each Origin static, carried only by Copy captures of a Copy result, or, carried by no capture, a fixed Origin of a function
-//   enclosing the call (FixedInBody, FixedInBodyOrigin); a result it does not fix depends on the call receiver.
+// The old analysis's gate input (SPEC 15.6.4, 15.8.2; DECISIONS R4-M126 §2.13, R4-M152; removed with the old analysis at R6-check).
+// - Responsibility: R1's condition, the call whose result depends on its receiver, kept as a fact once Binding binds such calls:
+//   ResultFixedForCall, whether a value call's result that names none of the callee's per-call inputs is fixed for the call (each Origin
+//   static, carried only by Copy captures of a Copy result, or, carried by no capture, a fixed Origin of a function enclosing the call:
+//   FixedInBody, FixedInBodyOrigin); RecordReceiverDependence, the fact on the call's plan, overwritten by each binding of the call, and
+//   the pass's list of the calls that set it (ReceiverDependentCalls), which OwnershipAnalysis's gate re-reads through each listed
+//   call's current plan (F4).
 // - Inputs: the result Type, the callee expression (its Closure Type and BoundClosure's captures) and the call.
-// - Outputs: the answer, read by BindValueCall's receiver-dependence condition (R1's).
-// - Invariants: a meet is fixed when each operand is; a Non-Copy carrier is never fixed.
-// - Prohibitions: no record, failure or substitution.
+// - Outputs: the answer, read by BindValueCall; the fact and the list, read by the gate only.
+// - Invariants: a meet is fixed when each operand is; a Non-Copy carrier is never fixed; a call is listed once per pass, in the order its
+//   bindings first set the fact; an empty list costs nothing.
+// - Prohibitions: no record, failure or substitution; no reader but BindValueCall and the gate.
 
 using Kimi.Compiler.Parsing;
 
@@ -15,6 +19,13 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // The calls whose binding set ReceiverDependentResult in this pass (OwnershipAnalysis's gate re-reads each one's current plan).
+    [Transitional("R6-check", Reason = "The old analysis's gate (DECISIONS R4-M152) goes with the old analysis.")]
+    private readonly List<InvocationKoto> receiverDependentCalls = new();
+
+    [Transitional("R6-check", Reason = "The old analysis's gate (DECISIONS R4-M152) goes with the old analysis.")]
+    internal IReadOnlyList<InvocationKoto> ReceiverDependentCalls => this.receiverDependentCalls;
+
     // A result whose Origins are static or fixed Origins of a function that encloses the call: the signature's own written contract,
     // which the callee's body was checked against.
     private static bool FixedInBody(BoundType type, Koto use)
@@ -70,6 +81,18 @@ public sealed partial class Binding
     private static bool FixedInBodyOrigin(BoundOrigin origin, Koto use)
         => IsLocalRegion(origin) || (origin.Kind is OriginKind.Projection or OriginKind.Anchor && origin.Binder is not FunctionKoto) ||
             (origin.Kind is OriginKind.Input or OriginKind.Parameter && origin.Binder is FunctionKoto { IsAnonymous: false } owner && IsWithin(use, owner));
+
+    // R1's condition at a value call's binding: the fact on its plan, overwritten by each binding (a consultation's and a candidate
+    // trial's included), and the call listed once per pass when the fact holds.
+    [Transitional("R6-check", Reason = "The old analysis's gate (DECISIONS R4-M152) goes with the old analysis.")]
+    private void RecordReceiverDependence(InvocationKoto call, bool dependent)
+    {
+        call.CallStorage!.ReceiverDependentResult = dependent;
+        if (dependent && !this.receiverDependentCalls.Contains(call))
+        {
+            this.receiverDependentCalls.Add(call);
+        }
+    }
 
     // SPEC 15.6.4, 15.8.2: a value call whose result names none of the callee's per-call inputs keeps that result as written when
     // it is independent of the call: each Origin is static, carried only by Copy captures of a Copy result (a Copy of a captured
