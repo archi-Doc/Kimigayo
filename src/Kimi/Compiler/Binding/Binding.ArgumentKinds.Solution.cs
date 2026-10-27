@@ -55,8 +55,8 @@ public sealed partial class Binding
 
     // The slots of `part` that its expected Type supplied (TakeExpectedSlots), for the call or construction of `owner` when one is given.
     private ulong ExpectedSlots(Koto part, Koto? owner = null)
-        => this.expectedSlots is { } table && table.TryGetValue(SourceRef.Of(KotoHelper.UnwrapParentheses(part)), out var taken) && (owner is null || ReferenceEquals(taken.Owner, owner))
-            ? taken.Slots : 0;
+        => this.expectedSlots is { } table && table.TryGetValue(SourceRef.Of(KotoHelper.UnwrapParentheses(part)), out var taken) &&
+            (owner is null || ReferenceEquals(taken.Owner, owner)) ? taken.Slots : 0;
 
     // Resets the pass's argument facts: the parts' kinds (Binding.ArgumentKinds) and the slots that took their expected Type.
     private void ResetArgumentFacts()

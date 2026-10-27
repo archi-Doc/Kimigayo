@@ -165,9 +165,11 @@ public sealed partial class Binding
 
         // SPEC 15.3.7, 10.7: the conversion's whole-contract Origin part proves the source signature's own Types, which its implementation
         // assumes, from the target's and the use's premises (ProvesSourceSignature), wherever the Function Type is compared, a candidate's
-        // argument included, as a Function Item's conditions are (ContractFits).
-        return FitsTypeCore(actual.Components[1], expected.Components[1], binding, use, invariant, instance: instance, structural: everywhere, everywhere: everywhere) &&
-            (binding is null || use is null || everywhere || binding.collectingFits || binding.ProvesSourceSignature(actual, instance, use));
+        // argument included, as a Function Item's conditions are (ContractFits); a structural comparison proves none, and collecting a
+        // selected call's fits proves none again.
+        return FitsTypeCore(
+            actual.Components[1], expected.Components[1], binding, use, invariant, instance: instance, structural: everywhere, everywhere: everywhere) &&
+            (everywhere || use is null || binding is not { collectingFits: false } || binding.ProvesSourceSignature(actual, instance, use));
     }
 
     // SPEC 10.7: a Function value's conversion instantiates the implementation's call-time Origins at the required ones, one instance for
@@ -266,11 +268,14 @@ public sealed partial class Binding
             }
         }
 
+        if (this.FailedInstancePart(actual.Components[1], expected.Components[1], false, instance, use) is { } result)
+        {
+            return new(at, "the result", result.Longer, result.Shorter, result.Equality);
+        }
+
         // A Function value's own signature Types (ProvesSourceSignature); a named function's conditions, which its definition filters, are
         // its own record (ConditionContractFailure, SPEC 15.3.7).
-        return this.FailedInstancePart(actual.Components[1], expected.Components[1], false, instance, use) is { } result
-            ? new(at, "the result", result.Longer, result.Shorter, result.Equality)
-            : own is not FunctionKoto { IsAnonymous: false } && !this.ProvesSourceSignature(actual, instance, use) && this.failedResultPremise is { } premise
+        return own is not FunctionKoto { IsAnonymous: false } && !this.ProvesSourceSignature(actual, instance, use) && this.failedResultPremise is { } premise
             ? new(at, "the source's signature", premise.Longer, premise.Shorter, false) : null;
 
         static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });

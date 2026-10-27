@@ -277,21 +277,7 @@ public sealed partial class Binding
             var expectedStructure = true; // SPEC 10.8: the slot-free structure of a result that keeps an unsolved slot is still checked.
             if (expected is not null && (function.IsConstructor && declaringType is not null ? this.SelfType(declaringType.Symbol!) : function.BoundSymbol?.Type) is { } returnPattern)
             {
-                // Result expectations use the selected receiver's container Origins, just like inputs.
-                // An abstract container binder must not become a rigid call-site lifetime constraint.
-                returnPattern = this.CallMemberPattern(self is null ? returnPattern : this.ContractType(returnPattern, scope, self), function, declaringType)!;
-
-                // SPEC 10.1 step 4, 15.6.1: the expected result fills the still-unbound slots by its structure; its Origin relations to
-                // the completed result are judged at the destination.
-                var unbound = UnboundSlots(arguments.AsSpan(0, CallSlotCount(function)));
-                expectedStructure = this.Infer(returnPattern, expected, CallSlotOwner(function), arguments, true, lengths);
-                this.TakeExpectedSlots(call, function, arguments.AsSpan(0, CallSlotCount(function)), unbound, origins: false);
-                this.MatchResultOrigins(returnPattern, expected, function, origins, inputs);
-                if (returnPattern.CarriesOrigin)
-                {
-                    solution.OriginInference ??= this.BeginOriginInference(call, function);
-                    this.CollectOriginInference(returnPattern, expected, solution.OriginInference, result: true);
-                }
+                expectedStructure = this.InferExpectedResult(ref solution, returnPattern, expected);
             }
 
             // SPEC 10.2.1, 4.6.2: after the expected result, the Literal parts' defaults applied to the selected candidate and range typing.
@@ -603,5 +589,28 @@ public sealed partial class Binding
             this.ReturnSlotSet(open);
             this.ReturnSlotSet(waiting);
         }
+    }
+
+    // SPEC 10.1 step 4, 15.6.1: the expected result fills the candidate's still-unbound slots by its structure, and its Origin relations
+    // to the completed result are judged at the destination. Result expectations use the selected receiver's container Origins, just like
+    // inputs; an abstract container binder must not become a rigid call-site lifetime constraint. False when the result's structure does
+    // not fit the expected one.
+    private bool InferExpectedResult(ref SlotSolution solution, BoundType returnPattern, BoundType expected)
+    {
+        var function = solution.Function;
+        var arguments = solution.Types;
+        var pattern = solution.Self is null ? returnPattern : this.ContractType(returnPattern, solution.Scope, solution.Self);
+        returnPattern = this.CallMemberPattern(pattern, function, solution.DeclaringType)!;
+        var unbound = UnboundSlots(arguments.AsSpan(0, CallSlotCount(function)));
+        var structure = this.Infer(returnPattern, expected, CallSlotOwner(function), arguments, true, solution.Lengths);
+        this.TakeExpectedSlots(solution.Call, function, arguments.AsSpan(0, CallSlotCount(function)), unbound, origins: false);
+        this.MatchResultOrigins(returnPattern, expected, function, solution.Origins, solution.Inputs);
+        if (returnPattern.CarriesOrigin)
+        {
+            solution.OriginInference ??= this.BeginOriginInference(solution.Call, function);
+            this.CollectOriginInference(returnPattern, expected, solution.OriginInference, result: true);
+        }
+
+        return structure;
     }
 }

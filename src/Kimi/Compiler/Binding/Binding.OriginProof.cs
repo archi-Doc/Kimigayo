@@ -463,7 +463,8 @@ public sealed partial class Binding
     // SPEC 10.1: the Origin part of a fit (FitsTypeCore). During candidate evaluation and while a selected call's fits are collected
     // it is the pure answer; any other fit records its bounds at once (FitOriginOutlives). `assumed` is a Callable comparison's target.
     private bool FitOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0, BoundType? assumed = null)
-        => this.collectingFits || this.candidateTrials != 0 ? this.FitsOriginOutlives(longer, shorter, use, condition, assumed) : this.FitOriginOutlives(longer, shorter, use, condition, assumed);
+        => this.collectingFits || this.candidateTrials != 0
+            ? this.FitsOriginOutlives(longer, shorter, use, condition, assumed) : this.FitOriginOutlives(longer, shorter, use, condition, assumed);
 
     // The collector's record (CollectFitBounds): `bound` bounds the Origin `variable` that `local` omits.
     private void CollectInitializerBound(VariableKoto local, BoundOrigin variable, BoundOrigin bound, Koto use, ulong condition)
@@ -538,7 +539,8 @@ public sealed partial class Binding
         }
     }
 
-    private bool CheckCallOriginRelations(Koto function, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType, BoundType? assumed = null)
+    private bool CheckCallOriginRelations(
+        Koto function, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType, BoundType? assumed = null)
     {
         if (!this.originDeclarations.TryGetValue(function, out var declaration))
         {

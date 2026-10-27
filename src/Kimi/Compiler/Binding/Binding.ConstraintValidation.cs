@@ -218,7 +218,9 @@ public sealed partial class Binding
             return;
         }
 
-        this.RequireConstraint(node, call.Kind == CalleeKind.Value ? this.CheckTypeConstraints(call.ReturnType, this.ConstraintScope(node)) : this.CheckCallTypeConstraints(call, this.ConstraintScope(node)), mode);
+        var scope = this.ConstraintScope(node);
+        this.RequireConstraint(
+            node, call.Kind == CalleeKind.Value ? this.CheckTypeConstraints(call.ReturnType, scope) : this.CheckCallTypeConstraints(call, scope), mode);
     }
 
     private ConstraintProof CheckCallTypeConstraints(CallPlan call, BindingScope scope)

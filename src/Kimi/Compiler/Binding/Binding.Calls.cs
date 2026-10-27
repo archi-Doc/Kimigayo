@@ -652,7 +652,27 @@ public sealed partial class Binding
             // SPEC 10.8.1: a constructor whose target Type the call infers from its arguments.
             if (selected.IsConstructor && selectedType is not null && this.InferredConstructorTarget(callee) is { } target)
             {
-                if (!this.ValidateFixedConstruction(call, scope, expected, selectedType, evaluated.AsSpan(0, count), winnerIndex, allMaps, mapping, scratch, lengthArguments, origins, inputs, allOrigins, allInputs, originSlots, inputSlots, operations, operationStride, completedWaiting, waitingContexts))
+                if (!this.ValidateFixedConstruction(
+                    call,
+                    scope,
+                    expected,
+                    selectedType,
+                    evaluated.AsSpan(0, count),
+                    winnerIndex,
+                    allMaps,
+                    mapping,
+                    scratch,
+                    lengthArguments,
+                    origins,
+                    inputs,
+                    allOrigins,
+                    allInputs,
+                    originSlots,
+                    inputSlots,
+                    operations,
+                    operationStride,
+                    completedWaiting,
+                    waitingContexts))
                 {
                     return Complete(call, null);
                 }

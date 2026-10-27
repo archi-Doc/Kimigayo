@@ -201,32 +201,11 @@ public sealed partial class Binding
                 }
             }
 
-            if (expected is not null && !ReferenceEquals(expected, BoundType.Never))
+            if (expected is not null && !ReferenceEquals(expected, BoundType.Never) &&
+                (expected.Semantics != SemanticsKind.Owner || !ReferenceEquals(expected.Symbol, enumeration.Owner) ||
+                !this.TakeEnumExpectation(use, reference, declaration, expected, arguments, origins)))
             {
-                if (expected.Semantics != SemanticsKind.Owner || !ReferenceEquals(expected.Symbol, enumeration.Owner))
-                {
-                    return this.Fail(use, BindingFailure.TypeMismatch);
-                }
-
-                // The slots its qualifier writes are its own; every other slot takes the expected Type (TakeExpectedSlots).
-                var unbound = reference is MemberAccessKoto { Left: GenericsKoto } ? 0UL : ulong.MaxValue;
-
-                for (var i = 0; i < slots; i++)
-                {
-                    if (i >= expected.Components.Count || (arguments[i] is { } fixedType && !ReferenceEquals(fixedType, expected.Components[i])))
-                    {
-                        return this.Fail(use, BindingFailure.TypeMismatch);
-                    }
-
-                    arguments[i] = expected.Components[i];
-                }
-
-                for (var i = 0; i < Math.Min(originCount, expected.OriginArguments.Count); i++)
-                {
-                    origins[i] = expected.OriginArguments[i];
-                }
-
-                this.TakeExpectedSlots(use, declaration, arguments.AsSpan(0, slots), unbound, origins: originCount != 0 && unbound != 0);
+                return this.Fail(use, BindingFailure.TypeMismatch);
             }
 
             var solution = this.Solution(call, declaration, scope, arguments, lengths, origins);
@@ -306,6 +285,33 @@ public sealed partial class Binding
             this.originScratch.Return(origins, clearArray: true);
             this.typeScratch.Return(arguments, clearArray: true);
         }
+    }
+
+    // SPEC 6.5.2 item 2, 10.8.1: an expected Type of the construction's own enum gives every slot and Origin argument; a slot its
+    // qualifier fixed must be the expected one. The slots its qualifier writes are its own; every other slot takes the expected Type
+    // (TakeExpectedSlots). False on a Type mismatch.
+    private bool TakeEnumExpectation(Koto use, Koto reference, EnumKoto declaration, BoundType expected, BoundType?[] arguments, BoundOrigin[] origins)
+    {
+        var slots = declaration.BoundSymbol!.Schema!.GenericSlots.Count;
+        var originCount = declaration.BoundSymbol.Schema.Origins.Count;
+        var unbound = reference is MemberAccessKoto { Left: GenericsKoto } ? 0UL : ulong.MaxValue;
+        for (var i = 0; i < slots; i++)
+        {
+            if (i >= expected.Components.Count || (arguments[i] is { } fixedType && !ReferenceEquals(fixedType, expected.Components[i])))
+            {
+                return false;
+            }
+
+            arguments[i] = expected.Components[i];
+        }
+
+        for (var i = 0; i < Math.Min(originCount, expected.OriginArguments.Count); i++)
+        {
+            origins[i] = expected.OriginArguments[i];
+        }
+
+        this.TakeExpectedSlots(use, declaration, arguments.AsSpan(0, slots), unbound, origins: originCount != 0 && unbound != 0);
+        return true;
     }
 
     // SPEC 6.5.2 item 2, 10.8.1, 10.5.1: a Case construction's own slots after those its qualifier and expected Type fix. A payload whose

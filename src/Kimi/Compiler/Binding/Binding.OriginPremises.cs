@@ -27,8 +27,7 @@ public sealed partial class Binding
                 var capacity = environment.Closure.Capacity;
                 nodes = Math.Max(nodes, capacity.Nodes);
                 edges = Math.Max(edges, capacity.Edges);
-                retains |= environment.Closure.RetainsOrigins || environment.Nodes.Count != 0 || environment.Types.Count != 0 || environment.Results.Count != 0 ||
-                    environment.Resolvers.Count != 0 || environment.Use is not null || environment.Assumed is not null || environment.Scope is not null;
+                retains |= environment.Retains;
             }
 
             return (this.originPremiseEnvironments.Count, nodes, edges, retains);
@@ -379,6 +378,14 @@ public sealed partial class Binding
         internal BoundType? Assumed { get; set; }
 
         internal BindingScope? Scope { get; set; }
+
+        // Whether the environment still references an Origin, a Type, a declaration or syntax: what a request collected or the request
+        // itself, which Clear empties.
+        internal bool Retains => this.Closure.RetainsOrigins || this.HoldsPremises || this.HoldsRequest;
+
+        private bool HoldsPremises => this.Nodes.Count != 0 || this.Types.Count != 0 || this.Results.Count != 0 || this.Resolvers.Count != 0;
+
+        private bool HoldsRequest => this.Use is not null || this.Assumed is not null || this.Scope is not null;
 
         internal void Clear()
         {
