@@ -260,8 +260,8 @@ public sealed partial class Binding
         proof = this.ProveCopy(type, node);
         return proof == ConstraintProof.Proven ? HirAcquire.Copy
             : TryPairLayer(type, out _, out _) && this.BareAcquisition(type, node, out _) == SemanticsMask.None ? HirAcquire.ByCase
-            : type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } && !ReachedThroughShared(node)
-            ? HirAcquire.Reborrow : HirAcquire.Move;
+            : type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } &&
+                !ReachedThroughShared(node) ? HirAcquire.Reborrow : HirAcquire.Move;
     }
 
     /// <summary>Plans the bare acquisition of a pair-layer Place per admitted case (SPEC 3.5, 8.14): a Copy for a shared or raw

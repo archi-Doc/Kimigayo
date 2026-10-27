@@ -6966,14 +6966,28 @@ resumed by R4-M86 (2026-10-20).
   - Records: a pair layer through a shared path at a by-value argument or payload is Binding's TransferRequired_Kd at the Place (the
     argument rule's bare Move, `ArgumentOperations`), in place of the old path's with its case Note (the planning session's decision
     2). One owner adapts every payload and argument, AdaptInput's argument rule, which names a failed acquisition before a structural
-    mismatch, an order this unit does not change: a payload or by-value argument through `ref` whose Type also mismatches (an outer
-    Origin) is now TransferRequired_Kd at the Place where it was TypeMismatch_Kd at the construction. The case Note is not carried:
-    Binding's acquisition record states the Place and its spelling, not the failing cases nor whether the bare plan or an explicit
-    operation's Copy requirement failed (DIAGNOSTICS, open in PLAN G262). G252's forms are accepted on both pipelines; G245's mir
-    `InternalInvariant_Kd` over such a construction goes with the construction's own record, also for the invalid through-`ref`
-    payload, whose failure is now recorded at the construction. An error the false rejection hid becomes visible, SPEC 23.1.2:
-    `_ = o` of `Option<s/T>` in the uniq case (SPEC 3.5.1, an aggregate acquired whole) is the old path's TransferRequired_Kd at `o`,
-    as `_ = o` of `Option<uniq/i32>` is. Every other bare form keeps the old path's record alone until R6 moves it (ledger a1-g4).
+    mismatch, an order this unit does not change: through `ref`, with an outer Origin that also mismatches, `.Some(x@follow)` into
+    `Option<s/T>` was Binding's TypeMismatch_Kd at the construction and `g(x@follow)` with `g: (s/T) -> ()` the old path's
+    TransferRequired_Kd and UnprovenOriginRelation_Kd at `x@follow`; both are now Binding's TransferRequired_Kd at `x@follow` alone.
+    The mismatch is independent (`s is ref` alone reports it), so the order shows one of two independent failures, as before (open,
+    PLAN G262). A capture use through `ref` (`let h = func [x] () -> ()` with `let y = x@follow`, `x: ref/(s/T during a) during b`) no
+    longer Reborrows in the uniq case (BareReborrows, ClosureReceivers), so its `let` Closure's call is no longer Exclusive: Binding's
+    InvalidAssignment_Kd at `h` becomes the old path's TransferRequired_Kd at `x@follow` in the uniq case (SPEC 3.5.1, 7.7.3). The case
+    Note is not carried: Binding's acquisition record states the Place and its spelling, not the failing cases nor whether the bare
+    plan or an explicit operation's Copy requirement failed (DIAGNOSTICS, open in PLAN G262). G252's forms are accepted on both
+    pipelines; G245's mir `InternalInvariant_Kd` over such a construction goes with the construction's own record, also for the invalid
+    through-`ref` payload, whose failure is now recorded at the construction. An error the false rejection hid becomes visible, SPEC
+    23.1.2: `_ = o` of `Option<s/T>` in the uniq case (SPEC 3.5.1, an aggregate acquired whole) is the old path's TransferRequired_Kd at
+    `o`, as `_ = o` of `Option<uniq/i32>` is. Every other bare form keeps the old path's record alone until R6 moves it (ledger a1-g4).
+  - Limit, on both pipelines until R6-check and H3: where Binding rejects such an argument, the old path, which decides until R6,
+    analyzes nothing in the program, and under mir A1's and A5's records stay unpublished (R4-M1), so its independent records are lost:
+    a `MovedPlace_Kd` beside `take(x@follow)` (implementation review 1's `i-masked-old-path-error-head`), also in another function
+    (`i-masked-other-function`), and `g(x@follow)`'s UnprovenOriginRelation_Kd (`i-vc-uniq-only`). The same gate already masks them
+    for every Binding argument rejection (`take(x)` with `owner or uniq` and no Copy). No verdict changes: each program was rejected.
+  - Cost: one allocation-free walk per bare `uniq`/`objuniq` or exclusive-admitting pair Place; `CaseAdmitted` reads its callers'
+    `TryPairLayer`. An interleaved, unpinned A/B (Release, one folder, 10 rounds in alternating order, other sessions' heavy runs on
+    the machine; warm Bind and HIR publish, medians of 200): Bind B/A 0.97–1.00, publish 0.99–1.01 on Milestone34, Milestone26 and the
+    library, within each side's spread (about ±10%); warm Bind and publish allocate 0 B (the allocation regressions).
   - MIR: those positions build the Move (`move <place>`, A1's) in place of `&uniq`, `two-phase` or `acquire` past a shared step; the
     acquiring binder's own PairLayers keep `acquire` (R5's stage B skips them). Stage B relies on Binding's other exclusive producers
     staying path-aware as now: AdaptInput's Reborrow (`ReachedThroughShared`), the explicit `@s` (`SharedPathAccess_Kd`) and

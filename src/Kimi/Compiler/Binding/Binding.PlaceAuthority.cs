@@ -136,7 +136,8 @@ public sealed partial class Binding
                     layers |= layer?.ToMask() ?? SemanticsMask.None;
                     break;
                 case PathStep.PairFollow:
-                    var admitted = CaseAdmitted(next.BoundType, source.CodeContext.Compilation.Binding.PairAdmitted(source), assignment);
+                    var admitted = source.CodeContext.Compilation.Binding.PairAdmitted(source);
+                    admitted = TryPairLayer(next.BoundType, out var followed, out _) ? CaseAdmitted(followed, admitted, assignment) : admitted;
                     layer = PairAuthority(admitted);
                     layers |= admitted;
                     break;
@@ -343,7 +344,8 @@ public sealed partial class Binding
     // parameter does not: an exclusive reference (also held in a let binding), a writable Place, an inline part of a writable root
     // or a Temporary Value. Its path's shared layers are the caller's (ExclusivelyAcquirable, PathAuthority).
     private static bool AcquirableByBinding(Koto receiver, ReadOnlySpan<PairCase> assignment)
-        => LayerAuthority(receiver, assignment) == SemanticsKind.Uniq || Writable(receiver) || ElementAccess.WritableRoot(receiver) is not null || !IsBarePlace(receiver);
+        => LayerAuthority(receiver, assignment) == SemanticsKind.Uniq || Writable(receiver) || ElementAccess.WritableRoot(receiver) is not null ||
+            !IsBarePlace(receiver);
 
     // SPEC 3.4.3, 13.5.5, 15.6.2: the layer a Place's own Type adds to a path below the Place: Ref when its reference layers pass a
     // shared one, Uniq when they pass an exclusive reference or objuniq view, none for an owned Type or an owning obj handle (whose
@@ -353,7 +355,8 @@ public sealed partial class Binding
         SemanticsKind? authority = null;
         for (var type = KotoHelper.UnwrapParentheses(place).BoundType; BelowLayer(type) is { } below; type = below)
         {
-            var layer = TryPairLayer(type, out _, out _) ? PairAuthority(CaseAdmitted(type, place.CodeContext.Compilation.Binding.LayerAdmitted(type!), assignment)) : type!.Semantics;
+            var layer = TryPairLayer(type, out var whole, out _)
+                ? PairAuthority(CaseAdmitted(whole, place.CodeContext.Compilation.Binding.LayerAdmitted(type!), assignment)) : type!.Semantics;
             if (layer is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc)
             {
                 return SemanticsKind.Ref;
@@ -381,15 +384,17 @@ public sealed partial class Binding
         var cases = SemanticsMask.None;
         for (var type = KotoHelper.UnwrapParentheses(place).BoundType; BelowLayer(type) is { } below; type = below)
         {
-            cases |= TryPairLayer(type, out _, out _) ? CaseAdmitted(type, place.CodeContext.Compilation.Binding.LayerAdmitted(type!), assignment) : type!.Semantics.ToMask();
+            cases |= TryPairLayer(type, out var whole, out _)
+                ? CaseAdmitted(whole, place.CodeContext.Compilation.Binding.LayerAdmitted(type!), assignment) : type!.Semantics.ToMask();
         }
 
         return cases;
     }
 
-    // SPEC 8.15.2: the cases of a pair layer under a case assignment: its binder's assigned Semantics, else its admitted set.
-    private static SemanticsMask CaseAdmitted(BoundType? layer, SemanticsMask admitted, ReadOnlySpan<PairCase> assignment)
-        => TryPairLayer(layer, out var whole, out _) && CaseOf(assignment, whole.Symbol!) is { } assigned ? assigned.ToMask() : admitted;
+    // SPEC 8.15.2: the cases of a pair layer, of the pair whose whole Type is given, under a case assignment: its binder's assigned
+    // Semantics, else its admitted set.
+    private static SemanticsMask CaseAdmitted(BoundType whole, SemanticsMask admitted, ReadOnlySpan<PairCase> assignment)
+        => CaseOf(assignment, whole.Symbol!) is { } assigned ? assigned.ToMask() : admitted;
 
     // SPEC 13.5.5: a pair layer's weakest admitted case: shared when it admits a shared one, and otherwise exclusive unless it
     // admits an owner, an owning handle or a raw pointer, which keeps the operand's own path.
