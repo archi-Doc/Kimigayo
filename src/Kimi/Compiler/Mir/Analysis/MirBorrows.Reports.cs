@@ -4,14 +4,17 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Mir;
 
-// A5's problems (A3 5's A6 table, 6.4; DECISIONS R4-M57, R5-M23, R4-M92, R4-M97, R4-M98): each problem recorded through MirReport under
+// A5's problems (A3 5's A6 table, 6.4; DECISIONS R4-M57, R5-M23, R4-M92, R4-M97, R4-M98, R4-M148): each problem recorded through MirReport under
 // its requirement with its code and facts, which MirBorrows.Witnesses builds: the Loan's or candidate's anchor, its witness (a holder's
 // next use in its chain, the location for a value an access takes, a transit value's or E's store; none for a destruction's own
 // hold, R3), an activation's reservation, the static Field an effect met and, inside an inline default copy, the default's operation
-// (Evaluated) with the outermost omitting call as subject (D13); a located Unsupported_Kd where the stratum classifies nothing. Every
-// problem but a located Unsupported_Kd is recorded through Record(code, requirement, subject, facts): a Loan conflict through Report(code,
-// anchor, via, at, reservation, effect), A5-F9's template rules (MirBorrows.Defaults) with their parameter, and the own-step Warning
-// (OwnStepDeparture_Kd, MirBorrows.OwnSteps), which is no Loan problem, through Departure under its own requirement (R4-M116 PQ-8).
+// (Evaluated) with the outermost omitting call as subject (D13); a located Unsupported_Kd where the stratum classifies nothing, and in a
+// view PD13 holds (MirBorrows.CallRows' held; R4-M126 (iii), R4-M148) at every rejection's subject; InternalInvariant_Kd at a Value call
+// whose declared signature does not number its operands (G136). Every rejection but a located Unsupported_Kd is recorded through
+// Record(code, requirement, subject, facts), so the hold is one rule there: a Loan conflict through Report(code, anchor, via, at,
+// reservation, effect), A5-F9's template rules (MirBorrows.Defaults) with their parameter. The own-step Warning (OwnStepDeparture_Kd,
+// MirBorrows.OwnSteps), which is no Loan problem and rejects nothing, is recorded through Departure under its own requirement, never
+// through the hold (R4-M116 PQ-8).
 // Must not decide a conflict (MirBorrows.Checks), derive a requirement from a code, or apply a derived-problem rule (MirReport's).
 internal sealed partial class MirBorrows
 {
@@ -33,18 +36,37 @@ internal sealed partial class MirBorrows
         this.Record(code, OwnershipRequirement.ComparisonLoanConflict, subject, this.facts.AsSpan(0, this.CauseFacts(count)));
     }
 
-    // A problem with its facts (D7, R4-M98).
+    // A rejection with its facts (D7, R4-M98): in a view PD13 holds (R4-M126 (iii), R4-M148) the located Unsupported_Kd at its subject
+    // instead.
     private void Record(DiagnosticCode code, OwnershipRequirement requirement, SourceRef subject, ReadOnlySpan<MirFact> facts)
     {
-        this.program.Problems.Add(new(code, DiagnosticRequirement.Ownership(requirement), subject, this.body.Ordinal, this.views), facts);
+        if (this.held)
+        {
+            this.Unsupported(subject);
+            return;
+        }
+
+        this.AddProblem(code, requirement, subject, facts);
     }
 
     // The own-step Warning at a location (SPEC 5.2.1 condition 3, MirBorrows.OwnSteps): its subject and facts as MirBorrows.Witnesses builds
-    // them for the entry's first formation and the witness, under its own requirement (PQ-8).
+    // them for the entry's first formation and the witness, under its own requirement, never through the hold (PQ-8).
     private void Departure(int entry, int via, MirLocation at)
     {
         var (subject, count) = this.Facts(this.Site(entry), via, at, -1, null);
-        this.Record(DiagnosticCode.OwnStepDeparture_Kd, OwnershipRequirement.OwnStepDeparture, subject, this.facts.AsSpan(0, count));
+        this.AddProblem(DiagnosticCode.OwnStepDeparture_Kd, OwnershipRequirement.OwnStepDeparture, subject, this.facts.AsSpan(0, count));
+    }
+
+    // A problem with its facts in the body's views.
+    private void AddProblem(DiagnosticCode code, OwnershipRequirement requirement, SourceRef subject, ReadOnlySpan<MirFact> facts)
+        => this.program.Problems.Add(new(code, DiagnosticRequirement.Ownership(requirement), subject, this.body.Ordinal, this.views), facts);
+
+    // A broken contract at a location (G136, R4-M148: a Value call's declared signature does not number its operands): InternalInvariant_Kd
+    // at it, which no hold takes.
+    private void Internal(MirLocation at)
+    {
+        var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal);
+        this.program.Problems.Add(new(DiagnosticCode.InternalInvariant_Kd, requirement, this.Subject(at), this.body.Ordinal, this.views));
     }
 
     // A located Unsupported_Kd at a location whose access or call the stratum does not classify; a limit record, which depends on the

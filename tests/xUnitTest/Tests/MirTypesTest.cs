@@ -86,6 +86,33 @@ public sealed class MirTypesTest(ITestOutputHelper output)
         }
     }
 
+    // SPEC 15.8.2, IMPL 21.1.2 (DECISIONS R4-M148): a Closure value holds its environment's parts, a Tuple of its bindings: a captured
+    // exclusive reference to storage that may hold a Loan (exclusive), an abstract binding (abstract) and a Function value (function) let a
+    // call write past it; a shared reference, a `var` one included (shared), and an exclusive reference to a scalar (scalar) do not; a stored
+    // raw layer stepping Exclusive with unpublished members leaves it undecided (limit); scalars only hold no Loan (none).
+    [Fact]
+    public void AClosureHoldsItsEnvironmentsParts()
+    {
+        var c = MirBuildTest.Compile(
+            "struct Wrap2c3<E>\n    var value: E\n    public init(value: E) => self.value = value\n" +
+            "func probe<T>(x: ref/i32, w: uniq/i32, value: T, g: () -> ())\n    T is Copy\n" +
+            "    var holder: ref/i32 during x = x\n    let exclusive = func [holder@uniq] () => ()\n" +
+            "    var state: ref/i32 during x = x\n    let shared = func [var state] () => ()\n" +
+            "    let scalar = func [w] () => ()\n" +
+            "    let n: i32 = 1\n    let none = func [n] () -> i32 => n\n" +
+            "    let abstract = func [var value] () -> T => value\n" +
+            "    let function = func [g@move] () => g()\n" +
+            "    var y = 1\n    var r: ref/i32 = y@ref\n    var u = r@uniq\n" +
+            "    var h = Wrap2c3.init(u@follow@raw@raw/u8)\n    let limit = func [h@move] () => ()\n" +
+            "public func main() => ()\n");
+        Assert.Empty(c.Binding.Issues);
+        var seen = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
+        Assert.Equal(
+            ["Through", "None", "None", "no Loan", "Through", "Through", "Limit"],
+            KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.FunctionKoto>().Where(static x => x.IsAnonymous)
+                .Select(x => MirTypes.HoldsLoans(BoundClosure.Of(x)!.EnvironmentType, c.Types, seen, [], out var writes) ? $"{writes}" : "no Loan").ToArray());
+    }
+
     // SPEC 5.7 Calls, 15.6.4 (DECISIONS R4-M147, BU-41): a raw layer a holder stores at any depth below it is read on the instance holding it,
     // as the holder's substitution makes that instance: a Field (w), a nested instance's Field (o), an inline Tuple (t), a Case payload (e,
     // ow), an Array element in a Field (h), an Own layer's pointee (op) and its Type argument in a nested Field (bb), and a base (d, bw). A

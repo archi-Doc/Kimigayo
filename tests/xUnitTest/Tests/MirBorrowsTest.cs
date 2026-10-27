@@ -2462,9 +2462,11 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         return [.. program.Problems.All.ToArray().Where(x => codes.Contains(x.Code) && x.Subject.Module == 0)
             .Select(x => $"{Function(c.SyntaxOf(x.Subject))}: {Line(c, x.Subject)}{Code(x.Code)}")];
 
-        static string? Function(Koto node) => node is FunctionKoto function ? function.Name : node.Parent is { } parent ? Function(parent) : null;
         static string Code(DiagnosticCode code) => code == DiagnosticCode.ComparisonLoanConflict_Kd ? string.Empty : " " + code;
     }
+
+    // The function a node lies in: the nearest enclosing declaration's name.
+    private static string? Function(Koto node) => node is FunctionKoto function ? function.Name : node.Parent is { } parent ? Function(parent) : null;
 
     private static MirProgram Analyze(Compilation c) => AnalyzeUnsupported(c, []);
 
