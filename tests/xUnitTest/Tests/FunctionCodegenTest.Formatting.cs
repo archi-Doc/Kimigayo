@@ -384,6 +384,28 @@ public sealed partial class FunctionCodegenTest
             static x => Assert.Equal(FormattingTypes.IsBuiltin(x), LegacyRuntimeHelpers.FormatKind(x) >= 0));
     }
 
+    // SPEC 22.10.5 (the old utf8-formatting §5.1; DECISIONS R5-M131): a bounded value's maximum encoded bytes, a wrapping integer's its
+    // argument's and an isize's an i64's; each is the runtime's own bound at the Type's kind (__kimi_format_bounds), and -1 exactly where the
+    // Type is unbounded (a string, a view, a Type without built-in formatting).
+    [Fact]
+    public void FormatBoundsAreTheRuntimesTable()
+    {
+        string[] names = ["i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64", "i128", "u128", "isize", "usize", "f32", "f64", "char"];
+        Assert.Equal(
+            [4, 3, 6, 5, 11, 10, 20, 20, 40, 39, 20, 20, 17, 24, 4],
+            names.Select(static x => LegacyRuntimeHelpers.FormatBound(BoundType.Primitives[x])));
+        BoundType[] others = [BoundType.Boolean, BoundType.Unit, BoundType.String, BoundType.Range, BoundType.WrappingOf(BoundType.Primitives["u8"])];
+        Assert.Equal([5, 2, -1, -1, 3], others.Select(LegacyRuntimeHelpers.FormatBound));
+        using var runtime = new StringWriter();
+        LegacyRuntimeHelpers.WriteFormattingRuntime(runtime);
+        var table = Regex.Match(runtime.ToString(), @"@__kimi_format_bounds = private unnamed_addr constant \[\d+ x i8\] \[([^\]]*)\]").Groups[1].Value
+            .Split(',').Select(static x => int.Parse(x.Trim()[3..], CultureInfo.InvariantCulture)).ToArray();
+        Assert.Equal(18, table.Length);
+        Assert.All(
+            BoundType.Primitives.Values.Concat(BoundType.WrappingScalars.Values).Append(BoundType.Unit).Append(BoundType.String),
+            x => Assert.Equal(LegacyRuntimeHelpers.FormatKind(x) is var kind and > 0 and < 16 ? table[kind] : -1, LegacyRuntimeHelpers.FormatBound(x)));
+    }
+
     // The routine symbols of formatting rows (P1d's FormattingRow), in order.
     private static string[] Routines(params CompilerFunctionKind[] kinds) => [.. kinds.Select(static x => LegacyRuntimeHelpers.FormattingRow(x)!.Abi.Name)];
 

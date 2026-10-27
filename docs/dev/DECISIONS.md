@@ -10672,3 +10672,102 @@ structure is recorded here by the unit that first implements it.
       no ledger row needs it, and an item for a fixed symbol defines nothing, R5-M128's rejection); the collector skipping K row 2's Builtin
       item (it names the Self); new IntrinsicIds, MonoKinds or collector items for the wrappers (R5-M30: the collector never sees a wrapper);
       re-pointing the old planner to the new wrappers (D5).
+- **R5-M131 The owning interpolation's buffer, hints and end in MIR code generation (C9c)** (2026-10-27, C lane; plan C9c, package C 3.2,
+  PD2, PD3, PD21; SPEC 22.7, 22.10.1, 22.10.3, 22.10.4, 22.10.5; the planning session's rulings Q1-Q9 on C9c's design, `c9c-design.md` and
+  `c9c-go.md`, and its ruling on FormatFinish; under R3-10, R5-M18 form 2 (G:format), R5-M30, R5-M128, R5-M130 and R5-M132; PLAN G157 (35))
+  - Estimate (ruling Q1 (a)): code generation writes R3-10's three temporary intrinsics from each call's own operands, the literal bytes, the
+    values' Types token and the direct mark, in the item's instance: the bytes plus each value Type's bound through `TypeOf` (each a write's
+    Type argument, which the collector made). The rule is stated once and both generators read it, promoted from the old generator (bp1):
+    `LegacyRuntimeHelpers.FormatBound` (a bounded Type's maximum encoded bytes by `FormatKind` over the runtime's own `__kimi_format_bounds`,
+    which `FormatBoundsAreTheRuntimesTable` ties to it; -1 for an unbounded Type), `FormatEstimate` (the sum, an unbounded value counted 0 and
+    making it Unbounded, a sum past MaxObjectSize discarded; Capacity, Hint, Stack) and `FormatStackLimit`, 1,024 bytes, the windows-x64
+    rule (the plan row and STATUS:40; IMPL 21.4 no longer states it since S1015, which the planning session reports to the owner). No cache
+    and no side table: a call's estimate is a loop over its token's Types.
+  - Rows (ruling Q6): one `IntrinsicWriter` entry per row, `Buffer`, `Hint` and `Finish` (internal writer-column entries, as `Writer`): their
+    differences are each row's writing rule, not row data (the buffer's home, the hint word, the adapter's buffer), each a routine of the
+    formatting runtime (P1d's text) through `WriteCall`: FormatBuffer `__kimi_text_heap` of the estimate's Capacity at the interpolation's
+    location (zero allocates nothing) or, on a Region home, `__kimi_text_fixed` over the region; FormatHint `__kimi_format_hint` of the adapter
+    and the Hint of the later literal bytes and values; FormatFinish `__kimi_format_finish`, or `__kimi_format_stack_finish` (which marks the
+    string static), over the moved adapter and its buffer, the adapter's `destination` (Utf8Writer's Field 0, the runtime's word 0).
+  - The stack buffer (ruling Q2 (a)): the frame owns the home. The frame's existing walk of the entry-block slots a call needs gives a
+    FormatBuffer whose estimate is `Stack(direct)` (passed directly to `Console.writeLine`, bounded, within the limit) a `Home.Region`
+    destination: its record's alloca and its bytes `%r<local>` of the estimate's total in the entry block (I2, so a loop reuses them).
+    FormatBuffer and the Drop read that home: a Region local's value owns no storage (`OwnsStorage`), so its Drop destroys nothing on any path,
+    the early exit of an embedded `try` or `return` included. FormatFinish has no operand naming the buffer (only the moved adapter), so it
+    applies the same rule, `FormatEstimate.Stack(direct)`, to the operands R3-10 gives it: one rule applied to equal operands, not a second
+    copy (the planning session's ruling, correcting `c9c-go.md`'s "FormatFinish reads the home"). Contract: FormatBuffer and FormatFinish of
+    one interpolation carry the same estimate operands, written by the builder from one computation (`MirBuilder.Format`: `bytes` and the
+    values' Types from `start`, and `ExpansionPlan.Direct`, `MirBuilder.Formatting.cs`'s `Estimate`), so the two applications agree.
+    MirValidator does not check that equality: an open point (PLAN), no validator edit here. Codegen tests pin the pairing: a region ends
+    with the stack form, a heap buffer with the heap form.
+  - Writer kind (ruling Q3 (a)): the adapter over a region keeps its destination Type's kind (HeapBuffer, 1; R5-M130's rule). Premise: the
+    region's size is the instance maximum of every reservation (the literals and the bounded values' maxima; no literal is deferred while
+    the literal path is C9d's), so the HeapBuffer arm of `__kimi_writer_reserve` always fits and never grows it; pinned by the bounds test
+    and the stack rows. The old generator's switch to 0 is an IR deviation. R5-M130's boundary sentence resolves to this.
+  - The literal fast path (R5-M132, the owner's split): an owning interpolation whose estimate is Unbounded and whose literal bytes are above
+    zero is one located `Unsupported_Kd` at its FormatBuffer, decided from its own operands ("the literal path, C9d"): the deferral SPEC
+    22.10.5's one-allocation bound needs has no MIR fact in R3-10's form, which C9d, a Full unit, designs. Every other owning interpolation
+    is written. The census at C9c's base: 17 of the 277 rows holding only C9c's records hold such an interpolation; milestones 24, 30 and 33
+    and the Interpolation corpus kernel move to C9d; milestones 31, 35 and 44 and the other six corpus kernels stay C9c's.
+  - G157 (35) (ruling Q5 (a)): `MirBuilder.Format`: an embedded expression is evaluated only after a test that the adapter is healthy, the
+    previous write's Ok result or, for the first segment, the adapter's status: a `$tryWrite` whose first segment is an expression calls the
+    plan's status first, a failure going to its result (a text's write returns the recorded failure itself, SPEC 22.10.1); one member,
+    `Tested`, writes a write's or the status's call and its test; the text test reads `Binding.WritesText`. MIR now matches the old
+    path's per-write status branch (`OwnershipAnalysis.Formatting.cs`). In a value-first form A2's verdicts follow the new failure arm (the
+    skipped expression's temps Keep or Elide become Flag; a check-only Drop after a Never first expression becomes a runtime Elide); every
+    other form builds the same MIR. R4 reviewed the builder hunk (ACCEPT). The fixture row `Utf8TryWriteFailure` leaves the ledger.
+  - Records: the collector records nothing new (no target, no layout use, no capability row: an estimate past MaxObjectSize or the limit
+    chooses the heap). Code generation records the interim's `Unsupported_Kd` and broken contracts only (`InternalInvariant_Kd`: a step's
+    constant of another kind, a value Type `TypeOf` cannot make, a stack buffer's destination that is not a whole local).
+  - Deviations (IR only, PD9): the stack adapter's kind 1; regions named `%r<local>` per local (the old `%formatBytes<n>`; `Utf8ConsoleTest`'s
+    old spelling, R5-M12 class I, is now generator-neutral, the 33 bytes kept); FormatFinish's buffer read from the adapter (the same
+    address); each write's failure tested by its Result where the old calls `__kimi_format_check`; a Region buffer's HeapBuffer glue item
+    admitted by the collector but unused by that body.
+  - Facts: the sel ledger falls by 261 test rows, from 464 to 203 (call 65, C-frame 87, C-aggregate 33, C-drop 27, format 18, K-edges 13,
+    library-2 7, closure 6, C-scalar 3, object 2): the census's 260 rows whose every record was C9c's and that hold no interim
+    interpolation, and `DeferredEmissionTest.WarmDeferredAnalysisAndWritingAllocateNothing(2)`, which failed only because generation did;
+    and by the fixture row `Utf8TryWriteFailure` (48 to 47). The 17 rows holding the interim's record stay for C9d; nothing outside the
+    ledger fails. Their fixture families run natively under sel at O0 and O2.
+  - Size, over the two commits (bp1, behavior) by numstat: Backend +325/-37 (Codegen +238/-29), Emission +10/-43, MIR builder +23/-7, tests
+    +189/-1, the ledger -261 test and -1 fixture rows, and this entry, ARCH and CODEMAP. Over the plan's +150 by the frame's Region home and
+    the three writers' words.
+  - Deleted: the three rows' located records and "C9c" labels; in Emission (bp1) `FormattingBound`, the stack limit, the estimate's
+    arithmetic and the copies of the runtime's ABIs (`StatusFormatting`, a copy of `FormatHealthy`).
+  - Speed: one runtime call per step (the old form); an estimate a loop over at most its values' Types, no allocation, so a warm Write
+    allocates nothing; one entry-block region per stack interpolation; one arm in the frame's existing walk; no new pass over MIR.
+  - O2 (ruling Q8, R5-M8; the deferred corpus A/Bs, R5-M105, R5-M111, R5-M115, R5-M122, R5-M125): old generator A against MIR code
+    generation B at O2, CPU cycles, 21 interleaved samples of A, B and a copy of A in one folder. SharedHandles 1.00, Array 1.005 and
+    Dictionary 0.99 are within the A=A variance. ErasedCalls 1.072, VirtualDispatch 1.075 and Iterators (information) 1.171 are beyond it
+    (A=A 0.997, 1.010, 0.999). The cause is code placement: the hot loops have the same instructions modulo names (ErasedCalls' is one
+    instruction shorter; VirtualDispatch's object-header load encodes longer, R5-M110), at other offsets mod 64; the kernels' variants
+    without the checksum line flip the sign (0.92, 0.93, 1.00). With the hot loops and functions aligned alike (`llc --align-loops=64
+    --align-all-functions=6` on each generator's own O2 IR), B/A is 0.999, 1.001 and 1.019 against A=A 0.995, 1.001 and 1.001. Landed on the
+    owner's decision of 2026-10-27 (R5-M132). Open: Iterators' remainder of about 2 % when aligned. The Interpolation kernel is C9d's, and
+    Strings waits for E7.
+  - Rejected: inside code generation, a cache or a side table of estimates by buffer (the calls carry their operands), a per-call alloca (a
+    loop grows the stack), the adapter's kind 0 through the region (a second reader, no behavior change), the literal path read from MIR
+    shape (a consumer deciding what the builder should publish; R5-M132), deferring every string write on an internal adapter (a
+    non-literal string's bytes may be freed before the flush), a second bounds table; shared structure, the builder choosing the buffer (MIR
+    is per template; R3-10), the collector publishing the estimate per site (the drop and the adapter still need the link), FormatFinish
+    taking the buffer as an operand (a second borrow under the adapter's live loan), runtime changes (an adapter kind that defers literals,
+    a finish that reads the buffer from the adapter: a declared legacy `.ll` change, two mechanisms until R6-gen), a Kimigayo `writeLiteral`
+    (Utf8Writer's Fields are `let`; R8's form), splicing the runtime's bounds from the C# table (a new marker in the checked splice; the test
+    ties them).
+- **R5-M132 The owner confirms C9c's departure and decides its O2 finding** (owner, 2026-10-27, to the R5 planning session directly;
+  the consequences are the planning session's)
+  - **The departure** (on the planning session's explanation after C9c's design; verbatim 「C9c の逸脱（リテラル高速経路を独立した Full
+    ユニット C9d に分け、C9c では該当する補間を Unsupported_Kd とし、Milestone 44 などの該当分を C9d に移すこと）を承認します。」). The
+    departure R5-M131 records is confirmed. Plan row C9c's literal fast path needs a MIR fact that R3-10's three temporary intrinsics lack
+    (an owning interpolation's literal segment is an ordinary `write<string>`), and every form of that fact changes a shared
+    representation, so it becomes its own Full unit, C9d. Until C9d lands, an owning interpolation whose instance estimate is unbounded and
+    whose literal byte count is above zero is one located `Unsupported_Kd` at its FormatBuffer, decided from FormatBuffer's own operands.
+    What moves with it is what holds such an interpolation, by C9c's census: 17 test rows, milestones 24, 30 and 33, and the Interpolation
+    corpus kernel's O2 A/B (R5-M8). Milestone 44 holds none, so it stays C9c's, as R5-M115 placed it. The planning session's question had
+    named it as an example by mistake, and told the owner so. It leaves the list.
+  - **The O2 finding** (WORKFLOW, a significant measured slowdown of generated code; on the planning session's report of C9c's corpus
+    A/B and its aligned control; verbatim 「C9c の扱い a）記録して着地させる」). Unaligned, the ErasedCalls, VirtualDispatch and Iterators
+    kernels ran 1.07-1.17 under MIR code generation. With both generators' hot loops and functions aligned alike, they ran 0.999, 1.001 and
+    1.019 against A=A. The hot loops have the same instructions modulo names, so the gap is code placement (R5-M131 records the
+    measurements; its B/A is the median of B over the mean of A and A′, which gives Iterators 1.171 where a plain B/A median gives
+    1.170). C9c lands with the measurements recorded. Two points stay open in PLAN: whether R5-M8's corpus A/B adds an aligned
+    control (a VERIFICATION change, the owner's), and Iterators' remaining ~2 % (an information kernel).
