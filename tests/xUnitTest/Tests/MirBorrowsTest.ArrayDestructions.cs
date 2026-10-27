@@ -313,11 +313,14 @@ public sealed partial class MirBorrowsTest
 
     // SPEC 4.9.6, 15.6.4, 16.3.1 (PLAN G264 U0′; DECISIONS R4-M143, R4-M147): at a `truncate` or `removeAll` call whose referent may
     // observe a destruction, A5's records stay today's until U2 composes the destruction's retention (R4-M150): each Bad form errs at
-    // `y = 5` (SPEC's verdict: slot may retain q, which addresses w, which carries y's Loan), and each Ok twin errs there too, C3's known
-    // false error (R4-M143; SPEC: valid), whichever argument form, a Closure, a function item (Item) or a capturing Closure (Cap, whose Bad
-    // is b's Loan), and whatever the length argument (truncateFull: the row names no count); `clear`'s twins are the comparison. Over an
-    // abstract `T` not proven Copy (Gen), the call is the located Unsupported_Kd and Bad keeps its true `y = 5` (R4-M147's
-    // abstract-referent rule, as clearGen's). Guards: U0′ changes no A5 verdict, so each row holds today and must hold after.
+    // `y = 5` (SPEC's verdict: slot may retain q, which addresses w, which carries y's Loan), and each Ok twin errs there too, whichever
+    // argument form, a Closure, a function item (Item) or a capturing Closure (Cap, whose Bad is b's Loan), and whatever the length
+    // argument (truncateFull: the row names no count); `clear`'s twins are the comparison. Over an abstract `T` not proven Copy (Gen), the
+    // call is the located Unsupported_Kd and Bad keeps its true `y = 5` (R4-M147's abstract-referent rule, as clearGen's).
+    // Pinned, not SPEC's verdict: every Ok twin's `y = 5` (removeAllDrop2Ok, truncateDrop3Ok, truncateFullOk, clearDrop2Ok,
+    // removeAllItemOk, removeAllCapOk) and removeAllElemBad's second record, its MIR-only `y = 5` beside the activation conflict, are
+    // R4-M143's known false errors, C3's destruction guard keeping W, pinned here until G264 U2 flips them to SPEC's valid. Guards: U0′
+    // changes no A5 verdict, so each row holds today and must hold after.
     [Fact]
     public void ATruncateOrRemoveAllWhoseReferentMayObserveKeepsW()
     {
