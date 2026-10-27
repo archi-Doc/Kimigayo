@@ -405,13 +405,14 @@ public sealed partial class FunctionCodegenTest
     }
 
     // Package C 3.9, SPEC 23.1.2 (the planning session's ruling Q2): a refusal skips its body only; every other item is still written, so
-    // its own gaps are recorded beside the refusal (g's checked 128-bit addition, a row not written yet), and no module is written.
+    // its own gaps are recorded beside the refusal (g's comparison of a raw pointer through a ref layer, a form not written yet; DECISIONS
+    // R5-M143), and no module is written.
     [Fact]
     public void ARefusalLeavesTheOtherBodiesGapsRecorded()
     {
-        var c = Analyze(WholeIncomplete + "func g(x: i128) -> i128 => x + x\nlet r = g(1)\n");
+        var c = Analyze(WholeIncomplete + "func g(p: ref/raw/i32, q: raw/i32) -> bool => p == q\nlet n = null@raw/i32\nlet r = g(n@ref, n)\n");
         Assert.False(c.Generate(TextWriter.Null));
-        Assert.Equal([("MovedPlace_Kd", (string?)"a.indices"), ("Unsupported_Kd", "x + x")], Records(c));
+        Assert.Equal([("MovedPlace_Kd", (string?)"a.indices"), ("Unsupported_Kd", "p == q")], Records(c));
     }
 
     // The glue a Library function's body calls on its parameter (its one DropGlue call).

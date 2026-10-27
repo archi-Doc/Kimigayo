@@ -523,9 +523,16 @@ public sealed partial class FunctionCodegenTest
 
     // The operator rows (R5 C1a; DECISIONS R5-M76; SPEC 13.3.1, IMPL 21.3.3): a checked integer operation is its overflow intrinsic, whose
     // flag branches to an Abort with KIMI_E_INT_OVERFLOW (6) at the operator's location text (SPEC 22.5.1-22.5.2), and negation subtracts
-    // from 0; the result is the intrinsic's value. Nothing claims nsw or nuw (I9).
+    // from 0; the result is the intrinsic's value. Nothing claims nsw or nuw (I9). A 128-bit one is the same entry; its intrinsics'
+    // declarations are the module's exactly when such a check is written (DECISIONS R5-M143).
     [Theory]
     [InlineData("func f(a: i32, b: i32) -> i32 => a + b", "a + b", "llvm.sadd.with.overflow.i32", "i32 %, i32 %")]
+    [InlineData("func f(a: i128, b: i128) -> i128 => a + b", "a + b", "llvm.sadd.with.overflow.i128", "i128 %, i128 %")]
+    [InlineData("func f(a: u128, b: u128) -> u128 => a + b", "a + b", "llvm.uadd.with.overflow.i128", "i128 %, i128 %")]
+    [InlineData("func f(a: u128, b: u128) -> u128 => a - b", "a - b", "llvm.usub.with.overflow.i128", "i128 %, i128 %")]
+    [InlineData("func f(a: i128, b: i128) -> i128 => a * b", "a * b", "llvm.smul.with.overflow.i128", "i128 %, i128 %")]
+    [InlineData("func f(a: u128, b: u128) -> u128 => a * b", "a * b", "llvm.umul.with.overflow.i128", "i128 %, i128 %")]
+    [InlineData("func f(a: i128) -> i128 => -a", "-a", "llvm.ssub.with.overflow.i128", "i128 0, i128 %")]
     [InlineData("func f(a: u64, b: u64) -> u64 => a - b", "a - b", "llvm.usub.with.overflow.i64", "i64 %, i64 %")]
     [InlineData("func f(a: i16, b: i16) -> i16 => a * b", "a * b", "llvm.smul.with.overflow.i16", "i16 %, i16 %")]
     [InlineData("func f(a: u8, b: u8) -> u8 => a * b", "a * b", "llvm.umul.with.overflow.i8", "i8 %, i8 %")]
@@ -546,6 +553,7 @@ public sealed partial class FunctionCodegenTest
         var value = Assert.Single(f.Instructions, x => x.Shape == $"extractvalue {{ {type}, i1 }} %, 0");
         Assert.Contains(block.Successors[1].Instructions, x => x.Opcode == "store" && x.Operands[0] == value);
         Assert.DoesNotMatch(@"\b(nsw|nuw)\b", text);
+        Assert.Equal(type == "i128", text.Contains(LlvmModuleText.WideOverflowDeclarations, StringComparison.Ordinal));
     }
 
     // SPEC 13.3.1: a quotient or remainder by zero Aborts with KIMI_E_INT_DIV_ZERO (7), a signed quotient also the minimum by -1 with
@@ -1272,15 +1280,16 @@ public sealed partial class FunctionCodegenTest
     // a for loop's
     // statement and of the siblings its expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location
     // (DECISIONS R5-M65), which the diagnostics could not order when each was keyed by its node. A static's initializer is written since
-    // C7b (DECISIONS R5-M106), a constant one folded into its slot. The operator rows (DECISIONS R5-M76) leave checked 128-bit arithmetic to ModuleCodegen's wide overflow declarations and
+    // C7b (DECISIONS R5-M106), a constant one folded into its slot. The operator rows (DECISIONS R5-M76) write checked 128-bit arithmetic
+    // since wide (R5-M143), and a raw pointer compared through a ref layer, an operand Type with no entry, is their one record; they
     // have a raw pointer column since C8a (R5-M92), which writes null too; an erasure is written since C5b (DECISIONS R5-M104), into any
     // target since C5c (R5-M108); an Array's capacity and an Array from none since C8d (R5-M121); the place writer (DECISIONS R5-M83)
     // reads an object borrow's payload since C6a (R5-M110); the rvalue rows (DECISIONS R5-M87) write a Tuple aggregate
     // and a zero-sized local's address, and since C8e (R5-M124) a Dictionary's length, a Dictionary from none and its iteration's storage.
     // K11: an Application's function nothing calls is not generated, so its form records nothing; a Library generates it.
     [Theory]
-    [InlineData("func twice(a: i128) -> i128 => a + a\n", OutputKind.Library, new[] { "a + a" })]
-    [InlineData("func twice(a: i128) -> i128 => a + a\n()", OutputKind.Application, new string[0])]
+    [InlineData("func same(p: ref/raw/i32, q: raw/i32) -> bool => p == q\n", OutputKind.Library, new[] { "p == q" })]
+    [InlineData("func same(p: ref/raw/i32, q: raw/i32) -> bool => p == q\n()", OutputKind.Application, new string[0])]
     [InlineData("func twice(a: f64) -> f64 => a + a\n", OutputKind.Library, new string[0])]
     [InlineData("func id(x: i32) -> i32 => x\nfunc get() -> (i32) -> i32 => id\n", OutputKind.Library, new string[0])]
     [InlineData("func none() -> usize => null@raw/i32@usize\n", OutputKind.Library, new string[0])]

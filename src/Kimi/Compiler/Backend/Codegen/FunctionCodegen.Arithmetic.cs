@@ -9,7 +9,9 @@ namespace Kimi.Compiler.Backend;
 // The operator rows (R5 plan C1a, C1b, C8a, C8c, package C 3.2 I5 and I9; DECISIONS R5-M76, R5-M80, R5-M92, R5-M118): a BinaryOp or UnaryOp
 // into its Place through LlvmScalarText (P4a), by one table keyed by the operator and its left operand's Type class; a string comparison
 // through its row's routine (FunctionCodegen.Strings). A Proven operation (MirRvalue.Proven, the builder's IMPL 21.3.3 fact) writes no check;
-// any other check Aborts at the statement's location text (SPEC 22.5.1-22.5.2).
+// any other check Aborts at the statement's location text (SPEC 22.5.1-22.5.2). A checked 128-bit operation requests its overflow
+// intrinsics' declarations, which the frame's fixed set omits (ModuleCodegen.Needs.WideOverflow); an operand Type with no entry is one
+// located Unsupported_Kd (DECISIONS R5-M143).
 internal sealed partial class FunctionCodegen
 {
     // The string column of the table (Column).
@@ -199,11 +201,17 @@ internal sealed partial class FunctionCodegen
         column = column >= 0 && proven ? Unchecked[column] : column;
         var entry = column < 0 ? default : Rows[row].Entries[column];
         var check = proven ? Check.None : entry.Check;
-        if (entry.Operator is null || (check == Check.Overflow && left.Lowering.Layout.Size > 8))
+        if (entry.Operator is null)
         {
-            // A Type of a later row, or a checked 128-bit operation, whose intrinsics' declarations are ModuleCodegen's request (open issue).
+            // An operand Type with no entry, which an accepted program still reaches: a raw pointer compared through a ref layer, whose
+            // Type is the layer's (column -1), not written yet (DECISIONS R5-M143).
             this.Report(DiagnosticCode.Unsupported_Kd, source);
             return null;
+        }
+
+        if (check == Check.Overflow && left.Lowering.Layout.Size > 8)
+        {
+            this.module.Request(ModuleCodegen.Needs.WideOverflow); // A 128-bit overflow intrinsic, which the fixed declarations omit.
         }
 
         Site site = default;
