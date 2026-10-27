@@ -43,7 +43,9 @@ internal sealed partial class TyCtxt
     // erased callable, which reads no declaration's premises: its key is the calling definition's scope, which only decides its pair
     // layers' admitted cases. A Closure's contract has its call receiver at input 0 (HasReceiverInput; SPEC 15.8.2, DECISIONS R4-M148),
     // the Type its body is checked against (Binding.ClosureReceiver), whose environment the walk reads as the body sees it
-    // (ClosureEnvironment); its key holds the instance, its definition and closure context.
+    // (ClosureEnvironment); its key holds the instance, its definition and closure context. A Closure whose definition did not bind is
+    // keyed as an item is, `(signature, null, owner)`, the shape of a bound one without a context, which is complete: a definition's bound
+    // state is fixed for one Binding result, whose edit discards the memo.
     internal CallRetention Retains(BoundType callee, BoundType signature, BindingSymbol? definition)
     {
         var closure = Closure(callee);

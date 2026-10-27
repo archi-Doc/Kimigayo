@@ -317,9 +317,8 @@ public sealed class RetentionTest
     // and the receiver's own content, `0 Content store 0`), a `let` one never (letPair), what a captured exclusive reference refers to is
     // (holder); a result naming a binding's Origin is the receiver's content (exchange, shared, through `ref/`); a Consuming receiver is
     // the environment by value, whose bindings are not written (consuming). A Closure captured into another is read as its body sees it,
-    // also from a `var` local, whose own Type names its initializer's inferred Origins (nestedGet over get, nestedRemember over
-    // remember: BU's review B1). No
-    // Closure contract has referent stores (a 4.6-4.9 operation's).
+    // also from a `var` local, whose own Type names its initializer's inferred Origins (nestedGet over get, nestedRemember over remember:
+    // BU's review B1). No Closure contract has referent stores (a 4.6-4.9 operation's).
     [Fact]
     public void AClosuresCallReceiverIsInputZero()
     {

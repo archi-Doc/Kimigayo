@@ -265,14 +265,14 @@ public sealed partial class MirBorrowsTest
     // receiver's atoms are its environment's parts, and a Loan a fixed signature Origin carries reaches the result through those rows
     // (DECISIONS R4-M148; the Closure Type's fixed signature Origins, SPEC 15.2.3, are F1's); a Closure captured into another, from a `var`
     // local whose Type names its initializer's inferred Origins, is read as its body sees it (nestedVarResultBad, which the dev MIR's
-    // temporary rule rejected and 5c5d47ff2 accepted, BU's review B1). A Function value keeps C8's contract, with no receiver input
-    // (functionBad, functionOk).
+    // temporary rule rejected and 5c5d47ff2 accepted, BU's review B1), also through a Consuming receiver, by value (nestedConsumingBad,
+    // likewise). A Function value keeps C8's contract, with no receiver input (functionBad, functionOk).
     [Fact]
     public void AClosureCallsResultFollowsItsRows()
         => Assert.Equal(
             ["localBad: n = 5", "byRefBad: n = 5", "fixedBad: x@follow = 5", "rawBad: y = 5", "rawTupleBad: y = 5",
                 "signatureResultBad: z@follow = 42", "signatureCaptureBad: z@follow = 42", "signaturePremiseBad: z@follow = 42",
-                "functionBad: n = 5", "nestedVarResultBad: z@follow = 42"],
+                "functionBad: n = 5", "nestedVarResultBad: z@follow = 42", "nestedConsumingBad: z@follow = 42"],
             Problems("""
                 func usep2<T>(p: raw/T) => ()
                 func resultArgumentOk() -> i32
@@ -395,6 +395,23 @@ public sealed partial class MirBorrowsTest
                     var get = func [r] () -> ref/i32 during x => r
                     let outer = func [get@move] () -> ref/i32 during x => get()
                     let v = outer()
+                    let n = v@follow
+                    z@follow = 42
+                    return n
+                func nestedConsumingBad(z: uniq/i32, x: ref/i32) -> i32
+                    origin z outlives x
+                    let r: ref/i32 during x = z@follow@ref
+                    var get = func [r] () -> ref/i32 during x => r
+                    let outer = func [get@move] () -> ref/i32 during x => get@move()
+                    let v = outer@move()
+                    z@follow = 42
+                    return v@follow
+                func nestedConsumingOk(z: uniq/i32, x: ref/i32) -> i32
+                    origin z outlives x
+                    let r: ref/i32 during x = z@follow@ref
+                    var get = func [r] () -> ref/i32 during x => r
+                    let outer = func [get@move] () -> ref/i32 during x => get@move()
+                    let v = outer@move()
                     let n = v@follow
                     z@follow = 42
                     return n
