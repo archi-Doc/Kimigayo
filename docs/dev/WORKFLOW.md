@@ -9,8 +9,8 @@ in [AGENTS](../../AGENTS.md) (Implementation Design); checks are in [VERIFICATIO
 | --- | --- | --- |
 | **Minor** | A local change: it stays in one owning component, keeps its contract and invariants, adds no branch, parameter, state or table, and a search finds no other site with the same cause. Its commit states the rule and the search. | Implementation → review |
 | **Major** | Any change that is not Minor, Full or Owner. | Design → design review only for an open design issue → implementation → review |
-| **Full** | A change to a shared representation or across phases (formerly "the full process"). | Two independently written designs → choice → design review → implementation → final review |
-| **Owner** | A change that would be Full, whose contract an owner-approved design already fixes, that design having passed as a Full change and being recorded in DECISIONS. | Design → implementation → review |
+| **Full** | A change to a shared representation or across phases (formerly "the full process"). | Problem statement → shared acceptance tests → two candidates, design-first and prototype-first, judged by the tests → choice by results → review of the chosen design and implementation ([Full changes](#full-changes)) |
+| **Owner** | A change that would be Full, whose contract an owner-approved design already fixes, that design having passed a review and being recorded in DECISIONS. | Design → implementation → review |
 
 - An Owner change that departs from the approved contract, including a new representation, component or vocabulary
   entry, becomes a Full change.
@@ -42,6 +42,35 @@ in [AGENTS](../../AGENTS.md) (Implementation Design); checks are in [VERIFICATIO
 - Implement the design, or for a Minor change the fix its cause requires, with focused tests. While fixing, use
   incremental builds and selected tests only.
 - An implementer who finds the design wrong stops and reports to the planning session.
+
+## Full changes
+
+A Full change is decided by results: the same tests judge two candidates written independently, and the planning
+session decides the design by choosing one.
+
+1. **Problem statement.** The planning session states the required meaning (the SPEC rules and the owner's answers that
+   govern the forms) and the acceptance forms with their verdicts, each with its valid or invalid counterpart. It names
+   no mechanism.
+2. **Acceptance tests.** An author who writes neither candidate turns the problem statement into tests before either
+   candidate is implemented, at the lowest public layer, failing where the change alters behavior. The planning session
+   checks the tests against the problem statement before the candidates use them. Rows that wait for an owner answer, or
+   whose verdict the problem statement leaves to a design, are kept apart: they do not count toward passing, and they
+   join the tests when the answer or the choice fixes them.
+3. **Two candidates, written independently.** Neither author reads the other candidate's design or code before the
+   choice. Each candidate is built on its own branch from one base; the two are one unit, and only the chosen one merges.
+   Each delegated prompt carries the problem statement and the tests.
+   - Design-first: a design ([Design](#design) step 3), a structure check by the planning session (the design goes
+     through the owning components and adds no symptom fix), then the implementation. A design that fails the check is
+     revised once; a second failure ends the candidate.
+   - Prototype-first: an implementation iterated against the tests, then a design note covering Design step 3.
+   - A candidate ends when it passes every counted test or its author reports the rows it cannot pass and why.
+4. **Choice.** The planning session chooses, with the session that owns the files where it is another's. A candidate
+   qualifies when it passes every counted test, shows no regression against the completion checks' baselines
+   ([VERIFICATION](VERIFICATION.md#verification-scope)) and goes through the owning components; among qualified
+   candidates, size and cost decide. The choice and its reasons are recorded; the other candidate's branch and results
+   stay as evidence.
+5. **Review** of the chosen design and implementation together, the problem statement and the tests included: an
+   implementation review under [Review](#review)'s verdicts and counts, then [Completion](#completion).
 
 ## Review
 
@@ -75,13 +104,13 @@ becomes an author of the design or the implementation.
   4. no fix is a symptom fix;
   5. after a design revision, the earlier judgments it invalidated.
 - Reviews count per unit, separately for design reviews and implementation reviews, and accumulate: revising the design
-  or returning to a design review does not reset either count. A Full change's final review and the diff review after a
-  failed completion check are implementation reviews.
-- After two reviews whose blocking findings share a cause, the planning session redoes the cause analysis.
-- If the third design review or the third implementation review does not ACCEPT, the unit is held: any change stays on a
-  `held/…` branch with the evidence it has and merges into neither dev nor main; the owner receives each review's
-  findings, why they did not converge and the options (a representation, a whitelist, a hold or another); PLAN records
-  an open issue. Independent units continue.
+  or returning to a design review does not reset either count. A Full change's review of the chosen candidate and the
+  diff review after a failed completion check are implementation reviews.
+- A unit does not converge when two reviews' blocking findings share a cause or when its third design review or third
+  implementation review does not ACCEPT; a Full change also when no candidate qualifies at the choice or the choosing
+  sessions disagree. The planning session then suspends the unit and asks the owner how to proceed
+  ([Owner decisions](#owner-decisions)). Any change stays on a `held/…` branch with its evidence and merges into neither
+  dev nor main, and the unit resumes only on the owner's answer.
 - A review count is never a reason to ACCEPT a change with a blocking defect.
 
 ## Owner decisions
@@ -90,10 +119,12 @@ At any point, suspend the unit and ask the owner on finding:
 
 - a contradiction in the specification;
 - a significant measured slowdown of compilation or generated code;
-- a way to make the specification simpler and cleaner by unifying concepts.
+- a way to make the specification simpler and cleaner by unifying concepts;
+- a unit that does not converge ([Repeated reviews](#repeated-reviews)).
 
-The report names the SPEC sections, the measurements or evidence, and the options; PLAN records the question.
-Independent units continue.
+The report names the SPEC sections, the measurements or evidence (for a unit that does not converge, each review's
+findings or each candidate's results and the cause analysis one level higher), and the options (a representation, a
+whitelist, a redesign, a hold or another) with a recommendation; PLAN records the question. Independent units continue.
 
 ## Completion
 
