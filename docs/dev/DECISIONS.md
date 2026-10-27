@@ -11289,6 +11289,16 @@ structure is recorded here by the unit that first implements it.
       source or its successor's Assign (a consumer deciding by shape); writing phases through intrinsic rows with no MIR call.
     - In shared structure: phase routines in `TestRuntime.ll` (a declared legacy `.ll` change for the same meaning); a MIR producer
       (PD22); a builder `replace` mark on Drop (a MIR form change for an implementation-defined label).
+- **R5-M138 The owner confirms C10a's two departures** (owner, 2026-10-27, to the R5 planning session directly, on its rulings after
+  C10a's design; verbatim 「C10a の逸脱 2 件（(i) テストランタイムが記録値を観測まで保持するための旧生成器 .ll 変更、(ii) ARCH の Backend
+  依存注記を Testing のカタログのサイト番号・ケース／成果物 ID・ランタイムテキスト・エントリ書き出し・値種別へ広げること）を承認します。」;
+  the consequences are the planning session's) The departures R5-M136 records are confirmed:
+  - (i) the test runtime, one text shared by both generators (PD2), holds a recorded value until its observation numbers the issue
+    (`__kimi_test_value` and the observe's flush), a declared legacy `.ll` change of every test build's runtime whose old behavior is
+    unchanged, since F8b's order puts the records before the observation (SPEC 17.6.3);
+  - (ii) ARCH's Backend dependency note (OQ4, R5-M18: "the Testing catalog's symbol column") widens to the catalog's site numbers, case
+    and artifact ids, and Kimi.Testing's runtime text, entry writer and value kind, which plan rows C10a (`SiteOf`) and P6 (`Create`)
+    name. Both leave the list.
 - **R5-M139 An exclusive acquisition passes no shared layer (W1 rule 1, stage B)** (2026-10-27, R5 planning session; R4 signs off the A5
   side; supersedes R5-M123's sentence that stage B waits: PLAN G262 landed as BU-45, R4-M145 closed G251 (7) and made a discarded Place's
   bare acquisition its plan row) Rule (`MirValidator.SharedPaths.cs`, R5-M123's `MirViolation.SharedPath`): a projected Place that a Ref
@@ -11319,3 +11329,12 @@ structure is recorded here by the unit that first implements it.
   per-view pass over every PairAcquire (exact too, but a stored list and a walk per view for what one assignment decides); an Adapt's
   pair layers at their weakest case (its own binder's layer in its exclusive view, `adapt(copy (_1@b0)): s/T` with `s is ref or uniq`,
   would be a false finding).
+- **R5-M140 The owner confirms C10b's two departures** (owner, 2026-10-27, to the R5 planning session directly, on its rulings after
+  C10b's design; verbatim 「承認します」, answering the two departures put to the owner; the consequences are the planning session's) The
+  departures R5-M137 records are confirmed:
+  - (i) the test phase writer and its numbering live in `TestRuntime`, beside C10a's ValueKind and WriteEntry, so R5-M138's widened
+    Backend list gains them;
+  - (ii) two phase labels differ from the old generator's, both in the implementation-defined protocol (IMPL 20.6.3): an assignment's
+    old-value destruction, an A2 Drop like every other, runs in cleanup (the old generator: body; SPEC 13.7.1 calls it cleanup), and a
+    static initializer runs in initialization, phase 3, which the old generator never writes (PD22, PLAN10 §5.6.7). PD22's "avoids
+    per-pipeline kimi test failure output" is not met for these two labels. Both leave the list.
