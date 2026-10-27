@@ -1966,7 +1966,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             "func unlent(x: ref/i32)\n    let n = Nest<ref/i32>.init(value: x)\n");
         var program = Analyze(c);
         Assert.Equal(
-            ["Unsupported_Kd func deep(n: Nest<ref/i32 during a>)", "Unsupported_Kd Nest<ref/i32>.init(value: y@ref)"],
+            ["Unsupported_Kd Nest<ref/i32 during a>", "Unsupported_Kd Nest<ref/i32>.init(value: y@ref)"], // A parameter's at its Type (SPEC 8.15.3).
             program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0).Select(x => $"{x.Code} {Line(c, x.Subject)}"));
     }
 

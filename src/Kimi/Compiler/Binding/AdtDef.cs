@@ -25,14 +25,15 @@ internal sealed class AdtDef
 
     internal FunctionKoto? DestructorKoto { get; set; }
 
-    /// <summary>Gets or sets a value indicating whether the struct's C layout validated (SPEC 21.1). Layout validation writes it for
-    /// every struct in every pass, before storage is prepared; header binding runs earlier and reads the attributes instead.</summary>
+    /// <summary>Gets or sets a value indicating whether the struct selected C layout with a valid Attribute and its layout is available at
+    /// the declaration (SPEC 6.7.1: neither open, derived nor empty). Layout validation writes it for every struct in every pass, before
+    /// storage is prepared; header binding runs earlier and reads the attributes instead.</summary>
     internal bool IsCLayout { get; set; }
 
-    /// <summary>Gets or sets a value indicating whether the struct's C-layout declaration was rejected for a direct zero-sized Field
-    /// (InvalidCLayout_Kd at the Field). C-layout Field validation writes it for every struct in every pass; Layout reads it as storage
-    /// Binding rejected (DECISIONS R5-M55).</summary>
-    internal bool CLayoutRejected { get; set; }
+    /// <summary>Gets or sets a value indicating whether the struct selected C layout with a valid Attribute but its layout is unavailable at
+    /// the declaration (SPEC 6.7.1: open, derived or empty), a fact without a Binding record: Layout judges such a struct CLayout, the error
+    /// at each by-value use (SPEC 8.15.3; DECISIONS R4-M134 Q8). Layout validation writes it for every struct in every pass.</summary>
+    internal bool CLayoutUnavailable { get; set; }
 
     /// <summary>Gets or sets a value indicating whether the declaration lies on an inline storage cycle (InvalidInlineLayout_Kd).
     /// Inline layout validation writes it for every struct and enum in every pass; Layout reads it (DECISIONS R5-M37).</summary>
@@ -153,6 +154,10 @@ internal sealed class AdtDef
 
     // SPEC 6.3: whether a function is a constructor, whose body builds its object from fresh storage (the MIR analyses' fact).
     internal static bool IsConstructor(BindingSymbol? function) => function?.Declaration is FunctionKoto { IsConstructor: true };
+
+    // SPEC 6.3: whether a function is the implicit constructor the language synthesizes for a struct, a body the program did not write, so
+    // the checked set requires it only through a call (SPEC 8.15.3), never as a root.
+    internal static bool IsImplicitConstructor(BindingSymbol? function) => function?.Declaration is FunctionKoto { IsImplicitConstructor: true };
 
     internal static BoundType? ReceiverType(FunctionKoto function)
         => (function.IsConstructor || function.IsDestructor) && function.BoundSymbol?.Scope.Owner.BoundSymbol is { } owner

@@ -229,11 +229,14 @@ internal sealed partial class MirBuilder(Compilation compilation)
                 parameters);
         }
 
-        // The parameters after the special receiver in slot order, or receiver first (MirCallee.Slot).
+        // The parameters after the special receiver in slot order, or receiver first (MirCallee.Slot), each located at its written Type
+        // occurrence (SPEC 8.15.3: a parameter's layout record at the use that needs the layout), else at the declaration.
         for (var position = 0; !template && function is not null && position < Arity(function); position++)
         {
-            var parameter = CallPlan.Parameter(function, special is null ? MirCallee.Slot(function, position) : position)!;
-            this.locals[parameter] = this.Argument(parameter.Type ?? BoundType.Unit, parameter.Name, declaration, parameters);
+            var slot = special is null ? MirCallee.Slot(function, position) : position;
+            var parameter = CallPlan.Parameter(function, slot)!;
+            var source = declaration is FunctionKoto { Parameters: { } written } && (uint)slot < (uint)written.Count ? written[slot].Type : declaration;
+            this.locals[parameter] = this.Argument(parameter.Type ?? BoundType.Unit, parameter.Name, source, parameters);
         }
 
         this.current = body.AddBlock();

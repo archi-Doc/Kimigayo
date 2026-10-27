@@ -38,6 +38,7 @@ public partial class Compilation
     private Mir.MirBuilder? mirBuilder;
     private Mir.MirAnalysis? mirAnalysis;
     private Backend.InstanceCollector? instances;
+    private Backend.CheckedSet? collected; // The checked set of the latest Analyze; null before one and after invalidation.
     private Mir.MirProgram? mir; // The MIR of the latest Analyze under the mir pipeline; null otherwise and after invalidation.
 
     /// <summary>Occurs at the end of every <see cref="Analyze"/>, on both pipelines, when the old path's records and, under mir, the
@@ -101,8 +102,8 @@ public partial class Compilation
         }
     }
 
-    /// <summary>Gets the checked set of the latest <see cref="BuildMir"/> under MIR code generation, else null.</summary>
-    internal Backend.CheckedSet? Instances => this.codegen == CompilerCodegen.Mir ? this.instances?.Set : null;
+    /// <summary>Gets the checked set of the latest <see cref="BuildMir"/>, on every pipeline (SPEC 8.15.3), else null.</summary>
+    internal Backend.CheckedSet? Instances => this.instances?.Set;
 
     /// <summary>Gets the problems of the latest <see cref="Analyze"/>: the old path's in its order, then the MIR's records. The list is
     /// reused by the next read.</summary>
@@ -122,12 +123,21 @@ public partial class Compilation
         }
     }
 
-    /// <summary>Analyzes the bodies after final Binding and the startup check (P6–P9). Under mir the MIR is built, validated and analyzed
-    /// first; then <see cref="Analyzed"/> occurs.</summary>
+    /// <summary>Analyzes the bodies after final Binding and the startup check (P6–P9). The MIR is built and validated first, its checked set
+    /// collected on every pipeline (SPEC 8.15.3), and under mir it is analyzed as well; then <see cref="Analyzed"/> occurs.</summary>
     /// <returns>The analysis result.</returns>
     public AnalysisResult Analyze()
     {
-        this.mir = this.pipeline == CompilerPipeline.Mir ? this.BuildMir() : null;
+        if (this.pipeline == CompilerPipeline.Mir)
+        {
+            this.mir = this.BuildMir();
+        }
+        else
+        {
+            this.mir = null;
+            this.Collect((this.mirBuilder ??= new(this)).Build());
+        }
+
         this.Ownership.Analyze();
         Analyzed?.Invoke(this);
         return this.Analysis;
@@ -184,16 +194,12 @@ public partial class Compilation
         => (source.Module < this.SourceModules.Length ? this.SourceModules[source.Module] : this.Library.Kotonoha).Syntax.Nodes[source.Id]!;
 
     /// <summary>Builds, validates and analyzes the MIR of the latest Binding pass, once per pass (R4: beside the old path, which still
-    /// decides), and under MIR code generation collects its checked set after the analyses, whatever they found (K package 4.3).</summary>
+    /// decides), and collects its checked set after the analyses, whatever they found (K package 4.3).</summary>
     /// <returns>The program, with its construction records, validator findings and analysis problems.</returns>
     internal Mir.MirProgram BuildMir()
     {
         var program = (this.mirAnalysis ??= new(this.Types)).Run((this.mirBuilder ??= new(this)).Build());
-        if (this.codegen == CompilerCodegen.Mir)
-        {
-            (this.instances ??= new(this.Types, this.Layout)).Run(program, this.SourceModules.Length);
-        }
-
+        this.Collect(program);
         return program;
     }
 
@@ -201,34 +207,47 @@ public partial class Compilation
     {
         this.ownership?.Invalidate();
         this.mir = null;
+        this.collected = null;
     }
 
-    // The MIR records the mir pipeline publishes, added to the list when one is given: construction records and validator findings, the
-    // library's as well as the source modules', and under MIR code generation the checked set's records of the same version (R5 K4b,
-    // DECISIONS R5-M41), which join acceptance like the others.
+    // The checked set of a built and validated program, on every pipeline (SPEC 8.15.3: its layout obligations are judged at check), the
+    // one the records of the latest Analyze come from.
+    private void Collect(Mir.MirProgram program)
+        => this.collected = (this.instances ??= new(this.Types, this.Layout)).Run(program, this.SourceModules.Length);
+
+    // The MIR records published, added to the list when one is given: under mir the construction records and validator findings, the
+    // library's as well as the source modules'; on every pipeline the checked set's Language records of the latest Analyze (SPEC 23.2.2:
+    // check reports every Language error of the checked set, its layout obligations among them), and under MIR code generation also its
+    // Unsupported, Resource and Internal records (R5 K4b, DECISIONS R5-M41, until G2), which join acceptance like the others.
     private int MirRecords(List<Problem>? into)
     {
-        if (this.mir is not { } program)
+        var count = 0;
+        if (this.mir is { } program)
         {
-            return 0;
-        }
-
-        var collected = this.Instances is { } set && set.Version == program.Version ? set.Records : null;
-        if (into is not null)
-        {
-            into.AddRange(program.Records);
-            foreach (var finding in program.Findings)
+            count += program.Records.Count + program.Findings.Count;
+            if (into is not null)
             {
-                into.Add(new(DiagnosticCode.InternalInvariant_Kd, finding.Subject));
-            }
-
-            if (collected is not null)
-            {
-                into.AddRange(collected);
+                into.AddRange(program.Records);
+                foreach (var finding in program.Findings)
+                {
+                    into.Add(new(DiagnosticCode.InternalInvariant_Kd, finding.Subject));
+                }
             }
         }
 
-        return program.Records.Count + program.Findings.Count + (collected?.Count ?? 0);
+        if (this.collected is { } set)
+        {
+            foreach (var record in set.Records)
+            {
+                if (this.codegen == CompilerCodegen.Mir || (DiagnosticEntries.TryGet(record.Code, out var entry) && entry.Category == DiagnosticCategory.Language))
+                {
+                    count++;
+                    into?.Add(record);
+                }
+            }
+        }
+
+        return count;
     }
 }
 

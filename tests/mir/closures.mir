@@ -6,7 +6,7 @@ fn top-level#0 @2
       return @3
 fn inspect @4
   _0: i32 return @4
-  _1: ref/string arg text @4
+  _1: ref/string arg text @5
   bb0:
     * _0 = const 1_i32 @8
       return @8
@@ -17,7 +17,7 @@ fn makeText @9
       return @11
 fn makeAdder @12
   _0: (i32) -> i32 return @12
-  _1: i32 arg offset @12
+  _1: i32 arg offset @13
   _2: closure (i32) -> i32 temp @20 s1
   _3: (i32) -> i32 temp @20 s1
   _4: (i32) -> i32 temp (Result) @12
@@ -51,7 +51,7 @@ fn makeAdder @12
 closure @20
   _0: i32 return @20
   _1: ref/closure (i32) -> i32 arg @20
-  _2: i32 arg value @20
+  _2: i32 arg value @21
   bb0:
     * _0 = Add(copy _2, copy (*_1).0) @22
       return @22
@@ -274,7 +274,7 @@ closure @62
 closure @76
   _0: i32 return @76
   _1: ref/closure (i32) -> i32 arg @76
-  _2: i32 arg v @76
+  _2: i32 arg v @77
   bb0:
     * _0 = Mul(copy _2, const 2_i32) @79
       return @79

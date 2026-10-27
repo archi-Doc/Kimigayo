@@ -7218,6 +7218,45 @@ resumed by R4-M86 (2026-10-20).
     silent there: the family throw escapes Binding as an exception, and a Local finding fails MirCensusTest's census and every test that
     asserts a body has no validator finding.
 
+- **BU-47 An unavailable C layout is judged by Layout and reported at each by-value use of the checked set at check on every
+  pipeline; Binding publishes the declaration facts** (2026-10-27; BU's design-first candidate for G158 (3), WORKFLOW Q11 under the
+  owner's order of 2026-10-26; `bu\g158\design\design.md`; the shared tests `LayoutAttributeBindingTest.CLayoutUses.cs` and
+  `InstanceCollectorTest.CLayoutUses.cs` the judge; class Full; a prototype on `claude/bu-g158-design`, not a landing) SPEC 6.7.1 makes
+  C layout unavailable for an open, derived or empty struct and for a struct storing a zero-sized Field; 8.15.3 makes a use that stores,
+  creates, passes or returns such a Type by value or needs its size the error, over the checked set; 23.2.2 makes `check` report every
+  Language error of the checked set. Binding keeps the Attribute's own errors and publishes two facts, written for every struct in every
+  pass: `AdtDef.IsCLayout` (a valid C selection whose layout is available at the declaration) and `AdtDef.CLayoutUnavailable` (a valid
+  C selection on an open, derived or empty struct), neither a record. `Layout` is the one judge of 6.7.1's four conditions: an
+  `CLayoutUnavailable` struct is a CLayout leaf of `Walk` (where `CLayoutRejected → Rejected` was), a zero-sized Field the placed parts'
+  CLayout (as before); `CExchangeable` (SPEC 22.6) reads `IsCLayout` alone, so a borrow of an unavailable struct in an import is 22.6's
+  `Unsupported_Kd`. `InstanceCollector` is the one walker: `Compilation.Analyze` builds and validates the MIR and collects the checked
+  set on every pipeline (the MIR analyses stay the mir pipeline's; the collector reads none of their results), and `Compilation.MirRecords`
+  publishes the checked set's Language records (the catalog's Category column: `InvalidCLayout_Kd`, `OversizedLayout_Kd`) on every
+  pipeline and its Unsupported, Resource and Internal records under MIR code generation until G2 (R5-M41's gate, unchanged). A
+  struct's implicit constructor is no root of the checked set (`AdtDef.IsImplicitConstructor`): a body the program did not write is
+  required only through a call, so a declared-only empty C struct is accepted. Locations (SPEC 8.15.3, 23.1.2; settled by BU and R5,
+  2026-10-27): a parameter's record at its Type occurrence (the builder sources an Arg local at the parameter's written Type, so the
+  MIR analyses' records of a parameter move there too), a result's at its function, a call's argument at the call's value, `keep`'s
+  parameter and result two records, `take(make())` three.
+  - Deleted: `ValidateCLayoutFields`, `CheckCLayoutInstance`, `cLayoutInstances`, `storagePrepared`, `HasZeroStride` (`Binding.Pointers.cs`),
+    `BindingFailure.InvalidCLayout` with its requirement row and code mapping, `InvalidTypeFormation_Kd` at a struct for a zero-sized Field,
+    the open/derived/empty failure and attribute invalidation, `AdtDef.CLayoutRejected` and Layout's Rejected mapping of it, the
+    `Instances`/records gate on the code generator, ARCH's K10b double-report row (G2b), DIAGNOSTICS' "eager report stays beside the
+    collector's", the `InferredCLayoutAtCheck` and `OversizedLayoutAtCheck` deviations (both Language errors are at check on every pipeline).
+  - Supersedes R5-M55's declaration check ("lasting (X26)", already superseded by R4-M134 Q8) and its declared overlap; R5-M26's reader
+    list (`ValidateCLayoutFields` is gone, `CheckCLayoutInstance` with it); R5-M44's "a parameter's at its function"; R5-M41's "on the
+    default pipeline and under mir alone the collector does not run" for the checked set's Language records.
+  - Rejected: a Binding-side use judge (a second copy of Layout's rule, no checked set: every inferred row fails on default and mir and
+    `build` keeps failing an accepted `check`); the old generator's instantiation worklist at check (a second checked set in frozen code
+    R6-gen deletes, a refusal per Type); publishing on mir only (the default pipeline is `check`, 23.2.2); Layout reading an
+    `AdtDef.IsOpen` with `Base` and `Count` (the three conditions are syntax facts Binding has at the attribute; one bit replaces one).
+  - Open: part (1), a record naming the instance (a catalog fact); part (2), Never, now judged by Layout alone (the kept-apart rows pass);
+    a bodyless import's by-value parameter (22.6's `Unsupported_Kd`, no collector use; kept apart); a Field projection through a borrow or
+    raw pointer of an unavailable Type (needs the layout at generation, no collector use; the planning session's reading of 8.15.3's
+    "Fields"); the old generator lowering an uncalled implicit constructor of an empty C struct (`GenerationFailed_Kd` after an accepted
+    `check`, STATUS, until R6-gen); a program with validator findings gets no checked-set record on the legacy pipeline (the collector's
+    empty set, as under sel), closing at G2.
+
 - **BU-43 Where no source supplies a candidate, a join's Type is formed part by part; a call classifies such a join's results by
   position; Never supplies nothing at any position** (2026-10-26; the BU planning session; PLAN G159 (2), unit bu47; design bu47
   Revisions 1, 1b and 2, design review 3 ACCEPT with C1 and C2; SPEC 14.9.2 step 2 (R4-M134) and 10.5.1 as R4's SPEC revision 2

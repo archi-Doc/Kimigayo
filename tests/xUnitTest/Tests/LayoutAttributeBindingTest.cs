@@ -13,9 +13,6 @@ public partial class LayoutAttributeBindingTest
     [InlineData("#Layout(\"bad\")\nstruct S", "InvalidLayoutAttribute_Kd")]
     [InlineData("#Layout(\"Kimigayo\")\n#Layout(\"Kimigayo\")\nstruct S", "InvalidLayoutAttribute_Kd")]
     [InlineData("#Layout(\"C\")\nstruct S\n    var x: i32\n#Layout(\"Kimigayo\")\nstruct S", "ConflictingLayout_Kd")]
-    [InlineData("#Layout(\"C\")\nstruct S", "InvalidCLayout_Kd")]
-    [InlineData("#Layout(\"C\")\nopen struct S\n    var x: i32", "InvalidCLayout_Kd")]
-    [InlineData("open struct B\n#Layout(\"C\")\nstruct S: B\n    var x: i32", "InvalidCLayout_Kd")]
     public void FailedLayoutSpecificationsInvalidateThroughTheirAttribute(string source, string code)
     {
         foreach (var testBuild in new[] { false, true })
@@ -36,30 +33,6 @@ public partial class LayoutAttributeBindingTest
                 Assert.Equal(marker.Span, error.Span);
             }
         }
-    }
-
-    [Fact]
-    public void ALayoutRejectionPreservesAnEarlierOriginCause()
-    {
-        var c = CompilationTestHelper.ParseSuccess("#Layout(\"C\")\nstruct S {a}\n    origin missing outlives a");
-        var type = c.Kotonoha.RootKoto.NestedContainers.Single();
-        var relation = KotoTree.Walk(type).OfType<OriginRelationKoto>().Single();
-        for (var pass = 0; pass < 2; pass++)
-        {
-            Assert.False(c.Bind().IsComplete);
-            Assert.Equal(BindingState.Invalid, type.StateOf());
-            Assert.Equal(BindingFailure.InvalidOrigin, type.FailureOf());
-            Assert.Equal(BindingState.Unresolved, relation.StateOf());
-            Assert.Contains(type, c.Binding.DerivedIssues);
-            var key = Assert.Single(c.Binding.FailureCauses(type)!);
-            Assert.Equal(type.KeyOf(Kimi.Diagnostics.DiagnosticRequirement.Binding(BindingFailure.InvalidOrigin)), key);
-            type.ReportDerived(Kimi.Diagnostics.DiagnosticRequirement.Startup, [key]);
-            Assert.Equal(["InvalidCLayout_Kd", "MissingOriginBinding_Kd"], CompilationTestHelper.BindingErrors(c).Select(x => x.Code));
-        }
-
-        Assert.True(type.RemoveAttribute(Assert.IsType<AttributeKoto>(type.AttributeChain)));
-        Assert.False(c.Bind().IsComplete);
-        Assert.Equal("MissingOriginBinding_Kd", Assert.Single(CompilationTestHelper.BindingErrors(c)).Code);
     }
 
     [Theory]
@@ -83,7 +56,9 @@ public partial class LayoutAttributeBindingTest
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
-    // SPEC 21.1: rejected on declaration, whether or not generation reaches the struct.
+    // SPEC 6.7.1, 8.15.3 (DECISIONS R4-M134 Q8): a declaration whose C layout is unavailable, open, derived, empty or storing a zero-sized
+    // Field, and a written instance storing one are no Binding error; the error is at each by-value use (LayoutAttributeBindingTest.
+    // CLayoutUses.cs), which Layout judges.
     [Theory]
     [InlineData("#Layout(\"C\")\nstruct S")]
     [InlineData("#Layout(\"C\")\nstruct S\n    static var count: i32")]
@@ -93,26 +68,16 @@ public partial class LayoutAttributeBindingTest
     [InlineData("#Layout(\"C\")\nstruct S\n    var empty: [0 of i32]")]
     [InlineData("#Layout(\"C\")\nstruct S\n    var empty: [2 of ()]")]
     [InlineData("struct E\n#Layout(\"C\")\nstruct S\n    var n: i32\n    var e: E")]
-    public void InvalidCLayoutFormsAreDiagnosed(string source)
+    [InlineData("#Layout(\"C\")\nstruct P<T>\n    var n: i32\n    var value: T\nfunc f(p: P<()>) => ()")]
+    [InlineData("#Layout(\"C\")\nstruct P<T>\n    var n: i32\n    var value: T\nfunc f() -> i32\n    var p: raw/P<[0 of i32]> = null\n    return 0")]
+    [InlineData("struct E\n#Layout(\"C\")\nstruct P<T>\n    var n: i32\n    var value: T\nfunc f(p: raw/P<E>) => ()")]
+    public void AnUnavailableCLayoutIsNoBindingError(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidCLayout_Kd);
-    }
-
-    [Theory]
-    [InlineData("func f(p: P<()>) => ()", false)]
-    [InlineData("func f() -> i32\n    var p: raw/P<[0 of i32]> = null\n    return 0", false)]
-    [InlineData("struct E\nfunc f(p: raw/P<E>) => ()", false)]
-    [InlineData("func f(p: P<i32>) => ()", true)]
-    [InlineData("func f(p: raw/P<[1 of u8]>) => ()", true)]
-    public void WrittenCLayoutInstantiationsRejectZeroSizedFields(string use, bool valid)
-    {
-        var c = MinimalEmissionTest.Analyze("#Layout(\"C\")\nstruct P<T>\n    var n: i32\n    var value: T\n" + use);
         for (var pass = 0; pass < 2; pass++)
         {
-            Assert.Equal(valid, c.Binding.Result.IsComplete);
-            Assert.Equal(!valid, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.InvalidCLayout_Kd));
+            Assert.True(c.Binding.Result.IsComplete, string.Join("; ", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
+            Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidCLayout_Kd);
             c.Bind();
         }
     }
@@ -223,18 +188,25 @@ public partial class LayoutAttributeBindingTest
         Assert.True(c.Binding.CheckBound().IsComplete);
     }
 
-    // AdtDef.IsCLayout: true exactly for a struct whose C layout validated, written for every struct in every pass.
+    // AdtDef.IsCLayout: true exactly for a struct that selected C layout validly and whose layout is available at the declaration;
+    // AdtDef.CLayoutUnavailable: true exactly for a valid selection on an open, derived or empty struct (SPEC 6.7.1), a fact Layout reads
+    // (DECISIONS R4-M134 Q8); both written for every struct in every pass.
     [Theory]
-    [InlineData("#Layout(\"C\")\nstruct S\n    var a: i32", true)]
-    [InlineData("#Layout(\"C\")\nstruct S<T>\n    var n: i32\n    var value: T", true)]
-    [InlineData("#Layout(\"Kimigayo\")\nstruct S\n    var a: i32", false)]
-    [InlineData("struct S\n    var a: i32", false)]
-    [InlineData("#Layout(\"C\")\nopen struct S\n    var a: i32", false)]
-    [InlineData("#Layout(\"C\")\nstruct S\n    var a: i32\n#Layout(\"Kimigayo\")\nstruct S", false)]
-    public void CLayoutFactMarksValidatedCLayoutStructs(string source, bool expected)
+    [InlineData("#Layout(\"C\")\nstruct S\n    var a: i32", true, false)]
+    [InlineData("#Layout(\"C\")\nstruct S<T>\n    var n: i32\n    var value: T", true, false)]
+    [InlineData("#Layout(\"Kimigayo\")\nstruct S\n    var a: i32", false, false)]
+    [InlineData("struct S\n    var a: i32", false, false)]
+    [InlineData("#Layout(\"C\")\nopen struct S\n    var a: i32", false, true)]
+    [InlineData("open struct B\n    var n: i32\n#Layout(\"C\")\nstruct S: B\n    var a: i32", false, true)]
+    [InlineData("#Layout(\"C\")\nstruct S\n    static var a: i32", false, true)]
+    [InlineData("#Layout(\"C\")\nstruct S\n    var a: i32\n#Layout(\"Kimigayo\")\nstruct S", false, false)]
+    [InlineData("#Layout(\"C\")\n#Layout(\"C\")\nstruct S", false, false)]
+    public void CLayoutFactMarksValidatedCLayoutStructs(string source, bool expected, bool unavailable)
     {
         var c = MinimalEmissionTest.Analyze(source + "\nstruct Other\n    var b: i32");
-        Assert.Equal([expected, false], c.Kotonoha.RootKoto.NestedContainers.Select(IsCLayout));
+        var s = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
+        Assert.Equal([expected, false], c.Kotonoha.RootKoto.NestedContainers.Where(x => x.Name is "S" or "Other").Select(IsCLayout));
+        Assert.Equal(unavailable, s.SymbolOf()!.Adt!.CLayoutUnavailable);
     }
 
     [Fact]

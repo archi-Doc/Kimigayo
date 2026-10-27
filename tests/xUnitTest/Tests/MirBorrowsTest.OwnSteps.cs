@@ -40,7 +40,7 @@ public sealed partial class MirBorrowsTest
         => Assert.Equal(
             [
                 "moved: b", "ancestor: k", "objPayload: h", "taken: (*q)", "replaced: b = Buf<i32>.init(1)", "throughUniq: r@follow = Buf<i32>.init(1)",
-                "destroyedAtReturn: func destroyedAtReturn(s: Store) -> raw/i32 => s.data", "uniqLocal: b@uniq", "byMethod: b.push(1)",
+                "destroyedAtReturn: Store", "uniqLocal: b@uniq", "byMethod: b.push(1)",
                 "byExchange: Kimi.Intrinsics.exchange(b@uniq, with: Buf<i32>.init(1))", "rawBorrow: b = Buf<i32>.init(1)", "stored: b",
                 "stored: var b = Buf<i32>.init(4)", "byCall: takeBoth(b@uniq, b.data)",
             ],

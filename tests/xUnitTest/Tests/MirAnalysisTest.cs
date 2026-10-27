@@ -326,7 +326,7 @@ public sealed class MirAnalysisTest
                 "Ownership.EffectBound IncompatibleContractImplementation_Kd Self is Sink", "Ownership.PossiblyMovedUse MovedPlace_Kd r",
                 "Ownership.PossiblyMovedUse MovedPlace_Kd var box = Box.init(make())", "Ownership.ReassignedLet ReassignedLet_Kd resource = make()",
                 "Ownership.StaticMovePathRequired StaticMovePathRequired_Kd values[i]", "Ownership.UninitializedUse UninitializedPlace_Kd n",
-                "Ownership.Unsupported Unsupported_Kd Self is Store", "Ownership.Unsupported Unsupported_Kd func deep(n: Nest<ref/i32 during a>)",
+                "Ownership.Unsupported Unsupported_Kd Nest<ref/i32 during a>", "Ownership.Unsupported Unsupported_Kd Self is Store",
                 "Ownership.VirtualEffectBound UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32",
             ],
             c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
@@ -347,8 +347,8 @@ public sealed class MirAnalysisTest
                 "MovedPlace_Kd r moved",
                 "MovedPlace_Kd var box = Box.init(make()) layer", "ReassignedLet_Kd resource = make() twice", "RequireFallthrough_Kd () falls",
                 "StaticMovePathRequired_Kd values[i] runtime", "UninitializedPlace_Kd n unset", "UnsatisfiedEffectBound_Kd noisy -",
-                "UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32 -", "Unsupported_Kd Self is Store -",
-                "Unsupported_Kd func deep(n: Nest<ref/i32 during a>) deep",
+                "UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32 -", "Unsupported_Kd Nest<ref/i32 during a> deep",
+                "Unsupported_Kd Self is Store -",
             ],
             program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
                 .Select(x => $"{x.Code} {Line(c, x.Subject)} {(x.Body == MirProblem.NoBody ? "-" : program.Bodies[x.Body].Key.Decl!.Name)}")

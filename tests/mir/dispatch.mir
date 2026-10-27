@@ -1,12 +1,12 @@
 fn area @6
   _0: i32 return @6
-  _1: objref/Shape arg self @6
+  _1: objref/Shape arg self @7
   bb0:
     * _0 = copy (*_1).0 @10
       return @10
 fn init @13
   _0: Shape return @13
-  _1: i32 arg size @13
+  _1: i32 arg size @14
   _2: () temp @15
   _3: () temp @15
   _4: i32 temp @16
@@ -25,7 +25,7 @@ fn init @13
       return @15
 fn init @22
   _0: Square return @22
-  _1: i32 arg size @22
+  _1: i32 arg size @26
   _2: () temp @27
   _3: () temp @27
   bb0:
@@ -41,7 +41,7 @@ fn init @22
       return @27
 fn area @28
   _0: i32 return @28
-  _1: objref/Square arg self @28
+  _1: objref/Square arg self @29
   _2: i32 temp @33
   _3: objref/Shape temp @35
   bb0:
@@ -62,7 +62,7 @@ fn top-level#0 @40
       return @41
 fn measure @42
   _0: i32 return @42
-  _1: objref/Shape arg shape @42
+  _1: objref/Shape arg shape @43
   bb0:
     * _0 = virtual area(copy _1) -> bb1 @46
   bb1:

@@ -13,7 +13,8 @@
 // Compilation.MirRecords publishes under MIR code generation (K4b); for code generation (R5 C0b1) also an item's Types (TypeOf) and the
 // location of a record at a site of its body (Subject); a borrowing callee's owner Value call also targets its operand's glue, after the
 // body (DECISIONS R5-M102).
-// Roots (K 4.4): each body of a root module whose definition does not instantiate, a module's top-level statements included.
+// Roots (K 4.4): each body of a root module whose definition does not instantiate, a module's top-level statements included; a struct's
+// implicit constructor (AdtDef.IsImplicitConstructor), a body the program did not write, is required only through a call (SPEC 8.15.3).
 // Edges (K 4.5): one template per body and version (InstanceCollector.Templates.cs) lists its sites that may carry a target (Fn,
 // Requirement and Value calls and the intrinsics the Target column names, a Virtual call none, X5; a Closure environment, an erasure and a
 // function item constant; a Drop), each with its runtime bit from one MirReach walk without CheckTarget edges. An item's targets are
@@ -127,7 +128,7 @@ internal sealed partial class InstanceCollector
         this.Templates(program);
         foreach (var body in program.Bodies)
         {
-            if (body.Source.Module < rootModules && (body.Key.Decl is null || !this.types.Instantiates(body.Key.Decl)))
+            if (body.Source.Module < rootModules && (body.Key.Decl is null || (!this.types.Instantiates(body.Key.Decl) && !AdtDef.IsImplicitConstructor(body.Key.Decl))))
             {
                 var key = new MonoKey(MonoKind.Body, new(body.Key, null), null, null, 0, null);
                 set.Add(new() { Key = key, BodyOrdinal = body.Ordinal, Parent = -1, Site = body.Source });
