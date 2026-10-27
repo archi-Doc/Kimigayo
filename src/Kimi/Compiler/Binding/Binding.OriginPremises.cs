@@ -15,6 +15,10 @@ public sealed partial class Binding
     private readonly List<OriginPremiseEnvironment> originPremiseEnvironments = new();
     private int originPremiseDepth;
 
+    // PROTO G216a d2: the required signatures of the comparisons in progress, whose own well-formedness each comparison assumes
+    // (owner's (a), SPEC 15.3.7): their inputs (R2) and result (R3), as premises of every request inside the comparison.
+    private readonly List<BoundType> assumedSignatures = new();
+
     // The retained premise storage between requests (PLAN G74 U5): the environments, their largest node and edge capacity, and
     // whether any of them still references an Origin, a Type, a declaration or syntax.
     internal (int Environments, int Nodes, int Edges, bool Retains) OriginPremiseStorage
@@ -186,8 +190,9 @@ public sealed partial class Binding
                 }
 
                 // SPEC 15.3.7: the result Type's intrinsic well-formedness is a premise of the definition (Binding.ResultPremises.cs).
+                // PROTO G216a d2: an anonymous function's result is its own premise too (owner's (A)); each call proves it.
                 if (!ReferenceEquals(signature, this.resultPremiseExcluded) &&
-                    signature is FunctionKoto { IsAnonymous: false, IsConstructor: false, BoundSymbol.Type: { } result })
+                    signature is FunctionKoto { IsConstructor: false, BoundSymbol.Type: { } result })
                 {
                     this.AddResultPremises(environment, result);
                 }
@@ -202,6 +207,18 @@ public sealed partial class Binding
                     this.AddPremise(environment, relation.Longer, relation.Shorter, relation.Equality, OriginPremiseRule.Declaration);
                 }
             }
+        }
+
+        for (var i = 0; i < this.assumedSignatures.Count; i++)
+        {
+            var assumed = this.assumedSignatures[i];
+            var inputs = assumed.Components[0];
+            for (var j = 0; !ReferenceEquals(inputs, BoundType.Unit) && j < inputs.Components.Count; j++)
+            {
+                this.AddTypePremises(environment, inputs.Components[j], OriginPremiseRule.Input);
+            }
+
+            this.AddResultPremises(environment, assumed.Components[1]);
         }
 
         var closure = environment.Closure;
@@ -263,8 +280,7 @@ public sealed partial class Binding
 
         if (type.Kind == BoundTypeKind.Function)
         {
-            this.AddTypePremises(environment, type.Components[1], rule);
-            return;
+            return; // PROTO G216a d2: a nested signature's well-formedness is its own (owner's (A)).
         }
 
         if (type.Symbol is { } symbol && this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) && declaration.State == 3)

@@ -577,6 +577,11 @@ public sealed partial class Binding
             {
                 this.RequireResultPremises(conditioned, result, call); // SPEC 15.3.7: the callee's result premises.
             }
+            else if (ownBinder is not FunctionKoto { IsAnonymous: false } && signature.Components[1].StoresOrigin)
+            {
+                // PROTO G216a d2: a nested signature's result well-formedness, every relation, at each call (owner's (A)).
+                this.VisitWellFormedPremises(signature.Components[1], result, null, new(null, call, WellFormedAction.Require, Result: true));
+            }
 
             var inputs = count == 0 ? BoundType.Unit : this.types.Tuple(instantiated.AsSpan(0, count));
             var declaredSignature = signature;

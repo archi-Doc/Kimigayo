@@ -598,9 +598,20 @@ public sealed partial class Binding
                     return CandidateApplicability.Inapplicable;
                 }
             }
-            else if (!this.ContractFits(use, symbol, function, required, container, null, arguments, operations, origins, inputs, lengths: lengths))
+            else
             {
-                return CandidateApplicability.Inapplicable;
+                this.assumedSignatures.Add(required);
+                try
+                {
+                    if (!this.ContractFits(use, symbol, function, required, container, null, arguments, operations, origins, inputs, lengths: lengths))
+                    {
+                        return CandidateApplicability.Inapplicable;
+                    }
+                }
+                finally
+                {
+                    this.assumedSignatures.RemoveAt(this.assumedSignatures.Count - 1);
+                }
             }
 
             // A bound enclosing Type can supply conditions even when the function has no own slots.

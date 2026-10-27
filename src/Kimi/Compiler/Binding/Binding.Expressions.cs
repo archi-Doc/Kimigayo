@@ -237,7 +237,7 @@ public sealed partial class Binding
         => expected.Kind == BoundTypeKind.Function &&
             ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature && this.ItemContractFits(actual, signature, expected, use)) ||
             (actual.Kind == BoundTypeKind.Closure && this.ClosureSignature(actual) is { } closureSignature &&
-            this.CallableSignatureFits(closureSignature, expected, SignatureOwner(actual))));
+            FitsTypeCore(closureSignature, this.CompatibleSignature(closureSignature, expected), this, use, own: SignatureOwner(actual))));
 
     private BoundType? BindAndAdaptNode(Koto node, BindingScope scope, BoundType? expected)
     {

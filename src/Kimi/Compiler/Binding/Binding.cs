@@ -1002,6 +1002,18 @@ public sealed partial class Binding
                     this.RequireConstraint(node, this.CheckCallTypeConstraints(call, this.ConstraintScope(node)), mode);
                 }
             }
+            else if (node is InvocationKoto { CallStorage: { Kind: CalleeKind.Value } valueCall } && node.BindingFailure == BindingFailure.None && node.HasCurrentBinding)
+            {
+                // PROTO G216a d2: a value call's instantiated Types' Constraints, as a named call's (CheckCallTypeConstraints).
+                var scope = this.ConstraintScope(node);
+                var proof = this.CheckTypeConstraints(valueCall.ReturnType, scope);
+                foreach (var operation in valueCall.ArgumentOperations)
+                {
+                    proof = CombineProof(proof, this.CheckOperationTypeConstraints(operation, scope), true);
+                }
+
+                this.RequireConstraint(node, proof, mode);
+            }
             else if (node is IsKoto { BoundRuntimeTest: { } runtimeTest } test)
             {
                 var proof = this.CheckRuntimeTestTypeConstraints(runtimeTest, this.ConstraintScope(test));

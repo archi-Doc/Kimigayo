@@ -45,7 +45,7 @@ public sealed partial class Binding
     // The callee whose result premises are visited, or null for an input's, which no other premise of the definition replaces; the
     // use; and for Bound and Unbound the call's inference and, for a result, the receiver Type whose arguments a member's container
     // Origins project to (an input's pattern is already projected where the call collects it).
-    private readonly record struct WellFormedVisit(FunctionKoto? Function, Koto Use, WellFormedAction Action, OriginInference? Inference = null, BoundType? Owner = null);
+    private readonly record struct WellFormedVisit(FunctionKoto? Function, Koto Use, WellFormedAction Action, OriginInference? Inference = null, BoundType? Owner = null, bool Result = false);
 
     // SPEC 15.3.7, 10.7: instantiate all of an Item's call Origins together, including named and result-only universals, against the
     // required contract. Repeated invariant occurrences and declared conditions constrain the same solution. An open evidence region
@@ -60,7 +60,19 @@ public sealed partial class Binding
         signature = this.ContractType(signature, this.ConstraintScope(use));
         if (function.Origins.Count == 0 || HasOpenOrigin(required, evidenceOnly: true))
         {
-            if (!this.CallableSignatureFits(signature, required, SignatureOwner(item)))
+            // PROTO G216a d2: the comparison sees the use's premises and the required signature's own well-formedness.
+            this.assumedSignatures.Add(required);
+            bool fits;
+            try
+            {
+                fits = FitsTypeCore(signature, this.CompatibleSignature(signature, required), this, use, own: SignatureOwner(item));
+            }
+            finally
+            {
+                this.assumedSignatures.RemoveAt(this.assumedSignatures.Count - 1);
+            }
+
+            if (!fits)
             {
                 return false;
             }
@@ -82,12 +94,14 @@ public sealed partial class Binding
         var inputs = this.originScratch.Rent(inputCount);
         Array.Clear(origins, 0, function.Origins.Count);
         Array.Clear(inputs, 0, inputCount);
+        this.assumedSignatures.Add(required);
         try
         {
             return this.ContractFits(use, symbol, function, required, null, item, null, default, origins, inputs);
         }
         finally
         {
+            this.assumedSignatures.RemoveAt(this.assumedSignatures.Count - 1);
             this.originScratch.Return(inputs, clearArray: true);
             this.originScratch.Return(origins, clearArray: true);
         }
@@ -223,8 +237,17 @@ public sealed partial class Binding
     // already failed is no instance of its parameter, so its well-formedness would only restate that failure.
     private void RequireInputPremises(in BoundArgumentOperation operation)
     {
-        if (operation is { Source: { } at, AdaptedType: { StoresOrigin: true } adapted, ParameterType: { StoresOrigin: true } parameter } && !ReferenceEquals(adapted, parameter) &&
-            this.originRelations?.ContainsKey(at) != true && !this.HasCallRelation(at))
+        if (operation is not { Source: { } at, ParameterType: { StoresOrigin: true } parameter } || this.originRelations?.ContainsKey(at) == true || this.HasCallRelation(at))
+        {
+            return;
+        }
+
+        // PROTO G216a d2: a part whose Type is the call's is judged at every position (G269 (C)); any other at the replaced ones.
+        if (this.TypedByCall(at))
+        {
+            this.VisitWellFormedPremises(parameter, parameter, null, new(null, at, WellFormedAction.Require));
+        }
+        else if (operation.AdaptedType is { StoresOrigin: true } adapted && !ReferenceEquals(adapted, parameter))
         {
             this.VisitWellFormedPremises(parameter, parameter, adapted, new(null, at, WellFormedAction.Require));
         }
@@ -235,6 +258,55 @@ public sealed partial class Binding
     private bool ProvesInputPremises(BoundType implementation, BoundType required, Koto use)
         => ReferenceEquals(implementation, required) || !implementation.StoresOrigin ||
             this.VisitWellFormedPremises(implementation, implementation, required, new(null, use, WellFormedAction.Prove));
+
+    // PROTO G216a d2 (owner's (a), SPEC 15.3.7): a nested source signature's own well-formedness, the premise of whatever implements it,
+    // instantiated by the comparison and proven from the required signature's (assumedSignatures) and the use's premises, at the positions
+    // the comparison replaced: a kept position is the required signature's own relation. Returns the failed part's index (the result at
+    // the input count) and its relation, or -1.
+    private int SourceSignaturePart(BoundType source, BoundType required, in CallableInstance instance, Koto use)
+    {
+        var saved = this.resultPremiseInstance;
+        this.resultPremiseInstance = instance;
+        this.failedResultPremise = null;
+        try
+        {
+            var inputs = source.Components[0];
+            var count = ReferenceEquals(inputs, BoundType.Unit) ? 0 : inputs.Components.Count;
+            var requiredInputs = required.Components[0];
+            for (var i = 0; i <= count; i++)
+            {
+                var part = i < count ? inputs.Components[i] : source.Components[1];
+                var kept = i < count ? (i < requiredInputs.Components.Count ? requiredInputs.Components[i] : null) : required.Components[1];
+                if (!this.VisitWellFormedPremises(part, part, kept, new(null, use, WellFormedAction.Instance, Result: true)))
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+        finally
+        {
+            this.resultPremiseInstance = saved;
+        }
+    }
+
+    internal bool ProvesSourceSignature(BoundType source, BoundType required, in CallableInstance instance, Koto use)
+    {
+        var failed = this.SourceSignaturePart(source, required, instance, use) < 0;
+        this.failedResultPremise = null;
+        return failed;
+    }
+
+    private OriginContractFact? SourceSignatureFailure(BoundType source, BoundType required, in CallableInstance instance, Koto at, Koto use)
+    {
+        var part = this.SourceSignaturePart(source, required, instance, use);
+        var failed = this.failedResultPremise;
+        this.failedResultPremise = null;
+        var count = ReferenceEquals(source.Components[0], BoundType.Unit) ? 0 : source.Components[0].Components.Count;
+        return part < 0 || failed is not { } relation ? null
+            : this.ConditionFact(at, part < count ? "an input's well-formedness" : "the result's well-formedness", relation.Longer, relation.Shorter, false, instance, use);
+    }
 
     // SPEC 15.3.7: a whole-contract comparison proves the implementation's result premises for its substituted result from the
     // required contract's premises at `use`.
@@ -257,6 +329,19 @@ public sealed partial class Binding
             return null;
         }
 
+        this.assumedSignatures.Add(required);
+        try
+        {
+            return this.ItemContractFailureCore(item, signature, required, at, use, symbol, function);
+        }
+        finally
+        {
+            this.assumedSignatures.RemoveAt(this.assumedSignatures.Count - 1);
+        }
+    }
+
+    private OriginContractFact? ItemContractFailureCore(BoundType item, BoundType signature, BoundType required, Koto at, Koto use, BindingSymbol symbol, FunctionKoto function)
+    {
         if (function.Origins.Count == 0 || HasOpenOrigin(required, evidenceOnly: true))
         {
             return this.ConversionContractFailure(signature, required, function, at, use) ?? this.ConditionContractFailure(function, signature, required, at, use);
@@ -404,7 +489,7 @@ public sealed partial class Binding
             actual = null; // Every position is covered when the shapes differ.
         }
 
-        if (visit.Function is null && result.Symbol is { } symbol && result.OriginArguments.Count != 0 && !SameOriginArguments(result, actual) &&
+        if (visit.Function is null && !visit.Result && result.Symbol is { } symbol && result.OriginArguments.Count != 0 && !SameOriginArguments(result, actual) &&
             this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) && declaration.State == 3)
         {
             foreach (var relation in declaration.Relations)
@@ -555,7 +640,7 @@ public sealed partial class Binding
             case WellFormedAction.Prove:
                 return this.ProvesOriginOutlives(value, substituted, visit.Use, condition);
             default:
-                if (visit.Function is null)
+                if (visit.Function is null && !visit.Result)
                 {
                     this.JudgeCallPosition(visit.Use, value, substituted, false, null, null, wellFormed: true, condition: condition);
                 }

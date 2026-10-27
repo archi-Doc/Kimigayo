@@ -373,6 +373,9 @@ internal readonly struct CallableInstance
 
     internal BoundType? Actual => this.actual;
 
+    // PROTO G216a d2: whether the implementation is a nested signature (a Function Type value or an anonymous function).
+    internal bool NestedSource => this.actualBinder is FunctionTypeKoto or Kimi.Compiler.Parsing.FunctionKoto { IsAnonymous: true };
+
     // A direct input whose outer Origin the implementation binds at that input's own position.
     internal bool IsQuantifiedInput(BoundType input, int position)
         => this.actualBinder is not null && Binding.IsBorrow(input.Semantics) && input is { Kind: BoundTypeKind.Semantics, Components.Count: 1, OriginArguments.Count: 0, Origin: { Kind: OriginKind.Input, Occurrence: null } origin } &&

@@ -94,7 +94,16 @@ public sealed partial class Binding
 
         if (actual.Kind == BoundTypeKind.Function && actual.Components.Count == 2)
         {
-            return FunctionFits(actual, expected, binding, use, invariant, new(actual, own ?? FunctionTypeBinder(actual), expected, FunctionTypeBinder(expected)), everywhere);
+            // PROTO G216a d2: a comparison assumes the required signature's own well-formedness (owner's (a)).
+            binding?.assumedSignatures.Add(expected);
+            try
+            {
+                return FunctionFits(actual, expected, binding, use, invariant, new(actual, own ?? FunctionTypeBinder(actual), expected, FunctionTypeBinder(expected)), everywhere);
+            }
+            finally
+            {
+                binding?.assumedSignatures.RemoveAt(binding.assumedSignatures.Count - 1);
+            }
         }
 
         for (var i = 0; i < actual.Components.Count; i++)
@@ -161,7 +170,14 @@ public sealed partial class Binding
             }
         }
 
-        return FitsTypeCore(actual.Components[1], expected.Components[1], binding, use, invariant, instance: instance, structural: everywhere, everywhere: everywhere);
+        if (!FitsTypeCore(actual.Components[1], expected.Components[1], binding, use, invariant, instance: instance, structural: everywhere, everywhere: everywhere))
+        {
+            return false;
+        }
+
+        // PROTO G216a d2: a Function value's own signature is its implementation's premise, so the conversion proves it, instantiated,
+        // from the required signature's (owner's (a)).
+        return binding is null || everywhere || !instance.NestedSource || binding.ProvesSourceSignature(actual, expected, instance, use!);
     }
 
     // SPEC 10.7: within one Callable comparison, `a` outlives `b` after the implementation's call-time Origins are instantiated. The
@@ -208,9 +224,9 @@ public sealed partial class Binding
             return false;
         }
 
-        if (instance.IsRequiredSlot(a) || instance.IsRequiredSlot(b))
+        if (binding is null && (instance.IsRequiredSlot(a) || instance.IsRequiredSlot(b)))
         {
-            return false;
+            return false; // PROTO G216a d2: with a Binding, the required signature's premises decide (assumedSignatures).
         }
 
         if (b is { Kind: OriginKind.Inference, Open: true } && instance.IsResultOnlyOrigin(a))
@@ -245,6 +261,19 @@ public sealed partial class Binding
         }
 
         var instance = new CallableInstance(actual, own ?? FunctionTypeBinder(actual), expected, FunctionTypeBinder(expected));
+        this.assumedSignatures.Add(expected); // PROTO G216a d2: explained under the premises acceptance used.
+        try
+        {
+            return this.ConversionContractFailure(actual, expected, instance, at, use);
+        }
+        finally
+        {
+            this.assumedSignatures.RemoveAt(this.assumedSignatures.Count - 1);
+        }
+    }
+
+    private OriginContractFact? ConversionContractFailure(BoundType actual, BoundType expected, in CallableInstance instance, Koto at, Koto use)
+    {
         var inputs = actual.Components[0];
         var required = expected.Components[0];
         for (var i = 0; i < inputs.Components.Count && i < required.Components.Count; i++)
@@ -259,8 +288,12 @@ public sealed partial class Binding
             }
         }
 
-        return this.FailedInstancePart(actual.Components[1], expected.Components[1], false, instance, use) is { } result
-            ? new(at, "the result", result.Longer, result.Shorter, result.Equality) : null;
+        if (this.FailedInstancePart(actual.Components[1], expected.Components[1], false, instance, use) is { } result)
+        {
+            return new(at, "the result", result.Longer, result.Shorter, result.Equality);
+        }
+
+        return instance.NestedSource ? this.SourceSignatureFailure(actual, expected, instance, at, use) : null;
 
         static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
     }

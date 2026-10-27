@@ -84,6 +84,32 @@ public sealed partial class Binding
     // never evidence for an outer slot.
     private bool WasWaitingPart(Koto node) => this.RecordedFact(KotoHelper.UnwrapParentheses(node)).Kind == ArgumentKind.Waiting;
 
+    // PROTO G216a d2 (SPEC 10.5.1, 15.6.4 step 3): whether the part's Type is, at some position, the selected candidate's instantiated
+    // parameter Type rather than one of its own: a contextual Case, a part the probe deferred, or a Composite holding one (G269 (C)).
+    private bool TypedByCall(Koto part)
+    {
+        if (NeedsEnumContext(part) || this.WasWaitingPart(part))
+        {
+            return true;
+        }
+
+        var elements = KotoHelper.UnwrapParentheses(part) switch
+        {
+            TupleLiteralKoto tuple => tuple.Elements,
+            ArrayLiteralKoto array => array.Elements,
+            _ => null,
+        };
+        for (var i = 0; elements is not null && i < elements.Count; i++)
+        {
+            if (this.TypedByCall(elements[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // SPEC 10.2.1: the default a Literal part takes for the selected candidate of its call, once DefaultArguments applied it.
     private BoundType? DefaultOf(Koto part)
         => this.RecordedFact(KotoHelper.UnwrapParentheses(part)) is { Kind: ArgumentKind.Literal, Default: { } literalDefault } ? literalDefault : null;
