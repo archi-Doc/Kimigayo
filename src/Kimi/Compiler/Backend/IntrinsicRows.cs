@@ -38,6 +38,9 @@ internal enum IntrinsicWriter : byte
     Test, // A runtime Type test: its target's number in the module through the runtime's test, or false (FunctionCodegen.Objects).
     Capacity, // capacity: the legacy handle's capacity word through P2b's kernel (FunctionCodegen.Arrays; DECISIONS R5-M121).
     Writer, // Text.writer: P1d's TextWriter routine, given its destination's writer kind and its reserve witness (FunctionCodegen.Formatting).
+    Buffer, // FormatBuffer: an owning interpolation's private buffer, on its frame's region or the heap by its estimate (FunctionCodegen.Interpolation).
+    Segment, // FormatSegment: the hint routine given its estimate's hint, then a literal segment's text, the adapter checked (FunctionCodegen.Interpolation).
+    Finish, // FormatFinish: the routine, or its stack form, over the adapter's buffer (FunctionCodegen.Interpolation).
 }
 
 /// <summary>A row of the intrinsic table.</summary>
@@ -90,9 +93,14 @@ internal static class IntrinsicRows
         new(IntrinsicId.TestTempDirectory, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10a.
         new(IntrinsicId.StaticEnsure, IntrinsicTarget.StaticInit, LaysOutType: false, IntrinsicWriter.Ensure, null),
         new(IntrinsicId.Capacity, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Capacity, null),
-        new(IntrinsicId.FormatBuffer, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9c.
-        new(IntrinsicId.FormatHint, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9c.
-        new(IntrinsicId.FormatFinish, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9c.
+        new(
+            IntrinsicId.FormatBuffer,
+            IntrinsicTarget.None,
+            LaysOutType: false,
+            IntrinsicWriter.Buffer,
+            LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.TextHeap)!.Abi),
+        new(IntrinsicId.FormatSegment, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Segment, LegacyRuntimeHelpers.FormatHint),
+        new(IntrinsicId.FormatFinish, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Finish, LegacyRuntimeHelpers.FormatFinish),
     ]);
 
     /// <summary>Gets the row of an intrinsic.</summary>

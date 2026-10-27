@@ -107,8 +107,8 @@ rules that result from them.
     record area sizes. Structure limits, closed vocabularies and ratchets are unchanged.
   - Adopted: code is consistent, short and fast, in that order, replacing Q4's "coherence, then net size, then
     compilation speed" with the same order; "fast" covers generated code as well as compilation.
-  - Adopted: two independent designs, a design review and a final review only for a change to a shared representation
-    or across phases; any other change gets one review before completion, covering its design.
+  - Adopted: two independent designs, a design review and a final review (that flow superseded by Q11) only for a change
+    to a shared representation or across phases; any other change gets one review before completion, covering its design.
   - Reason: the caps, forecasts and per-unit allowances added owner gates without improving the code, and every
     non-local change paying two reviews slowed small units (R4-M33).
 - **Q6 Lighter review forms and short commit records** (2026-10-17, owner; AGENTS "Review weight", moved to WORKFLOW by Q10,
@@ -178,9 +178,10 @@ rules that result from them.
     REVISE (fixed within the approved design) and REJECT (the cause analysis or the design is revised). A fix starts from
     the reviewed change without keeping a wrong structure. Implementer and reviewer continue; a repeated review covers the
     previous findings, the diff and what it affects. Reviews accumulate per unit, separately for design and implementation;
-    two sharing a cause redo the cause analysis; a third without ACCEPT holds the unit for the owner. A specification
-    contradiction, a significant measured slowdown or a simplification by unifying concepts suspends the unit for the
-    owner. Completion checks run on the final inputs, reusing evidence for the same inputs, configuration and coverage.
+    two sharing a cause redo the cause analysis; a third without ACCEPT holds the unit for the owner (superseded by Q11).
+    A specification contradiction, a significant measured slowdown or a simplification by unifying concepts suspends the
+    unit for the owner. Completion checks run on the final inputs, reusing evidence for the same inputs, configuration and
+    coverage.
   - Supersedes: AGENTS' "A rejected design or diff is redone, not patched; after two rounds on one family of findings, the
     owner chooses between a representation, a whitelist and a hold", that clause of Q4 and its restatement in R4-M119.
   - Reason: a repeated round cost as much as the first: fresh agents re-read the context, the reviewer re-reviewed the
@@ -188,6 +189,41 @@ rules that result from them.
   - Rejected: a design review for every Major change (Q5's reason, slower small units, still holds, and the saving is
     unmeasured); bounding REVISE by the Minor definition (a fix the approved design prescribes may still add a branch);
     resetting the count on a design revision (the bound would never apply); a review count as a reason to ACCEPT.
+
+- **Q11 Full changes by shared acceptance tests and two candidates; a unit that does not converge goes to the owner**
+  (2026-10-27, owner; [WORKFLOW](WORKFLOW.md) "Full changes", "Repeated reviews" and "Owner decisions").
+  - Adopted (the owner, verbatim: 「そのように、WORKFLOW.mdを修正してください。いずれの場合も収束しない場合は、一時作業を停止して、
+    オーナーに対応を質問するようにしてください。」, after 「G216 (a) の作り直しで試す」 and the owner's proposal of a design-first and
+    an implementation-first lane): a Full change is a problem statement; shared acceptance tests written first by an author of
+    neither candidate and checked by the planning session; two candidates written independently on their own branches from one
+    base (design-first, whose design passes a structure check after at most one revision; prototype-first, with a design note
+    after), each ending when it passes the counted tests or reports the rows it cannot pass; a choice among the candidates that
+    qualify (every counted test, no baseline regression, the owning components; then size and cost); and an implementation
+    review of the chosen one under the usual verdicts and counts. Minor, Major and Owner changes keep their flow. In every class a
+    unit does not converge when two reviews' blocking findings share a cause or a third design or implementation review does not
+    ACCEPT, and a Full change also when no candidate qualifies or the choosing sessions disagree; the unit is then suspended,
+    and the owner is asked with the cause analysis one level higher, the options and a recommendation. This restores in
+    substance Q4's "two rounds on one family go to the owner".
+  - Concurrency: a Full change's two candidates are one unit. They count as two implementers under R4-M119 and R5-M113, and
+    "their files disjoint" does not apply between them, since only one merges; "at most one unit changing a shared
+    representation at a time" counts them once. R4-M119's and R5-M113's "Unchanged: the full process" now reads as this flow.
+    They are called candidates so that "lane" keeps its sense of a work lane.
+  - Supersedes: Q5's "two independent designs, a design review and a final review" (its scope, a change to a shared
+    representation or across phases, stands); Q10's "two sharing a cause redo the cause analysis; a third without ACCEPT holds
+    the unit for the owner" (either signal now suspends the unit for the owner, instead of a cause analysis the planning session
+    redoes alone); WORKFLOW's Full flow "Two independently written designs → choice → design review → implementation → final
+    review".
+  - Reason: G216 (a)'s revision 2 ran a third round after two reviews had shown one cause (checks beside the owning components),
+    and its choice was made between design texts while the defects showed only in code and probes.
+  - Cost: a Full unit takes both implementer slots and a test author, the cost R4-M119's reason names; the owner chose the
+    flow for Full changes only.
+  - Rejected: the two-candidate flow for Major changes (two implementations and the test-first step cost more than they save
+    for a local change); keeping the planning session's redo of the cause analysis without the owner (it let a third round run
+    on a known shared cause); calling the candidates lanes (one name for two concepts).
+  - Units in flight (the planning session's reading, reported to the owner): a Full unit whose choice between designs was made
+    before this entry finishes under the flow it started in; a Full unit with designs written but no choice made keeps one
+    written design as its design-first candidate (G216 (a); BU's G206 B); the rule on units that do not converge applies at
+    once, counting the reviews already made.
 
 - **G138-1 Native execution and verification evidence ownership** (2026-10-24; planning session, independent designs A/B and
   independent pre-code review). G138 needs execution progress distinguished from scheduling delay and missing observations
@@ -561,6 +597,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   are computed per instance in R5; the failure check reads each write's own Result. Rejected: internal library
   declarations with three more `CompilerFunctionKind` members (grows the vocabulary R8 shrinks); deferring with an R3
   gate exception. R8 removes all three; with R3-9 the `IntrinsicId` limit returns from 34 to 30.
+  - `FormatHint` is renamed `FormatSegment`, which carries the segment's literal text beside the estimates that "take the literal byte
+    count and a TypeToken of the values' Types", and a literal segment is no write, so "the failure check reads each write's own Result"
+    holds for value writes: R5-M133.
 
 ## R4 (accepted 2026-10-11)
 
@@ -7043,6 +7082,56 @@ resumed by R4-M86 (2026-10-20).
     (+0.07%: `SlotRequirement` and each keeper hold a set's word reference, the library's slots and keepers 8 B more each), +1,296 B
     on Milestone33, +10,456 B on the generated workload (+0.17%); issue counts equal; warm reads and a warm rebind over binders past
     the 64th allocate 0 B. Pinned warm Bind timing (5caf5e8f0): B/A 0.986–0.998, in its commit.
+- **BU-45 A bare acquisition Reborrows only through a path exclusive in its case, and a payload reads the bare plan** (2026-10-27;
+  the BU planning session's choice of design A (Major), one design reviewed by the implementation review (Q5), R5 checking the MIR
+  boundary; PLAN G262 with G252's BareAcquire, unit bu49; the owner's 「前倒し (推奨)」 and 「今すぐ始める (推奨)」) SPEC 3.5.1: a
+  stored `uniq/U` or `objuniq/U` Reborrows only with exclusive capability through its path; 8.14, 8.15.2: a pair layer's plan is a
+  Copy or Reborrow per case, judged in that case. `Binding.BareAcquire` planned the Reborrow row, and `BareAcquisition` the exclusive
+  cases, from the Type alone, so a bare Place reached through a shared layer (a `ref` follow, a Slice element, a `let`-owned Array
+  element, a Field through `ref`, another binder's pair layer) published a Reborrow or ByCase, built as `&uniq` or `acquire` past the
+  layer and rejected only by the old path's TransferRequired_Kd; and the payload rule (`CompleteEnumAcquisitions`) kept a second
+  copy of the rule, ProveCopy alone, so `.Some(value)` of a pair layer failed though its plan is by case (G252).
+  - The fact: the Reborrow row needs `!ReachedThroughShared` (PathAuthority under the empty assignment); an exclusive case Reborrows
+    only where the path is not shared with the Place's binder assigned that case (`PathAuthority(place, [(binder, uniq)])`); a case
+    without a plan makes the acquisition Move, HIR's existing row (TransferRequired). The payload rule reads `BareAcquire`.
+  - The case assignment is data (the planning session's decision 1): PlaceAuthority's `PathAuthority`, `LayerAuthority`,
+    `LayerCases` and `AcquirableByBinding` take `ReadOnlySpan<PairCase>`, the case record `CaseType` reads, under which an assigned
+    binder's pair layers take its case (`CaseAdmitted` over `CaseOf`) and every other layer its weakest case; the empty assignment is
+    the walk as before, which every other caller passes. Why: the acquiring binder's own layers on the path (`x@follow` with
+    `x: s/(s/T)`, `b.v` with `b: s/Box<s/T>`) are exclusive in its exclusive case; the weakest-case walk planned them Move and gave
+    `take(b.v)`, a valid form, Binding's TransferRequired_Kd. No bool and no mode: an unassigned binder is read at its admitted set.
+  - Records: a pair layer through a shared path at a by-value argument or payload is Binding's TransferRequired_Kd at the Place (the
+    argument rule's bare Move, `ArgumentOperations`), in place of the old path's with its case Note (the planning session's decision
+    2). One owner adapts every payload and argument, AdaptInput's argument rule, which names a failed acquisition before a structural
+    mismatch, an order this unit does not change: through `ref`, with an outer Origin that also mismatches, `.Some(x@follow)` into
+    `Option<s/T>` was Binding's TypeMismatch_Kd at the construction and `g(x@follow)` with `g: (s/T) -> ()` the old path's
+    TransferRequired_Kd and UnprovenOriginRelation_Kd at `x@follow`; both are now Binding's TransferRequired_Kd at `x@follow` alone.
+    The mismatch is independent (`s is ref` alone reports it), so the order shows one of two independent failures, as before (open,
+    PLAN G262). A capture use through `ref` (`let h = func [x] () -> ()` with `let y = x@follow`, `x: ref/(s/T during a) during b`) no
+    longer Reborrows in the uniq case (BareReborrows, ClosureReceivers), so its `let` Closure's call is no longer Exclusive: Binding's
+    InvalidAssignment_Kd at `h` becomes the old path's TransferRequired_Kd at `x@follow` in the uniq case (SPEC 3.5.1, 7.7.3). The case
+    Note is not carried: Binding's acquisition record states the Place and its spelling, not the failing cases nor whether the bare
+    plan or an explicit operation's Copy requirement failed (DIAGNOSTICS, open in PLAN G262). G252's forms are accepted on both
+    pipelines; G245's mir `InternalInvariant_Kd` over such a construction goes with the construction's own record, also for the invalid
+    through-`ref` payload, whose failure is now recorded at the construction. An error the false rejection hid becomes visible, SPEC
+    23.1.2: `_ = o` of `Option<s/T>` in the uniq case (SPEC 3.5.1, an aggregate acquired whole) is the old path's TransferRequired_Kd at
+    `o`, as `_ = o` of `Option<uniq/i32>` is. Every other bare form keeps the old path's record alone until R6 moves it (ledger a1-g4).
+  - Limit, on both pipelines until R6-check and H3: where Binding rejects such an argument, the old path, which decides until R6,
+    analyzes nothing in the program, and under mir A1's and A5's records stay unpublished (R4-M1), so its independent records are lost:
+    a `MovedPlace_Kd` beside `take(x@follow)` (implementation review 1's `i-masked-old-path-error-head`), also in another function
+    (`i-masked-other-function`), and `g(x@follow)`'s UnprovenOriginRelation_Kd (`i-vc-uniq-only`). The same gate already masks them
+    for every Binding argument rejection (`take(x)` with `owner or uniq` and no Copy). No verdict changes: each program was rejected.
+  - Cost: one allocation-free walk per bare `uniq`/`objuniq` or exclusive-admitting pair Place; `CaseAdmitted` reads its callers'
+    `TryPairLayer`. An interleaved, unpinned A/B (Release, one folder, 10 rounds in alternating order, other sessions' heavy runs on
+    the machine; warm Bind and HIR publish, medians of 200): Bind B/A 0.97–1.00, publish 0.99–1.01 on Milestone34, Milestone26 and the
+    library, within each side's spread (about ±10%); warm Bind and publish allocate 0 B (the allocation regressions).
+  - MIR: those positions build the Move (`move <place>`, A1's) in place of `&uniq`, `two-phase` or `acquire` past a shared step; the
+    acquiring binder's own PairLayers keep `acquire` (R5's stage B skips them). Stage B relies on Binding's other exclusive producers
+    staying path-aware as now: AdaptInput's Reborrow (`ReachedThroughShared`), the explicit `@s` (`SharedPathAccess_Kd`) and
+    StoredReborrow (through ExpectedAdaptation).
+  - Rejected: BU-13's `ExclusivelyAcquirable`, which continues through the Place's own layers, so a pair admitting `ref` is always
+    shared and `let y = x`'s uniq case would be denied; the weakest-case walk (above); Binding reporting every bare acquisition
+    without a plan, R6's move of TransferRequired (it moves the old path's records at every bare position). Not temporary.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
@@ -10153,8 +10242,8 @@ structure is recorded here by the unit that first implements it.
   checked. A Move is no row: A1's Move Path rule reports it (`StaticMovePathRequired_Kd`, `DefaultArgumentMove_Kd`), and the HIR
   publishes the Move a `TransferRequired_Kd` needs until R6 (ledger row a1-g4), so R5-M71's "write, Move or exclusive borrow" loses
   its Move. Stage B (a Ref `Uniq` or `TwoPhaseUniq`, a PairAcquire's and an Adapt's exclusive cases, a PairAcquire's own binder's layers
-  skipped, a second call in `Views`) waits for PLAN G262 (Binding plans a bare Reborrow without its path's authority), G251 (7)
-  (R4-M128's net counts pair captures only) and the SPEC session's reading of a discarded Place (3.5 against 14.2.2;
+  skipped, a second call in `Views`; superseded by R5-M139: stage B landed) waits for PLAN G262 (Binding plans a bare Reborrow
+  without its path's authority), G251 (7) (R4-M128's net counts pair captures only) and the SPEC session's reading of a discarded Place (3.5 against 14.2.2;
   `MirBuilder.Values.cs:136-138`). Census under `-Pipeline mir` (the corpus's 461 cases, the whole Functional suite, 61 probe forms): no
   write or Drop past a shared layer but at a slot step or in a copy. Consumers: A5's `Issue` forms no Loan past a shared step for any
   mode (E3), which stage B makes a checked contract for exclusive Loans; code generation and the collector read nothing from it.
@@ -10592,3 +10681,225 @@ structure is recorded here by the unit that first implements it.
       no ledger row needs it, and an item for a fixed symbol defines nothing, R5-M128's rejection); the collector skipping K row 2's Builtin
       item (it names the Self); new IntrinsicIds, MonoKinds or collector items for the wrappers (R5-M30: the collector never sees a wrapper);
       re-pointing the old planner to the new wrappers (D5).
+- **R5-M131 The owning interpolation's buffer, hints and end in MIR code generation (C9c)** (2026-10-27, C lane; plan C9c, package C 3.2,
+  PD2, PD3, PD21; SPEC 22.7, 22.10.1, 22.10.3, 22.10.4, 22.10.5; the planning session's rulings Q1-Q9 on C9c's design, `c9c-design.md` and
+  `c9c-go.md`, and its ruling on FormatFinish; under R3-10, R5-M18 form 2 (G:format), R5-M30, R5-M128, R5-M130 and R5-M132; PLAN G157 (35))
+  - Estimate (ruling Q1 (a)): code generation writes R3-10's three temporary intrinsics from each call's own operands, the literal bytes, the
+    values' Types token and the direct mark, in the item's instance: the bytes plus each value Type's bound through `TypeOf` (each a write's
+    Type argument, which the collector made). The rule is stated once and both generators read it, promoted from the old generator (bp1):
+    `LegacyRuntimeHelpers.FormatBound` (a bounded Type's maximum encoded bytes by `FormatKind` over the runtime's own `__kimi_format_bounds`,
+    which `FormatBoundsAreTheRuntimesTable` ties to it; -1 for an unbounded Type), `FormatEstimate` (the sum, an unbounded value counted 0 and
+    making it Unbounded, a sum past MaxObjectSize discarded; Capacity, Hint, Stack) and `FormatStackLimit`, 1,024 bytes, the windows-x64
+    rule (the plan row and STATUS:40; IMPL 21.4 no longer states it since S1015, which the planning session reports to the owner). No cache
+    and no side table: a call's estimate is a loop over its token's Types.
+  - Rows (ruling Q6): one `IntrinsicWriter` entry per row, `Buffer`, `Hint` and `Finish` (internal writer-column entries, as `Writer`): their
+    differences are each row's writing rule, not row data (the buffer's home, the hint word, the adapter's buffer), each a routine of the
+    formatting runtime (P1d's text) through `WriteCall`: FormatBuffer `__kimi_text_heap` of the estimate's Capacity at the interpolation's
+    location (zero allocates nothing) or, on a Region home, `__kimi_text_fixed` over the region; FormatHint `__kimi_format_hint` of the adapter
+    and the Hint of the later literal bytes and values; FormatFinish `__kimi_format_finish`, or `__kimi_format_stack_finish` (which marks the
+    string static), over the moved adapter and its buffer, the adapter's `destination` (Utf8Writer's Field 0, the runtime's word 0).
+  - The stack buffer (ruling Q2 (a)): the frame owns the home. The frame's existing walk of the entry-block slots a call needs gives a
+    FormatBuffer whose estimate is `Stack(direct)` (passed directly to `Console.writeLine`, bounded, within the limit) a `Home.Region`
+    destination: its record's alloca and its bytes `%r<local>` of the estimate's total in the entry block (I2, so a loop reuses them).
+    FormatBuffer and the Drop read that home: a Region local's value owns no storage (`OwnsStorage`), so its Drop destroys nothing on any path,
+    the early exit of an embedded `try` or `return` included. FormatFinish has no operand naming the buffer (only the moved adapter), so it
+    applies the same rule, `FormatEstimate.Stack(direct)`, to the operands R3-10 gives it: one rule applied to equal operands, not a second
+    copy (the planning session's ruling, correcting `c9c-go.md`'s "FormatFinish reads the home"). Contract: FormatBuffer and FormatFinish of
+    one interpolation carry the same estimate operands, written by the builder from one computation (`MirBuilder.Format`: `bytes` and the
+    values' Types from `start`, and `ExpansionPlan.Direct`, `MirBuilder.Formatting.cs`'s `Estimate`), so the two applications agree.
+    MirValidator does not check that equality: an open point (PLAN), no validator edit here. Codegen tests pin the pairing: a region ends
+    with the stack form, a heap buffer with the heap form.
+  - Writer kind (ruling Q3 (a)): the adapter over a region keeps its destination Type's kind (HeapBuffer, 1; R5-M130's rule). Premise: the
+    region's size is the instance maximum of every reservation (the literals and the bounded values' maxima; no literal is deferred while
+    the literal path is C9d's), so the HeapBuffer arm of `__kimi_writer_reserve` always fits and never grows it; pinned by the bounds test
+    and the stack rows. The old generator's switch to 0 is an IR deviation. R5-M130's boundary sentence resolves to this.
+  - The literal fast path (R5-M132, the owner's split; the interim is superseded by R5-M133, C9d): an owning interpolation whose estimate is Unbounded and whose literal bytes are above
+    zero is one located `Unsupported_Kd` at its FormatBuffer, decided from its own operands ("the literal path, C9d"): the deferral SPEC
+    22.10.5's one-allocation bound needs has no MIR fact in R3-10's form, which C9d, a Full unit, designs. Every other owning interpolation
+    is written. The census at C9c's base: 17 of the 277 rows holding only C9c's records hold such an interpolation; milestones 24, 30 and 33
+    and the Interpolation corpus kernel move to C9d; milestones 31, 35 and 44 and the other six corpus kernels stay C9c's.
+  - G157 (35) (ruling Q5 (a)): `MirBuilder.Format`: an embedded expression is evaluated only after a test that the adapter is healthy, the
+    previous write's Ok result or, for the first segment, the adapter's status: a `$tryWrite` whose first segment is an expression calls the
+    plan's status first, a failure going to its result (a text's write returns the recorded failure itself, SPEC 22.10.1); one member,
+    `Tested`, writes a write's or the status's call and its test; the text test reads `Binding.WritesText`. MIR now matches the old
+    path's per-write status branch (`OwnershipAnalysis.Formatting.cs`). In a value-first form A2's verdicts follow the new failure arm (the
+    skipped expression's temps Keep or Elide become Flag; a check-only Drop after a Never first expression becomes a runtime Elide); every
+    other form builds the same MIR. R4 reviewed the builder hunk (ACCEPT). The fixture row `Utf8TryWriteFailure` leaves the ledger.
+  - Records: the collector records nothing new (no target, no layout use, no capability row: an estimate past MaxObjectSize or the limit
+    chooses the heap). Code generation records the interim's `Unsupported_Kd` and broken contracts only (`InternalInvariant_Kd`: a step's
+    constant of another kind, a value Type `TypeOf` cannot make, a stack buffer's destination that is not a whole local).
+  - Deviations (IR only, PD9): the stack adapter's kind 1; regions named `%r<local>` per local (the old `%formatBytes<n>`; `Utf8ConsoleTest`'s
+    old spelling, R5-M12 class I, is now generator-neutral, the 33 bytes kept); FormatFinish's buffer read from the adapter (the same
+    address); each write's failure tested by its Result where the old calls `__kimi_format_check`; a Region buffer's HeapBuffer glue item
+    admitted by the collector but unused by that body.
+  - Facts: the sel ledger falls by 261 test rows, from 464 to 203 (call 65, C-frame 87, C-aggregate 33, C-drop 27, format 18, K-edges 13,
+    library-2 7, closure 6, C-scalar 3, object 2): the census's 260 rows whose every record was C9c's and that hold no interim
+    interpolation, and `DeferredEmissionTest.WarmDeferredAnalysisAndWritingAllocateNothing(2)`, which failed only because generation did;
+    and by the fixture row `Utf8TryWriteFailure` (48 to 47). The 17 rows holding the interim's record stay for C9d; nothing outside the
+    ledger fails. Their fixture families run natively under sel at O0 and O2.
+  - Size, over the two commits (bp1, behavior) by numstat: Backend +325/-37 (Codegen +238/-29), Emission +10/-43, MIR builder +23/-7, tests
+    +189/-1, the ledger -261 test and -1 fixture rows, and this entry, ARCH and CODEMAP. Over the plan's +150 by the frame's Region home and
+    the three writers' words.
+  - Deleted: the three rows' located records and "C9c" labels; in Emission (bp1) `FormattingBound`, the stack limit, the estimate's
+    arithmetic and the copies of the runtime's ABIs (`StatusFormatting`, a copy of `FormatHealthy`).
+  - Speed: one runtime call per step (the old form); an estimate a loop over at most its values' Types, no allocation, so a warm Write
+    allocates nothing; one entry-block region per stack interpolation; one arm in the frame's existing walk; no new pass over MIR.
+  - O2 (ruling Q8, R5-M8; the deferred corpus A/Bs, R5-M105, R5-M111, R5-M115, R5-M122, R5-M125): old generator A against MIR code
+    generation B at O2, CPU cycles, 21 interleaved samples of A, B and a copy of A in one folder. SharedHandles 1.00, Array 1.005 and
+    Dictionary 0.99 are within the A=A variance. ErasedCalls 1.072, VirtualDispatch 1.075 and Iterators (information) 1.171 are beyond it
+    (A=A 0.997, 1.010, 0.999). The cause is code placement: the hot loops have the same instructions modulo names (ErasedCalls' is one
+    instruction shorter; VirtualDispatch's object-header load encodes longer, R5-M110), at other offsets mod 64; the kernels' variants
+    without the checksum line flip the sign (0.92, 0.93, 1.00). With the hot loops and functions aligned alike (`llc --align-loops=64
+    --align-all-functions=6` on each generator's own O2 IR), B/A is 0.999, 1.001 and 1.019 against A=A 0.995, 1.001 and 1.001. Landed on the
+    owner's decision of 2026-10-27 (R5-M132). Open: Iterators' remainder of about 2 % when aligned. The Interpolation kernel is C9d's, and
+    Strings waits for E7.
+  - Rejected: inside code generation, a cache or a side table of estimates by buffer (the calls carry their operands), a per-call alloca (a
+    loop grows the stack), the adapter's kind 0 through the region (a second reader, no behavior change), the literal path read from MIR
+    shape (a consumer deciding what the builder should publish; R5-M132), deferring every string write on an internal adapter (a
+    non-literal string's bytes may be freed before the flush), a second bounds table; shared structure, the builder choosing the buffer (MIR
+    is per template; R3-10), the collector publishing the estimate per site (the drop and the adapter still need the link), FormatFinish
+    taking the buffer as an operand (a second borrow under the adapter's live loan), runtime changes (an adapter kind that defers literals,
+    a finish that reads the buffer from the adapter: a declared legacy `.ll` change, two mechanisms until R6-gen), a Kimigayo `writeLiteral`
+    (Utf8Writer's Fields are `let`; R8's form), splicing the runtime's bounds from the C# table (a new marker in the checked splice; the test
+    ties them).
+- **R5-M132 The owner confirms C9c's departure and decides its O2 finding** (owner, 2026-10-27, to the R5 planning session directly;
+  the consequences are the planning session's)
+  - **The departure** (on the planning session's explanation after C9c's design; verbatim 「C9c の逸脱（リテラル高速経路を独立した Full
+    ユニット C9d に分け、C9c では該当する補間を Unsupported_Kd とし、Milestone 44 などの該当分を C9d に移すこと）を承認します。」). The
+    departure R5-M131 records is confirmed. Plan row C9c's literal fast path needs a MIR fact that R3-10's three temporary intrinsics lack
+    (an owning interpolation's literal segment is an ordinary `write<string>`), and every form of that fact changes a shared
+    representation, so it becomes its own Full unit, C9d. Until C9d lands, an owning interpolation whose instance estimate is unbounded and
+    whose literal byte count is above zero is one located `Unsupported_Kd` at its FormatBuffer, decided from FormatBuffer's own operands.
+    What moves with it is what holds such an interpolation, by C9c's census: 17 test rows, milestones 24, 30 and 33, and the Interpolation
+    corpus kernel's O2 A/B (R5-M8). Milestone 44 holds none, so it stays C9c's, as R5-M115 placed it. The planning session's question had
+    named it as an example by mistake, and told the owner so. It leaves the list.
+  - **The O2 finding** (WORKFLOW, a significant measured slowdown of generated code; on the planning session's report of C9c's corpus
+    A/B and its aligned control; verbatim 「C9c の扱い a）記録して着地させる」). Unaligned, the ErasedCalls, VirtualDispatch and Iterators
+    kernels ran 1.07-1.17 under MIR code generation. With both generators' hot loops and functions aligned alike, they ran 0.999, 1.001 and
+    1.019 against A=A. The hot loops have the same instructions modulo names, so the gap is code placement (R5-M131 records the
+    measurements; its B/A is the median of B over the mean of A and A′, which gives Iterators 1.171 where a plain B/A median gives
+    1.170). C9c lands with the measurements recorded. Two points stay open in PLAN: whether R5-M8's corpus A/B adds an aligned
+    control (a VERIFICATION change, the owner's), and Iterators' remaining ~2 % (an information kernel).
+- **R5-M133 An owning interpolation's literal text is its segment step's operand: FormatSegment and the literal path (C9d)** (2026-10-27, C
+  lane; a Full change: design 2 (`c9d-design-2.md`, Option B), the planning session's choice (`c9d-choice.md`, the rename), revisions R-1
+  and R-2 (rule (d)), design reviews 1-3 (REVISE, REVISE, ACCEPT) and R4's A1-A5 view (no blocking finding); departure (i) confirmed by the
+  owner, R5-M134; departure (ii) withdrawn with rule (d); SPEC 3.1, 22.10.1, 22.10.3, 22.10.5; supersedes R3-10's `FormatHint` (renamed;
+  its estimates still "take the literal byte count and a TypeToken of the values' Types") and, for literal text, "the failure check
+  reads each write's own Result", and R5-M131's interim; under R5-M18 form 2 (G:format))
+  - Cause: SPEC 22.10.5 bounds `"abc\(s)def"` to one allocation, which needs the old generator's deferral of literal text to the next
+    reservation (`__kimi_format_literal`); R3-10's MIR wrote a literal segment as an ordinary `write<string>`, the form of a `$tryWrite`'s
+    or a formatter's write, so no fact told code generation to defer (R5-M131's interim `Unsupported_Kd`).
+  - Rule: R3-10's FormatHint is renamed `FormatSegment` (the same `IntrinsicId` member, `[Transitional("R8")]`; the count stays 34, PD21):
+    one step per write position of an owning interpolation's plan (`MirBuilder.Format`), `FormatSegment(&uniq adapter, text, later bytes,
+    later values' Types)`, the hint of the later literal bytes and values, then the position's literal text: a literal segment's constant
+    through the one literal rule (`MirBuilder.Literal`, SPEC 3.1), which is no `write` call (SPEC 22.10.3 passes only embedded expressions
+    to `write<T>`), or `""` at a value's position, whose write and Result test follow. An embedded string literal, which
+    `Binding.WritesText` also classifies as text (R5-M79), is its step's text as well, as if written: a constant has no effect, and
+    string's built-in formatting writes its bytes with the same `KIMI_E_FORMAT` failure (the old generator also writes it through
+    `__kimi_format_literal`). The block a failed write goes to is made by the first branch to it, so an interpolation of text alone has
+    none (R4's hunk review B1: an unreachable failure block was a validator finding that stopped the analyses on the whole program).
+    `$tryWrite` segments and user writes stay writes.
+  - Code generation (`FunctionCodegen.FormatSegment`, the `Segment` writer, C9c's `Hint` renamed): `__kimi_format_hint` of the instance's
+    hint; then a non-empty text, its record in its copy slot, its result in a slot numbered by the call's block (the frame walk's `Segment`
+    arm, `TextSlots`, beside FormatBuffer's Region arm in one dispatch over `IntrinsicWriter`; the slot is the runtime's Result tag, made by
+    no Type), through `__kimi_format_literal` when a value follows (the step's Types token is not empty: the size is checked at once and
+    the static bytes kept at the adapter until its next reservation, or the end flushes them), else through WriterWrite's built-in routine,
+    with the string's kind, then `__kimi_format_check` (a recorded failure Aborts `KIMI_E_FORMAT` at the interpolation, the old
+    generator's call). Whether to defer is fixed by the template; only the hint depends on the instance. The ABIs are the bp's
+    (`LegacyRuntimeHelpers.FormatCheck`, `FormatLiteral`, promoted from Emission; both generators' `.ll` byte-identical).
+  - Rule (d) equals the old generator natively (R-2): on an unbounded line every literal but a trailing one is deferred as before, and a
+    trailing literal's direct write reserves what the old finish's flush reserved, at the same point and hint; on a bounded line the
+    capacity is exact (a region's premise names the flushed literal), so no reservation grows under either rule. A deferred literal's
+    reservation happens after the next value's expression, as on the old unbounded lines; on a bounded line it cannot fail. Deviations are
+    IR only (PD9): a bounded line's literal calls `__kimi_format_literal` where the old generator writes it, an unbounded line's trailing
+    literal is written where the old one deferred it. C9c's IR deviation "each write's failure tested by its Result" narrows to value
+    writes; a literal's is the old `__kimi_format_check`.
+  - Descriptor: `FormatSegment` `Row(None, Allocation | Abort, 4)` (its text's write may reserve and Abort, as FormatFinish's flush). No
+    visitor reads Allocation or Abort (R5-M129), so no class, key or effect rule changes.
+  - A1-A5 (R4's view: 92 programs, problems identical): a literal segment loses its `write<string>` call, Result, discriminant and switch to
+    `Fail`, two Loans (the internal adapter's two-phase borrow and the constant's) and its string temp with its Drop (186 Drop rows in those
+    programs), nothing a user Place holds. No error is lost: the internal adapter and the constant are unnameable, and the removed call's
+    published row (Runs `string`'s built-in Utf8Format) composed no class or key at any site (empty in all 92 programs).
+    `MirDropTest.OnlyRuntimeDropsHaveVerdicts`' `label` row keeps the buffer's Drop alone (`drop _2 -> bb9 [keep]`): a removed form, by the
+    owner's FormatSegment decision, not a weakened check.
+  - Facts: the sel ledger falls by the 17 interim rows, 203 to 186 (format 12, C-frame 4, C-aggregate 1), as C9c's census; the 16
+    literal-path fixtures and the 4 new audits run natively under sel at O0 and O2 with the old generator's counts and bytes (the 7 pinned
+    audits included). The golden `interpolations` loses its 13 literal writes (353/706 lines). Milestones 24, 30 and 33 (C9c's interim)
+    and 31, 35 and 44 pass under sel; the mir ledger equals the shared base's (517ffd229: 3,239 rows, 245 signatures, every count).
+  - Tests: `MirBuildTest.AnOwningInterpolationsLiteralTextIsItsSegmentStep` (a literal segment, an embedded string literal, text alone)
+    and `TextAloneKeepsTheProgramsOtherErrors`; `FunctionCodegenTest.ASegmentWritesItsLiteralTextAfterItsHint`
+    (deferred before a value, written at the end, each checked); `Utf8InterpolationTest.DeferredLiteralTextKeepsTheOldGeneratorsAllocations`
+    (the corpus kernel's line 2/60, a literal before a bounded value after an empty one 1/2, a bounded value before a string 2/34, a nested
+    interpolation 2/12, equal under both generators); C9c's two interim coverage rows now generate; the M9/I1 `Interpolations` source gains
+    two unbounded lines.
+  - Size (numstat): bp Backend +10, Emission +1/-5; behavior Backend +83/-37, MIR builder and descriptor +34/-12, Binding comments +10/-7,
+    tests +124/-10, golden +353/-706, ledger -17 rows, and this entry and ARCH.
+  - Deleted: C9c's interim record and its label; each literal segment's write call, borrows, temps, Drop and Result test in MIR, and its
+    BuiltinFormat(string) target; the old generator's private copies of the two ABIs (bp).
+  - Speed: per literal segment MIR loses 5 locals, about 15 statements and 3 blocks (design 2's prototype: -3.7 % and -4.6 % of MIR
+    statements on Milestones 30 and 31); code generation writes the old generator's three calls per literal; warm generation allocates
+    nothing (M9 with the new lines).
+  - O2 (R5-M8, R5-M135; C9c's method): each kernel built at O2 by the old generator (A) and MIR code generation (B) at the fixed head,
+    A, B and a copy of A in one folder, 21 interleaved samples of CPU cycles; B/A and A=A medians with their ranges. Unaligned:
+    Interpolation 0.994 (A=A 0.997), SharedHandles 1.004 (1.001), Dictionary 1.000 (0.999) and ErasedCalls 0.999 (1.000) are within
+    A=A; Array 1.121, VirtualDispatch 1.078 and Iterators 1.167 are beyond it (A=A 0.998, 1.001, 1.004). Aligned alike
+    (`llc --align-loops=64 --align-all-functions=6` on each generator's own O2 IR): Interpolation 0.988, SharedHandles 1.004, Array
+    1.000, Dictionary 1.001, ErasedCalls 0.991, VirtualDispatch 1.004 and Iterators 1.019, all within A=A (0.990-1.004, Iterators'
+    range 0.908-1.207). So by R5-M135 the unaligned gaps are code placement (C9c's VirtualDispatch and Iterators, and now Array, whose
+    checksum line gains the deferral calls); both are recorded and the unit continues. The Interpolation kernel's hot line, whose
+    allocations and bytes equal the old generator's, runs at parity.
+  - Rejected: a fourth temporary intrinsic `FormatLiteral` (design 1: a vocabulary entry for a fact an existing per-segment intrinsic
+    carries); a `MirLocalRole` (it carries no estimate); code generation reading MIR shape (C9c Q4 (b)); runtime changes (a declared legacy
+    `.ll` change, PD2); a Binding or library `writeLiteral` (PD21; R8's form); rule (a), deferring only before an unbounded value (its
+    native counts and bytes differ from the old generator's, design reviews 1-2); the old rule exactly (six operands per step); one step
+    per value carrying the preceding text (B': it changes FormatFinish and shifts every token).
+- **R5-M134 The owner confirms C9d's departure (i)** (owner, 2026-10-27, to the R5 planning session directly, on its choice between C9d's
+  two designs; verbatim 「C9d の逸脱 2 件（R3-10 の FormatHint を FormatSegment に改名して区間のリテラル本文を持たせること、遅延規則 (a)
+  により固定されていないプログラムで割り当て回数が旧生成器より少なくなり得ること）を承認します。」; the consequences are the planning
+  session's) Departure (i) is confirmed: R3-10's temporary intrinsic FormatHint is renamed `FormatSegment`, and the owning interpolation's
+  per-segment step carries that segment's literal text, `""` before a value. A literal segment is then no `write` call, and no new
+  `IntrinsicId` is added (the limit stays 34, back to 30 at R8). Departure (ii) is withdrawn and does not apply. The owner had approved
+  rule (a) on a wrong statement of its effect: design review 1 found that bytes could grow, not only counts fall, and review 2 found the
+  planning session's bound on that growth false. The planning session then replaced rule (a) with rule (d) (R5-M133). Rule (d) gives the
+  old generator's allocation counts and bytes, so no native deviation remains, and the planning session told the owner so. The
+  departures list is empty.
+- **R5-M135 An O2 corpus A/B is judged with an aligned control** (owner, 2026-10-27, to the R5 planning session directly, on its analysis
+  of the half day's slow progress; verbatim 「O2 の A/B で差が出ても、整列をそろえた対照で A=A の範囲内なら、R5 が記録して着地させてよい。
+  対照でも差が残る場合だけオーナーに質問すること。」; partly supersedes R5-M8's O2 clause) An O2 corpus A/B (R5-M8) whose B/A lies
+  beyond the A=A variance gets an aligned control. Both generators' own O2 IR is built with the hot loops and functions aligned alike
+  (`llc --align-loops=64 --align-all-functions=6`, the latter a log2 value, 64 bytes; the same link) and timed the same way: A, B and
+  A′ in one folder, 15 or more interleaved samples. If the aligned B/A lies within the aligned A=A range, the gap is code placement,
+  not generated work. The unit records both measurements in its DECISIONS entry and lands without an owner question. Only a gap that
+  remains in the aligned control is a slowdown under R5-M8; it stops the unit's merge and goes to the owner (WORKFLOW). C9c's corpus
+  A/Bs are the first case (R5-M131, R5-M132). Reason: an unaligned A/B moves with code placement outside the loop (C9c's variants
+  without the checksum line flipped the sign), and the owner question cost about 6.5 hours of waiting on 2026-10-27.
+- **R5-M139 An exclusive acquisition passes no shared layer (W1 rule 1, stage B)** (2026-10-27, R5 planning session; R4 signs off the A5
+  side; supersedes R5-M123's sentence that stage B waits: PLAN G262 landed as BU-45, R4-M145 closed G251 (7) and made a discarded Place's
+  bare acquisition its plan row) Rule (`MirValidator.SharedPaths.cs`, R5-M123's `MirViolation.SharedPath`): a projected Place that a Ref
+  borrows exclusively (Uniq or TwoPhaseUniq), the Place of a PairAcquire whose binder admits `uniq` or `objuniq` (it Reborrows there,
+  `MirCases.Reborrows`) and the Place of an exclusive Ref an Adapt resolves to under a Semantics case view (`MirCases.Adapt`; a second
+  call in `MirValidator.Types`' `Views`) passes no shared layer after its last raw Deref (SPEC 3.5.1, 8.15.2, 13.5.5); a finding is
+  `InternalInvariant_Kd` at the location, one per Adapt at its first breaking view. The PairAcquire is keyed on its binder's exclusive
+  cases, never on its Use's marked kind, which is Uniq or TwoPhaseUniq for a Copy-only binder too (`s is ref`, `owner or ref`). A pair
+  layer is read under a case assignment, the `PairCase` record `TyCtxt.CaseType` and BU-45's PlaceAuthority read: an assigned binder's
+  layers in its case, every other binder's at its admitted set (shared where it admits a shared case, R5-M123's weakest case). A write,
+  a destruction and a Ref take the empty assignment, a PairAcquire `[(binder, uniq)]`, so its own binder's layers are exclusive (the
+  design's own-binder skip, as data: `x@follow` with `x: s/(s/T)`, `b.v` with `b: s/Box<s/T>`), and an Adapt its view's, exact per view.
+  R5-M123's exclusions hold: the slot step, an inline copy, an Unscoped body; a Move stays A1's. Census of a prototype under `-Pipeline
+  mir`: the corpus's 461 cases (the library, the 44 milestones) and the 8 O2 kernels have no hit; 71 w1r1 probe forms (their syntax
+  errors fixed, 13 Adapt and acquisition forms added) and bu49's 128 forms (G262's positions, R5's return, match and for subjects,
+  struct and Array literal elements, receiver and default) have none but one in an inline copy; the Functional suite (23,462 tests, 0
+  failed) has 35, the validator tests' hand-built finding rows and 11 locations in inline default copies. Consumers: A5's `Issue` forms
+  no Loan past a shared step (E3, `MirBorrows.Loans.cs:107`); the validator now checks that for exclusive Loans outside inline copies
+  and before a raw Deref, while `Loans.cs:107` stays the operative guard in inline copies and past raw-after-shared steps (R4's
+  sign-off). Size: Mir +70/-34 lines
+  (`SharedPaths.cs` +48/-22, `Types.cs` +15/-6), tests +63; no deletion. Speed: an access test per Place, a binder lookup per
+  PairAcquire, a chain walk per projected exclusive Ref, exclusive-case PairAcquire and exclusive Adapt view; warm 0 B. A warm
+  validation of the library's and the 44 milestones' 10,020 bodies, pinned to one CPU with tiering off, A and B from one folder, 21
+  interleaved A, B, A′ triples in a quiet window: B/A 1.028 (1.001-1.049) against A′/A 1.007 (0.975-1.021), B above A and A′ in 20
+  of 21, about 1.4 ms per full validation of about 51 ms; one pass of the MIR pipeline, not significant for a compilation (the
+  planning session's reading, reported to the owner). Rejected: keying the PairAcquire on its marked kind (a Copy-only binder's Use is marked); a binder
+  parameter or a bool skipping the own binder's layers (the case assignment states it as data, one meaning with an Adapt's view); a
+  per-view pass over every PairAcquire (exact too, but a stored list and a walk per view for what one assignment decides); an Adapt's
+  pair layers at their weakest case (its own binder's layer in its exclusive view, `adapt(copy (_1@b0)): s/T` with `s is ref or uniq`,
+  would be a false finding).

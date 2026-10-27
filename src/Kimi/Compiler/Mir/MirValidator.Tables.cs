@@ -53,7 +53,7 @@ internal sealed partial class MirValidator
                 this.Report(MirViolation.Projection);
             }
 
-            this.SharedPath(place, access);
+            this.SharedPath(place, access, kind);
         }
 
         // Locals, MustNotComplete rows, scopes, Opaque sites and the projection table; false when a chain or site cannot be walked.

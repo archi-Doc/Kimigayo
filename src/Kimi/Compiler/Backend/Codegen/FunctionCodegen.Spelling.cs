@@ -104,14 +104,14 @@ internal sealed partial class FunctionCodegen
         return text[..(name.Length + 1)];
     }
 
-    // A local's home spelled into text (I2): its alloca %l<local>, the parameter its caller passed, or the module's zero-sized symbol,
-    // which ModuleCodegen defines on request.
+    // A local's home spelled into text (I2): its alloca %l<local> (a Region's too), the parameter its caller passed, or the module's
+    // zero-sized symbol, which ModuleCodegen defines on request.
     private ReadOnlySpan<char> SpellHome(int local, Span<char> text)
     {
         var slot = this.slots[local];
         switch (slot.Home)
         {
-            case Home.Slot:
+            case Home.Slot or Home.Region:
                 "%l".CopyTo(text);
                 local.TryFormat(text[2..], out var digits, default, CultureInfo.InvariantCulture);
                 return text[..(2 + digits)];
@@ -129,6 +129,7 @@ internal sealed partial class FunctionCodegen
 
     // A value of the text: %t<n> (Prefix t), the parameter Number of the function's signature, %<its name> (Prefix p; Abi.Of names them),
     // the copy slot %s<n> (Prefix s; never c, a check's success label), the drop flag's slot %f<n> (Prefix f, FunctionCodegen.Flags), the
+    // bytes %r<n> of local Number's Region home (Prefix r, FunctionCodegen.Frame), the
     // pooled constant @<name> of index Number (Prefix @), the table of adapter item Number (Prefix g), the slot of StaticInit item Number
     // (Prefix v) and its state (Prefix w), the function of body item Number (Prefix e), the home of local Number, its address (Prefix h),
     // the floating constant whose double bits are Number (Prefix x, LLVM's hexadecimal spelling), the null pointer (Prefix n) or the

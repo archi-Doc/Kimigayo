@@ -157,6 +157,34 @@ public sealed partial class MirBuildTest
         Assert.DoesNotContain(body.Blocks.ToArray(), x => x.Terminator.Kind == MirTerminatorKind.Call && x.Terminator.Callee.Symbol?.Name != "g");
     }
 
+    // SPEC 3.5.1, 8.14 (PLAN G262, DECISIONS BU-45): a bare acquisition that Binding plans without a Reborrow through a shared layer is
+    // built as the Move its HIR row says (A1's, rejected by the old path's TransferRequired_Kd), never a Ref or PairAcquire past that
+    // layer: at a `let`, a `return`, a default, an Array literal element, a Slice element, a pair layer through `ref` or another binder's
+    // layer; an exclusive path and the acquiring binder's own layer keep theirs (fail-before: `&uniq` and `acquire` in the first seven).
+    // Each row: the built statement, and the form no body may contain.
+    [Theory]
+    [InlineData("func f(r: ref/(uniq/i32 during a) during b)\n    let y = r@follow\n", "_2 = move (*_1)", "&uniq")]
+    [InlineData("func f(r: ref/(uniq/i32 during a) during b) -> uniq/i32 during a\n    return r@follow\n", "_2 = move (*_1)", "&uniq")]
+    [InlineData("func f(r: ref/(uniq/i32 during a) during b, x: uniq/i32 during a = r@follow)\n    return\n", "_0 = move (*(*_1))", "&uniq")]
+    [InlineData("func f(r: ref/(uniq/i32 during a) during b)\n    let values = [r@follow]\n", "_2 = Array(move (*_1))", "&uniq")]
+    [InlineData("func f(s: Slice<uniq/i32 during a> during b)\n    let y = s[0]\n", "_2 = move _1[_3]", "&uniq")]
+    [InlineData("func f<s/T>(x: ref/(s/T during a) during b)\n    s is ref or uniq\n    let y = x@follow\n", "_2 = move (*_1)", "acquire")]
+    [InlineData("func f<s/T, t/U>(x: t/(s/T during a) during b)\n    s is ref or uniq\n    t is ref or uniq\n    let y = x@follow\n", "_2 = move (_1@b1)", "acquire")]
+    [InlineData("func f<s/T>(x: s/(s/T during a) during b)\n    s is ref or uniq\n    let y = x@follow\n", "_2 = acquire b0 (_1@b0)", "move (_1@b0)")]
+    [InlineData("func f(r: uniq/(uniq/i32 during a) during b)\n    let y = r@follow\n", "_2 = &uniq (*(*_1))", "move (*(*_1))")]
+    public void ABareAcquisitionPastASharedLayerIsBuiltAsItsMove(string source, string built, string absent)
+    {
+        var c = Compile(source);
+        Assert.Empty(c.Binding.Issues);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Records);
+        var text = new StringBuilder();
+        MirDump.Write(program, 0, text);
+        Assert.Contains(built, text.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain(absent, text.ToString(), StringComparison.Ordinal);
+    }
+
     // SPEC 4.3.3, IMPL 21.3.2 (DECISIONS R4-M81): a fill's MIR does not grow with its length (fail-before: [1048576 of 0@u8] had 1,048,580
     // operands, [4 of 0@u8] 8).
     [Fact]

@@ -35,7 +35,7 @@ public class Utf8ConsoleTest
         NativeAllocationAudit.WriteFixture("Utf8ConsoleStack", Source, 0, 0, 0, "My number is 42\n");
         var c = MinimalEmissionTest.Analyze(Source);
         var outputIr = CompilationTestHelper.WriteIr(c);
-        Assert.Contains("%formatBytes0 = alloca [33 x i8], align 1", outputIr);
+        Assert.Contains("alloca [33 x i8], align 1", outputIr); // The region's own name is each generator's (R5-M12 class I).
     }
 
     [Trait("Purpose", "Allocation")]

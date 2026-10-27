@@ -42,7 +42,7 @@ internal sealed partial class FunctionCodegen
         value = default;
         if (constant.Kind is not (MirConstKind.Bool or MirConstKind.Integer or MirConstKind.Float or MirConstKind.Unit or MirConstKind.FnItem))
         {
-            return false; // String, which has no value (above), Location (C10a), TypeToken (C6a, C9c).
+            return false; // String, which has no value (above), Location (C10a), TypeToken (its call's writer reads it: C6a, C9c).
         }
 
         if (this.Representation(constant.Type) is not { } lowering)
