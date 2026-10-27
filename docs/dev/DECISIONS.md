@@ -10673,3 +10673,21 @@ structure is recorded here by the unit that first implements it.
     a finish that reads the buffer from the adapter: a declared legacy `.ll` change, two mechanisms until R6-gen), a Kimigayo `writeLiteral`
     (Utf8Writer's Fields are `let`; R8's form), splicing the runtime's bounds from the C# table (a new marker in the checked splice; the test
     ties them).
+- **R5-M132 The owner confirms C9c's departure and decides its O2 finding** (owner, 2026-10-27, to the R5 planning session directly;
+  the consequences are the planning session's)
+  - **The departure** (on the planning session's explanation after C9c's design; verbatim 「C9c の逸脱（リテラル高速経路を独立した Full
+    ユニット C9d に分け、C9c では該当する補間を Unsupported_Kd とし、Milestone 44 などの該当分を C9d に移すこと）を承認します。」). The
+    departure R5-M131 records is confirmed. Plan row C9c's literal fast path needs a MIR fact that R3-10's three temporary intrinsics lack
+    (an owning interpolation's literal segment is an ordinary `write<string>`), and every form of that fact changes a shared
+    representation, so it becomes its own Full unit, C9d. Until C9d lands, an owning interpolation whose instance estimate is unbounded and
+    whose literal byte count is above zero is one located `Unsupported_Kd` at its FormatBuffer, decided from FormatBuffer's own operands.
+    What moves with it is what holds such an interpolation, by C9c's census: 17 test rows, milestones 24, 30 and 33, and the Interpolation
+    corpus kernel's O2 A/B (R5-M8). Milestone 44 holds none, so it stays C9c's, as R5-M115 placed it. The planning session's question had
+    named it as an example by mistake, and told the owner so. It leaves the list.
+  - **The O2 finding** (WORKFLOW, a significant measured slowdown of generated code; on the planning session's report of C9c's corpus
+    A/B and its aligned control; verbatim 「C9c の扱い a）記録して着地させる」). Unaligned, the ErasedCalls, VirtualDispatch and Iterators
+    kernels ran 1.07-1.17 under MIR code generation. With both generators' hot loops and functions aligned alike, they ran 0.999, 1.001 and
+    1.019 against A=A. The hot loops have the same instructions modulo names, so the gap is code placement (R5-M131 records the
+    measurements; its B/A is the median of B over the mean of A and A′, which gives Iterators 1.171 where a plain B/A median gives
+    1.170). C9c lands with the measurements recorded. Two points stay open in PLAN: whether R5-M8's corpus A/B adds an aligned
+    control (a VERIFICATION change, the owner's), and Iterators' remaining ~2 % (an information kernel).
