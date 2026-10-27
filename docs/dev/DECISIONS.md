@@ -9668,7 +9668,7 @@ structure is recorded here by the unit that first implements it.
     backing ignored); Copy (transferBytes as `llvm.memcpy`: R5-M18 reversed PD23, the declaration rules out overlap, so `MoveBytes`'
     comment is corrected). Every other row is `Unwritten`, its unit named in the table: C4a DestroyValues (no producer: R5-M95); C6a MakeObj, MakeRc, MakeArc,
     Clone, TypeTest; C7 StaticEnsure; C8d Capacity; C9a WriteStdout (see R5-M128); C9b FormatFloat, ErasedWriter, ErasedReserve, FormatInteger128; C9c
-    the format buffer rows; C10a and C10b the test rows. Stride and ReinterpretLoan have no MIR producer yet (no compiler function's
+    the format buffer rows; C10a and C10b the test rows (C10b's deleted by R5-M137). Stride and ReinterpretLoan have no MIR producer yet (no compiler function's
     disposition serves them; an open PLAN row), so their rows are written with their first producer. Allocate and Fail call through
     `Invoke`, which takes the values of a routine's slot-less parameters (the stride; the reason and the OS error) in order, the runtime
     Abort's location parameters being its Location kinds; an `IntrinsicRow` and the operator table's `Entry` state every column but the
@@ -11231,6 +11231,108 @@ structure is recorded here by the unit that first implements it.
   remains in the aligned control is a slowdown under R5-M8; it stops the unit's merge and goes to the owner (WORKFLOW). C9c's corpus
   A/Bs are the first case (R5-M131, R5-M132). Reason: an unaligned A/B moves with code placement outside the loop (C9c's variants
   without the checksum line flipped the sign), and the owner question cost about 6.5 hours of waiting on 2026-10-27.
+- **R5-M136 The test intrinsics and the test build's entry in MIR code generation (C10a)** (2026-10-27, C lane; plan C10a, package C 3.2,
+  3.3 and 2.9, PD2, PD3, PD21, PD22, P6, F8 (F8b), K package 4.4, 4.7, 4.9 and 4.10; SPEC 17.6, 20.6, IMPL 21.4.2; the planning session's
+  rulings Q1-Q8 on C10a's design, `c10a-design.md` and `c10a-go.md`; the owner's approval of its departures (i) and (ii), R5-M138; under
+  R5-M18 form 2 (G:test), R5-M77, R5-M89, R5-M92, R5-M93 and BU-38; PLAN G157 (15))
+  - Rows (rulings Q1-Q3, Q6): TestObserve, TestMessage, TestRequireAbort and TestTempDirectory are Routine rows over the test runtime's
+    routines, their signatures `RuntimeAbi`'s (restructured first: `744c47216`), each operand at its logical index (the condition narrowed to
+    i1, the issue, the message text's address, a borrow read by Value; TestTempDirectory's destination its result slot, also at its Item's
+    Value call and adapter); TestRequireAbort has no successor. A MIR `Location` constant (`MirConst.Site`) is a row of the constant kinds:
+    its value is the site's number in the test catalog (`TestCatalog.SiteOf`), which discovery gives every verification of an accepted
+    test build, so an unnumbered site is a broken contract.
+  - Type argument (implementation review 1's B1): an intrinsic's Type argument is read only where its row reads one
+    (`IntrinsicRow.ReadsTypeArgument`: a by-value use, `LaysOutType`, or a Witness, Descriptor or Glue target), by one rule at three readers:
+    an intrinsic call is a collector site by it (with a staticEnsure's operand target), an Item of its function reaches its target by it
+    (`InstanceCollector.Bodyless`, PLAN G242's site), and code generation's `TypeArgument` reads it by it. Another row's function may have
+    no Type parameter: `Test.tempDirectory`'s Item and adapter ended the check with `CheckFaulted_Kd`, an index outside the Item's
+    substitution.
+  - Held values (Q1 (a), departure (i)): F8b records a comparison's Scalar operands before the comparison moves them (SPEC 17.6.3), so
+    before the observation numbers the failure, which the runtime's value frame needs. `IntrinsicWriter.Record` passes the side, the
+    Type's frame kind (`TestRuntime.ValueKind`) and width (1 for bool, else its size in bits) and its bits as i128 (a float reinterpreted,
+    then zero-extended) to `__kimi_test_value`, which holds them; `__kimi_test_observe` sends the held values after its failure frame
+    through `__kimi_test_scalar` and holds none after any observation. The test runtime is one text (PD2), so every test build's runtime
+    gains the storage and the two routines, a declared legacy `.ll` change: the old generator holds nothing and still calls
+    `__kimi_test_scalar` after the observe (until R6-gen), so its frames are unchanged.
+  - Entry (Q2 (a)): a test build's output form is the test runtime's entry (`TestRuntime.WriteEntry`) after the definitions, the runtime
+    the template's test variant with the test runtime's routines and the memory declarations; it calls each test root, in the catalog's
+    case order as the generation entry gives the roots, through FunctionCodegen's one call writer (R5-M89, PD3), its signature the entry
+    form `void ()`, else a broken contract at the root's subject. R5-M77's "TestEntry row not written yet" is superseded.
+  - Catalog version (Q5, PLAN G157 (15)'s catalog part): discovery stamps the program version it numbered (`Compilation.ProgramVersion`),
+    and MIR code generation of a test build requires it, else `InternalInvariant_Kd` at the project: the roots and site numbers are that
+    discovery's. `LibraryEmissionTest`'s test-build harness now discovers as Project does; under sel it published a module without
+    tests before.
+  - Dependencies (departure (ii), R5-M138): the Backend reads the Testing catalog's site numbers and case and artifact identities, and the
+    test runtime's text, entry writer and value kind, beyond R5-M18's symbol column (ARCH's Backend row).
+  - Records: the collector records nothing new (no target, layout use or capability row); code generation records only broken contracts
+    (`InternalInvariant_Kd`): an unnumbered site, a recorded value of no Scalar Type, a test root not `void ()`, a stale catalog.
+  - Deviations: IR (PD9): the values are passed before the comparison where the old generator passes them after the observe, with the same
+    frames, order and budget; the test functions are `__kimi_f<item>`. Test report (SPEC 17.6.3, implementation-defined): under sel a raw
+    pointer comparison and a generic template's T-typed operands record no values (F8b decides on the template Type). Until C10b, with
+    which C10a lands (ruling Q4 (a)): a failure or Abort during cleanup reports the body phase under sel.
+  - Facts: the 14 `TestExecutionAnalysisTest` rows of the sel ledger pass (186 to 172 test rows); `test-testing.ps1` passes at O0 and O2
+    under default, and under sel every assertion but the cleanup phase (C10b's), its snapshot values equal to the old generator's.
+  - Size, by numstat: bp1 +95/-28 (Backend +13/-0, Emission +4/-9, Mir +6/-2, Testing +72/-17); behavior Backend +109/-22, Core +17/-6,
+    Testing +67/-8 (the runtime +59/-7), tests +172/-11; review 1's fold Backend +42/-25 (collector +10/-8), tests +79/-15; the ledger -14
+    rows, this entry, ARCH and CODEMAP. Over the plan's +100 by the held values and the entry's split.
+  - Deleted: the five rows' located records and C10a labels, the TestEntry records at each test root, the old lowering's private ABIs and
+    kind expression (promoted), `TestRuntime.Create`'s own call text, MirDump's inline Location decode, the collector's unconditional
+    read of an intrinsic Item's Type argument and code generation's length test of it (one rule now).
+  - Speed: per verification, the old generator's number of value calls and one store in the observation; at compile time one constant row
+    and one writer, no pass over MIR, and a warm test build allocates nothing (the kept case list and call writer, numbers on the stack).
+  - Rejected: inside code generation, values kept by FunctionCodegen and written after the observe with its issue (a side table, a consumer
+    reordering MIR by shape: PD22), the case calls as P6's `Create(names)` text (a second call writer), TestObserve's and TestRequireAbort's
+    own Location clauses, a separate flush routine after each observe (a two-call row), a second decode of the Location bits; in shared
+    structure, TestRecordValue after TestObserve with the issue (the builder; F8b's reason), the values as TestObserve operands (uses after
+    the moves), a MIR-only second test runtime (PD2), a MonoKind or IntrinsicId for the entry (PD21), splicing the test runtime's
+    definitions from `RuntimeAbi` markers (a test ties them); for the Type argument, a length test of the substitution at each reader (a
+    second copy of the rule and a silent default where a row that reads one lacks it).
+- **R5-M137 The test phases in MIR code generation (C10b)** (2026-10-27, C lane; plan C10b, package C 3.2, PD2, PD9, PD21, PD22, PLAN10
+  §5.6.7, K package 4.7 and 4.9; SPEC 16.1, 16.2, 13.7.1, 17.4.3, 17.6.2, 22.4.3, IMPL 20.6.3; the planning session's rulings Q1-Q6 on
+  C10b's design, `c10b-design.md` and `c10b-go.md`; the owner's approval of its departures (i) and (ii), R5-M140; under R5-M18 form 2
+  (G:test), R4-M6a, R5-M92, R5-M99, R5-M106 and R5-M136)
+  - Rule: every frame of a test build's runtime reports the runtime's phase, body 1, cleanup 2, initialization 3, shutdown 4
+    (`TestRuntime.Phase`, which the runner names). In a test build (`ModuleCodegen.IsTestBuild`) code generation runs a cleanup position in
+    the cleanup phase: a Drop whose A2 row destroys (Elide, or an instance Type needing no drop, writes nothing) and an Assign or Call in a
+    Deferred scope (SPEC 16.1; `MirBody.Enclosing`). There is one window per run of a block's code (`FunctionCodegen.Phases`). Its first
+    cleanup position saves the phase and sets cleanup. The next Assign or Call outside a defer body restores it, as does the block's
+    transfer (`Completed`: the location's flag points, then the restore, for Branch, Switch and staticEnsure's test; and Return). An end
+    without a runtime successor restores nothing. A callee keeps its caller's phase, and its own windows nest.
+  - Static initialization: a slot's ensure function runs its StaticInit call in the initialization phase (Q3 (a), R5-M140). The phase is
+    set after the Initializing state and restored before the Initialized one, so a cycle Aborts in the initialization phase. R5 has no
+    static shutdown (R5-M13 (b)), so phase 4 is never set.
+  - One text (Q4 (a), PD2, departure (i)): `TestRuntime.WritePhase` and `RestorePhase` write the old generator's inline save, set and
+    restore of `@__kimi_test_phase`; both generators call them (bp1 `6dee6ab40`; the old `.ll` is unchanged). No routine is added.
+  - Vocabulary (Q1 (a)): phases have no MIR producer (PD22), so `IntrinsicId.TestPhaseEnter` and `TestPhaseLeave` were dead. They are
+    deleted with their descriptor and Backend rows (bp2 `84761c0bf`). IntrinsicId uses 32 of its limit of 34, which stays 34 until R8
+    (28 then). R5-M92's C10b rows and R4-M63's "never built" census entry for them end here.
+  - Deviations (departure (ii), R5-M140, implementation-defined report, IMPL 20.6.3): an assignment's old-value destruction (SPEC 13.7.1,
+    a Drop like any other) reports cleanup, where the old generator reports body. An initializer's failure or Abort reports
+    initialization, where the old generator reports body or cleanup. IR (PD9): one window per block run, not one per operation, and none
+    around a Drop that destroys nothing. R5-M136's "until C10b" cleanup-phase deviation closes.
+  - Records: none new. The collector adds no target; a window is written or not, never refused; scopes are validated MIR.
+  - Size, by numstat: bp1 Testing +51/-7, Emission +2/-6, Mir +9/-2, tests +53; bp2 -6; behavior Backend +101/-20
+    (`FunctionCodegen.Phases` +65), tests +129/-1; review 1's fold tests +10 (the runtime's initial phase tied to
+    `TestRuntime.Phase.Body`); this entry, ARCH and CODEMAP. Deleted: the old writer's own phase text, the worker's phase literals, two
+    IntrinsicIds and their rows, and three copies of the terminator-completion expression.
+  - Speed: in a test build, one load and two stores per window and a scope walk per Assign and Call. A product build pays one bool test.
+    No pass over MIR; a warm test build allocates nothing (`WarmGenerationAllocatesNothing` with the `Phases` source).
+  - Rejected:
+    - Inside code generation: a window per position as the old generator writes it (twice the text for the same meaning); a per-body
+      table of cleanup scopes (a side table where MirBody's scope query answers); telling an assignment's Drop from a Scope Exit one by its
+      source or its successor's Assign (a consumer deciding by shape); writing phases through intrinsic rows with no MIR call.
+    - In shared structure: phase routines in `TestRuntime.ll` (a declared legacy `.ll` change for the same meaning); a MIR producer
+      (PD22); a builder `replace` mark on Drop (a MIR form change for an implementation-defined label).
+- **R5-M138 The owner confirms C10a's two departures** (owner, 2026-10-27, to the R5 planning session directly, on its rulings after
+  C10a's design; verbatim 「C10a の逸脱 2 件（(i) テストランタイムが記録値を観測まで保持するための旧生成器 .ll 変更、(ii) ARCH の Backend
+  依存注記を Testing のカタログのサイト番号・ケース／成果物 ID・ランタイムテキスト・エントリ書き出し・値種別へ広げること）を承認します。」;
+  the consequences are the planning session's) The departures R5-M136 records are confirmed:
+  - (i) the test runtime, one text shared by both generators (PD2), holds a recorded value until its observation numbers the issue
+    (`__kimi_test_value` and the observe's flush), a declared legacy `.ll` change of every test build's runtime whose old behavior is
+    unchanged, since F8b's order puts the records before the observation (SPEC 17.6.3);
+  - (ii) ARCH's Backend dependency note (OQ4, R5-M18: "the Testing catalog's symbol column") widens to the catalog's site numbers, case
+    and artifact ids, and Kimi.Testing's runtime text, entry writer and value kind, which plan rows C10a (`SiteOf`) and P6 (`Create`)
+    name. Both leave the list.
 - **R5-M139 An exclusive acquisition passes no shared layer (W1 rule 1, stage B)** (2026-10-27, R5 planning session; R4 signs off the A5
   side; supersedes R5-M123's sentence that stage B waits: PLAN G262 landed as BU-45, R4-M145 closed G251 (7) and made a discarded Place's
   bare acquisition its plan row) Rule (`MirValidator.SharedPaths.cs`, R5-M123's `MirViolation.SharedPath`): a projected Place that a Ref
@@ -11261,3 +11363,12 @@ structure is recorded here by the unit that first implements it.
   per-view pass over every PairAcquire (exact too, but a stored list and a walk per view for what one assignment decides); an Adapt's
   pair layers at their weakest case (its own binder's layer in its exclusive view, `adapt(copy (_1@b0)): s/T` with `s is ref or uniq`,
   would be a false finding).
+- **R5-M140 The owner confirms C10b's two departures** (owner, 2026-10-27, to the R5 planning session directly, on its rulings after
+  C10b's design; verbatim 「承認します」, answering the two departures put to the owner; the consequences are the planning session's) The
+  departures R5-M137 records are confirmed:
+  - (i) the test phase writer and its numbering live in `TestRuntime`, beside C10a's ValueKind and WriteEntry, so R5-M138's widened
+    Backend list gains them;
+  - (ii) two phase labels differ from the old generator's, both in the implementation-defined protocol (IMPL 20.6.3): an assignment's
+    old-value destruction, an A2 Drop like every other, runs in cleanup (the old generator: body; SPEC 13.7.1 calls it cleanup), and a
+    static initializer runs in initialization, phase 3, which the old generator never writes (PD22, PLAN10 §5.6.7). PD22's "avoids
+    per-pipeline kimi test failure output" is not met for these two labels. Both leave the list.

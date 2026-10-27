@@ -37,7 +37,8 @@
 // owning interpolation's buffer, hints and end, its estimate and its buffer's Region home (.Interpolation.cs; DECISIONS R5-M131); the
 // Array rows written in place: an Array from none, setArrayLength,
 // capacity and an Array's glue level (.Arrays.cs; DECISIONS R5-M121); the Dictionary rows written in place: a Dictionary from none and a
-// Dictionary's glue level (.Dictionaries.cs; DECISIONS R5-M124).
+// Dictionary's glue level (.Dictionaries.cs; DECISIONS R5-M124); a test build's phases, the cleanup window and a terminator's completion
+// (.Phases.cs; DECISIONS R5-M137).
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact or a case selection
 // (MirCases decides a PairLayer under the item's view), compose a Subst or a Type (TypeOf does), resolve a callee, or use LINQ, Supports*,
 // out-string failures or catch-alls. An Opaque value (the gate admits none), a Type TypeOf cannot make and a Layout outcome other than
@@ -134,6 +135,7 @@ internal sealed partial class FunctionCodegen
     private void Block(int index)
     {
         var block = this.body.Blocks[this.at = index];
+        this.window = -1; // A window never spans blocks; a block that ended without a successor left its own open (FunctionCodegen.Phases).
         this.output.Write('b');
         WriteNumber(this.output, index);
         this.output.Write(":\n");
@@ -153,6 +155,7 @@ internal sealed partial class FunctionCodegen
         switch (statement.Kind)
         {
             case MirStatementKind.Assign:
+                this.Position(statement.Source);
                 this.Assign(statement);
                 return;
             case MirStatementKind.StorageLive or MirStatementKind.StorageDead or MirStatementKind.FakeRead or MirStatementKind.EndBorrow:
@@ -216,6 +219,7 @@ internal sealed partial class FunctionCodegen
                 this.output.Write("  unreachable\n");
                 return;
             case MirTerminatorKind.Call:
+                this.Position(terminator.Source);
                 this.Call(terminator);
                 return;
             case MirTerminatorKind.Drop:
@@ -226,17 +230,17 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // A terminator's transfer to its one runtime successor: its location's flag points (FunctionCodegen.Flags), then the branch.
+    // A terminator's transfer to its one runtime successor: its location completed (FunctionCodegen.Phases), then the branch.
     private void Branch(int target)
     {
-        this.Points(new(this.at, this.body.Blocks[this.at].Count));
+        this.Completed();
         this.output.Write("  br ");
         this.WriteLabel(target);
         this.output.Write('\n');
     }
 
-    // A SwitchInt on its operand's stored value (bool as i8, I10): each value-target pair a case, otherwise the target; its location's flag
-    // points, which hold on every successor, before it.
+    // A SwitchInt on its operand's stored value (bool as i8, I10): each value-target pair a case, otherwise the target; its location
+    // completed before it (its flag points hold on every successor).
     private void Switch(in MirTerminator terminator)
     {
         var operand = terminator.Operand;
@@ -251,7 +255,7 @@ internal sealed partial class FunctionCodegen
             return; // A broken contract, recorded.
         }
 
-        this.Points(new(this.at, this.body.Blocks[this.at].Count));
+        this.Completed();
         var (output, type, width) = (this.output, lowering.Layout.StorageType, 8 * lowering.Layout.Size);
         output.Write("  switch ");
         output.Write(type);

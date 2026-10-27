@@ -167,8 +167,6 @@ internal enum IntrinsicId : byte
     TestMessage,
     TestRequireAbort,
     TestRecordValue,
-    TestPhaseEnter,
-    TestPhaseLeave,
     TestTempDirectory,
     StaticEnsure, // SPEC 22.4.3.
     [Transitional("R8", Reason = "R8 replaces this temporary intrinsic with Kimigayo representation and library code.")]

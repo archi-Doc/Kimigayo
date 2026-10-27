@@ -63,8 +63,9 @@ internal sealed partial class InstanceCollector
     // legacy row writes its call in its instance (LegacyRow.InInstance: the Array operations and storage kinds, placeEntry), its LegacyRow
     // item (K 4.5 row 2; DECISIONS R5-M121, R5-M124, AdmitRow); the function of an intrinsic, reached by its Item (a call of it is an
     // Intrinsic callee), the target its row names under the Item's Type argument, a part of the Item Type its site made (In), which is a
-    // by-value use where the row says so, as at the intrinsic's call (K 4.8, IntrinsicRows.LaysOutType; DECISIONS R5-M108); -1 for another
-    // (a foreign function).
+    // by-value use where the row says so, as at the intrinsic's call (K 4.8, IntrinsicRows.LaysOutType; DECISIONS R5-M108), read only for a
+    // row that reads one (IntrinsicRow.ReadsTypeArgument, as at an intrinsic call's site, Edge; DECISIONS R5-M136); -1 for another (a
+    // foreign function, an intrinsic whose row reads no Type argument).
     private int Bodyless(MirProgram program, int item, SourceRef subject, BindingSymbol function, Subst? subst)
     {
         if (this.types.Published(function) is { Runs: { } requirement, On: var on })
@@ -82,12 +83,13 @@ internal sealed partial class InstanceCollector
             return this.AdmitRow(item, subject, function, subst);
         }
 
-        if (IntrinsicDisposition.Of(function.CompilerFunction) is not { Kind: DispositionKind.Intrinsic, Id: var id })
+        if (IntrinsicDisposition.Of(function.CompilerFunction) is not { Kind: DispositionKind.Intrinsic, Id: var id } ||
+            IntrinsicRows.Of(id) is not { ReadsTypeArgument: true } row)
         {
-            return -1;
+            return -1; // A foreign function, or an intrinsic whose row reads no Type argument (Test.tempDirectory's has none to read).
         }
 
-        return this.Intrinsic(program, item, subject, IntrinsicRows.Of(id), subst!.Types[0]);
+        return this.Intrinsic(program, item, subject, row, subst!.Types[0]);
     }
 
     // X4, F2c (DECISIONS R5-M28, R5-M124): the body of the DictionaryStorage function a legacy row or the Dictionary runtime declares as its
