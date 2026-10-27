@@ -137,20 +137,21 @@ public sealed partial class Binding
                     this.inferenceFixedChecks++;
                 }
 
+                var check = new SlotSolution
+                {
+                    Binding = this,
+                    Call = call,
+                    Binder = function,
+                    Scope = scope,
+                    DeclaringType = construction,
+                    Types = arguments,
+                    Lengths = lengths,
+                    Origins = origins,
+                    Inputs = inputs,
+                    FixedConstruction = true,
+                };
                 var state = this.TryCandidate(
-                    new SlotSolution
-                    {
-                        Binding = this,
-                        Call = call,
-                        Binder = function,
-                        Scope = scope,
-                        DeclaringType = construction,
-                        Types = arguments,
-                        Lengths = lengths,
-                        Origins = origins,
-                        Inputs = inputs,
-                        FixedConstruction = true,
-                    },
+                    ref check,
                     [],
                     mapping,
                     previous.ArgumentMap,
@@ -162,7 +163,16 @@ public sealed partial class Binding
                     out _,
                     out _,
                     out var premiseUnknown);
-                checkedCandidates[i] = new(previous.Symbol, state, construction, defaults, unbound, receiver, previous.ArgumentMap, PremiseUnknown: premiseUnknown);
+                checkedCandidates[i] = new(
+                    previous.Symbol,
+                    state,
+                    construction,
+                    defaults,
+                    previous.ExpectedSlots,
+                    unbound,
+                    receiver,
+                    previous.ArgumentMap,
+                    PremiseUnknown: premiseUnknown);
                 if ((state == CandidateApplicability.Pending && !premiseUnknown) || state == CandidateApplicability.Error || unbound)
                 {
                     return Reject(function, ConstructionCheck.UnprovenCandidate);

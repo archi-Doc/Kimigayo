@@ -115,29 +115,39 @@ public sealed partial class Binding
         return unbound;
     }
 
+    // SPEC 6.5.2 item 2, 10.8.1: how a Case qualifier gives its enum's Type: written as a Type (parenthesized or with a Semantics), with its
+    // Type arguments, as `Self`, or by name alone, which a construction's expected Type completes (EnumQualifierType).
+    private enum EnumQualifierForm : byte
+    {
+        Type,
+        Arguments,
+        Self,
+        Name,
+    }
+
+    private static EnumQualifierForm QualifierForm(Koto qualifier) => qualifier switch
+    {
+        ParenthesizedTypeKoto or TypeSemanticsKoto { Type: not null } => EnumQualifierForm.Type,
+        GenericsKoto => EnumQualifierForm.Arguments,
+        SyntaxFormKoto { Akind: KotoKind.RootName, Operands: [var operand] } when UnwrapTypeSyntax(operand) is GenericsKoto => EnumQualifierForm.Arguments,
+        _ => TypeSpelling(qualifier) == "Self" ? EnumQualifierForm.Self : EnumQualifierForm.Name,
+    };
+
     private BoundType? EnumQualifierType(Koto qualifier, BindingSymbol symbol, BindingScope scope, BoundType? expected)
     {
-        BoundType? type;
-        if (qualifier is ParenthesizedTypeKoto or TypeSemanticsKoto { Type: not null })
+        var type = QualifierForm(qualifier) switch
         {
-            type = this.BindType(qualifier, scope, this.TypeContext(qualifier, scope) with { SuppressOuter = true });
-        }
-        else if (qualifier is GenericsKoto || (qualifier is SyntaxFormKoto { Akind: KotoKind.RootName } root && root.Operands.Length == 1 && UnwrapTypeSyntax(root.Operands[0]) is GenericsKoto))
-        {
+            EnumQualifierForm.Type => this.BindType(qualifier, scope, this.TypeContext(qualifier, scope) with { SuppressOuter = true }),
+
             // Only nested complete Type arguments carry annotations here. Enum Origin slots
             // are determined by the construction's expected Type and payloads.
-            type = this.BindTypeStructure(qualifier, scope, this.TypeContext(qualifier, scope));
-        }
-        else if (TypeSpelling(qualifier) == "Self")
-        {
-            type = this.SelfType(symbol);
-        }
-        else
-        {
-            type = symbol.Declaration is StructKoto || (symbol.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 } && symbol.Declaration.Parent is DeclarationContainerKoto { IsRoot: false })
+            EnumQualifierForm.Arguments => this.BindTypeStructure(qualifier, scope, this.TypeContext(qualifier, scope)),
+            EnumQualifierForm.Self => this.SelfType(symbol),
+            _ => symbol.Declaration is StructKoto || (symbol.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 } &&
+                symbol.Declaration.Parent is DeclarationContainerKoto { IsRoot: false })
                 ? this.BindContainerReference(qualifier, symbol, scope, this.TypeContext(qualifier, scope), [])
-                : expected?.Semantics == SemanticsKind.Owner && ReferenceEquals(expected.Symbol, symbol) ? expected : symbol.Type;
-        }
+                : expected?.Semantics == SemanticsKind.Owner && ReferenceEquals(expected.Symbol, symbol) ? expected : symbol.Type,
+        };
 
         qualifier.BoundSymbol = symbol;
         return Complete(qualifier, type);
@@ -288,13 +298,12 @@ public sealed partial class Binding
     }
 
     // SPEC 6.5.2 item 2, 10.8.1: an expected Type of the construction's own enum gives every slot and Origin argument; a slot its
-    // qualifier fixed must be the expected one. The slots its qualifier writes are its own; every other slot takes the expected Type
-    // (TakeExpectedSlots). False on a Type mismatch.
+    // qualifier fixed must be the expected one. A construction whose qualifier names its enum alone, or that has none, takes its whole Type
+    // from the expected Type (TakeExpectedSlots); one whose qualifier writes the Type has its own. False on a Type mismatch.
     private bool TakeEnumExpectation(Koto use, Koto reference, EnumKoto declaration, BoundType expected, BoundType?[] arguments, BoundOrigin[] origins)
     {
         var slots = declaration.BoundSymbol!.Schema!.GenericSlots.Count;
         var originCount = declaration.BoundSymbol.Schema.Origins.Count;
-        var unbound = reference is MemberAccessKoto { Left: GenericsKoto } ? 0UL : ulong.MaxValue;
         for (var i = 0; i < slots; i++)
         {
             if (i >= expected.Components.Count || (arguments[i] is { } fixedType && !ReferenceEquals(fixedType, expected.Components[i])))
@@ -310,7 +319,7 @@ public sealed partial class Binding
             origins[i] = expected.OriginArguments[i];
         }
 
-        this.TakeExpectedSlots(use, declaration, arguments.AsSpan(0, slots), unbound, origins: originCount != 0 && unbound != 0);
+        this.TakeExpectedType(use, expected, reference is not MemberAccessKoto access || QualifierForm(access.Left) == EnumQualifierForm.Name);
         return true;
     }
 

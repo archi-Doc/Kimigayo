@@ -77,7 +77,7 @@ public sealed partial class Binding
                     slotFailure = this.referenceSlotFailure;
                 }
 
-                evaluated[index] = new(candidate, state, null, 0, ConstraintFailure: constraint);
+                evaluated[index] = new(candidate, state, null, 0, ExpectedSlots: 0, ConstraintFailure: constraint);
                 pendingProof |= state == CandidateApplicability.Pending;
                 if (state == CandidateApplicability.Pending)
                 {

@@ -33,12 +33,11 @@ public partial class ResultPremiseTest
     public void AValueCallProvesItsCalleesNestedResult(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 
-    // Not fixed yet (cl1, the owner's (1) of 2026-10-27 for the held revision): an Item whose declared clause the conversion target's own
-    // Types give (cl1) is valid by the owner's (a), if the design decides so, while the erased Item of ResultPremiseTest's ItemUses stays
-    // valid when called (rk4); a design that keeps cl1 a recorded limit fails its row and states why.
+    // An Item whose declared clause the conversion target's own Types give is valid (cl1; the owner's (a), 「(a) 無名関数と同じ規則
+    // (推奨)」, and cl1's 「(1) 切り離して記録 (推奨)」), while the erased Item of ResultPremiseTest's ItemUses stays valid when called (rk4).
     [Theory]
     [InlineData("cl1", "func pin1(q: ref/i32) -> Option<ref/(ref/i32 during q) during static>\n    origin q outlives static\n    return .None\nfunc mk() -> i32\n    let g: (ref/i32) -> Option<ref/(ref/i32) during static> = pin1\n    return 0\n", "")]
     [InlineData("rk4", "func leak(p: ref/i32, q: ref/i32) -> (Option<ref/(ref/i32 during q) during p>, ref/i32 during p)\n    return (.None, q)\nfunc use(x: ref/i32) -> i32\n    let local: i32 = 5\n    let g: (ref/i32, ref/i32) -> (Option<ref/(ref/i32)>, ref/i32) = leak\n    return g(x, local@ref).1@follow\n", "")]
-    public void AnItemsClauseHoldsByItsTargetClausesTheTargetGives(string form, string body, string records)
+    public void AnItemsClauseHoldsWhenItsTargetsTypesGiveIt(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 }

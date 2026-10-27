@@ -422,6 +422,8 @@ public partial class ResultPremiseTest
         var related = Assert.Single(call.Related!);
         Assert.Equal(("origin", "local@ref"), (related.Role, Text(getter, related.Span)));
         Assert.True(DiagnosticCorpus.Check(get + Main).Accepted);
+        // A requirement's signature with the same part is valid at its declaration too (it was a record there).
+        Assert.True(DiagnosticCorpus.Check("contract C\n    func f() -> (ref/i32) -> Option<ref/(ref/i32) during static>\n" + Main).Accepted);
 
         // Two signatures with the same Function Type part each keep their own record; the forwarding call adds none.
         var forward = ActionBox + "func forward(bx: ref/Box) -> ref/((ref/i32) -> ref/i32) during bx\n    return pick(bx)\n\n" +

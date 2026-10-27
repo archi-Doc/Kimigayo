@@ -27,10 +27,14 @@ namespace Kimi.Compiler;
 //   one candidate or one Case construction, whose evidence walk takes each part's evidence for the slots by its kind (InferArgument,
 //   Binding.ArgumentKinds.Evidence.cs) and applies the defaults (DefaultArguments, DefaultPayloads), and whose candidate operations
 //   substitute the solution (Type) and judge the Constraints over it (Prove); CompleteUnselected, the parts of a call that completes
-//   none, bound on their own (SPEC 23.1.2).
-// - Invariants: a recorded kind and a Literal's default are keyed by syntax identity (SourceRef) and live for one pass; a deferred
-//   part stays waiting after its completion, so its Type is never evidence for an outer slot (WasWaitingPart); a Literal
-//   is evidence only through the default recorded for the selected candidate; a Never-typed part is no evidence (SPEC 10.8).
+//   none, bound on their own (SPEC 23.1.2); the contextual-type fact (Binding.ArgumentKinds.Solution.cs, design 1's Rule T), each part's
+//   positions that its expected Type supplied, decided once where the part takes it (TakeExpectedSlots: the selected candidate's slots its
+//   expected result filled, recorded by SolveSelected; a Case construction's, an empty array or Dictionary literal's and a join's whole
+//   Type) and read only through SuppliedPosition (ArgumentPosition, CallPosition, Component) by the input and result premises.
+// - Invariants: a recorded kind, a Literal's default and a contextual-type record are keyed by syntax identity (SourceRef) and live for
+//   one pass, and no candidate trial writes a contextual-type record; a deferred part stays waiting after its completion, so its Type is
+//   never evidence for an outer slot (WasWaitingPart); a Literal is evidence only through the default recorded for the selected
+//   candidate; a Never-typed part is no evidence (SPEC 10.8).
 // - Prohibitions: a consumer reads a part's kind from KindOf and tells only the forms of one kind apart (an anonymous function from a
 //   reference) to fit them; the call, element, Case-payload and value-call paths keep no evidence or fit dispatch of their own;
 //   no Koto-keyed table (COMPILER_ARCHITECTURE, Code rules: Syntax identity).
@@ -310,6 +314,11 @@ public sealed partial class Binding
     // still unbound is the inference boundary. False when the call is complete: waiting or failed.
     private bool SolveSelected(ref CallEvaluation evaluation, int winner, BoundType? declaringType)
     {
+        // SPEC 10.8.1, 15.6.1: the slots its expected result filled are the call's context's (TakeExpectedSlots), once, for the selected
+        // candidate.
+        var candidate = (FunctionKoto)evaluation.Evaluated[winner].Symbol!.Declaration;
+        var slots = evaluation.Evaluated[winner].ExpectedSlots;
+        this.TakeExpectedSlots(evaluation.Call, CallSlotOwner(candidate), this.ResultPattern(candidate, declaringType), slots);
         if (evaluation.Applicable <= 1 && evaluation.Evaluated[winner] is { Unsolved: false, State: not CandidateApplicability.Waiting })
         {
             return true;
@@ -472,7 +481,7 @@ public sealed partial class Binding
     private bool CheckDefaulted(ref CallEvaluation evaluation, int winner, SlotSolution solution, Span<BoundArgumentOperation> operations)
     {
         var state = this.TryCandidate(
-            solution,
+            ref solution,
             evaluation.ExplicitLengths,
             evaluation.Mapping,
             evaluation.Evaluated[winner].ArgumentMap,

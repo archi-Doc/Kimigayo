@@ -119,6 +119,9 @@ public sealed partial class Binding
             return this.Fail(literal, BindingFailure.TypeMismatch);
         }
 
+        // SPEC 4.4.1: an element Type no element supplies, an empty literal's, is the expected one (TakeExpectedSlots).
+        this.TakeExpectedType(literal, expected, complete && element is null);
+
         return Complete(literal, complete ? this.types.Intern(expected.Kind, expected.Symbol, expected.Semantics, [element ?? expected.Components[0]], expected.Kind == BoundTypeKind.FixedArray ? literal.Elements.Count : expected.Length) : null);
     }
 

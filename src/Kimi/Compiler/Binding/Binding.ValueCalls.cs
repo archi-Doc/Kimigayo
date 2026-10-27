@@ -548,7 +548,7 @@ public sealed partial class Binding
             this.callRelationScratch.Clear();
             for (var i = 0; i < count; i++)
             {
-                this.RequireInputPremises(operations[i]);
+                this.RequireInputPremises(operations[i], default);
             }
 
             if (conditioned is not null)

@@ -21,7 +21,7 @@ public sealed partial class Binding
     // `unsolved` holds the required structural slots that no evidence binds (SPEC 10.8); an Applicable or Waiting candidate with such
     // slots stays rankable, and its selection is the inference-boundary record (FailUnboundSlots).
     private CandidateApplicability TryCandidate(
-        SlotSolution solution,
+        ref SlotSolution solution,
         BoundLength?[] explicitLengths,
         int[] mapping,
         CallArgumentMap argumentMap,
@@ -275,7 +275,7 @@ public sealed partial class Binding
 
             // Established input types cannot change; expectations only fill unresolved slots.
             var expectedStructure = true; // SPEC 10.8: the slot-free structure of a result that keeps an unsolved slot is still checked.
-            if (expected is not null && (function.IsConstructor && declaringType is not null ? this.SelfType(declaringType.Symbol!) : function.BoundSymbol?.Type) is { } returnPattern)
+            if (expected is not null && this.ResultPattern(function, declaringType) is { } returnPattern)
             {
                 expectedStructure = this.InferExpectedResult(ref solution, returnPattern, expected);
             }
@@ -487,7 +487,7 @@ public sealed partial class Binding
 
             solution.CompleteOperationTypes(operations);
 
-            var resultPattern = function.IsConstructor && declaringType is not null ? this.SelfType(declaringType.Symbol!) : function.BoundSymbol!.Type;
+            var resultPattern = this.ResultPattern(function, declaringType);
             var result = resultPattern is not null ? solution.Type(resultPattern) : null;
             if (result is not null && !this.ProveTypeLengths(result, scope.Function))
             {
@@ -591,6 +591,10 @@ public sealed partial class Binding
         }
     }
 
+    // The result pattern of a candidate: a constructor's is the object it forms, its structure's own Type.
+    private BoundType? ResultPattern(FunctionKoto function, BoundType? declaringType)
+        => function.IsConstructor && declaringType is not null ? this.SelfType(declaringType.Symbol!) : function.BoundSymbol?.Type;
+
     // SPEC 10.1 step 4, 15.6.1: the expected result fills the candidate's still-unbound slots by its structure, and its Origin relations
     // to the completed result are judged at the destination. Result expectations use the selected receiver's container Origins, just like
     // inputs; an abstract container binder must not become a rigid call-site lifetime constraint. False when the result's structure does
@@ -603,7 +607,7 @@ public sealed partial class Binding
         returnPattern = this.CallMemberPattern(pattern, function, solution.DeclaringType)!;
         var unbound = UnboundSlots(arguments.AsSpan(0, CallSlotCount(function)));
         var structure = this.Infer(returnPattern, expected, CallSlotOwner(function), arguments, true, solution.Lengths);
-        this.TakeExpectedSlots(solution.Call, function, arguments.AsSpan(0, CallSlotCount(function)), unbound, origins: false);
+        solution.ExpectedSlots = TakenSlots(arguments.AsSpan(0, CallSlotCount(function)), unbound);
         this.MatchResultOrigins(returnPattern, expected, function, solution.Origins, solution.Inputs);
         if (returnPattern.CarriesOrigin)
         {

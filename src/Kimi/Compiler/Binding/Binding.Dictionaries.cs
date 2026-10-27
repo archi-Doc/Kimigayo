@@ -61,6 +61,7 @@ public sealed partial class Binding
         }
 
         this.dictionaryLiteralKeys.Clear();
+        this.TakeExpectedType(literal, expected, complete && key is null && value is null); // SPEC 4.4.1: an empty literal's (TakeExpectedSlots).
         return Complete(literal, complete ? this.types.Intern(BoundTypeKind.Dictionary, expected.Symbol, SemanticsKind.Owner, [key ?? expected.Components[0], value ?? expected.Components[1]]) : null);
     }
 

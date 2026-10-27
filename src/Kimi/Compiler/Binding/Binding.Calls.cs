@@ -604,8 +604,9 @@ public sealed partial class Binding
                     return Complete(call, null);
                 }
 
+                var retry = this.Solution(evaluation, selected, selectedType);
                 var state = this.TryCandidate(
-                    this.Solution(evaluation, selected, selectedType),
+                    ref retry,
                     explicitLengths,
                     mapping,
                     evaluated[winnerIndex].ArgumentMap,

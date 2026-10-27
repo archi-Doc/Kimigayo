@@ -118,7 +118,9 @@ public sealed partial class Binding
 
         for (var i = 0; i <= argumentCount; i++)
         {
-            this.RequireInputPremises(operations[i]);
+            var pattern = operations[i] is { Source: not null, ParameterIndex: var index } && (uint)index < (uint)selected.Parameters.Count
+                ? selected.Parameters[index].Type.BoundType : null;
+            this.RequireInputPremises(operations[i], pattern is null ? default : this.CallPosition(call, pattern));
         }
 
         this.JudgeCallClauses(call, selected, operations, argumentCount, origins, inputs, declaringType);

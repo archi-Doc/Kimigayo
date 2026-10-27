@@ -70,13 +70,22 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("h2c", Container + StoreHead + "    origin q outlives r\n    let h = H.init(x: q, y: r)\n    h.m(Option.None, s)\n", "", null)]
     [InlineData("nn1x", StoreHead + StoreInner + Dangling, "UnprovenOriginRelation_Kd Option.None", null)]
     [InlineData("nn1x_c", StoreHead + "    origin q outlives r\n" + StoreInner + Dangling, "ComparisonLoanConflict_Kd let short = 2", null)]
+    // Implementation review 1 (B2): nn1's `Option.None` inside a Tuple or array literal argument, or as a source of a join argument; each
+    // twin states the relation.
+    [InlineData("nn1t", NestedHead + "    func inner(p: (Option<ref/(ref/i32 during q) during r>, i32), x: ref/i32 during q) -> ref/i32 during r => x\n    return inner((Option.None, 1), q)\n", "UnprovenOriginRelation_Kd (Option.None, 1)", null)]
+    [InlineData("nn1t_ok", NestedHead + "    origin q outlives r\n    func inner(p: (Option<ref/(ref/i32 during q) during r>, i32), x: ref/i32 during q) -> ref/i32 during r => x\n    return inner((Option.None, 1), q)\n", "", null)]
+    [InlineData("nn1a", NestedHead + "    func inner(p: Array<Option<ref/(ref/i32 during q) during r>>, x: ref/i32 during q) -> ref/i32 during r => x\n    return inner([Option.None], q)\n", "UnprovenOriginRelation_Kd [Option.None]", null)]
+    [InlineData("nn1a_ok", NestedHead + "    origin q outlives r\n    func inner(p: Array<Option<ref/(ref/i32 during q) during r>>, x: ref/i32 during q) -> ref/i32 during r => x\n    return inner([Option.None], q)\n", "", null)]
+    [InlineData("nn1j", "func k(q: ref/i32, r: ref/i32, c: bool) -> ref/i32 during r\n" + NestedInner + "    return inner(if c => Option.None else => Option.None, q)\n", "UnprovenOriginRelation_Kd if c => Option.None else => Option.None", null)]
+    [InlineData("nn1j_ok", "func k(q: ref/i32, r: ref/i32, c: bool) -> ref/i32 during r\n    origin q outlives r\n" + NestedInner + "    return inner(if c => Option.None else => Option.None, q)\n", "", null)]
     public void EachCallProvesItsCalleesNestedInputs(string form, string body, string records, string? label)
         => AssertRecords(form, body, records, label);
 
-    // Located records that do not fail Binding (SPEC 23.1.2; the owner's G56 answer allows only an unrelated Binding failure to hide
-    // one): a Loan conflict and a local annotation's well-formedness are reported beside the call's relation record. A written argument
-    // Type is judged at its occurrence, so n7h2's call adds no second record for it; a contextually typed `.None` is judged at the call.
-    // Each twin states the relation and keeps the independent records.
+    // Located records that do not fail Binding (SPEC 23.1.2): a Loan conflict and a local annotation's well-formedness are reported beside
+    // the call's relation record, except where PLAN G56's limit loses one until H11 (the owner's G56 answer and 「G216 (a): (i)」: beside an
+    // unrelated Binding failure, a conversion record or a return fit's record, p1b). A written argument Type is judged at its occurrence,
+    // so n7h2's call adds no second record for it; a contextually typed `.None` is judged at the call. Each twin states the relation and
+    // keeps the independent records.
     [Theory]
     [InlineData("n7g2", FixedHead + FixedClosure + IndependentConflict + "    return c(Option.None)\n", "ComparisonLoanConflict_Kd x = 2; UnprovenOriginRelation_Kd Option.None")]
     [InlineData("n7g2_c", FixedHead + "    origin q outlives r\n" + FixedClosure + IndependentConflict + "    return c(Option.None)\n", "ComparisonLoanConflict_Kd x = 2")]
@@ -86,7 +95,7 @@ public partial class OriginRelationDiagnosticTest
     // beside it is lost.
     [InlineData("p1b", TypedOwn + "    let none: Option<ref/(ref/i32 during a) during b> = Option.None\n    return h(a, b, none)\n", "UnprovenOriginRelation_Kd h(a, b, none)")]
     [InlineData("p1b_c", TypedOwn + "    origin a outlives b\n    let none: Option<ref/(ref/i32 during a) during b> = Option.None\n    return h(a, b, none)\n", "")]
-    public void ALocatedRecordThatDoesNotFailBindingIsReported(string form, string body, string records)
+    public void ALocatedRecordIsReportedUnlessG56sLimitLosesIt(string form, string body, string records)
         => AssertRecords(form, body, records, null);
 
     // PLAN G269 (C): a contextually typed `.None` argument over the call's own Origins has its instantiated well-formedness judged at that
@@ -96,6 +105,31 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("x5_ok", ImpliedStore + LongBody + "    put2(p, v, Option.None)\n    return 0\n", "")]
     [InlineData("x8", ImpliedCheck + ShortBody + "    let n = chk(Option.None, p, sr)\n    return 0\n", "UnsatisfiedOriginRelation_Kd Option.None")]
     [InlineData("x8_ok", ImpliedCheck + LongBody + "    let n = chk(Option.None, p, v)\n    return 0\n", "")]
+    // Implementation review 1 (B2): a contextual `.None` or `[]` inside a Tuple or array literal argument, or a source of a join argument, is
+    // judged at that argument too (design 1's Rule T; SPEC 15.6.4 step 3); each twin passes a value that outlives `q`.
+    [InlineData("x5t", "func put3(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: (Option<ref/(ref/i32 during b) during a>, i32))\n    slot@follow = v\n" + ShortBody + "    put3(p, sr, (Option.None, 1))\n    return 0\n", "UnsatisfiedOriginRelation_Kd (Option.None, 1)")]
+    [InlineData("x5t_ok", "func put3(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: (Option<ref/(ref/i32 during b) during a>, i32))\n    slot@follow = v\n" + LongBody + "    put3(p, v, (Option.None, 1))\n    return 0\n", "")]
+    [InlineData("x5a", "func put4(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: [1 of Option<ref/(ref/i32 during b) during a>])\n    slot@follow = v\n" + ShortBody + "    put4(p, sr, [Option.None])\n    return 0\n", "UnsatisfiedOriginRelation_Kd [Option.None]")]
+    [InlineData("x5a_ok", "func put4(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: [1 of Option<ref/(ref/i32 during b) during a>])\n    slot@follow = v\n" + LongBody + "    put4(p, v, [Option.None])\n    return 0\n", "")]
+    [InlineData("x5e", "func put5(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: Array<ref/(ref/i32 during b) during a>)\n    slot@follow = v\n" + ShortBody + "    put5(p, sr, [])\n    return 0\n", "UnsatisfiedOriginRelation_Kd []")]
+    [InlineData("x5e_ok", "func put5(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: Array<ref/(ref/i32 during b) during a>)\n    slot@follow = v\n" + LongBody + "    put5(p, v, [])\n    return 0\n", "")]
+    [InlineData("x5j", ImpliedStore + "func bad(p: uniq/(ref/i32 during q), c: bool) -> i32\n    let short = 2\n    let sr = short@ref\n    put2(p, sr, if c => Option.None else => Option.None)\n    return 0\n", "UnsatisfiedOriginRelation_Kd if c => Option.None else => Option.None")]
+    [InlineData("x5j_ok", ImpliedStore + "func bad(p: uniq/(ref/i32 during q), v: ref/i32 during q, c: bool) -> i32\n    put2(p, v, if c => Option.None else => Option.None)\n    return 0\n", "")]
+    [InlineData("x5u", "func put3(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: (Option<ref/(ref/i32 during b) during a>, i32))\n    slot@follow = v\nfunc outer() -> i32\n    let long = 1\n    var keep = long@ref\n    if true\n        let short = 2\n        put3(keep@uniq, short@ref, (Option.None, 1))\n    return keep@follow\n", "ComparisonLoanConflict_Kd let short = 2")]
+    [InlineData("x5u_ok", "func put3(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: (Option<ref/(ref/i32 during b) during a>, i32))\n    slot@follow = v\nfunc outer() -> i32\n    let long = 1\n    let other = 2\n    var keep = long@ref\n    put3(keep@uniq, other@ref, (Option.None, 1))\n    return keep@follow\n", "")]
+    // Implementation review 1 (B1): a nested call's slot that its expected result supplied, also a constructor's inferred target's and a
+    // method's, is its context's, judged once, at the outer input with the outer call's final solution (`r := a & b`), whichever overload
+    // is declared first; the invalid twin keeps one record.
+    [InlineData("x5i", ImpliedStore + "func id<T>(x: T) -> T => x@move\n" + ShortBody + "    put2(p, sr, id(Option.None))\n    return 0\n", "UnsatisfiedOriginRelation_Kd id(Option.None)")]
+    [InlineData("x5i_ok", ImpliedStore + "func id<T>(x: T) -> T => x@move\n" + LongBody + "    put2(p, v, id(Option.None))\n    return 0\n", "")]
+    [InlineData("k3id", "func id<T>(x: T) -> T => x@move\n" + TypedOwn + "    let x = h(a, b, id(Option.None))\n    return b\n", "")]
+    [InlineData("k3wrap", "func wrap<T>(x: Option<T>) -> Option<T> => x@move\n" + TypedOwn + "    let x = h(a, b, wrap(Option.None))\n    return b\n", "")]
+    [InlineData("k3method", "struct S\n    public init() => ()\n    public func pass<T>(self: ref/Self, x: T) -> T => x@move\n" + TypedOwn + "    let s = S.init()\n    let x = h(a, b, s.pass(Option.None))\n    return b\n", "")]
+    [InlineData("k3box", LayerBox + "func h3(q: ref/i32, r: ref/i32, x: Box<Option<ref/(ref/i32 during q) during r>>) -> ref/i32 during r\n    return q\nfunc bad(a: ref/i32, b: ref/i32) -> i32\n    let x = h3(a, b, Box.init(item: Option.None))\n    return 0\n", "")]
+    [InlineData("k3id_first", "func id<T>(x: T) -> T => x@move\nfunc id(x: i64) -> i64 => x\n" + TypedOwn + "    let x = h(a, b, id(Option.None))\n    return b\n", "")]
+    [InlineData("k3id_second", "func id(x: i64) -> i64 => x\nfunc id<T>(x: T) -> T => x@move\n" + TypedOwn + "    let x = h(a, b, id(Option.None))\n    return b\n", "")]
+    [InlineData("k3first", "func mkNone<T>(x: i32) -> Option<T>\n    return .None\nfunc mkNone(x: i64) -> Option<i32>\n    return .None\n" + TypedOwn + "    let x = h(a, b, mkNone(1))\n    return b\n", "")]
+    [InlineData("k3second", "func mkNone(x: i64) -> Option<i32>\n    return .None\nfunc mkNone<T>(x: i32) -> Option<T>\n    return .None\n" + TypedOwn + "    let x = h(a, b, mkNone(1))\n    return b\n", "")]
     public void AContextualNoneArgumentHasItsInstantiatedWellFormednessJudged(string form, string body, string records)
         => AssertRecords(form, body, records, null);
 

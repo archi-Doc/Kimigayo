@@ -127,7 +127,7 @@ public sealed partial class Binding
                 for (var i = 0; i < count; i++)
                 {
                     var state = this.ProbeValueCall(call, scope, candidates[i].Signature, expected, operations.AsSpan(i * stride, stride));
-                    evaluated[i] = new(null, state, null, 0);
+                    evaluated[i] = new(null, state, null, 0, ExpectedSlots: 0);
                     if (state is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
                     {
                         applicable++;

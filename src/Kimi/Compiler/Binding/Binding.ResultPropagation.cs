@@ -224,6 +224,7 @@ public sealed partial class Binding
         if ((context.Expected = ResultExpectation(node, expected)) is { } type)
         {
             this.PropagateSources(node, context, type);
+            this.TakeExpectedType(node, type, true); // SPEC 14.9.2 step 3: the position's Type (TakeExpectedSlots).
         }
 
         return this.DecideResult(node, context);

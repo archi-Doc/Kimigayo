@@ -90,6 +90,7 @@ public sealed partial class Binding
         var unsolved = false;
         var independentRejection = false;
         var premiseUnknown = false;
+        var expectedSlots = 0UL;
         ReferenceConstraintFailure? rejectedConstraint = null;
         // SPEC 4.6.2: a synthesized range construction pins its Kimi target, which source access does not restrict.
         var accessible = callee is SyntheticKoto || this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType);
@@ -102,8 +103,9 @@ public sealed partial class Binding
             }
 
             this.activeRequirementContract = evaluation.Requirements?.Contracts[index] ?? (callee as RequirementCalleeKoto)?.Contract;
+            var solution = this.Solution(evaluation, function, declaringType);
             state = this.TryCandidate(
-                this.Solution(evaluation, function, declaringType),
+                ref solution,
                 evaluation.ExplicitLengths,
                 evaluation.Mapping,
                 argumentMap,
@@ -115,6 +117,7 @@ public sealed partial class Binding
                 out independentRejection,
                 out rejectedConstraint,
                 out premiseUnknown);
+            expectedSlots = solution.ExpectedSlots;
             this.activeRequirementContract = null;
         }
 
@@ -123,7 +126,20 @@ public sealed partial class Binding
             declaringType = this.ConstructionType(function, declaringType, evaluation.Scratch) ?? declaringType;
         }
 
-        evaluation.Evaluated[index] = new(candidate, state, declaringType, defaultsUsed, unsolved, closureReceiver, argumentMap, accessible, function.IsConstructor && StableConstructionPremises(state, unsolved, declaringType, operations), independentRejection, rejectedConstraint, premiseUnknown);
+        evaluation.Evaluated[index] = new(
+            candidate,
+            state,
+            declaringType,
+            defaultsUsed,
+            expectedSlots,
+            unsolved,
+            closureReceiver,
+            argumentMap,
+            accessible,
+            function.IsConstructor && StableConstructionPremises(state, unsolved, declaringType, operations),
+            independentRejection,
+            rejectedConstraint,
+            premiseUnknown);
         var saved = evaluation.SavedCandidates != 0;
         var argumentCount = call.ArgumentNodes.Count;
         if (saved)
