@@ -283,7 +283,9 @@ public sealed partial class Binding
 
                 // SPEC 10.1 step 4, 15.6.1: the expected result fills the still-unbound slots by its structure; its Origin relations to
                 // the completed result are judged at the destination.
+                var unbound = UnboundSlots(arguments.AsSpan(0, CallSlotCount(function)));
                 expectedStructure = this.Infer(returnPattern, expected, CallSlotOwner(function), arguments, true, lengths);
+                this.TakeExpectedSlots(call, function, arguments.AsSpan(0, CallSlotCount(function)), unbound, origins: false);
                 this.MatchResultOrigins(returnPattern, expected, function, origins, inputs);
                 if (returnPattern.CarriesOrigin)
                 {

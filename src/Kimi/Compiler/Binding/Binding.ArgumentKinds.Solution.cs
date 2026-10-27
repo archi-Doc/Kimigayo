@@ -6,6 +6,65 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // The slots of a call or Case construction that took their expected Type (TakeExpectedSlots), by its syntax, for the pass: the binder
+    // whose slots they are, the slots, and whether its Origin arguments were taken too.
+    private readonly Dictionary<SourceRef, (Koto Owner, ulong Slots, bool Origins)> expectedSlots = new();
+
+    // The slots still unbound before an expected Type fills them (TakeExpectedSlots).
+    private static ulong UnboundSlots(ReadOnlySpan<BoundType?> slots)
+    {
+        var unbound = 0UL;
+        for (var i = 0; i < Math.Min(slots.Length, 64); i++)
+        {
+            if (slots[i] is null)
+            {
+                unbound |= 1UL << i;
+            }
+        }
+
+        return unbound;
+    }
+
+    // SPEC 10.8.1, 6.5.2 item 2, 15.6.1: a slot of a call or Case construction that its expected Type binds, unbound before (`unbound`), is
+    // its context's: the context that supplied the Type proves its well-formedness (RequireInputPremises at the call whose parameter it
+    // fills, otherwise the annotation, result or Field it fits), never the call or construction itself (RequireResultPremises). The one
+    // decision, made where a slot takes its expected Type: a Case construction's slots and Origin arguments (Binding.Enums) and the slots a
+    // candidate's expected result fills (TryCandidateCore). Read by ExpectedSlots.
+    private void TakeExpectedSlots(Koto part, Koto owner, ReadOnlySpan<BoundType?> slots, ulong unbound, bool origins)
+    {
+        var taken = 0UL;
+        for (var i = 0; i < Math.Min(slots.Length, 64); i++)
+        {
+            if ((unbound & (1UL << i)) != 0 && slots[i] is not null)
+            {
+                taken |= 1UL << i;
+            }
+        }
+
+        var key = SourceRef.Of(KotoHelper.UnwrapParentheses(part));
+        if (taken != 0 || origins)
+        {
+            this.expectedSlots[key] = (owner, taken, origins);
+        }
+        else
+        {
+            this.expectedSlots.Remove(key);
+        }
+    }
+
+    // The slots of `part` that its expected Type supplied (TakeExpectedSlots), for the call or construction of `owner` when one is given; a
+    // taken Origin argument stands for every slot.
+    private ulong ExpectedSlots(Koto part, Koto? owner = null)
+        => this.expectedSlots.TryGetValue(SourceRef.Of(KotoHelper.UnwrapParentheses(part)), out var taken) && (owner is null || ReferenceEquals(taken.Owner, owner))
+            ? taken.Slots | (taken.Origins ? ulong.MaxValue : 0) : 0;
+
+    // Resets the pass's argument facts: the parts' kinds (Binding.ArgumentKinds) and the slots that took their expected Type.
+    private void ResetArgumentFacts()
+    {
+        this.argumentKinds.Clear();
+        this.expectedSlots.Clear();
+    }
+
     // A candidate's solution from its call's evaluation: the call's slot arrays, scope, Self and explicit Type arguments.
     private SlotSolution Solution(in CallEvaluation evaluation, FunctionKoto function, BoundType? declaringType)
         => new()
@@ -253,8 +312,7 @@ public sealed partial class Binding
         // Whether the call infers a construction's Type from its arguments (SPEC 10.8.1), and its target.
         private readonly bool InfersConstruction(out Koto? target)
         {
-            target = !this.FixedConstruction && this.Call.Method is MemberAccessKoto member && this.Binding.inferredConstructorTargets.Contains(member.Left)
-                ? member.Left : null;
+            target = this.FixedConstruction ? null : this.Binding.InferredConstructorTarget(this.Call.Method);
             return target is not null;
         }
 

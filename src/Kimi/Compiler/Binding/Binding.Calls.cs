@@ -649,15 +649,15 @@ public sealed partial class Binding
                 selectedType = this.ConstructionType(selected, selectedType, scratch);
             }
 
-            if (selected.IsConstructor && selectedType is not null && callee is MemberAccessKoto constructorMember && this.inferredConstructorTargets.Contains(constructorMember.Left) &&
-                !this.ValidateFixedConstruction(call, scope, expected, selectedType, evaluated.AsSpan(0, count), winnerIndex, allMaps, mapping, scratch, lengthArguments, origins, inputs, allOrigins, allInputs, originSlots, inputSlots, operations, operationStride, completedWaiting, waitingContexts))
+            // SPEC 10.8.1: a constructor whose target Type the call infers from its arguments.
+            if (selected.IsConstructor && selectedType is not null && this.InferredConstructorTarget(callee) is { } target)
             {
-                return Complete(call, null);
-            }
+                if (!this.ValidateFixedConstruction(call, scope, expected, selectedType, evaluated.AsSpan(0, count), winnerIndex, allMaps, mapping, scratch, lengthArguments, origins, inputs, allOrigins, allInputs, originSlots, inputSlots, operations, operationStride, completedWaiting, waitingContexts))
+                {
+                    return Complete(call, null);
+                }
 
-            if (selected.IsConstructor && selectedType is not null && callee is MemberAccessKoto constructedMember && this.inferredConstructorTargets.Contains(constructedMember.Left))
-            {
-                Complete(constructedMember.Left, selectedType);
+                Complete(target, selectedType);
             }
 
             var result = winner.Type is { } returnType ? this.CallType(returnType, selected, scratch, scope, self, origins, inputs, selectedType, lengthArguments) : null;
@@ -737,7 +737,8 @@ public sealed partial class Binding
                 }
             }
 
-            this.RequireResultPremises(selected, result, call); // SPEC 15.3.7: the callee's result premises.
+            // SPEC 15.3.7, 15.6.1: the callee's instantiated result and the Type arguments the call infers, none where it writes them.
+            this.RequireResultPremises(selected, result, call, generic is null ? scratch.AsSpan(0, CallSlotCount(selected)) : default);
             callee.BoundSymbol = winner;
             callee.BindingState = BindingState.Resolved;
             if (callee is MemberAccessKoto selectedMember)

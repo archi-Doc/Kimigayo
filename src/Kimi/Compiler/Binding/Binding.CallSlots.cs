@@ -51,7 +51,7 @@ public sealed partial class Binding
             return;
         }
 
-        var infer = !fixedConstruction && call.Method is MemberAccessKoto member && this.inferredConstructorTargets.Contains(member.Left);
+        var infer = !fixedConstruction && this.InferredConstructorTarget(call.Method) is not null;
         var own = CallOwnSlots(function).Count;
         var owner = CallSlotOwner(function);
         for (var i = 0; i < count; i++)

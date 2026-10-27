@@ -208,6 +208,9 @@ public sealed partial class Binding
                     return this.Fail(use, BindingFailure.TypeMismatch);
                 }
 
+                // The slots its qualifier writes are its own; every other slot takes the expected Type (TakeExpectedSlots).
+                var unbound = reference is MemberAccessKoto { Left: GenericsKoto } ? 0UL : ulong.MaxValue;
+
                 for (var i = 0; i < slots; i++)
                 {
                     if (i >= expected.Components.Count || (arguments[i] is { } fixedType && !ReferenceEquals(fixedType, expected.Components[i])))
@@ -222,6 +225,8 @@ public sealed partial class Binding
                 {
                     origins[i] = expected.OriginArguments[i];
                 }
+
+                this.TakeExpectedSlots(use, declaration, arguments.AsSpan(0, slots), unbound, origins: originCount != 0 && unbound != 0);
             }
 
             var solution = this.Solution(call, declaration, scope, arguments, lengths, origins);
