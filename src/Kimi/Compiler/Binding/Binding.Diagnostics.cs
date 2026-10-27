@@ -580,19 +580,19 @@ public sealed partial class Binding
             return this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, contract);
         }
 
-        // PROTO G216a d2 (SPEC 10.7, 15.6.1): a Tuple or array literal whose element is a conversion that fails only in its Origin part is that
-        // conversion's record at the element, the converted value.
-        if (actual is BoundType aggregate && expected is BoundType target && ReferenceTypes.StorageMatches(target, aggregate) &&
-            this.ElementConversionFailure(KotoHelper.UnwrapParentheses(at), aggregate, target, node) is { } element)
-        {
-            return this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, element);
-        }
-
         // SPEC 15.6.1: a failed Origin position of matching storage is recorded as such (Binding.OriginFits), never as a Type mismatch.
         if (actual is BoundType actualType && expected is BoundType expectedType && ReferenceTypes.StorageMatches(expectedType, actualType) &&
             this.RecordOriginFitFailure(node, at, actualType, expectedType))
         {
             return null;
+        }
+
+        // PROTO G216a d2 (SPEC 10.7, 15.6.1): when no Origin position of the aggregate itself fails, a Tuple or array literal whose element is
+        // a conversion that fails only in its Origin part is that conversion's record at the element, the converted value.
+        if (actual is BoundType aggregate && expected is BoundType target && ReferenceTypes.StorageMatches(target, aggregate) &&
+            this.ElementConversionFailure(KotoHelper.UnwrapParentheses(at), aggregate, target, node) is { } element)
+        {
+            return this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, element);
         }
 
         return this.FailExplained(ref this.mismatches, node, BindingFailure.TypeMismatch, (at, actual, expected));
