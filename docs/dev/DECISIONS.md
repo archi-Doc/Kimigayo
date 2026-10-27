@@ -10853,3 +10853,23 @@ structure is recorded here by the unit that first implements it.
     `.ll` change, PD2); a Binding or library `writeLiteral` (PD21; R8's form); rule (a), deferring only before an unbounded value (its
     native counts and bytes differ from the old generator's, design reviews 1-2); the old rule exactly (six operands per step); one step
     per value carrying the preceding text (B': it changes FormatFinish and shifts every token).
+- **R5-M134 The owner confirms C9d's departure (i)** (owner, 2026-10-27, to the R5 planning session directly, on its choice between C9d's
+  two designs; verbatim 「C9d の逸脱 2 件（R3-10 の FormatHint を FormatSegment に改名して区間のリテラル本文を持たせること、遅延規則 (a)
+  により固定されていないプログラムで割り当て回数が旧生成器より少なくなり得ること）を承認します。」; the consequences are the planning
+  session's) Departure (i) is confirmed: R3-10's temporary intrinsic FormatHint is renamed `FormatSegment`, and the owning interpolation's
+  per-segment step carries that segment's literal text, `""` before a value. A literal segment is then no `write` call, and no new
+  `IntrinsicId` is added (the limit stays 34, back to 30 at R8). Departure (ii) is withdrawn and does not apply. The owner had approved
+  rule (a) on a wrong statement of its effect: design review 1 found that bytes could grow, not only counts fall, and review 2 found the
+  planning session's bound on that growth false. The planning session then replaced rule (a) with rule (d) (R5-M133). Rule (d) gives the
+  old generator's allocation counts and bytes, so no native deviation remains, and the planning session told the owner so. The
+  departures list is empty.
+- **R5-M135 An O2 corpus A/B is judged with an aligned control** (owner, 2026-10-27, to the R5 planning session directly, on its analysis
+  of the half day's slow progress; verbatim 「O2 の A/B で差が出ても、整列をそろえた対照で A=A の範囲内なら、R5 が記録して着地させてよい。
+  対照でも差が残る場合だけオーナーに質問すること。」; partly supersedes R5-M8's O2 clause) An O2 corpus A/B (R5-M8) whose B/A lies
+  beyond the A=A variance gets an aligned control. Both generators' own O2 IR is built with the hot loops and functions aligned alike
+  (`llc --align-loops=64 --align-all-functions=6`, the latter a log2 value, 64 bytes; the same link) and timed the same way: A, B and
+  A′ in one folder, 15 or more interleaved samples. If the aligned B/A lies within the aligned A=A range, the gap is code placement,
+  not generated work. The unit records both measurements in its DECISIONS entry and lands without an owner question. Only a gap that
+  remains in the aligned control is a slowdown under R5-M8; it stops the unit's merge and goes to the owner (WORKFLOW). C9c's corpus
+  A/Bs are the first case (R5-M131, R5-M132). Reason: an unaligned A/B moves with code placement outside the loop (C9c's variants
+  without the checksum line flipped the sign), and the owner question cost about 6.5 hours of waiting on 2026-10-27.
