@@ -17,7 +17,8 @@
 // their helpers written before the definitions, ModuleCodegen.Arrays and ModuleCodegen.Dictionaries; R5-M121, R5-M124), the Builtin shims
 // (__kimi_builtin<item>, a comparison's, an arithmetic operation's or a built-in formatting's function under its requirement's signature,
 // Shim, written by FunctionCodegen.Shims; R5-M126, R5-M130), a user or library formatter's wrappers (__kimi_write<item>, a conversion over
-// it; ModuleCodegen.Formatting, R5-M130), the property witnesses (C3c), K8's ObjectDescriptor items (the module's runtime
+// it; ModuleCodegen.Formatting, R5-M130), the property witnesses (__kimi_witness<item>, a standard property witness's function under its
+// key's signature, Shim, written by FunctionCodegen.Shims; R5-M141), K8's ObjectDescriptor items (the module's runtime
 // identities, a descriptor's constants, payload destructor and factory through ObjectRuntime, ModuleCodegen.Objects; R5-M110) and VTable
 // items, whose text is their descriptors' virtual tables (R5-M114).
 // Inputs: the program the generation gate passed (validated, analyzed and accepted); the instance collector's checked set, marked from the
@@ -160,11 +161,8 @@ internal sealed partial class ModuleCodegen
             case MonoKind.ClosureErasure or MonoKind.ItemAdapter:
                 this.bodies.WriteAdapter(collector, item, this.functions);
                 return;
-            case MonoKind.Builtin:
-                this.bodies.WriteShim(collector, item, this.functions); // Its shim's function (FunctionCodegen.Shims; R5-M126).
-                return;
-            case MonoKind.PropertyWitness:
-                this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // C3c writes property witnesses (R5-M67).
+            case MonoKind.Builtin or MonoKind.PropertyWitness:
+                this.bodies.WriteShim(collector, item, this.functions); // Its shim's function (FunctionCodegen.Shims; R5-M126, R5-M141).
                 return;
             case MonoKind.ObjectDescriptor:
                 this.Descriptor(item);
