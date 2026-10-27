@@ -5,6 +5,8 @@
 // Op, Adjust and PlaceShape decide lowering; unsupported forms use the one located Unsupported path; it trusts the facts each Op guarantees.
 // Every runtime-index selection on storage lends its receiver where it locates it (a guard, or a range's backing), the receiver's check
 // at the selection, where its position local is located too, the subject A1 reports an access through the Index under (DECISIONS R4-M56).
+// An Opaque temp, which holds a derived or unsupported value where its consumer needs a Place, is no storage: no Ref, pair-case
+// acquisition or case adaptation lends a Place in it; its consumer receives a derived value (DECISIONS R4-M149).
 // Must not read Binding internals, infer from parents or let consumers rebuild missing facts.
 
 using Kimi.Compiler.Parsing;
@@ -171,6 +173,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         (this.declaration, this.scope, this.statementStart) = (declaration, 0, false);
         this.locals.Clear();
         this.targets.Clear();
+        this.opaqueTemps.Clear();
         (this.temporaries, this.lexical, this.scopeIds, this.prepared) = (-1, -1, 0, 0);
         this.scopes.Clear();
         this.registrations.Clear();

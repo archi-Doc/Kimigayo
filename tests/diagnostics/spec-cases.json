@@ -109,7 +109,7 @@
     {"Uncomment": null, "Expected": []}]},
   {"Name": "15.3.5-conditional-slot", "Section": "15.3.5", "Anchor": "struct Holder<s/T> {a}", "Family": "Binding", "Prelude": "()\n", "Variants": [
     {"Uncomment": null, "Expected": []},
-    {"Uncomment": "func lent(h:", "Expected": [{"Code": "InvalidOriginBinding_Kd", "Line": "func lent", "Basis": "The record the concrete twin gives a slot whose Loan requirement is uniq bound to static (SPEC 15.2.3; Binding.ValidateOriginRequirements)."}], "Old": {"Records": [], "Category": "b", "Clause": "15.3.5 15.2.3", "Note": "Binding gives a slot that only a conditional pair slot uses the Loan requirement ref in every admitted case, so its uniq case binds it to static unchecked; SPEC 15.3.5 judges it per case (DECISIONS R4-M134; PLAN G86)."}, "Mir": {"Records": [], "Category": "b", "Clause": "15.3.5 15.2.3", "Note": "Binding's missing record, which both paths share; see Old."}}]},
+    {"Uncomment": "func lent(h:", "Expected": [{"Code": "InvalidOriginBinding_Kd", "Line": "func lent", "Basis": "The record the concrete twin gives a slot whose Loan requirement is uniq bound to static (SPEC 15.2.3; Binding.ValidateOriginRequirements)."}]}]},
   {"Name": "15.3.6-inference", "Section": "15.3.6", "Anchor": "func choose<T>(x: ref/T, y: ref/T) -> ref/T", "Family": "F4", "Prelude": "()\n", "Variants": [
     {"Uncomment": null, "Expected": []}]},
   {"Name": "15.5-exclusive-origins", "Section": "15.5", "Anchor": "struct UniqView<T> {source}", "Family": "F4", "Prelude": "()\n", "Variants": [

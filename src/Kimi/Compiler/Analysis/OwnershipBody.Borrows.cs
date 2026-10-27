@@ -463,7 +463,7 @@ public sealed partial class OwnershipBody
 
             for (var i = 0; i < type.OriginArguments.Count; i++)
             {
-                AddOrigin(place, type.OriginArguments[i], (LoanRequirement)Math.Min((int)bound, (int)(type.Symbol?.Schema?.Origins[i].LoanRequirement ?? LoanRequirement.Ref)));
+                AddOrigin(place, type.OriginArguments[i], (LoanRequirement)Math.Min((int)bound, (int)this.SlotLoanRequirement(type, i)));
             }
 
             // SPEC 3.3.2: shared access cannot use an inner uniq exclusively, so a Type below a shared layer (ref/uniq/T) keeps
@@ -1049,6 +1049,12 @@ public sealed partial class OwnershipBody
         }
     }
 
+    // The owner's D5 exception (2026-10-26, 「(a) 場合ごとの読みを許可 (推奨)」; DECISIONS BU-44): slot `i` of `type` keeps the Loan its
+    // strongest case requires (SPEC 15.3.5; Binding.RequirementAt), `ref` without a schema; removed with the old analysis at R6-check.
+    private LoanRequirement SlotLoanRequirement(BoundType type, int i)
+        => type.Symbol?.Schema?.Origins[i] is { } slot
+            ? this.Function.CodeContext.Compilation.Binding.RequirementAt(slot, type).Strongest : LoanRequirement.Ref;
+
     private LoanRequirement NamedOriginRequirement(BoundType type, BoundOrigin origin, bool sourceBounds = false)
     {
         if (type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem)
@@ -1063,7 +1069,7 @@ public sealed partial class OwnershipBody
         {
             if (Contains(type.OriginArguments[i], origin))
             {
-                result = (LoanRequirement)Math.Max((int)result, (int)(type.Symbol?.Schema?.Origins[i].LoanRequirement ?? LoanRequirement.Ref));
+                result = (LoanRequirement)Math.Max((int)result, (int)this.SlotLoanRequirement(type, i));
             }
         }
 

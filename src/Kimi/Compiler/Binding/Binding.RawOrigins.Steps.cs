@@ -19,7 +19,8 @@ internal enum RawStep : byte
     Static,
 
     /// <summary>A pointer read from the layer has read authority only: a Field's or Case payload's layer stating a slot whose Loan
-    /// requirement is `ref`, or a signature's layer whose Origin only shared input borrows of that signature state.</summary>
+    /// requirement is `ref` in every case its holder selects, or a signature's layer whose Origin only shared input borrows of that
+    /// signature state.</summary>
     Shared,
 
     /// <summary>Any other Origin: a write through the pointer may be defined.</summary>
@@ -47,7 +48,7 @@ public sealed partial class Binding
     // SPEC 5.2.1 condition 3 (the owner's 「シグネチャ版も入れる (推奨)」): the step of a raw layer written in a signature whose input
     // Types are `inputs` (a parameter's or the result's, under a call's substitution or not; none for a Function Type's): Shared when some
     // input states its Origin and every statement of it in the inputs keeps only shared Loans (Statements: the outer Origin of a `ref`,
-    // `objref` or Slice layer or of a pair layer admitting only those, an argument of a slot whose Loan requirement is `ref`), since a
+    // `objref` or Slice layer or of a pair layer admitting only those, an argument of a slot `ref` in every case its Type selects), since a
     // pointer read from the layer then has no write authority; raw layers state no borrow, and borrows formed in a body never count. Any
     // other is its kind (StepOf).
     internal RawStep SignatureStep(BoundOrigin? raw, ReadOnlySpan<BoundType> inputs)
@@ -63,7 +64,7 @@ public sealed partial class Binding
 
     // SPEC 5.2.1 condition 3: the step of the raw layer an instance stores at a part and inline positions (StoredLayer), by DeclaredStep.
     internal RawStep StoredStep(BoundType instance, int part, ReadOnlySpan<int> positions)
-        => DeclaredStep(this.StoredLayer(instance, part, positions, out var declared), declared);
+        => this.DeclaredStep(this.StoredLayer(instance, part, positions, out var declared), declared, instance);
 
     // RawMembers of the raw layer an instance stores (StoredLayer): its Origin under the instance's substitution, within the instance, so
     // its members are the keepers of the slots the instance binds it to; `self`, `static` and an unstated layer have none. False when the
@@ -84,27 +85,20 @@ public sealed partial class Binding
         return declared is null;
     }
 
-    // The declared slot a raw Origin names: an Input atom's target slot (a projection `x.s` whose slot argument is omitted), a
-    // declaration's own slot; null for any other Origin.
-    private static OriginParameter? NamedSlot(BoundOrigin? atom) => atom switch
+    // The declared slot a raw Origin names: an Input atom's target slot (a projection `x.s` whose slot argument is omitted) with the
+    // Type of the input it projects (`instance`), a declaration's own slot (no instance: its declaration's cases); null for any other.
+    private static OriginParameter? NamedSlot(BoundOrigin? atom, out BoundType? instance)
     {
-        { Kind: OriginKind.Input, Occurrence.BoundType.Symbol.Schema: { } schema } when (uint)atom.TargetSlot < (uint)schema.Origins.Count
-            => schema.Origins[atom.TargetSlot],
-        { Kind: OriginKind.Parameter, Slot: >= 0, Binder: DeclarationContainerKoto { BoundSymbol.Schema: { } schema } } when atom.Slot < schema.Origins.Count
-            => schema.Origins[atom.Slot],
-        _ => null,
-    };
-
-    // SPEC 5.2.1 condition 3 (the owner's 「Loan 要求で上限 (推奨)」; design-final §15): the step of a raw layer an instance stores (`layer`,
-    // in its kept part), capped by the layer its declaration states there (`declared`), whose slot the substitution replaces: Shared when
-    // the declaration states the layer with a slot whose Loan requirement is `ref`, since a pointer read from it has read authority only;
-    // any other is the kind of its Origin under the instance's substitution (`self` the holder's own step, an Unbound slot argument
-    // Unstated). A layer a Type argument supplies (`declared` null) is no layer the declaration states, so no cap reads it: it has the
-    // kind of the Origin the argument states, as any layer no declaration states (a pair slot's argument states none,
-    // TyCtxt.PairBinding). StoredStep and the hold walk (Held) read this one rule.
-    private static RawStep DeclaredStep(BoundType layer, BoundType? declared)
-        => declared?.RawOrigin is { Kind: OriginKind.Parameter } && NamedSlot(declared.RawOrigin) is { LoanRequirement: LoanRequirement.Ref }
-            ? RawStep.Shared : StepOf(layer.RawOrigin);
+        instance = atom?.Kind == OriginKind.Input ? atom.Occurrence?.BoundType : null;
+        return atom switch
+        {
+            { Kind: OriginKind.Input, Occurrence.BoundType.Symbol.Schema: { } schema } when (uint)atom.TargetSlot < (uint)schema.Origins.Count
+                => schema.Origins[atom.TargetSlot],
+            { Kind: OriginKind.Parameter, Slot: >= 0, Binder: DeclarationContainerKoto { BoundSymbol.Schema: { } schema } }
+                when atom.Slot < schema.Origins.Count => schema.Origins[atom.Slot],
+            _ => null,
+        };
+    }
 
     // The component a Tuple's or fixed array's inline position selects; null for any other Type or none.
     private static BoundType? InlinePart(BoundType? type, int position)
@@ -114,6 +108,18 @@ public sealed partial class Binding
     // Whether an Origin is `origin` or a meet with it as an operand.
     private static bool Names(BoundOrigin? stated, BoundOrigin origin)
         => ReferenceEquals(stated, origin) || (stated?.Kind == OriginKind.Intersection && stated.Operands.Contains(origin));
+
+    // SPEC 5.2.1 condition 3 (the owner's 「Loan 要求で上限 (推奨)」; design-final §15): the step of a raw layer an instance stores (`layer`,
+    // in its kept part), capped by the layer its declaration states there (`declared`), whose slot the substitution replaces: Shared when
+    // the declaration states the layer with a slot whose Loan requirement is `ref` in every case the holding instance (`holder`) selects
+    // (SPEC 15.3.5, DECISIONS BU-44), since a pointer read from it has read authority only; any other is the kind of its Origin under the
+    // instance's substitution (`self` the holder's own step, an Unbound slot argument Unstated). A layer a Type argument supplies
+    // (`declared` null) is no layer the declaration states, so no cap reads it: it has the kind of the Origin the argument states, as any
+    // layer no declaration states (a pair slot's argument states none, TyCtxt.PairBinding). StoredStep and the hold walk (Held) read this
+    // one rule.
+    private RawStep DeclaredStep(BoundType layer, BoundType? declared, BoundType? holder)
+        => NamedSlot(declared?.RawOrigin, out _) is { } slot && this.RequirementAt(slot, holder).Strongest == LoanRequirement.Ref
+            ? RawStep.Shared : StepOf(layer.RawOrigin);
 
     // SignatureStep's reading of an input Type: the authority the statements of `origin` in it can keep, joined with `kept` (RawStep's order:
     // Unstated while none states it, Shared while each keeps only shared Loans, else Exclusive). A statement is a layer's outer Origin or a
@@ -137,7 +143,8 @@ public sealed partial class Binding
         {
             if (Names(type.OriginArguments[i], origin))
             {
-                var shared = type.Symbol?.Schema is { } schema && i < schema.Origins.Count && schema.Origins[i].LoanRequirement == LoanRequirement.Ref;
+                var shared = type.Symbol?.Schema is { } schema && i < schema.Origins.Count &&
+                    this.RequirementAt(schema.Origins[i], type).Strongest == LoanRequirement.Ref;
                 kept = Max(kept, shared ? RawStep.Shared : RawStep.Exclusive);
             }
         }

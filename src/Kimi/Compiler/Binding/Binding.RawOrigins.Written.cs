@@ -9,8 +9,8 @@ namespace Kimi.Compiler;
 // for every position after the last requirement fixed point (JudgeRawOrigin, from ValidateOriginRequirements).
 public sealed partial class Binding
 {
-    // SPEC 5.7: the Phantom slot a raw layer states, recorded only when the check fails.
-    private Dictionary<Koto, OriginParameter>? phantomRawOrigins;
+    // SPEC 5.7: the Phantom slot a raw layer states and the cases it is Phantom in (FailingCase), recorded only when the check fails.
+    private Dictionary<Koto, (OriginParameter Slot, LoanRequirement Failing, PairCase[] Cases)>? phantomRawOrigins;
 
     // SPEC 5.7 Origins (D17, D18; design-final §5; DECISIONS BU-24): the Origin a raw layer's `during` writes, one atom (never a meet or
     // Origin arguments), the atom its name binds whatever position it is written in: `self` names the holding value (Holder) on a layer
@@ -57,17 +57,19 @@ public sealed partial class Binding
         }
     }
 
-    // The slot a written projection `x.s` names (SPEC 5.7 Origins: it belongs to that slot's keepers); null for any other written form.
-    private OriginParameter? WrittenProjection(TypeSemanticsKoto annotation, Koto use, BindingScope scope)
+    // The slot a written projection `x.s` names (SPEC 5.7 Origins: it belongs to that slot's keepers) with the Type whose slot it is
+    // (`instance`); null for any other written form.
+    private OriginParameter? WrittenProjection(TypeSemanticsKoto annotation, Koto use, BindingScope scope, out BoundType? instance)
     {
+        instance = null;
         if (annotation.OriginExpression is not MemberAccessKoto { Left: IdentifierNameKoto input, Right: IdentifierNameKoto target } ||
-            !this.OriginCandidate(input.IdentifierName, use, scope, out _, out var type, out _))
+            !this.OriginCandidate(input.IdentifierName, use, scope, out _, out instance, out _))
         {
             return null;
         }
 
-        var slot = ProjectedSlot(ref type, target.IdentifierName);
-        return slot < 0 ? null : type!.Symbol!.Schema!.Origins[slot];
+        var slot = ProjectedSlot(ref instance, target.IdentifierName);
+        return slot < 0 ? null : instance!.Symbol!.Schema!.Origins[slot];
     }
 
     private BoundOrigin? FailOrigin(Koto use)
@@ -80,23 +82,28 @@ public sealed partial class Binding
     // point for every position (ValidateOriginRequirements), from the written form: the slot it names, through a projection `x.s` too
     // (WrittenProjection over the annotation's scope), whatever binds that slot.
     private void JudgeRawOrigin(TypeSemanticsKoto annotation, BoundOrigin raw)
-        => this.InvalidRawOrigin(annotation, raw, this.WrittenProjection(annotation, annotation, this.ConstraintScope(annotation)));
+    {
+        var projected = this.WrittenProjection(annotation, annotation, this.ConstraintScope(annotation), out var instance);
+        this.InvalidRawOrigin(annotation, raw, projected, instance);
+    }
 
-    // SPEC 5.7 (design-final §5, U1): a written raw Origin belongs to a borrow. The slot it names (a projection's, `projected`; an Input
-    // atom's target; a declared slot) must not be Phantom (InvalidOrigin with the slot), and a universal name or an input's outer Origin
+    // SPEC 5.7 (design-final §5, U1): a written raw Origin belongs to a borrow. The slot it names (a projection's, `projected` of
+    // `instance`; an Input atom's target; a declared slot) must not be Phantom in any case its Type selects, or its declaration admits
+    // (SPEC 15.3.5, 8.15.2; DECISIONS BU-44: InvalidOrigin with the slot and those cases), and a universal name or an input's outer Origin
     // must belong to some borrow among its binder's inputs (RawMembers), else it is InvalidOrigin, or a located Unsupported_Kd when the
     // input whose Origin it is is a pair layer admitting a non-borrow case (U1). A rejected Origin stays published: no step or reader
     // needs it valid. Whether `node` failed.
-    private bool InvalidRawOrigin(Koto node, BoundOrigin raw, OriginParameter? projected)
+    private bool InvalidRawOrigin(Koto node, BoundOrigin raw, OriginParameter? projected, BoundType? instance)
     {
-        if ((projected ?? NamedSlot(raw)) is { LoanRequirement: LoanRequirement.None } phantom)
+        if ((projected ?? NamedSlot(raw, out instance)) is { } slot && this.RequirementAt(slot, instance).Weakest == LoanRequirement.None)
         {
-            this.FailExplained(ref this.phantomRawOrigins, node, BindingFailure.InvalidOrigin, phantom);
+            var cases = this.FailingCase(slot, instance, LoanRequirement.None);
+            this.FailExplained(ref this.phantomRawOrigins, node, BindingFailure.InvalidOrigin, (slot, LoanRequirement.None, cases));
             return true;
         }
 
         if (raw is not { Kind: OriginKind.Input or OriginKind.Parameter, Binder: FunctionKoto or PropertyAccessorKoto or FunctionTypeKoto } ||
-            NamedSlot(raw) is not null || this.HasMember(raw, raw.Binder))
+            NamedSlot(raw, out _) is not null || this.HasMember(raw, raw.Binder))
         {
             return false;
         }

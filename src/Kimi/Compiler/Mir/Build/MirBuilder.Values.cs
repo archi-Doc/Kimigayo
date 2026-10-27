@@ -283,7 +283,7 @@ internal sealed partial class MirBuilder
             var type = captures[i].Environment.Type ?? BoundType.Unit;
             if (this.Bound(captures[i].Source) is not { } place)
             {
-                this.Unsupported(closure, place = this.Temp(type, closure));
+                place = this.Unsupported(closure, type: type);
             }
 
             var operand = this.Acquire(captures[i].Adjust, place, type, input: false, closure);
@@ -426,10 +426,12 @@ internal sealed partial class MirBuilder
     // The place given where it has the Type, which its holder makes (Made), else none.
     private MirPlace? Given(MirPlace? into, BoundType type) => into is { } place && ReferenceEquals(this.body.TypeOf(place), type) ? place : null;
 
-    // An Unsupported form, or a derived one, in a temp of the Type its consumer expects, else of its own.
+    // An Unsupported form, or a derived one, in a temp of the Type its consumer expects, else of its own: an Opaque temp, which nothing
+    // lends (Unlent; DECISIONS R4-M149).
     private MirPlace Unsupported(Koto node, bool derived = false, BoundType? type = null)
     {
         var temp = this.Temp(type ?? TypeOf(node), node);
+        this.opaqueTemps.Add(temp.Root);
         if (derived)
         {
             this.Opaque(node, temp);

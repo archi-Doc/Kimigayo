@@ -55,7 +55,7 @@ public class TypeBindingTest
         var view = c.Kotonoha.RootKoto.NestedContainers.Single();
         c.Kotonoha.CreateCodeContext().Parse(view, "let exclusive: uniq/i32 during source");
         Assert.False(c.Bind().IsComplete);
-        Assert.Equal(LoanRequirement.Uniq, view.SymbolOf()!.Schema!.Origins[0].LoanRequirement);
+        Assert.Equal(new SlotRequirement(LoanRequirement.Uniq, default), view.SymbolOf()!.Schema!.Origins[0].Requirement);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidOriginBinding_Kd);
     }
 
@@ -208,7 +208,7 @@ public class TypeBindingTest
         var c = Parse("struct A {a}\n    let b: B{bb}\n        origin bb.b == a\nstruct B {b}\n    let a: raw/(A{aa})\n        origin aa.a == b\n    let value: uniq/i32 during b");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var a = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "A");
-        Assert.Equal(LoanRequirement.Uniq, a.SymbolOf()!.Schema!.Origins[0].LoanRequirement);
+        Assert.Equal(new SlotRequirement(LoanRequirement.Uniq, default), a.SymbolOf()!.Schema!.Origins[0].Requirement);
     }
 
     private static Compilation Parse(string source)
