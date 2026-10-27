@@ -8,7 +8,7 @@ using Xunit;
 
 namespace XunitTest;
 
-public class CallableOriginForwardingTest
+public partial class CallableOriginForwardingTest
 {
     [Theory]
     [InlineData("i32", "42", "value")]

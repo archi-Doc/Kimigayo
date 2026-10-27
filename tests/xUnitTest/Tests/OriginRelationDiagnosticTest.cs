@@ -14,7 +14,7 @@ namespace XunitTest;
 // value that supplies the longer end. A body-local Borrow reaching a fixed Origin is Refuted (UnsatisfiedOriginRelation_Kd, Language)
 // and an underivable relation between fixed Origins is Unknown (UnprovenOriginRelation_Kd, Proof); both ends are Origin displays and
 // neither is ever a Type mismatch.
-public class OriginRelationDiagnosticTest
+public partial class OriginRelationDiagnosticTest
 {
     private const string Main = "public func main() => ()\n";
 
