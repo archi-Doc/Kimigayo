@@ -10366,6 +10366,15 @@ structure is recorded here by the unit that first implements it.
     arithmetic and the copies of the runtime's ABIs (`StatusFormatting`, a copy of `FormatHealthy`).
   - Speed: one runtime call per step (the old form); an estimate a loop over at most its values' Types, no allocation, so a warm Write
     allocates nothing; one entry-block region per stack interpolation; one arm in the frame's existing walk; no new pass over MIR.
+  - O2 (ruling Q8, R5-M8; the deferred corpus A/Bs, R5-M105, R5-M111, R5-M115, R5-M122, R5-M125): old generator A against MIR code
+    generation B at O2, CPU cycles, 21 interleaved samples of A, B and a copy of A in one folder. SharedHandles 1.00, Array 1.005 and
+    Dictionary 0.99 are within the A=A variance. ErasedCalls 1.072, VirtualDispatch 1.075 and Iterators (information) 1.171 are beyond it
+    (A=A 0.997, 1.010, 0.999). The cause is code placement: the hot loops have the same instructions modulo names (ErasedCalls' is one
+    instruction shorter; VirtualDispatch's object-header load encodes longer, R5-M110), at other offsets mod 64; the kernels' variants
+    without the checksum line flip the sign (0.92, 0.93, 1.00). With the hot loops and functions aligned alike (`llc --align-loops=64
+    --align-all-functions=6` on each generator's own O2 IR), B/A is 0.999, 1.001 and 1.019 against A=A 0.995, 1.001 and 1.001. Landed on the
+    owner's decision of 2026-10-27 (R5-M132). Open: Iterators' remainder of about 2 % when aligned. The Interpolation kernel is C9d's, and
+    Strings waits for E7.
   - Rejected: inside code generation, a cache or a side table of estimates by buffer (the calls carry their operands), a per-call alloca (a
     loop grows the stack), the adapter's kind 0 through the region (a second reader, no behavior change), the literal path read from MIR
     shape (a consumer deciding what the builder should publish; R5-M132), deferring every string write on an internal adapter (a
