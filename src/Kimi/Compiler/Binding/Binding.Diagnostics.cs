@@ -580,6 +580,14 @@ public sealed partial class Binding
             return this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, contract);
         }
 
+        // PROTO G216a d2 (SPEC 10.7, 15.6.1): a Tuple or array literal whose element is a conversion that fails only in its Origin part is that
+        // conversion's record at the element, the converted value.
+        if (actual is BoundType aggregate && expected is BoundType target && ReferenceTypes.StorageMatches(target, aggregate) &&
+            this.ElementConversionFailure(KotoHelper.UnwrapParentheses(at), aggregate, target, node) is { } element)
+        {
+            return this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, element);
+        }
+
         // SPEC 15.6.1: a failed Origin position of matching storage is recorded as such (Binding.OriginFits), never as a Type mismatch.
         if (actual is BoundType actualType && expected is BoundType expectedType && ReferenceTypes.StorageMatches(expectedType, actualType) &&
             this.RecordOriginFitFailure(node, at, actualType, expectedType))
@@ -588,6 +596,41 @@ public sealed partial class Binding
         }
 
         return this.FailExplained(ref this.mismatches, node, BindingFailure.TypeMismatch, (at, actual, expected));
+    }
+
+    // PROTO G216a d2: the first element of a Tuple or array literal, nested ones included, whose conversion to its expected Function Type
+    // fails only in its Origin part, as that conversion's record at the element.
+    private OriginContractFact? ElementConversionFailure(Koto syntax, BoundType actual, BoundType expected, Koto use)
+    {
+        var elements = syntax switch
+        {
+            TupleLiteralKoto tuple when actual.Kind == BoundTypeKind.Tuple && expected.Kind == BoundTypeKind.Tuple => tuple.Elements,
+            ArrayLiteralKoto array when actual.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray && expected.Kind == actual.Kind => array.Elements,
+            _ => null,
+        };
+        for (var i = 0; elements is not null && i < elements.Count; i++)
+        {
+            var part = KotoHelper.UnwrapParentheses(elements[i]);
+            var index = actual.Kind == BoundTypeKind.Tuple ? i : 0;
+            if (part.BoundType is not { } own || index >= expected.Components.Count || this.FitsTypeAt(own, expected.Components[index], use))
+            {
+                continue;
+            }
+
+            var required = expected.Components[index];
+            if (required.Kind == BoundTypeKind.Function && this.ConversionSignature(own, use, out var signature, out var owner) && ReferenceTypes.StorageMatches(required, signature) &&
+                (own.Kind == BoundTypeKind.FunctionItem ? this.ItemContractFailure(own, signature, required, part, use) : this.ConversionContractFailure(signature, required, owner, part, use)) is { } contract)
+            {
+                return contract;
+            }
+
+            if (this.ElementConversionFailure(part, own, required, use) is { } nested)
+            {
+                return nested;
+            }
+        }
+
+        return null;
     }
 
     // SPEC 15.6.1: a Refuted Origin relation is UnsatisfiedOriginRelation_Kd, one that is not proven UnprovenOriginRelation_Kd.

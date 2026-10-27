@@ -580,7 +580,7 @@ public sealed partial class Binding
             else if (ownBinder is not FunctionKoto { IsAnonymous: false } && signature.Components[1].StoresOrigin)
             {
                 // PROTO G216a d2: a nested signature's result well-formedness, every relation, at each call (owner's (A)).
-                this.VisitWellFormedPremises(signature.Components[1], result, null, new(null, call, WellFormedAction.Require, Result: true));
+                this.VisitWellFormedPremises(signature.Components[1], result, null, new(null, call, WellFormedAction.Require, Occurrence: true));
             }
 
             var inputs = count == 0 ? BoundType.Unit : this.types.Tuple(instantiated.AsSpan(0, count));

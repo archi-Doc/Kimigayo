@@ -45,7 +45,7 @@ public sealed partial class Binding
     // The callee whose result premises are visited, or null for an input's, which no other premise of the definition replaces; the
     // use; and for Bound and Unbound the call's inference and, for a result, the receiver Type whose arguments a member's container
     // Origins project to (an input's pattern is already projected where the call collects it).
-    private readonly record struct WellFormedVisit(FunctionKoto? Function, Koto Use, WellFormedAction Action, OriginInference? Inference = null, BoundType? Owner = null, bool Result = false);
+    private readonly record struct WellFormedVisit(FunctionKoto? Function, Koto Use, WellFormedAction Action, OriginInference? Inference = null, BoundType? Owner = null, bool Occurrence = false);
 
     // SPEC 15.3.7, 10.7: instantiate all of an Item's call Origins together, including named and result-only universals, against the
     // required contract. Repeated invariant occurrences and declared conditions constrain the same solution. An open evidence region
@@ -242,10 +242,11 @@ public sealed partial class Binding
             return;
         }
 
-        // PROTO G216a d2: a part whose Type is the call's is judged at every position (G269 (C)); any other at the replaced ones.
+        // PROTO G216a d2: a part whose Type is the call's is that inferred Type's occurrence, judged at every position as a written Type is
+        // (an obligation at the part, G269 (C)); any other part at the positions its fit replaced.
         if (this.TypedByCall(at))
         {
-            this.VisitWellFormedPremises(parameter, parameter, null, new(null, at, WellFormedAction.Require));
+            this.VisitWellFormedPremises(parameter, parameter, null, new(null, at, WellFormedAction.Require, Occurrence: true));
         }
         else if (operation.AdaptedType is { StoresOrigin: true } adapted && !ReferenceEquals(adapted, parameter))
         {
@@ -275,9 +276,11 @@ public sealed partial class Binding
             var requiredInputs = required.Components[0];
             for (var i = 0; i <= count; i++)
             {
+                // A required input is the argument a call passes, so its own well-formedness covers the positions it keeps; the source's result
+                // is the subtype, so every position of it is proven.
                 var part = i < count ? inputs.Components[i] : source.Components[1];
-                var kept = i < count ? (i < requiredInputs.Components.Count ? requiredInputs.Components[i] : null) : required.Components[1];
-                if (!this.VisitWellFormedPremises(part, part, kept, new(null, use, WellFormedAction.Instance, Result: true)))
+                var kept = i < count && i < requiredInputs.Components.Count ? requiredInputs.Components[i] : null;
+                if (!this.VisitWellFormedPremises(part, part, kept, new(null, use, WellFormedAction.Instance, Occurrence: true)))
                 {
                     return i;
                 }
@@ -489,7 +492,7 @@ public sealed partial class Binding
             actual = null; // Every position is covered when the shapes differ.
         }
 
-        if (visit.Function is null && !visit.Result && result.Symbol is { } symbol && result.OriginArguments.Count != 0 && !SameOriginArguments(result, actual) &&
+        if (visit.Function is null && !visit.Occurrence && result.Symbol is { } symbol && result.OriginArguments.Count != 0 && !SameOriginArguments(result, actual) &&
             this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) && declaration.State == 3)
         {
             foreach (var relation in declaration.Relations)
@@ -640,7 +643,7 @@ public sealed partial class Binding
             case WellFormedAction.Prove:
                 return this.ProvesOriginOutlives(value, substituted, visit.Use, condition);
             default:
-                if (visit.Function is null && !visit.Result)
+                if (visit.Function is null && !visit.Occurrence)
                 {
                     this.JudgeCallPosition(visit.Use, value, substituted, false, null, null, wellFormed: true, condition: condition);
                 }

@@ -83,6 +83,9 @@ public sealed partial class Binding
         return false;
     }
 
+    // PROTO G216a d2: whether the node is a bound Case construction, whose Type is its expected Type where one is given (BindEnumConstruction).
+    private bool IsCaseConstruction(Koto node) => this.enumConstructions.ContainsKey(KotoHelper.UnwrapParentheses(node));
+
     private static bool NeedsEnumContext(Koto node)
     {
         node = KotoHelper.UnwrapParentheses(node);

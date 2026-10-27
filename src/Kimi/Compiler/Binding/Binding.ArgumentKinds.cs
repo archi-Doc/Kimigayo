@@ -84,11 +84,12 @@ public sealed partial class Binding
     // never evidence for an outer slot.
     private bool WasWaitingPart(Koto node) => this.RecordedFact(KotoHelper.UnwrapParentheses(node)).Kind == ArgumentKind.Waiting;
 
-    // PROTO G216a d2 (SPEC 10.5.1, 15.6.4 step 3): whether the part's Type is, at some position, the selected candidate's instantiated
-    // parameter Type rather than one of its own: a contextual Case, a part the probe deferred, or a Composite holding one (G269 (C)).
+    // PROTO G216a d2 (SPEC 10.5.1, 15.6.4 step 3): whether the part's Type is, at some position, the call's instantiated parameter Type
+    // rather than one of its own: a Case construction (which takes its expected Type, Binding.Enums), a part the probe deferred, or a
+    // Composite holding one (G269 (C)).
     private bool TypedByCall(Koto part)
     {
-        if (NeedsEnumContext(part) || this.WasWaitingPart(part))
+        if (this.IsCaseConstruction(part) || this.WasWaitingPart(part))
         {
             return true;
         }

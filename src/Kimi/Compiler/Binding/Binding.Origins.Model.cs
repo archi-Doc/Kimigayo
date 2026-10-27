@@ -373,8 +373,8 @@ internal readonly struct CallableInstance
 
     internal BoundType? Actual => this.actual;
 
-    // PROTO G216a d2: whether the implementation is a nested signature (a Function Type value or an anonymous function).
-    internal bool NestedSource => this.actualBinder is FunctionTypeKoto or Kimi.Compiler.Parsing.FunctionKoto { IsAnonymous: true };
+    // PROTO G216a d2: whether the implementation is a nested signature (a Function Type value or an anonymous function), not an Item.
+    internal bool NestedSource => this.actual is not null && this.actualBinder is not Kimi.Compiler.Parsing.FunctionKoto { IsAnonymous: false };
 
     // A direct input whose outer Origin the implementation binds at that input's own position.
     internal bool IsQuantifiedInput(BoundType input, int position)
