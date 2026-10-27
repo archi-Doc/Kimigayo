@@ -376,6 +376,52 @@ public sealed partial class MirBuildTest
         Assert.True(Precedes(body, argument, entries));
     }
 
+    // SPEC 22.10.4, 22.10.1 (PLAN G157 (35), DECISIONS R5-M131): a $tryWrite evaluates an embedded expression only after a test that its
+    // adapter is healthy: a first segment that is an expression follows the adapter's status, and a text's write returns the recorded failure
+    // itself, so a text first needs none (fail-before: next() ran first, on an adapter that may have failed already).
+    [Theory]
+    [InlineData("\\(next())x", new[] { "status", "next", "write" })]
+    [InlineData("x\\(next())", new[] { "write", "next", "write" })]
+    public void ATryWritesFirstExpressionFollowsItsAdaptersStatus(string literal, string[] calls)
+    {
+        var body = Body("func next() -> i32 => 1\nfunc f(w: uniq/Utf8Writer) -> Result<(), BufferFull> => $tryWrite(w, \"" + literal + "\")\n", "f");
+        var path = new List<string>();
+        for (var block = 0; block >= 0 && path.Count < calls.Length;)
+        {
+            var terminator = body.Blocks[block].Terminator;
+            if (terminator.Kind == MirTerminatorKind.Call)
+            {
+                path.Add(terminator.Callee.Symbol!.Name);
+            }
+
+            // Along the healthy path: a call's or a goto's target, a Result test's Ok arm.
+            block = terminator.Kind switch
+            {
+                MirTerminatorKind.SwitchInt => Assert.Single(body.Cases.Slice(terminator.Start, terminator.Count).ToArray(), static x => x.Value == 0).Target,
+                MirTerminatorKind.Call or MirTerminatorKind.Goto => terminator.Target,
+                _ => -1,
+            };
+        }
+
+        Assert.Equal(calls, path);
+
+        // The first test's failure arm reaches the result's status without the expression (SPEC 22.10.4).
+        var failed = new List<string>();
+        var first = Array.FindIndex(body.Blocks.ToArray(), static x => x.Terminator.Kind == MirTerminatorKind.SwitchInt);
+        for (var block = body.Blocks[first].Terminator.Target; block >= 0 && body.Blocks[block].Terminator.Kind != MirTerminatorKind.Return;)
+        {
+            var terminator = body.Blocks[block].Terminator;
+            if (terminator.Kind == MirTerminatorKind.Call)
+            {
+                failed.Add(terminator.Callee.Symbol!.Name);
+            }
+
+            block = terminator.Target;
+        }
+
+        Assert.Equal(["status"], failed);
+    }
+
     // A function f of the temporaries' program that runs a statement, built without validator findings.
     private static (Compilation C, MirBody Body) Temporaried(string statement)
     {
