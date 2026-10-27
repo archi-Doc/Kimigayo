@@ -111,6 +111,19 @@ public class RawPointerSyntaxTest
     public void APhantomRawOriginIsOneRecordInEveryPosition(string declarations, string record)
         => Assert.Equal([record], Records(declarations));
 
+    // SPEC 5.7, 15.3.5 (DECISIONS BU-44): a projected slot is Phantom in the case its input's Type selects: `Holder<i32>`'s owner case
+    // stores no borrow, `Holder<uniq/i32 during r>`'s uniq case does; a Type parameter argument selects no case, so beside its
+    // UnprovenConstraint_Kd neither Phantom nor kept is claimed, whatever the binder admits.
+    [Theory]
+    [InlineData(PairAnnotationBindingTest.HolderOwnerUniq + "func f(h: ref/Holder<i32>, p: raw/i32 during h.a) => ()", "InvalidOriginBinding_Kd: raw/i32 during h.a")]
+    [InlineData(PairAnnotationBindingTest.HolderOwnerUniq + "func f(r: uniq/i32, h: ref/Holder<uniq/i32 during r>, p: raw/i32 during h.a) => ()", null)]
+    [InlineData(
+        "struct Holder<s/T> {a}\n    s is owner or ref or uniq\n    public let item: s/T during a\nfunc f<U>(h: ref/Holder<U>, p: raw/i32 during h.a) => ()",
+        "UnprovenConstraint_Kd: Holder<U>")]
+    [InlineData(PairAnnotationBindingTest.HolderRefUniq + "func f<U>(h: ref/Holder<U>, p: raw/i32 during h.a) => ()", "UnprovenConstraint_Kd: Holder<U>")]
+    public void AProjectedSlotIsPhantomInTheInstancesCase(string declarations, string? record)
+        => Assert.Equal(record is null ? [] : [record], Records(declarations));
+
     // SPEC 5.7 (Authority, Origins; DECISIONS BU-24, the owner's 「静的な権限判定をやめる (推奨)」): a written raw Origin is the atom
     // its name binds, whatever position it is written in, and no access through it is a compile-time error, so the forms that had a step
     // the representation could not express (the re-read's R1, a fault: an exclusive borrow outside the binder of a shared-only atom)

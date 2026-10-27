@@ -211,14 +211,21 @@ internal sealed partial class MirBuilder
     // SPEC 8.14, 13.5.3: a case adaptation of its plan (MirCases.Adapt resolves it per Semantics case): the operand acquired by value, a
     // Place Copied (Binding proved Copy where a case acquires it by value) or a temporary moved, beside the token of Binding's source Type;
     // the payload is the Place one implicit layer below the operand's, which an object borrow borrows. As an invocation's input, its
-    // exclusive borrow is two-phase (A3 E13 (4)).
+    // exclusive borrow is two-phase (A3 E13 (4)). A payload in an Opaque temp is adapted by none: the value is derived (Unlent).
     private void Adapt(MirPlace destination, BinaryKoto conversion, ExplicitAdaptationPlan plan, bool input)
     {
         var temporary = HirTables.AdjustOf(conversion.Left).Acquire == HirAcquire.Temporary;
         var operand = temporary ? this.Value(conversion.Left) : this.Place(conversion.Left);
+        var payload = this.Follow(operand, 1);
+        if (this.Unlent(payload, plan.Target) is { } derived)
+        {
+            this.Set(destination, derived, conversion);
+            return;
+        }
+
         var start = this.body.AddOperand(temporary ? MirOperand.Move(operand) : MirOperand.Copy(operand));
         this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.TypeToken, plan.Source))));
-        this.Set(destination, MirRvalue.Adapt(start, this.Follow(operand, 1), plan.Target, plan.IsShorthand, input), conversion);
+        this.Set(destination, MirRvalue.Adapt(start, payload, plan.Target, plan.IsShorthand, input), conversion);
     }
 
     // IMPL 21.3.3: whether an operation cannot Abort: it checks nothing (a comparison, a bit operation, or an operation of a floating-point,

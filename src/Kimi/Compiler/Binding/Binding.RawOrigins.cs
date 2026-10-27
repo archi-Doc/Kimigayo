@@ -8,10 +8,10 @@ namespace Kimi.Compiler;
 // storage a pointer reaches and where a call may store through it; it grants no access and decides no access error (the owner,
 // 2026-10-22: no access through a raw pointer is a compile-time error; condition 3 bounds it at run time).
 // - Responsibility: the written raw Origin in every position, the atom its name binds (WrittenRawOrigin), judged once after the last
-//   requirement fixed point (InvalidRawOrigin, from ValidateOriginRequirements: a Phantom slot, also through a written projection; an
-//   atom no borrow holds; a pair input admitting a non-borrow case); the step of a raw layer (StepOf, by its Origin's kind;
-//   DeclaredStep over StoredLayer, a Field's or Case payload's layer in the instance's kept part, which StoredStep, StoredSupplied and
-//   the hold walk read; SignatureStep, a
+//   requirement fixed point (InvalidRawOrigin, from ValidateOriginRequirements: a slot Phantom in a case its Type selects, also through
+//   a written projection; an atom no borrow holds; a pair input admitting a non-borrow case); the step of a raw layer (StepOf, by its
+//   Origin's kind; DeclaredStep over StoredLayer, a Field's or Case payload's layer in the instance's kept part, in the cases that
+//   instance selects, which StoredStep, StoredSupplied and the hold walk read; SignatureStep, a
 //   signature's layer), which retention and A5 read, and the borrows its Origin belongs to (RawMembers), which retention and
 //   InvalidRawOrigin read, each slot keeper walked once, a keeper cycle that changes its Type arguments an incomplete answer
 //   (CallRetention.Limit), never a silent stop; the Origin a `during self` layer is read with at a Place (ReadHolder); a layer's

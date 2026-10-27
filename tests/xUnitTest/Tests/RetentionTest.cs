@@ -393,7 +393,8 @@ public sealed class RetentionTest
     // `static`, lets the call write its pointee; one with another Origin lets it write what each borrow that Origin belongs to admits (an
     // input's referent, the keepers of a slot), as the raw input's storage, unless only shared input borrows of the signature state that
     // Origin (SPEC 5.2.1 condition 3, the owner's 「シグネチャ版も入れる (推奨)」; each statement a `ref` input's outer Origin or the argument of a slot
-    // whose Loan requirement is `ref`, as `W`'s alone; never a borrow the body forms): then a pointer read from the layer has read
+    // whose Loan requirement is `ref` in every case its Type selects, as `W`'s alone and a conditional slot's of a `ref` instance, not of a
+    // `uniq` one, SPEC 15.3.5, DECISIONS BU-44; never a borrow the body forms): then a pointer read from the layer has read
     // authority only and the call writes nothing through it; a universal stated by a `ref` and a `uniq` input, an Option's `uniq` borrow
     // and a projection a `uniq` input states are no such Origin. A raw input's pointee and its Origin's members are Content, and its own
     // layer's Origin gives no row (SPEC 15.6.4 as DECISIONS R4-M116 revised it, R-B3).
@@ -414,6 +415,14 @@ public sealed class RetentionTest
     [InlineData(RawPointerSyntaxTest.KeptView + "func f(v: ref/View, x: uniq/(ref/i32 during q) during v.source, p: raw/u8 during v.source, w: ref/i32 during q) => ()", "1 Content store 1, 2 Content store 1, 3 Value store 1, 1 Content store 2, 2 Content store 2, 3 Value store 2")]
     [InlineData("func f(a: ref/(ref/i32 during q) during o, b: Option<uniq/(ref/i32 during q) during o>, p: raw/u8 during o, v: ref/i32 during q) => ()", "0 Content store 1, 1 Value store 1, 2 Content store 1, 3 Value store 1, 0 Content store 2, 1 Value store 2, 2 Content store 2, 3 Value store 2")]
     [InlineData("func f(a: ref/(ref/i32 during q) during o, p: raw/(ref/i32 during q) during o, v: ref/i32 during q)\n    unsafe\n        let w: uniq/(ref/i32 during q) during o = (*p)@uniq", "")]
+    [InlineData(
+        PairAnnotationBindingTest.HolderRefUniq + "func f(r: uniq/(ref/i32 during q), h: Holder<uniq/(ref/i32 during q) during r> during o, " +
+        "p: raw/(ref/i32 during q) during o, v: ref/i32 during q) => ()",
+        "0 Content store 0, 1 Value store 0, 2 Content store 0, 3 Value store 0, 0 Content store 1, 1 Value store 1, 2 Content store 1, 3 Value store 1, 0 Content store 2, 1 Value store 2, 2 Content store 2, 3 Value store 2")]
+    [InlineData(
+        PairAnnotationBindingTest.HolderRefUniq + "func f(r: ref/(ref/i32 during q), h: Holder<ref/(ref/i32 during q) during r> during o, " +
+        "p: raw/(ref/i32 during q) during o, v: ref/i32 during q) => ()",
+        "")]
     public void RawLayersRetainByTheirOrigins(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 

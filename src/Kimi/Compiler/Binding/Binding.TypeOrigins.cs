@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private Dictionary<Koto, OriginParameter>? invalidStaticOriginSlots;
+    private Dictionary<Koto, (OriginParameter Slot, LoanRequirement Failing, PairCase[] Cases)>? invalidStaticOriginSlots;
 
     // Complete stored Origin identity, including declared slots and intersections; shared by fitting and diagnostics.
     internal static bool ContainsOrigin(BoundType type, BoundOrigin origin)
@@ -257,7 +257,8 @@ public sealed partial class Binding
                             continue;
                         }
 
-                        var bound = this.OmittedOrigin(use, scope, context with { Direct = false }, schema!.Origins[i].LoanRequirement, i);
+                        var requirement = this.RequirementAt(schema!.Origins[i], target).Strongest;
+                        var bound = this.OmittedOrigin(use, scope, context with { Direct = false }, requirement, i);
                         if (bound is null)
                         {
                             return null;
@@ -357,14 +358,22 @@ public sealed partial class Binding
 
         if (type.Origin is { } origin)
         {
-            this.AccumulateOrigin(origin, schema, polarity, IsExclusive(type.Semantics) ? LoanRequirement.Uniq : LoanRequirement.Ref, ref changed);
-            this.Keep(schema, origin, type, null);
+            // SPEC 15.3.5 (DECISIONS BU-44): a pair layer's slot is a conditional use (ConditionalUse), kept by its target in those cases;
+            // a use of none still counts toward variance.
+            var conditional = TryPairLayer(type, out var whole, out var target);
+            var loan = IsExclusive(type.Semantics) ? LoanRequirement.Uniq : LoanRequirement.Ref;
+            var use = conditional ? this.ConditionalUse(schema, whole) : new SlotRequirement(loan, default);
+            this.AccumulateOrigin(origin, schema, polarity, use, ref changed);
+            if (use != default)
+            {
+                this.Keep(schema, origin, conditional ? target : this.BorrowReferent(type, out _, out _), null, use.Binders);
+            }
         }
 
         if (type.RawOrigin is { Kind: not OriginKind.Holder } raw)
         {
             // SPEC 5.7: a raw layer's Origin is a covariant position, no use of a slot for Loan requirements or Phantom status.
-            this.AccumulateOrigin(raw, schema, polarity, LoanRequirement.None, ref changed);
+            this.AccumulateOrigin(raw, schema, polarity, default, ref changed);
         }
 
         // A Type may carry fewer or more arguments than its declaration while a pass is
@@ -379,8 +388,12 @@ public sealed partial class Binding
             }
 
             var sign = source.Variance == OriginVariance.Invariant ? 0 : source.Variance == OriginVariance.Contravariant ? -polarity : polarity;
-            this.AccumulateOrigin(type.OriginArguments[i], schema, sign, source.LoanRequirement, ref changed);
-            this.Keep(schema, type.OriginArguments[i], type, source);
+            var use = this.NestedUse(source.Requirement, type, schema);
+            this.AccumulateOrigin(type.OriginArguments[i], schema, sign, use, ref changed);
+            if (use != default)
+            {
+                this.Keep(schema, type.OriginArguments[i], type, source, default);
+            }
         }
 
         for (var i = 0; i < type.Components.Count; i++)
@@ -401,13 +414,13 @@ public sealed partial class Binding
         }
     }
 
-    private void AccumulateOrigin(BoundOrigin origin, DeclarationSchema schema, int polarity, LoanRequirement loan, ref bool changed)
+    private void AccumulateOrigin(BoundOrigin origin, DeclarationSchema schema, int polarity, SlotRequirement use, ref bool changed)
     {
         if (origin.Kind == OriginKind.Intersection)
         {
             for (var i = 0; i < origin.Operands.Count; i++)
             {
-                this.AccumulateOrigin(origin.Operands[i], schema, polarity, loan, ref changed);
+                this.AccumulateOrigin(origin.Operands[i], schema, polarity, use, ref changed);
             }
 
             return;
@@ -429,11 +442,7 @@ public sealed partial class Binding
                 changed = true;
             }
 
-            if (loan > parameter.LoanRequirement)
-            {
-                parameter.LoanRequirement = loan;
-                changed = true;
-            }
+            changed |= parameter.Absorb(use);
         }
     }
 
@@ -457,12 +466,16 @@ public sealed partial class Binding
             {
                 for (var i = 0; i < type.OriginArguments.Count && i < schema.Origins.Count; i++)
                 {
-                    if (type.OriginArguments[i].Kind == OriginKind.Static && schema.Origins[i].LoanRequirement == LoanRequirement.Uniq)
+                    if (type.OriginArguments[i].Kind == OriginKind.Static &&
+                        this.RequirementAt(schema.Origins[i], type).Strongest == LoanRequirement.Uniq)
                     {
                         // A late storage summary may establish uniq after this Type was completed. The written
                         // annotation owns formation; its declaration and names only repeat the already invalid Type.
+                        // SPEC 15.3.5: uniq in some case the Type selects, the record naming those cases (DECISIONS BU-44).
                         var site = OriginFormationSite(node, type);
-                        this.FailExplained(ref this.invalidStaticOriginSlots, site, BindingFailure.InvalidOrigin, schema.Origins[i]);
+                        var slot = schema.Origins[i];
+                        var cases = this.FailingCase(slot, type, LoanRequirement.Uniq);
+                        this.FailExplained(ref this.invalidStaticOriginSlots, site, BindingFailure.InvalidOrigin, (slot, LoanRequirement.Uniq, cases));
                         if (!ReferenceEquals(site, node))
                         {
                             this.CompleteDependent(node, site);
