@@ -71,12 +71,12 @@ internal static partial class MirTypes
     /// the holding instance's Type arguments by their actual Types in the value's own storage, the write fact where the instance has an
     /// Origin argument (the owner's 「進める (推奨)」); a slot kept only by `ref`, nothing; `static`, an exclusive reference to its pointee;
     /// another Origin, an exclusive reference to its pointee and to each exclusive member's referent (TyCtxt.RawMembers), the Limit where
-    /// the members are unpublished; none, SPEC 5.7 Calls' per-parameter rule: an exclusive reference to its pointee where the parameter's
-    /// Type expression writes the layer, a Type argument's or a pair slot's argument's included (TyCtxt.RawSupplied on the holding
-    /// instance), and the write fact where a declaration states it in its own Fields, Case payloads or base; a layer written in a Type
-    /// argument of the declaration's own Field, Case payload or base clause reads as supplied until Binding publishes its provenance
-    /// relative to the holder (DECISIONS R4-M147, Known limits). Any other raw layer (a local's or parameter's own Type, an element or a
-    /// Tuple outside an instance) is an exclusive reference to its pointee (DECISIONS R4-M120). Each Type is walked once per query and
+    /// the members are unpublished; none, SPEC 5.7 Calls' per-parameter rule: the write fact where a declaration writes the layer, at any
+    /// depth below the holder, which its kept part states (TyCtxt.RawStated; DECISIONS BU-46, R4-M151), else an exclusive reference to its
+    /// pointee, the parameter's Type expression writing the layer (a Type argument's or a pair slot's argument's included). Any other raw
+    /// layer (a local's or parameter's own Type, an element or a Tuple outside an instance) is read by the same rule: the write fact where
+    /// a declaration wrote it (an Array element of a Field, a `self` pointee's content), else an exclusive reference to its pointee
+    /// (DECISIONS R4-M120). Each Type is walked once per query and
     /// mode, a raw layer and the inline Tuples and fixed arrays of a stored part once per part, so a repeating recursive Type ends exactly;
     /// past depth 32, where one grows (SPEC 15.3.5), the answer is yes.</summary>
     /// <param name="type">The Type.</param>
@@ -168,7 +168,7 @@ internal static partial class MirTypes
             var met = own ? Loan : exclusive;
             if (type.Semantics == SemanticsKind.Raw)
             {
-                return met | (own && exclusive != 0 && type.Components.Count > 0 ? this.Past(type.Components[0], depth + 1) : 0);
+                return met | (own && exclusive != 0 && type.Components.Count > 0 ? this.Past(type, depth + 1) : 0);
             }
 
             var inline = this.instance is not null && type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray;
@@ -222,25 +222,21 @@ internal static partial class MirTypes
         // instance holding it (TyCtxt.RawStep): `self`, the pointee and the instance's Type arguments by their actual Types in the value's
         // own storage, the write fact where the instance has an Origin argument; a slot kept only by `ref`, nothing; `static`, an
         // exclusive reference to the pointee; another Origin, an exclusive reference to the pointee and to each exclusive member's
-        // referent, the Limit where the members are unpublished; none, an exclusive reference to the pointee where the parameter's Type
-        // expression writes the layer (RawSupplied), the write fact where a declaration states it, though a layer written in a Type argument
-        // of the declaration's own Field, Case payload or base clause reads as supplied (R4-M147, Known limits). Any other layer: an
-        // exclusive reference to the pointee.
-        private int Past(BoundType pointee, int depth)
+        // referent, the Limit where the members are unpublished; none, and any layer outside a stored part, one rule (DECISIONS R4-M151):
+        // the write fact where a declaration wrote the layer, which the kept parts state (TyCtxt.RawStated, DECISIONS BU-46), else an
+        // exclusive reference to the pointee (the walk's own Type wrote it, or it states an Origin outside a stored part).
+        private int Past(BoundType layer, int depth)
         {
-            if (this.instance is not { } stored)
+            var stored = this.instance;
+            var pointee = layer.Components[0];
+            ReadOnlySpan<int> at = stored is null ? default : this.positions[this.start..this.top];
+            return (stored is null ? RawStep.Unstated : types.RawStep(stored, this.part, at)) switch
             {
-                return this.Part(pointee, Exclusive, depth);
-            }
-
-            var at = this.positions[this.start..this.top];
-            return types.RawStep(stored, this.part, at) switch
-            {
-                RawStep.Own => stored.OriginArguments.Count > 0 ? Write : this.Admitted(stored, pointee, depth),
+                RawStep.Own => stored!.OriginArguments.Count > 0 ? Write : this.Admitted(stored, pointee, depth),
                 RawStep.Shared => 0,
                 RawStep.Static => this.Part(pointee, Exclusive, depth),
-                RawStep.Exclusive => this.Members(stored, at, depth) | this.Part(pointee, Exclusive, depth),
-                _ => types.RawSupplied(stored, this.part, at) ? this.Part(pointee, Exclusive, depth) : Write, // Unstated.
+                RawStep.Exclusive => this.Members(stored!, at, depth) | this.Part(pointee, Exclusive, depth),
+                _ => TyCtxt.RawStated(layer) ? Write : this.Part(pointee, Exclusive, depth),
             };
         }
 

@@ -93,6 +93,14 @@ public sealed partial class Binding
             return CandidateApplicability.Applicable;
         }
 
+        if (ControlFlowExpression(source) is { } join && this.KindOf(source) == ArgumentKind.Composite)
+        {
+            // SPEC 10.5.1, 14.9.2 step 3 (DECISIONS BU-43): a join its call classifies fits by its results' late Type, waiting literals
+            // fitting as literals.
+            return this.LateTypeOf(join, expected) is { } late && this.FitsStructurallyAt(late, expected, source)
+                ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
+        }
+
         if (source is RangeKoto range && IsMixedRange(range))
         {
             // SPEC 4.6.2: the candidate's range of this shape supplies each literal-only boundary's S or E; a typed boundary

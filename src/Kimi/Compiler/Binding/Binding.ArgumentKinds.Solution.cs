@@ -105,11 +105,11 @@ public sealed partial class Binding
             var unsolved = this.Binding.RentSlotSet(CallSlotCount(this.Function));
             try
             {
-                UnsolvedSlots(this.Call, this.Function, this.Types, this.Lengths, mapping, ref unsolved, out _);
+                this.Binding.UnsolvedSlots(this.Call, this.Function, this.Types, this.Lengths, mapping, ref unsolved, out _);
                 var open = new OpenWaitingSlots(ref unsolved, this);
                 for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
                 {
-                    TakeWaiting(this.Call.ArgumentNodes[i], this.Function.Parameters[mapping[i]].Type.BoundType!, this.SlotOwner, open);
+                    this.Binding.TakeWaiting(this.Call.ArgumentNodes[i], this.Function.Parameters[mapping[i]].Type.BoundType!, this.SlotOwner, open);
                 }
 
                 return !unsolved.IsEmpty &&

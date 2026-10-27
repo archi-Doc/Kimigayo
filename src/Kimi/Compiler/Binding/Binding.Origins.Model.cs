@@ -32,8 +32,9 @@ public enum OriginKind : byte
     // Types, never in an instance's stored Types; every read replaces it (Binding.ReadHolder).
     Holder,
 
-    // SPEC 5.7 (DECISIONS BU-24): the Origin a raw layer without `during` counts as stating, which every Origin outlives; only in
-    // relations and their records, never in a Type (Binding.UnstatedRelation).
+    // SPEC 5.7 (DECISIONS BU-24, BU-46): the Origin a raw layer without `during` counts as stating, which every Origin outlives; in
+    // relations and their records (Binding.UnstatedRelation), and on a kept part's raw layer its declaration writes without `during`
+    // (Binding.WithUnstatedOrigins), never in any other Type.
     Unstated,
 }
 
