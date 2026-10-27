@@ -548,8 +548,9 @@ public sealed partial class MirBorrowsTest
     // the call errs (holderReadBad, by SPEC 15.6.4's per-argument letter; PLAN G148 (2)'s GXS would recover it), also where the stored part
     // is abstract and so may be an exclusive reference (R4-M147's Q1 (a)): in every case view (selfPair, selfPairChild), as for the method
     // analog (methodAbstract, unchanged), and beside the argument's true store into the environment (pairStoreBad, pairCellBad: `v@follow
-    // = x` in the uniq view) and PLAN G147 (8i)'s self-store row of the pair carrier `y` (pairStoreRead, pairCellRead). A concrete referent
-    // with no Loan-capable part stores nothing (selfScalarOk, selfAbstractOk read `slot` itself).
+    // = x` in the uniq view) and the argument's store into the environment given one kind for every holder W reaches, E past the written
+    // capture included (pairStoreRead, pairCellRead: PLAN G276, WK), with the receiver's Content rows. A concrete referent with no
+    // Loan-capable part stores nothing (selfScalarOk, selfAbstractOk read `slot` itself).
     [Fact]
     public void RuleGsSelfStoreReachesAClosureReceiver()
         => Assert.Equal(
@@ -659,6 +660,120 @@ public sealed partial class MirBorrowsTest
                     h.set()
                     _ = slot
                 """).Select(static x => x.Replace(" ComparisonLoanConflict_Kd views", string.Empty, StringComparison.Ordinal)).ToArray());
+
+    // SPEC 15.6.4, 8.1.2 (PLAN G147 (8i); A5 step 2 plan 2c-4, unit 0c; DECISIONS BU-49): a by-value owner-or-uniq pair carrier has no
+    // Value self-store row, only the borrow case's Content one, so a call moving the child `let child = v` of a pair binding into a result
+    // (A6-keep-ok, B7-second), as the bare capture of a by-value Closure (A9-keep-ok) or twice by value (takeTwice,
+    // ClosureReceiverClassificationTest's body) stores no Loan on `v` into the parameter's referent: `v@follow = x` and the second
+    // `take0c` are valid in the owner and the uniq view, as the corpus
+    // (tests/diagnostics/pair-cases.json) and the old path accept. A call storing the child through `put0c` (A2-put-ok, B4-chained,
+    // B5-result-put) keeps W's record in the uniq view: `1 Value store 0` carries the child's own value past the written local `slot`
+    // into E, each holder W reaches taking the row's kind (MirBorrows.Calls), where only `slot` can hold it; removed by WK, R4's
+    // per-storage retention kind (PLAN G276). A3-closure, which reads the capture `slot` after the write, stays rejected (pairStoreBad
+    // above).
+    [Fact]
+    public void AByValuePairCarrierIsNotStoredIntoItsOwnReferent()
+        => Assert.Equal(
+            ["a2PutOk: v@follow = x 2", "b4Chained: v@follow = x 2", "b5ResultPut: v@follow = x 2"],
+            ViewProblems("""
+            func put0c<U>(slot: uniq/U, y: U) -> () => slot@follow = y@move
+            func keep0c<F>(f: F) -> F => f@move
+            func second0c<A, B>(a: A, b: B) -> B => b@move
+            func take0c<t/U>(y: t/U) -> ()
+                t is owner or uniq
+                U is Copy
+                return
+            func takeTwice<s/T>(value: s/T) -> ()
+                s is owner or uniq
+                T is Copy
+                var h = func [value] () -> ()
+                    take0c(value)
+                    take0c((value))
+                h()
+            func a2PutOk<s/T>(value: s/T, other: s/T, x: T) -> ()
+                s is owner or uniq
+                T is Copy
+                var v = value@move
+                var slot = other@move
+                let child = v
+                put0c(slot@uniq, child@move)
+                _ = slot@follow
+                v@follow = x
+            func a6KeepOk<s/T>(value: s/T, x: T) -> ()
+                s is owner or uniq
+                T is Copy
+                var v = value@move
+                let child = v
+                let kept = keep0c(child@move)
+                _ = kept@follow
+                v@follow = x
+            func a9KeepOk<s/T>(value: s/T, x: T) -> ()
+                s is owner or uniq
+                T is Copy
+                var v = value@move
+                let h = func [v] () -> ()
+                    _ = v@follow
+                let kept = keep0c(h@move)
+                kept()
+                v@follow = x
+            func b4Chained<s/T>(value: s/T, other: s/T, third: s/T, x: T) -> ()
+                s is owner or uniq
+                T is Copy
+                var v = value@move
+                var a = other@move
+                var b = third@move
+                let child = v
+                put0c(a@uniq, child@move)
+                put0c(b@uniq, a@move)
+                _ = b@follow
+                v@follow = x
+            func b5ResultPut<s/T>(value: s/T, other: s/T, x: T) -> ()
+                s is owner or uniq
+                T is Copy
+                var v = value@move
+                var slot = other@move
+                let child = v
+                put0c(slot@uniq, keep0c(child@move))
+                _ = slot@follow
+                v@follow = x
+            func b7Second<s/T, t/U>(value: s/T, other: t/U, x: T) -> ()
+                s is owner or uniq
+                t is owner or uniq
+                T is Copy
+                U is Copy
+                var v = value@move
+                let child = v
+                let r = second0c(child@move, other@move)
+                v@follow = x
+                _ = r@follow
+            """).Select(static x => x.Replace(" ComparisonLoanConflict_Kd views", string.Empty, StringComparison.Ordinal)).ToArray());
+
+    // SPEC 15.6.4 (DECISIONS BU-49): a call given `.Some(x@uniq)` by value stores into x what a read through the borrow carries; it keeps
+    // the borrow's own Loan in x only where x's referent can hold a borrow of the layer's own Origin. With a distinct `o` it cannot, so
+    // reading x after the call is valid (use1; rustc accepts the analog); with `o` the referent's `q` it can, so the read conflicts with
+    // the Loan x now carries (use2; rustc rejects `&'q mut &'q i32`).
+    [Fact]
+    public void AnExclusiveLayerHeldByValueKeepsItsOwnOriginsLoan()
+        => Assert.Equal(
+            ["use2: x@follow 1"],
+            ViewProblems("""
+            func tie0c1(a: ref/i32 during q, c: ref/i32 during o, b: Option<uniq/(ref/i32 during q) during o>) -> ()
+                return
+            func tie0c2(a: ref/i32 during q, b: Option<uniq/(ref/i32 during q) during q>) -> ()
+                return
+            func use1()
+                let y = 5
+                let z = 6
+                var x = y@ref
+                tie0c1(z@ref, z@ref, .Some(x@uniq))
+                let w = x@follow
+            func use2()
+                let y = 5
+                let z = 6
+                var x = y@ref
+                tie0c2(z@ref, .Some(x@uniq))
+                let w = x@follow
+            """).Select(static x => x.Replace(" ComparisonLoanConflict_Kd views", string.Empty, StringComparison.Ordinal)).ToArray());
 
     // R4-M147's Limit through a Closure (DECISIONS R4-M148): a Closure holds its environment's parts, so one whose only Loan-capable part is a
     // stored raw layer stepping Exclusive with unpublished members (Wrap2c3<raw/u8>) leaves a call's store past it undecided, the located
