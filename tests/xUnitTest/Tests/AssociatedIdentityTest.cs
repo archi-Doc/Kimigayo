@@ -242,6 +242,31 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
         ScalarEmissionTest.EmitFixture("AssociatedIdentityInherited", declarations + Use, "inherited\n");
     }
 
+    // SPEC 8.3.3 Recursion, Unbounded Types (DECISIONS BU-50): a conformance binding revisited while it is being resolved, directly
+    // (`A.Item is A.Item`), through another binding (A and B) or with a growing argument (`G<T> { Item is G<G<T>>.Item }`, A<T> and B<T>),
+    // names no Type. Each specification on the cycle and its projection keep their InvalidConstraint_Kd records, as each use of the
+    // conformance (a parameter's Type, a call's) and the call's NoApplicableOverload_Kd do, and normalizing or storing an instance whose
+    // Field projects through it ends; the growing forms overflowed the stack before (ContractTypeCore at the call, KeptType in the MIR).
+    // The old code generator is pinned: sel's collector meets the projection such a rejected program keeps (as on dev).
+    [Theory]
+    [InlineData("struct A\n    Self is HasItem\n    associate HasItem.Item is A.Item\n", "A", "A.Item")]
+    [InlineData("struct A\n    Self is HasItem\n    associate HasItem.Item is B.Item\nstruct B\n    Self is HasItem\n    associate HasItem.Item is A.Item\n", "A", "B.Item,A.Item")]
+    [InlineData("struct G<T>\n    Self is HasItem\n    associate HasItem.Item is G<G<T>>.Item\n", "G<i32>", "G<G<T>>.Item")]
+    [InlineData("struct A<T>\n    Self is HasItem\n    associate HasItem.Item is B<A<T>>.Item\nstruct B<T>\n    Self is HasItem\n    associate HasItem.Item is A<T>.Item\n", "A<i32>", "B<A<T>>.Item,A<T>.Item")]
+    public void ABindingThatUsesItselfNamesNoType(string declarations, string subject, string specifications)
+    {
+        var source = "contract HasItem\n    associate Item\nstruct HA<S>\n    S is HasItem\n    var x: S.Item\n" +
+            "    public init(x: S.Item) => self.x = x@move\n" + declarations + $"func f(h: HA<{subject}>) => ()\npublic func main() -> ()\n" +
+            $"    var h = HA<{subject}>.init(null)\n    return\n";
+        var c = MinimalEmissionTest.Analyze(source, codegen: CompilerCodegen.Legacy);
+        var use = $"InvalidConstraint_Kd HA<{subject}>";
+        Assert.Equal(
+            [.. specifications.Split(',').SelectMany(static x => (string[])[$"InvalidConstraint_Kd associate HasItem.Item is {x}", $"InvalidConstraint_Kd {x}"]),
+                use, use, $"NoApplicableOverload_Kd HA<{subject}>.init(null)", use],
+            c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}"));
+        Assert.Empty(c.BuildMir().Findings);
+    }
+
     private static string Declarations(string parents) => """
         contract C<E>
             associate Item(a)

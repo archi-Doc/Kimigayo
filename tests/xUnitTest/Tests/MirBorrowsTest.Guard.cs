@@ -431,13 +431,17 @@ public sealed partial class MirBorrowsTest
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
-    // SPEC 5.7 Calls, 8.6.1 (DECISIONS BU-50, PLAN G271): an instance's kept part completes an associated projection by its subject's
-    // conformance, so `S.Item` as `HA<Src>`, Src binding `Item` to `raw/u8`, is a layer Src's declaration writes and gives the write fact,
-    // as the written twin HSrc's `Src.Item` does: `z = 5` errs (ha), also below a Type argument (ha2), a held holder (hha), an inherited
-    // binding (inh: a base clause's argument) and a holder whose declaration writes the subject's argument (hh2). Where the parameter's
-    // Type expression writes the subject's argument and the binding is that argument (`Item is T`), the layer is the parameter's, so the
-    // store holds no Loan, as for its twin Wrap<raw/u8> (src2, hpair2). The old path, which reads AdtDef's view, gives each form its
-    // twin's record (none: it accepts the stated forms until R6-check, DECISIONS BU-46).
+    // SPEC 5.7 Calls, 8.6.1, 8.2.3 (DECISIONS BU-50, PLAN G271): an instance's kept part completes an associated projection by its
+    // subject's conformance, so `S.Item` as `HA<Src>`, Src binding `Item` to `raw/u8`, is a layer Src's declaration writes and gives the
+    // write fact, as the written twin HSrc's `Src.Item` does: `z = 5` errs (ha), also below a Type argument (ha2), a held holder (hha), an
+    // inherited binding (inh: a base clause's argument), a base clause naming the layer through a projection (derq: `BaseI<Src2<raw/u8>.
+    // Item>` is `BaseI<raw/u8>`, completed before the mark) and a store into the Field such a base clause holds (derf, as its twin derg,
+    // each a moved parameter), a holder whose declaration writes the subject's argument (hh2, also through a condition, hhc), a nested
+    // binding (nest: `Item is S.Item`) and an enum subject (esrc). An enum holder's Case payload completes as a Field does, so `EH<Src>`'s
+    // verdict is its written twin ER's (eh, er: no Loan is held past `.A(null)`). Where the parameter's Type expression writes the subject's
+    // argument and the binding is that argument (`Item is T`), the layer is the parameter's, so the store holds no Loan, as for its twin
+    // Wrap<raw/u8> (src2, hpair2, nest2, hc, eh2). The old path, which reads AdtDef's view, gives each form its twin's record (none: it
+    // accepts the stated forms until R6-check, DECISIONS BU-46).
     [Fact]
     public void ACompletedProjectionGivesItsSubjectsLayer()
     {
@@ -460,6 +464,47 @@ public sealed partial class MirBorrowsTest
             struct DerI : BaseI<raw/u8>
                 var m: i32
                 public init() => self.m = 0
+            struct DerQ : BaseI<Src2<raw/u8>.Item>
+                var m: i32
+                public init() => self.m = 0
+            open struct BaseF<P>
+                public var f: P
+            struct DerF : BaseF<Src2<raw/u8>.Item>
+                var m: i32
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct DerG : BaseF<raw/u8>
+                var m: i32
+                public func put<T>(self: uniq/Self, value: T) => ()
+            func derf(d: DerF)
+                var z = 3
+                var h = d@move
+                h.put(z@ref)
+                z = 5
+            func derg(d: DerG)
+                var z = 3
+                var h = d@move
+                h.put(z@ref)
+                z = 5
+            struct Src3<S>
+                S is HasItem
+                Self is HasItem
+                associate HasItem.Item is S.Item
+            struct SrcC<T>
+                Self is HasItem when T is Copy
+                    associate HasItem.Item is T
+            enum ESrc
+                Self is HasItem
+                associate HasItem.Item is raw/u8
+                A
+            enum EH<S>
+                S is HasItem
+                A(S.Item)
+                B
+                public func put<T>(self: uniq/Self, value: T) => ()
+            enum ER
+                A(raw/u8)
+                B
+                public func put<T>(self: uniq/Self, value: T) => ()
             struct HA<S>
                 S is HasItem
                 var x: S.Item
@@ -478,6 +523,10 @@ public sealed partial class MirBorrowsTest
                 var h: HA<Src2<raw/u8>>
                 public init() => self.h = HA<Src2<raw/u8>>.init(null)
                 public func put<T>(self: uniq/Self, value: T) => ()
+            struct HHC
+                var h: HA<SrcC<raw/u8>>
+                public init() => self.h = HA<SrcC<raw/u8>>.init(null)
+                public func put<T>(self: uniq/Self, value: T) => ()
             struct HSrc
                 var x: Src.Item
                 public init() => self.x = null
@@ -486,15 +535,22 @@ public sealed partial class MirBorrowsTest
             """;
         (string Name, string Holder, string Twin)[] forms =
         [
-            ("ha", "HA<Src>.init(null)", "hsrc"), ("ha2", "HA2<Src>.init(Wrap<Src.Item>.init(null))", "hsrc"), ("hha", "HHA.init()", "hsrc"),
-            ("inh", "HA<DerI>.init(null)", "hsrc"), ("hh2", "HH2.init()", "hsrc"), ("hsrc", "HSrc.init()", "hsrc"),
-            ("src2", "HA<Src2<raw/u8>>.init(null)", "wrap"), ("hpair2", "HA2<Src2<raw/u8>>.init(Wrap<Src2<raw/u8>.Item>.init(null))", "wrap"),
-            ("wrap", "Wrap<raw/u8>.init(null)", "wrap"),
+            ("ha", " = HA<Src>.init(null)", "hsrc"), ("ha2", " = HA2<Src>.init(Wrap<Src.Item>.init(null))", "hsrc"), ("hha", " = HHA.init()", "hsrc"),
+            ("inh", " = HA<DerI>.init(null)", "hsrc"), ("derq", " = HA<DerQ>.init(null)", "hsrc"), ("hh2", " = HH2.init()", "hsrc"),
+            ("hhc", " = HHC.init()", "hsrc"),
+            ("nest", " = HA<Src3<Src>>.init(null)", "hsrc"), ("esrc", " = HA<ESrc>.init(null)", "hsrc"), ("eh", ": EH<Src> = .A(null)", "er"), ("er", ": ER = .A(null)", "er"),
+            ("hsrc", " = HSrc.init()", "hsrc"), ("src2", " = HA<Src2<raw/u8>>.init(null)", "wrap"),
+            ("hpair2", " = HA2<Src2<raw/u8>>.init(Wrap<Src2<raw/u8>.Item>.init(null))", "wrap"), ("nest2", " = HA<Src3<Src2<raw/u8>>>.init(null)", "wrap"),
+            ("hc", " = HA<SrcC<raw/u8>>.init(null)", "wrap"), ("eh2", ": EH<Src2<raw/u8>> = .A(null)", "wrap"), ("wrap", " = Wrap<raw/u8>.init(null)", "wrap"),
         ];
-        var source = Declarations + string.Concat(forms.Select(static x => $"func {x.Name}()\n    var z = 3\n    var h = {x.Holder}\n    h.put(z@ref)\n    z = 5\n"));
+        var source = Declarations + string.Concat(forms.Select(static x => $"func {x.Name}()\n    var z = 3\n    var h{x.Holder}\n" +
+            "    h.put(z@ref)\n    z = 5\n"));
         var c = MirBuildTest.Compile(Prelude + source);
         Assert.Equal(
-            ["ha: z = 5", "ha2: z = 5", "hha: z = 5", "inh: z = 5", "hh2: z = 5", "hsrc: z = 5"],
+            [
+                "derf: z = 5", "derg: z = 5", "ha: z = 5", "ha2: z = 5", "hha: z = 5", "inh: z = 5", "derq: z = 5", "hh2: z = 5", "hhc: z = 5",
+                "nest: z = 5", "esrc: z = 5", "hsrc: z = 5",
+            ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
         var old = MinimalEmissionTest.Analyze(source, codegen: CompilerCodegen.Legacy);
         var records = old.Problems.Select(x => (Function: Function(old.SyntaxOf(x.Subject)), x.Code)).ToArray();

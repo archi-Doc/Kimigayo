@@ -666,30 +666,48 @@ public sealed class TyCtxtTest
         BoundType Kept(int i) => types.StoredParts(p[i], out _)[0]!;
     }
 
-    // SPEC 8.6.1, 5.7 Calls (DECISIONS BU-50, PLAN G271): an instance's kept part completes an associated projection of a struct or enum
-    // subject by the subject's conformance, as a kept part of the subject: a binding the subject's declaration writes states Unstated
-    // (Src's, DerI's base clause's argument), one the subject's argument supplies carries that argument's mark (Src2<raw/u8>'s, none, and
-    // Src2<raw/u8> written in HH2's Field, Unstated), a closed binding is itself (W<Src>'s i32); AdtDef's view is the completed part
-    // WithoutRawOrigins, with no abstract part left. A projection whose subject is a parameter (`unbound`'s HA<T>) stays a projection.
+    // SPEC 8.6.1, 8.2.3, 5.7 Calls (DECISIONS BU-50, PLAN G271): an instance's kept part completes an associated projection of a struct
+    // or enum subject by the subject's conformance, as a kept part of the subject: a binding the subject's declaration writes states
+    // Unstated (Src's, an enum subject's, DerI's base clause's argument, a nested binding's through Src3<Src>), one the subject's argument
+    // supplies carries that argument's mark (Src2<raw/u8>'s and Src3<Src2<raw/u8>>'s and SrcC<raw/u8>'s through a condition, none; below
+    // a Field `HA<Src2<raw/u8>>` or `HA<SrcC<raw/u8>>`, Unstated), a closed binding is itself (W<Src>'s i32). A declared part's own
+    // projections are completed before the mark: DerQ's `BaseI<Src2<raw/u8>.Item>` and DerF's `BaseF<Src2<raw/u8>.Item>` are written
+    // `raw/u8` layers, so `HA<DerQ>`'s and DerF's base Field state Unstated. A Case payload completes too (EH<Src>). AdtDef's view is the
+    // completed part WithoutRawOrigins and a body's read (StoredType) the same part without its mark, neither with an abstract part left.
+    // A projection whose subject is a parameter (`unbound`'s HA<T>) stays a projection.
     [Fact]
     public void AKeptPartCompletesAnAssociatedProjection()
     {
         var c = MinimalEmissionTest.Analyze("contract HasItem\n    associate Item\nstruct Src\n    Self is HasItem\n    associate HasItem.Item is raw/u8\n" +
             "struct Src2<T>\n    Self is HasItem\n    associate HasItem.Item is T\nopen struct BaseI<P>\n    Self is HasItem\n    associate HasItem.Item is P\n" +
             "struct DerI : BaseI<raw/u8>\n    var m: i32\nstruct Src3\n    Self is HasItem\n    associate HasItem.Item is i32\n" +
-            "struct HA<S>\n    S is HasItem\n    var x: S.Item\nstruct HH2\n    var h: HA<Src2<raw/u8>>\n" +
-            "func probe(a: HA<Src>, b: HA<Src2<raw/u8>>, d: HA<DerI>, e: HH2, f: HA<Src3>) => ()\nfunc unbound<T>(g: HA<T>) -> ()\n    T is HasItem\n    return\n");
+            "struct HA<S>\n    S is HasItem\n    var x: S.Item\nstruct HH2\n    var h: HA<Src2<raw/u8>>\nstruct DerQ : BaseI<Src2<raw/u8>.Item>\n" +
+            "    var m: i32\nopen struct BaseF<P>\n    var f: P\nstruct DerF : BaseF<Src2<raw/u8>.Item>\n    var m: i32\n" +
+            "struct Nest<S>\n    S is HasItem\n    Self is HasItem\n    associate HasItem.Item is S.Item\nstruct SrcC<T>\n    Self is HasItem when T is Copy\n" +
+            "        associate HasItem.Item is T\nstruct HHC\n    var h: HA<SrcC<raw/u8>>\nenum ESrc\n    Self is HasItem\n    associate HasItem.Item is raw/u8\n" +
+            "    A\nenum EH<S>\n    S is HasItem\n    A(S.Item)\n    B\n" +
+            "func probe(a: HA<Src>, b: HA<Src2<raw/u8>>, d: HA<DerI>, e: HH2, f: HA<Src3>, q: HA<DerQ>, r: DerF, n: HA<Nest<Src>>, " +
+            "n2: HA<Nest<Src2<raw/u8>>>, hc: HHC, c2: HA<SrcC<raw/u8>>, es: HA<ESrc>) => ()\n" +
+            "func unbound<T>(g: HA<T>, eh: EH<Src>) -> ()\n    T is HasItem\n    return\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
+        var functions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().ToArray();
+        var p = functions.Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
+        var u = functions.Single(static x => x.Name == "unbound").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
         var types = c.Types;
-        BoundType[] holders = [p[0], p[1], p[2], Kept(p[3]), p[4]];
+        types.StoredParts(p[6], out var derF);
+        BoundType[] holders = [p[0], p[1], p[2], Kept(p[3]), p[4], p[5], derF!, p[7], p[8], Kept(p[9]), p[10], p[11]];
         Assert.Equal(
-            ["raw/u8 True", "raw/u8 False", "raw/u8 True", "raw/u8 True", "i32 False"],
+            [
+                "raw/u8 True", "raw/u8 False", "raw/u8 True", "raw/u8 True", "i32 False", "raw/u8 True", "raw/u8 True", "raw/u8 True", "raw/u8 False",
+                "raw/u8 True", "raw/u8 False", "raw/u8 True",
+            ],
             holders.Select(x => $"{TyCtxt.Name(Kept(x))} {TyCtxt.RawStated(Kept(x))}"));
         Assert.All(holders, x => Assert.Same(c.Binding.WithoutRawOrigins(Kept(x)), AdtDef.FieldType(x, 0)));
+        Assert.All(holders, x => Assert.Same(AdtDef.FieldType(x, 0), c.Binding.StoredType(x.Symbol!.Adt!.Fields[0], x)));
         Assert.All(holders, x => Assert.False(AdtDef.FieldType(x, 0)!.HasAbstractPart));
-        var unbound = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "unbound").Parameters[0].Type.TypeOf()!;
-        Assert.Equal(BoundTypeKind.AssociatedProjection, Kept(unbound).Kind);
+        var payload = types.StoredParts(u[1], out _)[Array.FindIndex(u[1].Symbol!.Adt!.Cases, static x => x is { Payload.Length: 1 })]!;
+        Assert.Equal("(raw/u8) True", $"{TyCtxt.Name(payload)} {TyCtxt.RawStated(payload.Components[0])}");
+        Assert.Equal(BoundTypeKind.AssociatedProjection, Kept(u[0]).Kind);
 
         // The first kept part of a struct instance.
         BoundType Kept(BoundType x) => types.StoredParts(x, out _)[0]!;

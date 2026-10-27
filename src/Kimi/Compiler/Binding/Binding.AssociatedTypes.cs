@@ -526,6 +526,7 @@ public sealed partial class Binding
 
         if (binding.State != 0)
         {
+            binding.State = binding.State == 1 ? (byte)4 : binding.State; // Revisited while it is being resolved.
             return binding.State == 2 ? binding.Result : null;
         }
 
@@ -541,6 +542,10 @@ public sealed partial class Binding
             result = type;
         }
 
+        // SPEC 8.3.3 Recursion (DECISIONS BU-50): a binding revisited while it is being resolved supplies no evidence to itself, so a
+        // Type that stays pending through that revisit (`G<T> { Item is G<G<T>>.Item }`, `A.Item is A.Item`, a cycle through another
+        // binding) names no Type: the binding gives none, and its declaration's records stay those its proof gives.
+        valid &= binding.State != 4 || result is null || !this.PendingAssociatedType(result);
         binding.State = valid ? (byte)2 : (byte)3;
         binding.Result = valid ? result : null;
         return binding.Result;

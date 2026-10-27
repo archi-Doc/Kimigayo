@@ -841,7 +841,7 @@ public sealed partial class Binding
         var type = symbol.Type;
         if (node is MemberAccessKoto member && type is not null && this.memberSelections.TryGetValue(member, out var selection) && selection.DeclaringType is { } declaringType)
         {
-            type = this.StoredType(type, declaringType);
+            type = this.ReadType(type, declaringType);
         }
         else if (type is null)
         {

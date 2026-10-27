@@ -554,15 +554,20 @@ public sealed class InstanceCollectorTest
         Assert.Equal(complete ? DiagnosticCode.InternalInvariant_Kd : null, collector.RecordOf(Layout.Outcome.Rejected));
     }
 
-    // SPEC 8.6.1, IMPL 21.1 (DECISIONS BU-50, PLAN G271): an instance whose Field is an associated projection is collected and laid out
-    // with the Field its subject's conformance binds (W<Src>'s `e: S.Element` as i32); before, the Field reached Layout uncompleted and
-    // the collection threw "Layout has no row for the Type Element" (sel's `check`: CheckFaulted_Kd).
-    [Fact]
-    public void AProjectionFieldIsLaidOutCompleted()
+    // SPEC 8.6.1, 8.2.3, IMPL 21.1 (DECISIONS BU-50, PLAN G271): an instance whose stored part is an associated projection is collected and
+    // laid out with the Type its subject's conformance binds (W<Src>'s `e: S.Element` as i32), and a body reads the part as that Type, the
+    // one producer's: a Field read (`w.e`) and a Case payload read (`.A(let n)`) give an i32 local. Before, the uncompleted projection
+    // reached Layout through AdtDef's view or a read's local (the collection threw "Layout has no row for the Type Element", sel's
+    // `check` CheckFaulted_Kd), and a payload read's `n + 1` was TypeMismatch_Kd.
+    [Theory]
+    [InlineData("    let w = W<Src>.init(e: 1)\n    let p = (w@move, 2)\n")]
+    [InlineData("    let w = W<Src>.init(e: 1)\n    let v = w.e\n")]
+    [InlineData("    let e: EM<Src> = .A(1)\n    let y = match e@move\n        .A(let n) => n + 1\n        .B => 0\n")]
+    public void AProjectionPartIsLaidOutAndReadCompleted(string body)
     {
         var (_, set) = Collect("contract HasElem\n    associate Element\nstruct Src\n    Self is HasElem\n    associate Element is i32\nstruct W<S>\n" +
-            "    S is HasElem\n    public var e: S.Element\n    public init(e: S.Element) => self.e = e@move\npublic func main() -> ()\n" +
-            "    let w = W<Src>.init(e: 1)\n    let p = (w@move, 2)\n    return\n");
+            "    S is HasElem\n    public var e: S.Element\n    public init(e: S.Element) => self.e = e@move\nenum EM<S>\n    S is HasElem\n" +
+            "    A(S.Element)\n    B\npublic func main() -> ()\n" + body + "    return\n");
         Assert.Empty(set.Records);
         Assert.NotEqual(0, set.Items.Length);
     }
