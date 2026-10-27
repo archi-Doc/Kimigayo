@@ -22,7 +22,7 @@ internal sealed partial class FunctionCodegen
     private void Intrinsic(in MirTerminator call, in IntrinsicRow row)
     {
         var target = row.Target == IntrinsicTarget.None ? -1 : this.Target(new(this.at, this.body.Blocks[this.at].Count));
-        if (this.Routine(row, this.InstanceType(call.Place), this.TypeArgument(call.Callee.Subst), target, out var given) is { } routine)
+        if (this.Routine(row, this.InstanceType(call.Place), call.Callee.Subst, target, out var given) is { } routine)
         {
             this.Invoke(call, routine, new(call.Callee.Symbol, MirBodyKind.Fn), given);
             return;
@@ -85,7 +85,7 @@ internal sealed partial class FunctionCodegen
         return IntrinsicDisposition.Of(kind) switch
         {
             { Kind: DispositionKind.Intrinsic, Id: var id } =>
-                this.Routine(IntrinsicRows.Of(id), result, this.TypeArgument(this.typeContext.SubstOfItem(item)), target, out given),
+                this.Routine(IntrinsicRows.Of(id), result, this.typeContext.SubstOfItem(item), target, out given),
             _ => LegacyRuntimeHelpers.Row(kind) is { } row ? this.Routine(row, target, source, out given) : null,
         };
     }
@@ -122,15 +122,16 @@ internal sealed partial class FunctionCodegen
     }
 
     // A routine row, a call that is one runtime routine: its routine, after its module request (TryAllocate's), and its slot-less values in
-    // order into `given`, from the call's result Type and its Type argument in the item's instance (TypeArgument) and the target it carries
-    // (-1: none). Raw.allocate<T>(count) (SPEC 5.6) is __kimi_raw_allocate, which checks the count and the byte size and gives a nonnull
-    // aligned address for zero bytes, with T's stride; no Layout alignment exceeds the heap's 16 (DECISIONS R5-M92), so no T is refused. A
-    // creation is its target descriptor's factory and a clone its handle's retain (FunctionCodegen.Objects). Null for any other writer, and
-    // after a broken contract's record. A T without its layout is a broken contract, recorded by Laid (its stride 0, in a module then not
-    // written).
-    private FunctionAbi? Routine(IntrinsicRow row, BoundType? result, BoundType? argument, int target, out ReadOnlySpan<Value> given)
+    // order into `given`, from the call's result Type, its Type argument in the item's instance where the row reads one (TypeArgument, of
+    // the call's substitution or an Item's own) and the target it carries (-1: none). Raw.allocate<T>(count) (SPEC 5.6) is
+    // __kimi_raw_allocate, which checks the count and the byte size and gives a nonnull aligned address for zero bytes, with T's stride; no
+    // Layout alignment exceeds the heap's 16 (DECISIONS R5-M92), so no T is refused. A creation is its target descriptor's factory and a
+    // clone its handle's retain (FunctionCodegen.Objects). Null for any other writer, and after a broken contract's record. A T without its
+    // layout is a broken contract, recorded by Laid (its stride 0, in a module then not written).
+    private FunctionAbi? Routine(IntrinsicRow row, BoundType? result, Subst? subst, int target, out ReadOnlySpan<Value> given)
     {
         given = default;
+        var argument = this.TypeArgument(row, subst);
         switch (row.Writer)
         {
             case IntrinsicWriter.Routine:
@@ -153,11 +154,11 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // K package 4.5 rows 6-9 (DECISIONS R5-M74): an intrinsic's Type argument in the item's instance, the one operand form its rows read, as
-    // the collector reads it for the row's target (InstanceCollector.Intrinsic): a call's substitution's or an Item's own (SubstOfItem); null
-    // without one.
-    private BoundType? TypeArgument(Subst? subst)
-        => subst is not null && subst.Types.Length > 0 && subst.Types[0] is { } first ? this.collector.TypeOf(this.item, first) : null;
+    // K package 4.5 rows 6-9 (DECISIONS R5-M74, R5-M136): an intrinsic's Type argument in the item's instance, the one operand form its rows
+    // read, as the collector reads it for the row's target (InstanceCollector.Intrinsic): a call's substitution's or an Item's own
+    // (SubstOfItem), read only where the row reads one (IntrinsicRow.ReadsTypeArgument), whose function has it; null for another row.
+    private BoundType? TypeArgument(in IntrinsicRow row, Subst? subst)
+        => row.ReadsTypeArgument && subst!.Types[0] is { } first ? this.collector.TypeOf(this.item, first) : null;
 
     // SPEC 17.4, 22.5.2: a Fail Aborts through the runtime Abort with its fixed code's reason (AbortReasons.Of; its one operand, the code,
     // names a reason or the MIR is broken) and no OS error (RuntimeAbi.NoOsError), the routine's slot-less parameters, at the call's
@@ -182,7 +183,12 @@ internal sealed partial class FunctionCodegen
     {
         var key = new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
         var operand = this.body.Operands[call.Start + ArgumentPosition(key, 1)];
-        if (this.InstanceType(operand) is not { } type || !ScalarTypes.Supports(type) || this.LoweringOf(operand) is not { } lowering)
+        if (this.LoweringOf(operand) is not { } lowering)
+        {
+            return; // A broken contract, recorded (Laid).
+        }
+
+        if (this.InstanceType(operand) is not { } type || !ScalarTypes.Supports(type))
         {
             this.Report(DiagnosticCode.InternalInvariant_Kd, call.Source);
             return;
