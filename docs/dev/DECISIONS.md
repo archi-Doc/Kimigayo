@@ -3649,7 +3649,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: one implementer and one reviewer below the guard (the pace above; kept as the fallback above it); two implementers and
     one reviewer (two designs and a review still cannot overlap); counting agents without a cap on heavy runs (the load, not the count,
     slows the machine).
-- **R4-M120 G160-4's 4b: A5's raw addresses** (2026-10-25; unit 4b of R4-M116's design B′ as amended, the planning session's rulings
+- **R4-M120 G160-4's 4b: A5's raw addresses** (superseded in part by R4-M151) (2026-10-25; unit 4b of R4-M116's design B′ as amended, the planning session's rulings
   PQ-1 to PQ-13; its two departures, the last two bullets, are the planning session's rulings of 2026-10-25 amending B′: W keeps "E
   where the set carries Φ_E", and the untracked rule is narrowed to addresses and exclusive Loans, sound by SPEC 5.2.1 condition 3's
   first and second limits)
@@ -4893,7 +4893,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
       1.297 ms (×1.025; A′/A ×1.023, within the noise).
     - Warm runs allocate nothing.
   - Numbering: R4-M146 was reserved for 2x-E5 by the R4 planning session (R4-M145 S2, R4-M147 P13-1, R4-M148 2c-3).
-- **R4-M147 A5's per-part guard; P13's body hold removed (PLAN G148 (1), P13-1)** (2026-10-26; R4's lane B under design P13 v3,
+- **R4-M147 A5's per-part guard; P13's body hold removed (PLAN G148 (1), P13-1)** (superseded in part by R4-M151) (2026-10-26; R4's lane B under design P13 v3,
   ACCEPT at its design review 3, on BU-41's view (U0, unit bu46); the planning session's ruling D″ of 2026-10-26 on an abstract
   referent; class Full with BU).
   - Rule (SPEC 15.6.4, 5.7 Calls, 15.3.5; A3 E16): `MirTypes.HoldsLoans` reads the guard per part. A struct's or enum's Type argument
@@ -5129,6 +5129,25 @@ and migration obligations remain in force; no numeric cap changes are authorized
     kept) and `MirBorrowsTest.AnOpaqueTempKeepsTheIndependentRecords` (A1's independent moves, an unrelated conflict, the lost class, the
     grouping pin, a literal's temporary); 27 of their 36 cases fail before, the guards pass before and after.
   - Numbering: the next free R4 number (R4-M148 is 2c-3's, R4-M150 G264's).
+- **R4-M151 A5's `Past` reads an Origin-less raw layer by Binding's statement mark (U0's revision; supersedes R4-M147's P2 bullet and
+  its Known limits' supplied-layer gap, and R4-M120's outside-instance pointee for layers a declaration writes)** (2026-10-27; the R4
+  planning session; implemented in BU's U0 revision commit beside DECISIONS BU-46; design-U0r-1r1 with design 2's findings, R4's design
+  review 2 ACCEPT; the owner's 「許可して設計 1 (推奨)」 of 2026-10-27)
+  `MirTypes.Holding.Past(layer, depth)` reads an Origin-less raw layer by one rule wherever it is: its Unstated kind is a write fact
+  exactly when `TyCtxt.RawStated(layer)` says a declaration wrote the layer without `during` (BU-46), else the layer's pointee — for a
+  stored layer read through `RawStep` and for a layer outside a stored part alike. SPEC 5.7 Calls' "supplied" is thereby decided per
+  parameter Type expression, through Binding's mark, not per nested instance: the forms R4-M147 recorded as an unsound acceptance
+  (`Holder2 { b: Wrap<raw/u8> }`, `HoldOpt { o: Option<raw/u8> }`, `DerS : BaseW<raw/u8>`, `M<raw/u8>` with `w: Two<raw/u8, P>`, a user
+  enum's payload, a Tuple in a Type argument, deeper nesting, a base chain, a pair slot's argument, `PU<raw/u8>` below `HPU`) are errors
+  on the MIR, and R4-M120's pointee reading holds only for the layers the walk's own Type writes (an Array element of a Field and a
+  `self` pointee's content were the same defect). The guard memo stays keyed by the kept Type: every fact it reads is a function of that
+  Type, the mark included.
+  - Supersedes: R4-M147's P2 bullet (the per-nested-instance reading) and the first sentence of its Known limits (the supplied-layer
+    gap); its pins `nestedDead`, `optionalDead` (`MirBorrowsTest.AStoredRawLayerIsReadByItsStep`) and `ds: DerS` (`MirTypesTest`) flip to
+    errors; R4-M120's outside-instance pointee for the layers a declaration writes.
+  - Rejected: direction (A)'s chain in `Past` (order-dependent under the per-Type memo); a route-keyed memo (unbounded, V16).
+  - Not covered: `ha`, an associate binding behind an uncompleted projection (PLAN G271, BU). The default pipeline still accepts the
+    stated forms until R6-check (STATUS).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -6083,7 +6102,7 @@ resumed by R4-M86 (2026-10-20).
     obligations unjudged); judging at formation (a Field's own Origins are still `Unbound`); "binder failed, no record" in the judge
     (`IsDerived` owns derivation). Open: A's `IsDerived` widening for an associated specification's record (review N1).
 
-- **BU-24** (superseded in part by BU-39, BU-41) (2026-10-22; the BU planning session after the full process: designs A′ and B′, design review 2, design-final §14 "B′+";
+- **BU-24** (superseded in part by BU-39, BU-41, BU-46) (2026-10-22; the BU planning session after the full process: designs A′ and B′, design review 2, design-final §14 "B′+";
   unit bu20 C1a; CR-R2) A raw layer's Origin (SPEC 5.7) is a role of its own: `BoundType.RawOrigin` beside `Origin`, one slot whose
   role the Semantics decides (0 B; a pinned interleaved A/B of the getters against C0d's build gave warm Bind minima 35.70 against
   35.41 ms over three milestones, inside the baseline's own 3% spread, and equal cold bytes, so B′'s +8 B field is not taken). `Origin`
@@ -6630,7 +6649,7 @@ resumed by R4-M86 (2026-10-20).
     CallPlan (extra state while retaining the redundant Group), or a new IR/table. The existing view row corrects the public subject
     without another allocation; removing Group work is expected to preserve compilation and native costs.
 
-- **BU-34 A pair slot binds a raw argument without its Origin** (2026-10-25; the BU planning session after the full process: designs A
+- **BU-34 A pair slot binds a raw argument without its Origin** (amended by BU-46: Unstated in kept parts) (2026-10-25; the BU planning session after the full process: designs A
   and B, the design review's choice of B's structure with A's name; unit bu34; R4's A5-facing review: accepted with the two record
   fixes below) SPEC 8.1.1's raw row, which the owner kept (R4-M117 item 4, 「推奨の通り、落とす規則を残します。SPEC は変えず、Binding を
   SPEC に合わせます。」): a `raw/T during o` argument fits a pair by dropping its Origin, so the slot binds `raw/T`, which its original
@@ -6931,7 +6950,7 @@ resumed by R4-M86 (2026-10-20).
     while the hold walk keeps its untied store, two answers to "the call writes output j", conservative (one more Φ_E target).
     Pre-existing: a lent `static` layer unties; `unlinkOk` is SPEC-invalid (`Node.init` stores through the null `next` into storage
     the body does not own: R4's triage).
-- **BU-41 An instance keeps its stored parts with their raw Origins: `TyCtxt.StoredParts`, `RawSupplied`** (2026-10-26; the BU
+- **BU-41 An instance keeps its stored parts with their raw Origins: `TyCtxt.StoredParts`, `RawSupplied`** (superseded in part by BU-46) (2026-10-26; the BU
   planning session's design S1′, `p13u0/design-U0.md`, accepted with P13's v3 by R4's design review 3; PLAN G148 (1), P13's U0, unit
   bu46; the owner's answers on P13, Q1 (a), Q2 (a) and 「進める (推奨)」, and SPEC 5.7's clarification ② of 2026-10-26) P13's per-part
   guard (R4-M76) reads, for every raw layer in a holder's own storage at any depth, its step under the holder's substitution, whether
@@ -7132,6 +7151,72 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: BU-13's `ExclusivelyAcquirable`, which continues through the Place's own layers, so a pair admitting `ref` is always
     shared and `let y = x`'s uniq case would be denied; the weakest-case walk (above); Binding reporting every bare acquisition
     without a plan, R6's move of TransferRequired (it moves the old path's records at every bare position). Not temporary.
+- **BU-46 A kept part states Unstated on each raw layer its declaration writes without `during`: `Binding.WithUnstatedOrigins`,
+  `TyCtxt.RawStated`** (2026-10-27; the BU planning session after the full process: design 1 (`p13u0/design-U0r.md`), R4's design
+  review 1 REVISE (B1 the `s/U` application, B2 the class), design 1's revision 1 (`design-U0r-1r1.md`), design 2 written without
+  either, the choice of design 1 revision 1 with design 2's findings, R4's design review 2 ACCEPT with N1–N5; PLAN G148 (1), U0's
+  revision, unit bu50; class Full; the owner at the choice, 「許可して設計 1 (推奨)」, 2026-10-27) SPEC 5.7 Calls decides an Origin-less
+  raw layer per parameter: the write fact unless the parameter's Type expression writes it (a Type argument's or a pair slot's argument's
+  included), also below the holder. BU-41's kept parts carried nothing for such a layer and a nested instance is interned
+  (`Wrap<raw/u8>` below `Holder2.b` and below `Outer<raw/u8>.w` is one Type), so `RawSupplied`, answering per nested instance, read a
+  layer a declaration writes in a Type argument of its own Field, Case payload or base clause as supplied (R4-M147's Known limits, an
+  unsound acceptance on the MIR). An answer relative to the route in A5 is order-dependent under the walk's per-Type memo (design 1's
+  (A): `G<raw/u8>` None, `G2<raw/u8>`, its Fields swapped, Through), and a memo keyed by route is unbounded (V16).
+  - Decision (the mark): `Binding.WithUnstatedOrigins(declared)` (Binding.Storage.cs) is the declared Type with each raw layer it
+    writes without `during` stating `BoundOrigin.Unstated`, the Origin such a layer counts as stating (5.7 Fits); a layer stating an
+    Origin, an abstract part but a pair binder's application `s/U` (whose `U` the declaration writes) and a callable are kept as written,
+    and an Unbound layer, a reported error's dependent, is not marked. `Substitute` keeps `StoredType(WithUnstatedOrigins(written),
+    owner)` for `Parts`, `PartsBase` and the Case payload Tuples (`KeptType`, the one producer); `Fields`, `Cases` and `Base` stay
+    their `WithoutRawOrigins`, so AdtDef's view is unchanged (the same Types by reference). No kind and no cache: the mark is formed in
+    each instance refill, linear in the declared part. The kept Type now tells the holders apart (Holder2's `Wrap<raw/u8 during
+    Unstated>`, Outer<raw/u8>'s the parameter's `Wrap<raw/u8>`), so every answer is a function of the kept Type and A5's memo stays sound.
+  - Provenance follows the binding (revision 1's one rule for review 1's B1): substitution copies a layer with its mark (a Type slot's
+    argument, a component); both pair formations, 8.1.1's `s/T` and 8.1.2's `s/U`, read W only through `TyCtxt.PairBinding(W)`, the
+    one exception, which drops a stated Origin and keeps Unstated; `ApplySemantics` forms a concrete `s/U` as `Rebuild(PairBinding(W),
+    [U], a borrow's annotation)`, `Form`'s Type for every unmarked W (R4's assertion over 1,500 tests). So `HPU { p: PU<raw/u8> }`'s
+    `v: s/i32` is `raw/i32 during Unstated`, its parameter twin `PU<raw/u8>`'s `raw/i32`.
+  - Readers: `StepOf` steps Unstated as Unstated (members complete and empty, as before); `TyCtxt.RawStated(layer)`, a read of the
+    layer Type (total, allocation-free), replaces `RawSupplied` and `StoredSupplied` in A5's `Past` (R4-M151).
+  - Confinement (review 2's N4): Unstated stands only on raw layers of kept parts and of the nested instances and pair arguments they
+    reach; `BoundType`'s constructor admits it in the raw role only; kept parts are read only by walks returning facts (`StoredLayer`,
+    retention's `Held` and `Stores`, A5's `Holding`), so no relation, premise, obligation or row is formed from it (design-final §13 A2
+    holds as written). MirValidator's `Local` row reports a local whose Type states Unstated (`TyCtxt.StatesUnstated`, gated by
+    `CarriesRawOrigin`, an indexed walk) as `InternalInvariant_Kd` in every configuration, so a leak, which would make A5 read a
+    parameter's or local's layer as a declaration's, fails where it would change a verdict. `TyCtxt.Name` prints the unmarked spelling.
+  - Invariant (N2): no declared part writes a Semantics family; a family comes only from an expression's adaptation, and a Field
+    initializer's adaptation forms a `SemanticsApplication` (review 2's eight forms). `WithUnstatedOrigins` throws InternalInvariant on
+    one instead of keeping it unmarked, where a family case would read as the parameter's (a silent unsound acceptance).
+  - Retention needs no stated or supplied reading (N3): rule A (5.7 Calls' last sentence) governs every Origin-less layer a call may
+    write, whoever wrote it; rows are equal with and without the mark.
+  - The owner's decisions (verbatim above): BU-24 C1b's Q-O2 clause ("only in relations and their records, never stored") departs for
+    raw layers of kept parts only; `BoundType`'s constructor admits Unstated in the raw role (`TyCtxtTest.ARawLayerKeepsItsOriginRole`:
+    `Pointer(I32, Unstated)` forms, a borrow stating it still throws); BU-34's P1 gains a kept-part exception (there one SPEC Type is two
+    interned Types, `PS<raw/u8 during Unstated>` and `PS<raw/u8>`; AdtDef's view, signatures and bodies keep P1, and R4-M117 item 4's
+    drop rule stays for stated Origins); the raw-role ratchet grows by two sites (`Binding.Storage.cs` 2 to 3, `TyCtxt.Raw.cs` 0 to 1).
+  - Supersedes: BU-41's TyCtxt bullet (`RawSupplied`, and "A walk reads a layer … only through these three on the instance holding
+    it": `RawStated` reads the layer) and its reason that only the part before erasure distinguishes holders (for an Origin-less layer
+    the mark does); amends BU-24 C1b's Q-O2 clause, the RawOrigins invariant "never in a Type" (now: never in any Type but a kept part's
+    raw layer, never in AdtDef's) and BU-34's invariant (TyCtxt.cs's head: but Unstated in kept parts).
+  - Rejected: (A), a chain in `Past` (order-dependent, above; it also needed a position grammar and a frame stack in A5); the Limit at
+    every nested supplied layer (`Unsupported_Kd` on valid twins: `Outer<raw/u8>`, `Hold<raw/u8>`, `Opt2<raw/u8>`, `M2<raw/u8>`); a
+    dedicated OriginKind (two names, one concept); a `BoundType` bit (moves no rule, an eleventh `Intern` parameter); marking the declared
+    Field Types themselves (changes AdtDef's view, Hover and identity); marking after substitution (cannot tell a written layer from a
+    supplied one); design 2's memoized `Stated` (a second stored form, +633 KB cold Bind on the census) and its second carrier at the
+    family arm (`BinderLayer`: a second fix for one symptom, and no kept part reaches a family).
+  - Not covered: G271 (`HA<S> { x: S.Item }`: `Substitute` leaves an associated projection uncompleted; completing it adds a second
+    producer of the mark, an associate binding a declaration writes); `sharedSupplied` (a layer stating a slot inside a nested argument,
+    `HS {s} { b: Wrap<raw/i32 during s> }`, stays R4-M147's Limit); the default pipeline accepts the stated forms until R6-check (it
+    reads AdtDef's view).
+  - Cost (Release, dev f6e7ceef0 against this unit, census of 120 programs: library, milestones, goldens, accepting SPEC variants; two
+    runs each): no census program has a marked part; cold Bind 609,963,032 B against 609,961,520 and 609,962,048 B (noise), BuildMir
+    with A5 426,939,216 B on both, instances 32,183 and problems 7 on both; a program of 22 marked parts, +4,544 B cold Bind (+0.09%).
+    Warm: `Bind(Final)` and 39 guard walks over marked holders allocate 0 B (also `TyCtxtTest.AWarmStoredRawLayerReadAllocatesNothing`).
+    Time (warm `Bind(Final)`, library and 44 milestones, the minimum of 15 reps per program, CPU 6 pinned, tiering off, A and B from one
+    folder, three interleaved rounds on a quiet machine): B/A 0.9978, 0.9896 and 1.0064 per round (medians 0.9981, 0.9895, 1.0065); over
+    the rounds' per-program minima 485.1 against 483.8 ms, B/A 0.9972 (median 0.9972). No slowdown.
+  - Evidence that the family check and the Local row never fire: the unit's Session (24,586 tests) has no failure, and neither can stay
+    silent there: the family throw escapes Binding as an exception, and a Local finding fails MirCensusTest's census and every test that
+    asserts a body has no validator finding.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
