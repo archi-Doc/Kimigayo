@@ -464,6 +464,29 @@ public sealed partial class FunctionCodegenTest
     public void FrameProgramsRun(string name, string source)
         => ScalarEmissionTest.EmitFixture(name, source, string.Empty);
 
+    // DECISIONS BU-48 (SPEC 6.3.2-6.3.4, 8.15.3, IMPL 21.3.2): a constructor's construction receiver is no use, so an uncalled constructor
+    // whose receiver has no layout is accepted at check. A Library generates every root, and the frame maps the receiver's layout failure
+    // through the collector's RecordOf, at the constructor: an unavailable C layout is Unsupported_Kd, a size over 2^31 - 1 its Resource
+    // record, never InternalInvariant_Kd. An Application, which generates only its startup's closure, is written.
+    [Theory]
+    [InlineData(OutputKind.Library, "clayout", "Unsupported_Kd")]
+    [InlineData(OutputKind.Library, "limit", "GenerationResourceLimit_Kd")]
+    [InlineData(OutputKind.Application, "clayout", null)]
+    [InlineData(OutputKind.Application, "limit", null)]
+    public void AnUncalledConstructorsReceiverWithoutALayoutIsItsOutcomesRecord(OutputKind output, string form, string? code)
+    {
+        var source = form == "clayout" ? "#Layout(\"C\")\npublic struct S\n    public init() => ()\n" :
+            "public struct Big\n    public var a: [1073741824 of u8]\n    public var b: [1073741824 of u8]\n    public var c: [1073741824 of u8]\n" +
+            "    public init(a: [1073741824 of u8], b: [1073741824 of u8], c: [1073741824 of u8])\n" +
+            "        self.a = a@move\n        self.b = b@move\n        self.c = c@move\n";
+        var c = Analyze(source + (output == OutputKind.Application ? "let zz = 1\n" : string.Empty), output);
+        Assert.True(c.Accepts, string.Join(", ", Records(c)));
+        using var writer = new StringWriter();
+        Assert.Equal(code is null, c.Generate(writer));
+        var init = form == "clayout" ? "init() => ()" : "init(a: [1073741824 of u8], b: [1073741824 of u8], c: [1073741824 of u8])";
+        Assert.Equal(code is null ? [] : [(code, init)], Records(c).Select(static x => (x.Code, x.Text?.Split('\n')[0].TrimEnd())));
+    }
+
     [Theory]
     [MemberData(nameof(Operators))]
     public void OperatorProgramsRun(string name, string source, string stderr)
