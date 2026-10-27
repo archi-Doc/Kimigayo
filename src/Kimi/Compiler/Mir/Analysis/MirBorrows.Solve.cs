@@ -25,7 +25,7 @@ internal sealed partial class MirBorrows
         }
 
         var all = ulong.MaxValue >> (64 - (int)MirCases.Count(body));
-        (this.program, this.body, this.view, this.views) = (program, body, view, moves.ViewDependent ? 1UL << (int)view : all);
+        (this.program, this.body, this.view, this.views, this.held) = (program, body, view, moves.ViewDependent ? 1UL << (int)view : all, false);
         this.sets.Clear();
         (this.loanBase, this.escapedSet) = (Markers + body.Locals.Length, this.sets.Add(0, Escaped));
         this.Loans();

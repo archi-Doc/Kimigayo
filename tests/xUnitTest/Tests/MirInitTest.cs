@@ -191,6 +191,48 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Equal(2, moves.Paths.ToArray().Count(x => x.Local == array));
     }
 
+    // SPEC 15.1.3 (DECISIONS R4-M21, R4-M146): Build empties the paths of a large body whole and a small body's entry by entry (MirTable),
+    // and a body after either gets the paths a fresh instance gives: the paths, the flow paths and each Place's path, so no child or Place
+    // of an earlier body, keyed by indices that restart, answers for it.
+    [Fact]
+    public void ABodyAfterALargeOneGetsAFreshInstancesPaths()
+    {
+        var text = new StringBuilder("struct Q\n    public var a: i32 = 1\n    public var b: (i32, i32) = (1, 2)\n    public init() => ()\n");
+        text.Append("func large()\n");
+        for (var i = 0; i < 600; i++)
+        {
+            text.Append($"    var q{i} = Q.init()\n    q{i}.b.1 = {i}\n");
+        }
+
+        text.Append("func small(flag: bool)\n    var q = Q.init()\n    if flag => q.b.0 = 3\n    q.a = 2\n");
+        text.Append("func other(flag: bool)\n    var q = Q.init()\n    q.a = 4\n    let t = (q.b.1, flag)\n");
+        var bodies = MirBuildTest.Compile(text.ToString()).BuildMir().Bodies.ToArray();
+        var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData());
+        Paths(bodies.Single(static x => x.Key.Decl?.Name == "large"), moves);
+        foreach (var name in new[] { "small", "other" })
+        {
+            var body = bodies.Single(x => x.Key.Decl?.Name == name);
+            Assert.Equal(Paths(body, new MirMoveData()), Paths(body, moves));
+        }
+
+        // A body's paths built by a MirMoveData: each path, the flow paths' count and each projected Place's path and access in use order.
+        string[] Paths(MirBody body, MirMoveData data)
+        {
+            flow.Begin(body);
+            data.Build(body, flow);
+            var found = new Found(data, [.. data.Paths.ToArray().Select(static x => x.ToString()), $"flow {data.FlowCount}"]);
+            for (var block = 0; block < body.Blocks.Length; block++)
+            {
+                for (var i = 0; i <= body.Blocks[block].Count; i++)
+                {
+                    MirUses.ForEach(body, new(block, i), ref found);
+                }
+            }
+
+            return [.. found.Log];
+        }
+    }
+
     // SPEC 4.7.4 (DECISIONS R4-M56): a selection's receiver is checked once, where it is located: at its guard, the selection, so an
     // access through a runtime index into an uninitialized array is one problem whatever consumes the element.
     [Theory]
@@ -526,5 +568,27 @@ public sealed class MirInitTest(ITestOutputHelper output)
         return [.. program.Problems.All.ToArray().Select(static (x, i) => (Problem: x, Index: i)).Where(static x => x.Problem.Subject.Module == 0)
             .Select(x => $"{x.Problem.Code} {c.SyntaxOf(x.Problem.Subject).ToString().Split('\n')[0].Trim()} {x.Problem.Views}" +
                 (x.Problem.Code == DiagnosticCode.OwnershipStorageLimit_Kd ? $" {MirDataflowTest.Limit(program.Problems, x.Index)}" : string.Empty))];
+    }
+
+    // The path and access MirMoveData finds for each projected Place a body uses, after the lines a log starts with.
+    private readonly struct Found(MirMoveData moves, List<string> log) : IMirUses
+    {
+        internal List<string> Log => log;
+
+        public void Operand(in MirOperand operand)
+        {
+        }
+
+        public void Place(MirPlace place, MirAccess access, MirRefKind kind)
+        {
+            if (place is { IsStatic: false, Projection: > 0 })
+            {
+                log.Add($"{place} {moves.Find(place, out var how)} {how}");
+            }
+        }
+
+        public void Effect(MirEffect effects, int site)
+        {
+        }
     }
 }

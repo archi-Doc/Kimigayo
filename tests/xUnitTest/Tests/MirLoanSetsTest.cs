@@ -169,6 +169,32 @@ public sealed class MirLoanSetsTest(ITestOutputHelper output)
         Assert.Equal(5 * sizeof(int), sets.Bytes);
     }
 
+    // R4-M53, R4-M146: Clear empties the nodes and memos of a large view whole and a small view's entry by entry (MirTable), and a view
+    // after either gets the sets a fresh instance gives, so no node or memo of an earlier view, keyed by ids that restart, answers for it.
+    [Fact]
+    public void AViewAfterALargeOneGetsAFreshInstancesSets()
+    {
+        var sets = new MirLoanSets();
+        for (var i = 0; i < 2_000; i++)
+        {
+            _ = sets.Remove(sets.Union(Of(sets, i, i + 1), sets.Range(i, 3)), Of(sets, i + 2));
+        }
+
+        sets.Clear();
+        Assert.Equal(View(new MirLoanSets(), 1), View(sets, 1));
+        sets.Clear();
+        Assert.Equal(View(new MirLoanSets(), 2), View(sets, 2));
+
+        // A small view's sets, each its id and elements, from a first element: Add, Union, Range and Remove repeat the earlier view's keys.
+        static string[] View(MirLoanSets sets, int first)
+        {
+            var a = sets.Add(0, first);
+            var b = sets.Add(a, 2);
+            var c = sets.Union(a, sets.Range(2, 2));
+            return [.. new[] { a, b, c, sets.Remove(c, b) }.Select(x => $"{x}: {string.Join(", ", sets.Elements(x).ToArray())}")];
+        }
+    }
+
     // V16, R4-M53: a warm run after Clear allocates nothing: the element pool, the nodes and the memos keep their storage.
     [Trait("Purpose", "Allocation")]
     [Fact]

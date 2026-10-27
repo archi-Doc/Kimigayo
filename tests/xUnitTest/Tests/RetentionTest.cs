@@ -141,7 +141,8 @@ public sealed class RetentionTest
 
     // SPEC 15.6.4, 15.6.1, 15.3.4: a nested function or closure is read under the premises its body is checked under, its enclosing
     // function's included: an input's well-formedness (c outlives o) there makes `value` reach the result, through a direct call, a
-    // Closure called by its declared signature (C8) and an enclosing result's well-formedness alike.
+    // Closure called by its declared signature (C8; its parameter after its call receiver at input 0, DECISIONS R4-M148) and an enclosing
+    // result's well-formedness alike.
     [Fact]
     public void EnclosingPremisesAreTheBodysPremises()
     {
@@ -149,7 +150,7 @@ public sealed class RetentionTest
         Assert.Equal("0 Value result", Declared(nested, "pass"));
         Assert.Equal(["0 Value result"], Calls(nested, "pass"));
         var closure = Bind(Enclosing + "    let k = func (value: ref/i32 during c) -> ref/i32 during o => value\n" + Write + "    let r = k(x)\n    q@follow = 5\n    return r@follow\n");
-        Assert.Equal(["0 Value result"], ValueCalls(closure));
+        Assert.Equal(["1 Value result"], ValueCalls(closure));
         var result = Bind("func outer(q: uniq/i32 during c) -> Option<ref/(ref/i32 during c) during o>\n    func pass(value: ref/i32 during c) -> ref/i32 during o => value\n" +
             Write + "    let r = pass(x)\n    q@follow = 5\n    _ = r@follow\n    return .None\n");
         Assert.Equal("0 Value result", Declared(result, "pass"));
@@ -298,7 +299,8 @@ public sealed class RetentionTest
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
     // C8 (DECISIONS R4-M41): a Value call is read over the Callable signature its callee declares, a function item's, a Closure's or a
-    // Function Type's, whose per-call Origins are the call's fresh regions; a Function Type input stores no per-call Origin of its own.
+    // Function Type's, whose per-call Origins are the call's fresh regions; a Function Type input stores no per-call Origin of its own. A
+    // Closure's parameters follow its call receiver at input 0 (DECISIONS R4-M148).
     [Fact]
     public void CallableSignaturesRetainByTheirOwnOrigins()
     {
@@ -306,7 +308,86 @@ public sealed class RetentionTest
             "func meet(f: (ref/i32, ref/i32) -> ref/i32, x: ref/i32, y: ref/i32) -> ref/i32 => f(x, y)\n" +
             "var a = 1\nlet item = pass\nlet r = item(a@ref)\nlet closure = func (z: ref/i32) -> ref/i32 => z\nlet s = closure(a@ref)\n");
         Assert.Equal("1 Value result", Declared(c, "apply"));
-        Assert.Equal(["0 Value result", "0 Value result, 1 Value result", "0 Value result", "0 Value result"], ValueCalls(c));
+        Assert.Equal(["0 Value result", "0 Value result, 1 Value result", "0 Value result", "1 Value result"], ValueCalls(c));
+    }
+
+    // SPEC 15.8.2, 7.7.2 (DECISIONS R4-M126, R4-M148): a Closure's contract has its call receiver at input 0, `R/Env during ρ` over the
+    // definition's environment (the calling local's Type names the Origins its initializer infers, so a parameter would reach no binding
+    // there), its bindings Fields of the referent: a `var` binding of an Exclusive receiver is written (exchange, varPair: `1 Value store 0`
+    // and the receiver's own content, `0 Content store 0`), a `let` one never (letPair), what a captured exclusive reference refers to is
+    // (holder); a result naming a binding's Origin is the receiver's content (exchange, shared, through `ref/`); a Consuming receiver is
+    // the environment by value, whose bindings are not written (consuming). A Closure captured into another is read as its body sees it,
+    // also from a `var` local, whose own Type names its initializer's inferred Origins (nestedGet over get, nestedRemember over remember:
+    // BU's review B1). No Closure contract has referent stores (a 4.6-4.9 operation's).
+    [Fact]
+    public void AClosuresCallReceiverIsInputZero()
+    {
+        var c = Bind("func use(z: uniq/i32, x: ref/i32, w: uniq/i32) -> i32\n    origin z outlives x\n" +
+            "    var state: ref/i32 during x = x\n" +
+            "    var exchange = func [var state] (value: ref/i32 during x) -> ref/i32 during x\n        let old = state\n        state = value\n        return old\n" +
+            "    _ = exchange(z@follow@ref)\n" +
+            "    let r: ref/i32 during x = x\n" +
+            "    var letPair = func [r, w] (v: ref/i32 during x) -> i32\n        w@follow = v@follow\n        return r@follow\n    _ = letPair(x)\n" +
+            "    var varPair = func [var r, w] (v: ref/i32 during x) -> i32\n        w@follow = v@follow\n        return r@follow\n    _ = varPair(x)\n" +
+            "    var holder: ref/i32 during x = x\n" +
+            "    var store = func [holder@uniq] (b: ref/i32 during x) -> i32\n        holder@follow = b\n        return 0\n    _ = store(x)\n" +
+            "    let n: i32 = 1\n    let consuming = func [n] () -> i32 => n@move\n    _ = consuming()\n" +
+            "    let shared = func [r] () => r\n    _ = shared()\n    let viaRef = shared@ref\n    _ = viaRef()\n" +
+            "    var get = func [r] () -> ref/i32 during x => r\n    let nestedGet = func [get@move] () -> ref/i32 during x => get()\n" +
+            "    _ = nestedGet()\n" +
+            "    var remember = func [var r] (value: ref/i32 during x) -> ref/i32 during x\n        let old = r\n        r = value\n        return old\n" +
+            "    var nestedRemember = func [var remember@move] (b: ref/i32 during x) -> ref/i32 during x => remember(b)\n" +
+            "    _ = nestedRemember(x)\n    return 0\n");
+        Assert.Equal(
+            ["0 Content result, 1 Value result, 0 Content store 0, 1 Value store 0", string.Empty, "0 Content store 0, 1 Value store 0",
+                "0 Content store 0, 1 Value store 0", string.Empty, "0 Content result", "0 Content result", "0 Content result",
+                "0 Content result", "0 Content result, 1 Value result, 0 Content store 0, 1 Value store 0",
+                "0 Content result, 1 Value result, 0 Content store 0, 1 Value store 0"],
+            ValueCalls(c));
+    }
+
+    // SPEC 15.8.2, 8.10, 7.7.3 (DECISIONS R4-M126 D-6, R4-M128, R4-M148): one predicate says whether a Value callee's contract has the call
+    // receiver input, reading the callee through one Semantics layer: a Closure, borrowed or not, has it; a function item, a Function value
+    // and a Callable-bounded value do not. The receiver a Closure Type's case admits is its definition's case-free receiver unless that is
+    // Shared, else Exclusive where a capture whose bare acquisition Reborrows by case has an exclusive layer as its case component: `value`
+    // of `s/T` (s is owner or uniq) Copies in the owner case and Reborrows in the uniq case, directly (marked) or through a nested Closure's
+    // bare entry (nested), so the owner view admits Shared and the uniq view Exclusive, and the instance gives Receiver, Exclusive.
+    [Fact]
+    public void AClosureCalleeHasTheReceiverInputAndItsCaseReceiver()
+    {
+        var c = Bind("func pass(value: ref/i32) -> ref/i32 => value\nfunc apply(f: (ref/i32) -> ref/i32, x: ref/i32) -> ref/i32 => f(x)\n" +
+            "func bounded<F>(g: ref/F, x: ref/i32) -> ref/i32\n    F is Callable<(ref/i32) -> ref/i32>\n    return g(x)\n" +
+            "var a = 1\nlet item = pass\n_ = item(a@ref)\nvar k = func (z: ref/i32) -> ref/i32 => z\n_ = k(a@ref)\nlet kr = k@ref\n_ = kr(a@ref)\n" +
+            "let ku = k@uniq\n_ = ku(a@ref)\n");
+        Assert.Equal(
+            [false, false, false, true, true, true],
+            KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => CallPlan.Of(x, 0)).OfType<CallPlan>()
+                .Where(static x => x.Kind == CalleeKind.Value).Select(x => c.Types.HasReceiverInput(x.CalleeType)).ToArray());
+
+        var m = MirBuildTest.Compile("func marked<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n" +
+            "    var h = func [value] () -> ()\n        let local = value\n        _ = local\n    h()\n" +
+            "func nested<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n" +
+            "    var outer = func [value] () -> ()\n        var inner = func [value] () -> ()\n            let local = value\n            _ = local\n        inner()\n" +
+            "    outer()\npublic func main() => ()\n");
+        var program = m.BuildMir();
+        var cases = new MirCases(m.Types);
+        string[] receivers = [.. new[] { "marked", "nested" }.SelectMany(name => Receivers(program.Bodies.ToArray().Single(x => x.Key.Decl?.Name == name)))];
+        Assert.Equal(["Ref Uniq Uniq", "Ref Uniq Uniq"], receivers);
+
+        IEnumerable<string> Receivers(MirBody body)
+        {
+            var local = Enumerable.Range(0, body.Locals.Length).First(i => body.Locals[i].Type is { Kind: BoundTypeKind.Closure });
+            var views = new List<string>();
+            for (var view = 0L; view < MirCases.Count(body); view++)
+            {
+                cases.Select(body, view);
+                views.Add(m.Types.ClosureReceiverIn(cases.Type(body.Locals[local].Type!)).ToString());
+            }
+
+            var definition = BoundClosure.Of((FunctionKoto)body.Locals[local].Type!.Symbol!.Declaration!)!;
+            views.Add(m.Types.ClosureReceiverIn(definition.EnvironmentType!).ToString());
+            yield return string.Join(' ', views);
+        }
     }
 
     // Owner decision 2026-10-17 (DECISIONS R4-M52), SPEC 15.6.4: a callable whose implementation the call cannot see, a Function Type
@@ -393,7 +474,8 @@ public sealed class RetentionTest
     // `static`, lets the call write its pointee; one with another Origin lets it write what each borrow that Origin belongs to admits (an
     // input's referent, the keepers of a slot), as the raw input's storage, unless only shared input borrows of the signature state that
     // Origin (SPEC 5.2.1 condition 3, the owner's 「シグネチャ版も入れる (推奨)」; each statement a `ref` input's outer Origin or the argument of a slot
-    // whose Loan requirement is `ref`, as `W`'s alone; never a borrow the body forms): then a pointer read from the layer has read
+    // whose Loan requirement is `ref` in every case its Type selects, as `W`'s alone and a conditional slot's of a `ref` instance, not of a
+    // `uniq` one, SPEC 15.3.5, DECISIONS BU-44; never a borrow the body forms): then a pointer read from the layer has read
     // authority only and the call writes nothing through it; a universal stated by a `ref` and a `uniq` input, an Option's `uniq` borrow
     // and a projection a `uniq` input states are no such Origin. A raw input's pointee and its Origin's members are Content, and its own
     // layer's Origin gives no row (SPEC 15.6.4 as DECISIONS R4-M116 revised it, R-B3).
@@ -414,6 +496,14 @@ public sealed class RetentionTest
     [InlineData(RawPointerSyntaxTest.KeptView + "func f(v: ref/View, x: uniq/(ref/i32 during q) during v.source, p: raw/u8 during v.source, w: ref/i32 during q) => ()", "1 Content store 1, 2 Content store 1, 3 Value store 1, 1 Content store 2, 2 Content store 2, 3 Value store 2")]
     [InlineData("func f(a: ref/(ref/i32 during q) during o, b: Option<uniq/(ref/i32 during q) during o>, p: raw/u8 during o, v: ref/i32 during q) => ()", "0 Content store 1, 1 Value store 1, 2 Content store 1, 3 Value store 1, 0 Content store 2, 1 Value store 2, 2 Content store 2, 3 Value store 2")]
     [InlineData("func f(a: ref/(ref/i32 during q) during o, p: raw/(ref/i32 during q) during o, v: ref/i32 during q)\n    unsafe\n        let w: uniq/(ref/i32 during q) during o = (*p)@uniq", "")]
+    [InlineData(
+        PairAnnotationBindingTest.HolderRefUniq + "func f(r: uniq/(ref/i32 during q), h: Holder<uniq/(ref/i32 during q) during r> during o, " +
+        "p: raw/(ref/i32 during q) during o, v: ref/i32 during q) => ()",
+        "0 Content store 0, 1 Value store 0, 2 Content store 0, 3 Value store 0, 0 Content store 1, 1 Value store 1, 2 Content store 1, 3 Value store 1, 0 Content store 2, 1 Value store 2, 2 Content store 2, 3 Value store 2")]
+    [InlineData(
+        PairAnnotationBindingTest.HolderRefUniq + "func f(r: ref/(ref/i32 during q), h: Holder<ref/(ref/i32 during q) during r> during o, " +
+        "p: raw/(ref/i32 during q) during o, v: ref/i32 during q) => ()",
+        "")]
     public void RawLayersRetainByTheirOrigins(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 

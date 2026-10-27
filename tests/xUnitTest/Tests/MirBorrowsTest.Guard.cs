@@ -20,7 +20,8 @@ public sealed partial class MirBorrowsTest
     // Iterable's iterator may write past itself (the owner's Q1 (a)), so count's parameter end errs; a live iterator keeps the append's
     // activation (cleanRoute); and the conflicts no store causes stay (notHeld, emptyStore, heldDefault's Loan a copy's value keeps, R-a),
     // a conflict inside an inline default copy its template's (heldCopy, dd3; R4-M69). The pair cases' B6-for (pairs) is valid: its Array
-    // literal places the child through no receiver store (DECISIONS R5-M129, as litPairOk), so PLAN G147 (8i)'s self-store does not reach it.
+    // literal is no call (DECISIONS R5-M129, as litPairOk), so PLAN G147 (8i)'s self-store row of a call taking the pair carrier by value
+    // (TyCtxt.Retains, `i Value -> i`) does not reach it.
     [Fact]
     public void TheGuardReadsEachPart()
     {

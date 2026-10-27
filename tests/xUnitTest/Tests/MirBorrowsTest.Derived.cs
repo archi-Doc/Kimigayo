@@ -85,6 +85,40 @@ public sealed partial class MirBorrowsTest
         }
     }
 
+    // SPEC 23.1.2, 3.6 (PLAN G247; DECISIONS R4-M149): an Opaque temp is no storage, so a Borrow kept past its statement that would lend
+    // a Place in one (MirBuildTest.AnOpaqueTempLendsNothing; MirBuildTest.RejectedRoots: each use of `w` and `h` fails its Type's
+    // constraint) carries no Loan, and A5 reports no conflict derived from the failed root, while the records independent of it stay: a
+    // move in a runtime index, a range boundary, a key, a method's argument, an assigned value and an update's right operand (A1), and an
+    // unrelated local's conflict (fail-before: a ComparisonLoanConflict_Kd at the root where a Borrow of it is kept). A conflict between two
+    // uses Binding rejected goes with them (the twin's write while borrowed; R4-M149's lost class), and so does the temporary's conflict
+    // of a group Binding rejects whole (q20; R4-M149's grouping rule), while a literal's Borrow keeps its temporary's. Each row: the
+    // failed and the valid records.
+    [Theory]
+    [InlineData("let p = h@ref\n    inspect(p)", "", "")]
+    [InlineData("see(w.arr[take(t@move)]@ref)\n    use(t)", "f: use(t) MovedPlace_Kd", "f: use(t) MovedPlace_Kd")]
+    [InlineData("let s = w.xs[0..take(t@move)]\n    let k = s.length\n    use(t)", "f: use(t) MovedPlace_Kd", "f: use(t) MovedPlace_Kd")]
+    [InlineData("let x = w.d[take(t@move)]\n    use(t)", "f: use(t) MovedPlace_Kd", "f: use(t) MovedPlace_Kd")]
+    [InlineData("w.inner.put(take(t@move))\n    use(t)", "f: use(t) MovedPlace_Kd", "f: use(t) MovedPlace_Kd")]
+    [InlineData("w.v = take(t@move)\n    use(t)", "f: use(t) MovedPlace_Kd", "f: use(t) MovedPlace_Kd")]
+    [InlineData("w.v += take(t@move)\n    use(t)", "f: use(t) MovedPlace_Kd", "f: use(t) MovedPlace_Kd")]
+    [InlineData("let p = w.v@ref\n    var y = 1\n    let q = y@ref\n    y = 2\n    see(q)\n    see(p)", "f: y = 2", "f: y = 2")]
+    [InlineData("let p = w.v@uniq\n    w.v = 4\n    p@follow = 3", "", "f: w.v = 4")]
+    [InlineData("let r = w.inner.pick()\n    w.inner.n = 2\n    see(r)", "", "f: w.inner.n = 2")]
+    [InlineData("let p = (w@move).v@ref\n    see(p)", "", "f: (w@move)")]
+    [InlineData("let p = 1@ref\n    let k = p@follow", "f: 1", "f: 1")]
+    public void AnOpaqueTempKeepsTheIndependentRecords(string body, string failed, string valid)
+    {
+        foreach (var (key, expected) in new[] { ("S2", failed), ("i32", valid) })
+        {
+            var c = MirBuildTest.Compile(Prelude + MirBuildTest.RejectedRoots(key) + "    " + body + "\n");
+            Assert.Equal(key == "S2", c.Binding.Issues.Any(static x => x.Code == DiagnosticCode.UnsatisfiedConstraint_Kd));
+            var program = c.BuildMir();
+            Assert.Empty(program.Findings);
+            new Stratum(c.Types).Run(program);
+            Assert.Equal(expected.Split(" | ", StringSplitOptions.RemoveEmptyEntries), Problems(c, program, [.. LoanCodes, DiagnosticCode.MovedPlace_Kd]));
+        }
+    }
+
     // SPEC 23.1.2 (G240; DECISIONS BU-36): a call over storage whose part Binding did not bind keeps the rows that hold whatever the part
     // is, so A5 reports its repaired program's Loan conflicts beside it and no Unsupported_Kd at the call (fail-before: Unsupported_Kd at
     // keep2, stash and choose; i-field's at D.init), with no builder record or validator finding. A conflict that rests on the failed

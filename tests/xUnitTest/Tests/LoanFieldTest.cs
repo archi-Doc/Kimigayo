@@ -74,6 +74,44 @@ public class LoanFieldTest
         }
     }
 
+    // SPEC 15.3.5, 15.6 (DECISIONS BU-44; on the default pipeline the owner's D5 exception of 2026-10-26): a holder keeps the Loan of a
+    // slot only a conditional pair slot uses as its instance's case requires it: none in an owner case, also of `s is owner` and of a
+    // nested `Inner<i32>`, so `y` is written while `h` is live; shared in a `ref` case, which a write conflicts with, and exclusive in a
+    // `uniq` case, which a read conflicts with, `s is uniq`'s included.
+    [Theory]
+    [InlineData(PairAnnotationBindingTest.HolderOwnerUniq + "func make(r: ref/i32) -> Holder<i32> during r => $abort(\"x\")\nfunc use(h: ref/Holder<i32>) => ()\n", "y@ref", "y = 3", null)]
+    [InlineData("struct V<s/T> {a}\n    s is owner\n    public let item: s/T during a\nfunc make(k: ref/i32) -> V<i32> during k => $abort(\"x\")\nfunc use(h: ref/V<i32>) => ()\n", "y@ref", "y = 3", null)]
+    [InlineData(
+        PairAnnotationBindingTest.InnerOwnerUniq + "struct Outer {a}\n    public let j: Inner<i32> during a\nfunc make(k: ref/i32) -> Outer during k => $abort(\"x\")\nfunc use(h: ref/Outer) => ()\n",
+        "y@ref",
+        "y = 3",
+        null)]
+    [InlineData(
+        PairAnnotationBindingTest.HolderRefUniq + "func make(r: ref/i32, k: ref/i32) -> Holder<ref/i32 during r> during k => $abort(\"x\")\nfunc use(h: ref/Holder<ref/i32 during q>) => ()\n",
+        "x@ref, y@ref",
+        "y = 3",
+        nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
+    [InlineData(
+        PairAnnotationBindingTest.HolderOwnerUniq + "func make(r: uniq/i32, k: uniq/i32) -> Holder<uniq/i32 during r> during k => $abort(\"x\")\nfunc use(h: ref/Holder<uniq/i32 during q>) => ()\n",
+        "x@uniq, y@uniq",
+        "let z = y",
+        nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
+    [InlineData(
+        PairAnnotationBindingTest.HolderOwnerUniq + "func make(r: uniq/i32, k: uniq/i32) -> Holder<uniq/i32 during r> during k => $abort(\"x\")\nfunc use(h: ref/Holder<uniq/i32 during q>) => ()\n",
+        "x@uniq, y@uniq",
+        "y = 3",
+        nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
+    [InlineData(
+        PairAnnotationBindingTest.HolderUniq + "func make(r: uniq/i32, k: uniq/i32) -> Holder<uniq/i32 during r> during k => $abort(\"x\")\nfunc use(h: ref/Holder<uniq/i32 during q>) => ()\n",
+        "x@uniq, y@uniq",
+        "let z = y",
+        nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
+    public void AConditionalSlotKeepsTheLoanOfItsCase(string declarations, string arguments, string access, string? code)
+    {
+        var source = declarations + $"func run() -> i32\n    var x: i32 = 0\n    var y: i32 = 1\n    let h = make({arguments})\n    {access}\n    use(h@ref)\n    return x + y\npublic func main() => ()\n";
+        Assert.Equal(code is null ? [] : [code], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+    }
+
     // A covariant view keeps a raw/() address beside its Loan Field and converts the address just before an access.
     [Fact]
     public void ACovariantViewAccessesThroughItsAddress()
