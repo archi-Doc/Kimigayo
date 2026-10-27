@@ -5,7 +5,7 @@ fn top-level#0 @2
       _0 = const () @3 s1
       return @3
 fn largest @4
-  _0: T return @4
+  _0: T return @17
   _1: ref/Array<T> arg values @12
   _2: T arg fallback @16
   _3: T var mut best @19 s1
@@ -151,14 +151,14 @@ fn largest @4
   bb30:
       unreachable @18
 fn use @38
-  _0: i64 return @38
+  _0: i64 return @43
   _1: ref/Array<i64> arg values @39
   bb0:
     * _0 = largest<i64>(copy _1, const 0_i64) -> bb1 @44
   bb1:
       return @44
 fn wrapSome @48
-  _0: Option<T> return @48
+  _0: Option<T> return @51
   _1: T arg x @50
   _2: T temp @58
   bb0:
@@ -172,7 +172,7 @@ fn wrapSome @48
   bb2:
       return @55
 fn unwrapTry @61
-  _0: Option<T> return @61
+  _0: Option<T> return @65
   _1: Option<T> arg x @63
   _2: T temp @70
   _3: Option<T> temp (Subject) @71

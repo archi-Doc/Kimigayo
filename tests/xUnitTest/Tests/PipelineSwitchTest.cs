@@ -171,6 +171,27 @@ public sealed class PipelineSwitchTest
         Assert.Equal(records, errors.Select(static x => x.Text).Order(StringComparer.Ordinal));
     }
 
+    // DECISIONS BU-48 (SPEC 6.3.2-6.3.4, 8.15.3): a constructor's construction receiver is no use, so an uncalled constructor of an empty C
+    // struct is accepted at check; a Library generates every root, and code generation records the receiver it cannot lay out as a located
+    // Unsupported_Kd at the constructor, never InternalInvariant_Kd. An Application, which generates only its startup's closure, is written.
+    [Theory]
+    [InlineData(OutputKind.Library, "init() => ()")]
+    [InlineData(OutputKind.Application, null)]
+    public void AnUncalledConstructorsReceiverWithoutALayoutIsNotGenerated(OutputKind output, string? record)
+    {
+        var c = Compilation.CreateForTest();
+        c.Pipeline = CompilerPipeline.Mir;
+        c.Codegen = CompilerCodegen.Mir;
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        var source = "#Layout(\"C\")\npublic struct S\n    public init() => ()\npublic func f() -> i32 => 1\n";
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source + (output == OutputKind.Application ? "let zz = f()\n" : string.Empty)));
+        Assert.True(Analyze(c, output), MinimalEmissionTest.Describe(c, null));
+        using var writer = new StringWriter();
+        Assert.Equal(record is null, c.Generate(writer));
+        var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
+        Assert.Equal(record is null ? [] : [("Unsupported_Kd", record)], errors.Select(static x => (x.Code, x.Text)));
+    }
+
     // R5 C0a (PD12's gate, step 1; DECISIONS R5-M64): every generation request passes the entry's gate, artifact publication included,
     // which ran the old generator on a program with MIR records before; the records are the analysis's own, so generation adds none.
     [Fact]
@@ -235,18 +256,25 @@ public sealed class PipelineSwitchTest
         }
     }
 
-    // R5 K4b (DECISIONS R5-M41): under MIR code generation the checked set's records are analysis problems too, control-flow Errors at
-    // their located subjects that reject the program, while the mir pipeline alone does not collect.
+    // R5 K4b (DECISIONS R5-M41, BU-48): under MIR code generation the checked set's records are analysis problems too, control-flow Errors
+    // at their located subjects that reject the program; on the legacy pipeline and under mir alone the set is collected (its Language
+    // records publish everywhere) but its Unsupported record is not published until G2.
     [Fact]
     public void MirCodegenPublishesTheCollectorRecords()
     {
         var c = Compilation.CreateForTest();
-        c.Pipeline = CompilerPipeline.Mir;
-        c.Codegen = CompilerCodegen.Legacy;
+        c.Pipeline = CompilerPipeline.Legacy;
         Assert.True(c.Prepare(WindowsProfile.Target));
         var type = string.Concat(Enumerable.Repeat("Option<", 32)) + "ref/i32" + new string('>', 32);
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", $"func pick<T>(value: T) -> T => value@move\nlet v: {type} = .None\nlet w = pick(v@move)\n"));
         Assert.True(Analyze(c, OutputKind.Application), MinimalEmissionTest.Describe(c, null));
+        Assert.Contains(c.Instances!.Records, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.Empty(c.Problems);
+
+        c.Pipeline = CompilerPipeline.Mir;
+        c.Codegen = CompilerCodegen.Legacy;
+        Assert.True(Analyze(c, OutputKind.Application), MinimalEmissionTest.Describe(c, null));
+        Assert.Contains(c.Instances!.Records, static x => x.Code == DiagnosticCode.Unsupported_Kd);
 
         c.Codegen = CompilerCodegen.Mir;
         Assert.False(Analyze(c, OutputKind.Application));
@@ -281,7 +309,11 @@ public sealed class PipelineSwitchTest
             Directory.Delete(directory, true);
         }
 
-        foreach (var (pipeline, codegen) in new[] { (CompilerPipeline.Legacy, CompilerCodegen.Legacy), (CompilerPipeline.Mir, CompilerCodegen.Legacy), (CompilerPipeline.Mir, CompilerCodegen.Mir) })
+        var configurations = new[]
+        {
+            (CompilerPipeline.Legacy, CompilerCodegen.Legacy), (CompilerPipeline.Mir, CompilerCodegen.Legacy), (CompilerPipeline.Mir, CompilerCodegen.Mir),
+        };
+        foreach (var (pipeline, codegen) in configurations)
         {
             var c = Compilation.CreateForTest();
             c.Pipeline = pipeline;

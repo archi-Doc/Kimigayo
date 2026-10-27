@@ -1,5 +1,5 @@
 fn init @6
-  _0: Cell return @6
+  _0: Cell return (Receiver) @6
   _1: i32 arg value @7
   _2: () temp @8
   _3: () temp @8
@@ -24,7 +24,7 @@ fn top-level#0 @13
       _0 = const () @14 s1
       return @14
 fn shared @15
-  _0: i32 return @15
+  _0: i32 return @16
   _1: rc/Cell var counted @18 s1
   _2: Cell temp @26 s1
   _3: rc/Cell var copy @31 s1
@@ -123,7 +123,7 @@ fn shared @15
       StorageDead(_1) @18 s1
       unreachable @17
 fn obtainCell @89
-  _0: obj/Cell return @89
+  _0: obj/Cell return @91
   _1: string arg s @90
   _2: string temp @95
   bb0:
@@ -138,7 +138,7 @@ fn obtainCell @89
   bb3:
       return @93
 fn obtainedIsCell @98
-  _0: bool return @98
+  _0: bool return @100
   _1: string arg s @99
   _2: obj/Cell temp @102
   _3: string temp @104
@@ -164,7 +164,7 @@ fn obtainedIsCell @98
   bb5:
       return @101
 fn notCell @108
-  _0: bool return @108
+  _0: bool return @111
   _1: objref/Cell arg x @109
   _2: objref/Cell temp @112
   _3: bool temp @112
@@ -179,7 +179,7 @@ fn notCell @108
       StorageDead(_2) @112
       return @112
 fn eitherCell @115
-  _0: bool return @115
+  _0: bool return @119
   _1: objref/Cell arg x @116
   _2: bool arg flag @118
   _3: bool temp @122 s1

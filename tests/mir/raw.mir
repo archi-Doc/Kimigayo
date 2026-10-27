@@ -1,5 +1,5 @@
 fn init @9
-  _0: Point return @9
+  _0: Point return (Receiver) @9
   _1: i32 arg x @10
   _2: i32 arg y @11
   _3: () temp @12
@@ -35,7 +35,7 @@ fn top-level#0 @23
       _0 = const () @24 s1
       return @24
 fn addresses @25
-  _0: i32 return @25
+  _0: i32 return @28
   _1: uniq/Point arg point @26
   _2: raw/Point var p @30 s1
   _3: () temp @37 s1

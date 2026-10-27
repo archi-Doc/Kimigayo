@@ -5,7 +5,7 @@ fn top-level#0 @2
       _0 = const () @3 s1
       return @3
 fn select @4
-  _0: i32 return @4
+  _0: i32 return @7
   _1: bool arg flag @5
   _2: i32 arg n @6
   _3: i32 var a @9 s1
@@ -146,7 +146,7 @@ fn select @4
       StorageDead(_3) @9 s1
       unreachable @8
 fn iterate @48
-  _0: i32 return @48
+  _0: i32 return @50
   _1: i32 arg n @49
   _2: i32 var mut total @52 s1
   _3: () temp @56 s1
@@ -341,7 +341,7 @@ fn iterate @48
       StorageDead(_2) @52 s1
       unreachable @51
 fn statements @98
-  _0: i32 return @98
+  _0: i32 return @101
   _1: bool arg flag @99
   _2: string arg text @100
   _3: i32 var d @103 s1
@@ -475,7 +475,7 @@ fn statements @98
   bb27:
       unreachable @102
 fn spin @142
-  _0: i32 return @142
+  _0: i32 return @143
   _1: Never temp @145 s1
   _2: () temp @146 s1
   _3: i32 var x @147 s2
@@ -505,7 +505,7 @@ fn spin @142
   bb6:
       unreachable @144
 fn short @152
-  _0: bool return @152
+  _0: bool return @154
   _1: bool arg flag @153
   _2: bool temp @156
   _3: bool temp (Result) @152

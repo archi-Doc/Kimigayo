@@ -1,5 +1,5 @@
 fn init @7
-  _0: Box return @7
+  _0: Box return (Receiver) @7
   _1: () temp @8
   _2: () temp @8
   bb0:
@@ -41,7 +41,7 @@ setter level.Set @19
       _0 = const () @22 s1
       return @22
 fn init @26
-  _0: Gauge return @26
+  _0: Gauge return (Receiver) @26
   _1: () temp @27
   _2: () temp @27
   bb0:
@@ -72,7 +72,7 @@ fn give2 @30
       _0 = const () @33
       return @33
 fn inner @34
-  _0: () return @34
+  _0: () return @44
   _1: s/T arg a @41
   _2: i32 arg b @43
   _3: () temp (Result) @34

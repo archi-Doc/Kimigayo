@@ -5,7 +5,7 @@ fn top-level#0 @2
       _0 = const () @3 s1
       return @3
 fn sum @4
-  _0: i32 return @4
+  _0: i32 return @9
   _1: ref/Array<i32> arg values @5
   _2: i32 var mut total @11 s1
   _3: () temp @14 s1
@@ -130,7 +130,7 @@ fn sum @4
       StorageDead(_2) @11 s1
       unreachable @10
 fn positions @29
-  _0: isize return @29
+  _0: isize return @33
   _1: [4 of i32] arg values @30
   _2: isize var mut total @35 s1
   _3: () temp @39 s1
@@ -255,7 +255,7 @@ fn positions @29
       StorageDead(_2) @35 s1
       unreachable @34
 fn pairs @56
-  _0: i32 return @56
+  _0: i32 return @62
   _1: Dictionary<i32, bool> arg entries @57
   _2: i32 var mut hits @64 s1
   _3: () temp @67 s1

@@ -21,7 +21,7 @@ setter count.Set @14
       _0 = const () @17
       return @17
 fn format @29
-  _0: Result<(), BufferFull> return @29
+  _0: Result<(), BufferFull> return @34
   _1: ref/Point arg self @30
   _2: uniq/Utf8Writer arg writer @32
   _3: Result<(), BufferFull> temp @41 s1
@@ -169,7 +169,7 @@ getter level.Get @66
     * _0 = copy (*_1).1 @68
       return @68
 fn init @69
-  _0: Box return @69
+  _0: Box return (Receiver) @69
   _1: () temp @70
   _2: () temp @70
   bb0:
@@ -233,7 +233,7 @@ fn bump @73
       _0 = const () @77 s1
       return @77
 fn pick @88
-  _0: i32 return @88
+  _0: i32 return @93
   _1: Array<i32> arg values @89
   _2: Kimi.FromEnd<i32> var key @95 s1
   _3: i32 temp @100 s1
@@ -314,7 +314,7 @@ fn pick @88
   bb11:
       unreachable @94
 fn middle @108
-  _0: Slice<i32> return @108
+  _0: Slice<i32> return @113
   _1: ref/[5 of i32] arg values @109
   _2: ref/[5 of i32] temp @118
   _3: isize temp @118
@@ -371,7 +371,7 @@ fn middle @108
       StorageDead(_2) @118
       return @118
 fn head @124
-  _0: Slice<i32> return @124
+  _0: Slice<i32> return @129
   _1: ref/Array<i32> arg values @125
   _2: ref/Array<i32> temp @134
   _3: isize temp @134
@@ -425,7 +425,7 @@ fn head @124
       StorageDead(_2) @134
       return @134
 fn reslice @138
-  _0: Slice<i32> return @138
+  _0: Slice<i32> return @143
   _1: Slice<i32> arg view @139
   _2: isize temp @150
   _3: isize temp @150
@@ -470,13 +470,13 @@ fn reslice @138
       StorageDead(_2) @150
       return @150
 fn make @154
-  _0: Array<i32> return @154
+  _0: Array<i32> return @156
   _1: i32 arg first @155
   bb0:
     * _0 = Array(copy _1, const 2_i32): Array<i32> @160
       return @160
 fn table @163
-  _0: Dictionary<i32, bool> return @163
+  _0: Dictionary<i32, bool> return @164
   _1: Dictionary<i32, bool> temp @169
   _2: i32 temp @170
   _3: bool temp @171
@@ -575,7 +575,7 @@ fn table @163
       StorageDead(_1) @169
       return @169
 fn room @174
-  _0: isize return @174
+  _0: isize return @179
   _1: ref/Array<i32> arg values @175
   _2: ref/Array<i32> temp @180
   bb0:
@@ -586,7 +586,7 @@ fn room @174
       StorageDead(_2) @180
       return @180
 fn back @183
-  _0: i32 return @183
+  _0: i32 return @189
   _1: ref/Array<i32> arg values @184
   _2: i32 arg x @188
   _3: ref/Array<i32> temp @191

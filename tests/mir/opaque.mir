@@ -5,7 +5,7 @@ fn top-level#0 @2
       _0 = const () @3 s1
       return @3
 fn sum @4
-  _0: i32 return @4
+  _0: i32 return @14
   _1: [3 of i32] arg values @9
   _2: I arg p @12
   _3: i32 arg b @13
@@ -54,13 +54,13 @@ fn sum @4
   bb9:
       unreachable @15
 fn fail @23
-  _0: i32 return @23
+  _0: i32 return @24
   opaque 0 @25:
   bb0:
     * _0 = opaque 0: i32 @25
       return @25
 fn take @26
-  _0: i32 return @26
+  _0: i32 return @29
   _1: string arg a @27
   _2: string arg b @28
   bb0:
@@ -71,7 +71,7 @@ fn take @26
   bb2:
       return @30
 fn kept @31
-  _0: i32 return @31
+  _0: i32 return @34
   _1: i32 arg n @32
   _2: string arg s @33
   _3: () temp @37 s1

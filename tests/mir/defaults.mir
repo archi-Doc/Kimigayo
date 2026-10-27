@@ -156,7 +156,7 @@ defaulttemplate evaluate#1 @139
       StorageDead(_2) @142 s1
       unreachable check bb1 @141
 fn init @6
-  _0: Box return @6
+  _0: Box return (Receiver) @6
   _1: i32 arg size @7
   _2: () temp @8
   _3: () temp @8
@@ -175,7 +175,7 @@ fn init @6
       StorageDead(_2) @8
       return @8
 fn grow @13
-  _0: i32 return @13
+  _0: i32 return @19
   _1: ref/Box arg self @14
   _2: i32 arg by @15
   bb0:
@@ -188,14 +188,14 @@ fn top-level#0 @25
       _0 = const () @26 s1
       return @26
 fn scale @27
-  _0: i32 return @27
+  _0: i32 return @33
   _1: i32 arg x @28
   _2: i32 arg factor @29
   bb0:
     * _0 = Mul(copy _1, copy _2) @34
       return @34
 fn pick @37
-  _0: T return @37
+  _0: T return @45
   _1: T arg a @42
   _2: T arg b @43
   _3: T temp @48 s1
@@ -234,14 +234,14 @@ fn pick @37
   bb12:
       unreachable @46
 fn count @49
-  _0: i32 return @49
+  _0: i32 return @64
   _1: i32 arg n @50
   _2: i32 arg value @51
   bb0:
     * _0 = copy _2 @65
       return @65
 fn run @66
-  _0: i32 return @66
+  _0: i32 return @76
   _1: i32 arg n @67
   _2: () -> i32 arg action @68
   _3: ref/() -> i32 temp @78
@@ -255,13 +255,13 @@ fn run @66
   bb2:
       return @77
 closure @71
-  _0: i32 return @71
+  _0: i32 return @72
   _1: ref/closure () -> i32 arg @71
   bb0:
     * _0 = Add(copy (*_1).0, const 1_i32) @73
       return @73
 fn use @79
-  _0: i32 return @79
+  _0: i32 return @81
   _1: Box arg box @80
   _2: i32 var a @83 s1
   _3: i32 temp (PendingSlot) @87 s1
@@ -435,14 +435,14 @@ fn use @79
       StorageDead(_2) @83 s1
       unreachable @82
 fn halt @121
-  _0: i32 return @121
+  _0: i32 return @128
   _1: i32 arg n @122
   _2: i32 arg value @123
   bb0:
     * _0 = copy _2 @129
       return @129
 fn stopped @130
-  _0: i32 return @130
+  _0: i32 return @131
   _1: i32 temp (PendingSlot) @134
   _2: i32 temp value (PendingSlot) @132
   s1: inlined in s0 @132
@@ -462,7 +462,7 @@ fn stopped @130
       StorageDead(_1) @134
       unreachable @132
 fn evaluate @135
-  _0: i32 return @135
+  _0: i32 return @167
   _1: T arg sample @137
   _2: i32 arg marker @138
   bb0:

@@ -312,7 +312,8 @@ public sealed class MirAnalysisTest
     // Path and second initializations of a let, A2's incomplete layer at a Drop, A3's falling failure body, A4's confined obligations as
     // Binding's row carries them (a conformance, a virtual function, a Callable binding) and its limit, and A5's Loan conflicts and its
     // limit (a destruction past the walk's bound) and its effect rule, which the driver gives A4's keys (R4-M92). The storage limits need
-    // large bodies: A5ChecksTheViewsA1Completed has A1's.
+    // large bodies: A5ChecksTheViewsA1Completed has A1's. A parameter's record is at its Type occurrence (DECISIONS BU-48's locations,
+    // settled (a): R4-M90 D6's rule extended).
     [Fact]
     public void EachRecordingRuleNamesItsRequirement()
     {
@@ -335,6 +336,7 @@ public sealed class MirAnalysisTest
 
     // R4-M71: each recording rule names the body whose views number its problem's views: A1's, A2's, A3's and A5's the body they analyze,
     // and A4's obligation rows (a conformance, a virtual function, a Callable binding and its limit) none, since they lie at Binding's rows.
+    // A parameter's record is at its Type occurrence (DECISIONS BU-48's locations, settled (a): R4-M90 D6's rule extended).
     [Fact]
     public void EachRecordingRuleNamesItsBody()
     {

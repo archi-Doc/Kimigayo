@@ -1,10 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the public entry path for post-Binding phases and their Problem records.
-// Input: a prepared compilation and its pipeline and code generator choice. Output: analysis, validated and analyzed MIR, under MIR code
-// generation its checked set, and diagnostics; generation has its own entry (Compilation.Generation.cs, R5 C0a).
-// Until R6 the legacy path decides acceptance; MIR findings join through the same Problem publication. Under MIR code generation (sel,
-// R5 PD4) the checked set's records join them (K4b).
+// Input: a prepared compilation and its pipeline and code generator choice. Output: analysis, validated MIR (analyzed under mir), its
+// checked set on every pipeline, and diagnostics; generation has its own entry (Compilation.Generation.cs, R5 C0a).
+// Until R6 the legacy path decides acceptance; MIR findings join through the same Problem publication. The checked set's Language records
+// join them on every pipeline (SPEC 8.15.3, 23.2.2; DECISIONS BU-48), its other records under MIR code generation (sel, R5 PD4, K4b).
 // Observers of Analyzed (R4-M17) are read-only; no compiler code subscribes.
 // Must not expose a second analysis/generation path or re-decide phase-owned facts.
 
@@ -14,9 +14,9 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler;
 
 // The analysis entry points (plan 12.1, 13.2), the one way to run and read the analyses after Binding and startup (generation has its own
-// entry, Compilation.Generation.cs), follow the pipeline: until R6 the old path decides under both, and under mir the MIR is built,
-// validated and analyzed beside it and its construction records and validator findings are analysis Errors (its analysis problems stay
-// unpublished, R4-M1).
+// entry, Compilation.Generation.cs), follow the pipeline: until R6 the old path decides under both; the MIR is built and validated and its
+// checked set collected under both (DECISIONS BU-48), and under mir the MIR is analyzed beside the old path and its construction records
+// and validator findings are analysis Errors (its analysis problems stay unpublished, R4-M1).
 public partial class Compilation
 {
     /// <summary>The pipeline of a new compilation, read once per process from <c>KIMI_PIPELINE</c> (R3–R5) by the type initializer, which
@@ -102,7 +102,8 @@ public partial class Compilation
         }
     }
 
-    /// <summary>Gets the checked set of the latest <see cref="BuildMir"/>, on every pipeline (SPEC 8.15.3), else null.</summary>
+    /// <summary>Gets the checked set of the latest <see cref="Analyze"/> or <see cref="BuildMir"/>, on every pipeline (SPEC 8.15.3), else
+    /// null.</summary>
     internal Backend.CheckedSet? Instances => this.instances?.Set;
 
     /// <summary>Gets the problems of the latest <see cref="Analyze"/>: the old path's in its order, then the MIR's records. The list is
@@ -239,7 +240,8 @@ public partial class Compilation
         {
             foreach (var record in set.Records)
             {
-                if (this.codegen == CompilerCodegen.Mir || (DiagnosticEntries.TryGet(record.Code, out var entry) && entry.Category == DiagnosticCategory.Language))
+                var language = DiagnosticEntries.TryGet(record.Code, out var entry) && entry.Category == DiagnosticCategory.Language;
+                if (language || this.codegen == CompilerCodegen.Mir)
                 {
                     count++;
                     into?.Add(record);

@@ -35,7 +35,10 @@ internal sealed partial class FunctionCodegen
         {
             if (this.collector.TypeOf(this.item, locals[i].Type) is not { } type || this.module.Layout.Of(type).Value is not { } value)
             {
-                this.Report(DiagnosticCode.InternalInvariant_Kd, locals[i].Source); // The collector laid out every local of an admitted item.
+                // The collector laid out every local of an admitted item but a constructor's construction receiver, which its callers lay out
+                // (DECISIONS BU-48): a generated, uncalled constructor whose receiver has no layout is a form not generated (SPEC 8.15.3).
+                var code = locals[i].Role == MirLocalRole.Receiver ? DiagnosticCode.Unsupported_Kd : DiagnosticCode.InternalInvariant_Kd;
+                this.Report(code, locals[i].Source);
                 return null;
             }
 

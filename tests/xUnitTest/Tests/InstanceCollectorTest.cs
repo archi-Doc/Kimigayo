@@ -47,7 +47,6 @@ public sealed partial class InstanceCollectorTest
         "let p = pick<i32>\n";
 
     // The first line of CLayoutP's constructor, the subject of its instance's by-value uses.
-    private const string Init = "public init(n: i32, value: T)";
 
     // Generic functions that request an arithmetic shim: a requirement call, an operator, a function item's formation and call, and a
     // requirement call in a body instantiated per tag Type.
@@ -1639,17 +1638,17 @@ public sealed partial class InstanceCollectorTest
 
     // K 4.8, SPEC 6.7.1, 8.15.3, DECISIONS R5-M55: a by-value use whose Type places a C-layout instance storing a zero-sized Field, at any
     // depth, is InvalidCLayout_Kd at each such use (one record per subject): an inferred instance in a generic body (make(())) and at the
-    // top level (P.init(1, ()), P.init(1, Q.init()) for a zero-sized struct Q), with the instance's constructor, a written parameter of an
-    // unused function (at its Type occurrence), nested in an Option and through an inferred Option<P<T>>, with the .None that makes it; each
-    // valid twin has none. Binding reports no instance, written or inferred (DECISIONS R4-M134 Q8). Subjects by their first line.
+    // top level (P.init(1, ()), P.init(1, Q.init()) for a zero-sized struct Q), a written parameter of an unused function (at its Type
+    // occurrence), nested in an Option and through an inferred Option<P<T>>, with the .None that makes it; each valid twin has none. The
+    // instance's constructor is none: its construction receiver is storage the construction expression made (SPEC 6.3.2-6.3.4; DECISIONS
+    // BU-48, superseding R5-M55's "with the instance's constructor"). Binding reports no instance, written or inferred (DECISIONS R4-M134
+    // Q8). Subjects by their first line.
     [Theory]
-    [InlineData(
-        "func make<T>(value: T) -> i32\n    let p = P<T>.init(1, value@move)\n    return p.n\nlet r = make(())\n",
-        "let p = P<T>.init(1, value@move)|" + Init)]
+    [InlineData("func make<T>(value: T) -> i32\n    let p = P<T>.init(1, value@move)\n    return p.n\nlet r = make(())\n", "let p = P<T>.init(1, value@move)")]
     [InlineData("func make<T>(value: T) -> i32\n    let p = P<T>.init(1, value@move)\n    return p.n\nlet r = make(5)\n", "")]
-    [InlineData("let q = P.init(1, ())\n", "let q = P.init(1, ())|" + Init)]
+    [InlineData("let q = P.init(1, ())\n", "let q = P.init(1, ())")]
     [InlineData("let q = P.init(1, 2)\n", "")]
-    [InlineData("struct Q\n    public init() => ()\nlet q = P.init(1, Q.init())\n", "let q = P.init(1, Q.init())|" + Init)]
+    [InlineData("struct Q\n    public init() => ()\nlet q = P.init(1, Q.init())\n", "let q = P.init(1, Q.init())")]
     [InlineData("struct Q\n    public var n: i32 = 1\n    public init() => ()\nlet q = P.init(1, Q.init())\n", "")]
     [InlineData("func f(p: P<()>) -> i32 => 1\n", "P<()>")]
     [InlineData("func f(p: P<i32>) -> i32 => 1\n", "")]
@@ -1680,7 +1679,7 @@ public sealed partial class InstanceCollectorTest
     [InlineData("func fail() -> Never => $abort(\"x\")\nfunc big() -> () -> " + Huge + " => fail\n", "OversizedLayout_Kd fail")]
     [InlineData(
         "func make() -> " + Huge + " => $abort(\"x\")\nfunc get() -> () -> " + Huge + " => make\n",
-        "OversizedLayout_Kd func make() -> " + Huge + " => $abort(\"x\")|OversizedLayout_Kd make")]
+        "OversizedLayout_Kd " + Huge + "|OversizedLayout_Kd make")] // The result's record at its result Type (settled (a)).
     [InlineData("func swap() -> (uniq/" + Huge + ", " + Huge + ") -> " + Huge + " => Kimi.Intrinsics.exchange\n", "OversizedLayout_Kd Kimi.Intrinsics.exchange")]
     [InlineData("func huge() -> (isize) -> raw/" + Huge + " => Raw.allocate\n", "OversizedLayout_Kd Raw.allocate")]
     [InlineData(

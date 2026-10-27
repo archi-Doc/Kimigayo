@@ -10,11 +10,11 @@
 // outcomes the collector alone maps (R5-M37).
 // Output: the CheckedSet of the program version: the roots, in MirProgram.Bodies order, then the items a FIFO worklist admits, each with one
 // target per resolved site of its body, in location order, with whether a runtime path reaches the site; and its records, which
-// Compilation.MirRecords publishes under MIR code generation (K4b); for code generation (R5 C0b1) also an item's Types (TypeOf) and the
+// Compilation.MirRecords publishes: its Language records on every pipeline, the others under MIR code generation (K4b; DECISIONS BU-48,
+// R5-M41 until G2); for code generation (R5 C0b1) also an item's Types (TypeOf) and the
 // location of a record at a site of its body (Subject); a borrowing callee's owner Value call also targets its operand's glue, after the
 // body (DECISIONS R5-M102).
-// Roots (K 4.4): each body of a root module whose definition does not instantiate, a module's top-level statements included; a struct's
-// implicit constructor (AdtDef.IsImplicitConstructor), a body the program did not write, is required only through a call (SPEC 8.15.3).
+// Roots (K 4.4): each body of a root module whose definition does not instantiate, a module's top-level statements included.
 // Edges (K 4.5): one template per body and version (InstanceCollector.Templates.cs) lists its sites that may carry a target (Fn,
 // Requirement and Value calls and the intrinsics the Target column names, a Virtual call none, X5; a Closure environment, an erasure and a
 // function item constant; a Drop), each with its runtime bit from one MirReach walk without CheckTarget edges. An item's targets are
@@ -35,12 +35,13 @@
 // Types are closed, every block included, once per definition and location, and of a root-module static's declaration (static storage
 // P42 has not brought, a generic container's included, DECISIONS R5-M82); Binding's refusals are Opaque values, so it never repeats them.
 // An operation whose Types depend on slots is a template site, checked in each instance with its Types there, once per location.
-// Layout obligations (K 4.8, InstanceCollector.Layouts.cs): each item's by-value uses (its body's locals but drop flags, its aggregates, the
-// Type argument of an intrinsic whose row names one, at its call or its function's Item, and the inputs and result of an erasure's target
-// Function Type, DECISIONS R5-M108), each type-driven item's Type and a DropGlue's collection element Types (X34) take
-// Layout's verdict: a limit is GenerationResourceLimit_Kd once per erased Type at its first use, a C-layout instance storing a zero-sized
-// Field InvalidCLayout_Kd and a layout over 2^63 - 1 bytes OversizedLayout_Kd at each use (both at one use when both hold); Rejected
-// storage derives from a Binding error (Derived); a type-driven item needs an Ok verdict.
+// Layout obligations (K 4.8, InstanceCollector.Layouts.cs): each item's by-value uses (its body's locals but drop flags and a constructor's
+// construction receiver, DECISIONS BU-48; its aggregates; the Type argument of an intrinsic whose row names one, at its call or its
+// function's Item; the inputs and result of an erasure's target Function Type, DECISIONS R5-M108), each type-driven item's Type and a
+// DropGlue's collection element Types (X34) take Layout's verdict: a limit is GenerationResourceLimit_Kd once per erased Type at its
+// first use, a C-layout instance whose C layout is unavailable (open, derived, empty or storing a zero-sized Field) InvalidCLayout_Kd and
+// a layout over 2^63 - 1 bytes OversizedLayout_Kd at each use (both at one use when both hold); Rejected storage derives from a Binding
+// error (Derived); a type-driven item needs an Ok verdict.
 // Storage (DECISIONS BU-36, BU-38): TyCtxt's verdict on a Type or substitution of an item's instance is read once, at its requesting site
 // (Made): Prepared makes it; Rejected rests on a part Binding rejected, a dependent dropped without a record, as Layout's Rejected; a
 // limit is the storage-nesting gap. A complete compilation has no part Binding rejected (TyCtxt.BindingComplete): there TyCtxt's or
@@ -128,7 +129,7 @@ internal sealed partial class InstanceCollector
         this.Templates(program);
         foreach (var body in program.Bodies)
         {
-            if (body.Source.Module < rootModules && (body.Key.Decl is null || (!this.types.Instantiates(body.Key.Decl) && !AdtDef.IsImplicitConstructor(body.Key.Decl))))
+            if (body.Source.Module < rootModules && (body.Key.Decl is null || !this.types.Instantiates(body.Key.Decl)))
             {
                 var key = new MonoKey(MonoKind.Body, new(body.Key, null), null, null, 0, null);
                 set.Add(new() { Key = key, BodyOrdinal = body.Ordinal, Parent = -1, Site = body.Source });

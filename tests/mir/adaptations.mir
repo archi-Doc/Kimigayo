@@ -9,7 +9,7 @@ defaulttemplate take#0 @132
       StorageDead(_1) @133
       return @132
 fn init @9
-  _0: Derived return @9
+  _0: Derived return (Receiver) @9
   _1: () temp @10
   _2: () temp @10
   bb0:
@@ -30,7 +30,7 @@ fn top-level#0 @11
       _0 = const () @12 s1
       return @12
 fn discard @13
-  _0: () return @13
+  _0: () return @23
   _1: i32 arg value @22
   _2: s/i32 temp @26 s1
   s1: lexical in s0 @24
@@ -44,7 +44,7 @@ fn discard @13
       _0 = const () @24 s1
       return @24
 fn address @29
-  _0: () return @29
+  _0: () return @37
   _1: i32 arg value @36
   _2: s/i32 temp @40 s1
   s1: lexical in s0 @38
@@ -58,7 +58,7 @@ fn address @29
       _0 = const () @38 s1
       return @38
 fn widen @43
-  _0: s/Base return @43
+  _0: s/Base return @50
   _1: s/Derived arg value @48
   _2: s/Base temp @54 s1
   _3: s/Derived temp @55 s1
@@ -102,7 +102,7 @@ fn widen @43
   bb12:
       unreachable @52
 fn inspect @60
-  _0: i32 return @60
+  _0: i32 return @67
   _1: s/Derived arg value @65
   _2: objref/Base var view @69 s1
   _3: i32 temp @76 s1
@@ -140,7 +140,7 @@ fn inspect @60
   bb9:
       unreachable @68
 fn mixed @79
-  _0: () return @79
+  _0: () return @91
   _1: s/T arg value @89
   _2: case s { ref => ref/ref/T; obj => obj/T } temp @94 s1
   _3: s/T temp @95 s1
@@ -162,7 +162,7 @@ fn mixed @79
   bb3:
       return @92
 fn make @99
-  _0: () return @99
+  _0: () return @106
   _1: closure (i32) -> s/i32 var create @108 s1
   _2: s/i32 temp @118 s1
   _3: s/i32 temp @119 s1
@@ -190,7 +190,7 @@ fn make @99
       StorageDead(_1) @108 s1
       return @107
 closure @110
-  _0: s/i32 return @110
+  _0: s/i32 return @112
   _1: ref/closure (i32) -> s/i32 arg @110
   _2: i32 arg value @111
   b0: T Owning
@@ -198,7 +198,7 @@ closure @110
     * _0 = adapt(copy _2, const type i32): s/i32 shorthand @114
       return @114
 fn take @123
-  _0: s/i32 return @123
+  _0: s/i32 return @135
   _1: s/i32 arg value @130
   _2: s/i32 temp @139 s1
   _3: s/i32 temp (Result) @123
@@ -233,7 +233,7 @@ fn take @123
   bb10:
       unreachable @137
 fn give @142
-  _0: t/i32 return @142
+  _0: t/i32 return @149
   _1: t/i32 temp @153 s1
   _2: t/i32 temp value (PendingSlot) @153 s1
   _3: i32 temp @133 s2
@@ -278,7 +278,7 @@ fn give @142
       StorageDead(_1) @153 s1
       unreachable @151
 fn peek @158
-  _0: i32 return @158
+  _0: i32 return @167
   _1: s/Derived arg value @165
   _2: objref/Base var view @169 s1
   _3: i32 temp @176 s1
@@ -316,7 +316,7 @@ fn peek @158
   bb9:
       unreachable @168
 fn poke @179
-  _0: () return @179
+  _0: () return @188
   _1: s/Derived arg value @186
   _2: s/Derived var mut slot @190 s1
   _3: objuniq/Base temp @196 s1
@@ -336,7 +336,7 @@ fn poke @179
   bb2:
       return @189
 fn cast @200
-  _0: () return @200
+  _0: () return @208
   _1: raw/i32 arg pointer @205
   _2: usize arg address @207
   _3: s/u8 temp @211 s1
@@ -357,7 +357,7 @@ fn cast @200
       _0 = const () @209 s1
       return @209
 fn init @220
-  _0: Base return @220
+  _0: Base return (Receiver) @220
   _1: () temp @221
   s1: lexical in s0 @221
   bb0:

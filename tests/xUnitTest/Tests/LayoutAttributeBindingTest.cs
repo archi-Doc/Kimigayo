@@ -35,6 +35,30 @@ public partial class LayoutAttributeBindingTest
         }
     }
 
+    // A conflicting Layout invalidates its target through its Attribute and keeps an earlier Origin cause as the target's own failure
+    // (InvalidateAttributeTarget): the struct fails with InvalidOrigin, both records stay, and removing the conflicting Attribute leaves the
+    // Origin record alone.
+    [Fact]
+    public void ALayoutConflictPreservesAnEarlierOriginCause()
+    {
+        var c = CompilationTestHelper.ParseSuccess("#Layout(\"C\")\nstruct S {a}\n    origin missing outlives a\n#Layout(\"Kimigayo\")\nstruct S {a}");
+        var type = c.Kotonoha.RootKoto.NestedContainers.Single();
+        for (var pass = 0; pass < 2; pass++)
+        {
+            Assert.False(c.Bind().IsComplete);
+            Assert.Equal(BindingState.Invalid, type.StateOf());
+            Assert.Equal(BindingFailure.InvalidOrigin, type.FailureOf());
+            Assert.Contains(type, c.Binding.DerivedIssues);
+            var key = Assert.Single(c.Binding.FailureCauses(type)!);
+            Assert.Equal(type.KeyOf(Kimi.Diagnostics.DiagnosticRequirement.Binding(BindingFailure.InvalidOrigin)), key);
+            Assert.Equal(["ConflictingLayout_Kd", "MissingOriginBinding_Kd"], CompilationTestHelper.BindingErrors(c).Select(x => x.Code).Order(StringComparer.Ordinal));
+        }
+
+        Assert.True(type.RemoveAttribute(Assert.IsType<AttributeKoto>(type.AttributeChain)));
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal("MissingOriginBinding_Kd", Assert.Single(CompilationTestHelper.BindingErrors(c)).Code);
+    }
+
     [Theory]
     [InlineData("#Layout(\"C\")\nstruct S\n    var a: i32\n    var b: u8")]
     [InlineData("#Layout(\"Kimigayo\",)\nstruct S")]
@@ -80,6 +104,40 @@ public partial class LayoutAttributeBindingTest
             Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidCLayout_Kd);
             c.Bind();
         }
+    }
+
+    // SPEC 6.3.2-6.3.6, 8.15.3 (DECISIONS BU-48): a constructor's construction receiver is no use, for a written and a synthesized
+    // constructor alike (6.3.6: the synthesized one behaves as `init() => ()`): the caller's construction expression is, so an unused
+    // empty C struct with a written init is accepted, a called constructor is a record at the let that holds its value, and a Field
+    // initializer that constructs one is a record at its construction expression in the implicit constructor that runs it (6.3.3). Any
+    // other value of the struct's Type in its own constructor stays a use. A function's result is a record at its result Type
+    // occurrence and a parameter's at its own (settled (a); `keep`'s two, settled (b)). On default, mir and sel.
+    public static TheoryData<string, string, string> ConstructorRows => new()
+    {
+        { "init-unused", "#Layout(\"C\")\nstruct S\n    public init() => ()\nlet zz = 1\n", string.Empty },
+        { "init-called", "#Layout(\"C\")\nstruct S\nlet s = S.init()\n", "InvalidCLayout_Kd let s = S.init()" },
+        { "init-written-called", "#Layout(\"C\")\nstruct S\n    public init() => ()\nlet s = S.init()\n", "InvalidCLayout_Kd let s = S.init()" },
+        { "field-initializer", GenericInit + "struct H\n    var k: i32 = P.init(1, ()).n\nlet zz = 1\n", "InvalidCLayout_Kd P.init(1, ())" },
+        {
+            "receiver-only",
+            "#Layout(\"C\")\nstruct S\n    var n: i32\n    var u: ()\n    public init(n: i32)\n" +
+                "        self.n = n\n        self.u = ()\n        var other: S\nlet zz = 1\n",
+            "InvalidCLayout_Kd var other: S"
+        },
+        { "result", "#Layout(\"C\")\nstruct S\nfunc make() -> S => $abort(\"x\")\nlet zz = 1\n", "InvalidCLayout_Kd S => $abort(\"x\")" },
+        {
+            "keep",
+            "#Layout(\"C\")\nstruct Tagged\n    var tag: u8\n    var nothing: ()\nfunc keep(value: Tagged) -> Tagged => value@move\nlet zz = 1\n",
+            "InvalidCLayout_Kd Tagged) ->|InvalidCLayout_Kd Tagged => value@move"
+        },
+    };
+
+    [Theory]
+    [MemberData(nameof(ConstructorRows))]
+    public void AConstructorsReceiverIsNoUseItsConstructionIs(string form, string source, string records)
+    {
+        AssertUses(form, source, records, sel: false);
+        AssertUses(form, source, records, sel: true);
     }
 
     [Theory]

@@ -1,5 +1,5 @@
 fn format @9
-  _0: Result<(), BufferFull> return @9
+  _0: Result<(), BufferFull> return @14
   _1: ref/Point arg self @10
   _2: uniq/Utf8Writer arg writer @12
   _3: Result<(), BufferFull> temp @21 s1
@@ -206,7 +206,7 @@ fn top-level#0 @34
       _0 = const () @35 s1
       return @35
 fn label @36
-  _0: string return @36
+  _0: string return @40
   _1: i32 arg n @37
   _2: ref/string arg name @38
   _3: HeapBuffer temp @41
@@ -300,7 +300,7 @@ fn label @36
       StorageDead(_3) @41
       return @41
 fn show @47
-  _0: string return @47
+  _0: string return @54
   _1: ref/T arg value @52
   _2: string temp @57 s1
   _3: HeapBuffer temp @57 s1
@@ -639,7 +639,7 @@ fn forms @79
       StorageDead(_2) @82 s1
       return @81
 fn early @97
-  _0: string return @97
+  _0: string return @98
   _1: string temp @101 s1
   _2: HeapBuffer temp @101 s1
   _3: Utf8Writer temp @101 s1
@@ -744,7 +744,7 @@ fn early @97
   bb20:
       unreachable @99
 fn pair @110
-  _0: string return @110
+  _0: string return @111
   opaque 0 @112:
   bb0:
     * _0 = opaque 0: string @112

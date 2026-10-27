@@ -12,7 +12,7 @@ fn top-level#0 @2
       _0 = const () @3 s1
       return @3
 fn keep @4
-  _0: T return @4
+  _0: T return @17
   _1: s/T arg value @14
   _2: T arg x @16
   _3: s/T var mut v @19 s1
@@ -91,7 +91,7 @@ fn keep @4
   bb20:
       unreachable @18
 fn both @38
-  _0: U return @38
+  _0: U return @62
   _1: s/T arg a @57
   _2: t/U arg b @59
   _3: T arg x @61
@@ -191,7 +191,7 @@ fn both @38
   bb25:
       unreachable @63
 closure @79
-  _0: U return @79
+  _0: U return @80
   _1: ref/closure () -> U arg @79
   b0: T Value, Uniq
   b1: U Value, Ref
@@ -199,7 +199,7 @@ closure @79
     * _0 = copy ((*_1).0@b1) @81
       return @81
 fn peek @87
-  _0: U return @87
+  _0: U return @103
   _1: t/U arg value @97
   _2: U arg seen @99
   _3: U temp @106 s1
@@ -239,7 +239,7 @@ fn peek @87
   bb12:
       unreachable @104
 fn caller @107
-  _0: T return @107
+  _0: T return @119
   _1: s/T arg x @117
   _2: T temp @122 s1
   _3: s/T temp (PendingSlot) @124 s1

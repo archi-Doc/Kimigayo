@@ -1,5 +1,5 @@
 fn init @9
-  _0: Key return @9
+  _0: Key return (Receiver) @9
   _1: i32 arg value @10
   _2: () temp @11
   _3: () temp @11
@@ -18,14 +18,14 @@ fn init @9
       StorageDead(_2) @11
       return @11
 fn equals @16
-  _0: bool return @16
+  _0: bool return @21
   _1: ref/Key arg self @17
   _2: ref/Key arg other @19
   bb0:
     * _0 = Eq(copy (*_1).0, copy (*_2).0) proven @22
       return @22
 fn compare @29
-  _0: i32 return @29
+  _0: i32 return @34
   _1: ref/Key arg self @30
   _2: ref/Key arg other @32
   bb0:
@@ -38,7 +38,7 @@ fn top-level#0 @42
       _0 = const () @43 s1
       return @43
 fn order @44
-  _0: bool return @44
+  _0: bool return @49
   _1: ref/Key arg a @45
   _2: ref/Key arg b @47
   _3: bool temp @51
@@ -78,7 +78,7 @@ fn order @44
       _0 = Lt(move _6, const 0_i32) proven @58
       goto bb8 @58
 fn generic @61
-  _0: bool return @61
+  _0: bool return @70
   _1: ref/T arg left @66
   _2: ref/T arg right @68
   _3: bool temp @73 s1
@@ -109,7 +109,7 @@ fn generic @61
       StorageDead(_3) @73 s1
       unreachable @71
 fn text @76
-  _0: bool return @76
+  _0: bool return @79
   _1: string arg name @77
   _2: string arg other @78
   _3: bool temp @81
@@ -143,7 +143,7 @@ fn text @76
   bb5:
       return @80
 fn elementComparison @87
-  _0: bool return @87
+  _0: bool return @88
   _1: (string, string) var a @90 s1
   _2: bool temp @96 s1
   _3: ref/string temp @97 s1

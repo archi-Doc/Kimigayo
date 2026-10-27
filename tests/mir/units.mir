@@ -5,7 +5,7 @@ fn top-level#0 @2
       _0 = const () @3 s1
       return @3
 fn effects @4
-  _0: () return @4
+  _0: () return @7
   _1: bool arg flag @5
   _2: string arg text @6
   _3: bool temp @10 s1

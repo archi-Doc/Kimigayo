@@ -155,10 +155,6 @@ internal sealed class AdtDef
     // SPEC 6.3: whether a function is a constructor, whose body builds its object from fresh storage (the MIR analyses' fact).
     internal static bool IsConstructor(BindingSymbol? function) => function?.Declaration is FunctionKoto { IsConstructor: true };
 
-    // SPEC 6.3: whether a function is the implicit constructor the language synthesizes for a struct, a body the program did not write, so
-    // the checked set requires it only through a call (SPEC 8.15.3), never as a root.
-    internal static bool IsImplicitConstructor(BindingSymbol? function) => function?.Declaration is FunctionKoto { IsImplicitConstructor: true };
-
     internal static BoundType? ReceiverType(FunctionKoto function)
         => (function.IsConstructor || function.IsDestructor) && function.BoundSymbol?.Scope.Owner.BoundSymbol is { } owner
             ? function.CodeContext.Compilation.Binding.SelfType(owner) : null;

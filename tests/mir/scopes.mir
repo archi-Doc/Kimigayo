@@ -1,5 +1,5 @@
 fn init @6
-  _0: Layered return @6
+  _0: Layered return (Receiver) @6
   _1: string arg text @7
   _2: () temp @8
   _3: () temp @8
@@ -24,7 +24,7 @@ fn init @6
   bb3:
       return @8
 fn init @26
-  _0: Derived return @26
+  _0: Derived return (Receiver) @26
   _1: string arg text @32
   _2: () temp @33
   _3: string temp @29
@@ -80,7 +80,7 @@ fn init @26
   bb7:
       return @33
 fn drop @49
-  _0: () return @49
+  _0: () return @50
   _1: Derived arg self @49
   _2: () temp @52 s1
   _3: bool temp @53 s1
@@ -156,12 +156,12 @@ fn log @67
       _0 = const () @69
       return @69
 fn make @70
-  _0: string return @70
+  _0: string return @71
   bb0:
     * _0 = const "x" @72
       return @72
 fn stop @73
-  _0: Never return @73
+  _0: Never return @74
   _1: Never temp @76 s1
   _2: () temp @77 s1
   _3: () temp @78 s2
@@ -184,7 +184,7 @@ fn stop @73
       StorageDead(_1) @76 s1
       unreachable @75
 fn cleanup @79
-  _0: i32 return @79
+  _0: i32 return @83
   _1: bool arg flag @80
   _2: i32 arg n @81
   _3: string arg owned @82
@@ -511,7 +511,7 @@ fn cleanup @79
   bb74:
       unreachable @84
 fn divergingDefer @148
-  _0: i32 return @148
+  _0: i32 return @150
   _1: bool arg flag @149
   _2: () temp @156 s1
   _3: bool temp @157 s1
@@ -576,7 +576,7 @@ fn divergingDefer @148
       StorageDead(_7) @152 s1
       unreachable check bb14 @153 s1
 fn conditionTemporaries @163
-  _0: i32 return @163
+  _0: i32 return @165
   _1: string arg text @164
   _2: () temp @167 s1
   _3: bool temp @168 s1
@@ -638,7 +638,7 @@ fn conditionTemporaries @163
   bb15:
       unreachable @166
 fn failure @177
-  _0: i32 return @177
+  _0: i32 return @179
   _1: bool arg flag @178
   _2: bool temp @182 s1
   _3: () temp @183 s1
@@ -755,7 +755,7 @@ fn divergentDeferHeld @204
       StorageDead(_1) @206 s1
       return @205
 fn securedReturn @214
-  _0: string return @214
+  _0: string return @216
   _1: string arg s @215
   _2: string temp @219 s1
   _3: string temp (Result) @214

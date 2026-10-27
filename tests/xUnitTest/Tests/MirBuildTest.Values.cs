@@ -55,18 +55,17 @@ public sealed partial class MirBuildTest
     // a non-Unit result, which control flow rejects, leaves no value, as a body ending in a statement does. (A raw read of a C-layout
     // struct Binding rejected was the derived Opaque's row until DECISIONS R4-M134 Q8 made such a declaration no Binding error.)
     [Theory]
-    [InlineData("struct S\n    var item: Missing = 7\n    var other: i32 = 1\n", "UnresolvedBinding_Kd", null)]
-    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry\n    var tag = Tags.tagOf<Entry>()\n", "UnprovenConstraint_Kd", null)]
-    [InlineData("func f<T>() -> T\n    T is Copy\n", "FunctionFallthrough_Kd", null)]
-    public void ValuesBindingDidNotFormAreDerived(string source, string code, string? opaque)
+    [InlineData("struct S\n    var item: Missing = 7\n    var other: i32 = 1\n", "UnresolvedBinding_Kd")]
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry\n    var tag = Tags.tagOf<Entry>()\n", "UnprovenConstraint_Kd")]
+    [InlineData("func f<T>() -> T\n    T is Copy\n", "FunctionFallthrough_Kd")]
+    public void ValuesBindingDidNotFormAreDerived(string source, string code)
     {
         var c = Compile(source);
         Assert.Contains(CompilationTestHelper.BindingErrors(c), x => x.Code == code);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         Assert.DoesNotContain(program.Records, static x => x.Subject.Module == 0);
-        var sites = program.Bodies.ToArray().Where(static x => x.Source.Module == 0).SelectMany(static x => x.OpaqueSites.ToArray());
-        Assert.Equal(opaque is null ? [] : [opaque], sites.Select(x => c.SyntaxOf(x.Source).ToString()));
+        Assert.Empty(program.Bodies.ToArray().Where(static x => x.Source.Module == 0).SelectMany(static x => x.OpaqueSites.ToArray()));
     }
 
     // SPEC 23.1.2 (DECISIONS R4-M88): an operation Binding left unresolved (a built-in operator, `and`/`or`, a runtime Type test, a

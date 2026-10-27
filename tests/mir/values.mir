@@ -5,7 +5,7 @@ fn top-level#0 @11
       _0 = const () @12 s1
       return @12
 fn arithmetic @13
-  _0: i32 return @13
+  _0: i32 return @19
   _1: i32 arg a @14
   _2: Wrapping<u32> arg w @15
   _3: i32 var q @21 s1
@@ -67,7 +67,7 @@ fn arithmetic @13
       StorageDead(_3) @21 s1
       unreachable @20
 fn conversions @54
-  _0: i64 return @54
+  _0: i64 return @58
   _1: i32 arg a @55
   _2: f64 arg f @56
   _3: u8 arg b @57
@@ -125,7 +125,7 @@ fn conversions @54
       StorageDead(_4) @60 s1
       unreachable @59
 fn logic @95
-  _0: bool return @95
+  _0: bool return @98
   _1: bool arg a @96
   _2: bool arg b @97
   _3: bool temp @100
@@ -154,7 +154,7 @@ fn logic @95
       StorageDead(_3) @100
       return @99
 fn aggregates @105
-  _0: Shape return @105
+  _0: Shape return @107
   _1: i32 arg x @106
   _2: (i32, bool) var pair @109 s1
   _3: [3 of i32] var fixed @114 s1
@@ -200,7 +200,7 @@ fn aggregates @105
       StorageDead(_2) @109 s1
       unreachable @108
 fn metadata @145
-  _0: bool return @145
+  _0: bool return @154
   _1: ref/Array<i32> arg values @146
   _2: Slice<i32> arg items @150
   _3: bool temp @156
@@ -226,7 +226,7 @@ fn metadata @145
       StorageDead(_3) @156
       return @155
 fn replace @164
-  _0: string return @164
+  _0: string return @167
   _1: string arg first @165
   _2: string arg second @166
   _3: string var mut held @169 s1
@@ -294,7 +294,7 @@ fn replace @164
   bb17:
       unreachable @168
 fn grouped @188
-  _0: string return @188
+  _0: string return @192
   _1: [3 of string] arg a @189
   bb0:
     * _0 = move _1[2] @194
@@ -443,7 +443,7 @@ fn unfinished @199
       StorageDead(_2) @202 s1
       unreachable @201
 fn cut @215
-  _0: Slice<i32> return @215
+  _0: Slice<i32> return @220
   _1: ref/Array<i32> arg values @216
   _2: ref/Array<i32> temp @225
   _3: isize temp @225
@@ -504,7 +504,7 @@ fn cut @215
       StorageDead(_2) @225
       unreachable @225
 fn settled @234
-  _0: bool return @234
+  _0: bool return @237
   _1: bool arg a @235
   _2: bool arg b @236
   _3: bool var both @239 s1
@@ -559,7 +559,7 @@ fn settled @234
       StorageDead(_3) @239 s1
       unreachable @238
 fn diverge @248
-  _0: Never return @248
+  _0: Never return @249
   _1: () temp @251
   _2: () temp @252 s1
   s1: lexical in s0 @251
