@@ -22,8 +22,9 @@ internal enum MirViolation : byte
     Entry, // An edge into a region, the body or an Inlined scope's locations, elsewhere than its first location, or from it into that block.
     Diverged, // A read, move or borrow, where runtime edges reach, of a Temp whose only writes are diverging Calls' destinations (G131).
     NeverWrite, // A Temp of Type Never written by other than an unadapted Copy or Move of a Never Place, an Opaque value or a diverging Call.
-    Local, // Local 0 is not the Return local, an Arg local does not directly follow it, a local has no Type, or a Result local is no Temp of
-    // local 0's Type or is read other than by the whole Move into _0 that delivers it (R4-M132).
+    Local, // Local 0 is not the Return local, an Arg local does not directly follow it, a local has no Type or one stating Unstated (a kept
+    // part's mark only, DECISIONS BU-46), or a Result local is no Temp of local 0's Type or is read other than by the whole Move into _0
+    // that delivers it (R4-M132).
     Scope, // A scope that its outer scope does not precede, or a source outside the scopes.
     StorageLocal, // StorageLive or StorageDead of a Place other than a Var or Temp local.
     EndBorrowLocal, // EndBorrow of a Place other than a reference local.

@@ -36,10 +36,11 @@ public sealed partial class Binding
 {
     // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-24; R4's constraint 2): the authority a raw layer's Origin can keep where no declaration
     // states the layer, by its kind: none Unstated, `self` Own, `static` Static, any other Exclusive, never Shared by default, since a
-    // borrow formed anywhere may keep an exclusive Loan of what the Origin covers. Unbound, left by a reported error, is Unstated.
+    // borrow formed anywhere may keep an exclusive Loan of what the Origin covers. Unbound, left by a reported error, is Unstated, as is
+    // Unstated, a kept part's layer its declaration writes without `during` (DECISIONS BU-46).
     internal static RawStep StepOf(BoundOrigin? raw) => raw?.Kind switch
     {
-        null or OriginKind.Unbound => RawStep.Unstated,
+        null or OriginKind.Unbound or OriginKind.Unstated => RawStep.Unstated,
         OriginKind.Holder => RawStep.Own,
         OriginKind.Static => RawStep.Static,
         _ => RawStep.Exclusive,
@@ -78,11 +79,11 @@ public sealed partial class Binding
     }
 
     // SPEC 5.7 Calls, 15.6.4: whether a Type argument supplies the raw layer an instance stores (StoredLayer's `declared` null), the
-    // declaration stating a Type parameter or a pair layer at the path or above it.
+    // declaration stating a Type parameter or a pair layer at the path or above it, and no declaration above states it (TyCtxt.RawStated).
     internal bool StoredSupplied(BoundType instance, int part, ReadOnlySpan<int> positions)
     {
-        _ = this.StoredLayer(instance, part, positions, out var declared);
-        return declared is null;
+        var layer = this.StoredLayer(instance, part, positions, out var declared);
+        return declared is null && !TyCtxt.RawStated(layer);
     }
 
     // The declared slot a raw Origin names: an Input atom's target slot (a projection `x.s` whose slot argument is omitted) with the

@@ -5946,7 +5946,7 @@ resumed by R4-M86 (2026-10-20).
     obligations unjudged); judging at formation (a Field's own Origins are still `Unbound`); "binder failed, no record" in the judge
     (`IsDerived` owns derivation). Open: A's `IsDerived` widening for an associated specification's record (review N1).
 
-- **BU-24** (superseded in part by BU-39, BU-41) (2026-10-22; the BU planning session after the full process: designs A′ and B′, design review 2, design-final §14 "B′+";
+- **BU-24** (superseded in part by BU-39, BU-41, BU-46) (2026-10-22; the BU planning session after the full process: designs A′ and B′, design review 2, design-final §14 "B′+";
   unit bu20 C1a; CR-R2) A raw layer's Origin (SPEC 5.7) is a role of its own: `BoundType.RawOrigin` beside `Origin`, one slot whose
   role the Semantics decides (0 B; a pinned interleaved A/B of the getters against C0d's build gave warm Bind minima 35.70 against
   35.41 ms over three milestones, inside the baseline's own 3% spread, and equal cold bytes, so B′'s +8 B field is not taken). `Origin`
@@ -6493,7 +6493,7 @@ resumed by R4-M86 (2026-10-20).
     CallPlan (extra state while retaining the redundant Group), or a new IR/table. The existing view row corrects the public subject
     without another allocation; removing Group work is expected to preserve compilation and native costs.
 
-- **BU-34 A pair slot binds a raw argument without its Origin** (2026-10-25; the BU planning session after the full process: designs A
+- **BU-34 A pair slot binds a raw argument without its Origin** (amended by BU-46: Unstated in kept parts) (2026-10-25; the BU planning session after the full process: designs A
   and B, the design review's choice of B's structure with A's name; unit bu34; R4's A5-facing review: accepted with the two record
   fixes below) SPEC 8.1.1's raw row, which the owner kept (R4-M117 item 4, 「推奨の通り、落とす規則を残します。SPEC は変えず、Binding を
   SPEC に合わせます。」): a `raw/T during o` argument fits a pair by dropping its Origin, so the slot binds `raw/T`, which its original
@@ -6794,7 +6794,7 @@ resumed by R4-M86 (2026-10-20).
     while the hold walk keeps its untied store, two answers to "the call writes output j", conservative (one more Φ_E target).
     Pre-existing: a lent `static` layer unties; `unlinkOk` is SPEC-invalid (`Node.init` stores through the null `next` into storage
     the body does not own: R4's triage).
-- **BU-41 An instance keeps its stored parts with their raw Origins: `TyCtxt.StoredParts`, `RawSupplied`** (2026-10-26; the BU
+- **BU-41 An instance keeps its stored parts with their raw Origins: `TyCtxt.StoredParts`, `RawSupplied`** (superseded in part by BU-46) (2026-10-26; the BU
   planning session's design S1′, `p13u0/design-U0.md`, accepted with P13's v3 by R4's design review 3; PLAN G148 (1), P13's U0, unit
   bu46; the owner's answers on P13, Q1 (a), Q2 (a) and 「進める (推奨)」, and SPEC 5.7's clarification ② of 2026-10-26) P13's per-part
   guard (R4-M76) reads, for every raw layer in a holder's own storage at any depth, its step under the holder's substitution, whether
@@ -6945,6 +6945,62 @@ resumed by R4-M86 (2026-10-20).
     (+0.07%: `SlotRequirement` and each keeper hold a set's word reference, the library's slots and keepers 8 B more each), +1,296 B
     on Milestone33, +10,456 B on the generated workload (+0.17%); issue counts equal; warm reads and a warm rebind over binders past
     the 64th allocate 0 B. Pinned warm Bind timing (5caf5e8f0): B/A 0.986–0.998, in its commit.
+- **BU-46 A kept part states Unstated on each raw layer its declaration writes without `during`: `Binding.WithUnstatedOrigins`,
+  `TyCtxt.RawStated`** (2026-10-27; the BU planning session after the full process: design 1 (`p13u0/design-U0r.md`), R4's design
+  review 1 REVISE (B1 the `s/U` application, B2 the class), design 1's revision 1 (`design-U0r-1r1.md`), design 2 written without
+  either, the choice of design 1 revision 1 with design 2's findings, R4's design review 2 ACCEPT with N1–N5; PLAN G148 (1), U0's
+  revision, unit bu50; class Full; the owner at the choice, 「許可して設計 1 (推奨)」, 2026-10-27) SPEC 5.7 Calls decides an Origin-less
+  raw layer per parameter: the write fact unless the parameter's Type expression writes it (a Type argument's or a pair slot's argument's
+  included), also below the holder. BU-41's kept parts carried nothing for such a layer and a nested instance is interned
+  (`Wrap<raw/u8>` below `Holder2.b` and below `Outer<raw/u8>.w` is one Type), so `RawSupplied`, answering per nested instance, read a
+  layer a declaration writes in a Type argument of its own Field, Case payload or base clause as supplied (R4-M147's Known limits, an
+  unsound acceptance on the MIR). An answer relative to the route in A5 is order-dependent under the walk's per-Type memo (design 1's
+  (A): `G<raw/u8>` None, `G2<raw/u8>`, its Fields swapped, Through), and a memo keyed by route is unbounded (V16).
+  - Decision (the mark): `Binding.WithUnstatedOrigins(declared)` (Binding.Storage.cs) is the declared Type with each raw layer it
+    writes without `during` stating `BoundOrigin.Unstated`, the Origin such a layer counts as stating (5.7 Fits); a layer stating an
+    Origin, an abstract part but a pair binder's application `s/U` (whose `U` the declaration writes) and a callable are kept as written,
+    and an Unbound layer, a reported error's dependent, is not marked. `Substitute` keeps `StoredType(WithUnstatedOrigins(written),
+    owner)` for `Parts`, `PartsBase` and the Case payload Tuples (`KeptType`, the one producer); `Fields`, `Cases` and `Base` stay
+    their `WithoutRawOrigins`, so AdtDef's view is unchanged (the same Types by reference). No kind and no cache: the mark is formed in
+    each instance refill, linear in the declared part. The kept Type now tells the holders apart (Holder2's `Wrap<raw/u8 during
+    Unstated>`, Outer<raw/u8>'s the parameter's `Wrap<raw/u8>`), so every answer is a function of the kept Type and A5's memo stays sound.
+  - Provenance follows the binding (revision 1's one rule for review 1's B1): substitution copies a layer with its mark (a Type slot's
+    argument, a component); both pair formations, 8.1.1's `s/T` and 8.1.2's `s/U`, read W only through `TyCtxt.PairBinding(W)`, the
+    one exception, which drops a stated Origin and keeps Unstated; `ApplySemantics` forms a concrete `s/U` as `Rebuild(PairBinding(W),
+    [U], a borrow's annotation)`, `Form`'s Type for every unmarked W (R4's assertion over 1,500 tests). So `HPU { p: PU<raw/u8> }`'s
+    `v: s/i32` is `raw/i32 during Unstated`, its parameter twin `PU<raw/u8>`'s `raw/i32`.
+  - Readers: `StepOf` steps Unstated as Unstated (members complete and empty, as before); `TyCtxt.RawStated(layer)`, a read of the
+    layer Type (total, allocation-free), replaces `RawSupplied` and `StoredSupplied` in A5's `Past` (R4-M151).
+  - Confinement (review 2's N4): Unstated stands only on raw layers of kept parts and of the nested instances and pair arguments they
+    reach; `BoundType`'s constructor admits it in the raw role only; kept parts are read only by walks returning facts (`StoredLayer`,
+    retention's `Held` and `Stores`, A5's `Holding`), so no relation, premise, obligation or row is formed from it (design-final §13 A2
+    holds as written). MirValidator's `Local` row reports a local whose Type states Unstated (`TyCtxt.StatesUnstated`, gated by
+    `CarriesRawOrigin`, an indexed walk) as `InternalInvariant_Kd` in every configuration, so a leak, which would make A5 read a
+    parameter's or local's layer as a declaration's, fails where it would change a verdict. `TyCtxt.Name` prints the unmarked spelling.
+  - Invariant (N2): no declared part writes a Semantics family; a family comes only from an expression's adaptation, and a Field
+    initializer's adaptation forms a `SemanticsApplication` (review 2's eight forms). `WithUnstatedOrigins` throws InternalInvariant on
+    one instead of keeping it unmarked, where a family case would read as the parameter's (a silent unsound acceptance).
+  - Retention needs no stated or supplied reading (N3): rule A (5.7 Calls' last sentence) governs every Origin-less layer a call may
+    write, whoever wrote it; rows are equal with and without the mark.
+  - The owner's decisions (verbatim above): BU-24 C1b's Q-O2 clause ("only in relations and their records, never stored") departs for
+    raw layers of kept parts only; `BoundType`'s constructor admits Unstated in the raw role (`TyCtxtTest.ARawLayerKeepsItsOriginRole`:
+    `Pointer(I32, Unstated)` forms, a borrow stating it still throws); BU-34's P1 gains a kept-part exception (there one SPEC Type is two
+    interned Types, `PS<raw/u8 during Unstated>` and `PS<raw/u8>`; AdtDef's view, signatures and bodies keep P1, and R4-M117 item 4's
+    drop rule stays for stated Origins); the raw-role ratchet grows by two sites (`Binding.Storage.cs` 2 to 3, `TyCtxt.Raw.cs` 0 to 1).
+  - Supersedes: BU-41's TyCtxt bullet (`RawSupplied`, and "A walk reads a layer … only through these three on the instance holding
+    it": `RawStated` reads the layer) and its reason that only the part before erasure distinguishes holders (for an Origin-less layer
+    the mark does); amends BU-24 C1b's Q-O2 clause, the RawOrigins invariant "never in a Type" (now: never in any Type but a kept part's
+    raw layer, never in AdtDef's) and BU-34's invariant (TyCtxt.cs's head: but Unstated in kept parts).
+  - Rejected: (A), a chain in `Past` (order-dependent, above; it also needed a position grammar and a frame stack in A5); the Limit at
+    every nested supplied layer (`Unsupported_Kd` on valid twins: `Outer<raw/u8>`, `Hold<raw/u8>`, `Opt2<raw/u8>`, `M2<raw/u8>`); a
+    dedicated OriginKind (two names, one concept); a `BoundType` bit (moves no rule, an eleventh `Intern` parameter); marking the declared
+    Field Types themselves (changes AdtDef's view, Hover and identity); marking after substitution (cannot tell a written layer from a
+    supplied one); design 2's memoized `Stated` (a second stored form, +633 KB cold Bind on the census) and its second carrier at the
+    family arm (`BinderLayer`: a second fix for one symptom, and no kept part reaches a family).
+  - Not covered: G271 (`HA<S> { x: S.Item }`: `Substitute` leaves an associated projection uncompleted; completing it adds a second
+    producer of the mark, an associate binding a declaration writes); `sharedSupplied` (a layer stating a slot inside a nested argument,
+    `HS {s} { b: Wrap<raw/i32 during s> }`, stays R4-M147's Limit); the default pipeline accepts the stated forms until R6-check (it
+    reads AdtDef's view).
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

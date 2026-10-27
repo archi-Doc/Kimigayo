@@ -829,6 +829,27 @@ public sealed class MirValidatorTest
         Assert.Equal(broken is null ? [] : [MirViolation.Local], Validate(body).Select(static x => x.Rule).Distinct());
     }
 
+    // DECISIONS BU-46: Unstated marks only a kept part's raw layer its declaration writes without `during`, so a local whose Type states it,
+    // as a raw layer or inside a Tuple, is a Local finding; the builder's locals over unstated pointers are valid.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("layer")]
+    [InlineData("component")]
+    public void ALocalsTypeStatesNoUnstatedOrigin(string? broken)
+    {
+        var c = MirBuildTest.Compile("func f()\n    var p: raw/i32 = null\n    var t: (raw/i32, i32) = (null, 0)\n");
+        var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var locals = body.Locals.ToArray();
+        var at = Array.FindIndex(locals, x => x.Name == (broken == "component" ? "t" : "p"));
+        if (broken is not null)
+        {
+            var marked = c.Types.Pointer(BoundType.I32, BoundOrigin.Unstated);
+            Unsafe.AsRef(in body.Locals[at]) = locals[at] with { Type = broken == "layer" ? marked : c.Types.Tuple([marked, BoundType.I32]) };
+        }
+
+        Assert.Equal(broken is null ? [] : [MirViolation.Local], Validate(body).Select(static x => x.Rule).Distinct());
+    }
+
     // V11: validating a body again, the Type tier's and its Adapt's case views included, and enumerating its uses, of the body and under
     // each case view, allocates nothing.
     [Trait("Purpose", "Allocation")]

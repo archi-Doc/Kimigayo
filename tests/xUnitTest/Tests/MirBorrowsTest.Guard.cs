@@ -181,8 +181,7 @@ public sealed partial class MirBorrowsTest
     // keepPhantom's `y = 5`, which no part names; its `inspect(w)` errs on dev too); an Origin-less layer takes the write fact unless the
     // parameter's Type expression writes it (SPEC 5.7 Calls' per-parameter rule, P2: rawBufDead, whose store reaches E, which may be used
     // after every point). Dev held erased and accepted the P1 and P2 records. A layer written in a Type argument of the declaration's own
-    // Field or Case payload reads as supplied on the instance holding it (nestedDead, optionalDead): a known unsound acceptance, pinned until
-    // G148 (1)'s holder-relative revision (PLAN; DECISIONS R4-M147, Known limits).
+    // Field or Case payload is the declaration's, which its kept part states (nestedDead, optionalDead; DECISIONS BU-46, R4-M151).
     [Fact]
     public void AStoredRawLayerIsReadByItsStep()
     {
@@ -264,7 +263,149 @@ public sealed partial class MirBorrowsTest
             [
                 "erased: z = 5", "erased: inspect(w1)", "erased: var w1: ref/i32 = x@ref", "erased: var y = 2", "typed: z = 5", "typed: inspect(w1)",
                 "typed: var w1: ref/i32 = x@ref", "typed: var y = 2", "keepPhantom: y = 5", "keepPhantom: inspect(w)", "rawBufDead: z = 5",
+                "nestedDead: z = 5", "optionalDead: z = 5",
             ],
+            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+    }
+
+    // SPEC 5.7 Calls (DECISIONS BU-46, R4-M151): a raw layer without an Origin that a declaration writes at any depth below the holder gives
+    // the write fact, as the holder's own layer does (direct), so a call storing a borrow in the holder keeps its Loan in E and `z = 5`
+    // errs: beside a supplied argument (pairM), in a user enum's payload (enumHeld), a Tuple in a Type argument (tupleWrap), a nested holder
+    // (deeper), a pair slot's argument (pairSlot, also stated `static`, hpst) and its application `s/U` (hpu); where the parameter's Type
+    // expression writes it over a Loan-free pointee, nothing past it, so the store holds no Loan (supplied, pairM2, pu, wrap).
+    [Fact]
+    public void ALayerADeclarationWritesGivesTheWriteFact()
+    {
+        var c = MirBuildTest.Compile(Prelude + """
+            struct RawBuf
+                var data: raw/u8
+                public init() => self.data = null
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct Wrap<E>
+                var value: E
+                public init(value: E) => self.value = value@move
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct Outer<P>
+                var w: Wrap<P>
+                public init(w: Wrap<P>) => self.w = w@move
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct Holder2
+                var b: Wrap<raw/u8>
+                public init() => self.b = Wrap<raw/u8>.init(null)
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct Two<A, B>
+                var a: A
+                var b: B
+                public init(a: A, b: B)
+                    self.a = a@move
+                    self.b = b@move
+            struct M<P>
+                var w: Two<raw/u8, P>
+                public init(w: Two<raw/u8, P>) => self.w = w@move
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct M2<P>
+                var w: Two<P, P>
+                public init(w: Two<P, P>) => self.w = w@move
+                public func put<T>(self: uniq/Self, value: T) => ()
+            enum MyOpt<T>
+                Has(T)
+                Not
+            struct HoldEnum
+                var e: MyOpt<raw/u8>
+                public init() => self.e = .Not
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct HoldTW
+                var t: Wrap<(raw/u8, i32)>
+                public init() => self.t = Wrap<(raw/u8, i32)>.init((null, 0))
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct H3
+                var h: Holder2
+                public init() => self.h = Holder2.init()
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct PS<s/T>
+                var t: s/T
+                public init(t: s/T) => self.t = t@move
+                public func put<V>(self: uniq/Self, value: V) => ()
+            struct HPSo
+                var p: PS<raw/u8>
+                public init() => self.p = PS<raw/u8>.init(null)
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct HPSt
+                var p: PS<raw/u8 during static>
+                public init() => self.p = PS<raw/u8>.init(null)
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct PU<s/T>
+                s is raw or owner
+                var v: s/i32
+                public init(v: s/i32) => self.v = v@move
+                public func put<V>(self: uniq/Self, value: V) => ()
+            struct HPU
+                var p: PU<raw/u8>
+                public init() => self.p = PU<raw/u8>.init(null)
+                public func put<T>(self: uniq/Self, value: T) => ()
+            func direct()
+                var z = 3
+                var h = RawBuf.init()
+                h.put(z@ref)
+                z = 5
+            func pairM()
+                var z = 3
+                var h = M<raw/u8>.init(Two<raw/u8, raw/u8>.init(null, null))
+                h.put(z@ref)
+                z = 5
+            func enumHeld()
+                var z = 3
+                var h = HoldEnum.init()
+                h.put(z@ref)
+                z = 5
+            func tupleWrap()
+                var z = 3
+                var h = HoldTW.init()
+                h.put(z@ref)
+                z = 5
+            func deeper()
+                var z = 3
+                var h = H3.init()
+                h.put(z@ref)
+                z = 5
+            func pairSlot()
+                var z = 3
+                var h = HPSo.init()
+                h.put(z@ref)
+                z = 5
+            func hpst()
+                var z = 3
+                var h = HPSt.init()
+                h.put(z@ref)
+                z = 5
+            func hpu()
+                var z = 3
+                var h = HPU.init()
+                h.put(z@ref)
+                z = 5
+            func supplied()
+                var z = 3
+                var h = Outer<raw/u8>.init(Wrap<raw/u8>.init(null))
+                h.put(z@ref)
+                z = 5
+            func pairM2()
+                var z = 3
+                var h = M2<raw/u8>.init(Two<raw/u8, raw/u8>.init(null, null))
+                h.put(z@ref)
+                z = 5
+            func pu()
+                var z = 3
+                var h = PU<raw/u8>.init(null)
+                h.put(z@ref)
+                z = 5
+            func wrap()
+                var z = 3
+                var h = Wrap<raw/u8>.init(null)
+                h.put(z@ref)
+                z = 5
+            """);
+        Assert.Equal(
+            ["direct: z = 5", "pairM: z = 5", "enumHeld: z = 5", "tupleWrap: z = 5", "deeper: z = 5", "pairSlot: z = 5", "hpst: z = 5", "hpu: z = 5"],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 

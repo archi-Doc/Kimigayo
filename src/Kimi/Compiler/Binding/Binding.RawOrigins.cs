@@ -23,10 +23,12 @@ namespace Kimi.Compiler;
 // - Inputs: bound Types; a declaration's schema and keepers after the requirement fixed point; a signature's input Types; PathOrigin.
 // - Outputs: raw Origins, steps, member borrows, relation verdicts and the OriginRelation failure facts of the allowlist.
 // - Invariants: Holder only in declared Field and payload Types, which every read replaces, and in an instance's kept parts, whose
-//   readers read a raw layer by its step only (TyCtxt.StoredParts, DECISIONS BU-41), never in AdtDef's stored Types; Unstated only in
-//   relations and their records, never in a Type, so no premise, obligation or row names Holder or Unstated (design-final §13 A2). A
-//   formed raw Origin is the Origin it is formed with; every step is total and never Shared by default, and only retention and the
-//   TyCtxt views read one, after Binding's last pass.
+//   readers read a raw layer by its step only (TyCtxt.StoredParts, DECISIONS BU-41), never in AdtDef's stored Types; Unstated in
+//   relations and their records and, marking a layer its declaration writes without `during`, on raw layers of an instance's kept parts
+//   (Binding.WithUnstatedOrigins, the one producer, DECISIONS BU-46), whose readers read it by its step and TyCtxt.RawStated, never in
+//   any other Type (MirValidator's Local row checks a MIR local's), so no premise, obligation or row names Holder or Unstated
+//   (design-final §13 A2). A formed raw Origin is the Origin it is formed with; every step is total and never Shared by default, and only
+//   retention and the TyCtxt views read one, after Binding's last pass.
 // - Files: this one (relations, claim fits, the Types without raw Origins); .Steps.cs (RawStep and its readers); .Written.cs (the written
 //   forms and their judgment); .Holder.cs (`during self` layers read and written at a Place); .Keepers.cs (member borrows and slot keepers).
 // - Prohibitions: no region, Loan or retention facts beyond the member borrows, no Place walk of its own (PathOrigin is PlaceAuthority's),
