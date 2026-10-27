@@ -4,7 +4,9 @@
 // collector and code generation read by IntrinsicId. Column Target: the item a call of the intrinsic names as its collector target, the
 // whitelist of target-bearing intrinsic sites (X15); every other intrinsic carries none. Column LaysOutType: the call's Type argument is a
 // by-value use whose layout the collector checks (K 4.8; DECISIONS R5-M44). Columns Writer and Routine: how code generation writes a call
-// (C8a; DECISIONS R5-M65, R5-M92), the runtime routine a routine writer calls; a row not written yet names its owning unit.
+// (C8a; DECISIONS R5-M65, R5-M92), the runtime routine a routine writer calls; a row not written yet names its owning unit. Whether a row
+// reads its call's Type argument follows from LaysOutType and Target (ReadsTypeArgument), the one rule every reader of it applies
+// (DECISIONS R5-M136).
 // Input: an IntrinsicId other than None. Output: its row.
 // Invariants: one row per IntrinsicId, in its order, checked once; an id without a row, None included, is a broken MIR contract.
 // Must not: resolve a target's item (the collector's), or restate the descriptor table's columns (MirDescriptors).
@@ -41,6 +43,7 @@ internal enum IntrinsicWriter : byte
     Buffer, // FormatBuffer: an owning interpolation's private buffer, on its frame's region or the heap by its estimate (FunctionCodegen.Interpolation).
     Segment, // FormatSegment: the hint routine given its estimate's hint, then a literal segment's text, the adapter checked (FunctionCodegen.Interpolation).
     Finish, // FormatFinish: the routine, or its stack form, over the adapter's buffer (FunctionCodegen.Interpolation).
+    Record, // TestRecordValue: the test runtime holds the value for its observation: its kind, width and bits (FunctionCodegen.Intrinsics).
 }
 
 /// <summary>A row of the intrinsic table.</summary>
@@ -49,7 +52,14 @@ internal enum IntrinsicWriter : byte
 /// <param name="LaysOutType">Whether the call's Type argument is a by-value use (K package 4.8).</param>
 /// <param name="Writer">How code generation writes a call.</param>
 /// <param name="Routine">The runtime routine the writer calls, if any.</param>
-internal readonly record struct IntrinsicRow(IntrinsicId Id, IntrinsicTarget Target, bool LaysOutType, IntrinsicWriter Writer, FunctionAbi? Routine);
+internal readonly record struct IntrinsicRow(IntrinsicId Id, IntrinsicTarget Target, bool LaysOutType, IntrinsicWriter Writer, FunctionAbi? Routine)
+{
+    /// <summary>Gets a value indicating whether the row reads its call's Type argument, the one form its Type-driven columns take: a by-value use
+    /// (<see cref="LaysOutType"/>) or the Type its target is of (an erased writer's destination, a creation's payload, a DestroyValues'
+    /// element); a staticEnsure's target is its operand's static. The function of another row may have no Type parameter, so its
+    /// substitution is never read (DECISIONS R5-M136).</summary>
+    internal bool ReadsTypeArgument => this.LaysOutType || this.Target is IntrinsicTarget.Witness or IntrinsicTarget.Descriptor or IntrinsicTarget.Glue;
+}
 
 /// <summary>The intrinsic table of the Backend: one row per <see cref="IntrinsicId"/>.</summary>
 internal static class IntrinsicRows
@@ -84,13 +94,11 @@ internal static class IntrinsicRows
         new(IntrinsicId.Clone, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Clone, null), // Payload-independent (IMPL 21.1.3).
         // TypeTest acquires nothing (SPEC 13.6.4); code generation numbers its target (R5-M74, R5-M110).
         new(IntrinsicId.TypeTest, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Test, null),
-        new(IntrinsicId.TestObserve, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10a.
-        new(IntrinsicId.TestMessage, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10a.
-        new(IntrinsicId.TestRequireAbort, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10a.
-        new(IntrinsicId.TestRecordValue, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10a.
-        new(IntrinsicId.TestPhaseEnter, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10b.
-        new(IntrinsicId.TestPhaseLeave, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10b.
-        new(IntrinsicId.TestTempDirectory, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10a.
+        new(IntrinsicId.TestObserve, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Routine, RuntimeAbi.TestObserve),
+        new(IntrinsicId.TestMessage, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Routine, RuntimeAbi.TestMessage),
+        new(IntrinsicId.TestRequireAbort, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Routine, RuntimeAbi.TestRequireAbort),
+        new(IntrinsicId.TestRecordValue, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Record, RuntimeAbi.TestValue),
+        new(IntrinsicId.TestTempDirectory, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Routine, RuntimeAbi.TestTempDirectory),
         new(IntrinsicId.StaticEnsure, IntrinsicTarget.StaticInit, LaysOutType: false, IntrinsicWriter.Ensure, null),
         new(IntrinsicId.Capacity, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Capacity, null),
         new(

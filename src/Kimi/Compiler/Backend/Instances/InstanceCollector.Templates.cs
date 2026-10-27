@@ -47,11 +47,11 @@ internal sealed partial class InstanceCollector
         _ => false,
     };
 
-    // Whether a block's terminator is a site: a Drop (row 10), a call that may carry a target, or an intrinsic call whose Type argument is a
-    // by-value use.
+    // Whether a block's terminator is a site: a Drop (row 10), a call that may carry a target, or an intrinsic call whose row reads its Type
+    // argument (a by-value use; IntrinsicRow.ReadsTypeArgument, the one rule an Item of its function follows too, Bodyless).
     private static bool IsSite(in MirTerminator terminator) => terminator.Kind == MirTerminatorKind.Drop ||
         (terminator is { Kind: MirTerminatorKind.Call, Callee: var callee } &&
-            (Carries(callee) || (callee.Kind == MirCalleeKind.Intrinsic && IntrinsicRows.Of((IntrinsicId)callee.Arg).LaysOutType)));
+            (Carries(callee) || (callee.Kind == MirCalleeKind.Intrinsic && IntrinsicRows.Of((IntrinsicId)callee.Arg).ReadsTypeArgument)));
 
     // Each body's sites, once per version, in location order, with whether a runtime path from its entry reaches each.
     private void Templates(MirProgram program)
