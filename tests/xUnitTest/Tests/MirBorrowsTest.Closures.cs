@@ -548,8 +548,9 @@ public sealed partial class MirBorrowsTest
     // the call errs (holderReadBad, by SPEC 15.6.4's per-argument letter; PLAN G148 (2)'s GXS would recover it), also where the stored part
     // is abstract and so may be an exclusive reference (R4-M147's Q1 (a)): in every case view (selfPair, selfPairChild), as for the method
     // analog (methodAbstract, unchanged), and beside the argument's true store into the environment (pairStoreBad, pairCellBad: `v@follow
-    // = x` in the uniq view) and PLAN G147 (8i)'s self-store row of the pair carrier `y` (pairStoreRead, pairCellRead). A concrete referent
-    // with no Loan-capable part stores nothing (selfScalarOk, selfAbstractOk read `slot` itself).
+    // = x` in the uniq view) and the argument's store into the environment given one kind for every holder W reaches, E past the written
+    // capture included (pairStoreRead, pairCellRead: PLAN G276, WK), with the receiver's Content rows. A concrete referent with no
+    // Loan-capable part stores nothing (selfScalarOk, selfAbstractOk read `slot` itself).
     [Fact]
     public void RuleGsSelfStoreReachesAClosureReceiver()
         => Assert.Equal(
@@ -661,13 +662,15 @@ public sealed partial class MirBorrowsTest
                 """).Select(static x => x.Replace(" ComparisonLoanConflict_Kd views", string.Empty, StringComparison.Ordinal)).ToArray());
 
     // SPEC 15.6.4, 8.1.2 (PLAN G147 (8i); A5 step 2 plan 2c-4, unit 0c; DECISIONS BU-49): a by-value owner-or-uniq pair carrier has no
-    // self-store row, so a call moving the child `let child = v` of a pair binding into a result (A6-keep-ok, B7-second), as the bare
-    // capture of a by-value Closure (A9-keep-ok) or twice by value (takeTwice, ClosureReceiverClassificationTest's body) stores no Loan on
-    // `v` into the parameter's referent: `v@follow = x` and the second `take0c` are valid in the owner and the uniq view, as the corpus
+    // Value self-store row, only the borrow case's Content one, so a call moving the child `let child = v` of a pair binding into a result
+    // (A6-keep-ok, B7-second), as the bare capture of a by-value Closure (A9-keep-ok) or twice by value (takeTwice,
+    // ClosureReceiverClassificationTest's body) stores no Loan on `v` into the parameter's referent: `v@follow = x` and the second
+    // `take0c` are valid in the owner and the uniq view, as the corpus
     // (tests/diagnostics/pair-cases.json) and the old path accept. A call storing the child through `put0c` (A2-put-ok, B4-chained,
     // B5-result-put) keeps W's record in the uniq view: `1 Value store 0` carries the child's own value past the written local `slot`
     // into E, each holder W reaches taking the row's kind (MirBorrows.Calls), where only `slot` can hold it; removed by WK, R4's
-    // per-storage retention kind. A3-closure, which reads the capture `slot` after the write, stays rejected (pairStoreBad above).
+    // per-storage retention kind (PLAN G276). A3-closure, which reads the capture `slot` after the write, stays rejected (pairStoreBad
+    // above).
     [Fact]
     public void AByValuePairCarrierIsNotStoredIntoItsOwnReferent()
         => Assert.Equal(

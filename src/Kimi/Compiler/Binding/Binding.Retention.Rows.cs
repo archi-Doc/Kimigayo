@@ -61,17 +61,18 @@ public sealed partial class Binding
     }
 
     // One closure from each output atom (OriginPremiseClosure, every Semantics case's premises followed) marks the inputs whose atoms it
-    // reaches, Value over Content, a carrier's through its node; an atom in storage its own input's pair layer addresses marks its input
-    // for no store into that input (RetentionAtom.Addressed, SPEC 15.6.4). The result is untied when one of its non-static atoms marks no input. A
-    // result the call forms within a raw parameter's storage (`within`) retains that argument's own value. Each output's hold walk (Held,
-    // each position once per lent bit, BU-35, BU-40) keeps a raw input's own value where a layer with an Origin or an abstract part can
-    // hold it (R4-M116 R-B4), and reports the raw layers it met: one the call writes without an Origin keeps every input by rule A
-    // (WrittenUnstated), one the result lends keeps the raw inputs (R′), and one stepping Unstated or Static, not lent, unties the
-    // output (Untied, UntiedStores). The transfer key by declaring identity also gives the stores written only where the receiver refers
-    // (ReferentStores). The work is what the closures reach, each node with its incoming premises once per closure, and the hold walks;
-    // the identity key is read once per contract, and for a callee it does not name the Iterator key once, at the first output that meets
-    // a written unstated layer, under `premises`, the scope TyCtxt read an instance with an abstract part under (null: none, or an erased
-    // callable's, which has no callee). CallRetention.Limit where the hold walk meets storage past its limits (Held).
+    // reaches, Value over Content, a carrier's through its node; an atom in the referent of an exclusive borrow its input holds by value
+    // marks that input Content for a store into it (RetentionAtom.Addressed, SPEC 15.6.4). The result is untied when one of its
+    // non-static atoms marks no input. A result the call forms within a raw parameter's storage (`within`) retains that argument's own
+    // value. Each output's hold walk (Held, each position once per lent bit, BU-35, BU-40) keeps a raw input's own value where a layer
+    // with an Origin or an abstract part can hold it (R4-M116 R-B4), and reports the raw layers it met: one the call writes without an
+    // Origin keeps every input by rule A (WrittenUnstated), one the result lends keeps the raw inputs (R′), and one stepping Unstated or
+    // Static, not lent, unties the output (Untied, UntiedStores). The transfer key by declaring identity also gives the stores written
+    // only where the receiver refers (ReferentStores). The work is what the closures reach, each node with its incoming premises once per
+    // closure, and the hold walks; the identity key is read once per contract, and for a callee it does not name the Iterator key once, at
+    // the first output that meets a written unstated layer, under `premises`, the scope TyCtxt read an instance with an abstract part
+    // under (null: none, or an erased callable's, which has no callee). CallRetention.Limit where the hold walk meets storage past its
+    // limits (Held).
     private CallRetention RetentionRows(
         OriginPremiseEnvironment environment,
         int[] nodes,
@@ -176,8 +177,9 @@ public sealed partial class Binding
         }
     }
 
-    // The closure from one target node of `output`, marking the inputs whose atoms it reaches, except that an atom in storage its own
-    // input's pair layer addresses marks nothing for a store into that input (RetentionAtom.Addressed); whether it reached one.
+    // The closure from one target node of `output`, marking the inputs whose atoms it reaches; an atom in the referent of an exclusive
+    // borrow its input holds by value marks its input Content where `output` is that input (RetentionAtom.Addressed, DECISIONS BU-49;
+    // `output` and the lowering go with PLAN G276's per-storage kind); whether it reached one.
     private bool MarkClosure(OriginPremiseClosure closure, int target, int[] first, int[] next, RetentionKind?[] kinds, int output)
     {
         var start = this.OriginProofMetrics is null ? 0 : Stopwatch.GetTimestamp();
@@ -189,11 +191,7 @@ public sealed partial class Binding
             for (var source = first[closure.ReachedNode(k)]; source >= 0; source = next[source])
             {
                 var atom = this.retentionAtoms[source];
-                if (!(atom.Addressed && atom.Input == output))
-                {
-                    Mark(kinds, atom);
-                }
-
+                Mark(kinds, atom.Addressed && atom.Input == output ? atom with { Kind = RetentionKind.Content } : atom);
                 tied = true;
             }
         }

@@ -152,7 +152,7 @@ public sealed class RetentionTest
     [InlineData("func f(b: ref/(ref/i32 during c) during o) -> ref/i32 during o => b@follow", "0 Value result")]
     [InlineData("func f(b: ref/(ref/i32 during c) during o, x: ref/i32 during c) -> ref/i32 during o => x", "0 Value result, 1 Value result")]
     [InlineData("func f(x: ref/i32, n: i32) -> i32 => n", "")]
-    [InlineData("func f<s/T>(value: s/T, count: s/i32) -> s/T\n    s is owner or uniq\n    T is Copy\n    _ = count\n    return value", "0 Value result")]
+    [InlineData("func f<s/T>(value: s/T, count: s/i32) -> s/T\n    s is owner or uniq\n    T is Copy\n    _ = count\n    return value", "0 Value result, 0 Content store 0")]
     [InlineData("func f<s/T>(value: s/T, count: s/i32) -> s/T\n    s is owner or ref\n    T is Copy\n    _ = count\n    return value", "0 Value result")]
     public void DeclaredRelationsDecideTheResult(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
@@ -265,10 +265,11 @@ public sealed class RetentionTest
     // case, its slot Value and its target Content, which an admitted exclusive borrow lets the call write, as for a concrete `uniq/T`;
     // the original `s/T` and an application alike; the pair's slot still reaches storage that holds the pair by value. A pair admitting
     // `owner`, raw or an object owner is no borrow in that case, so its target stays Value: a Value source for the result and for the
-    // stores into other inputs, and in the exclusive cases the storage the call writes through the pair, which holds other inputs'
-    // values (`x`) and other occurrences of its own input (a Tuple's second element), never the pair value itself, the only carrier
-    // of the argument's own Loans there (SPEC 15.6.4: a pointer is never part of its own pointee; PLAN G147 (8i), A5 step 2 plan
-    // 2c-4): no `0 Value store 0`, as the owner-only twin has none.
+    // stores into other inputs. In its exclusive cases the call writes through it the referent of the argument's own borrow, which holds
+    // other inputs' values (`x`) and other occurrences of its own input (a Tuple's second element) and carries what a read through the
+    // argument carries, never the pair value itself (SPEC 15.6.4: a pointer is never part of its own pointee; DECISIONS BU-49, PLAN
+    // G147 (8i), A5 step 2 plan 2c-4): `0 Content store 0`, as the borrow-only twins read, not `0 Value store 0`; the owner-only twin
+    // writes no caller storage.
     [Theory]
     [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is ref or uniq\n    return", "0 Content store 0")]
     [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is uniq\n    return", "0 Content store 0")]
@@ -279,32 +280,53 @@ public sealed class RetentionTest
     [InlineData(
         "func f<s/T>(a: s/T, b: uniq/Array<s/T>)\n    s is ref or uniq\n    return",
         "0 Content store 0, 1 Content store 0, 0 Value store 1, 1 Content store 1")]
-    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is owner or uniq\n    return", "")]
-    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is uniq or raw\n    return", "")]
-    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is objuniq or obj\n    return", "")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is owner or uniq\n    return", "0 Content store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is uniq or raw\n    return", "0 Content store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is objuniq or obj\n    return", "0 Content store 0")]
     [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is owner\n    return", "")]
-    [InlineData("func f<s/T>(a: s/T, x: T)\n    s is owner or uniq\n    T is Copy\n    return", "1 Value store 0")]
+    [InlineData("func f<s/T>(a: s/T, x: T)\n    s is owner or uniq\n    T is Copy\n    return", "0 Content store 0, 1 Value store 0")]
     [InlineData("func f<s/T>(a: (s/T, T), b: ref/i32)\n    s is owner or uniq\n    T is Copy\n    return", "0 Value store 0")]
-    [InlineData("func f<s/T>(a: s/T, b: ref/i32) -> s/T\n    s is owner or uniq\n    T is Copy\n    return a", "0 Value result")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32) -> s/T\n    s is owner or uniq\n    T is Copy\n    return a", "0 Value result, 0 Content store 0")]
     public void BorrowPairLayersAreBorrowedInputs(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
-    // The same at calls over an owner-or-uniq pair (PLAN G147 (8i)'s programs; A5 step 2 plan 2c-4): a generic caller passing its
-    // `s/T` by value, directly, as a bare capture of a by-value Closure or as a result's input, stores other inputs into the pair's
-    // referent and keeps the value in the result, never the argument's own value in its referent; a pair the callee reads through its
-    // exclusive receiver keeps rule G's `0 Content store 0` (DECISIONS R4-M148).
+    // The same rule for every exclusive borrow layer a by-value input holds (DECISIONS BU-49; RetentionWalk): a concrete `uniq` layer and
+    // a pair layer admitting one, nested in a Tuple or an Option, borrow-only or owner-admitting, address storage that carries what a read
+    // through the input carries, a Tuple's other element's referent included (`*a.1` written into `*a.0`), never the input's own value:
+    // `0 Content store 0`, each pair form beside its concrete twin. Through no exclusive layer (`(T, i32)`) the call writes nothing.
+    [Theory]
+    [InlineData("func f<s/T>(a: (s/T, i32), b: ref/i32)\n    s is uniq\n    return", "0 Content store 0")]
+    [InlineData("func f<T>(a: (uniq/T during p, i32), b: ref/i32) => ()", "0 Content store 0")]
+    [InlineData("func f<s/T>(a: Option<s/T>, b: ref/i32)\n    s is uniq\n    return", "0 Content store 0")]
+    [InlineData("func f<T>(a: Option<uniq/T during p>, b: ref/i32) => ()", "0 Content store 0")]
+    [InlineData("func f<s/T>(a: (s/T, s/T), b: ref/i32)\n    s is uniq\n    return", "0 Content store 0")]
+    [InlineData("func f<s/T>(a: (s/T, s/T), b: ref/i32)\n    s is owner or uniq\n    return", "0 Content store 0")]
+    [InlineData("func f<T>(a: (uniq/T during p, uniq/T during p), b: ref/i32) => ()", "0 Content store 0")]
+    [InlineData("func f<T>(a: (T, i32), b: ref/i32) => ()", "")]
+    public void ExclusiveLayersHeldByValueStoreTheirContent(string function, string expected)
+        => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // The same at calls over exclusive layers held by value (PLAN G147 (8i)'s programs; A5 step 2 plan 2c-4; DECISIONS BU-49): a generic
+    // caller passing its `s/T` by value, directly, as a bare capture of a by-value Closure (owner-or-uniq or uniq-only) or as a result's
+    // input, and a Closure capturing `y@uniq`, store other inputs into the referent and what a read through the argument carries, keep
+    // the value in the result, and never store the argument's own value in its referent; a pair the callee reads through its exclusive
+    // receiver keeps rule G's `0 Content store 0` (DECISIONS R4-M148).
     [Fact]
-    public void CallsOverOwnerOrUniqPairLayersStoreNoSelfValue()
+    public void CallsOverExclusiveLayersHeldByValueStoreTheirContent()
     {
         var c = Bind("func put<U>(slot: uniq/U, y: U) -> () => slot@follow = y@move\nfunc keep<F>(f: F) -> F => f@move\n" +
             "func second<A, B>(a: A, b: B) -> B => b@move\n" +
             "func use<s/T, t/U>(value: s/T, other: s/T, third: t/U, x: T) -> ()\n    s is owner or uniq\n    t is owner or uniq\n" +
             "    T is Copy\n    U is Copy\n    var v = value@move\n    var slot = other@move\n    let h = func [v] () -> ()\n        _ = v@follow\n" +
             "    let kept = keep(h@move)\n    kept()\n    let child = v\n    put(slot@uniq, child@move)\n    _ = slot@follow\n" +
-            "    let r = second(x, third@move)\n    _ = r@follow\n");
-        Assert.Equal(["0 Content store 0, 1 Value store 0, 0 Content store 1"], Calls(c, "put"));
-        Assert.Equal(["0 Value result"], Calls(c, "keep"));
-        Assert.Equal(["1 Value result"], Calls(c, "second"));
+            "    let r = second(x, third@move)\n    _ = r@follow\n" +
+            "func useUniq<s/T>(value: s/T) -> ()\n    s is uniq\n    T is Copy\n    var v = value@move\n    let h = func [v] () -> ()\n" +
+            "        _ = v@follow\n    let kept = keep(h@move)\n    kept()\n" +
+            "func useCaptured<T>(other: T) -> ()\n    T is Copy\n    var y = other\n    let g = func [y@uniq] () -> ()\n        _ = y@follow\n" +
+            "    let kept = keep(g@move)\n");
+        Assert.Equal(["0 Content store 0, 1 Value store 0, 0 Content store 1, 1 Content store 1"], Calls(c, "put"));
+        Assert.Equal(["0 Value result, 0 Content store 0", "0 Value result, 0 Content store 0", "0 Value result, 0 Content store 0"], Calls(c, "keep"));
+        Assert.Equal(["1 Value result, 1 Content store 1"], Calls(c, "second"));
     }
 
     // The same for a generic caller passing its own `s/T` (A5's case 139c, a non-Copy T): the call's Subst keeps the caller's pair, whose
@@ -522,7 +544,9 @@ public sealed class RetentionTest
     // `uniq` one, SPEC 15.3.5, DECISIONS BU-44; never a borrow the body forms): then a pointer read from the layer has read
     // authority only and the call writes nothing through it; a universal stated by a `ref` and a `uniq` input, an Option's `uniq` borrow
     // and a projection a `uniq` input states are no such Origin. A raw input's pointee and its Origin's members are Content, and its own
-    // layer's Origin gives no row (SPEC 15.6.4 as DECISIONS R4-M116 revised it, R-B3).
+    // layer's Origin gives no row (SPEC 15.6.4 as DECISIONS R4-M116 revised it, R-B3). An Option or a Holder holding a `uniq` borrow by
+    // value stores what a read through it carries into that borrow's referent (`1 Content store 1`, DECISIONS BU-49), and its own
+    // value into the storage the raw layer addresses (`1 Value store 2`: one kind per output, PLAN G276).
     [Theory]
     [InlineData("func f(x: ref/i32, n: i32) -> raw/i32 => null", "0 Value result, 0 Chain result, 1 Value result, 1 Chain result, untied")]
     [InlineData("func f(x: ref/i32, n: isize) -> (raw/u8, isize) => (null, n)", "0 Value result, 0 Chain result, 1 Value result, 1 Chain result, untied")]
@@ -538,12 +562,12 @@ public sealed class RetentionTest
         "    public init(r: ref/(ref/i32 during q) during source) => self.r = r\nfunc f(v: ref/W, p: raw/u8 during v.source, w: ref/i32 during v.q) => ()",
         "")]
     [InlineData(RawPointerSyntaxTest.KeptView + "func f(v: ref/View, x: uniq/(ref/i32 during q) during v.source, p: raw/u8 during v.source, w: ref/i32 during q) => ()", "1 Content store 1, 2 Content store 1, 3 Value store 1, 1 Content store 2, 2 Content store 2, 3 Value store 2")]
-    [InlineData("func f(a: ref/(ref/i32 during q) during o, b: Option<uniq/(ref/i32 during q) during o>, p: raw/u8 during o, v: ref/i32 during q) => ()", "0 Content store 1, 1 Value store 1, 2 Content store 1, 3 Value store 1, 0 Content store 2, 1 Value store 2, 2 Content store 2, 3 Value store 2")]
+    [InlineData("func f(a: ref/(ref/i32 during q) during o, b: Option<uniq/(ref/i32 during q) during o>, p: raw/u8 during o, v: ref/i32 during q) => ()", "0 Content store 1, 1 Content store 1, 2 Content store 1, 3 Value store 1, 0 Content store 2, 1 Value store 2, 2 Content store 2, 3 Value store 2")]
     [InlineData("func f(a: ref/(ref/i32 during q) during o, p: raw/(ref/i32 during q) during o, v: ref/i32 during q)\n    unsafe\n        let w: uniq/(ref/i32 during q) during o = (*p)@uniq", "")]
     [InlineData(
         PairAnnotationBindingTest.HolderRefUniq + "func f(r: uniq/(ref/i32 during q), h: Holder<uniq/(ref/i32 during q) during r> during o, " +
         "p: raw/(ref/i32 during q) during o, v: ref/i32 during q) => ()",
-        "0 Content store 0, 1 Value store 0, 2 Content store 0, 3 Value store 0, 0 Content store 1, 1 Value store 1, 2 Content store 1, 3 Value store 1, 0 Content store 2, 1 Value store 2, 2 Content store 2, 3 Value store 2")]
+        "0 Content store 0, 1 Value store 0, 2 Content store 0, 3 Value store 0, 0 Content store 1, 1 Content store 1, 2 Content store 1, 3 Value store 1, 0 Content store 2, 1 Value store 2, 2 Content store 2, 3 Value store 2")]
     [InlineData(
         PairAnnotationBindingTest.HolderRefUniq + "func f(r: ref/(ref/i32 during q), h: Holder<ref/(ref/i32 during q) during r> during o, " +
         "p: raw/(ref/i32 during q) during o, v: ref/i32 during q) => ()",

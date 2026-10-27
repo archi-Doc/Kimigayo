@@ -7456,40 +7456,52 @@ resumed by R4-M86 (2026-10-20).
     drop bit); interning `(uniq/P) -> ()` as a Function Type to reuse the Value-call key (a Type made only for a key).
   - Consequences: no reader until R4's U2 (A5 composes a destruction), so no verdict or record changes; warm reads allocate nothing.
   - Cost: src +53/−12 lines (code +22, within the design's +30), the rest the contract text; tests +80/−4.
-- **BU-49 A by-value owner-or-uniq pair carrier has no self-store row: `RetentionAtom.Addressed`** (2026-10-27; BU's unit 0c under
-  the owner-approved package R4-M126 (A5 step 2 plan 2c-4, PLAN G147 (8i)); landed alone after BU's and R4's reviews, R4-M126 having
-  superseded AB-2's group landing (PD29); R4's 0c triage corrected the expected column) SPEC 15.6.4, 8.1.2.
-  - Rule: a pair layer admitting an exclusive borrow beside owner, an object owner or raw keeps the by-value walk (BU-3), and its
-    target is writable in the exclusive cases alone, the referent of the argument's own borrow (8.1.2); that storage holds other
-    inputs' values (`1 Value store 0` of `f<s/T>(a: s/T, x: T)`) and the input's other occurrences (`(s/T, T)`), never the pair
-    value, the one carrier of the argument's own Loans there, and the owner case writes no caller storage (15.6.4: a pointer is
-    never part of its own pointee). `TyCtxt.Retains` gave the row `i Value -> i` because the target's carrier is one atom in two
-    roles, the written storage and a Value source at its own node ("both name one carrier", BU-3), from the top-level pair and from
-    a pair captured bare in a by-value Closure (`keep(h@move)`, A9-keep-ok) alike. Now the atoms walked below a target the pair's own
-    exclusive cases promote to writable (`RetentionWalk`'s pair branch: `!here.Writable && at.Writable && exclusive`) carry
-    `Addressed`, and `MarkClosure` marks nothing from them for a store into their own input; they stay Value sources for the result
-    (`0 Value result` of `keep<F>`, the owner case's value) and for other inputs' stores. A pair inside a borrowed input's writable
-    storage (`[slot@uniq]`, `uniq/(s/T)`) is not promoted: rule G's `0 Content store 0` (R4-M148) is unchanged. Old path: nothing (D5).
-  - The targets, as R4 corrected them (2026-10-27): G147 (8i)'s rows are the ledger's a5-writes rows, not f7h1/f7h2/f7n1/f7n2's
-    owner-view records (rule G's receiver self-store over an abstract part, R4-M147 Q1 (a), R4-M148; under G148 (2)). Of (8i)'s
-    six programs, A6-keep-ok, A9-keep-ok and B7-second (Source and Run: 6 a5-writes and 6 a5-new rows) and
-    ClosureReceiverClassificationTest's `take(value); take((value))` body (1 acceptance, 1 new row) are valid on the MIR now;
-    A2-put-ok, B4-chained and B5-result-put (6 rows) stay rejected in the uniq view: not the self-store row but `put`'s
-    `1 Value store 0`, whose Value `MirBorrows.Calls` gives every holder W reaches, E past the written local `slot` included,
-    where only `slot` (Type `uniq/T`) can hold the argument's own value (PLAN G276, WK: a per-storage retention kind). f7h2/f7n2's
-    uniq-view `v@follow = x` has that cause and the receiver's Content rows (R4-M148) and stays in R4-M148's class; A3-closure stays
-    rejected (the store through the receiver, 2c-3). A4-box-ok, A4-field-ok: (8ii), unchanged.
-  - Staged removal (G276): `RetentionAtom.Addressed` and `MarkClosure`'s `output` parameter go with WK, whose cause they share, one
-    case's kind leaking into another case's storage: with a kind per written storage the target's own node needs no exclusion.
-  - Rejected: Kind `null` for the promoted target (loses `0 Value result` and `1 Value store 0`); skipping the target atom as its own
-    source (drops a by-value struct's `0 Value store 0` through an Origin, `Cell<ref/i32 during q>`, which 15.6.4's "any other Origin
-    of an argument" keeps); walking the pair as a borrowed input in its exclusive case (a retention per Semantics case, R4-M51; BU-3);
-    a Content self-row (not the by-value walk's kind, and for a carrier referent what the referent already carries).
-  - Tests: `RetentionTest.BorrowPairLayersAreBorrowedInputs` (owner-or-uniq, uniq-or-raw, objuniq-or-obj rows and the result row
-    lose `0 Value store 0`; owner-only, `x: T` and `(s/T, T)` twins), `CallsOverOwnerOrUniqPairLayersStoreNoSelfValue`;
-    `MirBorrowsTest.AByValuePairCarrierIsNotStoredIntoItsOwnReferent` (A6, A9, B7, takeTwice valid in both views; A2, B4, B5 pinned
-    as W's records until WK); `RuleGsSelfStoreReachesAClosureReceiver` unchanged.
-  - Cost: src +8/−2 lines besides comments.
+- **BU-49 An exclusive borrow layer held by value stores its referent's Content into its input, not its own Value:
+  `RetentionPlace.Addressed`** (2026-10-27; BU's unit 0c under the owner-approved package R4-M126 (A5 step 2 plan 2c-4, PLAN G147
+  (8i)); lands alone after BU's and R4's reviews, R4-M126 having superseded AB-2's group landing (PD29); R4's 0c triage corrected the
+  expected column; fix round 1 after BU's review REVISE and R4's ACCEPT with notes) SPEC 15.6.4, 8.1.2.
+  - Rule: an exclusive borrow layer (uniq, objuniq, or a pair layer whose binder admits one, walked by value in every case, BU-3)
+    that the by-value walk reaches through storage the call may write, at a position it does not write (`RetentionWalk`: `at.Writable
+    && !here.Writable`), is a borrow the input holds; the storage below it is that borrow's referent, keyed on that layer
+    (`AdmitsExclusiveBorrow`), its occurrences `Addressed` (`RetentionPlace`, one flags value with `Shared`). That referent holds other
+    inputs' values (`1 Value store 0` of `f<s/T>(a: s/T, x: T)`) and the input's other occurrences (`(s/T, T)`: `0 Value store 0`),
+    and carries what a read through the input carries, never the input's own value (15.6.4: a pointer is never part of its own
+    pointee). `TyCtxt.Retains` gave `i Value -> i` because the referent's carrier is one atom in two roles ("both name one carrier",
+    BU-3). Now `MarkClosure` lowers an `Addressed` source to Content where the output is its own input: the Value self-store row is
+    gone, the borrow case's Content row stays (`0 Content store 0` for `s is owner or uniq`, `uniq or raw`, `objuniq or obj`, as for
+    `s is uniq` and a concrete `uniq/T`); for the result and other inputs' stores the source stays Value (`0 Value result` of
+    `keep<F>`, the owner case's value). One rule for the pair and the concrete layer: `(s/T, i32)`, `Option<s/T>`, `(s/T, s/T)` (a
+    Tuple's other element's referent, `*a.1` written into `*a.0`, is a read through the input) and their `uniq/T during p` twins, and
+    a Closure environment's bare `s/T` capture and its `y@uniq` capture alike give `0 Content store 0`; so do an `Option<uniq/…>` and a
+    `Holder<uniq/…>` input stored into themselves (`RawLayersRetainByTheirOrigins`: `1 Value store 1` -> `1 Content store 1`), while
+    their store through a raw layer into the same storage keeps Value (one kind per output, G276). The one rule moves no ledger row
+    beyond the 14 below and no verdict. A layer inside a borrowed
+    input's writable storage is already Content (BorrowReferent; rule G's rows, R4-M148, unchanged). Old path: nothing (D5).
+  - BU-3 kept: its rejected "no store row at all" (a second rule for self-stores) still holds, and this unit's first version, which
+    dropped the row, is withdrawn by it; BU-3's by-value walk for owner-admitting pairs stays, and its row is now the borrow case's.
+  - Targets, as R4 corrected them: G147 (8i)'s rows are the ledger's a5-writes rows, not f7h1/f7h2/f7n1/f7n2's owner-view records
+    (rule G's receiver self-store over an abstract part, R4-M147 Q1 (a), R4-M148; G148 (2)). Of (8i)'s six programs, A6-keep-ok,
+    A9-keep-ok and B7-second (6 a5-writes rows, with 6 a5-new rows) and ClosureReceiverClassificationTest's `take(value);
+    take((value))` body (an acceptance and a new row) are valid on the MIR; A2-put-ok, B4-chained and B5-result-put (6 a5-writes rows)
+    stay rejected in the uniq view by `put`'s `1 Value store 0`, whose Value `MirBorrows.Calls` gives every holder W reaches, E past
+    the written local `slot` included, where only `slot` can hold the argument's own value (PLAN G276, WK). f7h2/f7n2's uniq-view
+    `v@follow = x` has that cause and the receiver's Content rows (R4-M148) and stays in R4-M148's class; A3-closure stays rejected
+    (the store through the receiver, 2c-3); A4-box-ok, A4-field-ok ((8ii)) unchanged.
+  - Staged removal with G276 (WK): `RetentionPlace.Addressed` and `MarkClosure`'s lowering go when each holder W reaches takes the
+    kind its storage admits (one case's or one layer's kind leaking into another storage is G276's cause); `output` is data the rule
+    needs (the output whose storage is written), not a steering parameter.
+  - Rejected: dropping the row (BU-3's reason; it lost the borrow case's Content row that `s is uniq` and `uniq/T` keep); Content past
+    a borrow layer for every holder (unsound: it accepts A3-closure, R4's triage; G276's own concern); Kind `null` for the referent
+    (loses `0 Value result` and `1 Value store 0`); skipping the referent atom as its own source (drops `Cell<ref/i32 during q>`'s
+    `0 Value store 0`, an invariant slot, not an exclusive layer); the pair as a borrowed input in its exclusive case (a retention per
+    Semantics case, R4-M51); keying on the input (every exclusive layer of the input, not the one entered); a third bool in
+    `RetentionAtom`'s constructor (CR-R2: `Shared` and `Addressed` are one flags value).
+  - Tests: `RetentionTest.BorrowPairLayersAreBorrowedInputs` (three owner-admitting rows and the result row read Content; owner-only,
+    `x: T`, `(s/T, T)` twins), `ExclusiveLayersHeldByValueStoreTheirContent` (nested pairs beside their concrete twins, `(T, i32)`),
+    `CallsOverExclusiveLayersHeldByValueStoreTheirContent`, `DeclaredRelationsDecideTheResult`'s pair row;
+    `MirBorrowsTest.AByValuePairCarrierIsNotStoredIntoItsOwnReferent` (A6, A9, B7, takeTwice valid in both views; A2, B4, B5 W's
+    records until G276); `RuleGsSelfStoreReachesAClosureReceiver` unchanged.
+  - Cost: src +17/−4 lines besides comments.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
