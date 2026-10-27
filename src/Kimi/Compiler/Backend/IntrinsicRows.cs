@@ -39,7 +39,7 @@ internal enum IntrinsicWriter : byte
     Capacity, // capacity: the legacy handle's capacity word through P2b's kernel (FunctionCodegen.Arrays; DECISIONS R5-M121).
     Writer, // Text.writer: P1d's TextWriter routine, given its destination's writer kind and its reserve witness (FunctionCodegen.Formatting).
     Buffer, // FormatBuffer: an owning interpolation's private buffer, on its frame's region or the heap by its estimate (FunctionCodegen.Interpolation).
-    Hint, // FormatHint: the routine given the hint its estimate of the later writes gives (FunctionCodegen.Interpolation).
+    Segment, // FormatSegment: the hint routine given its estimate's hint, then a literal segment's text, the adapter checked (FunctionCodegen.Interpolation).
     Finish, // FormatFinish: the routine, or its stack form, over the adapter's buffer (FunctionCodegen.Interpolation).
 }
 
@@ -99,7 +99,7 @@ internal static class IntrinsicRows
             LaysOutType: false,
             IntrinsicWriter.Buffer,
             LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.TextHeap)!.Abi),
-        new(IntrinsicId.FormatHint, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Hint, LegacyRuntimeHelpers.FormatHint),
+        new(IntrinsicId.FormatSegment, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Segment, LegacyRuntimeHelpers.FormatHint),
         new(IntrinsicId.FormatFinish, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Finish, LegacyRuntimeHelpers.FormatFinish),
     ]);
 

@@ -79,6 +79,11 @@ internal sealed partial class LegacyRuntimeHelpers
     /// wrapper calls before and after the witness (MIR code generation; DECISIONS R5-M130).</summary>
     internal static readonly FunctionAbi FormatHealthy = new("__kimi_format_healthy", "i1", [new("ptr", "writer", LogicalIndex: 0)]);
 
+    /// <summary>The runtime's check of an internal adapter after a write (<c>__kimi_format_check</c>, SPEC 22.10.3): a recorded failure
+    /// Aborts with <c>KIMI_E_FORMAT</c> at the interpolation's location.</summary>
+    internal static readonly FunctionAbi FormatCheck =
+        new("__kimi_format_check", "void", [new("ptr", "writer"), new("ptr", "location"), new("i64", "location_length")]);
+
     /// <summary>The runtime's record of an adapter's failure into a write's result (SPEC 22.10.1): BufferFull, recorded once.</summary>
     internal static readonly FunctionAbi WriterFail =
         Slotted("__kimi_writer_fail", [new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "self", LogicalIndex: 0)]);
@@ -98,6 +103,11 @@ internal sealed partial class LegacyRuntimeHelpers
     private readonly List<(FunctionAbi Wrapper, FunctionAbi Implementation)> formattingWrites = new();
 
     private readonly List<(FunctionAbi Wrapper, FunctionAbi Write, bool Fixed)> formattingConversions = new();
+
+    /// <summary>Gets the runtime's write of an owning interpolation's literal text (<c>__kimi_format_literal</c>, SPEC 22.10.5): WriterWrite's
+    /// row ABI under its own name; the text's size is checked at once and its static bytes kept at the adapter until its next reservation
+    /// or its end. Initialized after the rows it reads.</summary>
+    internal static FunctionAbi FormatLiteral { get; } = FormattingRow(CompilerFunctionKind.WriterWrite)!.Abi.Named("__kimi_format_literal");
 
     /// <summary>Gets or sets a value indicating whether the module holds the formatting runtime: a formatting row's request
     /// needs it, and the old lowering requests it for its direct calls of formatting routines and for interpolation.</summary>

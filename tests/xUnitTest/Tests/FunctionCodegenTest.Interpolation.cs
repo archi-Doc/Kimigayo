@@ -1,18 +1,19 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text.RegularExpressions;
 using Kimi.Compiler;
 using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
 
-// The owning interpolation's rows of MIR code generation (R5 C9c; SPEC 22.7, 22.10.3, 22.10.5; DECISIONS R3-10, R5-M131, R5-M132):
-// FormatBuffer, FormatHint and FormatFinish over each instance's estimate, a direct bounded buffer within the windows-x64 limit on the
-// frame's region, and an unbounded one with literal text the literal path's (C9d) one located record.
+// The owning interpolation's rows of MIR code generation (R5 C9c, C9d; SPEC 22.7, 22.10.3, 22.10.5; DECISIONS R3-10, R5-M131, R5-M133):
+// FormatBuffer, FormatSegment and FormatFinish over each instance's estimate, a direct bounded buffer within the windows-x64 limit on the
+// frame's region, and a segment step's literal text after its hint, deferred when a value follows.
 public sealed partial class FunctionCodegenTest
 {
     // A Library of owning interpolations: direct and bounded (the stack), not direct, unbounded without literal text, with an early exit
-    // from an embedded expression, and a generic one at two bounded Types.
+    // from an embedded expression, a generic one at two bounded Types, and unbounded ones with literal text before values and at the end.
     private const string Interpolations =
         "func ipNumber(n: i64) => Console.writeLine(\"My number is \\(n)\")\n" +
         "func ipOwned(n: i64) -> string => \"My number is \\(n)\"\n" +
@@ -20,7 +21,9 @@ public sealed partial class FunctionCodegenTest
         "func ipRead(ok: bool) -> Result<i32, ()>\n    if ok => return .Ok(5)\n    return .Err(())\n" +
         "func ipTry(ok: bool) -> Result<(), ()>\n    Console.writeLine(\"v=\\(try ipRead(ok))!\")\n    return .Ok(())\n" +
         "func ipShow<T>(value: ref/T)\n    T is Utf8Format\n    Console.writeLine(\"value=\\(value)\")\n" +
-        "func ipUse() -> ()\n    ipShow(42)\n    ipShow(true)\n";
+        "func ipUse() -> ()\n    ipShow(42)\n    ipShow(true)\n" +
+        "func ipPrefix(s: ref/string) -> string => \"prefix\\(s):\\(42)\"\n" +
+        "func ipTail(s: ref/string) -> string => \"\\(s)!\"\n";
 
     // SPEC 22.10.5, 22.7 (DECISIONS R5-M131): a direct bounded interpolation formats on the frame's region of exactly its estimate, the
     // literal bytes and each value's maximum (13 + 20), its adapter a HeapBuffer's (kind 1: the region never grows), each write after the
@@ -99,6 +102,36 @@ public sealed partial class FunctionCodegenTest
         Assert.Single(function.Blocks[0].Instructions, static x => x.Shape == "alloca [14 x i8], align 1");
         var fixedBuffer = Assert.Single(CallsOf(function), x => x.Callee == ir.Function("__kimi_text_fixed"));
         Assert.Equal([fixedBuffer], CallsOf(function).Where(x => x.Operands.Contains(fixedBuffer.Operands[0])));
+    }
+
+    // SPEC 22.10.3, 22.10.5 (DECISIONS R5-M133): each FormatSegment step gives its hint, then writes its literal text with the string's kind
+    // and checks the adapter: deferred to the next reservation (__kimi_format_literal) when a value follows, written (the built-in write) at
+    // the end, where no value follows; a value's write (the built-in write of its kind) follows its step (fail-before: C9c's interim record
+    // at FormatBuffer and no text step).
+    [Theory]
+    [InlineData("ipPrefix", new[] { "hint 12", "literal 16", "check", "hint 12", "write 16", "hint 11", "literal 16", "check", "hint 0", "write 5" })]
+    [InlineData("ipTail", new[] { "hint 1", "write 16", "hint 0", "write 16", "check" })]
+    public void ASegmentWritesItsLiteralTextAfterItsHint(string name, string[] steps)
+    {
+        var c = Analyze(Interpolations, OutputKind.Library);
+        var ir = GeneratedIr.Parse(Generate(c));
+        var function = Assert.Single(FunctionsOf(ir, c, name));
+        var routines = new Dictionary<IrFunction, string>
+        {
+            [ir.Function("__kimi_format_hint")] = "hint",
+            [ir.Function("__kimi_format_literal")] = "literal",
+            [ir.Function("__kimi_writer_write_builtin")] = "write",
+            [ir.Function("__kimi_format_check")] = "check",
+        };
+        Assert.Equal(
+            steps,
+            CallsOf(function).Where(x => x.Callee is { } callee && routines.ContainsKey(callee))
+                .Select(x => routines[x.Callee!] + Regex.Match(x.Shape, @"^call void @\(ptr %, (?:i64 (\d+)\)|ptr %, ptr %, i32 (\d+),)") switch
+                {
+                    { Groups: [_, { Success: true } hint, _] } => " " + hint.Value,
+                    { Groups: [_, _, { Success: true } kind] } => " " + kind.Value,
+                    _ => string.Empty,
+                }));
     }
 
     // A function's interpolation buffer and end routines, in order: the region's or the heap's buffer, then the stack or heap end.
