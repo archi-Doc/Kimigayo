@@ -11495,7 +11495,7 @@ structure is recorded here by the unit that first implements it.
     `AnUncoveredFormIsOneLocatedUnsupportedRecord` keeps its purpose: its property-witness row moves to a form still unwritten, a
     requirement Item's Value call whose witness has no body (G157 (10)'s `reserve`, one record at `reserve(w, 4)`).
   - Size (bp1, its fold and the behavior): code +271/-106 (Codegen +173/-38, the collector +48/-21, AdtDef +36/-20, the MIR builder
-    +14/-27); tests +123/-7; the ledger -23 test rows and one filing row.
+    +14/-27); tests +137/-22; the ledger -23 test rows and one filing row.
   - Deleted: the two located `Unsupported_Kd` records (the requesting call's and the item's) and the C3c labels; `Agrees`' inline
     Types; `FindField`'s own loop; `MirBuilder.Stored`'s position walk. Superseded labels: R5-M65's PropertyWitness arm, R5-M89's
     "property witnesses (C3c)", and R5-M93's, R5-M102's and R5-M126's "a property witness C3c's located `Unsupported_Kd`".
@@ -11507,3 +11507,9 @@ structure is recorded here by the unit that first implements it.
     declaration (a syntax read); a MIR body for the bridge (PD3); the requirement in the key, so `Declared` gives the signature (K's
     key; one item per requirement, not per key, X14); flat-position offsets in `Layout` (a second offset table); `TyCtxt` stating the
     key's signature (a hold file, not the key's owner); a Backend table beside `BuiltinArithmetic` (a new component).
+- **R5-M142 The owner confirms C3c's departure (i)** (owner, 2026-10-27, to the R5 planning session directly, on its rulings after
+  C3c's design; verbatim 「C3c の逸脱 (i)（K 4.3 のコード生成向け API 一覧に StorageSignature を加えること）を承認します。」; the
+  consequences are the planning session's) The departure R5-M141 records is confirmed: the collector states a PropertyWitness key's
+  signature once (`StorageSignature`). K6's agreement assertion and code generation both read it, and K 4.3's "CheckedSet API for
+  codegen" list gains it. Package C §3.12's fixture families are corrected to `PropertyWitness*` and milestone 36 (a correction, not a
+  departure). It leaves the list.
