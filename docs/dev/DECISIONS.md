@@ -7043,6 +7043,56 @@ resumed by R4-M86 (2026-10-20).
     (+0.07%: `SlotRequirement` and each keeper hold a set's word reference, the library's slots and keepers 8 B more each), +1,296 B
     on Milestone33, +10,456 B on the generated workload (+0.17%); issue counts equal; warm reads and a warm rebind over binders past
     the 64th allocate 0 B. Pinned warm Bind timing (5caf5e8f0): B/A 0.986–0.998, in its commit.
+- **BU-45 A bare acquisition Reborrows only through a path exclusive in its case, and a payload reads the bare plan** (2026-10-27;
+  the BU planning session's choice of design A (Major), one design reviewed by the implementation review (Q5), R5 checking the MIR
+  boundary; PLAN G262 with G252's BareAcquire, unit bu49; the owner's 「前倒し (推奨)」 and 「今すぐ始める (推奨)」) SPEC 3.5.1: a
+  stored `uniq/U` or `objuniq/U` Reborrows only with exclusive capability through its path; 8.14, 8.15.2: a pair layer's plan is a
+  Copy or Reborrow per case, judged in that case. `Binding.BareAcquire` planned the Reborrow row, and `BareAcquisition` the exclusive
+  cases, from the Type alone, so a bare Place reached through a shared layer (a `ref` follow, a Slice element, a `let`-owned Array
+  element, a Field through `ref`, another binder's pair layer) published a Reborrow or ByCase, built as `&uniq` or `acquire` past the
+  layer and rejected only by the old path's TransferRequired_Kd; and the payload rule (`CompleteEnumAcquisitions`) kept a second
+  copy of the rule, ProveCopy alone, so `.Some(value)` of a pair layer failed though its plan is by case (G252).
+  - The fact: the Reborrow row needs `!ReachedThroughShared` (PathAuthority under the empty assignment); an exclusive case Reborrows
+    only where the path is not shared with the Place's binder assigned that case (`PathAuthority(place, [(binder, uniq)])`); a case
+    without a plan makes the acquisition Move, HIR's existing row (TransferRequired). The payload rule reads `BareAcquire`.
+  - The case assignment is data (the planning session's decision 1): PlaceAuthority's `PathAuthority`, `LayerAuthority`,
+    `LayerCases` and `AcquirableByBinding` take `ReadOnlySpan<PairCase>`, the case record `CaseType` reads, under which an assigned
+    binder's pair layers take its case (`CaseAdmitted` over `CaseOf`) and every other layer its weakest case; the empty assignment is
+    the walk as before, which every other caller passes. Why: the acquiring binder's own layers on the path (`x@follow` with
+    `x: s/(s/T)`, `b.v` with `b: s/Box<s/T>`) are exclusive in its exclusive case; the weakest-case walk planned them Move and gave
+    `take(b.v)`, a valid form, Binding's TransferRequired_Kd. No bool and no mode: an unassigned binder is read at its admitted set.
+  - Records: a pair layer through a shared path at a by-value argument or payload is Binding's TransferRequired_Kd at the Place (the
+    argument rule's bare Move, `ArgumentOperations`), in place of the old path's with its case Note (the planning session's decision
+    2). One owner adapts every payload and argument, AdaptInput's argument rule, which names a failed acquisition before a structural
+    mismatch, an order this unit does not change: through `ref`, with an outer Origin that also mismatches, `.Some(x@follow)` into
+    `Option<s/T>` was Binding's TypeMismatch_Kd at the construction and `g(x@follow)` with `g: (s/T) -> ()` the old path's
+    TransferRequired_Kd and UnprovenOriginRelation_Kd at `x@follow`; both are now Binding's TransferRequired_Kd at `x@follow` alone.
+    The mismatch is independent (`s is ref` alone reports it), so the order shows one of two independent failures, as before (open,
+    PLAN G262). A capture use through `ref` (`let h = func [x] () -> ()` with `let y = x@follow`, `x: ref/(s/T during a) during b`) no
+    longer Reborrows in the uniq case (BareReborrows, ClosureReceivers), so its `let` Closure's call is no longer Exclusive: Binding's
+    InvalidAssignment_Kd at `h` becomes the old path's TransferRequired_Kd at `x@follow` in the uniq case (SPEC 3.5.1, 7.7.3). The case
+    Note is not carried: Binding's acquisition record states the Place and its spelling, not the failing cases nor whether the bare
+    plan or an explicit operation's Copy requirement failed (DIAGNOSTICS, open in PLAN G262). G252's forms are accepted on both
+    pipelines; G245's mir `InternalInvariant_Kd` over such a construction goes with the construction's own record, also for the invalid
+    through-`ref` payload, whose failure is now recorded at the construction. An error the false rejection hid becomes visible, SPEC
+    23.1.2: `_ = o` of `Option<s/T>` in the uniq case (SPEC 3.5.1, an aggregate acquired whole) is the old path's TransferRequired_Kd at
+    `o`, as `_ = o` of `Option<uniq/i32>` is. Every other bare form keeps the old path's record alone until R6 moves it (ledger a1-g4).
+  - Limit, on both pipelines until R6-check and H3: where Binding rejects such an argument, the old path, which decides until R6,
+    analyzes nothing in the program, and under mir A1's and A5's records stay unpublished (R4-M1), so its independent records are lost:
+    a `MovedPlace_Kd` beside `take(x@follow)` (implementation review 1's `i-masked-old-path-error-head`), also in another function
+    (`i-masked-other-function`), and `g(x@follow)`'s UnprovenOriginRelation_Kd (`i-vc-uniq-only`). The same gate already masks them
+    for every Binding argument rejection (`take(x)` with `owner or uniq` and no Copy). No verdict changes: each program was rejected.
+  - Cost: one allocation-free walk per bare `uniq`/`objuniq` or exclusive-admitting pair Place; `CaseAdmitted` reads its callers'
+    `TryPairLayer`. An interleaved, unpinned A/B (Release, one folder, 10 rounds in alternating order, other sessions' heavy runs on
+    the machine; warm Bind and HIR publish, medians of 200): Bind B/A 0.97–1.00, publish 0.99–1.01 on Milestone34, Milestone26 and the
+    library, within each side's spread (about ±10%); warm Bind and publish allocate 0 B (the allocation regressions).
+  - MIR: those positions build the Move (`move <place>`, A1's) in place of `&uniq`, `two-phase` or `acquire` past a shared step; the
+    acquiring binder's own PairLayers keep `acquire` (R5's stage B skips them). Stage B relies on Binding's other exclusive producers
+    staying path-aware as now: AdaptInput's Reborrow (`ReachedThroughShared`), the explicit `@s` (`SharedPathAccess_Kd`) and
+    StoredReborrow (through ExpectedAdaptation).
+  - Rejected: BU-13's `ExclusivelyAcquirable`, which continues through the Place's own layers, so a pair admitting `ref` is always
+    shared and `let y = x`'s uniq case would be denied; the weakest-case walk (above); Binding reporting every bare acquisition
+    without a plan, R6's move of TransferRequired (it moves the old path's records at every bare position). Not temporary.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

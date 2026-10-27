@@ -596,6 +596,36 @@ public sealed partial class HirFormsTest
         static string Adjust(HirAdjust adjust) => $"{adjust.Acquire}/{adjust.Adaptation}";
     }
 
+    // SPEC 3.5.1, 8.14, 8.15.2 (PLAN G262, DECISIONS BU-45): a bare acquisition Reborrows a stored exclusive reference, or a pair layer in
+    // its exclusive case, only where the path grants exclusive access in that case; through a shared layer (a `ref` follow, a Slice
+    // element, a `let`-owned Array element, a Field through `ref`, another binder's pair layer) it has no plan, the Move the old path's
+    // TransferRequired_Kd rejects. An exclusive path, a `var` Array element and the acquiring binder's own layers keep the Reborrow or the
+    // acquisition by case. Each row: the Place, its Adjust (the plan row's for the discarded one).
+    [Fact]
+    public void ABareAcquisitionReborrowsOnlyThroughAnExclusivePath()
+    {
+        const string Source = "struct Holder {source}\n    public var link: uniq/i32 during source\nstruct Box<s/T>\n    public var v: s/T\n" +
+            "func f(r: ref/(uniq/i32 during a) during b, u: uniq/(uniq/i32 during c) during d, s: Slice<uniq/i32 during e> during g, h: ref/(Holder during k) during m, n: uniq/i32, o: uniq/i32)\n" +
+            "    let shared = r@follow\n    _ = r@follow\n    r@follow\n    let element = s[0]\n    let field = h.link\n    let exclusive = u@follow\n" +
+            "    let values: Array<uniq/i32> = [n@move]\n    let denied = values[0]\n    var owned: Array<uniq/i32> = [o@move]\n    let granted = owned[0]\n" +
+            "func p<s/T, t/U>(x: ref/(s/T during a) during b, w: t/(s/T during c) during d, z: s/(s/T during e) during g, bx: s/Box<s/T>, q: uniq/(s/T during h) during k)\n" +
+            "    s is ref or uniq\n    t is ref or uniq\n    let pair = x@follow\n    let other = w@follow\n    let own = z@follow\n    let part = bx.v\n    let through = q@follow\n" +
+            "public func main() => ()\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        HirTables.Publish(c);
+        var rows = Reachable(c.Kotonoha)
+            .Where(static x => (x.Parent is VariableKoto { InitializerKoto: { } initializer } && ReferenceEquals(initializer, x) && x is not ArrayLiteralKoto) ||
+                x.Parent is DiscardKoto || (x.Parent is CodeBlockKoto && HirTables.PlaceOf(x).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value)))
+            .Select(static x => $"{Source.Substring(x.Span.Start, x.Span.Length)} {(x.Parent is CodeBlockKoto ? HirTables.PlanOf(x).Adjust : HirTables.AdjustOf(x)).Acquire}");
+        Assert.Equal(
+            [
+                "r@follow Move", "r@follow Move", "r@follow Move", "s[0] Move", "h.link Move", "u@follow Reborrow", "values[0] Move", "owned[0] Reborrow",
+                "x@follow Move", "w@follow Move", "z@follow ByCase", "bx.v ByCase", "q@follow ByCase",
+            ],
+            rows);
+    }
+
     // SPEC 14.2.2, 23.1.2 (DECISIONS R4-M145): in a program Binding accepts, every Place the MIR builder takes as its value by its plan
     // row (a Place no consumer's Adjust takes, or a group's operand in Discard Context) has its bare acquisition there, so the builder's
     // derived reading of an unset row arises only beside a Binding error (MirBuildTest.AnUnsetDiscardRowIsDerivedFromABindingError).
