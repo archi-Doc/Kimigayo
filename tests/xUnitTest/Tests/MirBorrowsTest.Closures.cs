@@ -660,6 +660,91 @@ public sealed partial class MirBorrowsTest
                     _ = slot
                 """).Select(static x => x.Replace(" ComparisonLoanConflict_Kd views", string.Empty, StringComparison.Ordinal)).ToArray());
 
+    // SPEC 15.6.4, 8.1.2 (PLAN G147 (8i); A5 step 2 plan 2c-4, unit 0c; DECISIONS BU-49): a by-value owner-or-uniq pair carrier has no
+    // self-store row, so a call moving the child `let child = v` of a pair binding into a result (A6-keep-ok, B7-second), as the bare
+    // capture of a by-value Closure (A9-keep-ok) or twice by value (takeTwice, ClosureReceiverClassificationTest's body) stores no Loan on
+    // `v` into the parameter's referent: `v@follow = x` and the second `take0c` are valid in the owner and the uniq view, as the corpus
+    // (tests/diagnostics/pair-cases.json) and the old path accept. A call storing the child through `put0c` (A2-put-ok, B4-chained,
+    // B5-result-put) keeps W's record in the uniq view: `1 Value store 0` carries the child's own value past the written local `slot`
+    // into E, each holder W reaches taking the row's kind (MirBorrows.Calls), where only `slot` can hold it; removed by WK, R4's
+    // per-storage retention kind. A3-closure, which reads the capture `slot` after the write, stays rejected (pairStoreBad above).
+    [Fact]
+    public void AByValuePairCarrierIsNotStoredIntoItsOwnReferent()
+        => Assert.Equal(
+            ["a2PutOk: v@follow = x 2", "b4Chained: v@follow = x 2", "b5ResultPut: v@follow = x 2"],
+            ViewProblems("""
+            func put0c<U>(slot: uniq/U, y: U) -> () => slot@follow = y@move
+            func keep0c<F>(f: F) -> F => f@move
+            func second0c<A, B>(a: A, b: B) -> B => b@move
+            func take0c<t/U>(y: t/U) -> ()
+                t is owner or uniq
+                U is Copy
+                return
+            func takeTwice<s/T>(value: s/T) -> ()
+                s is owner or uniq
+                T is Copy
+                var h = func [value] () -> ()
+                    take0c(value)
+                    take0c((value))
+                h()
+            func a2PutOk<s/T>(value: s/T, other: s/T, x: T) -> ()
+                s is owner or uniq
+                T is Copy
+                var v = value@move
+                var slot = other@move
+                let child = v
+                put0c(slot@uniq, child@move)
+                _ = slot@follow
+                v@follow = x
+            func a6KeepOk<s/T>(value: s/T, x: T) -> ()
+                s is owner or uniq
+                T is Copy
+                var v = value@move
+                let child = v
+                let kept = keep0c(child@move)
+                _ = kept@follow
+                v@follow = x
+            func a9KeepOk<s/T>(value: s/T, x: T) -> ()
+                s is owner or uniq
+                T is Copy
+                var v = value@move
+                let h = func [v] () -> ()
+                    _ = v@follow
+                let kept = keep0c(h@move)
+                kept()
+                v@follow = x
+            func b4Chained<s/T>(value: s/T, other: s/T, third: s/T, x: T) -> ()
+                s is owner or uniq
+                T is Copy
+                var v = value@move
+                var a = other@move
+                var b = third@move
+                let child = v
+                put0c(a@uniq, child@move)
+                put0c(b@uniq, a@move)
+                _ = b@follow
+                v@follow = x
+            func b5ResultPut<s/T>(value: s/T, other: s/T, x: T) -> ()
+                s is owner or uniq
+                T is Copy
+                var v = value@move
+                var slot = other@move
+                let child = v
+                put0c(slot@uniq, keep0c(child@move))
+                _ = slot@follow
+                v@follow = x
+            func b7Second<s/T, t/U>(value: s/T, other: t/U, x: T) -> ()
+                s is owner or uniq
+                t is owner or uniq
+                T is Copy
+                U is Copy
+                var v = value@move
+                let child = v
+                let r = second0c(child@move, other@move)
+                v@follow = x
+                _ = r@follow
+            """).Select(static x => x.Replace(" ComparisonLoanConflict_Kd views", string.Empty, StringComparison.Ordinal)).ToArray());
+
     // R4-M147's Limit through a Closure (DECISIONS R4-M148): a Closure holds its environment's parts, so one whose only Loan-capable part is a
     // stored raw layer stepping Exclusive with unpublished members (Wrap2c3<raw/u8>) leaves a call's store past it undecided, the located
     // Unsupported_Kd at the call, as its Tuple twin does; the dev MIR's opaque Closure wrote past it and erred at `inspect(w)`.

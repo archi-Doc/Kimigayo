@@ -61,7 +61,8 @@ public sealed partial class Binding
     }
 
     // One closure from each output atom (OriginPremiseClosure, every Semantics case's premises followed) marks the inputs whose atoms it
-    // reaches, Value over Content, a carrier's through its node. The result is untied when one of its non-static atoms marks no input. A
+    // reaches, Value over Content, a carrier's through its node; an atom in storage its own input's pair layer addresses marks its input
+    // for no store into that input (RetentionAtom.Addressed, SPEC 15.6.4). The result is untied when one of its non-static atoms marks no input. A
     // result the call forms within a raw parameter's storage (`within`) retains that argument's own value. Each output's hold walk (Held,
     // each position once per lent bit, BU-35, BU-40) keeps a raw input's own value where a layer with an Origin or an abstract part can
     // hold it (R4-M116 R-B4), and reports the raw layers it met: one the call writes without an Origin keeps every input by rule A
@@ -113,7 +114,7 @@ public sealed partial class Binding
             {
                 if (atoms[i].Input == output && (output == Retention.Result || atoms[i].Writable))
                 {
-                    var tied = this.MarkClosure(environment.Closure, nodes[i], first, next, kinds);
+                    var tied = this.MarkClosure(environment.Closure, nodes[i], first, next, kinds, output);
                     untied |= output == Retention.Result && !tied && atoms[i].Origin?.Kind != OriginKind.Static;
                 }
             }
@@ -175,8 +176,9 @@ public sealed partial class Binding
         }
     }
 
-    // The closure from one target node, marking the inputs whose atoms it reaches; whether it reached one.
-    private bool MarkClosure(OriginPremiseClosure closure, int target, int[] first, int[] next, RetentionKind?[] kinds)
+    // The closure from one target node of `output`, marking the inputs whose atoms it reaches, except that an atom in storage its own
+    // input's pair layer addresses marks nothing for a store into that input (RetentionAtom.Addressed); whether it reached one.
+    private bool MarkClosure(OriginPremiseClosure closure, int target, int[] first, int[] next, RetentionKind?[] kinds, int output)
     {
         var start = this.OriginProofMetrics is null ? 0 : Stopwatch.GetTimestamp();
         closure.Close(target, -1, ulong.MaxValue);
@@ -186,7 +188,12 @@ public sealed partial class Binding
         {
             for (var source = first[closure.ReachedNode(k)]; source >= 0; source = next[source])
             {
-                Mark(kinds, this.retentionAtoms[source]);
+                var atom = this.retentionAtoms[source];
+                if (!(atom.Addressed && atom.Input == output))
+                {
+                    Mark(kinds, atom);
+                }
+
                 tied = true;
             }
         }

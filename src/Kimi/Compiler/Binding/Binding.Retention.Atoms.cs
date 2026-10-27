@@ -119,7 +119,12 @@ public sealed partial class Binding
     // (SPEC 15.6.4, DECISIONS BU-1). Before such a position, the walk reaches no writable storage past a shared layer or a raw layer
     // the callee's own signature makes Shared (`at.Shared`; SignatureStep: only shared input borrows state its Origin there, so a pointer
     // read from it has read authority only, SPEC 5.2.1 condition 3, 8.11.4 rule 1; D10, superseding R4-M51's raw clause), nor past a
-    // pair layer whose binder admits no exclusive Semantics. A raw layer with another Origin addresses what each borrow its Origin
+    // pair layer whose binder admits no exclusive Semantics. A pair layer walked by value whose binder admits an exclusive borrow beside
+    // owner, an object owner or raw (DECISIONS BU-3) makes its target writable in those cases alone, the referent of the argument's own
+    // borrow (SPEC 8.1.2): the occurrences below it are addressed storage (`Addressed`), which holds other inputs' values and the
+    // input's other occurrences but never the pair value, the one carrier of the argument's own Loans there (SPEC 15.6.4: a pointer is
+    // never part of its own pointee; PLAN G147 (8i)), so they give their own input's stores no row (MarkClosure) and stay Value sources
+    // for the result and the other inputs' stores. A raw layer with another Origin addresses what each borrow its Origin
     // belongs to admits (RawContent), and its atom is that Origin, as a borrow's; what a raw layer without one retains is the hold walk's
     // (Binding.Retention.Rows.cs). A callable Type stores nothing, and its per-call Origins belong to no value of it (SPEC 15.2.3). A
     // position of an input's writable storage whose Type is a raw layer, an abstract part, a struct or an enum is one of that input's
@@ -138,7 +143,8 @@ public sealed partial class Binding
             var slot = this.OuterOrigin(type);
             this.AddRetentionAtom(here with { Origin = slot }, callable);
             var inner = ComposeVariance(variance, exclusive ? OriginVariance.Invariant : OriginVariance.Covariant);
-            this.RetentionWalk(target, at with { Writable = here.Writable || (at.Writable && exclusive), Layer = slot ?? at.Layer }, inner, callable);
+            var addressed = !here.Writable && at.Writable && exclusive;
+            this.RetentionWalk(target, at with { Writable = here.Writable || addressed, Layer = slot ?? at.Layer, Addressed = at.Addressed || addressed }, inner, callable);
             return;
         }
 
@@ -235,8 +241,9 @@ public sealed partial class Binding
 
     // An Origin atom or a carrier of an input or of the result (Retention.Result): the kind it gives the input (none for a raw input's own
     // layer's Origin, RetentionInput), whether it is writable storage of the input (RetentionWalk), the Origin of the nearest borrow,
-    // Slice or pair layer above it, which a carrier's hidden Origins outlive (SPEC 15.6.1), and whether a shared layer or a raw layer
-    // whose step is Shared lies above it.
+    // Slice or pair layer above it, which a carrier's hidden Origins outlive (SPEC 15.6.1), whether a shared layer or a raw layer
+    // whose step is Shared lies above it, and whether it lies in storage the input's own pair layer addresses in the pair's exclusive
+    // cases, which never retains the input's own value (RetentionWalk).
     private readonly record struct RetentionAtom(
-        int Input, RetentionKind? Kind, bool Writable, BoundOrigin? Origin, BoundType? Carrier, BoundOrigin? Layer, bool Shared = false);
+        int Input, RetentionKind? Kind, bool Writable, BoundOrigin? Origin, BoundType? Carrier, BoundOrigin? Layer, bool Shared = false, bool Addressed = false);
 }
