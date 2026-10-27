@@ -13,11 +13,11 @@ public sealed partial class Binding
 
     // One reusable premise environment per active proof request (PLAN G74).
     private readonly List<OriginPremiseEnvironment> originPremiseEnvironments = new();
-    private int originPremiseDepth;
 
     // PROTO G216a d2: the required signatures of the comparisons in progress, whose own well-formedness each comparison assumes
     // (owner's (a), SPEC 15.3.7): their inputs (R2) and result (R3), as premises of every request inside the comparison.
     private readonly List<BoundType> assumedSignatures = new();
+    private int originPremiseDepth;
 
     // The retained premise storage between requests (PLAN G74 U5): the environments, their largest node and edge capacity, and
     // whether any of them still references an Origin, a Type, a declaration or syntax.

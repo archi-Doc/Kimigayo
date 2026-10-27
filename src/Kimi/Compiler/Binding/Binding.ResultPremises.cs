@@ -294,7 +294,7 @@ public sealed partial class Binding
         }
     }
 
-    internal bool ProvesSourceSignature(BoundType source, BoundType required, in CallableInstance instance, Koto use)
+    private bool ProvesSourceSignature(BoundType source, BoundType required, in CallableInstance instance, Koto use)
     {
         var failed = this.SourceSignaturePart(source, required, instance, use) < 0;
         this.failedResultPremise = null;
