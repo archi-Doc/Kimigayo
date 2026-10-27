@@ -134,10 +134,10 @@ public sealed partial class Binding
     // pair layer whose binder admits no exclusive Semantics. An exclusive borrow layer (uniq, objuniq, or a pair layer admitting one,
     // walked by value in every case, DECISIONS BU-3) that the walk reaches through storage the call may write at a position it does not
     // write is a borrow the input holds by value (SPEC 8.1.2): what lies below it is that borrow's referent (`Addressed`), which holds
-    // other inputs' values and the input's other occurrences but never the input's own value (SPEC 15.6.4: a pointer is never part of
-    // its own pointee), so its occurrences give their own input's stores Content, what a read through the input carries (MarkClosure),
-    // and stay Value sources for the result and the other inputs' stores (DECISIONS BU-49; staged removal with PLAN G276). A raw layer
-    // with another Origin addresses what each borrow its Origin
+    // other inputs' values and the input's other occurrences but never the input's own value (SPEC 15.6.4: only storage that can hold a
+    // value of its Type retains it), so its occurrences give their own input's stores Content, what a read through the input carries
+    // (MarkClosure), and stay Value sources for the result and the other inputs' stores; the layer's own Origin is no such occurrence
+    // (DECISIONS BU-49; staged removal with PLAN G276). A raw layer with another Origin addresses what each borrow its Origin
     // belongs to admits (RawContent), and its atom is that Origin, as a borrow's; what a raw layer without one retains is the hold walk's
     // (Binding.Retention.Rows.cs). A callable Type stores nothing, and its per-call Origins belong to no value of it (SPEC 15.2.3). A
     // position of an input's writable storage whose Type is a raw layer, an abstract part, a struct or an enum is one of that input's

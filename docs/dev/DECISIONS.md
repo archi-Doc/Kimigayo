@@ -7465,8 +7465,12 @@ resumed by R4-M86 (2026-10-20).
     && !here.Writable`), is a borrow the input holds; the storage below it is that borrow's referent, keyed on that layer
     (`AdmitsExclusiveBorrow`), its occurrences `Addressed` (`RetentionPlace`, one flags value with `Shared`). That referent holds other
     inputs' values (`1 Value store 0` of `f<s/T>(a: s/T, x: T)`) and the input's other occurrences (`(s/T, T)`: `0 Value store 0`),
-    and carries what a read through the input carries, never the input's own value (15.6.4: a pointer is never part of its own
-    pointee). `TyCtxt.Retains` gave `i Value -> i` because the referent's carrier is one atom in two roles ("both name one carrier",
+    and carries what a read through the input carries, never the input's own value (15.6.4: "the argument's own value, its Loans and
+    the holders it addresses, is retained only by … storage that can hold a value of its Type", read with its chain-of-reads
+    definition, a Tuple element, an Option payload or a Field included; the referent's Type cannot hold the input's). The layer's own
+    Origin is no `Addressed` occurrence: where the referent can hold a borrow of that Origin (`Option<uniq/(ref/i32 during q) during
+    q>`) its atom still marks Value (`1 Value store 1`), so 15.6.4's "one that may retain any other Origin of an argument carries the
+    argument's Loans" is read through the Origin closure (with a distinct `o`: `1 Content store 1`). `TyCtxt.Retains` gave `i Value -> i` because the referent's carrier is one atom in two roles ("both name one carrier",
     BU-3). Now `MarkClosure` lowers an `Addressed` source to Content where the output is its own input: the Value self-store row is
     gone, the borrow case's Content row stays (`0 Content store 0` for `s is owner or uniq`, `uniq or raw`, `objuniq or obj`, as for
     `s is uniq` and a concrete `uniq/T`); for the result and other inputs' stores the source stays Value (`0 Value result` of
@@ -7497,11 +7501,13 @@ resumed by R4-M86 (2026-10-20).
     Semantics case, R4-M51); keying on the input (every exclusive layer of the input, not the one entered); a third bool in
     `RetentionAtom`'s constructor (CR-R2: `Shared` and `Addressed` are one flags value).
   - Tests: `RetentionTest.BorrowPairLayersAreBorrowedInputs` (three owner-admitting rows and the result row read Content; owner-only,
-    `x: T`, `(s/T, T)` twins), `ExclusiveLayersHeldByValueStoreTheirContent` (nested pairs beside their concrete twins, `(T, i32)`),
-    `CallsOverExclusiveLayersHeldByValueStoreTheirContent`, `DeclaredRelationsDecideTheResult`'s pair row;
-    `MirBorrowsTest.AByValuePairCarrierIsNotStoredIntoItsOwnReferent` (A6, A9, B7, takeTwice valid in both views; A2, B4, B5 W's
-    records until G276); `RuleGsSelfStoreReachesAClosureReceiver` unchanged.
-  - Cost: src +17/−4 lines besides comments.
+    `x: T`, `(s/T, T)` twins), `ExclusiveLayersHeldByValueStoreTheirContent` (nested pairs beside their concrete twins, `(T, i32)`,
+    and the soundness counterpart: `during q` on both layers keeps `1 Value store 1`, a distinct `o` gives Content),
+    `CallsOverExclusiveLayersHeldByValueStoreTheirContent`, `DeclaredRelationsDecideTheResult`'s pair row,
+    `RawLayersRetainByTheirOrigins`' Option and Holder rows; `MirBorrowsTest.AByValuePairCarrierIsNotStoredIntoItsOwnReferent` (A6,
+    A9, B7, takeTwice valid in both views; A2, B4, B5 W's records until G276), `AnExclusiveLayerHeldByValueKeepsItsOwnOriginsLoan`
+    (use1 valid, use2 rejected); `RuleGsSelfStoreReachesAClosureReceiver` unchanged.
+  - Cost: src +25/−8 lines besides comments.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

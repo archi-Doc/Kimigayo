@@ -267,8 +267,8 @@ public sealed class RetentionTest
     // `owner`, raw or an object owner is no borrow in that case, so its target stays Value: a Value source for the result and for the
     // stores into other inputs. In its exclusive cases the call writes through it the referent of the argument's own borrow, which holds
     // other inputs' values (`x`) and other occurrences of its own input (a Tuple's second element) and carries what a read through the
-    // argument carries, never the pair value itself (SPEC 15.6.4: a pointer is never part of its own pointee; DECISIONS BU-49, PLAN
-    // G147 (8i), A5 step 2 plan 2c-4): `0 Content store 0`, as the borrow-only twins read, not `0 Value store 0`; the owner-only twin
+    // argument carries, never the pair value itself (SPEC 15.6.4: the argument's own value is retained only by storage that can hold a
+    // value of its Type; DECISIONS BU-49, PLAN G147 (8i), A5 step 2 plan 2c-4): `0 Content store 0`, as the borrow-only twins read, not `0 Value store 0`; the owner-only twin
     // writes no caller storage.
     [Theory]
     [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is ref or uniq\n    return", "0 Content store 0")]
@@ -293,8 +293,15 @@ public sealed class RetentionTest
     // The same rule for every exclusive borrow layer a by-value input holds (DECISIONS BU-49; RetentionWalk): a concrete `uniq` layer and
     // a pair layer admitting one, nested in a Tuple or an Option, borrow-only or owner-admitting, address storage that carries what a read
     // through the input carries, a Tuple's other element's referent included (`*a.1` written into `*a.0`), never the input's own value:
-    // `0 Content store 0`, each pair form beside its concrete twin. Through no exclusive layer (`(T, i32)`) the call writes nothing.
+    // `0 Content store 0`, each pair form beside its concrete twin. Through no exclusive layer (`(T, i32)`) the call writes nothing. The
+    // soundness counterpart: the layer's own Origin is no referent occurrence, so where the referent can hold a borrow of it (`during q`
+    // on both layers) the input's own value stays retained, `1 Value store 1`, in an Option and a Tuple as at the top level; with a
+    // distinct `o` it cannot, `1 Content store 1`.
     [Theory]
+    [InlineData("func f(a: ref/i32 during q, b: Option<uniq/(ref/i32 during q) during q>) => ()", "0 Value store 1, 1 Value store 1")]
+    [InlineData("func f(a: ref/i32 during q, b: (uniq/(ref/i32 during q) during q, i32)) => ()", "0 Value store 1, 1 Value store 1")]
+    [InlineData("func f(a: ref/i32 during q, b: uniq/(ref/i32 during q) during q) => ()", "0 Value store 1, 1 Value store 1")]
+    [InlineData("func f(a: ref/i32 during o, b: Option<uniq/(ref/i32 during q) during o>) => ()", "1 Content store 1")]
     [InlineData("func f<s/T>(a: (s/T, i32), b: ref/i32)\n    s is uniq\n    return", "0 Content store 0")]
     [InlineData("func f<T>(a: (uniq/T during p, i32), b: ref/i32) => ()", "0 Content store 0")]
     [InlineData("func f<s/T>(a: Option<s/T>, b: ref/i32)\n    s is uniq\n    return", "0 Content store 0")]

@@ -748,6 +748,33 @@ public sealed partial class MirBorrowsTest
                 _ = r@follow
             """).Select(static x => x.Replace(" ComparisonLoanConflict_Kd views", string.Empty, StringComparison.Ordinal)).ToArray());
 
+    // SPEC 15.6.4 (DECISIONS BU-49): a call given `.Some(x@uniq)` by value stores into x what a read through the borrow carries; it keeps
+    // the borrow's own Loan in x only where x's referent can hold a borrow of the layer's own Origin. With a distinct `o` it cannot, so
+    // reading x after the call is valid (use1; rustc accepts the analog); with `o` the referent's `q` it can, so the read conflicts with
+    // the Loan x now carries (use2; rustc rejects `&'q mut &'q i32`).
+    [Fact]
+    public void AnExclusiveLayerHeldByValueKeepsItsOwnOriginsLoan()
+        => Assert.Equal(
+            ["use2: x@follow 1"],
+            ViewProblems("""
+            func tie0c1(a: ref/i32 during q, c: ref/i32 during o, b: Option<uniq/(ref/i32 during q) during o>) -> ()
+                return
+            func tie0c2(a: ref/i32 during q, b: Option<uniq/(ref/i32 during q) during q>) -> ()
+                return
+            func use1()
+                let y = 5
+                let z = 6
+                var x = y@ref
+                tie0c1(z@ref, z@ref, .Some(x@uniq))
+                let w = x@follow
+            func use2()
+                let y = 5
+                let z = 6
+                var x = y@ref
+                tie0c2(z@ref, .Some(x@uniq))
+                let w = x@follow
+            """).Select(static x => x.Replace(" ComparisonLoanConflict_Kd views", string.Empty, StringComparison.Ordinal)).ToArray());
+
     // R4-M147's Limit through a Closure (DECISIONS R4-M148): a Closure holds its environment's parts, so one whose only Loan-capable part is a
     // stored raw layer stepping Exclusive with unpublished members (Wrap2c3<raw/u8>) leaves a call's store past it undecided, the located
     // Unsupported_Kd at the call, as its Tuple twin does; the dev MIR's opaque Closure wrote past it and erred at `inspect(w)`.
