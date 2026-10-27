@@ -7122,7 +7122,12 @@ resumed by R4-M86 (2026-10-20).
     runs each): no census program has a marked part; cold Bind 609,963,032 B against 609,961,520 and 609,962,048 B (noise), BuildMir
     with A5 426,939,216 B on both, instances 32,183 and problems 7 on both; a program of 22 marked parts, +4,544 B cold Bind (+0.09%).
     Warm: `Bind(Final)` and 39 guard walks over marked holders allocate 0 B (also `TyCtxtTest.AWarmStoredRawLayerReadAllocatesNothing`).
-    The pinned interleaved timing is the planning session's quiet-window run.
+    Time (warm `Bind(Final)`, library and 44 milestones, the minimum of 15 reps per program, CPU 6 pinned, tiering off, A and B from one
+    folder, three interleaved rounds on a quiet machine): B/A 0.9978, 0.9896 and 1.0064 per round (medians 0.9981, 0.9895, 1.0065); over
+    the rounds' per-program minima 485.1 against 483.8 ms, B/A 0.9972 (median 0.9972). No slowdown.
+  - Evidence that the family check and the Local row never fire: the unit's Session (24,586 tests) has no failure, and neither can stay
+    silent there: the family throw escapes Binding as an exception, and a Local finding fails MirCensusTest's census and every test that
+    asserts a body has no validator finding.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
