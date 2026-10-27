@@ -7129,6 +7129,33 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: BU-13's `ExclusivelyAcquirable`, which continues through the Place's own layers, so a pair admitting `ref` is always
     shared and `let y = x`'s uniq case would be denied; the weakest-case walk (above); Binding reporting every bare acquisition
     without a plan, R6's move of TransferRequired (it moves the old path's records at every bare position). Not temporary.
+- **BU-47 A destruction retains as a call of its drops: a `drop`'s receiver at input 0, `TyCtxt.RetainsErasedDestruction`**
+  (2026-10-27; R4's design 2 for PLAN G264, chosen by the planning session, design review 1 REVISE (B1, N1–N4), revision 1, design
+  review 2 ACCEPT; its unit U0, BU's, unit bu51; the owner's 「はい、G86 の後に (推奨)」 of 2026-10-26, R4-M150) SPEC 15.6.4 (the
+  owner's sentence of 2026-10-26): a destruction retains as a call of each `drop` it runs, whose `self` is a `uniq/Self` receiver
+  referring to the destroyed part (16.3.1), and 16.4 "retains as that call does"; 16.3.3: an erased destruction has unknown effects.
+  `TyCtxt.Retains` gave a drop no row, since `TyCtxt.Signature` numbers declared parameters and a drop declares none (the same body
+  as a method `flush(self: uniq/Self)` publishes `0 Chain store 0, untied store 0`), and nothing gave an unknown drop's retention.
+  - The facts (the design's F1, F2): a `drop`'s contract has its destruction receiver at input 0, `uniq/Self` over the layer the
+    Subst's declaring Type names (`AdtDef.ReceiverType` instantiated), so `Retains(destructor, Synthesized(destructor, layer, []),
+    definition)` is that layer's drop's retention, its method twin's computation; `TyCtxt.RetainsErasedDestruction(part,
+    definition)` is an erased destruction's, of a part whose drop the destruction walk cannot see: the erased call `(uniq/P) -> ()`
+    (R4-M52, `Binding.RetainsErased`), read and memoized as a Value call's erased signature, keyed by the receiver and the definition's
+    constraint scope. One private `DestructionReceiver` forms input 0 for both; A5 interns no Type. `TyCtxt.Signature` is unchanged
+    (the MIR validator and builder read it; MIR's destructor argument stays the referent).
+  - Contract (design review 1's N1): the receiver has no Origin, which no caller names, so input 0 has no Value atom and publishes no
+    Value row; it cannot be stored, captured or returned (16.3.1), and rule A keeps only the written-through input's chain. A consumer
+    treats a Value row at a destruction's input 0 as a broken contract (R4's U2).
+  - Rows (RetentionTest, each with its twin: the method over `self: uniq/Self`, or a Callable-bounded value of `(uniq/P) -> ()`):
+    Writer `0 Chain store 0, untied store 0`; a borrow-Field drop (HRD) `0 Content store 0`; `Holder<T>` declared and at `i32`
+    `0 Chain store 0, untied store 0`; the library's `OwnedRemainder`, `DictionaryOwnedRemainder` and `FixedOwnedRemainder`
+    `0 Content store 0`, `HeapBuffer` none; erased: an open struct and its `obj` handle `0 Chain store 0, untied store 0`, an
+    abstract `T` `0 Content store 0`, a Function value's environment none (R4-M131's open item).
+  - Rejected: the receiver as a `Signature` slot (every Signature reader, the MIR validator among them, would see a parameter the drop
+    does not declare); one retention per destroyed Type (design option B: a second copy of `MirTypes.Destruction`, BU-42's rejected
+    drop bit); interning `(uniq/P) -> ()` as a Function Type to reuse the Value-call key (a Type made only for a key).
+  - Consequences: no reader until R4's U2 (A5 composes a destruction), so no verdict or record changes; warm reads allocate nothing.
+  - Cost: src +53/−12 lines (code +22, within the design's +30), the rest the contract text; tests +80/−4.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
