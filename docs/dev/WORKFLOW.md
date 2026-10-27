@@ -9,7 +9,7 @@ in [AGENTS](../../AGENTS.md) (Implementation Design); checks are in [VERIFICATIO
 | --- | --- | --- |
 | **Minor** | A local change: it stays in one owning component, keeps its contract and invariants, adds no branch, parameter, state or table, and a search finds no other site with the same cause. Its commit states the rule and the search. | Implementation → review |
 | **Major** | Any change that is not Minor, Full or Owner. | Design → design review only for an open design issue → implementation → review |
-| **Full** | A change to a shared representation or across phases (formerly "the full process"). | Two independently written designs → choice → design review → implementation → final review |
+| **Full** | A change to a shared representation or across phases (formerly "the full process"). | Problem statement → shared acceptance tests → two independent lanes, design-first and prototype-first, judged by the tests → choice by results → one review of the chosen design and implementation ([Full changes](#full-changes)) |
 | **Owner** | A change that would be Full, whose contract an owner-approved design already fixes, that design having passed as a Full change and being recorded in DECISIONS. | Design → implementation → review |
 
 - An Owner change that departs from the approved contract, including a new representation, component or vocabulary
@@ -43,6 +43,26 @@ in [AGENTS](../../AGENTS.md) (Implementation Design); checks are in [VERIFICATIO
   incremental builds and selected tests only.
 - An implementer who finds the design wrong stops and reports to the planning session.
 
+## Full changes
+
+A Full change replaces the single design with two lanes that the same tests judge, so the choice rests on results rather than on
+reading two designs.
+
+1. **Problem statement.** The planning session states the required meaning (the SPEC rules and the owner's answers that govern the
+   forms) and the acceptance forms with their verdicts, each with its twin. It names no mechanism.
+2. **Acceptance tests.** An author who writes neither lane turns the problem statement into tests before either lane implements, at the
+   lowest public layer, failing where the change alters behavior. Rows that wait for an owner answer, or that the problem statement
+   lets a design decide, are grouped and scored apart.
+3. **Two lanes, written independently.** Neither lane reads the other's design or code before the choice.
+   - Design-first: a design (the chain in [Design](#design)), a short structure check by the planning session (the design goes through
+     the owning components and adds no symptom fix), then a prototype.
+   - Prototype-first: a prototype iterated against the acceptance tests, then a design note stating the chain, the owners, the
+     deletions and what remains open.
+4. **Choice.** The planning session chooses by results, with the session that owns the files where it is another's: every acceptance
+   test passes; no regression against the completion checks' baselines (diagnostic snapshot, MIR ledger, the probe census); the change
+   goes through the owning components; size and cost. It records the choice and its reasons.
+5. **One review** of the chosen design and implementation together (an implementation review), then [Completion](#completion).
+
 ## Review
 
 The reviewer starts from the problem, names the general rule and tries a shorter or more general design. It checks that
@@ -75,13 +95,15 @@ becomes an author of the design or the implementation.
   4. no fix is a symptom fix;
   5. after a design revision, the earlier judgments it invalidated.
 - Reviews count per unit, separately for design reviews and implementation reviews, and accumulate: revising the design
-  or returning to a design review does not reset either count. A Full change's final review and the diff review after a
-  failed completion check are implementation reviews.
-- After two reviews whose blocking findings share a cause, the planning session redoes the cause analysis.
-- If the third design review or the third implementation review does not ACCEPT, the unit is held: any change stays on a
-  `held/…` branch with the evidence it has and merges into neither dev nor main; the owner receives each review's
-  findings, why they did not converge and the options (a representation, a whitelist, a hold or another); PLAN records
-  an open issue. Independent units continue.
+  or returning to a design review does not reset either count. A Full change's review of the chosen lane and the diff
+  review after a failed completion check are implementation reviews.
+- A unit does not converge when two reviews' blocking findings share a cause, when its third design review or third
+  implementation review does not ACCEPT, or, for a Full change, when neither lane passes the acceptance tests or the chosen
+  lane's review does not ACCEPT. The planning session then suspends the unit and asks the owner how to proceed: any change
+  stays on a `held/…` branch with the evidence it has and merges into neither dev nor main; the owner receives each review's
+  findings or each lane's results, why they did not converge and the options (a representation, a whitelist, a redesign, a
+  hold or another) with a recommendation; PLAN records the question. The unit resumes only on the owner's answer.
+  Independent units continue.
 - A review count is never a reason to ACCEPT a change with a blocking defect.
 
 ## Owner decisions
@@ -90,7 +112,8 @@ At any point, suspend the unit and ask the owner on finding:
 
 - a contradiction in the specification;
 - a significant measured slowdown of compilation or generated code;
-- a way to make the specification simpler and cleaner by unifying concepts.
+- a way to make the specification simpler and cleaner by unifying concepts;
+- a unit that does not converge ([Repeated reviews](#repeated-reviews)).
 
 The report names the SPEC sections, the measurements or evidence, and the options; PLAN records the question.
 Independent units continue.

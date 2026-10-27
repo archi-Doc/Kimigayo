@@ -170,7 +170,7 @@ rules that result from them.
   - Rejected: keeping the count as a review prompt that a one-responsibility ruling resets (it keeps per-unit counting across
     parallel lanes and rulings on small single-responsibility files to ask the question review already asks); a larger
     count or a size floor (another proxy for the same test).
-- **Q10 Change workflow: classes, verdicts and bounded reviews** (2026-10-25, owner; [WORKFLOW](WORKFLOW.md), AGENTS
+- **Q10 Change workflow: classes, verdicts and bounded reviews** (superseded in part by Q11) (2026-10-25, owner; [WORKFLOW](WORKFLOW.md), AGENTS
   "Workflow").
   - Adopted: WORKFLOW owns design, review and completion, moved from AGENTS "Design before code", "Review weight" and
     "Independent review". Changes are Minor (local), Major, Full (formerly the full process) or Owner (Q6 (1)); a Major
@@ -188,6 +188,28 @@ rules that result from them.
   - Rejected: a design review for every Major change (Q5's reason, slower small units, still holds, and the saving is
     unmeasured); bounding REVISE by the Minor definition (a fix the approved design prescribes may still add a branch);
     resetting the count on a design revision (the bound would never apply); a review count as a reason to ACCEPT.
+
+- **Q11 Full changes by shared acceptance tests and two lanes; a unit that does not converge goes to the owner** (2026-10-27,
+  owner; [WORKFLOW](WORKFLOW.md) "Full changes" and "Repeated reviews").
+  - Adopted (the owner, verbatim: 「そのように、WORKFLOW.mdを修正してください。いずれの場合も収束しない場合は、一時作業を停止して、
+    オーナーに対応を質問するようにしてください。」, after 「G216 (a) の作り直しで試す」 and the owner's proposal of a design-first and
+    an implementation-first lane): a Full change is a problem statement, shared acceptance tests written first by an author of
+    neither lane, two independent lanes (design-first with a short structure check, prototype-first with a design note after)
+    judged by the tests, a choice by results, and one review of the chosen design and implementation. Minor, Major and Owner
+    changes keep their flow. In every class, a unit that does not converge (two reviews whose blocking findings share a cause; a
+    third design or implementation review without ACCEPT; for a Full change, no lane passing the tests or the chosen lane's
+    review without ACCEPT) is suspended, and the owner is asked how to proceed.
+  - Supersedes: Q10's "two sharing a cause redo the cause analysis; a third without ACCEPT holds the unit for the owner" (either
+    signal now suspends the unit for the owner, instead of a cause analysis the planning session redoes alone) and WORKFLOW's Full
+    flow "two independently written designs, choice, design review, implementation, final review".
+  - Reason: G216 (a)'s revision 2 ran a third round after two reviews had shown one cause (checks beside the owning components),
+    and its choice was made between design texts while the defects showed only in code and probes.
+  - Rejected: the two-lane flow for Major changes (two implementations and the test-first step cost more than they save for a
+    local change); keeping the planning session's redo of the cause analysis without the owner (it let a third round run on a
+    known shared cause).
+  - Units in flight (the planning session's reading, reported to the owner): a Full unit whose choice between designs was made
+    before this entry finishes under the flow it started in; every other Full unit follows the new flow; the rule on units that do
+    not converge applies to every unit from its next review.
 
 - **G138-1 Native execution and verification evidence ownership** (2026-10-24; planning session, independent designs A/B and
   independent pre-code review). G138 needs execution progress distinguished from scheduling delay and missing observations
