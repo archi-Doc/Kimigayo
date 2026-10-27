@@ -18,6 +18,7 @@ public class TestProtocolTest
     [InlineData("missingLatch")]
     [InlineData("duplicateCompletion")]
     [InlineData("messageWithoutFailure")]
+    [InlineData("phase")]
     public async Task RejectsMalformedAndStaleRecords(string error)
     {
         var outcome = Create();
@@ -44,6 +45,10 @@ public class TestProtocolTest
                 break;
             case "messageWithoutFailure":
                 Frame(input, 3, 1, 0, 0, "missing");
+                break;
+            case "phase":
+                Frame(input, 6);
+                Phase(input, (int)TestRuntime.Phase.Shutdown + 1);
                 break;
         }
 
@@ -85,6 +90,29 @@ public class TestProtocolTest
         Assert.Equal("requireAbort", outcome.Termination);
         Assert.Equal("outer", outcome.Failures[0].Message);
         Assert.Equal("inner", outcome.Failures[1].Message);
+    }
+
+    // The runner names the phase a frame reports by the test runtime's numbering (TestRuntime.Phase), a failure's and an Abort's alike.
+    [Theory]
+    [InlineData((int)TestRuntime.Phase.Body, "body")]
+    [InlineData((int)TestRuntime.Phase.Cleanup, "cleanup")]
+    [InlineData((int)TestRuntime.Phase.Initialization, "initialization")]
+    [InlineData((int)TestRuntime.Phase.Shutdown, "shutdown")]
+    public async Task NamesEachPhaseByTheRuntimesNumbering(int phase, string name)
+    {
+        var outcome = Create();
+        using var input = new MemoryStream();
+        Frame(input, 0, payload: outcome.Catalog.ArtifactId);
+        Frame(input, 1, payload: outcome.Test.CaseId);
+        Frame(input, 2, 1, 0, 1);
+        Phase(input, phase);
+        Frame(input, 5, count: 1);
+        Phase(input, phase);
+        input.Position = 0;
+        await TestWorker.Receive(input, outcome, new(), new(TestOptions.Parse([])), TestContext.Current.CancellationToken);
+        Assert.Equal("abort", outcome.Termination);
+        Assert.Equal(name, outcome.Failures[0].Phase);
+        Assert.Equal(name, outcome.TerminationPhase);
     }
 
     [Fact]
@@ -140,4 +168,8 @@ public class TestProtocolTest
         stream.Write(header);
         stream.Write(bytes);
     }
+
+    // The phase of the frame without payload just written: its header's field at offset 20.
+    private static void Phase(MemoryStream stream, int phase)
+        => BinaryPrimitives.WriteInt32LittleEndian(stream.GetBuffer().AsSpan((int)stream.Position - 12), phase);
 }
