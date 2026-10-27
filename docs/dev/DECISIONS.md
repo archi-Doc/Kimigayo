@@ -561,6 +561,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   are computed per instance in R5; the failure check reads each write's own Result. Rejected: internal library
   declarations with three more `CompilerFunctionKind` members (grows the vocabulary R8 shrinks); deferring with an R3
   gate exception. R8 removes all three; with R3-9 the `IntrinsicId` limit returns from 34 to 30.
+  - `FormatHint` is renamed `FormatSegment`, carrying the segment's literal text, and a literal segment is no write: R5-M133 (supersedes
+    "the hint before each write" and, for literal text, "the failure check reads each write's own Result").
 
 ## R4 (accepted 2026-10-11)
 
@@ -10624,7 +10626,7 @@ structure is recorded here by the unit that first implements it.
     region's size is the instance maximum of every reservation (the literals and the bounded values' maxima; no literal is deferred while
     the literal path is C9d's), so the HeapBuffer arm of `__kimi_writer_reserve` always fits and never grows it; pinned by the bounds test
     and the stack rows. The old generator's switch to 0 is an IR deviation. R5-M130's boundary sentence resolves to this.
-  - The literal fast path (R5-M132, the owner's split): an owning interpolation whose estimate is Unbounded and whose literal bytes are above
+  - The literal fast path (R5-M132, the owner's split; the interim is superseded by R5-M133, C9d): an owning interpolation whose estimate is Unbounded and whose literal bytes are above
     zero is one located `Unsupported_Kd` at its FormatBuffer, decided from its own operands ("the literal path, C9d"): the deferral SPEC
     22.10.5's one-allocation bound needs has no MIR fact in R3-10's form, which C9d, a Full unit, designs. Every other owning interpolation
     is written. The census at C9c's base: 17 of the 277 rows holding only C9c's records hold such an interpolation; milestones 24, 30 and 33
@@ -10703,7 +10705,12 @@ structure is recorded here by the unit that first implements it.
     one step per write position of an owning interpolation's plan (`MirBuilder.Format`), `FormatSegment(&uniq adapter, text, later bytes,
     later values' Types)`, the hint of the later literal bytes and values, then the position's literal text: a literal segment's constant
     through the one literal rule (`MirBuilder.Literal`, SPEC 3.1), which is no `write` call (SPEC 22.10.3 passes only embedded expressions
-    to `write<T>`), or `""` at a value's position, whose write and Result test follow. `$tryWrite` segments and user writes stay writes.
+    to `write<T>`), or `""` at a value's position, whose write and Result test follow. An embedded string literal, which
+    `Binding.WritesText` also classifies as text (R5-M79), is its step's text as well, as if written: a constant has no effect, and
+    string's built-in formatting writes its bytes with the same `KIMI_E_FORMAT` failure (the old generator also writes it through
+    `__kimi_format_literal`). The block a failed write goes to is made by the first branch to it, so an interpolation of text alone has
+    none (R4's hunk review B1: an unreachable failure block was a validator finding that stopped the analyses on the whole program).
+    `$tryWrite` segments and user writes stay writes.
   - Code generation (`FunctionCodegen.FormatSegment`, the `Segment` writer, C9c's `Hint` renamed): `__kimi_format_hint` of the instance's
     hint; then a non-empty text, its record in its copy slot, its result in a slot numbered by the call's block (the frame walk's `Segment`
     arm, `TextSlots`, beside FormatBuffer's Region arm in one dispatch over `IntrinsicWriter`; the slot is the runtime's Result tag, made by
@@ -10730,7 +10737,8 @@ structure is recorded here by the unit that first implements it.
   - Facts: the sel ledger falls by the 17 interim rows, 203 to 186 (format 12, C-frame 4, C-aggregate 1), as C9c's census; the 16
     literal-path fixtures and the 4 new audits run natively under sel at O0 and O2 with the old generator's counts and bytes (the 7 pinned
     audits included). The golden `interpolations` loses its 13 literal writes (353/706 lines).
-  - Tests: `MirBuildTest.AnOwningInterpolationsLiteralTextIsItsSegmentStep`; `FunctionCodegenTest.ASegmentWritesItsLiteralTextAfterItsHint`
+  - Tests: `MirBuildTest.AnOwningInterpolationsLiteralTextIsItsSegmentStep` (a literal segment, an embedded string literal, text alone)
+    and `TextAloneKeepsTheProgramsOtherErrors`; `FunctionCodegenTest.ASegmentWritesItsLiteralTextAfterItsHint`
     (deferred before a value, written at the end, each checked); `Utf8InterpolationTest.DeferredLiteralTextKeepsTheOldGeneratorsAllocations`
     (the corpus kernel's line 2/60, a literal before a bounded value after an empty one 1/2, a bounded value before a string 2/34, a nested
     interpolation 2/12, equal under both generators); C9c's two interim coverage rows now generate; the M9/I1 `Interpolations` source gains
