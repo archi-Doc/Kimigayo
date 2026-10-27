@@ -7508,6 +7508,58 @@ resumed by R4-M86 (2026-10-20).
     drop bit); interning `(uniq/P) -> ()` as a Function Type to reuse the Value-call key (a Type made only for a key).
   - Consequences: no reader until R4's U2 (A5 composes a destruction), so no verdict or record changes; warm reads allocate nothing.
   - Cost: src +53/−12 lines (code +22, within the design's +30), the rest the contract text; tests +80/−4.
+- **BU-49 An exclusive borrow layer held by value stores its referent's Content into its input, not its own Value:
+  `RetentionPlace.Addressed`** (2026-10-27; BU's unit 0c under the owner-approved package R4-M126 (A5 step 2 plan 2c-4, PLAN G147
+  (8i)); lands alone after BU's and R4's reviews, R4-M126 having superseded AB-2's group landing (PD29); R4's 0c triage corrected the
+  expected column; fix round 1 after BU's review REVISE and R4's ACCEPT with notes) SPEC 15.6.4, 8.1.2.
+  - Rule: an exclusive borrow layer (uniq, objuniq, or a pair layer whose binder admits one, walked by value in every case, BU-3)
+    that the by-value walk reaches through storage the call may write, at a position it does not write (`RetentionWalk`: `at.Writable
+    && !here.Writable`), is a borrow the input holds; the storage below it is that borrow's referent, keyed on that layer
+    (`AdmitsExclusiveBorrow`), its occurrences `Addressed` (`RetentionPlace`, one flags value with `Shared`). That referent holds other
+    inputs' values (`1 Value store 0` of `f<s/T>(a: s/T, x: T)`) and the input's other occurrences (`(s/T, T)`: `0 Value store 0`),
+    and carries what a read through the input carries, never the input's own value (15.6.4: "the argument's own value, its Loans and
+    the holders it addresses, is retained only by … storage that can hold a value of its Type", read with its chain-of-reads
+    definition, a Tuple element, an Option payload or a Field included; the referent's Type cannot hold the input's). The layer's own
+    Origin is no `Addressed` occurrence: where the referent can hold a borrow of that Origin (`Option<uniq/(ref/i32 during q) during
+    q>`) its atom still marks Value (`1 Value store 1`), so 15.6.4's "one that may retain any other Origin of an argument carries the
+    argument's Loans" is read through the Origin closure (with a distinct `o`: `1 Content store 1`). `TyCtxt.Retains` gave `i Value -> i` because the referent's carrier is one atom in two roles ("both name one carrier",
+    BU-3). Now `MarkClosure` lowers an `Addressed` source to Content where the output is its own input: the Value self-store row is
+    gone, the borrow case's Content row stays (`0 Content store 0` for `s is owner or uniq`, `uniq or raw`, `objuniq or obj`, as for
+    `s is uniq` and a concrete `uniq/T`); for the result and other inputs' stores the source stays Value (`0 Value result` of
+    `keep<F>`, the owner case's value). One rule for the pair and the concrete layer: `(s/T, i32)`, `Option<s/T>`, `(s/T, s/T)` (a
+    Tuple's other element's referent, `*a.1` written into `*a.0`, is a read through the input) and their `uniq/T during p` twins, and
+    a Closure environment's bare `s/T` capture and its `y@uniq` capture alike give `0 Content store 0`; so do an `Option<uniq/…>` and a
+    `Holder<uniq/…>` input stored into themselves (`RawLayersRetainByTheirOrigins`: `1 Value store 1` -> `1 Content store 1`), while
+    their store through a raw layer into the same storage keeps Value (one kind per output, G276). The one rule moves no ledger row
+    beyond the 14 below and no verdict. A layer inside a borrowed
+    input's writable storage is already Content (BorrowReferent; rule G's rows, R4-M148, unchanged). Old path: nothing (D5).
+  - BU-3 kept: its rejected "no store row at all" (a second rule for self-stores) still holds, and this unit's first version, which
+    dropped the row, is withdrawn by it; BU-3's by-value walk for owner-admitting pairs stays, and its row is now the borrow case's.
+  - Targets, as R4 corrected them: G147 (8i)'s rows are the ledger's a5-writes rows, not f7h1/f7h2/f7n1/f7n2's owner-view records
+    (rule G's receiver self-store over an abstract part, R4-M147 Q1 (a), R4-M148; G148 (2)). Of (8i)'s six programs, A6-keep-ok,
+    A9-keep-ok and B7-second (6 a5-writes rows, with 6 a5-new rows) and ClosureReceiverClassificationTest's `take(value);
+    take((value))` body (an acceptance and a new row) are valid on the MIR; A2-put-ok, B4-chained and B5-result-put (6 a5-writes rows)
+    stay rejected in the uniq view by `put`'s `1 Value store 0`, whose Value `MirBorrows.Calls` gives every holder W reaches, E past
+    the written local `slot` included, where only `slot` can hold the argument's own value (PLAN G276, WK). f7h2/f7n2's uniq-view
+    `v@follow = x` has that cause and the receiver's Content rows (R4-M148) and stays in R4-M148's class; A3-closure stays rejected
+    (the store through the receiver, 2c-3); A4-box-ok, A4-field-ok ((8ii)) unchanged.
+  - Staged removal with G276 (WK): `RetentionPlace.Addressed` and `MarkClosure`'s lowering go when each holder W reaches takes the
+    kind its storage admits (one case's or one layer's kind leaking into another storage is G276's cause); `output` is data the rule
+    needs (the output whose storage is written), not a steering parameter.
+  - Rejected: dropping the row (BU-3's reason; it lost the borrow case's Content row that `s is uniq` and `uniq/T` keep); Content past
+    a borrow layer for every holder (unsound: it accepts A3-closure, R4's triage; G276's own concern); Kind `null` for the referent
+    (loses `0 Value result` and `1 Value store 0`); skipping the referent atom as its own source (drops `Cell<ref/i32 during q>`'s
+    `0 Value store 0`, an invariant slot, not an exclusive layer); the pair as a borrowed input in its exclusive case (a retention per
+    Semantics case, R4-M51); keying on the input (every exclusive layer of the input, not the one entered); a third bool in
+    `RetentionAtom`'s constructor (CR-R2: `Shared` and `Addressed` are one flags value).
+  - Tests: `RetentionTest.BorrowPairLayersAreBorrowedInputs` (three owner-admitting rows and the result row read Content; owner-only,
+    `x: T`, `(s/T, T)` twins), `ExclusiveLayersHeldByValueStoreTheirContent` (nested pairs beside their concrete twins, `(T, i32)`,
+    and the soundness counterpart: `during q` on both layers keeps `1 Value store 1`, a distinct `o` gives Content),
+    `CallsOverExclusiveLayersHeldByValueStoreTheirContent`, `DeclaredRelationsDecideTheResult`'s pair row,
+    `RawLayersRetainByTheirOrigins`' Option and Holder rows; `MirBorrowsTest.AByValuePairCarrierIsNotStoredIntoItsOwnReferent` (A6,
+    A9, B7, takeTwice valid in both views; A2, B4, B5 W's records until G276), `AnExclusiveLayerHeldByValueKeepsItsOwnOriginsLoan`
+    (use1 valid, use2 rejected); `RuleGsSelfStoreReachesAClosureReceiver` unchanged.
+  - Cost: src +25/−8 lines besides comments.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
@@ -9283,7 +9335,7 @@ structure is recorded here by the unit that first implements it.
   - Rows not written yet (located `Unsupported_Kd`, PD11): floating-point operands (C1b, with Float constants), raw-pointer equality
     and displacement (C8a, whose raw memory rows bring the stride addressing; no raw pointer reaches a generated program before
     them), string borrows (C8c), and checked 128-bit add, subtract, multiply and negate, whose `WideOverflowDeclarations` are
-    `ModuleCodegen`'s module-level request (open issue; `ModuleCodegen.cs` was held by K11). 128-bit division is the collector's
+    `ModuleCodegen`'s module-level request (open issue; `ModuleCodegen.cs` was held by K11; superseded by R5-M143). 128-bit division is the collector's
     capability gap and never reaches codegen.
   - Rejected: arms per operator (the old `BodyLowering.Graph` shape); deriving the check from (operator, signedness, wrapping) in
     code beside the table (a second copy of SPEC 13.3.1's rule); a Proven test in codegen (it would re-derive the builder's fact);
@@ -10760,7 +10812,8 @@ structure is recorded here by the unit that first implements it.
     two records, one site in two instances one. A function item's formation (`let operation = T.divided`) is itself a requesting site, so
     the Item form records at the formation and at the call (SPEC 23.1.2 leaves a dependent failure's report implementation-defined; a
     test pins both). Code generation decides no capability: a gap reaching it is a broken contract (R5-M37's rule). Checked 128-bit
-    addition, subtraction, multiplication and negation in a shim keep G157 (14)'s located record (ruling Q8 (a)).
+    addition, subtraction, multiplication and negation in a shim keep G157 (14)'s located record (ruling Q8 (a); superseded by
+    R5-M143).
   - `TyCtxt.Contract(requirement)` (ruling Q6 (a), BU's review): SPEC 8.6.1's declaring Contract, also of a built-in target, which keeps its
     requirement's scope; a symbol outside a Contract is a broken contract (`InvalidOperationException`). The collector's two
     `Scope.Owner` reads go through it: G157 (16)'s first half closes.
@@ -11390,3 +11443,57 @@ structure is recorded here by the unit that first implements it.
     old-value destruction, an A2 Drop like every other, runs in cleanup (the old generator: body; SPEC 13.7.1 calls it cleanup), and a
     static initializer runs in initialization, phase 3, which the old generator never writes (PD22, PLAN10 §5.6.7). PD22's "avoids
     per-pipeline kimi test failure output" is not met for these two labels. Both leave the list.
+- **R5-M143 Checked 128-bit arithmetic and layered comparison operands in MIR code generation (wide)** (2026-10-27, C lane; PLAN G157
+  (14); package C 3.2 and 3.3, PD2, PD9, PD11; SPEC 13.3.1, 13.3.3, 13.4, 3.4.3, 5.1, 22.5.1-22.5.2, IMPL 21.3.3; the planning session's
+  go and rulings Q1-Q6 on `wide-design.md` and its rulings on implementation review 1 (B1, B2); under R5-M18, R5-M75, R5-M76, R5-M87,
+  R5-M92 and R5-M126; supersedes R5-M76's open issue "checked 128-bit add, subtract, multiply and negate, whose `WideOverflowDeclarations`
+  are `ModuleCodegen`'s module-level request" and R5-M126's "keep G157 (14)'s located record (ruling Q8 (a))")
+  - 128-bit rule (rulings Q1, Q2): the operator table's integer entries are width-generic overflow stems, so a checked i128 or u128 add,
+    subtract, multiply or negate (increment, decrement, compound and element updates, and an arithmetic shim, which applies the same row)
+    is written by `Apply` as at any width. Its intrinsics' declarations, `LlvmModuleText.WideOverflowDeclarations` (the old generator's
+    text, PD2), are one more frame part, `ModuleCodegen.Needs.WideOverflow`, which `Apply` requests where it writes a 128-bit overflow check
+    (the one site of the inline operators and C8f's shims) and the frame writes after the fixed declarations, the old generator's place,
+    so a module's frame text equals the old generator's. No runtime routine (llc expands the multiply inline), no IntrinsicRows,
+    BuiltinArithmetic or vocabulary row; `Needs` is no closed vocabulary, but its `byte` is now full: the next frame part widens it.
+  - Comparison rule (review B2, the cause of B1 and B2): SPEC 13.4 says an operand of safe value-reference layers (`ref`, `uniq`,
+    qualifying pair layers) denotes its terminal Place, and the terminal Types' comparison applies; MIR keeps those layers on an operand
+    whose terminal it inspects in place, a string's or a raw pointer's (`MirValidator.Types`: a comparison's operands agree below their
+    layers), and reads a scalar terminal itself (`copy (*_1)`). Code generation followed them for a string only (`Column` by `Terminal`,
+    `Bytes`), so `raw/i32 != ref/raw/i32` compared the reference's own address, a wrong result under sel since C8a (R5-M92), and the mirror
+    order was a located `Unsupported_Kd`. Now every operator operand is read at its terminal Place: `Column` takes the left operand's
+    terminal, and `Compute` reads each operand through its layers by `Referent`, the one walk (the referent of the outer ref or uniq layer
+    through the pointer each further one stores) that a string's `Bytes` takes too, so the string path is an instance of the rule. Only a
+    comparison's operand has layers (MIR's contract), so arithmetic and conversions read as before. The old generator refuses both raw
+    orders with GenerationFailed_Kd ("Inconsistent scalar operator or operand Types"), a support limit for STATUS.
+  - The remaining record (ruling Q3, review B1): with the rule, `Apply`'s `entry.Operator is null` is reached only by an operator Binding
+    admits on no operand of that terminal Type (a raw pointer's `<`, `*`, unary `-` or `&`; a floating-point `%`, `&`, `<<` or `not`; a
+    Type without a column), which check refuses (OperatorNotDefined_Kd, NonIntegerOperand_Kd, TypeMismatch_Kd), so it is a broken
+    contract: `InternalInvariant_Kd` at the operator (G157 (38)'s pattern). No accepted program in the census classes reaches it.
+  - Tests (rulings Q4, Q5): `CheckedArithmeticAbortsAtItsOperator` gains six 128-bit rows (sadd, uadd, usub, smul, umul and negation's
+    ssub) and asserts the 128-bit declarations exactly where a 128-bit check is written. `AComparisonReadsEachOperandAtItsTerminal` counts
+    the loads to each compared raw pointer (a ref layer left, right, both, a uniq one borrowed); `LayeredComparisonsRun` writes the
+    `RawComparisonLayers` fixture under MIR code generation in every run: both raw orders and `ref/i32` against `i32`, `==` and `!=`. All of
+    these fail before. The shim form is the two flipped `BuiltinArithmeticContractTest` rows. The coverage theory's `ref/raw/i32 == raw/i32`
+    row is written; K11's Application counterpart and `ARefusalLeavesTheOtherBodiesGapsRecorded` move to G157 (10)'s reserve call, still
+    unwritten under sel (`Reserve`). The pending ledger loses 26 test rows (C-frame 22, C-aggregate 4), the census's count.
+  - Size (numstat against 838e11b43, both commits): code +89 / -42 (`FunctionCodegen.Arithmetic` +39 / -22, `FunctionCodegen.Strings` +31 / -11,
+    `ModuleCodegen.Frame` +19 / -9, comments included); tests +55 / -13; ledger -26 rows.
+  - Deleted: the 128-bit clause of `Apply`'s record and its located record, inline and in a shim; `Column`'s string-only walk and `Bytes`'
+    own copy of it; the coverage theory's "leave checked 128-bit arithmetic to ModuleCodegen's wide overflow declarations".
+  - Speed: one flag request per 128-bit check and one pointer load per followed layer, no pass over MIR or output; warm 0 B
+    (`WideIntegerEmissionTest.WarmWidePlansAndFormattingAllocateNothing` passes under sel). O2 (information; no corpus kernel or milestone
+    reaches a 128-bit check or a layered comparison, so R5-M8 and R5-M135 are not triggered): both generators' optimized IR of checked i128
+    add, i128 and u128 multiply and i128 negation is identical but for names, 13, 59 and 33 instructions for sadd, smul and umul in both;
+    HashChecked (u128 multiply in its loop) prints the same at O2 under both, its check folded in both.
+  - Rejected: inside the component, (B) the frame writing the 128-bit declarations always (no width test, a few lines shorter): its
+    prototype changed the text of all 1,505 sel fixtures of the census classes, which voids `compare-fixtures.ps1`'s byte comparison, and
+    departs from R5-M76's request; the declarations written from `FunctionCodegen` (R5-M76); a scan of MIR or output for 128-bit checks;
+    the request in `Write`'s Overflow arm by the Type's text; a raw-pointer clause beside the string one in `Column` (a second copy of the
+    walk, the right operand still unread); keeping the null-entry arm `Unsupported_Kd` (it hid the wrong code's sibling). Shared structure:
+    the 128-bit declarations merged into the fixed `OverflowDeclarations` for both generators (every legacy `.ll` changes, against
+    `LlvmModuleText`'s byte-identity invariant, and frozen Emission's scan is edited, D5); a runtime routine for the multiply; a
+    capability row refusing checked 128-bit arithmetic (IMPL 21.3.3 supports it); MIR reading a raw-pointer terminal itself (held MIR,
+    and strings keep the in-place form anyway).
+  - Unverified: a test build with a 128-bit check (its runtime's text is unchanged, H); O2 timing (no kernel, identical code).
+  - Outside scope (H, Binding): check refuses `p + n` and `p - n` for `p: ref/raw/i32` with TypeMismatch_Kd, though SPEC 13.3.4 follows
+    safe layers to the terminal before the raw-pointer route; perhaps a conservative Language error for a valid form.
