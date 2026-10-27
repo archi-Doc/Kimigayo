@@ -859,6 +859,26 @@ public sealed class InstanceCollectorTest
         Assert.Equal(["Fn reserve", "Fn reserve"], Calls(program, set, "Fn toSink").Where(static x => x == "Fn reserve"));
     }
 
+    // K 4.5 rows 2, 12 and 13 (DECISIONS R5-M136): an intrinsic's Type argument is read only where its row reads one
+    // (IntrinsicRow.ReadsTypeArgument). Test.tempDirectory's function has no Type parameter and its row neither lays out nor targets one, so its
+    // Item's Value call and its adapter (an erasure to `() -> string`) have no target and no record (fail-before: an index outside the Item's
+    // substitution, a fault that ended the check).
+    [Fact]
+    public void AnIntrinsicsItemReadsATypeArgumentOnlyWhereItsRowDoes()
+    {
+        var c = MirBuildTest.Compile(
+            "#Test\nfunc t()\n    let make = Test.tempDirectory\n    Console.writeLine(make())\n    Console.writeLine(run(Test.tempDirectory))\n" +
+            "func run(make: () -> string) -> string => make()\n",
+            test: true);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Empty(set.Records);
+        var adapter = Assert.Single(Enumerable.Range(0, set.Items.Length), x => set.Items[x].Key.Kind == MonoKind.ItemAdapter);
+        Assert.Empty(set.Targets(adapter).ToArray());
+    }
+
     // K 4.6 for tables (VirtualGenericDispatchTest's dependency programs): an override that creates an object of its own struct's instance
     // reuses the descriptor of a finite cycle, and one of a growing instance stops when 16 bodies of its definition are on the chain,
     // GenerationResourceLimit_Kd at the creation, a root-module site.

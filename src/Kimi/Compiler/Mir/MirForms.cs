@@ -199,7 +199,11 @@ internal readonly record struct MirLocal(
 internal readonly record struct MirScope(int Outer, MirScopeKind Kind, SourceRef Source);
 
 /// <summary>A constant; interned, so equal constants share one id.</summary>
-internal readonly record struct MirConst(MirConstKind Kind, BoundType Type, Int128 Bits = default, object? Value = null);
+internal readonly record struct MirConst(MirConstKind Kind, BoundType Type, Int128 Bits = default, object? Value = null)
+{
+    /// <summary>Gets a Location constant's site, the SourceRef its bits hold as <c>Module &lt;&lt; 32 | Id</c>.</summary>
+    internal SourceRef Site => new((ushort)(this.Bits >> 32), (int)(this.Bits & uint.MaxValue));
+}
 
 /// <summary>An interned projection step: its <see cref="Prefix"/>, the chain it extends (0: the root), its kind and argument (a Field index,
 /// a base depth, an index local, a constant position, a Case ordinal or a pair binder's index) and the Type it selects
