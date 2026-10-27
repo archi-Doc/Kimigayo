@@ -11179,6 +11179,12 @@ structure is recorded here by the unit that first implements it.
     Value call and adapter); TestRequireAbort has no successor. A MIR `Location` constant (`MirConst.Site`) is a row of the constant kinds:
     its value is the site's number in the test catalog (`TestCatalog.SiteOf`), which discovery gives every verification of an accepted
     test build, so an unnumbered site is a broken contract.
+  - Type argument (implementation review 1's B1): an intrinsic's Type argument is read only where its row reads one
+    (`IntrinsicRow.ReadsTypeArgument`: a by-value use, `LaysOutType`, or a Witness, Descriptor or Glue target), by one rule at three readers:
+    an intrinsic call is a collector site by it (with a staticEnsure's operand target), an Item of its function reaches its target by it
+    (`InstanceCollector.Bodyless`, PLAN G242's site), and code generation's `TypeArgument` reads it by it. Another row's function may have
+    no Type parameter: `Test.tempDirectory`'s Item and adapter ended the check with `CheckFaulted_Kd`, an index outside the Item's
+    substitution.
   - Held values (Q1 (a), departure (i)): F8b records a comparison's Scalar operands before the comparison moves them (SPEC 17.6.3), so
     before the observation numbers the failure, which the runtime's value frame needs. `IntrinsicWriter.Record` passes the side, the
     Type's frame kind (`TestRuntime.ValueKind`) and width (1 for bool, else its size in bits) and its bits as i128 (a float reinterpreted,
@@ -11194,8 +11200,8 @@ structure is recorded here by the unit that first implements it.
     and MIR code generation of a test build requires it, else `InternalInvariant_Kd` at the project: the roots and site numbers are that
     discovery's. `LibraryEmissionTest`'s test-build harness now discovers as Project does; under sel it published a module without
     tests before.
-  - Dependencies (departure (ii), R5-M138): the Backend reads the Testing catalog's site numbers, case and artifact identities and version,
-    and the test runtime's text, entry writer and value kind, beyond R5-M18's symbol column (ARCH's Backend row).
+  - Dependencies (departure (ii), R5-M138): the Backend reads the Testing catalog's site numbers and case and artifact identities, and the
+    test runtime's text, entry writer and value kind, beyond R5-M18's symbol column (ARCH's Backend row).
   - Records: the collector records nothing new (no target, layout use or capability row); code generation records only broken contracts
     (`InternalInvariant_Kd`): an unnumbered site, a recorded value of no Scalar Type, a test root not `void ()`, a stale catalog.
   - Deviations: IR (PD9): the values are passed before the comparison where the old generator passes them after the observe, with the same
@@ -11204,11 +11210,12 @@ structure is recorded here by the unit that first implements it.
     which C10a lands (ruling Q4 (a)): a failure or Abort during cleanup reports the body phase under sel.
   - Facts: the 14 `TestExecutionAnalysisTest` rows of the sel ledger pass (186 to 172 test rows); `test-testing.ps1` passes at O0 and O2
     under default, and under sel every assertion but the cleanup phase (C10b's), its snapshot values equal to the old generator's.
-  - Size: bp1 +95/-28 (Backend +13, Emission -5, Mir +4, Testing +55); behavior Backend +109/-22, Core +17/-6, Testing +67/-8 (the
-    runtime +59/-7), tests +165/-10, the ledger -14 rows, this entry, ARCH and CODEMAP. Over the plan's +100 by the held values and the
-    entry's split.
+  - Size, by numstat: bp1 +95/-28 (Backend +13/-0, Emission +4/-9, Mir +6/-2, Testing +72/-17); behavior Backend +109/-22, Core +17/-6,
+    Testing +67/-8 (the runtime +59/-7), tests +172/-11; review 1's fold Backend +42/-25 (collector +10/-8), tests +79/-15; the ledger -14
+    rows, this entry, ARCH and CODEMAP. Over the plan's +100 by the held values and the entry's split.
   - Deleted: the five rows' located records and C10a labels, the TestEntry records at each test root, the old lowering's private ABIs and
-    kind expression (promoted), `TestRuntime.Create`'s own call text, MirDump's inline Location decode.
+    kind expression (promoted), `TestRuntime.Create`'s own call text, MirDump's inline Location decode, the collector's unconditional
+    read of an intrinsic Item's Type argument and code generation's length test of it (one rule now).
   - Speed: per verification, the old generator's number of value calls and one store in the observation; at compile time one constant row
     and one writer, no pass over MIR, and a warm test build allocates nothing (the kept case list and call writer, numbers on the stack).
   - Rejected: inside code generation, values kept by FunctionCodegen and written after the observe with its issue (a side table, a consumer
@@ -11216,7 +11223,8 @@ structure is recorded here by the unit that first implements it.
     own Location clauses, a separate flush routine after each observe (a two-call row), a second decode of the Location bits; in shared
     structure, TestRecordValue after TestObserve with the issue (the builder; F8b's reason), the values as TestObserve operands (uses after
     the moves), a MIR-only second test runtime (PD2), a MonoKind or IntrinsicId for the entry (PD21), splicing the test runtime's
-    definitions from `RuntimeAbi` markers (a test ties them).
+    definitions from `RuntimeAbi` markers (a test ties them); for the Type argument, a length test of the substitution at each reader (a
+    second copy of the rule and a silent default where a row that reads one lacks it).
 - **R5-M139 An exclusive acquisition passes no shared layer (W1 rule 1, stage B)** (2026-10-27, R5 planning session; R4 signs off the A5
   side; supersedes R5-M123's sentence that stage B waits: PLAN G262 landed as BU-45, R4-M145 closed G251 (7) and made a discarded Place's
   bare acquisition its plan row) Rule (`MirValidator.SharedPaths.cs`, R5-M123's `MirViolation.SharedPath`): a projected Place that a Ref
