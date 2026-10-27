@@ -246,8 +246,8 @@ public sealed partial class Binding
             expected = this.SubstituteIdentityPremises(expected, scope);
         }
 
-        // SPEC 14.9.2: a result target that waited for its position takes the Type that position supplies.
-        var actual = this.WaitingResult(node) is { } waiting ? this.DecideWaiting(node, waiting, expected) : this.BindNodeCore(node, scope, expected);
+        // SPEC 14.9.2: a result target that waited for its position takes the Type that position supplies, or the outcome its root gave it.
+        var actual = this.WaitedResult(node) is { } waited ? this.DecideWaiting(node, waited, expected) : this.BindNodeCore(node, scope, expected);
         if (expected is not null && actual is not null && HasArrayLengthHole(expected))
         {
             expected = this.CompleteArrayExpectation(expected, actual);

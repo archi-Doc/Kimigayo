@@ -173,7 +173,7 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
             ["drop _1 -> bb5 [keep]", "drop _3 -> bb10", "drop _3 -> bb13", "drop _1 -> bb14"],
             Lines(Resource + "func f() -> i32\n    let r = make()\n    return 1\n    let s = make()\n    return 2\n", "f", all: true));
         Assert.Empty(Problems(Box + "func f() -> i32\n    return 1\n    var box = Box.init(make())\n    consume(box.value@move)\n"));
-        Assert.Equal(["drop _10 -> bb11 [keep]", "drop _2 -> bb12 [keep]"], Lines("func label(n: i32) -> string => \"n=\\(n)\"\n", "label"));
+        Assert.Equal(["drop _2 -> bb9 [keep]"], Lines("func label(n: i32) -> string => \"n=\\(n)\"\n", "label"));
     }
 
     // DECISIONS R4-M102: the verdicts are exact only for a body A1 accepts (R4-M6a), so the table records each body's first A1 or A2 problem,

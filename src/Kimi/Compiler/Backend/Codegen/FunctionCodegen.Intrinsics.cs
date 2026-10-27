@@ -10,10 +10,10 @@ namespace Kimi.Compiler.Backend;
 // factory with its control value and a clone's retain, FunctionCodegen.Objects, Text.writer's routine with its destination's writer kind and dispatch word,
 // FunctionCodegen.Formatting), which a compiler function's Value call and adapter entry also call by its disposition (Routine by kind), a Fail's Abort reason,
 // Raw.initialize's copy, Raw.slice's record, transferBytes' memcpy, a staticEnsure's state test (FunctionCodegen.Statics), a runtime Type test
-// (FunctionCodegen.Objects) and an owning interpolation's buffer, hint and end (FunctionCodegen.Interpolation). Each takes its operands at its declaration's
-// slots (ArgumentPosition) and ends through Finish; a call whose row's Target column names an item carries the collector's target, read once by the cursor (I8)
-// and given to the row's writer; a row not written yet is one located Unsupported_Kd at the call, its owning unit named in IntrinsicRows. In a caller-location
-// body a location is C3b's row (Location).
+// (FunctionCodegen.Objects) and an owning interpolation's buffer, segment steps and end (FunctionCodegen.Interpolation). Each takes its operands at its
+// declaration's slots (ArgumentPosition) and ends through Finish; a call whose row's Target column names an item carries the collector's target, read once by
+// the cursor (I8) and given to the row's writer; a row not written yet is one located Unsupported_Kd at the call, its owning unit named in IntrinsicRows. In a
+// caller-location body a location is C3b's row (Location).
 internal sealed partial class FunctionCodegen
 {
     private readonly Value[] slotless = new Value[2]; // A routine row's slot-less values (Routine): a formatting row's kind, Text.writer's two.
@@ -53,8 +53,8 @@ internal sealed partial class FunctionCodegen
             case IntrinsicWriter.Buffer:
                 this.FormatBuffer(call, row);
                 return;
-            case IntrinsicWriter.Hint:
-                this.FormatHint(call, row);
+            case IntrinsicWriter.Segment:
+                this.FormatSegment(call, row);
                 return;
             case IntrinsicWriter.Finish:
                 this.FormatFinish(call, row);

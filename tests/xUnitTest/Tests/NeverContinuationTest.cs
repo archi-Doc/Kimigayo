@@ -3,6 +3,8 @@
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
+using Verification;
 using Xunit;
 
 namespace XunitTest;
@@ -127,9 +129,26 @@ public class NeverContinuationTest
 
     // SPEC 14.9.2 step 3, 3.8: a literal whose element is Never awaits its position: beside a source that supplies a candidate it supplies
     // none, and it takes the Target Result Type once the join selects it, nested, in parentheses, as an array element, a dictionary value,
-    // a part of a Tuple, array or dictionary literal source and a call argument too, which its published Type shows; one holding only
-    // Never parts takes the Type a literal source's default supplies; MIR builds it at that Type with no record and no finding.
+    // a part of a Tuple, array or dictionary literal source and a call argument too, which its published Type shows; where no source
+    // supplies a candidate, the Type is formed part by part over the sources other than Never (step 2; DECISIONS R4-M134, BU-43): Tuples
+    // by element, arrays as Array<T>, fills at their length and Dictionaries by key and value, through nested selections, `do` and `loop`;
+    // MIR builds it at that Type with no record and no finding.
     [Theory]
+    [InlineData("let t = if c => (a, (return 1)) else => ((return 2), a)", "((return 2), a)")]
+    [InlineData("let t = match c\n        true => (a, (return 1))\n        false => ((return 2), a)", "((return 2), a)")]
+    [InlineData("let t = if c => (if d => (a, (return 1)) else => ((return 2), a)) else => (a, a)", "((return 2), a)")]
+    [InlineData("let t = if c => (if d => (a, (return 1)) else => ((return 2), a)) else => ((return 3), a)", "((return 3), a)")]
+    [InlineData("let t = if c => (a, (return 1)) else if d => ((return 2), a) else => ((return 3), (return 4))", "((return 2), a)")]
+    [InlineData("let t = if c => (do => (a, (return 1))) else => ((return 2), a)", "(a, (return 1))")]
+    [InlineData("let t = loop\n        if c => exit (a, (return 1))\n        exit ((return 2), a)", "((return 2), a)")]
+    [InlineData("let g = func [a] (e: bool) => if e => (a, $abort(\"x\")) else => ($abort(\"y\"), a)", "($abort(\"y\"), a)")]
+    [InlineData("let t = if c => ((a, (return 1)), a) else => (((return 2), a), a)", "((return 2), a)")]
+    [InlineData("let t = if c => [(a, (return 1))] else => [((return 2), a)]", "[((return 2), a)]", "Array<(i64, i64)>")]
+    [InlineData("let t = if c => [2 of (a, (return 1))] else => [2 of ((return 2), a)]", "[2 of ((return 2), a)]", "[2 of (i64, i64)]")]
+    [InlineData("let t = if c => [\"k\": (a, (return 1))] else => [\"k\": ((return 2), a)]", "[\"k\": ((return 2), a)]", "Dictionary<string, (i64, i64)>")]
+    [InlineData("let t = if c => (a, (return 1)) else => (a, (return 2))", "(a, (return 2))", "(i64, Never)")]
+    [InlineData("let r = a@ref\n    let t = if c => (r, (return 1)) else => (a, (return 2))", "(r, (return 1))", "(i64, Never)")]
+    [InlineData("let t: (() -> i64, i64) = if c => (func [a] () => a, (return 1)) else => ((return 2), a)", "((return 2), a)", "(() -> i64, i64)")]
     [InlineData("let t = if c => (a, a) else => (a, (return 1))", "(a, (return 1))")]
     [InlineData("let t = if c => (a, (return 1)) else => (a, a)", "(a, (return 1))")]
     [InlineData("let t = match c\n        true => (a, a)\n        false => (a, (return 1))", "(a, (return 1))")]
@@ -171,10 +190,97 @@ public class NeverContinuationTest
     [InlineData("let t = if c => [\"k\": (a, a)] else => [\"k\": (a, (return 1)), \"j\": (a, true)]")]
     [InlineData("let t = if c => (a, a) else => (a, (return 1))@move")]
     [InlineData("let t: (i64, i64) = if c => (a, a) else => (a, (return 1))@move")]
+    [InlineData("let t = if c => (a, (return 1)) else => (c, a)")]
+    [InlineData("let t = if c => (a, (return 1)) else => ((return 2), a, a)")]
+    [InlineData("let t = if c => (a, (return 1)) else => [a, (return 2)]")]
+    [InlineData("let t = if c => (if d => (a, (return 1)) else => ((return 2), c)) else => (a, a)")]
+    [InlineData("let t = if c => [2 of (a, (return 1))] else => [3 of ((return 2), a)]")]
+    [InlineData("let t = if c => [2 of 5] else => [3 of a]")]
+    [InlineData("let t = if c => [2 of (a, (return 1))] else => [((return 2), a), ((return 3), a)]")]
+    [InlineData("let t = if c => [\"k\": (a, (return 1))] else => [\"k\": (c, (return 2))]")]
+    [InlineData("let t = if c => (1, (return 1)) else => (2.5, a)")]
     public void ANeverElementLiteralThatDoesNotFitItsJoinIsAMismatch(string statement)
     {
         var c = MirBuildTest.Compile(Joins + statement + "\n    return 0\n");
         Assert.Contains(c.Binding.Issues, static x => x.Node is IfKoto && x.Failure == BindingFailure.TypeMismatch);
+    }
+
+    // SPEC 23.1.2: a conflict in a join formed part by part is one record, at the join whose sources conflict, also when a later use
+    // binds its declaration again (the survey of a bound source that awaits supplies no candidate, DECISIONS BU-43), and when a nested
+    // join holding a waiting literal conflicts within itself: it fails at once, and its outer join rests on that part's record.
+    [Theory]
+    [InlineData("let t = if c => (if d => (a, (return 1)) else => ((return 2), c)) else => (a, a)")]
+    [InlineData("let t = if c => (if d => (a, (return 1)) else => ((return 2), a)) else => (c, (return 3))")]
+    [InlineData("let t = if c => (if d => (a, (return 1)) else => (c, (return 2))) else => (a, a)")]
+    [InlineData("let t = if c => (if d => (5, a) else => ((return 1), c)) else => ((return 2), a)")]
+    public void AConflictInAJoinFormedPartByPartIsOneRecord(string statement)
+    {
+        var c = MirBuildTest.Compile(Joins + statement + "\n    return t.0\n");
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal(BindingFailure.TypeMismatch, issue.Failure);
+    }
+
+    // SPEC 14.9.2 step 3 ("a literal result is not fixed before outer constraints"), 23.1.2 (DECISIONS BU-43): a conflict among literal
+    // defaults is the root's, the outermost join of the tree, judged over every position of the flattened tree: one record at the root,
+    // also for two inner conflicts (dev: two, one at each inner join) and beside the root's own typed conflict (dev: one, at the inner
+    // join); every nested join rests on it.
+    [Theory]
+    [InlineData("let t = if c => (if d => 5 else => 2.5) else => 2.5")]
+    [InlineData("let t = if c => (if d => (if c => 5 else => 2.5) else => 2.5) else => 2.5")]
+    [InlineData("let t = if c => (if d => (5, (return 1)) else => (2.5, (return 2))) else => ((return 3), a)")]
+    [InlineData("let t = if c => (if d => 5 else => 2.5) else => (return 3)")]
+    [InlineData("let t = if c => ((if d => 5 else => 2.5), (if d => 6 else => 3.5)) else => ((return 1), (return 2))")]
+    [InlineData("let t = if c => ((if d => 5 else => 2.5), a, (return 1)) else => ((return 2), true, (return 3))")]
+    public void ADefaultsConflictIsRecordedOnceAtTheOutermostJoin(string statement)
+    {
+        var c = MirBuildTest.Compile(Joins + statement + "\n    return 0\n");
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal(BindingFailure.TypeMismatch, issue.Failure);
+        Assert.Same(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IfKoto>().First(), issue.Node);
+    }
+
+    // SPEC 23.1.2, 14.9.2 step 3 (DECISIONS BU-43): a failed part stops no formation, so a defaults conflict among the other parts of
+    // the tree is still found and is the root's record, beside the other failure's own record (dev: at the inner join), also when the
+    // other failure is a sibling join's own conflict.
+    [Theory]
+    [InlineData("let t = if c => (if d => 5 else => 2.5) else => nope")]
+    [InlineData("let t = if c => (if d => 5 else => 2.5) else => missing()")]
+    [InlineData("let t = if c => (if d => 5 else => 2.5) else => id(nope)")]
+    [InlineData("let t = if c => nope else => (if d => 5 else => 2.5)")]
+    [InlineData("let t = if c => ((if d => 5 else => 2.5), (return 1)) else => (nope, (return 2))")]
+    [InlineData("let t = if c => (if d => (5, (return 1)) else => (2.5, (return 2))) else => (if d => (a, a) else => (true, a))")]
+    [InlineData("let t = if c => [(if d => 5 else => 2.5)] else => [nope]")]
+    [InlineData("let t = if c => [\"k\": (if d => 5 else => 2.5)] else => [\"k\": nope]")]
+    [InlineData("let t = if c => (if d => (if c => 5 else => 2.5) else => 2.5) else => nope")]
+    public void ADefaultsConflictBesideAnotherFailureIsTheRootsRecord(string statement)
+    {
+        var c = MirBuildTest.Compile(Joins + statement + "\n    return 0\n");
+        var root = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IfKoto>().First();
+        Assert.Equal(2, c.Binding.Issues.Count);
+        Assert.Single(c.Binding.Issues, x => x.Failure == BindingFailure.TypeMismatch && ReferenceEquals(x.Node, root));
+    }
+
+    // SPEC 23.1.2 (DECISIONS BU-43): an unreadable character literal is bound as `char`, its lexer record standing for it, so a join
+    // forms its Type over it and a later use keeps its own record.
+    [Fact]
+    public void AnUnreadableLiteralIsATypedPartOfItsJoin()
+    {
+        const string Source = "func f(c: bool, a: i64) -> i64\n    let t = if c => ('ab', (return 1)) else => ((return 2), 'x')\n    let z: i64 = t.0\n    return 0\n" +
+            "public func main() => ()\n";
+        var codes = DiagnosticCorpus.Check(Source).Diagnostics.Select(static x => x.Code).Order();
+        Assert.Equal([nameof(DiagnosticCode.InvalidCharLiteral_Kd), nameof(DiagnosticCode.TypeMismatch_Kd)], codes);
+    }
+
+    // DECISIONS BU-9 r1, BU-43: a failed part is no waiting part, so no Type is formed over it and no literal is bound twice; its join
+    // rests on it, and so does each source of that join that holds no literal: the program keeps the failed part's one record.
+    [Theory]
+    [InlineData("let t = if c => ([], (return 1)) else => ((return 2), [a])")]
+    [InlineData("let t = if c => [] else => [(return 1)]")]
+    public void AFailedPartIsNoWaitingPart(string statement)
+    {
+        var source = "func f(c: bool, a: i64) -> i64\n    " + statement + "\n    return 0\npublic func main() => ()\n";
+        var diagnostic = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.Unsupported_Kd), diagnostic.Code);
     }
 
     // SPEC 3.8: Never is a subtype of no other Type, at any depth: a Type holding Never relates only by identity, a Function Type's result

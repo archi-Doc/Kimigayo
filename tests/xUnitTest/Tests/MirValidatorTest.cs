@@ -692,6 +692,69 @@ public sealed class MirValidatorTest
         Assert.Empty(program.Findings);
     }
 
+    // W1 rule 1, stage B (DECISIONS R5-M139; SPEC 3.5.1, 8.15.2, 13.5.5): a Place a Ref borrows exclusively (Uniq or TwoPhaseUniq), a
+    // PairAcquire's Place where its binder admits an exclusive case, in which it Reborrows, and the Place of an exclusive borrow an Adapt
+    // resolves to under a view pass no shared layer after their last raw Deref: else one SharedPath finding at the location, here at
+    // Broken, whatever the layer (a ref, objref, rc or arc Deref, a Slice's Index, a pair layer in a shared case). The PairAcquire's binder
+    // is read in its exclusive case, so its own pair layer is no shared layer, and a binder without an exclusive case only Copies; an
+    // Adapt's pair layers are read in its view's cases. None for a Ref through a raw pointer past a shared layer (SPEC 5.2.1 (3)); a shared
+    // borrow and an address are the write theory's rows.
+    [Theory]
+    [InlineData("uniq ref", true)]
+    [InlineData("two-phase ref", true)]
+    [InlineData("uniq objref", true)]
+    [InlineData("uniq rc", true)]
+    [InlineData("uniq arc", true)]
+    [InlineData("uniq slice", true)]
+    [InlineData("uniq pair", true)]
+    [InlineData("acquire ref", true)]
+    [InlineData("adapt ref", true)]
+    [InlineData("uniq raw", false)]
+    [InlineData("acquire own", false)]
+    [InlineData("acquire copy", false)]
+    [InlineData("adapt own", false)]
+    public void AnExclusiveAcquisitionPastASharedLayerIsAFinding(string form, bool finding)
+    {
+        var (c, types) = Fixture.Value;
+        var body = MirModelTest.NewBody(types);
+        PairBinder.Collect(types.Generic, body.Binders);
+        body.Binders[0] = body.Binders[0] with { Admitted = form == "acquire copy" ? SemanticsMask.Ref : SemanticsMask.Ref | SemanticsMask.Uniq };
+        _ = TyCtxt.Layer(types.Pair, out var payload, out var binder); // s/T: T and s.
+        MirPlace Local(BoundType type) => MirModelTest.Local(body, type);
+        MirPlace Deref(MirPlace place) => body.Project(place, MirProjectionKind.Deref, 0);
+        MirPlace Payload(SemanticsKind semantics) => body.Project(
+            Deref(Local(semantics == SemanticsKind.ObjRef ? c.Types.Reference(semantics, types.Point) : c.Types.Intern(BoundTypeKind.Semantics, null, semantics, [types.Point]))),
+            MirProjectionKind.Field,
+            0);
+        var index = MirModelTest.Local(body, BoundType.ISize, MirLocalKind.Temp);
+        var place = form switch
+        {
+            "uniq ref" or "two-phase ref" => Deref(Local(c.Types.Reference(SemanticsKind.Ref, BoundType.I32))),
+            "uniq objref" => Payload(SemanticsKind.ObjRef),
+            "uniq rc" => Payload(SemanticsKind.Rc),
+            "uniq arc" => Payload(SemanticsKind.Arc),
+            "uniq slice" => body.Project(Local(c.Types.Intern(BoundTypeKind.Slice, null, SemanticsKind.Owner, [BoundType.I32])), MirProjectionKind.Index, index.Root),
+            "uniq pair" or "adapt own" => body.Project(Local(types.Pair), MirProjectionKind.PairLayer, 0),
+            "uniq raw" => Deref(body.Project(Deref(Local(c.Types.Reference(SemanticsKind.Ref, c.Types.Tuple([c.Types.Pointer(BoundType.I32), BoundType.Boolean])))), MirProjectionKind.Field, 0)),
+            "acquire ref" or "acquire copy" => Deref(Local(c.Types.Reference(SemanticsKind.Ref, types.Pair))),
+            "acquire own" => body.Project(Local(c.Types.Intern(BoundTypeKind.SemanticsApplication, binder, SemanticsKind.Parameter, [types.Pair])), MirProjectionKind.PairLayer, 0),
+            _ => Deref(Local(c.Types.Reference(SemanticsKind.Ref, payload!))), // adapt ref: T of s/T, past ref.
+        };
+        var type = body.TypeOf(place)!;
+        var rvalue = form[..form.IndexOf(' ')] switch
+        {
+            "acquire" => MirRvalue.Acquire(body.AddOperand(MirOperand.PairAcquire(0, place)), MirRefKind.Uniq),
+            "adapt" => MirRvalue.Adapt(AddOperands(body, [MirOperand.Copy(place), MirOperand.Const(body.Const(new(MirConstKind.TypeToken, type)))]), place, types.Pair, shorthand: false, input: false),
+            var kind => MirRvalue.Ref(kind == "uniq" ? MirRefKind.Uniq : MirRefKind.TwoPhaseUniq, place, c.Types.Reference(SemanticsKind.Uniq, type)),
+        };
+        var (entry, exit) = (body.AddBlock(), body.AddBlock());
+        body.Push(entry, MirStatement.Assign(Local(rvalue.Type ?? type), rvalue, Broken));
+        body.Terminate(entry, MirTerminator.Goto(exit, At));
+        body.Terminate(exit, MirTerminator.Return(At));
+        MirViolation[] expected = finding ? [MirViolation.SharedPath] : [];
+        Assert.Equal(expected.Select(static x => (x, Broken.Syntax)), Validate(body).Select(static x => (x.Rule, x.Subject)));
+    }
+
     // SPEC 8.15, 23.1.1: Binding publishes no part of a definition beyond PairBinder.CaseBound views (Binding.CaseLimits), so a body with more
     // views is a Binder finding at the body, which is not checked further: six binders of two cases, 64 views, are valid but for an Adapt no
     // view resolves (T to bool); a seventh gives the one Binder finding, the Adapt's views unresolved.
@@ -824,6 +887,27 @@ public sealed class MirValidatorTest
         {
             var operand = body.Statements[delivery].Rvalue.Start;
             Unsafe.AsRef(in body.Operands[operand]) = body.Operands[operand] with { Kind = MirOperandKind.Copy };
+        }
+
+        Assert.Equal(broken is null ? [] : [MirViolation.Local], Validate(body).Select(static x => x.Rule).Distinct());
+    }
+
+    // DECISIONS BU-46: Unstated marks only a kept part's raw layer its declaration writes without `during`, so a local whose Type states it,
+    // as a raw layer or inside a Tuple, is a Local finding; the builder's locals over unstated pointers are valid.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("layer")]
+    [InlineData("component")]
+    public void ALocalsTypeStatesNoUnstatedOrigin(string? broken)
+    {
+        var c = MirBuildTest.Compile("func f()\n    var p: raw/i32 = null\n    var t: (raw/i32, i32) = (null, 0)\n");
+        var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var locals = body.Locals.ToArray();
+        var at = Array.FindIndex(locals, x => x.Name == (broken == "component" ? "t" : "p"));
+        if (broken is not null)
+        {
+            var marked = c.Types.Pointer(BoundType.I32, BoundOrigin.Unstated);
+            Unsafe.AsRef(in body.Locals[at]) = locals[at] with { Type = broken == "layer" ? marked : c.Types.Tuple([marked, BoundType.I32]) };
         }
 
         Assert.Equal(broken is null ? [] : [MirViolation.Local], Validate(body).Select(static x => x.Rule).Distinct());

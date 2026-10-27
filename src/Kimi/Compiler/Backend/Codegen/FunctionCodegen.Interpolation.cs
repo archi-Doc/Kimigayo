@@ -4,23 +4,28 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The owning interpolation's rows of FunctionCodegen (R5 plan C9c; SPEC 22.7, 22.10.3, 22.10.5; DECISIONS R3-10, R5-M131, R5-M132): the
-// temporary intrinsics FormatBuffer, FormatHint and FormatFinish (MirBuilder.Format), each a routine of the formatting runtime (P1d's, one
-// text, PD2) given the words its estimate gives. A step's estimate (Estimate) is computed in the item's instance from the step's own
+// The owning interpolation's rows of FunctionCodegen (R5 plans C9c and C9d; SPEC 22.7, 22.10.3, 22.10.5; DECISIONS R3-10, R5-M131, R5-M133):
+// the temporary intrinsics FormatBuffer, FormatSegment and FormatFinish (MirBuilder.Format), each a routine of the formatting runtime (P1d's,
+// one text, PD2) given the words its estimate gives. A step's estimate (Estimate) is computed in the item's instance from the step's own
 // constants (R3-10): its literal bytes plus the bound of each value Type of its Types token (LegacyRuntimeHelpers.FormatEstimate over
 // FormatBound), each Type through TypeOf (a write's Type argument, which the collector made).
 // - FormatBuffer: when its estimate places the buffer on the stack (FormatEstimate.Stack: passed directly to Console.writeLine, bounded and
 //   within the windows-x64 limit), the frame's walk gives its destination a Region home of the estimate's total (Region,
 //   FunctionCodegen.Frame), and the buffer is __kimi_text_fixed over that region; else __kimi_text_heap of the estimate's capacity at the
 //   interpolation's location.
-//   An Unbounded estimate with literal bytes needs the literal path, C9d's: one located Unsupported_Kd at its FormatBuffer (R5-M132).
-// - FormatHint: __kimi_format_hint of the adapter and the hint its estimate of the later writes gives.
+// - FormatSegment, one step per write position: __kimi_format_hint of the adapter and the hint its estimate of the later writes gives;
+//   then the position's literal text when not empty (a literal segment's; a value's write follows its step in MIR): deferred to the
+//   adapter's next reservation when a value follows, its Types token not empty (__kimi_format_literal: the size checked at once, the static
+//   bytes kept until then or flushed by the end), else written (WriterWrite's built-in routine), the string's kind given, and the adapter
+//   checked (__kimi_format_check: KIMI_E_FORMAT at the interpolation). Its slots are the frame walk's (TextSlots). Whether to defer is
+//   fixed by the template; only the hint depends on the instance. Allocations and bytes are the old generator's (DECISIONS R5-M133).
 // - FormatFinish: __kimi_format_finish over the moved adapter and its buffer, the adapter's destination (Utf8Writer's Field 0), at the
 //   interpolation's location; or, when the same rule over its own operands (R3-10 gives it FormatBuffer's) places the buffer on the stack,
 //   __kimi_format_stack_finish, which marks the string static.
 // A Region local's value owns no storage, so its Drop destroys nothing (FunctionCodegen.Drops, OwnsStorage). The adapter over a region
 // keeps its destination Type's writer kind (FunctionCodegen.Formatting's Writer): the region's size is the instance maximum of every
-// reservation (the literals and the bounded values' maxima), so the HeapBuffer arm of the runtime's reserve never grows it.
+// reservation (the literals, a flushed deferred one included, and the bounded values' maxima), so the HeapBuffer arm of the runtime's
+// reserve never grows it.
 // A step whose constants are not its row's, or a value Type TypeOf cannot make, is a broken contract (InternalInvariant_Kd).
 internal sealed partial class FunctionCodegen
 {
@@ -54,12 +59,6 @@ internal sealed partial class FunctionCodegen
             return; // Recorded.
         }
 
-        if (estimate.Unbounded && this.StepConstant(call, 0, MirConstKind.Integer)!.Value.Bits > 0)
-        {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // The literal path, C9d (DECISIONS R5-M132).
-            return;
-        }
-
         if (!this.Address(call.Place, out var buffer))
         {
             this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
@@ -84,10 +83,24 @@ internal sealed partial class FunctionCodegen
         this.Finish(call, null);
     }
 
-    // FormatHint (R3-10): the adapter (operand 0) given the hint of the later literal bytes and values (operands 1 and 2).
-    private void FormatHint(in MirTerminator call, in IntrinsicRow row)
+    // The frame's row of a FormatSegment (FunctionCodegen.Arguments' walk, before the prologue): for a non-empty text, its record's copy slot
+    // (CopySlot's string-constant rule) and the slot its write's result takes, the runtime's Result tag, numbered by the call's block as a
+    // Value callee's copy is (CalleeCopy), since a block's terminator is its one call.
+    private void TextSlots(in MirTerminator call, int block)
     {
-        if (this.Estimate(call, 1) is not { } estimate)
+        var text = call.Start + 1;
+        if (call.Count > 1 && this.TextOf(this.body.Operands[text]) is { Length: > 0 })
+        {
+            this.CopySlot(this.body.Operands[text], text);
+            this.AddSlot(this.body.Operands.Length + block, Layout.Tag.Layout);
+        }
+    }
+
+    // FormatSegment (R3-10's FormatHint widened; DECISIONS R5-M133): the adapter (operand 0) given the hint of the later literal bytes and
+    // values (operands 2 and 3), then the position's literal text (operand 1) when not empty (SegmentText).
+    private void FormatSegment(in MirTerminator call, in IntrinsicRow row)
+    {
+        if (this.Estimate(call, 2) is not { } estimate || this.StepConstant(call, 1, MirConstKind.String) is not { Value: string text })
         {
             return; // Recorded.
         }
@@ -100,7 +113,37 @@ internal sealed partial class FunctionCodegen
 
         this.module.Request(HelperNeeds.FormattingRuntime);
         _ = this.WriteCall(row.Routine!, [adapter, new('\0', estimate.Hint)]);
+        if (text.Length > 0 && !this.SegmentText(call, adapter))
+        {
+            return; // Recorded.
+        }
+
         this.Finish(call, null);
+    }
+
+    // SPEC 22.10.3, 22.10.5 (DECISIONS R5-M133): a segment's literal text after its hint: deferred to the adapter's next reservation when a
+    // value follows (the step's Types token not empty), else written, the string's kind given, its record in its copy slot and its result in
+    // the step's slot (TextSlots); then the adapter checked, a recorded failure Aborting at the interpolation. False after a record.
+    private bool SegmentText(in MirTerminator call, Value adapter)
+    {
+        var text = call.Start + 1;
+        if (!this.Location(call.Source, out var site))
+        {
+            return false;
+        }
+
+        if (!this.Argument(this.body.Operands[text], this.copyOf[text], AbiParameterKind.OwnedSlot, out var record))
+        {
+            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
+            return false;
+        }
+
+        var routine = this.StepConstant(call, 3, MirConstKind.TypeToken)!.Value.Type.Components.Count > 0 ? LegacyRuntimeHelpers.FormatLiteral
+            : LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.WriterWrite)!.Abi;
+        var kind = new Value('\0', LegacyRuntimeHelpers.FormatKind(BoundType.String));
+        _ = this.WriteCall(routine, [new('s', this.CalleeCopy()), adapter, record, kind, site.Text, site.Length]);
+        _ = this.WriteCall(LegacyRuntimeHelpers.FormatCheck, [adapter, site.Text, site.Length]);
+        return true;
     }
 
     // FormatFinish (R3-10): the string into its destination from the moved adapter (operand 0) and its buffer, by the estimate of FormatBuffer's

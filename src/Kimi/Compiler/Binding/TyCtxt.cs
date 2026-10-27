@@ -5,7 +5,8 @@
 // R8) TyCtxt.DictionaryStorage.cs's.
 // Input: immutable Type shapes. Output: canonical Types and derived views.
 // Interned identity is equality; values live with the compilation and survive warm rebinds. No instance or Item states a raw Origin on
-// a pair slot's argument: Intern binds each by PairBinding (SPEC 8.1.1; DECISIONS BU-34).
+// a pair slot's argument: Intern binds each by PairBinding (SPEC 8.1.1; DECISIONS BU-34), but Unstated in kept parts, so there one SPEC
+// Type is two interned Types, a declaration's (`PS<raw/u8 during Unstated>`) and a parameter's (`PS<raw/u8>`) (DECISIONS BU-46).
 // Must not resolve source expressions or let consumers duplicate Type construction.
 
 using System.Runtime.CompilerServices;
@@ -199,10 +200,13 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     internal BoundType Pointer(BoundType referent, BoundOrigin? rawOrigin = null)
         => this.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Raw, [referent], origin: rawOrigin);
 
-    // SPEC 8.1.1, 8.1.2: the binding a pair slot holds for a Type argument, which the slot's original `s/T` denotes: a raw layer states no
-    // Origin in a pair (`raw/T during o` fits by dropping it), any other argument is itself, its components' Origins kept.
+    // SPEC 8.1.1, 8.1.2: the binding a pair slot holds for a Type argument, which the slot's original `s/T` denotes and from which `s/U`
+    // is formed: a raw layer states no Origin in a pair (`raw/T during o` fits by dropping it) but Unstated, a kept part's mark of a layer
+    // its declaration writes (DECISIONS BU-46; the one exception, so the mark follows the binding); any other argument is itself, its
+    // components' Origins kept.
     internal BoundType PairBinding(BoundType whole)
-        => whole is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, RawOrigin: not null } ? this.Pointer(whole.Components[0]) : whole;
+        => whole is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, RawOrigin: not (null or { Kind: OriginKind.Unstated }) }
+            ? this.Pointer(whole.Components[0]) : whole;
 
     // The same Type with these components, Origin and Origin arguments, every other part kept, a raw layer's Origin included: the one form
     // of a rebuild that keeps a Type's shape (DECISIONS BU-24). A raw layer takes no `origin` (its role's getter gives none).

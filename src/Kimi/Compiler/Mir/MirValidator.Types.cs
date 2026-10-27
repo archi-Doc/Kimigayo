@@ -7,10 +7,11 @@ namespace Kimi.Compiler.Mir;
 // The Type tier (SPEC 3.2-3.4, 8.2, 8.14, 8.15, 13.2-13.5).
 // - Responsibility: the Types values flow between agree (Agree, Agrees: MirTypes.Agree, modulo Origins, or as the body's premises
 //   make them); an rvalue's Type agrees with its destination's and each operation admits its operands' Types (Types, Casts, Component,
-//   Adapts); every Semantics case view resolves each Adapt (Views); and the temps whose Type the tier reads as unknown (Unknown).
+//   Adapts); every Semantics case view resolves each Adapt (Views), whose exclusive borrow there is W1 rule 1's
+//   (MirValidator.SharedPaths); and the temps whose Type the tier reads as unknown (Unknown).
 // - Inputs: an rvalue whose arity holds, with its destination's Type; operands and their Places; the body's case views (MirCases).
-// - Outputs: Type and Operation findings; the Adapts whose Places and token are in range, for Views; the unknown mask Unknown gives the
-//   checker (a flag per local).
+// - Outputs: Type, Operation and SharedPath findings; the Adapts whose Places and token are in range, for Views; the unknown mask Unknown
+//   gives the checker (a flag per local).
 // - Invariants: an operand of unknown Type (a Place or constant out of range, a temp Unknown names, the Never value) agrees with
 //   every Type.
 // - Prohibitions: no range or kind finding (the walk's: MirValidator.Tables, .Rvalues); a Call's Types are MirValidator.Signatures'.
@@ -67,8 +68,9 @@ internal sealed partial class MirValidator
 
     private partial struct Checker
     {
-        // SPEC 8.14, 8.15: under each Semantics case view an Adapt selects an operation (MirCases.Adapt), and a borrow or an address takes
-        // a Place of its reference's referent Type there; one finding per Adapt, at the first view that breaks either.
+        // SPEC 8.14, 8.15: under each Semantics case view an Adapt selects an operation (MirCases.Adapt), a borrow or an address takes a
+        // Place of its reference's referent Type there, and an exclusive borrow passes no shared layer under the view's cases (W1 rule 1,
+        // MirValidator.SharedPaths); one finding per Adapt, at the first view that breaks one of them.
         internal void Views(MirCases cases)
         {
             var views = MirCases.Count(body);
@@ -77,13 +79,20 @@ internal sealed partial class MirValidator
                 this.at = source;
                 for (var view = 0L; view < views; view++)
                 {
-                    cases.Select(body, view);
+                    var assignment = cases.Select(body, view);
                     var resolved = cases.Adapt(adapt, out var operation);
                     var borrowed = operation is ConversionBinding.Borrow or ConversionBinding.Address && body.TypeOf(resolved.Place) is { } stored
                         ? cases.Type(stored) : null;
                     if (operation == ConversionBinding.None || (borrowed is not null && !this.Agrees(resolved.Type!.Components[0], borrowed)))
                     {
                         this.Report(MirViolation.Operation);
+                        break;
+                    }
+
+                    if (resolved is { Kind: MirRvalueKind.Ref, Op: (byte)MirRefKind.Uniq or (byte)MirRefKind.TwoPhaseUniq } &&
+                        this.IsSharedPath(resolved.Place, assignment))
+                    {
+                        this.Report(MirViolation.SharedPath);
                         break;
                     }
                 }

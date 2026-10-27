@@ -1315,11 +1315,11 @@ public sealed partial class FunctionCodegenTest
     [InlineData("func show(x: i32) -> string => Text.toString(x)\n", OutputKind.Library, new string[0])]
     [InlineData("func show(x: i32) -> string => \"x=\\(x)\"\n", OutputKind.Library, new string[0])]
     [InlineData("func show(s: ref/string) -> string => \"\\(s)\"\n", OutputKind.Library, new string[0])]
-    [InlineData("func show(s: ref/string) -> string => \"x=\\(s)\"\n", OutputKind.Library, new[] { "\"x=\\(s)\"" })]
+    [InlineData("func show(s: ref/string) -> string => \"x=\\(s)\"\n", OutputKind.Library, new string[0])]
     [InlineData(
         "func show<T>(value: ref/T)\n    T is Utf8Format\n    Console.writeLine(\"x=\\(value)\")\nfunc use() -> ()\n    show(1)\n    show(\"s\")\n",
         OutputKind.Library,
-        new[] { "\"x=\\(value)\"" })]
+        new string[0])]
     [InlineData(ForLoop, OutputKind.Library, new string[0])]
     [InlineData(DictionaryLoop, OutputKind.Library, new string[0])]
     [InlineData("group Registry\n    public let limit: i32 = 4\n", OutputKind.Library, new string[0])]

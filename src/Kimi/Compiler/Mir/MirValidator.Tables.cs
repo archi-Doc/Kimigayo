@@ -53,7 +53,7 @@ internal sealed partial class MirValidator
                 this.Report(MirViolation.Projection);
             }
 
-            this.SharedPath(place, access);
+            this.SharedPath(place, access, kind);
         }
 
         // Locals, MustNotComplete rows, scopes, Opaque sites and the projection table; false when a chain or site cannot be walked.
@@ -66,8 +66,9 @@ internal sealed partial class MirValidator
                 ref readonly var local = ref locals[i];
                 this.At(local.Source);
                 arguments &= i == 0 || local.Kind == MirLocalKind.Arg;
-                if (local.Type is null || local.Kind > MirLocalKind.DropFlag || (local.Kind == MirLocalKind.Return) != (i == 0) ||
-                    (local.Kind == MirLocalKind.Arg && !arguments) ||
+                var typed = local.Type is { } type && !TyCtxt.StatesUnstated(type); // Unstated marks kept parts only (DECISIONS BU-46).
+                var placed = (local.Kind == MirLocalKind.Return) == (i == 0) && (local.Kind != MirLocalKind.Arg || arguments);
+                if (!typed || !placed || local.Kind > MirLocalKind.DropFlag ||
                     (local.Role == MirLocalRole.Result && (local.Kind != MirLocalKind.Temp || !ReferenceEquals(local.Type, locals[0].Type))))
                 {
                     this.Report(MirViolation.Local);

@@ -597,6 +597,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   are computed per instance in R5; the failure check reads each write's own Result. Rejected: internal library
   declarations with three more `CompilerFunctionKind` members (grows the vocabulary R8 shrinks); deferring with an R3
   gate exception. R8 removes all three; with R3-9 the `IntrinsicId` limit returns from 34 to 30.
+  - `FormatHint` is renamed `FormatSegment`, which carries the segment's literal text beside the estimates that "take the literal byte
+    count and a TypeToken of the values' Types", and a literal segment is no write, so "the failure check reads each write's own Result"
+    holds for value writes: R5-M133.
 
 ## R4 (accepted 2026-10-11)
 
@@ -3646,7 +3649,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: one implementer and one reviewer below the guard (the pace above; kept as the fallback above it); two implementers and
     one reviewer (two designs and a review still cannot overlap); counting agents without a cap on heavy runs (the load, not the count,
     slows the machine).
-- **R4-M120 G160-4's 4b: A5's raw addresses** (2026-10-25; unit 4b of R4-M116's design B′ as amended, the planning session's rulings
+- **R4-M120 G160-4's 4b: A5's raw addresses** (superseded in part by R4-M151) (2026-10-25; unit 4b of R4-M116's design B′ as amended, the planning session's rulings
   PQ-1 to PQ-13; its two departures, the last two bullets, are the planning session's rulings of 2026-10-25 amending B′: W keeps "E
   where the set carries Φ_E", and the untracked rule is narrowed to addresses and exclusive Loans, sound by SPEC 5.2.1 condition 3's
   first and second limits)
@@ -4890,7 +4893,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
       1.297 ms (×1.025; A′/A ×1.023, within the noise).
     - Warm runs allocate nothing.
   - Numbering: R4-M146 was reserved for 2x-E5 by the R4 planning session (R4-M145 S2, R4-M147 P13-1, R4-M148 2c-3).
-- **R4-M147 A5's per-part guard; P13's body hold removed (PLAN G148 (1), P13-1)** (2026-10-26; R4's lane B under design P13 v3,
+- **R4-M147 A5's per-part guard; P13's body hold removed (PLAN G148 (1), P13-1)** (superseded in part by R4-M151) (2026-10-26; R4's lane B under design P13 v3,
   ACCEPT at its design review 3, on BU-41's view (U0, unit bu46); the planning session's ruling D″ of 2026-10-26 on an abstract
   referent; class Full with BU).
   - Rule (SPEC 15.6.4, 5.7 Calls, 15.3.5; A3 E16): `MirTypes.HoldsLoans` reads the guard per part. A struct's or enum's Type argument
@@ -5126,6 +5129,25 @@ and migration obligations remain in force; no numeric cap changes are authorized
     kept) and `MirBorrowsTest.AnOpaqueTempKeepsTheIndependentRecords` (A1's independent moves, an unrelated conflict, the lost class, the
     grouping pin, a literal's temporary); 27 of their 36 cases fail before, the guards pass before and after.
   - Numbering: the next free R4 number (R4-M148 is 2c-3's, R4-M150 G264's).
+- **R4-M151 A5's `Past` reads an Origin-less raw layer by Binding's statement mark (U0's revision; supersedes R4-M147's P2 bullet and
+  its Known limits' supplied-layer gap, and R4-M120's outside-instance pointee for layers a declaration writes)** (2026-10-27; the R4
+  planning session; implemented in BU's U0 revision commit beside DECISIONS BU-46; design-U0r-1r1 with design 2's findings, R4's design
+  review 2 ACCEPT; the owner's 「許可して設計 1 (推奨)」 of 2026-10-27)
+  `MirTypes.Holding.Past(layer, depth)` reads an Origin-less raw layer by one rule wherever it is: its Unstated kind is a write fact
+  exactly when `TyCtxt.RawStated(layer)` says a declaration wrote the layer without `during` (BU-46), else the layer's pointee — for a
+  stored layer read through `RawStep` and for a layer outside a stored part alike. SPEC 5.7 Calls' "supplied" is thereby decided per
+  parameter Type expression, through Binding's mark, not per nested instance: the forms R4-M147 recorded as an unsound acceptance
+  (`Holder2 { b: Wrap<raw/u8> }`, `HoldOpt { o: Option<raw/u8> }`, `DerS : BaseW<raw/u8>`, `M<raw/u8>` with `w: Two<raw/u8, P>`, a user
+  enum's payload, a Tuple in a Type argument, deeper nesting, a base chain, a pair slot's argument, `PU<raw/u8>` below `HPU`) are errors
+  on the MIR, and R4-M120's pointee reading holds only for the layers the walk's own Type writes (an Array element of a Field and a
+  `self` pointee's content were the same defect). The guard memo stays keyed by the kept Type: every fact it reads is a function of that
+  Type, the mark included.
+  - Supersedes: R4-M147's P2 bullet (the per-nested-instance reading) and the first sentence of its Known limits (the supplied-layer
+    gap); its pins `nestedDead`, `optionalDead` (`MirBorrowsTest.AStoredRawLayerIsReadByItsStep`) and `ds: DerS` (`MirTypesTest`) flip to
+    errors; R4-M120's outside-instance pointee for the layers a declaration writes.
+  - Rejected: direction (A)'s chain in `Past` (order-dependent under the per-Type memo); a route-keyed memo (unbounded, V16).
+  - Not covered: `ha`, an associate binding behind an uncompleted projection (PLAN G271, BU). The default pipeline still accepts the
+    stated forms until R6-check (STATUS).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -6080,7 +6102,7 @@ resumed by R4-M86 (2026-10-20).
     obligations unjudged); judging at formation (a Field's own Origins are still `Unbound`); "binder failed, no record" in the judge
     (`IsDerived` owns derivation). Open: A's `IsDerived` widening for an associated specification's record (review N1).
 
-- **BU-24** (superseded in part by BU-39, BU-41) (2026-10-22; the BU planning session after the full process: designs A′ and B′, design review 2, design-final §14 "B′+";
+- **BU-24** (superseded in part by BU-39, BU-41, BU-46) (2026-10-22; the BU planning session after the full process: designs A′ and B′, design review 2, design-final §14 "B′+";
   unit bu20 C1a; CR-R2) A raw layer's Origin (SPEC 5.7) is a role of its own: `BoundType.RawOrigin` beside `Origin`, one slot whose
   role the Semantics decides (0 B; a pinned interleaved A/B of the getters against C0d's build gave warm Bind minima 35.70 against
   35.41 ms over three milestones, inside the baseline's own 3% spread, and equal cold bytes, so B′'s +8 B field is not taken). `Origin`
@@ -6627,7 +6649,7 @@ resumed by R4-M86 (2026-10-20).
     CallPlan (extra state while retaining the redundant Group), or a new IR/table. The existing view row corrects the public subject
     without another allocation; removing Group work is expected to preserve compilation and native costs.
 
-- **BU-34 A pair slot binds a raw argument without its Origin** (2026-10-25; the BU planning session after the full process: designs A
+- **BU-34 A pair slot binds a raw argument without its Origin** (amended by BU-46: Unstated in kept parts) (2026-10-25; the BU planning session after the full process: designs A
   and B, the design review's choice of B's structure with A's name; unit bu34; R4's A5-facing review: accepted with the two record
   fixes below) SPEC 8.1.1's raw row, which the owner kept (R4-M117 item 4, 「推奨の通り、落とす規則を残します。SPEC は変えず、Binding を
   SPEC に合わせます。」): a `raw/T during o` argument fits a pair by dropping its Origin, so the slot binds `raw/T`, which its original
@@ -6928,7 +6950,7 @@ resumed by R4-M86 (2026-10-20).
     while the hold walk keeps its untied store, two answers to "the call writes output j", conservative (one more Φ_E target).
     Pre-existing: a lent `static` layer unties; `unlinkOk` is SPEC-invalid (`Node.init` stores through the null `next` into storage
     the body does not own: R4's triage).
-- **BU-41 An instance keeps its stored parts with their raw Origins: `TyCtxt.StoredParts`, `RawSupplied`** (2026-10-26; the BU
+- **BU-41 An instance keeps its stored parts with their raw Origins: `TyCtxt.StoredParts`, `RawSupplied`** (superseded in part by BU-46) (2026-10-26; the BU
   planning session's design S1′, `p13u0/design-U0.md`, accepted with P13's v3 by R4's design review 3; PLAN G148 (1), P13's U0, unit
   bu46; the owner's answers on P13, Q1 (a), Q2 (a) and 「進める (推奨)」, and SPEC 5.7's clarification ② of 2026-10-26) P13's per-part
   guard (R4-M76) reads, for every raw layer in a holder's own storage at any depth, its step under the holder's substitution, whether
@@ -7129,6 +7151,283 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: BU-13's `ExclusivelyAcquirable`, which continues through the Place's own layers, so a pair admitting `ref` is always
     shared and `let y = x`'s uniq case would be denied; the weakest-case walk (above); Binding reporting every bare acquisition
     without a plan, R6's move of TransferRequired (it moves the old path's records at every bare position). Not temporary.
+- **BU-46 A kept part states Unstated on each raw layer its declaration writes without `during`: `Binding.WithUnstatedOrigins`,
+  `TyCtxt.RawStated`** (2026-10-27; the BU planning session after the full process: design 1 (`p13u0/design-U0r.md`), R4's design
+  review 1 REVISE (B1 the `s/U` application, B2 the class), design 1's revision 1 (`design-U0r-1r1.md`), design 2 written without
+  either, the choice of design 1 revision 1 with design 2's findings, R4's design review 2 ACCEPT with N1–N5; PLAN G148 (1), U0's
+  revision, unit bu50; class Full; the owner at the choice, 「許可して設計 1 (推奨)」, 2026-10-27) SPEC 5.7 Calls decides an Origin-less
+  raw layer per parameter: the write fact unless the parameter's Type expression writes it (a Type argument's or a pair slot's argument's
+  included), also below the holder. BU-41's kept parts carried nothing for such a layer and a nested instance is interned
+  (`Wrap<raw/u8>` below `Holder2.b` and below `Outer<raw/u8>.w` is one Type), so `RawSupplied`, answering per nested instance, read a
+  layer a declaration writes in a Type argument of its own Field, Case payload or base clause as supplied (R4-M147's Known limits, an
+  unsound acceptance on the MIR). An answer relative to the route in A5 is order-dependent under the walk's per-Type memo (design 1's
+  (A): `G<raw/u8>` None, `G2<raw/u8>`, its Fields swapped, Through), and a memo keyed by route is unbounded (V16).
+  - Decision (the mark): `Binding.WithUnstatedOrigins(declared)` (Binding.Storage.cs) is the declared Type with each raw layer it
+    writes without `during` stating `BoundOrigin.Unstated`, the Origin such a layer counts as stating (5.7 Fits); a layer stating an
+    Origin, an abstract part but a pair binder's application `s/U` (whose `U` the declaration writes) and a callable are kept as written,
+    and an Unbound layer, a reported error's dependent, is not marked. `Substitute` keeps `StoredType(WithUnstatedOrigins(written),
+    owner)` for `Parts`, `PartsBase` and the Case payload Tuples (`KeptType`, the one producer); `Fields`, `Cases` and `Base` stay
+    their `WithoutRawOrigins`, so AdtDef's view is unchanged (the same Types by reference). No kind and no cache: the mark is formed in
+    each instance refill, linear in the declared part. The kept Type now tells the holders apart (Holder2's `Wrap<raw/u8 during
+    Unstated>`, Outer<raw/u8>'s the parameter's `Wrap<raw/u8>`), so every answer is a function of the kept Type and A5's memo stays sound.
+  - Provenance follows the binding (revision 1's one rule for review 1's B1): substitution copies a layer with its mark (a Type slot's
+    argument, a component); both pair formations, 8.1.1's `s/T` and 8.1.2's `s/U`, read W only through `TyCtxt.PairBinding(W)`, the
+    one exception, which drops a stated Origin and keeps Unstated; `ApplySemantics` forms a concrete `s/U` as `Rebuild(PairBinding(W),
+    [U], a borrow's annotation)`, `Form`'s Type for every unmarked W (R4's assertion over 1,500 tests). So `HPU { p: PU<raw/u8> }`'s
+    `v: s/i32` is `raw/i32 during Unstated`, its parameter twin `PU<raw/u8>`'s `raw/i32`.
+  - Readers: `StepOf` steps Unstated as Unstated (members complete and empty, as before); `TyCtxt.RawStated(layer)`, a read of the
+    layer Type (total, allocation-free), replaces `RawSupplied` and `StoredSupplied` in A5's `Past` (R4-M151).
+  - Confinement (review 2's N4): Unstated stands only on raw layers of kept parts and of the nested instances and pair arguments they
+    reach; `BoundType`'s constructor admits it in the raw role only; kept parts are read only by walks returning facts (`StoredLayer`,
+    retention's `Held` and `Stores`, A5's `Holding`), so no relation, premise, obligation or row is formed from it (design-final §13 A2
+    holds as written). MirValidator's `Local` row reports a local whose Type states Unstated (`TyCtxt.StatesUnstated`, gated by
+    `CarriesRawOrigin`, an indexed walk) as `InternalInvariant_Kd` in every configuration, so a leak, which would make A5 read a
+    parameter's or local's layer as a declaration's, fails where it would change a verdict. `TyCtxt.Name` prints the unmarked spelling.
+  - Invariant (N2): no declared part writes a Semantics family; a family comes only from an expression's adaptation, and a Field
+    initializer's adaptation forms a `SemanticsApplication` (review 2's eight forms). `WithUnstatedOrigins` throws InternalInvariant on
+    one instead of keeping it unmarked, where a family case would read as the parameter's (a silent unsound acceptance).
+  - Retention needs no stated or supplied reading (N3): rule A (5.7 Calls' last sentence) governs every Origin-less layer a call may
+    write, whoever wrote it; rows are equal with and without the mark.
+  - The owner's decisions (verbatim above): BU-24 C1b's Q-O2 clause ("only in relations and their records, never stored") departs for
+    raw layers of kept parts only; `BoundType`'s constructor admits Unstated in the raw role (`TyCtxtTest.ARawLayerKeepsItsOriginRole`:
+    `Pointer(I32, Unstated)` forms, a borrow stating it still throws); BU-34's P1 gains a kept-part exception (there one SPEC Type is two
+    interned Types, `PS<raw/u8 during Unstated>` and `PS<raw/u8>`; AdtDef's view, signatures and bodies keep P1, and R4-M117 item 4's
+    drop rule stays for stated Origins); the raw-role ratchet grows by two sites (`Binding.Storage.cs` 2 to 3, `TyCtxt.Raw.cs` 0 to 1).
+  - Supersedes: BU-41's TyCtxt bullet (`RawSupplied`, and "A walk reads a layer … only through these three on the instance holding
+    it": `RawStated` reads the layer) and its reason that only the part before erasure distinguishes holders (for an Origin-less layer
+    the mark does); amends BU-24 C1b's Q-O2 clause, the RawOrigins invariant "never in a Type" (now: never in any Type but a kept part's
+    raw layer, never in AdtDef's) and BU-34's invariant (TyCtxt.cs's head: but Unstated in kept parts).
+  - Rejected: (A), a chain in `Past` (order-dependent, above; it also needed a position grammar and a frame stack in A5); the Limit at
+    every nested supplied layer (`Unsupported_Kd` on valid twins: `Outer<raw/u8>`, `Hold<raw/u8>`, `Opt2<raw/u8>`, `M2<raw/u8>`); a
+    dedicated OriginKind (two names, one concept); a `BoundType` bit (moves no rule, an eleventh `Intern` parameter); marking the declared
+    Field Types themselves (changes AdtDef's view, Hover and identity); marking after substitution (cannot tell a written layer from a
+    supplied one); design 2's memoized `Stated` (a second stored form, +633 KB cold Bind on the census) and its second carrier at the
+    family arm (`BinderLayer`: a second fix for one symptom, and no kept part reaches a family).
+  - Not covered: G271 (`HA<S> { x: S.Item }`: `Substitute` leaves an associated projection uncompleted; completing it adds a second
+    producer of the mark, an associate binding a declaration writes); `sharedSupplied` (a layer stating a slot inside a nested argument,
+    `HS {s} { b: Wrap<raw/i32 during s> }`, stays R4-M147's Limit); the default pipeline accepts the stated forms until R6-check (it
+    reads AdtDef's view).
+  - Cost (Release, dev f6e7ceef0 against this unit, census of 120 programs: library, milestones, goldens, accepting SPEC variants; two
+    runs each): no census program has a marked part; cold Bind 609,963,032 B against 609,961,520 and 609,962,048 B (noise), BuildMir
+    with A5 426,939,216 B on both, instances 32,183 and problems 7 on both; a program of 22 marked parts, +4,544 B cold Bind (+0.09%).
+    Warm: `Bind(Final)` and 39 guard walks over marked holders allocate 0 B (also `TyCtxtTest.AWarmStoredRawLayerReadAllocatesNothing`).
+    Time (warm `Bind(Final)`, library and 44 milestones, the minimum of 15 reps per program, CPU 6 pinned, tiering off, A and B from one
+    folder, three interleaved rounds on a quiet machine): B/A 0.9978, 0.9896 and 1.0064 per round (medians 0.9981, 0.9895, 1.0065); over
+    the rounds' per-program minima 485.1 against 483.8 ms, B/A 0.9972 (median 0.9972). No slowdown.
+  - Evidence that the family check and the Local row never fire: the unit's Session (24,586 tests) has no failure, and neither can stay
+    silent there: the family throw escapes Binding as an exception, and a Local finding fails MirCensusTest's census and every test that
+    asserts a body has no validator finding.
+
+- **BU-43 Where no source supplies a candidate, a join's Type is formed part by part; a call classifies such a join's results by
+  position; Never supplies nothing at any position** (2026-10-26; the BU planning session; PLAN G159 (2), unit bu47; design bu47
+  Revisions 1, 1b and 2, design review 3 ACCEPT with C1 and C2; SPEC 14.9.2 step 2 (R4-M134) and 10.5.1 as R4's SPEC revision 2
+  writes ② and ③; the owner's answers of 2026-10-26 in BU's dialog, verbatim: fills 「(a) 配列リテラルと同様 (推奨)」, a control-flow
+  argument's results 「(b) 要素ごとに統一 (推奨)」, the scalar rule 「(a) どの位置でも Never は供給なし (推奨)」, its consequences
+  「はい、Tuple 引数に揃える (推奨)」)
+  - The join (`Binding.ResultPropagation.Parts`): where no value source supplies a candidate, `CommonTypeByParts` forms the Type over
+    the parts at each position other than Never, found through the forms that deliver them and the selections, `do` and `loop` none of
+    whose sources supplies one (`AddResultPart`): the typed parts' common Type (`PositionType`, value reads included); else the
+    aggregate parts by shape, Tuples of one length by element, list literals by element as `Array<T>`, fills of one length by element
+    at their length, Dictionaries by key and value (any other mix conflicts); else the literals' defaults, which compete as before; no
+    part, Never. It is the join's one candidate: `PropagateSources` binds the waiting sources at it and late-fits the bound ones. A
+    nested join with a waiting literal still waits for its outer join; a Never-only one decides itself and its outer late-fits it
+    (with bu44 landed, waiting is no longer blocked by its array binder). The survey takes a bound source that awaits as no evidence
+    (`ResultEvidence`), which removes rv-g159-nested-cand's second record, and a transfer as Never: SPEC 14.5.1's reading, a row of the
+    survey's own table, not confined to ③, so `if c => r else => (if d => 6 else => (return 1))` with `r: ref/i32` moves from two
+    `TypeMismatch_Kd` to valid, `6` at i32, as its `stop()` form was (fix round 1). A fill's literal element waits for its position
+    as a list literal's does (`DecidedLater` passes fills; `BindArrayFill` waits with it), so `if c => [2 of 5] else => [2 of a]` is
+    `[2 of i64]` and `[[2 of 5], [2 of a]]` `Array<[2 of i64]>` (the owner's answer on fills, with R1).
+  - A call (`Binding.ArgumentKinds`): its control-flow argument's join that supplies no candidate waits for the call
+    (`ClassifiedByCall`) unless its results are Dictionaries, typed as a whole as a Dictionary literal argument is, or its typed parts
+    conflict, which fails it at once. With Tuple or array results, or with an anonymous function among its results (scalar or inside
+    Tuple or array results alike; SPEC 10.5.1: such an argument is Waiting, the planning session's answer to question 5 of fix round
+    1, whose whole-join Waiting is implemented as Composite with that function's position Waiting, which implementation review 2
+    accepted as the same meaning: a scalar join is no evidence, is checked at the selected candidate and binds its `F` through
+    `TakeWaiting`, and Tuple or array results are classified as revised 10.5.1 states, where a whole-join Waiting kind would drop the
+    typed positions' evidence), it is recorded Composite (`HoldsWaitingFunction`) and classified position by position
+    (`Binding.ArgumentKinds.Positions`: `ChildPositions`, `AddChildPosition`, `PositionKind`): a typed position is evidence once, at its
+    common Type; a literal one takes its first literal's default after selection, each of its literals checked (a misfit its own
+    record); one Never in every source is no evidence and gives no Type at a slot that takes the whole (BU-2 U3's D6); one with a
+    waiting part waits. It fits a candidate by its late fit, a waiting literal fitting as a literal and a waiting list or fill literal
+    by the shape it constructs there (`LateArrayType`, `LateDictionaryType`); the selected candidate completes it (`DecideWaiting`).
+  - Fix round 1 (implementation review 1's B1 and B2): the late fit fits each bound part that does not await as a Tuple argument's
+    part (`LateAdaptation`): its own Type where that fits, else its erasure or its one implicit operation, written only when the whole
+    fits (`AdaptAtPosition`: `ErasePart`, `ExpectedAdaptation`); a bound list literal fits a fixed-array position of its count
+    (`ConstructsAt`), which binds a length slot. An anonymous function among a call's control-flow argument's results waits for the
+    call (`WaitsForPosition` through `CallableTarget`; `Awaiting.Callable`); the late fit checks it by its signature
+    (`ClosureSignatureFits`), and `TakeWaiting`'s join row completes it at its `F` as the Tuple-argument twin's element is, after
+    which a join nothing else holds waiting is decided at once with no expectation (`DecideTaken`; `DecideWaiting` reads a source
+    its call completed, `Completed`). A part Binding rejected is no waiting part (`IsAggregatePart`, `CommonTypeByParts`,
+    `PositionKind`: BU-9 r1), so `if c => ([], (return 1)) else => ((return 2), [a])` keeps one `Unsupported_Kd`. Verdicts: the
+    review's value-read, erasure, length and `F` forms are valid as their Tuple-argument twins; `applyOne(if c => func [] (v) => v
+    else => stop())` and its nested form, `UnresolvedBinding_Kd` before, are valid; `applyArg(if c => func [] (v) => v else =>
+    stop())` with `applyArg<F>((F, i64))` is `UnboundTypeArgument_Kd` as `applyArg(func [] (v) => v)` (was `UnresolvedBinding_Kd`);
+    two anonymous functions at one `F` are one `TypeMismatch_Kd` at the join (two Closure Types); `keep(if c => func [] (v: i64) ->
+    i64 => v else => 5)` keeps `UnboundTypeArgument_Kd` without base's second record at `5`. A typed anonymous function stays
+    accepted beside Never and, since fix round 2, beside typed parts of its own source.
+    The argument walks recurse into positions (`InferPosition`, `DefaultPosition`, `IndependentPositionType`; the restructuring
+    commit before, behavior unchanged).
+  - Fix round 2 (implementation review 2's B3): a source holding what its call completed stays `Deferred` until its join is decided
+    (`Completed`: bound, or through the forms that deliver it, Tuple, array and dictionary literals with parts and waiting result
+    targets, all completed; `AddResultPart` passes such a nested join), so the join, none of whose sources supplies a candidate, forms
+    its Type part by part and binds the source at it (SPEC 14.9.2 steps 2-3). Before, a source holding the function and a typed part
+    was neither bound nor awaiting, and the join failed with no cause (a lone `PrerequisiteUnavailable_Kd`; SPEC 23.1.2). Now
+    `first(if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), x))` with `first<T>((T, i64))`, its capture, nested and
+    `else => (stop(), stop())` forms, and `applyArg(if c => (func [] (v) => v, x) else => (stop(), x))`, typed or not, bind as their
+    Tuple-argument twins; a value read beside the function reads at the formed Type (`(func .., r)` beside `(stop(), x)`: i64); two
+    anonymous functions at one `T` or `F` are one `TypeMismatch_Kd` at the join. Its part b (the planning session's decisions on
+    its findings): the forms through which a call completes a waiting anonymous function are one definition, `CallableParts` (a Tuple
+    or array literal's elements; a Dictionary literal is typed as a whole, DR3 C1), which both the wait (`CallableTarget`) and
+    `TakeWaiting` pass, so `takeD(if c => ["k": func [] (v: i64) -> i64 => v] else => stop())` is valid again (fix round 1 had made
+    it `UnresolvedBinding_Kd`). A join whose typed parts conflict fails at once also when nested (the formation visits every position
+    for its conflicts, also after one it cannot form), and a part Binding rejected, a failed nested join included, is no waiting part
+    (`AddResultPart`; `PartsConflict.Rejected`): its outer join stays unbound on that record and its call does not classify it, so
+    `let t = if c => (if c => (5, x) else => (stop(), true)) else => (stop(), x)` and its call forms report the inner conflict once,
+    at the inner join, as on dev (two records since commit (b)).
+  - The outcome rule (implementation review 3's REVISE, B4 and B5; the owner's 「一段上で作り直す (推奨)」, 2026-10-27; the planning
+    session's redesign, Major): each join publishes one outcome, written once where it becomes true (`ResultContext.Outcome`,
+    `JoinOutcome`): `Waiting` for its position (an outer join, its call); `Conflict`, a typed or defaults conflict, a candidate
+    conflict or a misfit it found, its own record, once; `Dependent`, resting on a failed part or on the join it waited for
+    (`Cause`), with no record (SPEC 23.1.2); or `Decided`. Enclosing joins and calls read only that outcome: whether a part failed is
+    `PartFailed`, by who decides it (a result target's outcome or own failure; an aggregate's own failure, its parts being judged at
+    their positions; any other part's recorded cause), never HIR's `Rejected`, which since eb9134dc6 holds an unreadable character
+    literal that Binding binds as `char` (B4: `let t = if c => ('ab', (return 1)) else => ((return 2), 'x')` is (char, char), so
+    `let z: i64 = t.0` keeps its `TypeMismatch_Kd` and `takeCI(if c => ('ab', stop()) else => (stop(), true))` its
+    `NoApplicableOverload_Kd`). A failed join gives its waiting literals their defaults and lets each other waiting source rest on its
+    failure (`DefaultWaitingSources`); a waiting join decided with no Type reads the outcome of the join it waited for and, when that
+    one failed, is `Dependent` on it (`DecideWaiting`). A defaults conflict is therefore decided once, by the outermost join holding
+    the conflicting literals once outer constraints are known (SPEC 14.9.2: "a literal result is not fixed before outer
+    constraints"): `let t = if c => (if d => 5 else => 2.5) else => 2.5`, its triple and Tuple forms keep one `TypeMismatch_Kd`,
+    which moves from the inner join (dev) to the outer (B5). A completed source awaits nothing but its join's decision
+    (`SourcesAwait`, `LateType`), and a call that completes conflicting functions fails their join at once (`DecideTaken`,
+    `TypedConflict`). The walks to waiting callables read one definition, `CallableParts` (`TakeWaiting`, `CallableTarget`,
+    `Completed`). Supersedes fix round 1's "A part Binding rejected is no waiting part (IsAggregatePart, CommonTypeByParts,
+    PositionKind)", fix round 2's `Completed` list (Tuple, array and dictionary literals) and its part b's "a part Binding rejected, a
+    failed nested join included, is no waiting part (AddResultPart; PartsConflict.Rejected)": now `PartFailed` and
+    `PartsConflict.Failed`, and `PositionKind`'s row is deleted (a classified join holds no failed part). The sweep (bu47's
+    `sweep\`: 415 generated and 331 review programs, both pipelines, against dev ed450b4d6) moves records only by B5; it removes
+    s6's dependent `UnboundTypeArgument_Kd` (`applyArg(if c => (["k": func [] (v) => v], x) else => (stop(), x))`, now its twin's one
+    record) and the dependent second records of `takeD(if c => (if c => ["k": missing] else => ["k": stop()]) else => ["k": x])`,
+    `take(if c => ((if c => missing else => x), stop()) else => (stop(), x))` and `let t = if c => [] else => [(return 1)]` (one
+    record, where dev also reports the dependent array); `first(if c => (if c => (func .., x) else => (stop(), 5)) else => (stop(),
+    5))`, a lone `PrerequisiteUnavailable_Kd` before, is valid as on dev, and `first(if c => (func .., 5) else => (func .., 2.5))`
+    dev's `TypeMismatch_Kd`.
+  - The cover rule (implementation review 4's REVISE, B6; the owner's 「もう 1 回だけ直す (推奨)」, 2026-10-27): a waiting join
+    decided with no Type rests on the join it waited for only when that join records a conflict it found over this join's own parts
+    (`Cause`, written by the formation's `FoundConflict`); when that join failed for another cause or is only `Dependent`, the
+    waiting join decides by itself, as a join with no outer constraint, and records its own conflict (SPEC 23.1.2: an independent
+    failure "is reported, even when another check fails"). A formation records each conflict it finds once: parts of one waiting
+    join that conflict by themselves (`ConflictsAlone`) are that join's conflict. A typed one (functions its call completed) it
+    records itself, the forming join resting on it as on a failed part (`first(if c => (if c => (func .., 5) else => (func .., 6))
+    else => (stop(), x))`: at the inner join, as on dev). A defaults one (`PartsConflict.Held`), when it is the formation's only
+    one, the forming join, the outermost holding those literals, takes as its own and covers that join (B5's move stays, SPEC
+    14.9.2); when the formation finds conflicts of two or more joins (`Several`: two waiting joins', or one beside the forming
+    join's own), each records its own and the forming join rests on them. So
+    `let t = if c => (if d => 5 else => 2.5) else => bad` and review 4's other B6 forms (`missing()`, `identity(bad)`, the swapped
+    order, a failed sibling join, `bad` at the same Tuple position, array, Dictionary, deep, at a call) report the inner conflict
+    beside `bad`'s record as on dev, the deep form at the middle join, the outermost holding the literals that decides by itself
+    (dev: the innermost); review 4's e21, `let t = if c => ((if d => 5 else => 2.5), (if d => 6 else => 3.5)) else => ((return 1),
+    (return 2))`, gives dev's two records at the inner joins, and `let t = if c => ((if d => 5 else => 2.5), x, (return 1)) else => ((return 2), true, (return 3))` two independent
+    records (dev: one, at the inner join). e12: in `func [] (b: bool) => if b => (if b => 5 else => 2.5) else => 2.5` the one
+    record is at the anonymous function, its body's result target and the outermost join holding the literals (dev: the inner
+    join). `DecideTaken` decides a completed join again under its call's argument probe, whose one formation fails it on
+    conflicting functions; `TypedConflict`'s second formation and the `failedPart` field are deleted (the formation returns its
+    cause). The two-failure sweep (bu47 `sweep\gen2\`, 560 programs: a typed, defaults, unreadable or no conflict in a waiting join
+    beside an unresolved name, a failed call or argument, an empty literal, a second typed or defaults conflict, or nothing, in
+    eight nestings at `let`, `identity`, `first` and `take`; `sweep\gen3\`, 162: a waiting anonymous function beside each such
+    conflict or failure in three nestings at `applyArg`, `first` and `let`; with the 415 generated, 331 review-3 and 64 review-4/5
+    programs; both pipelines, which agree, against dev 861ffe95b) rejects no dev-clean program and loses no record of dev's but
+    dependent ones: a `let`'s derived `PrerequisiteUnavailable_Kd` beside its join's failed part; dev's `UnresolvedBinding_Kd` at the
+    parameters of two anonymous functions a call completes at one `F` (their join's `TypeMismatch_Kd` stands for them, as above),
+    and that of a waiting function beside a failed part (dependent on its call's failure). The 415 and 331 programs keep the outcome
+    rule's records. Supersedes the outcome rule's "when that one failed, is `Dependent` on it (`DecideWaiting`)" and its
+    `TypedConflict`.
+  - R6, a join tree judged once at its root (implementation review 5's REVISE, B7; the owner, 2026-10-27, on the held branch's
+    per-conflict attribution: 「一段上で作り直す (推奨)」, and on this unit's flow: 「複数並列の設計・実装は不要です。実装が完了したら、
+    独立レビューを通してください」; the planning session's design, Major). B3 and B7 (a conflict nobody records), B5 and B6 (one
+    recorded twice or lost) and B4 had one cause: a join tree (a join holding nested joins through its sources, the forms that
+    deliver them and Tuple, array and Dictionary literals, none supplying a candidate) was decided incrementally, and "who records a
+    conflict" was reconstructed by a second search over the formation (`FoundConflict`: `ConflictsAlone`, `TopWaitingJoin`, `Held`,
+    `Several`) and read again by `DecideWaiting` and `DefaultWaitingSources`. Now each conflict has one owner by one rule (SPEC
+    14.9.2 steps 2-4, 10.5.1, 23.1.2). A join's typed parts (bound parts, functions its call completed, shapes) are fixed when it
+    decides, so a conflict among its own parts at any position is its own record, found by its own formation and by no other
+    (`JudgeOwn`: `CommonTypeByParts` over its results, nested joins flattened where they are clean and one failed part each where
+    they are not); the innermost such join records it, and every enclosing join rests on it. Literal defaults are not fixed before
+    outer constraints (step 3), so a conflict among them is judged only by the root of the tree, the outermost join deciding, over
+    every position of the flattened tree where no typed part decides: the root's one record (B5's rule, now the only one). A
+    failed part stops no formation (`CommonTypeByParts` removes it from its position and runs over the rest; a join with a failed
+    part and no conflict of its own is Dependent on the first, `CompleteDependent`, never a bare `Complete(null)`); a nested join
+    with a failed part decides at once and is the root of its subtree. The root judges its tree first (`JudgeNested`, post-order
+    through its waited sources), then forms its own Type (`AwaitsWithoutCandidate`); a clean nested join waits (`DecidedLater`,
+    `ClassifiedByCall`) and decides nothing by itself. Every waited source is bound once, by the deciding join's pass
+    (`BindWaitedSources`, replacing `PropagateSources`' waited branch and `DefaultWaitingSources`): at the decided Type, or, with
+    no Type, at its defaults when it holds a literal, through `DecideWaiting` when it holds a join that waited (`WaitedResult`:
+    still waiting, or judged Conflict or Dependent and unresolved since), and otherwise resting on the join's record or cause.
+    `DecideWaiting` honours the outcome: Conflict fails at itself, Dependent completes on its cause, and a still-waiting join bound
+    with no Type by a failed join's pass rests on that join's record or cause (its position's outcome); bound with no Type under
+    no failed join, it is a root (`DecideTaken`). Verdicts (the held branch's probe sets, rv 331, gen 415, gen2 560, gen3 162,
+    rv4-rv9 108, both pipelines, which agree, against dev 861ffe95b and 379f25676; `bu47\sweep\r6\`): B7 (rv6 p1, p2, p6, p8:
+    nested joins holding only functions a call completes) record the inner join's `TypeMismatch_Kd`, the root and the call
+    dependent on it (dev's record; p2's untyped functions: dev's `UnresolvedBinding_Kd` at their parameters). A defaults conflict
+    beside another failure (B6's forms; rv5 c2-c4, c8, c9; gen2's `defaults` rows with a name, call, argument or empty literal) is
+    the root's record beside the other failure's own (dev: at the inner join; a move, count equal), also at a generic call where
+    dev's `UnboundTypeArgument_Kd` stood alone (rv5 c1, gen2 `*-defaults-*-id`: the root's record added). Two inner defaults
+    conflicts, or one beside the root's own typed conflict (e21, q2, q9, e3, e23; gen3's `ts-defaults`), are the root's one record
+    (dev: one each); so is a defaults conflict found by a nested join's own formation beside its typed conflict, the covering
+    record then that join's (`first(if c => (if d => (closure, (if c => 5 else => 2.5)) else => (closure2, x)) else => (stop(), x))`:
+    one record at the inner join; dev: one at `2.5`). A nested join with a failed part is its subtree's root (gen2
+    `deep-defaults-*`: the middle join; dev: the `let`'s derived record). A nested join's literals at a call's classified position
+    are checked at that position's Type as the Tuple twin's are (gen2 `tpos`, `tsame` and `arr` `defaults-defaults2` at `first`,
+    `take` and `identity`: the misfitting literal's record, the call's `NoApplicableOverload_Kd`, or a derived
+    `PrerequisiteUnavailable_Kd` at a generic call, the K1 sentence; dev: the inner joins' own conflicts); at `first` only the first
+    misfitting position is reported, as for its twin `first(((if d => 5 else => 2.5), 3.5))` on dev (the call's argument path,
+    another owner; open). A Dependent join bound again by a later use keeps its outcome (`WaitedResult`)
+    instead of a second judgement from scratch, so `let t = if c => (if d => 5 else => missing) else => 2.5` with `return t`
+    loses the record that judgement gave (dev: at `5`, before: at the join), dependent on `missing`. No dev-clean program is
+    rejected; no valid form gains a record; 16 rows fail first. Supersedes the cover rule, its "each conflict is recorded once"
+    (`FoundConflict`, `ConflictsAlone`, `TopWaitingJoin`, `Held` and `Several` are deleted), the outcome rule's "when that one
+    failed, is `Dependent` on it" and `DefaultWaitingSources`.
+  - ③: a control-flow part is Literal when every result source other than Never is a literal, at least one (`ResultSurvey.Unknown` and
+    `Never` split `Other`); an arithmetic operand's `AllLiteral` keeps Never as not literal (SPEC 12.3.3, 13.3.4).
+  - Supersedes BU-2's owner decision (1), "a control-flow argument is Literal only when all its result sources are Literal", and the
+    Never half of its U4 sentence "Literals beside only Never or unknown sources (...) need an expectation or a default, so the part
+    waits" (③; an unknown source beside literals still waits); BU-4 U3's "when none supplies one, the sources' own Types compete", U4's
+    "without a candidate, the defaulted literal sources supply the candidates" and its Open "a join whose every source holds Never
+    compares their own Types (E10(2))"; BU-9's Open "a join whose every source awaits compares their own Types". Why: they predate
+    R4-M134's 14.9.2 text and the owner's answers, and were left Open for G159.
+  - Verdicts (both pipelines; probes in the unit's evidence): the SPEC-valid joins rejected before are Binding-valid; where a local
+    follows a Never element the old analysis's `Unsupported_Kd` at that use remains (STATUS, Unreachable code; G159 (4)), spec-case
+    `14.9.2-part-by-part`'s old side (class (a)); a nested conflict is one record, at the join that finds it. At calls, a literal
+    position's misfit is each misfitting literal's own record (`takeA(if c => [5, stop()] else => [2.5])` at `2.5`, where dev records
+    the join), the `take`-like twins are valid and
+    `identity(if c => (a, (return 1)) else => ((return 2), 5))` gives T = (i64, i32) after selection. Valid before, rejected now by the
+    owner's answers: `tuples(if c => (5, 6) else => (7, 8))` and `tuples(if c => (stop(), 5) else => (6, stop()))` with overloads at
+    (i32, i32) and (i64, i64) are `AmbiguousBinding_Kd`, as `tuples((5, 6))`; `keep(if c => (x, stop()) else => (x, stop()))` and
+    `keep(if c => (5, stop()) else => (6, stop()))` are `UnboundTypeArgument_Kd`, as `keep((x, stop()))`, and so is
+    `keep(if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), x))`, as `keep((func [] (v: i64) -> i64 => v, x))` (implementation
+    review 2). By ③,
+    ApplicabilityChainRegressionTest's `keep(if c => 1 else => stop())` (`UnboundTypeArgument_Kd`) is valid with T = i32 and
+    `h(if c => 200 else => stop())` (`AmbiguousBinding_Kd`) selects `h(i64)`. `keep(if c => (1, stop()) else => (2.5, x))` reports the
+    literal's own record at `2.5`, as the scalar form does, beside a derived `PrerequisiteUnavailable_Kd` the scalar form does not show.
+  - Rejected: a partial Type with holes joined by `SelectCommonType` (a new representation; a Type-only join would merge a typed part's
+    own Never); every nested join waiting (a call's join must stay classified by its own positions); a whole-Type late default at a
+    call (`both(if c => (x, R) else => (R, 5))` with `both<T>((T, T))` needs element evidence).
+  - Open: an array or Dictionary literal's element evidence keeps the awaiting elements' own common Type (a SPEC 4.3 question). The
+    review's late-fit opens (value read, erasure, length slot, `F`) are closed by fix round 1. Language errors on valid forms, also on
+    dev, whose records other owners decide (fix round 2b's triage): a Tuple source holding a nested call that only its literal default
+    types supplies a candidate, the call taking its default when the source is bound (BU-2's nested call), so `first(if c => (x,
+    identity(5)) else => (stop(), x))` and `let t = if c => (x, identity(5)) else => (stop(), x)` are `TypeMismatch_Kd` (expected
+    (i64, i32)), where 10.5.1 makes `identity(5)` waiting and the join's Type (i64, i64) part by part; at a position formed part by
+    part too (`applyArg(if c => (func [] (v) => v, identity(5)) else => (stop(), x))`: dev `UnresolvedBinding_Kd`); a holder of a
+    call-waiting part counted as waiting would change BU-2's deferral, so it stays open (the planning session). Not such an error: a join with a
+    candidate is typed as a whole (BU-4) and is an independently typable argument (10.5.1), so `takeT(if c => (y, x@ref) else => (stop(), x))` with
+    `takeT((i64, i64))` and `firstArr(if c => (x, [x, x]) else => (stop(), [x, x]))` with `firstArr<T>((T, [2 of i64]))` are
+    `NoApplicableOverload_Kd` while their Tuple twins are valid. That is the letter's record: `(y, x@ref)` is the only candidate
+    (14.9.2 step 2; `(stop(), x)` holds Never), step 3 propagates (i64, ref/i64) to `(stop(), x)`, whose `x` takes `ref/i64` by its
+    shared borrow as in a Tuple literal bound at that Type (R4-M52's α; the late fit since fix round 1, which moved dev's
+    `TypeMismatch_Kd` from the join to the call), and the call rejects (i64, ref/i64) at (i64, i64), as dev does for the literal twin
+    `takeT(if c => (y, x@ref) else => (5, x))`; `firstArr`'s candidate is (i64, Array<i64>) (4.3.1). Whether a Never part should
+    remove such a source from the candidates is PLAN G159's SPEC question. Not temporary.
 - **BU-47 A destruction retains as a call of its drops: a `drop`'s receiver at input 0, `TyCtxt.RetainsErasedDestruction`**
   (2026-10-27; R4's design 2 for PLAN G264, chosen by the planning session, design review 1 REVISE (B1, N1–N4), revision 1, design
   review 2 ACCEPT; its unit U0, BU's, unit bu51; the owner's 「はい、G86 の後に (推奨)」 of 2026-10-26, R4-M150 (G264's R4 side, to
@@ -10267,8 +10566,8 @@ structure is recorded here by the unit that first implements it.
   checked. A Move is no row: A1's Move Path rule reports it (`StaticMovePathRequired_Kd`, `DefaultArgumentMove_Kd`), and the HIR
   publishes the Move a `TransferRequired_Kd` needs until R6 (ledger row a1-g4), so R5-M71's "write, Move or exclusive borrow" loses
   its Move. Stage B (a Ref `Uniq` or `TwoPhaseUniq`, a PairAcquire's and an Adapt's exclusive cases, a PairAcquire's own binder's layers
-  skipped, a second call in `Views`) waits for PLAN G262 (Binding plans a bare Reborrow without its path's authority), G251 (7)
-  (R4-M128's net counts pair captures only) and the SPEC session's reading of a discarded Place (3.5 against 14.2.2;
+  skipped, a second call in `Views`; superseded by R5-M139: stage B landed) waits for PLAN G262 (Binding plans a bare Reborrow
+  without its path's authority), G251 (7) (R4-M128's net counts pair captures only) and the SPEC session's reading of a discarded Place (3.5 against 14.2.2;
   `MirBuilder.Values.cs:136-138`). Census under `-Pipeline mir` (the corpus's 461 cases, the whole Functional suite, 61 probe forms): no
   write or Drop past a shared layer but at a slot step or in a copy. Consumers: A5's `Issue` forms no Loan past a shared step for any
   mode (E3), which stage B makes a checked contract for exclusive Loans; code generation and the collector read nothing from it.
@@ -10738,7 +11037,7 @@ structure is recorded here by the unit that first implements it.
     region's size is the instance maximum of every reservation (the literals and the bounded values' maxima; no literal is deferred while
     the literal path is C9d's), so the HeapBuffer arm of `__kimi_writer_reserve` always fits and never grows it; pinned by the bounds test
     and the stack rows. The old generator's switch to 0 is an IR deviation. R5-M130's boundary sentence resolves to this.
-  - The literal fast path (R5-M132, the owner's split): an owning interpolation whose estimate is Unbounded and whose literal bytes are above
+  - The literal fast path (R5-M132, the owner's split; the interim is superseded by R5-M133, C9d): an owning interpolation whose estimate is Unbounded and whose literal bytes are above
     zero is one located `Unsupported_Kd` at its FormatBuffer, decided from its own operands ("the literal path, C9d"): the deferral SPEC
     22.10.5's one-allocation bound needs has no MIR fact in R3-10's form, which C9d, a Full unit, designs. Every other owning interpolation
     is written. The census at C9c's base: 17 of the 277 rows holding only C9c's records hold such an interpolation; milestones 24, 30 and 33
@@ -10805,3 +11104,126 @@ structure is recorded here by the unit that first implements it.
     measurements; its B/A is the median of B over the mean of A and A′, which gives Iterators 1.171 where a plain B/A median gives
     1.170). C9c lands with the measurements recorded. Two points stay open in PLAN: whether R5-M8's corpus A/B adds an aligned
     control (a VERIFICATION change, the owner's), and Iterators' remaining ~2 % (an information kernel).
+- **R5-M133 An owning interpolation's literal text is its segment step's operand: FormatSegment and the literal path (C9d)** (2026-10-27, C
+  lane; a Full change: design 2 (`c9d-design-2.md`, Option B), the planning session's choice (`c9d-choice.md`, the rename), revisions R-1
+  and R-2 (rule (d)), design reviews 1-3 (REVISE, REVISE, ACCEPT) and R4's A1-A5 view (no blocking finding); departure (i) confirmed by the
+  owner, R5-M134; departure (ii) withdrawn with rule (d); SPEC 3.1, 22.10.1, 22.10.3, 22.10.5; supersedes R3-10's `FormatHint` (renamed;
+  its estimates still "take the literal byte count and a TypeToken of the values' Types") and, for literal text, "the failure check
+  reads each write's own Result", and R5-M131's interim; under R5-M18 form 2 (G:format))
+  - Cause: SPEC 22.10.5 bounds `"abc\(s)def"` to one allocation, which needs the old generator's deferral of literal text to the next
+    reservation (`__kimi_format_literal`); R3-10's MIR wrote a literal segment as an ordinary `write<string>`, the form of a `$tryWrite`'s
+    or a formatter's write, so no fact told code generation to defer (R5-M131's interim `Unsupported_Kd`).
+  - Rule: R3-10's FormatHint is renamed `FormatSegment` (the same `IntrinsicId` member, `[Transitional("R8")]`; the count stays 34, PD21):
+    one step per write position of an owning interpolation's plan (`MirBuilder.Format`), `FormatSegment(&uniq adapter, text, later bytes,
+    later values' Types)`, the hint of the later literal bytes and values, then the position's literal text: a literal segment's constant
+    through the one literal rule (`MirBuilder.Literal`, SPEC 3.1), which is no `write` call (SPEC 22.10.3 passes only embedded expressions
+    to `write<T>`), or `""` at a value's position, whose write and Result test follow. An embedded string literal, which
+    `Binding.WritesText` also classifies as text (R5-M79), is its step's text as well, as if written: a constant has no effect, and
+    string's built-in formatting writes its bytes with the same `KIMI_E_FORMAT` failure (the old generator also writes it through
+    `__kimi_format_literal`). The block a failed write goes to is made by the first branch to it, so an interpolation of text alone has
+    none (R4's hunk review B1: an unreachable failure block was a validator finding that stopped the analyses on the whole program).
+    `$tryWrite` segments and user writes stay writes.
+  - Code generation (`FunctionCodegen.FormatSegment`, the `Segment` writer, C9c's `Hint` renamed): `__kimi_format_hint` of the instance's
+    hint; then a non-empty text, its record in its copy slot, its result in a slot numbered by the call's block (the frame walk's `Segment`
+    arm, `TextSlots`, beside FormatBuffer's Region arm in one dispatch over `IntrinsicWriter`; the slot is the runtime's Result tag, made by
+    no Type), through `__kimi_format_literal` when a value follows (the step's Types token is not empty: the size is checked at once and
+    the static bytes kept at the adapter until its next reservation, or the end flushes them), else through WriterWrite's built-in routine,
+    with the string's kind, then `__kimi_format_check` (a recorded failure Aborts `KIMI_E_FORMAT` at the interpolation, the old
+    generator's call). Whether to defer is fixed by the template; only the hint depends on the instance. The ABIs are the bp's
+    (`LegacyRuntimeHelpers.FormatCheck`, `FormatLiteral`, promoted from Emission; both generators' `.ll` byte-identical).
+  - Rule (d) equals the old generator natively (R-2): on an unbounded line every literal but a trailing one is deferred as before, and a
+    trailing literal's direct write reserves what the old finish's flush reserved, at the same point and hint; on a bounded line the
+    capacity is exact (a region's premise names the flushed literal), so no reservation grows under either rule. A deferred literal's
+    reservation happens after the next value's expression, as on the old unbounded lines; on a bounded line it cannot fail. Deviations are
+    IR only (PD9): a bounded line's literal calls `__kimi_format_literal` where the old generator writes it, an unbounded line's trailing
+    literal is written where the old one deferred it. C9c's IR deviation "each write's failure tested by its Result" narrows to value
+    writes; a literal's is the old `__kimi_format_check`.
+  - Descriptor: `FormatSegment` `Row(None, Allocation | Abort, 4)` (its text's write may reserve and Abort, as FormatFinish's flush). No
+    visitor reads Allocation or Abort (R5-M129), so no class, key or effect rule changes.
+  - A1-A5 (R4's view: 92 programs, problems identical): a literal segment loses its `write<string>` call, Result, discriminant and switch to
+    `Fail`, two Loans (the internal adapter's two-phase borrow and the constant's) and its string temp with its Drop (186 Drop rows in those
+    programs), nothing a user Place holds. No error is lost: the internal adapter and the constant are unnameable, and the removed call's
+    published row (Runs `string`'s built-in Utf8Format) composed no class or key at any site (empty in all 92 programs).
+    `MirDropTest.OnlyRuntimeDropsHaveVerdicts`' `label` row keeps the buffer's Drop alone (`drop _2 -> bb9 [keep]`): a removed form, by the
+    owner's FormatSegment decision, not a weakened check.
+  - Facts: the sel ledger falls by the 17 interim rows, 203 to 186 (format 12, C-frame 4, C-aggregate 1), as C9c's census; the 16
+    literal-path fixtures and the 4 new audits run natively under sel at O0 and O2 with the old generator's counts and bytes (the 7 pinned
+    audits included). The golden `interpolations` loses its 13 literal writes (353/706 lines). Milestones 24, 30 and 33 (C9c's interim)
+    and 31, 35 and 44 pass under sel; the mir ledger equals the shared base's (517ffd229: 3,239 rows, 245 signatures, every count).
+  - Tests: `MirBuildTest.AnOwningInterpolationsLiteralTextIsItsSegmentStep` (a literal segment, an embedded string literal, text alone)
+    and `TextAloneKeepsTheProgramsOtherErrors`; `FunctionCodegenTest.ASegmentWritesItsLiteralTextAfterItsHint`
+    (deferred before a value, written at the end, each checked); `Utf8InterpolationTest.DeferredLiteralTextKeepsTheOldGeneratorsAllocations`
+    (the corpus kernel's line 2/60, a literal before a bounded value after an empty one 1/2, a bounded value before a string 2/34, a nested
+    interpolation 2/12, equal under both generators); C9c's two interim coverage rows now generate; the M9/I1 `Interpolations` source gains
+    two unbounded lines.
+  - Size (numstat): bp Backend +10, Emission +1/-5; behavior Backend +83/-37, MIR builder and descriptor +34/-12, Binding comments +10/-7,
+    tests +124/-10, golden +353/-706, ledger -17 rows, and this entry and ARCH.
+  - Deleted: C9c's interim record and its label; each literal segment's write call, borrows, temps, Drop and Result test in MIR, and its
+    BuiltinFormat(string) target; the old generator's private copies of the two ABIs (bp).
+  - Speed: per literal segment MIR loses 5 locals, about 15 statements and 3 blocks (design 2's prototype: -3.7 % and -4.6 % of MIR
+    statements on Milestones 30 and 31); code generation writes the old generator's three calls per literal; warm generation allocates
+    nothing (M9 with the new lines).
+  - O2 (R5-M8, R5-M135; C9c's method): each kernel built at O2 by the old generator (A) and MIR code generation (B) at the fixed head,
+    A, B and a copy of A in one folder, 21 interleaved samples of CPU cycles; B/A and A=A medians with their ranges. Unaligned:
+    Interpolation 0.994 (A=A 0.997), SharedHandles 1.004 (1.001), Dictionary 1.000 (0.999) and ErasedCalls 0.999 (1.000) are within
+    A=A; Array 1.121, VirtualDispatch 1.078 and Iterators 1.167 are beyond it (A=A 0.998, 1.001, 1.004). Aligned alike
+    (`llc --align-loops=64 --align-all-functions=6` on each generator's own O2 IR): Interpolation 0.988, SharedHandles 1.004, Array
+    1.000, Dictionary 1.001, ErasedCalls 0.991, VirtualDispatch 1.004 and Iterators 1.019, all within A=A (0.990-1.004, Iterators'
+    range 0.908-1.207). So by R5-M135 the unaligned gaps are code placement (C9c's VirtualDispatch and Iterators, and now Array, whose
+    checksum line gains the deferral calls); both are recorded and the unit continues. The Interpolation kernel's hot line, whose
+    allocations and bytes equal the old generator's, runs at parity.
+  - Rejected: a fourth temporary intrinsic `FormatLiteral` (design 1: a vocabulary entry for a fact an existing per-segment intrinsic
+    carries); a `MirLocalRole` (it carries no estimate); code generation reading MIR shape (C9c Q4 (b)); runtime changes (a declared legacy
+    `.ll` change, PD2); a Binding or library `writeLiteral` (PD21; R8's form); rule (a), deferring only before an unbounded value (its
+    native counts and bytes differ from the old generator's, design reviews 1-2); the old rule exactly (six operands per step); one step
+    per value carrying the preceding text (B': it changes FormatFinish and shifts every token).
+- **R5-M134 The owner confirms C9d's departure (i)** (owner, 2026-10-27, to the R5 planning session directly, on its choice between C9d's
+  two designs; verbatim 「C9d の逸脱 2 件（R3-10 の FormatHint を FormatSegment に改名して区間のリテラル本文を持たせること、遅延規則 (a)
+  により固定されていないプログラムで割り当て回数が旧生成器より少なくなり得ること）を承認します。」; the consequences are the planning
+  session's) Departure (i) is confirmed: R3-10's temporary intrinsic FormatHint is renamed `FormatSegment`, and the owning interpolation's
+  per-segment step carries that segment's literal text, `""` before a value. A literal segment is then no `write` call, and no new
+  `IntrinsicId` is added (the limit stays 34, back to 30 at R8). Departure (ii) is withdrawn and does not apply. The owner had approved
+  rule (a) on a wrong statement of its effect: design review 1 found that bytes could grow, not only counts fall, and review 2 found the
+  planning session's bound on that growth false. The planning session then replaced rule (a) with rule (d) (R5-M133). Rule (d) gives the
+  old generator's allocation counts and bytes, so no native deviation remains, and the planning session told the owner so. The
+  departures list is empty.
+- **R5-M135 An O2 corpus A/B is judged with an aligned control** (owner, 2026-10-27, to the R5 planning session directly, on its analysis
+  of the half day's slow progress; verbatim 「O2 の A/B で差が出ても、整列をそろえた対照で A=A の範囲内なら、R5 が記録して着地させてよい。
+  対照でも差が残る場合だけオーナーに質問すること。」; partly supersedes R5-M8's O2 clause) An O2 corpus A/B (R5-M8) whose B/A lies
+  beyond the A=A variance gets an aligned control. Both generators' own O2 IR is built with the hot loops and functions aligned alike
+  (`llc --align-loops=64 --align-all-functions=6`, the latter a log2 value, 64 bytes; the same link) and timed the same way: A, B and
+  A′ in one folder, 15 or more interleaved samples. If the aligned B/A lies within the aligned A=A range, the gap is code placement,
+  not generated work. The unit records both measurements in its DECISIONS entry and lands without an owner question. Only a gap that
+  remains in the aligned control is a slowdown under R5-M8; it stops the unit's merge and goes to the owner (WORKFLOW). C9c's corpus
+  A/Bs are the first case (R5-M131, R5-M132). Reason: an unaligned A/B moves with code placement outside the loop (C9c's variants
+  without the checksum line flipped the sign), and the owner question cost about 6.5 hours of waiting on 2026-10-27.
+- **R5-M139 An exclusive acquisition passes no shared layer (W1 rule 1, stage B)** (2026-10-27, R5 planning session; R4 signs off the A5
+  side; supersedes R5-M123's sentence that stage B waits: PLAN G262 landed as BU-45, R4-M145 closed G251 (7) and made a discarded Place's
+  bare acquisition its plan row) Rule (`MirValidator.SharedPaths.cs`, R5-M123's `MirViolation.SharedPath`): a projected Place that a Ref
+  borrows exclusively (Uniq or TwoPhaseUniq), the Place of a PairAcquire whose binder admits `uniq` or `objuniq` (it Reborrows there,
+  `MirCases.Reborrows`) and the Place of an exclusive Ref an Adapt resolves to under a Semantics case view (`MirCases.Adapt`; a second
+  call in `MirValidator.Types`' `Views`) passes no shared layer after its last raw Deref (SPEC 3.5.1, 8.15.2, 13.5.5); a finding is
+  `InternalInvariant_Kd` at the location, one per Adapt at its first breaking view. The PairAcquire is keyed on its binder's exclusive
+  cases, never on its Use's marked kind, which is Uniq or TwoPhaseUniq for a Copy-only binder too (`s is ref`, `owner or ref`). A pair
+  layer is read under a case assignment, the `PairCase` record `TyCtxt.CaseType` and BU-45's PlaceAuthority read: an assigned binder's
+  layers in its case, every other binder's at its admitted set (shared where it admits a shared case, R5-M123's weakest case). A write,
+  a destruction and a Ref take the empty assignment, a PairAcquire `[(binder, uniq)]`, so its own binder's layers are exclusive (the
+  design's own-binder skip, as data: `x@follow` with `x: s/(s/T)`, `b.v` with `b: s/Box<s/T>`), and an Adapt its view's, exact per view.
+  R5-M123's exclusions hold: the slot step, an inline copy, an Unscoped body; a Move stays A1's. Census of a prototype under `-Pipeline
+  mir`: the corpus's 461 cases (the library, the 44 milestones) and the 8 O2 kernels have no hit; 71 w1r1 probe forms (their syntax
+  errors fixed, 13 Adapt and acquisition forms added) and bu49's 128 forms (G262's positions, R5's return, match and for subjects,
+  struct and Array literal elements, receiver and default) have none but one in an inline copy; the Functional suite (23,462 tests, 0
+  failed) has 35, the validator tests' hand-built finding rows and 11 locations in inline default copies. Consumers: A5's `Issue` forms
+  no Loan past a shared step (E3, `MirBorrows.Loans.cs:107`); the validator now checks that for exclusive Loans outside inline copies
+  and before a raw Deref, while `Loans.cs:107` stays the operative guard in inline copies and past raw-after-shared steps (R4's
+  sign-off). Size: Mir +70/-34 lines
+  (`SharedPaths.cs` +48/-22, `Types.cs` +15/-6), tests +63; no deletion. Speed: an access test per Place, a binder lookup per
+  PairAcquire, a chain walk per projected exclusive Ref, exclusive-case PairAcquire and exclusive Adapt view; warm 0 B. A warm
+  validation of the library's and the 44 milestones' 10,020 bodies, pinned to one CPU with tiering off, A and B from one folder, 21
+  interleaved A, B, A′ triples in a quiet window: B/A 1.028 (1.001-1.049) against A′/A 1.007 (0.975-1.021), B above A and A′ in 20
+  of 21, about 1.4 ms per full validation of about 51 ms; one pass of the MIR pipeline, not significant for a compilation (the
+  planning session's reading, reported to the owner). Rejected: keying the PairAcquire on its marked kind (a Copy-only binder's Use is marked); a binder
+  parameter or a bool skipping the own binder's layers (the case assignment states it as data, one meaning with an Adapt's view); a
+  per-view pass over every PairAcquire (exact too, but a stored list and a walk per view for what one assignment decides); an Adapt's
+  pair layers at their weakest case (its own binder's layer in its exclusive view, `adapt(copy (_1@b0)): s/T` with `s is ref or uniq`,
+  would be a false finding).
