@@ -7070,6 +7070,47 @@ resumed by R4-M86 (2026-10-20).
     and that of a waiting function beside a failed part (dependent on its call's failure). The 415 and 331 programs keep the outcome
     rule's records. Supersedes the outcome rule's "when that one failed, is `Dependent` on it (`DecideWaiting`)" and its
     `TypedConflict`.
+  - R6, a join tree judged once at its root (implementation review 5's REVISE, B7; the owner, 2026-10-27, on the held branch's
+    per-conflict attribution: 「一段上で作り直す (推奨)」, and on this unit's flow: 「複数並列の設計・実装は不要です。実装が完了したら、
+    独立レビューを通してください」; the planning session's design, Major). B3 and B7 (a conflict nobody records), B5 and B6 (one
+    recorded twice or lost) and B4 had one cause: a join tree (a join holding nested joins through its sources, the forms that
+    deliver them and Tuple, array and Dictionary literals, none supplying a candidate) was decided incrementally, and "who records a
+    conflict" was reconstructed by a second search over the formation (`FoundConflict`: `ConflictsAlone`, `TopWaitingJoin`, `Held`,
+    `Several`) and read again by `DecideWaiting` and `DefaultWaitingSources`. Now each conflict has one owner by one rule (SPEC
+    14.9.2 steps 2-4, 10.5.1, 23.1.2). A join's typed parts (bound parts, functions its call completed, shapes) are fixed when it
+    decides, so a conflict among its own parts at any position is its own record, found by its own formation and by no other
+    (`JudgeOwn`: `CommonTypeByParts` over its results, nested joins flattened where they are clean and one failed part each where
+    they are not); the innermost such join records it, and every enclosing join rests on it. Literal defaults are not fixed before
+    outer constraints (step 3), so a conflict among them is judged only by the root of the tree, the outermost join deciding, over
+    every position of the flattened tree where no typed part decides: the root's one record (B5's rule, now the only one). A
+    failed part stops no formation (`CommonTypeByParts` removes it from its position and runs over the rest; a join with a failed
+    part and no conflict of its own is Dependent on the first, `CompleteDependent`, never a bare `Complete(null)`); a nested join
+    with a failed part decides at once and is the root of its subtree. The root judges its tree first (`JudgeNested`, post-order
+    through its waited sources), then forms its own Type (`AwaitsWithoutCandidate`); a clean nested join waits (`DecidedLater`,
+    `ClassifiedByCall`) and decides nothing by itself. Every waited source is bound once, by the deciding join's pass
+    (`BindWaitedSources`, replacing `PropagateSources`' waited branch and `DefaultWaitingSources`): at the decided Type, or, with
+    no Type, at its defaults when it holds a literal, through `DecideWaiting` when it holds a join that waited (`WaitedResult`:
+    still waiting, or judged Conflict or Dependent and unresolved since), and otherwise resting on the join's record or cause.
+    `DecideWaiting` honours the outcome: Conflict fails at itself, Dependent completes on its cause, and a still-waiting join bound
+    with no Type by a failed join's pass rests on that join's record or cause (its position's outcome); bound with no Type under
+    no failed join, it is a root (`DecideTaken`). Verdicts (the held branch's probe sets, rv 331, gen 415, gen2 560, gen3 162,
+    rv4-rv9 108, both pipelines, which agree, against dev 861ffe95b and 379f25676; `bu47\sweep\r6\`): B7 (rv6 p1, p2, p6, p8:
+    nested joins holding only functions a call completes) record the inner join's `TypeMismatch_Kd`, the root and the call
+    dependent on it (dev's record; p2's untyped functions: dev's `UnresolvedBinding_Kd` at their parameters). A defaults conflict
+    beside another failure (B6's forms; rv5 c2-c4, c8, c9; gen2's `defaults` rows with a name, call, argument or empty literal) is
+    the root's record beside the other failure's own (dev: at the inner join; a move, count equal), also at a generic call where
+    dev's `UnboundTypeArgument_Kd` stood alone (rv5 c1, gen2 `*-defaults-*-id`: the root's record added). Two inner defaults
+    conflicts, or one beside the root's own typed conflict (e21, q2, q9, e3, e23; gen3's `ts-defaults`), are the root's one record
+    (dev: one each). A nested join with a failed part is its subtree's root (gen2 `deep-defaults-*`: the middle join; dev: the
+    `let`'s derived record). A nested join's literals at a call's classified position are checked at that position's Type as the
+    Tuple twin's are (gen2 `tpos`, `tsame` and `arr` `defaults-defaults2` at `first`, `take` and `identity`: the misfitting
+    literal's record, the call's `NoApplicableOverload_Kd`, or a derived `PrerequisiteUnavailable_Kd` at a generic call, the K1
+    sentence; dev: the inner joins' own conflicts). A Dependent join bound again by a later use keeps its outcome (`WaitedResult`)
+    instead of a second judgement from scratch, so `let t = if c => (if d => 5 else => missing) else => 2.5` with `return t`
+    loses the record that judgement gave (dev: at `5`, before: at the join), dependent on `missing`. No dev-clean program is
+    rejected; no valid form gains a record; 16 rows fail first. Supersedes the cover rule, its "each conflict is recorded once"
+    (`FoundConflict`, `ConflictsAlone`, `TopWaitingJoin`, `Held` and `Several` are deleted), the outcome rule's "when that one
+    failed, is `Dependent` on it" and `DefaultWaitingSources`.
   - ③: a control-flow part is Literal when every result source other than Never is a literal, at least one (`ResultSurvey.Unknown` and
     `Never` split `Other`); an arithmetic operand's `AllLiteral` keeps Never as not literal (SPEC 12.3.3, 13.3.4).
   - Supersedes BU-2's owner decision (1), "a control-flow argument is Literal only when all its result sources are Literal", and the

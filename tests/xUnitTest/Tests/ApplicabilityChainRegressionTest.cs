@@ -254,6 +254,11 @@ public class ApplicabilityChainRegressionTest
     [InlineData("first(if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), true)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), true)")]
     [InlineData("first(if c => (func [] (v: i64) -> i64 => v, 5) else => (func [] (w: i64) -> i64 => w, 2.5))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, 5) else => (func [] (w: i64) -> i64 => w, 2.5)")]
     [InlineData("first(if c => (if c => (func [] (v: i64) -> i64 => v, 5) else => (func [] (w: i64) -> i64 => w, 6)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, 5) else => (func [] (w: i64) -> i64 => w, 6)")]
+    [InlineData("first(if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)")]
+    [InlineData("applyArg(if c => (if c => (func [] (v) => v, x) else => (func [] (w) => w, x)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v) => v, x) else => (func [] (w) => w, x)")]
+    [InlineData("first(if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, stop())) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, stop())")]
+    [InlineData("first(if c => (if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)) else => (stop(), x)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)")]
+    [InlineData("first(if c => ((if c => func [] (v: i64) -> i64 => v else => func [] (w: i64) -> i64 => w), x) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => func [] (v: i64) -> i64 => v else => func [] (w: i64) -> i64 => w")]
     [InlineData("takeD(if c => (if c => [\"k\": missing] else => [\"k\": stop()]) else => [\"k\": x])", nameof(DiagnosticCode.UnresolvedBinding_Kd), "missing")]
     [InlineData("take(if c => ((if c => missing else => x), stop()) else => (stop(), x))", nameof(DiagnosticCode.UnresolvedBinding_Kd), "missing")]
     [InlineData("applyArg(if c => ([\"k\": func [] (v) => v], x) else => (stop(), x))", nameof(DiagnosticCode.UnresolvedBinding_Kd), "v")]
@@ -276,14 +281,32 @@ public class ApplicabilityChainRegressionTest
         Assert.Contains(DiagnosticCorpus.Check(source).Diagnostics, static x => x.Code == nameof(DiagnosticCode.NoApplicableOverload_Kd));
     }
 
-    // SPEC 23.1.2 (DECISIONS BU-43): in a call's join, a waiting join's own conflict is reported beside an independent failure of the
-    // enclosing join, as outside a call.
+    // SPEC 23.1.2 (DECISIONS BU-43): in a call's join, a defaults conflict of a nested join is reported beside an independent failure of
+    // the enclosing join, as outside a call.
     [Fact]
     public void AWaitingJoinsOwnConflictInACallIsReportedBesideAnotherFailure()
     {
         var source = ControlFlowDeclarations + "takeT(if c => (if c => (5, x) else => (2.5, stop())) else => (missing, x))\n";
         var codes = DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code).Order();
         Assert.Equal([nameof(DiagnosticCode.TypeMismatch_Kd), nameof(DiagnosticCode.UnresolvedBinding_Kd)], codes);
+    }
+
+    // SPEC 23.1.2 (DECISIONS BU-43): a waited source of a failed join that holds neither a literal nor a join (here the functions its
+    // call completed) rests on the join's record, that prerequisite recorded in the pass that bound it, and is no record of its own;
+    // the enclosing join rests on the failed join. A source bound before the join decides, `["k": stop()]`, is no waited source and
+    // rests on nothing.
+    [Fact]
+    public void ASourceHoldingNeitherLiteralNorJoinRestsOnItsJoinsRecord()
+    {
+        var c = CompilationTestHelper.ParseSuccess(ControlFlowDeclarations + "first(if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)) else => (stop(), x))\n");
+        c.Binding.Bind(BindingMode.Final);
+        var joins = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IfKoto>().ToArray();
+        Assert.Same(joins[1], Assert.Single(c.Binding.Issues).Node);
+        var source = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<TupleLiteralKoto>().First(x => x.Elements[0] is FunctionKoto).Parent!; // The expression body.
+        Assert.Same(joins[1], Assert.Single(c.Binding.FailureCauses(source)!).Subject);
+        Assert.Same(joins[1], Assert.Single(c.Binding.FailureCauses(joins[0])!).Subject);
+        var dictionaries = MinimalEmissionTest.Analyze(ControlFlowDeclarations + "takeD(if c => (if c => [\"k\": missing] else => [\"k\": stop()]) else => [\"k\": x])\n");
+        Assert.Null(dictionaries.Binding.FailureCauses(KotoTree.Walk(dictionaries.Kotonoha.RootKoto).OfType<DictionaryLiteralKoto>().Single(x => x.ToString() == "[\"k\": stop()]")));
     }
 
     // SPEC 23.1.2, 10.1: a call that selects no candidate, or whose selected candidate fails, still binds its Literal and waiting

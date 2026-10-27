@@ -333,7 +333,7 @@ public sealed partial class Binding
         }
 
         // SPEC 14.9.2 step 3: each source that awaits its position takes the Target Result Type, by its late Type (no Never fitting).
-        if (awaiting && common is not null && this.PropagateSources(node, context, common) is { } misfit)
+        if (awaiting && common is not null && this.BindWaitedSources(node, context, common) is { } misfit)
         {
             context.Conflict();
             failed ??= misfit;
@@ -345,9 +345,14 @@ public sealed partial class Binding
             return failed is not null && common is not null ? this.FailMismatch(node, node, failed, common) : this.Fail(node, BindingFailure.TypeMismatch);
         }
 
-        if (context.Outcome == JoinOutcome.Dependent || context.Pending)
+        if (context.Outcome == JoinOutcome.Dependent)
         {
-            return Complete(node, null); // SPEC 23.1.2: it rests on its failed source, or its source waits for its call.
+            return this.CompleteDependent(node, context.Cause!); // SPEC 23.1.2: it rests on its failed source.
+        }
+
+        if (context.Pending)
+        {
+            return Complete(node, null); // Its source waits for its call.
         }
 
         context.Outcome = JoinOutcome.Decided;

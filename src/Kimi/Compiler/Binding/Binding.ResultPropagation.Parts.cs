@@ -7,23 +7,22 @@ namespace Kimi.Compiler;
 // A join's parts (SPEC 14.9.2 step 2; DECISIONS R4-M134, BU-43): where no source supplies a candidate, the common Type is formed part
 // by part over the sources other than Never.
 // - Responsibility: the parts at one position of a join, a range of positionParts (Binding.ArgumentKinds.Positions.cs): its sources
-//   other than Never, through the forms that deliver them (DeliveredOperand) and the selections, `do` and `loop` none of whose sources
-//   supplies a candidate (AddResultPart); the child positions of parts that are Tuple, array, fill or Dictionary literals, by element,
-//   key and value (AddPartsAt); the common Type of a position's typed parts (PositionType); and the common Type formed part by part
-//   (CommonTypeByParts).
+//   other than Never, through the forms that deliver them and the selections, `do` and `loop` none of whose sources supplies a
+//   candidate (AddResultPart); the child positions of parts that are Tuple, array, fill or Dictionary literals, by element, key and
+//   value (AddPartsAt); the common Type of a position's typed parts (PositionType); the common Type formed part by part
+//   (CommonTypeByParts); and a join's judgement by that formation (JudgeOwn), its root's judgement of its tree (JudgeNested).
 // - Inputs: the parts' bound Types, the literals still waiting unbound, the results' recorded sources (ResultContext).
-// - Outputs: the formed Type, or none with the conflict that prevents it (PartsConflict).
-// - Invariants: a part of Type Never is no part; the walk binds nothing and removes the parts it appended.
+// - Outputs: the formed Type, or none with the conflict that prevents it (PartsConflict); a judged join's outcome (Conflict, Dependent).
+// - Invariants: a part of Type Never is no part; a failed part is no part either (the join rests on it); the walk binds nothing and
+//   removes the parts it appended.
 // - Prohibitions: no record here; the join (AwaitsWithoutCandidate) and the argument walks decide what the Type is to them.
 public sealed partial class Binding
 {
     // The scratch of a position's typed Types or literal defaults, used by one SelectCommonType at a time.
     private readonly List<BoundType> partTypes = new();
 
-    // What prevents a Type formed part by part: the forming join's own conflict among typed parts (or shapes) or literal defaults; a
-    // failed part (PartFailed) or a waiting join's own typed conflict, whose record the join rests on (BU-9 r1; SPEC 23.1.2); a
-    // waiting join's own defaults conflict (Held, FoundConflict); conflicts of two or more joins, waiting joins' or one beside the
-    // forming join's own (Several).
+    // What prevents a Type formed part by part: a conflict among typed parts (or shapes), among literal defaults, or a failed part
+    // (PartFailed), over which the formation still runs (SPEC 23.1.2: an independent conflict among the others is found).
     [Flags]
     private enum PartsConflict : byte
     {
@@ -31,8 +30,6 @@ public sealed partial class Binding
         Typed = 1,
         Defaults = 2,
         Failed = 4,
-        Held = 8,
-        Several = 16,
     }
 
     // The child positions of aggregate parts of one shape: a Tuple's elements, an array's or fill's element, a Dictionary's key and value.
@@ -56,7 +53,8 @@ public sealed partial class Binding
     // a part that awaits its position. A failed part (PartFailed) is no waiting part: the position it is at has no Type formed part by
     // part (BU-9: a literal is bound once).
     private bool IsAggregatePart(Koto part)
-        => part is TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto && !this.PartFailed(part) && (part.BoundType is null || this.AwaitsPosition(part));
+        => part is TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto && !this.PartFailed(part) &&
+            (part.BoundType is null || this.AwaitsPosition(part));
 
     // Adds a part at a position: none for Never; the operand of the forms that deliver it; a result target that supplies no candidate
     // through its sources other than Never (nested results propagate the same way), unless it failed (PartFailed): a failed join is one
@@ -93,6 +91,92 @@ public sealed partial class Binding
             {
                 this.AddResultPart(source);
             }
+        }
+    }
+
+    // SPEC 14.9.2 step 2, 23.1.2 (DECISIONS BU-43): a join's own judgement, by one formation over its own results (CommonTypeByParts),
+    // nested joins flattened where they are clean and one failed part each where they are not. A conflict among its typed parts or
+    // shapes is its own, found at any position (Conflict); else a failed part leaves it Dependent on the first (RestOn). A conflict among
+    // literal defaults is reported (`defaults`), not judged: a literal result is not fixed before outer constraints (step 3), so it is
+    // the root's (AwaitsWithoutCandidate). Idempotent: called at the join's own decision and again by its root (JudgeNested). Returns
+    // the Type formed over the parts that are no conflict and no failure, null when none; `shape` is the first aggregate part.
+    private BoundType? JudgeOwn(Koto join, ResultContext context, out Koto? shape, out bool defaults)
+    {
+        var start = this.positionParts.Count;
+        this.AddResults(join);
+        var conflict = PartsConflict.None;
+        Koto? cause = null;
+        var common = this.CommonTypeByParts(start, this.positionParts.Count, this.ConstraintScope(join), ref conflict, ref cause);
+        shape = this.PartsShape(start, this.positionParts.Count);
+        this.ClosePosition(start);
+        defaults = (conflict & PartsConflict.Defaults) != 0;
+        if ((conflict & PartsConflict.Typed) != 0)
+        {
+            context.Conflict();
+        }
+        else if (cause is not null)
+        {
+            context.RestOn(cause);
+        }
+
+        return common;
+    }
+
+    // SPEC 14.9.2 (DECISIONS BU-43): the root's judgement of its tree before its own formation: each waiting join its waited sources hold,
+    // through the forms that deliver them and the parts of Tuple, array and Dictionary literals (JudgeHeld), is judged again after its
+    // own (JudgeOwn, post-order), so that a conflict among typed parts, functions a call completed since included, is recorded by the
+    // innermost join whose own parts conflict and is one failed part of every enclosing formation.
+    private void JudgeNested(Koto join, ResultContext context)
+    {
+        for (var i = 0; i < context.Sources.Count; i++)
+        {
+            if (context.Sources[i] is null && context.SourceNodes[i] is { } source)
+            {
+                this.JudgeHeld(source);
+            }
+        }
+    }
+
+    private void JudgeHeld(Koto part)
+    {
+        if (DeliveredOperand(part) is { } operand)
+        {
+            this.JudgeHeld(operand);
+            return;
+        }
+
+        switch (part)
+        {
+            case TupleLiteralKoto tuple:
+                foreach (var element in tuple.Elements)
+                {
+                    this.JudgeHeld(element);
+                }
+
+                break;
+            case ArrayLiteralKoto array:
+                foreach (var element in array.Elements)
+                {
+                    this.JudgeHeld(element);
+                }
+
+                break;
+            case DictionaryLiteralKoto dictionary:
+                foreach (var entry in dictionary.Entries)
+                {
+                    this.JudgeHeld(entry.Key);
+                    this.JudgeHeld(entry.Value);
+                }
+
+                break;
+            default:
+                if (this.WaitingResult(part) is { } waiting)
+                {
+                    this.JudgeNested(part, waiting);
+                    this.JudgeOwn(part, waiting, out _, out _);
+                }
+
+                break;
         }
     }
 
@@ -192,29 +276,30 @@ public sealed partial class Binding
 
     // SPEC 14.9.2 step 2: the common Type at the position [start, end): its typed parts' (PositionType); without one, its aggregate
     // parts' formed by their child positions (Tuples by element, list literals by element as Array<T>, fills by element at their
-    // length, Dictionaries by key and value); without one, its literals' defaults' (SPEC 10.2); with no part, Never. Null when a
-    // conflict or a failed part prevents it, or a part is still unbound without waiting; `cause` receives the first waiting join
-    // holding a conflict by itself, or else the first failed part.
+    // length, Dictionaries by key and value); without one, its literals' defaults' (SPEC 10.2); with no part, Never. A failed part
+    // (PartFailed) is removed from the position, `cause` receiving the first, and the formation runs over the others, every position
+    // for its conflicts (SPEC 23.1.2). Null when a conflict or a failed part prevents it, or a part is still unbound without waiting.
     private BoundType? CommonTypeByParts(int start, int end, BindingScope scope, ref PartsConflict conflict, ref Koto? cause)
     {
-        for (var i = start; i < end; i++)
+        for (var i = start; i < end;)
         {
             if (this.PartFailed(this.positionParts[i]))
             {
                 conflict |= PartsConflict.Failed;
                 cause ??= this.positionParts[i];
-                return null;
+                this.positionParts.RemoveAt(i);
+                end--;
+            }
+            else
+            {
+                i++;
             }
         }
 
         var common = this.PositionType(start, end, scope, out var typed);
         if (typed)
         {
-            if (common is null)
-            {
-                this.FoundConflict(start, end, scope, PartsConflict.Typed, ref conflict, ref cause);
-            }
-
+            conflict |= common is null ? PartsConflict.Typed : PartsConflict.None;
             return common;
         }
 
@@ -222,7 +307,7 @@ public sealed partial class Binding
         {
             if (!this.SameShape(start, end, shape))
             {
-                this.FoundConflict(start, end, scope, PartsConflict.Typed, ref conflict, ref cause);
+                conflict |= PartsConflict.Typed;
                 return null;
             }
 
@@ -235,7 +320,7 @@ public sealed partial class Binding
                 {
                     var child = this.positionParts.Count;
                     this.AddPartsAt(start, end, i);
-                    var part = this.CommonTypeByParts(child, this.positionParts.Count, scope, ref conflict, ref cause); // Every position, for its conflicts.
+                    var part = this.CommonTypeByParts(child, this.positionParts.Count, scope, ref conflict, ref cause);
                     this.ClosePosition(child);
                     formed &= part is not null;
                     children[i] = part!;
@@ -249,116 +334,13 @@ public sealed partial class Binding
             }
         }
 
-        return this.LiteralDefaults(start, end, scope, ref conflict, ref cause);
-    }
-
-    // SPEC 23.1.2, 14.9.2 (DECISIONS BU-43): a conflict among the parts of [start, end), found by the forming join's search over the
-    // parts of the waiting joins it holds. One a waiting join's own parts there make by themselves (ConflictsAlone) is that join's:
-    // its Cause names itself, so it decides by itself and records it; the forming join rests on a typed one, as on a failed part
-    // (functions its call completed), and a defaults one is Held, unless it is the formation's only conflict, which the forming join
-    // takes as its own and covers (AwaitsWithoutCandidate). Any other is the forming join's own (`kind`). Every other waiting join
-    // holding the parts rests on the forming join's record.
-    private void FoundConflict(int start, int end, BindingScope scope, PartsConflict kind, ref PartsConflict conflict, ref Koto? cause)
-    {
-        var holders = false;
-        for (var i = start; i < end;)
-        {
-            var holder = this.TopWaitingJoin(this.positionParts[i]);
-            var next = i + 1;
-            while (next < end && ReferenceEquals(this.TopWaitingJoin(this.positionParts[next]), holder))
-            {
-                next++;
-            }
-
-            var alone = holder is null ? PartsConflict.None : this.ConflictsAlone(i, next, scope);
-            if (alone != PartsConflict.None)
-            {
-                holders = true;
-                this.resultContexts[holder!].Cause = holder;
-                if (alone == PartsConflict.Typed)
-                {
-                    conflict |= PartsConflict.Failed;
-                    cause ??= holder;
-                }
-                else if ((conflict & PartsConflict.Held) == 0)
-                {
-                    conflict |= PartsConflict.Held;
-                    cause = holder;
-                }
-                else if (!ReferenceEquals(cause, holder))
-                {
-                    conflict |= PartsConflict.Several;
-                }
-            }
-
-            i = next;
-        }
-
-        conflict |= holders ? PartsConflict.None : kind;
-        if ((conflict & PartsConflict.Held) != 0 && (conflict & (PartsConflict.Typed | PartsConflict.Defaults)) != 0)
-        {
-            conflict |= PartsConflict.Several;
-        }
-
-        for (var i = start; i < end; i++)
-        {
-            var top = this.TopWaitingJoin(this.positionParts[i]);
-            var found = top is null ? null : this.PositionTarget(top, out _);
-            for (var join = this.WaitingJoinOf(this.positionParts[i]); join is not null; join = this.WaitingJoinOf(join))
-            {
-                var context = this.resultContexts[join];
-                context.Cause = ReferenceEquals(join, top) && ReferenceEquals(context.Cause, join) ? join : found;
-            }
-        }
-    }
-
-    // The conflict the parts of [start, end) make by themselves at their position, as their own join's formation finds it: typed
-    // parts or shapes (Typed), or, with neither, literal defaults (Defaults).
-    private PartsConflict ConflictsAlone(int start, int end, BindingScope scope)
-    {
-        var common = this.PositionType(start, end, scope, out var typed);
-        if (typed)
-        {
-            return common is null ? PartsConflict.Typed : PartsConflict.None;
-        }
-
-        if (this.PartsShape(start, end) is { } shape)
-        {
-            return this.SameShape(start, end, shape) ? PartsConflict.None : PartsConflict.Typed;
-        }
-
-        this.DefaultsType(start, end, scope, out var conflicts);
-        return conflicts ? PartsConflict.Defaults : PartsConflict.None;
-    }
-
-    // The outermost waiting join holding a part (through WaitingJoinOf), below the join forming its Type; null for that join's own part.
-    private Koto? TopWaitingJoin(Koto part)
-    {
-        Koto? top = null;
-        for (var join = this.WaitingJoinOf(part); join is not null; join = this.WaitingJoinOf(join))
-        {
-            top = join;
-        }
-
-        return top;
-    }
-
-    // The waiting join (WaitingResult) to whose position a part or a join belongs (PositionTarget), or null.
-    private Koto? WaitingJoinOf(Koto node) => this.PositionTarget(node, out _) is { } target && this.WaitingResult(target) is not null ? target : null;
-
-    // SPEC 14.9.2 step 3, 10.2: a position of literals takes their defaults' common Type; with no literal, every part is Never.
-    private BoundType? LiteralDefaults(int start, int end, BindingScope scope, ref PartsConflict conflict, ref Koto? cause)
-    {
-        var common = this.DefaultsType(start, end, scope, out var conflicts);
-        if (conflicts)
-        {
-            this.FoundConflict(start, end, scope, PartsConflict.Defaults, ref conflict, ref cause);
-        }
-
+        common = this.DefaultsType(start, end, scope, out var conflicts);
+        conflict |= conflicts ? PartsConflict.Defaults : PartsConflict.None;
         return common;
     }
 
-    // The common Type of the literals' defaults of [start, end) (SPEC 10.2), Never with no part; `conflicts` tells whether they conflict.
+    // SPEC 14.9.2 step 3, 10.2: the common Type of the literals' defaults of [start, end), Never with no part; `conflicts` tells whether
+    // they conflict.
     private BoundType? DefaultsType(int start, int end, BindingScope scope, out bool conflicts)
     {
         conflicts = false;

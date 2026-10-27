@@ -220,14 +220,17 @@ public class NeverContinuationTest
         Assert.Equal(BindingFailure.TypeMismatch, issue.Failure);
     }
 
-    // SPEC 14.9.2 ("a literal result is not fixed before outer constraints"), 23.1.2 (DECISIONS BU-43): a conflict among literal defaults
-    // is decided by the outermost join holding the conflicting literals, once outer constraints are known; that join records it once,
-    // and every join that waited for it rests on that record.
+    // SPEC 14.9.2 step 3 ("a literal result is not fixed before outer constraints"), 23.1.2 (DECISIONS BU-43): a conflict among literal
+    // defaults is the root's, the outermost join of the tree, judged over every position of the flattened tree: one record at the root,
+    // also for two inner conflicts (dev: two, one at each inner join) and beside the root's own typed conflict (dev: one, at the inner
+    // join); every nested join rests on it.
     [Theory]
     [InlineData("let t = if c => (if d => 5 else => 2.5) else => 2.5")]
     [InlineData("let t = if c => (if d => (if c => 5 else => 2.5) else => 2.5) else => 2.5")]
     [InlineData("let t = if c => (if d => (5, (return 1)) else => (2.5, (return 2))) else => ((return 3), a)")]
     [InlineData("let t = if c => (if d => 5 else => 2.5) else => (return 3)")]
+    [InlineData("let t = if c => ((if d => 5 else => 2.5), (if d => 6 else => 3.5)) else => ((return 1), (return 2))")]
+    [InlineData("let t = if c => ((if d => 5 else => 2.5), a, (return 1)) else => ((return 2), true, (return 3))")]
     public void ADefaultsConflictIsRecordedOnceAtTheOutermostJoin(string statement)
     {
         var c = MirBuildTest.Compile(Joins + statement + "\n    return 0\n");
@@ -236,28 +239,25 @@ public class NeverContinuationTest
         Assert.Same(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IfKoto>().First(), issue.Node);
     }
 
-    // SPEC 23.1.2 (DECISIONS BU-43): a waiting join rests on its position only when that join records a conflict found over its own
-    // parts; when the enclosing join fails for another cause, or its formation finds conflicts of two or more joins, the waiting join
-    // decides by itself and its conflict, independent of the other failures, is reported beside them.
+    // SPEC 23.1.2, 14.9.2 step 3 (DECISIONS BU-43): a failed part stops no formation, so a defaults conflict among the other parts of
+    // the tree is still found and is the root's record, beside the other failure's own record (dev: at the inner join), also when the
+    // other failure is a sibling join's own conflict.
     [Theory]
-    [InlineData("let t = if c => (if d => 5 else => 2.5) else => nope", 1)]
-    [InlineData("let t = if c => (if d => 5 else => 2.5) else => missing()", 1)]
-    [InlineData("let t = if c => (if d => 5 else => 2.5) else => id(nope)", 1)]
-    [InlineData("let t = if c => nope else => (if d => 5 else => 2.5)", 1)]
-    [InlineData("let t = if c => ((if d => 5 else => 2.5), (return 1)) else => (nope, (return 2))", 1)]
-    [InlineData("let t = if c => (if d => (5, (return 1)) else => (2.5, (return 2))) else => (if d => (a, a) else => (true, a))", 2)]
-    [InlineData("let t = if c => [(if d => 5 else => 2.5)] else => [nope]", 1)]
-    [InlineData("let t = if c => [\"k\": (if d => 5 else => 2.5)] else => [\"k\": nope]", 1)]
-    [InlineData("let t = if c => (if d => (if c => 5 else => 2.5) else => 2.5) else => nope", 1)]
-    [InlineData("let t = if c => ((if d => 5 else => 2.5), (if d => 6 else => 3.5)) else => ((return 1), (return 2))", 2)]
-    [InlineData("let t = if c => ((if d => 5 else => 2.5), a, (return 1)) else => ((return 2), true, (return 3))", 2)]
-    public void AWaitingJoinsOwnConflictIsReportedBesideAnotherFailure(string statement, int conflicts)
+    [InlineData("let t = if c => (if d => 5 else => 2.5) else => nope")]
+    [InlineData("let t = if c => (if d => 5 else => 2.5) else => missing()")]
+    [InlineData("let t = if c => (if d => 5 else => 2.5) else => id(nope)")]
+    [InlineData("let t = if c => nope else => (if d => 5 else => 2.5)")]
+    [InlineData("let t = if c => ((if d => 5 else => 2.5), (return 1)) else => (nope, (return 2))")]
+    [InlineData("let t = if c => (if d => (5, (return 1)) else => (2.5, (return 2))) else => (if d => (a, a) else => (true, a))")]
+    [InlineData("let t = if c => [(if d => 5 else => 2.5)] else => [nope]")]
+    [InlineData("let t = if c => [\"k\": (if d => 5 else => 2.5)] else => [\"k\": nope]")]
+    [InlineData("let t = if c => (if d => (if c => 5 else => 2.5) else => 2.5) else => nope")]
+    public void ADefaultsConflictBesideAnotherFailureIsTheRootsRecord(string statement)
     {
-        var source = Joins + statement + "\n    return 0\npublic func main() => ()\n";
-        var codes = DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code).ToArray();
-        Assert.Equal(conflicts, codes.Count(static x => x == nameof(DiagnosticCode.TypeMismatch_Kd)));
-        Assert.Equal(statement.Contains("nope") || statement.Contains("missing") ? 1 : 0, codes.Count(static x => x == nameof(DiagnosticCode.UnresolvedBinding_Kd)));
-        Assert.Equal(codes.Length, codes.Count(static x => x is nameof(DiagnosticCode.TypeMismatch_Kd) or nameof(DiagnosticCode.UnresolvedBinding_Kd)));
+        var c = MirBuildTest.Compile(Joins + statement + "\n    return 0\n");
+        var root = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IfKoto>().First();
+        Assert.Equal(2, c.Binding.Issues.Count);
+        Assert.Single(c.Binding.Issues, x => x.Failure == BindingFailure.TypeMismatch && ReferenceEquals(x.Node, root));
     }
 
     // SPEC 23.1.2 (DECISIONS BU-43): an unreadable character literal is bound as `char`, its lexer record standing for it, so a join
