@@ -89,8 +89,6 @@ internal static class IntrinsicRows
         new(IntrinsicId.TestMessage, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Routine, RuntimeAbi.TestMessage),
         new(IntrinsicId.TestRequireAbort, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Routine, RuntimeAbi.TestRequireAbort),
         new(IntrinsicId.TestRecordValue, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Record, RuntimeAbi.TestValue),
-        new(IntrinsicId.TestPhaseEnter, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10b.
-        new(IntrinsicId.TestPhaseLeave, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10b.
         new(IntrinsicId.TestTempDirectory, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Routine, RuntimeAbi.TestTempDirectory),
         new(IntrinsicId.StaticEnsure, IntrinsicTarget.StaticInit, LaysOutType: false, IntrinsicWriter.Ensure, null),
         new(IntrinsicId.Capacity, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Capacity, null),
