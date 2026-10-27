@@ -67,25 +67,42 @@ internal sealed class AdtDef
     internal static int StorageCount(BoundType type)
         => Count(type) + (Base(type) is { } parent ? StorageCount(parent) : 0);
 
-    internal static bool FindField(BoundType type, BindingSymbol? symbol, out BoundType? fieldType, out int position)
+    // SPEC 6.2.2, 11.2.2: the layer of a struct instance that stores a Field: the instance itself or the base instance `depth` Base steps
+    // up, and the Field's own index among that layer's stored Fields; null (depth and index -1) when no layer stores it. The one walk over
+    // a struct's layers by Field: FindField's storage position and the MIR builder's Base steps derive from it.
+    internal static BoundType? FieldOwner(BoundType type, BindingSymbol? symbol, out int depth, out int index)
     {
-        for (var layer = type; layer is not null; layer = Base(layer))
+        depth = 0;
+        for (var layer = type; layer is not null; layer = Base(layer), depth++)
         {
             var fields = Struct(layer)?.Fields;
             for (var i = 0; fields is not null && i < fields.Length; i++)
             {
                 if (ReferenceEquals(fields[i].BoundSymbol, symbol))
                 {
-                    position = i + (Base(layer) is { } parent ? StorageCount(parent) : 0);
-                    fieldType = FieldType(layer, i);
-                    return fieldType is not null;
+                    index = i;
+                    return layer;
                 }
             }
         }
 
-        position = -1;
-        fieldType = null;
-        return false;
+        (depth, index) = (-1, -1);
+        return null;
+    }
+
+    // A Field's storage position, its owning layer's own index after its bases' Fields (base first), and its stored Type in the instance:
+    // false where no layer stores it (position -1) or Binding formed no stored Type for it.
+    internal static bool FindField(BoundType type, BindingSymbol? symbol, out BoundType? fieldType, out int position)
+    {
+        if (FieldOwner(type, symbol, out _, out var index) is not { } layer)
+        {
+            (fieldType, position) = (null, -1);
+            return false;
+        }
+
+        position = index + (Base(layer) is { } parent ? StorageCount(parent) : 0);
+        fieldType = FieldType(layer, index);
+        return fieldType is not null;
     }
 
     internal static bool HasDestructorOnPath(BoundType type, BindingSymbol? field)

@@ -171,35 +171,23 @@ internal sealed partial class MirBuilder
             ? this.body.Project(receiver, MirProjectionKind.Field, (int)element) : this.Field(receiver, HirTables.Symbol(member), member);
     }
 
-    // The stored Field of a symbol in a struct Place (AdtDef.FindField's position), or the value derived from the error of one that has
-    // no Place (Stored).
+    // The stored Field of a symbol in a struct Place, in the layer that stores it (AdtDef.FieldOwner), or the value derived from the error
+    // of one that has no Place (Stored).
     private MirPlace Field(MirPlace receiver, BindingSymbol? field, Koto node)
     {
         var type = this.body.TypeOf(receiver);
-        var position = -1;
-        _ = type is not null && AdtDef.FindField(type, field, out _, out position);
-        return position >= 0 && this.Stored(receiver, type!, position) is { } place ? place : this.Unsupported(node, position >= 0);
+        var (depth, index) = (-1, -1);
+        var layer = type is null ? null : AdtDef.FieldOwner(type, field, out depth, out index);
+        return layer is not null && this.Stored(receiver, layer, depth, index) is { } place ? place : this.Unsupported(node, layer is not null);
     }
 
-    // The Place of the stored Field at a storage position of a struct Place, the bases' Fields first: the Field's own index in the Base
-    // that declares it (the receiver's StorageProjection); none for a Field Binding formed no stored Type for, a value derived from that
-    // error (SPEC 23.1.2).
-    private MirPlace? Stored(MirPlace receiver, BoundType type, int position)
-    {
-        var depth = 0;
-        for (; position < Inherited(type); depth++)
-        {
-            type = AdtDef.Base(type)!;
-        }
-
-        position -= Inherited(type);
-        return AdtDef.FieldType(type, position) is null ? null : this.body.Project(
+    // The Place of the stored Field at an own index of the layer `depth` Base steps up from a struct Place (the receiver's
+    // StorageProjection); none for a Field Binding formed no stored Type for, a value derived from that error (SPEC 23.1.2).
+    private MirPlace? Stored(MirPlace receiver, BoundType layer, int depth, int index)
+        => AdtDef.FieldType(layer, index) is null ? null : this.body.Project(
             depth == 0 ? receiver : this.body.Project(receiver, MirProjectionKind.Base, depth),
             MirProjectionKind.Field,
-            position);
-
-        static int Inherited(BoundType type) => AdtDef.Base(type) is { } parent ? AdtDef.StorageCount(parent) : 0;
-    }
+            index);
 
     // SPEC 4.7.1: the referent of the reference that a subscript's selected call returns, which the selection's published expansion names.
     private MirPlace Referent(Koto node)

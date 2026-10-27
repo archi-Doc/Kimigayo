@@ -989,14 +989,19 @@ public sealed class InstanceCollectorTest
     }
 
     // K 4.5 row 3, S2-S4 X14: a standard property witness's operations are items keyed by the Field, the erased Self and the operation, whose
-    // requirement signatures agree with the key's; a set drops the Field's old value, so its item targets the Field Type's glue.
+    // requirement signatures agree with the key's; a set drops the Field's old value, so its item targets the Field Type's glue. The key's
+    // signature (StorageSignature, the one statement the agreement and the shim's function read) is the requirement's in the instance:
+    // `set(self: uniq/Self, value: Array<i32>) -> ()` and `get(self: ref/Self) -> ref/Array<i32>` (SPEC 11.3.1) on Bag.
     [Fact]
     public void AStandardPropertyWitnessIsItsFieldsShim()
     {
         var c = MirBuildTest.Compile(HeldSource);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var program = c.BuildMir();
-        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        var collector = new InstanceCollector(c.Types, c.Layout);
+        var set = collector.Run(program, 1);
+        Assert.Equal(["()", "uniq/Bag", "Array<i32>"], Signature(Item(program, set, "PropertyWitness Bag StorageSet")));
+        Assert.Equal(["ref/Array<i32>", "ref/Bag"], Signature(Item(program, set, "PropertyWitness Bag StorageBorrow")));
         Assert.Empty(set.Records);
         Assert.Equal(
             ["PropertyWitness Bag StorageSet", "DropGlue Array<i32>", "PropertyWitness Bag StorageBorrow"],
@@ -1004,6 +1009,13 @@ public sealed class InstanceCollectorTest
         Assert.Equal(["DropGlue Array<i32>"], Targets(program, set, "PropertyWitness Bag StorageSet"));
         Assert.Empty(Targets(program, set, "PropertyWitness Bag StorageBorrow"));
         Assert.All(set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.PropertyWitness), static x => Assert.Equal("items", x.Key.Symbol!.Name));
+
+        // The result, then each parameter slot.
+        string[] Signature(int item)
+        {
+            var result = TyCtxt.Name(collector.StorageSignature(item, -1, out var count)!);
+            return [result, .. Enumerable.Range(0, count).Select(slot => TyCtxt.Name(collector.StorageSignature(item, slot, out _)!))];
+        }
     }
 
     // K 4.5 row 2, DECISIONS R5-M30, R5-M70: a call of a function without a body whose published row formats a value (Text.toString,

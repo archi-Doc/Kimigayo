@@ -16,10 +16,9 @@ internal sealed partial class MirBuilder
             this.Initialize(this.body.Project(new(0), MirProjectionKind.Base, 1), baseCall);
         }
 
-        var inherited = AdtDef.StorageCount(self) - AdtDef.Count(self);
         for (var i = 0; i < AdtDef.Count(self); i++)
         {
-            if (AdtDef.Field(self, i) is { InitializerKoto: { } initializer } field && this.Stored(new(0), self, inherited + i) is { } place)
+            if (AdtDef.Field(self, i) is { InitializerKoto: { } initializer } field && this.Stored(new(0), self, 0, i) is { } place)
             {
                 this.Initialize(place, initializer, HirTables.Op(field) != HirOp.Body);
             }
