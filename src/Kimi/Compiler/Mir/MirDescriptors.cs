@@ -186,7 +186,9 @@ internal static class MirDescriptors
         IntrinsicId.TestTempDirectory => Row(MirAccess.None, MirEffect.Environment, 0),
         IntrinsicId.StaticEnsure => Row(MirAccess.None, MirEffect.StaticInit | MirEffect.Abort, 1), // The static's slot (plan 5.6.6).
         IntrinsicId.FormatBuffer => Row(MirAccess.None, MirEffect.Allocation, 3), // The literal bytes, the values' Types' token, the direct mark.
-        IntrinsicId.FormatHint => Row(MirAccess.None, MirEffect.None, 3), // The adapter, then the later literal bytes and values' Types' token.
+        // The adapter and the position's literal text ("" at a value's), then the later literal bytes and values' Types' token; the text's write
+        // may reserve and Abort, as FormatFinish's flush (DECISIONS R5-M133).
+        IntrinsicId.FormatSegment => Row(MirAccess.None, MirEffect.Allocation | MirEffect.Abort, 4),
         IntrinsicId.FormatFinish => Row(MirAccess.None, MirEffect.Allocation | MirEffect.Abort, 4), // The adapter, then FormatBuffer's operands.
         _ => default,
     };

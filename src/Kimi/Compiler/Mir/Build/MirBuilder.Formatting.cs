@@ -11,19 +11,33 @@ internal sealed partial class MirBuilder
 {
     private readonly List<BoundType> formatTypes = []; // The values' Types of the owning interpolations being built, innermost last.
 
-    // The literal bytes a write of an owning interpolation writes (SPEC 22.10.5): a text's (Binding.WritesText), read from its literal; -1
-    // for a value, whose bound its instance decides.
-    private static int Bytes(CallPlan write)
-        => Binding.WritesText(write) ? Encoding.UTF8.GetByteCount(((StringLiteralKoto)write.ArgumentOperations[1].Source!).Literal) : -1;
+    // The literal bytes of a write position (SPEC 22.10.5): its text's (Text) at a literal segment (Binding.WritesText), -1 at a value's,
+    // whose bound its instance decides.
+    private int Bytes(CallPlan write, in MirOperand text)
+    {
+        if (!Binding.WritesText(write))
+        {
+            return -1;
+        }
+
+        return text.Kind == MirOperandKind.Const && this.body.Consts[text.Arg].Value is string literal ? Encoding.UTF8.GetByteCount(literal) : 0;
+    }
+
+    // The literal text of a write position of an owning interpolation (SPEC 3.1, 22.10.3), its FormatSegment's operand: a literal segment's
+    // constant through the one literal rule (Literal), the empty text at a value's position, whose write follows.
+    private MirOperand Text(CallPlan write) => Binding.WritesText(write) ? this.Literal(write.ArgumentOperations[1].Source!)
+        : MirOperand.Const(this.body.Const(new(MirConstKind.String, BoundType.String, Value: string.Empty)));
 
     // SPEC 22.10.3, 22.10.4: the writes of a formatting plan in order (CallPlan.Of), each through an exclusive borrow of its adapter, a failed
     // one leaving them: a $tryWrite's adapter is its writer operand, acquired once and Reborrowed, its status tested before a first segment
     // that is an embedded expression, and a failure goes to its result, the writer's status. An owning interpolation's is the internal adapter
     // (its second call) over an exclusive borrow of the private buffer FormatBuffer
     // gives of the capacity its instance estimates from the literal bytes and the values' Types (5.1), on the stack where it is passed directly to
-    // writeLine and its instance bounds it within the limit (6.1); each write follows FormatHint of the later literal bytes and values' Types, a
-    // failure Aborts with KIMI_E_FORMAT, and FormatFinish ends the adapter and takes the buffer's bytes as the string, which leaves the buffer
-    // empty for its cleanup. The three intrinsics are temporary (owner, 2026-10-11) until R8 writes the internal adapter in Kimigayo.
+    // writeLine and its instance bounds it within the limit (6.1); each write position is a FormatSegment step, the hint of the later literal
+    // bytes and values' Types, then the position's literal text: a literal segment is its step's text and no write (SPEC 22.10.3 passes only
+    // embedded expressions to write; R5-M133), a value's position the empty text, whose write follows, a failure Aborting with KIMI_E_FORMAT;
+    // FormatFinish ends the adapter and takes the buffer's bytes as the string, which leaves the buffer empty for its cleanup. The three
+    // intrinsics are temporary (owner, 2026-10-11) until R8 writes the internal adapter in Kimigayo.
     private void Format(MirPlace destination, Koto node)
     {
         var mark = this.located.Count;
@@ -60,7 +74,7 @@ internal sealed partial class MirBuilder
         {
             for (var i = first; CallPlan.Of(node, i) is { } write; i++)
             {
-                if (Bytes(write) is var count and >= 0)
+                if (this.Bytes(write, this.Text(write)) is var count and >= 0)
                 {
                     bytes += count;
                 }
@@ -83,11 +97,17 @@ internal sealed partial class MirBuilder
         {
             if (first > 0)
             {
-                var count = Bytes(write);
+                var text = this.Text(write);
+                var count = this.Bytes(write, text);
                 var at = this.arguments.Count;
                 (later, values) = count < 0 ? (later, values + 1) : (later - count, values);
                 this.arguments.Add(this.Borrow(SemanticsKind.Uniq, writer, node));
-                this.Estimate(unit, IntrinsicId.FormatHint, later, values, at, node);
+                this.arguments.Add(text);
+                this.Estimate(unit, IntrinsicId.FormatSegment, later, values, at, node);
+                if (count >= 0)
+                {
+                    continue; // A literal segment is its step's text, no write.
+                }
             }
 
             this.Tested(write, done, node, first > 0 ? storage : null, writer);
@@ -134,7 +154,7 @@ internal sealed partial class MirBuilder
             new(
             MirConstKind.TypeToken,
             compilation.Types.Tuple(CollectionsMarshal.AsSpan(this.formatTypes)[from..])))));
-        if (id != IntrinsicId.FormatHint)
+        if (id != IntrinsicId.FormatSegment)
         {
             this.arguments.Add(MirOperand.Const(this.body.Const(new(MirConstKind.Bool, BoundType.Boolean, ExpansionPlan.Of(node)!.Value.Direct ? 1 : 0))));
         }

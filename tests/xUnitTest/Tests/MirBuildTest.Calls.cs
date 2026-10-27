@@ -422,6 +422,50 @@ public sealed partial class MirBuildTest
         Assert.Equal(["status"], failed);
     }
 
+    // SPEC 22.10.3, 22.10.5 (DECISIONS R5-M133): an owning interpolation is one FormatSegment step per write position, the later literal bytes
+    // and values' Types its hint: a literal segment's text is its step's operand and no write, a value's position has the empty text and its
+    // write follows (fail-before: each literal was a write<string> after FormatHint). A $tryWrite's text stays a write (above).
+    [Fact]
+    public void AnOwningInterpolationsLiteralTextIsItsSegmentStep()
+    {
+        var body = Body("func f(n: i32) -> string => \"n=\\(n)!\"\n", "f");
+        var path = new List<string>();
+        for (var block = 0; block >= 0;)
+        {
+            var terminator = body.Blocks[block].Terminator;
+            if (terminator.Kind == MirTerminatorKind.Call)
+            {
+                path.Add(Step(body, terminator));
+            }
+
+            // Along the healthy path: a call's, a goto's or a Drop's target, a Result test's Ok arm.
+            block = terminator.Kind switch
+            {
+                MirTerminatorKind.SwitchInt => Assert.Single(body.Cases.Slice(terminator.Start, terminator.Count).ToArray(), static x => x.Value == 0).Target,
+                MirTerminatorKind.Call or MirTerminatorKind.Goto or MirTerminatorKind.Drop => terminator.Target,
+                _ => -1,
+            };
+        }
+
+        Assert.Equal(
+            ["FormatBuffer", "ErasedWriter", "FormatSegment \"n=\" 1 1", "FormatSegment \"\" 1 0", "write", "FormatSegment \"!\" 0 0", "FormatFinish"],
+            path);
+
+        // An intrinsic by its id, a FormatSegment with its text, later bytes and later values' count; another call by its function's name.
+        static string Step(MirBody body, in MirTerminator call)
+        {
+            if (call.Callee.Kind != MirCalleeKind.Intrinsic)
+            {
+                return call.Callee.Symbol!.Name;
+            }
+
+            var id = (IntrinsicId)call.Callee.Arg;
+            var operands = body.Operands.Slice(call.Start, call.Count);
+            return id != IntrinsicId.FormatSegment ? id.ToString()
+                : $"{id} \"{body.Consts[operands[1].Arg].Value}\" {body.Consts[operands[2].Arg].Bits} {body.Consts[operands[3].Arg].Type.Components.Count}";
+        }
+    }
+
     // A function f of the temporaries' program that runs a statement, built without validator findings.
     private static (Compilation C, MirBody Body) Temporaried(string statement)
     {

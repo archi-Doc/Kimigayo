@@ -134,6 +134,43 @@ public class Utf8InterpolationTest
         NativeAllocationAudit.WriteFixture("Utf8InterpolationNestedHint", Source, 2, 2, 22, "pa0123456789tail\n");
     }
 
+    // SPEC 22.10.5 (DECISIONS R5-M133): MIR code generation defers a segment's literal text exactly when a value follows, so these forms keep
+    // the old generator's allocations and bytes under both generators: the O2 corpus kernel's line (literals before bounded values and a user
+    // formatter reserving twice), a literal before a bounded value after a value that writes nothing, a bounded value before an unbounded
+    // string, and an owning interpolation inside another (fail-before under MIR code generation: C9c's interim record).
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData(
+        "Kernel",
+        "let i = 21@i64\nlet reading = Reading.init(i)\nlet text = \"item \\(i) of \\(reading) is \\(i % 7 == 0)\"\nConsole.writeLine(text)",
+        2,
+        60,
+        "item 21 of Reading(21) is true\n")]
+    [InlineData("EmptyThenBounded", "let text = \"\\(Empty.init())L\\(7@i8)\"\nConsole.writeLine(text)", 1, 2, "L7\n")]
+    [InlineData(
+        "BoundedThenString",
+        "let n = 5@i64\nlet s = \"abcdefghijklmnopqrstuvwxyz0123\"\nlet text = \"x\\(n)\\(s)\"\nConsole.writeLine(text)",
+        2,
+        34,
+        "x5abcdefghijklmnopqrstuvwxyz0123\n")]
+    [InlineData("Nested", "let s = \"abc\"\nlet text = \"<\\(\"[\\(s)]\")>\"\nConsole.writeLine(text)", 2, 12, "<[abc]>\n")]
+    public void DeferredLiteralTextKeepsTheOldGeneratorsAllocations(string name, string statements, int allocations, int bytes, string expected)
+    {
+        const string Formatters = """
+            struct Reading
+                Self is Utf8Format
+                public let number: i64
+                public init(number: i64) => self.number = number
+                public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+                    return $tryWrite(writer, "Reading(\(self.number))")
+            struct Empty
+                Self is Utf8Format
+                public init() => ()
+                public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => .Ok(())
+            """;
+        NativeAllocationAudit.WriteFixture("Utf8InterpolationLiteral" + name, Formatters + "\n" + statements, allocations, allocations, bytes, expected);
+    }
+
     [Fact]
     public void EmbeddedReturnKeepsTheEnclosingFunctionAsItsTarget()
     {

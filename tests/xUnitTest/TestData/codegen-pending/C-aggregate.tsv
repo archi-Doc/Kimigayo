@@ -14,7 +14,6 @@ fixture	ElementReplacementTransferAggregateAudit.ll	1
 fixture	ElementReplacementTransferStringAudit.ll	1
 fixture	FixedArrayCaptureConsumeAudit.ll	1
 fixture	FixedArrayCapturePartialMoveAudit.ll	1
-test	XunitTest.ElementBorrowEmissionTest.SelectedElementPlacesAreBorrowedInPlace	XunitTest.ElementBorrowEmissionTest.SelectedElementPlacesAreBorrowedInPlace(name: \"Interpolation\", source: \"struct Item\\n    public var name: string\\n    public var n: i32\\n    public init(name: string, n: i32)\\n        self.name = name@move\\n        self.n = n\\nvar xs: Array<Item> = [Item.init(\\\"a\\\", 1)]\\nConsole.writeLine(\\\"\\\\(xs[0].name)!\\\")\", stdout: \"a!\\n\")
 test	XunitTest.ElementUpdateEmissionTest.ArithmeticFailurePreventsStoreResultAndCleanup	XunitTest.ElementUpdateEmissionTest.ArithmeticFailurePreventsStoreResultAndCleanup(name: \"Multiply\", type: \"i128\", initial: \"170141183460469231731687303715884105727\", expression: \"a[0] *= 2\", code: \"INT_OVERFLOW\", reason: \"Integer overflow\")
 test	XunitTest.ElementUpdateEmissionTest.ArithmeticFailurePreventsStoreResultAndCleanup	XunitTest.ElementUpdateEmissionTest.ArithmeticFailurePreventsStoreResultAndCleanup(name: \"PostIncrement\", type: \"u128\", initial: \"340282366920938463463374607431768211455\", expression: \"a[0]++\", code: \"INT_OVERFLOW\", reason: \"Integer overflow\")
 test	XunitTest.ElementUpdateEmissionTest.IntegerUpdatesPreserveEveryWidth	XunitTest.ElementUpdateEmissionTest.IntegerUpdatesPreserveEveryWidth(type: \"i128\")
