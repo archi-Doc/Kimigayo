@@ -247,7 +247,9 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
     // names no Type. Each specification on the cycle and its projection keep their InvalidConstraint_Kd records, as each use of the
     // conformance (a parameter's Type, a call's) and the call's NoApplicableOverload_Kd do, and normalizing or storing an instance whose
     // Field projects through it ends; the growing forms overflowed the stack before (ContractTypeCore at the call, KeptType in the MIR).
-    // The old code generator is pinned: sel's collector meets the projection such a rejected program keeps (as on dev).
+    // A Field whose projection names no Type does not substitute (null), so the instance's storage is Rejected, a dependent of the
+    // specification's record (SPEC 23.1.2, DECISIONS BU-38): the analysis, and on sel the collector, add no record (before, sel's `check`
+    // added CheckFaulted_Kd, "Layout has no row for the Type Item").
     [Theory]
     [InlineData("struct A\n    Self is HasItem\n    associate HasItem.Item is A.Item\n", "A", "A.Item")]
     [InlineData("struct A\n    Self is HasItem\n    associate HasItem.Item is B.Item\nstruct B\n    Self is HasItem\n    associate HasItem.Item is A.Item\n", "A", "B.Item,A.Item")]
@@ -258,12 +260,16 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
         var source = "contract HasItem\n    associate Item\nstruct HA<S>\n    S is HasItem\n    var x: S.Item\n" +
             "    public init(x: S.Item) => self.x = x@move\n" + declarations + $"func f(h: HA<{subject}>) => ()\npublic func main() -> ()\n" +
             $"    var h = HA<{subject}>.init(null)\n    return\n";
-        var c = MinimalEmissionTest.Analyze(source, codegen: CompilerCodegen.Legacy);
+        var c = MinimalEmissionTest.Analyze(source);
         var use = $"InvalidConstraint_Kd HA<{subject}>";
         Assert.Equal(
             [.. specifications.Split(',').SelectMany(static x => (string[])[$"InvalidConstraint_Kd associate HasItem.Item is {x}", $"InvalidConstraint_Kd {x}"]),
                 use, use, $"NoApplicableOverload_Kd HA<{subject}>.init(null)", use],
             c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}"));
+        Assert.Empty(c.Problems);
+        Assert.Empty(c.Instances?.Records ?? []);
+        var holder = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters[0].Type.TypeOf()!;
+        Assert.Equal((Binding.StorageOutcome.Rejected, null), (c.Binding.PrepareTypeStorage(holder), c.Types.StoredParts(holder, out _)[0]));
         Assert.Empty(c.BuildMir().Findings);
     }
 

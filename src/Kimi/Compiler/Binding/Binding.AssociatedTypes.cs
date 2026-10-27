@@ -555,10 +555,12 @@ public sealed partial class Binding
     // array's iterator Type, complete (`subject` null); or a struct or enum subject's conformance binding of the associated Type in the
     // subject declaration's terms (ResolveAssociated; an inherited conformance's under the base clause's arguments), the associated Type's
     // Origin parameters bound to the projection's arguments, for the caller to instantiate under `subject`: as a view (ContractTypeCore)
-    // or as a kept part (CompleteProjections, DECISIONS BU-50). Null where the subject is abstract or its conformance binds nothing.
-    private BoundType? ProjectionSpecification(BoundType projection, BindingScope scope, out BoundType? subject)
+    // or as a kept part (CompleteProjections, DECISIONS BU-50). Null where the subject is abstract or its conformance binds nothing, and
+    // then `rejected` where Binding rejected that binding (SPEC 8.3.3: revisited while it was being resolved, or conflicting), so the
+    // projection names no Type: a dependent of that record (SPEC 23.1.2).
+    private BoundType? ProjectionSpecification(BoundType projection, BindingScope scope, out BoundType? subject, out bool rejected)
     {
-        subject = null;
+        (subject, rejected) = (null, false);
         if (this.BuiltinArithmeticOutput(projection, scope) is { } numericOutput)
         {
             return numericOutput;
@@ -569,8 +571,9 @@ public sealed partial class Binding
             return fixedIterator;
         }
 
+        var qualifier = projection.Components.Count == 2 ? projection.Components[1] : null;
         if (projection.Components[0] is not { Symbol.Declaration: StructKoto or EnumKoto } receiver ||
-            this.ResolveAssociated(receiver, projection.Symbol!, scope, projection.Components.Count == 2 ? projection.Components[1] : null) is not { } binding)
+            this.ResolveAssociated(receiver, projection.Symbol!, scope, qualifier, out rejected) is not { } binding)
         {
             return null;
         }
@@ -580,14 +583,18 @@ public sealed partial class Binding
     }
 
     // `qualifier` is the declaring Contract reference of the projection (SPEC 8.6.1); a bound reference of a Contract with Type
-    // arguments selects that conformance, and a Contract without them has one conformance per Type.
-    private BoundType? ResolveAssociated(BoundType receiver, BindingSymbol associated, BindingScope scope, BoundType? qualifier = null)
+    // arguments selects that conformance, and a Contract without them has one conformance per Type. `rejected`: a null result rests on a
+    // binding Binding rejected (BindingRejected).
+    private BoundType? ResolveAssociated(BoundType receiver, BindingSymbol associated, BindingScope scope, BoundType? qualifier, out bool rejected)
     {
+        rejected = false;
         for (var current = scope; current is not null; current = current.Parent)
         {
             if (current.ConformancePath is { } path && ReferenceEquals(path.Type, receiver.Symbol) && this.AssociatedInPath(path, receiver, associated, qualifier) is { } selected)
             {
-                return this.ResolveAssociated(path, selected);
+                var resolved = this.ResolveAssociated(path, selected);
+                rejected = resolved is null && this.BindingRejected(path, selected);
+                return resolved;
             }
         }
 
@@ -609,8 +616,14 @@ public sealed partial class Binding
                 return null;
             }
 
-            if (condition == ConstraintProof.Refuted || this.AssociatedInPath(path, receiver, associated, qualifier) is not { } selected || this.ResolveAssociated(path, selected) is not { } binding)
+            if (condition == ConstraintProof.Refuted || this.AssociatedInPath(path, receiver, associated, qualifier) is not { } selected)
             {
+                continue;
+            }
+
+            if (this.ResolveAssociated(path, selected) is not { } binding)
+            {
+                rejected |= this.BindingRejected(path, selected);
                 continue;
             }
 
@@ -632,6 +645,11 @@ public sealed partial class Binding
         // The separately retained projection obligation must still prove conformance at finalization.
         return available ?? (conflicting ? null : pending);
     }
+
+    // Whether Binding rejected a root conformance binding in this pass (ResolveAssociated's state 3: conflicting specifications, or one
+    // revisited while it was being resolved, SPEC 8.3.3); its specification has the record.
+    private bool BindingRejected(BoundConformancePath path, BoundRequirement associated)
+        => path.InheritedFrom is null && this.associatedBindings.TryGetValue((path.RootPath, associated), out var binding) && binding.State == 3;
 
     // The one conformance of `owner` whose bound reference, instantiated for `receiver` (`Indexable<K>` of `Keyed<isize>`),
     // reaches `qualifier` as the declaring reference of `associated`.

@@ -7220,8 +7220,9 @@ resumed by R4-M86 (2026-10-20).
 
 - **BU-50 A stored part's Type under an instance has one producer, which completes its associated projections: `Binding.KeptType`,
   `CompleteProjections`, `ProjectionSpecification`; a binding revisited while it is being resolved names no Type** (2026-10-27; the BU
-  planning session; PLAN G271, unit bu53 and its fix round 1 after the implementation review's REVISE (B1–B3, N1–N4); class Major, one
-  rule across the stored-part producers; design note `bu/g271/design.md`, fix brief `bu/g271/fix-round-1.md`) SPEC 8.6.1, 8.2.3, 5.7
+  planning session; PLAN G271, unit bu53 and its fix rounds 1 (the implementation review's REVISE: B1–B3, N1–N4) and 2 (the re-check:
+  B3′, G158's interaction); class Major, one rule across the stored-part producers; design note `bu/g271/design.md`, fix briefs
+  `bu/g271/fix-round-1.md`, `fix-round-2.md`) SPEC 8.6.1, 8.2.3, 5.7
   Calls: `HA<S> { x: S.Item }` as `HA<Src>`, Src binding `Item` to `raw/u8`, stores a layer Src's declaration writes and no
   parameter's Type expression writes (5.7's positive clause; both designs of U0's revision read it so, no SPEC gap). `Substitute`
   kept `Src.Item`: `SubstituteTypeCore` substitutes a projection's subject but never completes it, and only use sites normalize one
@@ -7247,23 +7248,34 @@ resumed by R4-M86 (2026-10-20).
   - Clarification of BU-46 (not a departure): "an abstract part kept as written" reads "after KeptType completed its completable
     projections"; BU-46's meaning stands (a declaration's written layers marked, an argument's layer keeping its mark), and
     `WithUnstatedOrigins` keeps its one call site.
-  - One producer (B3): `StoredType(syntax, owner)`, every reader's stored part (a member access's Type, Binding.Expressions; a Case
-    payload's construction and pattern read; inline layout, C layout, zero stride, Copy's derivation, borrow retention, destruction,
-    keepers' referents, the old enum analysis, ObjectGenerationPlan), is `ReadType`: the kept part with its Unstated marks removed
-    (`WithoutUnstated`, WithUnstatedOrigins' inverse), so a body reads the one producer's completed Type and no MIR local states
-    Unstated; AdtDef's view stays the kept part WithoutRawOrigins. `StoredType(BoundType, owner)`, the plain substitution, remains for
-    Types that are no stored part (Contract references, declaring Types, signatures).
+  - One producer (B3, fix round 2's B3′): every reader of a stored part's Type under an instance reads `PartType`, the kept part with
+    its Unstated marks removed (`WithoutUnstated`, WithUnstatedOrigins' inverse), so a body reads the one producer's completed Type and
+    no MIR local states Unstated; AdtDef's view stays the kept part WithoutRawOrigins. Its readers: `StoredType(syntax, owner)` (a Case
+    payload's construction and pattern read, inline layout, C layout, zero stride, Copy's derivation, borrow retention, destruction,
+    the old enum analysis, ObjectGenerationPlan), a member access's Type (Binding.Expressions), a synthesized stored-Field read and a
+    stored witness's Field (Binding.PropertyWitnesses, Binding.PropertyMatching), a base part under an instance for member lookup
+    (Binding.MemberLookup) and keepers' referents. `StoredType(BoundType, owner)`, the plain substitution, remains for Types that are
+    no stored part: Contract references and declaring Types (BoundContracts, ConditionalConformances, InheritedConformances'
+    conformance paths, RequirementInstances, RequirementWitness, Formatting, ArithmeticOperators), signatures and callable members
+    (MemberType, ProjectCallableType, Structs' constructor patterns), formation Types (AssociatedOrigins), the component summaries'
+    projection walk and the resolver's own instantiation (ContractTypeCore, the inherited binding arm).
+  - Rejected storage (fix round 2; SPEC 23.1.2, DECISIONS BU-38): a projection whose binding Binding rejected (state 3, which
+    `ProjectionSpecification` reports as `rejected`) names no Type, so the kept part does not substitute (null) and the instance's
+    storage is `StorageOutcome.Rejected`, a dependent of the specification's record: the collector reads it as one (no generation
+    record), so cycle1, cycle2, grow and grow2 keep exactly Binding's records on sel, as G158's collector at every `check` needs.
   - Termination (B1): SPEC 8.3.3 Recursion: `ResolveAssociated(path, associated)` marks a binding revisited while it is being resolved
     (state 4) and, when its Type stays pending through that revisit, gives it no Type (`A.Item is A.Item`, a cycle through another
     binding, `G<T> { Item is G<G<T>>.Item }`, `A<T>.Item is B<A<T>>.Item` with `B<T>.Item is A<T>.Item`). Such a Type was never stored
     (a pending Type is no conformance binding), so the records stay those the proofs give (InvalidConstraint_Kd at the specification,
     its projection and each use); completion and ContractTypeCore stop at the projection instead of expanding it (both overflowed the
     stack before, ContractTypeCore on dev too). No Type-set guard remains: every cycle of bindings revisits one of them.
-  - Removes: the three faults above, the two false errors, the per-query uncompleted reads, and unit bu53's first (projection, scope)
-    re-entry set (its cold +72 B).
-  - Not covered: a program Binding rejects keeps a projection that names no Type, which sel's collector still meets ("Layout has no row
-    for the Type Item", CheckFaulted_Kd beside the Binding records, as on dev); assigning a base Field whose base clause names its Type
-    through a projection in the derived constructor is InvalidAssignment_Kd (pre-existing on dev, another cause).
+  - Removes: the three faults above, the two false errors, the per-query uncompleted reads, sel's CheckFaulted_Kd beside a rejected
+    specification's records, and unit bu53's first (projection, scope) re-entry set (its cold +72 B).
+  - Not covered (PLAN G278, pre-existing on dev, another cause): a projection-typed witness (`W<S> { Self is Holds; associate Holds.E
+    is S.Element; var item: S.Element }`, also through a base `Leaf<S> : Base<S.Element>`) is UnprovenConstraint_Kd, and a derived
+    constructor initializing a base Field whose base clause names its Type through a projection (`DerF : BaseF<Src2<raw/u8>.Item>`,
+    `self.f = null`) is UnresolvedBinding_Kd and InvalidAssignment_Kd while its twin `BaseF<raw/u8>` is valid. (`DerF : BaseF<Src2<i32>.
+    Item>` without a base constructor errs as its twin `BaseF<i32>` does, SPEC 6.3.6: no false error.)
   - Rejected: completing in `SubstituteTypeCore` (every substitution pays it, and the mark forms only in `KeptType`); normalizing the
     kept part afterwards by `ContractType` (it instantiates the binding by `StoredType`, without the mark, so Src's `raw/u8` would read
     as the parameter's); marking inside a projection's subject and Contract arguments instead of completing first (a second rule beside

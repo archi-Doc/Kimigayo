@@ -70,7 +70,7 @@ public sealed partial class Binding
 
             try
             {
-                if (result.Kind == BoundTypeKind.AssociatedProjection && this.ProjectionSpecification(result, scope, out var subject) is { } specified)
+                if (result.Kind == BoundTypeKind.AssociatedProjection && this.ProjectionSpecification(result, scope, out var subject, out _) is { } specified)
                 {
                     // A container substitution can expose another associated projection (Wrapper<S>.Element -> S.Element). Normalize
                     // that identity too; the active query above still guards recursive specifications.

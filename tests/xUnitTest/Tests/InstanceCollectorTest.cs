@@ -244,6 +244,7 @@ public sealed class InstanceCollectorTest
             const string Zero = "contract Zero\n    func zero() -> i32\nfunc call<T>() -> i32\n    T is Zero\n    return T.zero()\nstruct Bad\n    Self is Zero\n    public var m: Missing\n";
             const string Format = "    Self is Utf8Format\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write(1)\n";
             const string Named = "contract Named\n    func name(self: ref/Self) -> i32\nfunc call<T>(x: ref/T) -> i32\n    T is Named\n    return x.name()\nstruct Bad\n    Self is Named\n";
+            const string NoType = "contract HasItem\n    associate Item\nstruct A\n    Self is HasItem\n    associate HasItem.Item is A.Item\nstruct HA<S>\n    S is HasItem\n    var x: S.Item\n";
             var b65 = Nest("B", 65, "i32");
             return new()
             {
@@ -260,6 +261,7 @@ public sealed class InstanceCollectorTest
                 { "replace", Bad + "func g(slot: uniq/Option<Bad>) => Kimi.Intrinsics.replace(slot, with: .None)\n", "UnresolvedBinding_Kd", string.Empty },
                 { "replaceGeneric", Bad + "func put<T>(slot: uniq/Option<T>) => Kimi.Intrinsics.replace(slot, with: .None)\nfunc g(slot: uniq/Option<Bad>) => put(slot)\n", "UnresolvedBinding_Kd", string.Empty },
                 { "row", Bad + "struct Sx\n    public var x: Array<Bad>\nfunc g(s: uniq/Sx) => s.x.reserve(1)\n", "UnresolvedBinding_Kd", string.Empty },
+                { "noType", NoType + "func g(b: HA<A>) => ()\n", "InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty },
                 { "limitBesideError", Inspect + Box + $"func h(b: ref/{b65}) => inspect(b)\nfunc other() -> i32 => missing\n", "UnresolvedBinding_Kd", "Unsupported_Kd inspect(b)" },
                 { "limitBesideField", Inspect + Box + $"struct Bad\n    public var m: Missing\n    public var big: {b65}\nfunc h(b: ref/Bad) => inspect(b)\n", "UnresolvedBinding_Kd", "Unsupported_Kd inspect(b)" },
                 { "limitAfterLocal", Box + $"struct Bad<T>\n    public var v: T\n    public var m: Missing\nfunc two<T>(a: ref/Bad<T>, b: ref/{Nest("B", 65, "T")}) => ()\nfunc g(x: ref/Bad<i32>, y: ref/{b65}) => two(x, y)\n", "UnresolvedBinding_Kd", "Unsupported_Kd two(x, y)" },
@@ -575,7 +577,8 @@ public sealed class InstanceCollectorTest
     // SPEC 23.1.2, 23.1.1 (DECISIONS BU-38): a part Binding rejected is a dependent, never a limit. A program whose instance, composed
     // substitution or bodyless callee's parameter rests on storage Binding rejected keeps exactly its Binding record and gains no generation
     // record (before: the storage-nesting gap at the requesting call, C8d's LegacyRow item InternalInvariant_Kd), while a Type nested past the
-    // bound keeps the gap at its site, beside a failed part in either order too: the limit wins.
+    // bound keeps the gap at its site, beside a failed part in either order too: the limit wins. A Field whose projection names no Type,
+    // its specification rejected by SPEC 8.3.3 (noType, DECISIONS BU-50), is such a part (before: Layout's "no row for the Type Item").
     [Theory]
     [MemberData(nameof(RejectedCases))]
     public void APartBindingRejectedIsNoGenerationRecord(string name, string source, string issues, string records)
