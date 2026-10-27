@@ -107,8 +107,8 @@ rules that result from them.
     record area sizes. Structure limits, closed vocabularies and ratchets are unchanged.
   - Adopted: code is consistent, short and fast, in that order, replacing Q4's "coherence, then net size, then
     compilation speed" with the same order; "fast" covers generated code as well as compilation.
-  - Adopted: two independent designs, a design review and a final review only for a change to a shared representation
-    or across phases; any other change gets one review before completion, covering its design.
+  - Adopted: two independent designs, a design review and a final review (that flow superseded by Q11) only for a change
+    to a shared representation or across phases; any other change gets one review before completion, covering its design.
   - Reason: the caps, forecasts and per-unit allowances added owner gates without improving the code, and every
     non-local change paying two reviews slowed small units (R4-M33).
 - **Q6 Lighter review forms and short commit records** (2026-10-17, owner; AGENTS "Review weight", moved to WORKFLOW by Q10,
@@ -178,9 +178,10 @@ rules that result from them.
     REVISE (fixed within the approved design) and REJECT (the cause analysis or the design is revised). A fix starts from
     the reviewed change without keeping a wrong structure. Implementer and reviewer continue; a repeated review covers the
     previous findings, the diff and what it affects. Reviews accumulate per unit, separately for design and implementation;
-    two sharing a cause redo the cause analysis; a third without ACCEPT holds the unit for the owner. A specification
-    contradiction, a significant measured slowdown or a simplification by unifying concepts suspends the unit for the
-    owner. Completion checks run on the final inputs, reusing evidence for the same inputs, configuration and coverage.
+    two sharing a cause redo the cause analysis; a third without ACCEPT holds the unit for the owner (superseded by Q11).
+    A specification contradiction, a significant measured slowdown or a simplification by unifying concepts suspends the
+    unit for the owner. Completion checks run on the final inputs, reusing evidence for the same inputs, configuration and
+    coverage.
   - Supersedes: AGENTS' "A rejected design or diff is redone, not patched; after two rounds on one family of findings, the
     owner chooses between a representation, a whitelist and a hold", that clause of Q4 and its restatement in R4-M119.
   - Reason: a repeated round cost as much as the first: fresh agents re-read the context, the reviewer re-reviewed the
@@ -188,6 +189,41 @@ rules that result from them.
   - Rejected: a design review for every Major change (Q5's reason, slower small units, still holds, and the saving is
     unmeasured); bounding REVISE by the Minor definition (a fix the approved design prescribes may still add a branch);
     resetting the count on a design revision (the bound would never apply); a review count as a reason to ACCEPT.
+
+- **Q11 Full changes by shared acceptance tests and two candidates; a unit that does not converge goes to the owner**
+  (2026-10-27, owner; [WORKFLOW](WORKFLOW.md) "Full changes", "Repeated reviews" and "Owner decisions").
+  - Adopted (the owner, verbatim: 「そのように、WORKFLOW.mdを修正してください。いずれの場合も収束しない場合は、一時作業を停止して、
+    オーナーに対応を質問するようにしてください。」, after 「G216 (a) の作り直しで試す」 and the owner's proposal of a design-first and
+    an implementation-first lane): a Full change is a problem statement; shared acceptance tests written first by an author of
+    neither candidate and checked by the planning session; two candidates written independently on their own branches from one
+    base (design-first, whose design passes a structure check after at most one revision; prototype-first, with a design note
+    after), each ending when it passes the counted tests or reports the rows it cannot pass; a choice among the candidates that
+    qualify (every counted test, no baseline regression, the owning components; then size and cost); and an implementation
+    review of the chosen one under the usual verdicts and counts. Minor, Major and Owner changes keep their flow. In every class a
+    unit does not converge when two reviews' blocking findings share a cause or a third design or implementation review does not
+    ACCEPT, and a Full change also when no candidate qualifies or the choosing sessions disagree; the unit is then suspended,
+    and the owner is asked with the cause analysis one level higher, the options and a recommendation. This restores in
+    substance Q4's "two rounds on one family go to the owner".
+  - Concurrency: a Full change's two candidates are one unit. They count as two implementers under R4-M119 and R5-M113, and
+    "their files disjoint" does not apply between them, since only one merges; "at most one unit changing a shared
+    representation at a time" counts them once. R4-M119's and R5-M113's "Unchanged: the full process" now reads as this flow.
+    They are called candidates so that "lane" keeps its sense of a work lane.
+  - Supersedes: Q5's "two independent designs, a design review and a final review" (its scope, a change to a shared
+    representation or across phases, stands); Q10's "two sharing a cause redo the cause analysis; a third without ACCEPT holds
+    the unit for the owner" (either signal now suspends the unit for the owner, instead of a cause analysis the planning session
+    redoes alone); WORKFLOW's Full flow "Two independently written designs → choice → design review → implementation → final
+    review".
+  - Reason: G216 (a)'s revision 2 ran a third round after two reviews had shown one cause (checks beside the owning components),
+    and its choice was made between design texts while the defects showed only in code and probes.
+  - Cost: a Full unit takes both implementer slots and a test author, the cost R4-M119's reason names; the owner chose the
+    flow for Full changes only.
+  - Rejected: the two-candidate flow for Major changes (two implementations and the test-first step cost more than they save
+    for a local change); keeping the planning session's redo of the cause analysis without the owner (it let a third round run
+    on a known shared cause); calling the candidates lanes (one name for two concepts).
+  - Units in flight (the planning session's reading, reported to the owner): a Full unit whose choice between designs was made
+    before this entry finishes under the flow it started in; a Full unit with designs written but no choice made keeps one
+    written design as its design-first candidate (G216 (a); BU's G206 B); the rule on units that do not converge applies at
+    once, counting the reviews already made.
 
 - **G138-1 Native execution and verification evidence ownership** (2026-10-24; planning session, independent designs A/B and
   independent pre-code review). G138 needs execution progress distinguished from scheduling delay and missing observations
