@@ -157,7 +157,7 @@ public sealed partial class Binding
     }
 
     // The catalog's context-dependent premises from `from` outward (for a request, its use): associated formation and requirements
-    // (R4), the inputs (R2) and result (R3) of each enclosing signature, a computed or requirement Property's header being its getter's
+    // (R4), the inputs (R2, a Closure's call receiver among them) and result (R3) of each enclosing signature, a computed or requirement Property's header being its getter's
     // result (SPEC 11.4), and the clauses of each established enclosing declaration (R1).
     // Then every borrowed complete local Place among the graph's expressions adds its stored Origins (R5), including Places
     // that those Origins introduce, so the closure applies R5 at every expression it reaches.
@@ -183,6 +183,11 @@ public sealed partial class Binding
                     {
                         this.AddTypePremises(environment, input, OriginPremiseRule.Input);
                     }
+                }
+
+                if (signature is FunctionKoto { IsAnonymous: true, ClosureStorage: { } plan } literal)
+                {
+                    this.AddReceiverPremises(environment, literal, plan);
                 }
 
                 // SPEC 15.3.7: the result Type's intrinsic well-formedness is a premise of the definition (Binding.ResultPremises.cs).
@@ -244,6 +249,31 @@ public sealed partial class Binding
             var a = this.SubstituteStoredOrigin(relation.Longer, associated.Declaration, arguments);
             var b = this.SubstituteStoredOrigin(relation.Shorter, associated.Declaration, arguments);
             this.AddPremise(environment, a, b, relation.Equality, OriginPremiseRule.Associated);
+        }
+    }
+
+    // SPEC 15.6.1, 15.8.2 (DECISIONS R4-M152, PLAN G270): R2 of a Closure's call receiver `R/Env during ρ`, input 0 of its contract
+    // (R4-M148): its body may assume the receiver's Type well formed. Each environment binding's Type is (AddTypePremises), and under a
+    // borrowed receiver every Origin stored in one outlives ρ; under `owner/Self` the receiver is the environment by value, with no layer.
+    // The bindings are the components EnvironmentType interns, read here because BindConcreteClosure publishes EnvironmentType only
+    // after it judges the pending relations, the first judge that needs them. Before classification ρ is pending (DECISIONS R4-M133),
+    // so a relation naming it waits and no edge is needed; a Borrow of a binding, `env_i`, resolves to ρ at its use (PremiseNode).
+    private void AddReceiverPremises(OriginPremiseEnvironment environment, FunctionKoto literal, BoundClosure closure)
+    {
+        var receiver = closure.Classified && closure.Receiver != SemanticsKind.Owner
+            ? this.PremiseNode(environment, this.OriginAtom(literal, OriginKind.Projection, ClosureValueSlot)) : -1;
+        for (var i = 0; i < closure.Captures.Count; i++)
+        {
+            if (closure.Captures[i].Environment.Type is not { } binding)
+            {
+                continue;
+            }
+
+            this.AddTypePremises(environment, binding, OriginPremiseRule.Input);
+            if (receiver >= 0)
+            {
+                this.AddStoredPremises(environment, binding, receiver, OriginPremiseRule.Input, false);
+            }
         }
     }
 

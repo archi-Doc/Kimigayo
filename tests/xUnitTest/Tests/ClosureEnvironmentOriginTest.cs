@@ -99,6 +99,15 @@ public class ClosureEnvironmentOriginTest
 
     private const string Consume = "func consumeText(value: string) => ()\n";
 
+    // An exclusive input whose clause is its own well-formedness, so a call judges `a outlives b` at its principal solution.
+    private const string ExclusiveClause = "func fu(x: uniq/(ref/i32 during a) during b)\n    origin a outlives b\n    _ = x\n";
+
+    private const string TwoCaptures = "func use(p: ref/i32) -> i32\n    let a = p\n    let b = p\n";
+
+    private const string IndependentCaptures = "func use(p: ref/i32, q: ref/i32) -> i32\n    let a = p\n    let b = q\n";
+
+    private const string CallF = "    f()\n    return 0\n";
+
     private const string Resource = "struct Resource\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc makeResource() -> Resource => Resource.init(1)\n" +
         "func consume(r: Resource) => ()\n";
 
@@ -548,8 +557,11 @@ public class ClosureEnvironmentOriginTest
 
     // The valid twins (DECISIONS R4-M126 §1): under `owner/Self` ρ is no borrow, so a Reborrow through a captured reference keeps its Origin
     // (t4e, t4f, the Consuming outer of n2b, a result over it, which ρ never makes call-local); a nested exclusive slot entry, a Consuming
-    // body's nested entry and SPEC 7.7.3's example; D-13's three forms under Shared and Exclusive receivers (the receiver's well-formedness
-    // is no row: no premise is missing); a nested bare entry of a pair capture, whose binding meets ρ on the pair layer's outer slot.
+    // body's nested entry and SPEC 7.7.3's example; D-13's three forms under Shared and Exclusive receivers; a nested bare entry of a pair
+    // capture, whose binding meets ρ on the pair layer's outer slot. A call whose relations need the receiver's well-formedness, `p outlives
+    // ρ` (SPEC 15.6.1, 15.8.2; DECISIONS R4-M152, PLAN G270: a premise of the body, R2 of its receiver input): an exclusive input with its
+    // clause (also in a nested Closure and through a local Reborrow), and the contextual parts over a captured Borrow that a call judging
+    // every position of its inputs reaches (G216 (a)'s probes r03-r06, s04).
     [Theory]
     [InlineData(Consume + LocalView + "    let t = \"a\"\n    let c = func [u, t@move] () -> uniq/i32 during u\n        consumeText(t@move)\n        return u\n    return 0\n")]
     [InlineData(Consume + LocalView + "    let t = \"a\"\n    let c = func [u@move, t@move] () -> uniq/i32 during u\n        consumeText(t@move)\n        return u\n    return 0\n")]
@@ -575,11 +587,51 @@ public class ClosureEnvironmentOriginTest
         "            let local = value\n            _ = local\n        g()\n    h()\n")]
     [InlineData("func use<s/T>(value: s/T) -> ()\n    s is ref or uniq\n    T is Copy\n    var h = func [value] () -> ()\n        var g = func [value] () -> ()\n" +
         "            let local = value\n            _ = local\n        g()\n    h()\n")]
+    [InlineData(ExclusiveClause + "func use(p: ref/i32) -> i32\n    let a = p\n    var c = func [var a] () -> ()\n        fu(a@uniq)\n    c()\n    return 0\n")]
+    [InlineData(ExclusiveClause + "func use(p: ref/i32) -> i32\n    let a = p\n    var c = func [var a] () -> ()\n        var d = func [var a] () -> ()\n" +
+        "            fu(a@uniq)\n        d()\n    c()\n    return 0\n")]
+    [InlineData(ExclusiveClause + "func use(p: ref/i32) -> i32\n    let a = p\n    var c = func [var a] () -> ()\n        let r = a@uniq\n        fu(r)\n    c()\n    return 0\n")]
+    [InlineData("func same3<T>(x: Option<ref/T during c>, y: ref/T during c) => ()\n" + TwoCaptures + "    let f = func [a, b] () -> ()\n        same3(.Some(a@ref), b@ref)\n" + CallF)]
+    [InlineData("func swap3<T>(x: Option<uniq/T during c>, y: uniq/T during c) => ()\n" + TwoCaptures + "    var f = func [var a, var b] () -> ()\n" +
+        "        swap3(.Some(a@uniq), b@uniq)\n" + CallF)]
+    [InlineData("func same4<T>(x: (ref/T during c, Option<ref/T during c>), y: ref/T during c) => ()\n" + TwoCaptures + "    let f = func [a, b] () -> ()\n" +
+        "        same4((a@ref, .None), b@ref)\n" + CallF)]
+    [InlineData("func same5<T>(x: [2 of Option<ref/T during c>], y: ref/T during c) => ()\n" + TwoCaptures + "    let f = func [a, b] () -> ()\n" +
+        "        same5([.Some(a@ref), .None], b@ref)\n" + CallF)]
+    [InlineData("func same9<T>(x: [2 of (ref/T during c, Option<ref/i32 during c>)]) => ()\n" + TwoCaptures + "    let f = func [a, b] () -> ()\n" +
+        "        same9([(a@ref, .None), (b@ref, .None)])\n" + CallF)]
     public void AReceiverContainmentTheBodyNeedsNotStaysValid(string function)
     {
         foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
         {
             Assert.Empty(ContextualCaptureTest.PublishedRecords(function + "public func main() => ()\n", pipeline));
+        }
+    }
+
+    // The receiver's well-formedness (DECISIONS R4-M152, PLAN G270) gives only that each Origin stored in the environment outlives ρ: two
+    // captured references of independent Origins are not equal (`swap` and `swap3` instantiate one `T`), and a Borrow of a Closure local
+    // stored into an environment binding does not outlive that binding's Origin. Each keeps its record on both pipelines.
+    [Theory]
+    [InlineData(
+        "func swap<T>(x: uniq/T, y: uniq/T) => ()\n" + IndependentCaptures + "    var c = func [var a, var b] () -> ()\n        swap(a@uniq, b@uniq)\n" +
+            "    c()\n    return 0\n",
+        "b@uniq")]
+    [InlineData(
+        "func swap3<T>(x: Option<uniq/T during c>, y: uniq/T during c) => ()\n" + IndependentCaptures + "    var c = func [var a, var b] () -> ()\n" +
+            "        swap3(.Some(a@uniq), b@uniq)\n    c()\n    return 0\n",
+        "a@uniq")]
+    [InlineData(
+        ExclusiveClause + "func use(p: ref/i32) -> i32\n    let a = p\n    var c = func [var a] () -> ()\n        let local: i32 = 1\n" +
+            "        var l = local@ref\n        fu(l@uniq)\n        a = l\n    c()\n    return 0\n",
+        "l\n")]
+    public void TheReceiversWellFormednessProvesOnlyItsStoredOrigins(string function, string at)
+    {
+        var source = function + "public func main() => ()\n";
+        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
+        {
+            var records = ContextualCaptureTest.PublishedRecords(source, pipeline);
+            Assert.Contains(records, x => x.Code is nameof(DiagnosticCode.UnprovenOriginRelation_Kd) or nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) &&
+                source[x.Span.Start..].StartsWith(at, StringComparison.Ordinal));
         }
     }
 
