@@ -308,15 +308,14 @@ public sealed partial class Binding
             return;
         }
 
-        if (this.StoredSlot(inner, use, out var slot) is { } origin && !OriginOutlives(origin, outer))
+        if (this.StoredSlot(inner, use, out var slot) is { } stored && this.EscapingPart(stored) is { } origin && !OriginOutlives(origin, outer))
         {
             this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, origin, outer, Discharge: discharge, Condition: condition | RequiredCondition(slot)));
         }
 
         for (var i = 0; i < inner.OriginArguments.Count; i++)
         {
-            var argument = inner.OriginArguments[i];
-            if (!OriginOutlives(argument, outer))
+            if (this.EscapingPart(inner.OriginArguments[i]) is { } argument && !OriginOutlives(argument, outer))
             {
                 this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, argument, outer, Discharge: discharge, Condition: condition));
             }
@@ -326,6 +325,32 @@ public sealed partial class Binding
         {
             this.RetainInnerOutlives(inner.Components[i], outer, use, condition: condition);
         }
+    }
+
+    // PROTO G216a d2 (SPEC 15.3.4: inner per-call Origins cannot escape their binder): the part of a stored Origin that a Type holding a
+    // nested signature stores, without that signature's own per-call Origins; null when nothing is left.
+    private BoundOrigin? EscapingPart(BoundOrigin origin)
+    {
+        if (origin is { Kind: OriginKind.Input, Binder: FunctionTypeKoto })
+        {
+            return null;
+        }
+
+        if (origin.Kind != OriginKind.Intersection)
+        {
+            return origin;
+        }
+
+        BoundOrigin? meet = null;
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            if (this.EscapingPart(origin.Operands[i]) is { } operand)
+            {
+                meet = meet is null ? operand : this.Meet(meet, operand);
+            }
+        }
+
+        return meet;
     }
 
     private void AccumulateRequirements(BoundType type, DeclarationSchema schema, int polarity, ref bool changed)
