@@ -240,7 +240,7 @@ first. IntrinsicId returns to 28 at R8.
   ledger's observation point, and `Binding.IsEffectRecord` and `Binding.IsTwinRecord`, the ledger's old-side effect and twin subsets (R6, the
   twin set with the twins at H11; DECISIONS R4-M17, R4-M23, R4-M111); the old analysis's receiver-dependence gate, its
   `CallPlan.ReceiverDependentResult` fact and `Binding.ValueCallGate` (R6-check; DECISIONS R4-M152); F1's located `Unsupported_Kd`
-  at a returned Closure's call, `Binding.ValueCalls.ForeignReceiverAtom` (F1's representation unit; DECISIONS R4-M152);
+  at a returned Closure's call, `Binding.ValueCalls.CallAtomsOf` (F1's representation unit; DECISIONS R4-M152);
   `LegacyRuntimeHelpers`, the Backend's Array, Dictionary, formatting and string-comparison runtime text and its requests
   and the legacy row map of the Body-disposition compiler functions, with the formatting runtime's kind numberings (`FormatKind`,
   `WriterKind`), its interpolation estimate (`FormatBound`, `FormatEstimate`) and the conversion text both generators write (R8, DECISIONS

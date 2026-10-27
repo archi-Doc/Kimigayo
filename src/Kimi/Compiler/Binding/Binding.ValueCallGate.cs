@@ -6,25 +6,35 @@
 //   static, carried only by Copy captures of a Copy result, or, carried by no capture, a fixed Origin of a function enclosing the call:
 //   FixedInBody, FixedInBodyOrigin); RecordReceiverDependence, the fact on the call's plan, overwritten by each binding of the call, and
 //   the pass's list of the calls that set it (ReceiverDependentCalls), which OwnershipAnalysis's gate re-reads through each listed
-//   call's current plan (F4).
+//   call's current plan (F4). The list is the pass's that last appended to it (receiverDependentPass, a pass stamp), so it needs no
+//   reset; a plan's flag says the list holds its call (CallPlan.ReceiverDependentListed), so a call is listed once per pass in O(1),
+//   each flag cleared when the next pass starts the list afresh. The list is created with the first such call.
 // - Inputs: the result Type, the callee expression (its Closure Type and BoundClosure's captures) and the call.
 // - Outputs: the answer, read by BindValueCall; the fact and the list, read by the gate only.
 // - Invariants: a meet is fixed when each operand is; a Non-Copy carrier is never fixed; a call is listed once per pass, in the order its
 //   bindings first set the fact; an empty list costs nothing.
 // - Prohibitions: no record, failure or substitution; no reader but BindValueCall and the gate.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // The calls whose binding set ReceiverDependentResult in this pass (OwnershipAnalysis's gate re-reads each one's current plan).
+    // The calls whose binding set ReceiverDependentResult in the pass receiverDependentPass (OwnershipAnalysis's gate re-reads each
+    // one's current plan); null until the first such call.
     [Transitional("R6-check", Reason = "The old analysis's gate (DECISIONS R4-M152) goes with the old analysis.")]
-    private readonly List<InvocationKoto> receiverDependentCalls = new();
+    private List<InvocationKoto>? receiverDependentCalls;
 
+    // The pass (storageVersion) whose calls receiverDependentCalls lists.
     [Transitional("R6-check", Reason = "The old analysis's gate (DECISIONS R4-M152) goes with the old analysis.")]
-    internal IReadOnlyList<InvocationKoto> ReceiverDependentCalls => this.receiverDependentCalls;
+    private ulong receiverDependentPass;
+
+    // This pass's receiver-dependent calls: none when the list is an earlier pass's.
+    [Transitional("R6-check", Reason = "The old analysis's gate (DECISIONS R4-M152) goes with the old analysis.")]
+    internal ReadOnlySpan<InvocationKoto> ReceiverDependentCalls
+        => this.receiverDependentPass == this.storageVersion ? CollectionsMarshal.AsSpan(this.receiverDependentCalls) : default;
 
     // A result whose Origins are static or fixed Origins of a function that encloses the call: the signature's own written contract,
     // which the callee's body was checked against.
@@ -83,14 +93,36 @@ public sealed partial class Binding
             (origin.Kind is OriginKind.Input or OriginKind.Parameter && origin.Binder is FunctionKoto { IsAnonymous: false } owner && IsWithin(use, owner));
 
     // R1's condition at a value call's binding: the fact on its plan, overwritten by each binding (a consultation's and a candidate
-    // trial's included), and the call listed once per pass when the fact holds.
+    // trial's included), and the call listed once per pass when the fact holds, the pass's first listing starting the list afresh.
     [Transitional("R6-check", Reason = "The old analysis's gate (DECISIONS R4-M152) goes with the old analysis.")]
     private void RecordReceiverDependence(InvocationKoto call, bool dependent)
     {
-        call.CallStorage!.ReceiverDependentResult = dependent;
-        if (dependent && !this.receiverDependentCalls.Contains(call))
+        var plan = call.CallStorage ??= new();
+        plan.ReceiverDependentResult = dependent;
+        if (!dependent)
         {
-            this.receiverDependentCalls.Add(call);
+            return;
+        }
+
+        var calls = this.receiverDependentCalls ??= new();
+        if (this.receiverDependentPass != this.storageVersion)
+        {
+            foreach (var listed in calls)
+            {
+                if (listed.CallStorage is { } old)
+                {
+                    old.ReceiverDependentListed = false; // An earlier pass's listing ends.
+                }
+            }
+
+            calls.Clear();
+            this.receiverDependentPass = this.storageVersion;
+        }
+
+        if (!plan.ReceiverDependentListed)
+        {
+            plan.ReceiverDependentListed = true;
+            calls.Add(call);
         }
     }
 

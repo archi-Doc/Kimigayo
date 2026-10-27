@@ -48,7 +48,9 @@ public sealed partial class Binding
 
             var origin = type.Origin is { } outer ? this.PublishedOrigin(function, receiver, body, outer) : null;
             changed |= !ReferenceEquals(origin, type.Origin);
-            return changed ? this.types.Rebuild(type, components.AsSpan(0, type.Components.Count), origin, arguments.AsSpan(0, type.OriginArguments.Count)) : type;
+            return changed
+                ? this.types.Rebuild(type, components.AsSpan(0, type.Components.Count), origin, arguments.AsSpan(0, type.OriginArguments.Count))
+                : type;
         }
         finally
         {
@@ -94,7 +96,12 @@ public sealed partial class Binding
             any = true;
         }
 
-        return any ? kept : omitted ? this.CallResultOrigin(function) : BoundOrigin.Static;
+        if (any)
+        {
+            return kept;
+        }
+
+        return omitted ? this.CallResultOrigin(function) : BoundOrigin.Static;
     }
 
     // SPEC 15.8.2, 15.6.1, 23.1 (DECISIONS R4-M126 P8, OQ-F7-2 (a)): each returned value of the Closure's result context, its local

@@ -55,6 +55,8 @@ public sealed class CallPlan
     private int inputOriginCount;
     private BoundArgumentOperation[] argumentOperations = [];
     private BoundDefaultArgument[] defaultArguments = [];
+    [Transitional("R6-check", Reason = "The old analysis's gate (DECISIONS R4-M152) goes with the old analysis.")]
+    private byte receiverDependence; // The gate's two facts below in the one byte the plan's layout has room for.
     private Koto? receiver; // The explicit receiver, or a value call's callee.
 
     public CalleeKind Kind { get; private set; }
@@ -337,10 +339,22 @@ public sealed class CallPlan
         }
     }
 
-    // R1's condition at this value call's binding (DECISIONS R4-M152): its result depends on its call receiver, which the old analysis's
-    // gate reports as the located Unsupported_Kd (Binding.ValueCallGate).
+    // R1's condition at this value call's latest binding (DECISIONS R4-M152): its result depends on its call receiver, which the old
+    // analysis's gate reports as the located Unsupported_Kd (Binding.ValueCallGate).
     [Transitional("R6-check", Reason = "The old analysis's gate (DECISIONS R4-M152) goes with the old analysis.")]
-    internal bool ReceiverDependentResult { get; set; }
+    internal bool ReceiverDependentResult
+    {
+        get => (this.receiverDependence & 1) != 0;
+        set => this.receiverDependence = (byte)(value ? this.receiverDependence | 1 : this.receiverDependence & ~1);
+    }
+
+    // Whether the pass's list of receiver-dependent calls holds this call (Binding.ValueCallGate).
+    [Transitional("R6-check", Reason = "The old analysis's gate (DECISIONS R4-M152) goes with the old analysis.")]
+    internal bool ReceiverDependentListed
+    {
+        get => (this.receiverDependence & 2) != 0;
+        set => this.receiverDependence = (byte)(value ? this.receiverDependence | 2 : this.receiverDependence & ~2);
+    }
 
     internal void SetValue(Koto callee, BoundType signature, ReadOnlySpan<BoundArgumentOperation> arguments, BoundType declaredSignature, in BoundArgumentOperation receiverOperation, SemanticsKind receiverKind)
     {

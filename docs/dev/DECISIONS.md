@@ -5187,7 +5187,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     declared Origins and inputs, and a context a call made would be codegen-visible (`ClosePart` skips a Type with one, relations compare
     contexts by identity), so a Closure value returned from another Closure's call keeps that Closure's receiver atoms in its signature.
     A value call whose callee signature names a receiver atom of another Closure that does not enclose the call is the located
-    Unsupported_Kd in Binding (`ForeignReceiverAtom`): n1's inner calls, f1a, f1c, f1h. The maker's calls bind (n1's second `outer()` is the
+    Unsupported_Kd in Binding (`CallAtomsOf`): n1's inner calls, f1a, f1c, f1h. The maker's calls bind (n1's second `outer()` is the
     MIR's Loan conflict). Removal: F1's representation unit (PLAN), (b) the design's recommended start. No ClosureContext arises in a
     definition, so R4-M148's "no A5 callee carries a closure context" holds after 2c-5, and BU's N3 stays latent.
   - The gate (OQ4 (a), OQ-F7-1 (vi), the owner's D5 exception; `Binding.ValueCallGate`, removed at R6-check): BindValueCall keeps R1's

@@ -157,8 +157,8 @@ public sealed partial class Binding
     }
 
     // The catalog's context-dependent premises from `from` outward (for a request, its use): associated formation and requirements
-    // (R4), the inputs (R2, a Closure's call receiver among them) and result (R3) of each enclosing signature, a computed or requirement Property's header being its getter's
-    // result (SPEC 11.4), and the clauses of each established enclosing declaration (R1).
+    // (R4), the inputs (R2, a Closure's call receiver among them) and result (R3) of each enclosing signature, a computed or
+    // requirement Property's header being its getter's result (SPEC 11.4), and the clauses of each established enclosing declaration (R1).
     // Then every borrowed complete local Place among the graph's expressions adds its stored Origins (R5), including Places
     // that those Origins introduce, so the closure applies R5 at every expression it reaches.
     private void ExtractOriginPremises(OriginPremiseEnvironment environment, Koto? from)
