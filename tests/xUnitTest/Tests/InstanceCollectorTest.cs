@@ -554,6 +554,19 @@ public sealed class InstanceCollectorTest
         Assert.Equal(complete ? DiagnosticCode.InternalInvariant_Kd : null, collector.RecordOf(Layout.Outcome.Rejected));
     }
 
+    // SPEC 8.6.1, IMPL 21.1 (DECISIONS BU-50, PLAN G271): an instance whose Field is an associated projection is collected and laid out
+    // with the Field its subject's conformance binds (W<Src>'s `e: S.Element` as i32); before, the Field reached Layout uncompleted and
+    // the collection threw "Layout has no row for the Type Element" (sel's `check`: CheckFaulted_Kd).
+    [Fact]
+    public void AProjectionFieldIsLaidOutCompleted()
+    {
+        var (_, set) = Collect("contract HasElem\n    associate Element\nstruct Src\n    Self is HasElem\n    associate Element is i32\nstruct W<S>\n" +
+            "    S is HasElem\n    public var e: S.Element\n    public init(e: S.Element) => self.e = e@move\npublic func main() -> ()\n" +
+            "    let w = W<Src>.init(e: 1)\n    let p = (w@move, 2)\n    return\n");
+        Assert.Empty(set.Records);
+        Assert.NotEqual(0, set.Items.Length);
+    }
+
     // SPEC 23.1.2, 23.1.1 (DECISIONS BU-38): a part Binding rejected is a dependent, never a limit. A program whose instance, composed
     // substitution or bodyless callee's parameter rests on storage Binding rejected keeps exactly its Binding record and gains no generation
     // record (before: the storage-nesting gap at the requesting call, C8d's LegacyRow item InternalInvariant_Kd), while a Type nested past the

@@ -431,6 +431,78 @@ public sealed partial class MirBorrowsTest
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
+    // SPEC 5.7 Calls, 8.6.1 (DECISIONS BU-50, PLAN G271): an instance's kept part completes an associated projection by its subject's
+    // conformance, so `S.Item` as `HA<Src>`, Src binding `Item` to `raw/u8`, is a layer Src's declaration writes and gives the write fact,
+    // as the written twin HSrc's `Src.Item` does: `z = 5` errs (ha), also below a Type argument (ha2), a held holder (hha), an inherited
+    // binding (inh: a base clause's argument) and a holder whose declaration writes the subject's argument (hh2). Where the parameter's
+    // Type expression writes the subject's argument and the binding is that argument (`Item is T`), the layer is the parameter's, so the
+    // store holds no Loan, as for its twin Wrap<raw/u8> (src2, hpair2). The old path, which reads AdtDef's view, gives each form its
+    // twin's record (none: it accepts the stated forms until R6-check, DECISIONS BU-46).
+    [Fact]
+    public void ACompletedProjectionGivesItsSubjectsLayer()
+    {
+        const string Declarations = """
+            struct Wrap<E>
+                var value: E
+                public init(value: E) => self.value = value@move
+                public func put<T>(self: uniq/Self, value: T) => ()
+            contract HasItem
+                associate Item
+            struct Src
+                Self is HasItem
+                associate HasItem.Item is raw/u8
+            struct Src2<T>
+                Self is HasItem
+                associate HasItem.Item is T
+            open struct BaseI<P>
+                Self is HasItem
+                associate HasItem.Item is P
+            struct DerI : BaseI<raw/u8>
+                var m: i32
+                public init() => self.m = 0
+            struct HA<S>
+                S is HasItem
+                var x: S.Item
+                public init(x: S.Item) => self.x = x@move
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct HA2<S>
+                S is HasItem
+                var w: Wrap<S.Item>
+                public init(w: Wrap<S.Item>) => self.w = w@move
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct HHA
+                var h: HA<Src>
+                public init() => self.h = HA<Src>.init(null)
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct HH2
+                var h: HA<Src2<raw/u8>>
+                public init() => self.h = HA<Src2<raw/u8>>.init(null)
+                public func put<T>(self: uniq/Self, value: T) => ()
+            struct HSrc
+                var x: Src.Item
+                public init() => self.x = null
+                public func put<T>(self: uniq/Self, value: T) => ()
+
+            """;
+        (string Name, string Holder, string Twin)[] forms =
+        [
+            ("ha", "HA<Src>.init(null)", "hsrc"), ("ha2", "HA2<Src>.init(Wrap<Src.Item>.init(null))", "hsrc"), ("hha", "HHA.init()", "hsrc"),
+            ("inh", "HA<DerI>.init(null)", "hsrc"), ("hh2", "HH2.init()", "hsrc"), ("hsrc", "HSrc.init()", "hsrc"),
+            ("src2", "HA<Src2<raw/u8>>.init(null)", "wrap"), ("hpair2", "HA2<Src2<raw/u8>>.init(Wrap<Src2<raw/u8>.Item>.init(null))", "wrap"),
+            ("wrap", "Wrap<raw/u8>.init(null)", "wrap"),
+        ];
+        var source = Declarations + string.Concat(forms.Select(static x => $"func {x.Name}()\n    var z = 3\n    var h = {x.Holder}\n    h.put(z@ref)\n    z = 5\n"));
+        var c = MirBuildTest.Compile(Prelude + source);
+        Assert.Equal(
+            ["ha: z = 5", "ha2: z = 5", "hha: z = 5", "inh: z = 5", "hh2: z = 5", "hsrc: z = 5"],
+            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+        var old = MinimalEmissionTest.Analyze(source, codegen: CompilerCodegen.Legacy);
+        var records = old.Problems.Select(x => (Function: Function(old.SyntaxOf(x.Subject)), x.Code)).ToArray();
+        Assert.All(forms.Where(static x => x.Name != x.Twin), x => Assert.Equal(Of(x.Twin), Of(x.Name)));
+
+        DiagnosticCode[] Of(string function) => [.. records.Where(x => x.Function == function).Select(static x => x.Code)];
+    }
+
     // SPEC 23.1.1 (DECISIONS R4-M147): a call whose W reaches a holder the guard leaves undecided (MirWrites.Limit: a supplied layer whose
     // Origin steps Exclusive, whose members Binding does not publish, over a Loan-free pointee) is one located Unsupported_Kd at the call,
     // never a Language problem, and the view's independent problems stay: a Field (flat), a nested instance's Field (nested), a Case

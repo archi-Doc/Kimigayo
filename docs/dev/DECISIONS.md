@@ -7218,6 +7218,34 @@ resumed by R4-M86 (2026-10-20).
     silent there: the family throw escapes Binding as an exception, and a Local finding fails MirCensusTest's census and every test that
     asserts a body has no validator finding.
 
+- **BU-50 A kept part completes an associated projection by its subject's conformance: `Binding.CompleteProjections`,
+  `Binding.ProjectionSpecification`** (2026-10-27; the BU planning session; PLAN G271, unit bu53; class Major, one owning component,
+  Binding's instance storage; design note `bu/g271/design.md`) SPEC 8.6.1, 5.7 Calls: `HA<S> { x: S.Item }` as `HA<Src>`, Src binding
+  `Item` to `raw/u8`, stores a layer Src's declaration writes and no parameter's Type expression writes (5.7's positive clause; both
+  designs of U0's revision read it so, no SPEC gap). `Substitute` kept `Src.Item`: `SubstituteTypeCore` substitutes a projection's
+  subject but never completes it, and only use sites normalize one (`ContractType`). So retention met no raw layer (`HA<Src>`,
+  `Wrap<S.Item>` and a held `HA<Src>` accepted on the MIR, an unsound acceptance), `HA<Src2<raw/u8>>` and `HA2<Src2<raw/u8>>` read an
+  abstract part, Through (MIR-only false errors), and Layout met the projection in AdtDef's view (sel's `check` CheckFaulted_Kd, "Layout
+  has no row for the Type Element", which G158 (3)'s candidate made a default-pipeline fault).
+  - Decision: `KeptType(written, owner)` (Binding.Storage.cs) completes each associated projection of a struct or enum subject left in
+    the substituted kept part (`CompleteProjections`, components first, a part without an abstract part its own result) by
+    `ProjectionSpecification` (Binding.AssociatedTypes.cs: a builtin arithmetic output or a fixed array's iterator Type, complete; else
+    the subject's conformance binding, `ResolveAssociated`, with the associated Type's Origin parameters bound), the binding taken as a
+    kept part of the subject, `KeptType(binding, subject)`, in the owner declaration's scope, recursively under a re-entry guard
+    (`completingProjections`, as ContractTypeCore's). So the mark has BU-46's one producer: a layer the subject's declaration writes
+    (Src's `raw/u8`, `DerI : BaseI<raw/u8>`'s inherited `Item is P`) states Unstated, one the subject's argument supplies (`Item is T`)
+    carries that argument's mark (none for `HA<Src2<raw/u8>>` written in a signature or body, the parameter's layer; Unstated below a
+    Field `h: HA<Src2<raw/u8>>`). A projection whose subject is a parameter, or whose conformance binds nothing, stays a projection.
+    `ContractTypeCore` reads the same `ProjectionSpecification` (its three arms moved, behavior unchanged); AdtDef's view is the completed
+    part WithoutRawOrigins, as every kept part's.
+  - Consumers unchanged: StoredLayer, RawStep, RawStated, the hold walk, A5's `Past` and Layout read the completed part. `KeptType`'s
+    contract (BU-46), `WithUnstatedOrigins`' one call site and `SubstituteTypeCore` stay; no second producer, no mode.
+  - Not covered: `StoredType(syntax, owner)`, the per-query substitution of inline layout validation, C layout, zero stride and the old
+    enum analysis, still leaves a projection uncompleted (read there as an abstract part; pre-existing).
+  - Rejected: completing in `SubstituteTypeCore` (every substitution pays it, and the mark forms only in `KeptType`); normalizing the
+    kept part afterwards by `ContractType` (it instantiates the binding by `StoredType`, without the mark, so Src's `raw/u8` would read
+    as the parameter's: the unsound acceptance stays).
+
 - **BU-43 Where no source supplies a candidate, a join's Type is formed part by part; a call classifies such a join's results by
   position; Never supplies nothing at any position** (2026-10-26; the BU planning session; PLAN G159 (2), unit bu47; design bu47
   Revisions 1, 1b and 2, design review 3 ACCEPT with C1 and C2; SPEC 14.9.2 step 2 (R4-M134) and 10.5.1 as R4's SPEC revision 2

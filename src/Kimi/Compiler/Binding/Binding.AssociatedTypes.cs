@@ -546,6 +546,34 @@ public sealed partial class Binding
         return binding.Result;
     }
 
+    // SPEC 8.6.1: what a projection of a Type subject names, before the subject substitutes it: a builtin arithmetic output or a fixed
+    // array's iterator Type, complete (`subject` null); or a struct or enum subject's conformance binding of the associated Type in the
+    // subject declaration's terms (ResolveAssociated; an inherited conformance's under the base clause's arguments), the associated Type's
+    // Origin parameters bound to the projection's arguments, for the caller to instantiate under `subject`: as a view (ContractTypeCore)
+    // or as a kept part (CompleteProjections, DECISIONS BU-50). Null where the subject is abstract or its conformance binds nothing.
+    private BoundType? ProjectionSpecification(BoundType projection, BindingScope scope, out BoundType? subject)
+    {
+        subject = null;
+        if (this.BuiltinArithmeticOutput(projection, scope) is { } numericOutput)
+        {
+            return numericOutput;
+        }
+
+        if (this.FixedArrayIteratorType(projection) is { } fixedIterator)
+        {
+            return fixedIterator;
+        }
+
+        if (projection.Components[0] is not { Symbol.Declaration: StructKoto or EnumKoto } receiver ||
+            this.ResolveAssociated(receiver, projection.Symbol!, scope, projection.Components.Count == 2 ? projection.Components[1] : null) is not { } binding)
+        {
+            return null;
+        }
+
+        subject = receiver;
+        return this.SubstituteStoredOrigins(binding, projection.Symbol!.Declaration, (BoundOrigin[])projection.OriginArguments);
+    }
+
     // `qualifier` is the declaring Contract reference of the projection (SPEC 8.6.1); a bound reference of a Contract with Type
     // arguments selects that conformance, and a Contract without them has one conformance per Type.
     private BoundType? ResolveAssociated(BoundType receiver, BindingSymbol associated, BindingScope scope, BoundType? qualifier = null)

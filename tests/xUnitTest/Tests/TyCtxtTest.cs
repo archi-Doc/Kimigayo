@@ -666,6 +666,35 @@ public sealed class TyCtxtTest
         BoundType Kept(int i) => types.StoredParts(p[i], out _)[0]!;
     }
 
+    // SPEC 8.6.1, 5.7 Calls (DECISIONS BU-50, PLAN G271): an instance's kept part completes an associated projection of a struct or enum
+    // subject by the subject's conformance, as a kept part of the subject: a binding the subject's declaration writes states Unstated
+    // (Src's, DerI's base clause's argument), one the subject's argument supplies carries that argument's mark (Src2<raw/u8>'s, none, and
+    // Src2<raw/u8> written in HH2's Field, Unstated), a closed binding is itself (W<Src>'s i32); AdtDef's view is the completed part
+    // WithoutRawOrigins, with no abstract part left. A projection whose subject is a parameter (`unbound`'s HA<T>) stays a projection.
+    [Fact]
+    public void AKeptPartCompletesAnAssociatedProjection()
+    {
+        var c = MinimalEmissionTest.Analyze("contract HasItem\n    associate Item\nstruct Src\n    Self is HasItem\n    associate HasItem.Item is raw/u8\n" +
+            "struct Src2<T>\n    Self is HasItem\n    associate HasItem.Item is T\nopen struct BaseI<P>\n    Self is HasItem\n    associate HasItem.Item is P\n" +
+            "struct DerI : BaseI<raw/u8>\n    var m: i32\nstruct Src3\n    Self is HasItem\n    associate HasItem.Item is i32\n" +
+            "struct HA<S>\n    S is HasItem\n    var x: S.Item\nstruct HH2\n    var h: HA<Src2<raw/u8>>\n" +
+            "func probe(a: HA<Src>, b: HA<Src2<raw/u8>>, d: HA<DerI>, e: HH2, f: HA<Src3>) => ()\nfunc unbound<T>(g: HA<T>) -> ()\n    T is HasItem\n    return\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
+        var types = c.Types;
+        BoundType[] holders = [p[0], p[1], p[2], Kept(p[3]), p[4]];
+        Assert.Equal(
+            ["raw/u8 True", "raw/u8 False", "raw/u8 True", "raw/u8 True", "i32 False"],
+            holders.Select(x => $"{TyCtxt.Name(Kept(x))} {TyCtxt.RawStated(Kept(x))}"));
+        Assert.All(holders, x => Assert.Same(c.Binding.WithoutRawOrigins(Kept(x)), AdtDef.FieldType(x, 0)));
+        Assert.All(holders, x => Assert.False(AdtDef.FieldType(x, 0)!.HasAbstractPart));
+        var unbound = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "unbound").Parameters[0].Type.TypeOf()!;
+        Assert.Equal(BoundTypeKind.AssociatedProjection, Kept(unbound).Kind);
+
+        // The first kept part of a struct instance.
+        BoundType Kept(BoundType x) => types.StoredParts(x, out _)[0]!;
+    }
+
     // SPEC 5.7 Calls, Fits (DECISIONS BU-46): a kept part states Unstated on each raw layer its declaration writes without `during`, so an
     // instance's kept parts tell such a layer from one a Type argument supplies at any depth below it (RawStated): in a Field, a Tuple, a
     // Type argument of a Field, a base clause (also an intermediate one's), beside a supplied argument, a nested holder, a pair slot's
