@@ -65,6 +65,11 @@ public sealed partial class Binding
     {
         var length = fill.FillCount = this.BindLength(fill.FillLength!, scope);
         var element = this.BindNode(fill.Elements[0], scope, expected?.Kind == BoundTypeKind.FixedArray ? expected.Components[0] : null);
+        if (length is not null && element is null && this.Deferred(fill.Elements[0]))
+        {
+            return Complete(fill, null); // SPEC 14.9.2 step 3 (DECISIONS BU-43): its element waits for its position's Type, and so does the fill.
+        }
+
         if (length is null || element is null)
         {
             // A failed element or length explains the fill (SPEC 23.1.2); a length syntax that binds but is no length keeps
