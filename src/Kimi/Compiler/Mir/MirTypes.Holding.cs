@@ -227,7 +227,8 @@ internal static partial class MirTypes
         // exclusive reference to the pointee (the walk's own Type wrote it, or it states an Origin outside a stored part).
         private int Past(BoundType layer, int depth)
         {
-            var (stored, pointee) = (this.instance, layer.Components[0]);
+            var stored = this.instance;
+            var pointee = layer.Components[0];
             ReadOnlySpan<int> at = stored is null ? default : this.positions[this.start..this.top];
             return (stored is null ? RawStep.Unstated : types.RawStep(stored, this.part, at)) switch
             {
