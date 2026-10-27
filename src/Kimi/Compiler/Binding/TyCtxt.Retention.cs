@@ -2,13 +2,19 @@
 
 // Owns call retention (SPEC 15.6.4; design A3 4.3, C1+C8): which outputs of a call may retain which arguments, as A5's Loan flow reads it.
 // Input: a callee with its call Subst, or a Value callee operand's Type (CallPlan.CalleeType, which MIR's operand reproduces) with the
-// Callable signature it declares (CallPlan.DeclaredSignature, DECISIONS R4-M41); the calling definition (null: top-level statements).
+// Callable signature it declares (CallPlan.DeclaredSignature, DECISIONS R4-M41), or a destroyed part whose `drop` is unknown; the calling
+// definition (null: top-level statements).
 // A Closure callee's contract has its call receiver at input 0 (HasReceiverInput; SPEC 15.8.2, DECISIONS R4-M148): `R/Env during ρ`, `Env`
 // by value under `owner/Self`, its `let` bindings never written (D1); every Closure part of an input is read as its body sees it, its
 // definition's environment under its closure context (ClosureEnvironment), one that does not substitute a CallRetention.Limit.
-// Output: an immutable CallRetention, rows Retention(Input, Kind, Output), Untied, UntiedStores and ReferentStores, one per callee or
-// signature, Type instantiation and the premise scope or declaration it reads, for the latest Binding pass and reused by later passes
-// until an edit;
+// A destruction retains as a call of each `drop` it runs (SPEC 15.6.4, 16.3.1; DECISIONS BU-47): a `drop`'s contract has its destruction
+// receiver at input 0, though it declares no parameter (Signature numbers none), `uniq/Self` over the layer the Subst's declaring Type
+// names, without an Origin; an erased destruction, of a part whose `drop` the destruction walk cannot see (SPEC 16.3.3), retains as the
+// erased call `(uniq/P) -> ()` over the same receiver (RetainsErasedDestruction). The receiver, which cannot be stored, captured or
+// returned, publishes no Value row: it has no Origin a caller names, and rule A keeps only the written-through input's chain.
+// Output: an immutable CallRetention, rows Retention(Input, Kind, Output), Untied, UntiedStores and ReferentStores, one per callee,
+// signature or erased destruction's receiver, Type instantiation and the premise scope or declaration it reads, for the latest Binding
+// pass and reused by later passes until an edit;
 // CallRetention.Limit, a genuine limit only, where the contract or a Type its hold walk reaches has storage past Binding's limits (nested
 // past its depth bound, which a growing recursive Type of SPEC 15.3.5 always reaches; Binding.StorageOutcome.Limit), the contract's
 // substitution does not complete (no reproducer), or a raw layer's member walk is incomplete (a keeper cycle that changes its Type
@@ -44,8 +50,8 @@
 // no row at another output. An operation of SPEC 4.6 to 4.9 writes the store at its borrowed receiver only in the storage that receiver
 // refers to (ReferentStores; 4.9.6).
 // Content and Chain are two measures: Content what one read through the input carries (premises, step 4), Chain any chain of reads.
-// Files: this one (the contract and its records RetentionKind, Retention, CallRetention); TyCtxt.Retention.Calls.cs (TyCtxt.Retains
-// and its memo); Binding.Retention.cs with .Atoms.cs, .Rows.cs and .Transfers.cs (the computation).
+// Files: this one (the contract and its records RetentionKind, Retention, CallRetention); TyCtxt.Retention.Calls.cs (TyCtxt.Retains,
+// RetainsErasedDestruction and their memo); Binding.Retention.cs with .Atoms.cs, .Rows.cs and .Transfers.cs (the computation).
 // Must not: read the call's solved Origins or its arguments, judge an Origin relation, cover unknown callees or the operands an intrinsic
 // takes beyond its library declaration (A5's; an intrinsic's declaration is a callee like any other, A3 E14), or expose its premise walk as
 // a view of its own (A3 9, item 9).
@@ -73,8 +79,8 @@ internal enum RetentionKind : byte
 /// <summary>One retention of a call: <see cref="Output"/>, the result (<see cref="Result"/>) or the writable storage of input j (j: its
 /// storage at invariant positions, such as an exclusive input's referent or a raw pointee; at one of
 /// <see cref="CallRetention.ReferentStores"/> only the storage input j refers to), may retain <see cref="Input"/>. Inputs are
-/// the parameter slots <see cref="TyCtxt.Signature"/> numbers, the receiver at its written slot, or a Callable signature's input
-/// positions.</summary>
+/// the parameter slots <see cref="TyCtxt.Signature"/> numbers, the receiver at its written slot, a Callable signature's input
+/// positions, or a destruction's input 0, its destruction receiver.</summary>
 internal readonly record struct Retention(int Input, RetentionKind Kind, int Output)
 {
     internal const int Result = -1;
