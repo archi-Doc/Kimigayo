@@ -5090,6 +5090,67 @@ and migration obligations remain in force; no numeric cap changes are authorized
     kept) and `MirBorrowsTest.AnOpaqueTempKeepsTheIndependentRecords` (A1's independent moves, an unrelated conflict, the lost class, the
     grouping pin, a literal's temporary); 27 of their 36 cases fail before, the guards pass before and after.
   - Numbering: the next free R4 number (R4-M148 is 2c-3's, R4-M150 G264's).
+- **R4-M(the planning session numbers it at landing) G216 (a): a nested signature's well-formedness is its own, proven at each call
+  and each conversion; the contextual-type fact** (2026-10-27; a Full change under Q11: candidate A, R4's design-first design 1 on
+  `claude/a5-g216a-r3-d1`, chosen jointly by R4 and BU; supersedes R4-M137's open result half and the held revision 2,
+  `held/g216a2`) SPEC 15.3.4, 15.3.6, 15.3.7, 15.6.1, 15.6.4, 10.7, 10.8.1, 23.1.2.
+  - Owner answers it rests on: (A) 2026-10-26 「(A) 入れ子自身のもの (推奨)」 (a nested signature's inputs and result are its own:
+    no premise or declaration obligation of the definition it is written in, proven at each call); (a) 2026-10-27 「(a) 無名関数と
+    同じ規則 (推奨)」 (a Function Item converted to a Function Type assumes the target's own well-formedness, as a Function value
+    does); G56 2026-10-26 「G56 の制限として受け入れる (推奨)」 and 2026-10-27 「G216 (a): (i)」 (below); cl1 2026-10-27 「(1)
+    切り離して記録 (推奨)」; the redesign 2026-10-27 「G216 (a)： (1)」 as the trial 「G216 (a) の作り直しで試す」 (Q11).
+  - Rule, through the canonical components: a nested signature (a Function Type, an anonymous function) adds no premise to the body or
+    declaration it is written in (`AddTypePremises` stops at a Function Type; `CompleteOrigins` forms no row at a nested signature's
+    Parameter or Result position), and an anonymous function's written result is its own body's R3 premise
+    (`ExtractOriginPremises`). Each call proves the instantiated result (`RequireResultPremises` at every value call, a nested
+    signature's whole result; `CheckCallConstraints` validates a value call's result Type as a named call's), and each conversion of
+    a Function value proves its source signature's own Types (`ProvesSourceSignature`, wherever `FunctionFits` compares, a
+    candidate's argument included).
+  - A Callable comparison's target signature is request data of every relation the comparison judges (owner (a)): `EntailsOrigin`'s
+    `assumed`, which `ExtractOriginPremises` adds as one more signature (its inputs R2, its result R3), carried by the comparison's
+    `OriginInference.Assumed` (`ContractFits`; a Prove visit of `WellFormedVisit` reads it), `CallableInstance.Expected`
+    (`InstanceOutlives`, `FitOrigin`) and `IsSubtypeAt`'s `required`. `CallableInstance.IsRequiredSlot` and its expected binder are
+    removed: a required per-call Origin is related by the target's own Types, otherwise rigid. cl1, cl5-cl7 and rk4 are valid by
+    this rule.
+  - The input rule (PLAN G269 (C)): `RequireInputPremises` judges an input's instantiated parameter Type at the input, a located record
+    that fails no binding (`RequireResultOutlives`), wherever the argument's own Type did not supply the position.
+  - Records: a call or constructor argument's failed conversion stays applicability's `NoApplicableOverload_Kd` at the call (the
+    after-selection site `RequireArgumentConversion` is removed); a `let`, return, Tuple or array conversion is
+    `UnprovenOriginContract_Kd` at the converted value, a nested part at the literal's element that supplies it
+    (`NestedConversionFailure`), its member "the source's signature" when only `ProvesSourceSignature` fails.
+  - New representation, the contextual-type fact (`Binding.ArgumentKinds.Solution.cs`): the slots of a call or Case construction that
+    took their expected Type, keyed by syntax identity for one pass (`ResetArgumentFacts`). Owner `TakeExpectedSlots`, the one
+    decision; writers `BindEnumConstruction` (the slots its qualifier does not write, all of them with its Origin arguments) and
+    `TryCandidateCore` (the slots a candidate's expected result fills, unbound before); reader `ExpectedSlots`, read by
+    `RequireInputPremises` (an argument whose Type its expected Type supplied keeps no position) and `RequireResultPremises` (a Type
+    argument the expected result supplied is its context's to prove). Only a slot whose Type stores an Origin is recorded (any other
+    is well formed by itself), and the table is created by its first record. Lasting, no removal condition.
+  - `WellFormedVisit` (CR-R2): the premise it judges is an `OriginPremiseRule`, Input (R2, with its Types' own clauses) or Result (R3,
+    a Type argument's too), in place of a `Result` flag; a Prove visit reads its comparison's `OriginInference` in place of an
+    `Assumed` Type.
+  - Choice (Q11): candidates A and B (BU's prototype-first design 2, `b3952e9af`), both judged by the shared acceptance tests
+    (`claude/a5-g216a-r3-tests` 311b57397, 80 rows). A decides the contextual-type fact where a slot takes its expected Type and reads
+    it by one rule, and shrinks the over-limit `Binding.Calls.cs` and `Binding.cs`; B's `TypedByCall` was decided by syntax at the
+    reader. A's net size is smaller; B was cheaper in cold Bind bytes.
+  - G56's limit (owner, 2026-10-27, 「G216 (a): (i)」): until H11 a record beside a conversion record (c2bg, c2dg,
+    c2_fnvalue_converted_weaker, c15) or beside a return fit's record (p1b) may be lost, as beside an unrelated Binding failure. The 5
+    rows are pinned at the Binding record only (`CallableOriginForwardingTest.AConversionRecordHidesAnIndependentRecordUntilH11`;
+    p1b in `OriginRelationDiagnosticTest.ALocatedRecordThatDoesNotFailBindingIsReported`).
+  - Cold Bind against ec4c7990e (BindBench, KIMI_CPU=2, DOTNET_TieredCompilation=0; warm 0 B): Hello +7,944 B, Milestone26 +8,016 B,
+    G216Load -8,728 B, G216R3Load +55,432 B. On programs without the forms the cost is the fact's table: 42 records, all of the
+    library's own `Option` Case constructions (`return .None`, `.Some(…)`).
+  - Open (for the implementation review): those 42 records (only an argument part's and a call's own records are read; recording only
+    those needs the writer to know that its context is a call's parameter, which only the call's completion of a waiting part knows); e1c,
+    a Closure literal whose written result differs from its fixed expected one only in Origins (`let g: (ref/i32) -> Option<ref/(ref/i32)
+    during q> = func [] (x: ref/i32) -> Option<ref/(ref/i32 during x) during static> => .None` under `origin q outlives static`), an
+    error as on dev but `UnprovenOriginRelation_Kd` in place of dev's `UnprovenOriginContract_Kd`: the header's identity test
+    (`ClosureSignatureFits`, SPEC 10.5.4, which candidates' header filtering also reads) refuses it while the conversion's record now
+    proves it, so one judgment is a change of the Closure header rule, outside this unit's forms (Items and Function values; the
+    Closure form cz12 errs either way); s4, a Closure's written result Type keeps dev's `UnprovenConstraint_Kd` at its declaration
+    beside the call's new record, though under (A) that Type is the nested signature's own.
+  - Rejected: revision 2 (checks beside the canonical components; PLAN G216); the target as a Binding field the catalog reads (it is the
+    request's data); a call argument's conversion judged after selection at the argument (dev's class is applicability's); "unbound
+    before" for a Case construction (its qualifier's declaring Type is itself inferred from the expected Type).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

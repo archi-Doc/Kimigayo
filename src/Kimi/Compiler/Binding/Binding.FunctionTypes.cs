@@ -394,7 +394,7 @@ public sealed partial class Binding
         {
             var parameter = Substitute(Bound(function.Parameters[i].Type.BoundType!)!);
             if (HasUnsubstitutedOrigin(parameter, function) || !this.IsSubtypeAt(parameters.Components[i], parameter, use, required) ||
-                !this.ProvesInputPremises(parameter, parameters.Components[i], use, required))
+                !this.ProvesInputPremises(parameter, parameters.Components[i], use, inference))
             {
                 return false;
             }
@@ -412,7 +412,7 @@ public sealed partial class Binding
             symbol.Type is { } result && Bound(result) is { } boundResult &&
             !HasUnsubstitutedOrigin(result = Substitute(boundResult), function) &&
             this.IsSubtypeAt(result, CompatibleResult(result, required.Components[1]), use, required) &&
-            this.ProvesResultPremises(function, result, use, required);
+            this.ProvesResultPremises(function, result, use, inference);
 
         BoundType? Bound(BoundType type)
         {

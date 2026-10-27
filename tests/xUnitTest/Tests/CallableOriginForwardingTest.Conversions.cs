@@ -93,18 +93,21 @@ public partial class CallableOriginForwardingTest
     public void AConversionAssumesItsTargetsOwnWellFormedness(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 
-    // Not fixed yet (the owner's pending question about conversion records): a Loan conflict or TransferRequired_Kd independent of a
-    // failed conversion stays beside the conversion's record (SPEC 23.1.2: records kept). Each twin's conversion holds and keeps the
-    // independent record.
+    // A Loan conflict or TransferRequired_Kd independent of a failed conversion: SPEC 23.1.2 keeps it beside the conversion's record, which
+    // PLAN G56's accepted limit loses until H11 (each row below). Each twin's conversion holds and keeps the independent record.
     [Theory]
-    [InlineData("c2bg", WeakerHead + OriginRelationDiagnosticTest.IndependentConflict + "    let g: " + WeakerTarget + " = f@move\n    return 0\n", "ComparisonLoanConflict_Kd x = 2; UnprovenOriginContract_Kd f@move")]
+    // G56's accepted limit until H11 (owner, 2026-10-27: 「G216 (a): (i)」): the Binding record only; the independent record beside it is lost.
+    [InlineData("c2bg", WeakerHead + OriginRelationDiagnosticTest.IndependentConflict + "    let g: " + WeakerTarget + " = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move")]
     [InlineData("c2bg_c", StrongerHead + OriginRelationDiagnosticTest.IndependentConflict + "    let g: " + WeakerTarget + " = f@move\n    return 0\n", "ComparisonLoanConflict_Kd x = 2")]
-    [InlineData("c2dg", UseWeaker + WeakerHead + OriginRelationDiagnosticTest.IndependentConflict + "    return use1(q, f@move)\n", "ComparisonLoanConflict_Kd x = 2; NoApplicableOverload_Kd use1(q, f@move)")]
+    // G56's accepted limit until H11 (owner, 2026-10-27: 「G216 (a): (i)」): the Binding record only; the independent record beside it is lost.
+    [InlineData("c2dg", UseWeaker + WeakerHead + OriginRelationDiagnosticTest.IndependentConflict + "    return use1(q, f@move)\n", "NoApplicableOverload_Kd use1(q, f@move)")]
     [InlineData("c2dg_c", UseWeaker + StrongerHead + OriginRelationDiagnosticTest.IndependentConflict + "    return use1(q, f@move)\n", "ComparisonLoanConflict_Kd x = 2")]
-    [InlineData("c2_fnvalue_converted_weaker", WeakerHead + "    let g: " + WeakerTarget + " = f\n    let o = g()\n    return 0\n", "TransferRequired_Kd f; UnprovenOriginContract_Kd f")]
+    // G56's accepted limit until H11 (owner, 2026-10-27: 「G216 (a): (i)」): the Binding record only; the independent record beside it is lost.
+    [InlineData("c2_fnvalue_converted_weaker", WeakerHead + "    let g: " + WeakerTarget + " = f\n    let o = g()\n    return 0\n", "UnprovenOriginContract_Kd f")]
     [InlineData("c2_fnvalue_converted_weaker_c", StrongerHead + "    let g: " + WeakerTarget + " = f\n    let o = g()\n    return 0\n", "TransferRequired_Kd f")]
-    [InlineData("c15", WeakerHead + OriginRelationDiagnosticTest.IndependentConflict + "    let t: (" + WeakerTarget + ", i32) = (f@move, 1)\n    return 0\n", "ComparisonLoanConflict_Kd x = 2; UnprovenOriginContract_Kd f@move")]
+    // G56's accepted limit until H11 (owner, 2026-10-27: 「G216 (a): (i)」): the Binding record only; the independent record beside it is lost.
+    [InlineData("c15", WeakerHead + OriginRelationDiagnosticTest.IndependentConflict + "    let t: (" + WeakerTarget + ", i32) = (f@move, 1)\n    return 0\n", "UnprovenOriginContract_Kd f@move")]
     [InlineData("c15_c", StrongerHead + OriginRelationDiagnosticTest.IndependentConflict + "    let t: (" + WeakerTarget + ", i32) = (f@move, 1)\n    return 0\n", "ComparisonLoanConflict_Kd x = 2")]
-    public void AnIndependentRecordStaysBesideAConversionRecordPendingOwnerConversionRecords(string form, string body, string records)
+    public void AConversionRecordHidesAnIndependentRecordUntilH11(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 }

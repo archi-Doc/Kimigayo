@@ -82,7 +82,9 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("n7g2_c", FixedHead + "    origin q outlives r\n" + FixedClosure + IndependentConflict + "    return c(Option.None)\n", "ComparisonLoanConflict_Kd x = 2")]
     [InlineData("n7h2", FixedHead + FixedClosure + FixedNone + IndependentConflict + "    return c(none)\n", "ComparisonLoanConflict_Kd x = 2; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
     [InlineData("n7h2_c", FixedHead + "    origin q outlives r\n" + FixedClosure + FixedNone + IndependentConflict + "    return c(none)\n", "ComparisonLoanConflict_Kd x = 2")]
-    [InlineData("p1b", TypedOwn + "    let none: Option<ref/(ref/i32 during a) during b> = Option.None\n    return h(a, b, none)\n", "UnprovenOriginRelation_Kd h(a, b, none); UnprovenOriginRelation_Kd ref/(ref/i32 during a) during b")]
+    // G56's accepted limit until H11 (owner, 2026-10-27: 「G216 (a): (i)」): the return fit's Binding record only; the annotation's record
+    // beside it is lost.
+    [InlineData("p1b", TypedOwn + "    let none: Option<ref/(ref/i32 during a) during b> = Option.None\n    return h(a, b, none)\n", "UnprovenOriginRelation_Kd h(a, b, none)")]
     [InlineData("p1b_c", TypedOwn + "    origin a outlives b\n    let none: Option<ref/(ref/i32 during a) during b> = Option.None\n    return h(a, b, none)\n", "")]
     public void ALocatedRecordThatDoesNotFailBindingIsReported(string form, string body, string records)
         => AssertRecords(form, body, records, null);
