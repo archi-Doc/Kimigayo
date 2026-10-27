@@ -83,6 +83,10 @@ internal sealed partial class ModuleCodegen
     /// <summary>Gets the test catalog: a test build's cases and identity, and the numbers of its verification sites (TestCatalog.SiteOf).</summary>
     internal Testing.TestCatalog Tests { get; }
 
+    /// <summary>Gets a value indicating whether the latest <see cref="Write"/> writes a test build, whose runtime is the test runtime and
+    /// whose code reports its phases (FunctionCodegen.Phases).</summary>
+    internal bool IsTestBuild { get; private set; }
+
     /// <summary>Gets the module's private UTF-8 constants, which the header defines.</summary>
     internal LlvmConstantPool Constants => this.constants;
 
@@ -107,6 +111,7 @@ internal sealed partial class ModuleCodegen
         this.externals.Clear();
         this.wrapped.Clear();
         (this.set, this.program, this.collector, this.writes) = (collector.Set, program, collector, this.writes + 1);
+        this.IsTestBuild = startup.Kind == StartupKind.Test;
         this.Number();
         for (var item = 0; item < this.set.Items.Length; item++)
         {

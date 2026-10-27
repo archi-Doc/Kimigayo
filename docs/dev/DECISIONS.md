@@ -9606,7 +9606,7 @@ structure is recorded here by the unit that first implements it.
     backing ignored); Copy (transferBytes as `llvm.memcpy`: R5-M18 reversed PD23, the declaration rules out overlap, so `MoveBytes`'
     comment is corrected). Every other row is `Unwritten`, its unit named in the table: C4a DestroyValues (no producer: R5-M95); C6a MakeObj, MakeRc, MakeArc,
     Clone, TypeTest; C7 StaticEnsure; C8d Capacity; C9a WriteStdout (see R5-M128); C9b FormatFloat, ErasedWriter, ErasedReserve, FormatInteger128; C9c
-    the format buffer rows; C10a and C10b the test rows. Stride and ReinterpretLoan have no MIR producer yet (no compiler function's
+    the format buffer rows; C10a and C10b the test rows (C10b's deleted by R5-M137). Stride and ReinterpretLoan have no MIR producer yet (no compiler function's
     disposition serves them; an open PLAN row), so their rows are written with their first producer. Allocate and Fail call through
     `Invoke`, which takes the values of a routine's slot-less parameters (the stride; the reason and the OS error) in order, the runtime
     Abort's location parameters being its Location kinds; an `IntrinsicRow` and the operator table's `Entry` state every column but the
@@ -11217,6 +11217,41 @@ structure is recorded here by the unit that first implements it.
     structure, TestRecordValue after TestObserve with the issue (the builder; F8b's reason), the values as TestObserve operands (uses after
     the moves), a MIR-only second test runtime (PD2), a MonoKind or IntrinsicId for the entry (PD21), splicing the test runtime's
     definitions from `RuntimeAbi` markers (a test ties them).
+- **R5-M137 The test phases in MIR code generation (C10b)** (2026-10-27, C lane; plan C10b, package C 3.2, PD2, PD9, PD21, PD22, PLAN10
+  §5.6.7, K package 4.7 and 4.9; SPEC 16.1, 16.2, 13.7.1, 17.4.3, 17.6.2, 22.4.3, IMPL 20.6.3; the planning session's rulings Q1-Q6 on
+  C10b's design, `c10b-design.md` and `c10b-go.md`; the owner's approval of its departures (i) and (ii), R5-M140; under R5-M18 form 2
+  (G:test), R4-M6a, R5-M92, R5-M99, R5-M106 and R5-M136)
+  - Rule: every frame of a test build's runtime reports the runtime's phase, body 1, cleanup 2, initialization 3, shutdown 4
+    (`TestRuntime.Phase`, which the runner names). In a test build (`ModuleCodegen.IsTestBuild`) code generation runs a cleanup position in
+    the cleanup phase: a Drop whose A2 row destroys (Elide, or an instance Type needing no drop, writes nothing) and an Assign or Call in a
+    Deferred scope (SPEC 16.1; `MirBody.Enclosing`). There is one window per run of a block's code (`FunctionCodegen.Phases`). Its first
+    cleanup position saves the phase and sets cleanup. The next Assign or Call outside a defer body restores it, as does the block's
+    transfer (`Completed`: the location's flag points, then the restore, for Branch, Switch and staticEnsure's test; and Return). An end
+    without a runtime successor restores nothing. A callee keeps its caller's phase, and its own windows nest.
+  - Static initialization: a slot's ensure function runs its StaticInit call in the initialization phase (Q3 (a), R5-M140). The phase is
+    set after the Initializing state and restored before the Initialized one, so a cycle Aborts in the initialization phase. R5 has no
+    static shutdown (R5-M13 (b)), so phase 4 is never set.
+  - One text (Q4 (a), PD2, departure (i)): `TestRuntime.WritePhase` and `RestorePhase` write the old generator's inline save, set and
+    restore of `@__kimi_test_phase`; both generators call them (bp1 `6dee6ab40`; the old `.ll` is unchanged). No routine is added.
+  - Vocabulary (Q1 (a)): phases have no MIR producer (PD22), so `IntrinsicId.TestPhaseEnter` and `TestPhaseLeave` were dead. They are
+    deleted with their descriptor and Backend rows (bp2 `84761c0bf`). IntrinsicId uses 32 of its limit of 34, which stays 34 until R8
+    (28 then). R5-M92's C10b rows and R4-M63's "never built" census entry for them end here.
+  - Deviations (departure (ii), R5-M140, implementation-defined report, IMPL 20.6.3): an assignment's old-value destruction (SPEC 13.7.1,
+    a Drop like any other) reports cleanup, where the old generator reports body. An initializer's failure or Abort reports
+    initialization, where the old generator reports body or cleanup. IR (PD9): one window per block run, not one per operation, and none
+    around a Drop that destroys nothing. R5-M136's "until C10b" cleanup-phase deviation closes.
+  - Records: none new. The collector adds no target; a window is written or not, never refused; scopes are validated MIR.
+  - Size: bp1 Testing +51/-7, Emission +2/-6, Mir +9/-2, tests +53; bp2 -6; behavior Backend +99/-19 (`FunctionCodegen.Phases`
+    +65), tests +129/-1, this entry, ARCH and CODEMAP. Deleted: the old writer's own phase text, the worker's phase literals, two
+    IntrinsicIds and their rows, and three copies of the terminator-completion expression.
+  - Speed: in a test build, one load and two stores per window and a scope walk per Assign and Call. A product build pays one bool test.
+    No pass over MIR; a warm test build allocates nothing (`WarmGenerationAllocatesNothing` with the `Phases` source).
+  - Rejected:
+    - Inside code generation: a window per position as the old generator writes it (twice the text for the same meaning); a per-body
+      table of cleanup scopes (a side table where MirBody's scope query answers); telling an assignment's Drop from a Scope Exit one by its
+      source or its successor's Assign (a consumer deciding by shape); writing phases through intrinsic rows with no MIR call.
+    - In shared structure: phase routines in `TestRuntime.ll` (a declared legacy `.ll` change for the same meaning); a MIR producer
+      (PD22); a builder `replace` mark on Drop (a MIR form change for an implementation-defined label).
 - **R5-M139 An exclusive acquisition passes no shared layer (W1 rule 1, stage B)** (2026-10-27, R5 planning session; R4 signs off the A5
   side; supersedes R5-M123's sentence that stage B waits: PLAN G262 landed as BU-45, R4-M145 closed G251 (7) and made a discarded Place's
   bare acquisition its plan row) Rule (`MirValidator.SharedPaths.cs`, R5-M123's `MirViolation.SharedPath`): a projected Place that a Ref

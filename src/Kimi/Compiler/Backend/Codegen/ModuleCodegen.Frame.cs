@@ -27,7 +27,6 @@ internal sealed partial class ModuleCodegen
     private readonly List<FunctionAbi> cases = []; // A test build's test roots' signatures, in catalog order (Start), kept across Writes.
     private readonly Action<TextWriter, int> caseCall; // The test entry's call of a case's root, through the one call writer.
     private Needs needs; // The module parts the definitions of the latest Write requested.
-    private string? testRuntime; // The latest Write's test runtime routines: a test build's (TestRuntime.Text), else null.
 
     /// <summary>The module parts a definition requests, which the frame writes only when requested.</summary>
     [Flags]
@@ -84,9 +83,10 @@ internal sealed partial class ModuleCodegen
     // The complete module around the buffered definitions, an Application's entry calling its startup root.
     private void Assemble(TextWriter output, FunctionAbi? start)
     {
+        var testRuntime = this.IsTestBuild ? Testing.TestRuntime.Text : null; // A test build's routines.
         LlvmModuleText.WriteHeader(output, this.constants);
-        LlvmModuleText.WriteRuntime(output, this.testRuntime);
-        LlvmModuleText.WriteExternals(output, CollectionsMarshal.AsSpan(this.externals), this.testRuntime);
+        LlvmModuleText.WriteRuntime(output, testRuntime);
+        LlvmModuleText.WriteExternals(output, CollectionsMarshal.AsSpan(this.externals), testRuntime);
         if ((this.needs & Needs.ZeroSized) != 0)
         {
             output.Write(ZeroSizedDefinition);
@@ -125,7 +125,7 @@ internal sealed partial class ModuleCodegen
         {
             this.WriteStart(output, start);
         }
-        else if (this.testRuntime is not null)
+        else if (this.IsTestBuild)
         {
             Testing.TestRuntime.WriteEntry(output, this.Tests, this.caseCall);
         }
@@ -156,8 +156,7 @@ internal sealed partial class ModuleCodegen
     private bool Start(MirProgram program, InstanceCollector collector, in StartupResult startup, ReadOnlySpan<int> roots, out FunctionAbi? entry)
     {
         entry = null;
-        this.testRuntime = null;
-        if (startup.Kind == StartupKind.Test)
+        if (this.IsTestBuild)
         {
             this.cases.Clear();
             foreach (var root in roots)
@@ -173,7 +172,6 @@ internal sealed partial class ModuleCodegen
                 }
             }
 
-            this.testRuntime = Testing.TestRuntime.Text;
             this.Request(Needs.Memory); // The test runtime copies the temporary directory's text (llvm.memcpy).
             return true;
         }
