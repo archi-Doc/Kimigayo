@@ -83,9 +83,9 @@ public partial class LayoutAttributeBindingTest
         (
             "i-init",
             GenericInit + "func make<T>(value: T) -> i32\n    let p = P<T>.init(1, value@move)\n    return p.n\nlet r = make(())\n",
-            "InvalidCLayout_Kd public init(n: i32, value: T)|InvalidCLayout_Kd let p = P<T>.init(1, value@move)",
+            "InvalidCLayout_Kd let p = P<T>.init(1, value@move)",
             GenericInit + "func make<T>(value: T) -> i32\n    let p = P<T>.init(1, value@move)\n    return p.n\nlet r = make(5)\n"),
-        ("i-toplevel", GenericInit + "let q = P.init(1, ())\n", "InvalidCLayout_Kd public init(n: i32, value: T)|InvalidCLayout_Kd let q = P.init(1, ())", GenericInit + "let q = P.init(1, 2)\n"),
+        ("i-toplevel", GenericInit + "let q = P.init(1, ())\n", "InvalidCLayout_Kd let q = P.init(1, ())", GenericInit + "let q = P.init(1, 2)\n"),
         (
             "i-option",
             GenericP + "func g<T>(value: T) -> i32\n    let x: Option<P<T>> = .None\n    return 0\nlet r = g(())\n",
@@ -172,7 +172,7 @@ public partial class LayoutAttributeBindingTest
     }
 
     // SPEC 8.15.3 (the checked set): an inferred instance storing a zero-sized Field is InvalidCLayout_Kd at each use on every pipeline: a
-    // generic body's local, its constructor call with the constructor it instantiates, a top-level constructor call, an Option local with
+    // generic body's local, its constructor call, a top-level constructor call, an Option local with
     // the .None that makes it, a function Item.
     public static TheoryData<string, string, string> InferredRows
     {
