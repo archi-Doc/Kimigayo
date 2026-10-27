@@ -97,11 +97,11 @@ public class InlineLayoutTest
         => MinimalEmissionTest.AssertGenerationResourceLimit($"func inspect(value: {type}) -> i32 => 1\nConsole.writeLine(\"finite\")", "2147483647");
 
     [Fact]
-    public async Task AnInferredCLayoutInstanceReportsALaterFieldsResourceLimit()
+    public async Task AnInferredCLayoutInstanceIsReportedBeforeALaterFieldsResourceLimit()
     {
         // DECISIONS R5-M29 (a declared change of P7b): the old pool visits every Field of P<()> before Layout reports its zero-sized
-        // Field, so the later Field's resource limit is reported (GenerationFailed_Kd before); K10b's InvalidCLayout_Kd, at check under MIR
-        // code generation (K13b), supersedes both.
+        // Field, so the later Field's resource limit was reported at generation (GenerationFailed_Kd before); K10b's InvalidCLayout_Kd, at
+        // check on every pipeline (SPEC 8.15.3, 23.2.2; G158 (3)), supersedes both, so no generator runs.
         var directory = Path.Combine(Path.GetTempPath(), "kimi-inline-layout-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         try
@@ -110,7 +110,8 @@ public class InlineLayoutTest
             var project = new Project(new Kimigayo(console)) { Name = "layout", Directory = directory };
             project.AddSource("main.kimi", "#Layout(\"C\")\nstruct P<T>\n    var value: T\n    var big: [2147483648 of u8]\nfunc f<T>(value: T) -> i32\n    let x: Option<P<T>> = .None\n    return 0\nlet r = f(())\nConsole.writeLine(\"inferred\")");
             Assert.False(await project.Generate(TestContext.Current.CancellationToken));
-            Assert.Contains(Codegen.Expect("InvalidCLayout_Kd", "GenerationResourceLimit_Kd", CodegenDeviations.InferredCLayoutAtCheck), console.Text, StringComparison.Ordinal);
+            Assert.Contains("InvalidCLayout_Kd", console.Text, StringComparison.Ordinal);
+            Assert.DoesNotContain("GenerationResourceLimit_Kd", console.Text, StringComparison.Ordinal);
             Assert.DoesNotContain("GenerationFailed_Kd", console.Text, StringComparison.Ordinal);
         }
         finally

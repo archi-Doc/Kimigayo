@@ -37,7 +37,7 @@ internal sealed partial class Layout
     internal Layout() => this.recordsByKey = this.records.GetAlternateLookup<ReadOnlySpan<char>>();
 
     /// <summary>Forgets the entries and records of the previous program version (Compilation.InvalidateSourceAnalysis); a pass
-    /// without an edit keeps every Type's stored Types, IsCLayout, InlineCycle and CLayoutRejected (R4-M51's premise), so warm
+    /// without an edit keeps every Type's stored Types, CLayout and InlineCycle (R4-M51's premise), so warm
     /// passes keep them.</summary>
     internal void Clear()
     {
@@ -81,7 +81,7 @@ internal sealed partial class Layout
 
         entry = type.Kind switch
         {
-            _ when type.Symbol?.Adt is { InlineCycle: true } or { CLayoutRejected: true } => Rejected(type),
+            _ when type.Symbol?.Adt is { InlineCycle: true } => Rejected(type),
             BoundTypeKind.FixedArray => this.PlaceArray(type, budget - 1),
             _ when AdtDef.IsEnum(type) => this.PlaceEnum(type, budget - 1),
             _ => this.Place(type, budget - 1),
@@ -98,14 +98,21 @@ internal sealed partial class Layout
         return entry;
     }
 
-    // A struct, its complete base first, or a Tuple, Closure or Function Item, its parts placed with `budget` levels left. A C-layout
-    // struct with a zero-sized Field is CLayout (SPEC 6.7.1; a stored Never counts as zero-sized, IMPL 21.1.3); a Field whose stored
-    // Type Binding did not resolve makes it Rejected.
+    // A struct, its complete base first, or a Tuple, Closure or Function Item, its parts placed with `budget` levels left. A struct
+    // selecting C layout is CLayout when its declaration gives none (open, derived or empty) or a Field is zero-sized (SPEC 6.7.1; a
+    // stored Never counts as zero-sized, IMPL 21.1.3), its parts placed all the same; a Field whose stored Type Binding did not resolve
+    // makes it Rejected.
     private Entry Place(BoundType type, int budget)
     {
         var structure = AdtDef.IsStruct(type);
-        var cLayout = structure && type.Symbol!.Adt is { IsCLayout: true };
+        var selection = structure && type.Symbol!.Adt is { } adt ? adt.CLayout : AdtDef.CLayoutSelection.None;
+        var cLayout = selection != AdtDef.CLayoutSelection.None;
         var fold = new Fold(type);
+        if (selection == AdtDef.CLayoutSelection.Unavailable)
+        {
+            fold.Unavailable();
+        }
+
         Entry? inherited = structure && AdtDef.Base(type) is { } parent ? fold.Add(this.Walk(parent, budget), false) : null;
         var count = type.Kind switch
         {

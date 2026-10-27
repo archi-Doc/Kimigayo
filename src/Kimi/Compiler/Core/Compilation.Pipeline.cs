@@ -1,10 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the public entry path for post-Binding phases and their Problem records.
-// Input: a prepared compilation and its pipeline and code generator choice. Output: analysis, validated and analyzed MIR, under MIR code
-// generation its checked set, and diagnostics; generation has its own entry (Compilation.Generation.cs, R5 C0a).
-// Until R6 the legacy path decides acceptance; MIR findings join through the same Problem publication. Under MIR code generation (sel,
-// R5 PD4) the checked set's records join them (K4b).
+// Input: a prepared compilation and its pipeline and code generator choice. Output: analysis, validated MIR and its checked set on every
+// pipeline, the MIR analyzed under mir, and diagnostics; generation has its own entry (Compilation.Generation.cs, R5 C0a).
+// Until R6 the legacy path decides acceptance; MIR findings join through the same Problem publication under mir. The checked set's
+// Language records (SPEC 23.2.2: its layout obligations) join on every pipeline, and its generation records (limits, capability gaps,
+// broken contracts) under MIR code generation (sel, R5 PD4, K4b), the old generator reporting its own at generation.
 // Observers of Analyzed (R4-M17) are read-only; no compiler code subscribes.
 // Must not expose a second analysis/generation path or re-decide phase-owned facts.
 
@@ -38,7 +39,7 @@ public partial class Compilation
     private Mir.MirBuilder? mirBuilder;
     private Mir.MirAnalysis? mirAnalysis;
     private Backend.InstanceCollector? instances;
-    private Mir.MirProgram? mir; // The MIR of the latest Analyze under the mir pipeline; null otherwise and after invalidation.
+    private Mir.MirProgram? mir; // The MIR of the latest Analyze, analyzed under the mir pipeline; null after invalidation.
 
     /// <summary>Occurs at the end of every <see cref="Analyze"/>, on both pipelines, when the old path's records and, under mir, the
     /// MIR's of the version are final: the one observation point of the difference ledger (R4-M17). Observers only read.</summary>
@@ -122,12 +123,12 @@ public partial class Compilation
         }
     }
 
-    /// <summary>Analyzes the bodies after final Binding and the startup check (P6–P9). Under mir the MIR is built, validated and analyzed
-    /// first; then <see cref="Analyzed"/> occurs.</summary>
+    /// <summary>Analyzes the bodies after final Binding and the startup check (P6–P9). The MIR is built and validated and its checked set
+    /// collected first, under mir after the MIR analyses; then <see cref="Analyzed"/> occurs.</summary>
     /// <returns>The analysis result.</returns>
     public AnalysisResult Analyze()
     {
-        this.mir = this.pipeline == CompilerPipeline.Mir ? this.BuildMir() : null;
+        this.mir = this.pipeline == CompilerPipeline.Mir ? this.BuildMir() : this.Collect((this.mirBuilder ??= new(this)).Build());
         this.Ownership.Analyze();
         Analyzed?.Invoke(this);
         return this.Analysis;
@@ -184,18 +185,9 @@ public partial class Compilation
         => (source.Module < this.SourceModules.Length ? this.SourceModules[source.Module] : this.Library.Kotonoha).Syntax.Nodes[source.Id]!;
 
     /// <summary>Builds, validates and analyzes the MIR of the latest Binding pass, once per pass (R4: beside the old path, which still
-    /// decides), and under MIR code generation collects its checked set after the analyses, whatever they found (K package 4.3).</summary>
+    /// decides), and collects its checked set after the analyses, whatever they found (K package 4.3).</summary>
     /// <returns>The program, with its construction records, validator findings and analysis problems.</returns>
-    internal Mir.MirProgram BuildMir()
-    {
-        var program = (this.mirAnalysis ??= new(this.Types)).Run((this.mirBuilder ??= new(this)).Build());
-        if (this.codegen == CompilerCodegen.Mir)
-        {
-            (this.instances ??= new(this.Types, this.Layout)).Run(program, this.SourceModules.Length);
-        }
-
-        return program;
-    }
+    internal Mir.MirProgram BuildMir() => this.Collect((this.mirAnalysis ??= new(this.Types)).Run((this.mirBuilder ??= new(this)).Build()));
 
     internal void InvalidateOwnership()
     {
@@ -203,9 +195,16 @@ public partial class Compilation
         this.mir = null;
     }
 
-    // The MIR records the mir pipeline publishes, added to the list when one is given: construction records and validator findings, the
-    // library's as well as the source modules', and under MIR code generation the checked set's records of the same version (R5 K4b,
-    // DECISIONS R5-M41), which join acceptance like the others.
+    // The checked set of a built program, collected on every pipeline: its layout obligations are check's (SPEC 8.15.3, 23.2.2).
+    private Mir.MirProgram Collect(Mir.MirProgram program)
+    {
+        (this.instances ??= new(this.Types, this.Layout)).Run(program, this.SourceModules.Length);
+        return program;
+    }
+
+    // The MIR records published, added to the list when one is given: under mir the construction records and validator findings, the
+    // library's as well as the source modules'; the checked set's records of the same version (R5 K4b, DECISIONS R5-M41), its Language
+    // records on every pipeline (SPEC 23.2.2) and the others under MIR code generation, whose generator they concern. All join acceptance.
     private int MirRecords(List<Problem>? into)
     {
         if (this.mir is not { } program)
@@ -213,22 +212,32 @@ public partial class Compilation
             return 0;
         }
 
-        var collected = this.Instances is { } set && set.Version == program.Version ? set.Records : null;
-        if (into is not null)
+        var count = 0;
+        if (this.pipeline == CompilerPipeline.Mir)
         {
-            into.AddRange(program.Records);
+            into?.AddRange(program.Records);
             foreach (var finding in program.Findings)
             {
-                into.Add(new(DiagnosticCode.InternalInvariant_Kd, finding.Subject));
+                into?.Add(new(DiagnosticCode.InternalInvariant_Kd, finding.Subject));
             }
 
-            if (collected is not null)
+            count = program.Records.Count + program.Findings.Count;
+        }
+
+        if (this.instances?.Set is { } set && set.Version == program.Version)
+        {
+            foreach (var record in set.Records)
             {
-                into.AddRange(collected);
+                if (this.codegen == CompilerCodegen.Mir ||
+                    (DiagnosticEntries.TryGet(record.Code, out var entry) && entry.Category == DiagnosticCategory.Language))
+                {
+                    into?.Add(record);
+                    count++;
+                }
             }
         }
 
-        return program.Records.Count + program.Findings.Count + (collected?.Count ?? 0);
+        return count;
     }
 }
 

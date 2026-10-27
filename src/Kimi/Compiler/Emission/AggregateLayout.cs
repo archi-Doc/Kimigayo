@@ -317,8 +317,8 @@ internal sealed class AggregateLayoutPool
         var fieldCount = representation?.Layout.FieldOffsets.Length ??
             (structure ? AdtDef.Count(type) : type.Kind == BoundTypeKind.FunctionItem ? 0 : type.Components.Count);
         var count = array ? (int)type.Length : fieldCount;
-        // Shapes stay apart by layout mode (Binding's AdtDef.IsCLayout); Layout places both.
-        var cLayout = structure && type.Symbol!.Adt is { IsCLayout: true };
+        // Shapes stay apart by layout mode (Binding's AdtDef.CLayout); Layout places both.
+        var cLayout = structure && type.Symbol!.Adt is { CLayout: not AdtDef.CLayoutSelection.None };
         var body = AdtDef.Destructor(type);
         var destructor = body is not null ? this.destructors.GetValueOrDefault(body, -1) : -1;
         var genericDestructor = body is not null && GenericStoragePlan.IsGeneric(body) ? this.InstantiateDestructor?.Invoke(type) : null;

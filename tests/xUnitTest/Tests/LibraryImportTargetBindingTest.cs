@@ -230,16 +230,16 @@ public class LibraryImportTargetBindingTest
         AssertImportRecord(c, code, at, code is null);
     }
 
-    // A borrow of a struct whose declaration already failed (SPEC 21.1: an open C struct, a zero-sized Field) rests on that error and
-    // adds no import record; Weak, which Binding does not support yet, has only its own record at its Type.
+    // A borrow of a struct whose declaration already failed (an inline storage cycle) rests on that error and adds no import record; an
+    // open C struct or a zero-sized Field is no declaration error (SPEC 6.7.1, 8.15.3, DECISIONS R4-M134), so its borrow is Unsupported
+    // (LayoutAttributeBindingTest.CLayoutUses.cs, importref); Weak, which Binding does not support yet, has only its own record at its Type.
     [Theory]
-    [InlineData("#Layout(\"C\")\nopen struct S\n    public var a: i32", "(value: ref/S)", null, null)]
-    [InlineData("#Layout(\"C\")\nstruct S\n    public var a: i32\n    public var none: [0 of i32]", "(value: uniq/S)", null, null)]
+    [InlineData("#Layout(\"C\")\nstruct S\n    public var a: i32\n    public var s: S", "(value: ref/S)", null, null)]
     [InlineData("struct S\n    public var a: i32", "(value: ref/Weak<rc/S>)", DiagnosticCode.Unsupported_Kd, "Weak")]
     public void AnImportRestsOnItsTypesOwnError(string declarations, string parameters, DiagnosticCode? code, string? at)
     {
         var c = AnalyzeImport(declarations + "\ngroup Native\n    " + Import + "\n    public unsafe func imported" + parameters + " -> i32", "codec");
-        Assert.Equal(code is null, CompilationTestHelper.BindingErrors(c).Any(static x => x.Code == nameof(DiagnosticCode.InvalidCLayout_Kd)));
+        Assert.Equal(code is null, CompilationTestHelper.BindingErrors(c).Any(static x => x.Code == nameof(DiagnosticCode.InvalidInlineLayout_Kd)));
         AssertImportRecord(c, code, at, false);
     }
 

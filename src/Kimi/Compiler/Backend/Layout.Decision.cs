@@ -66,6 +66,9 @@ internal sealed partial class Layout
         // A stored Type Binding did not resolve: nothing placed, no level, no known size.
         internal void Reject() => (this.rejected, this.exact) = (this.rejected ?? this.type, false);
 
+        // SPEC 6.7.1: a struct whose declaration selects C layout but gives none (open, derived or empty) is CLayout itself, before its parts.
+        internal void Unavailable() => this.clayout = this.type;
+
         // The decided entry of parts placed with `budget` levels left and measured at `size`, or null when every part is laid out and the
         // Type's own size admits its record.
         internal readonly Entry? Decide(int budget, UInt128 size, int alignment, Outcome ownCount)

@@ -51,12 +51,13 @@ public sealed partial class MirBuildTest
 
     // SPEC 23.1.2 (DECISIONS R4-M70): where Binding or control flow published that it formed no value, the MIR forms none from facts
     // that do not exist and records nothing, so each body validates: an acquisition Binding's Copy proof left unset on a Type it rejected
-    // (a raw read of a struct whose C layout it rejected) is the acquired node's derived Opaque value; a Field Binding formed no stored
+    // (a raw read of a struct on an inline storage cycle; a C layout is no longer rejected at its declaration, SPEC 6.7.1, 8.15.3, DECISIONS
+    // R4-M134) is the acquired node's derived Opaque value; a Field Binding formed no stored
     // Type for (one naming a missing Type, or inferred from a call it rejected) has no Place, so a constructor places no initializer
     // there; and an empty body falling through a non-Unit result, which control flow rejects, leaves no value, as a body ending in a
     // statement does.
     [Theory]
-    [InlineData("#Layout(\"C\")\nstruct S\nfunc read(p: raw/S)\n    unsafe\n        let value = *p\n", "InvalidCLayout_Kd", "*p")]
+    [InlineData("struct S\n    var s: S\nfunc read(p: raw/S)\n    unsafe\n        let value = *p\n", "InvalidInlineLayout_Kd", "*p")]
     [InlineData("struct S\n    var item: Missing = 7\n    var other: i32 = 1\n", "UnresolvedBinding_Kd", null)]
     [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry\n    var tag = Tags.tagOf<Entry>()\n", "UnprovenConstraint_Kd", null)]
     [InlineData("func f<T>() -> T\n    T is Copy\n", "FunctionFallthrough_Kd", null)]

@@ -8,7 +8,8 @@ namespace Kimi.Compiler.Backend;
 internal sealed partial class InstanceCollector
 {
     /// <summary>Gets the record of a Layout outcome (K 4.8; R5-M37: the collector alone maps Layout's outcomes). A size, count or depth limit
-    /// is Resource (IMPL 21.3.2); a C-layout instance storing a zero-sized Field, at any depth in the window, is the Language error
+    /// is Resource (IMPL 21.3.2); an instance selecting C layout without one (open, derived, empty or storing a zero-sized Field), at any
+    /// depth in the window, is the Language error
     /// InvalidCLayout_Kd (SPEC 6.7.1, 8.15.3); Ok has none, and Rejected storage derives from the Binding error that rejected it (Derived,
     /// DECISIONS BU-38). Oversized is reported through Result.Oversized, which an oversized CLayout carries too.</summary>
     /// <param name="outcome">The outcome.</param>

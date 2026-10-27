@@ -189,7 +189,6 @@ internal enum BindingFailure : byte
     UnsafeFunctionValue,
     UnavailableReservedImport,
     SplitCLayoutStorage,
-    InvalidCLayout,
     InvalidInlineLayout,
 
     // SPEC 15.1.5 lending rule: a bare Non-Copy Place needs @move, and a directly owned Place needs @uniq.

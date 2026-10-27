@@ -31,19 +31,6 @@ public sealed partial class Binding
         return target;
     }
 
-    private static bool HasCLayout(StructKoto structure)
-    {
-        for (var attribute = structure.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
-        {
-            if (attribute.LayoutMode == "C")
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     // SPEC 22.6: string, dynamic collections (SPEC 4.9), object handles (obj, rc, arc; an object borrow is none), function and Closure
     // values, and borrows of them have no C counterpart.
     private static bool HasNoCCounterpart(BoundType type)
@@ -329,7 +316,7 @@ public sealed partial class Binding
             ScalarCode(type);
 
     // SPEC 22.6: whether a referent is C-exchangeable: fixed-width integer Cores and f32/f64, raw pointers, ref/uniq borrows of eligible
-    // referents, positive-length fixed arrays of eligible elements and owned C-layout structs (AdtDef.IsCLayout) with eligible prepared
+    // referents, positive-length fixed arrays of eligible elements and owned structs with a selected C layout (AdtDef.CLayout) and eligible prepared
     // Fields. Null when the decision rests on a struct whose declaration or Field Type already failed, which has its own diagnostic.
     // The nonnull Option representation of a borrow is not yet laid out, so Option<ref/T> is not admitted.
     private bool? CExchangeable(BoundType type, int depth)
@@ -369,7 +356,7 @@ public sealed partial class Binding
             return null;
         }
 
-        if (symbol.Adt is not { IsCLayout: true } shape)
+        if (symbol.Adt is not { CLayout: AdtDef.CLayoutSelection.Selected } shape)
         {
             return false;
         }
@@ -383,57 +370,6 @@ public sealed partial class Binding
         }
 
         return true;
-    }
-
-    // SPEC 21.1: direct zero-sized Fields reject C layout. Struct sizes need prepared storage
-    // shapes; a Field whose size depends on a Type argument is checked when its layout is formed.
-    // A rejected declaration is published as AdtDef.CLayoutRejected, which Layout treats as rejected storage.
-    private void ValidateCLayoutFields()
-    {
-        foreach (var container in this.storageDeclarations)
-        {
-            var adt = container.BoundSymbol!.Adt!;
-            adt.CLayoutRejected = false;
-            for (var m = 0; adt.IsCLayout && m < container.Members.Count; m++)
-            {
-                if (container.Members[m] is PropertyKoto field && IsStoredVariable(field) && (field.Modifier & ModifierKind.Static) == 0 &&
-                    field.BoundSymbol?.Property?.Type is { } type && this.HasZeroStride(type))
-                {
-                    adt.CLayoutRejected = true;
-                    this.Fail(field, BindingFailure.InvalidCLayout);
-                    this.Fail(container, BindingFailure.InvalidTypeFormation);
-                }
-            }
-        }
-
-        this.storagePrepared = true;
-        foreach (var (syntax, type) in this.cLayoutInstances)
-        {
-            this.CheckCLayoutInstance(syntax, type);
-        }
-    }
-
-    // SPEC 21.1: a written instantiation of a generic C-layout struct, such as Pair<()>,
-    // must not make a direct Field zero-sized. Inferred instantiations reject at generation.
-    private void CheckCLayoutInstance(GenericsKoto syntax, BoundType type)
-    {
-        if (!this.storagePrepared)
-        {
-            this.cLayoutInstances.Add((syntax, type));
-            return;
-        }
-
-        if (type.Symbol?.Declaration is StructKoto { BoundSymbol.Adt: { } shape })
-        {
-            foreach (var field in shape.Types)
-            {
-                if (this.StoredType(field, type) is { } stored && this.HasZeroStride(stored))
-                {
-                    this.Fail(syntax, BindingFailure.InvalidCLayout);
-                    return;
-                }
-            }
-        }
     }
 
     private void ValidateLayoutFragments()
@@ -502,16 +438,11 @@ public sealed partial class Binding
                 }
             }
 
-            // SPEC 21.1: C layout rejects open, derived and empty structs.
-            if (mode == "C" && ((container.Modifier & ModifierKind.Open) != 0 || container.Bases.Count != 0 || instanceFields == 0))
-            {
-                this.Fail(latestSpecification!, BindingFailure.InvalidCLayout);
-                this.InvalidateAttributeTarget(latestSpecification!);
-                valid = false;
-            }
-
-            // The published fact, written for every struct in every pass; PrepareStorage reuses a shape created here on a first pass.
-            (container.BoundSymbol!.Adt ??= new()).IsCLayout = mode == "C" && valid;
+            // The published fact, written for every struct in every pass; PrepareStorage reuses a shape created here on a first pass. SPEC
+            // 6.7.1: an open, derived or empty struct has no C layout, an error only at a by-value use (8.15.3), which Layout judges.
+            (container.BoundSymbol!.Adt ??= new()).CLayout = mode != "C" || !valid ? AdtDef.CLayoutSelection.None :
+                (container.Modifier & ModifierKind.Open) != 0 || container.Bases.Count != 0 || instanceFields == 0 ? AdtDef.CLayoutSelection.Unavailable :
+                AdtDef.CLayoutSelection.Selected;
         }
     }
 }

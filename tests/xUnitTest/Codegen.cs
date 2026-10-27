@@ -113,15 +113,6 @@ internal static class CodegenDeviations
         "23.2.2",
         "Under MIR code generation check reports the checked set's records; the old generator accepts the program and refuses it at generation.");
 
-    /// <summary>K13b: a use of an inferred C-layout instance storing a zero-sized Field is InvalidCLayout_Kd at check under MIR code
-    /// generation.</summary>
-    internal static readonly Deviation InferredCLayoutAtCheck = new(
-        "inferred-clayout-at-check",
-        DeviationClass.A,
-        "R5-M55",
-        "6.7.1 8.15.3",
-        "MIR code generation reports the Language error at check; the old generator accepts the program and reports a resource limit at generation. Native outcomes stay equal.");
-
     /// <summary>C5b: an erased environment of 8 bytes or less and alignment 8 or less that needs destruction is stored in the common
     /// Function value's word under MIR code generation (PD19, IMPL 21.1.3); the old generator allocates it.</summary>
     internal static readonly Deviation InlineEnvironment = new(
@@ -130,14 +121,6 @@ internal static class CodegenDeviations
         "R5-M104",
         "7.7.4",
         "IMPL 21.1.3 stores such an environment inline even when it needs destruction; the old generator heap-allocates every environment that needs destruction, one allocation more. Values, Moves and cleanup stay equal.");
-
-    /// <summary>K13b: a by-value use needing a layout over 2^63 - 1 bytes is OversizedLayout_Kd at check under MIR code generation.</summary>
-    internal static readonly Deviation OversizedLayoutAtCheck = new(
-        "oversized-layout-at-check",
-        DeviationClass.A,
-        "R5-M52",
-        "8.15.3 23.2.2",
-        "MIR code generation reports the Language error at check; the old generator accepts the program and reports its size limit at generation. Native outcomes stay equal (R5-M52: no R5-M6 row); this entry covers the diagnostic expectation R5-M85's form introduced.");
 
     /// <summary>E9 (P34_REMAINING R1), landed with C6c: an inherited base getter or <c>ref/Self</c> method reached through reference layers
     /// (<c>ref/(ref/T)</c>, <c>uniq/(uniq/T)</c>, <c>ref/(obj/T)</c>, <c>ref/(rc/T)</c>, <c>uniq/(obj/T)</c>) reads the base subobject under MIR

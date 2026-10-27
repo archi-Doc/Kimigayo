@@ -490,9 +490,6 @@
   + Name="Binding.SplitCLayoutStorage"
     Description="the C-layout storage lies in one fragment"
 
-  + Name="Binding.InvalidCLayout"
-    Description="the C layout is valid"
-
   + Name="Binding.InvalidInlineLayout"
     Description="the Type has a finite inline layout"
 

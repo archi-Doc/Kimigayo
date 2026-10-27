@@ -1,8 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the stored shape of one struct or enum declaration.
-// Input: its bound declaration. Output: ordered fields, cases, destructor, inline storage types, whether it has C layout and whether
-// it lies on an inline storage cycle; a struct's dispatch shape (VTableDef).
+// Input: its bound declaration. Output: ordered fields, cases, destructor, inline storage types, the C layout its declaration gives and
+// whether it lies on an inline storage cycle; a struct's dispatch shape (VTableDef).
 // Binding fills the shape once per pass before bodies; field and case ordinals stay consistent.
 // Must not make MIR or Backend rediscover storage from declaration syntax.
 
@@ -14,6 +14,19 @@ namespace Kimi.Compiler;
 /// destructor and the Type syntax of its inline storage. Binding refills it once per pass, before any body is bound.</summary>
 internal sealed class AdtDef
 {
+    /// <summary>The C layout a struct's declaration gives (SPEC 6.7.1).</summary>
+    internal enum CLayoutSelection : byte
+    {
+        /// <summary>Kimigayo layout: no valid <c>#Layout("C")</c>.</summary>
+        None,
+
+        /// <summary>C layout, laid out in written order unless a Field is zero-sized.</summary>
+        Selected,
+
+        /// <summary>C layout selected on an open, derived or empty struct, which has none.</summary>
+        Unavailable,
+    }
+
     /// <summary>Gets the inline storage Type syntax in declaration order: direct bases, then stored Field Types and Case payloads.</summary>
     internal List<Koto> Types { get; } = [];
 
@@ -25,14 +38,11 @@ internal sealed class AdtDef
 
     internal FunctionKoto? DestructorKoto { get; set; }
 
-    /// <summary>Gets or sets a value indicating whether the struct's C layout validated (SPEC 21.1). Layout validation writes it for
-    /// every struct in every pass, before storage is prepared; header binding runs earlier and reads the attributes instead.</summary>
-    internal bool IsCLayout { get; set; }
-
-    /// <summary>Gets or sets a value indicating whether the struct's C-layout declaration was rejected for a direct zero-sized Field
-    /// (InvalidCLayout_Kd at the Field). C-layout Field validation writes it for every struct in every pass; Layout reads it as storage
-    /// Binding rejected (DECISIONS R5-M55).</summary>
-    internal bool CLayoutRejected { get; set; }
+    /// <summary>Gets or sets the C layout the struct's declaration gives (SPEC 6.7.1): none, selected by a valid <c>#Layout("C")</c>, or
+    /// selected on an open, derived or empty struct, which has none. Layout validation writes it for every struct in every pass, before
+    /// storage is prepared; Layout reads it, judging a selected one's zero-sized Fields itself, and a by-value use of an instance without
+    /// a C layout is the error (SPEC 8.15.3).</summary>
+    internal CLayoutSelection CLayout { get; set; }
 
     /// <summary>Gets or sets a value indicating whether the declaration lies on an inline storage cycle (InvalidInlineLayout_Kd).
     /// Inline layout validation writes it for every struct and enum in every pass; Layout reads it (DECISIONS R5-M37).</summary>

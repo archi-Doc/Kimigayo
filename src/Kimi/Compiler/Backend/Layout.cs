@@ -2,13 +2,13 @@
 
 // Layout, one instance per compilation (Compilation.Layout; IMPL 21.1; plan P7a-P7c, K10c; DECISIONS R5-M19, R5-M29, R5-M37, R5-M52).
 // Responsibility: the size, alignment, stride, Field offsets and LLVM representation of a closed Type for every generator (PD2: the
-// old pool calls it, never a copy), and its verdict: OK, a typed generation limit, the C-layout zero-sized rule anywhere in the
+// old pool calls it, never a copy), and its verdict: OK, a typed generation limit, SPEC 6.7.1's unavailable C layout anywhere in the
 // 64-level window (S2-S4 X18), a layout over 2^63 - 1 bytes (Oversized, IMPL 21.1.1), or a failure derived from Binding's rejected
 // storage. Rows (Layout.Rows.cs; static, Row): IMPL 21.1.3's scalars, Unit, string, Never, borrows and raw pointers, object and function
 // handles, and the sequence handles (Slice, Array, Dictionary words, each with its length word, LengthWord).
 // Placement (Layout.Placement.cs): structs (Loan<T> among them), Tuples, fixed arrays, enums, Closures and Function Items, memoized
 // per program version, each placement's entry and its one decision in Layout.Decision.cs; Weak<S> comes with its operations (P41).
-// Inputs: a closed, interned Type of the owning compilation; AdtDef (stored Types, IsCLayout, InlineCycle, CLayoutRejected);
+// Inputs: a closed, interned Type of the owning compilation; AdtDef (stored Types, CLayout, InlineCycle);
 // IMPL 21.1.3's rows. A borrow, raw pointer, handle or sequence is laid out without reading its referent or element Type (X34).
 // Outputs: a Result (Outcome, Value, Instance, Oversized); Row(type) for the old scalar-value gate until G8. A Type without a row is an
 // internal error. The collector (InstanceCollector) alone maps the outcomes (and, until G8, the old AggregateLayout.Represent onto its
@@ -16,16 +16,15 @@
 // OversizedLayout_Kd at each use (R5-M55, R5-M52), Rejected to a derived failure without a record (InternalInvariant_Kd in a complete
 // compilation, DECISIONS BU-38); codegen after acceptance treats any outcome but Ok as a broken contract (InternalInvariant_Kd). No size is
 // published.
-// After a failed Binding: Rejected for a declaration with InlineCycle or a rejected C-layout declaration (CLayoutRejected: Binding
-// reports its direct zero-sized Field), a null stored Field Type or Case (BU-37), or a fixed array with Length < 0; an unresolved base,
-// which Binding publishes as no base, is laid out without it (Ok; no record follows a failed Binding).
+// After a failed Binding: Rejected for a declaration with InlineCycle, a null stored Field Type or Case (BU-37), or a fixed array with
+// Length < 0; an unresolved base, which Binding publishes as no base, is laid out without it (Ok; no record follows a failed Binding).
 // Invariants: no alignment exceeds 16, the heap's (SPEC 21.4.3; DECISIONS R5-M92): a row's is at most 16 and a placement takes its parts'
 // maximum; an answer depends only on the Type and the program version, never on query order; one record per representation
 // within a program version; Oversized only for Outcome Oversized and an oversized CLayout; every memo entry's size is exact or a lower
 // bound, 2^63 for any size above 2^63 - 1; warm calls allocate 0 B; at most 65 placement levels per call and 65 memo entries per Type;
 // the complete base is a prefix of a derived struct, its tail padding included (X1); Never is zero-sized, laid out as Unit (IMPL 21.1.3),
 // while the old Emission keeps Never without a representation (WindowsLowering.GetValue's gate), so legacy .ll is unchanged.
-// Must not read syntax (AdtDef.IsCLayout is the C-layout fact), Origins, HIR, MIR or ownership state, decide destruction (the old
+// Must not read syntax (AdtDef.CLayout is the C-layout fact), Origins, HIR, MIR or ownership state, decide destruction (the old
 // pool keeps its callbacks until G8), keep static mutable state, detect cycles itself (Binding's InlineCycle), decide derived
 // failures (the collector's), lay out IMPL 21.1.3's nonnull Option before PLAN U8 (STATUS), use LINQ, be called concurrently on one
 // instance, or be given another compilation's Types (their stored Types follow that compilation's edits).
@@ -55,7 +54,8 @@ internal sealed partial class Layout
         /// <summary>The placement height exceeds <see cref="MaximumHeight"/> and no CLayout lies in the window (IMPL 21.3.2).</summary>
         DepthLimit,
 
-        /// <summary>The result's Instance, a C-layout instance placed in the window, stores a zero-sized Field (SPEC 6.7.1, 8.15.3).</summary>
+        /// <summary>The result's Instance, an instance selecting C layout placed in the window, has none: its declaration is open, derived
+        /// or empty, or it stores a zero-sized Field (SPEC 6.7.1, 8.15.3).</summary>
         CLayout,
 
         /// <summary>The result's Instance is a struct, enum or fixed array whose storage Binding rejected: derived, never reported.</summary>
@@ -76,7 +76,7 @@ internal sealed partial class Layout
     /// Rejected, <see cref="Oversized"/> exactly for Oversized and a CLayout whose size is also over 2^63 - 1.</summary>
     /// <param name="Outcome">The verdict.</param>
     /// <param name="Value">The representation's one record, when the Type is laid out.</param>
-    /// <param name="Instance">The C-layout instance storing a zero-sized Field, or the Type whose storage Binding rejected.</param>
+    /// <param name="Instance">The instance selecting C layout without one, or the Type whose storage Binding rejected.</param>
     /// <param name="Oversized">Whether the Type needs a layout over 2^63 - 1 bytes.</param>
     internal readonly record struct Result(Outcome Outcome, ValueLowering? Value, BoundType? Instance, bool Oversized)
     {

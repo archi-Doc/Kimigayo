@@ -612,13 +612,7 @@ public sealed partial class Binding
             return this.Fail(generic, BindingFailure.InvalidTypeFormation);
         }
 
-        var bound = own is null ? null : Complete(generic, this.BindContainerReference(generic, definition, scope, context, (BoundType[])own.Components));
-        if (bound is not null && container is StructKoto { AttributeChain: not null } structure && HasCLayout(structure))
-        {
-            this.CheckCLayoutInstance(generic, bound);
-        }
-
-        return bound;
+        return own is null ? null : Complete(generic, this.BindContainerReference(generic, definition, scope, context, (BoundType[])own.Components));
     }
 
     private BoundType? BindTypeList(
