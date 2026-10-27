@@ -13,7 +13,7 @@ namespace Kimi.Compiler;
 //   literal collecting its element evidence, a join collecting its sources without a Target Result Type, or a call deciding a
 //   control-flow argument) waits unbound (WaitsForPosition), as does an aggregate holding it, an array or dictionary literal no part of
 //   which establishes its element Type there, and a join all of whose sources await, one unbound (AwaitsWithoutCandidate); each is
-//   bound once, at the decided Type (BindWaiting from PropagateSources, RequireAtPosition, DecideWaiting) or, with nothing decided, at
+//   bound once, at the decided Type (BindWaiting from BindWaitedSources, RequireAtPosition, DecideWaiting) or, with nothing decided, at
 //   its defaults (AwaitsWithoutCandidate, DefaultWaitingPart); (3) the late fit of a bound expression that awaits its position
 //   (AwaitsPosition: a Tuple, array or dictionary literal with a part of Type Never or a part that awaits; a result target every value
 //   source of which awaits or has Type Never; through parentheses, labels and expression bodies), which is no evidence
@@ -461,7 +461,7 @@ public sealed partial class Binding
         => this.BindNode(source, this.ConstraintScope(source), type) is null ? null : this.SuppliedType(source);
 
     // SPEC 14.9.2 step 2: the candidates of a join, Never supplying none: a source that awaits its position supplies none and is checked
-    // by its late Type (PropagateSources), with or without a fixed Target Result Type; a source that waited unbound supplies none either;
+    // by its late Type (BindWaitedSources), with or without a fixed Target Result Type; a source that waited unbound supplies none either;
     // a failed source leaves the join Dependent on it (SPEC 23.1.2), and any other unbound source makes the join pending. Returns
     // whether a source awaits.
     private bool ResultCandidates(ResultContext context, List<BoundType> types)

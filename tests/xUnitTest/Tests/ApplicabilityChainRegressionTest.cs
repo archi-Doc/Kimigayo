@@ -298,15 +298,18 @@ public class ApplicabilityChainRegressionTest
     [Fact]
     public void ASourceHoldingNeitherLiteralNorJoinRestsOnItsJoinsRecord()
     {
-        var c = CompilationTestHelper.ParseSuccess(ControlFlowDeclarations + "first(if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)) else => (stop(), x))\n");
+        var c = CompilationTestHelper.ParseSuccess(ControlFlowDeclarations +
+            "first(if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)) else => (stop(), x))\n");
         c.Binding.Bind(BindingMode.Final);
         var joins = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IfKoto>().ToArray();
         Assert.Same(joins[1], Assert.Single(c.Binding.Issues).Node);
         var source = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<TupleLiteralKoto>().First(x => x.Elements[0] is FunctionKoto).Parent!; // The expression body.
         Assert.Same(joins[1], Assert.Single(c.Binding.FailureCauses(source)!).Subject);
         Assert.Same(joins[1], Assert.Single(c.Binding.FailureCauses(joins[0])!).Subject);
-        var dictionaries = MinimalEmissionTest.Analyze(ControlFlowDeclarations + "takeD(if c => (if c => [\"k\": missing] else => [\"k\": stop()]) else => [\"k\": x])\n");
-        Assert.Null(dictionaries.Binding.FailureCauses(KotoTree.Walk(dictionaries.Kotonoha.RootKoto).OfType<DictionaryLiteralKoto>().Single(x => x.ToString() == "[\"k\": stop()]")));
+        var dictionaries = MinimalEmissionTest.Analyze(ControlFlowDeclarations +
+            "takeD(if c => (if c => [\"k\": missing] else => [\"k\": stop()]) else => [\"k\": x])\n");
+        var dictionary = KotoTree.Walk(dictionaries.Kotonoha.RootKoto).OfType<DictionaryLiteralKoto>().Single(x => x.ToString() == "[\"k\": stop()]");
+        Assert.Null(dictionaries.Binding.FailureCauses(dictionary));
     }
 
     // SPEC 23.1.2, 10.1: a call that selects no candidate, or whose selected candidate fails, still binds its Literal and waiting

@@ -7101,11 +7101,15 @@ resumed by R4-M86 (2026-10-20).
     the root's record beside the other failure's own (dev: at the inner join; a move, count equal), also at a generic call where
     dev's `UnboundTypeArgument_Kd` stood alone (rv5 c1, gen2 `*-defaults-*-id`: the root's record added). Two inner defaults
     conflicts, or one beside the root's own typed conflict (e21, q2, q9, e3, e23; gen3's `ts-defaults`), are the root's one record
-    (dev: one each). A nested join with a failed part is its subtree's root (gen2 `deep-defaults-*`: the middle join; dev: the
-    `let`'s derived record). A nested join's literals at a call's classified position are checked at that position's Type as the
-    Tuple twin's are (gen2 `tpos`, `tsame` and `arr` `defaults-defaults2` at `first`, `take` and `identity`: the misfitting
-    literal's record, the call's `NoApplicableOverload_Kd`, or a derived `PrerequisiteUnavailable_Kd` at a generic call, the K1
-    sentence; dev: the inner joins' own conflicts). A Dependent join bound again by a later use keeps its outcome (`WaitedResult`)
+    (dev: one each); so is a defaults conflict found by a nested join's own formation beside its typed conflict, the covering
+    record then that join's (`first(if c => (if d => (closure, (if c => 5 else => 2.5)) else => (closure2, x)) else => (stop(), x))`:
+    one record at the inner join; dev: one at `2.5`). A nested join with a failed part is its subtree's root (gen2
+    `deep-defaults-*`: the middle join; dev: the `let`'s derived record). A nested join's literals at a call's classified position
+    are checked at that position's Type as the Tuple twin's are (gen2 `tpos`, `tsame` and `arr` `defaults-defaults2` at `first`,
+    `take` and `identity`: the misfitting literal's record, the call's `NoApplicableOverload_Kd`, or a derived
+    `PrerequisiteUnavailable_Kd` at a generic call, the K1 sentence; dev: the inner joins' own conflicts); at `first` only the first
+    misfitting position is reported, as for its twin `first(((if d => 5 else => 2.5), 3.5))` on dev (the call's argument path,
+    another owner; open). A Dependent join bound again by a later use keeps its outcome (`WaitedResult`)
     instead of a second judgement from scratch, so `let t = if c => (if d => 5 else => missing) else => 2.5` with `return t`
     loses the record that judgement gave (dev: at `5`, before: at the join), dependent on `missing`. No dev-clean program is
     rejected; no valid form gains a record; 16 rows fail first. Supersedes the cover rule, its "each conflict is recorded once"
