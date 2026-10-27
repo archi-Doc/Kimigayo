@@ -88,7 +88,7 @@ public sealed partial class Binding
 
             all.Add(recorded = unproven);
         }
-        else if (this.NestedConversionFailure(actual, expected, at, node) is { } contract)
+        else if (this.NestedConversionFailure(actual, expected, at, node, at) is { } contract)
         {
             this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, contract);
             return true;
@@ -108,8 +108,9 @@ public sealed partial class Binding
 
     // SPEC 15.6.1, 10.7, 15.3.7: a nested Function-typed part of a fit whose positions all hold (an element of a Tuple or array) is a
     // conversion too: its record is the conversion's one record (ConversionContractFailure: the positions, then the source signature's
-    // own Types), Proof class at the fit's node, never a Type mismatch.
-    private OriginContractFact? NestedConversionFailure(BoundType actual, BoundType expected, Koto at, Koto use, int depth = 0)
+    // own Types), Proof class at the converted value: the element of a Tuple or array literal that supplies the part (`source`), else the
+    // fit's value. Never a Type mismatch.
+    private OriginContractFact? NestedConversionFailure(BoundType actual, BoundType expected, Koto at, Koto use, Koto? source, int depth = 0)
     {
         if (depth > 64 || ReferenceEquals(actual, expected) || actual.Kind != expected.Kind || actual.Components.Count != expected.Components.Count)
         {
@@ -118,12 +119,18 @@ public sealed partial class Binding
 
         if (actual.Kind == BoundTypeKind.Function)
         {
-            return this.ConversionContractFailure(actual, expected, null, at, use);
+            return this.ConversionContractFailure(actual, expected, null, source ?? at, use);
         }
 
+        var elements = KotoHelper.UnwrapParentheses(source ?? at) switch
+        {
+            TupleLiteralKoto tuple when tuple.Elements.Count == actual.Components.Count => tuple.Elements,
+            ArrayLiteralKoto { Elements.Count: > 0 } array when actual.Components.Count == 1 => array.Elements,
+            _ => null,
+        };
         for (var i = 0; i < actual.Components.Count; i++)
         {
-            if (this.NestedConversionFailure(actual.Components[i], expected.Components[i], at, use, depth + 1) is { } failed)
+            if (this.NestedConversionFailure(actual.Components[i], expected.Components[i], at, use, elements?[i], depth + 1) is { } failed)
             {
                 return failed;
             }

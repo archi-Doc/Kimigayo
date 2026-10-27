@@ -163,10 +163,11 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 15.3.7, 15.6.1: outside applicability, which no Origin relation decides, the conversion proves the source signature's own
-        // Types, which its implementation assumes, from the target's and the use's premises (ProvesSourceSignature).
+        // SPEC 15.3.7, 10.7: the conversion's whole-contract Origin part proves the source signature's own Types, which its implementation
+        // assumes, from the target's and the use's premises (ProvesSourceSignature), wherever the Function Type is compared, a candidate's
+        // argument included, as a Function Item's conditions are (ContractFits).
         return FitsTypeCore(actual.Components[1], expected.Components[1], binding, use, invariant, instance: instance, structural: everywhere, everywhere: everywhere) &&
-            (binding is not { collectingFits: false, candidateTrials: 0 } || use is null || everywhere || binding.ProvesSourceSignature(actual, instance, use));
+            (binding is null || use is null || everywhere || binding.collectingFits || binding.ProvesSourceSignature(actual, instance, use));
     }
 
     // SPEC 10.7: a Function value's conversion instantiates the implementation's call-time Origins at the required ones, one instance for

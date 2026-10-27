@@ -549,7 +549,6 @@ public sealed partial class Binding
             for (var i = 0; i < count; i++)
             {
                 this.RequireInputPremises(operations[i]);
-                this.RequireArgumentConversion(operations[i]);
             }
 
             if (conditioned is not null)

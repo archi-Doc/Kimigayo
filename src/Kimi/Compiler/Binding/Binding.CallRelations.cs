@@ -119,29 +119,11 @@ public sealed partial class Binding
         for (var i = 0; i <= argumentCount; i++)
         {
             this.RequireInputPremises(operations[i]);
-            this.RequireArgumentConversion(operations[i]);
         }
 
         this.JudgeCallClauses(call, selected, operations, argumentCount, origins, inputs, declaringType);
         this.PublishCallRelations();
         this.CollectFitBounds(operations, argumentCount);
-    }
-
-    // SPEC 15.6.1, 15.3.7, 10.7: an argument the call converts to a Function-typed parameter, whose position its fit leaves to the
-    // comparison (CollectCallRelations), is a conversion at the argument: its Origin part, the positions and the source signature's own
-    // Types (ProvesSourceSignature), is the conversion's one judgment and record (ConversionContractFailure), UnprovenOriginContract_Kd at
-    // the argument as at a value fit (RecordMismatch). A Function Item's is its whole-contract comparison (ContractFits); an argument whose
-    // binding failed is no instance of the parameter.
-    private void RequireArgumentConversion(in BoundArgumentOperation operation)
-    {
-        if (operation is { Source: { BindingFailure: BindingFailure.None } at, SourceType: { Kind: BoundTypeKind.Function or BoundTypeKind.Closure } source } &&
-            operation.ParameterType is { Kind: BoundTypeKind.Function, Components.Count: 2 } parameter &&
-            this.ConversionSignature(source, at, out var signature, out var own) && !ReferenceEquals(signature, parameter) &&
-            !this.ProvesSourceSignature(signature, ConversionInstance(signature, own, parameter), at) &&
-            this.ConversionContractFailure(signature, parameter, own, at, at) is { } contract)
-        {
-            this.FailExplained(ref this.originContracts, at, BindingFailure.OriginContract, contract);
-        }
     }
 
     // SPEC 15.4.4, 10.7: the bounds that a selected call's fits give the Origins omitted in open initializers at the Function Type
