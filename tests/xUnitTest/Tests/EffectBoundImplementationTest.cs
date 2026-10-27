@@ -9,7 +9,7 @@ namespace XunitTest;
 
 // SPEC 8.11.3: a conformance checks each witness against the bounds its Contract and the ancestors declare, from
 // the declarations alone; user Contracts bound their requirements exactly as the standard ones do.
-public class EffectBoundImplementationTest
+public partial class EffectBoundImplementationTest
 {
     private const string Sink = "contract Sink\n    func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        effect confined\n" +
         "group Metrics\n    public var puts: isize = 0\n    public func record() => Metrics.puts += 1\n";

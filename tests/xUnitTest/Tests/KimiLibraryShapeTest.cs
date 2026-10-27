@@ -9,7 +9,7 @@ namespace XunitTest;
 
 /// <summary>The shapes of the embedded Kimi library that the compiler and the static <c>.ll.in</c> runtime rely on (SPEC 22.1).
 /// A shape is the declaration's source header with its direct member lines; Binding gives the same text the same meaning.</summary>
-public class KimiLibraryShapeTest
+public partial class KimiLibraryShapeTest
 {
     // Read-only: no test changes the library or its Binding.
     private static readonly Lazy<Compilation> Library = new(() =>
