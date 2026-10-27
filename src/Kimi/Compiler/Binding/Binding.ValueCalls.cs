@@ -103,57 +103,6 @@ public sealed partial class Binding
         return callee is not null && SignatureOwner(callee) is { } declaration ? declaration : FunctionTypeBinder(signature);
     }
 
-    // A result whose Origins are static or fixed Origins of a function that encloses the call: the signature's own written contract,
-    // which the callee's body was checked against.
-    private static bool FixedInBody(BoundType type, Koto use)
-    {
-        if (!FixedOrigin(type.Origin, use))
-        {
-            return false;
-        }
-
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (!FixedOrigin(type.OriginArguments[i], use))
-            {
-                return false;
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (!FixedInBody(type.Components[i], use))
-            {
-                return false;
-            }
-        }
-
-        return true;
-
-        static bool FixedOrigin(BoundOrigin? origin, Koto use)
-        {
-            if (origin is null || origin.Kind == OriginKind.Static)
-            {
-                return true;
-            }
-
-            if (origin.Kind == OriginKind.Intersection)
-            {
-                for (var i = 0; i < origin.Operands.Count; i++)
-                {
-                    if (!FixedOrigin(origin.Operands[i], use))
-                    {
-                        return false;
-                    }
-                }
-
-                return true;
-            }
-
-            return FixedInBodyOrigin(origin, use);
-        }
-    }
-
     // Whether a result still names a per-call input or a universal Origin of `binder`.
     private static bool HasUnsubstitutedInput(BoundType type, Koto binder)
     {
@@ -244,11 +193,6 @@ public sealed partial class Binding
             return ReferenceEquals(origin.Binder, function) && ReceiverAtom(origin);
         }
     }
-
-    // A fixed Origin of a named function that encloses the use: its input or a parameter Origin of its signature.
-    private static bool FixedInBodyOrigin(BoundOrigin origin, Koto use)
-        => IsLocalRegion(origin) || (origin.Kind is OriginKind.Projection or OriginKind.Anchor && origin.Binder is not FunctionKoto) ||
-            (origin.Kind is OriginKind.Input or OriginKind.Parameter && origin.Binder is FunctionKoto { IsAnonymous: false } owner && IsWithin(use, owner));
 
     private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver) => this.TryCallable(type, scope, out signature, out receiver, out _);
 
