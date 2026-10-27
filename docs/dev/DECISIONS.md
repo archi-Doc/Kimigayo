@@ -10239,7 +10239,7 @@ structure is recorded here by the unit that first implements it.
   checked. A Move is no row: A1's Move Path rule reports it (`StaticMovePathRequired_Kd`, `DefaultArgumentMove_Kd`), and the HIR
   publishes the Move a `TransferRequired_Kd` needs until R6 (ledger row a1-g4), so R5-M71's "write, Move or exclusive borrow" loses
   its Move. Stage B (a Ref `Uniq` or `TwoPhaseUniq`, a PairAcquire's and an Adapt's exclusive cases, a PairAcquire's own binder's layers
-  skipped, a second call in `Views`) waits for PLAN G262 (Binding plans a bare Reborrow without its path's authority), G251 (7)
+  skipped, a second call in `Views`; superseded by R5-M139: stage B landed) waits for PLAN G262 (Binding plans a bare Reborrow without its path's authority), G251 (7)
   (R4-M128's net counts pair captures only) and the SPEC session's reading of a discarded Place (3.5 against 14.2.2;
   `MirBuilder.Values.cs:136-138`). Census under `-Pipeline mir` (the corpus's 461 cases, the whole Functional suite, 61 probe forms): no
   write or Drop past a shared layer but at a slot step or in a copy. Consumers: A5's `Issue` forms no Loan past a shared step for any
@@ -10777,3 +10777,30 @@ structure is recorded here by the unit that first implements it.
     measurements; its B/A is the median of B over the mean of A and A′, which gives Iterators 1.171 where a plain B/A median gives
     1.170). C9c lands with the measurements recorded. Two points stay open in PLAN: whether R5-M8's corpus A/B adds an aligned
     control (a VERIFICATION change, the owner's), and Iterators' remaining ~2 % (an information kernel).
+- **R5-M139 An exclusive acquisition passes no shared layer (W1 rule 1, stage B)** (2026-10-27, R5 planning session; R4 signs off the A5
+  side; supersedes R5-M123's sentence that stage B waits: PLAN G262 landed as BU-45, R4-M145 closed G251 (7) and made a discarded Place's
+  bare acquisition its plan row) Rule (`MirValidator.SharedPaths.cs`, R5-M123's `MirViolation.SharedPath`): a projected Place that a Ref
+  borrows exclusively (Uniq or TwoPhaseUniq), the Place of a PairAcquire whose binder admits `uniq` or `objuniq` (it Reborrows there,
+  `MirCases.Reborrows`) and the Place of an exclusive Ref an Adapt resolves to under a Semantics case view (`MirCases.Adapt`; a second
+  call in `MirValidator.Types`' `Views`) passes no shared layer after its last raw Deref (SPEC 3.5.1, 8.15.2, 13.5.5); a finding is
+  `InternalInvariant_Kd` at the location, one per Adapt at its first breaking view. The PairAcquire is keyed on its binder's exclusive
+  cases, never on its Use's marked kind, which is Uniq or TwoPhaseUniq for a Copy-only binder too (`s is ref`, `owner or ref`). A pair
+  layer is read under a case assignment, the `PairCase` record `TyCtxt.CaseType` and BU-45's PlaceAuthority read: an assigned binder's
+  layers in its case, every other binder's at its admitted set (shared where it admits a shared case, R5-M123's weakest case). A write,
+  a destruction and a Ref take the empty assignment, a PairAcquire `[(binder, uniq)]`, so its own binder's layers are exclusive (the
+  design's own-binder skip, as data: `x@follow` with `x: s/(s/T)`, `b.v` with `b: s/Box<s/T>`), and an Adapt its view's, exact per view.
+  R5-M123's exclusions hold: the slot step, an inline copy, an Unscoped body; a Move stays A1's. Census of a prototype under `-Pipeline
+  mir`: the corpus's 461 cases (the library, the 44 milestones) and the 8 O2 kernels have no hit; 71 w1r1 probe forms (their syntax
+  errors fixed, 13 Adapt and acquisition forms added) and bu49's 128 forms (G262's positions, R5's return, match and for subjects,
+  struct and Array literal elements, receiver and default) have none but one in an inline copy; the Functional suite (23,462 tests, 0
+  failed) has 35, the validator tests' hand-built finding rows and 11 locations in inline default copies. Consumers: A5's `Issue` forms
+  no Loan past a shared step (E3, `MirBorrows.Loans.cs:107`), now a checked contract for exclusive Loans too. Size: Mir +71/-34 lines
+  (`SharedPaths.cs` +48/-22, `Types.cs` +15/-6), tests +63; no deletion. Speed: an access test per Place, a binder lookup per
+  PairAcquire, a chain walk per projected exclusive Ref, exclusive-case PairAcquire and exclusive Adapt view; warm 0 B. A warm
+  validation of the library's and the 44 milestones' 10,020 bodies, 16 runs interleaved from one folder under two other sessions'
+  heavy runs, gave medians A 82-104 ms and B 91-103 ms (B outliers 137 and 157), minima A 59-86 ms and B 80-86 ms: no difference
+  beyond the noise, not pinned. Rejected: keying the PairAcquire on its marked kind (a Copy-only binder's Use is marked); a binder
+  parameter or a bool skipping the own binder's layers (the case assignment states it as data, one meaning with an Adapt's view); a
+  per-view pass over every PairAcquire (exact too, but a stored list and a walk per view for what one assignment decides); an Adapt's
+  pair layers at their weakest case (its own binder's layer in its exclusive view, `adapt(copy (_1@b0)): s/T` with `s is ref or uniq`,
+  would be a false finding).
