@@ -5118,7 +5118,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     position a Type-taking site gave the argument (a contextual `.None` or `[]`, also inside a Tuple, array or Dictionary literal or a
     join's source, or a nested call's slot its expected result filled) is the call's to judge, with the call's final solution; a
     position inside a slot the call's own expected result filled is its context's, judged there and never at the call. An aggregate
-    argument without an adaptation is judged too (its source Type).
+    argument without an adaptation is judged too (its source Type). A waiting part's input premise is collected at the trial as every
+    input's is (SPEC 15.6.4 step 3: the parameter's, whatever the argument supplies; `CollectWaitingPremises`), so the part is completed
+    with the solution the call judges: through an invariant wrapper (`E.init()` for `E<T>`, T unused) the call keeps `r := a & b`.
   - Records: a call or constructor argument's failed conversion is applicability's `NoApplicableOverload_Kd` at the call, as on dev; a
     `let`, return, Tuple or array conversion is `UnprovenOriginContract_Kd` at the converted value, a nested part at the literal's
     element that supplies it (`NestedConversionFailure`), its member "the source's signature" when only `FailedSourceSignature` fails.
@@ -5153,11 +5155,13 @@ and migration obligations remain in force; no numeric cap changes are authorized
     written result differs from its fixed expected one only in Origins, an error as on dev but `UnprovenOriginRelation_Kd` in place of
     dev's `UnprovenOriginContract_Kd`: the header's identity test (`ClosureSignatureFits`, SPEC 10.5.4, which candidates' header
     filtering also reads) refuses it while the conversion's record proves it, a change of the Closure header rule outside this unit's
-    forms; s4, a Closure's written result Type keeps dev's `UnprovenConstraint_Kd` at its declaration beside the call's record; j01,
-    `h4(a, b, E.init())` with `E<T>`'s T unused (invariant): the waiting constructor is completed with the outer call's trial solution
-    (`r := b`), which E's invariance makes final, so h4's input is judged ill formed, a false rejection (dev accepts it by judging
-    nothing, unsoundly: j01u reads a block's local through `keep` on dev); a defaulted argument's instantiated Type is judged nowhere
-    (`put2(p, sr)` with `w: … = .None`, on dev too); a `match` join over contextual sources at an argument is `Unsupported_Kd`.
+    forms; s4, a Closure's written result Type keeps dev's `UnprovenConstraint_Kd` at its declaration beside the call's record.
+  - Staged (PLAN at landing): a defaulted argument's instantiated Type is judged nowhere (`put2(p, sr)` with `w: … = .None`, on dev
+    too), a site sharing the cause, wholly supplied by its parameter; its record needs the defaults completed before the call's
+    judgment, in `Binding.Calls.cs`, over its token limit, so a split unit first. A `match` join over contextual sources at an argument
+    is a located `Unsupported_Kd`, a valid form no common rule covers yet (AGENTS Diagnostics). A local annotation, a return and a
+    Field initializer record nothing: the annotation's Type occurrence, the function's result premise (R3) and the Field's declared Type
+    are judged where they are written.
   - Rejected: revision 2 (checks beside the canonical components; PLAN G216); the target as a Binding field the catalog reads (it is the
     request's data); a call argument's conversion judged after selection at the argument (dev's class is applicability's); "unbound
     before" for a Case construction (its qualifier's declaring Type is itself inferred from the expected Type); implementation review

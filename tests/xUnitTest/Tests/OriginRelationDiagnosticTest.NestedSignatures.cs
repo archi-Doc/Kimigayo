@@ -128,6 +128,10 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("k3box", LayerBox + "func h3(q: ref/i32, r: ref/i32, x: Box<Option<ref/(ref/i32 during q) during r>>) -> ref/i32 during r\n    return q\nfunc bad(a: ref/i32, b: ref/i32) -> i32\n    let x = h3(a, b, Box.init(item: Option.None))\n    return 0\n", "")]
     [InlineData("k3id_first", "func id<T>(x: T) -> T => x@move\nfunc id(x: i64) -> i64 => x\n" + TypedOwn + "    let x = h(a, b, id(Option.None))\n    return b\n", "")]
     [InlineData("k3id_second", "func id(x: i64) -> i64 => x\nfunc id<T>(x: T) -> T => x@move\n" + TypedOwn + "    let x = h(a, b, id(Option.None))\n    return b\n", "")]
+    // A waiting part is completed with the solution its call judges: the trial collects its input's well-formedness too (SPEC 15.6.4
+    // step 3), so an invariant wrapper (E's unused T) keeps `r := a & b` (j01); over fixed Origins the wrapper's input errs (j01n).
+    [InlineData("j01", "struct E<T>\n    public init() => ()\nfunc h4(q: ref/i32, r: ref/i32, x: E<Option<ref/(ref/i32 during q) during r>>) -> ref/i32 during r\n    return q\nfunc bad(a: ref/i32, b: ref/i32) -> i32\n    let x = h4(a, b, E.init())\n    return 0\n", "")]
+    [InlineData("j01n", "struct E<T>\n    public init() => ()\nfunc k(q: ref/i32, r: ref/i32) -> ref/i32 during r\n    func inner(p: E<Option<ref/(ref/i32 during q) during r>>, x: ref/i32 during q) -> ref/i32 during r => x\n    return inner(E.init(), q)\n", "UnprovenOriginRelation_Kd E.init()")]
     [InlineData("k3first", "func mkNone<T>(x: i32) -> Option<T>\n    return .None\nfunc mkNone(x: i64) -> Option<i32>\n    return .None\n" + TypedOwn + "    let x = h(a, b, mkNone(1))\n    return b\n", "")]
     [InlineData("k3second", "func mkNone(x: i64) -> Option<i32>\n    return .None\nfunc mkNone<T>(x: i32) -> Option<T>\n    return .None\n" + TypedOwn + "    let x = h(a, b, mkNone(1))\n    return b\n", "")]
     public void AContextualNoneArgumentHasItsInstantiatedWellFormednessJudged(string form, string body, string records)

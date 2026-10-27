@@ -38,6 +38,12 @@ public sealed partial class Binding
                         binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is not null ||
                         this.InferAdapted(pattern, literalDefault, node);
                 default:
+                    if (node.BoundType is null)
+                    {
+                        this.CollectWaitingPremises(pattern);
+                        return true;
+                    }
+
                     if (node.BoundType is not { } actual || ReferenceEquals(actual, BoundType.Never))
                     {
                         return true;
@@ -188,6 +194,19 @@ public sealed partial class Binding
             }
 
             return misfit;
+        }
+
+        // SPEC 15.6.4 step 3: an input's well-formedness shortens the call's solution whatever its argument supplies, also where the part
+        // waits for the selected candidate, which completes it at that solution's parameter Type; so a waiting part's Type is formed with
+        // the solution the call's judgment uses (design 1's Rule T), never with one that its own evidence would then have to change.
+        private void CollectWaitingPremises(BoundType pattern)
+        {
+            pattern = this.Binding.FormedApplication(pattern, this.SlotOwner, this.Types);
+            if (pattern.CarriesOrigin)
+            {
+                this.OriginInference ??= this.Binding.BeginOriginInference(this.Call, this.Binder);
+                this.Binding.CollectInputPremises(pattern, this.OriginInference, this.Call);
+            }
         }
 
         // An anonymous function: once bound, its Type at any pattern but a Function Type (where its signature meets the pattern after

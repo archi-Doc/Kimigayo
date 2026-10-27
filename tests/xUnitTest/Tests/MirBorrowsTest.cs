@@ -557,6 +557,33 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     inspect(slot)
                 """));
 
+    // SPEC 15.6.4, 15.6.5 (PLAN G269 (A)): a call whose input well-formedness lets its result retain another input carries that input's
+    // Loan, so `held` keeps `short`'s past its block (j01uBad); A5 rejects it. The default pipeline's old analysis accepts it, a known
+    // defect until R6-check (the owner, 2026-10-27: 「G269 の (A)： (a)」; STATUS "Call-clause retention"). A parameter's referent, which
+    // outlives `held`, is valid (j01uOk), as is the call itself (G216 (a)'s j01).
+    [Fact]
+    public void ACallRetainsWhatItsInputsWellFormednessLetsItKeep()
+        => Assert.Equal(
+            ["j01uBad: let short = 1"],
+            Problems("""
+                struct E<T>
+                    public init() => ()
+                func h4(q: ref/i32, r: ref/i32, x: E<Option<ref/(ref/i32 during q) during r>>) -> ref/i32 during r
+                    return q
+                func j01uBad(b: ref/i32) -> i32
+                    let long = 1
+                    var held = long@ref
+                    if true
+                        let short = 1
+                        held = h4(short@ref, b, E.init())
+                    return held@follow
+                func j01uOk(b: ref/i32, c: ref/i32) -> i32
+                    var held = b
+                    if true
+                        held = h4(c, b, E.init())
+                    return held@follow
+                """));
+
     // SPEC 8.11.3 rule 1 (the adopted proposal Abstract Calls Reach by Paths): an abstract call reaches its inputs' Places by path, as a
     // concrete call does, so an earlier result kept across a later call of the same or another value is no conflict; a LendingIterator
     // item that names `step` keeps the receiver Loan of its call, which the next call meets.
