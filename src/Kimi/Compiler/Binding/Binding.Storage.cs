@@ -131,10 +131,10 @@ public sealed partial class Binding
     private BoundType? PartType(BoundType declared, BoundType owner) => this.WithoutUnstated(this.KeptType(declared, owner));
 
     // SPEC 8.6.1, 5.7 Calls (DECISIONS BU-50): a part with each associated projection replaced by ProjectionSpecification's outcome: a
-    // builtin output or fixed-array iterator Type as it is, a struct or enum subject's conformance binding as a kept part of the subject
-    // (KeptType), so a raw layer the subject's declaration writes (`Src { Item is raw/u8 }`, a base clause's argument) states Unstated and
-    // one the subject's argument supplies (`Src2<raw/u8>`, `Item is T`) carries the argument's mark; a pending projection (an abstract
-    // subject, or a binding whose evidence is not ready yet) stays a projection; one that finally names no Type, whatever its subject and
+    // builtin output or fixed-array iterator Type as it is, a subject's conformance binding as a kept part of the subject (KeptType), so
+    // a raw layer the subject's declaration writes (`Src { Item is raw/u8 }`, a base clause's argument) states Unstated and one the
+    // subject's argument supplies (`Src2<raw/u8>`, `Item is T`) carries the argument's mark; a pending projection (one with an abstract
+    // part, or a binding whose evidence is not ready yet) stays a projection; one that finally names no Type, whatever its subject and
     // reason (SPEC 8.3.3 so ends an expanding or cyclic specification), makes the part null. A part without an abstract part is its own
     // result, and a projection is completed after its components, so a subject that is itself a projection is completed first. A
     // projection is resolved in the scope of the owner's `declaration`, where PrepareStorage binds its parts.

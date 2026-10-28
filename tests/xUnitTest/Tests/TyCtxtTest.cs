@@ -674,7 +674,8 @@ public sealed class TyCtxtTest
     // projections are completed before the mark: DerQ's `BaseI<Src2<raw/u8>.Item>` and DerF's `BaseF<Src2<raw/u8>.Item>` are written
     // `raw/u8` layers, so `HA<DerQ>`'s and DerF's base Field state Unstated. A Case payload completes too (EH<Src>). AdtDef's view is the
     // completed part WithoutRawOrigins and a body's read (StoredType) the same part without its mark, neither with an abstract part left.
-    // A projection whose subject is a parameter (`unbound`'s HA<T>) stays a projection.
+    // A projection whose subject is a parameter (`unbound`'s HA<T>) or has an abstract part (`wrapped`'s HAd<Wrapping<T>>, whose
+    // builtin Output the use's premise `T is PrimitiveInteger` decides) stays a projection; its closed instance HAd<Wrapping<i32>> completes it.
     [Fact]
     public void AKeptPartCompletesAnAssociatedProjection()
     {
@@ -685,21 +686,23 @@ public sealed class TyCtxtTest
             "    var m: i32\nopen struct BaseF<P>\n    var f: P\nstruct DerF : BaseF<Src2<raw/u8>.Item>\n    var m: i32\n" +
             "struct Nest<S>\n    S is HasItem\n    Self is HasItem\n    associate HasItem.Item is S.Item\nstruct SrcC<T>\n    Self is HasItem when T is Copy\n" +
             "        associate HasItem.Item is T\nstruct HHC\n    var h: HA<SrcC<raw/u8>>\nenum ESrc\n    Self is HasItem\n    associate HasItem.Item is raw/u8\n" +
-            "    A\nenum EH<S>\n    S is HasItem\n    A(S.Item)\n    B\n" +
+            "    A\nenum EH<S>\n    S is HasItem\n    A(S.Item)\n    B\nstruct HAd<S>\n    S is Addable<S>\n    var x: S.Output\n" +
             "func probe(a: HA<Src>, b: HA<Src2<raw/u8>>, d: HA<DerI>, e: HH2, f: HA<Src3>, q: HA<DerQ>, r: DerF, n: HA<Nest<Src>>, " +
-            "n2: HA<Nest<Src2<raw/u8>>>, hc: HHC, c2: HA<SrcC<raw/u8>>, es: HA<ESrc>) => ()\n" +
-            "func unbound<T>(g: HA<T>, eh: EH<Src>) -> ()\n    T is HasItem\n    return\n");
+            "n2: HA<Nest<Src2<raw/u8>>>, hc: HHC, c2: HA<SrcC<raw/u8>>, es: HA<ESrc>, w: HAd<Wrapping<i32>>) => ()\n" +
+            "func unbound<T>(g: HA<T>, eh: EH<Src>) -> ()\n    T is HasItem\n    return\n" +
+            "func wrapped<T>(w: HAd<Wrapping<T>>) -> ()\n    T is PrimitiveInteger\n    return\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var functions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().ToArray();
         var p = functions.Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
         var u = functions.Single(static x => x.Name == "unbound").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
+        var w = functions.Single(static x => x.Name == "wrapped").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
         var types = c.Types;
         types.StoredParts(p[6], out var derF);
-        BoundType[] holders = [p[0], p[1], p[2], Kept(p[3]), p[4], p[5], derF!, p[7], p[8], Kept(p[9]), p[10], p[11]];
+        BoundType[] holders = [p[0], p[1], p[2], Kept(p[3]), p[4], p[5], derF!, p[7], p[8], Kept(p[9]), p[10], p[11], p[12]];
         Assert.Equal(
             [
                 "raw/u8 True", "raw/u8 False", "raw/u8 True", "raw/u8 True", "i32 False", "raw/u8 True", "raw/u8 True", "raw/u8 True", "raw/u8 False",
-                "raw/u8 True", "raw/u8 False", "raw/u8 True",
+                "raw/u8 True", "raw/u8 False", "raw/u8 True", "Wrapping<i32> False",
             ],
             holders.Select(x => $"{TyCtxt.Name(Kept(x))} {TyCtxt.RawStated(Kept(x))}"));
         Assert.All(holders, x => Assert.Same(c.Binding.WithoutRawOrigins(Kept(x)), AdtDef.FieldType(x, 0)));
@@ -708,6 +711,7 @@ public sealed class TyCtxtTest
         var payload = types.StoredParts(u[1], out _)[Array.FindIndex(u[1].Symbol!.Adt!.Cases, static x => x is { Payload.Length: 1 })]!;
         Assert.Equal("(raw/u8) True", $"{TyCtxt.Name(payload)} {TyCtxt.RawStated(payload.Components[0])}");
         Assert.Equal(BoundTypeKind.AssociatedProjection, Kept(u[0]).Kind);
+        Assert.Equal("Wrapping<T>.Output", TyCtxt.Name(Kept(w[0])));
 
         // The first kept part of a struct instance.
         BoundType Kept(BoundType x) => types.StoredParts(x, out _)[0]!;

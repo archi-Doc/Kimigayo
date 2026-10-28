@@ -561,14 +561,15 @@ public sealed partial class Binding
         return binding.Result;
     }
 
-    // SPEC 8.6.1 (DECISIONS BU-50): what a projection names before its subject substitutes it, one outcome for every subject. A builtin
-    // arithmetic output or a fixed array's iterator Type, complete (no Subject): the only conformances with an associated binding that a
-    // subject other than a struct or enum has. A struct or enum subject's conformance binding (ResolveAssociated; an inherited
-    // conformance's under the base clause's arguments) in the subject declaration's terms, the associated Type's Origin parameters bound to
-    // the projection's arguments, for the caller to instantiate under the Subject: as a view (ContractTypeCore) or as a kept part
-    // (CompleteProjections); pending while its evidence is not ready. Any other subject is pending only when it has an abstract part (a
-    // parameter, or a projection over one: its instance decides). Else none, final, whatever the reason (a closed subject: `i32`, a Tuple,
-    // an array, a completed `Src.Item`): the projection names no Type, and the records are the declarations' and the use's (SPEC 23.1.2).
+    // SPEC 8.6.1 (DECISIONS BU-50): what a projection names before its subject substitutes it, asked in the owner declaration's scope, one
+    // outcome for every subject. Finality is independence of scope: a Type found there is the answer, since the declaration's premises are
+    // each instance's obligations (a builtin arithmetic output or a fixed array's iterator Type, complete, no Subject; else the subject's
+    // conformance binding, ResolveAssociated, an inherited conformance's under the base clause's arguments, in the subject declaration's
+    // terms with the associated Type's Origin parameters bound to the projection's arguments, for the caller to instantiate under the
+    // Subject: as a view, ContractTypeCore, or as a kept part, CompleteProjections); no Type is pending while the pass's evidence is
+    // incomplete or the projection has an abstract part (a use scope may carry a premise the declaration's lacks: `T is PrimitiveInteger`
+    // for `Wrapping<T>.Output`), else none, final, whatever the reason: the projection names no Type, and the records are the
+    // declarations' and the use's (SPEC 23.1.2). No subject-kind test decides pending or none.
     private ProjectionOutcome ProjectionSpecification(BoundType projection, BindingScope scope)
     {
         if ((this.BuiltinArithmeticOutput(projection, scope) ?? this.FixedArrayIteratorType(projection)) is { } builtin)
@@ -576,15 +577,11 @@ public sealed partial class Binding
             return new(builtin, null, false);
         }
 
-        if (projection.Components[0] is not { Symbol.Declaration: StructKoto or EnumKoto } subject)
-        {
-            return new(null, null, projection.Components[0].HasAbstractPart);
-        }
-
+        var subject = projection.Components[0];
         var qualifier = projection.Components.Count == 2 ? projection.Components[1] : null;
         if (this.ResolveAssociated(subject, projection.Symbol!, scope, qualifier, out var pending) is not { } binding)
         {
-            return new(null, null, pending);
+            return new(null, null, pending || subject.HasAbstractPart || qualifier is { HasAbstractPart: true }); // A projection is itself abstract.
         }
 
         return new(this.SubstituteStoredOrigins(binding, projection.Symbol!.Declaration, (BoundOrigin[])projection.OriginArguments), subject, false);
