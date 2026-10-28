@@ -490,11 +490,14 @@ public sealed partial class Binding
                 return Complete(call, null);
             }
 
-            // SPEC 15.6.1: the selected candidate's Origin relations, never part of its applicability, are judged at their sources.
-            this.JudgeSelectedCall(call, selected, selectedOperations, origins, inputs, selectedType);
+            // SPEC 15.6.1: the selected candidate's Origin relations, never part of its applicability, are judged at their sources, a
+            // default's at the call (SPEC 15.6.4 step 3); the written inputs are judged also when a default has no Type (SPEC 23.1.2).
             var defaultCount = evaluated[winnerIndex].DefaultsUsed;
             var receiverSlot = receiverOperation.Source is null ? -1 : receiverOperation.ParameterIndex;
-            if (!this.SelectedDefaults(this.Solution(evaluation, selected, selectedType), mapping.AsSpan(0, argumentCount), receiverSlot, defaultCount, out defaults))
+            var solution = this.Solution(evaluation, selected, selectedType);
+            var formed = this.SelectedDefaults(solution, mapping.AsSpan(0, argumentCount), receiverSlot, defaultCount, out defaults);
+            this.JudgeSelectedCall(call, selected, selectedOperations, origins, inputs, selectedType, defaults.AsSpan(0, formed ? defaultCount : 0));
+            if (!formed)
             {
                 return this.Fail(call, BindingFailure.MissingType, true);
             }
@@ -590,7 +593,8 @@ public sealed partial class Binding
                 if (slots.Contains(i))
                 {
                     var parameter = function.Parameters[i];
-                    if (parameter.DefaultValue is not { } expression || parameter.Type.BoundType is not { } pattern || solution.Type(pattern) is not { } parameterType)
+                    if (parameter.DefaultValue is not { } expression || parameter.Type.BoundType is not { } pattern ||
+                        solution.Type(pattern) is not { } parameterType)
                     {
                         return false;
                     }

@@ -217,16 +217,17 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.3.7, 15.6.4 step 3: the selected call's obligations for an input's instantiated parameter Type, judged at the input. The
-    // argument's own Type is well formed, so only a position that the fit replaced, such as an Origin shared with another input, can fail.
-    // As for the fit, an argument that carries no Origin, such as one that transfers control, supplies none; and an input whose fit
-    // already failed is no instance of its parameter, so its well-formedness would only restate that failure.
-    private void RequireInputPremises(in BoundArgumentOperation operation)
+    // SPEC 15.3.7, 15.6.4 step 3: the selected call's obligations for the instantiated parameter Type of a slot it fills (SPEC 10.1 step 2),
+    // judged at `at`. A written argument's or the receiver's own Type, `supplied`, is well formed, so only a position that the fit replaced,
+    // such as an Origin shared with another input, can fail. As for the fit, an argument that carries no Origin, such as one that transfers
+    // control, supplies none; and an input whose fit already failed is no instance of its parameter, so its well-formedness would only
+    // restate that failure. A default supplies no Type (SPEC 10.1.1), so every position of its Type is judged, at the call (SPEC 7.2.3).
+    private void RequireInputPremises(Koto at, BoundType parameter, BoundType? supplied)
     {
-        if (operation is { Source: { } at, AdaptedType: { StoresOrigin: true } adapted, ParameterType: { StoresOrigin: true } parameter } && !ReferenceEquals(adapted, parameter) &&
-            this.originRelations?.ContainsKey(at) != true && !this.HasCallRelation(at))
+        if (parameter.StoresOrigin && (supplied is null || (supplied.StoresOrigin && !ReferenceEquals(supplied, parameter) &&
+            this.originRelations?.ContainsKey(at) != true && !this.HasCallRelation(at))))
         {
-            this.VisitWellFormedPremises(parameter, parameter, adapted, new(null, at, WellFormedAction.Require));
+            this.VisitWellFormedPremises(parameter, parameter, supplied, new(null, at, WellFormedAction.Require));
         }
     }
 
@@ -381,7 +382,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            this.OpenResultOnlyOrigins(use, function, origins);
+            this.OpenResultOnlyOrigins(use, function, origins, default); // A function reference's call uses no default (SPEC 10.1.1).
             return true; // Selected-call clauses are judged at their supplying arguments, never as applicability.
         }
 
