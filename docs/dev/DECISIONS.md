@@ -12046,12 +12046,18 @@ structure is recorded here by the unit that first implements it.
     6. The LLVM verifier passes every fixture under both generators (each native run verifies with opt before llc), and sel's `.ll` equals
        another run of the same tree, 6,089 of 6,089 (R5-M147). Stability across restructuring commits is per unit: item 7's list marks
        R5's behavior-preserving commits with their records.
-    7. Per unit, not end to end (X1 ran no legacy reference): of R5's 432 commits, 174 change a file the old generator's output can
-       depend on; 84 state their legacy run in their message (an identical or explained `.ll` comparison, a bp record), 7 declare a legacy
-       change: C6a (the Runtime Type key constant, R5-M110), P5b (Abort location text with `/`), P7b (the C-layout record order, R5-M29),
-       P7c (the placement depth limit, R5-M37), C7a (the `KIMI_E_STATIC_CYCLE` reason row), G157 (19) (f32 signaling-NaN constants) and
-       C10a (failure values held for the test frame, R5-M136), and 83 state none in their message, their units' reviews and evidence
-       holding the comparison (`artifacts/benchmarks/r5-exit/legacy-ll-records.tsv`, a message search).
+    7. Compared directly (`artifacts/verify/reduction-R5/17cd554ab/gate7/`: `x3leg-report.md`, `final.tsv`, scripts, the before
+       Session): the old generator's `.ll` at R5's base `49cb2b5df` (a Session without natives, 5,932 `.ll`) against X1's legacy run at
+       `17cd554ab`. All 5,924 common fixtures differ, because C7a's reason-table row reaches every module, and every difference is
+       attributed: 4,730 by declared changes alone; 568 with further attributed shapes (library line shifts from BU's bu23 and R4's
+       lib-origins 433, R5 G87 `362a84deb`'s stated Core.kimi shifts 69, BU bu23's Dictionary bodies 58, R4's `578d69771` (R4-M52) 6,
+       R5 G134 `e7e08f95b` (R5-M46) 2); 626 test changes (600 rewritten audit or probe harnesses, 26 source or probe changes); 8
+       fixtures only before and 165 only after. By declared change: C7a (the `KIMI_E_STATIC_CYCLE` reason row) 5,924, C6a (the Runtime
+       Type key constant, R5-M110) 386, G157 (19) (f32 signaling-NaN constants) 1, and P5b, P7b, P7c and C10a 0. R5's declared list
+       gains G134 (R5-M46), whose message names both fixtures; R4's `578d69771` is not R5's (R5 tells R4). Unchecked: the before run has
+       no native outcomes. Background, the per-unit census (a message search): of R5's 432 commits, 174 change a file the old
+       generator's output can depend on, 84 state their legacy run, 7 declare a change and 83 state none
+       (`artifacts/benchmarks/r5-exit/legacy-ll-records.tsv`).
     8. M9: 1,161 of the 1,162 `Purpose=Allocation` tests pass under sel, M9's 186 among them; `TrimsUnderHighPressure` runs under neither
        generator (R5-M147).
     9. No collector or MIR record over the library and the accepted milestones; Milestone 42's five `StaticStorage` records are P42's
