@@ -12046,45 +12046,49 @@ structure is recorded here by the unit that first implements it.
     6. The LLVM verifier passes every fixture under both generators (each native run verifies with opt before llc), and sel's `.ll` equals
        another run of the same tree, 6,089 of 6,089 (R5-M147). Stability across restructuring commits is per unit: item 7's list marks
        R5's behavior-preserving commits with their records.
-    7. Compared directly (`artifacts/verify/reduction-R5/17cd554ab/gate7/`: `x3leg-report.md`, `final.tsv`, scripts, the before
-       Session): the old generator's `.ll` at R5's base `49cb2b5df` (a Session without natives, 5,932 `.ll`) against X1's legacy run at
-       `17cd554ab`. All 5,924 common fixtures differ, because C7a's reason-table row reaches every module, and every difference is
-       attributed: 4,730 by declared changes alone; 568 with further attributed shapes (library line shifts from BU's bu23 and R4's
-       lib-origins 433, R5 G87 `362a84deb`'s stated Core.kimi shifts 69, BU bu23's Dictionary bodies 58, R4's `578d69771` (R4-M52) 6,
-       R5 G134 `e7e08f95b` (R5-M46) 2); 626 test changes (600 rewritten audit or probe harnesses, 26 source or probe changes); 8
-       fixtures only before and 165 only after. By declared change: C7a (the `KIMI_E_STATIC_CYCLE` reason row) 5,924, C6a (the Runtime
-       Type key constant, R5-M110) 386, G157 (19) (f32 signaling-NaN constants) 1, and P5b, P7b, P7c and C10a 0. R5's declared list
-       gains G134 (R5-M46), whose message names both fixtures; R4's `578d69771` is not R5's (R5 tells R4). Unchecked: the before run has
-       no native outcomes. Background, the per-unit census (a message search): of R5's 432 commits, 174 change a file the old
-       generator's output can depend on, 84 state their legacy run, 7 declare a change and 83 state none
-       (`artifacts/benchmarks/r5-exit/legacy-ll-records.tsv`).
+    7. Compared directly (`artifacts/verify/reduction-R5/17cd554ab/gate7/`: `x3leg-report.md`, `final.tsv`, scripts, the before Session):
+       the old generator's `.ll` at `49cb2b5df`, the R5 baseline (R5-M2; the area record's R5 start is the plan's base `5c42b5773`), in a
+       Session without natives (5,932 `.ll`), against X1's legacy run at `17cd554ab`. All 5,924 common fixtures differ, because C7a's
+       reason-table row reaches every module, and every difference is attributed: 4,730 by declared changes alone; 568 with further
+       attributed shapes (library line shifts from BU's bu23 and R4's lib-origins 433, R5 G87 `362a84deb`'s stated Core.kimi shifts 69, BU
+       bu23's Dictionary bodies 58, R4's `578d69771` (R4-M52) 6, R5 G134 `e7e08f95b` (R5-M46) 2); 626 test changes (600 rewritten audit or
+       probe harnesses, 26 source or probe changes); 8 fixtures only before and 165 only after. By declared change: C7a (the
+       `KIMI_E_STATIC_CYCLE` reason row) 5,924, C6a (the Runtime Type key constant, R5-M110) 386, G157 (19) (f32 signaling-NaN constants)
+       1, and P5b, P7b, P7c and C10a 0. R5's declared list gains G134 (R5-M46), whose message names both fixtures; R4's `578d69771` is not
+       R5's (R5 tells R4). Unchecked: the before run has no native outcomes, and the 626 test-changed fixtures are classified, not
+       compared. Background, the per-unit census (a message search): of R5's 432 commits, 174 change a file the old generator's output can
+       depend on, 84 state their legacy run, 7 declare a change and 83 state none (`artifacts/benchmarks/r5-exit/legacy-ll-records.tsv`).
     8. M9: 1,161 of the 1,162 `Purpose=Allocation` tests pass under sel, M9's 186 among them; `TrimsUnderHighPressure` runs under neither
        generator (R5-M147).
     9. No collector or MIR record over the library and the accepted milestones; Milestone 42's five `StaticStorage` records are P42's
        (R5-M144), and 39, 41 and 43 keep their recorded first diagnostic (X1's sel `MilestoneSourcesTest` differs only at 42).
-    10. Measured inside one compilation by `Benchmark --collection-cost` (`CompilerPipeline.md`; three fresh collectors over one built
-       program, no compiler hook; its check equals sel's checked set), in a quiet window at dev `1fee3a32d` (before BU-51), pinned to CPU
-       2 with `DOTNET_TieredCompilation=0`, 3 runs (`artifacts/benchmarks/r5-exit/collection-1fee3a32d/`). Collection, which runs at
-       check under sel: 0.12-0.23 ms on the Scalar and Branching inputs (3 to 130 items), 0.36 ms on Generic 1, and 5.97, 11.75 and
-       25.3 ms on Generic 32, 64 and 128 (650, 1,290 and 2,570 items; 2.2, 4.1 and 7.7 MB allocated); of it, layout's first
-       computations 0.01-0.02 ms and 0.24, 0.48 and 0.77 ms, the Type context's first queries 0.03-0.09 ms and 1.0, 1.7 and 4.3 ms.
-       MIR code generation (collection plus sel's stages 5-6) against the old generator's stages 5-6: B/A 2.08 and 2.01 on the
-       one-function inputs (0.15 against 0.07 ms), 0.39-0.84 on the other Scalar and Branching inputs, 0.18-0.25 on Generic (71.4
-       against 363.9 ms at 128). The same runs' stage-3 difference ranged from -1.29 to +2.13 ms on the small inputs, so the direct
-       figure replaces R5-M147's subtraction.
+    10. Measured inside one compilation by `Benchmark --collection-cost` (`CompilerPipeline.md`; no compiler hook): three fresh collectors
+       over one built program, `cold` being the compilation's first collection. Its first version (`a89bc7bdc`) built the MIR with
+       `BuildMir` under the old code generator, which at `1fee3a32d` did not collect, and checked counts only; since BU-48 `BuildMir`
+       collects on every pipeline, so X3's fix round builds the MIR with `BuildMir`'s two components and checks the collections element by
+       element, with a guard that fails a warm `cold`. The figures were taken with the first version in a quiet window at dev `1fee3a32d`
+       (before BU-51 and BU-48), pinned to CPU 2 with `DOTNET_TieredCompilation=0`, 3 runs
+       (`artifacts/benchmarks/r5-exit/collection-1fee3a32d/`, with the measured mode file). Collection, which ran at check under sel there
+       and runs on every pipeline since BU-48: 0.12-0.23 ms on the Scalar and Branching inputs (3 to 130 items), 0.36 ms on Generic 1, and
+       5.97, 11.75 and 25.3 ms on Generic 32, 64 and 128 (650, 1,290 and 2,570 items; 2.2, 4.1 and 7.7 MB allocated); of it, layout's first
+       computations 0.01-0.02 ms and 0.24, 0.48 and 0.77 ms, the Type context's first queries 0.03-0.09 ms and 1.0, 1.7 and 4.3 ms. MIR
+       code generation (collection plus sel's stages 5-6) against the old generator's stages 5-6: B/A 2.08 and 2.01 on the one-function
+       inputs (0.15 against 0.07 ms), 0.39-0.84 on the other Scalar and Branching inputs, 0.18-0.25 on Generic (71.4 against 363.9 ms at
+       128). The same runs' stage-3 difference ranged from -1.29 to +2.13 ms on the small inputs, so the direct figure replaces R5-M147's
+       subtraction.
     11. ARCH's ledger marks R5 done. The area record `artifacts/benchmarks/r5-exit-areas.md` (`x3-areas.ps1`, which reproduces R3's exit
-       lines), at dev `66c856d81`: 170,941 compiler lines, +33,572 since `5c42b5773`, of which R5's commits +14,468 (Backend 14,240 in
-       75 files, Binding +2,302, Mir +1,161, Core +388, Emission -2,697, Analysis -897); no Backend or Mir file over 5,000 tokens; the
-       hotspots are the dispatchers (`FunctionCodegen.cs` 43 R5 commits, `InstanceCollector.cs` 34, `ModuleCodegen.cs` 32); the
-       duplication candidates are G157's, two line clones and the end-to-end review's. This entry records the owner's review. Group reviews:
-       G:K-core PASS (`59b0cff2d`); G:K-edges, K5 and K10a PASS (`833999b1d`), K7 and K13b per unit; G:K-capability, K9a and K9b PASS
-       (`154e10a81`), K13a per unit with E12; G:compare per unit (R5-M68's departure to G:library-2); G:call PASS (`c69ba0a1f`); G:C-frame
-       per unit (E10, E15, C0a, C0b1, C0b2, K11); G:C-scalar PASS; G:C-aggregate PASS (`7c133bdc7`); G:C-drop PASS (`e324a7e94`),
+       lines), at dev `66c856d81`: 170,941 compiler lines, +33,572 since `5c42b5773`, of which R5's commits +14,468 (Backend +14,194, its
+       75 files 14,240 lines; Binding +2,302, Mir +1,161, Core +388, Emission -2,697, Analysis -897); no Backend or Mir file over 5,000
+       tokens; the hotspots are the dispatchers (`FunctionCodegen.cs` 43 R5 commits, `InstanceCollector.cs` 34, `ModuleCodegen.cs` 32); the
+       duplication candidates are G157's, two line clones and the end-to-end review's. This entry records the owner's review. Group
+       reviews: G:K-core PASS (`59b0cff2d`); G:K-edges, K5 and K10a PASS (`833999b1d`), K7 and K13b per unit; G:K-capability, K9a and K9b
+       PASS (`154e10a81`), K13a per unit with E12; G:compare per unit (R5-M68's departure to G:library-2); G:call PASS (`c69ba0a1f`);
+       G:C-frame per unit (E10, E15, C0a, C0b1, C0b2, K11); G:C-scalar PASS; G:C-aggregate PASS (`7c133bdc7`); G:C-drop PASS (`e324a7e94`),
        re-passed with C3c, ACCEPT; G:closure PASS; G:object PASS; G:library-1 PASS; G:library-2 ACCEPT after alit's re-pass; G:format
-       ACCEPT; G:test PASS (`19c23b2c1`). The end-to-end codegen review (`artifacts/benchmarks/r5-exit/review-e2e.md`) was REVISE: B1,
-       the structure limits and code rules in R5's code, is unit x3b1 (one behavior-preserving commit); B2, a Type laid out only through
-       a Deref projection is no layout obligation, goes into R5-M144's projection unit before R5's exit, the projection's layout use
-       covering every layout obligation (C layout and the limits; SPEC 8.15.3); B3 is this entry's correction above. Its final verdict:
+       ACCEPT; G:test PASS (`19c23b2c1`). The end-to-end codegen review (`artifacts/benchmarks/r5-exit/review-e2e.md`) was REVISE: B1, the
+       structure limits and code rules in R5's code, is unit x3b1 (one behavior-preserving commit); B2, a Type laid out only through a
+       Deref projection is no layout obligation, goes into R5-M144's projection unit before R5's exit, the projection's layout use covering
+       every layout obligation (C layout and the limits; SPEC 8.15.3); B3 is this entry's correction above. Its final verdict:
        <added at the merge>.
   - Rejected: marking `Layout.Row` (it would claim a removal that never comes); the stage-3 difference of two compilations for the
     collection share (below the noise, R5-M147); a timer inside the compiler (a hook only a measurement reads).
