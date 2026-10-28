@@ -174,7 +174,7 @@ public sealed partial class MirBorrowsTest
     [Fact]
     public void ADestructionMeetsItsOwnStaticAndTheLiveStaticLoans()
         => Assert.Equal(
-            ["e8: watch = Watch.init()", "e8c: limited = Limited.init() Unsupported_Kd", "e9: action = func []() => ()"],
+            ["e8: watch = Watch.init()", "e8c: limited = Limited.init() OwnershipDepthLimit_Kd", "e9: action = func []() => ()"],
             Effects(
                 """
                     public func e8() => watch = Watch.init()
@@ -327,7 +327,7 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(
             ["w5 = W5.init() ComparisonLoanConflict_Kd EffectUnknown"],
             program.Problems.All.ToArray().Select((x, i) => (x, i))
-                .Where(static x => x.x.Subject.Module == 0 && (LoanCodes.Contains(x.x.Code) || x.x.Code == DiagnosticCode.Unsupported_Kd))
+                .Where(static x => x.x.Subject.Module == 0 && (LoanCodes.Contains(x.x.Code) || LimitCodes.Contains(x.x.Code)))
                 .Select(x => $"{Line(c, x.x.Subject)} {x.x.Code} {string.Join(",", program.Problems.Facts(x.i).ToArray().Select(static f => f.Kind)
                     .Where(static k => k is MirFactKind.EffectRead or MirFactKind.EffectWrite or MirFactKind.EffectUnknown))}"));
     }
@@ -616,7 +616,7 @@ public sealed partial class MirBorrowsTest
         string[] borrows = ["(Held.fn)", "(counter)", "(fn)", "Held.exs[0]", "Held.f1", "Held.fixedFn", "Held.fn", "Held.fns[0]", "Held.h.fn", "Held.oc",
             "Held.rcf", "Held.rec.fn", "count", "count", .. Enumerable.Repeat("counter", 5), "counter@ref", "exs[0]", "f1", "fixedFn", "fn", "fns[0]",
             "h.fn", "handle", "leaf", "oc", "oc", "rcf", "rec.fn"];
-        Assert.Empty(Problems(c, AnalyzeUnsupported(c, borrows), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+        Assert.Empty(Problems(c, AnalyzeUnsupported(c, borrows), [.. LoanCodes, .. LimitCodes]));
     }
 
     // The Loan problems and located Unsupported_Kd records of a program: the prelude, the effect Types and group State with the given
@@ -624,6 +624,6 @@ public sealed partial class MirBorrowsTest
     private static string[] Effects(string members, string[] borrows, string declarations = "")
     {
         var c = MirBuildTest.Compile(Prelude + EffectTypes + members + declarations);
-        return Problems(c, AnalyzeUnsupported(c, borrows), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]);
+        return Problems(c, AnalyzeUnsupported(c, borrows), [.. LoanCodes, .. LimitCodes]);
     }
 }

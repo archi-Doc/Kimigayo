@@ -8,7 +8,9 @@ namespace Kimi.Compiler.Mir;
 // live after it that it does not overwrite and of E, with the values it takes. One gather per location builds every access's set: each
 // Loan it finds, once per mode, is tagged with the sources that reach it, through the closure (a live direct Loan naming T makes σ(T)
 // live), in passes: the live holders (Based); the location's stores into a holder live after it or made live by the closure, or into E,
-// and E5's seeds (Stored); a borrow's R2 parents (Parented); an observing destruction's value (Observed); an activation holder's seed
+// and E5's seeds (Stored); in a view with a past use (MirBorrows.Liveness), the holders live only for a destruction past the destruction
+// walk's bound, and the stores into the holders they make live, each tagged with that holder (Past, R4-M153: a check that only they meet
+// rests on the bound); a borrow's R2 parents (Parented); an observing destruction's value (Observed); an activation holder's seed
 // (Seeded); then each operand's value in operand order, so a Loan keeps the first operand that reaches it, and each operand's root in
 // reverse, so it keeps the last. A pass scans a holder's state once and a value it takes once per holder it is found under (a later take
 // tags nothing more; Took finds it by scanning the values taken under that holder at the location, so a take costs that list's length),
@@ -23,6 +25,7 @@ internal sealed partial class MirBorrows
     private const byte Seeded = 16;
     private const byte Valued = 32;
     private const byte Rooted = 64;
+    private const byte Past = 128;
     private const int None = int.MinValue; // No via, operand or candidate.
     private const int Taken = -2; // A witness: the access's own location, whose operation uses the value that carries the Loan.
 
@@ -46,11 +49,13 @@ internal sealed partial class MirBorrows
     private int[] listed = []; // By slot + 1 (0: no holder): the check whose entry and taken lists it heads.
     private int[] entryFirst = []; // By slot + 1: the first of the location's entries into its holder at that check (None: none).
     private int[] takenFirst = []; // By slot + 1: the last value a pass took under its holder at that check (None: none).
+    private int[] pastRoots = []; // By slot, in a view with a past use: the holder live only for a past use whose closure reached it first.
     private int[] entryNext = []; // By entry: the next entry into its holder.
     private int takenCount;
     private int stamp;
     private byte pass;
     private int passIndex; // A Valued or Rooted pass's operand.
+    private int pastRoot; // The Past pass's holder live only for a past use, whose closure or stores it reads.
 
     // The check set of an activation in a holder.
     private static int Activation(int holder) => Activating - holder;
@@ -76,6 +81,12 @@ internal sealed partial class MirBorrows
         MirDataflow.Grow(ref this.listed, this.holderCount + 1);
         MirDataflow.Grow(ref this.entryFirst, this.holderCount + 1);
         MirDataflow.Grow(ref this.takenFirst, this.holderCount + 1);
+        if (this.pastUses > 0)
+        {
+            MirDataflow.Grow(ref this.markPast, this.loanBase);
+            this.markPast.AsSpan(0, this.loanBase).Clear();
+        }
+
         this.reached.AsSpan(0, this.holderCount).Clear();
         this.loanMarks.AsSpan(0, 2 * this.loanCount).Clear();
         this.rootMarks.AsSpan(0, keys).Clear();
@@ -106,10 +117,25 @@ internal sealed partial class MirBorrows
         this.Work += stores;
         this.BasePass(state);
         this.Pass(Stored);
+        this.Stores(state);
+        if (this.pastUses > 0)
+        {
+            this.PastPass(state);
+            this.Stores(state);
+        }
+
+        this.TakenValues(state, at);
+    }
+
+    // The stores of the holders the Based, Stored and Past passes reached, each value read in the pass (Past: under the holder that made it
+    // live).
+    private void Stores(ulong[] state)
+    {
         while (this.pending.Count > 0)
         {
             var slot = this.pending[^1];
             this.pending.RemoveAt(this.pending.Count - 1);
+            this.pastRoot = this.pass == Past ? this.pastRoots[slot] : this.pastRoot;
             for (var e = this.entryFirst[this.Lists(slot)]; e != None; e = this.entryNext[e])
             {
                 this.Work++;
@@ -121,12 +147,11 @@ internal sealed partial class MirBorrows
 
             this.Drain(state);
         }
-
-        this.TakenValues(state, at);
     }
 
-    // The Based pass from E and the live holders (an overwritten one is reached for its stores but not read), each holder's state read and
-    // closed through the holders its direct Loans name; also Entry(B)'s gather (MirBorrows.Defaults), where no entry is listed yet.
+    // The Based pass from E and the holders live for a use (in a view with a past use, not only for one; an overwritten one is reached for
+    // its stores but not read), each holder's state read and closed through the holders its direct Loans name; also Entry(B)'s gather
+    // (MirBorrows.Defaults), where no entry is listed yet.
     private void BasePass(ulong[] state)
     {
         this.Pass(Based);
@@ -134,7 +159,7 @@ internal sealed partial class MirBorrows
         this.Work += (this.holderCount + 63) >> 6;
         for (var word = 0; word < (this.holderCount + 63) >> 6; word++)
         {
-            for (var bits = this.live[word]; bits != 0; bits &= bits - 1)
+            for (var bits = this.pastUses > 0 ? this.used[word] : this.live[word]; bits != 0; bits &= bits - 1)
             {
                 var slot = (word << 6) + BitOperations.TrailingZeroCount(bits);
                 this.Reach(slot, scan: !this.Overwritten(slot));
@@ -142,6 +167,24 @@ internal sealed partial class MirBorrows
         }
 
         this.Drain(state);
+    }
+
+    // The Past pass (R4-M153): each holder live only for a destruction past the destruction walk's bound, read as the Based pass reads a
+    // live one and closed through the holders its direct Loans name, what it reaches tagged with it.
+    private void PastPass(ulong[] state)
+    {
+        this.Pass(Past);
+        MirDataflow.Grow(ref this.pastRoots, this.holderCount);
+        this.Work += (this.holderCount + 63) >> 6;
+        for (var word = 0; word < (this.holderCount + 63) >> 6; word++)
+        {
+            for (var bits = this.live[word] & ~this.used[word]; bits != 0; bits &= bits - 1)
+            {
+                this.pastRoot = (word << 6) + BitOperations.TrailingZeroCount(bits);
+                this.Reach(this.pastRoot, scan: !this.Overwritten(this.pastRoot));
+                this.Drain(state);
+            }
+        }
     }
 
     // The passes of what the location's accesses and activations take (A3 E13 (1)): a borrow's R2 parents and an observing destruction's
@@ -271,16 +314,22 @@ internal sealed partial class MirBorrows
 
     private void Pass(byte pass, int index = 0) => (this.pass, this.passIndex) = (pass, index);
 
-    // A holder reached at the check: in the Based and Stored passes its stores count, and its state is read where the pass reads it first
-    // (a Based read stands for every pass, a Valued one for the later operands and a Rooted one for the earlier).
+    // A holder reached at the check: in the Based, Stored and Past passes its stores count (a Past one's under the holder that made it live),
+    // and its state is read where the pass reads it first (a Based read stands for every pass, a Valued one for the later operands and a
+    // Rooted one for the earlier).
     private void Reach(int slot, bool scan)
     {
         if (this.reached[slot] != this.stamp)
         {
             (this.reached[slot], this.slotFlags[slot], this.slotValue[slot], this.slotRoot[slot]) = (this.stamp, 0, int.MaxValue, -1);
-            if (this.pass is Based or Stored)
+            if (this.pass is Based or Stored or Past)
             {
                 this.pending.Add(slot);
+            }
+
+            if (this.pass == Past)
+            {
+                this.pastRoots[slot] = this.pastRoot;
             }
         }
 

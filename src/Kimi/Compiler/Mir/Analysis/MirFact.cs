@@ -11,6 +11,7 @@
 // last edge, D18) the edge's site and as its Value the row's index in the body's C1-F4 view, or -1 for a containment edge at its Ref, and
 // the storage limit's Required, Limit and Table facts (G213, R4-M132) the body and as their Values the bytes its arena needs, the
 // analyses' byte limit and the arena (a MirStorageTable), the catalog's requiredBytes, limitBytes and table of OwnershipStorageLimit_Kd,
+// a depth record's Limit fact its subject and as its Value the MirTypes walk's bound, OwnershipDepthLimit_Kd's limit (R4-M153),
 // and a Cause fact (SPEC 15.6.5, 23.1.2; rule W, R4-M132) the subject of a problem this one is caused only by and as its Value that
 // problem's index in MirReport.All (-1 reserved for 2g-1's Binding cause at the site); a kind that names no value has -1; a problem has
 // at most one fact of each kind but its witness's and its causes, which come last.
@@ -24,8 +25,8 @@ namespace Kimi.Compiler.Mir;
 /// carries it, the anchor of the reservation the problem's activation or destruction is of (design A3 6.4), the call of the inline
 /// default copy an A1 or A2 Language problem was found in (R4-M69), the default's operation of a Loan problem a body owns inside a copy
 /// (R4-M97), the declaration of the static Field a Call's or Drop's effects met, by what decided it (R4-M92), an Origin problem's last
-/// edge (D18), the body of a storage limit with one of its arguments (G213, R4-M132), or a problem this one is caused only by (rule W,
-/// R4-M132).</summary>
+/// edge (D18), the body of a storage limit with one of its arguments (G213, R4-M132), a depth record's subject with its bound (R4-M153), or
+/// a problem this one is caused only by (rule W, R4-M132).</summary>
 internal enum MirFactKind : byte
 {
     Anchor,
@@ -39,7 +40,8 @@ internal enum MirFactKind : byte
     Evaluated, // The default's operation of a Loan problem a body owns inside a copy, whose subject is the omitting call (SPEC 15.6).
     Relation, // An Origin problem's last edge (2a0-D D18): a row of the body's C1-F4 view (Value), or a containment edge at its Ref (Value -1).
     Required, // A storage limit's body: the bytes its arena needs (Value), OwnershipStorageLimit_Kd's requiredBytes (MirDataflow.StorageLimit).
-    Limit, // A storage limit's body: the analyses' byte limit (Value), its limitBytes.
+    Limit, // A limit record's bound (Value): a storage limit's body with the analyses' byte limit, its limitBytes; a depth record's subject with
+    // the bound of the MirTypes walk it rests on, OwnershipDepthLimit_Kd's limit (R4-M153).
     Table, // A storage limit's body: the arena (Value, a MirStorageTable), its table.
     Cause, // A problem this one is caused only by (SPEC 15.6.5, 23.1.2): its subject, its index in MirReport.All (Value); facts' tail.
 }
@@ -48,5 +50,5 @@ internal enum MirFactKind : byte
 /// <param name="Kind">What the site is.</param>
 /// <param name="Site">The syntax.</param>
 /// <param name="Value">A Relation fact's row index in the body's C1-F4 view, -1 for a containment edge; a storage limit's bytes, byte limit or
-/// arena; a Cause's problem index; -1 for a kind that names no value.</param>
+/// arena; a depth record's bound; a Cause's problem index; -1 for a kind that names no value.</param>
 internal readonly record struct MirFact(MirFactKind Kind, SourceRef Site, long Value = -1);

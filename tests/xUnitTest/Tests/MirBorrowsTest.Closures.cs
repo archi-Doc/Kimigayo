@@ -918,7 +918,7 @@ public sealed partial class MirBorrowsTest
     private static string[] ViewProblems(string source)
     {
         var c = MirBuildTest.Compile(Prelude + source);
-        DiagnosticCode[] codes = [.. LoanCodes, DiagnosticCode.Unsupported_Kd];
+        DiagnosticCode[] codes = [.. LoanCodes, .. LimitCodes];
         return [.. Analyze(c).Problems.All.ToArray().Where(x => codes.Contains(x.Code) && x.Subject.Module == 0)
             .Select(x => $"{Function(c.SyntaxOf(x.Subject))}: {Line(c, x.Subject)} {x.Code} views {x.Views}").Order(StringComparer.Ordinal)];
     }

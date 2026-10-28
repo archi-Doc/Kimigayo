@@ -224,6 +224,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     private static DiagnosticCode[] LoanCodes => [DiagnosticCode.ComparisonLoanConflict_Kd, DiagnosticCode.CallReservationConflict_Kd,
         DiagnosticCode.CallActivationConflict_Kd, DiagnosticCode.PlacementActivationConflict_Kd];
 
+    // The codes of a limit record: the located Unsupported_Kd and the depth record (SPEC 23.1.1; DECISIONS R4-M153).
+    private static DiagnosticCode[] LimitCodes => [DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnershipDepthLimit_Kd];
+
     // SPEC 15.6, 15.6.2: an access conflicts with a Loan live after it that it hits: a write, a Move or an exclusive borrow with any Loan
     // of an overlapping Place, a read or a shared borrow with an exclusive one; Loans end with their last use, and distinct Fields are
     // disjoint.
@@ -814,7 +817,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 "iterated: refs@ref", "iterated: refs@ref", "exclusiveElements: exclusive",
                 "exclusiveElements: var exclusive: [1 of uniq/Data] = [b@uniq]", "exclusiveElements: var b = Data.init()", "bumpRefs: values",
             ],
-            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+            Problems(c, Analyze(c), [.. LoanCodes, .. LimitCodes]));
     }
 
     // G147 (1), G160-3 (SPEC 5.7, 15.6.4, 15.6 Addresses): a Dictionary literal places each entry through placeEntry, whose handle
@@ -1573,7 +1576,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 """);
         Assert.Equal(
             ["hold: local = second@move", "holdBin: local = second@move", "keep: make()", "keepArray: make()"],
-            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+            Problems(c, Analyze(c), [.. LoanCodes, .. LimitCodes]));
     }
 
     // SPEC 12.2, 15.6 (A3 E13 (1a), (2); prototype round 13's 136-137, n1-n2, s1-s2, fr-rs1, 131 and 130g): an operation evaluates its
@@ -1921,7 +1924,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 "p134c: v@follow@ref", "p134e: v@follow@ref", ": func [v, u]() => ()", ": func [u, v]() => ()", "p138d: v@follow@ref",
                 "p139d: x@ref", "pN3: v@follow@ref",
             ],
-            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+            Problems(c, Analyze(c), [.. LoanCodes, .. LimitCodes]));
     }
 
     // A3 E5, CS_call (100d, 101, 110, 111): an activation is checked with the states of the holders its reservation's own Loans name, so
@@ -1966,7 +1969,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             "func unlent(x: ref/i32)\n    let n = Nest<ref/i32>.init(value: x)\n");
         var program = Analyze(c);
         Assert.Equal(
-            ["Unsupported_Kd func deep(n: Nest<ref/i32 during a>)", "Unsupported_Kd Nest<ref/i32>.init(value: y@ref)"],
+            ["OwnershipDepthLimit_Kd func deep(n: Nest<ref/i32 during a>)", "OwnershipDepthLimit_Kd Nest<ref/i32>.init(value: y@ref)"],
             program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0).Select(x => $"{x.Code} {Line(c, x.Subject)}"));
     }
 

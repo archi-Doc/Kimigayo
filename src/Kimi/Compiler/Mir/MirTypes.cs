@@ -17,6 +17,11 @@ namespace Kimi.Compiler.Mir;
 /// a struct's Fields and base and an enum's Case payloads (plan 5.5).</summary>
 internal static partial class MirTypes
 {
+    /// <summary>The deepest part the Destruction and holding walks enter: past it a part may be anything, where a growing Type ends (SPEC
+    /// 15.3.5). A walk answers such a part distinctly, and a check whose verdict rests on it alone is OwnershipDepthLimit_Kd, whose limit
+    /// fact this bound is (DECISIONS R4-M36, R4-M153).</summary>
+    internal const int Bound = 32;
+
     /// <summary>Gets whether a value of a Type is a reference whose Loans an EndBorrow ends: a ref, uniq, objref or objuniq, or a pair layer.</summary>
     /// <param name="type">The Type.</param>
     /// <returns>Whether the value is a reference.</returns>

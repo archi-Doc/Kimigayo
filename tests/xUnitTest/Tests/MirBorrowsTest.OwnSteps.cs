@@ -267,11 +267,11 @@ public sealed partial class MirBorrowsTest
             """);
         Assert.Equal(
             [
-                "init: Nest<i32>.init(value: 1) Unsupported_Kd", "ownLimitLocal: Nest<ref/i32>.init(value: x) Unsupported_Kd",
-                "ownDeep: Nest<i32>.init(value: 2) Unsupported_Kd", "ownDeep: d.n = Nest<i32>.init(value: 2) Unsupported_Kd",
+                "init: Nest<i32>.init(value: 1) OwnershipDepthLimit_Kd", "ownLimitLocal: Nest<ref/i32>.init(value: x) OwnershipDepthLimit_Kd",
+                "ownDeep: Nest<i32>.init(value: 2) OwnershipDepthLimit_Kd", "ownDeep: d.n = Nest<i32>.init(value: 2) OwnershipDepthLimit_Kd",
                 "ownWriteThrough: b@follow = Buf<i32>.init(1) OwnStepDeparture_Kd",
             ],
-            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnStepDeparture_Kd]));
+            Problems(c, Analyze(c), [.. LoanCodes, .. LimitCodes, DiagnosticCode.OwnStepDeparture_Kd]));
     }
 
     // D5 (DECISIONS R4-M141): a view that reads a `during self` layer N times and departs no own-step entry runs no stratum: it makes no

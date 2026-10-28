@@ -134,9 +134,9 @@ public sealed partial class MirBorrowsTest
     [InlineData(Kept, "Missing", "i32", "g: y = 3")]
     [InlineData(RetentionTest.Fielded, "C{x}\n        origin x.s == zz", "C{x}\n        origin x.s == s", "")]
     [InlineData(RetentionTest.Fielded, "Missing", "C{x}\n        origin x.s == s", "")]
-    [InlineData(RetentionTest.Tall, "Missing", "i32", "g: f(b, null) Unsupported_Kd")]
-    [InlineData(RetentionTest.Growing, "Missing", "i32", "h: f(g, null) Unsupported_Kd")]
-    [InlineData(RetentionTest.Beyond + "func g(t: uniq/T, x: uniq/X)\n    fx(x, null)\n    ft(t, null)\n", "Missing", "i32", "g: fx(x, null) Unsupported_Kd | g: ft(t, null) Unsupported_Kd")]
+    [InlineData(RetentionTest.Tall, "Missing", "i32", "g: f(b, null) OwnershipDepthLimit_Kd")]
+    [InlineData(RetentionTest.Growing, "Missing", "i32", "h: f(g, null) OwnershipDepthLimit_Kd")]
+    [InlineData(RetentionTest.Beyond + "func g(t: uniq/T, x: uniq/X)\n    fx(x, null)\n    ft(t, null)\n", "Missing", "i32", "g: fx(x, null) OwnershipDepthLimit_Kd | g: ft(t, null) OwnershipDepthLimit_Kd")]
     public void ACallOverRejectedStorageKeepsItsRows(string source, string failed, string repaired, string expected, string? twin = null)
     {
         Assert.Equal(expected, CallRecords(source.Replace("MISSING", failed, StringComparison.Ordinal), complete: false));
@@ -196,6 +196,6 @@ public sealed partial class MirBorrowsTest
         Assert.Empty(program.Findings);
         Assert.Empty(program.Records);
         new Stratum(c.Types).Run(program);
-        return string.Join(" | ", Problems(c, program, [.. LoanCodes, DiagnosticCode.MovedPlace_Kd, DiagnosticCode.Unsupported_Kd]));
+        return string.Join(" | ", Problems(c, program, [.. LoanCodes, DiagnosticCode.MovedPlace_Kd, .. LimitCodes]));
     }
 }

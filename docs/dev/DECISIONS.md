@@ -5148,6 +5148,49 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: direction (A)'s chain in `Past` (order-dependent under the per-Type memo); a route-keyed memo (unbounded, V16).
   - Not covered: `ha`, an associate binding behind an uncompleted projection (PLAN G271, BU). The default pipeline still accepts the
     stated forms until R6-check (STATUS).
+- **R4-M153 A part past MIR's walk bound is answered distinctly; a check resting on it alone is `OwnershipDepthLimit_Kd` (PLAN G272;
+  supersedes R4-M36, R4-M51 and R4-M147 in part)** (2026-10-28; G272's prototype-first candidate under WORKFLOW Full changes (Q11),
+  problem statement r2 and its shared tests; number provisional, the chosen candidate takes it)
+  - Rule (SPEC 23.1.1, IMPL 21.3.2; 15.3.5): a Type part past `MirTypes.Bound` (32), the one depth of the Destruction and holding
+    walks, may be anything. A check whose verdict rests on it alone records one `OwnershipDepthLimit_Kd` (Error, Resource,
+    `Ownership.DepthLimit`) with the `Limit` fact 32 at the affected Drop, call or obligation, never a Language record; no check resting
+    on it records nothing. An unsupported part deciding the same verdict outranks it (its `Unsupported_Kd`), since no bound would decide.
+  - The owning answers: the Destruction walk's `MirObservation.Deep` (unchanged); the holding walk's past-bound part may hold a Loan and
+    gives the new fact `Deep` wherever it would give Write (`MirWrites.Deep`: Through over Limit over Deep over None); A4's class `Deep`
+    (its Glue's past part, composed as any class). Their readers, one reading each: `MayNeedDrop` "may need a drop" (no verdict rests on
+    it); A4's obligation the depth record after Environment, Unknown and Limit; A5's borrowed-root destruction and destroying call
+    (unclassified access) the record at the Drop or call; W reaching a `Deep` holder, and a referent store whose referent's destruction
+    is Deep where W past refs(S) would store a Loan or an address (it stops at refs(S)), the record at the call; A4's Deep at an effect
+    the record where its Limit gave `Unsupported_Kd`; liveness a past use: a view with one solves holder liveness also without past
+    uses, and the gather reads a holder live only for a past use in its own Past pass, so a conflict or err(ended) only it carries
+    (`Tags.Rests`, `markPast`) is the record at that holder's first past destruction, and a real conflict is preferred; `MayDepart`
+    and departures a destruction, the Past pass tagging no own-step entry (the Warning rejects nothing, so its undecided verdict takes no
+    record).
+  - A call whose retention is `CallRetention.Limit` (R4-M51) is the same record without a `Limit` fact: its bound is Binding's storage
+    bound (height 64, a 256-Type walk or a keeper cycle, PLAN G128), not 32, and Binding publishes none (catalog evidence `limit` is
+    optional). A4's Limit for an unreadable instance (`TyCtxt.ReadableInstance` null, also Binding's bound) stays `Unsupported_Kd`: A4
+    cannot tell a storage Limit there from an instance that does not substitute. Not G272's: `HoldsRaw`, `MirStatic.RawHolding` and
+    `RawStaticRead` (2b-5, R4-M89); Binding's `ContainsRawPointer` past depth 32 and the old path's bound 64 (default pipeline).
+  - Vocabulary (owner-approved): `OwnershipDepthLimit_Kd` (「G272: (1)」, 2026-10-27) and `Ownership.DepthLimit` (「G272 要件: (a)」);
+    the ledger's compared pair (A5) and classification row a5-depth.
+  - Code generation (R5's answer): the gate is unchanged. The records are A4's and A5's, which never refuse generation (R5-M4); an A1 or
+    A2 record of the bound would refuse the body with its code (R5-M96), and none exists (A2 reads `MayNeedDrop`). Under shadow the
+    default pipeline decides acceptance with the old path's bound (64): between 33 and 64 it decides the program, past 64 it keeps its
+    conservative Language record (TypeDagScalingTest's 70-level rows), so no MIR record makes a program look valid.
+  - Supersedes: R4-M36's "a growing one ... at the bound of 32, where HoldsLoans answers yes and Observes sets deep, the caller's located
+    `Unsupported_Kd` as A4's Limit is" (HoldsLoans holds a Loan and gives Deep; the record above); R4-M51's "A5 records a located
+    `Unsupported_Kd` at the call" (the depth record); R4-M147's "a part past the bound may be an exclusive reference" (Deep, not Write)
+    and "a Type that holds one and a part past the depth bound is Deep (an unclassified destruction, a located `Unsupported_Kd`)".
+  - Rejected: a record at every past destruction of a holder (records where no check rests: the nowrite rows); a past destruction as no
+    use without a record (an undecided verdict silently accepted); judging a conflict by its first holder only (the closure and a
+    second holder hide a real conflict); one interleaved solve of both liveness answers (the heads store only the flow holders' prefix);
+    the retention record with 32 (invented evidence) or 64 (its other causes); Deep outranking an unsupported part.
+  - Cost: a view with no past use solves and gathers as before (one branch per gather; the new arrays only in a view with one). Census
+    corpus (122 programs: library, 44 milestones, 32 goldens, 45 accepted SPEC variants), base d21a0dd75 against the candidate, one host
+    process loading both builds, interleaved, CPU 2 pinned, tiering off, 3 runs of 6 reps: A5 cold min-sum 1.0024 (median per program
+    1.0011; runs 0.9982, 1.0018, 0.9998), the MirTypes walks over every body local 1.0005; Work, Loan-set bytes and problems equal; A5
+    cold allocation +32 to +64 B a program (+4,032 B of 47.7 MB: `Tags.PastVia` widens `Candidate`); warm rebind and BuildMir allocate as
+    on the base (0, but golden/verifications' 64 B on both).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

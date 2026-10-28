@@ -85,6 +85,9 @@ internal sealed class MirDataflow(MirReach reach)
     /// <summary>Gets the blocks of the body begun in reverse postorder over runtime and check edges, so a chain's blocks are in order.</summary>
     internal ReadOnlySpan<int> Order => this.order.AsSpan(0, this.body.Blocks.Length);
 
+    /// <summary>Gets the number of flow heads of the body, each with a stored backward state (<see cref="Before"/>).</summary>
+    internal int HeadCount => this.headCount;
+
     // The words a head stores, the backward problem's first.
     private int Row => this.backward + this.forward;
 

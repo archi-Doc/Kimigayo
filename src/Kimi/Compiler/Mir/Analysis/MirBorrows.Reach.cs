@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 
 namespace Kimi.Compiler.Mir;
 
-// A5's reach on a state (A3 5's content and refs, E16's W, DECISIONS R4-M73, R4-M116, R4-M147): the holders a set refers to (those its
+// A5's reach on a state (A3 5's content and refs, E16's W, DECISIONS R4-M73, R4-M116, R4-M147, R4-M153): the holders a set refers to (those its
 // direct Loans and addresses name, and E where it carries Φ_E or no direct one), its content, the holders a call's store through it writes
 // (W, whose first step alone is Referents), and the guard's per-local MirWrites (MirTypes.HoldsLoans); its chain (SPEC 15.6.4's "what any
 // chain of reads through it carries", a Chain row's measure), the least fixed point of a read from it, each holder read once per closure.
@@ -37,6 +37,11 @@ internal sealed partial class MirBorrows
 
     // Whether a direct Loan's Place is its holder's whole value, through which rule W's read-through clause reads a Copy (ReadThrough).
     private static bool Whole(in Loan loan) => loan.Count == 0;
+
+    // What two guard answers leave a call's store undecided by (R4-M147, R4-M153): the Limit, else Deep, else None (Through decides).
+    private static MirWrites Undecided(MirWrites left, MirWrites right)
+        => left == MirWrites.Limit || right == MirWrites.Limit ? MirWrites.Limit
+            : left == MirWrites.Deep || right == MirWrites.Deep ? MirWrites.Deep : MirWrites.None;
 
     // content(S) (A3 5): the states of the holders its direct Loans name, and E's where it carries Φ_E or no direct Loan, each read through
     // rule W's clause (ReadThrough); memoized at the location.
@@ -226,27 +231,27 @@ internal sealed partial class MirBorrows
         return count;
     }
 
-    // W(S) (A3 E16, DECISIONS R4-M73, R4-M116, R4-M147) into the targets, the holders a call's store through S writes: past refs(S), which
-    // Referents put there first, from each holder h ≠ E of W whose Type passes the guard (MirWrites.Through), the holder each direct Loan or
-    // address of σ(h) names, in any mode, and E where σ(h) carries Φ_E. Whether W reached a holder the guard leaves undecided
-    // (MirWrites.Limit): the call's location records it as a limit (MirBorrows.Calls, .Locations). Every store path (a Call's rows, its
-    // untied stores among them; A5-F7's capture stores, unit 2c; A5-F6's desc(c) stores, 2f) takes W here, except a 4.6 to 4.9
-    // operation's referent store whose referent destroys shallowly, which takes refs(S) alone (Referents; DECISIONS R4-M143).
-    private bool Writes(ulong[] state, int set)
+    // W(S) (A3 E16, DECISIONS R4-M73, R4-M116, R4-M147, R4-M153) into the targets, the holders a call's store through S writes: past
+    // refs(S), which Referents put there first, from each holder h ≠ E of W whose Type passes the guard (MirWrites.Through), the holder each
+    // direct Loan or address of σ(h) names, in any mode, and E where σ(h) carries Φ_E. What W reached that the guard leaves undecided, the
+    // Limit outranking Deep, None for nothing: the call's location records it as a limit (MirBorrows.Calls, .Locations). Every store path
+    // (a Call's rows, its untied stores among them; A5-F7's capture stores, unit 2c; A5-F6's desc(c) stores, 2f) takes W here, except a 4.6
+    // to 4.9 operation's referent store whose referent destroys shallowly, which takes refs(S) alone (Referents; DECISIONS R4-M143).
+    private MirWrites Writes(ulong[] state, int set)
     {
         this.Write(set); // The kinds of refs(S)'s holders, which Referents put in the targets.
-        var limited = false;
+        var undecided = MirWrites.None;
         for (var i = 0; i < this.targets.Count; i++)
         {
             var kind = this.writingKind[this.targets[i]];
-            limited |= kind == MirWrites.Limit;
+            undecided = Undecided(undecided, kind);
             if (kind == MirWrites.Through)
             {
                 this.Write((int)state[this.targets[i]]);
             }
         }
 
-        return limited;
+        return undecided;
     }
 
     // A step of W from a set (Writes): E where it carries Φ_E, and the holder each direct Loan or address names. A value that may refer to

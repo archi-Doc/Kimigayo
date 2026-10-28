@@ -4,9 +4,10 @@ namespace Kimi.Compiler.Mir;
 
 // A5's check-set candidates (A3 5's check sets and mode, E13 (1), (5)): each Loan an element of a gather's pass finds, once per mode (a
 // two-phase Loan is shared only in its reservation holder), tagged with the passes, operands and holders that reached it, and listed by its
-// Place's root, so an access scans only its root's; a marker found, the holder it was first seen in (E7's witness); an own-step entry
-// found, its tag (MirBorrows.OwnSteps). Which check sets hold a candidate is Tags.Takes; the passes and the closure are the gather's
-// (MirBorrows.CheckSets).
+// Place's root, so an access scans only its root's; a marker found, the holder it was first seen in (E7's witness), and whether only the
+// Past pass saw it; an own-step entry found, its tag (MirBorrows.OwnSteps). Which check sets hold a candidate is Tags.Takes, and Tags.Rests
+// whether one holds it only through a holder live only for a destruction past the destruction walk's bound (R4-M153); the passes and the
+// closure are the gather's (MirBorrows.CheckSets).
 // Must not compare Places or decide a conflict (MirBorrows.Checks), or read a holder's state itself.
 internal sealed partial class MirBorrows
 {
@@ -17,7 +18,8 @@ internal sealed partial class MirBorrows
     private int[] rootFirst = []; // By root key: the first and last of its candidates at that check.
     private int[] rootLast = [];
     private int[] markSeen = []; // By marker (γ_H): the check that saw it in the Based or Stored passes.
-    private int[] markVia = []; // By marker: the holder that check first saw it in (-1: a transit value).
+    private int[] markVia = []; // By marker: the holder that check first saw it in (-1: a transit value; the Past pass's holder).
+    private int[] markPast = []; // By marker, in a view with a past use: the check whose Past pass alone saw it.
     private int candidateCount;
 
     // A set found in a holder (-1: a transit value) by the pass: its elements.
@@ -45,10 +47,14 @@ internal sealed partial class MirBorrows
 
         if (element < this.loanBase)
         {
-            // A marker never conflicts: the holder a guard-local γ_H is first seen in witnesses err(ended).
-            if (this.pass is Based or Stored && this.markSeen[element] != this.stamp)
+            // A marker never conflicts: the holder a guard-local γ_H is first seen in witnesses err(ended), the Past pass's its holder.
+            if (this.pass is Based or Stored or Past && this.markSeen[element] != this.stamp)
             {
-                (this.markSeen[element], this.markVia[element]) = (this.stamp, via);
+                (this.markSeen[element], this.markVia[element]) = (this.stamp, this.pass == Past ? this.pastRoot : via);
+                if (this.pass == Past)
+                {
+                    this.markPast[element] = this.stamp;
+                }
             }
 
             if (this.pass is Based or Stored && kept)
@@ -88,7 +94,7 @@ internal sealed partial class MirBorrows
         }
 
         ref var candidate = ref this.candidates[this.candidateAt[key]];
-        candidate.Tag(this.pass, this.passIndex, via);
+        candidate.Tag(this.pass, this.passIndex, this.pass == Past ? this.pastRoot : via);
         candidate.Kept |= kept;
         if (loan is { Direct: true, Named: >= 0 })
         {
@@ -132,14 +138,15 @@ internal sealed partial class MirBorrows
         // escape holder as no Copy of the borrow, in some pass.
         internal bool Kept { get; set; }
 
-        // Whether a check set holds it (Tags.Takes).
-        internal readonly bool Takes(int taking) => this.tags.Takes(taking);
+        // Whether a check set holds it (Tags.Takes, Tags.Rests).
+        internal readonly bool Takes(int taking) => this.tags.Takes(taking) || this.tags.Rests(taking);
 
         internal void Tag(byte pass, int index, int via) => this.tags.Tag(pass, index, via);
     }
 
     /// <summary>What reached a candidate in some sets: the first holder (-1: a transit value), the passes, the first operand whose value
-    /// and the last whose root reached it, and the first two holders an activation's passes found it in; none before the first tag.</summary>
+    /// and the last whose root reached it, the first two holders an activation's passes found it in, and the first holder live only for a
+    /// destruction past the walk's bound whose closure or stores the Past pass found it in; none before the first tag.</summary>
     private struct Tags()
     {
         internal int Via { get; private set; } = None;
@@ -154,6 +161,8 @@ internal sealed partial class MirBorrows
 
         internal int ActOther { get; private set; } = None;
 
+        internal int PastVia { get; private set; } = None;
+
         // Whether a check set holds it (A3 E13 (1)): an activation's in a holder, where the Based, Seeded or Valued passes found it in another
         // holder; another's, a Based one; an operand's, a Valued one from an operand up to it or a Rooted one from a later one; the others,
         // by their passes.
@@ -166,8 +175,19 @@ internal sealed partial class MirBorrows
                 _ => (this.Flags & Observed) != 0,
             };
 
+        // Whether a check set holds it only through a holder live only for a destruction past the walk's bound (R4-M153): the Past pass
+        // found it, as the Based pass would, and no other pass puts it in the set (an activation's, where that holder is another's).
+        internal readonly bool Rests(int taking)
+            => this.PastVia != None && !this.Takes(taking) && (taking > Activating || Activation(this.PastVia) != taking);
+
         internal void Tag(byte pass, int index, int via)
         {
+            if (pass == Past)
+            {
+                this.PastVia = this.PastVia == None ? via : this.PastVia;
+                return;
+            }
+
             this.Via = this.Via == None ? via : this.Via;
             this.Flags |= pass is Valued or Rooted ? (byte)0 : pass;
             this.Value = pass == Valued ? Math.Min(this.Value, index) : this.Value;

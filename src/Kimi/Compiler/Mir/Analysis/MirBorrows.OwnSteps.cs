@@ -6,7 +6,9 @@ namespace Kimi.Compiler.Mir;
 // an access that may end an owning value's stay in its holder while a value carrying a pointer formed through that own step may still be
 // used. An own-step entry (MirBorrows.Addresses) found at the check is tagged by MirBorrows.Candidates where a pass counts it (Based or
 // Stored: live after the access, or stored there into a holder live after it or into E; Valued: an operand's value, which counts for an
-// activation, whose call uses its operands after taking the owner) and listed on its root, so an access scans only its root's. An access
+// activation, whose call uses its operands after taking the owner) and listed on its root, so an access scans only its root's; the Past
+// pass tags none, so a departure only a holder live for a destruction past the walk's bound would keep is no Warning, and since the
+// Warning rejects nothing its undecided verdict takes no record (R4-M153). An access
 // with path S departs an entry with owning path O when S prefixes O step by step (15.6.2, MirBorrows.Checks' Meets) and it is a Move (a
 // Take of a raw Place included), a write or a destruction of any class with no borrow or raw Deref of O past S, or an exclusive borrow or
 // a call's activation of a reservation across any steps. A departure whose operation and formation lie in one inline default copy is its

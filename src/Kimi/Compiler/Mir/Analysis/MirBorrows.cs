@@ -12,10 +12,13 @@
 // writeback write, else ComparisonLoanConflict_Kd, also for a value that keeps a guard candidate's guard-local Origin past its EndBorrow),
 // with the Loan's anchor, its witness's next use or the store that carries it, an activation's reservation and, inside an inline default
 // copy, the default's operation (Evaluated, the problem at the outermost omitting call; R4-M97) as facts, a failure whose events all lie in
-// one evaluation of a copy left to its template; Unsupported_Kd at a destruction, a call or a Borrow or read it does not classify (a
-// destruction walk past its bound, a call whose W reaches a holder the guard leaves undecided, MirWrites.Limit, R4-M147, and the cases of
-// the rules below), a limit record at its operation also inside a copy, and in a view PD13 holds (a Closure call acquiring more than the
-// view's case admits, R4-M148) every rejection at its subject, through MirReport; InternalInvariant_Kd at a Value call whose declared
+// one evaluation of a copy left to its template; Unsupported_Kd at a call or a Borrow or read it does not classify (a call whose W reaches
+// a holder the guard leaves undecided, MirWrites.Limit, R4-M147, and the cases of the rules below), and OwnershipDepthLimit_Kd where a
+// check rests on a part past a Type walk's bound alone (R4-M153: a destruction past the destruction walk's bound at a borrowed root or a
+// destroying call, a store W or a referent store leaves undecided by such a part, a call's CallRetention.Limit, A4's Deep at an effect,
+// and a conflict or escape found only through a holder live only for such a destruction, at that destruction), each a limit record at its
+// operation also inside a copy, and in a view PD13 holds (a Closure call acquiring more than the view's case admits, R4-M148) every
+// rejection at its subject, through MirReport; InternalInvariant_Kd at a Value call whose declared
 // signature does not number its operands (G136, R4-M148); the own-step Warning OwnStepDeparture_Kd at an
 // operation that may end an owning value's stay in its holder while a pointer formed through its own step may still be used, with its
 // anchor, witness and Evaluated facts (SPEC 5.2.1 condition 3); a Loan conflict caused only by Refuted Origin relations (SPEC 15.6.5) with

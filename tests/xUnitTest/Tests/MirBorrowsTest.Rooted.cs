@@ -376,7 +376,7 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(
             ["both3(g@move) ComparisonLoanConflict_Kd EffectUnknown", "w5 = W5.init() ComparisonLoanConflict_Kd EffectRead"],
             program.Problems.All.ToArray().Select((x, i) => (x, i))
-                .Where(static x => x.x.Subject.Module == 0 && (LoanCodes.Contains(x.x.Code) || x.x.Code == DiagnosticCode.Unsupported_Kd))
+                .Where(static x => x.x.Subject.Module == 0 && (LoanCodes.Contains(x.x.Code) || LimitCodes.Contains(x.x.Code)))
                 .Select(x => $"{Line(c, x.x.Subject)} {x.x.Code} {string.Join(",", program.Problems.Facts(x.i).ToArray().Select(static f => f.Kind)
                     .Where(static k => k is MirFactKind.EffectRead or MirFactKind.EffectWrite or MirFactKind.EffectUnknown))}"));
     }
@@ -388,7 +388,7 @@ public sealed partial class MirBorrowsTest
     public void ALimitIsUnsupportedAndADerivedEffectReportsNothingRooted()
     {
         Assert.Equal(
-            ["e12a: Lim.run() Unsupported_Kd", "e12c: both(g@move)"],
+            ["e12a: Lim.run() OwnershipDepthLimit_Kd", "e12c: both(g@move)"],
             RootedEffects("""
                     public func e12a()
                         var sc = Root.counter()
@@ -762,7 +762,7 @@ public sealed partial class MirBorrowsTest
                 "fx: sc.add() CallReservationConflict_Kd", "fxExplicit: State.touch() CallReservationConflict_Kd", "n1: State.f() CallReservationConflict_Kd",
                 "twiceBoth: State.add(sc@uniq) CallReservationConflict_Kd", "twiceBoth: State.add(sc@uniq) CallReservationConflict_Kd",
                 "gen: State.addg(v, sc@uniq) CallReservationConflict_Kd", "held: y0 = 2", "held: State.addh(sc@uniq) CallReservationConflict_Kd",
-                "addl: Lim.run() Unsupported_Kd", "limit: y0 = 2",
+                "addl: Lim.run() OwnershipDepthLimit_Kd", "limit: y0 = 2",
             ],
             Problems(c, program, DefaultCodes));
         Assert.Equal(
@@ -808,7 +808,7 @@ public sealed partial class MirBorrowsTest
     {
         var c = MirBuildTest.Compile(Prelude + EffectTypes + members + EffectRoots + declarations);
         Assert.Empty(c.Binding.Issues);
-        return Problems(c, AnalyzeRooted(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]);
+        return Problems(c, AnalyzeRooted(c), [.. LoanCodes, .. LimitCodes]);
     }
 
     // A5's work on a program's rooted bodies with no Loan problem.

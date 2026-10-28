@@ -5,9 +5,11 @@ namespace Kimi.Compiler.Mir;
 // A5's location driver (A3 5, Check sets and err(conflict), with E5 and E13 (1)): at each location of the checks replay, its accesses of
 // borrowed roots (MirBorrows.Accesses) with the check sets they take, a Call's or Drop's effect access after them, and the reservations it
 // activates; one gather of their check sets (MirBorrows.CheckSets); each access compared with the Loans on its root by the conflicts
-// relation, its first conflict recorded by MirBorrows.Reports; then a guard candidate's EndBorrow (err(ended)), a call's retention Limit or
-// its W's (MirWrites.Limit, R4-M147, MirBorrows.Calls) and a Borrow or read the addresses do not classify (PQ-10, MirBorrows.Addresses),
-// each a located Unsupported_Kd, a Value call whose contract is broken (G136, MirBorrows.CallRows' Broken) InternalInvariant_Kd, the
+// relation, its first conflict recorded by MirBorrows.Reports; then a guard candidate's EndBorrow (err(ended)), a call's undecided store
+// (MirWrites.Limit, R4-M147, MirBorrows.Calls) and a Borrow or read the addresses do not classify (PQ-10, MirBorrows.Addresses), each a
+// located Unsupported_Kd, a destruction past the destruction walk's bound, a store undecided by a part past a walk's bound alone
+// (MirWrites.Deep) and a call's retention Limit, each the located OwnershipDepthLimit_Kd (R4-M153), a Value call whose contract is broken
+// (G136, MirBorrows.CallRows' Broken) InternalInvariant_Kd, the
 // location's activations (MirBorrows.Activations), its own-step departures (MirBorrows.OwnSteps), its
 // effects (MirBorrows.Effects, whose keys select other case views) and at a default template's Return R26-borrow.
 // Must not decide whether an access meets a Loan (MirBorrows.Checks) or which problem a conflict becomes (MirBorrows.Reports).
@@ -39,7 +41,7 @@ internal sealed partial class MirBorrows
             var access = this.accesses[a];
             if (access.Kind == AccessKind.Unclassified)
             {
-                this.Unsupported(at);
+                this.DepthLimit(this.Subject(at), MirTypes.Bound); // A destruction past the destruction walk's bound (R4-M153).
                 continue;
             }
 
@@ -56,11 +58,18 @@ internal sealed partial class MirBorrows
         }
 
         var terminator = index == this.body.Blocks[block].Count;
-        var limit = terminator && (this.limit || this.Retaining(this.body.Blocks[block].Terminator) is { IsLimit: true });
-        this.limit = false;
-        if (limit || this.layerBorrowed[location])
+        var (limit, retention) = (this.limit, terminator && this.Retaining(this.body.Blocks[block].Terminator) is { IsLimit: true });
+        this.limit = MirWrites.None;
+        if (limit == MirWrites.Limit || this.layerBorrowed[location])
         {
-            this.Unsupported(at); // A retention limit (TyCtxt.Retention.cs) or W's; a `during self` layer's enclosing Place (PQ-10, MirBorrows.Addresses).
+            this.Unsupported(at); // An undecided store's (R4-M147); a `during self` layer's enclosing Place (PQ-10, MirBorrows.Addresses).
+        }
+
+        if (limit == MirWrites.Deep || retention)
+        {
+            // A store undecided by a part past a walk's bound alone, or a retention limit, Binding's storage bound (TyCtxt.Retention.cs;
+            // R4-M153): a retention limit makes no rows, so no store.
+            this.DepthLimit(this.Subject(at), retention ? null : MirTypes.Bound);
         }
 
         if (terminator && this.Broken(this.body.Blocks[block].Terminator))

@@ -213,13 +213,18 @@ internal sealed partial class MirBorrows
     }
 
     // Entry(B) at a location where issuing copies are entered, before its plan: one gather, the checks' Based pass (BasePass) from E and the
-    // holders live into it (the replay's live bits before Advance) on the state before it; each copy entered there keeps the Loans found
-    // whose issue lies in it.
+    // holders live into it (the replay's live bits before Advance; in a view with a past use, the Past pass's too) on the state before it;
+    // each copy entered there keeps the Loans found whose issue lies in it.
     private void Entering(ulong[] state, int location)
     {
         this.stamp++;
         this.candidateCount = 0;
         this.BasePass(state);
+        if (this.pastUses > 0)
+        {
+            this.PastPass(state);
+        }
+
         this.pending.Clear();
         for (var c = 0; c < this.candidateCount; c++)
         {

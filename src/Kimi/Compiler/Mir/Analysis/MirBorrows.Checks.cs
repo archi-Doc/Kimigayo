@@ -47,17 +47,24 @@ internal sealed partial class MirBorrows
     }
 
     // The first Loan on an access's root in its check set (Takes) it conflicts with (Conflicts), None for none: one whose failure its template
-    // owns, by the operation's scope and reservation (-1: none), is skipped and the scan goes on (D11), so it hides no later one. In a run
-    // with rule W's elements the scan goes on past the first: the access is derived exactly when every conflicting candidate is
-    // (MirBorrows.Causes' Derived, R4-M96), its causes then left for its record, else none.
+    // owns, by the operation's scope and reservation (-1: none), is skipped and the scan goes on (D11), so it hides no later one; one the set
+    // holds only through a holder live only for a past destruction (Tags.Rests, R4-M153) is returned only where no other conflicts, its
+    // record the depth record (Report). In a run with rule W's elements the scan goes on past the first: the access is derived exactly when
+    // every conflicting candidate is (MirBorrows.Causes' Derived, R4-M96), its causes then left for its record, else none.
     private int Conflict(int root, ReadOnlySpan<MirStep> steps, AccessKind kind, int taking, int scope, int reservation)
     {
-        var first = None;
+        var (first, past) = (None, None);
         this.causes.Clear();
         for (var c = this.First(root); c != None; c = this.candidates[c].Next)
         {
             if (this.Conflicts(c, root, steps, kind, taking) && !this.Covered(scope, this.candidates[c].Loan, reservation))
             {
+                if (this.candidates[c].Tags.Rests(taking))
+                {
+                    past = past == None ? c : past;
+                    continue;
+                }
+
                 first = first == None ? c : first;
                 if (this.wCount == 0 || !this.Derived(c))
                 {
@@ -67,7 +74,7 @@ internal sealed partial class MirBorrows
             }
         }
 
-        return first;
+        return first == None ? past : first;
     }
 
     // Whether a candidate of an access's check set conflicts with it (A3 5's conflicts and hits): a write, Move, exclusive borrow,
@@ -133,15 +140,24 @@ internal sealed partial class MirBorrows
 
     // err(ended) (A3 E7, SPEC 14.8.3): at a guard candidate's EndBorrow its guard-local Origin ends, so a value live after it that carries its
     // γ (CS(ℓ), transit included) is a borrow that escapes the guard: ComparisonLoanConflict_Kd at the cleanup (DIAGNOSTICS, escaped
-    // borrows), anchored at the candidate; a copy's template reports it where the EndBorrow and the candidate lie in one copy (D12).
+    // borrows), anchored at the candidate; a copy's template reports it where the EndBorrow and the candidate lie in one copy (D12); where
+    // only the Past pass saw it, the depth record at that holder's past destruction (R4-M153).
     private void Ended(MirLocation at, int candidate)
     {
         var mark = Markers + candidate;
-        if (this.markSeen[mark] == this.stamp && !this.Covered(this.body.Common(this.Source(at).Scope, this.body.Locals[candidate].Source.Scope), -1, -1))
+        if (this.markSeen[mark] != this.stamp || this.Covered(this.body.Common(this.Source(at).Scope, this.body.Locals[candidate].Source.Scope), -1, -1))
         {
-            var anchor = this.body.Subject(this.body.Locals[candidate].Source);
-            this.EndedCauses(candidate, mark);
-            this.Report(DiagnosticCode.ComparisonLoanConflict_Kd, anchor, this.markVia[mark], at, -1, null);
+            return;
         }
+
+        if (this.pastUses > 0 && this.markPast[mark] == this.stamp)
+        {
+            this.PastLimit(this.markVia[mark]);
+            return;
+        }
+
+        var anchor = this.body.Subject(this.body.Locals[candidate].Source);
+        this.EndedCauses(candidate, mark);
+        this.Report(DiagnosticCode.ComparisonLoanConflict_Kd, anchor, this.markVia[mark], at, -1, null);
     }
 }

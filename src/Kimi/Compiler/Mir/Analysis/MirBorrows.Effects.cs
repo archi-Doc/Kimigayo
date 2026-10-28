@@ -13,15 +13,16 @@ namespace Kimi.Compiler.Mir;
 // - R1: for each effect root with a candidate, a write key or Unknown as an EffectWrite, else a read key as an EffectRead of the whole
 //   root (shallow, SPEC 15.6.2); its first conflict at the location its body owns (D11), coded by Code (row 1: a reservation the call does
 //   not activate) with the effect fact on the met Field, what decided it (a write key, else Unknown, else the read key);
-// - A4's Limit without Unknown, where a candidate a write would meet is met by no key: a located Unsupported_Kd at the location;
+// - A4's Limit without Unknown, where a candidate a write would meet is met by no key: a located Unsupported_Kd at the location, and A4's
+//   Deep alone the located OwnershipDepthLimit_Kd (R4-M153);
 // - R3: at a Drop of a mutable static, its own read or write key on that static, or Unknown, ComparisonLoanConflict_Kd anchored at the
 //   Drop, no Loan issued and no witness (the destruction's hold, SPEC 16.4), its template's inside an inline default copy (D11); Limit
-//   without them, a located Unsupported_Kd;
+//   without them, a located Unsupported_Kd, Deep alone the located OwnershipDepthLimit_Kd;
 // - the initialization proof: a conflict every effect that would decide it may be the first-access initialization of a static a live
 //   Loan proves initialized (Proved) is the located Unsupported_Kd at the location instead (PD12 (ii): liveness is a may-property);
 //   otherwise the first effect outside the proof decides the Language problem (Unproved).
 // Invariants: a Derived class reports nothing by itself (R4-M10); the case view Keys selects is the run's again when the rule returns.
-// Must not decide whether an access meets a Loan (MirBorrows.Checks), record other than through Report and Unsupported, or read keys
+// Must not decide whether an access meets a Loan (MirBorrows.Checks), record other than through Report, Unsupported and DepthLimit, or read keys
 // outside a Call or a Drop. A static a Loan or a Drop roots has its initializer: the validator checks that its body ensures it and that
 // each staticEnsure's static has one (G191).
 internal sealed partial class MirBorrows
@@ -124,7 +125,7 @@ internal sealed partial class MirBorrows
             }
         }
 
-        if ((classes & MirEffects.Limit) == 0 || decided is MirFactKind.EffectWrite or MirFactKind.EffectUnknown)
+        if ((classes & (MirEffects.Limit | MirEffects.Deep)) == 0 || decided is MirFactKind.EffectWrite or MirFactKind.EffectUnknown)
         {
             return;
         }
@@ -134,9 +135,23 @@ internal sealed partial class MirBorrows
         {
             if (this.Conflicts(u, root, [], AccessKind.EffectWrite, taking) && !(read && this.Conflicts(u, root, [], AccessKind.EffectRead, taking)))
             {
-                this.Unsupported(at); // A Loan a write would meet and no key meets: A4's Limit decides (AGENTS Diagnostics).
+                this.UndecidedEffect(at, classes); // A Loan a write would meet and no key meets: A4's Limit or Deep decides (AGENTS Diagnostics).
                 return;
             }
+        }
+    }
+
+    // A4's classes that leave an effect undecided at a location (R4-M92, R4-M153): its Limit, the located Unsupported_Kd, else a
+    // destruction past the destruction walk's bound alone (Deep), the located depth record.
+    private void UndecidedEffect(MirLocation at, byte classes)
+    {
+        if ((classes & MirEffects.Limit) != 0)
+        {
+            this.Unsupported(at);
+        }
+        else
+        {
+            this.DepthLimit(this.Subject(at), MirTypes.Bound);
         }
     }
 
@@ -149,9 +164,9 @@ internal sealed partial class MirBorrows
         this.Work += 2;
         if (Decided(row, classes, field) is null)
         {
-            if ((classes & MirEffects.Limit) != 0)
+            if ((classes & (MirEffects.Limit | MirEffects.Deep)) != 0)
             {
-                this.Unsupported(at);
+                this.UndecidedEffect(at, classes);
             }
         }
         else if (this.Covered(this.Source(at).Scope, -1, -1))

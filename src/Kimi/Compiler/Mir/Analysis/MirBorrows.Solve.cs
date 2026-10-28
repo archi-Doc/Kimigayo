@@ -51,10 +51,7 @@ internal sealed partial class MirBorrows
             return;
         }
 
-        var liveness = new Liveness(this, state);
-        flow.Backward(ref liveness);
-        liveness.Recording = true;
-        flow.ReplayBackward(ref liveness);
+        this.SolveLiveness(state);
         var carrying = new Carrying(this, state);
         flow.Forward(ref carrying);
         (carrying.Checks, this.chainHead) = (true, -1);

@@ -172,7 +172,7 @@ public sealed partial class MirBorrowsTest
                 "dd3: t = 2", "count: func count<S>(items: S) -> i32", "cleanRoute: xs.append(b) CallActivationConflict_Kd",
                 "notHeld: x = 2", "heldDefault: k = 2", "emptyStore: k = 2",
             ],
-            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+            Problems(c, Analyze(c), [.. LoanCodes, .. LimitCodes]));
     }
 
     // SPEC 5.7 Calls, 15.6.4 (DECISIONS R4-M147; the owner's Q2 (a) and 「進める (推奨)」): a stored raw layer is read by its step on the
@@ -265,7 +265,7 @@ public sealed partial class MirBorrowsTest
                 "typed: var w1: ref/i32 = x@ref", "typed: var y = 2", "keepPhantom: y = 5", "keepPhantom: inspect(w)", "rawBufDead: z = 5",
                 "nestedDead: z = 5", "optionalDead: z = 5",
             ],
-            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+            Problems(c, Analyze(c), [.. LoanCodes, .. LimitCodes]));
     }
 
     // SPEC 5.7 Calls (DECISIONS BU-46, R4-M151): a raw layer without an Origin that a declaration writes at any depth below the holder gives
@@ -428,7 +428,7 @@ public sealed partial class MirBorrowsTest
                 "direct: z = 5", "pairM: z = 5", "enumHeld: z = 5", "tupleWrap: z = 5", "deeper: z = 5", "pairSlot: z = 5", "hpst: z = 5", "hpu: z = 5",
                 "hold2: z = 5", "selfBuf: z = 5",
             ],
-            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+            Problems(c, Analyze(c), [.. LoanCodes, .. LimitCodes]));
     }
 
     // SPEC 23.1.1 (DECISIONS R4-M147): a call whose W reaches a holder the guard leaves undecided (MirWrites.Limit: a supplied layer whose
@@ -578,7 +578,7 @@ public sealed partial class MirBorrowsTest
                 "reachedByStep: g.put(z@ref) Unsupported_Kd", "sharedSupplied: h.put(z@ref) Unsupported_Kd", "nestedPointee: inspect(w)",
                 "mixed: inspect(v)", "tupleTyped: inspect(w)",
             ],
-            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+            Problems(c, Analyze(c), [.. LoanCodes, .. LimitCodes]));
     }
 
     // V16 (DECISIONS R4-M147, R4-M140): after a rebind clears the holding memo, A5's guard walks again over a program whose holders reach

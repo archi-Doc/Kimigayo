@@ -463,7 +463,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         const string Nest = "struct Nest<T>\n    var value: T\n    var next: Option<rc/Nest<(T, T)>>\n    public init(value: T)\n" +
             "        self.value = value@move\n        self.next = .None\n";
         Assert.Empty(Problems(Nest + "func release(nest: Nest<i32>) => ()\n"));
-        Assert.Equal(["Unsupported_Kd Self is Sink 1"], Problems(Sink + Loud + Nest + Witness + "        _ = Nest<i32>.init(value: 1)\n        return .Ok(())\n"));
+        Assert.Equal(["OwnershipDepthLimit_Kd Self is Sink 1"], Problems(Sink + Loud + Nest + Witness + "        _ = Nest<i32>.init(value: 1)\n        return .Ok(())\n"));
     }
 
     // SPEC 16.3, 15.3.5 (DECISIONS R4-M58): the destruction walk enters each Type once per query, so a recursive Type that repeats through
@@ -627,5 +627,6 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
 
     private static string[] Problems(Compilation c, MirReport report)
         => [.. report.All.ToArray().Where(static x => x.Subject.Module == 0 && x.Code is DiagnosticCode.IncompatibleContractImplementation_Kd or
-            DiagnosticCode.UnsatisfiedEffectBound_Kd or DiagnosticCode.Unsupported_Kd).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}")];
+            DiagnosticCode.UnsatisfiedEffectBound_Kd or DiagnosticCode.Unsupported_Kd or DiagnosticCode.OwnershipDepthLimit_Kd)
+            .Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}")];
 }

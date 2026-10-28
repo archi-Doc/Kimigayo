@@ -571,7 +571,7 @@ public sealed partial class MirBorrowsTest
             ["layerRef: b.data@ref Unsupported_Kd", "enclosingRef: s.pair@ref Unsupported_Kd", "enclosingCopy: s.pair Unsupported_Kd",
                 "enclosingOnly: s.pair Unsupported_Kd", "arrayCopy: a.arr Unsupported_Kd", "arrayRef: a.arr@ref Unsupported_Kd",
                 "nestedCopy: s.nest Unsupported_Kd"],
-            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+            Problems(c, Analyze(c), [.. LoanCodes, .. LimitCodes]));
     }
 
     // V16 (SPEC 15.6 Addresses; DECISIONS R4-M116): the address pre-pass walks a view's uses only where a raw Ref was issued or a projection

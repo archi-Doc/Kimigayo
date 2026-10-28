@@ -518,7 +518,7 @@ public sealed partial class MirBorrowsTest
                 "clearOptBad: y = 5", "clearTupBad: y = 5", "clearArrBad: y = 5", "dictClearBad: y = 5", "dictReplaceBad: y = 5",
                 "clearGenBad: a.clear() Unsupported_Kd", "clearGenBad: y = 5", "clearGenOk: a.clear() Unsupported_Kd",
             ],
-            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+            Problems(c, Analyze(c), [.. LoanCodes, .. LimitCodes]));
     }
 
     // DECISIONS R5-M129: an Array literal is one aggregate, which places its elements at construction through no receiver store, so their

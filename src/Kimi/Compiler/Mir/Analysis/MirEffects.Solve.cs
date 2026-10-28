@@ -93,7 +93,9 @@ internal sealed partial class MirEffects
         this.Obligations(report);
     }
 
-    // An obligation row's verdict, at Binding's row, which no body describes (R4-M71).
+    // An obligation row's verdict, at Binding's row, which no body describes (R4-M71): an environment or unknown effect fails it; else a
+    // Limit leaves it undecided, Unsupported_Kd, and else a destruction past the walk's bound alone, OwnershipDepthLimit_Kd with the bound
+    // (R4-M153).
     private static void Verdict(MirReport report, in EffectObligation row, byte found, ulong views)
     {
         if ((found & (Environment | Unknown)) != 0)
@@ -104,6 +106,12 @@ internal sealed partial class MirEffects
         {
             var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
             report.Add(new(DiagnosticCode.Unsupported_Kd, requirement, row.Subject, MirProblem.NoBody, views));
+        }
+        else if ((found & Deep) != 0)
+        {
+            var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.DepthLimit);
+            var problem = new MirProblem(DiagnosticCode.OwnershipDepthLimit_Kd, requirement, row.Subject, MirProblem.NoBody, views);
+            report.Add(problem, [new(MirFactKind.Limit, row.Subject, MirTypes.Bound)]);
         }
     }
 
@@ -401,7 +409,7 @@ internal sealed partial class MirEffects
         }
     }
 
-    // The destruction walk's visitor: each part reached, and past the walk's depth bound a part this implementation does not follow.
+    // The destruction walk's visitor: each part reached, and past the walk's depth bound a part this implementation does not follow (Deep).
     private readonly struct Glue(MirEffects owner) : IMirDestruction
     {
         public bool First(BoundType type) => owner.glued.Add(type);
@@ -414,7 +422,7 @@ internal sealed partial class MirEffects
 
         public bool Deep()
         {
-            owner.found |= Limit;
+            owner.found |= MirEffects.Deep;
             return false;
         }
     }

@@ -802,6 +802,11 @@
     Message="The Semantics cases of this definition exceed the implementation bound: {0} cases, where at most {1} are analyzed"
     Arguments="cases:Number,limit:Number"
 
+  + Name="OwnershipDepthLimit_Kd"
+    Category="Resource"
+    Message="A check here depends on a part of a Type nested deeper than ownership analysis follows"
+    Evidence="limit:Number"
+
   + Name="ProjectPreparationFailed_Kd"
     Category="Input"
     Message="Project preparation failed"

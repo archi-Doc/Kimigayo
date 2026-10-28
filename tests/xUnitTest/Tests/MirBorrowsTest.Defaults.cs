@@ -240,7 +240,7 @@ public sealed partial class MirBorrowsTest
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);
         Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
-        Assert.Equal(["live: n = 4"], Problems(c, program, [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+        Assert.Equal(["live: n = 4"], Problems(c, program, [.. LoanCodes, .. LimitCodes]));
     }
 
     // R26-borrow (SPEC 7.2.3, PD15 (iv); R4-M98 D3): a default's result keeps no new Borrow or Reborrow of a preceding argument, nor does
@@ -626,7 +626,7 @@ public sealed partial class MirBorrowsTest
             ["dep: v = 2", "dep3: v = 2", "dep2: v = 2", "val: v = 2", "val2: v = 2"],
             Analyzed(MirBuildTest.RejectedCopies));
         Assert.Equal(
-            ["lim: f(b) Unsupported_Kd", "lim: v = 2", "lim64: f(b) Unsupported_Kd", "lim64: v = 2", "n30: v = 2"],
+            ["lim: f(b) OwnershipDepthLimit_Kd", "lim: v = 2", "lim64: f(b) OwnershipDepthLimit_Kd", "lim64: v = 2", "n30: v = 2"],
             Analyzed(MirBuildTest.LimitCopies));
 
         // The pipeline's own analyses (MirAnalysis), which analyze nothing in a program with a validator finding.
@@ -635,7 +635,7 @@ public sealed partial class MirBorrowsTest
             var c = MirBuildTest.Compile(source);
             var program = c.BuildMir();
             Assert.Empty(program.Findings);
-            return Problems(c, program, [.. LoanCodes, DiagnosticCode.Unsupported_Kd]);
+            return Problems(c, program, [.. LoanCodes, .. LimitCodes]);
         }
     }
 
@@ -1035,7 +1035,7 @@ public sealed partial class MirBorrowsTest
     }
 
     // The codes of A5's Loan stratum, its template rules and its located Unsupported_Kd.
-    private static DiagnosticCode[] DefaultCodes => [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.DefaultArgumentAccess_Kd,
+    private static DiagnosticCode[] DefaultCodes => [.. LoanCodes, .. LimitCodes, DiagnosticCode.DefaultArgumentAccess_Kd,
         DiagnosticCode.DefaultArgumentBorrow_Kd];
 
     // The Loan, default and Unsupported_Kd problems of a program's own bodies.

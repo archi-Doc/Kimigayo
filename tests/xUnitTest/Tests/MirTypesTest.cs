@@ -86,6 +86,30 @@ public sealed class MirTypesTest(ITestOutputHelper output)
         }
     }
 
+    // SPEC 15.3.5, 23.1.1 (DECISIONS R4-M153): a part past the walks' bound (MirTypes.Bound) may be anything. The guard holds a Loan there and
+    // gives Deep where only such a part could let a call write past the value (deep: an exclusive reference to a Tuple nested past the bound;
+    // loan: a Loan first met past it; the walk meets each new Type depth first, so a Tuple's innermost part first), a part that decides
+    // outranks it (both), and at the bound the parts are walked (bound, loanBound). The destruction walk is Deep where it meets a new part
+    // past the bound (loan) and not at it (loanBound).
+    [Fact]
+    public void APartPastTheBoundIsDeep()
+    {
+        var (body, c) = Probe(
+            $"func probe(deep: uniq/{Nest("i32", 32)}, bound: uniq/{Nest("i32", 31)}, loan: {Nest("ref/i32 during a", 33)}, " +
+            $"loanBound: {Nest("ref/i32 during a", 32)}, both: (uniq/(ref/i32 during a) during b, uniq/{Nest("i32", 40)} during c))\n    return\n");
+        var walked = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
+        var seen = new HashSet<BoundType>(ReferenceEqualityComparer.Instance);
+        Assert.Equal(
+            [("deep", true, MirWrites.Deep, MirObservation.None), ("bound", true, MirWrites.None, MirObservation.None),
+                ("loan", true, MirWrites.Deep, MirObservation.Deep), ("loanBound", true, MirWrites.None, MirObservation.None),
+                ("both", true, MirWrites.Through, MirObservation.None)],
+            Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, c.Types, walked, [], out var writes), writes,
+                MirTypes.Observation(x.Type, c.Types, body.Key.Decl, seen))).ToArray());
+
+        // A Type nested in Tuples to a depth, each level paired with i32.
+        static string Nest(string inner, int levels) => new string('(', levels) + inner + string.Concat(Enumerable.Repeat(", i32)", levels));
+    }
+
     // SPEC 15.8.2, IMPL 21.1.2 (DECISIONS R4-M148): a Closure value holds its environment's parts, a Tuple of its bindings: a captured
     // exclusive reference to storage that may hold a Loan (exclusive), an abstract binding (abstract) and a Function value (function) let a
     // call write past it; a shared reference, a `var` one included (shared), and an exclusive reference to a scalar (scalar) do not; a stored
@@ -210,7 +234,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
     // SPEC 15.6.6, 16.3.3: destroying a value observes what it holds where its destruction runs a user drop (Logger, also as an element
     // or a Sealed handle's payload), destroys a Function value, or releases a handle whose payload is not Sealed; an abstract part not
     // proven Copy, whose instance decides, is Unproven (DECISIONS R4-M147); a Sealed recursive handle ends. A part past the walk's depth
-    // bound, also below a growing recursive handle, is Deep: the caller's located Unsupported.
+    // bound, also below a growing recursive handle, is Deep: the depth record where a check rests on it (R4-M153).
     [Fact]
     public void DestructionObservesUserDropsAndUnknownParts()
     {
