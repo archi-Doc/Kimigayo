@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler;
 using Kimi.Diagnostics;
 using Xunit;
 
@@ -66,6 +67,9 @@ public partial class OriginRelationDiagnosticTest
     private const string WithPremise = "    origin q outlives r\n";
 
     private const string PayloadHead = "func k(q: ref/i32, r: ref/i32, v: ref/(ref/i32 during q) during r) -> ref/i32 during r\n";
+
+    private const string ClauseCall = "struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\n" +
+        "func g(x: Option<T during q>, y: ref/i32 during q) -> i32\n    return 0\nfunc k(p: ref/i32) -> i32\n";
 
     private const string WeakPayloadHead = "func k(q: ref/i32, r: ref/i32, v: ref/(ref/i32 during q) during q) -> ref/i32 during r\n";
 
@@ -192,11 +196,11 @@ public partial class OriginRelationDiagnosticTest
     // a Case construction's payload Type that another payload instantiates must be well-formed (cx2 errs at `.None`, dev accepts it), while
     // cx1's slot `s` takes the meet of its upper bounds, the third payload's well-formedness among them (SPEC 15.3.6), so cx1 is valid;
     // t7c_ok's clause follows from k's premise; fn0's Origins without evidence are local regions; dl1's contextual payload supplies two
-    // failing positions, each at the argument with the payload related (D-1). j01f is j01 (not repeated); t7c's record set is open (d3 §6).
+    // failing positions, each at the argument with the payload related (D-1). j01f is j01 (not repeated); t7c has its own theory below.
     [Theory]
     [InlineData("j02", EmptyStruct + "func put8(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: E<Option<ref/(ref/i32 during b) during a>>)\n    slot@follow = v\n" + ShortBody + "    put8(p, sr, E.init())\n    return 0\n", "UnsatisfiedOriginRelation_Kd E.init()", null)]
     [InlineData("j02_ok", EmptyStruct + "func put8(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: E<Option<ref/(ref/i32 during b) during a>>)\n    slot@follow = v\n" + LongBody + "    put8(p, v, E.init())\n    return 0\n", "", null)]
-    [InlineData("t7c_ok", "struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc g(x: Option<T during q>, y: ref/i32 during q) -> i32\n    return 0\nfunc k(p: ref/i32) -> i32\n    origin p outlives static\n    return g(.None, p)\n", "", null)]
+    [InlineData("t7c_ok", ClauseCall + "    origin p outlives static\n    return g(.None, p)\n", "", null)]
     [InlineData("cx1", "enum W<T> {s}\n    Make(T, ref/i32 during s, Option<ref/T during s>)\n    Empty\nfunc bad(p: ref/i32) -> i32\n    let short = 2\n    let w = W.Make(short@ref, p, .None)\n    return 0\n", "", null)]
     [InlineData("cx1_ok", "enum W<T> {s}\n    Make(T, ref/i32 during s, Option<ref/T during s>)\n    Empty\nfunc ok(p: ref/i32) -> i32\n    let short = 2\n    let sr = short@ref\n    let w = W.Make(p, sr, .None)\n    return 0\n", "", null)]
     [InlineData("cx2", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc bad() -> i32\n    let short = 2\n    let w = W.Make(short@ref, .None)\n    return 0\n", "UnsatisfiedOriginRelation_Kd .None", null)]
@@ -206,6 +210,23 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("dl1_ok", ImpliedStore + "func good(p: uniq/(ref/i32 during q), v: ref/i32 during q, ys: ref/(ref/i32 during q) during q) -> i32\n    put2(p, v, .Some(ys))\n    return 0\n", "", null)]
     public void EachCallAndConstructionProvesItsInstantiatedTypes(string form, string body, string records, string? payload)
         => AssertRecordsRelating(form, body, records, payload);
+
+    // t7c (d3 §6; the planning session's decision, by D-3's reasoning): T's own clause in x's instantiated Type fails (`p outlives static`
+    // is Unknown) and is required as an Origin relation record at the argument `.None` (DIAGNOSTICS: source `declared`); SPEC 23.1.2 leaves
+    // grouping implementation-defined, so at most one further record is allowed and none beyond. Its twin is t7c_ok above.
+    [Theory]
+    [InlineData("t7c", ClauseCall + "    return g(.None, p)\n")]
+    public void AnArgumentsTypeClauseIsRecordedAtTheArgument(string form, string body)
+    {
+        var source = body + Main;
+        CompilationTestHelper.ParseSuccess(source, "Hello.kimi");
+        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
+        {
+            var errors = ContextualCaptureTest.PublishedRecords(source, pipeline).Where(static x => x.Severity == DiagnosticSeverity.Error)
+                .Select(static x => $"{x.Code} {(x.Text ?? string.Empty).Split('\n')[0]}").ToArray();
+            Assert.True(errors.Contains("UnprovenOriginRelation_Kd .None") && errors.Length <= 2, $"{form} ({pipeline}): expected UnprovenOriginRelation_Kd .None and at most one further record, found [{string.Join("; ", errors)}]");
+        }
+    }
 
     // AssertRecords, and for a contextual payload (`payload` not null) D-1's related location: every Error record relates the payload's
     // text.
