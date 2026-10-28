@@ -799,7 +799,7 @@
 
   + Name="OwnershipDepthLimit_Kd"
     Category="Resource"
-    Message="Ownership analysis of this operation reaches a Type whose nesting passes an implementation bound"
+    Message="Ownership analysis reaches a Type whose nesting passes an implementation bound"
 
   + Name="OwnershipCaseLimit_Kd"
     Category="Resource"

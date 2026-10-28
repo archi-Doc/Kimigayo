@@ -93,8 +93,8 @@ internal sealed partial class MirEffects
         this.Obligations(report);
     }
 
-    // An obligation row's verdict, at Binding's row, which no body describes (R4-M71): an Environment or Unknown effect fails it; else each
-    // class that leaves it undecided is its own record, Limit the located Unsupported_Kd and Deep the depth limit (R4-M153).
+    // An obligation row's verdict, at Binding's row, which no body describes (R4-M71): an Environment or Unknown effect fails it; else what
+    // leaves it undecided (Undecided) is its record, a Limit the located Unsupported_Kd and Deep the depth limit (R4-M153).
     private static void Verdict(MirReport report, in EffectObligation row, byte found, ulong views)
     {
         if ((found & (Environment | Unknown)) != 0)
@@ -103,13 +103,13 @@ internal sealed partial class MirEffects
             return;
         }
 
-        if ((found & Limit) != 0)
+        var undecided = Undecided(found);
+        if (undecided == MirWrites.Limit)
         {
             var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
             report.Add(new(DiagnosticCode.Unsupported_Kd, requirement, row.Subject, MirProblem.NoBody, views));
         }
-
-        if ((found & Deep) != 0)
+        else if (undecided == MirWrites.Deep)
         {
             var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.DepthLimit);
             report.Add(new(DiagnosticCode.OwnershipDepthLimit_Kd, requirement, row.Subject, MirProblem.NoBody, views));

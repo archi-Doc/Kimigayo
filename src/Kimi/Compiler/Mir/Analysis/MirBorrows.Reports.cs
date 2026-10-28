@@ -11,8 +11,8 @@ namespace Kimi.Compiler.Mir;
 // (Evaluated) with the outermost omitting call as subject (D13); a located Unsupported_Kd where the stratum classifies nothing, and in a
 // view PD13 holds (MirBorrows.CallRows' held; R4-M126 (iii), R4-M148) at every rejection's subject; OwnershipDepthLimit_Kd (DepthLimit,
 // R4-M153) where a check's verdict rests on a part past a walk's bound, a conflict only the drop tier gives at its drop-live holder's
-// declaration (Report, Ended); InternalInvariant_Kd at a Value call
-// whose declared signature does not number its operands (G136). Every rejection but a limit record is recorded through
+// declaration (Report, Ended), as beside an own-step Warning only the drop tier gives (DroppedDeparture); InternalInvariant_Kd at a Value
+// call whose declared signature does not number its operands (G136). Every rejection but a limit record is recorded through
 // Record(code, requirement, subject, facts), so the hold is one rule there: a Loan conflict through Report(code, anchor, via, at,
 // reservation, effect), A5-F9's template rules (MirBorrows.Defaults) with their parameter. The own-step Warning (OwnStepDeparture_Kd,
 // MirBorrows.OwnSteps), which is no Loan problem and rejects nothing, is recorded through Departure under its own requirement, never
@@ -66,6 +66,15 @@ internal sealed partial class MirBorrows
         this.AddProblem(DiagnosticCode.OwnStepDeparture_Kd, OwnershipRequirement.OwnStepDeparture, subject, this.facts.AsSpan(0, count));
     }
 
+    // An own-step departure only the drop tier gives (R4-M153), which rests on a Drop past the destruction walk's bound: the Warning, as the
+    // holder's use there witnesses it (its drop slot's use, MirBorrows.Liveness), and the depth limit at the holder's declaration.
+    private void DroppedDeparture(int entry, int holder, MirLocation at)
+    {
+        var local = this.DropLocal(holder);
+        this.Departure(entry, this.dropSlots[local], at);
+        this.DepthLimit(this.body.Subject(this.body.Locals[local].Source));
+    }
+
     // A problem with its facts in the body's views.
     private void AddProblem(DiagnosticCode code, OwnershipRequirement requirement, SourceRef subject, ReadOnlySpan<MirFact> facts)
         => this.program.Problems.Add(new(code, DiagnosticRequirement.Ownership(requirement), subject, this.body.Ordinal, this.views), facts);
@@ -99,8 +108,11 @@ internal sealed partial class MirBorrows
         this.AddProblem(DiagnosticCode.OwnershipDepthLimit_Kd, OwnershipRequirement.DepthLimit, subject, default);
     }
 
-    // The declaration of a holder the drop tier found a record's candidate or marker through (the drop list keeps its local).
-    private SourceRef Declaration(int holder)
+    // The declaration of a holder the drop tier found a record's candidate or marker through.
+    private SourceRef Declaration(int holder) => this.body.Subject(this.body.Locals[this.DropLocal(holder)].Source);
+
+    // The local of a holder the drop tier read (the drop list keeps it).
+    private int DropLocal(int holder)
     {
         var i = 0;
         while (this.slots[this.drops[i].Local] != holder)
@@ -108,6 +120,6 @@ internal sealed partial class MirBorrows
             i++;
         }
 
-        return this.body.Subject(this.body.Locals[this.drops[i].Local].Source);
+        return this.drops[i].Local;
     }
 }

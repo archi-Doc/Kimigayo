@@ -5275,9 +5275,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     where the mode would give Write, and `MirWrites` is None, Through, Limit and Deep, Through over Limit over Deep over None (no
     vocabulary entry, an internal enum). `MirObservation.Deep` and `IMirDestruction.Deep` name the depth limit. Holding's "holds"
     (tracking) and `MayNeedDrop` (generation) keep their yes: no check rests on them.
-  - Record: one code, `OwnershipDepthLimit_Kd` (Error, Resource, location-only; message "Ownership analysis of this operation reaches a
-    Type whose nesting passes an implementation bound", which also fits `CallRetention.Limit`'s height, path and keeper limits), under the
-    new requirement `Ownership.DepthLimit`. The owner's answers (verbatim): on the category, 「G272: (1)」 (2026-10-27: Resource, one new
+  - Record: one code, `OwnershipDepthLimit_Kd` (Error, Resource, location-only; message "Ownership analysis reaches a Type whose nesting
+    passes an implementation bound", which also fits `CallRetention.Limit`'s height, path and keeper limits and a record at a declaration
+    or an obligation), under the new requirement `Ownership.DepthLimit`. The owner's answers (verbatim): on the category, 「G272: (1)」 (2026-10-27: Resource, one new
     code); on the requirement member (PD21), 「G272 要件: (a)」 (2026-10-27: the code's approval covers `Ownership.DepthLimit`). No fact
     (the planning session's Q2): R4-M51's records rest on Binding's unpublished bounds, and a `limit` fact would be invented evidence.
     One recorder per analysis: `MirBorrows.DepthLimit` (never held: a limit record, as a located `Unsupported_Kd` is) and A4's `Verdict`.
@@ -5288,16 +5288,17 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the Stored loop is one member both call). A candidate keeps the drop tier's `Tags` apart and a marker a drop stamp (`Candidates`);
     `Takes` is either tier. `Conflict` passes over a candidate only the drop tier takes and returns it only where no real one conflicts;
     `Report` records such a candidate, and `Ended` such a marker, as the depth limit at the drop-live holder's declaration. The readers that
-    only ask whether a candidate is taken (the effect rule's Limit loop, the initialization proof) read both tiers; an own-step entry is
-    tagged by the other passes only.
+    only ask whether a candidate is taken (the effect rule's Limit loop, the initialization proof) read both tiers. An own-step entry the
+    drop tier finds is tagged apart (`OwnSteps`): a departure only it keeps open keeps SPEC 5.2.1 condition 3's Warning, as the base gives
+    it, witnessed by the holder's Drop (its drop slot's use), beside the depth limit at the holder's declaration (`DroppedDeparture`).
   - Rule W and the referent store: `Writes` returns two facts: a Limit holder reached (R4-M147, unchanged) and a Deep holder whose step,
     at W's fixed point, would reach a holder W does not (that step's holders are left out; a step that adds nothing decides nothing). At a
     referent store whose referent's destruction passes the bound, a store of a Loan or an address stops at refs(S), as R4-M147's abstract
     referent does, with the depth fact. The call's location records each fact it has (`Locations`).
   - Re-coded records: a borrowed root's Drop past the bound (`Locations`), err(destroy) past it (`Activations`), a call's retention limit
     (R4-M51), A4's class `Deep` (`MirEffects.Deep`, set by `Glue.Deep`, carried by `Keys` and `Summary`; `Verdict`: Environment or Unknown
-    records the row's code, else Limit the located `Unsupported_Kd` and Deep the depth limit, each where set) and A5's effect rule reading
-    `Limit | Deep` (`Undecided`, each bit its own record). The old model's code map and the ledger's compared set pair the code with the
+    records the row's code, else what leaves it undecided by the guard's one ranking, Limit over Deep (`MirEffects.Undecided`): a Limit the
+    located `Unsupported_Kd`, else Deep the depth limit) and A5's effect rule by the same answer (`Undecided`). The old model's code map and the ledger's compared set pair the code with the
     requirement (MIR-only: the old path keeps its own bound, 64).
   - Supersedes in part: R4-M36 (item 8): "a growing one at the bound of 32, where HoldsLoans answers yes and Observes sets deep, the
     caller's located `Unsupported_Kd` as A4's Limit is" now reads: at `MirTypes.Bound`, HoldsLoans answers yes for tracking and its guard
@@ -5316,6 +5317,18 @@ and migration obligations remain in force; no numeric cap changes are authorized
     ownLimitLocal's, DeepBuf.init's and ownDeep's `Nest` calls, lim's and lim64's `f(b)`, the Tall, Growing and Beyond calls, a default's
     `Nest` call) is unpublished until R5's H3 (R4-M1), and the default pipeline reports nothing at those calls, before and after this
     unit (a probe of the pins' programs under `CompilerPipeline.Legacy`); it accepts them, as it did, and no acceptance changes.
+  - Choice (WORKFLOW Full changes step 4; the R4 planning session, 2026-10-28): this design-first candidate (fe1ec9d37) over the
+    prototype-first one (`claude/a5-g272-proto` c9e309d99), by results: it meets the required meaning where the prototype keeps three
+    Language conflicts at a Function value at depth 33 (problem r2 §1 and §3; SPEC 23.1.1), and it goes through the owning components
+    while the prototype carries a `byte ignored` mode parameter steering Liveness; size (src net +265 against +271) and cost (both within
+    noise) did not decide; the prototype's branch and results stay as evidence. The owner's exceptions to R4-M119's one shared
+    representation unit at a time: G272 beside 2c-5's re-review, 「はい、始めて」 (2026-10-28); this revision beside WK, 「並べて今すぐ」
+    (2026-10-29).
+  - Revision 1 (implementation review 1, REJECT on B1; the planning session's design revision 1, 2026-10-29): design 2's own-step row read
+    "a Warning rejects nothing" as "no record is due", so a departure only a drop-live holder keeps open lost its Warning and recorded
+    nothing (owndtor and ownpast at depth 40); it now keeps the Warning beside the depth limit, as `deepAtReturn`'s are. With it: A4's
+    obligations and A5's effect rule rank Limit over Deep as the guard does, one rule (N3; before, two records beside an unsupported part
+    there and one in a holder); the message names no operation (N5).
   - Rejected: one tier (a deep Drop as a use is Language at the TypeDag rows; no use with a record at every deep Drop over-records the
     nowrite rows, B3); exact walks for finite nesting (moves the threshold; G144's stack safety); a forward invalidated-Loans problem at
     each deep Drop (a per-Loan bitset per location for a rare Drop); running A5 twice and keeping the difference (try-then-compare and
@@ -5323,23 +5336,27 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Out of scope, open: `HoldsRaw`, `MirStatic.RawHolding` and `RawStaticRead` (2b-5); Binding's `ContainsRawPointer` past depth 32 (BU);
     A4's null-instance Limit (`TyCtxt.ReadableInstance`'s null mixes Binding's storage limit with other nulls until TyCtxt publishes the
     outcome, BU); `MirWrites.Limit`'s "reached" rule beside Deep's "would add" (a later unit). Not temporary.
-  - Evidence: the shared tests (`MirBorrowsTest`, `MirEffectsTest`, `TypeDagScalingTest` `.DepthLimit`) pass 36 of 36 on both pipelines
-    (33 counted, 3 kept apart: a5-w-40 at `store(d@uniq, value@ref)`, A4's nest and tuple40 at `Self is Sink`). The mir Functional run
-    with the ledger (23,717 tests, no failure) against `shared-base/03d158d07`: rows 3,260 to 3,262, 24 removed and 26 added, all the
-    bound's, as design 2 predicted: 20 MIR-only `Unsupported_Kd` rows in 13 sources (retention limits and borrowed roots' Drops) become
-    the depth code at the same locations; 07dc9460e03d's and 0984e5818869's MIR-only conflict at `value = 99` becomes the record at
-    `let d`; 56024d19baf2's and e5c59f5f3cbf's both-side conflict becomes the old path's alone (its bound, 64) beside the MIR's record.
-    `classification.tsv` row a5-depth (b) takes the complete section's signatures from a5-p13: unclassified 10 (44 rows) and open
-    blocking rows 104 of 541 unchanged. Cost (the G258 host: A = d21a0dd75, A' its byte-identical copy, B = this unit's code built
-    as 0.1.1+31bb76a22, in sibling folders of one parent, interleaved per program and rep, KIMI_CPU=2, tiering off, 3 runs of 8 reps
-    over the 122 census programs, R5's native sweep beside runs 1 and 2): A5 (step 4) B/A 1.0058 against A'/A 1.0046 (B/A' 1.0012),
-    step 2 (A1, A2 and A4's local walks) B/A 1.0039 against A'/A 1.0027 (B/A' 1.0012): no slowdown beyond noise. Loan-set Bytes and
-    problems equal on every program; Work +1.34% (Holders counts its per-view scan of the Drop terminators); A5's cold allocation
-    +21,264 B of 47,674,184 (+0.045%: the candidates' second Tags); warm steps 2 and 4 allocate exactly as the base (BuildMir+A5
-    warm: nothing new). Bind is unchanged (no Binding file; its warm allocation not measured here).
+  - Evidence (revision 1, merged with dev b610377e8): the shared tests (`MirBorrowsTest`, `MirEffectsTest`, `TypeDagScalingTest`
+    `.DepthLimit`) pass 36 of 36 on both pipelines (33 counted, 3 kept apart: a5-w-40 at `store(d@uniq, value@ref)`, A4's nest and
+    tuple40 at `Self is Sink`). The mir Functional run with the ledger (23,791 tests, no failure) against `shared-base/15beffcfb`: rows
+    3,336 to 3,338, 24 removed and 26 added, row for row the delta fe1ec9d37 gave against `shared-base/03d158d07` (the revision changes
+    no corpus row), all the bound's, as design 2 predicted: 20 MIR-only `Unsupported_Kd` rows in 13 sources (retention limits and
+    borrowed roots' Drops) become the depth code at the same locations; 07dc9460e03d's and 0984e5818869's MIR-only conflict at
+    `value = 99` becomes the record at `let d`; 56024d19baf2's and e5c59f5f3cbf's both-side conflict becomes the old path's alone (its
+    bound, 64) beside the MIR's record. `classification.tsv` row a5-depth (b) takes the complete section's signatures from a5-p13:
+    unclassified 9 (43 rows) and open blocking rows 103 of 554, as the base. Cost against dev (the G258 host: A = b610377e8, A' its
+    byte-identical copy, B = this revision built as 0.1.1+e7b088a1d, sibling folders of one parent, interleaved per program and rep,
+    KIMI_CPU=2, tiering off, 3 runs of 8 reps over the 122 census programs, others' heavy runs beside every run): A5 (step 4) B/A 1.0076
+    against A'/A 1.0006 (B/A' 1.0070, each run 1.0059 to 1.0086), step 2 (A1, A2 and A4's local walks) B/A' 1.0001. Loan-set Bytes and
+    problems equal on every program; Work +1.34% (Holders counts its per-view scan of the Drop terminators); A5's cold allocation +21,264 B
+    of 47,669,936 (+0.045%: the candidates' second Tags); warm steps 2 and 4 allocate exactly as dev (BuildMir+A5 warm: nothing new);
+    retained memory with the analyses and the program alive after both runs +19,096 B of 46,545,584 summed over the programs (+0.04%;
+    A'-A 0). Bind is unchanged (no Binding file; its warm allocation not measured here).
   - Tests: the new `MirBorrowsTest.AConflictOnlyDropLivenessGivesIsTheDepthLimit` (a borrowed deep root, a real use, a Loan reached
-    through the closure and its depth-10 twin, err(ended)'s γ kept by a drop-live holder, its twin at 10 and with a real use) and
-    `MirTypesTest.APartPastTheBoundIsTheGuardsDeepOutcome`; the expectations (codes and the code lists their helpers filter by) of the
+    through the closure and its depth-10 twin, err(ended)'s γ kept by a drop-live holder, its twin at 10 and with a real use),
+    `MirBorrowsTest.AnOwnStepDepartureOnlyDropLivenessKeepsOpenKeepsItsWarning` (revision 1: owndtor and ownpast at 40, the Warning and
+    the depth limit; at 10 owndtor's Warning alone and ownpast nothing, as the base), `MirEffectsTest.AnUnsupportedPartOutranksAPartPastTheBound`
+    (N3) and `MirTypesTest.APartPastTheBoundIsTheGuardsDeepOutcome`; the expectations (codes and the code lists their helpers filter by) of the
     bound's pins change by the owner's decision: `AnUnclassifiedDestructionOrCallIsUnsupported`,
     `AnOwnStepViewIsAProducerOnlyWhereAnAccessMayDepart`, `ADestructionMeetsItsOwnStaticAndTheLiveStaticLoans`,
     `AnUninstantiableDefaultHidesNoRecord`,

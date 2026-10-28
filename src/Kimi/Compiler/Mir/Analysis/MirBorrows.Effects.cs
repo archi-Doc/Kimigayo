@@ -13,11 +13,11 @@ namespace Kimi.Compiler.Mir;
 // - R1: for each effect root with a candidate, a write key or Unknown as an EffectWrite, else a read key as an EffectRead of the whole
 //   root (shallow, SPEC 15.6.2); its first conflict at the location its body owns (D11), coded by Code (row 1: a reservation the call does
 //   not activate) with the effect fact on the met Field, what decided it (a write key, else Unknown, else the read key);
-// - A4's Limit or Deep without Unknown, where a candidate a write would meet is met by no key: a located Unsupported_Kd for Limit and
-//   OwnershipDepthLimit_Kd for Deep at the location (Undecided, R4-M153);
+// - A4's Limit or Deep without Unknown, where a candidate a write would meet is met by no key: a located Unsupported_Kd for Limit, else
+//   OwnershipDepthLimit_Kd for Deep, at the location (Undecided: MirEffects.Undecided's ranking, R4-M153);
 // - R3: at a Drop of a mutable static, its own read or write key on that static, or Unknown, ComparisonLoanConflict_Kd anchored at the
 //   Drop, no Loan issued and no witness (the destruction's hold, SPEC 16.4), its template's inside an inline default copy (D11); Limit or
-//   Deep without them, Undecided's records;
+//   Deep without them, Undecided's record;
 // - the initialization proof: a conflict every effect that would decide it may be the first-access initialization of a static a live
 //   Loan proves initialized (Proved) is the located Unsupported_Kd at the location instead (PD12 (ii): liveness is a may-property);
 //   otherwise the first effect outside the proof decides the Language problem (Unproved).
@@ -125,7 +125,7 @@ internal sealed partial class MirBorrows
             }
         }
 
-        if ((classes & (MirEffects.Limit | MirEffects.Deep)) == 0 || decided is MirFactKind.EffectWrite or MirFactKind.EffectUnknown)
+        if (MirEffects.Undecided(classes) == MirWrites.None || decided is MirFactKind.EffectWrite or MirFactKind.EffectUnknown)
         {
             return;
         }
@@ -141,16 +141,16 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // A4's classes that leave an effect undecided, each its own record at the location: Limit the located Unsupported_Kd, Deep the depth
-    // limit (R4-M153).
+    // What leaves an effect undecided by A4's classes (MirEffects.Undecided, the guard's ranking), its record at the location: a Limit the
+    // located Unsupported_Kd, Deep the depth limit (R4-M153).
     private void Undecided(MirLocation at, byte classes)
     {
-        if ((classes & MirEffects.Limit) != 0)
+        var undecided = MirEffects.Undecided(classes);
+        if (undecided == MirWrites.Limit)
         {
             this.Unsupported(at);
         }
-
-        if ((classes & MirEffects.Deep) != 0)
+        else if (undecided == MirWrites.Deep)
         {
             this.DepthLimit(this.Subject(at));
         }

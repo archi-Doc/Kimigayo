@@ -6,11 +6,14 @@ namespace Kimi.Compiler.Mir;
 // an access that may end an owning value's stay in its holder while a value carrying a pointer formed through that own step may still be
 // used. An own-step entry (MirBorrows.Addresses) found at the check is tagged by MirBorrows.Candidates where a pass counts it (Based or
 // Stored: live after the access, or stored there into a holder live after it or into E; Valued: an operand's value, which counts for an
-// activation, whose call uses its operands after taking the owner) and listed on its root, so an access scans only its root's. An access
+// activation, whose call uses its operands after taking the owner; the drop tier: kept only by a holder live through a Drop past the
+// destruction walk's bound, DECISIONS R4-M153) and listed on its root, so an access scans only its root's. An access
 // with path S departs an entry with owning path O when S prefixes O step by step (15.6.2, MirBorrows.Checks' Meets) and it is a Move (a
 // Take of a raw Place included), a write or a destruction of any class with no borrow or raw Deref of O past S, or an exclusive borrow or
 // a call's activation of a reservation across any steps. A departure whose operation and formation lie in one inline default copy is its
-// template's (Covered). One record per location: every record at a location has its subject, which MirReport merges. Before the holders,
+// template's (Covered). A departure only the drop tier gives rests on that Drop: the Warning, witnessed by the Drop, and the depth limit at
+// the holder's declaration (DroppedDeparture). One record per location: every record at a location has its subject, which MirReport
+// merges. Before the holders,
 // a view whose only producer input is its own-step entries is a producer only where a use may depart one by the same test with no
 // liveness (MayDepart, D5, R4-M141): its other records, a retention Limit's and a storage limit's, then leave it as any view no conflict
 // can depend on.
@@ -20,8 +23,9 @@ internal sealed partial class MirBorrows
     private const int Listed = -1; // The stamp of MayDepart's lists: every own-step entry on its root, before any check.
 
     // By address (entry − Loans): the check that found it (Listed: MayDepart's), the holder its Based or Stored pass first found it in
-    // (None: only an operand's value), and the next entry found on its root at that check.
-    private (int Stamp, int Via, int Next)[] ownTags = [];
+    // (Taken: only an operand's value; None: neither), the next entry found on its root at that check, and the holder the drop tier first
+    // found it through (None: none).
+    private (int Stamp, int Via, int Next, int Dropped)[] ownTags = [];
     private (int Stamp, int First)[] ownRoots = []; // By root key: the first own-step entry found on it at that check (or listed).
     private int ownEntries; // The own-step entries of the view.
 
@@ -35,11 +39,13 @@ internal sealed partial class MirBorrows
         this.Work += this.addressCount + keys;
     }
 
-    // An own-step entry a pass found in a holder (-1: a transit value): tagged at the check in the Based, Stored and Valued passes, listed
-    // on its root once.
+    // An own-step entry a pass found in a holder (-1: a transit value): tagged at the check in the Based and Stored passes (with the holder),
+    // the Valued pass (Taken; the operand passes follow the Based and Stored ones) and the drop tier (with its drop-live holder), listed on
+    // its root once.
     private void Seen(int index, int via)
     {
-        if (this.pass is not (Based or Stored or Valued))
+        var dropped = (this.pass & DropTier) != 0;
+        if (!dropped && this.pass is not (Based or Stored or Valued))
         {
             return;
         }
@@ -48,13 +54,17 @@ internal sealed partial class MirBorrows
         if (tag.Stamp != this.stamp)
         {
             ref var root = ref this.ownRoots[this.loans[index].Root];
-            tag = (this.stamp, None, root.Stamp == this.stamp ? root.First : None);
+            tag = (this.stamp, None, root.Stamp == this.stamp ? root.First : None, None);
             root = (this.stamp, index);
         }
 
-        if (tag.Via == None && this.pass is Based or Stored)
+        if (dropped)
         {
-            tag.Via = via;
+            tag.Dropped = tag.Dropped == None ? this.dropVia : tag.Dropped;
+        }
+        else if (tag.Via == None)
+        {
+            tag.Via = this.pass == Valued ? Taken : via;
         }
     }
 
@@ -94,7 +104,8 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // The first own-step entry found on a root that an access departs and whose departure is not its template's, recorded.
+    // The first own-step entry found on a root that an access departs and whose departure is not its template's, recorded: found by a pass
+    // that counts for the access (a holder's or transit value's, or for an activation also an operand's), else only by the drop tier.
     private bool Depart(MirLocation at, int root, ReadOnlySpan<MirStep> steps, AccessKind kind)
     {
         var scope = this.Source(at).Scope;
@@ -102,10 +113,19 @@ internal sealed partial class MirBorrows
         {
             this.Work++;
             var tag = this.ownTags[entry - this.loanCount];
-            if ((tag.Via != None || kind is AccessKind.Activate or AccessKind.ActivateInPlace) && this.Departs(steps, kind, entry) &&
+            var counted = tag.Via != None && (tag.Via != Taken || kind is AccessKind.Activate or AccessKind.ActivateInPlace);
+            if ((counted || tag.Dropped != None) && this.Departs(steps, kind, entry) &&
                 !this.Covered(this.body.Common(scope, this.IssueScope(entry)), -1, -1))
             {
-                this.Departure(entry, tag.Via == None ? Taken : tag.Via, at);
+                if (counted)
+                {
+                    this.Departure(entry, tag.Via, at);
+                }
+                else
+                {
+                    this.DroppedDeparture(entry, tag.Dropped, at);
+                }
+
                 return true;
             }
         }
@@ -125,7 +145,7 @@ internal sealed partial class MirBorrows
             if (this.loans[entry].OwnStep)
             {
                 ref var root = ref this.ownRoots[this.loans[entry].Root];
-                this.ownTags[entry - this.loanCount] = (Listed, None, root.Stamp == Listed ? root.First : None);
+                this.ownTags[entry - this.loanCount] = (Listed, None, root.Stamp == Listed ? root.First : None, None);
                 root = (Listed, entry);
             }
         }

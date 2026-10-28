@@ -6,7 +6,8 @@ using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 namespace Kimi.Compiler.Mir;
 
 /// <summary>What a call that writes a value's storage may write past it (A3 E16, DECISIONS R4-M73, R4-M147, R4-M153), from HoldsLoans'
-/// walk: the guard of a value that may hold a Loan, part by part, four ways; Through wins over Limit, Limit over Deep, Deep over None.</summary>
+/// walk: the guard of a value that may hold a Loan, part by part, four ways; Through wins over Limit, Limit over Deep, Deep over None.
+/// That ranking of Limit over Deep is the one rule of the two undecided outcomes: A4's classes follow it (MirEffects.Undecided).</summary>
 internal enum MirWrites : byte
 {
     /// <summary>Nothing past it: no exclusive reference to storage that may hold a Loan.</summary>

@@ -258,6 +258,22 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 "    public func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + "        return f()\n"));
     }
 
+    // SPEC 23.1.1 (DECISIONS R4-M153, implementation review 1's N3): beside the limit of several signatures, the same witness destroys a
+    // Tuple nested past the destruction walk's bound: the guard's one ranking decides, the unsupported part over the part past the bound,
+    // so one record; with one signature the depth limit alone.
+    [Theory]
+    [InlineData("", "OwnershipDepthLimit_Kd Self is Work 1")]
+    [InlineData("        F is Callable<(i32) -> i32>\n            effect confined\n", "Unsupported_Kd Self is Work 1")]
+    public void AnUnsupportedPartOutranksAPartPastTheBound(string second, string expected)
+    {
+        var premises = "        F is Callable<() -> i32>\n            effect confined\n" + second;
+        var deep = new string('(', 40) + "0" + string.Concat(Enumerable.Range(0, 40).Select(static i => $", {i})"));
+        Assert.Equal(
+            Expected(expected),
+            Problems("contract Work\n    func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + "        effect confined\nstruct W\n    Self is Work\n" +
+                "    public func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + $"        _ = {deep}\n        return f()\n"));
+    }
+
     [Theory]
     [InlineData("ref", "")]
     [InlineData("owner", "UnsatisfiedEffectBound_Kd f@move 18446744073709551615")]
