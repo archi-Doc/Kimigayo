@@ -12,7 +12,7 @@ namespace XunitTest;
 /// scaling row sizes its shape so that a walk that re-visits shared parts meets 2^26 or more paths (hours) while the DAG walk takes
 /// milliseconds; a regression shows as a hang, which the runner's process timeout reports, as <see cref="InferenceSlotScalingTest"/>'s
 /// does.</summary>
-public class TypeDagScalingTest
+public partial class TypeDagScalingTest
 {
     // Binding's walks: the instance Types of a Tuple chain (TyCtxt.Apply, from the checked set), the capability proofs of HIR publication
     // over inferred shared Tuples, closed and generic, through the MIR, its analyses and the checked set.
