@@ -114,6 +114,7 @@ public sealed partial class Binding
         var openSignatures = this.RentSlotSet(call.ArgumentNodes.Count);
         var unboundSlots = this.RentSlotSet(CallSlotCount(function));
         var unsolvedSlots = this.RentSlotSet(CallSlotCount(function));
+        var defaults = this.RentSlotSet(function.Parameters.Count);
         try
         {
             defaultsUsed = argumentMap.DefaultsUsed;
@@ -292,23 +293,12 @@ public sealed partial class Binding
                 }
             }
 
-            // SPEC 10.2.1, 4.6.2: after the expected result, the Literal parts' defaults applied to the selected candidate and range typing.
-            for (var i = 0; i < call.ArgumentNodes.Count; i++)
+            if (argumentMap.DefaultsUsed != 0)
             {
-                if (solution.Pattern(function.Parameters[mapping[i]].Type.BoundType!) is { } latePattern &&
-                    !solution.InferArgument(latePattern, call.ArgumentNodes[i], late: true))
-                {
-                    return CandidateApplicability.Inapplicable;
-                }
+                DefaultSlots(function, mapping.AsSpan(0, call.ArgumentNodes.Count), receiverSlot, ref defaults);
             }
 
-            if (solution.OriginInference is null && this.originDeclarations.GetValueOrDefault(function)?.Relations.Count > 0)
-            {
-                solution.OriginInference = this.BeginOriginInference(call, function);
-            }
-
-            if (solution.OriginInference is not null &&
-                !this.SolveCallOriginInference(function, solution.OriginInference, origins, inputs, call, declaringType, select: true))
+            if (!this.SolveLate(ref solution, mapping, defaults))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -506,10 +496,12 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
 
-            if (result is not null && HasUnsubstitutedOrigin(result, function) && this.OpenResultOnlyOrigins(call, function, origins))
+            if (result is not null && (HasUnsubstitutedOrigin(result, function) || !defaults.IsEmpty) &&
+                this.OpenResultOnlyOrigins(call, function, origins, defaults))
             {
                 // SPEC 15.3.6: an Origin of the callee that nothing at the call bounds, such as the result-only `s` of `constant() ->
-                // ref/i32 during s` initializing an unannotated local, is a local region of the call, never a pending candidate.
+                // ref/i32 during s` initializing an unannotated local, or one only a default names, is a local region of the call, never
+                // a pending candidate.
                 result = solution.Type(resultPattern!);
             }
 
@@ -595,11 +587,49 @@ public sealed partial class Binding
         }
         finally
         {
+            this.ReturnSlotSet(defaults);
             this.ReturnSlotSet(unsolvedSlots);
             this.ReturnSlotSet(unboundSlots);
             this.ReturnSlotSet(openSignatures);
             this.ReturnSlotSet(open);
             this.ReturnSlotSet(waiting);
         }
+    }
+
+    // SPEC 10.2.1, 4.6.2, 15.6.4 steps 1, 3: after the expected result, the late pass of the evidence walk (the Literal parts' defaults
+    // applied to the selected candidate and range typing), then the first solve of the candidate's Origins, which the well-formedness of
+    // each default it uses (`defaults`, DefaultSlots) shortens as a written part's does; false when the candidate is inapplicable.
+    private bool SolveLate(ref SlotSolution solution, int[] mapping, in SlotSet defaults)
+    {
+        var call = solution.Call;
+        var function = solution.Function;
+        for (var i = 0; i < call.ArgumentNodes.Count; i++)
+        {
+            if (solution.Pattern(function.Parameters[mapping[i]].Type.BoundType!) is { } latePattern &&
+                !solution.InferArgument(latePattern, call.ArgumentNodes[i], late: true))
+            {
+                return false;
+            }
+        }
+
+        if (solution.OriginInference is null && this.originDeclarations.GetValueOrDefault(function)?.Relations.Count > 0)
+        {
+            solution.OriginInference = this.BeginOriginInference(call, function);
+        }
+
+        if (solution.OriginInference is not { } inference)
+        {
+            return true;
+        }
+
+        for (var i = 0; !defaults.IsEmpty && i < function.Parameters.Count; i++)
+        {
+            if (defaults.Contains(i) && solution.Pattern(function.Parameters[i].Type.BoundType!) is { } pattern)
+            {
+                this.CollectInputPremises(this.FormedApplication(pattern, solution.SlotOwner, solution.Types), inference, call);
+            }
+        }
+
+        return this.SolveCallOriginInference(function, inference, solution.Origins, solution.Inputs, call, solution.DeclaringType, select: true);
     }
 }
