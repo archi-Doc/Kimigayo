@@ -42,7 +42,7 @@ internal sealed partial class MirEffects
         this.Terminator(this.program, body, block, view, body.Blocks[block].Terminator);
         this.Inputs(items, this.itemCount, edges, this.edgeCount);
         (this.itemCount, this.edgeCount) = (items, edges); // The site's inputs are not the body's.
-        classes = (byte)(this.found & (Unknown | Limit | Derived | Deep)); // With no reader an atom left abstract is Unknown (AddAtom).
+        classes = (byte)(this.Found & (Unknown | Limit | Derived | Deep)); // With no reader an atom left abstract is Unknown (AddAtom).
         return this.keyScratch.AsSpan(0, this.keyWords);
     }
 

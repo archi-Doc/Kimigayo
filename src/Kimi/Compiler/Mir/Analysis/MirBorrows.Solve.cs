@@ -8,7 +8,6 @@ namespace Kimi.Compiler.Mir;
 // on the state before it (MirBorrows.Flow), checked in the replay, then committed; at a destruction in place the Loans it ends are then
 // removed from every holder (`step`: σ_out \ ended, so a call's transfer still reads its destroyed target), and before a Call that moves
 // pending slots their inspection Loans (R-a, MirBorrows.Endings); in the replay, a copy's Entry(B) is gathered before its entry's plan.
-// The view's limit records are made last (MirBorrows.Reports' Limits).
 internal sealed partial class MirBorrows
 {
     private int chainHead = -1; // The checks replay's chain: its head and first block.
@@ -62,7 +61,6 @@ internal sealed partial class MirBorrows
         this.Restamp();
         flow.Replay(ref carrying);
         this.DefaultAccesses();
-        this.Limits(); // The view's limit records, one per subject (MirBorrows.Reports, R4-M153).
         this.Bytes += this.sets.Bytes;
         this.Work += this.sets.Bytes + this.sets.Scanned;
     }

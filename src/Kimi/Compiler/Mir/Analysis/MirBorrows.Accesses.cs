@@ -12,6 +12,7 @@ namespace Kimi.Compiler.Mir;
 // Must not compare an access with a Loan (MirBorrows.Checks) or record a problem (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
+    private readonly Dictionary<BoundType, byte> entered = new(ReferenceEqualityComparer.Instance); // Observation's scratch.
     private readonly Dictionary<BoundType, MirOutcome> destructions = new(ReferenceEqualityComparer.Instance); // Destruction's, by case Type.
     private (BindingSymbol? Definition, ulong Version) destructionsOf; // The definition and program version the destructions are for.
     private Access[] accesses = [];
@@ -79,7 +80,7 @@ internal sealed partial class MirBorrows
         ref var observation = ref CollectionsMarshal.GetValueRefOrAddDefault(this.destructions, type, out var known);
         if (!known)
         {
-            observation = MirTypes.Observation(type, types, this.body.Key.Decl, this.seen);
+            observation = MirTypes.Observation(type, types, this.body.Key.Decl, this.entered);
         }
 
         unproven = observation.IsLimit;

@@ -2287,7 +2287,7 @@ public sealed partial class InstanceCollectorTest
     {
         private bool root;
 
-        public bool First(BoundType type)
+        public bool First(BoundType type, int depth)
         {
             if (!this.root)
             {
@@ -2300,6 +2300,6 @@ public sealed partial class InstanceCollectorTest
 
         public readonly bool Visit(BoundType type, int depth) => false;
 
-        public readonly bool Deep() => false;
+        public readonly bool Deep(BoundType type) => false;
     }
 }

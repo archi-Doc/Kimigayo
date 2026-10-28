@@ -763,7 +763,7 @@ public sealed partial class MirBorrowsTest
                 "fx: sc.add() CallReservationConflict_Kd", "fxExplicit: State.touch() CallReservationConflict_Kd", "n1: State.f() CallReservationConflict_Kd",
                 "twiceBoth: State.add(sc@uniq) CallReservationConflict_Kd", "twiceBoth: State.add(sc@uniq) CallReservationConflict_Kd",
                 "gen: State.addg(v, sc@uniq) CallReservationConflict_Kd", "held: y0 = 2", "held: State.addh(sc@uniq) CallReservationConflict_Kd",
-                "limit: y0 = 2", "addl: Lim.run() OwnershipDepthLimit_Kd",
+                "addl: Lim.run() OwnershipDepthLimit_Kd", "limit: y0 = 2",
             ],
             Problems(c, program, DefaultCodes));
         Assert.Equal(

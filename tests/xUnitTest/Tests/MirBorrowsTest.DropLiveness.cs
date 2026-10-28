@@ -123,4 +123,71 @@ public sealed partial class MirBorrowsTest
             Rows(expected.Replace("{dd}", dd, StringComparison.Ordinal)),
             DepthRecords(c, Analyze(c), "f").Select(static x => $"{x.Line} {x.Code}"));
     }
+
+    // SPEC 23.1.1 (R4-M153's revision 3, implementation review 3's B3 (i)): a destruction known to observe decides its check whatever lies
+    // past the bound beside it, so the walk's answer is the Join of its parts', the same in either order: d, a Tuple of R (whose drop
+    // observes the Loan of value) and a part past the bound, gives `value = 99`'s Language conflict and no depth limit, the observer first
+    // or last; at depth 10 the same.
+    [Theory]
+    [InlineData("first", 40)]
+    [InlineData("last", 40)]
+    [InlineData("first", 10)]
+    [InlineData("last", 10)]
+    public void AnObserverDecidesBesideAPartPastTheBoundInEitherOrder(string observer, int depth)
+    {
+        var parts = observer == "first" ? $"R.init(r: value@ref), {Nested("0", depth)}" : $"{Nested("0", depth)}, R.init(r: value@ref)";
+        var c = CompileDepthForm(Prelude + $"func f()\n    var value = 42\n    let d = ({parts})\n    value = 99\n    return\n");
+        Assert.Equal(["value = 99 ComparisonLoanConflict_Kd"], DepthRecords(c, Analyze(c), "f").Select(static x => $"{x.Line} {x.Code}"));
+    }
+
+    // SPEC 23.1.1 (R4-M153's revision 3): the destruction walk enters a Type at the shallowest depth it meets it, so one Type at two depths
+    // answers alike in either order: d holds R 41 levels down a Tuple and 9 levels down beside it, the deep one's tail being the shallow
+    // one's Type; R's drop decides `value = 99`'s conflict, with no depth limit, the deep component first or last.
+    [Theory]
+    [InlineData("deep first")]
+    [InlineData("shallow first")]
+    public void AnObserversTypeMetPastAndWithinTheBoundDecidesInEitherOrder(string order)
+    {
+        var (deep, shallow) = (Nested("R.init(r: value@ref)", 40), Nested("R.init(r: value@ref)", 8));
+        var parts = order == "deep first" ? $"{deep}, {shallow}" : $"{shallow}, {deep}";
+        var c = CompileDepthForm(Prelude + $"func f()\n    var value = 42\n    let d = ({parts})\n    value = 99\n    return\n");
+        Assert.Equal(["value = 99 ComparisonLoanConflict_Kd"], DepthRecords(c, Analyze(c), "f").Select(static x => $"{x.Line} {x.Code}"));
+    }
+
+    // SPEC 23.1.1, 23.1.2 (R4-M147, R4-M153's revision 3, implementation review 3's B3 (ii)): at a referent store whose referent's
+    // destruction holds an abstract part not proven Copy (Limit) and a part past the bound (Deep), the one answer is Limit, so `a.clear()`
+    // is the located Unsupported_Kd, as at depth 10 and for clearGenOk (the abstract part alone; ADestructionAReferentMayObserveKeepsW).
+    [Theory]
+    [InlineData("deep", 40)]
+    [InlineData("deep", 10)]
+    [InlineData("alone", 0)]
+    public void AnAbstractPartBesideAPartPastTheBoundIsUnsupportedAtAReferentStore(string form, int depth)
+    {
+        var (element, value) = form == "deep"
+            ? ($"(T, {NestedType(depth)})", $"(T.make(p: slot@raw, q: w@raw@raw/u8), {Nested("0", depth)})")
+            : ("T", "T.make(p: slot@raw, q: w@raw@raw/u8)");
+        var c = CompileDepthForm(Prelude + RawShapes + ReferentShapes + "func clearGen<T>()\n    T is MakeW\n    var y: i32 = 1\n" +
+            $"    var w: ref/i32 = y@ref\n    var slot: raw/u8 = null\n    var a: Array<{element}> = []\n    a.append({value})\n    a.clear()\n" +
+            "    consume(a@move)\n    usep(slot)\n    y = 5\n");
+        Assert.Equal(["a.clear() Unsupported_Kd"], DepthRecords(c, Analyze(c), "clearGen").Select(static x => $"{x.Line} {x.Code}"));
+    }
+
+    // SPEC 23.1.2 (R4-M153's revision 3, implementation review 3's N1): a limit record is one failure's, so independent checks at one
+    // subject keep their own records: `replace` destroys s's old value in place, whose destruction passes the bound (err(destroy): the depth
+    // limit), and its W store reaches s, whose guard a stored raw layer a Type argument supplies leaves undecided (the located
+    // Unsupported_Kd); s's own depth limit, at its declaration, is a third verdict's (the drop tier). At depth 10 the store's alone.
+    [Theory]
+    [InlineData(40, "{call} Unsupported_Kd|{call} OwnershipDepthLimit_Kd|{s} OwnershipDepthLimit_Kd")]
+    [InlineData(10, "{call} Unsupported_Kd")]
+    public void IndependentChecksAtOneSubjectKeepTheirOwnRecords(int depth, string expected)
+    {
+        const string Wrap = "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value\n";
+        var value = $"(Wrap.init(r@follow@raw@raw/u8), {Nested("z@ref", depth)})";
+        var (s, call) = ($"var s = {value}", $"Kimi.Intrinsics.replace(s@uniq, with: {value})");
+        var c = CompileDepthForm(Prelude + Wrap + "func f()\n    var x = 1\n    var z = 3\n    var w: ref/i32 = x@ref\n    var r = w@uniq\n" +
+            $"    {s}\n    {call}\n    inspect(w)\n");
+        Assert.Equal(
+            Rows(expected.Replace("{call}", call, StringComparison.Ordinal).Replace("{s}", s, StringComparison.Ordinal)),
+            DepthRecords(c, Analyze(c), "f").Select(static x => $"{x.Line} {x.Code}"));
+    }
 }

@@ -274,6 +274,25 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 "    public func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + $"        _ = {deep}\n        return f()\n"));
     }
 
+    // SPEC 23.1.1 (DECISIONS R4-M153's revision 3): a destruction walk enters a Type at the shallowest depth it meets it, so a destroyed
+    // Loud, 41 levels down a Tuple and 9 levels down beside it (one Type at both depths), gives its environment effect, which fails the
+    // contract's `confined`, in either order of the components, never the depth limit for the part past the bound.
+    [Theory]
+    [InlineData("deep first")]
+    [InlineData("shallow first")]
+    public void APartsTypeEnteredWithinTheBoundIsNoDeepInEitherOrder(string order)
+    {
+        var (deep, shallow) = (Nested(40), Nested(8));
+        var premises = "        F is Callable<() -> i32>\n            effect confined\n";
+        Assert.Equal(
+            Expected("IncompatibleContractImplementation_Kd Self is Work 1"),
+            Problems(Loud + "contract Work\n    func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + "        effect confined\nstruct W\n" +
+                "    Self is Work\n    public func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises +
+                $"        _ = ({(order == "deep first" ? $"{deep}, {shallow}" : $"{shallow}, {deep}")})\n        return f()\n"));
+
+        static string Nested(int levels) => new string('(', levels) + "Loud.init()" + string.Concat(Enumerable.Range(0, levels).Select(static i => $", {i})"));
+    }
+
     [Theory]
     [InlineData("ref", "")]
     [InlineData("owner", "UnsatisfiedEffectBound_Kd f@move 18446744073709551615")]

@@ -58,14 +58,17 @@ internal sealed partial class MirBorrows
         }
 
         var terminator = index == this.body.Blocks[block].Count;
-        if ((terminator && this.limit) || this.layerBorrowed[location])
+        if (this.layerBorrowed[location])
         {
-            this.Limit(this.Subject(at), MirOutcome.Limit); // W's undecided store (R4-M147); a `during self` layer's enclosing Place (PQ-10).
+            this.Limit(this.Subject(at), MirOutcome.Limit); // A `during self` layer's enclosing Place (PQ-10).
         }
 
-        if (terminator && (this.deep || this.Retaining(this.body.Blocks[block].Terminator) is { IsLimit: true }))
+        if (terminator)
         {
-            this.Limit(this.Subject(at), MirOutcome.Deep); // A retention limit (R4-M51) or a store undecided past a walk's bound (R4-M153).
+            // The call's store, one verdict: W's undecided store (R4-M147), a store undecided past a walk's bound and a retention limit
+            // (R4-M51, R4-M153), joined.
+            var deep = this.deep || this.Retaining(this.body.Blocks[block].Terminator) is { IsLimit: true };
+            this.Limit(this.Subject(at), (this.limit ? MirOutcome.Limit : MirOutcome.None).Join(deep ? MirOutcome.Deep : MirOutcome.None));
         }
 
         (this.limit, this.deep) = (false, false);

@@ -12,7 +12,8 @@
 // its Join: decided outranks Limit, Limit outranks Deep, Deep outranks none. A decided answer is the verdict whatever an unknown part is
 // (SPEC 23.1.1: a decided Language violation is not "may be valid"); an unsupported or abstract part (Limit, R4-M147) leaves the verdict
 // undecided even past any bound, so it outranks Deep, and a verdict both leave undecided is one failure with one record (SPEC 23.1.2), the
-// located Unsupported_Kd. A walk composes its parts' outcomes only by Join and stops early only at decided (the top); a reader asks the
+// located Unsupported_Kd. A walk composes its parts' outcomes only by Join and stops early only at decided (the top), and its memo enters
+// a Type at the shallowest depth it meets it (MirDepths), so the answer is the same in every order of the parts; a reader asks the
 // published answer and never ranks two outcomes itself.
 // Must not inspect source syntax or substitute new Binding decisions.
 // Its concerns: the destruction walk and the facts over it (MirTypes.Destruction.cs), what a value may hold (MirTypes.Holding.cs), and

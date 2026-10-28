@@ -259,7 +259,7 @@ internal static partial class MirTypes
         {
             var first = members.Count;
             var found = types.RawMembers(stored, this.part, at, members) ? default : new Facts(false, MirOutcome.Limit);
-            for (var i = first; found.Writes.IsNone && i < members.Count; i++)
+            for (var i = first; !found.Writes.IsDecided && i < members.Count; i++)
             {
                 found = found.Join(members[i].Exclusive ? this.Part(members[i].Referent, Exclusive, depth) : default);
             }

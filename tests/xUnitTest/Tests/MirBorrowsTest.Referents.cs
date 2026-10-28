@@ -514,9 +514,9 @@ public sealed partial class MirBorrowsTest
             """);
         Assert.Equal(
             [
-                "kept: y = 5", "kept: a.clear() Unsupported_Kd", "clearObjBad: y = 5", "clearObjOk: y = 5", "clearLeafBad: y = 5", "clearWrapBad: y = 5",
+                "kept: a.clear() Unsupported_Kd", "kept: y = 5", "clearObjBad: y = 5", "clearObjOk: y = 5", "clearLeafBad: y = 5", "clearWrapBad: y = 5",
                 "clearOptBad: y = 5", "clearTupBad: y = 5", "clearArrBad: y = 5", "dictClearBad: y = 5", "dictReplaceBad: y = 5",
-                "clearGenBad: y = 5", "clearGenBad: a.clear() Unsupported_Kd", "clearGenOk: a.clear() Unsupported_Kd",
+                "clearGenBad: a.clear() Unsupported_Kd", "clearGenBad: y = 5", "clearGenOk: a.clear() Unsupported_Kd",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }

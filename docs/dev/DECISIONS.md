@@ -1645,7 +1645,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   consumer subject passed down `Place` and `Operand` (option 1: partial, over the parameter limits); duplicate problems (option 3);
   skipping the access's check (first implemented: it lost the Moved read after a Move inside the index); a guard only where the
   index builds code (a gate; MIR cost measured instead). Not temporary.
-- **R4-M58** (2026-10-17; PLAN G91, the planning session's design A3 E10 in design A's form, with the A1–A4 audit's finding 3,
+- **R4-M58** (superseded in part by R4-M153: the outcome walks' memo) (2026-10-17; PLAN G91, the planning session's design A3 E10 in design A's form, with the A1–A4 audit's finding 3,
   implemented on its instruction of the same day; supersedes R4-M36's "The Destruction walk cuts no cycle through a sequence") The
   Destruction walk enters each Type once per query, by interned identity: `IMirDestruction.First(type)` at the walk's entry for every
   Type, the visitor's set (`AnyPart` and `Observer`: the caller's `seen`, A4's `Glue`: the evaluation's `glued`). A Type met again was
@@ -5272,23 +5272,45 @@ and migration obligations remain in force; no numeric cap changes are authorized
   conflicts), and Locations, Activations and A4 recorded a located `Unsupported_Kd`.
   - Fact and owner: `MirTypes.Bound` (32) is the one bound of the holding walks and the destruction walk (`HoldsRaw`'s too, whose reading
     is 2b-5's). Past it the guard answers its own outcome: `Holding.Holds` gives Loan in the value's own storage and the walk fact Deep
-    where the mode would give Write, and `MirWrites` is None, Deep, Limit and Through, whose order is the walks' one ranking (no
-    vocabulary entry, an internal enum). `MirObservation.Deep` and `IMirDestruction.Deep` name the depth limit. Holding's "holds"
+    where the mode would give Write, and the guard's `MirWrites` gains Deep (None, Through, Limit and Deep, read off the walk's answer;
+    no vocabulary entry, an internal enum). `MirOutcome.Deep` and `IMirDestruction.Deep` name the depth limit. Holding's "holds"
     (tracking) and `MayNeedDrop` (generation) keep their yes: no check rests on them.
-  - The one answer (revision 2): where outcomes meet at one verdict, a holder's, a call's or a subject's, `MirTypes.Decides` gives the one
-    ranked higher in `MirWrites`' order: a decided write over an unsupported part (Limit), Limit over a part past the bound (Deep). A
-    verdict both leave undecided is one failure with one record (SPEC 23.1.2), the located `Unsupported_Kd` (DIAGNOSTICS rule 3), since
-    raising the bound would still leave it undecided. Its readers rank nothing themselves: the guard combines its facts by it, A4 maps its
-    classes to outcomes and reads it (`MirEffects.Undecided`), and A5 holds every limit record of a view (`MirBorrows.Limit`: Locations,
-    Activations, the effect rule, the drop tier, the own-step pass and PD13's hold) to the view's end, where each subject gets one record
-    per view by it (`Limits`).
+  - The one answer (revision 3): the walks' answer at a verdict is one value, `MirOutcome` (MirTypes' representation, an internal
+    struct, no vocabulary entry): decided, Limit, Deep or none. Its rank is private: its one combining operation is `Join` (decided over
+    Limit over Deep over none; commutative and associative, none its identity, decided its absorbing top), and a reader asks only
+    `IsDecided`, `IsLimit`, `IsDeep` or `IsNone`, so no reader can rank two outcomes. `MirTypes`' contract states the order and why once:
+    a decided part is the verdict whatever an unknown part is (SPEC 23.1.1: a decided Language violation is not "may be valid"), and a
+    verdict an unsupported part and a part past the bound both leave undecided is one failure with one record (SPEC 23.1.2), the located
+    `Unsupported_Kd` (DIAGNOSTICS rule 3), since raising the bound would still leave it undecided. Each walk composes its parts only by
+    Join and stops early only at decided; each check records its own failure where it fails, from the Join of what met at its verdict
+    (`MirBorrows.Limit`), so independent checks at one subject keep their own records (MirReport merges one code at one subject).
+    - The memo below the Join: a walk's per-query memo (R4-M58) entered a Type at its first meeting, so a Type one query meets both past
+      the bound and within it answered by whichever meeting came first (`(Nested(R.init(r: value@ref), 40), Nested(R.init(r: value@ref),
+      8))` gave the depth limit, swapped `value = 99`'s conflict, as on dev). An outcome walk now enters a Type at the shallowest depth it
+      meets it (`MirDepths`: again where met shallower, at most once per depth within the bound, so linear), and a part past the bound is
+      Deep only where its Type is never entered within it, since a Type's parts are its own wherever it lies. The destruction walk's
+      outcome visitors (Observation's, A4's `Glue`) use it; `MayNeedDrop`'s `AnyPart` keeps its once-per-query answer (generation).
+    - The walks: the destruction walk with `Observation`'s visitor (a known observer decided, where it stops; an abstract part not proven
+      Copy Limit, after which it goes on; Deep by `MirDepths`), with A4's `Glue` (never stops; its classes, Deep by `MirDepths` at the
+      evaluation's end, are read by `MirEffects.Outcome`) and with `MayNeedDrop`'s `AnyPart` (a disjunction for generation, no outcome); the holding walk (`Holds`,
+      `Past`, `Admitted`, `Members`, `Part`, `Stored`, `Inline` compose `Facts`, Loan and the guard's outcome, by Join; a loop stops once
+      it covers its mode's facts, the write fact being decided); `HoldsRaw` (a disjunction, 2b-5's).
+    - The readers: the guard (`HoldsLoans` reads `MirWrites` off the outcome; Reach compares it by equality); liveness, Locations'
+      borrowed roots, Activations' err(destroy) and Calls' referent store through `MirBorrows.Destruction` (decided or Limit observes,
+      Limit unproven, Deep unclassified, none shallow; Calls is unchanged and now reads Limit beside a part past the bound); Locations'
+      call store (the Join of W's Limit, its Deep fact and the retention limit, one record); A4's `Verdict` and A5's effect rule through
+      `MirEffects.Outcome` (Environment or Unknown, or a write key, decided); the drop tier (`Report`, `Ended`), the own-step pass
+      (`DroppedDeparture`) and PD13's hold (`Record`), each one record through `Limit`.
+    - Deleted re-rankers: `MirTypes.Decides` and `MirWrites`' ranking order; the `MirObservation` enum and `Observation`'s first-met answer
+      (Deep whatever else it reaches); the outcome walks' first-meeting memo; Holding's fact bits and outcome table; `Members`' stop at its first non-none member;
+      `MirEffects.Undecided`; `Limits`, revision 2's per-subject grouping held to the view's end.
   - Record: one code, `OwnershipDepthLimit_Kd` (Error, Resource, location-only; message "Ownership analysis reaches a Type whose nesting
     passes an implementation bound", which also fits `CallRetention.Limit`'s height, path and keeper limits and a record at a declaration
     or an obligation), under the new requirement `Ownership.DepthLimit`. The owner's answers (verbatim): on the category, 「G272: (1)」 (2026-10-27: Resource, one new
     code); on the requirement member (PD21), 「G272 要件: (a)」 (2026-10-27: the code's approval covers `Ownership.DepthLimit`). No fact
     (the planning session's Q2): R4-M51's records rest on Binding's unpublished bounds, and a `limit` fact would be invented evidence.
-    One recorder per analysis: `MirBorrows.Limit` with `Limits` (never held: a limit record, as a located `Unsupported_Kd` is) and A4's
-    `Verdict`.
+    One recorder per analysis: `MirBorrows.Limit`, one record per failure (never held: a limit record, as a located `Unsupported_Kd`
+    is), and A4's `Verdict`.
   - Drop-liveness (A5): a holder a kept Drop past the destruction walk's bound drops gets a drop slot right after its own, in its region,
     whose state is always empty (`Holders`; the table is reset only for a view with such a Drop); that Drop uses the drop slot instead of
     the holder and every kill of the holder kills it (`Liveness`). After every pass, the gather's drop tier reads each holder live only
@@ -5304,11 +5326,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rule W and the referent store: `Writes` returns two facts: a Limit holder reached (R4-M147, unchanged) and a Deep holder whose step,
     at W's fixed point, would reach a holder W does not (that step's holders are left out; a step that adds nothing decides nothing). At a
     referent store whose referent's destruction passes the bound, a store of a Loan or an address stops at refs(S), as R4-M147's abstract
-    referent does, with the depth fact. The call's location records the one answer of its facts (`Locations` through `Limit`).
+    referent does, with the depth fact. The call's store is one verdict: `Locations` joins W's Limit, the Deep fact and the retention
+    limit and records once (`Limit`).
   - Re-coded records: a borrowed root's Drop past the bound (`Locations`), err(destroy) past it (`Activations`), a call's retention limit
-    (R4-M51), A4's class `Deep` (`MirEffects.Deep`, set by `Glue.Deep`, carried by `Keys` and `Summary`; `Verdict`: Environment or Unknown
-    records the row's code, else the one answer of its Limit and Deep (`MirEffects.Undecided`): a Limit the located `Unsupported_Kd`, else
-    Deep the depth limit) and A5's effect rule by the same answer. The old model's code map and the ledger's compared set pair the code
+    (R4-M51), A4's class `Deep` (`MirEffects.Deep`, set by `Glue.Deep`, carried by `Keys` and `Summary`; `Verdict`: the classes' one answer
+    (`MirEffects.Outcome`): decided (Environment or Unknown) records the row's code, Limit the located `Unsupported_Kd`, Deep the depth
+    limit) and A5's effect rule by the same answer. The old model's code map and the ledger's compared set pair the code
     with the requirement (MIR-only: the old path keeps its own bound, 64).
   - Supersedes in part: R4-M36 (item 8): "a growing one at the bound of 32, where HoldsLoans answers yes and Observes sets deep, the
     caller's located `Unsupported_Kd` as A4's Limit is" now reads: at `MirTypes.Bound`, HoldsLoans answers yes for tracking and its guard
@@ -5317,9 +5340,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
     R4-M51: "A5 records a located `Unsupported_Kd` at the call" now reads "`OwnershipDepthLimit_Kd` at the call" (BU-36: a genuine limit
     only); A4's null instance keeps its Limit. R4-M147: its Rule bullet's "a callable and a part past the bound may be an exclusive
     reference" now reads "a callable may be one; a part past the bound is the walk's Deep fact"; its Representation bullet's "None, Through
-    and Limit, with Through over Limit over None" now reads "None, Through, Limit and Deep, Through over Limit over Deep over None"; its
+    and Limit, with Through over Limit over None" now reads "None, Through, Limit and Deep, read off the walk's `MirOutcome` (decided, Limit, Deep, none)"; its
     walk bullet's located `Unsupported_Kd` for Deep now reads `OwnershipDepthLimit_Kd`; its Limit's-record bullet gains the Deep holder's
-    fact. R4-M22 (the MirDrops paragraph): a part past the depth bound is the class Deep, recorded as `OwnershipDepthLimit_Kd`; an atom
+    fact. R4-M58 (revision 3): "The Destruction walk enters each Type once per query" now reads: `MayNeedDrop`'s visitor enters each Type
+    once per query, the outcome walks' (Observation's, A4's `Glue`) at the shallowest depth they meet it (`MirDepths`), since past the bound
+    a Type's walk depends on where it is entered. R4-M22 (the MirDrops paragraph): a part past the depth bound is the class Deep, recorded as `OwnershipDepthLimit_Kd`; an atom
     whose substitution fails stays a Limit, the located `Unsupported_Kd`.
   - R5's codegen gate (R5's answer, as written): "the codegen gate is unchanged: A4's and A5's records do not refuse generation (R5-M4);
     an A1 or A2 record of the bound refuses the body with its code (R5-M96)".
@@ -5343,10 +5368,22 @@ and migration obligations remain in force; no numeric cap changes are authorized
     ranking is now one answer, `MirTypes.Decides`, which every reader reads (the bullet above); a subject gets one limit record per view.
     With it: the own-step Warning's witness is stated as the records carry it (N-a), and a location records the departure a counted pass
     gives before one only the drop tier gives, whatever the entries' order (N-b: `two-owners 40` in both orders).
+  - Revision 3 (implementation review 3, REVISE on B3; the unit suspended under Q11, the owner asked
+    「G272 をどう進めますか？ (1) 一段上でもう 1 回 / (2) WK の後まで保留」 and answered 「[1]」, 2026-10-29: one more round, fixed one level higher): two reviews
+    found a reader ranking outcomes itself, revision 1's guard switch and A4's, then revision 2's `Observation`, whose first-met Deep made
+    `(Nested(0, 40), R.init(r: value@ref))` the depth limit instead of `value = 99`'s conflict (B3 (i)) and `clearGenDeep`'s referent
+    store the depth limit instead of `Unsupported_Kd` (B3 (ii)). A ranking rule every reader must apply leaves the next reader free to
+    break it, so the level higher makes the outcome a value only `Join` ranks (the bullet above), with the census of walks and readers, in
+    a behavior-preserving restructure and then the behavior change. With it, N1: `Limits` grouped by subject, which hid an independent
+    failure at one subject (err(destroy) past the bound beside W's Limit store at one `replace`) and scanned the view's records per entry;
+    records are now per failure and linear, and the four pins' order is revision 1's again. Below the Join the walks' first-meeting memo
+    gave the same symptom by the order of one Type's meetings; the outcome walks' memo enters a Type at its shallowest meeting (the bullet
+    above). `MirBorrows.Calls` needed no edit.
   - Rejected: one tier (a deep Drop as a use is Language at the TypeDag rows; no use with a record at every deep Drop over-records the
     nowrite rows, B3); exact walks for finite nesting (moves the threshold; G144's stack safety); a forward invalidated-Loans problem at
     each deep Drop (a per-Loan bitset per location for a rare Drop); running A5 twice and keeping the difference (try-then-compare and
-    duplicate suppression); raising the bound to 64 (moves the threshold).
+    duplicate suppression); raising the bound to 64 (moves the threshold); a ranking rule each reader applies (B2, B3: the next reader
+    breaks it); grouping limit records by subject (N1: hides an independent failure).
   - Out of scope, open: `HoldsRaw`, `MirStatic.RawHolding` and `RawStaticRead` (2b-5); Binding's `ContainsRawPointer` past depth 32 (BU);
     A4's null-instance Limit (`TyCtxt.ReadableInstance`'s null mixes Binding's storage limit with other nulls until TyCtxt publishes the
     outcome, BU); `MirWrites.Limit`'s "reached" rule beside Deep's "would add" (a later unit). Not temporary.
@@ -5376,7 +5413,16 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the depth limit; at 10 owndtor's Warning alone and ownpast nothing, as the base), `MirEffectsTest.AnUnsupportedPartOutranksAPartPastTheBound`
     (N3), revision 2's `MirBorrowsTest.OneVerdictAnUnsupportedPartAndAPartPastTheBoundMeetAtGetsOneRecord` (`limit+deep` at 40 and 10, each
     alone) and `ALocationsDepartureIsTheCountedOneBeforeTheDropTiers` (`two-owners` in both orders, and at 10), and
-    `MirTypesTest.APartPastTheBoundIsTheGuardsDeepOutcome` (with `limitDeep` at 40 and 10); the expectations (codes and the code lists their helpers filter by) of the
+    `MirTypesTest.APartPastTheBoundIsTheGuardsDeepOutcome` (with `limitDeep` at 40 and 10), and revision 3's (fail-first on revision 2)
+    `MirBorrowsTest.AnObserverDecidesBesideAPartPastTheBoundInEitherOrder` (B3 (i): observer first and last, at 40 and 10),
+    `AnAbstractPartBesideAPartPastTheBoundIsUnsupportedAtAReferentStore` (B3 (ii): at 40 and 10, and the abstract part alone),
+    `IndependentChecksAtOneSubjectKeepTheirOwnRecords` (N1: a `replace` at 40 and 10) and
+    `MirTypesTest.AWalksAnswerIsTheSameInEveryOrderOfItsParts` (Observation and the guard over a Tuple, an Array element and a struct's
+    Fields, a decided part before and after a part past the bound and a Limit part beside it, at 40 and 10), the memo's
+    `MirBorrowsTest.AnObserversTypeMetPastAndWithinTheBoundDecidesInEitherOrder` and
+    `MirEffectsTest.APartsTypeEnteredWithinTheBoundIsNoDeepInEitherOrder` (one Type at depths 41 and 9, both orders) and its scaling row
+    `MirTypesTest.AnOutcomeWalkEntersATypeAtMostOncePerDepth` (Fibonacci structs 60 deep: 557 entries over 62 Types, nothing Deep); the
+    expectations (codes and the code lists their helpers filter by) of the
     bound's pins change by the owner's decision: `AnUnclassifiedDestructionOrCallIsUnsupported`,
     `AnOwnStepViewIsAProducerOnlyWhereAnAccessMayDepart`, `ADestructionMeetsItsOwnStaticAndTheLiveStaticLoans`,
     `AnUninstantiableDefaultHidesNoRecord`,
