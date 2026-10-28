@@ -165,10 +165,6 @@ public sealed partial class Binding
         {
             this.retentionAtoms.Add(here with { Carrier = type });
         }
-        else if (type.Kind == BoundTypeKind.Function)
-        {
-            this.retentionCallables.Add(type);
-        }
 
         this.AddRetentionAtom(here with { Origin = OwnedOrigin(type) }, callable);
         for (var i = 0; i < type.OriginArguments.Count; i++)

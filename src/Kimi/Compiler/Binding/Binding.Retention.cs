@@ -157,9 +157,9 @@ public sealed partial class Binding
 
     // The contract's own premises (SPEC 15.6.4 step 3): each input's well-formedness and Types' relations (R2), the declaring Type's
     // relations, the result's well-formedness (R3) and the callee's declared relations (R1) under its declaring Type, its own Origins
-    // kept as the call's fresh regions; then the relations of each erased callable it may call, its Callable bounds and the callable
-    // Types the contract names, nested ones included as the list grows. The enclosing declarations' premises follow from the catalog's
-    // walk (ExtractOriginPremises).
+    // kept as the call's fresh regions; then the relations of each erased callable it may call, its Callable bounds and the callables its
+    // inputs and result hand it (TyCtxt.HandedCallables, nested ones included). The enclosing declarations' premises follow from the
+    // catalog's walk (ExtractOriginPremises).
     private void RetentionPremises(
         OriginPremiseEnvironment environment,
         FunctionKoto? callee,
@@ -189,14 +189,34 @@ public sealed partial class Binding
             }
         }
 
+        foreach (var input in inputs)
+        {
+            this.Handed(input, null);
+        }
+
+        this.Handed(result, null);
         foreach (var bound in bounds)
         {
             this.AddErasedSignature(environment, bound);
+            this.Handed(bound, bound);
         }
 
         for (var i = 0; i < this.retentionCallables.Count; i++)
         {
             this.AddErasedSignature(environment, this.retentionCallables[i]);
+        }
+    }
+
+    // The callables a contract's Type hands its body (TyCtxt.HandedCallables) into the computation's erased callables, each once; a Callable
+    // bound (`self`), whose own relations RetentionPremises adds, only for the callables its signature names.
+    private void Handed(BoundType type, BoundType? self)
+    {
+        foreach (var callable in this.types.HandedCallables(type))
+        {
+            if (!ReferenceEquals(callable, self) && !this.retentionCallables.Contains(callable))
+            {
+                this.retentionCallables.Add(callable);
+            }
         }
     }
 
