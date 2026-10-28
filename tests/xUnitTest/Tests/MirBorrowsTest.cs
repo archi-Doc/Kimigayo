@@ -2427,6 +2427,20 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         Assert.Single(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.OwnStepDeparture_Kd && x.Subject.Module == 0);
     }
 
+    // Design §8 (DECISIONS R4-M154): the Loan stratum's second pass over a program allocates nothing, whichever role its two swapped Loan
+    // arrays then hold (MirBorrows.Order keeps them one capacity; Milestone7 regrew 32 Loans before). The standard window
+    // (AllocationMeasurement) warms up before it measures, which absorbs a second-pass regrow, so this pass is measured on its own.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void TheLoanStratumsSecondPassAllocatesNothing()
+    {
+        var (c, _) = SemanticSnapshotTest.Bind("milestone/Milestone7");
+        var program = c.BuildMir();
+        var stratum = new Stratum(c.Types);
+        _ = stratum.Run(program);
+        Assert.Equal(0, stratum.Run(program));
+    }
+
     // V16 (DECISIONS R4-M140): the holding memo answers for one program version; a rebind's version clears it, and A5's views over the new
     // version fill it again within the capacity it keeps, so a warm rebind, its MIR build and A5 over a program and the library allocate
     // nothing.
@@ -2572,25 +2586,34 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
         internal MirBorrows Borrows { get; }
 
-        internal void Run(MirProgram program)
+        // Each run returns what the Loan stratum's runs allocated on the thread (the Origin stratum's Judge apart).
+        internal long Run(MirProgram program)
         {
+            long allocated = 0;
             foreach (var body in program.Bodies)
             {
-                this.Run(program, body);
+                allocated += this.Run(program, body);
             }
+
+            return allocated;
         }
 
-        internal void Run(MirProgram program, MirBody body)
+        internal long Run(MirProgram program, MirBody body)
         {
             this.Summaries(program);
             this.flow.Begin(body);
             this.moves.Build(body, this.flow);
             this.origins.Judge(body, MirCases.Count(body), program.Problems);
+            long allocated = 0;
             for (var view = 0L; view < MirCases.Count(body); view++)
             {
                 this.cases.Select(body, view);
+                var before = GC.GetAllocatedBytesForCurrentThread();
                 this.Borrows.Run(program, body, view);
+                allocated += GC.GetAllocatedBytesForCurrentThread() - before;
             }
+
+            return allocated;
         }
 
         // A4 over a program version it has not solved: each body's views' local facts, then the summaries and keys.
