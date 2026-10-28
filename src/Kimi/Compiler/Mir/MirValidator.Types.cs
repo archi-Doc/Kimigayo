@@ -14,7 +14,8 @@ namespace Kimi.Compiler.Mir;
 //   gives the checker (a flag per local).
 // - Invariants: an operand of unknown Type (a Place or constant out of range, a temp Unknown names, the Never value) agrees with
 //   every Type.
-// - Prohibitions: no range or kind finding (the walk's: MirValidator.Tables, .Rvalues); a Call's Types are MirValidator.Signatures'.
+// - Prohibitions: no range or kind finding (the walk's: MirValidator.Tables, .Rvalues); a Call's Types are MirValidator.Signatures', but
+//   an intrinsic row's, which MirValidator.Calls reads through TypeOf (testRecordValue's Scalar).
 internal sealed partial class MirValidator
 {
     private bool[] unknown = [];
@@ -101,9 +102,6 @@ internal sealed partial class MirValidator
 
         // An integer Type, or one whose instance decides it (SPEC 8.7.4: a PrimitiveInteger T, Wrapping<T>).
         private static bool Integral(BoundType type) => type.HasIntegerArithmetic || type.HasAbstractPart;
-
-        // SPEC 3.1: a Scalar, a numeric Type (an integer, wrapping integer or floating-point Type), bool or char; no layer is followed.
-        private static bool Scalar(BoundType type) => type.IsNumeric || ReferenceEquals(type, BoundType.Boolean) || ReferenceEquals(type, BoundType.Char);
 
         // SPEC 13.5.4, 13.6.1, 5.4, 10.2: whether a Cast of its kind converts a source Type to a target Type.
         private static bool Casts(MirCastKind kind, BoundType source, BoundType target) => kind switch

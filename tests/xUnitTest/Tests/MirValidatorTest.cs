@@ -168,10 +168,11 @@ public sealed class MirValidatorTest
     // bit besides its shorthand and input flags, of an unknown kind; an intrinsic callee whose function is not the library declaration of
     // a compiler function it serves (A3 E14); a Value callee whose signature is no TypeToken constant (C8), and a Closure callee given more
     // arguments than its declared signature has inputs; a testRecordValue whose value is no Scalar (a ref/i32: no layer is followed; SPEC
-    // 3.1, F8b), which code generation never sees (fail-before: no row). A local an Opaque value defines has an unknown Type (the replaced
-    // syntax may have none), which any use admits; the same use of a local a Unit constant defines is a finding. So is the Never value's at
-    // every operand position (a Use, an operator, an aggregate; SPEC 3.8, DECISIONS R4-M62), but a ref/Never is no ref/i32. A returning
-    // Value call of a `(i32) -> Never` callable into a Temp of Type Never agrees in Type but is no writer R5-M38 admits.
+    // 3.1, F8b), which code generation never sees (fail-before: no row), and one short of its row's arity 2, an Arity finding (fail-before:
+    // arity -1 admitted any count). A local an Opaque value defines has an unknown Type (the replaced syntax may have none), which any use
+    // admits; the same use of a local a Unit constant defines is a finding. So is the Never value's at every operand position (a Use, an
+    // operator, an aggregate; SPEC 3.8, DECISIONS R4-M62), but a ref/Never is no ref/i32. A returning Value call of a `(i32) -> Never`
+    // callable into a Temp of Type Never agrees in Type but is no writer R5-M38 admits.
     [Theory]
     [InlineData("assign", "Type")]
     [InlineData("component", "Type")]
@@ -201,6 +202,7 @@ public sealed class MirValidatorTest
     [InlineData("shorthand", "UnknownKind")]
     [InlineData("returning", "NeverWrite")]
     [InlineData("record", "Type")]
+    [InlineData("short", "Arity")]
     public void TypeTierRejectsEachForm(string form, string rule)
     {
         var findings = Validate(Typed(form));
@@ -1052,9 +1054,12 @@ public sealed class MirValidatorTest
         body.Terminate(blocks[3], MirTerminator.Call(new(MirCalleeKind.Fn, Function("d"), Arg: 2), Operands(broken == "template" ? MirOperand.Copy(a) : MirOperand.Copy(view)), 1, flag, blocks[4], Where("template")));
         var (receiver, by) = (MirOperand.Copy(gauge), MirOperand.Copy(a));
         body.Terminate(blocks[4], MirTerminator.Call(new(MirCalleeKind.Fn, Function("scaled")), broken == "receiver" ? Operands(by, receiver) : Operands(receiver, by), 2, a, blocks[5], Where("receiver")));
-        var recorded = Operands(one, MirOperand.Copy(broken == "record" ? view : a)); // Its side, then the value.
         var held = MirModelTest.Local(body, BoundType.Unit, MirLocalKind.Temp);
-        body.Terminate(blocks[5], MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.TestRecordValue), recorded, 2, held, blocks[6], Where("record")));
+        var recorded = MirOperand.Copy(broken == "record" ? view : a);
+        var records = broken == "short" // Its side, then the value; a short call its side alone (its row's arity is 2).
+            ? MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.TestRecordValue), Operands(one), 1, held, blocks[6], Broken)
+            : MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.TestRecordValue), Operands(one, recorded), 2, held, blocks[6], Where("record"));
+        body.Terminate(blocks[5], records);
         body.Terminate(blocks[6], MirTerminator.Return(Where("return")));
         return body;
     }

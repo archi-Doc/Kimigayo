@@ -176,7 +176,7 @@ internal sealed partial class FunctionCodegen
     // SPEC 17.6.3 (PD22; DECISIONS R5-M136): a verification's compared Scalar, which the builder records before its comparison (F8b), is held
     // by the test runtime until its observation numbers the failure: its side (operand 0), its Type's frame kind (TestRuntime.ValueKind) and
     // width (1 for bool, else its size in bits) and its bits as i128, a float's reinterpreted as an integer, then zero-extended. The value is
-    // a Scalar: validated MIR records no other (MirValidator's testRecordValue row).
+    // a Scalar: MirValidator's testRecordValue row admits no other known Type (the builder never records the Never value it admits).
     private void Record(in MirTerminator call, FunctionAbi routine)
     {
         var key = new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
