@@ -25,6 +25,7 @@ public sealed partial class MirBorrowsTest
     // The callees and Types the rows share (problem r2 §2's helpers and Types; r2 §3's `R`).
     private const string WkHelpers = """
         func look<T>(value: ref/T) => ()
+        func consume<X>(x: X) => ()
         func put<U>(slot: uniq/U, y: U) -> () => slot@follow = y@move
         func keep<F>(f: F) -> F => f@move
         func putIn<U>(slot: uniq/(uniq/U during c), y: U) -> () => slot@follow@follow = y@move
@@ -190,13 +191,12 @@ public sealed partial class MirBorrowsTest
         // The callables the instantiated contract hands the callee's body (M4, (β′)'s list; PLAN G279).
         ["reqArg"] = WkMkE + WkHoldU + WkForm("sneakG", "<T, E>(slot: uniq/T, y: E) -> ()\n    T is MkE<E>\n", "slot@follow = T.mk(y@move)") +
             WkBuilders("betaG", "<T>(value: uniq/i32 during o, other: T) -> ()\n    T is MkE<uniq/i32 during o>\n", "sneakG<T, uniq/i32 during o>(slot@uniq, child@move)"),
-        ["resultG"] = WkMkE + WkTwins(
+        ["resultG"] = WkMkE + WkEnded(
             "resultGOk",
             "resultGBad",
             "<T>(value: uniq/i32 during o) -> ()\n    T is MkE<uniq/i32 during o>\n",
             "var v = value@move\nlet child: uniq/i32 during o = v\nlet t = T.mk(child@move)",
-            "look(t@ref)",
-            "v@follow = 5"),
+            "t"),
         ["reqStatic"] = "contract MkS<E>\n    func build(r: E) -> Self\n" + WkForm("sneakS", "<T, E>(slot: uniq/T, y: E) -> ()\n    T is MkS<E>\n", "slot@follow = T.build(y@move)") +
             WkBuilders("reqStatic", "<T>(value: uniq/i32 during o, other: T) -> ()\n    T is MkS<uniq/i32 during o>\n", "sneakS<T, uniq/i32 during o>(slot@uniq, child@move)"),
         ["reqContains"] = "contract MkO<E>\n    func mkOpt(r: E) -> Option<Self>\n" +
@@ -213,13 +213,12 @@ public sealed partial class MirBorrowsTest
             WkBuilders("reqAssoc", "<T>(value: uniq/i32 during o, other: T.Box) -> ()\n    T is Holds<uniq/i32 during o>\n", "sneakB<T, uniq/i32 during o>(slot@uniq, child@move)"),
         ["fnValue"] = WkForm("sneakF", "<T, E>(slot: uniq/T, y: E, make: (E) -> T) -> ()\n", "slot@follow = make(y@move)") +
             WkBuilders("betaF", "<T>(value: uniq/i32 during o, other: T, make: (uniq/i32 during o) -> T) -> ()\n", "sneakF(slot@uniq, child@move, make@move)"),
-        ["resultF"] = WkTwins(
+        ["resultF"] = WkEnded(
             "resultFOk",
             "resultFBad",
             "<T>(value: uniq/i32 during o, make: (uniq/i32 during o) -> T) -> ()\n",
             "var v = value@move\nlet child: uniq/i32 during o = v\nlet t = make(child@move)",
-            "look(t@ref)",
-            "v@follow = 5"),
+            "t"),
         ["fnInTuple"] = WkForm("sneakT", "<T, E>(slot: uniq/T, y: E, pair: ((E) -> T, i32)) -> ()\n", "slot@follow = pair.0(y@move)") +
             WkBuilders("fnInTuple", "<T>(value: uniq/i32 during o, other: T, pair: ((uniq/i32 during o) -> T, i32)) -> ()\n", "sneakT(slot@uniq, child@move, pair@move)"),
         ["fnInOption"] = WkForm("sneakP", "<T, E>(slot: uniq/T, y: E, maybe: Option<(E) -> T>) -> ()\n", "match maybe\n    .Some(let make) => slot@follow = make(y@move)\n    .None => ()") +
@@ -235,13 +234,12 @@ public sealed partial class MirBorrowsTest
             WkBuilders("writerFn", "<T>(value: uniq/i32 during o, other: T, set: (uniq/T, uniq/i32 during o) -> ()) -> ()\n", "sneakW(slot@uniq, child@move, set@move)") +
             WkForm("writerFnDirectBad", "<T>(value: uniq/i32 during o, other: T, set: (uniq/T, uniq/i32 during o) -> ()) -> ()\n", WkMoved + "set(slot@uniq, child@move)\nv@follow = 5\nlook(slot@ref)"),
         ["callableBound"] = WkWrap + WkForm("sneakC", "<T, E, F>(slot: uniq/T, y: E, make: ref/F) -> ()\n    F is Callable<(E) -> T>\n", "slot@follow = make(y@move)") +
-            WkTwins(
+            WkEnded(
                 "callableOk",
                 "callableBad",
                 "<T, F>(value: uniq/i32 during o, other: T, make: ref/F) -> ()\n    F is Callable<(Wrap{w}) -> T>\n    origin w.a == o\n",
                 WkMoved + "let wr = Wrap.init(r: child@move)\nsneakC(slot@uniq, wr@move, make)",
-                "look(slot@ref)",
-                "v@follow = 5"),
+                "slot"),
     };
 
     // M3, SPEC 15.6.4 with R1: a call keeps what the direct stores its Types permit would keep, whatever the storage's position or identity:
@@ -328,7 +326,8 @@ public sealed partial class MirBorrowsTest
     // parameter's requirement returning T (reqOther), an associated Type (reqAssoc), Function values as inputs and in a Tuple, an Option and
     // a nominal Field (fnValue, resultF, fnInTuple, fnInOption, fnInStruct), a Callable bound over an aggregate fixed by `origin w.a == o`
     // (callableBound), and writers through a requirement or a Function value (writerReq, writerFn, each with the body's own call beside
-    // it). A requirement whose borrow input's Origin is universal can hold nothing of it (reqBounded, SPEC 15.3.7).
+    // it). A requirement whose borrow input's Origin is universal can hold nothing of it (reqBounded, SPEC 15.3.7). Each Ok twin ends the
+    // abstract local's life before the write (WkEnded).
     [Theory]
     [InlineData("reqArg", "betaGBad: v@follow = 5 1")] // Fails on dev by design: betaGBad valid (G279's acceptance).
     [InlineData("resultG", "resultGBad: v@follow = 5 1")] // Fails on dev by design: resultGBad valid.
@@ -337,13 +336,14 @@ public sealed partial class MirBorrowsTest
     [InlineData("reqOther", "reqOtherBad: v@follow = 5 1")] // Fails on dev by design: reqOtherBad valid.
     [InlineData("reqAssoc", "reqAssocBad: v@follow = 5 1")] // Fails on dev by design: reqAssocOk `v@follow = 5` 1.
     [InlineData("fnValue", "betaFBad: v@follow = 5 1")] // Fails on dev by design: betaFOk `v@follow = 5` 1.
-    [InlineData("resultF", "resultFBad: v@follow = 5 1")] // Fails on dev by design: resultFOk `v@follow = 5` 1.
+    [InlineData("resultF", "resultFBad: v@follow = 5 1")]
     [InlineData("fnInTuple", "fnInTupleBad: v@follow = 5 1")] // Fails on dev by design: fnInTupleOk `v@follow = 5` 1.
     [InlineData("fnInOption", "fnInOptionBad: v@follow = 5 1")] // Fails on dev by design: fnInOptionOk `v@follow = 5` 1.
     [InlineData("fnInStruct", "fnInStructBad: v@follow = 5 1")] // Fails on dev by design: fnInStructBad valid.
     [InlineData("reqBounded", "")]
-    [InlineData("writerReq", "writerReqBad: v@follow = 5 1|writerReqDirectBad: v@follow = 5 1")] // Fails on dev by design: both valid.
-    [InlineData("writerFn", "writerFnBad: v@follow = 5 1|writerFnDirectBad: v@follow = 5 1")] // Fails on dev by design: writerFnOk `v@follow = 5` 1.
+    // A writer stores the child into storage T's value refers to, which the body does not own (SPEC 15.6), so its Ok order conflicts too.
+    [InlineData("writerReq", "writerReqBad: v@follow = 5 1|writerReqDirectBad: v@follow = 5 1|writerReqOk: v@follow = 5 1")] // Fails on dev by design: all valid.
+    [InlineData("writerFn", "writerFnBad: v@follow = 5 1|writerFnDirectBad: v@follow = 5 1|writerFnOk: v@follow = 5 1")]
     [InlineData("callableBound", "callableBad: v@follow = 5 1")] // Fails on dev by design: callableOk `v@follow = 5` 1.
     public void ACallableTheContractHandsTheBodyLetsAnAbstractTypeHoldTheArgument(string row, string expected)
         => Assert.Equal(WkExpected(expected), WkRecords(row));
@@ -361,7 +361,13 @@ public sealed partial class MirBorrowsTest
         => WkForm(ok, head, $"{body}\n{use}\n{write}") + WkForm(bad, head, $"{body}\n{write}\n{use}");
 
     // A builder row's twins: `v` and `slot` moved from the parameters and `child`, an exclusive reborrow of `*v` during o, passed to the call.
-    private static string WkBuilders(string name, string head, string call) => WkTwins($"{name}Ok", $"{name}Bad", head, WkMoved + call, "look(slot@ref)", "v@follow = 5");
+    private static string WkBuilders(string name, string head, string call) => WkEnded($"{name}Ok", $"{name}Bad", head, WkMoved + call, "slot");
+
+    // The twins over a local of an abstract, non-Copy Type: the Ok form uses the local, ends its life (`consume`) and then writes, since
+    // destroying an abstract part not proven Copy at its scope's end observes what it holds (DECISIONS R4-M147); the Bad twin writes before
+    // the use.
+    private static string WkEnded(string ok, string bad, string head, string body, string local)
+        => WkForm(ok, head, $"{body}\nlook({local}@ref)\nconsume({local}@move)\nv@follow = 5") + WkForm(bad, head, $"{body}\nv@follow = 5\nlook({local}@ref)");
 
     private static string[] WkExpected(string expected) => [.. expected.Split('|', StringSplitOptions.RemoveEmptyEntries).Order(StringComparer.Ordinal)];
 
