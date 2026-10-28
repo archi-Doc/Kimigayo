@@ -42,8 +42,9 @@ internal sealed partial class ModuleCodegen
         /// <summary>The zero-sized symbol's definition, for a zero-sized local's home.</summary>
         ZeroSized = 2,
 
-        /// <summary>The nullable Alloc's definition (LlvmModuleText.TryAllocate), for a tryAllocateBytes call (DECISIONS R5-M92).</summary>
-        TryAllocate = 4,
+        /// <summary>The storage byte primitives' definitions, the nullable Alloc and the byte copy (LlvmModuleText.TryAllocate, then
+        /// LlvmModuleText.TransferBytes, as the old generator writes them), for a Requested row's call (DECISIONS R5-M92, R5-M145).</summary>
+        StorageBytes = 4,
 
         /// <summary>The object runtime (ObjectRuntime.WriteRuntime), for a descriptor, a clone or a runtime Type test (DECISIONS R5-M110).</summary>
         Objects = 8,
@@ -120,9 +121,10 @@ internal sealed partial class ModuleCodegen
 
         output.Write(this.helperText.GetStringBuilder());
 
-        if ((this.needs & Needs.TryAllocate) != 0)
+        if ((this.needs & Needs.StorageBytes) != 0)
         {
             output.Write(LlvmModuleText.TryAllocate);
+            output.Write(LlvmModuleText.TransferBytes);
         }
 
         if ((this.needs & Needs.Strings) != 0)

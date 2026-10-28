@@ -97,11 +97,13 @@ internal static class RuntimeAbi
         [new("ptr", "handle", AbiParameterKind.Value, 0), new("i64", "stride"), Location, LocationLength]);
 
     // SPEC 22.2: the private nullable Alloc and byte copy behind Kimi.Storage, defined only in modules whose bodies call them
-    // (LlvmModuleText.TryAllocate and LlvmModuleText.TransferBytes; MIR code generation requests the first).
+    // (LlvmModuleText.TryAllocate and LlvmModuleText.TransferBytes, written as a pair by both generators; DECISIONS R5-M92, R5-M145).
     internal static readonly FunctionAbi TryAllocateBytes = new("__kimi_try_allocate", "ptr", [new("i64", "bytes", AbiParameterKind.Value, 0)]);
 
-    internal static readonly FunctionAbi TransferBytes =
-        new("__kimi_transfer_bytes", Unit.ComputationType, [new("ptr", "destination"), new("ptr", "source"), new("i64", "size")]);
+    internal static readonly FunctionAbi TransferBytes = new(
+        "__kimi_transfer_bytes",
+        Unit.ComputationType,
+        [new("ptr", "destination", AbiParameterKind.Value, 0), new("ptr", "source", AbiParameterKind.Value, 1), new("i64", "size", AbiParameterKind.Value, 2)]);
 
     internal static readonly FunctionAbi AbortMessage = new("__kimi_abort_message", Unit.ComputationType, OwnedStringParameters) { NoReturn = true };
 
