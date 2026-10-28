@@ -1139,31 +1139,37 @@ public sealed partial class FunctionCodegenTest
         Assert.DoesNotContain(" = mul ", text, StringComparison.Ordinal);
     }
 
-    // SPEC 22.2 (DECISIONS R5-M18, R5-M92): DictionaryStorage's byte copy is llvm.memcpy, its ranges never overlapping, and its nullable Alloc
-    // calls the runtime routine both generators define where a body calls it.
+    // SPEC 22.2 (DECISIONS R5-M92, R5-M145): DictionaryStorage's byte copy and nullable Alloc call the runtime routines both generators define
+    // where a body calls them, the copy with its destination, source and count.
     [Fact]
     public void TheStorageBytePrimitivesAreTheirRows()
     {
         const string Source = "func more(d: uniq/Dictionary<i32, i32>) => d.reserve(4)\nfunc fit(d: uniq/Dictionary<i32, i32>) => d.shrinkToFit()\n";
         var c = Analyze(Source, OutputKind.Library);
-        const string Copy = @"\n  call void @llvm\.memcpy\.p0\.p0\.i64\(ptr %t\d+, ptr %t\d+, i64 %t\d+, i1 false\)\n";
+        const string Copy = @"\n  call void @__kimi_transfer_bytes\(ptr %t\d+, ptr %t\d+, i64 %t\d+\)\n";
         Assert.Contains(ItemTexts(c, "grow"), static x => Regex.IsMatch(x, Copy));
         Assert.Contains(ItemTexts(c, "shrinkToFit"), static x => Regex.IsMatch(x, @"= call ptr @__kimi_try_allocate\(i64 %t\d+\)\n"));
     }
 
-    // SPEC 21.4.3, 22.2 (DECISIONS R5-M92): the nullable Alloc's definition is one runtime text spliced from its FunctionAbi, which a module
-    // whose bodies call it defines exactly once; the old generator writes that text (its pin goes by G4; MIR code generation's first such
-    // modules write it since C8e, through the same text: DictionaryHelpersPrecedeTheDefinitionsWithTheRuntimeTheirRowsDeclare).
-    [Fact]
-    public void TheNullableAllocIsDefinedOnceFromItsOneText()
+    // SPEC 21.4.3, 22.2 (DECISIONS R5-M92, R5-M145): each storage byte primitive's definition, the nullable Alloc's and the byte copy's, is one
+    // runtime text spliced from its FunctionAbi, which a module whose bodies call them defines exactly once under either generator (the old
+    // generator's pin goes by G4).
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TheStorageBytePrimitivesAreDefinedOnceFromTheirTexts(bool mir)
     {
-        var definition = RuntimeAbi.TryAllocateBytes.GetDefinition(exported: false);
-        Assert.StartsWith(definition, LlvmModuleText.TryAllocate, StringComparison.Ordinal);
-        Assert.Single(Regex.Matches(LlvmModuleText.TryAllocate, Regex.Escape(definition)));
-        var c = MinimalEmissionTest.Analyze("var d: Dictionary<i32, i32> = [1: 2]\nd.shrinkToFit()\n", codegen: CompilerCodegen.Legacy);
-        var ir = CompilationTestHelper.WriteIr(c);
-        Assert.Single(Regex.Matches(ir, Regex.Escape(definition)));
-        Assert.Contains(LlvmModuleText.TryAllocate, ir, StringComparison.Ordinal);
+        const string Source = "var d: Dictionary<i32, i32> = [1: 2]\nd.shrinkToFit()\n";
+        var ir = mir ? Generate(Source) : CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(Source, codegen: CompilerCodegen.Legacy));
+        var primitives = new[] { (RuntimeAbi.TryAllocateBytes, LlvmModuleText.TryAllocate), (RuntimeAbi.TransferBytes, LlvmModuleText.TransferBytes) };
+        foreach (var (abi, text) in primitives)
+        {
+            var definition = abi.GetDefinition(exported: false);
+            Assert.StartsWith(definition, text, StringComparison.Ordinal);
+            Assert.Single(Regex.Matches(text, Regex.Escape(definition)));
+            Assert.Single(Regex.Matches(ir, Regex.Escape(definition)));
+            Assert.Contains(text, ir, StringComparison.Ordinal);
+        }
     }
 
     // SPEC 22.5.2 (DECISIONS R5-M92): each of the 7 fixed codes MIR's Fail carries, the five the served compiler functions name and the

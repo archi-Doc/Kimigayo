@@ -25,7 +25,7 @@ public class StringFunctionEmissionTest
         { "Loop", Echo + "var i = 0\nwhile i < 3\n    echo(\"iteration\")\n    i += 1", string.Empty, "iteration=3" },
         { "Recursion", "func repeat(text: string, n: i32) -> string\n    if n == 0 => return text@move\n    return repeat(text@move, n - 1)\nConsole.writeLine(repeat(\"recursive\", 3))", "recursive\n", "recursive=1" },
         { "Snapshot", "func take() -> string\n    var text = \"before\"\n    defer => text = \"after\"\n    return text@move\nConsole.writeLine(take())", "before\n", "before=1;after=1" },
-        { "EarlyArgument", "func callee(a: string, b: string) => Console.writeLine(\"bad\")\nfunc f()\n    callee(\"pending\", (return))\nf()", string.Empty, "pending=1;bad=0" },
+        { "EarlyArgument", "func callee(a: string, b: string) => Console.writeLine(\"bad\")\nfunc f()\n    callee(\"pending\", (return))\nf()", string.Empty, Codegen.Expect("pending=0;bad=0", "pending=1;bad=0", CodegenDeviations.ConstantTemporaries) },
         { "Shadow", "func writeLine(text: string) => ()\nwriteLine(\"shadow\")", string.Empty, "shadow=1" },
         { "Local", "public func main()\n    func local(text: string) -> string => text@move\n    Console.writeLine(local(\"local\"))", "local\n", "local=1" },
         { "Empty", Echo + "Console.writeLine(echo(\"\"))", "\n", "=1" },
@@ -52,7 +52,10 @@ public class StringFunctionEmissionTest
     [InlineData(true)]
     public void NamedArgumentsDistinguishCallerAndCalleeDestructionOrder(bool transfer)
     {
-        var source = "func choose(first: string, second: string, gap: ()) => ()\nfunc f()\n    choose(second: \"second\", first: \"first\", gap: " + (transfer ? "(return)" : "()") + ")\nf()";
+        // The arguments are calls' results, values both generators make, so an abandoned call's caller has them to destroy (a constant
+        // abandoned there is never materialized by MIR code generation; DECISIONS R5-M145).
+        var source = Echo + "func choose(first: string, second: string, gap: ()) => ()\nfunc f()\n    choose(second: echo(\"second\"), first: echo(\"first\"), gap: " +
+            (transfer ? "(return)" : "()") + ")\nf()";
         var name = transfer ? "StringFunctionCallerOrder" : "StringFunctionCalleeOrder";
         var ir = ScalarEmissionTest.EmitFixture(name, source, string.Empty);
         int[] order = transfer ? [0, 1] : [1, 0];

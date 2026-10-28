@@ -122,15 +122,20 @@ public class CallableEffectBoundTest
         Assert.Contains("erasure", error.Label);
     }
 
+    // SPEC 8.11.2 (DECISIONS R5-M145): a function item passed under a bound carries its callees' effects, so outer, whose callee reads mutable
+    // static storage, violates confined at its argument and outer over a pure callee does not; the static is declared only where it is read.
     [Theory]
-    [InlineData("State.count", false)]
-    [InlineData("42", true)]
-    public void FunctionItemsUseTheirTransitiveEffects(string body, bool valid)
+    [InlineData("group State\n    public var count: i32 = 0\n", "State.count", false)]
+    [InlineData("", "42", true)]
+    public void FunctionItemsUseTheirTransitiveEffects(string declarations, string body, bool valid)
     {
-        var source = Apply + $"group State\n    public var count: i32 = 0\nfunc inner() -> i32 => {body}\nfunc outer() -> i32 => inner()\npublic func main() => ()\nfunc entry() -> i32 => apply(outer)\n";
+        var source = Apply + declarations + $"func inner() -> i32 => {body}\nfunc outer() -> i32 => inner()\npublic func main() => ()\nfunc entry() -> i32 => apply(outer)\n";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(valid, c.Analysis.IsVerified);
+        var at = (source.LastIndexOf("outer)", StringComparison.Ordinal), "outer".Length);
+        var violations = DiagnosticCorpus.Check(source).Diagnostics.Where(static x => x.Code == "UnsatisfiedEffectBound_Kd").Select(static x => (x.Span!.Value.Start, x.Span.Value.Length));
+        Assert.Equal(valid ? [] : [at], violations);
     }
 
     [Theory]

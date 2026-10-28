@@ -184,19 +184,17 @@ public class DictionaryLibraryTest
     public void CapacityFailuresReportTheCallerLocation(string name, string source, string stderr)
         => ScalarEmissionTest.EmitFixture("DictionaryLibraryCapacity" + name, source, string.Empty, 1, stderr);
 
+    // K12 (DECISIONS R4-M13a, R5-M145): the capacity decisions, reserve and grow, are generated library bodies of ordinary source; their
+    // caller location is the native capacity fixtures' (CapacityFailuresReportTheCallerLocation, under both generators).
     [Fact]
     public void CapacityDecisionsCompileFromOrdinarySource()
     {
         const string Source = "var entries: Dictionary<i32, i32> = [:]\nentries.reserve(8)\n_ = entries.tryInsert(1, 2)";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', TestDiagnostics.Of(c.Library.Kotonoha)));
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var reserve = module.RuntimeHelpers.Callee(DictionaryCallee.Reserve)!.Name;
-        var ir = CompilationTestHelper.WriteIr(c);
-        Assert.Contains(FunctionCodegenTest.GeneratedDefinitions(Source).Definitions, static x => x is FunctionKoto { Name: "grow" } && IsStorage(x));
-        var compiled = System.Text.RegularExpressions.Regex.Match(ir, @"(?ms)^define[^\n]*@" + reserve + @"\([^\n]*\n.*?^\}").Value;
-        Assert.NotEmpty(compiled);
-        Assert.Contains("ptr %location, i64 %location_length)", compiled.Split('\n')[0], StringComparison.Ordinal);
+        var definitions = FunctionCodegenTest.GeneratedDefinitions(Source).Definitions;
+        Assert.Contains(definitions, static x => x is FunctionKoto { Name: "grow" } && IsStorage(x));
+        Assert.Contains(definitions, static x => x is FunctionKoto { Name: "reserve" } && IsStorage(x));
     }
 
     [Fact]

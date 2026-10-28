@@ -873,8 +873,8 @@ public sealed class InstanceCollectorTest
     }
 
     // K 4.8, X34 (DECISIONS R5-M124): placeEntry's LegacyRow item lays out each component of the Dictionary its handle designates, the value
-    // too: a literal's oversized or rejected value refuses the item at the literal (the records of its other uses are at the same sites);
-    // an i64 value admits it (the counterpart).
+    // too: a literal's oversized or rejected value refuses the item at the literal and at its entry's key, where the entry's insertion is
+    // (SPEC 22.5.1; DECISIONS R5-M144) (the records of its other uses are at the same sites); an i64 value admits it (the counterpart).
     [Theory]
     [InlineData(Huge, "OversizedLayout_Kd")]
     [InlineData("P<()>", "InvalidCLayout_Kd")]
@@ -884,7 +884,7 @@ public sealed class InstanceCollectorTest
         var c = MirBuildTest.Compile(CLayoutP + DictionaryKey + $"func put(v: {value})\n    let d: Dictionary<Key, {value}> = [Key.init(1): v@move]\n");
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         var records = code is null ? Array.Empty<string>()
-            : [$"{code} func put(v: {value})", $"{code} v@move", $"{code} [Key.init(1): v@move]",
+            : [$"{code} func put(v: {value})", $"{code} v@move", $"{code} Key.init(1)", $"{code} [Key.init(1): v@move]",
                 $"{code} let d: Dictionary<Key, {value}> = [Key.init(1): v@move]"];
         Assert.Equal(records, set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}"));
         Assert.Equal(code is null ? 1 : 0, set.Items.ToArray().Count(static x => x.Key.Kind == MonoKind.LegacyRow));
