@@ -3,9 +3,9 @@
 // Owns the one generation entry of a compilation and its gate (R5 plan C0a, C0b1, package C 3.8, S2-S4 X17; DECISIONS R5-M64, R5-M65).
 // Input: the latest analysis; callers generate an accepted program version (Project and the test command, after check).
 // Output: the module text, written to the caller's writer only when generation succeeds, never in part; otherwise the generation
-// records in the Emission partition: under MIR code generation (sel) ModuleCodegen's, Unsupported_Kd at each location of a code generation
-// coverage row not written yet (PD11, until the R5 plan's unit X2), gate step 2's refusals (an inexact body's A1 or A2 code at its subject;
-// DECISIONS R5-M96) and InternalInvariant_Kd at a broken input contract, each keyed by its location (a record carries no fact; DECISIONS
+// records in the Emission partition: under MIR code generation (sel) ModuleCodegen's, gate step 2's refusals (an inexact body's A1 or A2
+// code at its subject, an arena skip's Unsupported_Kd until H3; DECISIONS R5-M96, R5-M146; a form the backend does not generate is the
+// capability table's gap at check) and InternalInvariant_Kd at a broken input contract, each keyed by its location (a record carries no fact; DECISIONS
 // R5-M65), and, for a module neither written nor explained, InternalInvariant_Kd at the
 // project; under the old generator its own record (its instance's located records, GenerationResourceLimit_Kd or, until G9b,
 // GenerationFailed_Kd).

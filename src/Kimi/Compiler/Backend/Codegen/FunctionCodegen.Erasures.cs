@@ -20,7 +20,7 @@ namespace Kimi.Compiler.Backend;
 // received (Forward): a ClosureErasure's Shared Closure body with its environment (the word spilled for an inline one, the heap pointer) and
 // a null context; an ItemAdapter's what its Item's call runs (FunctionCodegen.Closures' Runs: a function's body, a requirement Item's
 // witness, a virtual function's slot through the receiver parameter's object, a compiler function's routine row with its slot-less values,
-// or that row's unit's located Unsupported_Kd at the adapter's site; an update Item's entry writes the update over its own parameters,
+// any other a broken contract at the adapter's site; an update Item's entry writes the update over its own parameters,
 // FunctionCodegen.Updates, DECISIONS R5-M116); a Never-result callee leaves the entry's result unused and ends it unreachable (SPEC 10.7),
 // also where the entry's own result is another (a slot's signature is its Item's own, ModuleCodegen.Slot).
 // A Function value's glue row (DestroyErased): its table's drop entry, when present, at its address.
@@ -66,7 +66,7 @@ internal sealed partial class FunctionCodegen
             : this.Runs(represented, targets.Length > 0 ? targets[0].Item : -1, key.Function!.Components[1], default, out given);
         if (run is not { Signature: var callee, Slot: var slot } || this.Laid(represented) is not { } source)
         {
-            return; // Recorded: a row not written yet, or a broken contract.
+            return; // A broken contract, recorded.
         }
 
         var heap = Heap(source.Layout);
@@ -116,8 +116,7 @@ internal sealed partial class FunctionCodegen
 
         if (!this.Operand(operand, out var value))
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
-            return;
+            return; // A broken contract, recorded.
         }
 
         var storage = default(Value?);

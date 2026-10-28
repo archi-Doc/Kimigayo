@@ -1,11 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the checked set (SPEC 8.15.3, IMPL 21.3.1; R5 package K 4.3-4.9; DECISIONS R5-M35, R5-M40, R5-M43, R5-M44, R5-M52-55, R5-M60,
-// R5-M67, R5-M70, R5-M74): every body instance, type-driven item and shim a root requires through runtime or check-only edges, its
+// R5-M67, R5-M70, R5-M74, R5-M146): every body instance, type-driven item and shim a root requires through runtime or check-only edges, its
 // instance-stage records, and the one resolution of each site's target that code generation reads.
 // Input: a built, validated MirProgram; the number of root modules (a range of Source.Module, not a mode); TyCtxt (Instantiates, Erase,
-// Compose, Instance, BindingComplete, Implementation, Witness, Comparison, OwnRequirement, Published, Signature, SubstOfClosure,
-// SubstOfItem, Synthesized, Applies); MirCases (Views); MirTypes.MayNeedDrop; DropGlue.Parts; AdtDef.FindField; VTableDef;
+// Compose, Instance, BindingComplete, Implementation, Witness, Comparison, OwnRequirement, Published, Bodyless, Signature,
+// SubstOfClosure, SubstOfItem, Synthesized, Applies); MirCases (Views); MirTypes.MayNeedDrop; DropGlue.Parts; AdtDef.FindField; VTableDef;
 // MirProgram.StaticInit; the Target and Layout columns of the intrinsic rows; the capability table; the compilation's Layout, whose
 // outcomes the collector alone maps (R5-M37).
 // Output: the CheckedSet of the program version: the roots, in MirProgram.Bodies order, then the items a FIFO worklist admits, each with one
@@ -50,7 +50,8 @@
 // made).
 // Admission (K 4.6, X19): a new key is admitted once; its representative is the first composed substitution or Type, erased only into the
 // key (KD3). A call of a nested function whose substitution does not carry its enclosing instance (DECISIONS R5-M43), a substitution or
-// Type whose storage is a limit (Made) and OCC-X's refused witness are the capability table's gaps (an access of a static of a generic
+// Type whose storage is a limit (Made), OCC-X's refused witness and a requirement call's or requirement Item's witness without a MIR body
+// (Called) are the capability table's gaps (an access of a static of a generic
 // container's group is none: its declaration is, X33 (a), R5-M82); depth past 128, 16 ancestors of the same definition and 1,024 items of
 // one definition are GenerationResourceLimit_Kd; a representative that is open or leaves its body open, and a requirement call of a closed
 // Self without a witness, are InternalInvariant_Kd.

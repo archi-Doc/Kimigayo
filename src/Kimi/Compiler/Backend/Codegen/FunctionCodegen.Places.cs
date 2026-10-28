@@ -22,8 +22,8 @@ namespace Kimi.Compiler.Backend;
 // FunctionCodegen.Stores.cs.
 internal sealed partial class FunctionCodegen
 {
-    // A Place's address (the rows above): false for a row not written yet, which the caller records at its site; true without an address
-    // after a record.
+    // A Place's address (the rows above): false after a broken contract's record (Referent: a Deref or PairLayer step to no pointer, which
+    // validated MIR never has; DECISIONS R5-M146), true without an address after another record.
     private bool Address(MirPlace place, out Value address)
     {
         address = default;
@@ -85,12 +85,14 @@ internal sealed partial class FunctionCodegen
 
     // A Deref by its Type (IMPL 21.1.3; DECISIONS R5-M110): one stored pointer, a reference's, a raw pointer's or an object borrow's the
     // address of its referent, an object borrow's its object's payload; an owning handle's its object's header, the payload
-    // ObjectRuntime.PayloadOffset bytes after it.
+    // ObjectRuntime.PayloadOffset bytes after it. Any other Type is a broken contract (MirBody.ProjectedType admits a Deref only below a
+    // reference, handle or raw pointer, and TypeOf keeps the layer), recorded at the body's subject; false after it.
     private bool Referent(BoundType pointer, Value start, out Value address)
     {
         address = start;
         if (pointer is not { Kind: BoundTypeKind.Semantics, Semantics: not SemanticsKind.Owner })
         {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, default);
             return false;
         }
 

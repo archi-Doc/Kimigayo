@@ -66,15 +66,9 @@ internal sealed partial class FunctionCodegen
             return false;
         }
 
-        if (!this.Address(drop.Place, out var address))
+        if (!this.Address(drop.Place, out var address) || !this.Location(drop.Source, out var site))
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, drop.Source);
-            return false;
-        }
-
-        if (!this.Location(drop.Source, out var site))
-        {
-            return false;
+            return false; // A broken contract, recorded.
         }
 
         this.Open(TestRuntime.Phase.Cleanup); // A test build's destruction runs in the cleanup phase (FunctionCodegen.Phases).

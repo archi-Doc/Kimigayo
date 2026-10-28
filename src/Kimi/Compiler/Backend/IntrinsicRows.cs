@@ -4,7 +4,8 @@
 // collector and code generation read by IntrinsicId. Column Target: the item a call of the intrinsic names as its collector target, the
 // whitelist of target-bearing intrinsic sites (X15); every other intrinsic carries none. Column LaysOutType: the call's Type argument is a
 // by-value use whose layout the collector checks (K 4.8; DECISIONS R5-M44). Columns Writer and Routine: how code generation writes a call
-// (C8a; DECISIONS R5-M65, R5-M92), the runtime routine a routine writer calls; a row not written yet names its owning unit. Whether a row
+// (C8a; DECISIONS R5-M65, R5-M92), the runtime routine a routine writer calls; a row no MIR producer makes yet is Unproduced, whose producing
+// unit writes it (DECISIONS R5-M146). Whether a row
 // reads its call's Type argument follows from LaysOutType and Target (ReadsTypeArgument), the one rule every reader of it applies
 // (DECISIONS R5-M136).
 // Input: an IntrinsicId other than None. Output: its row.
@@ -26,7 +27,7 @@ internal enum IntrinsicTarget : byte
 /// <summary>How code generation writes a call of an intrinsic (package C 3.2's writer column; DECISIONS R5-M92).</summary>
 internal enum IntrinsicWriter : byte
 {
-    Unwritten, // A later unit's row (its comment names it): one located Unsupported_Kd at the call.
+    Unproduced, // No MIR producer makes its call, so a call is a broken contract; the unit that first produces one writes its row.
     Routine, // The row's runtime routine through the one call writer: the call's operands at its parameters, then the call's location.
     Requested, // Routine's, the routine the module defines on request: LlvmModuleText's TryAllocate and TransferBytes.
     Allocate, // Raw.allocate: the count, the element's stride and the location to the row's routine.
@@ -72,21 +73,21 @@ internal static class IntrinsicRows
         new(IntrinsicId.RawSlice, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Slice, null),
         new(IntrinsicId.TryAllocateBytes, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Requested, RuntimeAbi.TryAllocateBytes),
         new(IntrinsicId.MoveBytes, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Requested, RuntimeAbi.TransferBytes),
-        new(IntrinsicId.Stride, IntrinsicTarget.None, LaysOutType: true, IntrinsicWriter.Unwritten, null), // No MIR producer yet (an open PLAN row).
-        new(IntrinsicId.DestroyValues, IntrinsicTarget.Glue, LaysOutType: true, IntrinsicWriter.Unwritten, null), // No MIR producer yet (PLAN G198).
-        new(IntrinsicId.ReinterpretLoan, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // No MIR producer yet (an open PLAN row).
+        new(IntrinsicId.Stride, IntrinsicTarget.None, LaysOutType: true, IntrinsicWriter.Unproduced, null), // No MIR producer yet.
+        new(IntrinsicId.DestroyValues, IntrinsicTarget.Glue, LaysOutType: true, IntrinsicWriter.Unproduced, null), // No MIR producer yet.
+        new(IntrinsicId.ReinterpretLoan, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unproduced, null), // No MIR producer yet.
         new(IntrinsicId.Abort, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Routine, RuntimeAbi.AbortMessage),
         new(IntrinsicId.Fail, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Fail, RuntimeAbi.Abort),
-        new(IntrinsicId.WriteStdout, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // No MIR producer (R8, PD21).
-        new(IntrinsicId.FormatFloat, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // No MIR producer (R8, PD21).
+        new(IntrinsicId.WriteStdout, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unproduced, null), // No MIR producer (R8, PD21).
+        new(IntrinsicId.FormatFloat, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unproduced, null), // No MIR producer (R8, PD21).
         new(
             IntrinsicId.ErasedWriter,
             IntrinsicTarget.Witness,
             LaysOutType: false,
             IntrinsicWriter.Writer,
             LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.TextWriter)!.Abi),
-        new(IntrinsicId.ErasedReserve, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // No MIR producer (R8, PD21).
-        new(IntrinsicId.FormatInteger128, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // No MIR producer (R8, PD21).
+        new(IntrinsicId.ErasedReserve, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unproduced, null), // No MIR producer (R8, PD21).
+        new(IntrinsicId.FormatInteger128, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unproduced, null), // No MIR producer (R8, PD21).
         new(IntrinsicId.MakeObj, IntrinsicTarget.Descriptor, LaysOutType: false, IntrinsicWriter.Create, null),
         new(IntrinsicId.MakeRc, IntrinsicTarget.Descriptor, LaysOutType: false, IntrinsicWriter.Create, null),
         new(IntrinsicId.MakeArc, IntrinsicTarget.Descriptor, LaysOutType: false, IntrinsicWriter.Create, null),
