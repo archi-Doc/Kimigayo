@@ -101,10 +101,12 @@ public sealed partial class Binding
     // parameter Type, then each substituted clause. Refuted and Unknown relations are UnsatisfiedOriginRelation_Kd and
     // UnprovenOriginRelation_Kd records at the value that does not fit; a chain between body Origins, which ownership analysis cannot
     // represent yet, is an obligation that it reports as the located limit at that value. Erasures, anonymous bodies, aggregates and
-    // contextual payloads are judged where they are bound. The expected result is judged at its destination.
-    private void JudgeSelectedCall(InvocationKoto call, FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, int argumentCount, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType)
+    // contextual payloads are judged where they are bound. The expected result is judged at its destination. `operations` holds the
+    // arguments' and, last, the receiver's.
+    private void JudgeSelectedCall(InvocationKoto call, FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType)
     {
         this.callRelationScratch.Clear();
+        var argumentCount = operations.Length - 1;
         var receiver = operations[argumentCount];
         if (receiver.Source is not null)
         {

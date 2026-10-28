@@ -292,23 +292,7 @@ public sealed partial class Binding
                 }
             }
 
-            // SPEC 10.2.1, 4.6.2: after the expected result, the Literal parts' defaults applied to the selected candidate and range typing.
-            for (var i = 0; i < call.ArgumentNodes.Count; i++)
-            {
-                if (solution.Pattern(function.Parameters[mapping[i]].Type.BoundType!) is { } latePattern &&
-                    !solution.InferArgument(latePattern, call.ArgumentNodes[i], late: true))
-                {
-                    return CandidateApplicability.Inapplicable;
-                }
-            }
-
-            if (solution.OriginInference is null && this.originDeclarations.GetValueOrDefault(function)?.Relations.Count > 0)
-            {
-                solution.OriginInference = this.BeginOriginInference(call, function);
-            }
-
-            if (solution.OriginInference is not null &&
-                !this.SolveCallOriginInference(function, solution.OriginInference, origins, inputs, call, declaringType, select: true))
+            if (!this.SolveLate(ref solution, mapping))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -601,5 +585,29 @@ public sealed partial class Binding
             this.ReturnSlotSet(open);
             this.ReturnSlotSet(waiting);
         }
+    }
+
+    // SPEC 10.2.1, 4.6.2, 15.6.4 step 1: after the expected result, the late pass of the evidence walk (the Literal parts' defaults applied
+    // to the selected candidate and range typing), then the first solve of the candidate's Origins; false when the candidate is inapplicable.
+    private bool SolveLate(ref SlotSolution solution, int[] mapping)
+    {
+        var call = solution.Call;
+        var function = solution.Function;
+        for (var i = 0; i < call.ArgumentNodes.Count; i++)
+        {
+            if (solution.Pattern(function.Parameters[mapping[i]].Type.BoundType!) is { } latePattern &&
+                !solution.InferArgument(latePattern, call.ArgumentNodes[i], late: true))
+            {
+                return false;
+            }
+        }
+
+        if (solution.OriginInference is null && this.originDeclarations.GetValueOrDefault(function)?.Relations.Count > 0)
+        {
+            solution.OriginInference = this.BeginOriginInference(call, function);
+        }
+
+        return solution.OriginInference is null ||
+            this.SolveCallOriginInference(function, solution.OriginInference, solution.Origins, solution.Inputs, call, solution.DeclaringType, select: true);
     }
 }
