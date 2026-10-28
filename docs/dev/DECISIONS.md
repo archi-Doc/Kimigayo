@@ -1947,8 +1947,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   owner after three review rounds, below; A3 §12 E16). A Call's store row reaches every holder its argument reaches: ret(i, κ) joins
   every holder of W(val(a_j)) (A3 E16, rule G: SPEC 15.6.4's letter, no SPEC change), with no exclusion. It supersedes R4-M63's store
   target, refs(val(a_j)) (A3 E14), and A3 §5's Calls line. Superseded in part by R4-M143: at a 4.6–4.9 operation's referent store whose
-  referent destroys shallowly the store reaches refs(S) alone, and P13's hold does not fire there. Superseded in part by R4-M147:
-  the guard reads each part (`MirWrites` None, Through, Limit), and P13's interim, the body hold below, is removed.
+  referent destroys shallowly the store reaches refs(S) alone, and P13's hold does not fire there. Superseded in part by R4-M154: a
+  holder W reaches takes its storage's record (`Own`, a `Reached` entry or `All`), not the argument's one kind. Superseded in part by
+  R4-M147: the guard reads each part (`MirWrites` None, Through, Limit), and P13's interim, the body hold below, is removed.
   - Representation: `MirTypes.HoldsLoans`' one walk, each Type once per mode, also gives what a call may write past a value
     (`MirWrites`): the guard, passed concretely (`Through`; a callable and a part past the bound count so) or only through a struct's or
     enum's Type argument, a pair layer or an abstract part (`ThroughArgument`), and for a value that holds no Loan whether a raw pointer
@@ -5262,6 +5263,74 @@ and migration obligations remain in force; no numeric cap changes are authorized
     shared representation in one unit, R4-M119); a fit of the raw sources (an enclosing region is fixed in the Closure, so arr1 and arr2
     were falsely Unknown); a per-call gate (N1).
   - Numbering: R4-M152 is free on dev and every remote branch (R4-M150 is G264's, R4-M151 BU-46's R4 side).
+- **R4-M154 Retention per storage (WK, PLAN G276 with G279): a call keeps an argument's own value only in storage that can hold it,
+  and the callables its contract hands its body retain as erased callees** (2026-10-29; design by the WK planning session (「WK
+  G276/G279 準備書作成」, 2026-10-28; `r4-notes\wk\design-20261028.md` with Revisions 1–5 of 2026-10-29), the owner's answers to it:
+  「候補数：一設計・一実装・一独立レビュー」, 「順序：WK を G272 より先に置く」, 「語彙：格納範囲の二値と入力ごとの保持フラグ
+  （RetentionKind の置換）を新語彙として承認するか。→承認する」, 「実装作業はR4エージェントに依頼してください」, to R4 「WK を
+  先に」, and on SPEC 15.6.4's reading 「SPEC 15.6.4 の読み (iii) と (β)」, then 「(β′) 推奨」; implemented by R4's implementer in three
+  commits (structure, rule 3, rules 1 and 2), the design owner deciding Revisions 1–5 on the implementer's findings) SPEC 15.6.4,
+  15.6.3, 8.4, 8.10, 5.7, 15.3.5.
+  - Rule 1 (per storage; Revision 1): a call's retention (`CallRetention`) has its result's `StorageRetention` and, per output j it
+    may write (`Writes`, an `OutputRetention`), `Own_j`, the record of j's root storage (what the argument's direct Loans name), and
+    `Reached_j`, one record per Origin-erased storage Type past the root's exclusive layers, plus `Abstract` (what an abstract part
+    hides), with `All`, their join. A `StorageRetention` is per input `RetentionKind` flags (`Value`, `Content`, `Chain`; one flags
+    value, so a position may give Value and Chain at once), `Untied` and its pairs (below). The approved two-valued `StorageExtent`
+    became the two members `Own` and `Reached` of an output's record. The MIR (`MirBorrows.Calls`) gives each holder W reaches the
+    record of the way it was reached (`MirBorrows.Reach`: by its first step, `Own_j`; E at the root, `Own_j` and `All`; past a holder,
+    E `All` and a local the entry whose Type, in the view's case and Origin-erased, is its own, `All` where none names it).
+  - Rule 2 (SPEC 15.6.4 read as (iii)): an argument's own value, its Loans and the holders it addresses, is retained only by a
+    position whose Type can hold a value of one of its own parts or a borrow formed through it (its own layer's referent or a part the
+    referent holds by value, and on through exclusive layers up to the first shared one, SPEC 15.6.3), Origins fitted; any other
+    occurrence a storage reaches is Content. An abstract part as a position holds any value whose Origin reaches it; an abstract part
+    of an argument's own value fits any position, the closure deciding (its carrier's reach, the contract's WF premises included).
+    Where the fit relates two Origins of the call's Subst (Type arguments, Self, declaring Type) that the premises do not prove,
+    Binding publishes the pair (`StorageRetention.Pairs`: input, longer, shorter; the outermost unreached layer's, WF making it the
+    whole condition) and A5 judges it with `MirOrigins.Outlives` (Revision 2) by (S) (Revision 4): the pair holds when it is
+    satisfiable for every value of the caller's Fixed Origins (each Fixed node at or above the longer end outlives, by the body's
+    oracle, each Fixed node at or below the shorter end, and no Finite node above meets a Fixed one below); an end the view does not
+    class leaves the input undecided, the located Unsupported_Kd where its Value would store a Loan or an address. Revision 1's
+    `Mixed` is gone (an Origin-only difference between one Type's occurrences is in their pairs).
+  - Rule 3 ((β′)): the callables a callee's premises and inputs hand its body are erased callables it may call: each Callable bound,
+    each requirement signature of a Contract premise on its subject (with the clauses of its Contract on associated Types the
+    contract's Types reach) and each Function part of an input or result (`TyCtxt.HandedCallables`: Tuple and Option elements,
+    nominal Fields included); a requirement callee on an abstract Self is erased itself. `IsFixed` excludes a requirement's own
+    universal Origins. A carrier has, besides its own node (a value of T, R4-M36), its reached node (Revision 3, `ReachedNode`):
+    only a relation whose output is a writable carrier position (an erased writer's `uniq/Self` or `uniq/T` input) reaches it, and it
+    fills `Abstract`; a result builder's relation fills the carrier's own node.
+  - Made precise by rows during implementation (the design owner's Revisions 3–5, the planning session's acceptance): a `during self`
+    layer of a stored part admits the holding instance's Type arguments by their actual Types, or with an Origin argument any value at
+    that argument's node in its own and the Abstract storage (SPEC 5.7 Calls, the owner's Q2 (a), MirTypes.Holding's reading); at a
+    referent store whose referent does not destroy shallowly (R4-M143) each holder past refs(S) also takes `Own_j`, the interim until
+    A5 composes the destruction (PLAN G264); a holder with no `Reached` entry (a raw-punned pointee, `w@raw@raw/u8`) takes `All`, an
+    accepted precision cost (Revision 5: the walk names every storage past the root, so Revision 1's `Beyond` is withdrawn).
+  - Supersedes in part: R4-M116 R-B4 (a raw input's own value only where a layer can hold it), extended to every input and to the
+    borrows formed through it; BU-49's `RetentionPlace.Addressed`, `MarkClosure`'s lowering and its own-Origin rows (the referent of a
+    by-value exclusive layer holding the layer's own Loan with `during q` on both layers: `1 Value store 1`, use2's record), each
+    replaced by rule 2; R4-M73's uniform kind per W (each holder takes its storage's record); R4-M52's erased-callable list, widened
+    by rule 3. Acceptance changes on the MIR (the default pipeline follows at R6-check): the 28 rows of `MirBorrowsTest.Wk.cs`;
+    A2-put-ok, B4-chained and B5-result-put valid (the ledger's six a5-writes rows); use2 valid; a result that cannot hold an
+    argument's value or a borrow formed through it keeps its Content (Revision 5, the owner's (iii)): `x = pin(x@ref)` and
+    `s.r = pin(s.r@ref)` valid, and `apply(identity, n@mode)` (ObjectCallableOriginTest, four modes and the warm twins) and
+    `apply(none)` (InputDependentValueCallTest's Callable row) keep no Loan on their Function Item temporary, R4-M136's class (a) rows
+    gone, so those seven tests drop their OldRule ledger keys and MirTargetSide calls (31 -> 24 OldRule traits; the without-target-side
+    ratchet stays 7); by (S), `seedRoute` errs (a
+    self-row, SPEC's letter, PLAN G148 (2) GXS) and nestedPointee, mixed, tupleTyped err also at `z = 5`; RetentionTest's rows as
+    rule 2 reads them (AnErasedSignatureReadsNoSignatureCap, both Cell rows of ExclusiveInputsAreStores, ALentLayerRetainsTheRaw
+    Arguments, RawLayersRetainByTheirOrigins' two rows, DeclaredRelationsDecideTheResult's two rows, the three BU-49 rows).
+  - Rejected: depth-indexed kinds (a recursive Type makes the depth unbounded); the query over the MIR's Types (Revision 1: a local's
+    Types carry the caller's Origins); fit unless refuted in Binding (E2a a conservative Language error); retention reading the solved
+    Origins; (P), a proven chain of the class's edges (E2, putR and E3 valid against the adopted statement); (S) only where an end is
+    tied to a Fixed Origin by equality (no derivation); `Beyond` as an undecided store (nine dev-valid calls Unsupported_Kd).
+  - Cost (harness `r4-notes\wk-impl\measure\`: cold TyCtxt.Retains over every Call of every body, library bodies included, A
+    2d8a439c5 against this commit, one folder, order A B B A, KIMI_CPU=2, TieredCompilation=0): library and Hello (293 calls)
+    706 -> 917 µs min (+0.21 ms, about 1.6% of a cold Bind) and 177,904 -> 225,136 B (+47 KB, about 1.0%; 314,640 B before pooling
+    the walks' scratch); the Iterator, Dictionary and Iteration callees (52 calls) 114 -> 195 µs, 14,576 -> 27,960 B; Milestone26
+    (308 calls) 706 -> 916 µs, 149,568 -> 196,800 B (286,304 B before pooling). Warm A5 0 B. Census: (S) adds no record in the
+    library, the milestones, the MIR goldens, the accepted SPEC variants, pair-cases.json or the diagnostic corpus with spec-cases and
+    the SPEC blocks (MirCensusTest's rows and the KIMI_MIR_DIFF rows of GenericOwnershipCaseTest and
+    MirDifferenceTest.RequestedCorpus, under (S) and under the proven-only reading); against dev the whole change removes exactly
+    pair-cases' six a5-writes rows.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -7622,6 +7691,9 @@ resumed by R4-M86 (2026-10-20).
     A9, B7, takeTwice valid in both views; A2, B4, B5 W's records until G276), `AnExclusiveLayerHeldByValueKeepsItsOwnOriginsLoan`
     (use1 valid, use2 rejected); `RuleGsSelfStoreReachesAClosureReceiver` unchanged.
   - Cost: src +25/−8 lines besides comments.
+  - Superseded in part by R4-M154 (WK): `RetentionPlace.Addressed`, `MarkClosure`'s lowering and the own-Origin rows (`1 Value
+    store 1` with `during q` on both layers, use2's record) are replaced by retention per storage, and A2-put-ok, B4-chained and
+    B5-result-put's six a5-writes rows go.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

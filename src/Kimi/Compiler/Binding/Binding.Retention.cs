@@ -17,6 +17,14 @@ public sealed partial class Binding
     private readonly List<BoundType> retentionCallables = new();
     private readonly Dictionary<BoundType, int> retentionCarriers = new(ReferenceEqualityComparer.Instance);
 
+    // Each carrier's ReachedNode (DECISIONS R4-M154, Revision 3): the storage a value of it may refer to that the body does not own, reached
+    // only by a relation whose output is a writable carrier position (an erased writer's, AddErasedRelations), which fills the Abstract
+    // entry (the storage walk's Abstract positions); a carrier's own node (retentionCarriers) is its value's. Reused.
+    private readonly Dictionary<BoundType, int> retentionReachedNodes = new(ReferenceEqualityComparer.Instance);
+
+    // The Origins the call's Type arguments, Self and declaring Type bring (Instantiation), reused.
+    private readonly HashSet<BoundOrigin> retentionInstantiated = new(ReferenceEqualityComparer.Instance);
+
     // The (subject, Contract) premises whose requirement signatures HandedSignatures has listed, and the Types the contract's own Types
     // reach (Reach), reused.
     private readonly HashSet<(BoundType Subject, BindingSymbol Contract)> retentionContracts = new();
@@ -27,8 +35,9 @@ public sealed partial class Binding
     // for an erased signature, a Function Type's or a Callable bound's, whose raw layers read their kind: SPEC 5.2.1 caps a layer written
     // in a function's own signature); the (Origin, input) pairs whose content that walk has added, so each is walked once; and whether a
     // member walk was incomplete (CallRetention.Limit).
-    private readonly List<BoundType> retentionScope = new();
+    private readonly List<BoundType> retentionErasedScope = new();
     private readonly HashSet<(BoundOrigin Origin, int Input)> retentionRawVisits = new();
+    private List<BoundType> retentionScope = new();
     private int retentionInputs;
     private bool retentionLimit;
 
@@ -36,20 +45,31 @@ public sealed partial class Binding
     // Value call names), under the premises its body is checked under: its own part, its clauses substituted under the declaring Type,
     // and the catalog's walk from its binder's parent outward. An output retains an input when the premises entail that an atom of the
     // input outlives an atom of the output, or when both name one carrier. Its Callable bounds (CallableBoundSignatures), instantiated as its
-    // inputs, are erased callables its body may call. `premises`: the scope TyCtxt read an instance with an abstract part under (null:
-    // none), which the transfer rule's Iterator key reads (Binding.Retention.Transfers.cs).
+    // inputs, are erased callables its body may call. `types`: the call's Subst (null: a Value callee's declared signature), whose Type
+    // arguments, Self and declaring Type bring the Origins a fit may relate under the call's solved Origins (Instantiation). `premises`:
+    // the scope TyCtxt read an instance with an abstract part under (null: none), which the transfer rule's Iterator key reads
+    // (Binding.Retention.Transfers.cs).
     internal CallRetention Retains(
         FunctionKoto callee,
         ReadOnlySpan<BoundType> inputs,
         BoundType result,
-        BoundType? declaring,
+        Subst? types,
         ReadOnlySpan<BoundType> bounds,
         BindingScope? premises)
     {
         var use = callee.Accessor?.Binder ?? callee;
+        var declaring = types?.Declaring;
         var environment = this.BeginRetention(use, inputs, result, declaring, inputs.Length);
         try
         {
+            this.retentionParts.Clear();
+            foreach (var type in types is null ? [] : types.Types)
+            {
+                this.Instantiation(type);
+            }
+
+            this.Instantiation(types?.Self);
+            this.Instantiation(declaring);
             this.CollectOriginResolvers(environment);
             this.RetentionPremises(environment, callee, inputs, result, declaring, bounds);
             if (this.retentionLimit)
@@ -59,7 +79,7 @@ public sealed partial class Binding
 
             var nodes = this.RetentionNodes(environment);
             this.ExtractOriginPremises(environment, use.Parent);
-            return this.RetentionRows(environment, nodes, inputs, callee, premises);
+            return this.RetentionRows(environment, nodes, inputs, result, callee, premises);
         }
         finally
         {
@@ -83,7 +103,7 @@ public sealed partial class Binding
 
             var nodes = this.RetentionNodes(environment);
             this.AddErasedRelations(environment, 0);
-            return this.RetentionRows(environment, nodes, inputs, null, null);
+            return this.RetentionRows(environment, nodes, inputs, result, null, null);
         }
         finally
         {
@@ -122,8 +142,8 @@ public sealed partial class Binding
                 {
                     handed.Add(fact.RequiredType!);
                 }
-                else if (fact is { Kind: ConstraintKind.Contract, Subject: { } subject, Contract: { } contract } && this.AvailableConstraintFact(constraints, fact) &&
-                    !this.HandedContract(subject, contract, scope, handed))
+                else if (fact is { Kind: ConstraintKind.Contract, Subject: { } subject, Contract: { } contract } &&
+                    this.AvailableConstraintFact(constraints, fact) && !this.HandedContract(subject, contract, scope, handed))
                 {
                     return false;
                 }
@@ -182,6 +202,7 @@ public sealed partial class Binding
         this.retentionAtoms.Clear();
         this.retentionCallables.Clear();
         this.retentionCarriers.Clear();
+        this.retentionReachedNodes.Clear();
         this.retentionRawInputs.Clear();
         this.retentionHolds.Clear();
         this.retentionScope.Clear();
@@ -199,8 +220,9 @@ public sealed partial class Binding
             this.RetentionInput(inputs[i], i);
         }
 
-        this.RetentionWalk(result, new(Retention.Result, RetentionKind.Value, Writable: false, null, null, null), OriginVariance.Covariant, callable: false);
-        this.retentionHolds.Add((Retention.Result, result));
+        var atom = new RetentionAtom(CallRetention.ResultOutput, RetentionKind.Value, Writable: false, null, null, null);
+        this.RetentionWalk(result, atom, OriginVariance.Covariant, callable: false);
+        this.retentionHolds.Add((CallRetention.ResultOutput, result));
         return this.RentPremises(use) ??
             throw new InvalidOperationException($"The premise environment of a retention at `{use}` is not ready: it depends on itself (PLAN G74).");
     }
@@ -212,8 +234,35 @@ public sealed partial class Binding
         this.retentionAtoms.Clear();
         this.retentionCallables.Clear();
         this.retentionCarriers.Clear();
+        this.retentionReachedNodes.Clear();
         this.retentionRawInputs.Clear();
         this.retentionHolds.Clear();
+        this.retentionInstantiated.Clear();
+    }
+
+    // The Origins a Type of the call's Subst brings (retentionInstantiated; DECISIONS R4-M154, Revision 2): the caller's, whose relations
+    // its solved Origins hold, each part once (retentionParts).
+    private void Instantiation(BoundType? type)
+    {
+        if (type is null || !(type.CarriesOrigin || type.CarriesRawOrigin) || !this.retentionParts.Add(type))
+        {
+            return;
+        }
+
+        if (OwnedOrigin(type) is { Kind: not (OriginKind.Static or OriginKind.Unstated) } origin)
+        {
+            this.retentionInstantiated.Add(origin);
+        }
+
+        foreach (var argument in type.OriginArguments)
+        {
+            this.retentionInstantiated.Add(argument);
+        }
+
+        foreach (var part in type.Components)
+        {
+            this.Instantiation(part);
+        }
     }
 
     // The contract's own premises (SPEC 15.6.4 step 3): each input's well-formedness and Types' relations (R2), the declaring Type's
@@ -298,20 +347,22 @@ public sealed partial class Binding
         }
     }
 
-    // An erased callable signature's own atoms, walked after the contract's, its relations added, then dropped with its raw inputs and
-    // holds, which are no outputs of the contract.
+    // An erased callable signature's own atoms, walked after the contract's in its own scope (retentionErasedScope, the contract's restored
+    // after it, which the storage walk reads), its relations added, then dropped with its raw inputs and holds, which are no outputs of the
+    // contract.
     private void AddErasedSignature(OriginPremiseEnvironment environment, BoundType signature)
     {
         var atoms = this.retentionAtoms;
         var (start, raws, holds) = (atoms.Count, this.retentionRawInputs.Count, this.retentionHolds.Count);
         var inputs = signature.Components[0];
+        var (contract, signatureInputs) = (this.retentionScope, this.retentionInputs);
+        (this.retentionScope, this.retentionInputs) = (this.retentionErasedScope, 0);
         this.retentionScope.Clear();
         if (!ReferenceEquals(inputs, BoundType.Unit))
         {
             this.retentionScope.AddRange(inputs.Components);
         }
 
-        this.retentionInputs = 0;
         this.retentionRawVisits.Clear();
 
         for (var i = 0; !ReferenceEquals(inputs, BoundType.Unit) && i < inputs.Components.Count; i++)
@@ -319,18 +370,21 @@ public sealed partial class Binding
             this.RetentionInput(inputs.Components[i], i);
         }
 
-        var result = new RetentionAtom(Retention.Result, RetentionKind.Value, Writable: false, null, null, null);
+        var result = new RetentionAtom(CallRetention.ResultOutput, RetentionKind.Value, Writable: false, null, null, null);
         this.RetentionWalk(signature.Components[1], result, OriginVariance.Covariant, callable: false);
         this.AddErasedRelations(environment, start);
         atoms.RemoveRange(start, atoms.Count - start);
         this.retentionRawInputs.RemoveRange(raws, this.retentionRawInputs.Count - raws);
         this.retentionHolds.RemoveRange(holds, this.retentionHolds.Count - holds);
+        (this.retentionScope, this.retentionInputs) = (contract, signatureInputs);
     }
 
     // An erased callable's relations (owner decision 2026-10-17, DECISIONS R4-M52): its implementation was compared where it was
     // converted, under premises no view reads, so no absence of a relation among its fixed Origins is proven (SPEC 15.6.4): each fixed
     // Origin of an input, among the atoms from `start`, outlives each fixed Origin of an output, its result's or one its inputs let it
-    // write. Its per-call Origins keep only its own premises.
+    // write, and, where it writes an abstract part (a writer: `absorb(self: uniq/Self, r: E)`), that carrier's ReachedNode, the storage its
+    // implementation may write through the part's exclusive layers; a result it returns replaces a part and reaches none (DECISIONS
+    // R4-M154). Its per-call Origins keep only its own premises.
     private void AddErasedRelations(OriginPremiseEnvironment environment, int start)
     {
         var atoms = this.retentionAtoms;
@@ -344,9 +398,14 @@ public sealed partial class Binding
             var longer = this.AtomNode(environment, atoms[i]);
             for (var j = start; j < atoms.Count; j++)
             {
-                if ((atoms[j].Input == Retention.Result || atoms[j].Writable) && IsFixed(atoms[j]))
+                if ((atoms[j].Input == CallRetention.ResultOutput || atoms[j].Writable) && IsFixed(atoms[j]))
                 {
                     AddPremiseEdge(environment, longer, this.AtomNode(environment, atoms[j]), OriginPremiseRule.Input);
+                }
+
+                if (atoms[j] is { Input: >= 0, Writable: true, Carrier: { } carrier } && IsFixed(atoms[j]))
+                {
+                    AddPremiseEdge(environment, longer, this.ReachedNode(environment, carrier), OriginPremiseRule.Input);
                 }
             }
         }
@@ -365,6 +424,18 @@ public sealed partial class Binding
         {
             node = environment.Closure.Node();
             this.retentionCarriers.Add(carrier, node);
+        }
+
+        return node;
+    }
+
+    // A carrier's ReachedNode (retentionReachedNodes), one per carrier for the computation.
+    private int ReachedNode(OriginPremiseEnvironment environment, BoundType carrier)
+    {
+        if (!this.retentionReachedNodes.TryGetValue(carrier, out var node))
+        {
+            node = environment.Closure.Node();
+            this.retentionReachedNodes.Add(carrier, node);
         }
 
         return node;

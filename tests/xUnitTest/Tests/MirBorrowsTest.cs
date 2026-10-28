@@ -422,11 +422,14 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
     // SPEC 15.6, 15.6.4 (A3's transit, 25a, 25b, 29c): a value a location stores into a holder live after it is checked with its access,
     // so storing what borrows the destination into it is an error, unless the destination is dead; a write through a reference stores
-    // into the holders its Loans name (P10).
+    // into the holders its Loans name (P10). `pin`'s result is `ref/i32 during slot`, which can hold neither its argument's own value nor
+    // a borrow formed through it (`**slot` lies past a second shared layer, SPEC 15.6.3), so it keeps only what a read through the
+    // argument carries, never the argument's Loan, and selfStore and partStore store nothing borrowing their destination (the owner's
+    // 「SPEC 15.6.4 の読み (iii) と (β)」, DECISIONS R4-M154; dev kept the Loan by the result's Origin).
     [Fact]
     public void AStoredValueIsCheckedInTransit()
         => Assert.Equal(
-            ["selfStore: x = pin(x@ref)", "partStore: s.r = pin(s.r@ref)", "throughStore: x = 3"],
+            ["throughStore: x = 3"],
             Problems("""
                 func selfStore(y: ref/i32)
                     var x = y
@@ -2214,7 +2217,8 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     }
 
     // A3 6.4, R4-M3a: a problem's facts are its Loan's or guard candidate's anchor and its witness: the holder's next use in its chain (for
-    // an activation from its call on; none in a later chain), or the store that carries the Loan; and an activation's reservation.
+    // an activation from its call on; none in a later chain), or the store that carries the Loan (TheWarningCarriesItsFacts's `Store b`); and an
+    // activation's reservation. selfStore is valid (AStoredValueIsCheckedInTransit; DECISIONS R4-M154).
     [Fact]
     public void AProblemNamesItsLoanAndWitness()
     {
@@ -2244,8 +2248,8 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         var problems = program.Problems.All.ToArray();
         Assert.Equal(
             [
-                "x = 2: Anchor x@ref, Use inspect(r)", "x = pin(x@ref): Anchor x@ref, Store x = pin(x@ref)",
-                "two(a@uniq, a@ref): Anchor a@ref, Use two(a@uniq, a@ref), Reservation a@uniq", "let d: Anchor let d",
+                "x = 2: Anchor x@ref, Use inspect(r)", "two(a@uniq, a@ref): Anchor a@ref, Use two(a@uniq, a@ref), Reservation a@uniq",
+                "let d: Anchor let d",
             ],
             problems.Select((x, i) => (x, i)).Where(static x => LoanCodes.Contains(x.x.Code)).Select(x =>
                 $"{Line(c, x.x.Subject)}: {string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)}"))}"));

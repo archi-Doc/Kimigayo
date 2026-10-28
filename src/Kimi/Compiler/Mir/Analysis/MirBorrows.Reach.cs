@@ -17,6 +17,11 @@ internal sealed partial class MirBorrows
     // (339 to 461, median 346, on the G258 corpus); a larger program grows it once.
     private const int HoldingCapacity = 384;
 
+    // How a W walk reached a holder (writingVia, DECISIONS R4-M154): at its first step (ViaRoot) (the argument's direct Loans or addresses name it, or
+    // E there), past another holder, or both.
+    private const byte ViaRoot = 1;
+    private const byte ViaPast = 2;
+
     private readonly List<int> targets = []; // The holders a reference's value refers to (refs), or a call's store writes (W).
     private readonly List<int> read = []; // The sets whose content or chain the location read, reset by Plan.
     private readonly List<int> chained = []; // A closure's holders to read, each queued once (Chain).
@@ -32,6 +37,8 @@ internal sealed partial class MirBorrows
     private MirWrites[] writable = []; // By local: what a call may write past it (MirTypes.HoldsLoans).
     private int[] writing = []; // By slot: the W walk that reached it.
     private MirWrites[] writingKind = []; // By slot: its local's MirWrites, at that walk.
+    private byte[] writingVia = []; // By slot: how that walk reached it (ViaRoot, ViaPast).
+    private int[] writingLocal = []; // By slot: its local, where that walk reached it past a holder.
     private int walks; // The W walks made.
     private ulong holdingVersion; // The program version whose case Types the holding memo answers (0: none).
 
@@ -211,13 +218,15 @@ internal sealed partial class MirBorrows
         this.Refs(set);
         MirDataflow.Grow(ref this.writing, this.holderCount);
         MirDataflow.Grow(ref this.writingKind, this.holderCount);
+        MirDataflow.Grow(ref this.writingVia, this.holderCount);
+        MirDataflow.Grow(ref this.writingLocal, this.holderCount);
         this.walks++;
         var count = 0;
         for (var i = 0; i < this.targets.Count; i++)
         {
             if (this.targets[i] is var target && this.writing[target] != this.walks)
             {
-                (this.writing[target], this.writingKind[target]) = (this.walks, MirWrites.None);
+                (this.writing[target], this.writingKind[target], this.writingVia[target]) = (this.walks, MirWrites.None, ViaRoot);
                 this.targets[count++] = target;
             }
         }
@@ -234,7 +243,7 @@ internal sealed partial class MirBorrows
     // operation's referent store whose referent destroys shallowly, which takes refs(S) alone (Referents; DECISIONS R4-M143).
     private bool Writes(ulong[] state, int set)
     {
-        this.Write(set); // The kinds of refs(S)'s holders, which Referents put in the targets.
+        this.Write(set, ViaRoot); // The kinds of refs(S)'s holders, which Referents put in the targets.
         var limited = false;
         for (var i = 0; i < this.targets.Count; i++)
         {
@@ -242,41 +251,43 @@ internal sealed partial class MirBorrows
             limited |= kind == MirWrites.Limit;
             if (kind == MirWrites.Through)
             {
-                this.Write((int)state[this.targets[i]]);
+                this.Write((int)state[this.targets[i]], ViaPast);
             }
         }
 
         return limited;
     }
 
-    // A step of W from a set (Writes): E where it carries Φ_E, and the holder each direct Loan or address names. A value that may refer to
-    // storage the body does not own carries Φ_E where it is formed (an untied result or store, a raw pointer formed untracked, an integer's
-    // pointer, a parameter and E's own content at entry), so a set naming nothing writes nothing.
-    private void Write(int set)
+    // A step of W from a set (Writes), at its first step (ViaRoot) or past a holder (ViaPast): E where it carries Φ_E, and the holder each direct
+    // Loan or address names. A value that may refer to storage the body does not own carries Φ_E where it is formed (an untied result or
+    // store, a raw pointer formed untracked, an integer's pointer, a parameter and E's own content at entry), so a set naming nothing
+    // writes nothing.
+    private void Write(int set, byte via)
     {
         this.Work += this.sets.Count(set);
         foreach (var element in this.sets.Elements(set))
         {
             if (element == Escaped)
             {
-                this.Written(Escaped, MirWrites.None);
+                this.Written(Escaped, MirWrites.None, via, -1);
             }
             else if (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true, Named: >= 0 } loan)
             {
-                this.Written(loan.Named, loan.Named == Escaped ? MirWrites.None : this.writable[loan.Root]); // A static's names E.
+                this.Written(loan.Named, loan.Named == Escaped ? MirWrites.None : this.writable[loan.Root], via, loan.Root); // A static's names E.
             }
         }
     }
 
-    // A holder W reaches, with its local's MirWrites (E: none).
-    private void Written(int slot, MirWrites kind)
+    // A holder W reaches, with its local's MirWrites (E: none) and how it was reached (with its local, past a holder).
+    private void Written(int slot, MirWrites kind, byte via, int local)
     {
         if (this.writing[slot] != this.walks)
         {
-            this.writing[slot] = this.walks;
+            (this.writing[slot], this.writingVia[slot]) = (this.walks, 0);
             this.targets.Add(slot);
         }
 
-        this.writingKind[slot] = kind;
+        (this.writingKind[slot], this.writingVia[slot]) = (kind, (byte)(this.writingVia[slot] | via));
+        this.writingLocal[slot] = via == ViaPast ? local : this.writingLocal[slot];
     }
 }

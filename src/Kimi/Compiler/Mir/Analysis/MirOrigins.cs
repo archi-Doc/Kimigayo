@@ -80,6 +80,7 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
     internal void Judge(MirBody body, long views, MirReport report)
     {
         (this.body, this.classCount, this.containedCount, this.Work, this.refCount, this.causeCount) = (body, 0, 0, 0, 0, 0);
+        this.edgesClass = -1;
         this.pending.Clear();
         this.pendingFacts.Clear();
         if (views == 0)
@@ -273,6 +274,10 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
 
     // A containment edge: the layer's Origin outlives the Ref's (both table indices), at Ref.
     private readonly record struct Edge(int Tail, int Head, int Ref);
+
+    // An edge of a class's graph (ClassEdges): its ends (-1: a row or Ref with an Unclassed end, which forms none), site and row (-1: a
+    // containment edge).
+    private readonly record struct ClassEdge(int Tail, int Head, SourceRef Site, int Row);
 
     // A class of views: their bits, the borrow binders they all share and its containment edges in `contained`.
     private record struct Class(ulong Views, ulong Borrows, int Start, int Count);

@@ -283,7 +283,7 @@ internal sealed partial class TyCtxt
             bounds[i] = bound;
         }
 
-        return binding.Retains(declaration, inputs, result, types?.Declaring, CollectionsMarshal.AsSpan(bounds), scope);
+        return binding.Retains(declaration, inputs, result, types, CollectionsMarshal.AsSpan(bounds), scope);
     }
 
     // SPEC 16.3.1, 15.6.4 (DECISIONS BU-47): the destruction receiver of a destroyed part, input 0 of its destruction's retention: `uniq/P`
