@@ -78,11 +78,14 @@ public class NativeAllocationAuditTest
         => Assert.Throws<EqualException>(() => Audit("Renamed", Entries, 2, 288, transferred: 96, transformIr: Rename));
 
     // DECISIONS R5-M145: the byte copy written inline, as MIR code generation wrote it before both generators called one routine, leaves a
-    // transferring program's copies uncounted, so even a bound whose minimum is 0 fails instead of passing vacuously.
-    [Fact]
-    public void AnInlineByteCopyFails()
+    // transferring program's copies uncounted, so even a bound whose minimum is 0 fails instead of passing vacuously, also when the routine
+    // stays defined beside the inline copies (a module that defines the storage byte primitives as a pair).
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AnInlineByteCopyFails(bool defined)
     {
-        var failure = Assert.Throws<TrueException>(() => Audit("Inline", Entries, 2, 288, transferred: new(0, 96), transformIr: Inline));
+        var failure = Assert.Throws<TrueException>(() => Audit("Inline", Entries, 2, 288, transferred: new(0, 96), transformIr: defined ? InlineCalls : Inline));
         Assert.Contains("byte copy", failure.Message, StringComparison.Ordinal);
     }
 
@@ -123,8 +126,15 @@ public class NativeAllocationAuditTest
     {
         var definition = Regex.Match(ir, @"(?ms)^define internal void @__kimi_transfer_bytes\(.*?^\}\n").Value;
         Assert.NotEmpty(definition);
-        var calls = ir.Replace(definition, string.Empty, StringComparison.Ordinal);
-        return Regex.Replace(calls, @"call void @__kimi_transfer_bytes\(([^)]*)\)", "call void @llvm.memcpy.p0.p0.i64($1, i1 false)");
+        return InlineCalls(ir.Replace(definition, string.Empty, StringComparison.Ordinal));
+    }
+
+    // The byte copy's calls written as the intrinsic they call, its definition kept.
+    private static string InlineCalls(string ir)
+    {
+        var inlined = Regex.Replace(ir, @"call void @__kimi_transfer_bytes\(([^)]*)\)", "call void @llvm.memcpy.p0.p0.i64($1, i1 false)");
+        Assert.NotEqual(ir, inlined);
+        return inlined;
     }
 
     // The growth routine under another name with its body unchanged.

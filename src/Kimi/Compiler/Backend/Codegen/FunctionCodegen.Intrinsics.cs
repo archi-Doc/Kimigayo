@@ -119,7 +119,7 @@ internal sealed partial class FunctionCodegen
         return routine;
     }
 
-    // A routine row, a call that is one runtime routine: its routine, after its module request (TryAllocate's), and its slot-less values in
+    // A routine row, a call that is one runtime routine: its routine, after its module request (Requested's), and its slot-less values in
     // order into `given`, from the call's result Type, its Type argument in the item's instance where the row reads one (TypeArgument, of
     // the call's substitution or an Item's own) and the target it carries (-1: none). Raw.allocate<T>(count) (SPEC 5.6) is
     // __kimi_raw_allocate, which checks the count and the byte size and gives a nonnull aligned address for zero bytes, with T's stride; no

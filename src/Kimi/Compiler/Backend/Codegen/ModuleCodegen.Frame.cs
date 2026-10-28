@@ -8,15 +8,15 @@ namespace Kimi.Compiler.Backend;
 // The module frame of ModuleCodegen (R5 package C 3.3, IMPL 21.4.2): the output form around the output roots, and the complete module
 // through LlvmModuleText in the old generator's order: the header with the pooled constants, the runtime, the external declarations, the
 // zero-sized symbol, the overflow declarations (the 128-bit ones after them), the memory declarations, the Array runtime, the formatting
-// runtime and the Array helpers, the nullable Alloc, the string-comparison routines, the buffered definitions, the entry, the object runtime
-// and the footer. The external declarations, the imports a definition calls (Import, DECISIONS R5-M89), the zero-sized symbol, the 128-bit
-// overflow declarations (DECISIONS R5-M143), the memory declarations, the Array runtime (DECISIONS R5-M121), the formatting runtime
-// (DECISIONS R5-M128), the nullable Alloc (DECISIONS R5-M92), the string-comparison routines (DECISIONS R5-M118) and the object runtime
-// (DECISIONS R5-M110) are written only when a definition requested them (Request; package C 3.2's requests, DECISIONS R5-M87), the Array
-// helpers (ModuleCodegen.Arrays) before every definition (PD8). The entry calls its root through FunctionCodegen's one call writer (PD3):
-// an Application's its startup root, a test build's each test root in catalog order inside the test runtime's entry (TestRuntime.WriteEntry;
-// DECISIONS R5-M136), whose runtime is the template's test variant followed by the test runtime's routines (TestRuntime.Text, with the memory
-// declarations it calls).
+// runtime and the Array helpers, the storage byte primitives, the string-comparison routines, the buffered definitions, the entry, the
+// object runtime and the footer. The external declarations, the imports a definition calls (Import, DECISIONS R5-M89), the zero-sized
+// symbol, the 128-bit overflow declarations (DECISIONS R5-M143), the memory declarations, the Array runtime (DECISIONS R5-M121), the
+// formatting runtime (DECISIONS R5-M128), the storage byte primitives (the nullable Alloc and the byte copy; DECISIONS R5-M92, R5-M145),
+// the string-comparison routines (DECISIONS R5-M118) and the object runtime (DECISIONS R5-M110) are written only when a definition
+// requested them (Request; package C 3.2's requests, DECISIONS R5-M87), the Array helpers (ModuleCodegen.Arrays) before every definition
+// (PD8). The entry calls its root through FunctionCodegen's one call writer (PD3): an Application's its startup root, a test build's each
+// test root in catalog order inside the test runtime's entry (TestRuntime.WriteEntry; DECISIONS R5-M136), whose runtime is the template's
+// test variant followed by the test runtime's routines (TestRuntime.Text, with the memory declarations it calls).
 internal sealed partial class ModuleCodegen
 {
     /// <summary>The zero-sized symbol, the home of every zero-sized local: one 16-aligned address (IMPL 21.1.3: a borrow of a zero-sized

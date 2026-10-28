@@ -7,9 +7,10 @@
 // target and keeps the legacy value beside it, naming the item's one catalog entry; a native fixture's outcome so (LegacyNative, which
 // ScalarEmissionTest's fixture writers take), whose .deviation sidecar both runs write byte-equal (Sidecar).
 // Input: the process's code generator, the selector's one reading (Compilation.DefaultCodegen). Output: the value the running code
-// generator meets. Invariants: one entry per decided item (CodegenDeviationTest checks the catalog); a deviation's two values differ.
+// generator meets. Invariants: one entry per decided item (CodegenDeviationTest checks the catalog); a deviation's two values differ, by content.
 // Must not: branch a test on the pipeline, read KIMI_CODEGEN again or mark a case as expected to fail.
 
+using System.Collections;
 using System.Text.Json;
 using Kimi.Compiler;
 using Xunit;
@@ -23,14 +24,15 @@ internal static class Codegen
     internal static bool Legacy => Compilation.DefaultCodegen == CompilerCodegen.Legacy;
 
     /// <summary>Gets the expected value under the process's code generator.</summary>
-    /// <typeparam name="T">A type with value equality.</typeparam>
+    /// <typeparam name="T">A type with value equality, or an array, which is compared by its elements.</typeparam>
     /// <param name="target">The value under MIR code generation, which stays once its stage makes it the default.</param>
     /// <param name="legacy">The old generator's value.</param>
     /// <param name="deviation">The catalog entry of the decided item.</param>
     /// <returns><paramref name="legacy"/> under the old generator, else <paramref name="target"/>.</returns>
     internal static T Expect<T>(T target, T legacy, Deviation deviation)
     {
-        Assert.False(EqualityComparer<T>.Default.Equals(target, legacy), $"The deviation {deviation.Id} keeps an equal legacy value.");
+        // One structural comparison for every T: an array's elements (an audit's order), else the value's own equality (DECISIONS R5-M145).
+        Assert.False(StructuralComparisons.StructuralEqualityComparer.Equals(target, legacy), $"The deviation {deviation.Id} keeps an equal legacy value.");
         return Legacy ? legacy : target;
     }
 

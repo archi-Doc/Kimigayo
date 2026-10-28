@@ -58,12 +58,14 @@ internal static class NativeAllocationAudit
         ir = Interpose(Interpose(Interpose(ir, "HeapAlloc", "audit_alloc"), "HeapFree", "audit_free"), "__kimi_exit", "__kimi_audit_exit");
         if (transferred is not null)
         {
-            // A bound with neither routine would count nothing, and a program whose bodies transfer bytes counts them only through its
-            // module's byte copy: a transfer the module writes in any other form fails here instead of passing a bound vacuously.
+            // A bound with neither routine would count nothing, and a program whose bodies transfer bytes counts them only through calls
+            // of its module's byte copy: a module that writes its transfers in any other form, with or without the routine defined (the
+            // storage byte primitives are defined as a pair), fails here instead of passing a bound vacuously.
             var grows = ir.Contains(RuntimeAbi.ArrayGrow.Name, StringComparison.Ordinal);
             var copies = ir.Contains(RuntimeAbi.TransferBytes.Name, StringComparison.Ordinal);
             Assert.True(grows || copies, "A transfer bound needs a routine to count.");
-            Assert.True(copies || !TransfersBytes(source), "A program that transfers bytes needs its module's byte copy to count them.");
+            var calls = ir.Contains("call void @" + RuntimeAbi.TransferBytes.Name + "(", StringComparison.Ordinal);
+            Assert.True(calls || !TransfersBytes(source), "A program that transfers bytes needs its module to call the byte copy it counts.");
             ir = CountTransfers(ir, RuntimeAbi.ArrayGrow.Name, CopyAnchor, CopyAnchor + Transferred("%used"));
             ir = CountTransfers(ir, RuntimeAbi.TransferBytes.Name, TransferAnchor, Transferred("%size") + TransferAnchor);
         }

@@ -3,9 +3,8 @@
 // Owns the module frame of the generated LLVM text (SPEC 21.3, 21.4, 22.6; DECISIONS R5-M14): the header with the pooled
 // constants, the Windows runtime template with its ABI definitions spliced in and its test variant, the runtime routines a module
 // defines only where a body calls them (TryAllocate, the nullable Alloc; TransferBytes, the byte copy), the checked splice every runtime
-// template takes (ExpandRuntime;
-// LegacyRuntimeHelpers' formatting runtime too), the external declarations,
-// the overflow and memory intrinsic declarations, the footer's profile attributes, the spelling of external symbols, numbered names,
+// template takes (ExpandRuntime; LegacyRuntimeHelpers' formatting runtime too), the external declarations, the overflow and memory
+// intrinsic declarations, the footer's profile attributes, the spelling of external symbols, numbered names,
 // numbers formatted on the stack (or once, as text, for a template filled at startup) and the bits of a floating constant's
 // hexadecimal spelling. Both generators write the frame through it (PD2: promoted, never copied; Name came from the old writer with
 // ObjectRuntime, R5-M69; Hexadecimal from FunctionCodegen, replacing the old writer's hardware widening, PLAN G157 (19)).
