@@ -1304,23 +1304,22 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(expected, GeneratedIr.Parse(ir).Single("internal i32 (i1)").Blocks.Skip(1).Select(static x => x.Label));
     }
 
-    // PD11: a form the frame does not cover yet is one Unsupported_Kd in the Emission partition at its location, and no module is written;
-    // its valid counterpart is. A string's Move into another local is written since C2b (DECISIONS R5-M87), a function's call since C3a, a
-    // generic callee's instance whose Keep of a T instanced at i32 needs no drop included (R5-M78, R5-M89), a requirement's since C3b
-    // (R5-M93), a Builtin shim's since C8f (R5-M126), and a requirement whose witness a property witness (C3c) or one without a body (PLAN
-    // G157 (10), K's) is one record at the call; a Fn call of a formatting row is written since C9a (DECISIONS R5-M128), the Utf8Slice
-    // overload of writeLine included, and Text.toString of an i32 since C9b wrote its target, the BuiltinFormat item (R5-M130); the records of
-    // a for loop's
-    // statement and of the siblings its expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location
-    // (DECISIONS R5-M65), which the diagnostics could not order when each was keyed by its node. A static's initializer is written since
-    // C7b (DECISIONS R5-M106), a constant one folded into its slot. The operator rows (DECISIONS R5-M76) write checked 128-bit arithmetic
-    // and a comparison through an operand's ref layers since wide (R5-M143); they
-    // have a raw pointer column since C8a (R5-M92), which writes null too; an erasure is written since C5b (DECISIONS R5-M104), into any
-    // target since C5c (R5-M108); an Array's capacity and an Array from none since C8d (R5-M121); the place writer (DECISIONS R5-M83)
-    // reads an object borrow's payload since C6a (R5-M110); the rvalue rows (DECISIONS R5-M87) write a Tuple aggregate
-    // and a zero-sized local's address, and since C8e (R5-M124) a Dictionary's length, a Dictionary from none and its iteration's storage.
-    // K11: an Application's function nothing calls is not generated, so its form (G157 (10)'s reserve call) records nothing; a Library
-    // generates it.
+    // PD11: a form the frame does not cover yet is one Unsupported_Kd in the Emission partition at its location, and no module is
+    // written; its valid counterpart is. A string's Move into another local is written since C2b (DECISIONS R5-M87), a function's call
+    // since C3a, a generic callee's instance whose Keep of a T instanced at i32 needs no drop included (R5-M78, R5-M89), a requirement's
+    // since C3b (R5-M93), a Builtin shim's since C8f (R5-M126) and a property witness's since C3c (R5-M141), and a requirement whose
+    // witness has no body (PLAN G157 (10), K's) is one record at the call, its requirement Item's Value call too; a Fn call of a
+    // formatting row is written since C9a (DECISIONS R5-M128), the Utf8Slice overload of writeLine included, and Text.toString of an i32
+    // since C9b wrote its target, the BuiltinFormat item (R5-M130); the records of a for loop's statement and of the siblings its
+    // expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location (DECISIONS R5-M65), which the
+    // diagnostics could not order when each was keyed by its node. A static's initializer is written since C7b (DECISIONS R5-M106), a
+    // constant one folded into its slot. The operator rows (DECISIONS R5-M76) write checked 128-bit arithmetic and a comparison through
+    // an operand's ref layers since wide (R5-M143); they have a raw pointer column since C8a (R5-M92), which writes null too; an erasure
+    // is written since C5b (DECISIONS R5-M104), into any target since C5c (R5-M108); an Array's capacity and an Array from none since C8d
+    // (R5-M121); the place writer (DECISIONS R5-M83) reads an object borrow's payload since C6a (R5-M110); the rvalue rows (DECISIONS
+    // R5-M87) write a Tuple aggregate and a zero-sized local's address, and since C8e (R5-M124) a Dictionary's length, a Dictionary from
+    // none and its iteration's storage. K11: an Application's function nothing calls is not generated, so its form (G157 (10)'s reserve
+    // call) records nothing; a Library generates it.
     [Theory]
     [InlineData("func same(p: ref/raw/i32, q: raw/i32) -> bool => p == q\n", OutputKind.Library, new string[0])]
     [InlineData("func twice(a: f64) -> f64 => a + a\n", OutputKind.Library, new string[0])]
@@ -1344,10 +1343,10 @@ public sealed partial class FunctionCodegenTest
         OutputKind.Library,
         new string[0])]
     [InlineData(
-        "contract Counted\n    property count: i32 has get, set\nstruct Tally\n    Self is Counted\n    public var count: i32 = 1\n    public init() => ()\n" +
-        "func read<T>(x: ref/T) -> i32\n    T is Counted\n    return x.count\nfunc use(t: ref/Tally) -> i32 => read(t)\n",
+        "func room<W>(w: uniq/W) -> i32\n    W is BufferWriter\n    let reserve = W.reserve\n    match reserve(w, 4)\n        .Ok(_) => return 1\n" +
+        "        .Err(_) => return 0\nfunc use(heap: uniq/Text.HeapBuffer) -> i32 => room(heap)\n",
         OutputKind.Library,
-        new[] { "x.count" })]
+        new[] { "reserve(w, 4)" })]
     [InlineData(Reserve + "func use(heap: uniq/Text.HeapBuffer) -> i32 => room(heap)\n", OutputKind.Library, new[] { "w.reserve(4)" })]
     [InlineData(Reserve + "func use(heap: uniq/Text.HeapBuffer) -> i32 => room(heap)\n()", OutputKind.Application, new string[0])]
     [InlineData("func show(text: Text.Utf8Slice) => Console.writeLine(text)\n", OutputKind.Library, new string[0])]
@@ -1416,6 +1415,7 @@ public sealed partial class FunctionCodegenTest
     [InlineData(Interpolations, OutputKind.Library)]
     [InlineData(Verifications, OutputKind.Application)]
     [InlineData(Phases, OutputKind.Application)]
+    [InlineData(Witnesses, OutputKind.Library)]
     public void GenerationIsDeterministic(string source, OutputKind output)
     {
         var first = Generate(Analyze(source, output));
@@ -1526,6 +1526,7 @@ public sealed partial class FunctionCodegenTest
     [InlineData(Interpolations, OutputKind.Library)]
     [InlineData(Verifications, OutputKind.Application)]
     [InlineData(Phases, OutputKind.Application)]
+    [InlineData(Witnesses, OutputKind.Library)]
     public void WarmGenerationAllocatesNothing(string source, OutputKind output)
     {
         var c = Analyze(source, output);
