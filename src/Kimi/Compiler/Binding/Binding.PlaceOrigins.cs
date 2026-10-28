@@ -87,9 +87,8 @@ public sealed partial class Binding
             return ClosureValueSlot;
         }
 
-        var symbol = source.BoundSymbol;
-        return symbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate } or
-            { Kind: BindingSymbolKind.Capture } ? SymbolOriginSlot(symbol) : 0;
+        return source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate or BindingSymbolKind.Capture } symbol
+            ? SymbolOriginSlot(symbol) : 0;
     }
 
     // The dependency of a borrow prepared from a source: through an implicitly followed pair layer it is the layer's own

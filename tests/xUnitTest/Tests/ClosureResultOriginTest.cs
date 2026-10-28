@@ -105,6 +105,63 @@ public class ClosureResultOriginTest
         }
     }
 
+    // SPEC 15.8.2, 23.1.2 (DECISIONS R4-M152 P8, R5-M63): a returned Closure literal that P8 fails, a maker's expression body at any
+    // nesting, keeps its definition: its record is at the literal, as the block form's `return` places it, and the returned value stays
+    // callable, its call F1's located Unsupported_Kd (its signature names the maker's parameter storage), with no derived NotCallable_Kd
+    // or UnresolvedBinding_Kd (review 2's B1: v2, a08, f03, f04, f07; each with its block-form twin). A reader reaching a closure through
+    // its Type reads its definition (BoundClosure.Of), whatever its literal's creation outcome.
+    [Theory]
+    [InlineData("let outer = func (x: i32) => func [x@ref] () => x\nlet a = outer(3)\nlet r = a()", "func [x@ref] () => x", "a()")]
+    [InlineData("let outer = func (x: i32)\n    return func [x@ref] () => x\nlet a = outer(3)\nlet r = a()", "func [x@ref] () => x", "a()")]
+    [InlineData(Inspect + "let outer = func (x: i32) => func [x@ref] () => x\nlet a = outer(3)\ninspect(a())", "func [x@ref] () => x", "a()")]
+    [InlineData(Inspect + "let outer = func (x: i32)\n    return func [x@ref] () => x\nlet a = outer(3)\ninspect(a())", "func [x@ref] () => x", "a()")]
+    [InlineData("let outer = func (x: i32) => func (y: i32) => func [y@ref] () => y\nlet m = outer(3)\nlet a = m(4)\nlet r = a()", "func [y@ref] () => y", "a()")]
+    [InlineData("let outer = func (x: i32)\n    return func (y: i32) => func [y@ref] () => y\nlet m = outer(3)\nlet a = m(4)\nlet r = a()", "func [y@ref] () => y", "a()")]
+    [InlineData(
+        "let outer = func (x: i32)\n    return func (y: i32)\n        return func [y@ref] () => y\nlet m = outer(3)\nlet a = m(4)\nlet r = a()",
+        "func [y@ref] () => y",
+        "a()")]
+    [InlineData("let outer = func (x: i32) => func [x@ref] () => x\nlet r = outer(3)()", "func [x@ref] () => x", "outer(3)()")]
+    [InlineData("let outer = func (x: i32)\n    return func [x@ref] () => x\nlet r = outer(3)()", "func [x@ref] () => x", "outer(3)()")]
+    public void AFailedReturnedLiteralKeepsItsDefinition(string source, string literal, string call)
+    {
+        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
+        {
+            var records = ContextualCaptureTest.PublishedRecords(source, pipeline).OrderBy(static x => x.Span.Start)
+                .Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}");
+            Assert.Equal([$"{nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd)} {literal}", $"{nameof(DiagnosticCode.Unsupported_Kd)} {call}"], records);
+        }
+    }
+
+    // Pins of interim records of a returned Closure (DECISIONS R4-M152; each changes when PLAN G273's images reach its use, or when
+    // selection marks a rejection over a failed source Dependent): a valid nested maker's returned Closure, whose signature names the
+    // maker's ρ, passed to a generic `F is Callable<…>` is UnprovenConstraint_Kd at the argument, an interim limit the owner accepted
+    // (「暫定として認める」) until G273 (dev: R1's Unsupported_Kd at the maker's call); the same use of a returned value P8 failed keeps a
+    // derived NoApplicableOverload_Kd beside the record at the literal (dev: a derived NotCallable_Kd); and a call whose signature names
+    // the maker's input only in a raw layer is not F1's located limit yet, so the valid a17 keeps f1in's false UnprovenOriginRelation_Kd
+    // (G273, with the raw role's sites, DECISIONS BU-24).
+    [Theory]
+    [InlineData(
+        "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> ref/i32>\n    return 0\nlet outer = func (x: i32) => func [x] () => func [x@ref] () => x\n" +
+            "let m = outer(3)\nlet a = m()\nlet r = apply(a@ref)",
+        "UnprovenConstraint_Kd a@ref")]
+    [InlineData(
+        "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n    return 0\nlet outer = func (x: i32)\n    return func [x@ref] () => x\n" +
+            "let a = outer(3)\nlet r = apply(a@ref)",
+        "UnsatisfiedOriginRelation_Kd func [x@ref] () => x; NoApplicableOverload_Kd apply(a@ref)")]
+    [InlineData(
+        "func h(q: ref/i32) -> raw/i32 during q\n    let outer = func (x: ref/i32) => func [x] () => x@follow@raw\n    let a = outer(q)\n    return a()\nlet k = 0",
+        "UnprovenOriginRelation_Kd a()")]
+    public void AReturnedClosureKeepsItsInterimRecord(string source, string records)
+    {
+        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
+        {
+            var found = ContextualCaptureTest.PublishedRecords(source, pipeline).OrderBy(static x => x.Span.Start)
+                .Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}");
+            Assert.Equal(records, string.Join("; ", found));
+        }
+    }
+
     // SPEC 15.8.2, 13.5.6 (DECISIONS R4-M152): a Closure literal's own temporary is its ClosureValueSlot atom, the receiver Origin ρ of a
     // call on the literal, so a Borrow of it kept past its statement is the Loan conflict at its storage end on the default pipeline too
     // (its slot 0 read as the literal's parameter, which the old analysis rooted nowhere); used within its statement it is valid.

@@ -8,12 +8,14 @@
 //   the pass's list of the calls that set it (ReceiverDependentCalls), which OwnershipAnalysis's gate re-reads through each listed
 //   call's current plan (F4). The list is the pass's that last appended to it (receiverDependentPass, a pass stamp), so it needs no
 //   reset; a plan's flag says the list holds its call (CallPlan.ReceiverDependentListed), so a call is listed once per pass in O(1),
-//   each flag cleared when the next pass starts the list afresh. The list is created with the first such call.
-// - Inputs: the result Type, the callee expression (its Closure Type and BoundClosure's captures) and the call.
-// - Outputs: the answer, read by BindValueCall; the fact and the list, read by the gate only.
+//   each flag cleared when the next pass starts the list afresh. The list is created with the first such call, and it keeps the last
+//   listing pass's calls, and so their syntax, until a later pass lists one (no pass reset; transitional with the gate).
+// - Inputs: the result Type, the callee expression (its Closure Type and that Type's definition's captures, BoundClosure.Of) and the
+//   call.
+// - Outputs: the answer, read by ValueCallResult; the fact and the list, read by the gate only.
 // - Invariants: a meet is fixed when each operand is; a Non-Copy carrier is never fixed; a call is listed once per pass, in the order its
 //   bindings first set the fact; an empty list costs nothing.
-// - Prohibitions: no record, failure or substitution; no reader but BindValueCall and the gate.
+// - Prohibitions: no record, failure or substitution; no reader but ValueCallResult and the gate.
 
 using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
@@ -139,7 +141,7 @@ public sealed partial class Binding
             return FixedInBody(result, use);
         }
 
-        if (type.Symbol?.Declaration is not FunctionKoto { BoundClosure: { } closure })
+        if (BoundClosure.Of(type) is not { } closure)
         {
             return false;
         }

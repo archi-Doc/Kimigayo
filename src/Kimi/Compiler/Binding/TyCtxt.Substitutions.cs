@@ -53,10 +53,10 @@ internal sealed partial class TyCtxt
             : this.Intern(call.Target, call.ConformingType, call.DeclaringType ?? BoundContract(call), call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
 
     // SPEC 6.1.3, 8.1.3: a closure's substitution, the context of the instance that closed it; a closure no instance closed is in the identity of
-    // the declaration enclosing it.
+    // the declaration enclosing it. The closure is the Type's definition (BoundClosure.Of; DECISIONS R5-M63, R4-M152).
     internal Subst? SubstOfClosure(BoundType closure)
     {
-        if (closure.Symbol?.Declaration is not FunctionKoto { BoundClosure: not null } binder)
+        if (closure.Symbol?.Declaration is not FunctionKoto binder || BoundClosure.Of(binder) is null)
         {
             return null;
         }

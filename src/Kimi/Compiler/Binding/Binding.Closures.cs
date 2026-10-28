@@ -69,7 +69,7 @@ public sealed partial class Binding
             var actual = call.ArgumentNodes[i].BoundType;
             var owner = actual is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? actual.Components[0] : actual;
             var pattern = function.Parameters[mapping[i]].Type.BoundType;
-            if (owner is not { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { BoundClosure: { Receiver: not SemanticsKind.Ref } closure } } ||
+            if (owner is not { Kind: BoundTypeKind.Closure } || BoundClosure.Of(owner) is not { Receiver: not SemanticsKind.Ref } closure ||
                 (pattern is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? pattern.Components[0] : pattern)?.Kind != BoundTypeKind.Parameter ||
                 !this.TryCallable(pattern!, this.ConstraintScope(function), out _, out var required) || CallableReceiverFits(closure.Receiver, CallableReceiverMask(required)))
             {

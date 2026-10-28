@@ -143,7 +143,7 @@ internal sealed partial class BodyLowering
         }
 
         if (operation.Kind != OwnershipOperationKind.Produce || source?.Kind != BoundTypeKind.Closure ||
-            source.Symbol?.Declaration is not FunctionKoto { BoundClosure: { Receiver: SemanticsKind.Ref } closure } definition ||
+            source.Symbol?.Declaration is not FunctionKoto definition || BoundClosure.Of(definition) is not { Receiver: SemanticsKind.Ref } closure ||
             !ReferenceEquals(body.Resolve(operation.Source.ErasedFunctionType, body.ContextAt(id)), body.Places[operation.Place].Type) ||
             operation.Source.CodeContext.Compilation.Binding.ClosureSignature(source) is not { } signature ||
             !operation.Source.CodeContext.Compilation.Binding.CallableSignatureFits(signature, body.Places[operation.Place].Type, definition) ||

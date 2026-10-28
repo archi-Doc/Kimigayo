@@ -13,7 +13,8 @@
 //   receiver: CaseFreeReceiver unless it is Shared, else Exclusive where a capture with BareReborrows has an exclusive layer as its
 //   case Type, else Shared.
 // - Invariants: Receiver is CaseFreeReceiver raised to Exclusive when a capture has BareReborrows, so Consuming never depends on a
-//   case; the receiver facts are the current binding's exactly when Classified; Of is the definition once the signature is bound.
+//   case; the receiver facts are the current binding's exactly when Classified; Of is the definition once the signature is bound, and
+//   a reader reaching a closure through a Closure Type reads it whatever the literal's creation outcome (DECISIONS R5-M63, R4-M152).
 // - Prohibitions: only ClosureEffects classifies the receiver facts, which the binding resets; no reader re-derives a receiver from the body.
 
 using Kimi.Compiler.Parsing;
@@ -67,4 +68,9 @@ public sealed class BoundClosure
     // environment, whatever its creation's outcome (DECISIONS R5-M63; Binding.BindClosure clears the signature first); its substitution is
     // TyCtxt.SubstOfClosure of its Type.
     internal static BoundClosure? Of(FunctionKoto function) => function.ClosureStorage is { Signature: not null } plan ? plan : null;
+
+    // The definition a Closure Type names, its literal's (Of), which every reader reaching a closure through a Type reads, whatever the
+    // literal's creation outcome (DECISIONS R5-M63, R4-M152): a failed creation, such as a returned value P8 fails, keeps its definition.
+    // FunctionKoto.BoundClosure is that creation's own outcome, read where the literal itself is.
+    internal static BoundClosure? Of(BoundType closure) => closure.Symbol?.Declaration is FunctionKoto function ? Of(function) : null;
 }
