@@ -252,14 +252,7 @@ public sealed class InstanceCollectorTest
             const string Holder = "contract Holder<K>\n    associate Item\nstruct HB<S>\n    S is Holder<i32>\n    var x: S.Item\n";
             const string Bindings = "    associate Holder<T>.Item is i32\n    associate Holder<U>.Item is u8\n";
             const string HAdd = "struct HAdd<S>\n    S is Addable<S>\n    public var x: S.Output\n";
-            const string HAd = "struct HAd<S>\n    S is Addable<S>\n    public var x: S.Output\n    public init(x: S.Output) => self.x = x@move\n";
-            const string Wrapped = HAd + "func f<T>(a: Wrapping<T>) -> HAd<Wrapping<T>>\n    T is PrimitiveInteger\n" +
-                "    let h = HAd<Wrapping<T>>.init(x: a + a)\n    return h@move\n";
-            const string HK = "struct HK<S>\n    S is IntoIterable\n    public var it: S.IteratorType\n" +
-                "    public init(s: S) => self.it = (s@move).intoIterator()\n";
             const string SrcC = HasItem + "struct SrcC<T>\n    Self is HasItem when T is Copy\n        associate HasItem.Item is T\n";
-            const string Call = "func g() -> ()\n    f(3@Wrapping<i32>)\n    return\n";
-            const string Next = "    let x = v.it.next()\n    return\n";
             var b65 = Nest("B", 65, "i32");
             return new()
             {
@@ -286,33 +279,6 @@ public sealed class InstanceCollectorTest
                 },
                 { "closedOutput", HAdd + "func g(h: HAdd<bool>) => ()\n", "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty },
                 { "closedOutputValid", HAdd + "func g(h: HAdd<i32>) -> i32 => h.x\n", string.Empty, string.Empty },
-                { "genericWrapping", Wrapped + "func g() -> ()\n    let v = f(3@Wrapping<i32>)\n    let w = v.x\n    return\n", string.Empty, string.Empty },
-                {
-                    "genericWrappingLocal", HAd + "func f<T>(a: Wrapping<T>) -> ()\n    T is PrimitiveInteger\n" +
-                    "    let h = HAd<Wrapping<T>>.init(x: a + a)\n    let p = (h@move, 1)\n    return\n" + Call, string.Empty, string.Empty
-                },
-                {
-                    "genericWrappingField", HAd + "struct Outer<T>\n    T is PrimitiveInteger\n    public var h: HAd<Wrapping<T>>\n" +
-                    "    public init(a: Wrapping<T>) => self.h = HAd<Wrapping<T>>.init(x: a)\n" +
-                    "func g() -> ()\n    let o = Outer<i32>.init(a: 3@Wrapping<i32>)\n    let w = o.h.x\n    return\n", string.Empty, string.Empty
-                },
-                {
-                    "genericWrappingPayload", "enum EW<S>\n    S is Addable<S>\n    A(S.Output)\n    B\nfunc f<T>(a: Wrapping<T>) -> ()\n" +
-                    "    T is PrimitiveInteger\n    let e: EW<Wrapping<T>> = .B\n    return\n" + Call, string.Empty, string.Empty
-                },
-                {
-                    "genericPremise", SrcC + "struct HP<S>\n    S is HasItem\n    public var x: S.Item\n    public init(x: S.Item) => self.x = x@move\n" +
-                    "func k<U>(u: U) -> HP<SrcC<U>>\n    U is Copy\n    let h = HP<SrcC<U>>.init(x: u)\n    return h@move\n" +
-                    "func g() -> ()\n    let h = k(1)\n    let v = h.x\n    return\n", string.Empty, string.Empty
-                },
-                {
-                    "genericRange", HK + "func f<T>(r: Range<T, T>) -> HK<Range<T, T>>\n    T is PrimitiveInteger\n" +
-                    "    let h = HK<Range<T, T>>.init(s: r)\n    return h@move\nfunc g() -> ()\n    var v = f(0..3@i32)\n" + Next, string.Empty, string.Empty
-                },
-                {
-                    "genericFixedArray", HK + "func f<T>(a: [2 of T]) -> HK<[2 of T]>\n    T is Copy\n    let h = HK<[2 of T]>.init(s: a)\n" +
-                    "    return h@move\nfunc g() -> ()\n    let a: [2 of i32] = [1, 2]\n    var v = f(a)\n" + Next, string.Empty, string.Empty
-                },
                 {
                     "closedRefuted", SrcC.Replace("Item is T", "Item is i32", StringComparison.Ordinal) + "func g(h: HA<SrcC<string>>) => ()\n",
                     "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty
@@ -675,10 +641,8 @@ public sealed class InstanceCollectorTest
     // conformance paths disagreeing (sourcesDisagree, pathsDisagree), a subject whose base clause gives it no conformance (noConformance*),
     // a closed subject that is no struct or enum (closed*: a primitive, a Tuple, an array, a completed `Src.Item`, `bool` without Addable,
     // a Case payload) or whose conformance's condition is refuted (closedRefuted); before, Layout's "no row for the Type Item" ("Output").
-    // A builtin output names its Type (closedOutputValid), and a projection over a subject with an abstract part stays pending in the
-    // generic declaration's storage, so the instance a use forms under its own premise completes it (generic*: `HAd<Wrapping<T>>` under
-    // `T is PrimitiveInteger` returned, in a local Tuple, in a Field and as an enum's payload, a conditional conformance proven only by the
-    // use's premise, `HK<Range<T, T>>` and `HK<[2 of T]>`; before, Unsupported_Kd from the generic declaration's Rejected storage).
+    // A builtin output names its Type (closedOutputValid). The valid twins whose projection stays pending in a generic declaration's
+    // storage are MirBorrowsTest.APendingProjectionIsCompletedByTheInstanceAUseForms, at the MIR problem layer that observed them.
     [Theory]
     [MemberData(nameof(RejectedCases))]
     public void APartBindingRejectedIsNoGenerationRecord(string name, string source, string issues, string records)

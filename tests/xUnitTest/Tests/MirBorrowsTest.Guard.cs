@@ -559,6 +559,93 @@ public sealed partial class MirBorrowsTest
         DiagnosticCode[] Of(string function) => [.. records.Where(x => x.Function == function).Select(static x => x.Code)];
     }
 
+    // SPEC 8.6.1, 8.3.3 (DECISIONS BU-50's decision 10, PLAN G271): a projection over a subject with an abstract part stays pending in the
+    // generic declaration's storage, and the instance a use forms under its own premise completes it, so a generic body holding one has
+    // no problem: `HAd<Wrapping<T>>` under `T is PrimitiveInteger` returned (wrapRet), in a local Tuple (wrapLocal), in a Field
+    // (wrapField) and as an enum's payload (wrapPayload), a conditional conformance proven only by the use's premise (premise),
+    // `HK<Range<T, T>>` (range) and `HK<[2 of T]>` (fixedArray), each with its closed use. Before (ca97a317e's final none), the generic
+    // declaration's storage was Rejected and A4's retention over it gave its limit verdict, Unsupported_Kd at the generic function's
+    // signature, its local, the init and the return: a problem of the whole MIR analysis, which Binding's issues, the program's findings,
+    // the collector's records and the Loan stratum alone never observe. The old path accepts each too.
+    [Fact]
+    public void APendingProjectionIsCompletedByTheInstanceAUseForms()
+    {
+        const string Source = """
+            contract HasItem
+                associate Item
+            struct SrcC<T>
+                Self is HasItem when T is Copy
+                    associate HasItem.Item is T
+            struct HAd<S>
+                S is Addable<S>
+                public var x: S.Output
+                public init(x: S.Output) => self.x = x@move
+            struct HP<S>
+                S is HasItem
+                public var x: S.Item
+                public init(x: S.Item) => self.x = x@move
+            struct HK<S>
+                S is IntoIterable
+                public var it: S.IteratorType
+                public init(s: S) => self.it = (s@move).intoIterator()
+            struct Outer<T>
+                T is PrimitiveInteger
+                public var h: HAd<Wrapping<T>>
+                public init(a: Wrapping<T>) => self.h = HAd<Wrapping<T>>.init(x: a)
+            enum EW<S>
+                S is Addable<S>
+                A(S.Output)
+                B
+            func wrapRet<T>(a: Wrapping<T>) -> HAd<Wrapping<T>>
+                T is PrimitiveInteger
+                let h = HAd<Wrapping<T>>.init(x: a + a)
+                return h@move
+            func wrapLocal<T>(a: Wrapping<T>) -> ()
+                T is PrimitiveInteger
+                let h = HAd<Wrapping<T>>.init(x: a + a)
+                let p = (h@move, 1)
+                return
+            func wrapPayload<T>(a: Wrapping<T>) -> ()
+                T is PrimitiveInteger
+                let e: EW<Wrapping<T>> = .B
+                return
+            func premise<T>(u: T) -> HP<SrcC<T>>
+                T is Copy
+                let h = HP<SrcC<T>>.init(x: u)
+                return h@move
+            func range<T>(r: Range<T, T>) -> HK<Range<T, T>>
+                T is PrimitiveInteger
+                let h = HK<Range<T, T>>.init(s: r)
+                return h@move
+            func fixedArray<T>(a: [2 of T]) -> HK<[2 of T]>
+                T is Copy
+                let h = HK<[2 of T]>.init(s: a)
+                return h@move
+            func uses() -> ()
+                let v = wrapRet(3@Wrapping<i32>)
+                let w = v.x
+                wrapLocal(3@Wrapping<i32>)
+                let o = Outer<i32>.init(a: 3@Wrapping<i32>)
+                let f = o.h.x
+                wrapPayload(3@Wrapping<i32>)
+                let p = premise(1)
+                let q = p.x
+                var r = range(0..3@i32)
+                let x = r.it.next()
+                let a: [2 of i32] = [1, 2]
+                var k = fixedArray(a)
+                let y = k.it.next()
+                return
+            public func main() -> () => ()
+
+            """;
+        CompilerCodegen?[] codegens = [null, CompilerCodegen.Legacy]; // The process's, then the old path.
+        Assert.All(codegens, codegen => Assert.Empty(Records(MinimalEmissionTest.Analyze(Source, codegen: codegen))));
+
+        // The analysis's records: the function and the code of each.
+        static string[] Records(Compilation c) => [.. c.Problems.Select(x => $"{Function(c.SyntaxOf(x.Subject))}: {x.Code}")];
+    }
+
     // SPEC 23.1.1 (DECISIONS R4-M147): a call whose W reaches a holder the guard leaves undecided (MirWrites.Limit: a supplied layer whose
     // Origin steps Exclusive, whose members Binding does not publish, over a Loan-free pointee) is one located Unsupported_Kd at the call,
     // never a Language problem, and the view's independent problems stay: a Field (flat), a nested instance's Field (nested), a Case
