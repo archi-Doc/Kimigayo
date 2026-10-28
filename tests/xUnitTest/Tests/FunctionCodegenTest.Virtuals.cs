@@ -182,6 +182,15 @@ public sealed partial class FunctionCodegenTest
     [Fact]
     public void VirtualProgramsRun() => ScalarEmissionTest.EmitFixture("VirtualRows", VirtualRows, "payload\nerased\nvirtuals\n");
 
+    // The function name of a function's one body item (its index in the checked set), by its container (null: any) and its name.
+    internal static string BodyOf(Compilation c, string? owner, string name)
+    {
+        var set = c.Instances!;
+        return "__kimi_f" + Enumerable.Range(0, set.Items.Length).Single(x =>
+            set.Items[x].Key is { Kind: MonoKind.Body, Body.Def: { Kind: MirBodyKind.Fn, Decl: { } function } } && function.Name == name &&
+            (owner is null || (function.Scope.Owner is DeclarationContainerKoto container && container.Name == owner)));
+    }
+
     // The Virtuals Library generated under MIR code generation: its compilation, its IR and its text.
     private static (Compilation C, GeneratedIr Ir, string Text) ParseVirtuals()
     {
@@ -215,15 +224,6 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal("load ptr, ptr %, align 8", descriptor.Shape);
         Assert.Equal("getelementptr i8, ptr %, i64 -16", descriptor.Operands[0].Shape);
         return (slot, descriptor.Operands[0].Operands[0]);
-    }
-
-    // The function name of a function's one body item (its index in the checked set), by its struct (null: any) and its name.
-    private static string BodyOf(Compilation c, string? owner, string name)
-    {
-        var set = c.Instances!;
-        return "__kimi_f" + Enumerable.Range(0, set.Items.Length).Single(x =>
-            set.Items[x].Key is { Kind: MonoKind.Body, Body.Def: { Kind: MirBodyKind.Fn, Decl: { } function } } && function.Name == name &&
-            (owner is null || (function.Scope.Owner is DeclarationContainerKoto container && container.Name == owner)));
     }
 
     // The function of a function's one body item (BodyOf).

@@ -174,8 +174,8 @@ public sealed partial class FunctionCodegenTest
     }
 
     // PD8, R5-M46 (DECISIONS R5-M124): the Dictionary helpers precede every definition, each written once, with the Array runtime only where
-    // placeEntry's row declares it, so a module that only destroys a Dictionary has none; a module whose bodies shrink one defines the nullable
-    // Alloc once.
+    // placeEntry's row declares it, so a module that only destroys a Dictionary has none; a module whose bodies shrink one defines the storage
+    // byte primitives once (DECISIONS R5-M145).
     [Fact]
     public void DictionaryHelpersPrecedeTheDefinitionsWithTheRuntimeTheirRowsDeclare()
     {
@@ -188,6 +188,7 @@ public sealed partial class FunctionCodegenTest
         var grow = Regex.Match(text, @"define internal void @__kimi_array_grow\(");
         Assert.True(grow.Success && grow.Index < first);
         Assert.Single(Regex.Matches(text, @"define internal ptr @__kimi_try_allocate\("));
+        Assert.Single(Regex.Matches(text, @"define internal void @__kimi_transfer_bytes\("));
 
         var kept = Generate(Analyze(DictionaryKeys + "func dcKeep(d: Dictionary<Key, string>) => ()\n", OutputKind.Library));
         Assert.Matches(@"define internal void @__kimi_dictionary_drop_\d+\(", kept);

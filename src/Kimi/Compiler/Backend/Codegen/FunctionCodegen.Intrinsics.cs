@@ -6,10 +6,11 @@ namespace Kimi.Compiler.Backend;
 
 // The intrinsic rows of FunctionCodegen (R5 plans C8a, C5c, C6a, C9b and C9c, package C 3.2; DECISIONS R5-M92, R5-M108, R5-M110, R5-M130, R5-M131): a call of
 // an intrinsic by its row's writer (IntrinsicRows' writer column), over the closed IntrinsicWriter vocabulary: a routine row (Routine: a runtime routine
-// through the one call writer, Invoke, with its slot-less values; Raw.release, $abort, tryAllocateBytes, Raw.allocate with its element stride, a creation's
-// factory with its control value and a clone's retain, FunctionCodegen.Objects, Text.writer's routine with its destination's writer kind and dispatch word,
+// through the one call writer, Invoke, with its slot-less values; Raw.release, $abort, tryAllocateBytes and transferBytes, whose routines the module
+// defines on request (Requested; DECISIONS R5-M145), Raw.allocate with its element stride, a creation's factory with its control value and a clone's
+// retain, FunctionCodegen.Objects, Text.writer's routine with its destination's writer kind and dispatch word,
 // FunctionCodegen.Formatting), which a compiler function's Value call and adapter entry also call by its disposition (Routine by kind), a Fail's Abort reason,
-// Raw.initialize's copy, Raw.slice's record, transferBytes' memcpy, a staticEnsure's state test (FunctionCodegen.Statics), a runtime Type test
+// Raw.initialize's copy, Raw.slice's record, a staticEnsure's state test (FunctionCodegen.Statics), a runtime Type test
 // (FunctionCodegen.Objects), an owning interpolation's buffer, segment steps and end (FunctionCodegen.Interpolation) and a verification's
 // compared value, which the test runtime holds for its observation (Record; DECISIONS R5-M136). Each takes its operands at its
 // declaration's slots (ArgumentPosition) and ends through Finish; a call whose row's Target column names an item carries the collector's target, read once by
@@ -38,9 +39,6 @@ internal sealed partial class FunctionCodegen
                 return;
             case IntrinsicWriter.Slice:
                 this.Slice(call);
-                return;
-            case IntrinsicWriter.Copy:
-                this.CopyBytes(call);
                 return;
             case IntrinsicWriter.Ensure:
                 this.Ensure(call, target);
@@ -121,7 +119,7 @@ internal sealed partial class FunctionCodegen
         return routine;
     }
 
-    // A routine row, a call that is one runtime routine: its routine, after its module request (TryAllocate's), and its slot-less values in
+    // A routine row, a call that is one runtime routine: its routine, after its module request (Requested's), and its slot-less values in
     // order into `given`, from the call's result Type, its Type argument in the item's instance where the row reads one (TypeArgument, of
     // the call's substitution or an Item's own) and the target it carries (-1: none). Raw.allocate<T>(count) (SPEC 5.6) is
     // __kimi_raw_allocate, which checks the count and the byte size and gives a nonnull aligned address for zero bytes, with T's stride; no
@@ -136,8 +134,8 @@ internal sealed partial class FunctionCodegen
         {
             case IntrinsicWriter.Routine:
                 return row.Routine;
-            case IntrinsicWriter.TryAllocate:
-                this.module.Request(ModuleCodegen.Needs.TryAllocate);
+            case IntrinsicWriter.Requested:
+                this.module.Request(ModuleCodegen.Needs.StorageBytes | ModuleCodegen.Needs.Memory);
                 return row.Routine;
             case IntrinsicWriter.Allocate:
                 this.slotless[0] = new('\0', this.Laid(argument)?.Layout.Stride ?? 0);
@@ -259,31 +257,6 @@ internal sealed partial class FunctionCodegen
         var offsets = slice.Layout.FieldOffsets.Span;
         this.StoreAt(this.Offset(record, offsets[0]), pointer.Layout, buffer);
         this.StoreAt(this.Offset(record, offsets[1]), index.Layout, count);
-        this.Finish(call, null);
-    }
-
-    // SPEC 22.2: transferBytes(destination, source, count) copies bytes whose ranges do not overlap (its contract), so llvm.memcpy
-    // (DECISIONS R5-M18); it reports nothing.
-    private void CopyBytes(in MirTerminator call)
-    {
-        var key = new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
-        if (!this.Operand(this.body.Operands[call.Start + ArgumentPosition(key, 0)], out var destination) ||
-            !this.Operand(this.body.Operands[call.Start + ArgumentPosition(key, 1)], out var source) ||
-            !this.Operand(this.body.Operands[call.Start + ArgumentPosition(key, 2)], out var count))
-        {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-            return;
-        }
-
-        this.module.Request(ModuleCodegen.Needs.Memory);
-        var output = this.output;
-        output.Write("  call void @llvm.memcpy.p0.p0.i64(ptr ");
-        this.WriteValue(destination);
-        output.Write(", ptr ");
-        this.WriteValue(source);
-        output.Write(", i64 ");
-        this.WriteValue(count);
-        output.Write(", i1 false)\n");
         this.Finish(call, null);
     }
 }

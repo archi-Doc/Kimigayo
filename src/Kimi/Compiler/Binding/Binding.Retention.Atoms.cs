@@ -34,7 +34,7 @@ public sealed partial class Binding
     // (TyCtxt.ClosureEnvironment), and ρ its receiver atom (ClosureValueSlot); Env by value under `owner/Self`. The MIR body's receiver
     // local has the same Type over the definition's environment, without ρ (MirBuilder).
     internal BoundType ClosureReceiver(FunctionKoto closure, BoundType callee)
-        => BoundClosure.Of(closure)!.Receiver is var receiver && receiver == SemanticsKind.Owner ? callee
+        => closure.ClosureDefinition!.Receiver is var receiver && receiver == SemanticsKind.Owner ? callee
             : this.types.Reference(receiver, callee, this.OriginAtom(closure, OriginKind.Projection, ClosureValueSlot));
 
     // Whether a position of the Type may hold a raw input's own value or a raw layer, at it or in its stored content (the hold walk,
@@ -98,7 +98,7 @@ public sealed partial class Binding
             var variance = exclusive ? OriginVariance.Invariant : OriginVariance.Covariant;
             if (outer is { Kind: OriginKind.Projection, Slot: ClosureValueSlot, Binder: FunctionKoto receiver })
             {
-                var (captures, environment) = (BoundClosure.Of(receiver)!.Captures, this.ClosureEnvironment(referent));
+                var (captures, environment) = (receiver.ClosureDefinition!.Captures, this.ClosureEnvironment(referent));
                 for (var i = 0; i < environment.Components.Count; i++)
                 {
                     var field = captures[i].Environment.MutableCapture ? variance : OriginVariance.Covariant;

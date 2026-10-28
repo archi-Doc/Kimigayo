@@ -1028,7 +1028,11 @@ public class ForeignEmissionTest
         var name = consume ? "ForeignPointerString" : "ForeignPointerStringRetained";
         var stdout = consume ? "second\nthird\ndone\n" : "second\ndone\n";
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
-        StringEmissionTest.WriteAuditedFixture(name, ir, stdout, "=0;first=1;second=1;third=1;compare=2;skip=0;done=1");
+        StringEmissionTest.WriteAuditedFixture(
+            name,
+            ir,
+            stdout,
+            Codegen.Expect("=0;first=1;second=1;third=1;compare=1;skip=0;done=1", "=0;first=1;second=1;third=1;compare=2;skip=0;done=1", CodegenDeviations.ConstantTemporaries));
     }
 
     [Theory]
@@ -1078,7 +1082,11 @@ public class ForeignEmissionTest
                 Console.writeLine("done")
             """;
         var ir = ScalarEmissionTest.EmitFixture("ForeignPointerStringCompare", source, "alpha\nbeta\nkept\ndone\n");
-        StringEmissionTest.WriteAuditedFixture("ForeignPointerStringCompare", ir, "alpha\nbeta\nkept\ndone\n", "=0;alpha=3;beta=2;kept=2;done=1");
+        StringEmissionTest.WriteAuditedFixture(
+            "ForeignPointerStringCompare",
+            ir,
+            "alpha\nbeta\nkept\ndone\n",
+            Codegen.Expect("=0;alpha=1;beta=1;kept=1;done=1", "=0;alpha=3;beta=2;kept=2;done=1", CodegenDeviations.ConstantTemporaries));
     }
 
     [Fact]

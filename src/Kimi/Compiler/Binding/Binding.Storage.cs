@@ -399,10 +399,16 @@ public sealed partial class Binding
         return this.SubstituteStoredOrigins(substituted, binder, (BoundOrigin[])owner.OriginArguments);
     }
 
-    // Substitutes a stored Origin's declared slots and inputs. A pair's outer Origin `o`, a negative slot of its binder, is bound
-    // through the Type arguments when they are given (SPEC 8.1.1, 8.1.2) and is otherwise kept.
-    private BoundOrigin SubstituteStoredOrigin(BoundOrigin origin, Koto binder, ReadOnlySpan<BoundOrigin> arguments, ReadOnlySpan<BoundOrigin> inputs = default, ReadOnlySpan<BoundType?> types = default)
+    // Substitutes a stored Origin's declared slots and the binder's per-call atoms (PerCallImages). A pair's outer Origin `o`, a negative
+    // slot of its binder, is bound through the Type arguments when they are given (SPEC 8.1.1, 8.1.2) and is otherwise kept.
+    private BoundOrigin SubstituteStoredOrigin(
+        BoundOrigin origin, Koto binder, ReadOnlySpan<BoundOrigin> arguments, PerCallImages images = default, ReadOnlySpan<BoundType?> types = default)
     {
+        if (origin.Kind == OriginKind.Projection && ReferenceEquals(origin.Binder, binder) && images.Reserved(origin.Slot) is { } reserved)
+        {
+            return reserved;
+        }
+
         if (origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, binder))
         {
             if ((uint)origin.Slot < (uint)arguments.Length && arguments[origin.Slot] is { } argument)
@@ -427,17 +433,18 @@ public sealed partial class Binding
             }
         }
 
-        if (origin.Kind == OriginKind.Input && ReferenceEquals(origin.Binder, binder) && (uint)origin.Slot < (uint)inputs.Length && inputs[origin.Slot] is { } input)
+        if (origin.Kind == OriginKind.Input && ReferenceEquals(origin.Binder, binder) && (uint)origin.Slot < (uint)images.Inputs.Length &&
+            images.Inputs[origin.Slot] is { } input)
         {
             return input;
         }
 
         if (origin.Kind == OriginKind.Intersection && origin.Operands.Count != 0)
         {
-            var result = this.SubstituteStoredOrigin(origin.Operands[0], binder, arguments, inputs, types);
+            var result = this.SubstituteStoredOrigin(origin.Operands[0], binder, arguments, images, types);
             for (var i = 1; i < origin.Operands.Count; i++)
             {
-                result = this.Meet(result, this.SubstituteStoredOrigin(origin.Operands[i], binder, arguments, inputs, types));
+                result = this.Meet(result, this.SubstituteStoredOrigin(origin.Operands[i], binder, arguments, images, types));
             }
 
             return result;
@@ -446,9 +453,10 @@ public sealed partial class Binding
         return origin;
     }
 
-    private BoundType SubstituteStoredOrigins(BoundType type, Koto binder, ReadOnlySpan<BoundOrigin> arguments, ReadOnlySpan<BoundOrigin> inputs = default, Koto? correspondingBinder = null)
+    private BoundType SubstituteStoredOrigins(
+        BoundType type, Koto binder, ReadOnlySpan<BoundOrigin> arguments, PerCallImages images = default, Koto? correspondingBinder = null)
     {
-        if (arguments.IsEmpty && inputs.IsEmpty && correspondingBinder is null)
+        if (arguments.IsEmpty && images.IsEmpty && correspondingBinder is null)
         {
             return type;
         }
@@ -460,10 +468,10 @@ public sealed partial class Binding
             return type;
         }
 
-        var origin = type.Origin is { } outer ? this.SubstituteStoredOrigin(outer, binder, arguments, inputs) : null;
+        var origin = type.Origin is { } outer ? this.SubstituteStoredOrigin(outer, binder, arguments, images) : null;
         if (type.RawOrigin is { } raw)
         {
-            origin = this.SubstituteStoredOrigin(raw, binder, arguments, inputs);
+            origin = this.SubstituteStoredOrigin(raw, binder, arguments, images);
         }
 
         var length = correspondingBinder is null ? type.LengthExpression : this.CorrespondingLength(type.LengthExpression, binder, correspondingBinder);
@@ -484,13 +492,13 @@ public sealed partial class Binding
 
             for (var i = 0; i < type.Components.Count; i++)
             {
-                components[i] = this.SubstituteStoredOrigins(type.Components[i], binder, arguments, inputs, correspondingBinder);
+                components[i] = this.SubstituteStoredOrigins(type.Components[i], binder, arguments, images, correspondingBinder);
                 changed |= !ReferenceEquals(components[i], type.Components[i]);
             }
 
             for (var i = 0; i < type.OriginArguments.Count; i++)
             {
-                origins[i] = this.SubstituteStoredOrigin(type.OriginArguments[i], binder, arguments, inputs);
+                origins[i] = this.SubstituteStoredOrigin(type.OriginArguments[i], binder, arguments, images);
                 changed |= !ReferenceEquals(origins[i], type.OriginArguments[i]);
             }
 
@@ -505,5 +513,27 @@ public sealed partial class Binding
                 this.lengthScratch.Return(lengths, clearArray: true);
             }
         }
+    }
+
+    // A call's images of its callee binder's per-call atoms (SPEC 15.6.4, 15.8.2; DECISIONS R4-M152): its inputs, in parameter-slot
+    // order, and at a value call of a Closure its two reserved atoms', the call receiver ρ (the receiver acquisition's Origin) and the
+    // call result (the call's Unbound atom, R4-M118), each built only where the result names its atom; a missing image keeps its atom.
+    private readonly ref struct PerCallImages(ReadOnlySpan<BoundOrigin> inputs, BoundOrigin? receiver, BoundOrigin? result)
+    {
+        internal ReadOnlySpan<BoundOrigin> Inputs { get; } = inputs;
+
+        internal bool IsEmpty => this.Inputs.IsEmpty && receiver is null && result is null;
+
+        public static implicit operator PerCallImages(ReadOnlySpan<BoundOrigin> inputs) => new(inputs, null, null);
+
+        public static implicit operator PerCallImages(Span<BoundOrigin> inputs) => new(inputs, null, null);
+
+        // The image of the binder's reserved atom at a Projection slot, null for any other slot.
+        internal BoundOrigin? Reserved(int slot) => slot switch
+        {
+            ClosureValueSlot => receiver,
+            CallResultSlot => result,
+            _ => null,
+        };
     }
 }

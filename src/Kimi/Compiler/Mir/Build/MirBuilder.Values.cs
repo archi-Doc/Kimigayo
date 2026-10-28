@@ -270,7 +270,7 @@ internal sealed partial class MirBuilder
     // SPEC 12.2 (A3 E13 (2)): a capture before a later one whose acquisition builds code is secured where it is evaluated.
     private void Closure(MirPlace destination, FunctionKoto closure)
     {
-        var captures = BoundClosure.Of(closure)!.Captures;
+        var captures = closure.ClosureDefinition!.Captures;
         var start = this.arguments.Count;
         var last = -1;
         for (var i = 0; i < captures.Count; i++)

@@ -143,7 +143,7 @@ internal sealed partial class BodyLowering
         }
 
         if (operation.Kind != OwnershipOperationKind.Produce || source?.Kind != BoundTypeKind.Closure ||
-            source.Symbol?.Declaration is not FunctionKoto { BoundClosure: { Receiver: SemanticsKind.Ref } closure } definition ||
+            source.Symbol?.Declaration is not FunctionKoto definition || definition.ClosureDefinition is not { Receiver: SemanticsKind.Ref } closure ||
             !ReferenceEquals(body.Resolve(operation.Source.ErasedFunctionType, body.ContextAt(id)), body.Places[operation.Place].Type) ||
             operation.Source.CodeContext.Compilation.Binding.ClosureSignature(source) is not { } signature ||
             !operation.Source.CodeContext.Compilation.Binding.CallableSignatureFits(signature, body.Places[operation.Place].Type, definition) ||
@@ -171,7 +171,7 @@ internal sealed partial class BodyLowering
     {
         failure = null;
         var value = body.Values[id];
-        if (body.Function.BoundClosure is not { } closure || value.Constant < 0 || value.Constant >= closure.Captures.Count ||
+        if (body.Function.ClosureAsCreated is not { } closure || value.Constant < 0 || value.Constant >= closure.Captures.Count ||
             body.Operations[id].Kind != OwnershipOperationKind.Produce || !ReferenceEquals(body.Operations[id].Source, body.Function) ||
             !ReferenceEquals(ValueType(body, id), body.Resolve(closure.Captures[(int)value.Constant].Environment.Type, body.ContextAt(id))) ||
             !body.SymbolPlaces.TryGetValue(closure.Captures[(int)value.Constant].Environment, out var place) || place != body.Operations[id].Place)
@@ -200,7 +200,7 @@ internal sealed partial class BodyLowering
         failure = null;
         var operation = body.Operations[id];
         var value = body.Values[id];
-        if (operation.Source is not FunctionKoto { BoundClosure: { } closure } source ||
+        if (operation.Source is not FunctionKoto { ClosureAsCreated: { } closure } source ||
             closure.Signature.Kind != BoundTypeKind.Function ||
             !ReferenceEquals(body.Places[operation.Place].Type, body.Resolve(closure.EnvironmentType ?? closure.Signature, body.ContextAt(id))) || value.Count != closure.Captures.Count ||
             this.ClosureEntry(body.Places[operation.Place].Type, source) is not { } callee ||
@@ -492,7 +492,7 @@ internal sealed partial class BodyLowering
             function.Add(EmissionOpcode.Unreachable, id);
         }
         else if (plan.ReceiverKind == SemanticsKind.Owner &&
-            (receiverType.Kind == BoundTypeKind.Function || receiverType is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { BoundClosure.Receiver: not SemanticsKind.Owner } }) &&
+            (receiverType.Kind == BoundTypeKind.Function || BoundClosure.Of(receiverType) is { Receiver: not SemanticsKind.Owner }) &&
             this.aggregateLayouts.Get(receiverType) is { NeedsDestruction: true } cleanup)
         {
             // The owning Callable contract transfers the whole receiver. A Shared/Exclusive concrete entry (or

@@ -153,7 +153,7 @@ public sealed partial class Binding
             return new(atom, OriginAtomKind.Dependent, role);
         }
 
-        if (role is ProjectionRole.ClosureValue or ProjectionRole.CallResult && DeclaredBy(atom, slice.Body))
+        if (OwnCallAtom(atom, slice.Body))
         {
             return new(atom, OriginAtomKind.Fixed, role); // Row 5: B's own call receiver and call result.
         }

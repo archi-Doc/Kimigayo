@@ -72,7 +72,12 @@ public class ElementReplacementEmissionTest
         const string Output = "cleanup\nok\n";
         var fixture = "ElementReplacementTransfer" + name;
         var ir = ScalarEmissionTest.EmitFixture(fixture, source, Output);
-        StringEmissionTest.WriteAuditedFixture(fixture, ir, Output, "old=1;new=1;cleanup=1;ok=1", order: [1, 2, 0, 3]);
+        StringEmissionTest.WriteAuditedFixture(
+            fixture,
+            ir,
+            Output,
+            Codegen.Expect("old=1;new=0;cleanup=1;ok=1", "old=1;new=1;cleanup=1;ok=1", CodegenDeviations.ConstantTemporaries),
+            order: Codegen.Expect<int[]>([2, 0, 3], [1, 2, 0, 3], CodegenDeviations.ConstantTemporaries));
     }
 
     [Fact]

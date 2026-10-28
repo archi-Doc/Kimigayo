@@ -322,8 +322,7 @@ public sealed partial class Binding
                 this.Function(implementation, callable is null ? null : binding.FunctionItemContext(callable, requireClosed: false));
             }
 
-            if (callable is { Kind: BoundTypeKind.Closure } && receiver == SemanticsKind.Owner &&
-                callable.Symbol?.Declaration is FunctionKoto { BoundClosure.Receiver: not SemanticsKind.Owner })
+            if (receiver == SemanticsKind.Owner && BoundClosure.Of(callable) is { Receiver: not SemanticsKind.Owner })
             {
                 this.Destruction(callable, implementation.Declaration);
             }
@@ -705,8 +704,7 @@ public sealed partial class Binding
                 this.stepUse = use;
                 this.Function(symbol, binding.FunctionItemContext(type, requireClosed: false));
                 this.stepUse = null;
-                if (type.Kind == BoundTypeKind.Closure && call.ReceiverKind == SemanticsKind.Owner &&
-                    type.Symbol.Declaration is FunctionKoto { BoundClosure.Receiver: not SemanticsKind.Owner })
+                if (call.ReceiverKind == SemanticsKind.Owner && BoundClosure.Of(type) is { Receiver: not SemanticsKind.Owner })
                 {
                     this.Destruction(type, use);
                 }

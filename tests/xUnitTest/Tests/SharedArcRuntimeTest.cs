@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text.RegularExpressions;
 using Kimi.Compiler;
 using Verification;
 using Xunit;
@@ -30,12 +31,13 @@ public class SharedArcRuntimeTest
         NativeAllocationAudit.WriteFixture("SharedArcCloneLifetime", Source, 1, 1, 20, "alive\ndrop\ndone\n");
     }
 
+    // SHARED_OBJECT_RUNTIME (DECISIONS R5-M112, R5-M145): every arc release in the module, the runtime's dynamic one and the Sealed payload's
+    // direct one (both generators write ObjectRuntime's one text), keeps the required ordering; the Sealed one is found by its release
+    // exchange, not by a generator's name for it (R5-M12).
     [Fact]
     public void GeneratedTransitionsKeepTheRequiredOrderingAndSuccessConditions()
     {
-        var c = MinimalEmissionTest.Analyze(Scalar);
-        Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
-        var ir = CompilationTestHelper.WriteIr(c);
+        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(Scalar));
         Assert.Contains("store i64 %controlValue, ptr %control, align 8", ir, StringComparison.Ordinal);
         var clone = Function(ir, "__kimi_clone_arc");
         Assert.Contains("%initial = load atomic i64, ptr %control monotonic, align 8", clone, StringComparison.Ordinal);
@@ -45,8 +47,11 @@ public class SharedArcRuntimeTest
         Assert.Contains("br i1 %updated, label %publish, label %check\npublish:\n  store ptr %header, ptr %ret", clone, StringComparison.Ordinal);
         Assert.DoesNotContain("store ", clone[clone.IndexOf("overflow:", StringComparison.Ordinal)..], StringComparison.Ordinal);
         var dynamicRelease = Function(ir, "__kimi_drop_arc");
-        var handle = Assert.Single(module.Aggregates, x => x.ObjectHandle?.Counting == ObjectCountingStep.Atomic);
-        var sealedRelease = Function(ir, "__kimi_drop_aggregate" + handle.Id);
+        var releases = Regex.Matches(ir, @"(?ms)^define internal void @[^\n]*\n.*?^\}").Select(static x => x.Value)
+            .Where(static x => x.Contains("cmpxchg ptr %control, i64 %old, i64 %next release monotonic", StringComparison.Ordinal)).ToArray();
+        Assert.Equal(2, releases.Length);
+        var sealedRelease = Assert.Single(releases, x => !x.StartsWith("define internal void @__kimi_drop_arc(", StringComparison.Ordinal));
+        sealedRelease = sealedRelease[..sealedRelease.LastIndexOf("\n}", StringComparison.Ordinal)];
         foreach (var release in new[] { dynamicRelease, sealedRelease })
         {
             Assert.Contains("load atomic i64, ptr %control monotonic, align 8", release, StringComparison.Ordinal);
