@@ -172,6 +172,7 @@ internal enum MirLocalRole : byte
     GuardCandidate, // A match guard's candidate binding: its value carries γ, which its EndBorrow ends (SPEC 14.8.3, err(ended)).
     Subject, // A match subject.
     Result, // The body's result in transit: the temp a transfer delivers whole into _0 after the Scope Exit (SPEC 16.2.2, R5-M50).
+    Receiver, // A constructor's _0, its construction receiver self (SPEC 6.3.3-6.3.4): storage its caller's construction expression made.
 }
 
 internal enum MirScopeKind : byte

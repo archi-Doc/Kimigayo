@@ -16,7 +16,7 @@ namespace XunitTest;
 /// erased writer the witness they run in the instance, a comparison shim its leaf witnesses, a callee only the checks reach is in the checked
 /// set, a dropped value its Type's glue and a static access its initializer, the admission limits and Binding's storage bound are located
 /// records, the work grows linearly and collecting again allocates nothing.</summary>
-public sealed class InstanceCollectorTest
+public sealed partial class InstanceCollectorTest
 {
     // A generic function over a Copy T, and a generic struct over one, whose bodies the cases complete.
     private const string Outer = "func outer<T>(x: T) -> T\n    T is Copy\n";
@@ -47,7 +47,6 @@ public sealed class InstanceCollectorTest
         "let p = pick<i32>\n";
 
     // The first line of CLayoutP's constructor, the subject of its instance's by-value uses.
-    private const string Init = "public init(n: i32, value: T)";
 
     // Generic functions that request an arithmetic shim: a requirement call, an operator, a function item's formation and call, and a
     // requirement call in a body instantiated per tag Type.
@@ -73,8 +72,8 @@ public sealed class InstanceCollectorTest
     private const string Again = "func again(value: (" + Big + ", u8)) => ()";
     private const string One = "func one(value: (" + Big + ", u8)) => pass(value@move)";
     private const string Two = "func two(value: (" + Big + ", u8)) => pass(value@move)";
-    private const string PassRecords = "OversizedLayout_Kd " + One + "|OversizedLayout_Kd value@move|OversizedLayout_Kd " + Two +
-        "|OversizedLayout_Kd value@move|OversizedLayout_Kd func pass<T>(value: T) => ()";
+    private const string PassRecords = "OversizedLayout_Kd " + Huge + "|OversizedLayout_Kd value@move|OversizedLayout_Kd " + Huge +
+        "|OversizedLayout_Kd value@move|OversizedLayout_Kd T";
 
     // A C-layout struct over a Type parameter, which a zero-sized argument makes store a zero-sized Field.
     private const string CLayoutP = "#Layout(\"C\")\nstruct P<T>\n    public var n: i32\n    public var value: T\n" +
@@ -927,7 +926,7 @@ public sealed class InstanceCollectorTest
         var c = MirBuildTest.Compile(CLayoutP + DictionaryKey + $"func put(v: {value})\n    let d: Dictionary<Key, {value}> = [Key.init(1): v@move]\n");
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         var records = code is null ? Array.Empty<string>()
-            : [$"{code} func put(v: {value})", $"{code} v@move", $"{code} Key.init(1)", $"{code} [Key.init(1): v@move]",
+            : [$"{code} {value}", $"{code} v@move", $"{code} Key.init(1)", $"{code} [Key.init(1): v@move]",
                 $"{code} let d: Dictionary<Key, {value}> = [Key.init(1): v@move]"];
         Assert.Equal(records, set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}"));
         Assert.Equal(code is null ? 1 : 0, set.Items.ToArray().Count(static x => x.Key.Kind == MonoKind.LegacyRow));
@@ -1527,23 +1526,20 @@ public sealed class InstanceCollectorTest
 
     // K 4.8, S2-S4 X34: a collection's own layout is its handle words, but its glue lays out its element Types, also those that need no drop,
     // whose verdicts join the glue item's: a C-layout element storing a zero-sized Field is InvalidCLayout_Kd at each request of the glue,
-    // an empty local's declaration (also for an inferred instance, which Binding does not report), and a limit element the erased Type's one
-    // Resource record; such a glue has no item. Records by code and the subject's first line, in record order.
+    // an empty local's declaration (written or inferred alike; Binding reports none, DECISIONS R4-M134 Q8), and a limit element the erased
+    // Type's one Resource record; such a glue has no item. Records by code and the subject's first line, in record order.
     [Theory]
     [InlineData(
         "func use() -> ()\n    let a: Array<P<()>> = []\n    let b: Array<P<()>> = []\n    return\n",
-        2,
         "InvalidCLayout_Kd let b: Array<P<()>> = []|InvalidCLayout_Kd let a: Array<P<()>> = []")]
-    [InlineData("func g<T>(value: T) -> i32\n    let a: Array<P<T>> = []\n    return 0\nlet r = g(())\n", 0, "InvalidCLayout_Kd let a: Array<P<T>> = []")]
-    [InlineData("func g<T>(value: T) -> i32\n    let a: Array<P<T>> = []\n    return 0\nlet r = g(1)\n", 0, "")]
+    [InlineData("func g<T>(value: T) -> i32\n    let a: Array<P<T>> = []\n    return 0\nlet r = g(())\n", "InvalidCLayout_Kd let a: Array<P<T>> = []")]
+    [InlineData("func g<T>(value: T) -> i32\n    let a: Array<P<T>> = []\n    return 0\nlet r = g(1)\n", "")]
     [InlineData(
         "func use() -> ()\n    let a: Array<[2147483648 of u8]> = []\n    let b: Array<[2147483648 of u8]> = []\n    return\n",
-        0,
         "GenerationResourceLimit_Kd let b: Array<[2147483648 of u8]> = []")]
-    public void ACollectionsGlueLaysOutItsElements(string uses, int eager, string records)
+    public void ACollectionsGlueLaysOutItsElements(string uses, string records)
     {
         var c = MirBuildTest.Compile(CLayoutP + uses);
-        Assert.Equal(eager, c.Binding.Issues.Count(static x => x.Code == DiagnosticCode.InvalidCLayout_Kd));
         var program = c.BuildMir();
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal(records, string.Join("|", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
@@ -1611,16 +1607,16 @@ public sealed class InstanceCollectorTest
     }
 
     // K 4.8, IMPL 21.3.2, DECISIONS R5-M44: a by-value use whose Type passes a layout limit is GenerationResourceLimit_Kd at the Type's first
-    // use: a parameter (at its function, as MIR records no parameter syntax), a generic instance's intrinsic Type argument, a Closure local
+    // use: a parameter (at its Type occurrence, SPEC 8.15.3), a generic instance's intrinsic Type argument, a Closure local
     // whose environment holds the Type (its erasure then has no adapter item); a struct whose storage Binding rejected derives from Binding's
     // error and Option<Never> is laid out (X31), neither with a record. Subjects by their first line.
     [Theory]
-    [InlineData("func f(value: [2147483648 of u8]) -> i32 => 1\n", "func f(value: [2147483648 of u8]) -> i32 => 1")]
-    [InlineData("func f(value: [2147483648 of ()]) -> i32 => 1\n", "func f(value: [2147483648 of ()]) -> i32 => 1")]
+    [InlineData("func f(value: [2147483648 of u8]) -> i32 => 1\n", "[2147483648 of u8]")]
+    [InlineData("func f(value: [2147483648 of ()]) -> i32 => 1\n", "[2147483648 of ()]")]
     [InlineData("func make<T>() -> raw/T => Raw.allocate<T>(0)\nlet p = make<[2147483648 of u8]>()\nunsafe => Raw.release(p)\n", "Raw.allocate<T>(0)")]
     [InlineData(
         "func host(big: [1073741824 of i32]) -> i32\n    let f = func [big] () -> i32 => 1\n    let e: () -> i32 = f\n    return e()\n",
-        "func host(big: [1073741824 of i32]) -> i32|let f = func [big]() -> i32 => 1")]
+        "[1073741824 of i32]|let f = func [big]() -> i32 => 1")]
     [InlineData("struct A\n    let b: B\nstruct B\n    let a: A\nfunc f(a: A) -> i32 => 1\n", "")]
     [InlineData("let a: Option<Never> = .None\n", "")]
     public void ALayoutLimitIsARecordAtItsTypesFirstUse(string source, string subjects)
@@ -1666,7 +1662,7 @@ public sealed class InstanceCollectorTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         var records = set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString().Split('\n')[0]));
-        Assert.Equal(limited ? [(DiagnosticCode.GenerationResourceLimit_Kd, $"func f(value: {type}) -> i32 => value{leaf}")] : [], records);
+        Assert.Equal(limited ? [(DiagnosticCode.GenerationResourceLimit_Kd, type)] : [], records);
         var legacy = MinimalEmissionTest.Analyze(source.ToString(), codegen: CompilerCodegen.Legacy);
         Assert.Equal(!limited, legacy.Validate(out var error));
         Assert.True(limited == (error is { } text && text.Contains("generation depth limit of 64 levels", StringComparison.Ordinal)), error);
@@ -1795,82 +1791,55 @@ public sealed class InstanceCollectorTest
 
     // K 4.8, SPEC 6.7.1, 8.15.3, DECISIONS R5-M55: a by-value use whose Type places a C-layout instance storing a zero-sized Field, at any
     // depth, is InvalidCLayout_Kd at each such use (one record per subject): an inferred instance in a generic body (make(())) and at the
-    // top level (P.init(1, ()), P.init(1, Q.init()) for a zero-sized struct Q), with the instance's constructor, a written parameter of an
-    // unused function, nested in an Option and through an inferred Option<P<T>>, with the .None that makes it; each valid twin has none.
-    // Binding reports exactly a written instance's eager InvalidCLayout_Kd, so an inferred one is Binding-clean. Subjects by their first line.
+    // top level (P.init(1, ()), P.init(1, Q.init()) for a zero-sized struct Q), a written parameter of an unused function (at its Type
+    // occurrence), nested in an Option and through an inferred Option<P<T>>, with the .None that makes it; each valid twin has none. The
+    // instance's constructor is none: its construction receiver is storage the construction expression made (SPEC 6.3.2-6.3.4; DECISIONS
+    // BU-48, superseding R5-M55's "with the instance's constructor"). Binding reports no instance, written or inferred (DECISIONS R4-M134
+    // Q8). Subjects by their first line.
     [Theory]
-    [InlineData(
-        "func make<T>(value: T) -> i32\n    let p = P<T>.init(1, value@move)\n    return p.n\nlet r = make(())\n",
-        0,
-        "let p = P<T>.init(1, value@move)|" + Init)]
-    [InlineData("func make<T>(value: T) -> i32\n    let p = P<T>.init(1, value@move)\n    return p.n\nlet r = make(5)\n", 0, "")]
-    [InlineData("let q = P.init(1, ())\n", 0, "let q = P.init(1, ())|" + Init)]
-    [InlineData("let q = P.init(1, 2)\n", 0, "")]
-    [InlineData("struct Q\n    public init() => ()\nlet q = P.init(1, Q.init())\n", 0, "let q = P.init(1, Q.init())|" + Init)]
-    [InlineData("struct Q\n    public var n: i32 = 1\n    public init() => ()\nlet q = P.init(1, Q.init())\n", 0, "")]
-    [InlineData("func f(p: P<()>) -> i32 => 1\n", 1, "func f(p: P<()>) -> i32 => 1")]
-    [InlineData("func f(p: P<i32>) -> i32 => 1\n", 0, "")]
-    [InlineData("let x: Option<P<()>> = .None\n", 1, "let x: Option<P<()>> = .None|.None")]
-    [InlineData("func g<T>(value: T) -> i32\n    let x: Option<P<T>> = .None\n    return 0\nlet r = g(())\n", 0, "let x: Option<P<T>> = .None|.None")]
-    [InlineData("func g<T>(value: T) -> i32\n    let x: Option<P<T>> = .None\n    return 0\nlet r = g(1)\n", 0, "")]
-    [InlineData("func g<T>(value: T) -> i32\n    let x: Option<ref/P<T>> = .None\n    return 0\nlet r = g(())\n", 0, "")]
-    public void AZeroSizedFieldOfACLayoutInstanceIsARecordAtEachUse(string uses, int eager, string subjects)
+    [InlineData("func make<T>(value: T) -> i32\n    let p = P<T>.init(1, value@move)\n    return p.n\nlet r = make(())\n", "let p = P<T>.init(1, value@move)")]
+    [InlineData("func make<T>(value: T) -> i32\n    let p = P<T>.init(1, value@move)\n    return p.n\nlet r = make(5)\n", "")]
+    [InlineData("let q = P.init(1, ())\n", "let q = P.init(1, ())")]
+    [InlineData("let q = P.init(1, 2)\n", "")]
+    [InlineData("struct Q\n    public init() => ()\nlet q = P.init(1, Q.init())\n", "let q = P.init(1, Q.init())")]
+    [InlineData("struct Q\n    public var n: i32 = 1\n    public init() => ()\nlet q = P.init(1, Q.init())\n", "")]
+    [InlineData("func f(p: P<()>) -> i32 => 1\n", "P<()>")]
+    [InlineData("func f(p: P<i32>) -> i32 => 1\n", "")]
+    [InlineData("let x: Option<P<()>> = .None\n", "let x: Option<P<()>> = .None|.None")]
+    [InlineData("func g<T>(value: T) -> i32\n    let x: Option<P<T>> = .None\n    return 0\nlet r = g(())\n", "let x: Option<P<T>> = .None|.None")]
+    [InlineData("func g<T>(value: T) -> i32\n    let x: Option<P<T>> = .None\n    return 0\nlet r = g(1)\n", "")]
+    [InlineData("func g<T>(value: T) -> i32\n    let x: Option<ref/P<T>> = .None\n    return 0\nlet r = g(())\n", "")]
+    public void AZeroSizedFieldOfACLayoutInstanceIsARecordAtEachUse(string uses, string subjects)
     {
         var c = MirBuildTest.Compile(CLayoutP + uses);
-        Assert.Equal(Enumerable.Repeat(DiagnosticCode.InvalidCLayout_Kd, eager), c.Binding.Issues.Select(static x => x.Code));
+        Assert.DoesNotContain(c.Binding.Issues, static x => x.Code == DiagnosticCode.InvalidCLayout_Kd);
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         var expected = subjects.Length == 0 ? [] : subjects.Split('|').Select(static x => (DiagnosticCode.InvalidCLayout_Kd, x)).ToArray();
         Assert.Equal(expected, set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString().Split('\n')[0])));
     }
 
-    // DECISIONS R5-M55: a C-layout declaration Binding rejects for a direct zero-sized Field is rejected storage for Layout, derived from
-    // Binding's records (at the Field and the struct), so its by-value uses add no collector record.
-    [Fact]
-    public void ARejectedCLayoutDeclarationIsBindingsAlone()
-    {
-        var c = MirBuildTest.Compile("#Layout(\"C\")\nstruct Q\n    public var n: i32 = 1\n    public var u: () = ()\n    public init() => ()\n" +
-            "func use(q: Q) -> i32 => q.n\nlet q = Q.init()\nlet n = use(q@move)\n");
-        Assert.Equal(
-            [(DiagnosticCode.InvalidTypeFormation_Kd, true), (DiagnosticCode.InvalidCLayout_Kd, false)],
-            c.Binding.Issues.Select(static x => (x.Code, x.Node is StructKoto)).OrderBy(static x => x.Code));
-        Assert.Empty(new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1).Records);
-    }
-
-    // DECISIONS R5-M55 (a declared overlap, removed at G2b): Binding still reports a written instance eagerly at the written Type, so under
-    // MIR code generation a written by-value use is also reported at the use; an inferred one only at its uses.
-    [Theory]
-    [InlineData("func f(p: P<()>) -> i32 => 1\n", 1, "func f(p: P<()>) -> i32 => 1")]
-    [InlineData("let q = P.init(1, ())\n", 0, "let q = P.init(1, ())")]
-    public void BindingsEagerReportOfAWrittenInstanceStaysBesideTheUse(string uses, int eager, string use)
-    {
-        var c = MirBuildTest.Compile(CLayoutP + uses);
-        Assert.Equal(eager, c.Binding.Issues.Count(static x => x.Code == DiagnosticCode.InvalidCLayout_Kd));
-        var records = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1).Records;
-        Assert.Contains((DiagnosticCode.InvalidCLayout_Kd, use), records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString().Split('\n')[0])));
-    }
-
     // IMPL 21.1.1, SPEC 8.15.3, DECISIONS R5-M52: a by-value use needing a layout over 2^63 - 1 bytes is OversizedLayout_Kd at each
-    // use (one record per subject), not a Resource record: a parameter (at its function), two functions' parameters, a generic instance's
+    // use (one record per subject), not a Resource record: a parameter (at its Type occurrence), two functions' parameters, a generic instance's
     // parameter and each caller's uses, a generic instance's Raw.allocate Type argument, an erasure's target Function Type's inputs and
     // result (a Never source's, a body's beside its own result local, a compiler function Item's) and Raw.allocate's Type argument through
     // its Item, erased or called as a value (DECISIONS R5-M108); M, exactly at the bound, and a 2^31-byte array are one Resource record
     // each. Subjects by their first line, codes in record order.
     [Theory]
-    [InlineData(Over + "\n", "OversizedLayout_Kd " + Over)]
-    [InlineData(Over + "\n" + Again + "\n", "OversizedLayout_Kd " + Over + "|OversizedLayout_Kd " + Again)]
+    [InlineData(Over + "\n", "OversizedLayout_Kd " + Huge)]
+    [InlineData(Over + "\n" + Again + "\n", "OversizedLayout_Kd " + Huge + "|OversizedLayout_Kd " + Huge)]
     [InlineData("func pass<T>(value: T) => ()\n" + One + "\n" + Two + "\n", PassRecords)]
     [InlineData("func make<T>() -> raw/T => Raw.allocate<T>(0)\nlet p = make<(" + Big + ", u8)>()\nunsafe => Raw.release(p)\n", "OversizedLayout_Kd Raw.allocate<T>(0)")]
     [InlineData("func fail() -> Never => $abort(\"x\")\nfunc big() -> () -> " + Huge + " => fail\n", "OversizedLayout_Kd fail")]
     [InlineData(
         "func make() -> " + Huge + " => $abort(\"x\")\nfunc get() -> () -> " + Huge + " => make\n",
-        "OversizedLayout_Kd func make() -> " + Huge + " => $abort(\"x\")|OversizedLayout_Kd make")]
+        "OversizedLayout_Kd " + Huge + "|OversizedLayout_Kd make")] // The result's record at its result Type (settled (a)).
     [InlineData("func swap() -> (uniq/" + Huge + ", " + Huge + ") -> " + Huge + " => Kimi.Intrinsics.exchange\n", "OversizedLayout_Kd Kimi.Intrinsics.exchange")]
     [InlineData("func huge() -> (isize) -> raw/" + Huge + " => Raw.allocate\n", "OversizedLayout_Kd Raw.allocate")]
     [InlineData(
         "func huge() -> raw/" + Huge + "\n    let f = Raw.allocate<" + Huge + ">\n    return f(1)\n",
         "OversizedLayout_Kd Raw.allocate<" + Huge + ">|OversizedLayout_Kd f(1)")]
-    [InlineData("func at(value: " + Big + ") => ()\n", "GenerationResourceLimit_Kd func at(value: " + Big + ") => ()")]
-    [InlineData("func at(value: [2 of [1073741824 of u8]]) => ()\n", "GenerationResourceLimit_Kd func at(value: [2 of [1073741824 of u8]]) => ()")]
+    [InlineData("func at(value: " + Big + ") => ()\n", "GenerationResourceLimit_Kd " + Big)]
+    [InlineData("func at(value: [2 of [1073741824 of u8]]) => ()\n", "GenerationResourceLimit_Kd [2 of [1073741824 of u8]]")]
     public void ALayoutOverTheBoundIsARecordAtEachUse(string source, string records)
     {
         var c = MirBuildTest.Compile(source);
@@ -1889,7 +1858,7 @@ public sealed class InstanceCollectorTest
         var c = MirBuildTest.Compile("enum E\n    A(" + payload + ")\n    B(" + Huge + ")\nfunc h(e: E) => ()\n");
         Assert.Equal(payload == "i32", c.Binding.Result.IsComplete);
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
-        Assert.Equal("OversizedLayout_Kd func h(e: E) => ()", string.Join("|", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
+        Assert.Equal("OversizedLayout_Kd E", string.Join("|", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
     }
 
     // SPEC 8.15.3, DECISIONS R5-M52: a Type formed only behind a borrow or a raw pointer, or by a struct nothing uses by value, is no use.
@@ -1911,7 +1880,7 @@ public sealed class InstanceCollectorTest
     {
         var c = MirBuildTest.Compile(CLayoutP + "func both(value: (P<()>, (" + Big + ", u8))) => ()\n");
         var records = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1).Records;
-        var use = "func both(value: (P<()>, (" + Big + ", u8))) => ()";
+        var use = "(P<()>, (" + Big + ", u8))";
         Assert.Equal(
             [(DiagnosticCode.OversizedLayout_Kd, use), (DiagnosticCode.InvalidCLayout_Kd, use)],
             records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString().Split('\n')[0])));

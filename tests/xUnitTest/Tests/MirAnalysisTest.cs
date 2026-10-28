@@ -312,7 +312,8 @@ public sealed class MirAnalysisTest
     // Path and second initializations of a let, A2's incomplete layer at a Drop, A3's falling failure body, A4's confined obligations as
     // Binding's row carries them (a conformance, a virtual function, a Callable binding) and its limit, and A5's Loan conflicts and its
     // limit (a destruction past the walk's bound) and its effect rule, which the driver gives A4's keys (R4-M92). The storage limits need
-    // large bodies: A5ChecksTheViewsA1Completed has A1's.
+    // large bodies: A5ChecksTheViewsA1Completed has A1's. A parameter's record is at its Type occurrence (DECISIONS BU-48's locations,
+    // settled (a): R4-M90 D6's rule extended).
     [Fact]
     public void EachRecordingRuleNamesItsRequirement()
     {
@@ -326,7 +327,7 @@ public sealed class MirAnalysisTest
                 "Ownership.EffectBound IncompatibleContractImplementation_Kd Self is Sink", "Ownership.PossiblyMovedUse MovedPlace_Kd r",
                 "Ownership.PossiblyMovedUse MovedPlace_Kd var box = Box.init(make())", "Ownership.ReassignedLet ReassignedLet_Kd resource = make()",
                 "Ownership.StaticMovePathRequired StaticMovePathRequired_Kd values[i]", "Ownership.UninitializedUse UninitializedPlace_Kd n",
-                "Ownership.Unsupported Unsupported_Kd Self is Store", "Ownership.Unsupported Unsupported_Kd func deep(n: Nest<ref/i32 during a>)",
+                "Ownership.Unsupported Unsupported_Kd Nest<ref/i32 during a>", "Ownership.Unsupported Unsupported_Kd Self is Store",
                 "Ownership.VirtualEffectBound UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32",
             ],
             c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
@@ -335,6 +336,7 @@ public sealed class MirAnalysisTest
 
     // R4-M71: each recording rule names the body whose views number its problem's views: A1's, A2's, A3's and A5's the body they analyze,
     // and A4's obligation rows (a conformance, a virtual function, a Callable binding and its limit) none, since they lie at Binding's rows.
+    // A parameter's record is at its Type occurrence (DECISIONS BU-48's locations, settled (a): R4-M90 D6's rule extended).
     [Fact]
     public void EachRecordingRuleNamesItsBody()
     {
@@ -347,8 +349,8 @@ public sealed class MirAnalysisTest
                 "MovedPlace_Kd r moved",
                 "MovedPlace_Kd var box = Box.init(make()) layer", "ReassignedLet_Kd resource = make() twice", "RequireFallthrough_Kd () falls",
                 "StaticMovePathRequired_Kd values[i] runtime", "UninitializedPlace_Kd n unset", "UnsatisfiedEffectBound_Kd noisy -",
-                "UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32 -", "Unsupported_Kd Self is Store -",
-                "Unsupported_Kd func deep(n: Nest<ref/i32 during a>) deep",
+                "UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32 -", "Unsupported_Kd Nest<ref/i32 during a> deep",
+                "Unsupported_Kd Self is Store -",
             ],
             program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
                 .Select(x => $"{x.Code} {Line(c, x.Subject)} {(x.Body == MirProblem.NoBody ? "-" : program.Bodies[x.Body].Key.Decl!.Name)}")

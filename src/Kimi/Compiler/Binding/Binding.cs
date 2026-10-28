@@ -415,8 +415,6 @@ public sealed partial class Binding
         // Source guards are all indexed now; a removed guard may have become an arm body.
         // Try arms are indexed later, so retain their Pattern scopes until binding finishes.
         this.PruneCandidateScopes();
-        this.cLayoutInstances.Clear();
-        this.storagePrepared = false;
         this.ValidateDefaultAliases();
         this.PrepareOriginDeclarations();
         this.BindSchemas();
@@ -443,7 +441,6 @@ public sealed partial class Binding
         // SPEC 5.7, 15.3.5: the slots' requirements and keepers exist before inline layouts substitute instances.
         this.ComputeOriginRequirements();
         this.ValidateInlineLayouts();
-        this.ValidateCLayoutFields();
         this.ValidateLibraryImports(); // Reads the C-layout fact and the prepared storage (SPEC 22.6).
         this.ValidateSignatures();
         this.PrepareVirtualOverrides();
@@ -1057,7 +1054,6 @@ public sealed partial class Binding
                     BindingFailure.UnsafeFunctionValue => DiagnosticCode.UnsafeFunctionValue_Kd,
                     BindingFailure.UnavailableReservedImport => DiagnosticCode.UnavailableReservedImport_Kd,
                     BindingFailure.SplitCLayoutStorage => DiagnosticCode.SplitCLayoutStorage_Kd,
-                    BindingFailure.InvalidCLayout => DiagnosticCode.InvalidCLayout_Kd,
                     BindingFailure.InvalidInlineLayout => DiagnosticCode.InvalidInlineLayout_Kd,
                     BindingFailure.MissingName or BindingFailure.MissingType => DiagnosticCode.UnresolvedBinding_Kd,
                     BindingFailure.QualificationRequired => DiagnosticCode.QualificationRequired_Kd,

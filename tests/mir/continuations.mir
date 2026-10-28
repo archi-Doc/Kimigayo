@@ -1,7 +1,7 @@
 fn bump @10
   _0: () return @10
-  _1: uniq/Counter arg self @10
-  _2: i32 arg by @10
+  _1: uniq/Counter arg self @11
+  _2: i32 arg by @13
   _3: () temp @15 s1
   _4: i32 temp @16 s1
   s1: lexical in s0 @14
@@ -23,18 +23,18 @@ fn top-level#0 @24
       return @25
 fn consume @26
   _0: () return @26
-  _1: Box arg box @26
+  _1: Box arg box @27
   _2: () temp @28
   bb0:
       StorageLive(_2) @28
     * _2 = const () @28
       StorageDead(_2) @28
       _0 = const () @28
-      drop _1 -> bb1 [keep] @26
+      drop _1 -> bb1 [keep] @27
   bb1:
       return @28
 fn stop @29
-  _0: Never return @29
+  _0: Never return @30
   _1: Never temp @32 s1
   _2: () temp @33 s1
   _3: () temp @34 s2
@@ -57,16 +57,16 @@ fn stop @29
       StorageDead(_1) @32 s1
       unreachable @31
 fn take @35
-  _0: i32 return @35
-  _1: i32 arg a @35
-  _2: i32 arg b @35
+  _0: i32 return @38
+  _1: i32 arg a @36
+  _2: i32 arg b @37
   bb0:
     * _0 = Add(copy _1, copy _2) @39
       return @39
 fn consumedThenReturned @42
-  _0: i32 return @42
-  _1: bool arg flag @42
-  _2: Box arg box @42
+  _0: i32 return @45
+  _1: bool arg flag @43
+  _2: Box arg box @44
   _3: Never temp @47 s1
   _4: () temp @49 s2
   _5: bool temp @50 s2
@@ -116,7 +116,7 @@ fn consumedThenReturned @42
       _0 = move _8 @57 s3
       goto bb7 @57 s3
   bb9:
-      drop _2 -> bb10 [flag f0] [clear f0] @42
+      drop _2 -> bb10 [flag f0] [clear f0] @44
   bb10:
       goto bb8 @42
   bb11:
@@ -145,11 +145,11 @@ fn consumedThenReturned @42
       _8 = const 3_i32 @66 s1
       goto bb9 @66 s1
   bb20:
-      drop _2 -> bb21 @42
+      drop _2 -> bb21 @44
   bb21:
       unreachable @46
 fn returnThenExit @68
-  _0: i32 return @68
+  _0: i32 return @69
   _1: () temp @71 s1
   _2: i32 temp (Result) @68
   s1: lexical in s0 @70
@@ -184,8 +184,8 @@ fn returnThenExit @68
   bb10:
       unreachable @70
 fn divergingArgument @79
-  _0: i32 return @79
-  _1: i32 arg n @79
+  _0: i32 return @81
+  _1: i32 arg n @80
   _2: i32 temp @84 s1
   _3: i32 temp @86 s1
   _4: Never temp @87 s1
@@ -204,8 +204,8 @@ fn divergingArgument @79
       StorageDead(_2) @84 s1
       unreachable @82
 fn divergingCondition @89
-  _0: i32 return @89
-  _1: i32 arg n @89
+  _0: i32 return @91
+  _1: i32 arg n @90
   _2: Never temp @93 s1
   _3: bool temp @94 s1
   _4: Never temp @96 s1
@@ -260,9 +260,9 @@ fn divergingCondition @89
       StorageDead(_6) @100 s1
       unreachable @92
 fn abandoned @101
-  _0: i32 return @101
-  _1: uniq/Counter arg counter @101
-  _2: i32 arg n @101
+  _0: i32 return @105
+  _1: uniq/Counter arg counter @102
+  _2: i32 arg n @104
   _3: () temp @107 s1
   _4: uniq/Counter temp @109 s1
   _5: i32 temp @111 s1
