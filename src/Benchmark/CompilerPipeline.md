@@ -19,9 +19,12 @@ is outside timing.
 | 6 | `LlvmIrWriting` | `EmissionModule.WriteIr`: serialize that prepared model to LLVM IR; under sel `Compilation.WriteIr`, the generation entry (gate, output roots and `ModuleCodegen`) |
 
 Every operation creates a new `Compilation` and runs these stages exactly once in
-order. Stage 3 builds the MIR as the `mir` pipeline's `Analyze` does, before the old
-analysis, which still decides (R3-R5); a `legacy` compilation does not run it, so its
-cost is the total minus stage 3. Each result reports `mirBodies`, the bodies stage 3
+order. Stage 3 builds, validates and analyzes the MIR and collects its checked set
+(`Compilation.BuildMir`), each memoized per program version, so stage 4's `Analyze`
+reuses them on either pipeline; the old analysis still decides (R3-R5). A `legacy`
+compilation's own `Analyze` builds and collects the MIR without analyzing it (DECISIONS
+BU-48), so its stage 3 includes the MIR analyses, which a legacy check does not run.
+Each result reports `mirBodies`, the bodies stage 3
 builds, and the stage's mean time and allocation per body (`mirMeanMicrosecondsPerBody`,
 `mirMeanAllocatedBytesPerBody`): a fresh compilation's builder starts empty, so these are
 first-build costs, which a warm rebuild of the same compilation does not pay.
@@ -89,9 +92,10 @@ collection share at the R5, R6-gen and R6-check exits; DECISIONS R5-M148). Each 
 and builds, validates and analyzes its MIR untimed with the two components `Compilation.BuildMir` composes (`MirBuilder`,
 `MirAnalysis`), not with `BuildMir`, which also collects. It then times three fresh collectors over that program in order:
 `cold`, the compilation's first collection, with its `Layout` (the collection-and-layout share and the check-time cost of
-collection); `freshLayout`, a new `Layout` with the Type context's memos warm; `warm`, the compilation's `Layout` again. `layoutMedianMilliseconds` is freshLayout − warm and
-`firstQueriesMedianMilliseconds` cold − freshLayout, per operation. Four warmups precede seven samples of four operations;
-each variant reports median, mean and minimum milliseconds, mean allocated bytes and its per-operation ticks.
+collection); `freshLayout`, a new `Layout` with the Type context's memos warm; `warm`, the compilation's `Layout` again.
+`layoutMedianMilliseconds` is freshLayout − warm and `firstQueriesMedianMilliseconds` cold − freshLayout, per operation.
+Four warmups precede seven samples of four operations; each variant reports median, mean and minimum milliseconds, mean
+allocated bytes and its per-operation ticks.
 `--collection-cost-check` times nothing: it requires the three collections to equal one another and the compilation's own
 checked set (its `Analyze`'s) element by element, the items' keys in admission order and the records' codes and locations; the
 comparison to fail on the same collection reordered and on a changed record code or location; and `cold` to allocate more than
