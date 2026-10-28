@@ -135,7 +135,7 @@ public sealed partial class Binding
         var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.CallableEffectBound);
         if (!type.IsAbstract)
         {
-            var owner = use.Receiver == SemanticsKind.Owner && type.Symbol?.Declaration is FunctionKoto { BoundClosure.Receiver: not SemanticsKind.Owner };
+            var owner = use.Receiver == SemanticsKind.Owner && BoundClosure.Of(type) is { Receiver: not SemanticsKind.Owner };
             rows.Add(new(SourceRef.Of(use.At), DiagnosticCode.UnsatisfiedEffectBound_Kd, requirement, definition, type, use.Receiver, owner));
         }
         else if (!this.AvailableCallableEffects(type, use.Signature, use.Receiver, this.EffectPremises(definition)))

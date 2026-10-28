@@ -110,7 +110,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
         Assert.Equal(
             ["Through", "None", "None", "no Loan", "Through", "Through", "Limit"],
             KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.FunctionKoto>().Where(static x => x.IsAnonymous)
-                .Select(x => MirTypes.HoldsLoans(BoundClosure.Of(x)!.EnvironmentType, c.Types, seen, [], out var writes) ? $"{writes}" : "no Loan").ToArray());
+                .Select(x => MirTypes.HoldsLoans(x.ClosureDefinition!.EnvironmentType, c.Types, seen, [], out var writes) ? $"{writes}" : "no Loan").ToArray());
     }
 
     // SPEC 5.7 Calls, 15.6.4 (DECISIONS R4-M147, BU-41): a raw layer a holder stores at any depth below it is read on the instance holding it,

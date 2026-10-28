@@ -417,6 +417,168 @@ public sealed partial class MirBorrowsTest
                     return n
                 """));
 
+    // SPEC 15.8.2, 15.6.4, 7.7.3 (DECISIONS R4-M152, R4-M126 P8, P9): a result over the environment is bound, R1's located Unsupported_Kd
+    // gone from Binding (the old analysis's gate keeps it on the default pipeline). A result naming the receiver ρ takes the acquisition's
+    // Origin and carries the receiver's Loan, so the Closure's Move (envMoveBad), a second Exclusive call (envTwiceBad) and the end of a
+    // temporary receiver (temporaryBad, movedTemporaryBad) conflict while it lives, as does a write of what a read through the receiver
+    // reaches (envReadBad); a Reborrow through a captured `uniq` is contained in ρ too (reborrowBad, sharedThroughUniqBad), while one under a
+    // Consuming receiver keeps the capture's Origin (consumingOk, consumingTypedOk) and its parent Loans (consumingBad); a moved-out capture
+    // is the capture's value (movedOk), carrying every Loan of the owned receiver (movedBad). Each valid twin uses the result first (envOk,
+    // reborrowOk, sharedThroughUniqOk, movedTemporaryOk); a nested Closure called in its maker's body (nestedCallOk) and a returned Closure
+    // left uncalled (returnedOk) are valid.
+    [Fact]
+    public void AClosureCallsResultOverItsEnvironmentFollowsItsReceiver()
+        => Assert.Equal(
+            ["envMoveBad: get", "envTwiceBad: bump", "envReadBad: y = 5", "reborrowBad: c", "sharedThroughUniqBad: c", "consumingBad: x = 5",
+                "movedBad: y = 5", "temporaryBad: (", "movedTemporaryBad: c@move"],
+            Problems("""
+                func drop1(s: string) => ()
+                func envOk()
+                    let n: i32 = 4
+                    let get = func [n] () => n@ref
+                    let v = get()
+                    inspect(v)
+                func envMoveBad()
+                    let n: i32 = 4
+                    let get = func [n] () => n@ref
+                    let v = get()
+                    let moved = get@move
+                    inspect(v)
+                func envTwiceBad()
+                    let n: i32 = 4
+                    var bump = func [var n] ()
+                        n += 1
+                        return n@ref
+                    let a = bump()
+                    let b = bump()
+                    inspect(a)
+                func envReadBad()
+                    let n: i32 = 4
+                    var y: i32 = 2
+                    let r = y@ref
+                    let get = func [n, r] () => n@ref
+                    let v = get()
+                    y = 5
+                    inspect(v)
+                func reborrowBad()
+                    var x: i32 = 1
+                    let u = x@uniq
+                    var c = func [u] () => u
+                    let a = c()
+                    let m = c@move
+                    a@follow = 2
+                func reborrowOk()
+                    var x: i32 = 1
+                    let u = x@uniq
+                    var c = func [u] () => u
+                    let a = c()
+                    a@follow = 2
+                    let m = c@move
+                func sharedThroughUniqBad()
+                    var x: i32 = 1
+                    let u = x@uniq
+                    let c = func [u] () => u@follow@ref
+                    let a = c()
+                    let m = c@move
+                    inspect(a)
+                func sharedThroughUniqOk()
+                    var x: i32 = 1
+                    let u = x@uniq
+                    let c = func [u] () => u@follow@ref
+                    let a = c()
+                    inspect(a)
+                    let m = c@move
+                func consumingTypedOk()
+                    var x: i32 = 1
+                    let u = x@uniq
+                    let t = "a"
+                    let c = func [u, t@move] () -> uniq/i32 during u
+                        drop1(t@move)
+                        return u
+                    let a = c@move()
+                    a@follow = 3
+                func consumingOk()
+                    var x: i32 = 1
+                    let u = x@uniq
+                    let t = "a"
+                    let c = func [u, t@move] ()
+                        drop1(t@move)
+                        return u
+                    let a = c@move()
+                    a@follow = 3
+                func consumingBad()
+                    var x: i32 = 1
+                    let u = x@uniq
+                    let t = "a"
+                    let c = func [u, t@move] ()
+                        drop1(t@move)
+                        return u
+                    let a = c@move()
+                    x = 5
+                    a@follow = 3
+                func movedOk()
+                    var x: i32 = 1
+                    let u = x@uniq
+                    let c = func [u] () => u@move
+                    let a = c@move()
+                    a@follow = 3
+                func movedBad()
+                    var x: i32 = 1
+                    var y: i32 = 2
+                    let u = x@uniq
+                    let r = y@ref
+                    let c = func [u, r] () => u@move
+                    let a = c@move()
+                    y = 5
+                    a@follow = 3
+                func temporaryBad()
+                    let n: i32 = 7
+                    let r = (func [n] () => n@ref)()
+                    let s = r@follow
+                func movedTemporaryBad()
+                    var x: i32 = 1
+                    let u = x@uniq
+                    var c = func [u] () => u
+                    let a = c@move()
+                    a@follow = 2
+                func movedTemporaryOk()
+                    var x: i32 = 1
+                    let u = x@uniq
+                    var c = func [u] () => u
+                    c@move()@follow = 2
+                func nestedCallOk() -> i32
+                    var x: i32 = 1
+                    let u = x@uniq
+                    var outer = func [u] () -> i32
+                        let i = func [u] () => u@move
+                        let p = i@move()
+                        p@follow = 2
+                        return 0
+                    return outer()
+                func returnedOk()
+                    let n = 7
+                    let outer = func [n] () => func [n@ref] () => n
+                    let inner = outer()
+                """));
+
+    // SPEC 15.8.2 (DECISIONS R4-M152, the owner's 「2c-5 F1: (c')」): the maker's calls of a returned Closure bind and carry its receiver's
+    // Loan, so the second Exclusive `outer()` conflicts while the first one's Closure lives (n1); the returned Closures' own calls are F1's
+    // located Unsupported_Kd in Binding (ClosureResultOriginTest).
+    [Fact]
+    public void AClosureReturnedFromAClosureCallKeepsItsMakersReceiverLoan()
+        => Assert.Equal(["n1: outer"], RejectedProblems("""
+            func n1()
+                var x: i32 = 1
+                let u = x@uniq
+                var outer = func [u] () => func [u] () => u@move
+                let a = outer()
+                let b = outer()
+                let pa = a@move()
+                let pb = b@move()
+                pa@follow = 1
+                pb@follow = 2
+            """));
+
     // PD13 (SPEC 7.7.3; DECISIONS R4-M126 (iii), R4-M148): a call acquires a Closure in its strongest receiver, so where the view's case
     // admits a Shared one (`value` Copies in the owner case and the raw case, Reborrows in the uniq case) every rejection of the view is the
     // located Unsupported_Kd at its subject, the call's own conflict (heldBad, heldNested) and an independent one alike (heldIndependent,
@@ -867,7 +1029,7 @@ public sealed partial class MirBorrowsTest
     }
 
     // V16 (DECISIONS R4-M148): A5 on a program version it checked before allocates nothing at Closure calls: the receiver's rows over the
-    // memoized contract (its key the instance's environment; no A5 callee carries a closure context before 2c-5, R4-M148), a store into
+    // memoized contract (its key the instance's environment; no A5 callee carries a closure context, R4-M148, R4-M152), a store into
     // the receiver, PD13's hold and a Limit Closure.
     [Trait("Purpose", "Allocation")]
     [Fact]

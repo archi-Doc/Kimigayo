@@ -7,7 +7,7 @@
 // view's row 6 (EnclosingAtom; 2a0-D section 3, DECISIONS R4-M101 E5, BU-28): in a Closure body the Origins of its captures, atoms an
 // enclosing body formed, are fixed; in a Closure k's body and the bodies nested in it, that row also fixes k's receiver Origin ρ (SPEC
 // 15.6.5: a receiver Origin), and until k is classified ρ and k's environment atoms are pending, neither fixed nor finite (DECISIONS
-// R4-M126 P5).
+// R4-M126 P5). The view's row 5 (OwnCallAtom), B's own call receiver and call result, is another such shared rule.
 // - Inputs: an Origin as the caller has it at its use, and the body that formed the relation (an obligation's Body, or the forming body
 //   while binding; no body after binding); the formation context (BoundOrigin.Body, BoundClosure.EvaluatingBody, Binding.ExecutableBodies.cs)
 //   and whether a Closure is classified (BoundClosure.Classified).
@@ -37,6 +37,11 @@ public sealed partial class Binding
         return false;
     }
 
+    // The C1-F4 view's row 5 (2a0-D section 3; DECISIONS R4-M152): B's own call receiver ρ, once it is not pending, and B's call result:
+    // a Closure body's receiver Origin and the call result its published result may name.
+    internal static bool OwnCallAtom(BoundOrigin atom, ExecutableBody body)
+        => RoleOf(atom) is ProjectionRole.ClosureValue or ProjectionRole.CallResult && DeclaredBy(atom, body) && !PendingAtom(atom);
+
     // SPEC 15.6.5: an Origin fixed by the contract: a signature, parameter or receiver Origin, a projection of one, static, or a meet of them.
     internal static bool FixedOrigin(BoundOrigin origin)
     {
@@ -56,8 +61,9 @@ public sealed partial class Binding
         return origin.Kind is OriginKind.Static or OriginKind.Parameter or OriginKind.Input;
     }
 
-    // SPEC 15.6.5: an Origin fixed in `body`: by the contract, or as an enclosing body's atom (a Closure's captures, its receiver Origin ρ
-    // in its own and nested bodies) once it is not pending; a meet when each operand is.
+    // SPEC 15.6.5: an Origin fixed in `body`: by the contract, as `body`'s own call receiver or call result (the view's row 5), or as an
+    // enclosing body's atom (a Closure's captures, its receiver Origin ρ and call result in nested bodies) once it is not pending; a meet
+    // when each operand is.
     internal static bool FixedIn(BoundOrigin origin, ExecutableBody body)
     {
         if (origin.Kind == OriginKind.Intersection)
@@ -73,7 +79,7 @@ public sealed partial class Binding
             return true;
         }
 
-        return FixedOrigin(origin) || (EnclosingAtom(origin, body) && !PendingAtom(origin));
+        return FixedOrigin(origin) || OwnCallAtom(origin, body) || (EnclosingAtom(origin, body) && !PendingAtom(origin));
     }
 
     // SPEC 15.8.2, 15.6.5 (DECISIONS R4-M126 P5): a Closure's receiver Origin ρ or an environment binding's own atom while the Closure

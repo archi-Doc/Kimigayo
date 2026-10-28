@@ -129,7 +129,7 @@ internal sealed partial class MirBuilder
             return prepared ? this.body.Project(new(local), MirProjectionKind.Deref, 0) : new(local);
         }
 
-        var captures = this.receiver > 0 && this.body.Key.Kind == MirBodyKind.Closure ? BoundClosure.Of((FunctionKoto)this.declaration)?.Captures : null;
+        var captures = this.receiver > 0 && this.body.Key.Kind == MirBodyKind.Closure ? ((FunctionKoto)this.declaration).ClosureDefinition?.Captures : null;
         var index = (captures?.Count ?? 0) - 1;
         while (index >= 0 && !ReferenceEquals(captures![index].Environment, symbol))
         {

@@ -107,7 +107,7 @@ internal sealed partial class TyCtxt
     // body name. A Closure whose definition Binding did not bind is read as it is, a dependent of Binding's rejection.
     internal BoundType? ClosureEnvironment(BoundType closure)
     {
-        if (closure.Symbol?.Declaration is not FunctionKoto function || BoundClosure.Of(function)?.EnvironmentType is not { } environment)
+        if (BoundClosure.Of(closure)?.EnvironmentType is not { } environment)
         {
             return closure;
         }
@@ -121,7 +121,7 @@ internal sealed partial class TyCtxt
     // admitting one), else Shared; the instance gives Receiver. PD13's hold compares a call's acquisition with it (MirBorrows.CallRows).
     internal SemanticsKind ClosureReceiverIn(BoundType closure)
     {
-        var definition = BoundClosure.Of((FunctionKoto)closure.Symbol!.Declaration!)!;
+        var definition = BoundClosure.Of(closure)!;
         if (definition.CaseFreeReceiver != SemanticsKind.Ref)
         {
             return definition.CaseFreeReceiver;
@@ -144,8 +144,7 @@ internal sealed partial class TyCtxt
 
     // The Closure Type a Value callee is without its acquisition layer (Binding.CallableCore), with a bound definition; null for any other.
     private static BoundType? Closure(BoundType callee)
-        => Binding.CallableCore(callee) is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto function } closure &&
-            BoundClosure.Of(function) is { EnvironmentType: not null } ? closure : null;
+        => Binding.CallableCore(callee) is { } closure && BoundClosure.Of(closure) is { EnvironmentType: not null } ? closure : null;
 
     private static bool HasAbstractPart(Subst types)
     {

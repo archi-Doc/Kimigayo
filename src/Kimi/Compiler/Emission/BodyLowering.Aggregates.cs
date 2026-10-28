@@ -656,7 +656,7 @@ internal sealed partial class BodyLowering
             return false;
         }
 
-        if (operation.Source is FunctionKoto { BoundClosure: { } closure })
+        if (operation.Source is FunctionKoto { ClosureAsCreated: { } closure })
         {
             // SPEC 7.2.3, 7.7.2: a default closure's bare entry Copies the argument that its pending call prepared.
             for (var i = 0; i < closure.Captures.Count; i++)

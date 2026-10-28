@@ -622,7 +622,7 @@ public sealed partial class Binding
                     var rejected = new RejectedCandidate(selected, null, null, Selected: true);
                     for (var i = 0; i < argumentCount; i++)
                     {
-                        if (KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]) is FunctionKoto { BoundClosure: { } closure } &&
+                        if (KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]) is FunctionKoto { ClosureDefinition: { } closure } &&
                             this.TryCallable(selected.Parameters[mapping[i]].Type.BoundType!, this.ConstraintScope(selected), out _, out var required) &&
                             !CallableReceiverFits(closure.Receiver, CallableReceiverMask(required)))
                         {
@@ -910,7 +910,7 @@ public sealed partial class Binding
                 actual = referent;
             }
 
-            if (evidence is { Binder: FunctionKoto { BoundClosure: not null } closure } && HasEnvironmentOrigin(actual, closure))
+            if (evidence is { Binder: FunctionKoto { ClosureDefinition: not null } closure } && HasEnvironmentOrigin(actual, closure))
             {
                 // SPEC 8.10, 7.7.4: a result over the closure's hidden environment receiver satisfies no Callable signature and no
                 // erasure, so that part is no evidence for the slot; the Callable proof or the conversion judges it against the rest.
