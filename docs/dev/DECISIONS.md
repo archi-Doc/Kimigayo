@@ -11516,6 +11516,30 @@ structure is recorded here by the unit that first implements it.
   signature once (`StorageSignature`). K6's agreement assertion and code generation both read it, and K 4.3's "CheckedSet API for
   codegen" list gains it. Package C §3.12's fixture families are corrected to `PropertyWitness*` and milestone 36 (a correction, not a
   departure). It leaves the list.
+- **R5-M144 The owner's answers of 2026-10-28: a Field projection through a borrow needs the layout; a Dictionary literal entry
+  fails at its key; Milestone 42 is a P42 row at R5's exit** (owner, 2026-10-28, to the R5 planning session directly, on its questions
+  about PLAN G157 (41), G157 (32) and plan 5.3 gate 9)
+  - **G157 (41)** (verbatim 「(a) 射影をレイアウトの使用とする で決定します」): a Field projection through a borrow or raw pointer of a
+    Type whose C layout is unavailable (`f(s: ref/S) => s.n`) is a use that needs the layout (SPEC 8.15.3): the Field's offset is the
+    layout. SPEC 8.15.3 states it; the layout-use check (the instance collector's `CheckedSet`) reports it as a Language error at the
+    projection, and code generation's located `Unsupported_Kd` for it becomes a broken contract (`InternalInvariant_Kd`). These three
+    are one C-lane unit after G158 (3) lands, since G158 (3) changes the collector's layout rows. Reason: a value of such a Type can
+    never be created, so no valid argument reaches the projection, and `Unsupported_Kd` means a valid form not yet implemented, which no
+    implementation could ever cover here. Rejected: (b) keeping the projection a non-use with code generation's located
+    `Unsupported_Kd` (a program that never calls the function fails to build).
+  - **G157 (32)** (verbatim 「G157 (32)：辞書リテラルの位置 (b)」): a failure inside a Dictionary literal entry's insertion (its allocation
+    included) reports the entry's key expression. SPEC 22.5.1 says "the start of the invoking user expression", but an entry is not an
+    expression (Appendix F, `DictionaryEntry`), so the text left open the literal's start or the entry; SPEC 22.5.1 now states the
+    entry's key, beside its rule for a duplicate key (the later key expression). R5-M126's recorded reading, the old generator and the
+    test already follow it; MIR code generation reported the value (`MirBuilder.Expansions.cs` placed the entry's steps at
+    `entry.Value`), fixed with SPEC's sentence in unit x1rows (R5-M145). Rejected: (a) the literal's start (neither generator reports
+    it; it loses which entry failed).
+  - **Gate 9 and Milestone 42** (verbatim 「(a) P42 の決定行に」): plan 5.3 gate 9 ("the rejected milestones 39, 41, 42 and 43 keep
+    their recorded first diagnostic" under sel) is read "except P42's static storage records" for Milestone 42, whose five static
+    declarations get R5-M82's `StaticStorage` records at check under sel (`checked-set-at-check`, R5-M41) before its recorded first
+    diagnostic. Reason: R5-M13 (b) defers static `var` to P42 after R6-check with Milestone 42 as its completion condition, so the gate
+    cannot hold for 42 within R5. `MilestoneSourcesTest.AuthoredProgramsMatchTheirRecordedStageAndDiagnostic` is a P42 decided row (not
+    G2's); P42 restores the recorded first diagnostic. Rejected: (b) a `Codegen.Expect` deviation now (a second record P42 must remove).
 - **R5-M145 The sel pending ledger before X1: one byte copy for both generators, an entry's insertion at its key, generator-neutral
   audits and IR assertions, and the decided P42 set (x1rows)** (2026-10-28, C lane; plan X1, PLAN G157 (25), (28), (29), (32), (33), (35)
   and G188; SPEC 16.2.1, 22.2, 22.5.1, IMPL 21.1.3, 21.3.1; the planning session's rulings Q1-Q5 on x1rows' design (`x1rows-design.md`,
