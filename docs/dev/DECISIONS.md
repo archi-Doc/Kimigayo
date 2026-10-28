@@ -5368,11 +5368,27 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Types carry the caller's Origins); fit unless refuted in Binding (E2a a conservative Language error); retention reading the solved
     Origins; (P), a proven chain of the class's edges (E2, putR and E3 valid against the adopted statement); (S) only where an end is
     tied to a Fixed Origin by equality (no derivation); `Beyond` as an undecided store (nine dev-valid calls Unsupported_Kd).
-  - Cost (harness `r4-notes\wk-impl\measure\`: cold TyCtxt.Retains over every Call of every body, library bodies included, A
-    2d8a439c5 against this commit, one folder, order A B B A, KIMI_CPU=2, TieredCompilation=0): library and Hello (293 calls)
-    706 -> 917 µs min (+0.21 ms, about 1.6% of a cold Bind) and 177,904 -> 225,136 B (+47 KB, about 1.0%; 314,640 B before pooling
-    the walks' scratch); the Iterator, Dictionary and Iteration callees (52 calls) 114 -> 195 µs, 14,576 -> 27,960 B; Milestone26
-    (308 calls) 706 -> 916 µs, 149,568 -> 196,800 B (286,304 B before pooling). Warm A5 0 B. Census: (S) adds no record in the
+  - Cost against dev (fix round 1, R4's review B4 and BU's B2; the first record measured from 2d8a439c5, which already held rule 3).
+    Census, G272's method (the G258 host loads each build in its own context and times A5's step 4 cold per program, interleaved
+    with the side order rotated, 3 runs x 8 reps, KIMI_CPU=2, TieredCompilation=0, one folder, versions checked; the library, the
+    milestones, the MIR goldens and the accepted SPEC variants, 122 programs; sums of per-program medians): fd4f56ae3 against its
+    base c84eb9f49, A5 cold 380.3 -> 519.7 ms (+36.7%, +1.14 ms per program) and 47.67 -> 86.45 MB (+38.8 MB, +81%); rule 3 alone
+    (2d8a439c5) 443.6 ms and 68.06 MB, so rule 3 takes +63 ms (45%) and +20.4 MB (53%), rules 1 and 2 +76 ms (55%) and +18.4 MB
+    (47%). After fix round 1, against dev d3fcfd5a8: 383.3 -> 529.8 ms (+38.2%, +1.20 ms per program), 47.67 -> 86.74 MB (+39.1 MB,
+    +320 KB per program), retained +20.6 MB (the retention memo); step 2 and warm step 2 unchanged; warm step 4 +256 B in one
+    program (Milestone7: the Loan arrays' existing warm regrow, each Loan 8 B larger for its Place). Cold TyCtxt.Retains (harness
+    `r4-notes\wk-impl\measure\`, every Call of every body, library included, min of 12 interleaved runs): library and Hello (293
+    calls) 308 -> 949 µs (+0.64 ms, about 5.2% of a 12.3 ms cold Bind) and 91,816 -> 225,600 B (+134 KB, about 2.8%); Milestone26
+    (308 calls) 311 -> 963 µs, 58,680 -> 197,264 B. Where it goes (an instrumented build, Hello, 105 contracts computed for 293
+    calls): the handed signatures (HandedSignatures, 18%) and their instantiation under the Subst (18%), the erased signatures' walks
+    (3%), the rows (28%: storage walks 10%, positions with their fits 5.5%, hold walks 4%, sources 3%), the contract's own
+    instantiation and erased requirement callees the rest. The memo per (callee, Subst, scope) is already reused across call sites.
+    The design owner's form (a) (each erased signature's relations kept per signature Type, TyCtxt beside HandedCallables) changes no
+    retention (a per-contract comparison over the census and the Wk rows) but saves nothing, since each signature is walked about
+    once per compilation (census +0.5% and +2.9 MB against this record's head, Retains +11 µs and +27 KB), so it is not landed; its
+    filter is not equivalent (a premise outside the erased edges, a declared `origin b outlives c`, a Type's well-formedness or the
+    catalog's, can carry an erased output end to an output). A memo of HandedSignatures per callee declaration would cut at most its
+    18%. Census: (S) adds no record in the
     library, the milestones, the MIR goldens, the accepted SPEC variants, pair-cases.json or the diagnostic corpus with spec-cases and
     the SPEC blocks (MirCensusTest's rows and the KIMI_MIR_DIFF rows of GenericOwnershipCaseTest and
     MirDifferenceTest.RequestedCorpus, under (S) and under the proven-only reading); against dev the whole change removes exactly
