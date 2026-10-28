@@ -244,6 +244,15 @@ public sealed class InstanceCollectorTest
             const string Zero = "contract Zero\n    func zero() -> i32\nfunc call<T>() -> i32\n    T is Zero\n    return T.zero()\nstruct Bad\n    Self is Zero\n    public var m: Missing\n";
             const string Format = "    Self is Utf8Format\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write(1)\n";
             const string Named = "contract Named\n    func name(self: ref/Self) -> i32\nfunc call<T>(x: ref/T) -> i32\n    T is Named\n    return x.name()\nstruct Bad\n    Self is Named\n";
+            const string HasItem = "contract HasItem\n    associate Item\nstruct HA<S>\n    S is HasItem\n    var x: S.Item\n";
+            const string NoType = HasItem + "struct A\n    Self is HasItem\n    associate HasItem.Item is A.Item\n";
+            const string BaseA = HasItem + "open struct BaseA\n    Self is HasItem\n    associate HasItem.Item is BaseA.Item\n";
+            const string Inherited = "InvalidConstraint_Kd InvalidConstraint_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd " +
+                "InvalidConstraint_Kd InvalidConstraint_Kd";
+            const string Holder = "contract Holder<K>\n    associate Item\nstruct HB<S>\n    S is Holder<i32>\n    var x: S.Item\n";
+            const string Bindings = "    associate Holder<T>.Item is i32\n    associate Holder<U>.Item is u8\n";
+            const string HAdd = "struct HAdd<S>\n    S is Addable<S>\n    public var x: S.Output\n";
+            const string SrcC = HasItem + "struct SrcC<T>\n    Self is HasItem when T is Copy\n        associate HasItem.Item is T\n";
             var b65 = Nest("B", 65, "i32");
             return new()
             {
@@ -260,6 +269,54 @@ public sealed class InstanceCollectorTest
                 { "replace", Bad + "func g(slot: uniq/Option<Bad>) => Kimi.Intrinsics.replace(slot, with: .None)\n", "UnresolvedBinding_Kd", string.Empty },
                 { "replaceGeneric", Bad + "func put<T>(slot: uniq/Option<T>) => Kimi.Intrinsics.replace(slot, with: .None)\nfunc g(slot: uniq/Option<Bad>) => put(slot)\n", "UnresolvedBinding_Kd", string.Empty },
                 { "row", Bad + "struct Sx\n    public var x: Array<Bad>\nfunc g(s: uniq/Sx) => s.x.reserve(1)\n", "UnresolvedBinding_Kd", string.Empty },
+                { "noType", NoType + "func g(b: HA<A>) => ()\n", "InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty },
+                { "closedPrimitive", HasItem + "func g(h: HA<i32>) => ()\n", "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty },
+                { "closedTuple", HasItem + "func g(h: HA<(i32, u8)>) => ()\n", "UnprovenConstraint_Kd UnprovenConstraint_Kd", string.Empty },
+                { "closedArray", HasItem + "func g(h: HA<[2 of i32]>) => ()\n", "UnprovenConstraint_Kd UnprovenConstraint_Kd", string.Empty },
+                {
+                    "closedProjection", HasItem + "struct Src\n    Self is HasItem\n    associate HasItem.Item is raw/u8\nfunc g(h: HA<Src.Item>) => ()\n",
+                    "UnprovenConstraint_Kd UnprovenConstraint_Kd", string.Empty
+                },
+                { "closedOutput", HAdd + "func g(h: HAdd<bool>) => ()\n", "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty },
+                { "closedOutputValid", HAdd + "func g(h: HAdd<i32>) -> i32 => h.x\n", string.Empty, string.Empty },
+                {
+                    "closedRefuted", SrcC.Replace("Item is T", "Item is i32", StringComparison.Ordinal) + "func g(h: HA<SrcC<string>>) => ()\n",
+                    "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty
+                },
+                {
+                    "closedPayload", HasItem + "enum EW<S>\n    S is HasItem\n    A(S.Item)\n    B\nfunc g(e: EW<i32>) => ()\n",
+                    "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty
+                },
+                { "inherited", BaseA + "struct DerA : BaseA\n    var m: i32\nfunc g(b: HA<DerA>) => ()\n", Inherited, string.Empty },
+                {
+                    "inheritedTwice", BaseA + "open struct DerA : BaseA\n    var m: i32\nstruct DerB : DerA\n    var n: i32\nfunc g(b: HA<DerB>) => ()\n",
+                    "InvalidConstraint_Kd InvalidConstraint_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd InvalidTypeFormation_Kd " +
+                    "InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                },
+                {
+                    "inheritedGeneric", HasItem + "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is BaseG<T>.Item\n    var t: T\n" +
+                    "struct DerG : BaseG<i32>\n    var m: i32\nfunc g(b: HA<DerG>) => ()\n", Inherited, string.Empty
+                },
+                {
+                    "sourcesDisagree", Holder + "contract Sub<A, B> : Holder<A>, Holder<B>\nopen struct BaseP<T, U>\n    Self is Sub<T, U>\n" + Bindings +
+                    "struct DerP : BaseP<i32, i32>\n    var m: i32\nfunc g(h: HB<DerP>) => ()\n",
+                    "IncompatibleContractImplementation_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                },
+                {
+                    "pathsDisagree", Holder + "open struct BaseP<T, U>\n    Self is Holder<T>\n    Self is Holder<U>\n" + Bindings +
+                    "struct DerP : BaseP<i32, i32>\n    var m: i32\nfunc g(h: HB<DerP>) => ()\n",
+                    "DuplicateBinding_Kd DuplicateBinding_Kd InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                },
+                {
+                    "noConformance", HasItem + "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is T\n    var t: T\n" +
+                    "struct DerX : BaseG\n    var m: i32\nfunc g(b: HA<DerX>) => ()\n",
+                    "InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                },
+                {
+                    "noConformanceArity", HasItem + "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is T\n    var t: T\n" +
+                    "struct DerX : BaseG<i32, u8>\n    var m: i32\nfunc g(b: HA<DerX>) => ()\n",
+                    "InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                },
                 { "limitBesideError", Inspect + Box + $"func h(b: ref/{b65}) => inspect(b)\nfunc other() -> i32 => missing\n", "UnresolvedBinding_Kd", "Unsupported_Kd inspect(b)" },
                 { "limitBesideField", Inspect + Box + $"struct Bad\n    public var m: Missing\n    public var big: {b65}\nfunc h(b: ref/Bad) => inspect(b)\n", "UnresolvedBinding_Kd", "Unsupported_Kd inspect(b)" },
                 { "limitAfterLocal", Box + $"struct Bad<T>\n    public var v: T\n    public var m: Missing\nfunc two<T>(a: ref/Bad<T>, b: ref/{Nest("B", 65, "T")}) => ()\nfunc g(x: ref/Bad<i32>, y: ref/{b65}) => two(x, y)\n", "UnresolvedBinding_Kd", "Unsupported_Kd two(x, y)" },
@@ -554,10 +611,38 @@ public sealed class InstanceCollectorTest
         Assert.Equal(complete ? DiagnosticCode.InternalInvariant_Kd : null, collector.RecordOf(Layout.Outcome.Rejected));
     }
 
+    // SPEC 8.6.1, 8.2.3, IMPL 21.1 (DECISIONS BU-50, PLAN G271): an instance whose stored part is an associated projection is collected and
+    // laid out with the Type its subject's conformance binds (W<Src>'s `e: S.Element` as i32), and a body reads the part as that Type, the
+    // one producer's: a Field read (`w.e`) and a Case payload read (`.A(let n)`) give an i32 local, and so does a subject inheriting its
+    // base's binding (`DerI : BaseI`, the valid twin of the inherited rejection). Before, the uncompleted projection
+    // reached Layout through AdtDef's view or a read's local (the collection threw "Layout has no row for the Type Element", sel's
+    // `check` CheckFaulted_Kd), and a payload read's `n + 1` was TypeMismatch_Kd.
+    [Theory]
+    [InlineData("    let w = W<Src>.init(e: 1)\n    let p = (w@move, 2)\n")]
+    [InlineData("    let w = W<Src>.init(e: 1)\n    let v = w.e\n")]
+    [InlineData("    let e: EM<Src> = .A(1)\n    let y = match e@move\n        .A(let n) => n + 1\n        .B => 0\n")]
+    [InlineData("    let w = W<DerI>.init(e: 1)\n    let v = w.e\n")]
+    public void AProjectionPartIsLaidOutAndReadCompleted(string body)
+    {
+        var (_, set) = Collect("contract HasElem\n    associate Element\nstruct Src\n    Self is HasElem\n    associate Element is i32\nstruct W<S>\n" +
+            "    S is HasElem\n    public var e: S.Element\n    public init(e: S.Element) => self.e = e@move\nenum EM<S>\n    S is HasElem\n" +
+            "    A(S.Element)\n    B\nopen struct BaseI\n    Self is HasElem\n    associate Element is i32\nstruct DerI : BaseI\n    var m: i32\n" +
+            "public func main() -> ()\n" + body + "    return\n");
+        Assert.Empty(set.Records);
+        Assert.NotEqual(0, set.Items.Length);
+    }
+
     // SPEC 23.1.2, 23.1.1 (DECISIONS BU-38): a part Binding rejected is a dependent, never a limit. A program whose instance, composed
     // substitution or bodyless callee's parameter rests on storage Binding rejected keeps exactly its Binding record and gains no generation
     // record (before: the storage-nesting gap at the requesting call, C8d's LegacyRow item InternalInvariant_Kd), while a Type nested past the
-    // bound keeps the gap at its site, beside a failed part in either order too: the limit wins.
+    // bound keeps the gap at its site, beside a failed part in either order too: the limit wins. A Field whose projection finally names no
+    // Type is such a part, whatever its subject and reason (DECISIONS BU-50): its specification rejected by SPEC 8.3.3 (noType), also
+    // through an inherited conformance one or two levels down or under a generic base (inherited*), two inherited sources or two
+    // conformance paths disagreeing (sourcesDisagree, pathsDisagree), a subject whose base clause gives it no conformance (noConformance*),
+    // a closed subject that is no struct or enum (closed*: a primitive, a Tuple, an array, a completed `Src.Item`, `bool` without Addable,
+    // a Case payload) or whose conformance's condition is refuted (closedRefuted); before, Layout's "no row for the Type Item" ("Output").
+    // A builtin output names its Type (closedOutputValid). The valid twins whose projection stays pending in a generic declaration's
+    // storage are MirBorrowsTest.APendingProjectionIsCompletedByTheInstanceAUseForms, at the MIR problem layer that observed them.
     [Theory]
     [MemberData(nameof(RejectedCases))]
     public void APartBindingRejectedIsNoGenerationRecord(string name, string source, string issues, string records)

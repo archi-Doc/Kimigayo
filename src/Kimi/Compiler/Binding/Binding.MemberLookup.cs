@@ -175,7 +175,7 @@ public sealed partial class Binding
             {
                 var syntax = structure.Bases[i];
                 var baseType = syntax.BoundType ?? this.BindType(syntax, scope);
-                if (baseType is null || this.StoredType(baseType, type) is not { } substituted)
+                if (baseType is null || this.PartType(baseType, type) is not { } substituted)
                 {
                     return new(null, type, path, Pending: true);
                 }
