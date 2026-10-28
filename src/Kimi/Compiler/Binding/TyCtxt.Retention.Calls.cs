@@ -6,12 +6,13 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// Call retention, per call (contract in TyCtxt.Retention.cs): TyCtxt.Retains over a callee and a call's Subst, or over a Value
-// callee's declared signature, memoized until an edit, and the instantiated contract Binding computes it over (Binding.Retention.cs).
+// Call retention, per call (contract in TyCtxt.Retention.cs): TyCtxt.Retains over a callee and a call's Subst (a `drop` over its
+// destruction receiver), or over a Value callee's declared signature, and RetainsErasedDestruction over a destroyed part, memoized until
+// an edit, and the instantiated contract Binding computes it over (Binding.Retention.cs).
 internal sealed partial class TyCtxt
 {
-    // Per callee or signature, Type instantiation and the premise scope or binder the computation reads; kept across passes with no edit,
-    // whose contracts are the same, and discarded with the source analysis at an edit (Binding.Invalidate).
+    // Per callee, signature or erased destruction's receiver, Type instantiation and the premise scope or binder the computation reads;
+    // kept across passes with no edit, whose contracts are the same, and discarded with the source analysis at an edit (Binding.Invalidate).
     private readonly Dictionary<(object Callee, Subst? Types, object? Scope), CallRetention> retentions = new();
 
     // The Callable bounds of the computation's premises, instantiated as its inputs; reused.
@@ -75,6 +76,25 @@ internal sealed partial class TyCtxt
         return retention;
     }
 
+    // SPEC 16.3.3, 15.6.4 (DECISIONS BU-47): an erased destruction's retention, of a destroyed part whose `drop` the destruction walk
+    // cannot see (a handle whose View Target is not Sealed, a Function value's environment, an abstract part in its generic body): the
+    // erased call `(uniq/P) -> ()` (R4-M52) over its destruction receiver, read and keyed as a Value call's erased signature is, under
+    // the calling definition's constraint scope.
+    internal CallRetention RetainsErasedDestruction(BoundType part, BindingSymbol? definition)
+    {
+        var use = binding.DefinitionUse(definition);
+        var receiver = this.DestructionReceiver(part);
+        (object Callee, Subst? Types, object? Scope) key = (receiver, null, binding.ConstraintScope(use));
+        if (this.retentions.TryGetValue(key, out var known))
+        {
+            return known;
+        }
+
+        var retention = binding.RetainsErased(use, [receiver], BoundType.Unit);
+        this.retentions.Add(key, retention);
+        return retention;
+    }
+
     // SPEC 15.8.2, 8.10 (DECISIONS R4-M126 D-6, R4-M148): whether a Value callee's contract has the call receiver input, input 0: the
     // callee, without its acquisition layer (Binding.CallableCore), is a Closure whose definition is bound. The one predicate Retains and
     // MirBorrows' slot mapping read; a Function value, a function item and a Callable-bounded value have none.
@@ -87,7 +107,7 @@ internal sealed partial class TyCtxt
     // body name. A Closure whose definition Binding did not bind is read as it is, a dependent of Binding's rejection.
     internal BoundType? ClosureEnvironment(BoundType closure)
     {
-        if (closure.Symbol?.Declaration is not FunctionKoto function || BoundClosure.Of(function)?.EnvironmentType is not { } environment)
+        if (BoundClosure.Of(closure)?.EnvironmentType is not { } environment)
         {
             return closure;
         }
@@ -101,7 +121,7 @@ internal sealed partial class TyCtxt
     // admitting one), else Shared; the instance gives Receiver. PD13's hold compares a call's acquisition with it (MirBorrows.CallRows).
     internal SemanticsKind ClosureReceiverIn(BoundType closure)
     {
-        var definition = BoundClosure.Of((FunctionKoto)closure.Symbol!.Declaration!)!;
+        var definition = BoundClosure.Of(closure)!;
         if (definition.CaseFreeReceiver != SemanticsKind.Ref)
         {
             return definition.CaseFreeReceiver;
@@ -124,8 +144,7 @@ internal sealed partial class TyCtxt
 
     // The Closure Type a Value callee is without its acquisition layer (Binding.CallableCore), with a bound definition; null for any other.
     private static BoundType? Closure(BoundType callee)
-        => Binding.CallableCore(callee) is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto function } closure &&
-            BoundClosure.Of(function) is { EnvironmentType: not null } ? closure : null;
+        => Binding.CallableCore(callee) is { } closure && BoundClosure.Of(closure) is { EnvironmentType: not null } ? closure : null;
 
     private static bool HasAbstractPart(Subst types)
     {
@@ -140,6 +159,7 @@ internal sealed partial class TyCtxt
 
     // The retention of a callee's contract and Callable bounds (erased callables its body may call through a carrier) as the Types
     // instantiate them; null where one of them is past Binding's storage limits or does not substitute (CallRetention.Limit; Instance).
+    // A `drop` declares no parameter (Signature numbers none): its input 0 is its destruction receiver over the layer the Types instantiate.
     private CallRetention? InstanceRetention(BindingSymbol callee, Subst? types, BindingScope? scope)
     {
         if (this.Instance(callee, types, -1, scope, out var count) is not { } result)
@@ -147,18 +167,31 @@ internal sealed partial class TyCtxt
             return null;
         }
 
-        var inputs = new BoundType[count];
-        for (var i = 0; i < count; i++)
+        var declaration = (FunctionKoto)callee.Declaration;
+        BoundType[] inputs;
+        if (declaration.IsDestructor)
         {
-            if (this.Instance(callee, types, i, scope, out _) is not { } input)
+            if (this.Instance(AdtDef.ReceiverType(declaration)!, types, scope) is not { } layer)
             {
                 return null;
             }
 
-            inputs[i] = input;
+            inputs = [this.DestructionReceiver(layer)];
+        }
+        else
+        {
+            inputs = new BoundType[count];
+            for (var i = 0; i < count; i++)
+            {
+                if (this.Instance(callee, types, i, scope, out _) is not { } input)
+                {
+                    return null;
+                }
+
+                inputs[i] = input;
+            }
         }
 
-        var declaration = (FunctionKoto)callee.Declaration;
         var bounds = this.retentionBounds;
         binding.CallableBoundSignatures(declaration, bounds);
         for (var i = 0; i < bounds.Count; i++)
@@ -173,6 +206,10 @@ internal sealed partial class TyCtxt
 
         return binding.Retains(declaration, inputs, result, types?.Declaring, CollectionsMarshal.AsSpan(bounds), scope);
     }
+
+    // SPEC 16.3.1, 15.6.4 (DECISIONS BU-47): the destruction receiver of a destroyed part, input 0 of its destruction's retention: `uniq/P`
+    // without an Origin, which no caller names, so the input has no Value atom and its retention no Value row.
+    private BoundType DestructionReceiver(BoundType part) => this.Reference(SemanticsKind.Uniq, part);
 
     // A parameter's Type, or at -1 the result's, as the Types instantiate it (null: CallRetention.Limit). A declared contract without
     // the Type is a broken contract: MIR's validator reads the same Signature.

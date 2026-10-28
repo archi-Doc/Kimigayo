@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -160,6 +161,41 @@ public class OriginPremiseCatalogTest
         var local = Box + "func f(a: ref/i32, b: ref/i32) -> ref/i32 during b\n    let h0 = H.init(a)\n    let h: H{x} = h0@move\n        origin x.s == b\n    return h.item\n" + Main;
         Assert.Contains(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), Check(local).Codes);
         Assert.Empty(Check(local.Replace("    let h0", "    origin a outlives b\n    let h0", StringComparison.Ordinal)).Codes);
+    }
+
+    // SPEC 15.6.1, 15.8.2 (DECISIONS R4-M152, PLAN G270): R2 holds a Closure body's receiver input `R/Env during ρ` well formed, so
+    // under a borrowed receiver each Origin stored in an environment binding outlives ρ in the body (its oracle entails `p outlives ρ`,
+    // which `fu(a@uniq)` needs); under `owner/Self` the input is `Env` by value, with no ρ to outlive.
+    [Fact]
+    public void AClosuresReceiverInputIsAPremiseOfItsBody()
+    {
+        const string Use = "func use(p: ref/i32) -> i32\n    let a = p\n";
+        var (borrowed, body, receiver) = ClosureReceiver(Use + "    var c = func [var a] () -> ()\n        let r = a@uniq\n    c()\n    return 0\n");
+        Assert.Equal(SemanticsKind.Uniq, receiver.Semantics);
+        Assert.True(Entails(borrowed, body, receiver.Components[0].Components[0].Origin!, receiver.Origin!, 0));
+        Assert.False(Entails(borrowed, body, receiver.Origin!, receiver.Components[0].Components[0].Origin!, 0));
+        const string Text = "func makeText() -> string => \"a\"\nfunc consumeText(value: string) => ()\n";
+        var owned = ClosureReceiver(Text + Use + "    let t = makeText()\n    let c = func [a, t@move] () -> ()\n        consumeText(t@move)\n    c@move()\n" +
+            "    return 0\n").Receiver;
+        Assert.Equal((BoundTypeKind.Closure, (BoundOrigin?)null), (owned.Kind, owned.Origin));
+    }
+
+    // A program's one Closure body and its receiver input's Type as its contract states it (`R/Env during ρ`, or `Env` under owner/Self;
+    // the MIR body's receiver local, without ρ, gives Env).
+    private static (Compilation Compilation, ExecutableBody Body, BoundType Receiver) ClosureReceiver(string source)
+    {
+        var c = MirBuildTest.Compile(source + Main);
+        var closure = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Body.Definition?.Declaration is FunctionKoto { IsAnonymous: true });
+        var local = closure.Locals[1].Type;
+        var environment = local.Kind == BoundTypeKind.Closure ? local : local.Components[0];
+        return (c, closure.Key.Body, c.Binding.ClosureReceiver((FunctionKoto)closure.Key.Body.Definition!.Declaration, environment));
+    }
+
+    private static bool Entails(Compilation c, ExecutableBody body, BoundOrigin longer, BoundOrigin shorter, ulong caseMask)
+    {
+        using var oracle = c.Types.UniversalRelations(body);
+        oracle.Close(shorter, caseMask);
+        return oracle.Outlives(longer);
     }
 
     private static (string[] Codes, OriginProofMetrics Metrics) Check(string source)

@@ -142,20 +142,20 @@ public sealed partial class MirDifferenceTest
 
     // R4-M111 (R4-M108): Binding's Origin relation records are compared with A5 only where they are twins, the records of a node whose
     // relation is also a row A5 judges: at a fit every record of the node, the mixed fit's fixed-fixed first chain included, and at a
-    // local's clause its body-chain record. An all-fixed-fixed node's records pass through, Binding's until R7, and so, until A5-F7's
-    // 2c-6, does a Closure result over call-local storage, and a call argument's fixed-fixed record beside a body-chain position of the
+    // local's clause its body-chain record. An all-fixed-fixed node's records pass through, Binding's until R7; a Closure result over
+    // call-local storage is a twin, its Refuted source at the returned value (DECISIONS R4-M152); a call argument's fixed-fixed record beside a body-chain position of the
     // same call, a row without a record at the same node (BU's review N6). Each row has a record that passes through.
     [Theory]
     [InlineData(TwinFits, "UnprovenOriginRelation_Kd A5 return t|UnsatisfiedOriginRelation_Kd A5 return local@ref", "UnprovenOriginRelation_Kd - x")]
     [InlineData(TwinClauses, "UnsatisfiedOriginRelation_Kd A5 origin x.s outlives a", "UnprovenOriginRelation_Kd - origin x.s outlives b")]
-    [InlineData("public func main()\n    let f = func (x: i32) => x@ref\n    let r = f(1)\n", "", "UnsatisfiedOriginRelation_Kd - func (x: i32) => x@ref")]
+    [InlineData("public func main()\n    let f = func (x: i32) => x@ref\n    let r = f(1)\n", "UnsatisfiedOriginRelation_Kd A5 x@ref", "")]
     [InlineData(CallPositions, "", "UnprovenOriginRelation_Kd - t")]
     public void OnlyTwinsOfBindingsOriginRecordsAreCompared(string source, string compared, string passed)
     {
         var c = MirBuildTest.Compile(source);
         var (common, old, _, _) = MirDifferenceLedger.Sides(c, c.BuildMir());
         Assert.Equal(compared.Split('|', StringSplitOptions.RemoveEmptyEntries), OriginRecords(old));
-        Assert.Equal(passed.Split('|'), OriginRecords(common));
+        Assert.Equal(passed.Split('|', StringSplitOptions.RemoveEmptyEntries), OriginRecords(common));
 
         // Binding's Origin relation records, each `code analysis subject` by the subject's source text, in ordinal order.
         string[] OriginRecords(List<MirDifferenceLedger.Entry> entries) => [.. entries.Where(static x => x.Requirement == "Binding.OriginRelation")

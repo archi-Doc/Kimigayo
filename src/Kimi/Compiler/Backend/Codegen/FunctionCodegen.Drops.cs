@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Mir;
+using Kimi.Testing;
 
 namespace Kimi.Compiler.Backend;
 
@@ -11,9 +12,10 @@ namespace Kimi.Compiler.Backend;
 // (FunctionCodegen.Glue's Destroy), under the row's flag (FunctionCodegen.Flags' test; Keep's is none, so always); Elide writes nothing;
 // Open destroys what remains after a Partial Move (SPEC 16.3.2, 15.1.3): one level of the value through its glue item (FunctionCodegen.Glue's
 // Level), each part in destruction order by its child row, found by the part's move-path step (Governing), and a part without one by its
-// parent's own bit, a component no Place names having no path of its own (MirMoveData). The Drop ends through Branch, after its own clear
-// point. Gate step 2 has written only a body whose table is exact (FunctionCodegen.Write; DECISIONS R5-M96), so a runtime Drop without a
-// group is a broken contract, and no Open row is a struct's that declares a drop (A2's MovedPlace_Kd, R4-M6b).
+// parent's own bit, a component no Place names having no path of its own (MirMoveData). In a test build a destruction runs in the cleanup
+// phase (FunctionCodegen.Phases; DECISIONS R5-M137). The Drop ends through Branch, after its own clear point. Gate step 2 has written only
+// a body whose table is exact (FunctionCodegen.Write; DECISIONS R5-M96), so a runtime Drop without a group is a broken contract, and no
+// Open row is a struct's that declares a drop (A2's MovedPlace_Kd, R4-M6b).
 internal sealed partial class FunctionCodegen
 {
     private readonly HashSet<BoundType> seen = new(); // MirTypes.MayNeedDrop's scratch.
@@ -64,17 +66,12 @@ internal sealed partial class FunctionCodegen
             return false;
         }
 
-        if (!this.Address(drop.Place, out var address))
+        if (!this.Address(drop.Place, out var address) || !this.Location(drop.Source, out var site))
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, drop.Source);
-            return false;
+            return false; // A broken contract, recorded.
         }
 
-        if (!this.Location(drop.Source, out var site))
-        {
-            return false;
-        }
-
+        this.Open(TestRuntime.Phase.Cleanup); // A test build's destruction runs in the cleanup phase (FunctionCodegen.Phases).
         this.DestroyByRow(-1, group, glue, address, 0, site);
         return true;
     }

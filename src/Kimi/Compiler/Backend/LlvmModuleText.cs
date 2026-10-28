@@ -1,10 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the module frame of the generated LLVM text (SPEC 21.3, 21.4, 22.6; DECISIONS R5-M14): the header with the pooled
-// constants, the Windows runtime template with its ABI definitions spliced in and its test variant, the runtime routine a module
-// defines only where a body calls it (TryAllocate, the nullable Alloc), the checked splice every runtime template takes (ExpandRuntime;
-// LegacyRuntimeHelpers' formatting runtime too), the external declarations,
-// the overflow and memory intrinsic declarations, the footer's profile attributes, the spelling of external symbols, numbered names,
+// constants, the Windows runtime template with its ABI definitions spliced in and its test variant, the runtime routines a module
+// defines only where a body calls them (TryAllocate, the nullable Alloc; TransferBytes, the byte copy), the checked splice every runtime
+// template takes (ExpandRuntime; LegacyRuntimeHelpers' formatting runtime too), the external declarations, the overflow and memory
+// intrinsic declarations, the footer's profile attributes, the spelling of external symbols, numbered names,
 // numbers formatted on the stack (or once, as text, for a template filled at startup) and the bits of a floating constant's
 // hexadecimal spelling. Both generators write the frame through it (PD2: promoted, never copied; Name came from the old writer with
 // ObjectRuntime, R5-M69; Hexadecimal from FunctionCodegen, replacing the old writer's hardware widening, PLAN G157 (19)).
@@ -105,6 +105,20 @@ internal static partial class LlvmModuleText
 
         """,
         [RuntimeAbi.TryAllocateBytes]);
+
+    // SPEC 22.2: the byte copy (RuntimeAbi.TransferBytes), defined where a body calls it: its ranges never overlap (the declaration's
+    // contract), so llvm.memcpy (DECISIONS R5-M18, R5-M92); it moves no responsibility and has no location to report. Both generators
+    // call it, so the native audits count one routine (DECISIONS R5-M145).
+    internal static readonly string TransferBytes = ExpandRuntime(
+        """
+        {{__kimi_transfer_bytes}}
+        entry:
+          call void @llvm.memcpy.p0.p0.i64(ptr %destination, ptr %source, i64 %size, i1 false)
+          ret void
+        }
+
+        """,
+        [RuntimeAbi.TransferBytes]);
 
     // Target information, shared Types, and exactly one strong _fltused definition (SPEC 21.4.7).
     private static readonly string Header =

@@ -146,7 +146,7 @@ internal static partial class MirDump
                         ((string?)constant.Value)?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace(
                         "\n",
                         "\\n")).Append('"'),
-                    MirConstKind.Location => Source(text.Append("location"), new((ushort)(constant.Bits >> 32), (int)(constant.Bits & uint.MaxValue))),
+                    MirConstKind.Location => Source(text.Append("location"), constant.Site),
                     _ => text.Append(constant.Kind == MirConstKind.FnItem ? "fn " : "type ").Append(Type(constant.Type)),
                 };
             case MirOperandKind.PairAcquire:

@@ -243,6 +243,15 @@ public sealed partial class InstanceCollectorTest
             const string Zero = "contract Zero\n    func zero() -> i32\nfunc call<T>() -> i32\n    T is Zero\n    return T.zero()\nstruct Bad\n    Self is Zero\n    public var m: Missing\n";
             const string Format = "    Self is Utf8Format\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write(1)\n";
             const string Named = "contract Named\n    func name(self: ref/Self) -> i32\nfunc call<T>(x: ref/T) -> i32\n    T is Named\n    return x.name()\nstruct Bad\n    Self is Named\n";
+            const string HasItem = "contract HasItem\n    associate Item\nstruct HA<S>\n    S is HasItem\n    var x: S.Item\n";
+            const string NoType = HasItem + "struct A\n    Self is HasItem\n    associate HasItem.Item is A.Item\n";
+            const string BaseA = HasItem + "open struct BaseA\n    Self is HasItem\n    associate HasItem.Item is BaseA.Item\n";
+            const string Inherited = "InvalidConstraint_Kd InvalidConstraint_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd " +
+                "InvalidConstraint_Kd InvalidConstraint_Kd";
+            const string Holder = "contract Holder<K>\n    associate Item\nstruct HB<S>\n    S is Holder<i32>\n    var x: S.Item\n";
+            const string Bindings = "    associate Holder<T>.Item is i32\n    associate Holder<U>.Item is u8\n";
+            const string HAdd = "struct HAdd<S>\n    S is Addable<S>\n    public var x: S.Output\n";
+            const string SrcC = HasItem + "struct SrcC<T>\n    Self is HasItem when T is Copy\n        associate HasItem.Item is T\n";
             var b65 = Nest("B", 65, "i32");
             return new()
             {
@@ -259,6 +268,54 @@ public sealed partial class InstanceCollectorTest
                 { "replace", Bad + "func g(slot: uniq/Option<Bad>) => Kimi.Intrinsics.replace(slot, with: .None)\n", "UnresolvedBinding_Kd", string.Empty },
                 { "replaceGeneric", Bad + "func put<T>(slot: uniq/Option<T>) => Kimi.Intrinsics.replace(slot, with: .None)\nfunc g(slot: uniq/Option<Bad>) => put(slot)\n", "UnresolvedBinding_Kd", string.Empty },
                 { "row", Bad + "struct Sx\n    public var x: Array<Bad>\nfunc g(s: uniq/Sx) => s.x.reserve(1)\n", "UnresolvedBinding_Kd", string.Empty },
+                { "noType", NoType + "func g(b: HA<A>) => ()\n", "InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty },
+                { "closedPrimitive", HasItem + "func g(h: HA<i32>) => ()\n", "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty },
+                { "closedTuple", HasItem + "func g(h: HA<(i32, u8)>) => ()\n", "UnprovenConstraint_Kd UnprovenConstraint_Kd", string.Empty },
+                { "closedArray", HasItem + "func g(h: HA<[2 of i32]>) => ()\n", "UnprovenConstraint_Kd UnprovenConstraint_Kd", string.Empty },
+                {
+                    "closedProjection", HasItem + "struct Src\n    Self is HasItem\n    associate HasItem.Item is raw/u8\nfunc g(h: HA<Src.Item>) => ()\n",
+                    "UnprovenConstraint_Kd UnprovenConstraint_Kd", string.Empty
+                },
+                { "closedOutput", HAdd + "func g(h: HAdd<bool>) => ()\n", "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty },
+                { "closedOutputValid", HAdd + "func g(h: HAdd<i32>) -> i32 => h.x\n", string.Empty, string.Empty },
+                {
+                    "closedRefuted", SrcC.Replace("Item is T", "Item is i32", StringComparison.Ordinal) + "func g(h: HA<SrcC<string>>) => ()\n",
+                    "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty
+                },
+                {
+                    "closedPayload", HasItem + "enum EW<S>\n    S is HasItem\n    A(S.Item)\n    B\nfunc g(e: EW<i32>) => ()\n",
+                    "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty
+                },
+                { "inherited", BaseA + "struct DerA : BaseA\n    var m: i32\nfunc g(b: HA<DerA>) => ()\n", Inherited, string.Empty },
+                {
+                    "inheritedTwice", BaseA + "open struct DerA : BaseA\n    var m: i32\nstruct DerB : DerA\n    var n: i32\nfunc g(b: HA<DerB>) => ()\n",
+                    "InvalidConstraint_Kd InvalidConstraint_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd InvalidTypeFormation_Kd " +
+                    "InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                },
+                {
+                    "inheritedGeneric", HasItem + "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is BaseG<T>.Item\n    var t: T\n" +
+                    "struct DerG : BaseG<i32>\n    var m: i32\nfunc g(b: HA<DerG>) => ()\n", Inherited, string.Empty
+                },
+                {
+                    "sourcesDisagree", Holder + "contract Sub<A, B> : Holder<A>, Holder<B>\nopen struct BaseP<T, U>\n    Self is Sub<T, U>\n" + Bindings +
+                    "struct DerP : BaseP<i32, i32>\n    var m: i32\nfunc g(h: HB<DerP>) => ()\n",
+                    "IncompatibleContractImplementation_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                },
+                {
+                    "pathsDisagree", Holder + "open struct BaseP<T, U>\n    Self is Holder<T>\n    Self is Holder<U>\n" + Bindings +
+                    "struct DerP : BaseP<i32, i32>\n    var m: i32\nfunc g(h: HB<DerP>) => ()\n",
+                    "DuplicateBinding_Kd DuplicateBinding_Kd InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                },
+                {
+                    "noConformance", HasItem + "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is T\n    var t: T\n" +
+                    "struct DerX : BaseG\n    var m: i32\nfunc g(b: HA<DerX>) => ()\n",
+                    "InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                },
+                {
+                    "noConformanceArity", HasItem + "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is T\n    var t: T\n" +
+                    "struct DerX : BaseG<i32, u8>\n    var m: i32\nfunc g(b: HA<DerX>) => ()\n",
+                    "InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                },
                 { "limitBesideError", Inspect + Box + $"func h(b: ref/{b65}) => inspect(b)\nfunc other() -> i32 => missing\n", "UnresolvedBinding_Kd", "Unsupported_Kd inspect(b)" },
                 { "limitBesideField", Inspect + Box + $"struct Bad\n    public var m: Missing\n    public var big: {b65}\nfunc h(b: ref/Bad) => inspect(b)\n", "UnresolvedBinding_Kd", "Unsupported_Kd inspect(b)" },
                 { "limitAfterLocal", Box + $"struct Bad<T>\n    public var v: T\n    public var m: Missing\nfunc two<T>(a: ref/Bad<T>, b: ref/{Nest("B", 65, "T")}) => ()\nfunc g(x: ref/Bad<i32>, y: ref/{b65}) => two(x, y)\n", "UnresolvedBinding_Kd", "Unsupported_Kd two(x, y)" },
@@ -423,6 +480,42 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(admitted ? [] : [(DiagnosticCode.Unsupported_Kd, "pick(v@move)")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
     }
 
+    // DECISIONS R5-M146 (X2, PD27; PLAN G157 (10)): a requirement whose witness has no MIR body, HeapBuffer's reserve through BufferWriter or
+    // a #LibraryImport function, is the BodylessWitness gap, Unsupported_Kd at each site that requests its target (K 4.9, as OCC-X's): a
+    // requirement call, and a requirement Item where it is formed and where it is called, whether or not the output calls the function
+    // (code generation runs a witness only as a body or shim item).
+    [Theory]
+    [InlineData("    match w.reserve(4)\n", "w.reserve(4)")]
+    [InlineData("    let reserve = W.reserve\n    match reserve(w, 4)\n", "W.reserve | reserve(w, 4)")]
+    [InlineData(null, "C.now()")]
+    public void ABodylessWitnessIsAGapAtTheCall(string? reserve, string sites)
+    {
+        var source = reserve is null
+            ? "contract Clock\n    func now() -> u32\nstruct Win\n    Self is Clock\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n" +
+                "    public func now() -> u32\nfunc tick<C>() -> u32\n    C is Clock\n    return C.now()\nfunc use() -> u32 => tick<Win>()\n"
+            : "func room<W>(w: uniq/W) -> i32\n    W is BufferWriter\n" + reserve + "        .Ok(_) => return 1\n        .Err(_) => return 0\n" +
+                "func use(heap: uniq/Text.HeapBuffer) -> i32 => room(heap)\n";
+        var c = MirBuildTest.Compile(source + "public func main() -> () => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        Assert.All(set.Records, static x => Assert.Equal(DiagnosticCode.Unsupported_Kd, x.Code));
+        Assert.Equal(sites, string.Join(" | ", set.Records.Select(x => c.SyntaxOf(x.Subject).ToString())));
+    }
+
+    // SPEC 23.1.2 (DECISIONS R5-M146, X2 review B1): the gap is the witness's own (TyCtxt.Bodyless: a compiler or foreign function), so an
+    // independent Binding error elsewhere leaves an import witness's record beside it.
+    [Fact]
+    public void ABodylessWitnessIsAGapBesideAnUnrelatedError()
+    {
+        var c = MirBuildTest.Compile(
+            "contract Clock\n    func now() -> u32\nstruct Win\n    Self is Clock\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n" +
+            "    public func now() -> u32\nfunc tick<C>() -> u32\n    C is Clock\n    return C.now()\nfunc use() -> u32 => tick<Win>()\n" +
+            "func broken() -> i32\n    let text: string = 1\n    return 0\npublic func main() -> () => ()\n");
+        Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.TypeMismatch_Kd);
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        Assert.Equal([(DiagnosticCode.Unsupported_Kd, "C.now()")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+    }
+
     // DECISIONS BU-11 (PLAN G153 (2)): the storage bound is a property of each instance, whatever was prepared before it and in whatever
     // order its parts are walked. `h` places its Type argument 3 levels down, so Box^61 (i32 at level 64) is an instance and Box^62 is the
     // gap, alone and before or after the other; AB and BA store Box^57 in one Field and 4 levels deeper in the other, in either Field
@@ -553,10 +646,38 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(complete ? DiagnosticCode.InternalInvariant_Kd : null, collector.RecordOf(Layout.Outcome.Rejected));
     }
 
+    // SPEC 8.6.1, 8.2.3, IMPL 21.1 (DECISIONS BU-50, PLAN G271): an instance whose stored part is an associated projection is collected and
+    // laid out with the Type its subject's conformance binds (W<Src>'s `e: S.Element` as i32), and a body reads the part as that Type, the
+    // one producer's: a Field read (`w.e`) and a Case payload read (`.A(let n)`) give an i32 local, and so does a subject inheriting its
+    // base's binding (`DerI : BaseI`, the valid twin of the inherited rejection). Before, the uncompleted projection
+    // reached Layout through AdtDef's view or a read's local (the collection threw "Layout has no row for the Type Element", sel's
+    // `check` CheckFaulted_Kd), and a payload read's `n + 1` was TypeMismatch_Kd.
+    [Theory]
+    [InlineData("    let w = W<Src>.init(e: 1)\n    let p = (w@move, 2)\n")]
+    [InlineData("    let w = W<Src>.init(e: 1)\n    let v = w.e\n")]
+    [InlineData("    let e: EM<Src> = .A(1)\n    let y = match e@move\n        .A(let n) => n + 1\n        .B => 0\n")]
+    [InlineData("    let w = W<DerI>.init(e: 1)\n    let v = w.e\n")]
+    public void AProjectionPartIsLaidOutAndReadCompleted(string body)
+    {
+        var (_, set) = Collect("contract HasElem\n    associate Element\nstruct Src\n    Self is HasElem\n    associate Element is i32\nstruct W<S>\n" +
+            "    S is HasElem\n    public var e: S.Element\n    public init(e: S.Element) => self.e = e@move\nenum EM<S>\n    S is HasElem\n" +
+            "    A(S.Element)\n    B\nopen struct BaseI\n    Self is HasElem\n    associate Element is i32\nstruct DerI : BaseI\n    var m: i32\n" +
+            "public func main() -> ()\n" + body + "    return\n");
+        Assert.Empty(set.Records);
+        Assert.NotEqual(0, set.Items.Length);
+    }
+
     // SPEC 23.1.2, 23.1.1 (DECISIONS BU-38): a part Binding rejected is a dependent, never a limit. A program whose instance, composed
     // substitution or bodyless callee's parameter rests on storage Binding rejected keeps exactly its Binding record and gains no generation
     // record (before: the storage-nesting gap at the requesting call, C8d's LegacyRow item InternalInvariant_Kd), while a Type nested past the
-    // bound keeps the gap at its site, beside a failed part in either order too: the limit wins.
+    // bound keeps the gap at its site, beside a failed part in either order too: the limit wins. A Field whose projection finally names no
+    // Type is such a part, whatever its subject and reason (DECISIONS BU-50): its specification rejected by SPEC 8.3.3 (noType), also
+    // through an inherited conformance one or two levels down or under a generic base (inherited*), two inherited sources or two
+    // conformance paths disagreeing (sourcesDisagree, pathsDisagree), a subject whose base clause gives it no conformance (noConformance*),
+    // a closed subject that is no struct or enum (closed*: a primitive, a Tuple, an array, a completed `Src.Item`, `bool` without Addable,
+    // a Case payload) or whose conformance's condition is refuted (closedRefuted); before, Layout's "no row for the Type Item" ("Output").
+    // A builtin output names its Type (closedOutputValid). The valid twins whose projection stays pending in a generic declaration's
+    // storage are MirBorrowsTest.APendingProjectionIsCompletedByTheInstanceAUseForms, at the MIR problem layer that observed them.
     [Theory]
     [MemberData(nameof(RejectedCases))]
     public void APartBindingRejectedIsNoGenerationRecord(string name, string source, string issues, string records)
@@ -794,8 +915,8 @@ public sealed partial class InstanceCollectorTest
     }
 
     // K 4.8, X34 (DECISIONS R5-M124): placeEntry's LegacyRow item lays out each component of the Dictionary its handle designates, the value
-    // too: a literal's oversized or rejected value refuses the item at the literal (the records of its other uses are at the same sites);
-    // an i64 value admits it (the counterpart).
+    // too: a literal's oversized or rejected value refuses the item at the literal and at its entry's key, where the entry's insertion is
+    // (SPEC 22.5.1; DECISIONS R5-M144) (the records of its other uses are at the same sites); an i64 value admits it (the counterpart).
     [Theory]
     [InlineData(Huge, "OversizedLayout_Kd")]
     [InlineData("P<()>", "InvalidCLayout_Kd")]
@@ -805,7 +926,7 @@ public sealed partial class InstanceCollectorTest
         var c = MirBuildTest.Compile(CLayoutP + DictionaryKey + $"func put(v: {value})\n    let d: Dictionary<Key, {value}> = [Key.init(1): v@move]\n");
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         var records = code is null ? Array.Empty<string>()
-            : [$"{code} {value}", $"{code} v@move", $"{code} [Key.init(1): v@move]",
+            : [$"{code} {value}", $"{code} v@move", $"{code} Key.init(1)", $"{code} [Key.init(1): v@move]",
                 $"{code} let d: Dictionary<Key, {value}> = [Key.init(1): v@move]"];
         Assert.Equal(records, set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}"));
         Assert.Equal(code is null ? 1 : 0, set.Items.ToArray().Count(static x => x.Key.Kind == MonoKind.LegacyRow));
@@ -843,6 +964,26 @@ public sealed partial class InstanceCollectorTest
         Assert.Empty(set.Records);
         Assert.Equal(["Fn format", "Fn format"], Calls(program, set, "Fn top").Where(static x => x == "Fn format"));
         Assert.Equal(["Fn reserve", "Fn reserve"], Calls(program, set, "Fn toSink").Where(static x => x == "Fn reserve"));
+    }
+
+    // K 4.5 rows 2, 12 and 13 (DECISIONS R5-M136): an intrinsic's Type argument is read only where its row reads one
+    // (IntrinsicRow.ReadsTypeArgument). Test.tempDirectory's function has no Type parameter and its row neither lays out nor targets one, so its
+    // Item's Value call and its adapter (an erasure to `() -> string`) have no target and no record (fail-before: an index outside the Item's
+    // substitution, a fault that ended the check).
+    [Fact]
+    public void AnIntrinsicsItemReadsATypeArgumentOnlyWhereItsRowDoes()
+    {
+        var c = MirBuildTest.Compile(
+            "#Test\nfunc t()\n    let make = Test.tempDirectory\n    Console.writeLine(make())\n    Console.writeLine(run(Test.tempDirectory))\n" +
+            "func run(make: () -> string) -> string => make()\n",
+            test: true);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Empty(set.Records);
+        var adapter = Assert.Single(Enumerable.Range(0, set.Items.Length), x => set.Items[x].Key.Kind == MonoKind.ItemAdapter);
+        Assert.Empty(set.Targets(adapter).ToArray());
     }
 
     // K 4.6 for tables (VirtualGenericDispatchTest's dependency programs): an override that creates an object of its own struct's instance
@@ -988,14 +1129,19 @@ public sealed partial class InstanceCollectorTest
     }
 
     // K 4.5 row 3, S2-S4 X14: a standard property witness's operations are items keyed by the Field, the erased Self and the operation, whose
-    // requirement signatures agree with the key's; a set drops the Field's old value, so its item targets the Field Type's glue.
+    // requirement signatures agree with the key's; a set drops the Field's old value, so its item targets the Field Type's glue. The key's
+    // signature (StorageSignature, the one statement the agreement and the shim's function read) is the requirement's in the instance:
+    // `set(self: uniq/Self, value: Array<i32>) -> ()` and `get(self: ref/Self) -> ref/Array<i32>` (SPEC 11.3.1) on Bag.
     [Fact]
     public void AStandardPropertyWitnessIsItsFieldsShim()
     {
         var c = MirBuildTest.Compile(HeldSource);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var program = c.BuildMir();
-        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        var collector = new InstanceCollector(c.Types, c.Layout);
+        var set = collector.Run(program, 1);
+        Assert.Equal(["()", "uniq/Bag", "Array<i32>"], Signature(Item(program, set, "PropertyWitness Bag StorageSet")));
+        Assert.Equal(["ref/Array<i32>", "ref/Bag"], Signature(Item(program, set, "PropertyWitness Bag StorageBorrow")));
         Assert.Empty(set.Records);
         Assert.Equal(
             ["PropertyWitness Bag StorageSet", "DropGlue Array<i32>", "PropertyWitness Bag StorageBorrow"],
@@ -1003,6 +1149,13 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["DropGlue Array<i32>"], Targets(program, set, "PropertyWitness Bag StorageSet"));
         Assert.Empty(Targets(program, set, "PropertyWitness Bag StorageBorrow"));
         Assert.All(set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.PropertyWitness), static x => Assert.Equal("items", x.Key.Symbol!.Name));
+
+        // The result, then each parameter slot.
+        string[] Signature(int item)
+        {
+            var result = TyCtxt.Name(collector.StorageSignature(item, -1, out var count)!);
+            return [result, .. Enumerable.Range(0, count).Select(slot => TyCtxt.Name(collector.StorageSignature(item, slot, out _)!))];
+        }
     }
 
     // K 4.5 row 2, DECISIONS R5-M30, R5-M70: a call of a function without a body whose published row formats a value (Text.toString,

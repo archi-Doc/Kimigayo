@@ -3,6 +3,7 @@
 using System.Reflection;
 using System.Text.RegularExpressions;
 using Xunit;
+using Xunit.Sdk;
 
 namespace XunitTest;
 
@@ -33,6 +34,17 @@ public class CodegenDeviationTest
             Assert.Contains(sources, x => Regex.IsMatch(
                 x, $@"\bCodegen\.Expect(<[^>]*>)?\([^;]*\bCodegenDeviations\.{field.Name}\)|\bnew LegacyNative\(CodegenDeviations\.{field.Name},"));
         }
+    }
+
+    // DECISIONS R5-M85, R5-M145: a deviation's target and legacy value differ by content, an audit order's array included, so Expect fails
+    // on equal ones whatever their identity and accepts different ones (fail-before: arrays compared by reference never failed).
+    [Fact]
+    public void ExpectRefusesATargetEqualToItsLegacyValue()
+    {
+        var deviation = CodegenDeviations.ConstantTemporaries;
+        Assert.Throws<FalseException>(() => Codegen.Expect<int[]>([1, 0, 2], [1, 0, 2], deviation));
+        Assert.Throws<FalseException>(() => Codegen.Expect("a=1", "a=1", deviation));
+        Assert.Equal(Codegen.Legacy ? [1, 0, 2] : [1, 0], Codegen.Expect<int[]>([1, 0], [1, 0, 2], deviation));
     }
 
     // DECISIONS R5-M85, R5-M106: a deviating fixture's .deviation sidecar is the same bytes in both runs: UTF-8 without a byte order mark,

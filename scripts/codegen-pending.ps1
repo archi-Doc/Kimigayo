@@ -42,6 +42,7 @@ $KimiCodegenUnits = @(
     @('C2a', 'C-aggregate', '', 'Element Borrowed Fixed'), @('C2b', 'C-aggregate', '', 'Aggregate Struct Composite'),
     @('C3a', 'call', '', 'Function Result Never Generic'),
     @('C3b', 'call', 'AbortEmissionTest LibraryAbortContextTest', 'Requirement Associated'),
+    @('C3c', 'C-drop', 'PropertyWitnessEmissionTest', ''),
     @('C4a', 'C-drop', 'MirDropTest GenericDestructorEmissionTest', ''), @('C4c', 'C-drop', '', 'Owned Ownership'),
     @('C5a', 'closure', 'ContextualClosureTest', 'Closure Callable Concrete'), @('C5b', 'closure', '', 'Callback'),
     @('C6a', 'object', 'SharedObjectRuntimeTest SharedArcRuntimeTest GenericObjectFactoryTest PipelineObjectTest', 'Object Shared Dynamic'),

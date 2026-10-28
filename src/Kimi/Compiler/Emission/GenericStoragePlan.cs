@@ -114,7 +114,7 @@ internal sealed partial class GenericStoragePlan
                 continue;
             }
 
-            if (!body.IsVerified || (body.Function.IsAnonymous && body.Function.BoundClosure is null) || body.Function.AttributeChain is not null)
+            if (!body.IsVerified || (body.Function.IsAnonymous && body.Function.ClosureAsCreated is null) || body.Function.AttributeChain is not null)
             {
                 return Fail("Generic generation requires a verified ordinary definition without captures or declaration attributes.", out failure);
             }
@@ -306,7 +306,7 @@ internal sealed partial class GenericStoragePlan
         for (var i = 0; i < body.Operations.Count; i++)
         {
             if (body.Values[i].Kind != OwnershipValueKind.Closure ||
-                body.Operations[i].Source is not FunctionKoto { BoundClosure.EnvironmentType: { } environment } closure || !IsGeneric(closure))
+                body.Operations[i].Source is not FunctionKoto { ClosureAsCreated.EnvironmentType: { } environment } closure || !IsGeneric(closure))
             {
                 continue;
             }

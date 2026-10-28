@@ -18,10 +18,9 @@ public sealed partial class InstanceCollectorTest
     public void UnderMirCodeGenerationEachUseOfAnUnavailableCLayoutIsOneRecord(string form, string source, string records)
         => LayoutAttributeBindingTest.AssertUses(form, source, records, sel: true);
 
-    // Kept apart with their default-pipeline rows: a bodyless import's by-value parameter and part (2), a Never Field.
+    // Part (2) of the row, a Never Field, with its default-pipeline rows (LayoutAttributeBindingTest.ANeverFieldMakesCLayoutUnavailable).
     [Theory]
-    [MemberData(nameof(LayoutAttributeBindingTest.PendingImportRows), MemberType = typeof(LayoutAttributeBindingTest))]
-    [MemberData(nameof(LayoutAttributeBindingTest.PendingNeverRows), MemberType = typeof(LayoutAttributeBindingTest))]
-    public void UnderMirCodeGenerationTheKeptApartRowsPendingOwner(string form, string source, string records)
+    [MemberData(nameof(LayoutAttributeBindingTest.NeverRows), MemberType = typeof(LayoutAttributeBindingTest))]
+    public void UnderMirCodeGenerationANeverFieldMakesCLayoutUnavailable(string form, string source, string records)
         => LayoutAttributeBindingTest.AssertUses(form, source, records, sel: true);
 }

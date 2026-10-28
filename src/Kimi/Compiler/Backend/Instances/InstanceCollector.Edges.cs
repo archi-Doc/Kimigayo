@@ -150,7 +150,7 @@ internal sealed partial class InstanceCollector
 
         if (callee.Kind == MirCalleeKind.Requirement)
         {
-            return this.Requirement(program, item, subject, callee.Symbol!, this.types.Witness(callee.Symbol!, callee.Contract, subst!));
+            return this.Called(program, item, subject, callee.Symbol!, this.types.Witness(callee.Symbol!, callee.Contract, subst!));
         }
 
         if (callee.Arg > 0)

@@ -537,7 +537,7 @@ public sealed partial class LlvmEmitter
             if (!body.IsConcrete || !body.IsVerified || (!function.IsGenerated && function.BoundSymbol is null) ||
                 (!FunctionAbiPool.Supports(result, this.lowering.AggregateLayouts) && !ReferenceEquals(result, BoundType.Never)) ||
                 (function.AttributeChain is not null && !(c.IsTestBuild && TestDefinition.IsValidSyntax(function))) ||
-                (function.IsAnonymous && function.BoundClosure is null) || (function.IsSpecialization && !c.Binding.IsVerifiedSpecialization(function)) || function.IsRequirement || (function.Captures is { Length: > 0 } && function.BoundClosure is null) ||
+                (function.IsAnonymous && function.ClosureAsCreated is null) || (function.IsSpecialization && !c.Binding.IsVerifiedSpecialization(function)) || function.IsRequirement || (function.Captures is { Length: > 0 } && function.ClosureAsCreated is null) ||
                 (!function.IsSpecialization && function.GenericArguments.Count != 0) || function.TypeConstraints.Count != 0)
             {
                 return "A selected function requires unsupported signature, capture or implementation lowering.";

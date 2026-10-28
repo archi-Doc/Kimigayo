@@ -26,7 +26,7 @@ The erased and virtual calls stay indirect calls in the optimized IR, so the ker
 
 ## Protocol
 
-`src/backend/windows-x64/benchmark-o2-corpus.ps1 [-Baseline <checkout>] [-Candidate <checkout>] [-CandidateEnvironment NAME=value,...] [-Samples 15] [-PipelineRuns 3]`
+`src/backend/windows-x64/benchmark-o2-corpus.ps1 [-Baseline <checkout>] [-Candidate <checkout>] [-CandidateEnvironment NAME=value,...] [-Samples 15] [-PipelineRuns 3] [-Optimization O2]`
 takes two checkouts with Release builds of Kimi and Benchmark (`dotnet build Kimigayo.slnx -c Release`); each defaults to the
 script's own checkout, and Benchmark's copy of Kimi.dll must be that checkout's compiler.
 
@@ -39,6 +39,9 @@ script rejects.
 - Both compilers build every kernel at O2 before any timing, recording build time, IR and optimized IR bytes, `.text` size
   and the SHA-256 of the instructions without addresses and immediates (`sameCode`); each executable's first run is checked
   and timed apart.
+- `-Optimization O0` builds and times the same kernels at O0 instead, for the O0 times R5 records (plan §5.3 item 5): the
+  same samples, order, statistics and evidence, with `optimization` in the conditions and no optimized IR bytes (an O0
+  build runs no `opt`). The pipeline series does not depend on it.
 - Per kernel, `Samples` + 1 runs of A alternate with `Samples` runs of B: A, B, A, ..., A, with no warm-up, process start
   included and each run's CPU seconds recorded. Per variant: minimum, median, maximum, mean, standard deviation and
   coefficient of variation; per B run, its ratio to the mean of the A runs before and after it, summarized the same way.

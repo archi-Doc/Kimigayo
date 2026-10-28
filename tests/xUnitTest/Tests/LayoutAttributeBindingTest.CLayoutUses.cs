@@ -227,27 +227,10 @@ public partial class LayoutAttributeBindingTest
         }
     }
 
-    // Kept apart (the planning sessions' open item): a bodyless import's by-value parameter as a use. SPEC 8.15.3 counts passing a value by
-    // value; 22.6 makes a struct by value in an import Unsupported; 23.1.2 reports each independent failure. The rows expect both records.
-    public static TheoryData<string, string, string> PendingImportRows
-    {
-        get
-        {
-            var rows = new TheoryData<string, string, string>();
-            foreach (var shape in Unavailable.Concat(Never))
-            {
-                var declaration = ImportHead + shape.Type + ") -> i32";
-                rows.Add($"{shape.Name}.import", Program(shape.Declaration, ImportHead + "X) -> i32\n", shape.Type), $"InvalidCLayout_Kd {declaration}|Unsupported_Kd {declaration}");
-            }
-
-            return rows;
-        }
-    }
-
-    // Kept apart (part (2) of the row): a Never Field. SPEC 6.7.1 names Never among the zero-sized Fields, so each by-value use of S or
+    // Part (2) of the row, judged by Layout alone (DECISIONS BU-48): a Never Field. SPEC 6.7.1 names Never among the zero-sized Fields, so each by-value use of S or
     // P<Never> is InvalidCLayout_Kd beside the Never limit's Unsupported_Kd its twin keeps (23.1.2); the uses needing no layout stay
     // accepted; ref/X in an import is Unsupported_Kd alone.
-    public static TheoryData<string, string, string> PendingNeverRows
+    public static TheoryData<string, string, string> NeverRows
     {
         get
         {
@@ -288,36 +271,9 @@ public partial class LayoutAttributeBindingTest
         => AssertUses(form, source, records, sel: false);
 
     [Theory]
-    [MemberData(nameof(PendingImportRows))]
-    public void AByValueImportParameterIsAUsePendingOwner(string form, string source, string records)
+    [MemberData(nameof(NeverRows))]
+    public void ANeverFieldMakesCLayoutUnavailable(string form, string source, string records)
         => AssertUses(form, source, records, sel: false);
-
-    [Theory]
-    [MemberData(nameof(PendingNeverRows))]
-    public void ANeverFieldMakesCLayoutUnavailablePendingOwnerPart2(string form, string source, string records)
-        => AssertUses(form, source, records, sel: false);
-
-    // Kept apart (part (1) of the row): a record at a use no longer names the instance by its location (a Tuple component, an Option payload,
-    // an inferred instance), so each InvalidCLayout_Kd record names the instance whose C layout is unavailable in its message, Note or label,
-    // by the Type as SPEC writes it.
-    [Theory]
-    [InlineData("open.local", "#Layout(\"C\")\nopen struct Rec\n    var n: i32\nfunc f() -> i32\n    var s: Rec\n    return 0\nlet zz = 1\n", "Rec")]
-    [InlineData("unit.param", "#Layout(\"C\")\nstruct Rec\n    var n: i32\n    var u: ()\nfunc f(s: Rec) => ()\nlet zz = 1\n", "Rec")]
-    [InlineData("w-unit.nested", GenericP + "func f(p: (P<()>, i32)) => ()\nlet zz = 1\n", "P<()>")]
-    [InlineData("w-zarray.option", GenericP + "let x: Option<P<[0 of i32]>> = .None\n", "P<[0 of i32]>")]
-    [InlineData("i-local", GenericP + "func make<T>(value: T) -> i32\n    var p: P<T>\n    return 0\nlet r = make(())\n", "P<()>")]
-    [InlineData("i-param", GenericP + "func pass<T>(p: P<T>) => ()\nfunc g<T>(value: T) -> i32\n    let f = pass<T>\n    return 0\nlet r = g(())\n", "P<()>")]
-    public void AUseRecordNamesTheInstancePendingOwnerPart1(string form, string source, string instance)
-    {
-        foreach (var (pipeline, codegen) in Configurations(sel: false))
-        {
-            var records = Errors(Check(source, pipeline, codegen)).Where(static x => x.Code == nameof(DiagnosticCode.InvalidCLayout_Kd)).ToArray();
-            Assert.True(records.Length > 0, $"{form} ({Name(pipeline, codegen)}): no InvalidCLayout_Kd record");
-            Assert.All(records, x => Assert.True(
-                x.Explanation.Contains(instance, StringComparison.Ordinal) || (x.Label?.Contains(instance, StringComparison.Ordinal) ?? false),
-                $"{form} ({Name(pipeline, codegen)}): the record at '{(x.Text ?? string.Empty).Split('\n')[0]}' does not name {instance}: {x.Explanation} / {x.Label}"));
-        }
-    }
 
     /// <summary>Checks a program under each configuration and judges its Error records against the expected uses (see the file comment).</summary>
     /// <param name="form">The row's name.</param>

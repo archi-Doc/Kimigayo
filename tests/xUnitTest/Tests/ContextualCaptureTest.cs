@@ -226,6 +226,27 @@ public class ContextualCaptureTest
         Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => x.IsAnonymous), static x => Assert.NotNull(x.ClosureOf()));
     }
 
+    // SPEC 16.3.1, 23.1.2 (DECISIONS R4-M152): the helper-capture judgment reads a Closure's definition, so in a drop body a Closure whose
+    // erasure to a common Function Type fails (its creation failed) still has its capture judged: a later helper-borrow value of the
+    // captured var is InvalidCaptureBinding_Kd, the independent record its created twin has (BU's zz3_h2 and zz3_h2ok).
+    [Theory]
+    [InlineData(
+        "        var v = self.buffer@ref\n        Audit.run(func [v] () => Audit.observe(v))\n        let w = self@ref\n        v = w.buffer@ref\n",
+        "UnprovenConstraint_Kd func [v] () => Audit.observe(v); InvalidCaptureBinding_Kd w.buffer@ref")]
+    [InlineData(
+        "        var v = self.buffer@ref\n        let f = func [v] () => Audit.observe(v)\n        f()\n        let w = self@ref\n        v = w.buffer@ref\n",
+        "InvalidCaptureBinding_Kd w.buffer@ref")]
+    public void AClosureWhoseCreationFailedHasItsCapturesJudged(string body, string records)
+    {
+        var source = Destructor + body;
+        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
+        {
+            var found = PublishedRecords(source, pipeline).OrderBy(static x => x.Span.Start)
+                .Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}");
+            Assert.Equal(records, string.Join("; ", found));
+        }
+    }
+
     // One failure per node: a Closure argument rejected at its capture is not judged again at its erasure to a common Function Type,
     // which still rejects the Closure argument whose capture is valid (a Field borrow is not Owned, SPEC 7.7.4).
     [Theory]

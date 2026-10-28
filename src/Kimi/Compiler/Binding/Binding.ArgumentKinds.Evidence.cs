@@ -231,7 +231,7 @@ public sealed partial class Binding
                 actual = itemSignature;
             }
             else if (pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Closure &&
-                actual.Symbol?.Declaration is FunctionKoto { BoundClosure: { } closure })
+                BoundClosure.Of(actual) is { } closure)
             {
                 // SPEC 7.7.4, 10.5: a concrete Closure meets a common Function Type through its signature; the conversion itself,
                 // its receiver and Owned conditions included, is judged once the call is selected.

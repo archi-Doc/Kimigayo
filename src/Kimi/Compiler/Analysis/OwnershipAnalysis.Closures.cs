@@ -9,7 +9,7 @@ public sealed partial class OwnershipAnalysis
 {
     private int CreateClosure(FunctionKoto source)
     {
-        var closure = source.BoundClosure!;
+        var closure = source.ClosureAsCreated!;
         var mark = this.arguments.Count;
         for (var i = 0; i < closure.Captures.Count; i++)
         {

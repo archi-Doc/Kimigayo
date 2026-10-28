@@ -35,7 +35,7 @@ internal sealed partial class FunctionCodegen
     }
 
     // SPEC 13.5.4, 5.4-5.5: the row of a cast kind from a source class to a target class, by the sign of the target's width less the
-    // source's: the LLVM cast (null: the source representation is kept) and its check; null for a kind without a row yet.
+    // source's: the LLVM cast (null: the source representation is kept) and its check; null for a pair Binding never admits.
     private static Conversion? ConversionOf(MirCastKind kind, Scalar from, Scalar to, int widening) => (kind, from, to, widening) switch
     {
         (MirCastKind.Integer, _, _, < 0) => new("trunc", Bound.Range), // @Type never truncates or wraps: it checks the range.
@@ -57,7 +57,7 @@ internal sealed partial class FunctionCodegen
         (MirCastKind.Pointer, Scalar.Pointer, Scalar.Pointer, _) => new(null), // Address and provenance kept.
         (MirCastKind.Pointer, Scalar.Pointer, Scalar.Unsigned, _) => new("ptrtoint"), // The numeric address.
         (MirCastKind.IntToPointer, _, Scalar.Pointer, _) => new("inttoptr"), // An equal address without provenance.
-        _ => null, // A pair of Type classes without a row.
+        _ => null, // A pair of Type classes Binding does not admit.
     };
 
     // A closed Type's class; None for a Type no conversion row takes (an object handle, a Closure).
@@ -131,13 +131,8 @@ internal sealed partial class FunctionCodegen
     private void ScalarCast(in MirStatement statement)
     {
         var rvalue = statement.Rvalue;
-        if (!this.Compute(this.body.Operands[rvalue.Start], out var input))
-        {
-            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // An operand form not covered yet (Compute).
-            return;
-        }
-
-        if (input.Lowering is not { } source || this.LoweringOf(statement.Place) is not { } target)
+        if (!this.Compute(this.body.Operands[rvalue.Start], out var input) || input.Lowering is not { } source ||
+            this.LoweringOf(statement.Place) is not { } target)
         {
             return; // A broken contract, recorded.
         }
@@ -146,7 +141,7 @@ internal sealed partial class FunctionCodegen
         var to = ClassOf(this.InstanceType(statement.Place)!);
         if (ConversionOf((MirCastKind)rvalue.Op, from, to, target.Layout.Size.CompareTo(source.Layout.Size)) is not { } row)
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
+            this.Report(DiagnosticCode.InternalInvariant_Kd, statement.Source); // Binding admits no other pair (SPEC 13.5.4, 5.4-5.5).
             return;
         }
 

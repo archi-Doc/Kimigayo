@@ -227,7 +227,7 @@ public sealed partial class Binding
     // receiver is Shared and its complete environment is Owned. Initializations, returns and call arguments share this judgment.
     private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
         => this.ErasureSignatureFits(actual, expected, node) &&
-            (actual.Kind != BoundTypeKind.Closure || actual.Symbol?.Declaration is FunctionKoto { BoundClosure.Receiver: SemanticsKind.Ref }) &&
+            (actual.Kind != BoundTypeKind.Closure || BoundClosure.Of(actual) is { Receiver: SemanticsKind.Ref }) &&
             this.ProveOwned(actual, node) == ConstraintProof.Proven;
 
     // SPEC 7.7.4, 10.5, 10.7: the signature part of an erasure, which a call's applicability uses; the Shared receiver and the Owned
@@ -841,7 +841,7 @@ public sealed partial class Binding
         var type = symbol.Type;
         if (node is MemberAccessKoto member && type is not null && this.memberSelections.TryGetValue(member, out var selection) && selection.DeclaringType is { } declaringType)
         {
-            type = this.StoredType(type, declaringType);
+            type = this.PartType(type, declaringType);
         }
         else if (type is null)
         {

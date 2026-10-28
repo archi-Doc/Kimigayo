@@ -110,6 +110,24 @@ public sealed class RetentionTest
     private const string Writer = "struct Writer\n    public var p: raw/(raw/u8)\n    public var q: raw/u8\n    public init(q: raw/u8)\n" +
         "        self.p = null\n        self.q = q\n    drop\n        unsafe => *self.p = self.q\n";
 
+    // Writer's and Holder's `drop` as a method twin over `self: uniq/Self` with the same body (PLAN G264's design probe d5).
+    private const string Flush = "    public func flush(self: uniq/Self)\n        unsafe => *self.p = self.q\n";
+
+    // A struct whose `drop` writes through a borrow Field, with its method twin (the G264 design's HRD).
+    private const string Hrd = "struct HRD {a}\n    public var r: uniq/(uniq/i32 during a) during a\n    public init(r: uniq/(uniq/i32 during a) during a) => self.r = r\n" +
+        "    drop\n        self.r@follow@follow = 0\n    public func flush(self: uniq/Self)\n        self.r@follow@follow = 0\n";
+
+    // A generic layer whose `drop` writes through its unstated raw Fields, with its method twin.
+    private const string Holder = "struct Holder<T>\n    public var item: T\n    public var p: raw/(raw/u8)\n    public var q: raw/u8\n" +
+        "    public init(item: T, q: raw/u8)\n        self.item = item@move\n        self.p = null\n        self.q = q\n    drop\n        unsafe => *self.p = self.q\n" + Flush;
+
+    // Callable-bounded values of the erased call `(uniq/P) -> ()`, each called on its part: an open struct, an object handle of it, an
+    // abstract part and a Function value (the G264 design's probe d9).
+    private const string ErasedParts = "open struct WB\n    public var p: raw/(raw/u8)\n    public var q: raw/u8\n" +
+        "func callWB<F>(x: uniq/WB, f: F)\n    F is Callable<(uniq/WB) -> ()>\n    f(x)\nfunc callOWB<F>(x: uniq/(obj/WB), f: F)\n" +
+        "    F is Callable<(uniq/(obj/WB)) -> ()>\n    f(x)\nfunc callT<T, F>(x: uniq/T, f: F)\n    F is Callable<(uniq/T) -> ()>\n    f(x)\n" +
+        "func callFn<F>(x: uniq/(() -> ()), f: F)\n    F is Callable<(uniq/(() -> ())) -> ()>\n    f(x)\n";
+
     // A function whose body relies on its enclosing function's premise c outlives o (y's well-formedness), called while *q is written.
     private const string Enclosing = "func outer(y: ref/(ref/i32 during c) during o, q: uniq/i32 during c) -> i32\n";
 
@@ -134,7 +152,7 @@ public sealed class RetentionTest
     [InlineData("func f(b: ref/(ref/i32 during c) during o) -> ref/i32 during o => b@follow", "0 Value result")]
     [InlineData("func f(b: ref/(ref/i32 during c) during o, x: ref/i32 during c) -> ref/i32 during o => x", "0 Value result, 1 Value result")]
     [InlineData("func f(x: ref/i32, n: i32) -> i32 => n", "")]
-    [InlineData("func f<s/T>(value: s/T, count: s/i32) -> s/T\n    s is owner or uniq\n    T is Copy\n    _ = count\n    return value", "0 Value result, 0 Value store 0")]
+    [InlineData("func f<s/T>(value: s/T, count: s/i32) -> s/T\n    s is owner or uniq\n    T is Copy\n    _ = count\n    return value", "0 Value result, 0 Content store 0")]
     [InlineData("func f<s/T>(value: s/T, count: s/i32) -> s/T\n    s is owner or ref\n    T is Copy\n    _ = count\n    return value", "0 Value result")]
     public void DeclaredRelationsDecideTheResult(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
@@ -246,7 +264,12 @@ public sealed class RetentionTest
     // SPEC 15.6.4 step 4, 8.1.2 (DECISIONS BU-3): a pair layer whose binder admits only borrows is a borrowed input in every admitted
     // case, its slot Value and its target Content, which an admitted exclusive borrow lets the call write, as for a concrete `uniq/T`;
     // the original `s/T` and an application alike; the pair's slot still reaches storage that holds the pair by value. A pair admitting
-    // `owner`, raw or an object owner is no borrow in that case, so its target stays Value.
+    // `owner`, raw or an object owner is no borrow in that case, so its target stays Value: a Value source for the result and for the
+    // stores into other inputs. In its exclusive cases the call writes through it the referent of the argument's own borrow, which holds
+    // other inputs' values (`x`) and other occurrences of its own input (a Tuple's second element) and carries what a read through the
+    // argument carries, never the pair value itself (SPEC 15.6.4: the argument's own value is retained only by storage that can hold a
+    // value of its Type; DECISIONS BU-49, PLAN G147 (8i), A5 step 2 plan 2c-4): `0 Content store 0`, as the borrow-only twins read, not `0 Value store 0`; the owner-only twin
+    // writes no caller storage.
     [Theory]
     [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is ref or uniq\n    return", "0 Content store 0")]
     [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is uniq\n    return", "0 Content store 0")]
@@ -257,11 +280,61 @@ public sealed class RetentionTest
     [InlineData(
         "func f<s/T>(a: s/T, b: uniq/Array<s/T>)\n    s is ref or uniq\n    return",
         "0 Content store 0, 1 Content store 0, 0 Value store 1, 1 Content store 1")]
-    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is owner or uniq\n    return", "0 Value store 0")]
-    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is uniq or raw\n    return", "0 Value store 0")]
-    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is objuniq or obj\n    return", "0 Value store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is owner or uniq\n    return", "0 Content store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is uniq or raw\n    return", "0 Content store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is objuniq or obj\n    return", "0 Content store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is owner\n    return", "")]
+    [InlineData("func f<s/T>(a: s/T, x: T)\n    s is owner or uniq\n    T is Copy\n    return", "0 Content store 0, 1 Value store 0")]
+    [InlineData("func f<s/T>(a: (s/T, T), b: ref/i32)\n    s is owner or uniq\n    T is Copy\n    return", "0 Value store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32) -> s/T\n    s is owner or uniq\n    T is Copy\n    return a", "0 Value result, 0 Content store 0")]
     public void BorrowPairLayersAreBorrowedInputs(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // The same rule for every exclusive borrow layer a by-value input holds (DECISIONS BU-49; RetentionWalk): a concrete `uniq` layer and
+    // a pair layer admitting one, nested in a Tuple or an Option, borrow-only or owner-admitting, address storage that carries what a read
+    // through the input carries, a Tuple's other element's referent included (`*a.1` written into `*a.0`), never the input's own value:
+    // `0 Content store 0`, each pair form beside its concrete twin. Through no exclusive layer (`(T, i32)`) the call writes nothing. The
+    // soundness counterpart: the layer's own Origin is no referent occurrence, so where the referent can hold a borrow of it (`during q`
+    // on both layers) the input's own value stays retained, `1 Value store 1`, in an Option and a Tuple as at the top level; with a
+    // distinct `o` it cannot, `1 Content store 1`.
+    [Theory]
+    [InlineData("func f(a: ref/i32 during q, b: Option<uniq/(ref/i32 during q) during q>) => ()", "0 Value store 1, 1 Value store 1")]
+    [InlineData("func f(a: ref/i32 during q, b: (uniq/(ref/i32 during q) during q, i32)) => ()", "0 Value store 1, 1 Value store 1")]
+    [InlineData("func f(a: ref/i32 during q, b: uniq/(ref/i32 during q) during q) => ()", "0 Value store 1, 1 Value store 1")]
+    [InlineData("func f(a: ref/i32 during o, b: Option<uniq/(ref/i32 during q) during o>) => ()", "1 Content store 1")]
+    [InlineData("func f<s/T>(a: (s/T, i32), b: ref/i32)\n    s is uniq\n    return", "0 Content store 0")]
+    [InlineData("func f<T>(a: (uniq/T during p, i32), b: ref/i32) => ()", "0 Content store 0")]
+    [InlineData("func f<s/T>(a: Option<s/T>, b: ref/i32)\n    s is uniq\n    return", "0 Content store 0")]
+    [InlineData("func f<T>(a: Option<uniq/T during p>, b: ref/i32) => ()", "0 Content store 0")]
+    [InlineData("func f<s/T>(a: (s/T, s/T), b: ref/i32)\n    s is uniq\n    return", "0 Content store 0")]
+    [InlineData("func f<s/T>(a: (s/T, s/T), b: ref/i32)\n    s is owner or uniq\n    return", "0 Content store 0")]
+    [InlineData("func f<T>(a: (uniq/T during p, uniq/T during p), b: ref/i32) => ()", "0 Content store 0")]
+    [InlineData("func f<T>(a: (T, i32), b: ref/i32) => ()", "")]
+    public void ExclusiveLayersHeldByValueStoreTheirContent(string function, string expected)
+        => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // The same at calls over exclusive layers held by value (PLAN G147 (8i)'s programs; A5 step 2 plan 2c-4; DECISIONS BU-49): a generic
+    // caller passing its `s/T` by value, directly, as a bare capture of a by-value Closure (owner-or-uniq or uniq-only) or as a result's
+    // input, and a Closure capturing `y@uniq`, store other inputs into the referent and what a read through the argument carries, keep
+    // the value in the result, and never store the argument's own value in its referent; a pair the callee reads through its exclusive
+    // receiver keeps rule G's `0 Content store 0` (DECISIONS R4-M148).
+    [Fact]
+    public void CallsOverExclusiveLayersHeldByValueStoreTheirContent()
+    {
+        var c = Bind("func put<U>(slot: uniq/U, y: U) -> () => slot@follow = y@move\nfunc keep<F>(f: F) -> F => f@move\n" +
+            "func second<A, B>(a: A, b: B) -> B => b@move\n" +
+            "func use<s/T, t/U>(value: s/T, other: s/T, third: t/U, x: T) -> ()\n    s is owner or uniq\n    t is owner or uniq\n" +
+            "    T is Copy\n    U is Copy\n    var v = value@move\n    var slot = other@move\n    let h = func [v] () -> ()\n        _ = v@follow\n" +
+            "    let kept = keep(h@move)\n    kept()\n    let child = v\n    put(slot@uniq, child@move)\n    _ = slot@follow\n" +
+            "    let r = second(x, third@move)\n    _ = r@follow\n" +
+            "func useUniq<s/T>(value: s/T) -> ()\n    s is uniq\n    T is Copy\n    var v = value@move\n    let h = func [v] () -> ()\n" +
+            "        _ = v@follow\n    let kept = keep(h@move)\n    kept()\n" +
+            "func useCaptured<T>(other: T) -> ()\n    T is Copy\n    var y = other\n    let g = func [y@uniq] () -> ()\n        _ = y@follow\n" +
+            "    let kept = keep(g@move)\n");
+        Assert.Equal(["0 Content store 0, 1 Value store 0, 0 Content store 1, 1 Content store 1"], Calls(c, "put"));
+        Assert.Equal(["0 Value result, 0 Content store 0", "0 Value result, 0 Content store 0", "0 Value result, 0 Content store 0"], Calls(c, "keep"));
+        Assert.Equal(["1 Value result, 1 Content store 1"], Calls(c, "second"));
+    }
 
     // The same for a generic caller passing its own `s/T` (A5's case 139c, a non-Copy T): the call's Subst keeps the caller's pair, whose
     // binder admits only borrows, so the call stores only the argument's referent into it; and for an erased callable over such a pair.
@@ -384,7 +457,7 @@ public sealed class RetentionTest
                 views.Add(m.Types.ClosureReceiverIn(cases.Type(body.Locals[local].Type!)).ToString());
             }
 
-            var definition = BoundClosure.Of((FunctionKoto)body.Locals[local].Type!.Symbol!.Declaration!)!;
+            var definition = BoundClosure.Of(body.Locals[local].Type)!;
             views.Add(m.Types.ClosureReceiverIn(definition.EnvironmentType!).ToString());
             yield return string.Join(' ', views);
         }
@@ -478,7 +551,9 @@ public sealed class RetentionTest
     // `uniq` one, SPEC 15.3.5, DECISIONS BU-44; never a borrow the body forms): then a pointer read from the layer has read
     // authority only and the call writes nothing through it; a universal stated by a `ref` and a `uniq` input, an Option's `uniq` borrow
     // and a projection a `uniq` input states are no such Origin. A raw input's pointee and its Origin's members are Content, and its own
-    // layer's Origin gives no row (SPEC 15.6.4 as DECISIONS R4-M116 revised it, R-B3).
+    // layer's Origin gives no row (SPEC 15.6.4 as DECISIONS R4-M116 revised it, R-B3). An Option or a Holder holding a `uniq` borrow by
+    // value stores what a read through it carries into that borrow's referent (`1 Content store 1`, DECISIONS BU-49), and its own
+    // value into the storage the raw layer addresses (`1 Value store 2`: one kind per output, PLAN G276).
     [Theory]
     [InlineData("func f(x: ref/i32, n: i32) -> raw/i32 => null", "0 Value result, 0 Chain result, 1 Value result, 1 Chain result, untied")]
     [InlineData("func f(x: ref/i32, n: isize) -> (raw/u8, isize) => (null, n)", "0 Value result, 0 Chain result, 1 Value result, 1 Chain result, untied")]
@@ -494,12 +569,12 @@ public sealed class RetentionTest
         "    public init(r: ref/(ref/i32 during q) during source) => self.r = r\nfunc f(v: ref/W, p: raw/u8 during v.source, w: ref/i32 during v.q) => ()",
         "")]
     [InlineData(RawPointerSyntaxTest.KeptView + "func f(v: ref/View, x: uniq/(ref/i32 during q) during v.source, p: raw/u8 during v.source, w: ref/i32 during q) => ()", "1 Content store 1, 2 Content store 1, 3 Value store 1, 1 Content store 2, 2 Content store 2, 3 Value store 2")]
-    [InlineData("func f(a: ref/(ref/i32 during q) during o, b: Option<uniq/(ref/i32 during q) during o>, p: raw/u8 during o, v: ref/i32 during q) => ()", "0 Content store 1, 1 Value store 1, 2 Content store 1, 3 Value store 1, 0 Content store 2, 1 Value store 2, 2 Content store 2, 3 Value store 2")]
+    [InlineData("func f(a: ref/(ref/i32 during q) during o, b: Option<uniq/(ref/i32 during q) during o>, p: raw/u8 during o, v: ref/i32 during q) => ()", "0 Content store 1, 1 Content store 1, 2 Content store 1, 3 Value store 1, 0 Content store 2, 1 Value store 2, 2 Content store 2, 3 Value store 2")]
     [InlineData("func f(a: ref/(ref/i32 during q) during o, p: raw/(ref/i32 during q) during o, v: ref/i32 during q)\n    unsafe\n        let w: uniq/(ref/i32 during q) during o = (*p)@uniq", "")]
     [InlineData(
         PairAnnotationBindingTest.HolderRefUniq + "func f(r: uniq/(ref/i32 during q), h: Holder<uniq/(ref/i32 during q) during r> during o, " +
         "p: raw/(ref/i32 during q) during o, v: ref/i32 during q) => ()",
-        "0 Content store 0, 1 Value store 0, 2 Content store 0, 3 Value store 0, 0 Content store 1, 1 Value store 1, 2 Content store 1, 3 Value store 1, 0 Content store 2, 1 Value store 2, 2 Content store 2, 3 Value store 2")]
+        "0 Content store 0, 1 Value store 0, 2 Content store 0, 3 Value store 0, 0 Content store 1, 1 Content store 1, 2 Content store 1, 3 Value store 1, 0 Content store 2, 1 Value store 2, 2 Content store 2, 3 Value store 2")]
     [InlineData(
         PairAnnotationBindingTest.HolderRefUniq + "func f(r: ref/(ref/i32 during q), h: Holder<ref/(ref/i32 during q) during r> during o, " +
         "p: raw/(ref/i32 during q) during o, v: ref/i32 during q) => ()",
@@ -885,6 +960,55 @@ public sealed class RetentionTest
     public void AnOperationWritesItsBorrowedReceiversStoreOnlyInItsReferent(string source, string callee, string expected)
         => Assert.Equal(expected, string.Join(" | ", Calls(Bind(source), callee)));
 
+    // SPEC 15.6.4, 16.3.1 (DECISIONS BU-47; PLAN G264's U0): a destruction retains as a call of each `drop` it runs, whose `self` is a
+    // `uniq/Self` receiver referring to the destroyed layer, so a drop's contract has that receiver at input 0, though it declares no
+    // parameter, and retains as its twin, a method over `self: uniq/Self` with the same body, declared and at an instance (the twin's call
+    // there): Writer's write through its unstated raw Fields (rule A: its chain, untied store 0), HRD's through a borrow Field (Content), and
+    // the generic `Holder<T>` declared and at `i32`. The receiver has no Value row: no caller names its Origin. Fail-before: no row.
+    [Theory]
+    [InlineData(Writer + Flush + "func at(h: uniq/Writer) => h.flush()\n", "0 Chain store 0, untied store 0", "0 Chain store 0, untied store 0")]
+    [InlineData(Hrd + "func at(h: uniq/HRD) => h.flush()\n", "0 Content store 0", "0 Content store 0")]
+    [InlineData(Holder + "func at(h: uniq/Holder<i32>) => h.flush()\n", "0 Chain store 0, untied store 0", "0 Chain store 0, untied store 0")]
+    public void ADropRetainsAsACallOverItsDestructionReceiver(string source, string declared, string instance)
+    {
+        var c = Bind(source);
+        var drop = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.IsDestructor).SymbolOf()!;
+        var at = Function(c, "at").SymbolOf()!;
+        var layer = TyCtxt.Signature(at, null, 0, out _)!.Components[0];
+        Assert.Equal((declared, declared), (Show(c.Types.Retains(drop, null, null)), Declared(c, "flush")));
+        Assert.Equal((instance, instance), (Show(c.Types.Retains(drop, c.Types.Synthesized(drop, layer, []), at)), Calls(c, "flush").Single()));
+    }
+
+    // SPEC 15.6.4, 16.3.1 (DECISIONS BU-47): the library's drops retain over their destruction receivers as their contracts say: the owning
+    // iterators' remainders store through the raw handles their receivers' storage holds (Content), HeapBuffer's release nothing; none
+    // has a Value row. Fail-before: no row.
+    [Fact]
+    public void LibraryDropsRetainOverTheirReceivers()
+    {
+        var c = Bind(string.Empty);
+        var drops = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => x.IsDestructor)
+            .Select(x => $"{x.Parent!.SymbolOf()!.Name}: {Show(c.Types.Retains(x.SymbolOf()!, null, null))}");
+        Assert.Equal(
+            ["HeapBuffer: ", "OwnedRemainder: 0 Content store 0", "DictionaryOwnedRemainder: 0 Content store 0", "FixedOwnedRemainder: 0 Content store 0"],
+            drops);
+    }
+
+    // SPEC 16.3.3, 15.6.4 (DECISIONS BU-47, R4-M52): an erased destruction, of a part whose `drop` the destruction walk cannot see, retains
+    // as the erased call `(uniq/P) -> ()` over its destruction receiver, as its twin does, a Callable-bounded value of that signature called
+    // on the part: an open struct and an object handle of it through their unstated raw Fields (rule A), an abstract part in its generic
+    // body by its carrier (Content), and a Function value's environment by nothing (R4-M131's open item), memoized per part and scope.
+    [Fact]
+    public void AnErasedDestructionRetainsAsTheErasedCall()
+    {
+        var c = Bind(ErasedParts);
+        string[] expected = ["0 Chain store 0, untied store 0", "0 Chain store 0, untied store 0", "0 Content store 0", string.Empty];
+        Assert.Equal(expected, ValueCalls(c));
+        var parts = new[] { "callWB", "callOWB", "callT", "callFn" }.Select(x => Function(c, x).SymbolOf()!)
+            .Select(static x => (Part: TyCtxt.Signature(x, null, 0, out _)!.Components[0], Definition: x)).ToArray();
+        Assert.Equal(expected, parts.Select(x => Show(c.Types.RetainsErasedDestruction(x.Part, x.Definition))));
+        Assert.Same(c.Types.RetainsErasedDestruction(parts[2].Part, parts[2].Definition), c.Types.RetainsErasedDestruction(parts[2].Part, parts[2].Definition));
+    }
+
     // SPEC 15.3.5, 15.6.4 (the G160-2c reviews' R1 and R4's B1): a Type whose storage grows through an indirection (a raw pointer, an
     // exclusive borrow, an object handle) has storage no preparation completes (DECISIONS BU-12's limits), so a contract whose hold walk
     // reaches it is CallRetention.Limit, for an input and a result alike, never an unbounded walk.
@@ -1055,9 +1179,10 @@ public sealed class RetentionTest
         Assert.Equal([after], Calls(c, "f"));
     }
 
-    // A warm rebind that reads every call's retention again, C1 (also under a calling definition's premises) and C8, allocates nothing:
-    // an unchanged pass reuses the rows, and interning an instance and an Item whose pair argument states a raw Origin binds it in
-    // TyCtxt's reused scratch (DECISIONS BU-34).
+    // A warm rebind that reads every call's retention again, C1 (also under a calling definition's premises) and C8, and a destruction's,
+    // a drop's at its instance and an erased one's in a generic body (DECISIONS BU-47), allocates nothing: an unchanged pass reuses the
+    // rows, and interning an instance, a destruction receiver and an Item whose pair argument states a raw Origin binds it in TyCtxt's
+    // reused scratch (DECISIONS BU-34).
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmRebindReusesRetentions()
@@ -1065,9 +1190,14 @@ public sealed class RetentionTest
         var c = Bind(Erased + "func use(h: ref/H{s}, q: uniq/i32 during s.a) -> i32\n    let x = q@follow@ref\n    let r = apply(h.k@ref, x)\n    return h.k(r)@follow\n" +
             "func first<T>(x: ref/T, y: ref/T) -> ref/T during x => x\nfunc both<T>(v: ref/T) -> ref/T => first(v, v)\n" + RawPointerSyntaxTest.PairHolder +
             "func id<s/T>(v: s/T) -> s/T => v@move\nfunc hold(x: ref/i32, q: raw/i32) -> raw/i32\n    let h = Holder<raw/i32 during x>.init(v: q)\n" +
-            "    let g = id<raw/i32 during x>\n    return g(h.value)\nvar a = 1\nlet p = first(a@ref, a@ref)\n");
+            "    let g = id<raw/i32 during x>\n    return g(h.value)\nvar a = 1\nlet p = first(a@ref, a@ref)\n" + Writer + "func gen<T>(x: uniq/T) => ()\n");
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => (Node: x, Definition: Definition(x))).ToArray();
         Assert.True(calls.Length >= 4);
+        var destructor = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.IsDestructor);
+        var drop = destructor.SymbolOf()!;
+        var writer = AdtDef.ReceiverType(destructor)!;
+        var gen = Function(c, "gen").SymbolOf()!;
+        var part = TyCtxt.Signature(gen, null, 0, out _)!.Components[0];
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             c.Binding.Bind(BindingMode.Final);
@@ -1077,6 +1207,9 @@ public sealed class RetentionTest
                 _ = call.Kind == CalleeKind.Value ? c.Types.Retains(call.CalleeType, call.DeclaredSignature, definition)
                     : c.Types.Retains(call.Target, c.Types.SubstOf(call), definition);
             }
+
+            _ = c.Types.Retains(drop, c.Types.Synthesized(drop, writer, []), null);
+            _ = c.Types.RetainsErasedDestruction(part, gen);
         }));
     }
 

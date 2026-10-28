@@ -99,6 +99,17 @@ public class ClosureEnvironmentOriginTest
 
     private const string Consume = "func consumeText(value: string) => ()\n";
 
+    private const string Inspect = "func inspect(value: ref/i32) => ()\n";
+
+    // An exclusive input whose clause is its own well-formedness, so a call judges `a outlives b` at its principal solution.
+    private const string ExclusiveClause = "func fu(x: uniq/(ref/i32 during a) during b)\n    origin a outlives b\n    _ = x\n";
+
+    private const string TwoCaptures = "func use(p: ref/i32) -> i32\n    let a = p\n    let b = p\n";
+
+    private const string IndependentCaptures = "func use(p: ref/i32, q: ref/i32) -> i32\n    let a = p\n    let b = q\n";
+
+    private const string CallF = "    f()\n    return 0\n";
+
     private const string Resource = "struct Resource\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc makeResource() -> Resource => Resource.init(1)\n" +
         "func consume(r: Resource) => ()\n";
 
@@ -277,7 +288,8 @@ public class ClosureEnvironmentOriginTest
         => ScalarEmissionTest.EmitFixture("ClosureEnvironment" + name, source, name == "String" ? "env\n" : string.Empty);
 
     // S2: the result borrows the environment binding's own slot, so it depends on the closure's receiver and is not a fixed external
-    // result; it was accepted and outlived the Move of the closure (SPEC 15.8.2). A receiver-dependent result is unsupported.
+    // result; it was accepted and outlived the Move of the closure (SPEC 15.8.2). Binding binds it with the receiver's Origin (DECISIONS
+    // R4-M152), and the old analysis's gate keeps R1's located Unsupported_Kd at the call until R6-check.
     [Fact]
     public void ASlotBorrowOfAnEnvironmentBindingIsReceiverDependent()
     {
@@ -287,14 +299,22 @@ public class ClosureEnvironmentOriginTest
     }
 
     // SPEC 15.8.2, 15.6.1, 23.1: a result inferred from the body that borrows the call's own storage, a parameter, a body local or
-    // an environment binding that a Consuming call consumes, is Refuted at the returned value, with the borrow as the longer end and the
-    // closure's call result as the shorter, related at the Borrow and at the header. These were a Loan conflict at the closure or
-    // accepted (the Consuming forms).
+    // an environment binding that a Consuming call consumes, is Refuted at the returned value (an expression body, or a `return`'s
+    // operand), with the borrow as the longer end and the closure's call result as the shorter, related at the Borrow and at the header.
+    // The Closure keeps its Type and its calls bind (DECISIONS R4-M152, R4-M126 P8; OQ-F7-2 (a)): an indented body's record was at the
+    // Closure, which failed with a `Never` result, NotCallable_Kd or UnresolvedBinding_Kd at its calls and two MIR validator findings.
     [Theory]
     [InlineData("func keep(s: string, r: ref/string) -> ref/string during r => r\n" + Main + "    let a = \"x\"\n    let b = \"y\"\n    let take = func [a@move, b@move] () => keep(a@move, b@ref)\n", "keep(a@move, b@ref)", "b@ref")]
     [InlineData("func keep(s: string, r: ref/i32) -> ref/i32 during r => r\n" + Main + "    let a = \"x\"\n    let n = 7\n    let take = func [a@move, n] () => keep(a@move, n@ref)\n", "keep(a@move, n@ref)", "n@ref")]
     [InlineData(Main + "    let s = \"x\"\n    let n = 7\n    let take = func [s@move, n] () => (s@move, n@ref)\n", "(s@move, n@ref)", "n@ref")]
     [InlineData(Main + "    let f = func (x: i32) => x@ref\n    let r = f(1)\n", "x@ref", "x@ref")]
+    [InlineData(Main + "    let f = func (x: i32)\n        return x@ref\n    let r = f(1)\n", "x@ref", "x@ref")]
+    [InlineData(Inspect + Main + "    let c = func ()\n        let l: i32 = 1\n        return l@ref\n    inspect(c())\n", "l@ref", "l@ref")]
+    [InlineData(
+        Consume + "func inspectText(value: ref/string) => ()\n" + Main + "    let text = \"a\"\n    let other = \"b\"\n" +
+            "    let c = func [text@move, other@move] ()\n        consumeText(other@move)\n        return text@ref\n    inspectText(c@move())\n",
+        "text@ref",
+        "text@ref")]
     public void AResultOverCallLocalStorageIsRefuted(string source, string text, string borrow)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
@@ -302,6 +322,36 @@ public class ClosureEnvironmentOriginTest
         var related = error.Related!.Select(x => x.Span is { } at ? source.Substring(at.Start, at.Length) : string.Empty).ToArray();
         Assert.Contains(borrow, related);
         Assert.Contains(related, static x => x.StartsWith("func", StringComparison.Ordinal) && x.EndsWith(')'));
+    }
+
+    // On the MIR the same record is one (DECISIONS R4-M152): the returned value's twin row, whose Refuted relation W derives the storage
+    // end's Loan conflict from (R4-M132), and no validator finding. The MIR had the conflict beside the Closure's record (t7d, e3) or two
+    // validator findings (an indented body).
+    [Theory]
+    [InlineData(Main + "    let f = func (x: i32)\n        return x@ref\n    let r = f(1)\n", "return x@ref")]
+    [InlineData(Inspect + Main + "    let c = func ()\n        let l: i32 = 1\n        return l@ref\n    inspect(c())\n", "return l@ref")]
+    [InlineData(Inspect + Main + "    let n: i32 = 4\n    let c = func [n] () => (1 + n)@ref\n    inspect(c())\n", "(1 + n)@ref")]
+    [InlineData(Main + "    let f = func (x: i32)\n        let y = x\n        return y@ref\n", "return y@ref")]
+    public void AResultOverCallLocalStorageIsOneRecordOnTheMir(string source, string text)
+    {
+        var c = MirBuildTest.Compile(source);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var (common, _, _, mir) = MirDifferenceLedger.Sides(c, program);
+        var error = Assert.Single([.. common, .. mir], static x => DiagnosticEntries.TryGet(x.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error);
+        Assert.Equal((DiagnosticCode.UnsatisfiedOriginRelation_Kd, text), (error.Code, error.Node.ToString()!.Split('\n')[0].Trim()));
+    }
+
+    // DECISIONS R4-M126 P8, R4-M152: each published position is the meet of its admissible sources, so where one returned value is a
+    // Borrow of an environment binding (ρ under the Shared receiver) and another a body local's, the position is ρ and only the local's
+    // Borrow is Refuted, at its returned value; the call carries the receiver's Origin.
+    [Fact]
+    public void ACallLocalSourceBesideAnAdmissibleOneIsRefutedAgainstIt()
+    {
+        var source = Inspect + Main + "    let n: i32 = 4\n    let c = func [n] (flag: bool)\n        if flag\n            return n@ref\n        let l: i32 = 1\n" +
+            "        return l@ref\n    inspect(c(true))\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "l@ref"), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
     }
 
     // A Reborrow or Copy of a captured reference keeps its external Origin, and a moved-out owned value is no borrow.
@@ -532,24 +582,27 @@ public class ClosureEnvironmentOriginTest
     }
 
     // SPEC 15.6.3, 23.1.2 (the package's r1a–r1c; R4's 2c-3B review O2): a result `during p` through the environment is Unknown in the
-    // body (its record at the returned value), independent of R1's located Unsupported_Kd at each call of the receiver-dependent result.
+    // body (its record at the returned value). Its calls bind (DECISIONS R4-M152), and in a program Binding rejects no gate runs, so the
+    // body's record is the program's one; R1's located Unsupported_Kd at each call went with R1.
     [Theory]
-    [InlineData("    var c = func [p@move] () -> uniq/i32 during p => p\n    let a = c()\n    let b = c()\n    a@follow = 1\n    b@follow = 2\n", "p\n", 2)]
-    [InlineData("    var c = func [p@move] () -> uniq/i32 during p => p\n    let a = c()\n    a@follow = 1\n", "p\n", 1)]
-    [InlineData("    let c = func [p@move] () -> ref/i32 during p => p@follow@ref\n    let a = c()\n    let m = c@move\n    return a@follow\n", "p@follow@ref", 1)]
-    public void AResultThroughTheEnvironmentKeepsTheBodysRecordBesideItsCalls(string body, string at, int calls)
+    [InlineData("    var c = func [p@move] () -> uniq/i32 during p => p\n    let a = c()\n    let b = c()\n    a@follow = 1\n    b@follow = 2\n", "p\n")]
+    [InlineData("    var c = func [p@move] () -> uniq/i32 during p => p\n    let a = c()\n    a@follow = 1\n", "p\n")]
+    [InlineData("    let c = func [p@move] () -> ref/i32 during p => p@follow@ref\n    let a = c()\n    let m = c@move\n    return a@follow\n", "p@follow@ref")]
+    public void AResultThroughTheEnvironmentKeepsTheBodysRecordAsItsOne(string body, string at)
     {
         var source = "func use(p: uniq/i32) -> i32\n" + body + (body.Contains("return", StringComparison.Ordinal) ? string.Empty : "    return 0\n") + "public func main() => ()\n";
-        var records = DiagnosticCorpus.Check(source).Diagnostics;
-        Assert.Equal([Unproven, .. Enumerable.Repeat(nameof(DiagnosticCode.Unsupported_Kd), calls)], records.Select(static x => x.Code));
-        Assert.StartsWith(at, source[records[0].Span!.Value.Start..], StringComparison.Ordinal);
-        Assert.All(records.Skip(1), x => Assert.StartsWith("c()", source[x.Span!.Value.Start..], StringComparison.Ordinal));
+        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(Unproven, record.Code);
+        Assert.StartsWith(at, source[record.Span!.Value.Start..], StringComparison.Ordinal);
     }
 
     // The valid twins (DECISIONS R4-M126 §1): under `owner/Self` ρ is no borrow, so a Reborrow through a captured reference keeps its Origin
     // (t4e, t4f, the Consuming outer of n2b, a result over it, which ρ never makes call-local); a nested exclusive slot entry, a Consuming
-    // body's nested entry and SPEC 7.7.3's example; D-13's three forms under Shared and Exclusive receivers (the receiver's well-formedness
-    // is no row: no premise is missing); a nested bare entry of a pair capture, whose binding meets ρ on the pair layer's outer slot.
+    // body's nested entry and SPEC 7.7.3's example; D-13's three forms under Shared and Exclusive receivers; a nested bare entry of a pair
+    // capture, whose binding meets ρ on the pair layer's outer slot. A call whose relations need the receiver's well-formedness, `p outlives
+    // ρ` (SPEC 15.6.1, 15.8.2; DECISIONS R4-M152, PLAN G270: a premise of the body, R2 of its receiver input): an exclusive input with its
+    // clause (also in a nested Closure and through a local Reborrow), and the contextual parts over a captured Borrow that a call judging
+    // every position of its inputs reaches (G216 (a)'s probes r03-r06, s04).
     [Theory]
     [InlineData(Consume + LocalView + "    let t = \"a\"\n    let c = func [u, t@move] () -> uniq/i32 during u\n        consumeText(t@move)\n        return u\n    return 0\n")]
     [InlineData(Consume + LocalView + "    let t = \"a\"\n    let c = func [u@move, t@move] () -> uniq/i32 during u\n        consumeText(t@move)\n        return u\n    return 0\n")]
@@ -575,11 +628,57 @@ public class ClosureEnvironmentOriginTest
         "            let local = value\n            _ = local\n        g()\n    h()\n")]
     [InlineData("func use<s/T>(value: s/T) -> ()\n    s is ref or uniq\n    T is Copy\n    var h = func [value] () -> ()\n        var g = func [value] () -> ()\n" +
         "            let local = value\n            _ = local\n        g()\n    h()\n")]
+    [InlineData(ExclusiveClause + "func use(p: ref/i32) -> i32\n    let a = p\n    var c = func [var a] () -> ()\n        fu(a@uniq)\n    c()\n    return 0\n")]
+    [InlineData(ExclusiveClause + "func use(p: ref/i32) -> i32\n    let a = p\n    var c = func [var a] () -> ()\n        var d = func [var a] () -> ()\n" +
+        "            fu(a@uniq)\n        d()\n    c()\n    return 0\n")]
+    [InlineData(ExclusiveClause + "func use(p: ref/i32) -> i32\n    let a = p\n    var c = func [var a] () -> ()\n        let r = a@uniq\n        fu(r)\n    c()\n    return 0\n")]
+    [InlineData("func same3<T>(x: Option<ref/T during c>, y: ref/T during c) => ()\n" + TwoCaptures + "    let f = func [a, b] () -> ()\n        same3(.Some(a@ref), b@ref)\n" + CallF)]
+    [InlineData("func swap3<T>(x: Option<uniq/T during c>, y: uniq/T during c) => ()\n" + TwoCaptures + "    var f = func [var a, var b] () -> ()\n" +
+        "        swap3(.Some(a@uniq), b@uniq)\n" + CallF)]
+    [InlineData("func same4<T>(x: (ref/T during c, Option<ref/T during c>), y: ref/T during c) => ()\n" + TwoCaptures + "    let f = func [a, b] () -> ()\n" +
+        "        same4((a@ref, .None), b@ref)\n" + CallF)]
+    [InlineData("func same5<T>(x: [2 of Option<ref/T during c>], y: ref/T during c) => ()\n" + TwoCaptures + "    let f = func [a, b] () -> ()\n" +
+        "        same5([.Some(a@ref), .None], b@ref)\n" + CallF)]
+    [InlineData("func same9<T>(x: [2 of (ref/T during c, Option<ref/i32 during c>)]) => ()\n" + TwoCaptures + "    let f = func [a, b] () -> ()\n" +
+        "        same9([(a@ref, .None), (b@ref, .None)])\n" + CallF)]
     public void AReceiverContainmentTheBodyNeedsNotStaysValid(string function)
     {
         foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
         {
             Assert.Empty(ContextualCaptureTest.PublishedRecords(function + "public func main() => ()\n", pipeline));
+        }
+    }
+
+    // The receiver's well-formedness (DECISIONS R4-M152, PLAN G270) gives only that each Origin stored in the environment outlives ρ: two
+    // captured references of independent Origins are not equal (`swap` and `swap3` instantiate one `T`), and a Borrow of a Closure local
+    // stored into an environment binding does not outlive that binding's Origin. Under `owner/Self` the receiver is the environment by
+    // value, with no ρ, so a captured reference returned as a static one stays Unproven (BU's own3, the guard's twin). Each keeps its
+    // record on both pipelines.
+    [Theory]
+    [InlineData(
+        "func swap<T>(x: uniq/T, y: uniq/T) => ()\n" + IndependentCaptures + "    var c = func [var a, var b] () -> ()\n        swap(a@uniq, b@uniq)\n" +
+            "    c()\n    return 0\n",
+        "b@uniq")]
+    [InlineData(
+        "func swap3<T>(x: Option<uniq/T during c>, y: uniq/T during c) => ()\n" + IndependentCaptures + "    var c = func [var a, var b] () -> ()\n" +
+            "        swap3(.Some(a@uniq), b@uniq)\n    c()\n    return 0\n",
+        "a@uniq")]
+    [InlineData(
+        ExclusiveClause + "func use(p: ref/i32) -> i32\n    let a = p\n    var c = func [var a] () -> ()\n        let local: i32 = 1\n" +
+            "        var l = local@ref\n        fu(l@uniq)\n        a = l\n    c()\n    return 0\n",
+        "l\n")]
+    [InlineData(
+        Consume + "func use(p: ref/i32) -> i32\n    let a = p\n    let t = \"t\"\n    let c = func [a, t@move] () -> ref/i32\n        consumeText(t@move)\n" +
+            "        return a\n    _ = c@move()\n    return 0\n",
+        "a\n")]
+    public void TheReceiversWellFormednessProvesOnlyItsStoredOrigins(string function, string at)
+    {
+        var source = function + "public func main() => ()\n";
+        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
+        {
+            var records = ContextualCaptureTest.PublishedRecords(source, pipeline);
+            Assert.Contains(records, x => x.Code is nameof(DiagnosticCode.UnprovenOriginRelation_Kd) or nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) &&
+                source[x.Span.Start..].StartsWith(at, StringComparison.Ordinal));
         }
     }
 
