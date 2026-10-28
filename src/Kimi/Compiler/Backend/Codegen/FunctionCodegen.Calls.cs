@@ -10,9 +10,9 @@ namespace Kimi.Compiler.Backend;
 // once in its site's order, and the one call writer, which the legacy rows, the intrinsic rows, the glue items and the module's entry call
 // too; each argument is FunctionCodegen.Arguments' (its parameter's kind, a copy slot). A call that dispatches (SPEC 6.4.3, 6.4.6) runs
 // through a virtual slot, which only makes the callee value it writes (EntryOf): a Virtual callee, without a target (X5), under its slot's
-// signature (ModuleCodegen.Slot); a body target that implements a slot, a requirement's virtual witness (BodyRun); a Builtin target its
-// shim's function (FunctionCodegen.Shims; DECISIONS R5-M126, R5-M130). Rows not written yet: a property witness (C3c), a requirement whose
-// witness has no body (PLAN G157 (10), K's: the collector publishes no target for a body-less compiler function).
+// signature (ModuleCodegen.Slot); a body target that implements a slot, a requirement's virtual witness (BodyRun); a Builtin or
+// PropertyWitness target its shim's function (FunctionCodegen.Shims; DECISIONS R5-M126, R5-M130, R5-M141). Row not written yet: a
+// requirement whose witness has no body (PLAN G157 (10), K's: the collector publishes no target for a body-less compiler function).
 internal sealed partial class FunctionCodegen
 {
     private int cursor; // The item's first target not passed yet (I8).
@@ -91,19 +91,16 @@ internal sealed partial class FunctionCodegen
 
     // SPEC 8.6.3-8.6.4, 6.4.6 (K package 4.5 rows 1, 3 and 5): what a call of a function's or a requirement's target item runs, the one rule
     // of a Requirement call and of a function Item's call and adapter (FunctionCodegen.Closures' Runs): a body item its body (BodyRun); a
-    // Builtin item its shim's function (FunctionCodegen.Shims; DECISIONS R5-M126, R5-M130); a property witness C3c's; any other item a broken
-    // contract. Null after a record at the source.
+    // shim item, Builtin or PropertyWitness, its shim's function (FunctionCodegen.Shims; DECISIONS R5-M126, R5-M130, R5-M141); any other
+    // item a broken contract. Null after a record at the source.
     private Run? Witness(int target, in SourceInfo source)
     {
         switch (this.collector.Set.Items[target].Key.Kind)
         {
             case MonoKind.Body:
                 return this.BodyRun(target); // Null after a record.
-            case MonoKind.Builtin:
+            case MonoKind.Builtin or MonoKind.PropertyWitness:
                 return this.module.Shim(target) is { } shim ? new Run(shim, null) : null; // Null after a record.
-            case MonoKind.PropertyWitness:
-                this.Report(DiagnosticCode.Unsupported_Kd, source); // C3c writes the property witnesses.
-                return null;
             default:
                 this.Report(DiagnosticCode.InternalInvariant_Kd, source); // A call targets a body, a shim or a witness (K package 4.5).
                 return null;

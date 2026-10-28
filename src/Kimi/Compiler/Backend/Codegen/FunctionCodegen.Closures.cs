@@ -14,7 +14,7 @@ namespace Kimi.Compiler.Backend;
 // operands (FunctionCodegen.Calls' Legacy; DECISIONS R5-M116), an intrinsic's when it is one runtime routine (Routine), else the row's
 // unit's; any other function's its body target, its function's body or a requirement Item's witness (through its slot when it
 // implements one, BodyRun); a virtual function's Item, which has no target (X5), its slot (SPEC 6.4.3); without one a later unit's row (a
-// requirement witness without a body, PLAN G157 (10), K's; a property witness C3c). The slot only makes the callee
+// requirement witness without a body, PLAN G157 (10), K's). The slot only makes the callee
 // value the call writes (EntryOf), so an Item's call and its adapter's entry dispatch through the one call writer, and the adapter's entry
 // is the erased virtual Item's thunk. A common Function value (IMPL 21.1.3: its environment word, then its table) calls its table's entry
 // with its environment word and its table's context under the erased signature (ModuleCodegen.Erased). A Value call's operands are its

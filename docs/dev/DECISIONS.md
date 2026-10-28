@@ -9345,7 +9345,7 @@ structure is recorded here by the unit that first implements it.
   - Rows not written yet (located `Unsupported_Kd`, PD11): floating-point operands (C1b, with Float constants), raw-pointer equality
     and displacement (C8a, whose raw memory rows bring the stride addressing; no raw pointer reaches a generated program before
     them), string borrows (C8c), and checked 128-bit add, subtract, multiply and negate, whose `WideOverflowDeclarations` are
-    `ModuleCodegen`'s module-level request (open issue; `ModuleCodegen.cs` was held by K11). 128-bit division is the collector's
+    `ModuleCodegen`'s module-level request (open issue; `ModuleCodegen.cs` was held by K11; superseded by R5-M143). 128-bit division is the collector's
     capability gap and never reaches codegen.
   - Rejected: arms per operator (the old `BodyLowering.Graph` shape); deriving the check from (operator, signedness, wrapping) in
     code beside the table (a second copy of SPEC 13.3.1's rule); a Proven test in codegen (it would re-derive the builder's fact);
@@ -10822,7 +10822,8 @@ structure is recorded here by the unit that first implements it.
     two records, one site in two instances one. A function item's formation (`let operation = T.divided`) is itself a requesting site, so
     the Item form records at the formation and at the call (SPEC 23.1.2 leaves a dependent failure's report implementation-defined; a
     test pins both). Code generation decides no capability: a gap reaching it is a broken contract (R5-M37's rule). Checked 128-bit
-    addition, subtraction, multiplication and negation in a shim keep G157 (14)'s located record (ruling Q8 (a)).
+    addition, subtraction, multiplication and negation in a shim keep G157 (14)'s located record (ruling Q8 (a); superseded by
+    R5-M143).
   - `TyCtxt.Contract(requirement)` (ruling Q6 (a), BU's review): SPEC 8.6.1's declaring Contract, also of a built-in target, which keeps its
     requirement's scope; a symbol outside a Contract is a broken contract (`InvalidOperationException`). The collector's two
     `Scope.Owner` reads go through it: G157 (16)'s first half closes.
@@ -11452,3 +11453,125 @@ structure is recorded here by the unit that first implements it.
     old-value destruction, an A2 Drop like every other, runs in cleanup (the old generator: body; SPEC 13.7.1 calls it cleanup), and a
     static initializer runs in initialization, phase 3, which the old generator never writes (PD22, PLAN10 §5.6.7). PD22's "avoids
     per-pipeline kimi test failure output" is not met for these two labels. Both leave the list.
+- **R5-M143 Checked 128-bit arithmetic and layered comparison operands in MIR code generation (wide)** (2026-10-27, C lane; PLAN G157
+  (14); package C 3.2 and 3.3, PD2, PD9, PD11; SPEC 13.3.1, 13.3.3, 13.4, 3.4.3, 5.1, 22.5.1-22.5.2, IMPL 21.3.3; the planning session's
+  go and rulings Q1-Q6 on `wide-design.md` and its rulings on implementation review 1 (B1, B2); under R5-M18, R5-M75, R5-M76, R5-M87,
+  R5-M92 and R5-M126; supersedes R5-M76's open issue "checked 128-bit add, subtract, multiply and negate, whose `WideOverflowDeclarations`
+  are `ModuleCodegen`'s module-level request" and R5-M126's "keep G157 (14)'s located record (ruling Q8 (a))")
+  - 128-bit rule (rulings Q1, Q2): the operator table's integer entries are width-generic overflow stems, so a checked i128 or u128 add,
+    subtract, multiply or negate (increment, decrement, compound and element updates, and an arithmetic shim, which applies the same row)
+    is written by `Apply` as at any width. Its intrinsics' declarations, `LlvmModuleText.WideOverflowDeclarations` (the old generator's
+    text, PD2), are one more frame part, `ModuleCodegen.Needs.WideOverflow`, which `Apply` requests where it writes a 128-bit overflow check
+    (the one site of the inline operators and C8f's shims) and the frame writes after the fixed declarations, the old generator's place,
+    so a module's frame text equals the old generator's. No runtime routine (llc expands the multiply inline), no IntrinsicRows,
+    BuiltinArithmetic or vocabulary row; `Needs` is no closed vocabulary, but its `byte` is now full: the next frame part widens it.
+  - Comparison rule (review B2, the cause of B1 and B2): SPEC 13.4 says an operand of safe value-reference layers (`ref`, `uniq`,
+    qualifying pair layers) denotes its terminal Place, and the terminal Types' comparison applies; MIR keeps those layers on an operand
+    whose terminal it inspects in place, a string's or a raw pointer's (`MirValidator.Types`: a comparison's operands agree below their
+    layers), and reads a scalar terminal itself (`copy (*_1)`). Code generation followed them for a string only (`Column` by `Terminal`,
+    `Bytes`), so `raw/i32 != ref/raw/i32` compared the reference's own address, a wrong result under sel since C8a (R5-M92), and the mirror
+    order was a located `Unsupported_Kd`. Now every operator operand is read at its terminal Place: `Column` takes the left operand's
+    terminal, and `Compute` reads each operand through its layers by `Referent`, the one walk (the referent of the outer ref or uniq layer
+    through the pointer each further one stores) that a string's `Bytes` takes too, so the string path is an instance of the rule. Only a
+    comparison's operand has layers (MIR's contract), so arithmetic and conversions read as before. The old generator refuses both raw
+    orders with GenerationFailed_Kd ("Inconsistent scalar operator or operand Types"), a support limit for STATUS.
+  - The remaining record (ruling Q3, review B1): with the rule, `Apply`'s `entry.Operator is null` is reached only by an operator Binding
+    admits on no operand of that terminal Type (a raw pointer's `<`, `*`, unary `-` or `&`; a floating-point `%`, `&`, `<<` or `not`; a
+    Type without a column), which check refuses (OperatorNotDefined_Kd, NonIntegerOperand_Kd, TypeMismatch_Kd), so it is a broken
+    contract: `InternalInvariant_Kd` at the operator (G157 (38)'s pattern). No accepted program in the census classes reaches it.
+  - Tests (rulings Q4, Q5): `CheckedArithmeticAbortsAtItsOperator` gains six 128-bit rows (sadd, uadd, usub, smul, umul and negation's
+    ssub) and asserts the 128-bit declarations exactly where a 128-bit check is written. `AComparisonReadsEachOperandAtItsTerminal` counts
+    the loads to each compared raw pointer (a ref layer left, right, both, a uniq one borrowed); `LayeredComparisonsRun` writes the
+    `RawComparisonLayers` fixture under MIR code generation in every run: both raw orders and `ref/i32` against `i32`, `==` and `!=`. All of
+    these fail before. The shim form is the two flipped `BuiltinArithmeticContractTest` rows. The coverage theory's `ref/raw/i32 == raw/i32`
+    row is written; K11's Application counterpart and `ARefusalLeavesTheOtherBodiesGapsRecorded` move to G157 (10)'s reserve call, still
+    unwritten under sel (`Reserve`). The pending ledger loses 26 test rows (C-frame 22, C-aggregate 4), the census's count.
+  - Size (numstat against 838e11b43, both commits): code +89 / -42 (`FunctionCodegen.Arithmetic` +39 / -22, `FunctionCodegen.Strings` +31 / -11,
+    `ModuleCodegen.Frame` +19 / -9, comments included); tests +55 / -13; ledger -26 rows.
+  - Deleted: the 128-bit clause of `Apply`'s record and its located record, inline and in a shim; `Column`'s string-only walk and `Bytes`'
+    own copy of it; the coverage theory's "leave checked 128-bit arithmetic to ModuleCodegen's wide overflow declarations".
+  - Speed: one flag request per 128-bit check and one pointer load per followed layer, no pass over MIR or output; warm 0 B
+    (`WideIntegerEmissionTest.WarmWidePlansAndFormattingAllocateNothing` passes under sel). O2 (information; no corpus kernel or milestone
+    reaches a 128-bit check or a layered comparison, so R5-M8 and R5-M135 are not triggered): both generators' optimized IR of checked i128
+    add, i128 and u128 multiply and i128 negation is identical but for names, 13, 59 and 33 instructions for sadd, smul and umul in both;
+    HashChecked (u128 multiply in its loop) prints the same at O2 under both, its check folded in both.
+  - Rejected: inside the component, (B) the frame writing the 128-bit declarations always (no width test, a few lines shorter): its
+    prototype changed the text of all 1,505 sel fixtures of the census classes, which voids `compare-fixtures.ps1`'s byte comparison, and
+    departs from R5-M76's request; the declarations written from `FunctionCodegen` (R5-M76); a scan of MIR or output for 128-bit checks;
+    the request in `Write`'s Overflow arm by the Type's text; a raw-pointer clause beside the string one in `Column` (a second copy of the
+    walk, the right operand still unread); keeping the null-entry arm `Unsupported_Kd` (it hid the wrong code's sibling). Shared structure:
+    the 128-bit declarations merged into the fixed `OverflowDeclarations` for both generators (every legacy `.ll` changes, against
+    `LlvmModuleText`'s byte-identity invariant, and frozen Emission's scan is edited, D5); a runtime routine for the multiply; a
+    capability row refusing checked 128-bit arithmetic (IMPL 21.3.3 supports it); MIR reading a raw-pointer terminal itself (held MIR,
+    and strings keep the in-place form anyway).
+  - Unverified: a test build with a 128-bit check (its runtime's text is unchanged, H); O2 timing (no kernel, identical code).
+  - Outside scope (H, Binding): check refuses `p + n` and `p - n` for `p: ref/raw/i32` with TypeMismatch_Kd, though SPEC 13.3.4 follows
+    safe layers to the terminal before the raw-pointer route; perhaps a conservative Language error for a valid form.
+- **R5-M141 The property-witness Storage shim in MIR code generation (C3c)** (2026-10-27, C lane; plan C3c, package C 3.12, F package
+  4.5, K package 4.3, 4.7 and 4.9, PD3, PD21; SPEC 11.3.1, 11.9.2, 13.7.1, 16.2, 22.5.1; the planning session's go and rulings Q1-Q7 on
+  C3c's design, `c3c-design.md` and `c3c-go.md`; under R5-M18 (G:C-drop), R5-M44, R5-M67, R5-M126, R5-M127 and R5-M130)
+  - Form (rulings Q1 (a), Q4 (a), Q5): a PropertyWitness item (R5-M67's key: the Field, the erased Self, the `PropertyWitnessKind`) is one
+    function, `__kimi_witness<item>`, under its key's signature and the internal convention, caller-location as every shim (R5-M126's
+    one ABI rule), `ModuleCodegen.Shim`'s PropertyWitness row, written by `FunctionCodegen.Shims`' `Storage`, with no MIR body (PD3). A
+    Requirement call reaches it through `FunctionCodegen.Witness`, the one target rule a requirement Item's Value call and its adapter
+    entry share with it (C8f's, C9b's); no form names a property requirement as an Item (`T.count` is UnresolvedBinding_Kd), and the
+    library declares no property requirement, so K rows 2, 5, 6, 12 and 13 do not reach one.
+  - One rule over the three rows: the Field's address is the receiver (input 0) plus its offset in the layer that stores it, that layer's
+    `Layout.Of` record (the complete base is a prefix, X1); a Set first destroys the value there through the item's target, the Field
+    Type's glue (when `MirTypes.MayNeedDrop`, the collector's admission rule), at the location the function received, then puts its
+    input (an OwnedSlot input from its address; a zero-sized one has no parameter); the row gives only its result's form: the value
+    (Copy; a result slot by `Put`, a bool narrowed), the address (Borrow) or none (Set).
+  - The key's signature (ruling Q2 (a)) is stated once, `InstanceCollector.StorageSignature`: slot 0 `ref/Self` (Copy, Borrow) or
+    `uniq/Self` (Set), a Set's slot 1 `F`, the result `F`, `ref/F` or Unit, each erased, `F` the Field's Type in Self (Binding admits a
+    standard witness only so, `Binding.PropertyMatching.cs:102-117`; SPEC 11.3.1 puts the receiver first). K6's agreement (`Agrees`, at
+    each requesting call, `InternalInvariant_Kd` otherwise) compares the requirement's instance signature with it, and code generation
+    reads its item form beside `TypeOf`. Departure, approved by the owner (the owner's R5-M142): K package 4.3's "CheckedSet API for
+    codegen" gains this query.
+  - The layer (ruling Q3 (a)): `AdtDef.FieldOwner(type, field)`, the Field owner `(Layer, Depth, Index)?`, is the one walk over a
+    struct's layers by Field; `FindField`'s storage position and the MIR builder's Field Place (its Base steps) derive from it
+    (restructured first, `6b2883987`, folded in `dce01bbfc`; BU's review ACCEPT). The builder's inverse walk of the position
+    (`MirBuilder.Places.cs`' `Stored`; `MirBuilder.Constructors.cs` only computed a position for it) answered the same question, so it
+    is replaced and deleted on the planning session's instruction (AGENTS: a new concept replaces every existing use in the same unit),
+    which supersedes the go's "no W1 file"; R4 reviewed that hunk (ACCEPT) and the MIR goldens stayed byte-identical.
+    `HasDestructorOnPath` answers another question (the layers down to a member's declaring scope, computed Properties included, for
+    the old analysis) and stays.
+  - Records (K 4.7, 4.9; BU-38): the collector records nothing new: Storage is never Refused (OCC-X refuses accessor-call witnesses
+    only), a Self's storage Limit is TyCtxt's earlier row, the Field's layout is the Self's admission verdict (R5-M44), and no capability
+    row applies (no operation; C8f's R-2 has nothing to read). Code generation records only broken contracts (`InternalInvariant_Kd` at
+    the item's site): a Field the representative Self does not store, a layout not Ok, a droppable Field without its target.
+  - Deviation (R5-M6 (d), an intended change; SPEC 22.5.1, 13.7.1): a Set's glue receives the invoking assignment's location, as a
+    direct `s.item = v` does, where the old bridge passes the contract's `set` declaration. It is not observable: a destructor's own
+    Abort reports its own location under both generators at O0 and O2 (probe `r5\c3c\cli\dev`: `Main.kimi:6:13` four times), and a
+    glue reports the location it receives only when the runtime's release itself fails (`__kimi_free`'s HeapFree), which no program
+    can cause; it also reaches a Dictionary glue's caller-location `DictionaryStorage.clearEntries` and
+    `Storage.destroyDictionaryEntries`, whose loops cannot Abort, and no user destructor (not caller-location). IR deviations only
+    (PD9): the names; two location parameters Copy and Borrow do not read; one copy where the old copies through a temporary; a Set
+    reads its input's slot after the glue; a zero-sized Field's address is computed though unread (O2 removes it).
+  - Correction (not a design change): package C 3.12's "Fixture families `Counted*` and `Own*`" names no property witness; C3c's
+    families are `PropertyWitness*` (27 fixtures, 21 written first under sel) and milestone 36, which declares the one property
+    requirement of the milestones, corpus kernels, workloads and library.
+  - Facts: the sel ledger loses `PropertyWitnessEmissionTest`'s 23 rows (146 → 123 test rows; all C-frame, all C3c's alone in the
+    census, taken again on each merged dev); its pending-ledger filing row is C-drop's; milestone 36 runs under sel.
+    `FunctionCodegenTest`'s PropertyWitness rows (`EachPropertyWitnessIsOneCallerLocationFunction`,
+    `AnInheritedWitnessReadsItsLayersOffset`, the M9 and I1 rows) fail before the behavior commit as located records.
+    `AnUncoveredFormIsOneLocatedUnsupportedRecord` keeps its purpose: its property-witness row moves to a form still unwritten, a
+    requirement Item's Value call whose witness has no body (G157 (10)'s `reserve`, one record at `reserve(w, 4)`).
+  - Size (bp1, its fold and the behavior): code +271/-106 (Codegen +173/-38, the collector +48/-21, AdtDef +36/-20, the MIR builder
+    +14/-27); tests +137/-22; the ledger -23 test rows and one filing row.
+  - Deleted: the two located `Unsupported_Kd` records (the requesting call's and the item's) and the C3c labels; `Agrees`' inline
+    Types; `FindField`'s own loop; `MirBuilder.Stored`'s position walk. Superseded labels: R5-M65's PropertyWitness arm, R5-M89's
+    "property witnesses (C3c)", and R5-M93's, R5-M102's and R5-M126's "a property witness C3c's located `Unsupported_Kd`".
+  - Speed: one function per key; its signature kept while it matches; no new pass over MIR; a warm Write allocates nothing
+    (`WarmGenerationAllocatesNothing`'s witness row, the ledger's two `…AreReused` Allocation rows under sel).
+  - Rejected: one function per row (three copies of the address and the return); code generation walking `AdtDef.Base` for the layer
+    (a second walk); `ModuleCodegen` stating the key's Types (a second statement beside K6's assertion); location parameters on a Set
+    only (a per-kind ABI mode); a Set's glue at the item's first-admission site (wrong for every other caller) or at the Field's
+    declaration (a syntax read); a MIR body for the bridge (PD3); the requirement in the key, so `Declared` gives the signature (K's
+    key; one item per requirement, not per key, X14); flat-position offsets in `Layout` (a second offset table); `TyCtxt` stating the
+    key's signature (a hold file, not the key's owner); a Backend table beside `BuiltinArithmetic` (a new component).
+- **R5-M142 The owner confirms C3c's departure (i)** (owner, 2026-10-27, to the R5 planning session directly, on its rulings after
+  C3c's design; verbatim 「C3c の逸脱 (i)（K 4.3 のコード生成向け API 一覧に StorageSignature を加えること）を承認します。」; the
+  consequences are the planning session's) The departure R5-M141 records is confirmed: the collector states a PropertyWitness key's
+  signature once (`StorageSignature`). K6's agreement assertion and code generation both read it, and K 4.3's "CheckedSet API for
+  codegen" list gains it. Package C §3.12's fixture families are corrected to `PropertyWitness*` and milestone 36 (a correction, not a
+  departure). It leaves the list.

@@ -41,6 +41,20 @@ public sealed partial class FunctionCodegenTest
 
     private const string Unused = "func unused(n: i64) -> i64 => n\n";
 
+    // A form code generation does not write yet: a Requirement call whose witness is a body-less reserve (PLAN G157 (10), K's), one
+    // Unsupported_Kd at the call.
+    private const string Reserve =
+        "func room<W>(w: uniq/W) -> i32\n    W is BufferWriter\n    match w.reserve(4)\n        .Ok(_) => return 1\n        .Err(_) => return 0\n";
+
+    // SPEC 13.4, 5.1 (DECISIONS R5-M143): raw pointers compared through a ref layer in both orders and an i32 compared through one, each
+    // answer checked by the division, run under MIR code generation in every run (the old generator refuses the raw forms, GenerationFailed_Kd).
+    private const string LayeredComparisons =
+        "func same(p: ref/raw/i32, q: raw/i32) -> bool => p == q\nfunc differ(p: raw/i32, q: ref/raw/i32) -> bool => p != q\n" +
+        "func near(a: ref/i32, b: i32) -> bool => a == b\nfunc far(a: i32, b: ref/i32) -> bool => a != b\n" +
+        "var x: i32 = 1\nlet n = x@raw\nlet m: raw/i32 = null\nvar bad: i32 = 0\n" +
+        "if not same(n@ref, n) or same(m@ref, n) or differ(n, n@ref) or not differ(m, n@ref) => bad = 1\n" +
+        "if not near(x@ref, 1) or near(x@ref, 2) or far(1, x@ref) or not far(2, x@ref) => bad = 1\nlet check = 1 / (1 - bad)\n";
+
     // A pair binder's function in its owner and its uniq case (SPEC 8.15, 13.5.5), instanced by the two calls.
     private const string PairLayers =
         "func keep<s/T>(value: s/T, x: T) -> T\n    s is owner or uniq\n    T is Copy\n    var v = value@move\n    v@follow = x\n    return v@follow\n" +
@@ -523,9 +537,16 @@ public sealed partial class FunctionCodegenTest
 
     // The operator rows (R5 C1a; DECISIONS R5-M76; SPEC 13.3.1, IMPL 21.3.3): a checked integer operation is its overflow intrinsic, whose
     // flag branches to an Abort with KIMI_E_INT_OVERFLOW (6) at the operator's location text (SPEC 22.5.1-22.5.2), and negation subtracts
-    // from 0; the result is the intrinsic's value. Nothing claims nsw or nuw (I9).
+    // from 0; the result is the intrinsic's value. Nothing claims nsw or nuw (I9). A 128-bit one is the same entry; its intrinsics'
+    // declarations are the module's exactly when such a check is written (DECISIONS R5-M143).
     [Theory]
     [InlineData("func f(a: i32, b: i32) -> i32 => a + b", "a + b", "llvm.sadd.with.overflow.i32", "i32 %, i32 %")]
+    [InlineData("func f(a: i128, b: i128) -> i128 => a + b", "a + b", "llvm.sadd.with.overflow.i128", "i128 %, i128 %")]
+    [InlineData("func f(a: u128, b: u128) -> u128 => a + b", "a + b", "llvm.uadd.with.overflow.i128", "i128 %, i128 %")]
+    [InlineData("func f(a: u128, b: u128) -> u128 => a - b", "a - b", "llvm.usub.with.overflow.i128", "i128 %, i128 %")]
+    [InlineData("func f(a: i128, b: i128) -> i128 => a * b", "a * b", "llvm.smul.with.overflow.i128", "i128 %, i128 %")]
+    [InlineData("func f(a: u128, b: u128) -> u128 => a * b", "a * b", "llvm.umul.with.overflow.i128", "i128 %, i128 %")]
+    [InlineData("func f(a: i128) -> i128 => -a", "-a", "llvm.ssub.with.overflow.i128", "i128 0, i128 %")]
     [InlineData("func f(a: u64, b: u64) -> u64 => a - b", "a - b", "llvm.usub.with.overflow.i64", "i64 %, i64 %")]
     [InlineData("func f(a: i16, b: i16) -> i16 => a * b", "a * b", "llvm.smul.with.overflow.i16", "i16 %, i16 %")]
     [InlineData("func f(a: u8, b: u8) -> u8 => a * b", "a * b", "llvm.umul.with.overflow.i8", "i8 %, i8 %")]
@@ -546,6 +567,7 @@ public sealed partial class FunctionCodegenTest
         var value = Assert.Single(f.Instructions, x => x.Shape == $"extractvalue {{ {type}, i1 }} %, 0");
         Assert.Contains(block.Successors[1].Instructions, x => x.Opcode == "store" && x.Operands[0] == value);
         Assert.DoesNotMatch(@"\b(nsw|nuw)\b", text);
+        Assert.Equal(type == "i128", text.Contains(LlvmModuleText.WideOverflowDeclarations, StringComparison.Ordinal));
     }
 
     // SPEC 13.3.1: a quotient or remainder by zero Aborts with KIMI_E_INT_DIV_ZERO (7), a signed quotient also the minimum by -1 with
@@ -1088,6 +1110,25 @@ public sealed partial class FunctionCodegenTest
     public void ARawPointerOperatorIsItsColumn(string source, string pattern)
         => Assert.Matches(pattern, Parse(source).Text);
 
+    // SPEC 13.4, 3.4.3, 5.1 (DECISIONS R5-M143): a comparison operand of safe value-reference layers denotes its terminal Place, so each
+    // operand is read through its layers, on either side: the raw pointers are compared, never a reference's own address. Each count is the
+    // loads between the compared value and its operand's slot.
+    [Theory]
+    [InlineData("func same(p: ref/raw/i32, q: raw/i32) -> bool => p == q", "eq", 1, 0)]
+    [InlineData("func differ(p: raw/i32, q: ref/raw/i32) -> bool => p != q", "ne", 0, 1)]
+    [InlineData("func same(p: ref/raw/i32, q: ref/raw/i32) -> bool => p == q", "eq", 1, 1)]
+    [InlineData("func same(p: uniq/raw/i32, q: raw/i32) -> bool => p == q", "eq", 2, 0)]
+    public void AComparisonReadsEachOperandAtItsTerminal(string source, string predicate, int left, int right)
+    {
+        var compare = Assert.Single(Parse(source).Ir.Functions.SelectMany(static x => x.Instructions), x => x.Shape == $"icmp {predicate} ptr %, %");
+        Assert.Equal([left, right], compare.Operands.Select(Loads));
+    }
+
+    // SPEC 13.4, 5.1 (DECISIONS R5-M143): LayeredComparisons runs natively in every run.
+    [Fact]
+    public void LayeredComparisonsRun()
+        => ScalarEmissionTest.WriteFixture("RawComparisonLayers", Generate(LayeredComparisons), string.Empty);
+
     // SPEC 5.3: a raw pointer to a zero-sized Type is displaced by nothing, so p + n is the pointer itself.
     [Fact]
     public void AZeroStrideDisplacementKeepsThePointer()
@@ -1263,24 +1304,24 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(expected, GeneratedIr.Parse(ir).Single("internal i32 (i1)").Blocks.Skip(1).Select(static x => x.Label));
     }
 
-    // PD11: a form the frame does not cover yet is one Unsupported_Kd in the Emission partition at its location, and no module is written;
-    // its valid counterpart is. A string's Move into another local is written since C2b (DECISIONS R5-M87), a function's call since C3a, a
-    // generic callee's instance whose Keep of a T instanced at i32 needs no drop included (R5-M78, R5-M89), a requirement's since C3b
-    // (R5-M93), a Builtin shim's since C8f (R5-M126), and a requirement whose witness a property witness (C3c) or one without a body (PLAN
-    // G157 (10), K's) is one record at the call; a Fn call of a formatting row is written since C9a (DECISIONS R5-M128), the Utf8Slice
-    // overload of writeLine included, and Text.toString of an i32 since C9b wrote its target, the BuiltinFormat item (R5-M130); the records of
-    // a for loop's
-    // statement and of the siblings its expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location
-    // (DECISIONS R5-M65), which the diagnostics could not order when each was keyed by its node. A static's initializer is written since
-    // C7b (DECISIONS R5-M106), a constant one folded into its slot. The operator rows (DECISIONS R5-M76) leave checked 128-bit arithmetic to ModuleCodegen's wide overflow declarations and
-    // have a raw pointer column since C8a (R5-M92), which writes null too; an erasure is written since C5b (DECISIONS R5-M104), into any
-    // target since C5c (R5-M108); an Array's capacity and an Array from none since C8d (R5-M121); the place writer (DECISIONS R5-M83)
-    // reads an object borrow's payload since C6a (R5-M110); the rvalue rows (DECISIONS R5-M87) write a Tuple aggregate
-    // and a zero-sized local's address, and since C8e (R5-M124) a Dictionary's length, a Dictionary from none and its iteration's storage.
-    // K11: an Application's function nothing calls is not generated, so its form records nothing; a Library generates it.
+    // PD11: a form the frame does not cover yet is one Unsupported_Kd in the Emission partition at its location, and no module is
+    // written; its valid counterpart is. A string's Move into another local is written since C2b (DECISIONS R5-M87), a function's call
+    // since C3a, a generic callee's instance whose Keep of a T instanced at i32 needs no drop included (R5-M78, R5-M89), a requirement's
+    // since C3b (R5-M93), a Builtin shim's since C8f (R5-M126) and a property witness's since C3c (R5-M141), and a requirement whose
+    // witness has no body (PLAN G157 (10), K's) is one record at the call, its requirement Item's Value call too; a Fn call of a
+    // formatting row is written since C9a (DECISIONS R5-M128), the Utf8Slice overload of writeLine included, and Text.toString of an i32
+    // since C9b wrote its target, the BuiltinFormat item (R5-M130); the records of a for loop's statement and of the siblings its
+    // expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location (DECISIONS R5-M65), which the
+    // diagnostics could not order when each was keyed by its node. A static's initializer is written since C7b (DECISIONS R5-M106), a
+    // constant one folded into its slot. The operator rows (DECISIONS R5-M76) write checked 128-bit arithmetic and a comparison through
+    // an operand's ref layers since wide (R5-M143); they have a raw pointer column since C8a (R5-M92), which writes null too; an erasure
+    // is written since C5b (DECISIONS R5-M104), into any target since C5c (R5-M108); an Array's capacity and an Array from none since C8d
+    // (R5-M121); the place writer (DECISIONS R5-M83) reads an object borrow's payload since C6a (R5-M110); the rvalue rows (DECISIONS
+    // R5-M87) write a Tuple aggregate and a zero-sized local's address, and since C8e (R5-M124) a Dictionary's length, a Dictionary from
+    // none and its iteration's storage. K11: an Application's function nothing calls is not generated, so its form (G157 (10)'s reserve
+    // call) records nothing; a Library generates it.
     [Theory]
-    [InlineData("func twice(a: i128) -> i128 => a + a\n", OutputKind.Library, new[] { "a + a" })]
-    [InlineData("func twice(a: i128) -> i128 => a + a\n()", OutputKind.Application, new string[0])]
+    [InlineData("func same(p: ref/raw/i32, q: raw/i32) -> bool => p == q\n", OutputKind.Library, new string[0])]
     [InlineData("func twice(a: f64) -> f64 => a + a\n", OutputKind.Library, new string[0])]
     [InlineData("func id(x: i32) -> i32 => x\nfunc get() -> (i32) -> i32 => id\n", OutputKind.Library, new string[0])]
     [InlineData("func none() -> usize => null@raw/i32@usize\n", OutputKind.Library, new string[0])]
@@ -1302,15 +1343,12 @@ public sealed partial class FunctionCodegenTest
         OutputKind.Library,
         new string[0])]
     [InlineData(
-        "contract Counted\n    property count: i32 has get, set\nstruct Tally\n    Self is Counted\n    public var count: i32 = 1\n    public init() => ()\n" +
-        "func read<T>(x: ref/T) -> i32\n    T is Counted\n    return x.count\nfunc use(t: ref/Tally) -> i32 => read(t)\n",
+        "func room<W>(w: uniq/W) -> i32\n    W is BufferWriter\n    let reserve = W.reserve\n    match reserve(w, 4)\n        .Ok(_) => return 1\n" +
+        "        .Err(_) => return 0\nfunc use(heap: uniq/Text.HeapBuffer) -> i32 => room(heap)\n",
         OutputKind.Library,
-        new[] { "x.count" })]
-    [InlineData(
-        "func room<W>(w: uniq/W) -> i32\n    W is BufferWriter\n    match w.reserve(4)\n        .Ok(_) => return 1\n        .Err(_) => return 0\n" +
-        "func use(heap: uniq/Text.HeapBuffer) -> i32 => room(heap)\n",
-        OutputKind.Library,
-        new[] { "w.reserve(4)" })]
+        new[] { "reserve(w, 4)" })]
+    [InlineData(Reserve + "func use(heap: uniq/Text.HeapBuffer) -> i32 => room(heap)\n", OutputKind.Library, new[] { "w.reserve(4)" })]
+    [InlineData(Reserve + "func use(heap: uniq/Text.HeapBuffer) -> i32 => room(heap)\n()", OutputKind.Application, new string[0])]
     [InlineData("func show(text: Text.Utf8Slice) => Console.writeLine(text)\n", OutputKind.Library, new string[0])]
     [InlineData("func show(x: i32) -> string => Text.toString(x)\n", OutputKind.Library, new string[0])]
     [InlineData("func show(x: i32) -> string => \"x=\\(x)\"\n", OutputKind.Library, new string[0])]
@@ -1377,6 +1415,7 @@ public sealed partial class FunctionCodegenTest
     [InlineData(Interpolations, OutputKind.Library)]
     [InlineData(Verifications, OutputKind.Application)]
     [InlineData(Phases, OutputKind.Application)]
+    [InlineData(Witnesses, OutputKind.Library)]
     public void GenerationIsDeterministic(string source, OutputKind output)
     {
         var first = Generate(Analyze(source, output));
@@ -1487,6 +1526,7 @@ public sealed partial class FunctionCodegenTest
     [InlineData(Interpolations, OutputKind.Library)]
     [InlineData(Verifications, OutputKind.Application)]
     [InlineData(Phases, OutputKind.Application)]
+    [InlineData(Witnesses, OutputKind.Library)]
     public void WarmGenerationAllocatesNothing(string source, OutputKind output)
     {
         var c = Analyze(source, output);
@@ -1610,6 +1650,9 @@ public sealed partial class FunctionCodegenTest
     private static (string? Name, bool Generated)[] Generated(CheckedSet set)
         => [.. Enumerable.Range(0, set.Items.Length).Select(x => (set.Items[x].Key.Body.Def.Decl?.Name, set.IsGenerated(x)))
             .OrderBy(static x => x.Name, StringComparer.Ordinal)];
+
+    // The pointer loads between a value and the slot it was first loaded from: 0 for a slot's own value.
+    private static int Loads(IrValue value) => value.Opcode == "load" && value.Operands[0].Opcode == "load" ? 1 + Loads(value.Operands[0]) : 0;
 
     private static (string Code, string? Text)[] Records(Compilation c)
         => [.. TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text))];
