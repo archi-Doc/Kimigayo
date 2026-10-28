@@ -148,7 +148,7 @@ public sealed partial class Binding
         if (proposition.Kind == ConstraintKind.Callable)
         {
             var subject = proposition.Subject!;
-            var closure = subject.Kind == BoundTypeKind.Closure ? BoundClosure.Of(subject) : null;
+            var closure = BoundClosure.Of(subject);
             var signature = this.ClosureSignature(subject) ?? this.FunctionItemSignature(subject) ?? (subject.Kind == BoundTypeKind.Function ? subject : null);
             if (signature is null)
             {

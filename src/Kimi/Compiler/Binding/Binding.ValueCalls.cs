@@ -319,7 +319,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (owner.Kind == BoundTypeKind.Closure && BoundClosure.Of(owner) is { } closure)
+        if (BoundClosure.Of(owner) is { } closure)
         {
             signature = this.ClosureSignature(owner)!;
             receiver = closure.Receiver;

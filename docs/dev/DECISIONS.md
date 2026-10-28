@@ -5159,8 +5159,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   BU (Binding) and R5 (tests and golden), each REVISE once, fixed in round 1; R4's review 2 REVISE once (B1), fixed in round 2 with
   the planning session's (A) and the owner's 「(1) 広げたまま」 (2026-10-28); review 3 REVISE from R4 and BU (B1 not closed for the
   readers a text census missed, B2 structure), suspended under Q11, and the owner's 「一段上でもう 1 回」 (2026-10-28): round 3 fixes
-  the cause one level higher, the accessors; implementation review 4 ACCEPT (R4), R5's builder check ACCEPT) SPEC 15.8.2, 15.6.1,
-  15.6.4, 15.6.5, 7.7.3, 23.1.2.
+  the cause one level higher, the accessors; implementation review 4 ACCEPT (R4), R5's builder check ACCEPT, BU's re-check 3 ACCEPT)
+  SPEC 15.8.2, 15.6.1, 15.6.4, 15.6.5, 7.7.3, 23.1.2, 16.3.1.
   - G270 (SPEC 15.6.1: a definition may assume its receiver's Type well formed, and each call proves it; 15.8.2: a Closure body is checked
     against its call receiver as a method body against `self`; R4-M148: that receiver is input 0, `R/Env during ρ`): R2 of the premise
     catalog adds each enclosing anonymous function's receiver input (`Binding.OriginPremises.AddReceiverPremises`, the row R4-M126 D-13
@@ -5190,18 +5190,24 @@ and migration obligations remain in force; no numeric cap changes are authorized
     to the definition and answers only for a Closure Type. The line: a reader that needs the closure's definition (its signature, parts
     or body) whatever the creation's outcome reads the definition; a reader that asks whether the creation at its position succeeded
     reads the closure as created. With the old names gone the compiler made every reader choose (table:
-    `r4-notes\2c-5\fix3\readers.txt`): 39 compiler reads take the definition, 27 through a Closure Type, a signature or an Origin's
+    `r4-notes\2c-5\fix3\readers.txt`): 40 compiler reads take the definition, 28 through a Closure Type, a signature or an Origin's
     binder (among them review 3's `ErasesToFunction`, the effect bounds and obligations and the old Emission's `:495`, and four
     spellings of the plan with its signature, now the accessor), 1 the failed-context walk, 8 R5-M63 (1)'s builders (the HIR publisher's
     Closure facts and the MIR builder, which build a failed creation's definition and parts too: the same read renamed), and 3 Binding
     judgments of a literal's parts (the receiver classification's nested walk, the helper captures, a rejected candidate's receiver);
-    25 take the closure as created, the old Analysis and Emission per creation (they run on complete compilations, where both agree)
+    27 take the closure as created, the old Analysis and Emission per creation (they run on complete compilations, where both agree)
     and control flow's created closure. The binding's working plan (`ClosureStorage`, read while the binding forms it, before the
     signature) is neither. BU-19's failed-context walk keeps a literal whose definition stands as a signature it keeps (a
     `KeepsSignature` row), so a Type naming it is no failed context: d4 and h4 lose a derived InvalidConstraint_Kd, eff1 keeps the MIR's
     independent UnsatisfiedEffectBound_Kd, and h1 and d3 lose a TransferRequired_Kd with an inapplicable Repair, each as its
-    parenthesized and block twins (whose Owned UnprovenConstraint_Kd at the argument h1 and d3 now share: the environment's Borrow,
-    its Origin the maker call's Unbound atom, under the interim limit below).
+    parenthesized and block twins, whose Owned UnprovenConstraint_Kd at the argument h1 and d3 now share. That record is a cascade
+    of the P8 record on invalid forms only: its Origin is P9's image of the call result atom, an Unbound end resting on the P8 record
+    (R4-M118's Dependent; `ClosureResults.PublishedOrigin`); the valid twins give UnsatisfiedConstraint_Kd or acceptance, and dev hid
+    the failure behind its Never result. Open (PLAN G280, BU's); removal: Binding's Owned and Callable proofs take an Unbound end as
+    resting on its failure (DIAGNOSTICS §4.3). Two parts judgments now reach a literal whose creation failed and each gives the
+    independent record its created twin has (SPEC 23.1.2): the helper captures (SPEC 16.3.1) give InvalidCaptureBinding_Kd at a later
+    `w.buffer@ref` in a drop body whose literal's erasure fails (zz3_h2), and the receiver classification (SPEC 7.7.3) makes a `let c`
+    whose nested literal's erasure fails Exclusive, so `c()` is InvalidAssignment_Kd (zz3_n2); dev and 9239ace28 lost both.
     The view's row 5, a body's own call receiver and call result, is one predicate (`Binding.OwnCallAtom`) that `FixedIn` and
     `ClassifyAtom` read. Deleted: `CallLocalOrigin` and the Closure's failure (OQ-F7-2 (a)), with the 2c-0 "Environment only" rule.
   - P9 (`Binding.ValueCalls`): R1's Unsupported_Kd is deleted. A Closure's call result naming ρ takes the receiver acquisition's Origin
@@ -5233,10 +5239,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     - An interim limit, the owner's 「暫定として認める」 (2026-10-28): a valid nested maker's returned Closure whose signature names the
       maker's ρ, passed to a generic `F is Callable<...>`, is UnprovenConstraint_Kd at the argument instead of F1's located
       Unsupported_Kd (q2, q6; dev gave R1's Unsupported_Kd at the maker's call, acceptance unchanged; q3 and q9, over the maker's input,
-      were UnprovenConstraint_Kd on dev too). The same limit covers the call result's Unbound atom reaching a proof at a use: h1, d3
-      and their twins (a returned value P8 failed, passed to a `() -> i32` parameter) keep the Owned proof's UnprovenConstraint_Kd at
-      the argument beside the record at the literal; dev's single record there hid the failure behind its Never result. Removal:
-      G273's images reach the Callable proof and the Function conversion at a use.
+      were UnprovenConstraint_Kd on dev too). Removal: G273's images reach the Callable proof and the Function conversion at a use.
+      (h1 and d3's Owned record is not this limit: a cascade of the P8 record, PLAN G280, above.)
     - Not open, corrected in round 3 (BU's re-check 2): a returned value P8 failed whose result is `ref/i32`, passed to a `() -> i32`
       parameter or a generic `Callable<() -> i32>` bound (q7, q8, f08b, f10b), keeps an independent NoApplicableOverload_Kd beside its
       record, since a valid Closure of that signature gets it too (d1, d2); dev gave a derived NotCallable_Kd there.

@@ -642,10 +642,9 @@ public sealed partial class Binding
     {
         var call = node is InvocationKoto invocation && ReferenceEquals(invocation.Method, target);
         var callee = target.BoundType is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } reference ? reference.Components[0] : target.BoundType;
-        var closure = callee?.Symbol?.Declaration as FunctionKoto;
         var objectCallee = call && ((target.BoundType is { Kind: BoundTypeKind.Semantics } layer && IsObjectSemantics(layer.Semantics)) ||
             KotoHelper.UnwrapParentheses(target) is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow });
-        var plan = closure?.ClosureStorage;
+        var plan = BoundClosure.Of(callee);
         var consuming = call && target.BoundType is { } calleeType && this.TryCallable(calleeType, this.ConstraintScope(node), out _, out var calleeReceiver) && calleeReceiver == SemanticsKind.Owner;
         var callNote = !call ? null : consuming ? objectCallee
             ? "The call is Consuming (SPEC 7.7.3): it moves values out of the callee's environment, and an object payload offers no Take (SPEC 13.5.5)"

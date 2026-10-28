@@ -28,6 +28,10 @@ public class ClosureResultOriginTest
 
     private const string ConfinedF = "    let f = outer(3, Item.init())\n    return apply(f@move)\n";
 
+    private const string NestedUniq = "func use() -> i32\n    var n = 1\n    let c = func [var n] ()\n";
+
+    private const string NestedCall = "    c()\n    return 0\npublic func main() => ()\n";
+
     private const string Captured = "let n = 7\nlet values: [1 of ref/i32] = [n@ref]\nlet f = func [values] () => values[0]\n";
 
     [Theory]
@@ -179,7 +183,8 @@ public class ClosureResultOriginTest
     // closure's definition, so the bare expression body gives its parenthesized and block twins' records: no TransferRequired_Kd with an
     // inapplicable Repair at a `() -> i32` parameter (review 3's h1, BU's d3), no InvalidConstraint_Kd from the failed-context walk, where
     // the literal keeps its signature (h4, d4, and eff1, whose MIR keeps its independent UnsatisfiedEffectBound_Kd). The Owned proof's
-    // UnprovenConstraint_Kd at `a` is the environment's Borrow, its Origin the maker call's Unbound atom, in every twin alike.
+    // UnprovenConstraint_Kd at `a`, in every twin alike, is a cascade of the P8 record: the environment's Borrow has P9's image of the
+    // call result atom, an Unbound end resting on that record (PLAN G280).
     [Theory]
     [InlineData(Apply + Use + "    let outer = func (x: i32) => func [x@ref] () -> i32 => x@follow\n" + ApplyA, "func [x@ref] () -> i32 => x@follow", "a", null)]
     [InlineData(Apply + Use + "    let outer = func (x: i32) => (func [x@ref] () -> i32 => x@follow)\n" + ApplyA, "(func [x@ref] () -> i32 => x@follow)", "a", null)]
@@ -214,6 +219,22 @@ public class ClosureResultOriginTest
         c.Analyze();
         var effects = MirDifferenceLedger.Sides(c, c.BuildMir()).Mir.Where(static x => x.Code == DiagnosticCode.UnsatisfiedEffectBound_Kd);
         Assert.Equal(effect is null ? [] : [effect], effects.Select(x => source.Substring(x.Node.Span.Start, x.Node.Span.Length)));
+    }
+
+    // SPEC 7.7.3, 23.1.2 (DECISIONS R4-M152): the receiver classification reads a nested Closure's definition, so a nested literal whose
+    // erasure fails (its creation failed) still makes its maker Exclusive through its `n@uniq` capture: `c()` through a `let` is
+    // InvalidAssignment_Kd at `c`, the independent record its created twin has (BU's zz3_n2 and zz3_n2ok).
+    [Theory]
+    [InlineData(
+        "func run(f: () -> ()) => f()\n" + NestedUniq + "        run(func [n@uniq] () => ())\n" + NestedCall,
+        "UnprovenConstraint_Kd func [n@uniq] () => (); InvalidAssignment_Kd c")]
+    [InlineData(NestedUniq + "        let k = func [n@uniq] () => ()\n        k()\n" + NestedCall, "InvalidAssignment_Kd c")]
+    public void ANestedClosureWhoseCreationFailedStillClassifiesItsMaker(string source, string records)
+    {
+        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
+        {
+            Assert.Equal(records, Records(source, pipeline));
+        }
     }
 
     // SPEC 15.8.2, 13.5.6 (DECISIONS R4-M152): a Closure literal's own temporary is its ClosureValueSlot atom, the receiver Origin ρ of a
