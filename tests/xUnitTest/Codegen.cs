@@ -113,6 +113,16 @@ internal static class CodegenDeviations
         "23.2.2",
         "Under MIR code generation check reports the checked set's records; the old generator accepts the program and refuses it at generation.");
 
+    /// <summary>G188 (x1rows): MIR code generation makes no temporary for a string constant operand (a literal comparison operand, an argument
+    /// a later one abandons, a component a transfer abandons), so the string lifetime audits count none of the Static destructions the old
+    /// generator makes for it.</summary>
+    internal static readonly Deviation ConstantTemporaries = new(
+        "constant-temporaries",
+        DeviationClass.D,
+        "R5-M145",
+        "16.2.1",
+        "A string constant has no destruction obligation in MIR (R5-M118), so MIR code generation never materializes one as an operand or an abandoned component and destroys none; the old generator makes a temporary and destroys it, which a Static string's no-op release (IMPL 21.1.3) leaves unobservable. Program output stays equal.");
+
     /// <summary>K13b: a use of an inferred C-layout instance storing a zero-sized Field is InvalidCLayout_Kd at check under MIR code
     /// generation.</summary>
     internal static readonly Deviation InferredCLayoutAtCheck = new(

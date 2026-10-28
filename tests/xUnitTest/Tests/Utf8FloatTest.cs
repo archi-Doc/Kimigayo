@@ -149,8 +149,10 @@ public class Utf8FloatTest
             }
 
             """);
-        // The oracle reports its completion, so a run that skips it, or runs it twice, fails by its output.
-        var complete = ir.ToString().Replace("call void @__kimi_entry_body()", "call void @__kimi_entry_body()\n  call void @float_audit()", StringComparison.Ordinal);
+        // The oracle reports its completion, so a run that skips it, or runs it twice, fails by its output. It runs first at the process
+        // entry, which both generators define alike (IMPL 21.4.2; DECISIONS R5-M145), and exactly one entry is required.
+        const string Entry = "define void @__kimi_start() noreturn #0 {\nentry:\n";
+        var complete = NativeAllocationAudit.Instrument(ir.ToString(), Entry, Entry + "  call void @float_audit()\n");
         ScalarEmissionTest.WriteFixture("Utf8FloatOracle", complete, "oracle passed\n");
 
         void Add32(uint bits)

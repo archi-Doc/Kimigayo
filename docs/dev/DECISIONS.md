@@ -11513,3 +11513,53 @@ structure is recorded here by the unit that first implements it.
   signature once (`StorageSignature`). K6's agreement assertion and code generation both read it, and K 4.3's "CheckedSet API for
   codegen" list gains it. Package C §3.12's fixture families are corrected to `PropertyWitness*` and milestone 36 (a correction, not a
   departure). It leaves the list.
+- **R5-M145 The sel pending ledger before X1: one byte copy for both generators, an entry's insertion at its key, generator-neutral
+  audits and IR assertions, and the decided P42 set (x1rows)** (2026-10-28, C lane; plan X1, PLAN G157 (25), (28), (29), (32), (33), (35)
+  and G188; SPEC 16.2.1, 22.2, 22.5.1, IMPL 21.1.3, 21.3.1; the planning session's rulings Q1-Q5 on x1rows' design (`x1rows-design.md`,
+  `x1rows-go.md`) and the owner's answers R5-M144; under R5-M6, R5-M8, R5-M12, R5-M13 (b), R5-M85, R5-M92, R5-M118 and R5-M135)
+  - Census (sel and the old generator at `3da3ecd6d`, the ledger's 10 test classes and 14 writing classes with 16 fixture families): sel's
+    failing set equalled the ledger, 123 test and 47 fixture rows, and no row was a defect of MIR code generation. The 33 string lifetime
+    audits' destruction traces are the old generator's with only never-materialized constants' events removed, in order and with equal
+    output; the 8 transfer rows hold their bounds at O0 and O2 once sel's copy is counted; the 4 capacity probes pass with sel's own
+    symbols. Two accidental passes shared the causes and are fixed here: `DictionaryCapacityInsertionLimit` called another sel function
+    under the old generator's symbol, and every minimum-0 transfer bound passed uncounted under sel.
+  - Byte copy (ruling Q1 (a); supersedes R5-M92's Copy row): Storage.transferBytes is one runtime routine, `__kimi_transfer_bytes`, which
+    both generators call and a module defines only where a body calls it (`LlvmModuleText.TransferBytes`, promoted from
+    LegacyRuntimeHelpers in a behavior-preserving commit, its define line spliced from `RuntimeAbi.TransferBytes`, whose parameters now
+    carry their logical indices). The reason R5-M92's inline `llvm.memcpy` no longer holds: two representations of one storage transfer
+    made the native cost audits generator-dependent, and their minimum-0 bounds vacuous under sel. PD23's memcpy, not memmove, stays (the
+    routine is one memcpy). `IntrinsicWriter.TryAllocate` is renamed `Requested` (the routine the module defines on request: TryAllocate
+    and TransferBytes; R5-M92's writer column, the planning session's); `IntrinsicWriter.Copy` and `FunctionCodegen.CopyBytes` are deleted
+    (G157 (29)'s CopyBytes half); `ModuleCodegen.Needs.TryAllocate` becomes `StorageBytes`, the pair the old generator writes together,
+    with the memory declarations. O2 (R5-M8, R5-M135; C9c's method, 21 interleaved samples, `d1c17ec63`): the Dictionary kernel B/A 1.002
+    (0.695-1.427) against A=A 1.000 (0.614-1.449); aligned 0.999 (0.800-1.080) against A=A 1.001 (0.763-1.401); the routine is inlined at
+    O2 under both generators.
+  - Transfer audit (D1): `NativeAllocationAudit` takes both routine names from `RuntimeAbi`, and a program whose reached bodies call
+    transferBytes (its MIR and checked set under MIR code generation, whatever the process's generators) must define the counted byte
+    copy, so a transfer written in another form fails at test time, a minimum-0 bound included (`AnInlineByteCopyFails`, the re-inlining
+    mutation); with the copy inline, as before this entry, the bounded fixtures exited 93 (the census).
+  - Entry insertion (ruling Q4 (a), R5-M144; SPEC 22.5.1 states it in its existing item): a failure of a Dictionary literal entry's
+    insertion, its allocation and a duplicate key included, reports the start of that entry's key expression, R5-M126's recorded
+    reading. `MirBuilder.Expansions` places the entry's layout borrow, dictionaryStorage and placeEntry at `entry.Key` (they were at the
+    value: sel reported 2:19 for 2:16); placeEntry's layout records gain the key's site; the tests/mir goldens' node ids follow.
+  - IR assertions (R5-M12) and probes: `DictionaryCapacityTest`'s probes run MIR code generation's compiled reserve and append, named
+    by their body items (`FunctionCodegenTest.BodyOf`, shared) with `KimiLibraryCatalog.RequiresCallerLocation`; `DictionaryLibraryTest`
+    keeps reserve and grow as generated storage bodies and leaves the caller location to its native capacity fixtures;
+    `SealedPayloadsHaveDirectCleanupAndRelease` keeps its native audit (S, I and P assertions deleted; the direct release is
+    `AHandlesGlueReleasesItsObject`'s); `SharedArcRuntimeTest` checks every arc release by its exchange; `ReferenceEmissionTest` locates
+    the borrowed parameters' attributes without the old SSA names or numbering; `Utf8FloatOracle` hooks `__kimi_start`'s entry through
+    `NativeAllocationAudit.Instrument` (G157 (35)). The effect tests declare a mutable static only in the rows that read it, and
+    `FunctionItemsUseTheirTransitiveEffects`' invalid row asserts its `UnsatisfiedEffectBound_Kd` at the argument (G157 (25)).
+  - Deviation `constant-temporaries` (class (d), R5-M85; G188 closes): a string constant has no destruction obligation in MIR (R5-M118
+    Q2), so MIR code generation makes no temporary for a constant operand, an argument a later one abandons or a component a transfer
+    abandons, and destroys none; the old generator destroys such a Static temporary, a no-op (IMPL 21.1.3). 31 audit fixtures take
+    `Codegen.Expect` with sel's measured counts and orders; `NamedArgumentsDistinguishCallerAndCalleeDestructionOrder` passes calls'
+    results instead, so its order and its wrong-order control keep values both generators make.
+  - Decided rows (X1; R5-M13 (b), R5-M144): the P42 set, 110 test rows that fail only on sel's located `Unsupported_Kd` for P42's static
+    storage at check (R5-M41) beside their expected records: PathCapabilityDiagnosticTest 108, EffectBoundReportTest's mutable-static
+    row and MilestoneSourcesTest (Milestone 42). They are OQ7 (e) "form not ported" rows (R5-M6) and leave with P42. The ledger goes
+    from 123 and 47 rows to 110 and 0.
+  - Rejected: a test-only per-generator arm reading MIR in the audit (a consumer re-deriving code generation's mapping); counting every
+    untyped copy (shrink and element moves are untyped copies too); materializing constants for the audits (R5-M118); deleting the
+    literal temporaries' counts as I-class (it loses the old generator's exact claims); probing the old generator's compile through a
+    per-generator symbol helper until G4; the literal's start for an entry's failure (R5-M144).
