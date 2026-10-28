@@ -108,6 +108,8 @@ public sealed partial class MirBorrowsTest
         ["C4"] = WkTwins("arrPutOk", "arrPutBad", WkPair(), "var arr: [1 of s/T] = [other@move]\nlet child = v\nputArr(arr@uniq, child@move)", "look(arr@ref)", "v@follow = x"),
         ["C5"] = WkTwins("arrElemPutOk", "arrElemPutBad", WkPair(), "var arr: Array<s/T> = [other@move]\nlet child = v\nput(arr[0]@uniq, child@move)", "look(arr@ref)", "v@follow = x"),
         ["C6"] = WkTwins("arrAppendOk", "arrAppendBad", WkPair(), "var arr: Array<s/T> = [other@move]\nlet child = v\narr.append(child@move)", "look(arr@ref)", "v@follow = x"),
+        ["C7"] = WkTwins("dictIndexOk", "dictIndexBad", "()\n", "var d: Dictionary<i32, i32> = [1: 2]\nlet k = 1\nlet r = d.index(k@ref)", "look(r)", "d.clear()") +
+            WkForm("dictGetBad", "()\n", "var d: Dictionary<i32, i32> = [1: 2]\nlet k = 1\nlet r = d.tryGet(k@ref)\nd.clear()\nlook(r@ref)"),
         ["D4"] = WkForm("optEBad", OptionHead, "var v = value@move\nlet child = v\nputOpt(other, child@move)\nv@follow = x") +
             WkForm("optEFirst", OptionHead, "var v = value@move\nv@follow = x\nlet child = v\nputOpt(other, child@move)"),
         ["E1"] = WkTwins("concretePutOk", "concretePutBad", ConcreteHead, "var v = value@move\n" + WkPut, "_ = slot@follow", "v@follow = x"),
@@ -260,7 +262,8 @@ public sealed partial class MirBorrowsTest
         => Assert.Equal(WkExpected(expected), WkRecords(row));
 
     // M2: each part held by value counts (a Tuple's element C1, C2, an Option's payload C3, D4, a fixed array's and an Array's element C4,
-    // C5, C6, a Field E3); a storage whose Type holds neither the argument's Type nor a borrow formed through it does not (E1's `ref/i32`).
+    // C5, C6, a Dictionary's value C7, a Field E3); a storage whose Type holds neither the argument's Type nor a borrow formed through it
+    // does not (E1's `ref/i32`).
     [Theory]
     [InlineData("C1", "tuplePutBad: v@follow = x 2")] // Fails on dev by design: tuplePutOk `v@follow = x` 2.
     [InlineData("C2", "tupleRefBad: v@follow = x 2")] // Fails on dev by design: tupleRefOk `v@follow = x` 2.
@@ -268,6 +271,9 @@ public sealed partial class MirBorrowsTest
     [InlineData("C4", "arrPutBad: v@follow = x 2")] // Fails on dev by design: arrPutOk `v@follow = x` 2.
     [InlineData("C5", "arrElemPutBad: v@follow = x 2")] // Fails on dev by design: arrElemPutOk `v@follow = x` 2.
     [InlineData("C6", "arrAppendBad: v@follow = x 2")]
+    // Fails on fd4f56ae3: dictIndexBad and dictGetBad valid (a Dictionary's values were no part held by value, so `ref/V during self`
+    // kept only Content).
+    [InlineData("C7", "dictGetBad: d.clear() CallActivationConflict_Kd 1|dictIndexBad: d.clear() CallActivationConflict_Kd 1")]
     [InlineData("D4", "optEBad: v@follow = x 1")]
     [InlineData("E1", "concretePutBad: v@follow = x 1")] // Fails on dev by design: concretePutOk `v@follow = x` 1.
     [InlineData("E3", "recurNodeBad: v.value = 5 1")]

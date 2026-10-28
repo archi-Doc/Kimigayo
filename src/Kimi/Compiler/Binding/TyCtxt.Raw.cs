@@ -42,6 +42,11 @@ internal sealed partial class TyCtxt
         return false;
     }
 
+    // SPEC 5.7 Calls (the owner's Q2 (a)): what a `during self` layer of a stored part admits past it besides its pointee, Binding's one
+    // reading (Binding.SelfAdmitted): the holding instance's Type arguments by their actual Types, or the write fact where it has an Origin
+    // argument (true).
+    internal static bool SelfAdmitted(BoundType holder, out IReadOnlyList<BoundType> arguments) => Binding.SelfAdmitted(holder, out arguments);
+
     // SPEC 5.2.1 condition 3 (design-final §15, R4's conditions; the owner's 「Loan 要求で上限 (推奨)」): the step of a raw layer an instance
     // stores, the one reader of one: a struct's Field `part`, or an enum's Case `part` whose first position selects the payload's component,
     // then the inline positions (a Tuple's component, a fixed array's element). Shared when the declaration states the layer with a slot

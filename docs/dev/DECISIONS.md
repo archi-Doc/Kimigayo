@@ -5313,10 +5313,17 @@ and migration obligations remain in force; no numeric cap changes are authorized
     fills `Abstract`; a result builder's relation fills the carrier's own node.
   - Made precise by rows during implementation (the design owner's Revisions 3–5, the planning session's acceptance): a `during self`
     layer of a stored part admits the holding instance's Type arguments by their actual Types, or with an Origin argument any value at
-    that argument's node in its own and the Abstract storage (SPEC 5.7 Calls, the owner's Q2 (a), MirTypes.Holding's reading); at a
+    that argument's node in its own and the Abstract storage (SPEC 5.7 Calls, the owner's Q2 (a); `Binding.SelfAdmitted`, the one
+    reading, which A5's `MirTypes.Holding` reads through TyCtxt); at a
     referent store whose referent does not destroy shallowly (R4-M143) each holder past refs(S) also takes `Own_j`, the interim until
     A5 composes the destruction (PLAN G264); a holder with no `Reached` entry (a raw-punned pointee, `w@raw@raw/u8`) takes `All`, an
     accepted precision cost (Revision 5: the walk names every storage past the root, so Revision 1's `Beyond` is withdrawn).
+  - One enumeration of a value's parts (fix round 1, R4's review N3): `HeldParts` gives the parts a value holds at its own address,
+    each with the Type its declaration writes and its holder and whether it has an address (a nominal Type's Type argument has none
+    but a collection's); the storage walk (`Parts`) and the sources and fits (`OwnParts`, which adds the layers' owned parts and what
+    a `during self` layer admits) both read it. `OwnParts` had listed only Tuples, fixed arrays, Arrays, Closures and `obj` payloads, so
+    a Dictionary's keys and values were no parts held by value and `Dictionary.index`/`tryGet`'s `ref/V during self` kept only Content:
+    `d.clear()` while that result is used was accepted (fd4f56ae3; dev rejects it), now `CallActivationConflict_Kd` again (Wk row C7).
   - Supersedes in part: R4-M116 R-B4 (a raw input's own value only where a layer can hold it), extended to every input and to the
     borrows formed through it; BU-49's `RetentionPlace.Addressed`, `MarkClosure`'s lowering and its own-Origin rows (the referent of a
     by-value exclusive layer holding the layer's own Loan with `during q` on both layers: `1 Value store 1`, use2's record), each

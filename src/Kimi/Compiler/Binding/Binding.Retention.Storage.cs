@@ -47,7 +47,7 @@ public sealed partial class Binding
     private readonly List<int> retentionOccurrences = new();
     private readonly HashSet<(BoundType Type, bool Callable)> retentionOccurred = new();
     private readonly HashSet<BoundType> retentionParts = new(ReferenceEqualityComparer.Instance);
-    private readonly List<BoundType?> retentionOwnParts = new(); // OwnParts' runs, a stack: each caller reads its run and removes it.
+    private readonly List<HeldPart> retentionHeld = new(); // HeldParts' and OwnParts' runs, a stack: each caller reads its run and removes it.
 
     // An abstract part a carrier stands for: a Type parameter that is no pair layer, or a pair's target (RetentionWalk's carriers).
     private static bool IsCarrier(BoundType type)
@@ -151,10 +151,9 @@ public sealed partial class Binding
         }
     }
 
-    // What a `during self` layer of a stored part admits (SPEC 5.7 Calls, "for self, the holding value's Type"; the owner's Q2 (a), as
-    // MirTypes.Holding reads it): its pointee and the holding instance's Type arguments by their actual Types in the same storage; where
-    // the instance has an Origin argument, the write fact: any value at each argument's node (a position of no Type), in the same storage
-    // and in the Abstract one, what such a value may refer to.
+    // What a `during self` layer of a stored part admits (SelfAdmitted, SPEC 5.7 Calls): its pointee and the holding instance's Type
+    // arguments by their actual Types in the same storage; where the instance has an Origin argument, the write fact: any value at each
+    // argument's node (a position of no Type), in the same storage and in the Abstract one, what such a value may refer to.
     private void Admitted(
         OriginPremiseEnvironment environment,
         BoundType pointee,
@@ -164,12 +163,13 @@ public sealed partial class Binding
         (BoundType? Written, BoundType? Holder, int Depth) at)
     {
         this.StorageWalk(environment, pointee, storage, writable, at);
-        foreach (var argument in holder is { OriginArguments.Count: > 0 } ? [] : holder?.Components ?? [])
+        var any = SelfAdmitted(holder, out var arguments);
+        foreach (var argument in arguments)
         {
             this.StorageWalk(environment, argument, storage, writable, at);
         }
 
-        foreach (var argument in writable && storage >= 0 && storage != ResultStorage ? holder?.OriginArguments ?? [] : [])
+        foreach (var argument in any && writable && storage >= 0 && storage != ResultStorage ? holder!.OriginArguments : [])
         {
             var node = this.PremiseNode(environment, argument);
             this.storagePositions.AddRange([(storage, node, null), (AbstractStorage, node, null)]);
@@ -219,52 +219,24 @@ public sealed partial class Binding
         }
     }
 
-    // A value's parts by value (StorageWalk): a Closure's environment bindings as its body sees them, a Tuple's elements and a fixed
-    // array's element at their inline positions, a struct's Fields, an enum's payloads and the base in the instance's kept parts, with
-    // the Types their declarations write (Held's reading), and a compiler-managed collection's elements, its Type arguments (it keeps no
-    // part: SPEC 4.5, 4.9); another nominal Type's Type arguments, which have no address, bring only targets.
+    // A value's parts by value (StorageWalk; HeldParts): each with an address a position in the same storage, walked with the Type its
+    // declaration writes there and the instance holding it; a nominal Type's Type arguments, which have none, bring only targets.
     private void Parts(OriginPremiseEnvironment environment, BoundType type, int storage, bool writable, (BoundType? Written, BoundType? Holder, int Depth) at)
     {
-        var parts = type.Kind == BoundTypeKind.Closure ? this.ClosureEnvironment(type) : type;
-        var nominal = AdtDef.IsStruct(parts) || AdtDef.IsEnum(parts);
-        if (nominal && !this.Readable(parts, this.PrepareTypeStorage(parts)))
+        this.retentionLimit |= !this.HeldParts(type, at.Written, at.Holder, out var run);
+        for (var i = run.Start; i < run.End; i++)
         {
-            this.retentionLimit = true;
-            return;
-        }
-
-        var instance = nominal ? this.Instance(parts) : null;
-        var managed = nominal && instance?.Parts is { Length: 0 } && instance.PartsBase is null;
-        for (var i = 0; i < parts.Components.Count; i++)
-        {
-            if (nominal && !managed)
+            if (this.retentionHeld[i] is { Addressed: true } part)
             {
-                this.Targets(environment, writable && storage >= 0 ? parts.Components[i] : null, storage);
+                this.StorageWalk(environment, part.Type, storage, writable, (part.Written, part.Holder, at.Depth + 1));
             }
             else
             {
-                this.StorageWalk(environment, parts.Components[i], storage, writable, (InlinePart(at.Written, i), at.Holder, at.Depth + 1));
+                this.Targets(environment, writable && storage >= 0 ? this.retentionHeld[i].Type : null, storage);
             }
         }
 
-        if (!nominal || parts.Symbol?.Adt is not { } adt || instance?.Parts is not { } stored)
-        {
-            return;
-        }
-
-        this.StorageWalk(environment, instance.PartsBase, storage, writable, (null, null, at.Depth + 1));
-        for (var i = 0; AdtDef.IsStruct(parts) && i < adt.Fields.Length; i++)
-        {
-            this.StorageWalk(environment, stored[i], storage, writable, (WrittenType(adt.Fields[i]), parts, at.Depth + 1));
-        }
-
-        for (var i = 0; AdtDef.IsEnum(parts) && i < stored.Length; i++)
-        {
-            for (var j = 0; stored[i] is { } payloads && adt.Cases[i] is { } selected && j < selected.Payload.Length; j++)
-            {
-                this.StorageWalk(environment, payloads.Components[j], storage, writable, (WrittenType(selected.Payload[j]), parts, at.Depth + 1));
-            }
-        }
+        this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
     }
 
     // A position: its Value tests, one per node naming the Type's own layer or its Origin arguments (an abstract part's carrier node, also
@@ -552,10 +524,10 @@ public sealed partial class Binding
         var (from, to) = this.OwnParts(type, carried: false);
         for (var i = from; i < to; i++)
         {
-            this.Sources(environment, this.retentionOwnParts[i], input, own, depth + 1);
+            this.Sources(environment, this.retentionHeld[i].Type, input, own, depth + 1);
         }
 
-        this.retentionOwnParts.RemoveRange(from, to - from);
+        this.retentionHeld.RemoveRange(from, to - from);
     }
 
     // SPEC 15.6.4 read as (iii) (DECISIONS R4-M154): whether a position can hold a source's value: an abstract part, or a position of no
@@ -597,10 +569,10 @@ public sealed partial class Binding
         var borrows = false;
         for (var i = start; !borrows && i < end; i++)
         {
-            borrows = this.Borrows(this.retentionOwnParts[i], referent, depth + 1);
+            borrows = this.Borrows(this.retentionHeld[i].Type, referent, depth + 1);
         }
 
-        this.retentionOwnParts.RemoveRange(start, end - start);
+        this.retentionHeld.RemoveRange(start, end - start);
         return borrows;
     }
 
@@ -657,10 +629,10 @@ public sealed partial class Binding
         var holds = false;
         for (var i = start; !holds && i < end; i++)
         {
-            holds = this.Holds(this.retentionOwnParts[i], value, carried, depth + 1);
+            holds = this.Holds(this.retentionHeld[i].Type, value, carried, depth + 1);
         }
 
-        this.retentionOwnParts.RemoveRange(start, end - start);
+        this.retentionHeld.RemoveRange(start, end - start);
         return holds;
     }
 
@@ -688,79 +660,123 @@ public sealed partial class Binding
         return false;
     }
 
-    // The parts a value of a Type holds by value, appended to retentionOwnParts as a run (start, end) its caller removes: a Closure's
-    // environment bindings, a Tuple's, a fixed array's and an Array's elements, an owning object handle's payload and a pair layer's target
-    // in an owning case (`carried`: a shared handle's too), a raw layer's pointee where it states no Origin or `self` (the value owns it),
-    // a struct's Fields, an enum's payloads and the base in the instance's kept parts, a compiler-managed collection's Type arguments, and
-    // the instance's Type arguments a `during self` Field admits (Admitted).
+    // The parts a value of a Type holds by value (SPEC 15.6.3), appended to retentionHeld as a run (Start, End) its caller removes: a raw
+    // layer's pointee where it states no Origin (the value owns it), a pair layer's target in an owning case and, `carried`, a shared
+    // handle's payload (which a new value built there carries), else the parts HeldParts gives an address, with what each `during self`
+    // layer among them admits (SelfAdmitted: its pointee and the holding instance's Type arguments by their actual Types).
     private (int Start, int End) OwnParts(BoundType type, bool carried)
     {
-        var parts = this.retentionOwnParts;
+        var parts = this.retentionHeld;
         var start = parts.Count;
+        if (this.OwnLayer(type, carried, out var owned))
+        {
+            parts.AddRange(owned is null ? [] : [new(owned, null, null, true)]);
+            return (start, parts.Count);
+        }
+
+        _ = this.HeldParts(type, null, null, out var run);
+        var kept = run.Start;
+        for (var i = run.Start; i < run.End; i++)
+        {
+            var part = parts[i];
+            parts[kept] = part;
+            kept += part.Addressed ? 1 : 0;
+            if (part is { Type: { Semantics: SemanticsKind.Raw, Components: [var held] } raw, Holder: { } holder } &&
+                this.DeclaredStep(raw, part.Written, holder) == RawStep.Own)
+            {
+                _ = SelfAdmitted(holder, out var arguments);
+                parts.Add(new(held, null, null, true));
+                foreach (var argument in arguments)
+                {
+                    parts.Add(new(argument, null, null, true));
+                }
+            }
+        }
+
+        parts.RemoveRange(kept, run.End - kept);
+        return (start, parts.Count);
+    }
+
+    // OwnParts' layers: whether the Type is a raw, pair or shared handle layer, and the part it holds by value (`owned`, null for none): a
+    // raw layer's pointee where it states no Origin, a pair layer's target in an owning case, `carried` a shared handle's payload too.
+    private bool OwnLayer(BoundType type, bool carried, out BoundType? owned)
+    {
+        owned = null;
         if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] })
         {
-            if (OwnedOrigin(type) is null or { Kind: OriginKind.Unstated })
-            {
-                parts.Add(pointee);
-            }
-
-            return (start, parts.Count);
+            owned = OwnedOrigin(type) is null or { Kind: OriginKind.Unstated } ? pointee : null;
+            return true;
         }
 
-        if (TryPairLayer(type, out _, out var target))
+        if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Rc or SemanticsKind.Arc, Components: [var payload] })
         {
-            var cases = this.LayerAdmitted(type);
-            if ((cases & (SemanticsMask.Owner | SemanticsMask.Obj)) != 0 || (carried && (cases & (SemanticsMask.Rc | SemanticsMask.Arc)) != 0))
-            {
-                parts.Add(target);
-            }
-
-            return (start, parts.Count);
+            owned = carried ? payload : null;
+            return true;
         }
 
+        if (!TryPairLayer(type, out _, out var target))
+        {
+            return false;
+        }
+
+        var shared = carried ? SemanticsMask.Rc | SemanticsMask.Arc : SemanticsMask.None;
+        owned = (this.LayerAdmitted(type) & (SemanticsMask.Owner | SemanticsMask.Obj | shared)) != 0 ? target : null;
+        return true;
+    }
+
+    // The parts a value of a Type holds at its own address, the one enumeration of them (SPEC 15.6.3, 5.7) the storage walk (Parts) and
+    // the sources and fits (OwnParts) read, appended to retentionHeld as a run (Start, End) its caller removes, each with the Type its
+    // declaration writes there and the instance holding it (Held's reading): a Closure's environment bindings as its body sees them and
+    // any other non-nominal Type's components (a Tuple's and a fixed array's at their inline positions); a struct's Fields, an enum's
+    // payloads and the base in the instance's kept parts; a nominal Type's Type arguments, with an address only in a compiler-managed
+    // collection, whose elements they are (it keeps no part: SPEC 4.5, 4.9). A layer of the value (a borrow, pair, raw or shared handle
+    // layer) is its caller's. False where a struct's or enum's storage is past Binding's limits.
+    private bool HeldParts(BoundType type, BoundType? written, BoundType? holder, out (int Start, int End) run)
+    {
+        var parts = this.retentionHeld;
+        var start = parts.Count;
         var value = type.Kind == BoundTypeKind.Closure ? this.ClosureEnvironment(type) : type;
-        if (!AdtDef.IsStruct(value) && !AdtDef.IsEnum(value))
+        var nominal = AdtDef.IsStruct(value) || AdtDef.IsEnum(value);
+        if (nominal && !this.Readable(value, this.PrepareTypeStorage(value)))
         {
-            var held = value.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array || type.Kind == BoundTypeKind.Closure ||
-                type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Obj } || (carried && type.Semantics is SemanticsKind.Rc or SemanticsKind.Arc);
-            parts.AddRange(held ? value.Components : []);
-            return (start, parts.Count);
+            run = (start, start);
+            return false;
         }
 
-        if (!this.Readable(value, this.PrepareTypeStorage(value)))
+        var instance = nominal ? this.Instance(value) : null;
+        var addressed = instance is null or { Parts.Length: 0, PartsBase: null };
+        for (var i = 0; i < value.Components.Count; i++)
         {
-            return (start, parts.Count);
+            parts.Add(new(value.Components[i], InlinePart(written, i), holder, addressed));
         }
 
-        var instance = this.Instance(value);
-        parts.AddRange(instance.Parts.Length == 0 && instance.PartsBase is null ? value.Components : []);
-        if (instance.PartsBase is { } parent)
+        if (instance is { Parts: var stored, PartsBase: var parent } && value.Symbol?.Adt is { } adt)
         {
-            parts.Add(parent);
-        }
-
-        for (var i = 0; i < instance.Parts.Length; i++)
-        {
-            var part = instance.Parts[i];
-            if (!AdtDef.IsStruct(value))
+            parts.AddRange(parent is null ? [] : [new(parent, null, null, true)]);
+            for (var i = 0; AdtDef.IsStruct(value) && i < adt.Fields.Length; i++)
             {
-                parts.AddRange(part?.Components ?? []);
-                continue;
+                parts.Add(new(stored[i], WrittenType(adt.Fields[i]), value, true));
             }
 
-            parts.Add(part);
-            if (part is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } && value.OriginArguments.Count == 0 &&
-                this.DeclaredStep(part, WrittenType(value.Symbol!.Adt!.Fields[i]), value) == RawStep.Own)
+            for (var i = 0; AdtDef.IsEnum(value) && i < stored.Length; i++)
             {
-                parts.AddRange(value.Components); // Admitted's Type arguments, by their actual Types.
+                for (var j = 0; stored[i] is { } payloads && adt.Cases[i] is { } selected && j < selected.Payload.Length; j++)
+                {
+                    parts.Add(new(payloads.Components[j], WrittenType(selected.Payload[j]), value, true));
+                }
             }
         }
 
-        return (start, parts.Count);
+        run = (start, parts.Count);
+        return true;
     }
 
     // A Value source of an input (RetentionSources): its node, the part of its own value it is (null: one reached through an exclusive
     // layer), the referent of the borrow layer it is, through which it forms borrows (null: none), and the nodes every one of which a
     // position's closure must reach (retentionPaths: the layers it is formed through, its own last).
     private readonly record struct RetentionSource(int Node, int Input, BoundType? Own, BoundType? Through, (int Start, int Count) Path);
+
+    // A part of a value (HeldParts): its Type (null: a part Binding did not bind), the Type its declaration writes there and the instance
+    // holding it, and whether it has an address in the value's storage (a nominal Type's Type argument has none, but a collection's).
+    private readonly record struct HeldPart(BoundType? Type, BoundType? Written, BoundType? Holder, bool Addressed);
 }
