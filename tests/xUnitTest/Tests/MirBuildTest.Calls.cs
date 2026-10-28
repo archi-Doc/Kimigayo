@@ -376,6 +376,24 @@ public sealed partial class MirBuildTest
         Assert.True(Precedes(body, argument, entries));
     }
 
+    // SPEC 22.5.1 (DECISIONS R5-M144, R5-M145; PLAN G157 (32)): a failure of a Dictionary literal entry's insertion, its allocation included,
+    // reports the entry's key expression, as its duplicate key does: each entry's lookup, its literal's storage handle and its placement are
+    // located at its key (fail-before: the handle and the placement at its value).
+    [Fact]
+    public void ADictionaryLiteralsEntryInsertionIsLocatedAtItsKey()
+    {
+        var c = Compile("func key() -> i32 => 1\nfunc f() -> Dictionary<i32, i32> => [key(): 10, 2: 20]\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        var steps = body.Blocks.ToArray().Select(static x => x.Terminator)
+            .Where(static x => x.Kind == MirTerminatorKind.Call && x.Callee.Symbol?.Name is "findEntry" or "dictionaryStorage" or "placeEntry")
+            .Select(x => x.Callee.Symbol!.Name + " " + c.SyntaxOf(x.Source.Syntax));
+        Assert.Equal(
+            ["findEntry key()", "dictionaryStorage key()", "placeEntry key()", "findEntry 2", "dictionaryStorage 2", "placeEntry 2"],
+            steps);
+    }
+
     // SPEC 22.10.4, 22.10.1 (PLAN G157 (35), DECISIONS R5-M131): a $tryWrite evaluates an embedded expression only after a test that its
     // adapter is healthy: a first segment that is an expression follows the adapter's status, and a text's write returns the recorded failure
     // itself, so a text first needs none (fail-before: next() ran first, on an adapter that may have failed already).
