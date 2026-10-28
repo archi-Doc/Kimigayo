@@ -485,9 +485,9 @@ fn table @163
   _6: ref/Dictionary<i32, bool> temp @170
   _7: ref/i32 temp @170
   _8: Never temp @170
-  _9: (raw/Dictionary<i32, bool>, isize) temp @171
-  _10: uniq/Dictionary<i32, bool> temp @171
-  _11: () temp @171
+  _9: (raw/Dictionary<i32, bool>, isize) temp @170
+  _10: uniq/Dictionary<i32, bool> temp @170
+  _11: () temp @170
   _12: i32 temp @172
   _13: bool temp @173
   _14: isize temp @172
@@ -495,9 +495,9 @@ fn table @163
   _16: ref/Dictionary<i32, bool> temp @172
   _17: ref/i32 temp @172
   _18: Never temp @172
-  _19: (raw/Dictionary<i32, bool>, isize) temp @173
-  _20: uniq/Dictionary<i32, bool> temp @173
-  _21: () temp @173
+  _19: (raw/Dictionary<i32, bool>, isize) temp @172
+  _20: uniq/Dictionary<i32, bool> temp @172
+  _21: () temp @172
   bb0:
       StorageLive(_1) @169
     * _1 = FixedArray(): Dictionary<i32, bool> @169
@@ -518,13 +518,13 @@ fn table @163
       switch copy _5 [1: bb3, otherwise: bb1] @170
   bb3:
       _3 = const true @171
-      StorageLive(_9) @171
-      StorageLive(_10) @171
-      _10 = &uniq two-phase _1: uniq/Dictionary<i32, bool> @171
-      _9 = dictionaryStorage<i32, bool>(move _10) -> bb4 @171
+      StorageLive(_9) @170
+      StorageLive(_10) @170
+      _10 = &uniq two-phase _1: uniq/Dictionary<i32, bool> @170
+      _9 = dictionaryStorage<i32, bool>(move _10) -> bb4 @170
   bb4:
-      StorageLive(_11) @171
-      _11 = placeEntry<i32, bool>(copy _9.0, move _2, move _3) -> bb5 @171
+      StorageLive(_11) @170
+      _11 = placeEntry<i32, bool>(copy _9.0, move _2, move _3) -> bb5 @170
   bb5:
       StorageLive(_12) @172
       StorageLive(_13) @173
@@ -543,27 +543,27 @@ fn table @163
       switch copy _15 [1: bb8, otherwise: bb6] @172
   bb8:
       _13 = const false @173
-      StorageLive(_19) @173
-      StorageLive(_20) @173
-      _20 = &uniq two-phase _1: uniq/Dictionary<i32, bool> @173
-      _19 = dictionaryStorage<i32, bool>(move _20) -> bb9 @173
+      StorageLive(_19) @172
+      StorageLive(_20) @172
+      _20 = &uniq two-phase _1: uniq/Dictionary<i32, bool> @172
+      _19 = dictionaryStorage<i32, bool>(move _20) -> bb9 @172
   bb9:
-      StorageLive(_21) @173
-      _21 = placeEntry<i32, bool>(copy _19.0, move _12, move _13) -> bb10 @173
+      StorageLive(_21) @172
+      _21 = placeEntry<i32, bool>(copy _19.0, move _12, move _13) -> bb10 @172
   bb10:
       _0 = move _1 @169
-      StorageDead(_21) @173
-      StorageDead(_20) @173
-      StorageDead(_19) @173
+      StorageDead(_21) @172
+      StorageDead(_20) @172
+      StorageDead(_19) @172
       StorageDead(_17) @172
       StorageDead(_16) @172
       StorageDead(_15) @172
       StorageDead(_14) @172
       StorageDead(_13) @173
       StorageDead(_12) @172
-      StorageDead(_11) @171
-      StorageDead(_10) @171
-      StorageDead(_9) @171
+      StorageDead(_11) @170
+      StorageDead(_10) @170
+      StorageDead(_9) @170
       StorageDead(_7) @170
       StorageDead(_6) @170
       StorageDead(_5) @170

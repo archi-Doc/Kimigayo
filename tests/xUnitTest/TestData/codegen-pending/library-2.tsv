@@ -2,5 +2,4 @@ fixture	DictionaryCapacityAllocationFailure.ll	1
 fixture	DictionaryCapacityRounding16.ll	1
 fixture	DictionaryCapacityRounding2147483647.ll	1
 fixture	DictionaryCapacityRounding24.ll	1
-fixture	DictionaryLibraryAllocationLiteral.ll	1
 test	XunitTest.DictionaryLibraryTest.CapacityDecisionsCompileFromOrdinarySource	XunitTest.DictionaryLibraryTest.CapacityDecisionsCompileFromOrdinarySource
