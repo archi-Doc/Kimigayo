@@ -307,6 +307,12 @@ public sealed partial class InstanceCollectorTest
                     "DuplicateBinding_Kd DuplicateBinding_Kd InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
                 },
                 {
+                    "refinedDisagree", HasItem + "contract HasMore: HasItem\n    associate Elem\n    associate HasItem.Item is Elem\nstruct Src\n" +
+                    "    Self is HasMore\n    associate HasMore.Elem is i32\nstruct WB<S>\n    S is HasItem\n    Self is HasItem\n    associate HasItem.Item is u8\n" +
+                    "    Self is HasMore when S is HasMore\n        associate HasMore.Elem is i32\nfunc g(h: HA<WB<Src>>) => ()\n",
+                    "InvalidConstraint_Kd InvalidAssociatedType_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                },
+                {
                     "noConformance", HasItem + "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is T\n    var t: T\n" +
                     "struct DerX : BaseG\n    var m: i32\nfunc g(b: HA<DerX>) => ()\n",
                     "InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
@@ -673,11 +679,13 @@ public sealed partial class InstanceCollectorTest
     // bound keeps the gap at its site, beside a failed part in either order too: the limit wins. A Field whose projection finally names no
     // Type is such a part, whatever its subject and reason (DECISIONS BU-50): its specification rejected by SPEC 8.3.3 (noType), also
     // through an inherited conformance one or two levels down or under a generic base (inherited*), two inherited sources or two
-    // conformance paths disagreeing (sourcesDisagree, pathsDisagree), a subject whose base clause gives it no conformance (noConformance*),
-    // a closed subject that is no struct or enum (closed*: a primitive, a Tuple, an array, a completed `Src.Item`, `bool` without Addable,
-    // a Case payload) or whose conformance's condition is refuted (closedRefuted); before, Layout's "no row for the Type Item" ("Output").
-    // A builtin output names its Type (closedOutputValid). The valid twins whose projection stays pending in a generic declaration's
-    // storage are MirBorrowsTest.APendingProjectionIsCompletedByTheInstanceAUseForms, at the MIR problem layer that observed them.
+    // conformance paths disagreeing (sourcesDisagree, pathsDisagree; refinedDisagree, a direct and a refinement path binding u8 and i32
+    // for the receiver, unlike TyCtxtTest.ProvenPathsBindTheirCommonType's), a subject whose base clause gives it no conformance
+    // (noConformance*), a closed subject that is no struct or enum (closed*: a primitive, a Tuple, an array, a completed `Src.Item`,
+    // `bool` without Addable, a Case payload) or whose conformance's condition is refuted (closedRefuted); before, Layout's "no row for the
+    // Type Item" ("Output"). A builtin output names its Type (closedOutputValid). The valid twins whose projection stays pending in a
+    // generic declaration's storage are MirBorrowsTest.APendingProjectionIsCompletedByTheInstanceAUseForms, at the MIR problem layer that
+    // observed them.
     [Theory]
     [MemberData(nameof(RejectedCases))]
     public void APartBindingRejectedIsNoGenerationRecord(string name, string source, string issues, string records)
