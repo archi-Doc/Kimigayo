@@ -7496,6 +7496,14 @@ resumed by R4-M86 (2026-10-20).
     conformance proven only by the use's premise, `HK<Range<T, T>>` and `HK<[2 of T]>`, each completed by the instance a use forms. A
     final none with no Binding record cannot pass silently: Rejected storage in a complete compilation throws (InternalInvariant_Kd);
     the Session shows no valid program reaches it.
+  - Revised (bu55, 2026-10-29; PLAN G271): paths disagree only when the paths whose conditions the receiver meets name different Types
+    for that receiver (SPEC 8.9.2), so `ResolveAssociated` compares two bindings as written and else as the receiver's instances
+    (`PathsAgree`: `StoredType` under the receiver, judged by `SameConformanceType` as the declaration's agreement check judges two
+    paths); `OwningIterator<Counter>.(LendingIterator).LentItem(s)`, bound `I.(LendingIterator).LentItem(step)` directly and `I.Item`
+    through `Self is Iterator when I is Iterator`, names i32 (before: none, so R4's WK requirement signature's storage was Rejected and
+    threw), as BorrowingIterator, a user Wrapper and `W<Src>` do, and so do `V<Src>` through two conditional paths, the nested `W<W<Src>>`
+    and `W<DV>` with an inherited HasMore (before: CheckFaulted_Kd, or InvalidPattern_Kd for `W<DV>`), while `WB<S>` (u8 against i32)
+    keeps Binding's records.
   - Pending and prepared storage (decision 6's question): PrepareStorage runs in BindDeclarations after PrepareAssociatedInference, which
     collects the pass's evidence, runs every inference batch and resolves every binding again (state 2 or 3), so from PrepareStorage on a
     struct or enum subject's resolution is final, except inside a binding's own resolution (pending). A kept part completed before is not

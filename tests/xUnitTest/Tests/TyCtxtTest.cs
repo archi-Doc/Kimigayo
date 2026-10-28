@@ -717,6 +717,64 @@ public sealed class TyCtxtTest
         BoundType Kept(BoundType x) => types.StoredParts(x, out _)[0]!;
     }
 
+    // SPEC 8.9.2, 8.2.3 (DECISIONS BU-50, revised by bu55): a projection that two proven conformance paths of its subject bind names their
+    // common Type. OwningIterator, BorrowingIterator and a user Wrapper conform to LendingIterator directly, binding
+    // `I.(LendingIterator).LentItem(step)`, and through `Self is Iterator when I is Iterator`, whose Iterator binds `LentItem(step) is Item`,
+    // so `I.Item`: the bindings differ as written and are both i32 under Counter, as W<Src>'s Item through HasItem and HasMore is, and
+    // V<Src>'s through two conditional paths, the nested W<W<Src>>'s and the inherited W<DerS>'s. So the instance a call of `step` makes
+    // (TyCtxt.Instance; WK's handed `next` has this shape) is a Prepared Option<i32>, the call's Type too, and each holder's Field and
+    // Case payload are i32 (before: Rejected, which threw in WK's retention; the call kept the projection, and the reads in `f` were
+    // NoApplicableOverload_Kd and InvalidPattern_Kd; V<Src>, W<W<Src>> and W<DerS> each left a binding unresolved without a record). The
+    // twins resolved before: a direct conformer (Cursor), one refinement path (Counter, the generic Gen<i32>, the inherited DerS), and
+    // bindings that agree as written (GenWrap's premise `I is Iterator`). Paths that disagree keep Binding's records (InstanceCollectorTest's
+    // refinedDisagree).
+    [Fact]
+    public void ProvenPathsBindTheirCommonType()
+    {
+        const string Forward = "    associate LendingIterator.LentItem(step) is I.(LendingIterator).LentItem(step)\n    var inner: I\n" +
+            "    public init(inner: I) => self.inner = inner@move\n" +
+            "    public func next(self: uniq/Self during step) -> Option<I.(LendingIterator).LentItem(step)> => self.inner.next()\n";
+        var c = MinimalEmissionTest.Analyze("contract HasItem\n    associate Item\ncontract HasMore: HasItem\n    associate Elem\n" +
+            "    associate HasItem.Item is Elem\nstruct Src\n    Self is HasMore\n    associate HasMore.Elem is i32\nstruct W<S>\n    S is HasItem\n" +
+            "    Self is HasItem\n    associate HasItem.Item is S.(HasItem).Item\n    Self is HasMore when S is HasMore\n" +
+            "        associate HasMore.Elem is S.(HasMore).Elem\nopen struct BaseS\n    Self is HasMore\n    associate HasMore.Elem is i32\n" +
+            "struct DerS : BaseS\n    var m: i32\nstruct HA<S>\n    S is HasItem\n    public var x: S.Item\nenum EH<S>\n    S is HasItem\n    A(S.Item)\n" +
+            "    B\nstruct V<S>\n    Self is HasItem when S is HasItem\n        associate HasItem.Item is S.(HasItem).Item\n" +
+            "    Self is HasMore when S is HasMore\n        associate HasMore.Elem is S.(HasMore).Elem\n" +
+            "func f(h: HA<W<Src>>, e: EH<W<Src>>, d: HA<DerS>, v: HA<V<Src>>, ev: EH<V<Src>>, ww: HA<W<W<Src>>>, wd: HA<W<DerS>>) -> i32\n" +
+            "    match e\n        .A(let n) => return n + h.x + d.x + v.x + ww.x + wd.x\n        .B => return h.x\nstruct Counter\n    Self is Iterator\n    associate Iterator.Item is i32\n    public init() => ()\n" +
+            "    public func next(self: uniq/Self) -> Option<i32> => .None\nstruct Cursor\n    Self is LendingIterator\n" +
+            "    associate LentItem(step) is ref/i32 during step\n    var value: i32 = 0\n    public init() => ()\n" +
+            "    public func next(self: uniq/Self during step) -> Option<ref/i32 during step> => .Some(self.value@ref)\nstruct Gen<T>\n" +
+            "    Self is Iterator\n    associate Iterator.Item is T\n    public init() => ()\n    public func next(self: uniq/Self) -> Option<T> => .None\n" +
+            "struct Wrapper<I>\n    I is LendingIterator\n    Self is LendingIterator\n" + Forward +
+            "    Self is Iterator when I is Iterator\n        associate Iterator.Item is I.(Iterator).Item\nstruct GenWrap<I>\n    I is Iterator\n" +
+            "    Self is LendingIterator\n" + Forward + "    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n" +
+            "func step<I>(it: uniq/I during s) -> Option<I.(LendingIterator).LentItem(s)>\n    I is LendingIterator\n    return it.next()\n" +
+            "var i1 = Kimi.Iteration.owning(Counter.init())\nlet x1 = step(i1@uniq)\nvar counter = Counter.init()\n" +
+            "var i2 = Kimi.Iteration.borrowing(counter@uniq)\nlet x2 = step(i2@uniq)\nvar i3 = Wrapper<Counter>.init(Counter.init())\n" +
+            "let x3 = step(i3@uniq)\nvar i4 = GenWrap<Counter>.init(Counter.init())\nlet x4 = step(i4@uniq)\nvar i5 = Counter.init()\n" +
+            "let x5 = step(i5@uniq)\nvar i6 = Cursor.init()\nlet x6 = step(i6@uniq)\nvar i7 = Gen<i32>.init()\nlet x7 = step(i7@uniq)\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf()).OfType<CallPlan>().Where(static x => x.Target.Name == "step").ToArray();
+        var declared = ((FunctionKoto)calls[0].Target.Declaration).ReturnType!.TypeOf()!;
+        Assert.Equal(
+            [
+                "OwningIterator<Counter> Prepared Option<i32> Option<i32>", "BorrowingIterator<Counter> Prepared Option<i32> Option<i32>",
+                "Wrapper<Counter> Prepared Option<i32> Option<i32>", "GenWrap<Counter> Prepared Option<i32> Option<i32>",
+                "Counter Prepared Option<i32> Option<i32>", "Cursor Prepared Option<ref/i32> Option<ref/i32>", "Gen<i32> Prepared Option<i32> Option<i32>",
+            ],
+            calls.Select(x => (c.Types.SubstOf(x)!, x.ReturnType)).Select(x => (x.Item1.Types[0]!, c.Types.Instance(declared, x.Item1), x.ReturnType))
+                .Select(static x => $"{TyCtxt.Name(x.Item1)} {x.Item2.Storage} {TyCtxt.Name(x.Item2.Type!)} {TyCtxt.Name(x.ReturnType)}"));
+        var holders = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters.Select(static x => x.Type.TypeOf()!);
+        Assert.Equal(
+            [
+                "HA<W<Src>> Prepared i32", "EH<W<Src>> Prepared (i32)", "HA<DerS> Prepared i32", "HA<V<Src>> Prepared i32", "EH<V<Src>> Prepared (i32)",
+                "HA<W<W<Src>>> Prepared i32", "HA<W<DerS>> Prepared i32",
+            ],
+            holders.Select(x => $"{TyCtxt.Name(x)} {c.Binding.PrepareTypeStorage(x)} {TyCtxt.Name(c.Types.StoredParts(x, out _)[0]!)}"));
+    }
+
     // SPEC 5.7 Calls, Fits (DECISIONS BU-46): a kept part states Unstated on each raw layer its declaration writes without `during`, so an
     // instance's kept parts tell such a layer from one a Type argument supplies at any depth below it (RawStated): in a Field, a Tuple, a
     // Type argument of a Field, a base clause (also an intermediate one's), beside a supplied argument, a nested holder, a pair slot's
