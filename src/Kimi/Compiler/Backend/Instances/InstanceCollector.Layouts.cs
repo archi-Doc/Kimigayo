@@ -42,7 +42,8 @@ internal sealed partial class InstanceCollector
     // takes and gives them); whether every one is laid out, each checked.
     private bool LaysOutSignature(SourceRef subject, BoundType function)
     {
-        var (inputs, laid) = (function.Components[0].Components, this.LaysOut(subject, function.Components[1]));
+        var inputs = function.Components[0].Components;
+        var laid = this.LaysOut(subject, function.Components[1]);
         for (var i = 0; i < inputs.Count; i++)
         {
             laid &= this.LaysOut(subject, inputs[i]); // By index: a warm run allocates no enumerator.

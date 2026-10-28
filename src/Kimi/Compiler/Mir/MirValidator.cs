@@ -38,7 +38,8 @@ internal enum MirViolation : byte
     Discriminant, // A Discriminant of a Place that is not an enum.
     Len, // A Len of a Place that is not a sequence.
     Opaque, // An Opaque site or root out of range, or Opaque sites without an Opaque value.
-    Type, // An rvalue, an aggregate's operand, a call's argument or result, or _0 at a Return that disagrees with the Type it goes to.
+    Type, // An rvalue, an aggregate's operand, a call's argument or result, or _0 at a Return that disagrees with the Type it goes to; a
+    // testRecordValue's value other than a Scalar.
     Operation, // An operator's, a Cast's, a SwitchInt's or an Adapt's operand, a Ref's Type or an Adapt's case operation, that its kind does not admit;
     // a PairAcquire other than the operand of a Use assigned to a local's whole Place with the Uniq or TwoPhaseUniq it marks (A3 E13 (4)), a
     // marked Use of another operand, or a function item constant other than the operand of an Assign's Use, the collector's site (G154).

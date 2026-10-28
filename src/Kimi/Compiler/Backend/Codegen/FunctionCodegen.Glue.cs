@@ -116,7 +116,9 @@ internal sealed partial class FunctionCodegen
     // a part that may need a drop; any other tag destroys nothing.
     private void Cases(BoundType type, ValueLowering record, int start, int row, Value address, Site site)
     {
-        var (parts, output, id) = (this.parts, this.output, this.next++);
+        var parts = this.parts;
+        var output = this.output;
+        var id = this.next++;
         var tag = this.LoadAt(address, Layout.Tag.Layout);
         output.Write("  switch i32 ");
         this.WriteValue(tag);

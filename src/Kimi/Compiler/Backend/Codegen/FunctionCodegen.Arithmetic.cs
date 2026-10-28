@@ -110,7 +110,7 @@ internal sealed partial class FunctionCodegen
     // Type's, bool's and char's the unsigned integer's, a raw pointer's, a string's; -1 for a Type with no operator.
     private static int Column(BoundType type)
     {
-        type = Terminal(type, out _, out _)!;
+        type = Terminal.Of(type).Type!;
         if (type.Semantics == SemanticsKind.Raw)
         {
             return 5;
@@ -308,16 +308,16 @@ internal sealed partial class FunctionCodegen
             return false;
         }
 
-        if (this.Referent(operand, value, default, out var terminal, out var references) is not { } place)
+        if (this.Referent(operand, value, default, out var terminal) is not { } place)
         {
             return true; // A broken contract, recorded.
         }
 
-        if ((references == 0 ? this.LoweringOf(operand) : this.Laid(terminal)) is { } lowering)
+        if ((terminal.References == 0 ? this.LoweringOf(operand) : this.Laid(terminal.Type)) is { } lowering)
         {
-            var read = references == 0 || lowering.Layout.Size == 0 ? place : this.LoadAt(place, lowering.Layout);
+            var read = terminal.References == 0 || lowering.Layout.Size == 0 ? place : this.LoadAt(place, lowering.Layout);
             var constant = operand.Kind == MirOperandKind.Const;
-            computed = new(constant || lowering.Layout.Size == 0 ? read : this.Narrow(lowering, read), terminal!, lowering);
+            computed = new(constant || lowering.Layout.Size == 0 ? read : this.Narrow(lowering, read), terminal.Type!, lowering);
         }
 
         return true;

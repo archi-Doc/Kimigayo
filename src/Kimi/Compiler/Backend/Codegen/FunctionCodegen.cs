@@ -254,7 +254,9 @@ internal sealed partial class FunctionCodegen
         }
 
         this.Completed();
-        var (output, type, width) = (this.output, lowering.Layout.StorageType, 8 * lowering.Layout.Size);
+        var output = this.output;
+        var type = lowering.Layout.StorageType;
+        var width = 8 * lowering.Layout.Size;
         output.Write("  switch ");
         output.Write(type);
         output.Write(' ');
