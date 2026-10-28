@@ -91,7 +91,8 @@ public sealed partial class Binding
         }
         else
         {
-            if (selection.DeclaringType is null || implementation.Property.Type is not { } storageType || this.StoredType(storageType, selection.DeclaringType) is not { } field)
+            if (selection.DeclaringType is null || implementation.Property.Type is not { } storageType ||
+                this.PartType(storageType, selection.DeclaringType) is not { } field)
             {
                 return ConstraintProof.Unknown;
             }
