@@ -9,7 +9,7 @@ defaulttemplate take#0 @132
       StorageDead(_1) @133
       return @132
 fn init @9
-  _0: Derived return @9
+  _0: Derived return (Receiver) @9
   _1: () temp @10
   _2: () temp @10
   bb0:
@@ -30,8 +30,8 @@ fn top-level#0 @11
       _0 = const () @12 s1
       return @12
 fn discard @13
-  _0: () return @13
-  _1: i32 arg value @13
+  _0: () return @23
+  _1: i32 arg value @22
   _2: s/i32 temp @26 s1
   s1: lexical in s0 @24
   b0: T Ref, Owning
@@ -44,8 +44,8 @@ fn discard @13
       _0 = const () @24 s1
       return @24
 fn address @29
-  _0: () return @29
-  _1: i32 arg value @29
+  _0: () return @37
+  _1: i32 arg value @36
   _2: s/i32 temp @40 s1
   s1: lexical in s0 @38
   b0: T Obj, Raw
@@ -58,8 +58,8 @@ fn address @29
       _0 = const () @38 s1
       return @38
 fn widen @43
-  _0: s/Base return @43
-  _1: s/Derived arg value @43
+  _0: s/Base return @50
+  _1: s/Derived arg value @48
   _2: s/Base temp @54 s1
   _3: s/Derived temp @55 s1
   _4: s/Base temp (Result) @43
@@ -77,7 +77,7 @@ fn widen @43
       _0 = move _4 @53 s1
       goto bb1 @53 s1
   bb3:
-      drop _1 -> bb4 [elide] @43
+      drop _1 -> bb4 [elide] @48
   bb4:
       goto bb2 @43
   bb5:
@@ -98,12 +98,12 @@ fn widen @43
   bb11:
       StorageDead(_3) @55 s1
       StorageDead(_2) @54 s1
-      drop _1 -> bb12 @43
+      drop _1 -> bb12 @48
   bb12:
       unreachable @52
 fn inspect @60
-  _0: i32 return @60
-  _1: s/Derived arg value @60
+  _0: i32 return @67
+  _1: s/Derived arg value @65
   _2: objref/Base var view @69 s1
   _3: i32 temp @76 s1
   _4: i32 temp (Result) @60
@@ -121,7 +121,7 @@ fn inspect @60
       _0 = move _4 @75 s1
       goto bb1 @75 s1
   bb3:
-      drop _1 -> bb4 [keep] @60
+      drop _1 -> bb4 [keep] @65
   bb4:
       goto bb2 @60
   bb5:
@@ -136,12 +136,12 @@ fn inspect @60
   bb8:
       StorageDead(_3) @76 s1
       StorageDead(_2) @69 s1
-      drop _1 -> bb9 @60
+      drop _1 -> bb9 @65
   bb9:
       unreachable @68
 fn mixed @79
-  _0: () return @79
-  _1: s/T arg value @79
+  _0: () return @91
+  _1: s/T arg value @89
   _2: case s { ref => ref/ref/T; obj => obj/T } temp @94 s1
   _3: s/T temp @95 s1
   s1: lexical in s0 @92
@@ -158,11 +158,11 @@ fn mixed @79
       StorageDead(_3) @95 s1
       StorageDead(_2) @94 s1
       _0 = const () @92 s1
-      drop _1 -> bb3 [elide] @79
+      drop _1 -> bb3 [elide] @89
   bb3:
       return @92
 fn make @99
-  _0: () return @99
+  _0: () return @106
   _1: closure (i32) -> s/i32 var create @108 s1
   _2: s/i32 temp @118 s1
   _3: s/i32 temp @119 s1
@@ -190,16 +190,16 @@ fn make @99
       StorageDead(_1) @108 s1
       return @107
 closure @110
-  _0: s/i32 return @110
+  _0: s/i32 return @112
   _1: ref/closure (i32) -> s/i32 arg @110
-  _2: i32 arg value @110
+  _2: i32 arg value @111
   b0: T Owning
   bb0:
     * _0 = adapt(copy _2, const type i32): s/i32 shorthand @114
       return @114
 fn take @123
-  _0: s/i32 return @123
-  _1: s/i32 arg value @123
+  _0: s/i32 return @135
+  _1: s/i32 arg value @130
   _2: s/i32 temp @139 s1
   _3: s/i32 temp (Result) @123
   s1: lexical in s0 @137
@@ -214,7 +214,7 @@ fn take @123
       _0 = move _3 @138 s1
       goto bb1 @138 s1
   bb3:
-      drop _1 -> bb4 [elide] @123
+      drop _1 -> bb4 [elide] @130
   bb4:
       goto bb2 @123
   bb5:
@@ -229,11 +229,11 @@ fn take @123
       drop _2 -> bb9 @139 s1
   bb9:
       StorageDead(_2) @139 s1
-      drop _1 -> bb10 @123
+      drop _1 -> bb10 @130
   bb10:
       unreachable @137
 fn give @142
-  _0: t/i32 return @142
+  _0: t/i32 return @149
   _1: t/i32 temp @153 s1
   _2: t/i32 temp value (PendingSlot) @153 s1
   _3: i32 temp @133 s2
@@ -278,8 +278,8 @@ fn give @142
       StorageDead(_1) @153 s1
       unreachable @151
 fn peek @158
-  _0: i32 return @158
-  _1: s/Derived arg value @158
+  _0: i32 return @167
+  _1: s/Derived arg value @165
   _2: objref/Base var view @169 s1
   _3: i32 temp @176 s1
   _4: i32 temp (Result) @158
@@ -297,7 +297,7 @@ fn peek @158
       _0 = move _4 @175 s1
       goto bb1 @175 s1
   bb3:
-      drop _1 -> bb4 [keep in v0; elide in v1] @158
+      drop _1 -> bb4 [keep in v0; elide in v1] @165
   bb4:
       goto bb2 @158
   bb5:
@@ -312,12 +312,12 @@ fn peek @158
   bb8:
       StorageDead(_3) @176 s1
       StorageDead(_2) @169 s1
-      drop _1 -> bb9 @158
+      drop _1 -> bb9 @165
   bb9:
       unreachable @168
 fn poke @179
-  _0: () return @179
-  _1: s/Derived arg value @179
+  _0: () return @188
+  _1: s/Derived arg value @186
   _2: s/Derived var mut slot @190 s1
   _3: objuniq/Base temp @196 s1
   s1: lexical in s0 @189
@@ -332,13 +332,13 @@ fn poke @179
       drop _2 -> bb1 [keep in v0; elide in v1] @190 s1
   bb1:
       StorageDead(_2) @190 s1
-      drop _1 -> bb2 [elide] @179
+      drop _1 -> bb2 [elide] @186
   bb2:
       return @189
 fn cast @200
-  _0: () return @200
-  _1: raw/i32 arg pointer @200
-  _2: usize arg address @200
+  _0: () return @208
+  _1: raw/i32 arg pointer @205
+  _2: usize arg address @207
   _3: s/u8 temp @211 s1
   _4: s/u8 temp @216 s1
   s1: lexical in s0 @209
@@ -357,7 +357,7 @@ fn cast @200
       _0 = const () @209 s1
       return @209
 fn init @220
-  _0: Base return @220
+  _0: Base return (Receiver) @220
   _1: () temp @221
   s1: lexical in s0 @221
   bb0:

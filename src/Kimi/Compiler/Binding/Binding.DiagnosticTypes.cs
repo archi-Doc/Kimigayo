@@ -177,7 +177,7 @@ public sealed partial class Binding
                 // SPEC 7.7: a closure Type has no written name; its components are the captured environment, so it is shown by
                 // the signature of its anonymous function, also when the closure node itself failed, as at a call argument.
                 text.Append("closure ");
-                if ((current.Symbol?.Declaration as FunctionKoto)?.ClosureStorage?.Signature is { } signature)
+                if (BoundClosure.Of(current)?.Signature is { } signature)
                 {
                     Append(signature);
                 }

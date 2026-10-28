@@ -7,7 +7,8 @@ namespace Kimi.Compiler.Backend;
 
 // The item signatures of ModuleCodegen (R5 package C 3.3, IMPL 21.3.1; DECISIONS R5-M65, R5-M89, R5-M102, R5-M106): a body item's from
 // its own body, the one its definition and every call write; a DropGlue item's; a Builtin item's, its requirement's in its instance
-// (DECISIONS R5-M126); a StaticInit item's slot's ensure function; the per-index cache they share with the called imports' C signatures
+// (DECISIONS R5-M126), and a PropertyWitness item's, its key's (InstanceCollector.StorageSignature; DECISIONS R5-M141); a StaticInit item's
+// slot's ensure function; the per-index cache they share with the called imports' C signatures
 // (ModuleCodegen.Imports.cs) and the common Function values' entries (ModuleCodegen.Erasures.cs); and the unnamed signatures of the
 // calls that reach their callee through a pointer (Unnamed: a common Function value's entry, a virtual slot's, Slot): each computed once
 // per Write, or kept, and the previous one reused while it still matches, so a warm module allocates nothing. A slot's and a Builtin
@@ -28,6 +29,9 @@ internal sealed partial class ModuleCodegen
 
     /// <summary>The name of a Builtin item's function before its index (<see cref="Shim"/>).</summary>
     internal const string BuiltinPrefix = "__kimi_builtin";
+
+    /// <summary>The name of a PropertyWitness item's function before its index (<see cref="Shim"/>).</summary>
+    internal const string WitnessPrefix = "__kimi_witness";
 
     private readonly List<FunctionAbi> unnamed = []; // The unnamed signatures (Unnamed), kept across Writes.
     private FunctionAbi?[] helpers = []; // By adapter or StaticInit item, its helper function (Release, Ensure), kept across Writes.
@@ -121,13 +125,15 @@ internal sealed partial class ModuleCodegen
         => this.Helper(item) ??=
             new(StaticPrefix + item.ToString(CultureInfo.InvariantCulture) + "_ensure", "void", [RuntimeAbi.Location, RuntimeAbi.LocationLength]);
 
-    /// <summary>Gets the signature of a Builtin item (PD3; DECISIONS R5-M126), its function's requirement's in the item's instance, the
-    /// substitution of the call that admitted it (InstanceCollector.TypeOf), under the internal convention and caller-location (SPEC 22.5.1:
-    /// a failure inside the Kimi operation reports its invoking expression), the one every call of the item writes: a call under another
-    /// substitution of the same key has the same Abi, since the key's Self erases to one Type, a reference is a pointer whatever its Origin
-    /// and SPEC 13.3.3 fixes a built-in numeric Type's counterpart and Output to itself. Named <see cref="BuiltinPrefix"/> with its index,
-    /// computed once per Write and the previous one while it still matches.</summary>
-    /// <param name="item">The Builtin item.</param>
+    /// <summary>Gets the signature of a shim item (PD3), by its kind's row: a Builtin item's, its function's requirement's in the item's
+    /// instance, the substitution of the call that admitted it (InstanceCollector.TypeOf; DECISIONS R5-M126), named
+    /// <see cref="BuiltinPrefix"/>; a PropertyWitness item's, the one its key fixes (InstanceCollector.StorageSignature; DECISIONS R5-M141),
+    /// named <see cref="WitnessPrefix"/>. Each under the internal convention and caller-location (one ABI rule for every shim; SPEC 22.5.1:
+    /// a failure inside it reports its invoking expression), the one every call of the item writes: a call under another substitution of
+    /// the same key has the same Abi, since the key's Self erases to one Type, a reference is a pointer whatever its Origin and SPEC 13.3.3
+    /// fixes a built-in numeric Type's counterpart and Output to itself. Computed once per Write and the previous one while it still
+    /// matches.</summary>
+    /// <param name="item">The Builtin or PropertyWitness item.</param>
     /// <returns>The signature; null, recorded at the item's site, where the instance does not make a Type of it.</returns>
     internal FunctionAbi? Shim(int item)
     {
@@ -141,8 +147,11 @@ internal sealed partial class ModuleCodegen
             return current;
         }
 
-        return this.Declared(this.set.Items[item].Key.Symbol!, null, item, out var count) is { } result
-            ? this.Define(item, BuiltinPrefix, Abi.Flags.CallerLocation, result, this.parameters.AsSpan(0, count)) : null;
+        var key = this.set.Items[item].Key;
+        var count = 0;
+        var (prefix, result) = key.Kind == MonoKind.PropertyWitness
+            ? (WitnessPrefix, this.Stored(item, out count)) : (BuiltinPrefix, this.Declared(key.Symbol!, null, item, out count));
+        return result is null ? null : this.Define(item, prefix, Abi.Flags.CallerLocation, result, this.parameters.AsSpan(0, count));
     }
 
     // A function's result Type and its parameter Types in slot order into the scratch, each under a substitution (null: its declared Type) in
@@ -160,6 +169,26 @@ internal sealed partial class ModuleCodegen
             }
 
             this.parameters[slot] = parameter;
+        }
+
+        return result;
+    }
+
+    // A PropertyWitness item's result Type and its parameter Types in slot order into the scratch, the ones its key fixes
+    // (InstanceCollector.StorageSignature); null, recorded at the item's site, where its representative Self stores no such Field, a broken
+    // contract (the collector admitted the item on that Field, InstanceCollector.Agrees).
+    private BoundType? Stored(int item, out int count)
+    {
+        if (this.collector.StorageSignature(item, -1, out count) is not { } result)
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, this.set.Items[item].Site);
+            return null;
+        }
+
+        this.Reserve(count);
+        for (var slot = 0; slot < count; slot++)
+        {
+            this.parameters[slot] = this.collector.StorageSignature(item, slot, out _)!; // The key's Field was found for the result.
         }
 
         return result;

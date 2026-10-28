@@ -129,6 +129,29 @@ public sealed class TyCtxtTest
         "op: OP<raw/u8 during x>, bb: Box1<raw/u8 during x>, d: Der<raw/u8 during x>, plain: Outer<raw/u8>, oe: OuterE<raw/u8 during x>, " +
         "oe2: OuterE2<raw/u8 during x>, of: OuterF<raw/u8 during x>, ot: OuterT<raw/u8 during x>, oh: OuterH<raw/u8 during x>) => ()\n";
 
+    // Holders whose declarations write an Origin-less raw layer at some depth below them (DECISIONS BU-46): in a Field, a Tuple, a Type
+    // argument of a Field (Holder2, HoldOpt, HoldEnum, HoldTW, HFA, HOW, Hold2), a base clause (DerS, D2, D3 through B3's), beside a
+    // supplied argument (M), in a nested holder (H3), a pair slot's argument (HPSo, HPSs, HPSt) and its application `s/U` (HPU, HPUs), a
+    // Case payload's Tuple (EP) and a `during self` pointee (SB, HB2); then the twins whose layers a Type argument supplies.
+    private const string DeclaredSource = "struct Wrap<E>\n    var value: E\nstruct Outer<P>\n    var w: Wrap<P>\nstruct RawBuf\n    var data: raw/u8\n" +
+        "struct HoldTuple\n    var t: (raw/u8, i32)\nstruct Holder2\n    var b: Wrap<raw/u8>\nstruct HoldOpt\n    var o: Option<raw/u8>\n" +
+        "open struct B1<P>\n    var v: P\nopen struct B2<Q> : B1<Q>\n    var m: i32\nopen struct B3<Q> : B1<Wrap<raw/u8>>\n    var q: Q\n" +
+        "struct DerS : B1<raw/u8>\n    var n: i32\nstruct D2 : B2<raw/u8>\n    var n: i32\nstruct D3 : B3<i32>\n    var n: i32\n" +
+        "struct DerX<P> : B1<Wrap<P>>\n    var n: i32\nstruct Two<A, B>\n    var a: A\n    var b: B\nstruct M<P>\n    var w: Two<raw/u8, P>\n" +
+        "struct M2<P>\n    var w: Two<P, P>\nenum MyOpt<T>\n    Has(T)\n    Not\nstruct HoldEnum\n    var e: MyOpt<raw/u8>\n" +
+        "struct HoldTW\n    var t: Wrap<(raw/u8, i32)>\nstruct H3\n    var h: Holder2\nstruct PS<s/T>\n    var t: s/T\nstruct HPSo\n    var p: PS<raw/u8>\n" +
+        "struct HPSs {s}\n    var loan: Loan<uniq/i32 during s>\n    var p: PS<raw/u8 during s>\nstruct HPSt\n    var p: PS<raw/u8 during static>\n" +
+        "struct PU<s/T>\n    s is raw or owner\n    var v: s/i32\nstruct HPU\n    var p: PU<raw/u8>\n" +
+        "struct HPUs {s}\n    var loan: Loan<uniq/i32 during s>\n    var p: PU<raw/u8 during s>\nstruct HFA\n    var f: Wrap<[2 of raw/u8]>\n" +
+        "enum EP\n    A((Wrap<raw/u8>, i32))\n    B\nstruct HOW\n    var o: Option<Wrap<raw/u8>>\nstruct Hold2\n    var items: Array<raw/u8>\n" +
+        "struct SB\n    var data: raw/(raw/u8) during self\nstruct Box2<T>\n    var p: raw/T during self\nstruct HB2\n    var b: Box2<raw/u8>\n" +
+        "struct Hold<P>\n    var items: Array<Wrap<P>>\nenum Opt2<P>\n    Has(Wrap<P>)\n    Not\n" +
+        "func probe(yu: uniq/i32, rawBuf: RawBuf, holdTuple: HoldTuple, holder2: Holder2, holdOpt: HoldOpt, derS: DerS, d2: D2, d3: D3, " +
+        "b3: B3<i32>, m: M<raw/u8>, holdEnum: HoldEnum, holdTW: HoldTW, h3: H3, oh: Outer<Holder2>, hpso: HPSo, hpss: HPSs during yu, " +
+        "hpst: HPSt, hpu: HPU, hpus: HPUs during yu, hfa: HFA, ep: EP, how: HOW, hold2: Hold2, sb: SB, hb2: HB2, outer: Outer<raw/u8>, " +
+        "wrap: Wrap<raw/u8>, m2: M2<raw/u8>, ps: PS<raw/u8>, pu: PU<raw/u8>, hold: Hold<raw/u8>, opt2: Opt2<raw/u8>, derX: DerX<raw/u8>, " +
+        "arr: Array<raw/u8>, box2: Box2<raw/u8>, ow: Outer<Wrap<raw/u8>>) => ()\n";
+
     // Defaults that call a generic function, a length-generic one, one with an Origin, a requirement and, in a generic struct's method, a
     // function over the struct's Type parameter.
     private const string ComposeSource = "func copy<T>(x: T) -> T\n    T is Copy\n    return x\nfunc f<T>(x: T, y: T = copy(x)) -> T\n    T is Copy\n    return y\n" +
@@ -522,8 +545,8 @@ public sealed class TyCtxtTest
 
     // SPEC 5.7 (design-final §15; DECISIONS BU-24, BU-41): a raw layer an instance stores has the step of its declared Field Type or Case
     // payload under the instance's substitution, the one reader A5 has for it: `self` the holder's own, a `ref` slot Shared (also under
-    // `static`), a `uniq` slot Exclusive, an inline Tuple's or fixed array's layer by its positions; the declaration states each, so no
-    // Type argument supplies it; AdtDef's stored Types state none.
+    // `static`), a `uniq` slot Exclusive, an inline Tuple's or fixed array's layer by its positions; the declaration states each with an
+    // Origin, so none states Unstated (RawStated); AdtDef's stored Types state none.
     [Fact]
     public void AStoredRawLayerHasItsDeclaredStep()
     {
@@ -532,7 +555,7 @@ public sealed class TyCtxtTest
         Assert.Equal(
             [RawStep.Own, RawStep.Own, RawStep.Shared, RawStep.Shared, RawStep.Exclusive, RawStep.Own, RawStep.Own],
             layers.Select(x => types.RawStep(x.Instance, x.Part, x.Positions)));
-        Assert.All(layers, x => Assert.False(types.RawSupplied(x.Instance, x.Part, x.Positions)));
+        Assert.All(layers, x => Assert.False(TyCtxt.RawStated(KeptLayer(types, x.Instance, x.Part, x.Positions))));
         Assert.All([AdtDef.FieldType(p[3], 0)!, AdtDef.CaseTypes(p[4])![0]!.Components[0], AdtDef.FieldType(p[5], 1)!], static x => Assert.Null(x.RawOrigin));
     }
 
@@ -541,7 +564,7 @@ public sealed class TyCtxtTest
     // declared layer: it has the kind of the Origin the argument states (none Unstated, `static` Static, any other Exclusive), never the
     // stored cap, and a pair's raw case states none (SPEC 8.1.2), nor does a raw argument a pair slot binds (SPEC 8.1.1, DECISIONS BU-34:
     // `Holder<raw/i32 during y>` is `Holder<raw/i32>`). Its Origin's borrows are not the instance's, so an Exclusive one's members are
-    // incomplete. RawSupplied answers each such layer. A path whose substituted part is no raw layer stays a broken contract.
+    // incomplete. No declaration states such a layer (RawStated). A path whose substituted part is no raw layer stays a broken contract.
     [Fact]
     public void ARawLayerATypeArgumentSuppliesStepsByItsOwnOrigin()
     {
@@ -555,13 +578,12 @@ public sealed class TyCtxtTest
             [RawStep.Unstated, RawStep.Exclusive, RawStep.Static, RawStep.Unstated, RawStep.Unstated, RawStep.Unstated, RawStep.Unstated,
                 RawStep.Unstated, RawStep.Unstated, RawStep.Unstated, RawStep.Exclusive, RawStep.Exclusive, RawStep.Unstated],
             layers.Select(x => types.RawStep(x.Instance, x.Part, x.Positions)));
-        Assert.All(layers, x => Assert.True(types.RawSupplied(x.Instance, x.Part, x.Positions)));
+        Assert.All(layers, x => Assert.False(TyCtxt.RawStated(KeptLayer(types, x.Instance, x.Part, x.Positions))));
         var members = new List<RawMember>();
         Assert.Equal((false, true, true), (types.RawMembers(p[10], 0, [], members), types.RawMembers(p[9], 0, [], members), types.RawMembers(p[21], 0, [], members)));
         Assert.Empty(members);
         Assert.Same(p[13], p[21]);
         Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.RawStep(p[20], 0, [])).Message, StringComparison.Ordinal);
-        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.RawSupplied(p[20], 0, [])).Message, StringComparison.Ordinal);
     }
 
     // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-41): an instance's stored parts (StoredParts) are its substitution of the declared Fields,
@@ -589,7 +611,6 @@ public sealed class TyCtxtTest
         Assert.Equal([false, true, true, true, false], Kept(failed, q[1]).Concat(Kept(failed, q[2])).Select(static x => x is null));
         Assert.True(Kept(failed, q[1])[0]!.CarriesRawOrigin && Kept(failed, q[2])[1]!.CarriesRawOrigin);
         Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => failed.Types.RawStep(q[2], 0, [1])).Message, StringComparison.Ordinal);
-        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => failed.Types.RawSupplied(q[2], 0, [1])).Message, StringComparison.Ordinal);
 
         // A struct's kept Fields and kept base, or an enum's kept Case payload Tuples, each AdtDef's WithoutRawOrigins.
         static BoundType?[] Kept(Compilation c, BoundType holder)
@@ -610,9 +631,10 @@ public sealed class TyCtxtTest
     // SPEC 5.7 Calls, 15.6.4 (DECISIONS BU-41): a layer a Type argument supplies below the holder is read on the instance the holder's kept
     // part reaches, which its first read substitutes: Outer<raw/u8 during x>'s `w` is Wrap<raw/u8 during x>, whose `value` is supplied
     // and steps Exclusive with incomplete members, where AdtDef's Wrap<raw/u8> reads Unstated, and Opt2's payload reaches the same
-    // instance. RawSupplied is total where RawStep is: an Option's payload, an enum Case with a stated and a supplied payload, fixed array
-    // elements, a Tuple component and a pair slot's layer, which states no Origin (DECISIONS BU-34), so the holder stores AdtDef's part; a
-    // Case without its payload position, a component with no raw layer or one out of range is a broken contract.
+    // instance. Each layer, also an Option's payload, an enum Case with a stated and a supplied payload, fixed array elements, a Tuple
+    // component and a pair slot's layer, which states no Origin (DECISIONS BU-34, so the holder stores AdtDef's part), is stated by no
+    // declaration (RawStated) but E2's and FA's own `raw/u8` (DECISIONS BU-46); a Case without its payload position, a component with no
+    // raw layer or one out of range is a broken contract.
     [Fact]
     public void AKeptNestedInstanceReadsItsSuppliedLayers()
     {
@@ -620,7 +642,9 @@ public sealed class TyCtxtTest
         var types = c.Types;
         var members = new List<RawMember>();
         var wrap = Kept(1);
-        Assert.Equal((RawStep.Exclusive, true, false), (types.RawStep(wrap, 0, []), types.RawSupplied(wrap, 0, []), types.RawMembers(wrap, 0, [], members)));
+        Assert.Equal(
+            (RawStep.Exclusive, false, false),
+            (types.RawStep(wrap, 0, []), TyCtxt.RawStated(KeptLayer(types, wrap, 0, [])), types.RawMembers(wrap, 0, [], members)));
         Assert.Equal(RawStep.Unstated, types.RawStep(AdtDef.FieldType(p[1], 0)!, 0, []));
         Assert.Same(wrap, types.StoredParts(p[3], out _)[0]!.Components[0]);
         var option = Kept(9);
@@ -628,18 +652,191 @@ public sealed class TyCtxtTest
         (BoundType Instance, int Part, int[] Positions)[] layers =
             [(option, some, [0]), (Kept(10), 0, [0]), (Kept(10), 0, [1]), (Kept(11), 0, [1]), (Kept(11), 1, [0]), (Kept(12), 0, [1]), (Kept(13), 0, [])];
         Assert.Equal(
-            ["Exclusive True False", "Unstated False True", "Exclusive True False", "Exclusive True False", "Unstated False True", "Exclusive True False",
-                "Unstated True True"],
-            layers.Select(x => $"{types.RawStep(x.Instance, x.Part, x.Positions)} {types.RawSupplied(x.Instance, x.Part, x.Positions)} " +
+            ["Exclusive False False", "Unstated True True", "Exclusive False False", "Exclusive False False", "Unstated True True",
+                "Exclusive False False", "Unstated False True"],
+            layers.Select(x => $"{types.RawStep(x.Instance, x.Part, x.Positions)} {TyCtxt.RawStated(KeptLayer(types, x.Instance, x.Part, x.Positions))} " +
                 $"{types.RawMembers(x.Instance, x.Part, x.Positions, members)}"));
         Assert.Empty(members);
         Assert.Same(AdtDef.FieldType(p[13], 0), Kept(13));
         (BoundType Instance, int Part, int[] Positions)[] broken = [(option, some, []), (Kept(12), 0, [0]), (Kept(12), 0, [5])];
         Assert.All(broken, x => Assert.Contains(
-            "InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.RawSupplied(x.Instance, x.Part, x.Positions)).Message, StringComparison.Ordinal));
+            "InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.RawStep(x.Instance, x.Part, x.Positions)).Message, StringComparison.Ordinal));
 
         // The first kept part of the probe's parameter i.
         BoundType Kept(int i) => types.StoredParts(p[i], out _)[0]!;
+    }
+
+    // SPEC 8.6.1, 8.2.3, 5.7 Calls (DECISIONS BU-50, PLAN G271): an instance's kept part completes an associated projection of a struct
+    // or enum subject by the subject's conformance, as a kept part of the subject: a binding the subject's declaration writes states
+    // Unstated (Src's, an enum subject's, DerI's base clause's argument, a nested binding's through Src3<Src>), one the subject's argument
+    // supplies carries that argument's mark (Src2<raw/u8>'s and Src3<Src2<raw/u8>>'s and SrcC<raw/u8>'s through a condition, none; below
+    // a Field `HA<Src2<raw/u8>>` or `HA<SrcC<raw/u8>>`, Unstated), a closed binding is itself (W<Src>'s i32). A declared part's own
+    // projections are completed before the mark: DerQ's `BaseI<Src2<raw/u8>.Item>` and DerF's `BaseF<Src2<raw/u8>.Item>` are written
+    // `raw/u8` layers, so `HA<DerQ>`'s and DerF's base Field state Unstated. A Case payload completes too (EH<Src>). AdtDef's view is the
+    // completed part WithoutRawOrigins and a body's read (StoredType) the same part without its mark, neither with an abstract part left.
+    // A projection whose subject is a parameter (`unbound`'s HA<T>) or has an abstract part (`wrapped`'s HAd<Wrapping<T>>, whose
+    // builtin Output the use's premise `T is PrimitiveInteger` decides) stays a projection; its closed instance HAd<Wrapping<i32>> completes it.
+    [Fact]
+    public void AKeptPartCompletesAnAssociatedProjection()
+    {
+        var c = MinimalEmissionTest.Analyze("contract HasItem\n    associate Item\nstruct Src\n    Self is HasItem\n    associate HasItem.Item is raw/u8\n" +
+            "struct Src2<T>\n    Self is HasItem\n    associate HasItem.Item is T\nopen struct BaseI<P>\n    Self is HasItem\n    associate HasItem.Item is P\n" +
+            "struct DerI : BaseI<raw/u8>\n    var m: i32\nstruct Src3\n    Self is HasItem\n    associate HasItem.Item is i32\n" +
+            "struct HA<S>\n    S is HasItem\n    var x: S.Item\nstruct HH2\n    var h: HA<Src2<raw/u8>>\nstruct DerQ : BaseI<Src2<raw/u8>.Item>\n" +
+            "    var m: i32\nopen struct BaseF<P>\n    var f: P\nstruct DerF : BaseF<Src2<raw/u8>.Item>\n    var m: i32\n" +
+            "struct Nest<S>\n    S is HasItem\n    Self is HasItem\n    associate HasItem.Item is S.Item\nstruct SrcC<T>\n    Self is HasItem when T is Copy\n" +
+            "        associate HasItem.Item is T\nstruct HHC\n    var h: HA<SrcC<raw/u8>>\nenum ESrc\n    Self is HasItem\n    associate HasItem.Item is raw/u8\n" +
+            "    A\nenum EH<S>\n    S is HasItem\n    A(S.Item)\n    B\nstruct HAd<S>\n    S is Addable<S>\n    var x: S.Output\n" +
+            "func probe(a: HA<Src>, b: HA<Src2<raw/u8>>, d: HA<DerI>, e: HH2, f: HA<Src3>, q: HA<DerQ>, r: DerF, n: HA<Nest<Src>>, " +
+            "n2: HA<Nest<Src2<raw/u8>>>, hc: HHC, c2: HA<SrcC<raw/u8>>, es: HA<ESrc>, w: HAd<Wrapping<i32>>) => ()\n" +
+            "func unbound<T>(g: HA<T>, eh: EH<Src>) -> ()\n    T is HasItem\n    return\n" +
+            "func wrapped<T>(w: HAd<Wrapping<T>>) -> ()\n    T is PrimitiveInteger\n    return\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var functions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().ToArray();
+        var p = functions.Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
+        var u = functions.Single(static x => x.Name == "unbound").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
+        var w = functions.Single(static x => x.Name == "wrapped").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
+        var types = c.Types;
+        types.StoredParts(p[6], out var derF);
+        BoundType[] holders = [p[0], p[1], p[2], Kept(p[3]), p[4], p[5], derF!, p[7], p[8], Kept(p[9]), p[10], p[11], p[12]];
+        Assert.Equal(
+            [
+                "raw/u8 True", "raw/u8 False", "raw/u8 True", "raw/u8 True", "i32 False", "raw/u8 True", "raw/u8 True", "raw/u8 True", "raw/u8 False",
+                "raw/u8 True", "raw/u8 False", "raw/u8 True", "Wrapping<i32> False",
+            ],
+            holders.Select(x => $"{TyCtxt.Name(Kept(x))} {TyCtxt.RawStated(Kept(x))}"));
+        Assert.All(holders, x => Assert.Same(c.Binding.WithoutRawOrigins(Kept(x)), AdtDef.FieldType(x, 0)));
+        Assert.All(holders, x => Assert.Same(AdtDef.FieldType(x, 0), c.Binding.StoredType(x.Symbol!.Adt!.Fields[0], x)));
+        Assert.All(holders, x => Assert.False(AdtDef.FieldType(x, 0)!.HasAbstractPart));
+        var payload = types.StoredParts(u[1], out _)[Array.FindIndex(u[1].Symbol!.Adt!.Cases, static x => x is { Payload.Length: 1 })]!;
+        Assert.Equal("(raw/u8) True", $"{TyCtxt.Name(payload)} {TyCtxt.RawStated(payload.Components[0])}");
+        Assert.Equal(BoundTypeKind.AssociatedProjection, Kept(u[0]).Kind);
+        Assert.Equal("Wrapping<T>.Output", TyCtxt.Name(Kept(w[0])));
+
+        // The first kept part of a struct instance.
+        BoundType Kept(BoundType x) => types.StoredParts(x, out _)[0]!;
+    }
+
+    // SPEC 8.9.2, 8.2.3 (DECISIONS BU-50, revised by bu55): a projection that two proven conformance paths of its subject bind names their
+    // common Type. OwningIterator, BorrowingIterator and a user Wrapper conform to LendingIterator directly, binding
+    // `I.(LendingIterator).LentItem(step)`, and through `Self is Iterator when I is Iterator`, whose Iterator binds `LentItem(step) is Item`,
+    // so `I.Item`: the bindings differ as written and are both i32 under Counter, as W<Src>'s Item through HasItem and HasMore is, and
+    // V<Src>'s through two conditional paths, the nested W<W<Src>>'s and the inherited W<DerS>'s. So the instance a call of `step` makes
+    // (TyCtxt.Instance; WK's handed `next` has this shape) is a Prepared Option<i32>, the call's Type too, and each holder's Field and
+    // Case payload are i32 (before: Rejected, which threw in WK's retention; the call kept the projection, and the reads in `f` were
+    // NoApplicableOverload_Kd and InvalidPattern_Kd; V<Src>, W<W<Src>> and W<DerS> each left a binding unresolved without a record). The
+    // twins resolved before: a direct conformer (Cursor), one refinement path (Counter, the generic Gen<i32>, the inherited DerS), and
+    // bindings that agree as written (GenWrap's premise `I is Iterator`). Paths that disagree keep Binding's records (InstanceCollectorTest's
+    // refinedDisagree).
+    [Fact]
+    public void ProvenPathsBindTheirCommonType()
+    {
+        const string Forward = "    associate LendingIterator.LentItem(step) is I.(LendingIterator).LentItem(step)\n    var inner: I\n" +
+            "    public init(inner: I) => self.inner = inner@move\n" +
+            "    public func next(self: uniq/Self during step) -> Option<I.(LendingIterator).LentItem(step)> => self.inner.next()\n";
+        var c = MinimalEmissionTest.Analyze("contract HasItem\n    associate Item\ncontract HasMore: HasItem\n    associate Elem\n" +
+            "    associate HasItem.Item is Elem\nstruct Src\n    Self is HasMore\n    associate HasMore.Elem is i32\nstruct W<S>\n    S is HasItem\n" +
+            "    Self is HasItem\n    associate HasItem.Item is S.(HasItem).Item\n    Self is HasMore when S is HasMore\n" +
+            "        associate HasMore.Elem is S.(HasMore).Elem\nopen struct BaseS\n    Self is HasMore\n    associate HasMore.Elem is i32\n" +
+            "struct DerS : BaseS\n    var m: i32\nstruct HA<S>\n    S is HasItem\n    public var x: S.Item\nenum EH<S>\n    S is HasItem\n    A(S.Item)\n" +
+            "    B\nstruct V<S>\n    Self is HasItem when S is HasItem\n        associate HasItem.Item is S.(HasItem).Item\n" +
+            "    Self is HasMore when S is HasMore\n        associate HasMore.Elem is S.(HasMore).Elem\n" +
+            "func f(h: HA<W<Src>>, e: EH<W<Src>>, d: HA<DerS>, v: HA<V<Src>>, ev: EH<V<Src>>, ww: HA<W<W<Src>>>, wd: HA<W<DerS>>) -> i32\n" +
+            "    match e\n        .A(let n) => return n + h.x + d.x + v.x + ww.x + wd.x\n        .B => return h.x\nstruct Counter\n    Self is Iterator\n    associate Iterator.Item is i32\n    public init() => ()\n" +
+            "    public func next(self: uniq/Self) -> Option<i32> => .None\nstruct Cursor\n    Self is LendingIterator\n" +
+            "    associate LentItem(step) is ref/i32 during step\n    var value: i32 = 0\n    public init() => ()\n" +
+            "    public func next(self: uniq/Self during step) -> Option<ref/i32 during step> => .Some(self.value@ref)\nstruct Gen<T>\n" +
+            "    Self is Iterator\n    associate Iterator.Item is T\n    public init() => ()\n    public func next(self: uniq/Self) -> Option<T> => .None\n" +
+            "struct Wrapper<I>\n    I is LendingIterator\n    Self is LendingIterator\n" + Forward +
+            "    Self is Iterator when I is Iterator\n        associate Iterator.Item is I.(Iterator).Item\nstruct GenWrap<I>\n    I is Iterator\n" +
+            "    Self is LendingIterator\n" + Forward + "    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n" +
+            "func step<I>(it: uniq/I during s) -> Option<I.(LendingIterator).LentItem(s)>\n    I is LendingIterator\n    return it.next()\n" +
+            "var i1 = Kimi.Iteration.owning(Counter.init())\nlet x1 = step(i1@uniq)\nvar counter = Counter.init()\n" +
+            "var i2 = Kimi.Iteration.borrowing(counter@uniq)\nlet x2 = step(i2@uniq)\nvar i3 = Wrapper<Counter>.init(Counter.init())\n" +
+            "let x3 = step(i3@uniq)\nvar i4 = GenWrap<Counter>.init(Counter.init())\nlet x4 = step(i4@uniq)\nvar i5 = Counter.init()\n" +
+            "let x5 = step(i5@uniq)\nvar i6 = Cursor.init()\nlet x6 = step(i6@uniq)\nvar i7 = Gen<i32>.init()\nlet x7 = step(i7@uniq)\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf()).OfType<CallPlan>().Where(static x => x.Target.Name == "step").ToArray();
+        var declared = ((FunctionKoto)calls[0].Target.Declaration).ReturnType!.TypeOf()!;
+        Assert.Equal(
+            [
+                "OwningIterator<Counter> Prepared Option<i32> Option<i32>", "BorrowingIterator<Counter> Prepared Option<i32> Option<i32>",
+                "Wrapper<Counter> Prepared Option<i32> Option<i32>", "GenWrap<Counter> Prepared Option<i32> Option<i32>",
+                "Counter Prepared Option<i32> Option<i32>", "Cursor Prepared Option<ref/i32> Option<ref/i32>", "Gen<i32> Prepared Option<i32> Option<i32>",
+            ],
+            calls.Select(x => (c.Types.SubstOf(x)!, x.ReturnType)).Select(x => (x.Item1.Types[0]!, c.Types.Instance(declared, x.Item1), x.ReturnType))
+                .Select(static x => $"{TyCtxt.Name(x.Item1)} {x.Item2.Storage} {TyCtxt.Name(x.Item2.Type!)} {TyCtxt.Name(x.ReturnType)}"));
+        var holders = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters.Select(static x => x.Type.TypeOf()!);
+        Assert.Equal(
+            [
+                "HA<W<Src>> Prepared i32", "EH<W<Src>> Prepared (i32)", "HA<DerS> Prepared i32", "HA<V<Src>> Prepared i32", "EH<V<Src>> Prepared (i32)",
+                "HA<W<W<Src>>> Prepared i32", "HA<W<DerS>> Prepared i32",
+            ],
+            holders.Select(x => $"{TyCtxt.Name(x)} {c.Binding.PrepareTypeStorage(x)} {TyCtxt.Name(c.Types.StoredParts(x, out _)[0]!)}"));
+    }
+
+    // SPEC 5.7 Calls, Fits (DECISIONS BU-46): a kept part states Unstated on each raw layer its declaration writes without `during`, so an
+    // instance's kept parts tell such a layer from one a Type argument supplies at any depth below it (RawStated): in a Field, a Tuple, a
+    // Type argument of a Field, a base clause (also an intermediate one's), beside a supplied argument, a nested holder, a pair slot's
+    // argument and its application `s/U`, a Case payload's Tuple and a `during self` pointee; never where the parameter's Type writes the
+    // layer (the twins) or for a layer stating an Origin. Holder2's kept Wrap is another Type than Outer<raw/u8>'s, which is the
+    // parameter's own Wrap<raw/u8>. AdtDef's parts are the kept ones WithoutRawOrigins and state no raw Origin, and no MIR local's Type
+    // states Unstated (MirValidator's Local row; MirCensusTest asserts it over the census).
+    [Fact]
+    public void ADeclarationStatesEachUnstatedLayerItWrites()
+    {
+        var (c, p) = DeclaredLayers();
+        var types = c.Types;
+        (string Name, BoundType[] Layers)[] rows =
+        [
+            ("rawBuf", [Part(p["rawBuf"], 0)]), ("holdTuple", [Part(p["holdTuple"], 0).Components[0]]),
+            ("holder2", [Part(Part(p["holder2"], 0), 0)]), ("holdOpt", [Payload(Part(p["holdOpt"], 0)).Components[0]]),
+            ("derS", [Part(Part(p["derS"], -1), 0)]), ("d2", [Part(Part(Part(p["d2"], -1), -1), 0)]),
+            ("d3", [Part(Part(Part(Part(p["d3"], -1), -1), 0), 0)]), ("b3", [Part(Part(Part(p["b3"], -1), 0), 0)]),
+            ("m", [Part(Part(p["m"], 0), 0), Part(Part(p["m"], 0), 1)]), ("holdEnum", [Payload(Part(p["holdEnum"], 0)).Components[0]]),
+            ("holdTW", [Part(Part(p["holdTW"], 0), 0).Components[0]]), ("h3", [Part(Part(Part(p["h3"], 0), 0), 0)]),
+            ("oh", [Part(Part(Part(Part(p["oh"], 0), 0), 0), 0)]), ("hpso", [Part(Part(p["hpso"], 0), 0)]),
+            ("hpss", [Part(Part(p["hpss"], 1), 0)]), ("hpst", [Part(Part(p["hpst"], 0), 0)]), ("hpu", [Part(Part(p["hpu"], 0), 0)]),
+            ("hpus", [Part(Part(p["hpus"], 1), 0)]), ("hfa", [Part(Part(p["hfa"], 0), 0).Components[0]]),
+            ("ep", [Part(Payload(p["ep"]).Components[0].Components[0], 0)]), ("how", [Part(Payload(Part(p["how"], 0)).Components[0], 0)]),
+            ("hold2", [Part(p["hold2"], 0).Components[0]]), ("sb", [Part(p["sb"], 0).Components[0], Part(p["sb"], 0)]),
+            ("hb2", [Part(Part(p["hb2"], 0), 0).Components[0]]), ("outer", [Part(Part(p["outer"], 0), 0)]), ("wrap", [Part(p["wrap"], 0)]),
+            ("m2", [Part(Part(p["m2"], 0), 0), Part(Part(p["m2"], 0), 1)]), ("ps", [Part(p["ps"], 0)]), ("pu", [Part(p["pu"], 0)]),
+            ("hold", [Part(Part(p["hold"], 0).Components[0], 0)]), ("opt2", [Part(Payload(p["opt2"]).Components[0], 0)]),
+            ("derX", [Part(Part(Part(p["derX"], -1), 0), 0)]), ("arr", [p["arr"].Components[0]]), ("box2", [Part(p["box2"], 0).Components[0]]),
+            ("ow", [Part(Part(Part(p["ow"], 0), 0), 0)]),
+        ];
+        Assert.Equal(
+            [
+                "rawBuf True", "holdTuple True", "holder2 True", "holdOpt True", "derS True", "d2 True", "d3 True", "b3 True", "m True False",
+                "holdEnum True", "holdTW True", "h3 True", "oh True", "hpso True", "hpss True", "hpst True", "hpu True", "hpus True", "hfa True",
+                "ep True", "how True", "hold2 True", "sb True False", "hb2 True", "outer False", "wrap False", "m2 False False", "ps False",
+                "pu False", "hold False", "opt2 False", "derX False", "arr False", "box2 False", "ow False",
+            ],
+            rows.Select(static x => $"{x.Name} {string.Join(" ", x.Layers.Select(TyCtxt.RawStated))}"));
+        Assert.NotSame(Part(p["holder2"], 0), Part(p["outer"], 0));
+        Assert.Same(p["wrap"], Part(p["outer"], 0));
+        foreach (var holder in p.Values.Where(static x => AdtDef.IsStruct(x) || AdtDef.IsEnum(x)))
+        {
+            var erased = Stored(holder).ToArray();
+            var parts = types.StoredParts(holder, out var parent).ToArray();
+            BoundType?[] kept = AdtDef.IsStruct(holder) ? [.. parts, parent] : parts;
+            Assert.Equal(erased.Length, kept.Length);
+            Assert.All(Enumerable.Range(0, kept.Length), i => Assert.Same(erased[i], c.Binding.WithoutRawOrigins(kept[i])));
+            Assert.DoesNotContain(erased, static x => x?.CarriesRawOrigin == true);
+        }
+
+        Assert.DoesNotContain(c.BuildMir().Bodies.ToArray().SelectMany(static x => x.Locals.ToArray()), static x => TyCtxt.StatesUnstated(x.Type));
+
+        // A kept Field (the kept base at -1), or the kept payload Tuple of an enum's Case `part`.
+        BoundType Part(BoundType x, int part)
+        {
+            var parts = types.StoredParts(x, out var parent);
+            return (part < 0 ? parent : parts[part])!;
+        }
+
+        // The kept payload Tuple of an enum's first Case with a payload.
+        BoundType Payload(BoundType x) => Part(x, Array.FindIndex(x.Symbol!.Adt!.Cases, static y => y is { Payload.Length: > 0 }));
     }
 
     // SPEC 8.1.1, 8.2.3, 8.6.1 (DECISIONS BU-34): a pair slot binds a raw argument without its Origin, so an instance, a nested Type, a
@@ -667,30 +864,43 @@ public sealed class TyCtxtTest
         Assert.Same(references[0], references[1]);
     }
 
-    // design-final §15 (DECISIONS BU-41): the stored-layer readers and the kept parts allocate nothing when warm, also on a kept nested
-    // instance, which its first read substitutes.
+    // design-final §15 (DECISIONS BU-41, BU-46): the stored-layer readers and the kept parts allocate nothing when warm, also on a kept
+    // nested instance, which its first read substitutes, and on one whose kept part states Unstated (Holder2's Wrap).
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmStoredRawLayerReadAllocatesNothing()
     {
         var (types, p) = StoredLayers();
         var nested = types.StoredParts(p[22], out _)[0]!;
+        var (declared, q) = DeclaredLayers();
+        var holder2 = q["holder2"];
+        var wrap = declared.Types.StoredParts(holder2, out _)[0]!;
+        _ = declared.Types.StoredParts(wrap, out _);
         var members = new List<RawMember>();
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (types.RawStep(p[3], 0, []) != RawStep.Own || types.RawStep(p[6], 1, []) != RawStep.Shared || types.RawStep(p[8], 1, [1]) != RawStep.Own ||
                 types.RawStep(p[19], 0, [0]) != RawStep.Exclusive || types.StoredParts(p[19], out _).Length != 2 ||
                 !ReferenceEquals(types.StoredParts(p[22], out _)[0], nested) || types.RawStep(nested, 0, []) != RawStep.Exclusive ||
-                !types.RawSupplied(nested, 0, []) || types.RawMembers(nested, 0, [], members) || types.RawSupplied(p[3], 0, []))
+                TyCtxt.RawStated(types.StoredParts(nested, out _)[0]!) || types.RawMembers(nested, 0, [], members) ||
+                TyCtxt.RawStated(types.StoredParts(p[3], out _)[0]!))
             {
                 throw new InvalidOperationException("Stored raw steps changed.");
+            }
+
+            if (!ReferenceEquals(declared.Types.StoredParts(holder2, out _)[0], wrap) || declared.Types.RawStep(wrap, 0, []) != RawStep.Unstated ||
+                !TyCtxt.RawStated(declared.Types.StoredParts(wrap, out _)[0]!) || !declared.Types.RawMembers(wrap, 0, [], members))
+            {
+                throw new InvalidOperationException("A declared raw layer's reads changed.");
             }
         }));
     }
 
     // DECISIONS BU-24: a layer's stated Origin is one slot whose role its Semantics decides: Origin never reads a raw layer's, RawOrigin
-    // only a raw layer's, and a rebuild keeps both. The constructor never stores Unstated, nor Shared or Holder in the borrow role; a raw
-    // Origin enters no instance key (R5-M39: Erase gives the unstated layer).
+    // only a raw layer's, and a rebuild keeps both. The constructor stores Unstated in the raw role only (a kept part's mark of a layer its
+    // declaration writes, which RawStated reads; DECISIONS BU-46, the owner's 「許可して設計 1 (推奨)」 of 2026-10-27), and neither Unstated,
+    // Shared nor Holder in the borrow role; a pair binding keeps Unstated and drops a stated Origin; a raw Origin enters no instance key
+    // (R5-M39: Erase gives the unstated layer), nor AdtDef's view (WithoutRawOrigins).
     [Fact]
     public void ARawLayerKeepsItsOriginRole()
     {
@@ -700,6 +910,14 @@ public sealed class TyCtxtTest
         var borrow = types.Reference(SemanticsKind.Ref, BoundType.I32, origin);
         var pointer = types.Pointer(borrow);
         var stated = types.Pointer(BoundType.I32, origin);
+        var marked = types.Pointer(BoundType.I32, BoundOrigin.Unstated);
+        Assert.Equal((null, BoundOrigin.Unstated, false, true), (marked.Origin, marked.RawOrigin, marked.CarriesOrigin, marked.CarriesRawOrigin));
+        Assert.Equal(
+            (true, false, true, false),
+            (TyCtxt.RawStated(marked), TyCtxt.RawStated(stated), TyCtxt.StatesUnstated(types.Tuple([BoundType.I32, marked])), TyCtxt.StatesUnstated(stated)));
+        Assert.Equal((marked, types.Pointer(BoundType.I32)), (types.PairBinding(marked), types.PairBinding(stated)));
+        Assert.Same(types.Erase(types.Pointer(BoundType.I32)), types.Erase(marked));
+        Assert.Same(types.Pointer(BoundType.I32), c.Binding.WithoutRawOrigins(marked));
         Assert.Equal((origin, null, true, false, true), (borrow.Origin, borrow.RawOrigin, borrow.CarriesOrigin, borrow.CarriesRawOrigin, borrow.CarriesAnyOrigin));
         Assert.Equal((null, null, true, false), (pointer.Origin, pointer.RawOrigin, pointer.CarriesOrigin, pointer.CarriesRawOrigin));
         Assert.Equal((null, origin, false, true, true), (stated.Origin, stated.RawOrigin, stated.CarriesOrigin, stated.CarriesRawOrigin, stated.CarriesAnyOrigin));
@@ -708,7 +926,7 @@ public sealed class TyCtxtTest
         Assert.Same(borrow, types.Rebuild(borrow, [BoundType.I32], borrow.Origin, []));
         Assert.Same(stated, types.Rebuild(stated, [BoundType.I32], null, []));
         Assert.Same(types.Erase(types.Pointer(BoundType.I32)), types.Erase(stated));
-        Assert.Throws<InvalidOperationException>(() => types.Pointer(BoundType.I32, BoundOrigin.Unstated));
+        Assert.Throws<InvalidOperationException>(() => types.Reference(SemanticsKind.Ref, BoundType.I32, BoundOrigin.Unstated));
         Assert.Throws<InvalidOperationException>(() => types.Reference(SemanticsKind.Ref, BoundType.I32, BoundOrigin.Holder));
     }
 
@@ -1233,6 +1451,28 @@ public sealed class TyCtxtTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var probe = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe");
         return (c, probe.Parameters.Select(static x => x.Type.TypeOf()!).ToArray());
+    }
+
+    // The raw layer an instance stores at a part and inline positions, as RawStep reads it: its kept part (an enum Case's payload Tuple),
+    // then per position a Tuple's component or a fixed array's element.
+    private static BoundType KeptLayer(TyCtxt types, BoundType instance, int part, int[] positions)
+    {
+        var layer = types.StoredParts(instance, out _)[part]!;
+        foreach (var position in positions)
+        {
+            layer = layer.Kind == BoundTypeKind.Tuple ? layer.Components[position] : layer.Components[0];
+        }
+
+        return layer;
+    }
+
+    // The compilation of DeclaredSource and its `probe`'s parameter Types by name.
+    private static (Compilation C, Dictionary<string, BoundType> Parameters) DeclaredLayers()
+    {
+        var c = MinimalEmissionTest.Analyze(DeclaredSource);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var probe = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe");
+        return (c, probe.Parameters.ToDictionary(static x => x.InternalName, static x => x.Type.TypeOf()!));
     }
 
     // The struct and enum instances the MIR locals hold, added to `instances`, and the names of those whose erased instance does not store

@@ -4,7 +4,7 @@
 // case view.
 // Input: a validated body, its dataflow (MirDataflow, begun) and move paths (MirMoveData, built), the selected view (MirCases), A2's
 // verdicts (MirProgram.Drops), Binding's call retention (TyCtxt.Retains), published rows (TyCtxt.Published), stored parts and their raw
-// layers' steps, members and supply (TyCtxt.StoredParts, RawStep, RawMembers, RawSupplied), A4's key rows of the program version
+// layers' steps, members and statement (TyCtxt.StoredParts, RawStep, RawMembers, RawStated), A4's key rows of the program version
 // (MirEffects.Keys), and the Origin stratum's causes and classes of the body it judged before (MirOrigins.Causes, Refutes, Fixed; rule W,
 // R4-M132).
 // Output: each Loan conflict at its access, activation or Call's or Drop's effects, coded by A3 5's A6 table (CallReservationConflict_Kd

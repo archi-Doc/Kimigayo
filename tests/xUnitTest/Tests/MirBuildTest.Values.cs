@@ -50,25 +50,24 @@ public sealed partial class MirBuildTest
     }
 
     // SPEC 23.1.2 (DECISIONS R4-M70): where Binding or control flow published that it formed no value, the MIR forms none from facts
-    // that do not exist and records nothing, so each body validates: an acquisition Binding's Copy proof left unset on a Type it rejected
-    // (a raw read of a struct whose C layout it rejected) is the acquired node's derived Opaque value; a Field Binding formed no stored
-    // Type for (one naming a missing Type, or inferred from a call it rejected) has no Place, so a constructor places no initializer
-    // there; and an empty body falling through a non-Unit result, which control flow rejects, leaves no value, as a body ending in a
-    // statement does.
+    // that do not exist and records nothing, so each body validates: a Field Binding formed no stored Type for (one naming a missing Type,
+    // or inferred from a call it rejected) has no Place, so a constructor places no initializer there; and an empty body falling through
+    // a non-Unit result, which control flow rejects, leaves no value, as a body ending in a statement does. (A raw read of a C-layout
+    // struct Binding rejected was the derived Opaque's row until DECISIONS R4-M134 Q8 made such a declaration no Binding error.)
     [Theory]
-    [InlineData("#Layout(\"C\")\nstruct S\nfunc read(p: raw/S)\n    unsafe\n        let value = *p\n", "InvalidCLayout_Kd", "*p")]
-    [InlineData("struct S\n    var item: Missing = 7\n    var other: i32 = 1\n", "UnresolvedBinding_Kd", null)]
-    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry\n    var tag = Tags.tagOf<Entry>()\n", "UnprovenConstraint_Kd", null)]
-    [InlineData("func f<T>() -> T\n    T is Copy\n", "FunctionFallthrough_Kd", null)]
-    public void ValuesBindingDidNotFormAreDerived(string source, string code, string? opaque)
+    [InlineData("struct S\n    var item: Missing = 7\n    var other: i32 = 1\n", "UnresolvedBinding_Kd")]
+    [InlineData(
+        "group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry\n    var tag = Tags.tagOf<Entry>()\n",
+        "UnprovenConstraint_Kd")]
+    [InlineData("func f<T>() -> T\n    T is Copy\n", "FunctionFallthrough_Kd")]
+    public void ValuesBindingDidNotFormAreDerived(string source, string code)
     {
         var c = Compile(source);
         Assert.Contains(CompilationTestHelper.BindingErrors(c), x => x.Code == code);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         Assert.DoesNotContain(program.Records, static x => x.Subject.Module == 0);
-        var sites = program.Bodies.ToArray().Where(static x => x.Source.Module == 0).SelectMany(static x => x.OpaqueSites.ToArray());
-        Assert.Equal(opaque is null ? [] : [opaque], sites.Select(x => c.SyntaxOf(x.Source).ToString()));
+        Assert.Empty(program.Bodies.ToArray().Where(static x => x.Source.Module == 0).SelectMany(static x => x.OpaqueSites.ToArray()));
     }
 
     // SPEC 23.1.2 (DECISIONS R4-M88): an operation Binding left unresolved (a built-in operator, `and`/`or`, a runtime Type test, a
@@ -155,6 +154,34 @@ public sealed partial class MirBuildTest
         var built = Regex.Matches(text.ToString(), @"(_\d+ = (?:Array|Tuple|FixedArray)\(.*?\): .*?) @\d+").Select(static x => x.Groups[1].Value);
         Assert.Equal(aggregates.Split('|'), built);
         Assert.DoesNotContain(body.Blocks.ToArray(), x => x.Terminator.Kind == MirTerminatorKind.Call && x.Terminator.Callee.Symbol?.Name != "g");
+    }
+
+    // SPEC 3.5.1, 8.14 (PLAN G262, DECISIONS BU-45): a bare acquisition that Binding plans without a Reborrow through a shared layer is
+    // built as the Move its HIR row says (A1's, rejected by the old path's TransferRequired_Kd), never a Ref or PairAcquire past that
+    // layer: at a `let`, a `return`, a default, an Array literal element, a Slice element, a pair layer through `ref` or another binder's
+    // layer; an exclusive path and the acquiring binder's own layer keep theirs (fail-before: `&uniq` and `acquire` in the first seven).
+    // Each row: the built statement, and the form no body may contain.
+    [Theory]
+    [InlineData("func f(r: ref/(uniq/i32 during a) during b)\n    let y = r@follow\n", "_2 = move (*_1)", "&uniq")]
+    [InlineData("func f(r: ref/(uniq/i32 during a) during b) -> uniq/i32 during a\n    return r@follow\n", "_2 = move (*_1)", "&uniq")]
+    [InlineData("func f(r: ref/(uniq/i32 during a) during b, x: uniq/i32 during a = r@follow)\n    return\n", "_0 = move (*(*_1))", "&uniq")]
+    [InlineData("func f(r: ref/(uniq/i32 during a) during b)\n    let values = [r@follow]\n", "_2 = Array(move (*_1))", "&uniq")]
+    [InlineData("func f(s: Slice<uniq/i32 during a> during b)\n    let y = s[0]\n", "_2 = move _1[_3]", "&uniq")]
+    [InlineData("func f<s/T>(x: ref/(s/T during a) during b)\n    s is ref or uniq\n    let y = x@follow\n", "_2 = move (*_1)", "acquire")]
+    [InlineData("func f<s/T, t/U>(x: t/(s/T during a) during b)\n    s is ref or uniq\n    t is ref or uniq\n    let y = x@follow\n", "_2 = move (_1@b1)", "acquire")]
+    [InlineData("func f<s/T>(x: s/(s/T during a) during b)\n    s is ref or uniq\n    let y = x@follow\n", "_2 = acquire b0 (_1@b0)", "move (_1@b0)")]
+    [InlineData("func f(r: uniq/(uniq/i32 during a) during b)\n    let y = r@follow\n", "_2 = &uniq (*(*_1))", "move (*(*_1))")]
+    public void ABareAcquisitionPastASharedLayerIsBuiltAsItsMove(string source, string built, string absent)
+    {
+        var c = Compile(source);
+        Assert.Empty(c.Binding.Issues);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Records);
+        var text = new StringBuilder();
+        MirDump.Write(program, 0, text);
+        Assert.Contains(built, text.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain(absent, text.ToString(), StringComparison.Ordinal);
     }
 
     // SPEC 4.3.3, IMPL 21.3.2 (DECISIONS R4-M81): a fill's MIR does not grow with its length (fail-before: [1048576 of 0@u8] had 1,048,580

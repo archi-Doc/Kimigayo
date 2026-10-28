@@ -113,7 +113,8 @@ public class GuardEmissionTest
         var stdout = success ? "selected\n" : "fallback\n";
         var name = "GuardCleanup" + success;
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
-        StringEmissionTest.WriteAuditedFixture(name, ir, stdout, success ? "a=2;selected=1;fallback=0" : "a=1;b=1;selected=0;fallback=1");
+        var legacy = success ? "a=2;selected=1;fallback=0" : "a=1;b=1;selected=0;fallback=1";
+        StringEmissionTest.WriteAuditedFixture(name, ir, stdout, Codegen.Expect(success ? "a=1;selected=1;fallback=0" : "a=1;b=0;selected=0;fallback=1", legacy, CodegenDeviations.ConstantTemporaries));
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
     }

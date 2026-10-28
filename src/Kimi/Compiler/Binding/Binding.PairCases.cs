@@ -251,20 +251,23 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 3.5, 8.14, 15.1.5: the bare acquisition of a Place storing the Type, taken by value without an operator: a Copy-proven Type
-    // Copies, a pair layer whose every admitted case Copies or Reborrows acquires by case, a stored exclusive reference Reborrows in its
-    // own mode, and any other Place needs an explicit Move; the proof tells an unproven Copy from a refuted one.
+    // SPEC 3.5, 3.5.1, 8.14, 15.1.5: the bare acquisition of a Place storing the Type, taken by value without an operator: a Copy-proven
+    // Type Copies, a pair layer whose every admitted case Copies or Reborrows acquires by case, a stored exclusive reference whose path
+    // grants exclusive access Reborrows in its own mode, and any other Place, one reached through a shared layer too, needs an explicit
+    // operation (the Move row: TransferRequired); the proof tells an unproven Copy from a refuted one.
     internal HirAcquire BareAcquire(BoundType type, Koto node, out ConstraintProof proof)
     {
         proof = this.ProveCopy(type, node);
         return proof == ConstraintProof.Proven ? HirAcquire.Copy
             : TryPairLayer(type, out _, out _) && this.BareAcquisition(type, node, out _) == SemanticsMask.None ? HirAcquire.ByCase
-            : type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } ? HirAcquire.Reborrow : HirAcquire.Move;
+            : type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } &&
+                !ReachedThroughShared(node) ? HirAcquire.Reborrow : HirAcquire.Move;
     }
 
     /// <summary>Plans the bare acquisition of a pair-layer Place per admitted case (SPEC 3.5, 8.14): a Copy for a shared or raw
-    /// reference and for an owner whose target is proven Copy, a Reborrow for an exclusive reference, and otherwise a case
-    /// without a plan, which is a definition error naming that case.</summary>
+    /// reference and for an owner whose target is proven Copy, a Reborrow for an exclusive reference whose path grants exclusive access
+    /// in that case (SPEC 3.5.1, 8.15.2: the binder's own layers on the path take the case), and otherwise a case without a plan, which
+    /// is a definition error naming that case.</summary>
     /// <param name="type">The stored Type of the Place, a pair layer.</param>
     /// <param name="node">The acquiring syntax, whose scope supplies the premises.</param>
     /// <param name="reborrow">The cases that Reborrow.</param>
@@ -279,6 +282,11 @@ public sealed partial class Binding
 
         var admitted = this.AdmittedSemantics(whole, this.ConstraintScope(node));
         reborrow = admitted & (SemanticsMask.Uniq | SemanticsMask.ObjUniq);
+        if (reborrow != SemanticsMask.None && PathAuthority(node, [new(whole.Symbol!, SemanticsKind.Uniq)]) == SemanticsKind.Ref)
+        {
+            reborrow = SemanticsMask.None; // objuniq grants the path the same authority as uniq (PairAuthority).
+        }
+
         var copy = admitted & (SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Raw);
         if ((admitted & SemanticsMask.Owner) != 0 && this.ProveCopy(target, node) == ConstraintProof.Proven)
         {

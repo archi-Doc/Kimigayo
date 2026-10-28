@@ -100,4 +100,37 @@ public class BorrowAcquisitionTest
     [InlineData("let text = \"owned\"\nlet copy = text")]
     public void RejectsBareAcquisitionWithoutPlan(string source)
         => Assert.Contains(MinimalEmissionTest.Analyze(source).Problems, static x => x.Code == DiagnosticCode.TransferRequired_Kd);
+
+    // SPEC 3.5.1, 8.14, 8.15.2 (PLAN G262, DECISIONS BU-45): a bare argument is acquired by its bare acquisition, so a pair layer without
+    // a plan in some case (its exclusive case through a shared path, or an owner whose target is not proven Copy) is Binding's
+    // TransferRequired_Kd at the Place; the acquiring binder's own layers on the path are exclusive in that case, so an exclusive path, an
+    // own-binder path and a direct pair keep their plans. Each row: Binding's errors.
+    [Theory]
+    [InlineData("s/T", "x: ref/(s/T during a) during b", "s is ref or uniq", "x@follow", "TransferRequired_Kd x@follow")]
+    [InlineData("s/T, r/U", "x: r/(s/T during a) during b", "s is ref or uniq\n    r is ref or uniq", "x@follow", "TransferRequired_Kd x@follow")]
+    [InlineData("s/T", "x: s/T", "s is owner or uniq", "x", "TransferRequired_Kd x")]
+    [InlineData("s/T", "x: s/(s/T during a) during b", "s is ref or uniq", "x@follow", "")]
+    [InlineData("s/T", "x: uniq/(s/T during a) during b", "s is ref or uniq", "x@follow", "")]
+    [InlineData("s/T", "x: s/T", "s is ref or uniq", "x", "")]
+    public void ABareArgumentIsAcquiredByItsPlan(string generics, string parameters, string constraints, string argument, string errors)
+    {
+        var source = $"func take<U>(y: U)\n    return\nfunc f<{generics}>({parameters})\n    {constraints}\n    take({argument})\n";
+        var c = CompilationTestHelper.ParseSuccess(source);
+        c.Bind();
+        Assert.Equal(errors, string.Join("; ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
+    }
+
+    // DECISIONS BU-45: the argument rule (AdaptInput), which adapts every payload and argument, names a failed acquisition before a
+    // structural mismatch, its order unchanged: `x@follow` through `ref`, which has no plan in the uniq case, at a payload and at a
+    // by-value parameter of `s/T`, whose outer Origin differs from `x@follow`'s, is TransferRequired_Kd at the Place in both.
+    [Theory]
+    [InlineData("x: ref/(s/T during a) during b", "let o: Option<s/T> = .Some(x@follow)\n    _ = o@move")]
+    [InlineData("x: ref/(s/T during a) during b, g: (s/T) -> ()", "g(x@follow)")]
+    public void AFailedAcquisitionIsNamedBeforeAMismatch(string parameters, string use)
+    {
+        var source = $"func f<s/T>({parameters}) -> ()\n    s is ref or uniq\n    {use}\n";
+        var c = CompilationTestHelper.ParseSuccess(source);
+        c.Bind();
+        Assert.Equal("TransferRequired_Kd x@follow", string.Join("; ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
+    }
 }

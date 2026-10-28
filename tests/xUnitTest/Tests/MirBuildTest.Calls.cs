@@ -376,6 +376,121 @@ public sealed partial class MirBuildTest
         Assert.True(Precedes(body, argument, entries));
     }
 
+    // SPEC 22.5.1 (DECISIONS R5-M144, R5-M145; PLAN G157 (32)): a failure of a Dictionary literal entry's insertion, its allocation included,
+    // reports the entry's key expression, as its duplicate key does: each entry's lookup, its literal's storage handle and its placement are
+    // located at its key (fail-before: the handle and the placement at its value).
+    [Fact]
+    public void ADictionaryLiteralsEntryInsertionIsLocatedAtItsKey()
+    {
+        var c = Compile("func key() -> i32 => 1\nfunc f() -> Dictionary<i32, i32> => [key(): 10, 2: 20]\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        var steps = body.Blocks.ToArray().Select(static x => x.Terminator)
+            .Where(static x => x.Kind == MirTerminatorKind.Call && x.Callee.Symbol?.Name is "findEntry" or "dictionaryStorage" or "placeEntry")
+            .Select(x => x.Callee.Symbol!.Name + " " + c.SyntaxOf(x.Source.Syntax));
+        Assert.Equal(
+            ["findEntry key()", "dictionaryStorage key()", "placeEntry key()", "findEntry 2", "dictionaryStorage 2", "placeEntry 2"],
+            steps);
+    }
+
+    // SPEC 22.10.4, 22.10.1 (PLAN G157 (35), DECISIONS R5-M131): a $tryWrite evaluates an embedded expression only after a test that its
+    // adapter is healthy: a first segment that is an expression follows the adapter's status, and a text's write returns the recorded failure
+    // itself, so a text first needs none (fail-before: next() ran first, on an adapter that may have failed already).
+    [Theory]
+    [InlineData("\\(next())x", new[] { "status", "next", "write" })]
+    [InlineData("x\\(next())", new[] { "write", "next", "write" })]
+    public void ATryWritesFirstExpressionFollowsItsAdaptersStatus(string literal, string[] calls)
+    {
+        var body = Body("func next() -> i32 => 1\nfunc f(w: uniq/Utf8Writer) -> Result<(), BufferFull> => $tryWrite(w, \"" + literal + "\")\n", "f");
+        Assert.Equal(calls, HealthyPath(body, calls.Length));
+
+        // The first test's failure arm reaches the result's status without the expression (SPEC 22.10.4).
+        var failed = new List<string>();
+        var first = Array.FindIndex(body.Blocks.ToArray(), static x => x.Terminator.Kind == MirTerminatorKind.SwitchInt);
+        for (var block = body.Blocks[first].Terminator.Target; block >= 0 && body.Blocks[block].Terminator.Kind != MirTerminatorKind.Return;)
+        {
+            var terminator = body.Blocks[block].Terminator;
+            if (terminator.Kind == MirTerminatorKind.Call)
+            {
+                failed.Add(terminator.Callee.Symbol!.Name);
+            }
+
+            block = terminator.Target;
+        }
+
+        Assert.Equal(["status"], failed);
+    }
+
+    // SPEC 22.10.3, 22.10.5 (DECISIONS R5-M133): an owning interpolation is one FormatSegment step per write position, the later literal bytes
+    // and values' Types its hint: a literal segment's text is its step's operand and no write, and so is an embedded string literal's (as if
+    // written: a constant has no effect); a value's position has the empty text and its write follows. The block a failed write goes to exists
+    // only where a write is tested, so text alone builds without validator findings (fail-before: each literal was a write<string> after
+    // FormatHint; then text alone left that block unreachable). A $tryWrite's text stays a write (above).
+    [Theory]
+    [InlineData(
+        "func f(n: i32) -> string => \"n=\\(n)!\"\n",
+        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"n=\" 1 1", "FormatSegment \"\" 1 0", "write", "FormatSegment \"!\" 0 0", "FormatFinish" })]
+    [InlineData(
+        "func f(n: i32) -> string => \"\\(\"lit\")\\(n)\"\n",
+        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"lit\" 0 1", "FormatSegment \"\" 0 0", "write", "FormatFinish" })]
+    [InlineData("func f() -> string => \"\\(\"only\")\"\n", new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"only\" 0 0", "FormatFinish" })]
+    [InlineData(
+        "func f() -> string => \"x\\(\"y\")z\"\n",
+        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"x\" 2 0", "FormatSegment \"y\" 1 0", "FormatSegment \"z\" 0 0", "FormatFinish" })]
+    public void AnOwningInterpolationsLiteralTextIsItsSegmentStep(string source, string[] steps)
+        => Assert.Equal(steps, HealthyPath(Body(source, "f"), int.MaxValue));
+
+    // DECISIONS R5-M133: an interpolation of text alone leaves the program analyzable, so a true error elsewhere in it is still reported
+    // (fail-before: its unreachable failure block was a validator finding, and the analyses ran on no body).
+    [Fact]
+    public void TextAloneKeepsTheProgramsOtherErrors()
+    {
+        var program = Compile(
+            "func touch(v: uniq/i32) => ()\nfunc f() -> string\n    var x = 1\n    let r = x@uniq\n    let s = \"a\\(x)b\"\n    touch(r)\n    return s\n" +
+            "func only() -> string => \"\\(\"only\")\"\n").BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Contains(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+    }
+
+    // The calls on a body's healthy path from its entry, at most count: a call's, a goto's or a Drop's target and a Result test's Ok arm
+    // continue it. An intrinsic is named by its id, a FormatSegment with its text, later bytes and later values' count; another call by its
+    // function's name.
+    private static List<string> HealthyPath(MirBody body, int count)
+    {
+        var path = new List<string>();
+        for (var block = 0; block >= 0 && path.Count < count;)
+        {
+            var terminator = body.Blocks[block].Terminator;
+            if (terminator.Kind == MirTerminatorKind.Call)
+            {
+                path.Add(Step(body, terminator));
+            }
+
+            block = terminator.Kind switch
+            {
+                MirTerminatorKind.SwitchInt => Assert.Single(body.Cases.Slice(terminator.Start, terminator.Count).ToArray(), static x => x.Value == 0).Target,
+                MirTerminatorKind.Call or MirTerminatorKind.Goto or MirTerminatorKind.Drop => terminator.Target,
+                _ => -1,
+            };
+        }
+
+        return path;
+
+        static string Step(MirBody body, in MirTerminator call)
+        {
+            if (call.Callee.Kind != MirCalleeKind.Intrinsic)
+            {
+                return call.Callee.Symbol!.Name;
+            }
+
+            var id = (IntrinsicId)call.Callee.Arg;
+            var operands = body.Operands.Slice(call.Start, call.Count);
+            return id != IntrinsicId.FormatSegment ? id.ToString()
+                : $"{id} \"{body.Consts[operands[1].Arg].Value}\" {body.Consts[operands[2].Arg].Bits} {body.Consts[operands[3].Arg].Type.Components.Count}";
+        }
+    }
+
     // A function f of the temporaries' program that runs a statement, built without validator findings.
     private static (Compilation C, MirBody Body) Temporaried(string statement)
     {

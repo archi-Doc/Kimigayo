@@ -88,6 +88,11 @@ public sealed partial class OwnershipAnalysis
             return this.Result;
         }
 
+        if (this.GateReceiverDependentCalls(binding))
+        {
+            return this.Result = new(false, 0, this.issues.Count);
+        }
+
         if (this.ReportUnprovenOriginObligations())
         {
             // An unchecked Origin obligation that is not a relation rejects the program with a diagnostic at its use, never silently.
@@ -159,6 +164,25 @@ public sealed partial class OwnershipAnalysis
         this.candidates.Clear();
     }
 
+    // SPEC 15.8.2 (DECISIONS R4-M126 §2.13, R4-M152; the owner's D5 exception, OQ-F7-1 (vi)): Binding binds a value call whose result
+    // depends on its call receiver, which this analysis cannot judge, so a program with one gets the located Unsupported_Kd at each such
+    // call, the call's current plan deciding (F4), and nothing else of it is analyzed, as R1's Binding failure left it.
+    [Transitional("R6-check", Reason = "The old analysis's gate goes with the old analysis.")]
+    private bool GateReceiverDependentCalls(Binding binding)
+    {
+        var gated = false;
+        foreach (var call in binding.ReceiverDependentCalls)
+        {
+            if (call.BoundValueCall is { ReceiverDependentResult: true })
+            {
+                this.issues.Add(new(call, OwnershipRequirement.Unsupported));
+                gated = true;
+            }
+        }
+
+        return gated;
+    }
+
     private void ReportDiagnostics(IReadOnlyList<OwnershipIssue> reportedIssues, DiagnosticRequirement? requirementOverride = null, string? instanceContext = null, Koto? instanceSite = null)
     {
         // Ownership analysis runs only after complete Binding, so its checks never rest on a Binding failure. The result that a
@@ -206,7 +230,7 @@ public sealed partial class OwnershipAnalysis
                 continue;
             }
 
-            if (issue.Capture >= 0 && issue.Source is FunctionKoto { BoundClosure: { } closure } capturing)
+            if (issue.Capture >= 0 && issue.Source is FunctionKoto { ClosureAsCreated: { } closure } capturing)
             {
                 ReportCapture(issue, capturing, closure.Captures[issue.Capture].Source);
                 continue;
@@ -515,7 +539,7 @@ public sealed partial class OwnershipAnalysis
         this.normalExit = this.New(OwnershipOperationKind.Exit, function);
         this.abortExit = this.New(OwnershipOperationKind.Exit, function);
         this.resultPlace = this.Place(function, declarationDefault >= 0 ? function.Parameters[declarationDefault].Type.BoundType : function.BoundSymbol?.Type ?? BoundType.Unit, OwnershipPlaceKind.Result, true);
-        if (declarationDefault < 0 && function.Captures is { Length: > 0 } && function.BoundClosure is null)
+        if (declarationDefault < 0 && function.Captures is { Length: > 0 } && function.ClosureAsCreated is null)
         {
             this.Internal(function);
         }
@@ -550,7 +574,7 @@ public sealed partial class OwnershipAnalysis
             return;
         }
 
-        if (function.BoundClosure is { } closure)
+        if (function.ClosureAsCreated is { } closure)
         {
             for (var i = 0; i < closure.Captures.Count; i++)
             {
@@ -608,7 +632,7 @@ public sealed partial class OwnershipAnalysis
     // honest.
     private void CheckEnvironmentMoves(FunctionKoto function)
     {
-        if (function.BoundClosure is not { EnvironmentType: not null, Receiver: not SemanticsKind.Owner } closure)
+        if (function.ClosureAsCreated is not { EnvironmentType: not null, Receiver: not SemanticsKind.Owner } closure)
         {
             return;
         }
@@ -1055,7 +1079,7 @@ public sealed partial class OwnershipAnalysis
 
         switch (node)
         {
-            case FunctionKoto { BoundClosure: { } } closure:
+            case FunctionKoto { ClosureAsCreated: { } } closure:
                 return this.CreateClosure(closure);
             case ParenthesizedKoto parentheses:
                 return this.Expression(parentheses.Operand, use, acquisition);

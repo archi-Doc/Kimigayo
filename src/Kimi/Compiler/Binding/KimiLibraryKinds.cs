@@ -167,18 +167,18 @@ internal enum IntrinsicId : byte
     TestMessage,
     TestRequireAbort,
     TestRecordValue,
-    TestPhaseEnter,
-    TestPhaseLeave,
     TestTempDirectory,
     StaticEnsure, // SPEC 22.4.3.
     [Transitional("R8", Reason = "R8 replaces this temporary intrinsic with Kimigayo representation and library code.")]
     Capacity, // Temporary (owner, 2026-10-11): an Array's or a Dictionary's capacity (SPEC 4.9.5) until R8 makes it a Field read.
     [Transitional("R8", Reason = "R8 replaces this temporary intrinsic with Kimigayo representation and library code.")]
-    FormatBuffer, // Temporary (owner, 2026-10-11) until R8 writes the internal adapter in Kimigayo: an owning interpolation's private buffer of
+    FormatBuffer, // Temporary (owner, 2026-10-11) until R8 writes the internal adapter in Kimigayo: the owning interpolation's private buffer of
+    // the capacity its instance estimates.
     [Transitional("R8", Reason = "R8 replaces this temporary intrinsic with Kimigayo representation and library code.")]
-    FormatHint, // the capacity its instance estimates, the hint before each write and the adapter's end into the string (SPEC 22.10.5, 22.10.3).
+    FormatSegment, // One step per write position, the hint of the later literal bytes and values, then the literal segment's text ("" at a
+    // value's; R5-M133).
     [Transitional("R8", Reason = "R8 replaces this temporary intrinsic with Kimigayo representation and library code.")]
-    FormatFinish,
+    FormatFinish, // The adapter's end into the string (SPEC 22.10.5, 22.10.3).
 }
 
 /// <summary>How an effect summary classifies a compiler function (SPEC 8.11.2), the effect column of the intrinsic table.</summary>

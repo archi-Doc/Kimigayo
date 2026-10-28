@@ -546,25 +546,28 @@ public sealed partial class HirFormsTest
     }
 
     // SPEC 23.1.2 (DECISIONS R5-M63): a closure whose definition Binding completed keeps its parts as a Closure wherever its creation
-    // stands: failed (an Error: its inferred result names its parameter), inside a replaced parent (a let Binding rejected) or rejected
-    // with an expression body, whose result its own Consume takes, or the kept operand of a failed Index, whose creation is evaluated there
-    // (a Closure, in place); a closure whose capture list failed was never bound, so its body stays replaced.
+    // stands: inside a parent Binding rejects for its own reason (a let whose Type annotation fails, the parent replaced), or the
+    // kept operand of a failed Index, whose creation is evaluated there (a Closure, in place); a closure whose capture list failed was
+    // never bound, so its body stays replaced. An inferred result over the call's own storage keeps the Closure's
+    // Type and fails only the returned value (DECISIONS R4-M152): the `return` statement, or an expression body, which its own Consume
+    // takes.
     [Fact]
     public void AClosureDefinitionIsPublishedWhereverItsCreationStands()
     {
         const string Source = "func take(a: string, b: string) -> i32 => 1\nfunc f(m: i32)\n" +
             "    _ = func (n: i32)\n        let t = \"x\"\n        _ = take(t@move, t@move)\n        return n@ref\n" +
-            "    let g = func (k: i32)\n        return k@ref\n    _ = func (s: string) => s@ref\n    let w = \"w\"\n    _ = func [w] () => 1\n" +
+            "    let g = func (k: i32)\n        return k@ref\n    let h: Missing = func (k: i32)\n        return k\n" +
+            "    _ = func (s: string) => s@ref\n    let w = \"w\"\n    _ = func [w] () => 1\n" +
             "    _ = m[func (k: i32) -> i32 => k]\n";
         var c = MinimalEmissionTest.Analyze(Source);
         HirTables.Publish(c);
         var closures = Reachable(c.Kotonoha).OfType<FunctionKoto>().Where(static x => x.IsAnonymous).ToArray();
         var rows = closures.Select(static x => (Koto?)x.Body ?? x.ExpressionBody!)
             .Select(static x => $"{HirTables.Op(x.Parent!)} {HirTables.Op(x)} {HirTables.AdjustOf(x).Acquire}");
-        Assert.Equal(["Error Block Unset", "Syntax Block Unset", "Error Borrow Temporary", "Error Syntax Unset", "Closure Name Copy"], rows);
+        Assert.Equal(["Closure Block Unset", "Closure Block Unset", "Syntax Block Unset", "Closure Error Temporary", "Error Syntax Unset", "Closure Name Copy"], rows);
         Assert.Equal(new HirAdjust(HirAcquire.None, HirAdaptation.None), HirTables.AdjustOf(closures[^1]));
         var statements = Reachable(c.Kotonoha).Where(x => x.Parent is CodeBlockKoto && IsWithin(x, closures[0])).Select(static x => HirTables.Op(x));
-        Assert.Equal([HirOp.Let, HirOp.Discard, HirOp.Jump], statements);
+        Assert.Equal([HirOp.Let, HirOp.Discard, HirOp.Error], statements);
     }
 
     // SPEC 14.2.2, 3.5 (DECISIONS R4-M145): a Place in Discard Context is acquired by bare acquisition, as at a value position, and
@@ -594,6 +597,36 @@ public sealed partial class HirFormsTest
             rows);
 
         static string Adjust(HirAdjust adjust) => $"{adjust.Acquire}/{adjust.Adaptation}";
+    }
+
+    // SPEC 3.5.1, 8.14, 8.15.2 (PLAN G262, DECISIONS BU-45): a bare acquisition Reborrows a stored exclusive reference, or a pair layer in
+    // its exclusive case, only where the path grants exclusive access in that case; through a shared layer (a `ref` follow, a Slice
+    // element, a `let`-owned Array element, a Field through `ref`, another binder's pair layer) it has no plan, the Move the old path's
+    // TransferRequired_Kd rejects. An exclusive path, a `var` Array element and the acquiring binder's own layers keep the Reborrow or the
+    // acquisition by case. Each row: the Place, its Adjust (the plan row's for the discarded one).
+    [Fact]
+    public void ABareAcquisitionReborrowsOnlyThroughAnExclusivePath()
+    {
+        const string Source = "struct Holder {source}\n    public var link: uniq/i32 during source\nstruct Box<s/T>\n    public var v: s/T\n" +
+            "func f(r: ref/(uniq/i32 during a) during b, u: uniq/(uniq/i32 during c) during d, s: Slice<uniq/i32 during e> during g, h: ref/(Holder during k) during m, n: uniq/i32, o: uniq/i32)\n" +
+            "    let shared = r@follow\n    _ = r@follow\n    r@follow\n    let element = s[0]\n    let field = h.link\n    let exclusive = u@follow\n" +
+            "    let values: Array<uniq/i32> = [n@move]\n    let denied = values[0]\n    var owned: Array<uniq/i32> = [o@move]\n    let granted = owned[0]\n" +
+            "func p<s/T, t/U>(x: ref/(s/T during a) during b, w: t/(s/T during c) during d, z: s/(s/T during e) during g, bx: s/Box<s/T>, q: uniq/(s/T during h) during k)\n" +
+            "    s is ref or uniq\n    t is ref or uniq\n    let pair = x@follow\n    let other = w@follow\n    let own = z@follow\n    let part = bx.v\n    let through = q@follow\n" +
+            "public func main() => ()\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        HirTables.Publish(c);
+        var rows = Reachable(c.Kotonoha)
+            .Where(static x => (x.Parent is VariableKoto { InitializerKoto: { } initializer } && ReferenceEquals(initializer, x) && x is not ArrayLiteralKoto) ||
+                x.Parent is DiscardKoto || (x.Parent is CodeBlockKoto && HirTables.PlaceOf(x).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value)))
+            .Select(static x => $"{Source.Substring(x.Span.Start, x.Span.Length)} {(x.Parent is CodeBlockKoto ? HirTables.PlanOf(x).Adjust : HirTables.AdjustOf(x)).Acquire}");
+        Assert.Equal(
+            [
+                "r@follow Move", "r@follow Move", "r@follow Move", "s[0] Move", "h.link Move", "u@follow Reborrow", "values[0] Move", "owned[0] Reborrow",
+                "x@follow Move", "w@follow Move", "z@follow ByCase", "bx.v ByCase", "q@follow ByCase",
+            ],
+            rows);
     }
 
     // SPEC 14.2.2, 23.1.2 (DECISIONS R4-M145): in a program Binding accepts, every Place the MIR builder takes as its value by its plan

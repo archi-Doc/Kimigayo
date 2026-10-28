@@ -596,7 +596,7 @@ public sealed partial class OwnershipBody
                 // Types carry it. Those bindings are Fields of the closure's receiver, so the Loans fall on their Places.
                 void RecordCarriers()
                 {
-                    if (rooted || this.Function is not { IsAnonymous: true, ClosureStorage: { } plan })
+                    if (rooted || this.Function is not { IsAnonymous: true, ClosureAsCreated: { } plan })
                     {
                         return;
                     }
@@ -1675,7 +1675,7 @@ public sealed partial class OwnershipBody
         if (lending >= 0 && this.LendingBorrow(lending, root) is >= 0 and var borrow)
         {
             borrowed = this.Operations[borrow].Source;
-            if (borrowed is FunctionKoto { BoundClosure: { } closure, Captures: { } entries })
+            if (borrowed is FunctionKoto { ClosureAsCreated: { } closure, Captures: { } entries })
             {
                 for (var i = 0; i < closure.Captures.Count && capture < 0; i++)
                 {

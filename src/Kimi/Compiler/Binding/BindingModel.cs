@@ -189,7 +189,6 @@ internal enum BindingFailure : byte
     UnsafeFunctionValue,
     UnavailableReservedImport,
     SplitCLayoutStorage,
-    InvalidCLayout,
     InvalidInlineLayout,
 
     // SPEC 15.1.5 lending rule: a bare Non-Copy Place needs @move, and a directly owned Place needs @uniq.
@@ -396,8 +395,9 @@ public sealed record BoundType
         this.Semantics = semantics;
         this.Components = components ?? [];
         this.Length = length;
-        // DECISIONS BU-24: the slot's role is the layer's. Unstated is never stored; Holder only in the raw role.
-        if (origin?.Kind == OriginKind.Unstated || (semantics != SemanticsKind.Raw && origin?.Kind == OriginKind.Holder))
+        // DECISIONS BU-24, BU-46: the slot's role is the layer's. Holder and Unstated only in the raw role (Unstated, a kept part's mark
+        // of a layer its declaration writes without `during`, Binding.WithUnstatedOrigins).
+        if (semantics != SemanticsKind.Raw && origin?.Kind is OriginKind.Unstated or OriginKind.Holder)
         {
             throw new InvalidOperationException($"An Origin of kind {origin.Kind} is no Origin of a {semantics} layer.");
         }
@@ -536,7 +536,8 @@ public sealed record BoundType
     // Function Item length bindings use declaration slots; Type slots are null. Components contain only actual Types.
     internal BoundLength?[] LengthArguments { get; } = [];
 
-    /// <summary>Gets the Origin a raw layer states (SPEC 5.7; null: unstated); null on any other layer (DECISIONS BU-24).</summary>
+    /// <summary>Gets the Origin a raw layer states (SPEC 5.7; null: unstated; Unstated only on a kept part's layer its declaration writes
+    /// without `during`, DECISIONS BU-46); null on any other layer (DECISIONS BU-24).</summary>
     internal BoundOrigin? RawOrigin => this.Semantics == SemanticsKind.Raw ? this.origin : null;
 
     /// <summary>Gets a value indicating whether this Type or any nested component carries an Origin (<see cref="Origin"/>).</summary>

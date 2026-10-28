@@ -8,217 +8,6 @@ public sealed partial class Binding
 {
     private readonly ScratchBuffers<BoundDefaultArgument> defaultArgumentScratch = new();
 
-    private static Koto? IncompleteSignature(FunctionKoto function)
-    {
-        if (function.ReturnType is { BindingState: not BindingState.Resolved } result)
-        {
-            return result;
-        }
-
-        for (var i = 0; i < function.Parameters.Count; i++)
-        {
-            if (function.Parameters[i].Type is { BindingState: not BindingState.Resolved } type)
-            {
-                return type;
-            }
-        }
-
-        return null;
-    }
-
-    // The first failed node inside a parameter Type whose outer layer resolved.
-    private Koto? FailedSignaturePart(FunctionKoto function)
-    {
-        var visitor = this.failedSignaturePartVisitor ??= new();
-        for (var i = 0; i < function.Parameters.Count; i++)
-        {
-            if (visitor.Find(function.Parameters[i].Type, invalidState: true) is { } part)
-            {
-                return part;
-            }
-        }
-
-        return null;
-    }
-
-    private BindingSymbol? Member(MemberAccessKoto member, BindingScope scope, BoundType? expected = null)
-    {
-        if (member.Left is BaseReferenceKoto baseReference)
-        {
-            return this.BaseMember(member, baseReference, scope);
-        }
-
-        if (member.Right.Akind == KotoKind.ConstructorReference)
-        {
-            return this.ConstructorMember(member, scope);
-        }
-
-        if (member.Right is not IdentifierNameKoto right)
-        {
-            return null;
-        }
-
-        BindingSymbol? typeMember = null;
-        BindingSymbol? valueMember = null;
-        MemberSelection typeSelection = default;
-        MemberSelection valueSelection = default;
-        var qualifier = this.TypeName(member.Left, scope, false);
-        if (qualifier?.Type is { } type && qualifier.Declaration is not ContractKoto)
-        {
-            typeMember = this.RequirementMember(member, scope, type, true);
-        }
-
-        if (qualifier is not null && qualifier.Declaration is not ContractKoto && this.scopes.TryGetValue(qualifier.Declaration, out var typeScope))
-        {
-            if (qualifier.Type is not null)
-            {
-                var originQualifier = qualifier.Declaration is not EnumKoto && qualifier.Schema is { Origins.Count: > 0 };
-                var callQualifier = originQualifier && IsCallee(member);
-                if ((qualifier.Declaration is EnumKoto ? this.EnumQualifierType(member.Left, qualifier, scope, expected)
-                    : this.BindType(member.Left, scope, this.TypeContext(member.Left, scope) with { CallQualifier = callQualifier })) is not { } qualifiedType)
-                {
-                    return null;
-                }
-
-                typeSelection = this.LookupTypeMember(qualifiedType, right.IdentifierName, scope);
-                typeMember = typeSelection.Member ?? typeMember;
-                if (originQualifier && this.RejectedOriginQualifier(member, qualifiedType, callQualifier && !typeSelection.Ambiguous ? typeSelection.Member : null))
-                {
-                    return null;
-                }
-            }
-            else if (qualifier.Declaration is GroupKoto { IsRoot: false } &&
-                this.BindContainerQualifier(member.Left, qualifier, scope, this.TypeContext(member.Left, scope)) is { } groupType)
-            {
-                if (groupType.OriginArguments.Count != (qualifier.Schema?.Origins.Count ?? 0) || groupType.OriginArguments.Contains(null!))
-                {
-                    this.Fail(member.Left, BindingFailure.InvalidOrigin);
-                    return null;
-                }
-
-                typeSelection = this.LookupTypeMember(groupType, right.IdentifierName, scope);
-                typeMember = typeSelection.Member;
-            }
-            else if (typeScope.Values.TryGetValue(right.IdentifierName, out var candidate))
-            {
-                typeMember = candidate;
-            }
-        }
-
-        var valuePossible = this.MayBeValueQualifier(member.Left is GenericsKoto constructed ? constructed.Identifier! : member.Left, scope);
-        if (valuePossible)
-        {
-            var receiverType = this.BindNode(member.Left, scope);
-            this.ReceiverThroughLayers(member.Left, receiverType);
-            this.ReceiverElement(member.Left, receiverType);
-            // SPEC 3.4.3: selection continues at the referent of each safe value-reference layer and, under the
-            // object view rules, at the payload of an object handle or view.
-            while (true)
-            {
-                while (receiverType is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && (IsBorrow(receiverType.Semantics) || IsObjectSemantics(receiverType.Semantics)))
-                {
-                    receiverType = receiverType.Components[0];
-                }
-
-                if (receiverType is not null)
-                {
-                    // A nominal member takes priority over a requirement member of the same receiver.
-                    valueMember = this.RequirementMember(member, scope, receiverType, false);
-                    valueSelection = this.LookupTypeMember(receiverType, right.IdentifierName, scope, receiverType);
-                    valueMember = valueSelection.Member ?? valueMember;
-                }
-
-                // SPEC 3.4.3: a qualifying pair layer without the member, declared or published, continues at its target.
-                if (valueMember is not null || receiverType is null || this.FollowablePair(receiverType, scope, out var pairTarget) == SemanticsMask.None)
-                {
-                    break;
-                }
-
-                receiverType = pairTarget;
-            }
-        }
-
-        if (typeSelection.Ambiguous || valueSelection.Ambiguous || (typeMember is not null && valueMember is not null))
-        {
-            this.Fail(member, BindingFailure.Ambiguous, true);
-            return null;
-        }
-
-        var selected = typeMember ?? valueMember;
-        if (selected is null && (typeSelection.Hidden ?? valueSelection.Hidden) is { } hidden)
-        {
-            member.BoundSymbol = hidden;
-            this.Fail(member, BindingFailure.Access);
-            return null;
-        }
-
-        if (selected is not null)
-        {
-            if (typeMember is not null && selected.EnumCase is null && qualifier?.Declaration is EnumKoto)
-            {
-                // Only Case construction may infer the enum qualifier's missing arguments.
-                var qualifiedType = this.BindTypeStructure(member.Left, scope, this.TypeContext(member.Left, scope));
-                if (qualifiedType is null || this.CompleteOrigins(qualifiedType, member.Left as TypeSemanticsKoto, member.Left, scope, this.TypeContext(member.Left, scope)) is not { } completeType)
-                {
-                    return null;
-                }
-
-                typeSelection = typeSelection with { DeclaringType = completeType };
-                Complete(member.Left, completeType);
-            }
-
-            if (selected.Kind != BindingSymbolKind.Function && !this.Accessible(selected, scope, receiverType: typeMember is null ? member.Left.BoundType : null))
-            {
-                this.Fail(member, BindingFailure.Access);
-                return null;
-            }
-
-            this.memberSelections[member] = typeMember is not null ? typeSelection : valueSelection;
-            if (typeMember is not null)
-            {
-                member.Left.BoundSymbol = qualifier;
-                member.Left.BindingState = BindingState.Resolved;
-            }
-
-            member.BoundSymbol = selected;
-            right.BoundSymbol = selected;
-            right.BindingState = BindingState.Resolved;
-        }
-
-        return selected;
-    }
-
-    private bool MayBeValueQualifier(Koto node, BindingScope scope)
-    {
-        if (node is TypeKoto)
-        {
-            return false;
-        }
-
-        if (node is IdentifierNameKoto name)
-        {
-            return this.Lookup(name.IdentifierName, scope, node, false) is not null;
-        }
-
-        if (node is SyntaxFormKoto { Akind: KotoKind.RootName })
-        {
-            return false;
-        }
-
-        if (node is GenericsKoto generic)
-        {
-            return this.MayBeValueQualifier(generic.Identifier!, scope);
-        }
-
-        if (node is MemberAccessKoto member)
-        {
-            return this.MayBeValueQualifier(member.Left, scope) ||
-                (this.TypeName(member.Left, scope, false) is { } type && this.scopes.TryGetValue(type.Declaration, out var members) && member.Right is IdentifierNameKoto right && members.Values.ContainsKey(right.IdentifierName));
-        }
-
-        return true;
-    }
-
     private BoundType? BindCall(InvocationKoto call, BindingScope scope, BoundType? expected)
     {
         // The bound requirement reference of a candidate or winner belongs to its own call (SPEC 8.4.1, 8.6.4): a call bound inside
@@ -622,7 +411,7 @@ public sealed partial class Binding
                     var rejected = new RejectedCandidate(selected, null, null, Selected: true);
                     for (var i = 0; i < argumentCount; i++)
                     {
-                        if (KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]) is FunctionKoto { BoundClosure: { } closure } &&
+                        if (KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]) is FunctionKoto { ClosureDefinition: { } closure } &&
                             this.TryCallable(selected.Parameters[mapping[i]].Type.BoundType!, this.ConstraintScope(selected), out _, out var required) &&
                             !CallableReceiverFits(closure.Receiver, CallableReceiverMask(required)))
                         {
@@ -701,40 +490,16 @@ public sealed partial class Binding
                 return Complete(call, null);
             }
 
-            // SPEC 15.6.1: the selected candidate's Origin relations, never part of its applicability, are judged at their sources.
-            this.JudgeSelectedCall(call, selected, selectedOperations, argumentCount, origins, inputs, selectedType);
+            // SPEC 15.6.1: the selected candidate's Origin relations, never part of its applicability, are judged at their sources, a
+            // default's at the call (SPEC 15.6.4 step 3); the written inputs are judged also when a default has no Type (SPEC 23.1.2).
             var defaultCount = evaluated[winnerIndex].DefaultsUsed;
-            if (defaultCount != 0)
+            var receiverSlot = receiverOperation.Source is null ? -1 : receiverOperation.ParameterIndex;
+            var solution = this.Solution(evaluation, selected, selectedType);
+            var formed = this.SelectedDefaults(solution, mapping.AsSpan(0, argumentCount), receiverSlot, defaultCount, out defaults);
+            this.JudgeSelectedCall(call, selected, selectedOperations, origins, inputs, selectedType, defaults.AsSpan(0, formed ? defaultCount : 0));
+            if (!formed)
             {
-                // Candidate evaluation reuses used[]; reconstruct only the winner's
-                // slots from its retained mapping, without repeating selection.
-                used.AsSpan(0, selected.Parameters.Count).Clear();
-                for (var i = 0; i < argumentCount; i++)
-                {
-                    used[mapping[i]] = true;
-                }
-
-                if (receiverOperation.Source is not null)
-                {
-                    used[receiverOperation.ParameterIndex] = true;
-                }
-
-                defaults = this.defaultArgumentScratch.Rent(defaultCount);
-                var defaultIndex = 0;
-                for (var i = 0; i < selected.Parameters.Count; i++)
-                {
-                    if (!used[i])
-                    {
-                        var parameter = selected.Parameters[i];
-                        if (parameter.DefaultValue is not { } expression || parameter.Type.BoundType is not { } pattern ||
-                            this.CallType(pattern, selected, scratch, scope, self, origins, inputs, selectedType, lengthArguments) is not { } parameterType)
-                        {
-                            return this.Fail(call, BindingFailure.MissingType, true);
-                        }
-
-                        defaults[defaultIndex++] = new(expression, this.ParameterSymbol(selected, i), parameterType);
-                    }
-                }
+                return this.Fail(call, BindingFailure.MissingType, true);
             }
 
             this.RequireResultPremises(selected, result, call); // SPEC 15.3.7: the callee's result premises.
@@ -806,236 +571,46 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 7.2.3, 10.1 step 2: the `count` defaults the selected candidate uses (DefaultSlots), each with its instantiated parameter Type;
+    // `defaults` is rented for the caller to return. False when one has no Type.
+    private bool SelectedDefaults(in SlotSolution solution, ReadOnlySpan<int> mapping, int receiverSlot, int count, out BoundDefaultArgument[]? defaults)
+    {
+        defaults = null;
+        if (count == 0)
+        {
+            return true;
+        }
+
+        var function = solution.Function;
+        var slots = this.RentSlotSet(function.Parameters.Count);
+        try
+        {
+            DefaultSlots(function, mapping, receiverSlot, ref slots);
+            defaults = this.defaultArgumentScratch.Rent(count);
+            var next = 0;
+            for (var i = 0; i < function.Parameters.Count; i++)
+            {
+                if (slots.Contains(i))
+                {
+                    var parameter = function.Parameters[i];
+                    if (parameter.DefaultValue is not { } expression || parameter.Type.BoundType is not { } pattern ||
+                        solution.Type(pattern) is not { } parameterType)
+                    {
+                        return false;
+                    }
+
+                    defaults[next++] = new(expression, this.ParameterSymbol(function, i), parameterType);
+                }
+            }
+
+            return true;
+        }
+        finally
+        {
+            this.ReturnSlotSet(slots);
+        }
+    }
+
     private Koto? CallReceiver(Koto callee)
         => callee is SyntheticKoto synthetic ? synthetic.Receiver : callee is MemberAccessKoto member && (this.requirementGroups.TryGetValue(member, out var group) && group.Active ? !group.TypeAccess : member.Left.BoundSymbol?.Kind is not (BindingSymbolKind.Type or BindingSymbolKind.Container)) ? member.Left : null;
-
-    // SPEC 8.1.2: an s/U whose s is already inferred is matched as the Type it forms: U for owner, one reference layer with
-    // the occurrence's outer-Origin slot for ref or uniq. An application whose s is still open is returned as it is.
-    private BoundType FormedApplication(BoundType pattern, Koto function, BoundType?[] arguments)
-    {
-        for (var depth = 0; depth < 16; depth++)
-        {
-            if (pattern is not { Kind: BoundTypeKind.SemanticsApplication, Symbol: { } selector, Components: [var target] } ||
-                ContainerSlot(function, selector) is not (>= 0 and var slot) || slot >= arguments.Length || arguments[slot] is not { } whole)
-            {
-                break;
-            }
-
-            if (whole.Semantics == SemanticsKind.Owner)
-            {
-                pattern = target;
-            }
-            else if (whole.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)
-            {
-                pattern = this.types.Intern(BoundTypeKind.Semantics, null, whole.Semantics, [target], origin: pattern.Origin);
-                break;
-            }
-            else
-            {
-                break;
-            }
-        }
-
-        return pattern;
-    }
-
-    // With `evidence`, the actual is a known call signature (SPEC 10.5, 10.8): an argument's, or the parts an anonymous header writes.
-    // Its structure and Semantics are evidence, and its Origins are not compared: applicability judges no Origin part (SPEC 15.6.1),
-    // and the argument fits the substituted parameter after selection. An Origin the signature itself quantifies, such as a per-call
-    // input, lies beyond the call and never solves an Origin in a slot: it becomes an open region that other evidence fills.
-    // With `relateLater`, the actual is a value's Type whose Origin relations to the solution are judged after selection (SPEC 15.6.1),
-    // so Origin evidence never fails a structurally equal slot binding; `invariant` marks a position below an exclusive layer or an
-    // invariant schema slot.
-    private bool Infer(BoundType pattern, BoundType actual, Koto function, BoundType?[] arguments, bool inferOrigins = false, BoundLength?[]? lengths = null, bool commonOrigins = false, bool structural = false, SignatureEvidence? evidence = null, bool relateLater = false, bool invariant = false)
-    {
-        if (pattern.Kind == BoundTypeKind.AssociatedProjection)
-        {
-            // An associated Type is not an injective constructor: infer its receiver from
-            // other inputs, then check the substituted complete parameter in candidate fitting.
-            return true;
-        }
-
-        if (pattern.Kind == BoundTypeKind.TargetProjection && pattern.Symbol is { } projected &&
-            ContainerSlot(function, projected) is >= 0 and var projectionSlot)
-        {
-            // The target alone does not determine a pair's Semantics. Once another input, an explicit argument or the
-            // result fixes the whole Type, match its direct target; final candidate fitting checks a still-open projection.
-            return projectionSlot < arguments.Length && (arguments[projectionSlot] is not { } whole ||
-                this.Infer(this.DirectTarget(whole), actual, function, arguments, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant));
-        }
-
-        if (pattern.Kind == BoundTypeKind.SemanticsApplication && pattern.Symbol is { } selector &&
-            ContainerSlot(function, selector) is var selectorSlot && selectorSlot >= 0 && selectorSlot < arguments.Length)
-        {
-            if (arguments[selectorSlot] is not { } whole)
-            {
-                return true; // SPEC 10.2: solved together; the substituted parameter is checked once another argument fixes s/T.
-            }
-
-            if (whole.Semantics == SemanticsKind.Owner)
-            {
-                return this.Infer(pattern.Components[0], actual, function, arguments, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant);
-            }
-
-            return actual.Kind == BoundTypeKind.Semantics && actual.Semantics == whole.Semantics &&
-                this.Infer(pattern.Components[0], actual.Components[0], function, arguments, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant || whole.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw);
-        }
-
-        // SPEC 3.1.1: the wrapping Scalar Wrapping<u8> is the instance of the pattern Wrapping<T>, so T is inferred from
-        // the Scalar's integer argument; the substituted parameter then normalizes to the same Scalar.
-        if (actual.IsWrappingInteger && pattern is { Kind: BoundTypeKind.Constructed, Components.Count: 1 } && pattern.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping)
-        {
-            return this.Infer(pattern.Components[0], actual.Underlying, function, arguments, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant);
-        }
-
-        if (pattern.Kind == BoundTypeKind.Parameter && ContainerSlot(function, pattern.Symbol!) is var slot && slot >= 0)
-        {
-            if ((uint)slot >= (uint)arguments.Length)
-            {
-                return false;
-            }
-
-            if (HasArrayLengthHole(actual))
-            {
-                // An incomplete annotation cannot become a generic argument. Established argument evidence is checked
-                // against it at the ordinary result fit; without such evidence the slot remains unsolved.
-                return arguments[slot] is not { } establishedArray || IsStructuralSubtype(establishedArray, actual);
-            }
-
-            // SPEC 10.2.2: a parameter constrained to Position, PositionRange or PrimitiveInteger binds the referent; the
-            // argument is then value-read.
-            if (!structural && actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
-                ComparisonReferent(actual) is var referent && !ReferenceEquals(referent, actual) && this.InfersReadReferent(pattern, this.activeInferenceFunction is { } inference && ReferenceEquals(CallSlotOwner(inference), function) ? inference : function))
-            {
-                actual = referent;
-            }
-
-            if (evidence is { Binder: FunctionKoto { BoundClosure: not null } closure } && HasEnvironmentOrigin(actual, closure))
-            {
-                // SPEC 8.10, 7.7.4: a result over the closure's hidden environment receiver satisfies no Callable signature and no
-                // erasure, so that part is no evidence for the slot; the Callable proof or the conversion judges it against the rest.
-                this.environmentEvidence = true;
-                return true;
-            }
-
-            if (evidence is { Binder: { } binder } known)
-            {
-                actual = this.OpenKnownOrigins(actual, binder, known.Source);
-            }
-
-            if (arguments[slot] is { } previous)
-            {
-                if (!ReferenceEquals(previous, actual) && (HasOpenOrigin(previous) || HasOpenOrigin(actual)))
-                {
-                    // SPEC 10.8: no argument fixes a slot first by traversal order. Another argument's Origin at an open position
-                    // solves it, whichever comes first; two open positions keep the earlier region.
-                    previous = this.FillOpenOrigins(previous, actual, false);
-                    actual = this.FillOpenOrigins(actual, previous, true);
-                }
-
-                if (relateLater && !structural && !ReferenceEquals(previous, actual) &&
-                    IsStructuralSubtype(actual, previous) && IsStructuralSubtype(previous, actual))
-                {
-                    // SPEC 10.8, 15.3.6: Origin evidence for a slot never makes the candidate inapplicable; each argument's relation to
-                    // the solution is judged after selection (SPEC 15.6.1). An explicit Type argument is kept, an invariant binding is
-                    // kept over covariant ones and the first invariant one over later ones, whatever the argument order, and covariant
-                    // bindings meet.
-                    if (!commonOrigins || this.invariantSlots.Contains(slot))
-                    {
-                        arguments[slot] = previous;
-                    }
-                    else if (invariant)
-                    {
-                        arguments[slot] = actual;
-                        this.invariantSlots.Add(slot);
-                    }
-                    else
-                    {
-                        arguments[slot] = IsSubtype(actual, previous) ? previous : this.CommonOriginType(previous, actual) ?? previous;
-                    }
-
-                    return true;
-                }
-
-                // SPEC 10.8: structural matching compares normalized Types, so two spellings of one Function Type, whose per-call
-                // inputs have distinct binders, are one binding.
-                if (ReferenceEquals(previous, actual) || (!structural && inferOrigins && IsSubtype(actual, previous)) ||
-                    (structural && previous.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function &&
-                    IsSubtype(actual, previous) && IsSubtype(previous, actual)))
-                {
-                    arguments[slot] = previous;
-                    return true;
-                }
-
-                if (commonOrigins && this.CommonOriginType(previous, actual) is { } common)
-                {
-                    arguments[slot] = common;
-                    return true;
-                }
-
-                return false;
-            }
-
-            arguments[slot] = actual;
-            if (relateLater && invariant)
-            {
-                this.invariantSlots.Add(slot);
-            }
-
-            return true;
-        }
-
-        if (ReferenceEquals(pattern, actual))
-        {
-            return true;
-        }
-
-        if (pattern.Kind != actual.Kind || pattern.Symbol != actual.Symbol || pattern.Semantics != actual.Semantics ||
-            !(lengths is not null && pattern.Kind == BoundTypeKind.FixedArray ? this.InferLength(pattern, actual, function, lengths) : pattern.Length == actual.Length && ReferenceEquals(pattern.LengthExpression, actual.LengthExpression)) ||
-            (!inferOrigins && evidence is null && !ReferenceEquals(pattern.Origin, actual.Origin)) || pattern.OriginArguments.Count != actual.OriginArguments.Count || pattern.Components.Count != actual.Components.Count || pattern.LengthArguments.Length != actual.LengthArguments.Length || (pattern.Components.Count == 0 && pattern.LengthArguments.Length == 0 && pattern.OriginArguments.Count == 0))
-        {
-            return false;
-        }
-
-        for (var i = 0; i < pattern.LengthArguments.Length; i++)
-        {
-            var required = pattern.LengthArguments[i];
-            var supplied = actual.LengthArguments[i];
-            if (!ReferenceEquals(required, supplied) && (required is null || supplied is null || lengths is null || !this.InferLength(required, supplied, function, lengths)))
-            {
-                return false;
-            }
-        }
-
-        for (var i = 0; i < pattern.OriginArguments.Count; i++)
-        {
-            if (!inferOrigins && evidence is null && !ReferenceEquals(pattern.OriginArguments[i], actual.OriginArguments[i]))
-            {
-                return false;
-            }
-        }
-
-        for (var i = 0; i < pattern.Components.Count; i++)
-        {
-            var below = invariant || IsInvariantLayer(pattern, this) ||
-                (pattern.Kind == BoundTypeKind.Constructed && pattern.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count && schema.GenericSlots[i].OriginVariance is OriginVariance.Invariant or OriginVariance.Unused);
-            if (!this.Infer(
-                pattern.Components[i],
-                actual.Components[i],
-                function,
-                arguments,
-                inferOrigins,
-                lengths,
-                commonOrigins,
-                structural,
-                evidence,
-                relateLater,
-                below))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
 }

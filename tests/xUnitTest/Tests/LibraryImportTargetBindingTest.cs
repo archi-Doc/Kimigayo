@@ -217,6 +217,8 @@ public class LibraryImportTargetBindingTest
     [InlineData("struct S\n    public var a: i32", "(value: ref/S)", DiagnosticCode.Unsupported_Kd, "ref/S")]
     [InlineData("#Layout(\"C\")\nstruct S\n    public var a: bool", "(value: ref/S)", DiagnosticCode.Unsupported_Kd, "ref/S")]
     [InlineData("struct Inner\n    public var a: i32\n#Layout(\"C\")\nstruct S\n    public var inner: Inner", "(value: uniq/S)", DiagnosticCode.Unsupported_Kd, "uniq/S")]
+    [InlineData("#Layout(\"C\")\nopen struct S\n    public var a: i32", "(value: ref/S)", DiagnosticCode.Unsupported_Kd, "ref/S")]
+    [InlineData("#Layout(\"C\")\nstruct S\n    public var a: i32\n    public var none: [0 of i32]", "(value: uniq/S)", DiagnosticCode.Unsupported_Kd, "uniq/S")]
     [InlineData("enum E\n    First\n    Second", "(value: E)", DiagnosticCode.Unsupported_Kd, "E")]
     [InlineData("struct S\n    public var a: i32", "(value: objref/S during a)", DiagnosticCode.Unsupported_Kd, "objref/S during a")]
     [InlineData("#Layout(\"C\")\nstruct S\n    public var a: i32", "(value: objuniq/S during a)", DiagnosticCode.Unsupported_Kd, "objuniq/S during a")]
@@ -230,16 +232,13 @@ public class LibraryImportTargetBindingTest
         AssertImportRecord(c, code, at, code is null);
     }
 
-    // A borrow of a struct whose declaration already failed (SPEC 21.1: an open C struct, a zero-sized Field) rests on that error and
-    // adds no import record; Weak, which Binding does not support yet, has only its own record at its Type.
+    // A borrow of Weak, which Binding does not support yet, has only Weak's own record at its Type. (A borrow of a struct whose C layout is
+    // unavailable is 22.6's Unsupported_Kd above since DECISIONS R4-M134 Q8: the declaration is no error.)
     [Theory]
-    [InlineData("#Layout(\"C\")\nopen struct S\n    public var a: i32", "(value: ref/S)", null, null)]
-    [InlineData("#Layout(\"C\")\nstruct S\n    public var a: i32\n    public var none: [0 of i32]", "(value: uniq/S)", null, null)]
     [InlineData("struct S\n    public var a: i32", "(value: ref/Weak<rc/S>)", DiagnosticCode.Unsupported_Kd, "Weak")]
     public void AnImportRestsOnItsTypesOwnError(string declarations, string parameters, DiagnosticCode? code, string? at)
     {
         var c = AnalyzeImport(declarations + "\ngroup Native\n    " + Import + "\n    public unsafe func imported" + parameters + " -> i32", "codec");
-        Assert.Equal(code is null, CompilationTestHelper.BindingErrors(c).Any(static x => x.Code == nameof(DiagnosticCode.InvalidCLayout_Kd)));
         AssertImportRecord(c, code, at, false);
     }
 

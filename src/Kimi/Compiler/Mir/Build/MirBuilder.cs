@@ -32,6 +32,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private readonly HashSet<BoundType> walked = new(ReferenceEqualityComparer.Instance); // A Type walk's scratch (MayNeedDrop, HoldsRaw).
     private MirBody body = null!;
     private Koto declaration = null!;
+    private SourceInfo entry; // The body's declaration in its own scope: where _0 without a written result Type and the drop tree's edges are.
     private Koto? constructed; // A constructor's body, whose completion requests its exit (SPEC 6.3.5); null in other bodies.
     private int current; // The block being built.
     private int receiver; // The local a Field of the implicit self, an accessor's storage or a capture is reached from (-1: none).
@@ -108,7 +109,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
 
             foreach (var decl in table.Hir.Defaults!)
             {
-                if (BoundClosure.Of(decl.Function) is null && !this.visited.ContainsKey(decl))
+                if (decl.Function.ClosureDefinition is null && !this.visited.ContainsKey(decl))
                 {
                     this.Visit(decl);
                 }
@@ -130,7 +131,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
             {
                 case null or BindingSymbolKind.Function: // A module's top-level statements have no symbol (SPEC 22.4.1).
                     var function = (FunctionKoto)node;
-                    var closure = BoundClosure.Of(function) is not null; // A Closure's definition (DECISIONS R5-M79).
+                    var closure = function.ClosureDefinition is not null; // A Closure's definition (DECISIONS R5-M79).
                     MirBodyKind kind;
                     if (closure)
                     {
@@ -160,12 +161,14 @@ internal sealed partial class MirBuilder(Compilation compilation)
     // A body: _0 of the result Type, the arguments with the receiver first (an owned one dropped when the body is left, SPEC 16.2.1), a
     // Closure's being its environment in the mode of its call (SPEC 7.7.3), the value into _0 with its temporaries, then Return where the
     // value completes. A destructor's self is no owner: the body's end cleans up its layer's parts (FieldCleanup, SPEC 16.3.1-16.3.2). A
-    // constructor builds its object in _0, its self, from fresh storage (SPEC 6.3.3): the base constructor into the base subobject, this
-    // layer's Field initializers in declaration order, then the body, whose Unit value is set aside. A default template's (plan 5.6.2), a
-    // generic body of its function, takes the slots its call prepared for the earlier parameters as shared references p_i: ref/P_i in
-    // slot order (PreparedInput), which its names read through (Bound), and gives the parameter's value. A parameter has no syntax node of
-    // its own: its p_i is located at the parameter's Type node, the one a fact about the slot names (DECISIONS R4-M90 D6); another
-    // argument is located at its function.
+    // constructor builds its object in _0, its self (MirLocalRole.Receiver), in the fresh storage its caller's construction expression
+    // made (SPEC 6.3.2-6.3.4): the base constructor into the base subobject, this layer's Field initializers in declaration order, then the
+    // body, whose Unit value is set aside (6.3.5). A default template's (plan 5.6.2), a generic body of its function, takes the slots its
+    // call prepared for the earlier parameters as shared references p_i: ref/P_i in slot order (PreparedInput), which its names read
+    // through (Bound), and gives the parameter's value. A parameter has no syntax node of its own: it, a template's p_i included, is located
+    // at its written Type node, the one a fact about the slot names (DECISIONS R4-M90 D6, BU-48), and a function's result at its written
+    // result Type; a Closure's environment, a constructor's or destructor's self, an accessor's arguments, a default template's _0 (the
+    // parameter's value) and a result without a written Type are located at their declaration.
     private void Body(MirDefKey key, Koto declaration, BindingSymbol? function, BoundType result, Koto value)
     {
         var template = key.Kind == MirBodyKind.DefaultTemplate;
@@ -182,7 +185,11 @@ internal sealed partial class MirBuilder(Compilation compilation)
         PairBinder.Collect(declaration, body.Binders);
         var special = template || function is null ? null : CallPlan.Parameter(function, -1); // A constructor's or destructor's self.
         var self = !template && AdtDef.IsConstructor(function) ? AdtDef.ReceiverType((FunctionKoto)declaration) : null;
-        body.AddLocal(new(self ?? result, MirLocalKind.Return, this.Info(declaration, local: true)));
+        var written = declaration as FunctionKoto;
+        this.entry = this.Info(declaration, local: true);
+        body.AddLocal(self is null
+            ? new(result, MirLocalKind.Return, !template && written?.ReturnType is { } type ? this.Info(type, local: true) : this.entry)
+            : new(self, MirLocalKind.Return, this.entry, Role: MirLocalRole.Receiver));
         if (self is not null)
         {
             this.receiver = 0;
@@ -206,7 +213,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
             this.locals[parameter] = this.Argument(
                 compilation.Types.Reference(SemanticsKind.Ref, parameter.Type ?? BoundType.Unit),
                 parameter.Name,
-                ((FunctionKoto)declaration).Parameters[i].Type,
+                written!.Parameters[i].Type,
                 parameters,
                 MirLocalRole.PreparedInput);
         }
@@ -220,7 +227,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
             var layer = this.body.AddLocal(new(special.Type ?? BoundType.Unit, MirLocalKind.Arg, this.Info(declaration, local: true), Name: special.Name));
             this.Register(Cleanup.Fields, this.locals[special] = layer, null, parameters);
         }
-        else if (key.Kind == MirBodyKind.Closure && BoundClosure.Of((FunctionKoto)declaration) is { EnvironmentType: { } environment } plan)
+        else if (key.Kind == MirBodyKind.Closure && ((FunctionKoto)declaration).ClosureDefinition is { EnvironmentType: { } environment } plan)
         {
             this.receiver = this.Argument(
                 plan.Receiver == SemanticsKind.Owner ? environment : compilation.Types.Reference(plan.Receiver, environment),
@@ -229,11 +236,13 @@ internal sealed partial class MirBuilder(Compilation compilation)
                 parameters);
         }
 
-        // The parameters after the special receiver in slot order, or receiver first (MirCallee.Slot).
+        // The parameters after the special receiver in slot order, or receiver first (MirCallee.Slot), each at its written Type occurrence
+        // (SPEC 8.15.3: a parameter's layout record at the use that needs the layout), an accessor's at its declaration.
         for (var position = 0; !template && function is not null && position < Arity(function); position++)
         {
-            var parameter = CallPlan.Parameter(function, special is null ? MirCallee.Slot(function, position) : position)!;
-            this.locals[parameter] = this.Argument(parameter.Type ?? BoundType.Unit, parameter.Name, declaration, parameters);
+            var slot = special is null ? MirCallee.Slot(function, position) : position;
+            var parameter = CallPlan.Parameter(function, slot)!;
+            this.locals[parameter] = this.Argument(parameter.Type ?? BoundType.Unit, parameter.Name, written?.Parameters[slot].Type ?? declaration, parameters);
         }
 
         this.current = body.AddBlock();

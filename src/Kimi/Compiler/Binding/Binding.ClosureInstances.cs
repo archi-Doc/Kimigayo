@@ -10,8 +10,10 @@ public sealed partial class Binding
     [Transitional("R6-gen", Reason = "G7 deletes the old generator, the bridge's one reader.")]
     private readonly Dictionary<(BindingSymbol Closure, Subst Context), CallPlan> closureCalls = new();
 
+    // SPEC 15.8.2, 6.1.3: a Closure Type's call signature, its definition's under the Type's closure context; the definition is the one
+    // the Type names (BoundClosure.Of), whatever its literal's creation outcome (DECISIONS R5-M63, R4-M152).
     internal BoundType? ClosureSignature(BoundType type)
-        => type.Symbol?.Declaration is FunctionKoto { BoundClosure: { } closure }
+        => BoundClosure.Of(type) is { } closure
             ? type.ClosureContext is { } context ? this.types.Apply(closure.Signature, context) : closure.Signature : null;
 
     // The bridge from a closure's context to the CallPlan the old generator keys the closure's instance by (GenericStoragePlan,
@@ -20,7 +22,7 @@ public sealed partial class Binding
     [Transitional("R6-gen", Reason = "G7 deletes the old generator, the bridge's one reader.")]
     internal CallPlan? ClosureCall(BoundType closure)
     {
-        if (closure is not { ClosureContext: { } context, Symbol: { Declaration: FunctionKoto { BoundClosure: { } definition } } symbol })
+        if (closure is not { ClosureContext: { } context, Symbol: { } symbol } || BoundClosure.Of(closure) is not { } definition)
         {
             return null;
         }
@@ -85,8 +87,7 @@ public sealed partial class Binding
             }
 
             Subst? context = null;
-            if (type.Kind == BoundTypeKind.Closure && type.Symbol is { Declaration: FunctionKoto { BoundClosure: { } closure } function } symbol &&
-                this.types.Instantiates(symbol))
+            if (BoundClosure.Of(type) is { } closure && type.Symbol is { Declaration: FunctionKoto function } symbol && this.types.Instantiates(symbol))
             {
                 var enclosing = function.BoundSymbol!.Scope.Function;
                 while (enclosing is { IsAnonymous: true } && !ReferenceEquals(enclosing, instance.Binder))

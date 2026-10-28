@@ -30,6 +30,10 @@ internal sealed class TestCatalog
 
     internal string[] ManifestFields { get; private set; } = [];
 
+    /// <summary>Gets the program version the latest discovery numbered (Compilation.ProgramVersion; 0: none), which MIR code generation
+    /// requires of a test build's catalog (DECISIONS R5-M136).</summary>
+    internal ulong Version { get; private set; }
+
     internal static string Hash(string prefix, params string[] fields)
     {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
@@ -66,6 +70,7 @@ internal sealed class TestCatalog
         this.Cases.Clear();
         this.Sites.Clear();
         this.siteIds.Clear();
+        this.Version = 0;
         if (!compilation.IsTestBuild || !compilation.Binding.Result.IsComplete || !compilation.Analysis.IsVerified)
         {
             throw new InvalidOperationException("Discovery requires complete test semantic verification.");
@@ -161,6 +166,7 @@ internal sealed class TestCatalog
 
         this.ManifestFields = inputs.ToArray();
         this.ArtifactId = Hash("a1-", this.ManifestFields);
+        this.Version = compilation.ProgramVersion;
 
         void Section(string name, int count)
         {

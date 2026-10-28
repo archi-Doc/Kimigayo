@@ -14,7 +14,8 @@ namespace Kimi.Compiler.Backend;
 // acquires nothing and never fails. A string Place is never an operand (MIR inspects strings through shared borrows), a string has no
 // other operator (SPEC 13.3.2), and no valid program reaches a pair layer in an operand (Binding rejects the built-in comparison through a
 // pair target, UnprovenConstraint_Kd; MIR is built per body, so an abstract target is a requirement call): each is a broken contract.
-// C8f's comparison shims read a string leaf's record through Record.
+// C8f's comparison shims read a string leaf's record through Record. Referent, the walk to an operand's terminal Place, serves every
+// comparison operand (FunctionCodegen.Arithmetic's Compute; DECISIONS R5-M143).
 internal sealed partial class FunctionCodegen
 {
     // SPEC 3.4.3, 13.4: the terminal of a comparison operand's Type below its safe value-reference layers (ref, uniq and pair layers; an
@@ -32,6 +33,26 @@ internal sealed partial class FunctionCodegen
         }
 
         return type;
+    }
+
+    // SPEC 3.4.3, 13.4: where an operand of safe value-reference layers denotes its terminal Place, given the operand's value: the referent of
+    // its outer ref or uniq layer through the pointer each further one stores (the place writer's Deref rule), or the value itself without
+    // layers (references 0); its terminal Type. Null after a record: a pair layer, which no valid program leaves on an operand (above).
+    private Value? Referent(in MirOperand operand, Value value, in SourceInfo source, out BoundType? terminal, out int references)
+    {
+        terminal = Terminal(this.InstanceType(operand), out var layers, out references);
+        if (layers != references)
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, source);
+            return null;
+        }
+
+        for (var layer = 1; layer < references; layer++)
+        {
+            value = this.LoadAt(value, PointerLayout);
+        }
+
+        return value;
     }
 
     // A string comparison into its Place (above).
@@ -59,9 +80,9 @@ internal sealed partial class FunctionCodegen
         this.Store(statement, this.Widen(target, result));
     }
 
-    // A string operand's bytes: a constant's (TextBytes), or the record its value reaches: the referent of its outer ref or uniq layer, through
-    // the pointer each further one stores (the place writer's Deref rule). False after a record: a form not covered yet (Unsupported_Kd), or
-    // a string Place or a pair layer, which no valid program makes an operand (InternalInvariant_Kd).
+    // A string operand's bytes: a constant's (TextBytes), or the record at its terminal Place (Referent, the one walk every comparison
+    // operand takes). False after a broken contract's record: the operand's (Operand), or a string Place or a pair layer, which no valid
+    // program makes an operand.
     private bool Bytes(in MirOperand operand, in SourceInfo source, out StringBytes bytes)
     {
         bytes = default;
@@ -71,22 +92,20 @@ internal sealed partial class FunctionCodegen
             return true;
         }
 
-        if (!this.Operand(operand, out var address))
+        if (!this.Operand(operand, out var value))
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, source);
-            return false;
+            return false; // Recorded.
         }
 
-        var terminal = Terminal(this.InstanceType(operand), out var layers, out var references);
-        if (references == 0 || references != layers || !ReferenceEquals(terminal, BoundType.String))
+        if (this.Referent(operand, value, source, out var terminal, out var references) is not { } address)
+        {
+            return false; // Recorded.
+        }
+
+        if (references == 0 || !ReferenceEquals(terminal, BoundType.String))
         {
             this.Report(DiagnosticCode.InternalInvariant_Kd, source);
             return false;
-        }
-
-        for (var layer = 1; layer < references; layer++)
-        {
-            address = this.LoadAt(address, PointerLayout);
         }
 
         bytes = this.Record(address);

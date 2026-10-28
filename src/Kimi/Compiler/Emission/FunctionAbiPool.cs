@@ -35,7 +35,7 @@ internal sealed class FunctionAbiPool
     {
         // A closure body is the entry of a common Function value: its environment word comes first and the result slot second, as
         // every common call and erasure adapter passes them (LlvmModuleWriter.WriteValueCall).
-        var environment = function.BoundClosure?.EnvironmentType is null ? Abi.Flags.ErasedClosure : Abi.Flags.ConcreteClosure;
+        var environment = function.ClosureAsCreated?.EnvironmentType is null ? Abi.Flags.ErasedClosure : Abi.Flags.ConcreteClosure;
         var flags = (function.IsAnonymous ? environment : Abi.Flags.None) |
             (function.IsConstructor || function.IsDestructor ? Abi.Flags.ResultSlot : Abi.Flags.None) |
             (KimiLibraryCatalog.RequiresCallerLocation(function.BoundSymbol) ? Abi.Flags.CallerLocation : Abi.Flags.None);

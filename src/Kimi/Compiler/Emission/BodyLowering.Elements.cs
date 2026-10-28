@@ -204,7 +204,7 @@ internal sealed partial class BodyLowering
                 var operation = body.Operations[i];
                 // A prepared argument is read by its name, or by the entry of a default closure (SPEC 7.2.3).
                 if (operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Read or OwnershipOperationKind.Borrow &&
-                    (operation.Source.BoundSymbol?.Kind == BindingSymbolKind.Parameter || operation.Source is FunctionKoto { BoundClosure: not null }) &&
+                    (operation.Source.BoundSymbol?.Kind == BindingSymbolKind.Parameter || operation.Source is FunctionKoto { ClosureAsCreated: not null }) &&
                     (uint)operation.Place < (uint)body.Places.Count &&
                     body.Places[operation.Place] is { Kind: OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result } prepared &&
                     (SlotTypes.IsResult(prepared.Type) || ReferenceTypes.IsStorage(prepared.Type)))

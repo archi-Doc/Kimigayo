@@ -311,7 +311,7 @@ internal sealed partial class BodyLowering
             return this.LowerVerification(body, function, index, out failure);
         }
 
-        if (body.Values[index].Kind == OwnershipValueKind.Capture && body.Function.BoundClosure?.EnvironmentType is not null)
+        if (body.Values[index].Kind == OwnershipValueKind.Capture && body.Function.ClosureAsCreated?.EnvironmentType is not null)
         {
             var valid = this.LowerCapture(body, function, index, out failure);
             this.AddStringFlags(function, operation, index);
@@ -493,7 +493,7 @@ internal sealed partial class BodyLowering
                 {
                     this.arguments.Add(index);
                 }
-                else if (operation.Source.ErasedFunctionType is null && operation.Source is not FunctionKoto { BoundClosure.EnvironmentType: not null } && operation.Source.Parent is not InvocationKoto { BoundValueCall.ReceiverKind: SemanticsKind.Owner })
+                else if (operation.Source.ErasedFunctionType is null && operation.Source is not FunctionKoto { ClosureAsCreated.EnvironmentType: not null } && operation.Source.Parent is not InvocationKoto { BoundValueCall.ReceiverKind: SemanticsKind.Owner })
                 {
                     return Fail("Unrecognized environment acquisition.", out failure);
                 }

@@ -397,11 +397,12 @@ public class ClosureReceiverClassificationTest
     }
 
     // SPEC 3.5 (2c-2 re-check R2, R3): an enum Case's payload is a listed input, so `.Some(value)` of a captured pair layer Reborrows in
-    // the uniq case: the capture is marked and a `let` Closure's call is Exclusive. X1's TransferRequired_Kd stays at the use, as
-    // outside a Closure, and the net does not replace it; Binding's records, since PLAN G252 also owns the mir builder's record here.
+    // the uniq case: the capture is marked and a `let` Closure's call is Exclusive (SPEC 7.7.3), which its `let` slot cannot lend
+    // (InvalidAssignment_Kd at `h`, as for `take(value)`). The payload is acquired by case (SPEC 6.5.2, 8.14; PLAN G252), as outside a
+    // Closure, so it has no TransferRequired_Kd; Binding's records.
     [Theory]
-    [InlineData("let", "TransferRequired_Kd value; InvalidAssignment_Kd h")]
-    [InlineData("var", "TransferRequired_Kd value")]
+    [InlineData("let", "InvalidAssignment_Kd h")]
+    [InlineData("var", "")]
     public void AnEnumPayloadOfAPairLayerCaptureIsAListedInput(string binding, string records)
     {
         var source = PairHead + "    " + binding + " h = func [value] () -> ()\n        let o: Option<s/T> = .Some(value)\n        _ = o\n    h()\n" + PairMain;
@@ -426,7 +427,7 @@ public class ClosureReceiverClassificationTest
         var function = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous);
         for (var pass = 0; pass < 2; pass++)
         {
-            var closure = BoundClosure.Of(function)!;
+            var closure = function.ClosureDefinition!;
             Assert.Equal((true, SemanticsKind.Uniq, SemanticsKind.Uniq, "n"), (closure.Classified, closure.CaseFreeReceiver, closure.Receiver, closure.ExclusiveUse?.ToString()));
             Assert.Equal(complete, c.Bind().IsComplete);
         }

@@ -313,7 +313,10 @@ public sealed partial class Binding
         if (common is null)
         {
             common = this.SelectCommonType(types, this.ConstraintScope(node), out var conflict);
-            context.Invalid |= conflict;
+            if (conflict)
+            {
+                context.Conflict();
+            }
         }
         else
         {
@@ -323,32 +326,51 @@ public sealed partial class Binding
             {
                 if (!(HasLocalRegion(common) ? this.CheckTypeUse(types[i], common, node) : this.FitsTypeAt(types[i], common, node)))
                 {
-                    context.Invalid = true;
+                    context.Conflict();
                     failed ??= types[i];
                 }
             }
         }
 
         // SPEC 14.9.2 step 3: each source that awaits its position takes the Target Result Type, by its late Type (no Never fitting).
-        if (awaiting && common is not null && this.PropagateSources(node, context, common) is { } misfit)
+        if (awaiting && common is not null && this.BindWaitedSources(node, context, common) is { } misfit)
         {
-            context.Invalid = true;
+            context.Conflict();
             failed ??= misfit;
         }
 
         types.Clear();
-        if (context.Invalid)
+        if (context.Outcome == JoinOutcome.Conflict)
         {
             return failed is not null && common is not null ? this.FailMismatch(node, node, failed, common) : this.Fail(node, BindingFailure.TypeMismatch);
         }
 
+        if (context.Outcome == JoinOutcome.Dependent)
+        {
+            return this.CompleteDependent(node, context.Cause!); // SPEC 23.1.2: it rests on its failed source.
+        }
+
         if (context.Pending)
         {
-            return Complete(node, null);
+            return Complete(node, null); // Its source waits for its call.
         }
+
+        context.Outcome = JoinOutcome.Decided;
 
         var completion = node is FunctionKoto function ? (function.Body ?? function.ExpressionBody)! : node;
         return Complete(node, !suppliedValue && !this.ResultStructure().CanComplete(completion) ? BoundType.Never : common);
+    }
+
+    // A join's outcome (SPEC 14.9.2, 23.1.2; DECISIONS BU-43): undecided while it collects its sources and forms its Type; waiting for
+    // its position's Type (an outer join's, its call's); failed by a conflict it found (Conflict, its own record) or resting on a failed
+    // part or on the join it waited for (Dependent, no record); or decided (bound, or pending on a source that waits for its call).
+    private enum JoinOutcome : byte
+    {
+        Undecided,
+        Waiting,
+        Conflict,
+        Dependent,
+        Decided,
     }
 
     private sealed class ResultContext
@@ -378,10 +400,11 @@ public sealed partial class Binding
         // Whether the target collects its sources after its survey, so that a literal source waits for its Type (SPEC 14.9.2 step 3).
         internal bool Collecting { get; set; }
 
-        // Whether the target waits for its position's Type, which decides it when the position binds it (SPEC 14.9.2).
-        internal bool Waiting { get; set; }
+        // The join's one outcome (DECISIONS BU-43), written once where it becomes true and read by every enclosing join and call, and
+        // what a Dependent one rests on: its failed part, or the join it waited for.
+        internal JoinOutcome Outcome { get; set; }
 
-        internal bool Invalid { get; set; }
+        internal Koto? Cause { get; set; }
 
         internal bool HasLiteral { get; set; }
 
@@ -402,7 +425,9 @@ public sealed partial class Binding
             this.LiteralFit = this.LiteralDefault = null;
             this.Expected = expected;
             this.Inferred = expected is null;
-            this.Invalid = this.Pending = this.Collecting = this.Waiting = false;
+            this.Pending = this.Collecting = false;
+            this.Outcome = JoinOutcome.Undecided;
+            this.Cause = null;
             this.Sources.Clear();
             this.SourceNodes.Clear();
             this.Evidence.Clear();
@@ -415,6 +440,19 @@ public sealed partial class Binding
         {
             this.Sources.Add(type);
             this.SourceNodes.Add(node);
+        }
+
+        // Records the join's own conflict, whose record it writes; it prevails over a dependence (RestOn).
+        internal void Conflict() => this.Outcome = JoinOutcome.Conflict;
+
+        // Records that the join rests on a failure it did not find (SPEC 23.1.2), the first such cause, unless it found a conflict.
+        internal void RestOn(Koto cause)
+        {
+            if (this.Outcome != JoinOutcome.Conflict)
+            {
+                this.Outcome = JoinOutcome.Dependent;
+                this.Cause ??= cause;
+            }
         }
     }
 }

@@ -21,9 +21,9 @@ setter count.Set @14
       _0 = const () @17
       return @17
 fn format @29
-  _0: Result<(), BufferFull> return @29
-  _1: ref/Point arg self @29
-  _2: uniq/Utf8Writer arg writer @29
+  _0: Result<(), BufferFull> return @34
+  _1: ref/Point arg self @30
+  _2: uniq/Utf8Writer arg writer @32
   _3: Result<(), BufferFull> temp @41 s1
   _4: uniq/Utf8Writer temp @44 s1
   _5: Result<(), BufferFull> temp @41 s1
@@ -169,7 +169,7 @@ getter level.Get @66
     * _0 = copy (*_1).1 @68
       return @68
 fn init @69
-  _0: Box return @69
+  _0: Box return (Receiver) @69
   _1: () temp @70
   _2: () temp @70
   bb0:
@@ -191,8 +191,8 @@ fn top-level#0 @71
       return @72
 fn bump @73
   _0: () return @73
-  _1: uniq/Counter arg counter @73
-  _2: i32 arg step @73
+  _1: uniq/Counter arg counter @74
+  _2: i32 arg step @76
   _3: () temp @78 s1
   _4: i32 temp @82 s1
   _5: i32 temp @79 s1
@@ -233,8 +233,8 @@ fn bump @73
       _0 = const () @77 s1
       return @77
 fn pick @88
-  _0: i32 return @88
-  _1: Array<i32> arg values @88
+  _0: i32 return @93
+  _1: Array<i32> arg values @89
   _2: Kimi.FromEnd<i32> var key @95 s1
   _3: i32 temp @100 s1
   _4: ref/Array<i32> temp @101 s1
@@ -279,7 +279,7 @@ fn pick @88
       _0 = move _12 @99 s1
       goto bb3 @99 s1
   bb5:
-      drop _1 -> bb6 [keep] @88
+      drop _1 -> bb6 [keep] @89
   bb6:
       goto bb4 @88
   bb7:
@@ -310,12 +310,12 @@ fn pick @88
       StorageDead(_4) @101 s1
       StorageDead(_3) @100 s1
       StorageDead(_2) @95 s1
-      drop _1 -> bb11 @88
+      drop _1 -> bb11 @89
   bb11:
       unreachable @94
 fn middle @108
-  _0: Slice<i32> return @108
-  _1: ref/[5 of i32] arg values @108
+  _0: Slice<i32> return @113
+  _1: ref/[5 of i32] arg values @109
   _2: ref/[5 of i32] temp @118
   _3: isize temp @118
   _4: isize temp @118
@@ -371,8 +371,8 @@ fn middle @108
       StorageDead(_2) @118
       return @118
 fn head @124
-  _0: Slice<i32> return @124
-  _1: ref/Array<i32> arg values @124
+  _0: Slice<i32> return @129
+  _1: ref/Array<i32> arg values @125
   _2: ref/Array<i32> temp @134
   _3: isize temp @134
   _4: isize temp @134
@@ -425,8 +425,8 @@ fn head @124
       StorageDead(_2) @134
       return @134
 fn reslice @138
-  _0: Slice<i32> return @138
-  _1: Slice<i32> arg view @138
+  _0: Slice<i32> return @143
+  _1: Slice<i32> arg view @139
   _2: isize temp @150
   _3: isize temp @150
   _4: bool temp @150
@@ -470,13 +470,13 @@ fn reslice @138
       StorageDead(_2) @150
       return @150
 fn make @154
-  _0: Array<i32> return @154
-  _1: i32 arg first @154
+  _0: Array<i32> return @156
+  _1: i32 arg first @155
   bb0:
     * _0 = Array(copy _1, const 2_i32): Array<i32> @160
       return @160
 fn table @163
-  _0: Dictionary<i32, bool> return @163
+  _0: Dictionary<i32, bool> return @164
   _1: Dictionary<i32, bool> temp @169
   _2: i32 temp @170
   _3: bool temp @171
@@ -485,9 +485,9 @@ fn table @163
   _6: ref/Dictionary<i32, bool> temp @170
   _7: ref/i32 temp @170
   _8: Never temp @170
-  _9: (raw/Dictionary<i32, bool>, isize) temp @171
-  _10: uniq/Dictionary<i32, bool> temp @171
-  _11: () temp @171
+  _9: (raw/Dictionary<i32, bool>, isize) temp @170
+  _10: uniq/Dictionary<i32, bool> temp @170
+  _11: () temp @170
   _12: i32 temp @172
   _13: bool temp @173
   _14: isize temp @172
@@ -495,9 +495,9 @@ fn table @163
   _16: ref/Dictionary<i32, bool> temp @172
   _17: ref/i32 temp @172
   _18: Never temp @172
-  _19: (raw/Dictionary<i32, bool>, isize) temp @173
-  _20: uniq/Dictionary<i32, bool> temp @173
-  _21: () temp @173
+  _19: (raw/Dictionary<i32, bool>, isize) temp @172
+  _20: uniq/Dictionary<i32, bool> temp @172
+  _21: () temp @172
   bb0:
       StorageLive(_1) @169
     * _1 = FixedArray(): Dictionary<i32, bool> @169
@@ -518,13 +518,13 @@ fn table @163
       switch copy _5 [1: bb3, otherwise: bb1] @170
   bb3:
       _3 = const true @171
-      StorageLive(_9) @171
-      StorageLive(_10) @171
-      _10 = &uniq two-phase _1: uniq/Dictionary<i32, bool> @171
-      _9 = dictionaryStorage<i32, bool>(move _10) -> bb4 @171
+      StorageLive(_9) @170
+      StorageLive(_10) @170
+      _10 = &uniq two-phase _1: uniq/Dictionary<i32, bool> @170
+      _9 = dictionaryStorage<i32, bool>(move _10) -> bb4 @170
   bb4:
-      StorageLive(_11) @171
-      _11 = placeEntry<i32, bool>(copy _9.0, move _2, move _3) -> bb5 @171
+      StorageLive(_11) @170
+      _11 = placeEntry<i32, bool>(copy _9.0, move _2, move _3) -> bb5 @170
   bb5:
       StorageLive(_12) @172
       StorageLive(_13) @173
@@ -543,27 +543,27 @@ fn table @163
       switch copy _15 [1: bb8, otherwise: bb6] @172
   bb8:
       _13 = const false @173
-      StorageLive(_19) @173
-      StorageLive(_20) @173
-      _20 = &uniq two-phase _1: uniq/Dictionary<i32, bool> @173
-      _19 = dictionaryStorage<i32, bool>(move _20) -> bb9 @173
+      StorageLive(_19) @172
+      StorageLive(_20) @172
+      _20 = &uniq two-phase _1: uniq/Dictionary<i32, bool> @172
+      _19 = dictionaryStorage<i32, bool>(move _20) -> bb9 @172
   bb9:
-      StorageLive(_21) @173
-      _21 = placeEntry<i32, bool>(copy _19.0, move _12, move _13) -> bb10 @173
+      StorageLive(_21) @172
+      _21 = placeEntry<i32, bool>(copy _19.0, move _12, move _13) -> bb10 @172
   bb10:
       _0 = move _1 @169
-      StorageDead(_21) @173
-      StorageDead(_20) @173
-      StorageDead(_19) @173
+      StorageDead(_21) @172
+      StorageDead(_20) @172
+      StorageDead(_19) @172
       StorageDead(_17) @172
       StorageDead(_16) @172
       StorageDead(_15) @172
       StorageDead(_14) @172
       StorageDead(_13) @173
       StorageDead(_12) @172
-      StorageDead(_11) @171
-      StorageDead(_10) @171
-      StorageDead(_9) @171
+      StorageDead(_11) @170
+      StorageDead(_10) @170
+      StorageDead(_9) @170
       StorageDead(_7) @170
       StorageDead(_6) @170
       StorageDead(_5) @170
@@ -575,8 +575,8 @@ fn table @163
       StorageDead(_1) @169
       return @169
 fn room @174
-  _0: isize return @174
-  _1: ref/Array<i32> arg values @174
+  _0: isize return @179
+  _1: ref/Array<i32> arg values @175
   _2: ref/Array<i32> temp @180
   bb0:
       StorageLive(_2) @180
@@ -586,9 +586,9 @@ fn room @174
       StorageDead(_2) @180
       return @180
 fn back @183
-  _0: i32 return @183
-  _1: ref/Array<i32> arg values @183
-  _2: i32 arg x @183
+  _0: i32 return @189
+  _1: ref/Array<i32> arg values @184
+  _2: i32 arg x @188
   _3: ref/Array<i32> temp @191
   _4: isize temp @191
   _5: isize temp @194
@@ -658,8 +658,8 @@ fn back @183
       return @190
 fn update @201
   _0: () return @201
-  _1: uniq/Box arg box @201
-  _2: i32 arg step @201
+  _1: uniq/Box arg box @202
+  _2: i32 arg step @204
   _3: () temp @206 s1
   _4: i32 temp @210 s1
   _5: i32 temp @206 s1

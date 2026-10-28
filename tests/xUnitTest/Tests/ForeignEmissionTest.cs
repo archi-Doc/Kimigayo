@@ -1028,7 +1028,11 @@ public class ForeignEmissionTest
         var name = consume ? "ForeignPointerString" : "ForeignPointerStringRetained";
         var stdout = consume ? "second\nthird\ndone\n" : "second\ndone\n";
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
-        StringEmissionTest.WriteAuditedFixture(name, ir, stdout, "=0;first=1;second=1;third=1;compare=2;skip=0;done=1");
+        StringEmissionTest.WriteAuditedFixture(
+            name,
+            ir,
+            stdout,
+            Codegen.Expect("=0;first=1;second=1;third=1;compare=1;skip=0;done=1", "=0;first=1;second=1;third=1;compare=2;skip=0;done=1", CodegenDeviations.ConstantTemporaries));
     }
 
     [Theory]
@@ -1078,7 +1082,11 @@ public class ForeignEmissionTest
                 Console.writeLine("done")
             """;
         var ir = ScalarEmissionTest.EmitFixture("ForeignPointerStringCompare", source, "alpha\nbeta\nkept\ndone\n");
-        StringEmissionTest.WriteAuditedFixture("ForeignPointerStringCompare", ir, "alpha\nbeta\nkept\ndone\n", "=0;alpha=3;beta=2;kept=2;done=1");
+        StringEmissionTest.WriteAuditedFixture(
+            "ForeignPointerStringCompare",
+            ir,
+            "alpha\nbeta\nkept\ndone\n",
+            Codegen.Expect("=0;alpha=1;beta=1;kept=1;done=1", "=0;alpha=3;beta=2;kept=2;done=1", CodegenDeviations.ConstantTemporaries));
     }
 
     [Fact]
@@ -1571,15 +1579,20 @@ public class ForeignEmissionTest
         Assert.Contains("{ i8, i64, i8 }", ir);
     }
 
+    // SPEC 6.7.1, 8.15.3 (DECISIONS BU-48): a raw read by value of a struct whose C layout is unavailable (empty, open or storing a
+    // zero-sized Field) needs its layout, so check rejects it at the read (InvalidCLayout_Kd) and generation writes nothing; the declaration
+    // alone is no error.
     [Theory]
     [InlineData("struct S")]
     [InlineData("open struct S\n    var n: i32")]
     [InlineData("struct S\n    var empty: ()")]
     [InlineData("struct S\n    var empty: [0 of i32]")]
     [InlineData("struct S\n    var empty: [2 of ()]")]
-    public void InvalidCLayoutsCannotGenerate(string declaration)
+    public void ARawReadOfAnUnavailableCLayoutCannotGenerate(string declaration)
     {
         var c = MinimalEmissionTest.Analyze("#Layout(\"C\")\n" + declaration + "\nfunc read(p: raw/S)\n    unsafe\n        let value = *p\npublic func main() => ()");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.InvalidCLayout_Kd);
         using var writer = new StringWriter();
         Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());

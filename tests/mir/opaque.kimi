@@ -12,4 +12,4 @@ func definition()
     _ = func (n: i32)
         let t = "x"
         _ = take(t@move, t@move)
-        return n@ref
+        return n

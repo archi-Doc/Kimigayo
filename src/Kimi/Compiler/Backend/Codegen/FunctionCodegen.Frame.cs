@@ -5,9 +5,10 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
 
-// The function frame of FunctionCodegen (R5 package C 3.2 I2; DECISIONS R5-M65, R5-M89, R5-M102): each local's home and layout under the
-// signature ModuleCodegen gives the item, the entry block (the prologue: the homes' and the copy slots' allocas, the Value arguments'
-// stores) and the return. The argument order and the copy slots are FunctionCodegen.Arguments'.
+// The function frame of FunctionCodegen (R5 package C 3.2 I2; DECISIONS R5-M65, R5-M89, R5-M102, R5-M131): each local's home and layout
+// under the signature ModuleCodegen gives the item, the entry block (the prologue: the homes' and the copy slots' allocas, a Region's bytes,
+// the Value arguments' stores) and the return. The argument order and the copy slots are FunctionCodegen.Arguments', a Region home
+// FunctionCodegen.Interpolation's.
 internal sealed partial class FunctionCodegen
 {
     // Where a local lives (I2).
@@ -16,6 +17,7 @@ internal sealed partial class FunctionCodegen
         None, // Zero-sized: no storage.
         Slot, // Its alloca, %l<local>.
         Parameter, // The pointer its caller passed, a pointer-passed argument or the result slot: its parameter of the signature.
+        Region, // Its alloca, as Slot's, holding a buffer whose bytes are the frame's region %r<local> of Index bytes (FunctionCodegen.Interpolation).
     }
 
     // Lays out every local in the item's instance (I7), then gets the item's signature, which ModuleCodegen gives from the item's own body
@@ -31,9 +33,18 @@ internal sealed partial class FunctionCodegen
 
         for (var i = 0; i < locals.Length; i++)
         {
-            if (this.collector.TypeOf(this.item, locals[i].Type) is not { } type || this.module.Layout.Of(type).Value is not { } value)
+            if (this.collector.TypeOf(this.item, locals[i].Type) is not { } type)
             {
-                this.Report(DiagnosticCode.InternalInvariant_Kd, locals[i].Source); // The collector laid out every local of an admitted item.
+                this.Report(DiagnosticCode.InternalInvariant_Kd, locals[i].Source);
+                return null;
+            }
+
+            var result = this.module.Layout.Of(type);
+            if (result.Value is not { } value)
+            {
+                // The collector laid out every local of an admitted item but a constructor's construction receiver, which its callers lay out
+                // (DECISIONS BU-48), so only a generated, uncalled constructor's receiver reaches here without a layout.
+                this.Report(locals[i].Role == MirLocalRole.Receiver ? this.ReceiverRecord(result) : DiagnosticCode.InternalInvariant_Kd, locals[i].Source);
                 return null;
             }
 
@@ -43,10 +54,28 @@ internal sealed partial class FunctionCodegen
         return this.module.Signature(this.item);
     }
 
+    // A construction receiver's layout failure, by the record the collector's one mapping (RecordOf) gives its outcome at a use: a Language
+    // obligation (a CLayout, or a layout over 2^63 - 1 bytes) is a form not generated, Unsupported_Kd (SPEC 8.15.3's last sentence); a limit
+    // keeps its Resource record (IMPL 21.3.2); any other outcome is a broken contract (DECISIONS BU-48).
+    private DiagnosticCode ReceiverRecord(in Layout.Result result)
+    {
+        if (result.Oversized)
+        {
+            return DiagnosticCode.Unsupported_Kd;
+        }
+
+        return this.collector.RecordOf(result.Outcome) switch
+        {
+            DiagnosticCode.InvalidCLayout_Kd => DiagnosticCode.Unsupported_Kd,
+            DiagnosticCode.GenerationResourceLimit_Kd => DiagnosticCode.GenerationResourceLimit_Kd,
+            _ => DiagnosticCode.InternalInvariant_Kd,
+        };
+    }
+
     // The entry block (I2): a pointer-passed argument and the result slot are their locals' homes; one aligned alloca per other local of
-    // nonzero size, per copy slot and per drop flag, cleared (FunctionCodegen.Flags); each Value argument stored into its local's slot; the
-    // entry's flag points (an argument's flag set). A parameter is its signature's (Prefix p, spelled by its name); a Closure body's
-    // environment passes its local as its Type would (Passing).
+    // nonzero size, its bytes' for a Region, per copy slot and per drop flag, cleared (FunctionCodegen.Flags); each Value argument stored into
+    // its local's slot; the entry's flag points (an argument's flag set). A parameter is its signature's (Prefix p, spelled by its name); a
+    // Closure body's environment passes its local as its Type would (Passing).
     private void Prologue()
     {
         var (output, parameters) = (this.output, this.abi.Parameters);
@@ -63,9 +92,18 @@ internal sealed partial class FunctionCodegen
 
         for (var i = 0; i < this.body.Locals.Length; i++)
         {
-            if (this.slots[i] is { Home: Home.Slot, Value.Layout: var layout })
+            if (this.slots[i] is { Home: Home.Slot or Home.Region, Value.Layout: var layout })
             {
                 this.WriteSlot("  %l", i, layout);
+            }
+
+            if (this.slots[i] is { Home: Home.Region, Index: var size })
+            {
+                output.Write("  %r");
+                WriteNumber(output, i);
+                output.Write(" = alloca [");
+                WriteNumber(output, size);
+                output.Write(" x i8], align 1\n");
             }
         }
 
@@ -87,6 +125,10 @@ internal sealed partial class FunctionCodegen
         this.Points(new(0, -1));
         output.Write("  br label %b0\n");
     }
+
+    // Whether a Place's value owns storage that its destruction releases (SPEC 16.2.1): every one but a Region local's, whose bytes are the
+    // frame's and have no release (the windows-x64 stack rule; DECISIONS R5-M131).
+    private bool OwnsStorage(MirPlace place) => place is not { Root: >= 0, Projection: 0 } || this.slots[place.Root].Home != Home.Region;
 
     // How a parameter passes its local: by its kind; a Closure body's environment pointer (Abi's [environment], SPEC 7.7.3; DECISIONS
     // R5-M102) as Abi.Of passes an argument of its local's Type: an owned environment, a slot Type, by pointer, used in place; a borrowed one
@@ -114,9 +156,11 @@ internal sealed partial class FunctionCodegen
         output.Write('\n');
     }
 
-    // Return (IMPL 21.3.1): void for a zero-sized result or a result slot, else local 0's value in its computation representation.
+    // Return (IMPL 21.3.1): void for a zero-sized result or a result slot, else local 0's value in its computation representation; the
+    // block's window closed before it (FunctionCodegen.Phases).
     private void Return()
     {
+        this.Close();
         if (this.abi.ResultSlot || this.slots[0].Home == Home.None)
         {
             this.output.Write("  ret void\n");
@@ -132,6 +176,6 @@ internal sealed partial class FunctionCodegen
         this.output.Write('\n');
     }
 
-    // A local's home and representation: Index is a Parameter home's parameter.
+    // A local's home and representation: Index is a Parameter home's parameter, a Region home's size in bytes.
     private readonly record struct Slot(Home Home, int Index, ValueLowering Value);
 }

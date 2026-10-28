@@ -156,8 +156,8 @@ defaulttemplate evaluate#1 @139
       StorageDead(_2) @142 s1
       unreachable check bb1 @141
 fn init @6
-  _0: Box return @6
-  _1: i32 arg size @6
+  _0: Box return (Receiver) @6
+  _1: i32 arg size @7
   _2: () temp @8
   _3: () temp @8
   _4: i32 temp @9
@@ -175,9 +175,9 @@ fn init @6
       StorageDead(_2) @8
       return @8
 fn grow @13
-  _0: i32 return @13
-  _1: ref/Box arg self @13
-  _2: i32 arg by @13
+  _0: i32 return @19
+  _1: ref/Box arg self @14
+  _2: i32 arg by @15
   bb0:
     * _0 = Add(copy (*_1).0, copy _2) @20
       return @20
@@ -188,16 +188,16 @@ fn top-level#0 @25
       _0 = const () @26 s1
       return @26
 fn scale @27
-  _0: i32 return @27
-  _1: i32 arg x @27
-  _2: i32 arg factor @27
+  _0: i32 return @33
+  _1: i32 arg x @28
+  _2: i32 arg factor @29
   bb0:
     * _0 = Mul(copy _1, copy _2) @34
       return @34
 fn pick @37
-  _0: T return @37
-  _1: T arg a @37
-  _2: T arg b @37
+  _0: T return @45
+  _1: T arg a @42
+  _2: T arg b @43
   _3: T temp @48 s1
   _4: T temp (Result) @37
   s1: lexical in s0 @46
@@ -211,9 +211,9 @@ fn pick @37
       _0 = move _4 @47 s1
       goto bb1 @47 s1
   bb3:
-      drop _2 -> bb4 [keep] @37
+      drop _2 -> bb4 [keep] @43
   bb4:
-      drop _1 -> bb5 [keep] @37
+      drop _1 -> bb5 [keep] @42
   bb5:
       goto bb2 @37
   bb6:
@@ -228,22 +228,22 @@ fn pick @37
       drop _3 -> bb10 @48 s1
   bb10:
       StorageDead(_3) @48 s1
-      drop _2 -> bb11 @37
+      drop _2 -> bb11 @43
   bb11:
-      drop _1 -> bb12 @37
+      drop _1 -> bb12 @42
   bb12:
       unreachable @46
 fn count @49
-  _0: i32 return @49
-  _1: i32 arg n @49
-  _2: i32 arg value @49
+  _0: i32 return @64
+  _1: i32 arg n @50
+  _2: i32 arg value @51
   bb0:
     * _0 = copy _2 @65
       return @65
 fn run @66
-  _0: i32 return @66
-  _1: i32 arg n @66
-  _2: () -> i32 arg action @66
+  _0: i32 return @76
+  _1: i32 arg n @67
+  _2: () -> i32 arg action @68
   _3: ref/() -> i32 temp @78
   bb0:
       StorageLive(_3) @78
@@ -251,18 +251,18 @@ fn run @66
       _0 = value const type () -> i32 move _3() -> bb1 @77
   bb1:
       StorageDead(_3) @78
-      drop _2 -> bb2 [keep] @66
+      drop _2 -> bb2 [keep] @68
   bb2:
       return @77
 closure @71
-  _0: i32 return @71
+  _0: i32 return @72
   _1: ref/closure () -> i32 arg @71
   bb0:
     * _0 = Add(copy (*_1).0, const 1_i32) @73
       return @73
 fn use @79
-  _0: i32 return @79
-  _1: Box arg box @79
+  _0: i32 return @81
+  _1: Box arg box @80
   _2: i32 var a @83 s1
   _3: i32 temp (PendingSlot) @87 s1
   _4: i32 temp factor (PendingSlot) @85 s1
@@ -435,14 +435,14 @@ fn use @79
       StorageDead(_2) @83 s1
       unreachable @82
 fn halt @121
-  _0: i32 return @121
-  _1: i32 arg n @121
-  _2: i32 arg value @121
+  _0: i32 return @128
+  _1: i32 arg n @122
+  _2: i32 arg value @123
   bb0:
     * _0 = copy _2 @129
       return @129
 fn stopped @130
-  _0: i32 return @130
+  _0: i32 return @131
   _1: i32 temp (PendingSlot) @134
   _2: i32 temp value (PendingSlot) @132
   s1: inlined in s0 @132
@@ -462,12 +462,12 @@ fn stopped @130
       StorageDead(_1) @134
       unreachable @132
 fn evaluate @135
-  _0: i32 return @135
-  _1: T arg sample @135
-  _2: i32 arg marker @135
+  _0: i32 return @167
+  _1: T arg sample @137
+  _2: i32 arg marker @138
   bb0:
     * _0 = copy _2 @168
-      drop _1 -> bb1 [keep] @135
+      drop _1 -> bb1 [keep] @137
   bb1:
       return @168
 fn replicas @169

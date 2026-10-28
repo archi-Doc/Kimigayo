@@ -28,8 +28,10 @@ public class FixedArrayCaptureTest
         ScalarEmissionTest.WriteFixture("FixedArrayCapture" + name, ir, string.Empty);
         if (name is "Consume" or "PartialMove")
         {
-            // Each comparison literal is a separate temporary in addition to the captured string it checks.
-            StringEmissionTest.WriteAuditedFixture("FixedArrayCapture" + name, ir, string.Empty, name == "Consume" ? "first=2;last=2" : "first=2;last=1");
+            // Under the old generator each comparison literal is a separate temporary in addition to the captured string it checks; MIR
+            // code generation makes none (DECISIONS R5-M145).
+            var destructions = Codegen.Expect("first=1;last=1", name == "Consume" ? "first=2;last=2" : "first=2;last=1", CodegenDeviations.ConstantTemporaries);
+            StringEmissionTest.WriteAuditedFixture("FixedArrayCapture" + name, ir, string.Empty, destructions);
         }
     }
 

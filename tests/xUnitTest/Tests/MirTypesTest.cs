@@ -110,7 +110,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
         Assert.Equal(
             ["Through", "None", "None", "no Loan", "Through", "Through", "Limit"],
             KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.FunctionKoto>().Where(static x => x.IsAnonymous)
-                .Select(x => MirTypes.HoldsLoans(BoundClosure.Of(x)!.EnvironmentType, c.Types, seen, [], out var writes) ? $"{writes}" : "no Loan").ToArray());
+                .Select(x => MirTypes.HoldsLoans(x.ClosureDefinition!.EnvironmentType, c.Types, seen, [], out var writes) ? $"{writes}" : "no Loan").ToArray());
     }
 
     // SPEC 5.7 Calls, 15.6.4 (DECISIONS R4-M147, BU-41): a raw layer a holder stores at any depth below it is read on the instance holding it,
@@ -119,8 +119,8 @@ public sealed class MirTypesTest(ITestOutputHelper output)
     // layer a Type argument supplies whose Origin steps Exclusive publishes no members, so a Loan-free pointee leaves the guard undecided
     // (Limit; also past a shared parameter borrow, hs), while a pointee that may hold a Loan decides it (wr, orr, dr), as does an exclusive
     // part beside it (mixed, Through over Limit); the same layer with no Origin, `static` or a plain scalar pointee writes nothing past it
-    // (plain, plainA, plainE, st, dp). A layer written in a Type argument of the declaration's own base clause reads as supplied on the
-    // instance holding it (ds: None), a known gap until G148 (1)'s holder-relative revision (DECISIONS R4-M147, Known limits).
+    // (plain, plainA, plainE, st, dp). A layer written in a Type argument of the declaration's own base clause is the declaration's, which
+    // its kept part states (ds: Through; DECISIONS BU-46, R4-M151).
     [Fact]
     public void TheGuardReadsEachStoredLayerOnItsInstance()
     {
@@ -146,8 +146,58 @@ public sealed class MirTypesTest(ITestOutputHelper output)
                 ("orr", MirWrites.Through), ("t", MirWrites.Limit), ("e", MirWrites.Limit), ("h", MirWrites.Limit), ("op", MirWrites.Limit),
                 ("bb", MirWrites.Limit), ("ow", MirWrites.Limit), ("d", MirWrites.Limit), ("bw", MirWrites.Limit), ("dr", MirWrites.Through),
                 ("hs", MirWrites.Limit), ("mixed", MirWrites.Through), ("plain", MirWrites.None), ("plainA", MirWrites.None),
-                ("plainE", MirWrites.None), ("st", MirWrites.None), ("dp", MirWrites.None), ("ds", MirWrites.None)],
+                ("plainE", MirWrites.None), ("st", MirWrites.None), ("dp", MirWrites.None), ("ds", MirWrites.Through)],
             Parameters(body).Select(x => (x.Name, Writes(x.Type))).ToArray());
+        Assert.Empty(members);
+
+        MirWrites Writes(BoundType type)
+        {
+            _ = MirTypes.HoldsLoans(type, c.Types, seen, members, out var writes);
+            return writes;
+        }
+    }
+
+    // SPEC 5.7 Calls (DECISIONS BU-46, R4-M151): past a raw layer without an Origin that a declaration writes, at any depth below the
+    // holder, a call may write (Through), as past the holder's own (direct): in a Type argument of a Field (holder2, holdOpt, holdEnum,
+    // holdTW, hfa, how), a base clause (derS, d2, d3, b3), beside a supplied argument (m), a nested holder (h3, oh), a pair slot's argument
+    // (hpso, hpss, hpst) and its application `s/U` (hpu, hpus), a Case payload's Tuple (ep), and outside a stored part, read by the same
+    // rule: an Array element of a Field (hold2) and a `during self` pointee's content (sb, hb2); the kept Type tells the holders apart, so
+    // the walk's per-Type memo gives one answer in either order (g, g2, top); where the parameter's Type expression writes the layer over a
+    // Loan-free pointee, nothing (the twins, box2 the `during self` one).
+    [Fact]
+    public void TheGuardWritesPastALayerADeclarationWrites()
+    {
+        var (body, c) = Probe(
+            "struct Wrap<E>\n    var value: E\nstruct Outer<P>\n    var w: Wrap<P>\nstruct RawBuf\n    var data: raw/u8\n" +
+            "struct Holder2\n    var b: Wrap<raw/u8>\nstruct HoldOpt\n    var o: Option<raw/u8>\nopen struct B1<P>\n    var v: P\n" +
+            "open struct B2<Q> : B1<Q>\n    var m: i32\nopen struct B3<Q> : B1<Wrap<raw/u8>>\n    var q: Q\nstruct DerS : B1<raw/u8>\n    var n: i32\n" +
+            "struct D2 : B2<raw/u8>\n    var n: i32\nstruct D3 : B3<i32>\n    var n: i32\nstruct Two<A, B>\n    var a: A\n    var b: B\n" +
+            "struct M<P>\n    var w: Two<raw/u8, P>\nstruct M2<P>\n    var w: Two<P, P>\nenum MyOpt<T>\n    Has(T)\n    Not\n" +
+            "struct HoldEnum\n    var e: MyOpt<raw/u8>\nstruct HoldTW\n    var t: Wrap<(raw/u8, i32)>\nstruct H3\n    var h: Holder2\n" +
+            "struct PS<s/T>\n    var t: s/T\nstruct HPSo\n    var p: PS<raw/u8>\nstruct HPSs {s}\n    var loan: Loan<uniq/i32 during s>\n" +
+            "    var p: PS<raw/u8 during s>\nstruct HPSt\n    var p: PS<raw/u8 during static>\nstruct PU<s/T>\n    s is raw or owner\n" +
+            "    var v: s/i32\nstruct HPU\n    var p: PU<raw/u8>\nstruct HPUs {s}\n    var loan: Loan<uniq/i32 during s>\n    var p: PU<raw/u8 during s>\n" +
+            "struct HFA\n    var f: Wrap<[2 of raw/u8]>\nenum EP\n    A((Wrap<raw/u8>, i32))\n    B\nstruct HOW\n    var o: Option<Wrap<raw/u8>>\n" +
+            "struct G<P>\n    var a: Outer<P>\n    var b: Holder2\nstruct G2<P>\n    var b: Holder2\n    var a: Outer<P>\n" +
+            "struct Hold<P>\n    var items: Array<Wrap<P>>\nenum Opt2<P>\n    Has(Wrap<P>)\n    Not\nstruct DerX<P> : B1<Wrap<P>>\n    var n: i32\n" +
+            "struct Hold2\n    var items: Array<raw/u8>\nstruct SB\n    var data: raw/(raw/u8) during self\nstruct Box2<T>\n    var p: raw/T during self\n" +
+            "struct HB2\n    var b: Box2<raw/u8>\n" +
+            "func probe(yu: uniq/i32, direct: RawBuf, holder2: Holder2, holdOpt: HoldOpt, derS: DerS, d2: D2, d3: D3, b3: B3<i32>, m: M<raw/u8>, " +
+            "holdEnum: HoldEnum, holdTW: HoldTW, h3: H3, oh: Outer<Holder2>, hpso: HPSo, hpss: HPSs during yu, hpst: HPSt, hpu: HPU, " +
+            "hpus: HPUs during yu, hfa: HFA, ep: EP, how: HOW, hold2: Hold2, sb: SB, hb2: HB2, g: G<raw/u8>, g2: G2<raw/u8>, " +
+            "top: (Outer<raw/u8>, Holder2), outer: Outer<raw/u8>, wrap: Wrap<raw/u8>, m2: M2<raw/u8>, ps: PS<raw/u8>, pu: PU<raw/u8>, " +
+            "hold: Hold<raw/u8>, opt2: Opt2<raw/u8>, derX: DerX<raw/u8>, arr: Array<raw/u8>, ow: Outer<Wrap<raw/u8>>, box2: Box2<raw/u8>)\n" +
+            "    return\n");
+        var seen = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
+        var members = new List<RawMember>();
+        string[] through =
+        [
+            "direct", "holder2", "holdOpt", "derS", "d2", "d3", "b3", "m", "holdEnum", "holdTW", "h3", "oh", "hpso", "hpss", "hpst", "hpu", "hpus",
+            "hfa", "ep", "how", "hold2", "sb", "hb2", "g", "g2", "top",
+        ];
+        Assert.Equal(
+            Parameters(body).Skip(1).Select(x => (x.Name, through.Contains(x.Name) ? MirWrites.Through : MirWrites.None)).ToArray(),
+            Parameters(body).Skip(1).Select(x => (x.Name, Writes(x.Type))).ToArray());
         Assert.Empty(members);
 
         MirWrites Writes(BoundType type)
