@@ -11858,3 +11858,28 @@ structure is recorded here by the unit that first implements it.
     (`Text.writer`'s witness and the interpolation rows read a body-less reserve themselves; the first implementation's tests showed it);
     deciding it from `Bodyless`'s result (a refused edge has already recorded); writing the body-less witnesses now (a new K edge form);
     deleting the seven `IntrinsicId` members (R8 and PD21 plan them); a capability row for the import Item (more code than its call).
+- **R5-M147 X1's exit sweep, and an address-matched control for O2 corpus A/Bs** (owner, 2026-10-28 and 2026-10-29, to the R5 planning
+  session directly; extends R5-M135) X1 (plan §4 row X1, §5.3) ran at dev `17cd554ab` (evidence
+  `artifacts/verify/reduction-R5/17cd554ab/`: `x1-summary.md`, `quiet/`, `iter/`, `scripts/`): sel fails exactly the 110 decided P42 rows
+  (R5-M144, R5-M145); the native outcomes of all 6,089 fixtures are equal, 6 of them under decided deviations; the LLVM verifier passes
+  both generators, and sel's `.ll` is identical to another run of the same tree; the five CLI harnesses pass under both generators; no
+  collector or MIR record over the library and the accepted milestones (the census rows are Milestone 41's, a `tests/mir` golden's and one
+  spec case's incomplete programs); the sel snapshot differs from the legacy one only in Milestone 42's five P42 records; 1,161 of the
+  1,162 `Purpose=Allocation` tests (M9's 186 among them) pass under sel, `TrimsUnderHighPressure` running under neither generator. O2
+  against `49cb2b5d` (CPU cycles, 21 interleaved rounds, CPU 2, `DOTNET_TieredCompilation=0`): five kernels within A=A, Array and
+  VirtualDispatch within A=A aligned (code placement, R5-M135), Iterators 1.129 plain and 1.016 aligned against an aligned A=A of
+  0.993-1.008. The owner first chose to fix its cause (verbatim 「(a) 原因を直す」); the investigation found none in code generation: the
+  kernel's executed machine code is byte-identical but for addresses; B's code sits 0xc0 (3 × 64) bytes lower because O2 deletes the
+  `__kimi_destroy_string` routine ahead of `main`, which C9c and C9d left uncalled, and 64-byte alignment cannot cancel that shift. In a
+  quiet run (21 rounds) B's code and constants at A's addresses ran at 509.6 against A's 509.6 Mcycles and A's at B's addresses at 517.3
+  against B's 518.0; moving constants alone changed nothing; over sixteen 64-byte shifts (11 rounds) A ranged 509.7-583.3 and B
+  508.4-582.4. The owner then decided, verbatim 「(1) 対照を拡張」: when a gap remains in R5-M135's aligned control, an **address-matched
+  control** follows. Its general form sweeps both sides' code over the same 64-byte shifts and compares the medians at matched code
+  addresses; a swap (each side's code placed at the other's addresses) is its two-point form. Each variant is timed as R5-M135 says (A, B
+  and A′ in one folder, 15 or more interleaved rounds, pinned), and every matched pair (each swap, or each matched shift) must lie within
+  the A=A range of the same run (for Iterators' 21-round run, A′/A 0.990-1.011). Within A=A it is code placement, recorded in the unit's
+  DECISIONS entry, and lands without an owner question; only a gap that remains at matched addresses is a slowdown under R5-M8 and goes to
+  the owner. Iterators at matched addresses: 1.000 (B at A's addresses) and 1.001 (A at B's against B), so gate 5's O2 part holds. O0
+  times (recorded, not judged): B/A 0.85 (ArrayLiteral) to 1.59 (Dictionary). Rejected: forcing B's placement to A's in code generation (a
+  clause for one kernel's layout, AGENTS). Open for X3: the PLAN10-P3 record's collection share is below the noise of its stage-3
+  subtraction on small inputs; X3 measures collection directly.
