@@ -34,13 +34,14 @@ public sealed partial class MirBorrowsTest
     // throughUniq) or its destruction (destroyedAtReturn: a by-value parameter's), and an exclusive Borrow of it (uniqLocal), as a call by
     // uniq forms (byMethod, byExchange), each while a value carrying a pointer formed through the own step may still be used: a live holder
     // (a Raw Place borrow derived from the pointer in rawBorrow), the result, E (stored) or, for a call, its operand (byCall). E keeps the
-    // pointer, so the storage end of stored's moved owner warns again (B-N3: a Warning rejects nothing).
+    // pointer, so the storage end of stored's moved owner warns again (B-N3: a Warning rejects nothing). destroyedAtReturn's warning is at
+    // its parameter's Type (DECISIONS BU-48's locations, settled (a): a parameter's record at its Type occurrence, R4-M90 D6's rule extended).
     [Fact]
     public void ADepartureOfTheOwnerWarns()
         => Assert.Equal(
             [
                 "moved: b", "ancestor: k", "objPayload: h", "taken: (*q)", "replaced: b = Buf<i32>.init(1)", "throughUniq: r@follow = Buf<i32>.init(1)",
-                "destroyedAtReturn: func destroyedAtReturn(s: Store) -> raw/i32 => s.data", "uniqLocal: b@uniq", "byMethod: b.push(1)",
+                "destroyedAtReturn: Store", "uniqLocal: b@uniq", "byMethod: b.push(1)",
                 "byExchange: Kimi.Intrinsics.exchange(b@uniq, with: Buf<i32>.init(1))", "rawBorrow: b = Buf<i32>.init(1)", "stored: b",
                 "stored: var b = Buf<i32>.init(4)", "byCall: takeBoth(b@uniq, b.data)",
             ],

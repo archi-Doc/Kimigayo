@@ -37,7 +37,7 @@ internal sealed partial class Layout
     internal Layout() => this.recordsByKey = this.records.GetAlternateLookup<ReadOnlySpan<char>>();
 
     /// <summary>Forgets the entries and records of the previous program version (Compilation.InvalidateSourceAnalysis); a pass
-    /// without an edit keeps every Type's stored Types, IsCLayout, InlineCycle and CLayoutRejected (R4-M51's premise), so warm
+    /// without an edit keeps every Type's stored Types, IsCLayout, CLayoutUnavailable and InlineCycle (R4-M51's premise), so warm
     /// passes keep them.</summary>
     internal void Clear()
     {
@@ -51,6 +51,10 @@ internal sealed partial class Layout
 
     // A storage declaration, fixed array or enum Binding rejected is a leaf one level high, of no known size.
     private static Entry Rejected(BoundType type) => Entry.Of(Outcome.Rejected, null, type, 1, 0, 0);
+
+    // A C-layout struct whose layout is unavailable at its declaration (SPEC 6.7.1: open, derived or empty; AdtDef.CLayoutUnavailable) is
+    // CLayout at once, a leaf one level high naming itself, of no known size: no part is placed.
+    private static Entry Unavailable(BoundType type) => Entry.Of(Outcome.CLayout, null, type, 1, 0, 0);
 
     // A Type placed with `budget` levels left. A row is 0 high; a complete entry serves every budget not below its height; at budget
     // 0 a placed Type lies outside the window; an exhausted entry is `budget` + 1 high.
@@ -81,7 +85,8 @@ internal sealed partial class Layout
 
         entry = type.Kind switch
         {
-            _ when type.Symbol?.Adt is { InlineCycle: true } or { CLayoutRejected: true } => Rejected(type),
+            _ when type.Symbol?.Adt is { InlineCycle: true } => Rejected(type),
+            _ when type.Symbol?.Adt is { CLayoutUnavailable: true } => Unavailable(type),
             BoundTypeKind.FixedArray => this.PlaceArray(type, budget - 1),
             _ when AdtDef.IsEnum(type) => this.PlaceEnum(type, budget - 1),
             _ => this.Place(type, budget - 1),

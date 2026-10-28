@@ -43,7 +43,9 @@
 // (MirCases decides a PairLayer under the item's view), compose a Subst or a Type (TypeOf does), resolve a callee, or use LINQ, Supports*,
 // out-string failures or catch-alls. An Opaque value (the gate admits none), a Type TypeOf cannot make, a Layout outcome other than Ok
 // and any other input validated MIR never has are broken contracts: InternalInvariant_Kd, recorded once by the owner that detects it, at
-// the site it has, else the body's subject (DECISIONS R5-M146).
+// the site it has, else the body's subject (DECISIONS R5-M146); but a generated, uncalled constructor's construction receiver, which the
+// collector does not lay out (DECISIONS BU-48), takes the record RecordOf gives its outcome: a CLayout or oversized one Unsupported_Kd,
+// a limit its Resource record, until R5-M144's C-lane unit (PLAN G157 (41)) makes it a record at check.
 
 using Kimi.Compiler.Mir;
 using static Kimi.Compiler.Backend.LlvmModuleText;
@@ -90,9 +92,9 @@ internal sealed partial class FunctionCodegen
             // A1 or A2 left inexact (R4-M102: an inline copy's problem marks its caller) is not written; its refusal is that problem's own
             // code at its subject, by the location rule (K 4.9: out of an inline default outside the root modules, R4-M132), and every
             // other item is still written, so its own refusals are recorded too. Interim: a body A1 skipped at the arena limit (ViewsOf 0,
-            // R4-M15a) is one located Unsupported_Kd at the body, since a generation record is location-only, code generation's one
-            // Unsupported_Kd (COMPILER_ARCHITECTURE, DECISIONS R5-M146); removed at H3 once a record carries the arena problem's Required,
-            // Limit and Table facts (refusal.Problem's) as requiredBytes, limitBytes and table.
+            // R4-M15a) is one located Unsupported_Kd at the body, since a generation record is location-only, one of code generation's
+            // two interim Unsupported_Kd (COMPILER_ARCHITECTURE, DECISIONS R5-M146, BU-48); removed at H3 once a record carries the arena
+            // problem's Required, Limit and Table facts (refusal.Problem's) as requiredBytes, limitBytes and table.
             var code = program.Drops.ViewsOf(body.Ordinal) == 0 ? DiagnosticCode.Unsupported_Kd : refusal.Code;
             this.module.Report(code, collector.Subject(item, body, refusal.Source));
             return;

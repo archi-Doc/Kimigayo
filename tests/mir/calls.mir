@@ -1,5 +1,5 @@
 fn init @6
-  _0: Counter return @6
+  _0: Counter return (Receiver) @6
   _1: () temp @7
   _2: () temp @7
   _3: i32 temp @8
@@ -18,8 +18,8 @@ fn init @6
       return @7
 fn bump @12
   _0: () return @12
-  _1: uniq/Counter arg self @12
-  _2: i32 arg by @12
+  _1: uniq/Counter arg self @13
+  _2: i32 arg by @15
   _3: () temp @16
   _4: i32 temp @17
   bb0:
@@ -33,8 +33,8 @@ fn bump @12
       _0 = const () @16
       return @16
 fn read @25
-  _0: i32 return @25
-  _1: ref/Counter arg self @25
+  _0: i32 return @27
+  _1: ref/Counter arg self @26
   bb0:
     * _0 = copy (*_1).0 @28
       return @28
@@ -61,7 +61,7 @@ setter doubled.Set @41
       _0 = const () @44
       return @44
 fn init @64
-  _0: Pair return @64
+  _0: Pair return (Receiver) @64
   _1: () temp @65
   _2: () temp @65
   bb0:
@@ -75,16 +75,16 @@ fn init @64
       StorageDead(_1) @65
       return @65
 fn index @66
-  _0: ref/i32 return @66
-  _1: ref/Pair arg self @66
-  _2: ref/isize arg key @66
+  _0: ref/i32 return @70
+  _1: ref/Pair arg self @67
+  _2: ref/isize arg key @68
   bb0:
     * _0 = &(*_1).0: ref/i32 @73
       return @73
 fn indexUniq @78
-  _0: uniq/i32 return @78
-  _1: uniq/Pair arg self @78
-  _2: ref/isize arg key @78
+  _0: uniq/i32 return @83
+  _1: uniq/Pair arg self @79
+  _2: ref/isize arg key @81
   bb0:
     * _0 = &uniq (*_1).0: uniq/i32 @86
       return @86
@@ -95,9 +95,9 @@ fn top-level#0 @91
       _0 = const () @92 s1
       return @92
 fn methods @93
-  _0: i32 return @93
-  _1: uniq/Counter arg counter @93
-  _2: Counter arg owned @93
+  _0: i32 return @97
+  _1: uniq/Counter arg counter @94
+  _2: Counter arg owned @96
   _3: () temp @99 s1
   _4: uniq/Counter temp @101 s1
   _5: () temp @104 s1
@@ -176,9 +176,9 @@ fn methods @93
       StorageDead(_7) @109 s1
       unreachable @98
 fn same @128
-  _0: bool return @128
-  _1: T arg a @128
-  _2: T arg b @128
+  _0: bool return @135
+  _1: T arg a @133
+  _2: T arg b @134
   _3: bool temp @138 s1
   _4: ref/T temp @139 s1
   _5: ref/T temp @140 s1
@@ -199,9 +199,9 @@ fn same @128
       _0 = move _6 @137 s1
       goto bb2 @137 s1
   bb4:
-      drop _2 -> bb5 [keep] @128
+      drop _2 -> bb5 [keep] @134
   bb5:
-      drop _1 -> bb6 [keep] @128
+      drop _1 -> bb6 [keep] @133
   bb6:
       goto bb3 @128
   bb7:
@@ -216,14 +216,14 @@ fn same @128
       StorageDead(_5) @140 s1
       StorageDead(_4) @139 s1
       StorageDead(_3) @138 s1
-      drop _2 -> bb10 @128
+      drop _2 -> bb10 @134
   bb10:
-      drop _1 -> bb11 @128
+      drop _1 -> bb11 @133
   bb11:
       unreachable @136
 fn apply @141
-  _0: i32 return @141
-  _1: ref/F arg action @141
+  _0: i32 return @153
+  _1: ref/F arg action @151
   _2: i32 temp @156 s1
   _3: i32 temp (Result) @141
   s1: lexical in s0 @154
@@ -247,8 +247,8 @@ fn apply @141
       StorageDead(_2) @156 s1
       unreachable @154
 fn first @158
-  _0: ref/i32 return @158
-  _1: ref/[3 of i32] arg values @158
+  _0: ref/i32 return @163
+  _1: ref/[3 of i32] arg values @159
   _2: ref/[3 of i32] temp @167
   _3: isize temp @167
   bb0:
@@ -262,8 +262,8 @@ fn first @158
       StorageDead(_2) @167
       return @166
 fn read @171
-  _0: i32 return @171
-  _1: ref/[3 of i32] arg values @171
+  _0: i32 return @176
+  _1: ref/[3 of i32] arg values @172
   _2: ref/i32 temp @177
   bb0:
       StorageLive(_2) @177
@@ -273,14 +273,14 @@ fn read @171
       StorageDead(_2) @177
       return @177
 fn stop @180
-  _0: Never return @180
+  _0: Never return @181
   bb0:
     * _0 = intrinsic Abort(const "stopped") -> ! check bb1 @182
   bb1:
       unreachable @182
 fn indexed @186
-  _0: i32 return @186
-  _1: uniq/Pair arg pair @186
+  _0: i32 return @189
+  _1: uniq/Pair arg pair @187
   _2: i32 temp @191 s1
   _3: ref/i32 temp @191 s1
   _4: ref/Pair temp @192 s1
@@ -372,8 +372,8 @@ fn indexed @186
       unreachable @190
 fn take @203
   _0: () return @203
-  _1: uniq/i32 arg target @203
-  _2: i32 arg by @203
+  _1: uniq/i32 arg target @204
+  _2: i32 arg by @206
   _3: () temp @207
   bb0:
       StorageLive(_3) @207
@@ -382,16 +382,16 @@ fn take @203
       _0 = const () @207
       return @207
 fn see @208
-  _0: i32 return @208
-  _1: ref/i32 arg target @208
-  _2: i32 arg by @208
+  _0: i32 return @212
+  _1: ref/i32 arg target @209
+  _2: i32 arg by @211
   bb0:
     * _0 = copy _2 @213
       return @213
 fn chosen @214
-  _0: i32 return @214
-  _1: bool arg flag @214
-  _2: i32 arg n @214
+  _0: i32 return @217
+  _1: bool arg flag @215
+  _2: i32 arg n @216
   _3: i32 var mut a @219 s1
   _4: i32 var mut b @223 s1
   _5: () temp @227 s1
@@ -530,9 +530,9 @@ fn chosen @214
       StorageDead(_3) @219 s1
       unreachable @218
 fn exited @276
-  _0: i32 return @276
-  _1: bool arg flag @276
-  _2: i32 arg n @276
+  _0: i32 return @279
+  _1: bool arg flag @277
+  _2: i32 arg n @278
   _3: i32 var mut a @281 s1
   _4: i32 var mut b @285 s1
   _5: () temp @289 s1
@@ -709,8 +709,8 @@ fn exited @276
       StorageDead(_3) @281 s1
       unreachable @280
 fn half @342
-  _0: Option<uniq/i32> return @342
-  _1: uniq/i32 arg value @342
+  _0: Option<uniq/i32> return @345
+  _1: uniq/i32 arg value @343
   _2: uniq/i32 temp @354
   bb0:
       StorageLive(_2) @354
@@ -719,8 +719,8 @@ fn half @342
       StorageDead(_2) @354
       return @351
 fn tried @357
-  _0: Option<i32> return @357
-  _1: i32 arg n @357
+  _0: Option<i32> return @359
+  _1: i32 arg n @358
   _2: i32 var mut a @364 s1
   _3: () temp @368 s1
   _4: uniq/i32 temp @370 s1
@@ -822,8 +822,8 @@ fn tried @357
       StorageDead(_2) @364 s1
       unreachable @363
 fn received @404
-  _0: i32 return @404
-  _1: bool arg flag @404
+  _0: i32 return @406
+  _1: bool arg flag @405
   _2: Counter var mut c @408 s1
   _3: Counter var mut d @414 s1
   _4: () temp @420 s1
@@ -913,8 +913,8 @@ fn received @404
       StorageDead(_2) @408 s1
       unreachable @407
 fn called @445
-  _0: i32 return @445
-  _1: bool arg flag @445
+  _0: i32 return @447
+  _1: bool arg flag @446
   _2: i32 var mut n @449 s1
   _3: closure () -> i32 var mut f @453 s1
   _4: i32 temp @459 s1
@@ -982,15 +982,15 @@ fn called @445
       StorageDead(_2) @449 s1
       unreachable @448
 closure @455
-  _0: i32 return @455
+  _0: i32 return @456
   _1: ref/closure () -> i32 arg @455
   bb0:
     * _0 = copy (*_1).0 @457
       return @457
 fn shared @471
-  _0: i32 return @471
-  _1: bool arg flag @471
-  _2: i32 arg n @471
+  _0: i32 return @474
+  _1: bool arg flag @472
+  _2: i32 arg n @473
   _3: i32 var a @476 s1
   _4: i32 var b @480 s1
   _5: i32 temp @485 s1

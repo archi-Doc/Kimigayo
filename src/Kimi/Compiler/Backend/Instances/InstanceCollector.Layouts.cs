@@ -8,9 +8,10 @@ namespace Kimi.Compiler.Backend;
 internal sealed partial class InstanceCollector
 {
     /// <summary>Gets the record of a Layout outcome (K 4.8; R5-M37: the collector alone maps Layout's outcomes). A size, count or depth limit
-    /// is Resource (IMPL 21.3.2); a C-layout instance storing a zero-sized Field, at any depth in the window, is the Language error
-    /// InvalidCLayout_Kd (SPEC 6.7.1, 8.15.3); Ok has none, and Rejected storage derives from the Binding error that rejected it (Derived,
-    /// DECISIONS BU-38). Oversized is reported through Result.Oversized, which an oversized CLayout carries too.</summary>
+    /// is Resource (IMPL 21.3.2); a C-layout instance whose C layout is unavailable (open, derived, empty or storing a zero-sized Field), at
+    /// any depth in the window, is the Language error InvalidCLayout_Kd (SPEC 6.7.1, 8.15.3); Ok has none, and Rejected storage derives from
+    /// the Binding error that rejected it (Derived, DECISIONS BU-38). Oversized is reported through Result.Oversized, which an oversized
+    /// CLayout carries too.</summary>
     /// <param name="outcome">The outcome.</param>
     /// <returns>Its record, or null for none.</returns>
     internal DiagnosticCode? RecordOf(Layout.Outcome outcome) => outcome switch
@@ -22,12 +23,15 @@ internal sealed partial class InstanceCollector
         _ => throw new InvalidOperationException($"The layout outcome {outcome} has no record row."),
     };
 
-    // The locals of an item's body but its drop flags, in its instance, each a by-value use at its declaration.
+    // The locals of an item's body in its instance, each a by-value use at its declaration, but its drop flags and a constructor's
+    // construction receiver (MirLocalRole.Receiver), whose storage its caller's construction expression made and laid out (SPEC 6.3.2-6.3.4,
+    // 8.15.3; DECISIONS BU-48): the body reaches it only for its Fields' access.
     private void LayOutLocals(int item, MirBody body)
     {
         foreach (var local in body.Locals)
         {
-            if (local.Kind != MirLocalKind.DropFlag && this.Subject(item, body, local.Source) is var subject && this.In(item, subject, local.Type) is { } type)
+            if (local.Kind != MirLocalKind.DropFlag && local.Role != MirLocalRole.Receiver &&
+                this.Subject(item, body, local.Source) is var subject && this.In(item, subject, local.Type) is { } type)
             {
                 _ = this.LaysOut(subject, type);
             }
