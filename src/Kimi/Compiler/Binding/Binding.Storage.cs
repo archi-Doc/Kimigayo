@@ -105,9 +105,9 @@ public sealed partial class Binding
     // The kept part of a declared Field, Case payload or base clause (Substitute; DECISIONS BU-46, BU-50): its written Type with its
     // completable projections completed (CompleteProjections), then each raw layer it writes without `during` stating Unstated
     // (WithUnstatedOrigins, the one producer of a Type stating Unstated), then under the instance's substitution, completed again for the
-    // projections whose subjects the substitution closes; null where it does not substitute or names no Type (a projection whose binding
-    // Binding rejected: a dependent of that record, so the instance's storage is Rejected, DECISIONS BU-38). `BaseI<Src2<raw/u8>.Item>` is
-    // `BaseI<raw/u8>` (SPEC 8.2.3), so its layer is one the declaration writes.
+    // projections whose subjects the substitution closes; null where it does not substitute or names no Type (a struct or enum subject's
+    // projection that finally names none: a dependent of Binding's records, so the instance's storage is Rejected, DECISIONS BU-38).
+    // `BaseI<Src2<raw/u8>.Item>` is `BaseI<raw/u8>` (SPEC 8.2.3), so its layer is one the declaration writes.
     private BoundType? KeptType(Koto syntax, BoundType owner) => WrittenType(syntax) is { } written ? this.KeptType(written, owner) : null;
 
     private BoundType? KeptType(BoundType written, BoundType owner)
@@ -134,10 +134,10 @@ public sealed partial class Binding
     // subject specifies (ProjectionSpecification): a builtin output or fixed-array iterator Type as it is, a conformance binding as a kept
     // part of the subject (KeptType), so a raw layer the subject's declaration writes (`Src { Item is raw/u8 }`, a base clause's argument)
     // states Unstated and one the subject's argument supplies (`Src2<raw/u8>`, `Item is T`) carries the argument's mark; a projection whose
-    // subject is a parameter, or whose conformance binds nothing yet, stays a projection; one whose binding Binding rejected (SPEC 8.3.3,
-    // which ends an expanding or cyclic specification) names no Type, so the part is null. A part without an abstract part is its own
-    // result, and a projection is completed after its components, so a subject that is itself a projection is completed first. A
-    // projection is resolved in the scope of the owner's `declaration`, where PrepareStorage binds its parts.
+    // subject is abstract, or whose binding's evidence is not ready yet, stays a projection; one of a struct or enum subject that finally
+    // names no Type (whatever the reason; SPEC 8.3.3 so ends an expanding or cyclic specification) makes the part null. A part without an
+    // abstract part is its own result, and a projection is completed after its components, so a subject that is itself a projection is
+    // completed first. A projection is resolved in the scope of the owner's `declaration`, where PrepareStorage binds its parts.
     private BoundType? CompleteProjections(BoundType part, Koto declaration)
     {
         if (!part.HasAbstractPart)
@@ -172,9 +172,9 @@ public sealed partial class Binding
 
     private BoundType? CompletedProjection(BoundType projection, Koto declaration)
     {
-        if (this.ProjectionSpecification(projection, this.scopes[declaration], out var subject, out var rejected) is not { } specified)
+        if (this.ProjectionSpecification(projection, this.scopes[declaration], out var subject, out var pending) is not { } specified)
         {
-            return rejected ? null : projection;
+            return pending ? projection : null;
         }
 
         if (subject is null)

@@ -249,6 +249,8 @@ public sealed class InstanceCollectorTest
             const string BaseA = HasItem + "open struct BaseA\n    Self is HasItem\n    associate HasItem.Item is BaseA.Item\n";
             const string Inherited = "InvalidConstraint_Kd InvalidConstraint_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd " +
                 "InvalidConstraint_Kd InvalidConstraint_Kd";
+            const string Holder = "contract Holder<K>\n    associate Item\nstruct HB<S>\n    S is Holder<i32>\n    var x: S.Item\n";
+            const string Bindings = "    associate Holder<T>.Item is i32\n    associate Holder<U>.Item is u8\n";
             var b65 = Nest("B", 65, "i32");
             return new()
             {
@@ -275,6 +277,26 @@ public sealed class InstanceCollectorTest
                 {
                     "inheritedGeneric", HasItem + "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is BaseG<T>.Item\n    var t: T\n" +
                     "struct DerG : BaseG<i32>\n    var m: i32\nfunc g(b: HA<DerG>) => ()\n", Inherited, string.Empty
+                },
+                {
+                    "sourcesDisagree", Holder + "contract Sub<A, B> : Holder<A>, Holder<B>\nopen struct BaseP<T, U>\n    Self is Sub<T, U>\n" + Bindings +
+                    "struct DerP : BaseP<i32, i32>\n    var m: i32\nfunc g(h: HB<DerP>) => ()\n",
+                    "IncompatibleContractImplementation_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                },
+                {
+                    "pathsDisagree", Holder + "open struct BaseP<T, U>\n    Self is Holder<T>\n    Self is Holder<U>\n" + Bindings +
+                    "struct DerP : BaseP<i32, i32>\n    var m: i32\nfunc g(h: HB<DerP>) => ()\n",
+                    "DuplicateBinding_Kd DuplicateBinding_Kd InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                },
+                {
+                    "noConformance", HasItem + "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is T\n    var t: T\n" +
+                    "struct DerX : BaseG\n    var m: i32\nfunc g(b: HA<DerX>) => ()\n",
+                    "InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                },
+                {
+                    "noConformanceArity", HasItem + "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is T\n    var t: T\n" +
+                    "struct DerX : BaseG<i32, u8>\n    var m: i32\nfunc g(b: HA<DerX>) => ()\n",
+                    "InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
                 },
                 { "limitBesideError", Inspect + Box + $"func h(b: ref/{b65}) => inspect(b)\nfunc other() -> i32 => missing\n", "UnresolvedBinding_Kd", "Unsupported_Kd inspect(b)" },
                 { "limitBesideField", Inspect + Box + $"struct Bad\n    public var m: Missing\n    public var big: {b65}\nfunc h(b: ref/Bad) => inspect(b)\n", "UnresolvedBinding_Kd", "Unsupported_Kd inspect(b)" },
@@ -594,9 +616,11 @@ public sealed class InstanceCollectorTest
     // SPEC 23.1.2, 23.1.1 (DECISIONS BU-38): a part Binding rejected is a dependent, never a limit. A program whose instance, composed
     // substitution or bodyless callee's parameter rests on storage Binding rejected keeps exactly its Binding record and gains no generation
     // record (before: the storage-nesting gap at the requesting call, C8d's LegacyRow item InternalInvariant_Kd), while a Type nested past the
-    // bound keeps the gap at its site, beside a failed part in either order too: the limit wins. A Field whose projection names no Type,
-    // its specification rejected by SPEC 8.3.3 (noType, DECISIONS BU-50), also through an inherited conformance one or two levels down or
-    // under a generic base (inherited*), is such a part (before: Layout's "no row for the Type Item").
+    // bound keeps the gap at its site, beside a failed part in either order too: the limit wins. A Field whose projection of a struct
+    // subject finally names no Type is such a part, whatever the reason (DECISIONS BU-50): its specification rejected by SPEC 8.3.3
+    // (noType), also through an inherited conformance one or two levels down or under a generic base (inherited*), two inherited sources or
+    // two conformance paths disagreeing (sourcesDisagree, pathsDisagree), a subject whose base clause gives it no conformance
+    // (noConformance*); before, Layout's "no row for the Type Item".
     [Theory]
     [MemberData(nameof(RejectedCases))]
     public void APartBindingRejectedIsNoGenerationRecord(string name, string source, string issues, string records)
