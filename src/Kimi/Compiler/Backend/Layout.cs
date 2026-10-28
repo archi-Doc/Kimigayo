@@ -11,9 +11,10 @@
 // per program version, each placement's entry and its one decision in Layout.Decision.cs; Weak<S> comes with its operations (P41).
 // Inputs: a closed, interned Type of the owning compilation; AdtDef (stored Types, IsCLayout, CLayoutUnavailable, InlineCycle);
 // IMPL 21.1.3's rows. A borrow, raw pointer, handle or sequence is laid out without reading its referent or element Type (X34).
-// Outputs: a Result (Outcome, Value, Instance, Oversized); Row(type) for the old scalar-value gate until G8. A Type without a row is an
-// internal error. The collector (InstanceCollector) alone maps the outcomes (and, until G8, the old AggregateLayout.Represent onto its
-// own failures): a limit to a Resource record at the Type's first use (R5-M44), CLayout to InvalidCLayout_Kd and Oversized to
+// Outputs: a Result (Outcome, Value, Instance, Oversized); Row(type), a static row, which code generation reads (and the old
+// scalar-value gate until the old Emission goes at R6-gen; DECISIONS R5-M148). A Type without a row is an internal error. The
+// collector (InstanceCollector) alone maps the outcomes (and, until G8, the old AggregateLayout.Represent onto its own failures): a
+// limit to a Resource record at the Type's first use (R5-M44), CLayout to InvalidCLayout_Kd and Oversized to
 // OversizedLayout_Kd at each use (R5-M55, R5-M52), Rejected to a derived failure without a record (InternalInvariant_Kd in a complete
 // compilation, DECISIONS BU-38); codegen after acceptance treats any outcome but Ok as a broken contract (InternalInvariant_Kd), except for
 // a construction receiver the collector does not lay out, whose outcome it maps through RecordOf (DECISIONS BU-48). No size is published.
