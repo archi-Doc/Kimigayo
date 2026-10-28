@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text.RegularExpressions;
 using Xunit;
 using Xunit.Sdk;
 
@@ -76,6 +77,15 @@ public class NativeAllocationAuditTest
     public void AnchorWithoutItsRoutineFails()
         => Assert.Throws<EqualException>(() => Audit("Renamed", Entries, 2, 288, transferred: 96, transformIr: Rename));
 
+    // DECISIONS R5-M145: the byte copy written inline, as MIR code generation wrote it before both generators called one routine, leaves a
+    // transferring program's copies uncounted, so even a bound whose minimum is 0 fails instead of passing vacuously.
+    [Fact]
+    public void AnInlineByteCopyFails()
+    {
+        var failure = Assert.Throws<TrueException>(() => Audit("Inline", Entries, 2, 288, transferred: new(0, 96), transformIr: Inline));
+        Assert.Contains("byte copy", failure.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void BoundWithoutTransferRoutineFails()
     {
@@ -107,6 +117,15 @@ public class NativeAllocationAuditTest
     // The respelled routine without its anchor: the copy is a memmove, as lowering MoveBytes by its contract would write it.
     private static string Unanchor(string ir)
         => Respell(ir).Replace("@llvm.memcpy.p0.p0.i64(ptr %destination", "@llvm.memmove.p0.p0.i64(ptr %destination", StringComparison.Ordinal);
+
+    // The byte copy's calls written as the intrinsic they call, its definition removed.
+    private static string Inline(string ir)
+    {
+        var definition = Regex.Match(ir, @"(?ms)^define internal void @__kimi_transfer_bytes\(.*?^\}\n").Value;
+        Assert.NotEmpty(definition);
+        var calls = ir.Replace(definition, string.Empty, StringComparison.Ordinal);
+        return Regex.Replace(calls, @"call void @__kimi_transfer_bytes\(([^)]*)\)", "call void @llvm.memcpy.p0.p0.i64($1, i1 false)");
+    }
 
     // The growth routine under another name with its body unchanged.
     private static string Rename(string ir)

@@ -45,22 +45,10 @@ public class SealedObjectFinalizationTest
     [InlineData("Arc")]
     public void SealedPayloadsHaveDirectCleanupAndRelease(string factory)
     {
+        // SPEC 16.3.3 (DECISIONS R5-M112, R5-M145): the payload's destructor runs once and its one allocation is released once, natively
+        // under both generators; the handle glue's direct release is FunctionCodegenTest.AHandlesGlueReleasesItsObject's (R5-M12).
         var source = "struct Item\n    public let value: i32 = 7\n    drop => Console.writeLine(\"drop\")\n" +
             $"let owner = Kimi.Intrinsics.make{factory}(Item.init())\nrequire owner.value == 7 else => $abort(\"payload\")";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
-        var handle = Assert.Single(module.Aggregates, x => x.ObjectHandle is not null);
-        Assert.True(handle.ObjectPayloadDrop >= 0);
-        var ir = CompilationTestHelper.WriteIr(c);
-        var cleanup = Function(ir, "__kimi_drop_aggregate" + handle.Id);
-        Assert.Contains("call void @__kimi_drop_aggregate" + handle.ObjectPayloadDrop, cleanup, StringComparison.Ordinal);
-        Assert.Contains("call void @__kimi_free(ptr %header", cleanup, StringComparison.Ordinal);
-        Assert.DoesNotContain("call void %", cleanup, StringComparison.Ordinal);
-        if (factory == "Rc")
-        {
-            Assert.Contains("store i64 %next, ptr %control, align 8\n  %final = icmp eq i64 %old, 2", cleanup, StringComparison.Ordinal);
-        }
-
         NativeAllocationAudit.WriteFixture("SealedObjectDirect" + factory, source, 1, 1, 20, "drop\n");
     }
 
@@ -145,11 +133,5 @@ public class SealedObjectFinalizationTest
             let parent = Kimi.Intrinsics.makeObj((child@move, 7))
             """;
         NativeAllocationAudit.WriteFixture("SealedObjectNested", Source, 2, 2, 48, "item\n");
-    }
-
-    private static string Function(string ir, string name)
-    {
-        var body = ir[ir.IndexOf("define internal void @" + name + "(", StringComparison.Ordinal)..];
-        return body[..body.IndexOf("\n}", StringComparison.Ordinal)];
     }
 }
