@@ -12142,5 +12142,7 @@ structure is recorded here by the unit that first implements it.
   - Records: the snapshot against `shared-base/d3fcfd5a8` gains no row; the projection forms' Language records publish on every pipeline.
   - Size (net lines): src +324 (Instances +195, Backend +113 with `LayoutNeeds.cs` +99, Codegen +15, Core +1; contracts included);
     tests +198; docs +48. Cost (quiet slot, KIMI_CPU=2, tiering off, 5 interleaved rounds, minima, base 2576b0537): Analyze cold +2.4 %
-    (Hello 4,377 to 4,484 us) and +2.3 % (Milestone26), re-collect +2.6 % and +2.8 % on the default pipeline; under sel +1.3 % and
-    +0.4 % cold, +1.4 % and +2.0 % re-collect; cold allocation +7.2 KB (the need list's and the marks' first growth), warm 0 B.
+    (Hello 4,377 to 4,484 us) and +2.3 % (Milestone26, 4,731 to 4,841 us), re-collect +2.6 % and +2.8 % on the default pipeline; under
+    sel +1.3 % and +0.4 % cold, +1.4 % and +2.0 % re-collect; cold allocation +7,184 B (Hello) and +7,216 B (Milestone26), the need
+    list's and the marks' first growth; warm 0 B (raw rows `r5\proj\ab-final.txt`). The owner accepted this cost (2026-10-29, to the R5
+    planning session directly, verbatim 「受け入れる」).
