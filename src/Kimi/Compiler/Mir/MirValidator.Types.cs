@@ -102,6 +102,9 @@ internal sealed partial class MirValidator
         // An integer Type, or one whose instance decides it (SPEC 8.7.4: a PrimitiveInteger T, Wrapping<T>).
         private static bool Integral(BoundType type) => type.HasIntegerArithmetic || type.HasAbstractPart;
 
+        // SPEC 3.1: a Scalar, a numeric Type (an integer, wrapping integer or floating-point Type), bool or char; no layer is followed.
+        private static bool Scalar(BoundType type) => type.IsNumeric || ReferenceEquals(type, BoundType.Boolean) || ReferenceEquals(type, BoundType.Char);
+
         // SPEC 13.5.4, 13.6.1, 5.4, 10.2: whether a Cast of its kind converts a source Type to a target Type.
         private static bool Casts(MirCastKind kind, BoundType source, BoundType target) => kind switch
         {

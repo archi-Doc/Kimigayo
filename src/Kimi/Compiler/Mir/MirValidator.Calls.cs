@@ -5,12 +5,13 @@ namespace Kimi.Compiler.Mir;
 // Calls (plan 5.4; A3 E14; DECISIONS R5-M38, R5-M71).
 // - Responsibility: a Call's operand range and its callee by kind (Call): a Fn, Requirement or Virtual callee's function, a Value
 //   callee's TypeToken constant, an intrinsic's row (defined, the library declaration of the compiler function it serves, its arity, no
-//   target when it diverges, staticEnsure's static slot by Ensures, MirValidator.Statics' Slot); and its destination: a diverging
-//   Call's write bit for G131, no Never value written by a returning Call.
-// - Inputs: a Call terminator. Outputs: OperandRange, Callee, UnknownKind, Arity, StaticSlot and NeverWrite findings; a callee with a
-//   signature goes to MirValidator.Signatures and the Call's inputs to MirValidator.Inputs (G136).
+//   target when it diverges, staticEnsure's static slot by Ensures, MirValidator.Statics' Slot, testRecordValue's recorded value a
+//   Scalar by Records); and its destination: a diverging Call's write bit for G131, no Never value written by a returning Call.
+// - Inputs: a Call terminator. Outputs: OperandRange, Callee, UnknownKind, Arity, StaticSlot, Type and NeverWrite findings; a callee
+//   with a signature goes to MirValidator.Signatures and the Call's inputs to MirValidator.Inputs (G136).
 // - Invariants: Call returns false when its arguments are out of range, and the location is then not walked.
-// - Prohibitions: no argument or result Type (MirValidator.Signatures).
+// - Prohibitions: no argument or result Type of a signature (MirValidator.Signatures); an intrinsic row's Type through the Type tier's
+//   predicates (MirValidator.Types).
 internal sealed partial class MirValidator
 {
     private partial struct Checker
@@ -18,6 +19,11 @@ internal sealed partial class MirValidator
         // F10 (plan 5.6.6): a staticEnsure names its static (Slot); a constant id out of range is the walk's Const finding.
         private readonly bool Ensures(in MirTerminator call) => Slot(body, call) >= 0 ||
             (body.Operands[call.Start] is { Kind: MirOperandKind.Const } operand && (uint)operand.Arg >= (uint)body.Consts.Length);
+
+        // SPEC 17.6.3 (F8b, DECISIONS R5-M136): a testRecordValue records a Scalar, its value (operand 1, after its side) of a Scalar
+        // Type or of an unknown one (the Type tier's invariant), which the test runtime holds by its kind, width and bits.
+        private readonly bool Records(in MirTerminator call)
+            => call.Count < 2 || this.TypeOf(body.Operands[call.Start + 1]) is not { } type || Scalar(type);
 
         // False when the arguments are out of range.
         private bool Call(in MirTerminator call)
@@ -55,6 +61,9 @@ internal sealed partial class MirValidator
                     break;
                 case MirCalleeKind.Intrinsic when (IntrinsicId)callee.Arg == IntrinsicId.StaticEnsure && !this.Ensures(call):
                     this.Report(MirViolation.StaticSlot); // DECISIONS R5-M71.
+                    break;
+                case MirCalleeKind.Intrinsic when (IntrinsicId)callee.Arg == IntrinsicId.TestRecordValue && !this.Records(call):
+                    this.Report(MirViolation.Type);
                     break;
             }
 

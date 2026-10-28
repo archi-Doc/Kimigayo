@@ -175,8 +175,8 @@ internal sealed partial class FunctionCodegen
 
     // SPEC 17.6.3 (PD22; DECISIONS R5-M136): a verification's compared Scalar, which the builder records before its comparison (F8b), is held
     // by the test runtime until its observation numbers the failure: its side (operand 0), its Type's frame kind (TestRuntime.ValueKind) and
-    // width (1 for bool, else its size in bits) and its bits as i128, a float's reinterpreted as an integer, then zero-extended. A value of
-    // another Type is a broken contract: the builder records Scalars only.
+    // width (1 for bool, else its size in bits) and its bits as i128, a float's reinterpreted as an integer, then zero-extended. The value is
+    // a Scalar: validated MIR records no other (MirValidator's testRecordValue row).
     private void Record(in MirTerminator call, FunctionAbi routine)
     {
         var key = new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
@@ -186,12 +186,7 @@ internal sealed partial class FunctionCodegen
             return; // A broken contract, recorded (Laid).
         }
 
-        if (this.InstanceType(operand) is not { } type || !ScalarTypes.Supports(type))
-        {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, call.Source);
-            return;
-        }
-
+        var type = this.InstanceType(operand)!;
         if (!this.Operand(operand, out var value))
         {
             return; // A broken contract, recorded.
