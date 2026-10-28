@@ -8,14 +8,16 @@ namespace XunitTest;
 
 public class LibraryEmissionTest
 {
+    // The old generator's module (R5-M12 class S, rewritten at G3); test-library.ps1 emits these sources through the CLI and
+    // checks the selected generator's IR natively.
     [Theory]
-    [InlineData("Empty", "")]
-    [InlineData("Main", "public func main(value: i32) -> i32 => value + 1")]
-    [InlineData("MainAbort", "public func main() => $abort(\"must not execute\")")]
-    [InlineData("Functions", "public group Api\n    public func answer() -> i32 => 42\n    public func text() -> string => \"library\"")]
-    [InlineData("Generic", "public group Api\n    public func keep<T>(value: T) -> T => value@move")]
-    [InlineData("Cleanup", "public struct Value\n    public let value: i32\n    public init(value: i32) => self.value = value\n    drop => Console.writeLine(\"drop\")")]
-    public void EmitsInspectionWithoutAnOsEntry(string name, string source)
+    [InlineData("")]
+    [InlineData("public func main(value: i32) -> i32 => value + 1")]
+    [InlineData("public func main() => $abort(\"must not execute\")")]
+    [InlineData("public group Api\n    public func answer() -> i32 => 42\n    public func text() -> string => \"library\"")]
+    [InlineData("public group Api\n    public func keep<T>(value: T) -> T => value@move")]
+    [InlineData("public struct Value\n    public let value: i32\n    public init(value: i32) => self.value = value\n    drop => Console.writeLine(\"drop\")")]
+    public void EmitsInspectionWithoutAnOsEntry(string source)
     {
         var c = Analyze(source);
         Assert.True(c.Binding.Startup.IsComplete);
@@ -32,9 +34,6 @@ public class LibraryEmissionTest
         Assert.DoesNotContain("@__kimi_start", ir);
         Assert.DoesNotContain("@__kimi_entry_body", ir);
         Assert.Contains("@_fltused = global i32 0, align 4", ir);
-        var directory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../temp/library-fixtures"));
-        Directory.CreateDirectory(directory);
-        File.WriteAllText(Path.Combine(directory, name + ".ll"), ir);
     }
 
     [Theory]
