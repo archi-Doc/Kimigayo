@@ -7847,6 +7847,43 @@ resumed by R4-M86 (2026-10-20).
     A9, B7, takeTwice valid in both views; A2, B4, B5 W's records until G276), `AnExclusiveLayerHeldByValueKeepsItsOwnOriginsLoan`
     (use1 valid, use2 rejected); `RuleGsSelfStoreReachesAClosureReceiver` unchanged.
   - Cost: src +25/−8 lines besides comments.
+- **BU-51 Every slot a call fills is an input: a default's instantiated Type bounds the call's solution and is judged at the call,
+  `RequireInputPremises(at, parameter, supplied)` over `DefaultSlots`** (2026-10-28; PLAN G277 (1), BU's Major unit bu54, pulled
+  forward by the owner (「推奨どおり」, 2026-10-28); the planning session's design, adopted without a design review, WORKFLOW Design 4)
+  SPEC 15.6.4 steps 1, 3, 7.2.3, 10.1 step 2, 10.1.1.
+  - Rule: a call fills each parameter slot by a written argument, its receiver or a default (10.1 step 2), and 15.6.4 step 3 proves
+    every instantiated parameter Type well formed, the call's fresh regions solved under it; a default keeps "the call's ordinary
+    argument and Loan checks" (7.2.3) and gives no evidence (10.1.1). One input-premise rule serves every filled slot:
+    `RequireInputPremises(at, parameter, supplied)` judges each position that `supplied` does not prove, a written input's or the
+    receiver's adapted Type behind its fit-record gate, and for a default (none supplied) every position, at the call.
+    `JudgeSelectedCall` judges the receiver, the arguments and the defaults, which `BindCallCore` forms first (`SelectedDefaults`); the
+    written slots are judged also when a default has no Type (23.1.2: `MissingType` after them). The candidate solve reads the defaults
+    through one derivation of the mapping (`DefaultSlots`: the slots no written argument or receiver supplies; none at a function
+    reference's call): each default's well-formedness shortens the solution as a written part's does (`SolveLate`), and an Origin that
+    no supplied input and no clause names is a local region of the call (`OpenResultOnlyOrigins`' rule, for the result or a default);
+    the well-formedness obligation of a default naming it, judged at the call, keeps the region under the bounds that default's Type
+    states, accepting what 15.3.6's meet of those bounds would.
+  - Cause: a default had no `BoundArgumentOperation`, and the judgment and the solve walk operations and parts. `BindCallCore` formed
+    the defaults' Types after the judgment and published them unjudged (dfl1, d1u, g1, the method and constructor forms, r1, z5, dfl2
+    were accepted on every pipeline); an Origin only a default and the result named took the expected Origin unchecked (r1) or stayed
+    pending (r2ok, r2d: a false `UnprovenConstraint_Kd`), and one only defaults named was published as the callee's own `Parameter`
+    Origin (r3ok, b1ok), which the judgment alone would have refuted (a false `UnprovenOriginRelation_Kd`, probed).
+  - Records (no new code or fact): a Finite end at a fixed one `UnsatisfiedOriginRelation_Kd` at the call, source `wellFormed`; two
+    fixed ends `UnprovenOriginRelation_Kd` there; z5's result, shortened by the premise, its own `fit` record at the returned call;
+    local ends Binding's obligation at the call (its row, `OriginRowsTest`), the old analysis' and A5's `ComparisonLoanConflict_Kd` at
+    the destroyed local. A `borrow` end supplied through a local (dfl1's `sr`) is shown by its Origin and related at the call: the
+    adapter finds a well-formedness end's Borrow inside the call only, as for a written input.
+  - Removes: `BindCallCore`'s own rebuild of the winner's slots (`used[]`) and `JudgeSelectedCall`'s `argumentCount`.
+  - Rejected: (b) one filled-slot list in `CallPlan`, defaults as operations: a published representation that 18 files on both paths
+    read, a Full change with no verdict beyond this rule (R7's CallPlan input); judging a default at its declaration (15.6.1: the call's
+    Origins instantiate it).
+  - Open: a contextual argument's Type is the call's and stays unjudged (`ReferenceEquals(adapted, parameter)`; PLAN G269 (C), with
+    r2c's false `UnprovenConstraint_Kd`).
+  - Tests: `CallOriginRelationTest.ADefaultedInputsWellFormednessIsJudgedAtTheCall` (eight forms, each accepted before) and
+    `AWellFormedDefaultIsAccepted` (thirteen twins; r2ok and r2d failed before), `OriginRowsTest.ARowIsTheBodyBindingFormsItIn`'s
+    dfl2 row, `OriginProofWorkloads`' `defaults` family (sizes 1–32).
+  - Cost: src +80/−33 lines (+61/−20 besides comments, 7 of them `JudgeSelectedCall`'s signature wrapped), after the restructuring
+    commit before it (Binding.Calls.cs split by responsibility); tests +113/−1.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
