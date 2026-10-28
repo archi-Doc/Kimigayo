@@ -7367,7 +7367,9 @@ resumed by R4-M86 (2026-10-20).
     (`RecordOf`): a CLayout or oversized one is a located `Unsupported_Kd` at the constructor (8.15.3's last sentence), a limit its
     Resource record (IMPL 21.3.2), anything else `InternalInvariant_Kd`. The judge's `i-init` and `i-toplevel` rows lost their record at
     `init` in their own commit under this reading.
-  - Superseded by R5-M149 (the owner's Q1 (a): such a constructor is checked only, not generated): the receiver record and the interim.
+  - Superseded by R5-M149 (the owner's Q1 (a): such a constructor is checked only, not generated, so MIR code generation builds a
+    Library as well as an Application): the receiver contract's code generation record and its interim; and the Open bullet's
+    `f(s: ref/S) => s.n` known limit, now a use at the projection at `check` (R5-M144, R5-M149).
   - Interim (R5's ruling on the landing merge with X2, 2026-10-29): code generation's receiver record narrows R5-M146's statements that the
     capability table is the Backend's one source of not-yet-implemented records and that the arena skip is code generation's one
     `Unsupported_Kd`; ARCH names it beside R5-M96's arena skip as code
