@@ -17,6 +17,11 @@ public sealed partial class Binding
     private readonly List<BoundType> retentionCallables = new();
     private readonly Dictionary<BoundType, int> retentionCarriers = new(ReferenceEqualityComparer.Instance);
 
+    // The (subject, Contract) premises whose requirement signatures HandedSignatures has listed, and the Types the contract's own Types
+    // reach (Reach), reused.
+    private readonly HashSet<(BoundType Subject, BindingSymbol Contract)> retentionContracts = new();
+    private readonly HashSet<BoundType> retentionReached = new(ReferenceEqualityComparer.Instance);
+
     // The inputs (and declaring Type) of the contract or erased signature being walked, whose borrows a raw layer's Origin belongs to
     // (RawContent), reused, and how many of them are a callee's own signature inputs, which the signature cap reads (SignatureStep; none
     // for an erased signature, a Function Type's or a Callable bound's, whose raw layers read their kind: SPEC 5.2.1 caps a layer written
@@ -86,11 +91,25 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 8.10: the signatures of the Callable bounds among the premises at `use`, in its constraint scope and those enclosing it.
-    internal void CallableBoundSignatures(Koto use, List<BoundType> bounds)
+    // SPEC 8.10, 8.4, 15.6.4 (β′; DECISIONS R4-M52, R4-M154): the callables the premises at `use` hand its body, in its constraint scope and
+    // those enclosing it, each one erased callable: each Callable bound's signature, and each requirement signature of each Contract premise
+    // on its subject (TyCtxt.RequirementSignatures, a refinement's inherited requirements included), then of the Contract premises its
+    // Contract's and ancestors' clauses state on the subject's associated Types (ContractConstraint, as a requirement call's resolution
+    // adds them, AddContractPremises) that the contract's own Types reach (`signature`, its declared inputs and result: a projection
+    // occurring in them or its base; a recursive clause, `associate Child is Branch`, grows no further), each (subject, Contract) once;
+    // whether each substitutes (false: CallRetention.Limit).
+    internal bool HandedSignatures(Koto use, ReadOnlySpan<BoundType> signature, List<BoundType> handed)
     {
-        bounds.Clear();
-        for (var current = this.ConstraintScope(use); current is not null; current = current.Parent)
+        handed.Clear();
+        this.retentionContracts.Clear();
+        this.retentionReached.Clear();
+        foreach (var type in signature)
+        {
+            this.Reach(type);
+        }
+
+        var scope = this.ConstraintScope(use);
+        for (var current = scope; current is not null; current = current.Parent)
         {
             if (current.Constraints is not { Invalid: false } constraints)
             {
@@ -101,16 +120,58 @@ public sealed partial class Binding
             {
                 if (fact.Kind == ConstraintKind.Callable && this.AvailableConstraintFact(constraints, fact))
                 {
-                    bounds.Add(fact.RequiredType!);
+                    handed.Add(fact.RequiredType!);
+                }
+                else if (fact is { Kind: ConstraintKind.Contract, Subject: { } subject, Contract: { } contract } && this.AvailableConstraintFact(constraints, fact) &&
+                    !this.HandedContract(subject, contract, scope, handed))
+                {
+                    return false;
                 }
             }
         }
+
+        return true;
     }
 
     // A fixed Origin of an erased callable: a carrier's hidden Origins (R4-M36), or an Origin neither `static` nor one of its per-call
-    // Origins, which only its own syntax binds and no nested signature names (SPEC 8.10, 15.3.4).
+    // Origins, which only its own syntax binds and no nested signature names (SPEC 8.10, 15.3.4): a Function Type's input Origin, or a
+    // requirement's own Origin, elided or named (DECISIONS R4-M154).
     private static bool IsFixed(in RetentionAtom atom)
-        => atom.Carrier is not null || atom.Origin is { Kind: not OriginKind.Static } and not { Kind: OriginKind.Input, Binder: FunctionTypeKoto };
+        => atom.Carrier is not null || atom.Origin is { Kind: not OriginKind.Static } and not { Kind: OriginKind.Input, Binder: FunctionTypeKoto } and
+            not { Kind: OriginKind.Input or OriginKind.Parameter, Binder: FunctionKoto { IsRequirement: true } };
+
+    // A Contract premise's requirement signatures (HandedSignatures), then those of the Contract premises its Contract's and ancestors'
+    // clauses state on its subject's associated Types; whether each substitutes.
+    private bool HandedContract(BoundType subject, BindingSymbol contract, BindingScope scope, List<BoundType> handed)
+    {
+        if (contract.Contract is not { } shape || !this.retentionContracts.Add((subject, contract)))
+        {
+            return true;
+        }
+
+        if (!this.types.RequirementSignatures(subject, contract, handed))
+        {
+            return false;
+        }
+
+        for (var i = -1; i < shape.Ancestors.Count; i++)
+        {
+            var declaration = i < 0 ? shape : shape.Ancestors[i].Contract!;
+            foreach (var clause in declaration.ClauseStorage)
+            {
+                if (clause.BoundConstraint is { } constraint && DependentConstraint(constraint, contractSelf: true) &&
+                    this.ContractConstraint(constraint, scope, subject, normalize: false, declaration.Symbol) is
+                    { Kind: ConstraintKind.Contract, Subject: { } associated, Contract: { } required } &&
+                    (ReferenceEquals(associated, subject) || this.retentionReached.Contains(associated)) &&
+                    !this.HandedContract(associated, required, scope, handed))
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
 
     // Begins a retention computation at `use`: resets the per-computation fields, registers each input's atoms and holds and the result's
     // atoms and its one hold, its whole Type (Held walks what lies behind its borrows as lent, DECISIONS BU-40), over the scope of the
@@ -195,6 +256,11 @@ public sealed partial class Binding
         }
 
         this.Handed(result, null);
+        if (declaring is not null)
+        {
+            this.Handed(declaring, null);
+        }
+
         foreach (var bound in bounds)
         {
             this.AddErasedSignature(environment, bound);
@@ -216,6 +282,18 @@ public sealed partial class Binding
             if (!ReferenceEquals(callable, self) && !this.retentionCallables.Contains(callable))
             {
                 this.retentionCallables.Add(callable);
+            }
+        }
+    }
+
+    // The Types a contract's Type reaches, each component at any depth (a projection's base among them), into retentionReached.
+    private void Reach(BoundType type)
+    {
+        if (this.retentionReached.Add(type))
+        {
+            foreach (var component in type.Components)
+            {
+                this.Reach(component);
             }
         }
     }

@@ -497,6 +497,23 @@ public sealed class RetentionTest
         Assert.Equal(["1 Value result"], Calls(map, "map"));
     }
 
+    // SPEC 15.6.4 (β′; DECISIONS R4-M154): the callables a callee's premises and inputs hand its body are erased callables it may call: each
+    // requirement of a Contract premise on its subject with the Contract reference's bindings (a builder of Self from a Contract Type
+    // argument, a writer through `uniq/Self`, one returning an associated Type) and a Function value in a nominal Field retain `y` in
+    // `slot`'s referent beside its own Content (and `m`'s carriers); a requirement whose borrowed input's Origin is its own relates nothing
+    // (SPEC 15.3.7). A requirement call on an abstract Self is erased itself: `T.mk(y)`'s result retains `y`, or nothing, untied.
+    [Theory]
+    [InlineData("contract MkE<E>\n    func mk(r: E) -> Self\nfunc f<T, E>(slot: uniq/T, y: E) -> ()\n    T is MkE<E>\n    slot@follow = T.mk(y@move)", "0 Content store 0, 1 Value store 0", "0 Value result")]
+    [InlineData("contract Absorb<E>\n    func absorb(self: uniq/Self, r: E) -> ()\nfunc f<T, E>(slot: uniq/T, y: E) -> ()\n    T is Absorb<E>\n    slot.absorb(y@move)", "0 Content store 0, 1 Value store 0", "")]
+    [InlineData("contract Holds<E>\n    associate Box\n    func wrap(r: E) -> Self.Box\nfunc f<T, E>(slot: uniq/T.Box, y: E) -> ()\n    T is Holds<E>\n    slot@follow = T.wrap(y@move)", "0 Content store 0, 1 Value store 0", "")]
+    [InlineData("struct Maker<E, T>\n    public var make: (E) -> T\nfunc f<T, E>(slot: uniq/T, y: E, m: Maker<E, T>) -> ()\n    slot@follow = m.make(y@move)", "0 Content store 0, 1 Value store 0, 2 Value store 0", "")]
+    [InlineData("contract Mk\n    func mk(r: ref/i32) -> Self\nfunc f<T>(slot: uniq/T, y: ref/i32 during o) -> ()\n    T is Mk\n    slot@follow = T.mk(y)", "0 Content store 0", "untied")]
+    public void PremisesAndInputsHandTheirCallables(string function, string expected, string call)
+    {
+        var c = Bind(function + "\n");
+        Assert.Equal((expected, call), (Declared(c, "f"), string.Join(" | ", Calls(c, "mk"))));
+    }
+
     // Review r3's B3: an erased callable's carrier output is a fixed Origin its fixed inputs reach, so `mk`'s result `a` retains the
     // View borrowing `*q` (under `v.source == c`, `use`'s result retains `q`), and a generic caller passing its own carriers to `map`
     // retains `a` through the bound `map`'s call instantiates.
