@@ -29,9 +29,10 @@
 // checked under: the instantiated contract (the Subst's Types, Self and declaring Type substituted, the callee's own Origins left as the
 // call's fresh regions, so retention is per argument) and the premises of its enclosing declarations; or when both name one abstract
 // carrier. Per storage (SPEC 15.6.4 read as (iii) with (β′), DECISIONS R4-M154): a position retains the input's own value (Value) only
-// where its Type can hold, Origins fitted, a value of one of the input's own parts or a borrow formed through it (its own layer's referent
-// or a part of it, or a part reached through its exclusive layers before a shared one), an abstract part taking any value whose Origin
-// reaches it; any other occurrence of the input it reaches is Content. Where the fit relates two Origins of the call's Type arguments,
+// where its Type can hold, Origins fitted, a value of the input's Type, of a part it holds by value, or a borrow formed through it (a
+// borrowed input's parts are its layer; its referent's parts, and those reached through its exclusive layers before a shared one, are
+// reads or borrows formed through it; a raw input has none), an abstract part taking any value whose Origin reaches it; any other
+// occurrence of the input it reaches is Content. Where the fit relates two Origins of the call's Type arguments,
 // Self or declaring Type that the premises do not prove, it is the call's solved Origins' to decide (Revision 2): the storage lists the
 // pair, under which the input is Value, and A5 judges it with the caller's Origin classes. An erased callable, one whose implementation the call cannot see
 // (a Function Type value or a value of a Callable-bounded Type parameter, each callable its premises and inputs hand its body: a Callable
@@ -77,8 +78,8 @@ internal enum RetentionKind : byte
     None = 0,
 
     /// <summary>The argument's own value (its Loans and the holders it addresses) and, for a borrow, what a read through it carries: a
-    /// position whose Type can hold a value of one of the input's own parts or a borrow formed through it, Origins fitted; for a raw
-    /// input, a layer of the hold walk that can hold its own value.</summary>
+    /// position whose Type can hold a value of the input's Type, of a part it holds by value, or a borrow formed through it, Origins
+    /// fitted; for a raw input, a layer of the hold walk that can hold its own value.</summary>
     Value = 1,
 
     /// <summary>What a read through the argument carries: any other occurrence of the input the storage reaches (step 4: an Origin inside

@@ -129,12 +129,19 @@ public sealed partial class MirBorrowsTest
             WkForm("dictGetBad", "()\n", "var d: Dictionary<i32, i32> = [1: 2]\nlet k = 1\nlet r = d.tryGet(k@ref)\nd.clear()\nlook(r@ref)"),
         ["D4"] = WkForm("optEBad", OptionHead, "var v = value@move\nlet child = v\nputOpt(other, child@move)\nv@follow = x") +
             WkForm("optEFirst", OptionHead, "var v = value@move\nv@follow = x\nlet child = v\nputOpt(other, child@move)"),
+        ["byValuePart"] = WkForm("first", "(x: (ref/i32 during a, i32)) -> ref/i32 during a\n", "return x.0") +
+            WkForm("byValuePartBad", "()\n", "var n = 1\nlet r = first((n@ref, 2))\nn = 5\nlook(r@ref)"),
         ["E1"] = WkTwins("concretePutOk", "concretePutBad", ConcreteHead, "var v = value@move\n" + WkPut, "_ = slot@follow", "v@follow = x"),
         ["E3"] = WkForm("recurNodeBad", NodeHead, "var v = value@move\n" + WkPut + "\n_ = slot.value\nv.value = 5") +
             WkForm("recurNodeFirst", NodeHead, "var v = value@move\nv.value = 5\n" + WkPut + "\n_ = slot.value"),
 
         // M4 (abstract premises without a callable).
         ["F1"] = WkTwins("uniqCopyOk", "uniqCopyBad", "<s/T>(value: s/T, other: s/T, x: T) -> ()\n    s is uniq\n    T is Copy\n", "var v = value@move\n" + WkPut, "look(slot@ref)", "v@follow = x"),
+        ["abstractRef"] = "contract N\n    func n(self: ref/Self) -> ref/i32 during self\n" +
+            WkForm("sneakRH", "<T>(w: uniq/(ref/i32 during o), y: ref/T during o) -> ()\n", "return") +
+            WkForm("rhUse", "<T>(t: T, z: ref/i32 during o) -> ()\n", "var w = z\nlet b = t@ref\nsneakRH(w@uniq, b)\nconsume(t@move)\n_ = w@follow") +
+            WkForm("sneakRN", "<T>(w: uniq/(ref/i32 during o), y: ref/T during o) -> ()\n    T is N\n", "w@follow = y.n()") +
+            WkForm("rnUse", "<T>(t: T, z: ref/i32 during o) -> ()\n    T is N\n", "var w = z\nlet b = t@ref\nsneakRN(w@uniq, b)\nconsume(t@move)\n_ = w@follow"),
         ["F2"] = WkTwins("uniqAnyBad", "uniqAnyLate", "<s/T>(value: s/T, other: s/T, x: T) -> ()\n    s is uniq\n", "var v = value@move\n" + WkPut, "look(slot@ref)", "v@follow = x@move"),
 
         // M3 with R1 (a Loan on a part: the storage the call writes is the Place the Loan names, its holder the Place's root).
@@ -323,6 +330,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("C4", "arrPutBad: v@follow = x 2")] // Fails on dev by design: arrPutOk `v@follow = x` 2.
     [InlineData("C5", "arrElemPutBad: v@follow = x 2")] // Fails on dev by design: arrElemPutOk `v@follow = x` 2.
     [InlineData("C6", "arrAppendBad: v@follow = x 2")]
+    [InlineData("byValuePart", "byValuePartBad: n = 5 1")] // R4's review B3: a by-value argument's part (SPEC 15.6.4 as revised).
     // Fails on fd4f56ae3: dictIndexBad and dictGetBad valid (a Dictionary's values were no part held by value, so `ref/V during self`
     // kept only Content).
     [InlineData("C7", "dictGetBad: d.clear() CallActivationConflict_Kd 1|dictIndexBad: d.clear() CallActivationConflict_Kd 1")]
@@ -338,6 +346,10 @@ public sealed partial class MirBorrowsTest
     [Theory]
     [InlineData("F1", "uniqCopyBad: v@follow = x 1")] // Fails on dev by design: uniqCopyOk `v@follow = x` 1.
     [InlineData("F2", "uniqAnyLate: v@follow = x@move 1")] // Fails on dev by design: uniqAnyBad `v@follow = x@move` 1.
+    // An abstract referent holds any part (the sound over-approximation of (β′) on the source side, DECISIONS R4-M154): a `ref/T` source
+    // fits a `ref/i32` position, so rhUse errs though sneakRH stores nothing, and rnUse, whose requirement `n` lets it store a borrow of a
+    // part of `t` into `*w`, must.
+    [InlineData("abstractRef", "rhUse: t 1|rnUse: t 1")]
     public void AnAbstractTypeHoldsOnlyWhatItsPremisesMakeIt(string row, string expected)
         => Assert.Equal(WkExpected(expected), WkRecords(row));
 

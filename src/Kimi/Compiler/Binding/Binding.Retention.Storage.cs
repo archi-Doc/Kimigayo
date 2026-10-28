@@ -464,12 +464,13 @@ public sealed partial class Binding
     private int CarrierNode(OriginPremiseEnvironment environment, BoundType carrier)
         => this.AtomNode(environment, new(CallRetention.ResultOutput, null, Writable: false, null, carrier, null));
 
-    // The Value sources of the contract's inputs (SPEC 15.6.4 read as (iii), 15.6.3; DECISIONS R4-M154), by node: each part of an input's
-    // own value (a borrowed input's own layer; a by-value input's parts by value), named by the nodes of its own layer or arguments, and the
-    // borrows formed through it: through a borrow layer among those parts (shared or exclusive), a borrow of its referent or of a part the
-    // referent holds by value, and through each exclusive layer reached from it before another shared one, its referent's (SPEC 15.6.3:
-    // a Ref's region lies within each layer from its last step outward up to the first shared one), each named by the layer's node. A raw
-    // input has none here (its own value is the hold walk's, Held).
+    // The Value sources of the contract's inputs (SPEC 15.6.4 read as (iii), 15.6.3; DECISIONS R4-M154), by node: a value of an input's
+    // Type and of each part it holds by value (a borrowed input's part is its layer; a by-value input's, its parts by value), named by the
+    // nodes of its own layer or arguments, and the borrows formed through it (its referent's parts are reads or borrows formed through
+    // it): through a borrow layer among those parts (shared or exclusive), a borrow of its referent or of a part the referent holds by
+    // value, and through each exclusive layer reached from it before another shared one, its referent's (SPEC 15.6.3: a Ref's region lies
+    // within each layer from its last step outward up to the first shared one), each named by the layer's node. A raw input has none
+    // here (its own value is the hold walk's, Held).
     private void RetentionSources(OriginPremiseEnvironment environment, ReadOnlySpan<BoundType> inputs)
     {
         this.retentionSources.Clear();

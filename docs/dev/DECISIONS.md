@@ -5300,9 +5300,14 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (`MirBorrows.PastEntry`, Revision 8), `All` where no entry names it or Loans naming Places of several Types reach it, never
     `Abstract`, which only `All` joins).
   - Rule 2 (SPEC 15.6.4 read as (iii)): an argument's own value, its Loans and the holders it addresses, is retained only by a
-    position whose Type can hold a value of one of its own parts or a borrow formed through it (its own layer's referent or a part the
-    referent holds by value, and on through exclusive layers up to the first shared one, SPEC 15.6.3), Origins fitted; any other
-    occurrence a storage reaches is Content. An abstract part as a position holds any value whose Origin reaches it; an abstract part
+    position whose Type can hold a value of its Type, of a part it holds by value, or a borrow formed through it (SPEC 15.6.4's words
+    since fix round 1, Revision 8: a borrowed argument's parts are its layer; its referent's parts are reads or borrows formed through
+    it, its own layer's referent or a part the referent holds by value, and on through exclusive layers up to the first shared one,
+    SPEC 15.6.3; a raw argument has none), Origins fitted; any other occurrence a storage reaches is Content. The SPEC revision (R4's
+    review B3): both sentences of 15.6.4 had read "a value of its Type or a borrow formed through it", which by its letter drops a
+    by-value argument's parts (`first(x: (ref/i32 during a, i32)) -> ref/i32 during a => x.0` keeps x's Loan, MIR row `byValuePart`)
+    and disagreed with this rule and the code; the words now state the rule the implementation and R4-M154 read (Principle 3:
+    retention stated in the contract's terms), with no other verdict change. An abstract part as a position holds any value whose Origin reaches it; an abstract part
     of an argument's own value fits any position, the closure deciding (its carrier's reach, the contract's WF premises included).
     Where the fit relates two Origins of the call's Subst (Type arguments, Self, declaring Type) that the premises do not prove,
     Binding publishes the pair (`StorageRetention.Pairs`: input, longer, shorter; the outermost unreached layer's, WF making it the
@@ -5332,6 +5337,13 @@ and migration obligations remain in force; no numeric cap changes are authorized
     does). A Loan on a part (`inner.0@uniq`) gives its holder the entry of the part's Type (`pa3Bad`, valid on fd4f56ae3, errs as its
     concrete and whole-local twins do). Two parts of one erased Type take that Type's one entry, the join of their storages, whose
     Origins only Revision 2's pairs of Subst Origins separate (`pa5Second`, a precision limit).
+  - An abstract referent holds any part (`Holds`; BU's review N2, the design owner's answer recorded with its exact rule): the exact
+    rule is (β′) applied to the source side, a borrow formed through an argument whose referent is abstract having, besides `ref/T` and
+    `uniq/T`, the Types a handed callable forms from a `ref/T` or `uniq/T` input (a requirement `n(self: ref/Self) -> ref/i32 during
+    self` lets `sneakRN` store a borrow of a part of `t` into `*w`, Wk row `abstractRef`'s `rnUse`, which must err). Until that Type set
+    is formed, "an abstract referent holds any part" is its sound over-approximation; narrowing to Revision 5.3's letter ("no position
+    of another Type does") would accept `rnUse`. Its cost: `rhUse`, whose `sneakRH` stores nothing, errs (on dev too). Removal
+    condition: that Type set formed, a precision unit after WK.
   - One enumeration of a value's parts (fix round 1, R4's review N3): `HeldParts` gives the parts a value holds at its own address,
     each with the Type its declaration writes and its holder and whether it has an address (a nominal Type's Type argument has none
     but a collection's); the storage walk (`Parts`) and the sources and fits (`OwnParts`, which adds the layers' owned parts and what
