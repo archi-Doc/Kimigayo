@@ -5159,7 +5159,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   BU (Binding) and R5 (tests and golden), each REVISE once, fixed in round 1; R4's review 2 REVISE once (B1), fixed in round 2 with
   the planning session's (A) and the owner's 「(1) 広げたまま」 (2026-10-28); review 3 REVISE from R4 and BU (B1 not closed for the
   readers a text census missed, B2 structure), suspended under Q11, and the owner's 「一段上でもう 1 回」 (2026-10-28): round 3 fixes
-  the cause one level higher, the accessors) SPEC 15.8.2, 15.6.1, 15.6.4, 15.6.5, 7.7.3, 23.1.2.
+  the cause one level higher, the accessors; implementation review 4 ACCEPT (R4), R5's builder check ACCEPT) SPEC 15.8.2, 15.6.1,
+  15.6.4, 15.6.5, 7.7.3, 23.1.2.
   - G270 (SPEC 15.6.1: a definition may assume its receiver's Type well formed, and each call proves it; 15.8.2: a Closure body is checked
     against its call receiver as a method body against `self`; R4-M148: that receiver is input 0, `R/Env during ρ`): R2 of the premise
     catalog adds each enclosing anonymous function's receiver input (`Binding.OriginPremises.AddReceiverPremises`, the row R4-M126 D-13
@@ -5200,7 +5201,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `KeepsSignature` row), so a Type naming it is no failed context: d4 and h4 lose a derived InvalidConstraint_Kd, eff1 keeps the MIR's
     independent UnsatisfiedEffectBound_Kd, and h1 and d3 lose a TransferRequired_Kd with an inapplicable Repair, each as its
     parenthesized and block twins (whose Owned UnprovenConstraint_Kd at the argument h1 and d3 now share: the environment's Borrow,
-    its Origin the maker call's Unbound atom).
+    its Origin the maker call's Unbound atom, under the interim limit below).
     The view's row 5, a body's own call receiver and call result, is one predicate (`Binding.OwnCallAtom`) that `FixedIn` and
     `ClassifyAtom` read. Deleted: `CallLocalOrigin` and the Closure's failure (OQ-F7-2 (a)), with the 2c-0 "Environment only" rule.
   - P9 (`Binding.ValueCalls`): R1's Unsupported_Kd is deleted. A Closure's call result naming ρ takes the receiver acquisition's Origin
@@ -5232,7 +5233,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     - An interim limit, the owner's 「暫定として認める」 (2026-10-28): a valid nested maker's returned Closure whose signature names the
       maker's ρ, passed to a generic `F is Callable<...>`, is UnprovenConstraint_Kd at the argument instead of F1's located
       Unsupported_Kd (q2, q6; dev gave R1's Unsupported_Kd at the maker's call, acceptance unchanged; q3 and q9, over the maker's input,
-      were UnprovenConstraint_Kd on dev too). Removal: G273's images reach the Callable proof and the Function conversion at a use.
+      were UnprovenConstraint_Kd on dev too). The same limit covers the call result's Unbound atom reaching a proof at a use: h1, d3
+      and their twins (a returned value P8 failed, passed to a `() -> i32` parameter) keep the Owned proof's UnprovenConstraint_Kd at
+      the argument beside the record at the literal; dev's single record there hid the failure behind its Never result. Removal:
+      G273's images reach the Callable proof and the Function conversion at a use.
     - Not open, corrected in round 3 (BU's re-check 2): a returned value P8 failed whose result is `ref/i32`, passed to a `() -> i32`
       parameter or a generic `Callable<() -> i32>` bound (q7, q8, f08b, f10b), keeps an independent NoApplicableOverload_Kd beside its
       record, since a valid Closure of that signature gets it too (d1, d2); dev gave a derived NotCallable_Kd there.
