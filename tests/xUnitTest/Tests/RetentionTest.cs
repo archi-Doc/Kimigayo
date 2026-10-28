@@ -457,7 +457,7 @@ public sealed class RetentionTest
                 views.Add(m.Types.ClosureReceiverIn(cases.Type(body.Locals[local].Type!)).ToString());
             }
 
-            var definition = BoundClosure.Of((FunctionKoto)body.Locals[local].Type!.Symbol!.Declaration!)!;
+            var definition = BoundClosure.Of(body.Locals[local].Type)!;
             views.Add(m.Types.ClosureReceiverIn(definition.EnvironmentType!).ToString());
             yield return string.Join(' ', views);
         }

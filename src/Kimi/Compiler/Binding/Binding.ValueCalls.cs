@@ -660,7 +660,7 @@ public sealed partial class Binding
         var dependent = inputBinder is null
             ? !PerCallSignature(signature, ownBinder) && !this.ResultFixedForCall(result, call.Method, call)
             : HasEnvironmentOrigin(result, inputBinder);
-        var closure = ownBinder is FunctionKoto { IsAnonymous: true } binder && BoundClosure.Of(binder) is not null ? binder : null;
+        var closure = ownBinder is FunctionKoto { IsAnonymous: true, ClosureDefinition: not null } binder ? binder : null;
         var atoms = closure is null ? CallAtoms.None : CallAtomsOf(result, closure, call);
         if ((atoms & CallAtoms.Foreign) != 0)
         {

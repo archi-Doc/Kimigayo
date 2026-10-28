@@ -13,6 +13,21 @@ public class ClosureResultOriginTest
 {
     private const string Inspect = "func inspect(value: ref/i32) => ()\n";
 
+    private const string Apply = "func apply(f: () -> i32) -> i32 => f()\n";
+
+    private const string Generic = "func applyG<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n    return 0\n";
+
+    private const string Use = "func use()\n";
+
+    private const string ApplyA = "    let a = outer(3)\n    let r = apply(a)\npublic func main() => ()\n";
+
+    private const string GenericA = "    let a = outer(3)\n    let r = applyG(a@ref)\npublic func main() => ()\n";
+
+    private const string Confined = "struct Item\n    public var value: i32 = 7\n    drop => Console.writeLine(\"drop\")\nfunc apply<F>(f: F) -> i32\n" +
+        "    F is Callable<owner, () -> i32>\n        effect confined\n    return f@move()\npublic func main() => ()\nfunc entry() -> i32\n";
+
+    private const string ConfinedF = "    let f = outer(3, Item.init())\n    return apply(f@move)\n";
+
     private const string Captured = "let n = 7\nlet values: [1 of ref/i32] = [n@ref]\nlet f = func [values] () => values[0]\n";
 
     [Theory]
@@ -133,13 +148,13 @@ public class ClosureResultOriginTest
         }
     }
 
-    // Pins of interim records of a returned Closure (DECISIONS R4-M152; each changes when PLAN G273's images reach its use, or when
-    // selection marks a rejection over a failed source Dependent): a valid nested maker's returned Closure, whose signature names the
+    // Pins of a returned Closure's records (DECISIONS R4-M152): a valid nested maker's returned Closure, whose signature names the
     // maker's ρ, passed to a generic `F is Callable<…>` is UnprovenConstraint_Kd at the argument, an interim limit the owner accepted
-    // (「暫定として認める」) until G273 (dev: R1's Unsupported_Kd at the maker's call); the same use of a returned value P8 failed keeps a
-    // derived NoApplicableOverload_Kd beside the record at the literal (dev: a derived NotCallable_Kd); and a call whose signature names
-    // the maker's input only in a raw layer is not F1's located limit yet, so the valid a17 keeps f1in's false UnprovenOriginRelation_Kd
-    // (G273, with the raw role's sites, DECISIONS BU-24).
+    // (「暫定として認める」) until PLAN G273's images reach that use (dev: R1's Unsupported_Kd at the maker's call); a returned value P8
+    // failed whose result is `ref/i32` keeps, beside the record at the literal, an independent NoApplicableOverload_Kd, since a valid
+    // Closure of that signature gets it too (dev: a derived NotCallable_Kd); and a call whose signature names the maker's input only in a
+    // raw layer is not F1's located limit yet, so the valid a17 keeps f1in's false UnprovenOriginRelation_Kd (G273, with the raw role's
+    // sites, DECISIONS BU-24).
     [Theory]
     [InlineData(
         "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> ref/i32>\n    return 0\nlet outer = func (x: i32) => func [x] () => func [x@ref] () => x\n" +
@@ -156,10 +171,49 @@ public class ClosureResultOriginTest
     {
         foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
         {
-            var found = ContextualCaptureTest.PublishedRecords(source, pipeline).OrderBy(static x => x.Span.Start)
-                .Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}");
-            Assert.Equal(records, string.Join("; ", found));
+            Assert.Equal(records, Records(source, pipeline));
         }
+    }
+
+    // SPEC 7.7.4, 8.11, 23.1.2 (DECISIONS R4-M152, R5-M63 (1)): a use that reaches a returned literal P8 failed through its Type reads the
+    // closure's definition, so the bare expression body gives its parenthesized and block twins' records: no TransferRequired_Kd with an
+    // inapplicable Repair at a `() -> i32` parameter (review 3's h1, BU's d3), no InvalidConstraint_Kd from the failed-context walk, where
+    // the literal keeps its signature (h4, d4, and eff1, whose MIR keeps its independent UnsatisfiedEffectBound_Kd). The Owned proof's
+    // UnprovenConstraint_Kd at `a` is the environment's Borrow, its Origin the maker call's Unbound atom, in every twin alike.
+    [Theory]
+    [InlineData(Apply + Use + "    let outer = func (x: i32) => func [x@ref] () -> i32 => x@follow\n" + ApplyA, "func [x@ref] () -> i32 => x@follow", "a", null)]
+    [InlineData(Apply + Use + "    let outer = func (x: i32) => (func [x@ref] () -> i32 => x@follow)\n" + ApplyA, "(func [x@ref] () -> i32 => x@follow)", "a", null)]
+    [InlineData(Apply + Use + "    let outer = func (x: i32)\n        return func [x@ref] () -> i32 => x@follow\n" + ApplyA, "func [x@ref] () -> i32 => x@follow", "a", null)]
+    [InlineData(Apply + Use + "    let outer = func (x: i32) => func [x@ref] () => x@follow\n" + ApplyA, "func [x@ref] () => x@follow", "a", null)]
+    [InlineData(Apply + Use + "    let outer = func (x: i32)\n        return func [x@ref] () => x@follow\n" + ApplyA, "func [x@ref] () => x@follow", "a", null)]
+    [InlineData(Generic + Use + "    let outer = func (x: i32) => func [x@ref] () -> i32 => x@follow\n" + GenericA, "func [x@ref] () -> i32 => x@follow", null, null)]
+    [InlineData(Generic + Use + "    let outer = func (x: i32) => (func [x@ref] () -> i32 => x@follow)\n" + GenericA, "(func [x@ref] () -> i32 => x@follow)", null, null)]
+    [InlineData(Generic + Use + "    let outer = func (x: i32)\n        return func [x@ref] () -> i32 => x@follow\n" + GenericA, "func [x@ref] () -> i32 => x@follow", null, null)]
+    [InlineData(Generic + Use + "    let outer = func (x: i32) => func [x@ref] () => x@follow\n" + GenericA, "func [x@ref] () => x@follow", null, null)]
+    [InlineData(Generic + Use + "    let outer = func (x: i32)\n        return func [x@ref] () => x@follow\n" + GenericA, "func [x@ref] () => x@follow", null, null)]
+    [InlineData(
+        Confined + "    let outer = func (x: i32, item: Item) => func [item@move, x@ref] () -> i32 => item.value\n" + ConfinedF,
+        "func [item@move, x@ref] () -> i32 => item.value",
+        null,
+        "f@move")]
+    [InlineData(
+        Confined + "    let outer = func (x: i32, item: Item)\n        return func [item@move, x@ref] () -> i32 => item.value\n" + ConfinedF,
+        "func [item@move, x@ref] () -> i32 => item.value",
+        null,
+        "f@move")]
+    public void AUseOfAFailedReturnedLiteralReadsItsDefinition(string source, string literal, string? owned, string? effect)
+    {
+        var expected = $"{nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd)} {literal}" +
+            (owned is null ? string.Empty : $"; {nameof(DiagnosticCode.UnprovenConstraint_Kd)} {owned}");
+        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
+        {
+            Assert.Equal(expected, Records(source, pipeline));
+        }
+
+        var c = VerifiedSpecExampleTest.Bind(source);
+        c.Analyze();
+        var effects = MirDifferenceLedger.Sides(c, c.BuildMir()).Mir.Where(static x => x.Code == DiagnosticCode.UnsatisfiedEffectBound_Kd);
+        Assert.Equal(effect is null ? [] : [effect], effects.Select(x => source.Substring(x.Node.Span.Start, x.Node.Span.Length)));
     }
 
     // SPEC 15.8.2, 13.5.6 (DECISIONS R4-M152): a Closure literal's own temporary is its ClosureValueSlot atom, the receiver Origin ρ of a
@@ -229,4 +283,9 @@ public class ClosureResultOriginTest
         Assert.True(valid);
         Assert.Equal(expected, CompilationTestHelper.WriteIr(c));
     }
+
+    // A program's published records in source order, each as its code and its span's text.
+    private static string Records(string source, CompilerPipeline pipeline)
+        => string.Join("; ", ContextualCaptureTest.PublishedRecords(source, pipeline).OrderBy(static x => x.Span.Start)
+            .Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}"));
 }

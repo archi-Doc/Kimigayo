@@ -230,7 +230,7 @@ public sealed partial class OwnershipAnalysis
                 continue;
             }
 
-            if (issue.Capture >= 0 && issue.Source is FunctionKoto { BoundClosure: { } closure } capturing)
+            if (issue.Capture >= 0 && issue.Source is FunctionKoto { ClosureAsCreated: { } closure } capturing)
             {
                 ReportCapture(issue, capturing, closure.Captures[issue.Capture].Source);
                 continue;
@@ -539,7 +539,7 @@ public sealed partial class OwnershipAnalysis
         this.normalExit = this.New(OwnershipOperationKind.Exit, function);
         this.abortExit = this.New(OwnershipOperationKind.Exit, function);
         this.resultPlace = this.Place(function, declarationDefault >= 0 ? function.Parameters[declarationDefault].Type.BoundType : function.BoundSymbol?.Type ?? BoundType.Unit, OwnershipPlaceKind.Result, true);
-        if (declarationDefault < 0 && function.Captures is { Length: > 0 } && function.BoundClosure is null)
+        if (declarationDefault < 0 && function.Captures is { Length: > 0 } && function.ClosureAsCreated is null)
         {
             this.Internal(function);
         }
@@ -574,7 +574,7 @@ public sealed partial class OwnershipAnalysis
             return;
         }
 
-        if (function.BoundClosure is { } closure)
+        if (function.ClosureAsCreated is { } closure)
         {
             for (var i = 0; i < closure.Captures.Count; i++)
             {
@@ -632,7 +632,7 @@ public sealed partial class OwnershipAnalysis
     // honest.
     private void CheckEnvironmentMoves(FunctionKoto function)
     {
-        if (function.BoundClosure is not { EnvironmentType: not null, Receiver: not SemanticsKind.Owner } closure)
+        if (function.ClosureAsCreated is not { EnvironmentType: not null, Receiver: not SemanticsKind.Owner } closure)
         {
             return;
         }
@@ -1079,7 +1079,7 @@ public sealed partial class OwnershipAnalysis
 
         switch (node)
         {
-            case FunctionKoto { BoundClosure: { } } closure:
+            case FunctionKoto { ClosureAsCreated: { } } closure:
                 return this.CreateClosure(closure);
             case ParenthesizedKoto parentheses:
                 return this.Expression(parentheses.Operand, use, acquisition);

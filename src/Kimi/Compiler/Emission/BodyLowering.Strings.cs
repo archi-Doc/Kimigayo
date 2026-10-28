@@ -118,7 +118,7 @@ internal sealed partial class BodyLowering
         {
             OwnershipPlaceKind.Local => operation.Kind == OwnershipOperationKind.Declare ||
                 (operation.Kind == OwnershipOperationKind.Produce && body.Values[id].Kind == OwnershipValueKind.Capture &&
-                body.Function.BoundClosure?.EnvironmentType is not null && ReferenceEquals(operation.Source, body.Function) &&
+                body.Function.ClosureAsCreated?.EnvironmentType is not null && ReferenceEquals(operation.Source, body.Function) &&
                 ReferenceEquals(body.Places[operation.Place].Source, body.Function)),
             OwnershipPlaceKind.Parameter => operation.Kind == OwnershipOperationKind.Produce && ReferenceEquals(operation.Source, body.Places[operation.Place].Source),
             _ => false,
@@ -272,8 +272,8 @@ internal sealed partial class BodyLowering
 
     private bool IsStringStorage(OwnershipPlace place) => this.payloadOwners[place.Id] >= 0 || this.decompositionOwners[place.Id] >= 0 || this.slotFunctionPlaces[place.Id] != 0 || (this.hasMatches && this.matchPlaces[place.Id] != 0) || place.Kind switch
     {
-        OwnershipPlaceKind.Local => place.Source is FieldKoto or PropertyKoto or FunctionKoto { BoundClosure.EnvironmentType: not null },
-        OwnershipPlaceKind.Temporary => place.Source is StringLiteralKoto or InterpolatedStringKoto { Formatting: not null } or IdentifierNameKoto or DereferenceKoto or FunctionKoto { BoundClosure.EnvironmentType: not null } or
+        OwnershipPlaceKind.Local => place.Source is FieldKoto or PropertyKoto or FunctionKoto { ClosureAsCreated.EnvironmentType: not null },
+        OwnershipPlaceKind.Temporary => place.Source is StringLiteralKoto or InterpolatedStringKoto { Formatting: not null } or IdentifierNameKoto or DereferenceKoto or FunctionKoto { ClosureAsCreated.EnvironmentType: not null } or
             InvocationKoto { BoundCall.Target.CompilerFunction: CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap } || (place.Source is BinaryKoto element && ElementAccess.IsSyntax(element)),
         OwnershipPlaceKind.Result => this.slotResultPlaces[place.Id] != 0,
         _ => false,

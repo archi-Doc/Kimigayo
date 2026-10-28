@@ -56,7 +56,7 @@ internal sealed partial class TyCtxt
     // the declaration enclosing it. The closure is the Type's definition (BoundClosure.Of; DECISIONS R5-M63, R4-M152).
     internal Subst? SubstOfClosure(BoundType closure)
     {
-        if (closure.Symbol?.Declaration is not FunctionKoto binder || BoundClosure.Of(binder) is null)
+        if (closure.Symbol?.Declaration is not FunctionKoto { ClosureDefinition: not null } binder)
         {
             return null;
         }

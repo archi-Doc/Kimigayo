@@ -67,7 +67,7 @@ internal sealed partial class BodyLowering
             }
         }
 
-        if (body.Function.BoundClosure is { EnvironmentType: { } environment } closure)
+        if (body.Function.ClosureAsCreated is { EnvironmentType: { } environment } closure)
         {
             if (this.aggregateLayouts.Get(body.Resolve(environment, InterpretationContext.Root)!) is not { } layout)
             {

@@ -368,8 +368,8 @@ public sealed partial class Binding
             return ReferenceSlotNote(this.referenceSlotFacts is { } facts && facts.TryGetValue(node, out var fact) ? fact : null);
         }
 
-        // The closure plan, not BoundClosure: a closure that failed at a call argument or a default keeps its plan (SPEC 7.7.4).
-        if (actual is not BoundType { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { ClosureStorage: { Signature: not null } closure } declaration })
+        // The definition, not the closure as created: a closure that failed at a call argument or a default keeps it (SPEC 7.7.4).
+        if (actual is not BoundType { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { ClosureDefinition: { } closure } declaration })
         {
             return null;
         }
@@ -551,7 +551,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (implementation is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { ClosureStorage: { Receiver: SemanticsKind.Ref, Signature: not null } } } &&
+        if (BoundClosure.Of(implementation) is { Receiver: SemanticsKind.Ref } &&
             this.ClosureSignature(implementation) is { } closure && this.ProveOwned(implementation, use) == ConstraintProof.Proven)
         {
             signature = closure;

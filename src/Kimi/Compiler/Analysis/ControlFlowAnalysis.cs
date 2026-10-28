@@ -346,7 +346,7 @@ public sealed class ControlFlowAnalysis
                     }
                 }
 
-                if (function.BoundClosure is not null && this.defaultDepth > 0)
+                if (function.ClosureAsCreated is not null && this.defaultDepth > 0)
                 {
                     // SPEC 7.2.3: creating a closure inside a default completes without running its body, so the
                     // default's completion never waits on it. The body is visited once the outermost default's completion
@@ -357,7 +357,7 @@ public sealed class ControlFlowAnalysis
                 }
 
                 this.VisitFunctionBody(function);
-                if (function.BoundClosure is not null)
+                if (function.ClosureAsCreated is not null)
                 {
                     return this.CreatedClosure(function);
                 }

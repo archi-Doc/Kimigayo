@@ -1675,7 +1675,7 @@ public sealed partial class OwnershipBody
         if (lending >= 0 && this.LendingBorrow(lending, root) is >= 0 and var borrow)
         {
             borrowed = this.Operations[borrow].Source;
-            if (borrowed is FunctionKoto { BoundClosure: { } closure, Captures: { } entries })
+            if (borrowed is FunctionKoto { ClosureAsCreated: { } closure, Captures: { } entries })
             {
                 for (var i = 0; i < closure.Captures.Count && capture < 0; i++)
                 {

@@ -5157,7 +5157,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   §2.7, §2.13, the unit's design (`r4-notes\2c-5\design.md`, `design-r2.md`), an Owner change amended by the owner's answer
   「2c-5 F1: (c')」 (2026-10-27); G270 joined by the owner's 「G216 (a): (1)」 (2026-10-27: G270 first, with 2c-5); reviews by R4,
   BU (Binding) and R5 (tests and golden), each REVISE once, fixed in round 1; R4's review 2 REVISE once (B1), fixed in round 2 with
-  the planning session's (A) and the owner's 「(1) 広げたまま」 (2026-10-28)) SPEC 15.8.2, 15.6.1, 15.6.4, 15.6.5, 7.7.3, 23.1.2.
+  the planning session's (A) and the owner's 「(1) 広げたまま」 (2026-10-28); review 3 REVISE from R4 and BU (B1 not closed for the
+  readers a text census missed, B2 structure), suspended under Q11, and the owner's 「一段上でもう 1 回」 (2026-10-28): round 3 fixes
+  the cause one level higher, the accessors) SPEC 15.8.2, 15.6.1, 15.6.4, 15.6.5, 7.7.3, 23.1.2.
   - G270 (SPEC 15.6.1: a definition may assume its receiver's Type well formed, and each call proves it; 15.8.2: a Closure body is checked
     against its call receiver as a method body against `self`; R4-M148: that receiver is input 0, `R/Env during ρ`): R2 of the premise
     catalog adds each enclosing anonymous function's receiver input (`Binding.OriginPremises.AddReceiverPremises`, the row R4-M126 D-13
@@ -5177,15 +5179,28 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Closure keeps its Type (F2: no `Never` result, no derived NotCallable_Kd or UnresolvedBinding_Kd, no validator finding). A returned
     value P8 fails may be a Closure literal, a maker's expression body at any nesting (review 2's B1: v2, a08, f03, f04, f07); its
     record is at the literal, as a block's `return` places it, and the literal keeps its definition, so a later call is F1's located
-    Unsupported_Kd, as for the block form. The rule (the planning session's (A), from R5-M63 (1)): a reader that reaches a closure
-    through a Closure Type reads the Type's definition, `BoundClosure.Of` (one helper for a Type), whatever its literal's creation
-    outcome; `FunctionKoto.BoundClosure`, the creation's own outcome, is read only where the literal itself is. Of its 37 reads, 13 reach
-    the closure through a Type and now read the definition (`ClosureSignature`, `TryCallable`, `ValueCallResult`, `SubstOfClosure`,
-    `ClosureCall`, the closing of a Closure Type's context, the Callable proof, the gate's receiver, argument and shape evidence, a
-    signature evidence's binder, the receiver mismatch over an argument's Type, and the old Emission's erasure of a Closure Type); 24 read
-    the literal node at its creation (its value and environment where it is created or analyzed, nested literals in a body walk, the
-    node query, and the old Analysis and Emission per creation), where a failed creation has no value to read. Table:
-    `r4-notes\2c-5\fix2\readers.txt`.
+    Unsupported_Kd, as for the block form, and every use of the returned value reads the definition.
+  - The accessors (round 3, the representation change, with BU's agreement as Binding owner; R5-M63 (1)): a closure's definition was
+    reachable through two accessors of one name family, `FunctionKoto.BoundClosure` (only while the creation is Resolved) and
+    `BoundClosure.Of`, and 46 read sites each picked one; a text census missed sites twice (review 3: extended property patterns such
+    as `{ BoundClosure.Receiver: … }`, and the failed-context walk). Both names go. `FunctionKoto.ClosureDefinition` is the definition,
+    the binding's plan once its signature is bound, whatever the creation's outcome; `FunctionKoto.ClosureAsCreated` is the closure as
+    created, that definition while the creation is Resolved and null when it failed; `BoundClosure.Of(BoundType)` stays the Type route
+    to the definition and answers only for a Closure Type. The line: a reader that needs the closure's definition (its signature, parts
+    or body) whatever the creation's outcome reads the definition; a reader that asks whether the creation at its position succeeded
+    reads the closure as created. With the old names gone the compiler made every reader choose (table:
+    `r4-notes\2c-5\fix3\readers.txt`): 39 compiler reads take the definition, 27 through a Closure Type, a signature or an Origin's
+    binder (among them review 3's `ErasesToFunction`, the effect bounds and obligations and the old Emission's `:495`, and four
+    spellings of the plan with its signature, now the accessor), 1 the failed-context walk, 8 R5-M63 (1)'s builders (the HIR publisher's
+    Closure facts and the MIR builder, which build a failed creation's definition and parts too: the same read renamed), and 3 Binding
+    judgments of a literal's parts (the receiver classification's nested walk, the helper captures, a rejected candidate's receiver);
+    25 take the closure as created, the old Analysis and Emission per creation (they run on complete compilations, where both agree)
+    and control flow's created closure. The binding's working plan (`ClosureStorage`, read while the binding forms it, before the
+    signature) is neither. BU-19's failed-context walk keeps a literal whose definition stands as a signature it keeps (a
+    `KeepsSignature` row), so a Type naming it is no failed context: d4 and h4 lose a derived InvalidConstraint_Kd, eff1 keeps the MIR's
+    independent UnsatisfiedEffectBound_Kd, and h1 and d3 lose a TransferRequired_Kd with an inapplicable Repair, each as its
+    parenthesized and block twins (whose Owned UnprovenConstraint_Kd at the argument h1 and d3 now share: the environment's Borrow,
+    its Origin the maker call's Unbound atom).
     The view's row 5, a body's own call receiver and call result, is one predicate (`Binding.OwnCallAtom`) that `FixedIn` and
     `ClassifyAtom` read. Deleted: `CallLocalOrigin` and the Closure's failure (OQ-F7-2 (a)), with the 2c-0 "Environment only" rule.
   - P9 (`Binding.ValueCalls`): R1's Unsupported_Kd is deleted. A Closure's call result naming ρ takes the receiver acquisition's Origin
@@ -5218,9 +5233,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
       maker's ρ, passed to a generic `F is Callable<...>`, is UnprovenConstraint_Kd at the argument instead of F1's located
       Unsupported_Kd (q2, q6; dev gave R1's Unsupported_Kd at the maker's call, acceptance unchanged; q3 and q9, over the maker's input,
       were UnprovenConstraint_Kd on dev too). Removal: G273's images reach the Callable proof and the Function conversion at a use.
-    - A returned value P8 failed, passed to a `() -> i32` parameter or a generic Callable bound (q7, q8, f08b, f10b), keeps a derived
-      NoApplicableOverload_Kd beside its record, where dev gave a derived NotCallable_Kd (and an InternalInvariant_Kd on the MIR): the
-      remaining derived record, no regression; selection's Dependent marking of a rejection over a failed source is the open issue.
+    - Not open, corrected in round 3 (BU's re-check 2): a returned value P8 failed whose result is `ref/i32`, passed to a `() -> i32`
+      parameter or a generic `Callable<() -> i32>` bound (q7, q8, f08b, f10b), keeps an independent NoApplicableOverload_Kd beside its
+      record, since a valid Closure of that signature gets it too (d1, d2); dev gave a derived NotCallable_Kd there.
   - The gate (OQ4 (a), OQ-F7-1 (vi), the owner's D5 exception; `Binding.ValueCallGate`, removed at R6-check): BindValueCall keeps R1's
     condition (`dependent`, or a per-call result naming the receiver) as `CallPlan.ReceiverDependentResult`, overwritten by each
     binding, and lists each call once per pass: the list is pass-stamped (no reset, created with its first call) and a plan flag,

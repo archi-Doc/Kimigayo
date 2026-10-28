@@ -87,8 +87,7 @@ public sealed partial class Binding
             }
 
             Subst? context = null;
-            if (type.Kind == BoundTypeKind.Closure && type.Symbol is { Declaration: FunctionKoto function } symbol &&
-                BoundClosure.Of(function) is { } closure && this.types.Instantiates(symbol))
+            if (BoundClosure.Of(type) is { } closure && type.Symbol is { Declaration: FunctionKoto function } symbol && this.types.Instantiates(symbol))
             {
                 var enclosing = function.BoundSymbol!.Scope.Function;
                 while (enclosing is { IsAnonymous: true } && !ReferenceEquals(enclosing, instance.Binder))
