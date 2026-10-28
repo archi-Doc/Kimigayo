@@ -96,8 +96,8 @@ internal static class RuntimeAbi
         Unit.ComputationType,
         [new("ptr", "handle", AbiParameterKind.Value, 0), new("i64", "stride"), Location, LocationLength]);
 
-    // SPEC 22.2: the private nullable Alloc and byte copy behind Kimi.Storage, defined only in modules whose bodies call them (the first
-    // by LlvmModuleText.TryAllocate for both generators).
+    // SPEC 22.2: the private nullable Alloc and byte copy behind Kimi.Storage, defined only in modules whose bodies call them
+    // (LlvmModuleText.TryAllocate and LlvmModuleText.TransferBytes; MIR code generation requests the first).
     internal static readonly FunctionAbi TryAllocateBytes = new("__kimi_try_allocate", "ptr", [new("i64", "bytes", AbiParameterKind.Value, 0)]);
 
     internal static readonly FunctionAbi TransferBytes =
