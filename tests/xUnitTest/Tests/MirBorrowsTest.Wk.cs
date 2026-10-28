@@ -287,6 +287,12 @@ public sealed partial class MirBorrowsTest
                 "virtConcreteBad",
                 "(value: uniq/i32 during o, b: objref/BaseB<HoldV during o, uniq/i32 during o>) -> ()\n",
                 "var v = value@move\nlet child: uniq/i32 during o = v\nlet t = b.mk(child@move)\nv@follow = 5\nlook(t@ref)"),
+        ["erasedOrigins"] = "open struct BaseG<T>\n    public init() => ()\n    public virtual func pick(self: objref/Self, x: ref/i32, y: ref/i32) -> ref/i32 during x => x\n" +
+            "contract Pk\n    func pick(self: ref/Self, x: ref/i32, y: ref/i32) -> ref/i32 during x\n" +
+            WkForm("virtPickOk", "<T>(b: objref/BaseG<T>) -> ()\n", WkPick("b") + "n = 5\nlook(r@ref)") +
+            WkForm("virtPickBad", "<T>(b: objref/BaseG<T>) -> ()\n", WkPick("b") + "m = 5\nlook(r@ref)") +
+            WkForm("virtPickConcreteOk", "(b: objref/BaseG<i32>) -> ()\n", WkPick("b") + "n = 5\nlook(r@ref)") +
+            WkForm("reqPickOk", "<T>(t: ref/T) -> ()\n    T is Pk\n", WkPick("t") + "n = 5\nlook(r@ref)"),
         ["writerFn"] = WkForm("sneakW", "<T, E>(slot: uniq/T, y: E, set: (uniq/T, E) -> ()) -> ()\n", "set(slot, y@move)") +
             WkBuilders("writerFn", "<T>(value: uniq/i32 during o, other: T, set: (uniq/T, uniq/i32 during o) -> ()) -> ()\n", "sneakW(slot@uniq, child@move, set@move)") +
             WkForm("writerFnDirectBad", "<T>(value: uniq/i32 during o, other: T, set: (uniq/T, uniq/i32 during o) -> ()) -> ()\n", WkMoved + "set(slot@uniq, child@move)\nv@follow = 5\nlook(slot@ref)"),
@@ -419,8 +425,14 @@ public sealed partial class MirBorrowsTest
     [InlineData("callableBound", "callableBad: v@follow = 5 1")] // Fails on dev by design: callableOk `v@follow = 5` 1.
     // Fails on fd4f56ae3: virtBad valid (a virtual callee on an abstract declaring Type read its base's contract, not as erased).
     [InlineData("virtual", "virtBad: v@follow = 5 1|virtConcreteBad: v@follow = 5 1")]
+    // Revision 9: an erased signature's per-call Origins are its Binder's, the virtual's own as a requirement's (`x`, `y`, the receiver's):
+    // only `x` reaches the result. Fails on c1389e455: virtPickOk errs at `n = 5` (a virtual's Origins read as fixed, R4's R2-B1).
+    [InlineData("erasedOrigins", "virtPickBad: m = 5 1")]
     public void ACallableTheContractHandsTheBodyLetsAnAbstractTypeHoldTheArgument(string row, string expected)
         => Assert.Equal(WkExpected(expected), WkRecords(row));
+
+    // The erased-Origin rows' body: `pick` on the receiver `on` over m and n, its result kept in `r`.
+    private static string WkPick(string on) => $"var m = 1\nvar n = 2\nlet r = {on}.pick(m@ref, n@ref)\n";
 
     // A part-Loan row's body (R4's review B1): `inner` holds a borrow of z, `pair` a Loan on a part of it (or the whole), passed to a
     // callee storing a borrow formed through `leaf` into it.

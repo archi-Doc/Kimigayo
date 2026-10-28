@@ -34,12 +34,14 @@
 // reads or borrows formed through it; a raw input has none), an abstract part taking any value whose Origin reaches it; any other
 // occurrence of the input it reaches is Content. Where the fit relates two Origins of the call's Type arguments,
 // Self or declaring Type that the premises do not prove, it is the call's solved Origins' to decide (Revision 2): the storage lists the
-// pair, under which the input is Value, and A5 judges it with the caller's Origin classes. An erased callable, one whose implementation the call cannot see
-// (a Function Type value or a value of a Callable-bounded Type parameter, each callable its premises and inputs hand its body: a Callable
-// bound, a requirement of a Contract premise, a Function part of an input; a requirement called on an abstract Self), was compared under
-// premises no view reads, so it relates each fixed Origin of an input to each fixed Origin of an output, an abstract carrier's hidden
-// Origins among them (owner decision 2026-10-17, DECISIONS R4-M52, R4-M154). An unproven absence of retention is a row. Raw layers
-// (SPEC 5.7 Calls, 15.6.4; D6, D10, D15; DECISIONS BU-24, R4-M116): nothing is written past a shared layer or a raw layer whose step is
+// pair, under which the input is Value, and A5 judges it with the caller's Origin classes. An erased callable, one whose implementation
+// the call cannot see (a Function Type value or a value of a Callable-bounded Type parameter, each callable its premises and inputs hand
+// its body: a Callable bound, a requirement of a Contract premise, a Function part of an input; a requirement called on an abstract Self,
+// a virtual or overriding function called on an abstract declaring Type), is read as its erased signature (Binding.ErasedSignature, the
+// signature with the Binder of its per-call Origins): compared under premises no view reads, it relates each fixed Origin of an input to
+// each fixed Origin of an output, an abstract carrier's hidden Origins among them (owner decision 2026-10-17, DECISIONS R4-M52, R4-M154).
+// An unproven absence of retention is a row. Raw layers (SPEC 5.7 Calls, 15.6.4; D6, D10, D15; DECISIONS BU-24, R4-M116): nothing is
+// written past a shared layer or a raw layer whose step is
 // Shared; a raw parameter layer without an Origin, or with `static`, lets the call write its pointee, one whose Origin steps Exclusive
 // what that Origin's borrows admit (their referents, a slot's Keepers) as that input's storage. A raw input is retained as a borrowed
 // one, its pointee as the referent: an Origin inside its pointee is Content, its own layer's Origin gives no row, and its own value is

@@ -19,7 +19,7 @@ internal sealed partial class TyCtxt
     private readonly Dictionary<(object Callee, Subst? Types, object? Scope), CallRetention> retentions = new();
 
     // The Callable bounds of the computation's premises, instantiated as its inputs; reused.
-    private readonly List<BoundType> retentionBounds = new();
+    private readonly List<Binding.ErasedSignature> retentionBounds = new();
 
     // HandedCallables' answers per interned Type, kept as the retentions are, and its walk's scratch.
     private readonly Dictionary<BoundType, BoundType[]> handedCallables = new(ReferenceEqualityComparer.Instance);
@@ -47,10 +47,11 @@ internal sealed partial class TyCtxt
         return retention;
     }
 
-    // SPEC 15.6.4, 8.4 (β′, DECISIONS R4-M154): the signatures of a Contract's requirements on a Self, each `(inputs) -> result` with Self and
-    // the Contract reference's bindings substituted (a function requirement's parameters and result, a Property requirement's present
-    // accessors' receiver, input and result), into `signatures`; whether every one substitutes (false: CallRetention.Limit).
-    internal bool RequirementSignatures(BoundType self, BindingSymbol contract, List<BoundType> signatures)
+    // SPEC 15.6.4, 8.4 (β′, DECISIONS R4-M154): the erased signatures of a Contract's requirements on a Self, each `(inputs) -> result` with
+    // Self and the Contract reference's bindings substituted (a function requirement's parameters and result, a Property requirement's
+    // present accessors' receiver, input and result) and the declaration binding its per-call Origins (the requirement, or the
+    // accessor, else its Property), into `signatures`; whether every one substitutes (false: CallRetention.Limit).
+    internal bool RequirementSignatures(BoundType self, BindingSymbol contract, List<Binding.ErasedSignature> signatures)
     {
         foreach (var requirement in contract.Contract!.Requirements)
         {
@@ -92,7 +93,7 @@ internal sealed partial class TyCtxt
         CallRetention retention;
         if (owner is null)
         {
-            retention = binding.RetainsErased(use, inputs, signature.Components[1]);
+            retention = binding.RetainsErased(use, inputs, signature.Components[1], Binding.FunctionTypeBinder(signature));
         }
         else
         {
@@ -119,7 +120,7 @@ internal sealed partial class TyCtxt
             return known;
         }
 
-        var retention = binding.RetainsErased(use, [receiver], BoundType.Unit);
+        var retention = binding.RetainsErased(use, [receiver], BoundType.Unit, null);
         this.retentions.Add(key, retention);
         return retention;
     }
@@ -208,12 +209,16 @@ internal sealed partial class TyCtxt
         return found;
     }
 
-    // SPEC 15.6.4 (β′, DECISIONS R4-M154 rule 3): whether a callee's implementation is erased at the call, read as its own instantiated
-    // signature (AddErasedRelations): a requirement on a Self with an abstract part, whose implementation is any conforming Type's (SPEC
-    // 8.15.1), or a virtual or overriding function on a declaring Type with one, whose implementation is any deriving Type's override,
-    // bounded by the original's declared contract (SPEC 6.4, 8.13.2). On a concrete Self the standard computation reads the contract.
-    private static bool ErasedCallee(FunctionKoto callee, Subst? types)
-        => callee.IsRequirement ? types?.Self?.HasAbstractPart == true : (callee.IsVirtual || callee.IsOverride) && types?.Declaring?.HasAbstractPart == true;
+    // SPEC 15.6.4 (β′, DECISIONS R4-M154 rule 3, Revision 9): the Binder of a callee's erased signature where its implementation is
+    // erased at the call, read as its own instantiated signature (Binding.RetainsErased), else null: a requirement on a Self with an
+    // abstract part, whose implementation is any conforming Type's (SPEC 8.15.1), or a virtual or overriding function on a declaring Type
+    // with one, whose implementation is any deriving Type's override, bounded by the original's declared contract (SPEC 6.4, 8.13.2); the
+    // callee's own declaration binds its per-call Origins. On a concrete Self the standard computation reads the contract.
+    private static FunctionKoto? ErasedCallee(FunctionKoto callee, Subst? types)
+    {
+        var self = callee.IsRequirement ? types?.Self : (callee.IsVirtual || callee.IsOverride) ? types?.Declaring : null;
+        return self?.HasAbstractPart == true ? callee : null;
+    }
 
     // A callee's declared parameter and result Types, in its own terms.
     private static BoundType[] Declared(BindingSymbol callee)
@@ -265,9 +270,9 @@ internal sealed partial class TyCtxt
             }
         }
 
-        if (ErasedCallee(declaration, types))
+        if (ErasedCallee(declaration, types) is { } binder)
         {
-            return binding.RetainsErased(binding.DefinitionUse(definition), inputs, result);
+            return binding.RetainsErased(binding.DefinitionUse(definition), inputs, result, binder);
         }
 
         var bounds = this.retentionBounds;
@@ -278,12 +283,12 @@ internal sealed partial class TyCtxt
 
         for (var i = 0; i < bounds.Count; i++)
         {
-            if (this.Instance(bounds[i], types, scope) is not { } bound)
+            if (this.Instance(bounds[i].Signature, types, scope) is not { } bound)
             {
                 return null;
             }
 
-            bounds[i] = bound;
+            bounds[i] = bounds[i] with { Signature = bound };
         }
 
         return binding.Retains(declaration, inputs, result, types, CollectionsMarshal.AsSpan(bounds), scope);
@@ -311,7 +316,7 @@ internal sealed partial class TyCtxt
     }
 
     // A function requirement's signature under a Subst into `signatures`; whether it substitutes.
-    private bool FunctionSignature(BindingSymbol function, Subst subst, List<BoundType> signatures)
+    private bool FunctionSignature(BindingSymbol function, Subst subst, List<Binding.ErasedSignature> signatures)
     {
         var result = this.Instance(function, subst, -1, null, out var count);
         var inputs = new BoundType[count];
@@ -325,12 +330,12 @@ internal sealed partial class TyCtxt
             inputs[i] = input;
         }
 
-        return result is not null && this.AddSignature(inputs, result, signatures);
+        return result is not null && this.AddSignature(inputs, result, function.Declaration, signatures);
     }
 
     // A present Property accessor's signature, `(receiver, input) -> result` with each it declares, under a Subst into `signatures`;
     // whether it substitutes.
-    private bool AccessorSignature(BoundAccessor accessor, Subst subst, List<BoundType> signatures)
+    private bool AccessorSignature(BoundAccessor accessor, Subst subst, List<Binding.ErasedSignature> signatures)
     {
         if (!accessor.IsPresent)
         {
@@ -352,13 +357,16 @@ internal sealed partial class TyCtxt
         }
 
         var result = accessor.Result is null ? BoundType.Unit : this.Instance(accessor.Result, subst, null);
-        return result is not null && this.AddSignature(CollectionsMarshal.AsSpan(inputs), result, signatures);
+        var binder = (Koto?)accessor.Declaration ?? accessor.Property.Declaration;
+        return result is not null && this.AddSignature(CollectionsMarshal.AsSpan(inputs), result, binder, signatures);
     }
 
-    // The Function Type `(inputs) -> result` into `signatures`, once.
-    private bool AddSignature(ReadOnlySpan<BoundType> inputs, BoundType result, List<BoundType> signatures)
+    // The erased signature of the Function Type `(inputs) -> result` with the Binder of its per-call Origins into `signatures`, once.
+    private bool AddSignature(ReadOnlySpan<BoundType> inputs, BoundType result, Koto binder, List<Binding.ErasedSignature> signatures)
     {
-        var signature = this.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs.IsEmpty ? BoundType.Unit : this.Tuple(inputs), result]);
+        var signature = new Binding.ErasedSignature(
+            this.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs.IsEmpty ? BoundType.Unit : this.Tuple(inputs), result]),
+            binder);
         if (!signatures.Contains(signature))
         {
             signatures.Add(signature);

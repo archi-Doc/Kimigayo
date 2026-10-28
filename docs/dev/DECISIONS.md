@@ -5321,8 +5321,24 @@ and migration obligations remain in force; no numeric cap changes are authorized
     contract's Types reach) and each Function part of an input or result (`TyCtxt.HandedCallables`: Tuple and Option elements,
     nominal Fields included); a requirement callee on an abstract Self, and a virtual or overriding callee on an abstract declaring Type
     (fix round 1, Revision 8: any deriving Type's override, bounded by the original's declared contract, SPEC 6.4, 8.13.2; R4's review
-    B2, `virtBad`), is erased itself; on a concrete Self the standard computation reads the contract, never a body. `IsFixed` excludes a requirement's own
-    universal Origins. A carrier has, besides its own node (a value of T, R4-M36), its reached node (Revision 3, `ReachedNode`):
+    B2, `virtBad`), is erased itself; on a concrete Self the standard computation reads the contract, never a body. Fix round 2 (the
+    owner, 2026-10-29, after the Q11 suspension 「WK をどう進めますか？ (1) 一段上でもう 1 回 / (2) 保留する」: 「一段上でもう1回」), the
+    design owner's Revision 9: an erased callable is one representation, its erased signature (`Binding.ErasedSignature`: the
+    instantiated signature Type and the declaration whose syntax binds its per-call Origins, its Binder: a Function Type's
+    `FunctionTypeKoto`, a requirement's or Virtual's own declaration, a property requirement's accessor), and an Origin is per-call
+    exactly when it is an input or parameter Origin whose binder is the signature's Binder (`IsFixed(atom, binder)`); any other but
+    `static`, and a carrier's hidden Origins, are fixed. `TyCtxt.ErasedCallee` gives the Binder of a requirement or Virtual callee on an
+    abstract Self, `TyCtxt.Retains` a Value callee's (`FunctionTypeBinder`), `HandedSignatures`, `RequirementSignatures` and
+    `HandedCallables` each handed callable's. It supersedes the two predicates that decided it apart, `IsFixed`'s
+    `FunctionKoto { IsRequirement: true }` test (an erased virtual's own Origins read as fixed: R4's R2-B1, `virtPickOk` erred) and
+    `ErasedCallee`'s kind test as a reader. Census (retention, `Binding.Retention*`, `TyCtxt.Retention*`, and A5, `Mir/Analysis/**`):
+    `IsFixed` and `ErasedCallee` read the pair; `ErasedCallee` alone tests the callee's kind (requirement on an abstract Self, virtual
+    or overriding on an abstract declaring Type), where the pair is made; `AddRetentionAtom` and `Named` skip a callable's per-call
+    Origins inside a callable Type (`FunctionTypeKoto` inputs: SPEC 15.3.4, which Origins belong to a value, another rule, kept);
+    `MirEffects` reads `MirCalleeKind.Requirement`/`Virtual` for A4's dispatch bounds (another analysis, kept); MirBorrows' other
+    `MirCalleeKind.Value` tests place the callee operand, not erasure. Wk row `erasedOrigins`: virtPickOk and reqPickOk valid,
+    virtPickBad errs, virtPickConcreteOk valid; a Function Type's or Callable bound's signature writes no `during` (SPEC 8.10), so their
+    per-call twins are the existing fnValue, resultF and callableBound rows. A carrier has, besides its own node (a value of T, R4-M36), its reached node (Revision 3, `ReachedNode`):
     only a relation whose output is a writable carrier position (an erased writer's `uniq/Self` or `uniq/T` input) reaches it, and it
     fills `Abstract`; a result builder's relation fills the carrier's own node.
   - Made precise by rows during implementation (the design owner's Revisions 3–5, the planning session's acceptance): a `during self`
