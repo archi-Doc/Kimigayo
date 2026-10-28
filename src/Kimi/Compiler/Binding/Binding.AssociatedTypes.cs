@@ -440,7 +440,7 @@ public sealed partial class Binding
             for (var j = 0; j < shape.AssociatedTypes.Count; j++)
             {
                 var associated = shape.AssociatedTypes[j];
-                if (this.ResolveAssociated(path, associated) is { } result && !this.PendingAssociatedType(result))
+                if (this.ResolveAssociated(path, associated, out _) is { } result && !this.PendingAssociatedType(result))
                 {
                     path.AssociatedStorage[associated] = result;
                 }
@@ -477,8 +477,13 @@ public sealed partial class Binding
         }
     }
 
-    private BoundType? ResolveAssociated(BoundConformancePath path, BoundRequirement associated)
+    // A conformance path's binding of `associated`; null while it is pending or where none is given, and then `rejected` where the null
+    // rests on a binding Binding rejected (state 3: conflicting specifications, or one revisited while it was being resolved, SPEC 8.3.3;
+    // its declaration has the record): the root binding's, or for an inherited path the matching source's, so a derived Type's projection
+    // of a rejected base binding names no Type either (DECISIONS BU-50). A null for another reason is not a rejection.
+    private BoundType? ResolveAssociated(BoundConformancePath path, BoundRequirement associated, out bool rejected)
     {
+        rejected = false;
         if (path.InheritedFrom is not null)
         {
             BoundType? inheritedResult = null;
@@ -492,7 +497,8 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    if (this.ResolveAssociated(source, original) is not { } inherited || this.StoredType(inherited, path.InheritedBase!) is not { } current ||
+                    if (this.ResolveAssociated(source, original, out rejected) is not { } inherited ||
+                        this.StoredType(inherited, path.InheritedBase!) is not { } current ||
                         (inheritedResult is not null && !this.SameCompleteType(inheritedResult, current)))
                     {
                         return null;
@@ -527,6 +533,7 @@ public sealed partial class Binding
         if (binding.State != 0)
         {
             binding.State = binding.State == 1 ? (byte)4 : binding.State; // Revisited while it is being resolved.
+            rejected = binding.State == 3;
             return binding.State == 2 ? binding.Result : null;
         }
 
@@ -548,6 +555,7 @@ public sealed partial class Binding
         valid &= binding.State != 4 || result is null || !this.PendingAssociatedType(result);
         binding.State = valid ? (byte)2 : (byte)3;
         binding.Result = valid ? result : null;
+        rejected = !valid;
         return binding.Result;
     }
 
@@ -556,8 +564,8 @@ public sealed partial class Binding
     // subject declaration's terms (ResolveAssociated; an inherited conformance's under the base clause's arguments), the associated Type's
     // Origin parameters bound to the projection's arguments, for the caller to instantiate under `subject`: as a view (ContractTypeCore)
     // or as a kept part (CompleteProjections, DECISIONS BU-50). Null where the subject is abstract or its conformance binds nothing, and
-    // then `rejected` where Binding rejected that binding (SPEC 8.3.3: revisited while it was being resolved, or conflicting), so the
-    // projection names no Type: a dependent of that record (SPEC 23.1.2).
+    // then `rejected` where Binding rejected that binding (SPEC 8.3.3: revisited while it was being resolved, or conflicting; an inherited
+    // conformance's base binding), so the projection names no Type: a dependent of that record (SPEC 23.1.2).
     private BoundType? ProjectionSpecification(BoundType projection, BindingScope scope, out BoundType? subject, out bool rejected)
     {
         (subject, rejected) = (null, false);
@@ -584,7 +592,7 @@ public sealed partial class Binding
 
     // `qualifier` is the declaring Contract reference of the projection (SPEC 8.6.1); a bound reference of a Contract with Type
     // arguments selects that conformance, and a Contract without them has one conformance per Type. `rejected`: a null result rests on a
-    // binding Binding rejected (BindingRejected).
+    // binding Binding rejected (the path's ResolveAssociated).
     private BoundType? ResolveAssociated(BoundType receiver, BindingSymbol associated, BindingScope scope, BoundType? qualifier, out bool rejected)
     {
         rejected = false;
@@ -592,9 +600,7 @@ public sealed partial class Binding
         {
             if (current.ConformancePath is { } path && ReferenceEquals(path.Type, receiver.Symbol) && this.AssociatedInPath(path, receiver, associated, qualifier) is { } selected)
             {
-                var resolved = this.ResolveAssociated(path, selected);
-                rejected = resolved is null && this.BindingRejected(path, selected);
-                return resolved;
+                return this.ResolveAssociated(path, selected, out rejected);
             }
         }
 
@@ -621,9 +627,9 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (this.ResolveAssociated(path, selected) is not { } binding)
+            if (this.ResolveAssociated(path, selected, out var bindingRejected) is not { } binding)
             {
-                rejected |= this.BindingRejected(path, selected);
+                rejected |= bindingRejected;
                 continue;
             }
 
@@ -645,11 +651,6 @@ public sealed partial class Binding
         // The separately retained projection obligation must still prove conformance at finalization.
         return available ?? (conflicting ? null : pending);
     }
-
-    // Whether Binding rejected a root conformance binding in this pass (ResolveAssociated's state 3: conflicting specifications, or one
-    // revisited while it was being resolved, SPEC 8.3.3); its specification has the record.
-    private bool BindingRejected(BoundConformancePath path, BoundRequirement associated)
-        => path.InheritedFrom is null && this.associatedBindings.TryGetValue((path.RootPath, associated), out var binding) && binding.State == 3;
 
     // The one conformance of `owner` whose bound reference, instantiated for `receiver` (`Indexable<K>` of `Keyed<isize>`),
     // reaches `qualifier` as the declaring reference of `associated`.

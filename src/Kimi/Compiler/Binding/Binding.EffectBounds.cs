@@ -1174,7 +1174,7 @@ public sealed partial class Binding
             {
                 if (!HasPath(body, node, part))
                 {
-                    this.Destruction(PartType(type, part - first) is { } stored ? this.Type(stored) : null, use);
+                    this.Destruction(SelectedType(type, part - first) is { } stored ? this.Type(stored) : null, use);
                 }
             }
 
@@ -1212,7 +1212,8 @@ public sealed partial class Binding
                 return false;
             }
 
-            static BoundType? PartType(BoundType type, int selector) => type.Kind switch
+            // The Type of the part `selector` selects in a layer: a fixed array's element, a Tuple's component or a Field.
+            static BoundType? SelectedType(BoundType type, int selector) => type.Kind switch
             {
                 BoundTypeKind.FixedArray => type.Components[0],
                 BoundTypeKind.Tuple => type.Components[selector],

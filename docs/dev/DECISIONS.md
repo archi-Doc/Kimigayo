@@ -7220,9 +7220,10 @@ resumed by R4-M86 (2026-10-20).
 
 - **BU-50 A stored part's Type under an instance has one producer, which completes its associated projections: `Binding.KeptType`,
   `CompleteProjections`, `ProjectionSpecification`; a binding revisited while it is being resolved names no Type** (2026-10-27; the BU
-  planning session; PLAN G271, unit bu53 and its fix rounds 1 (the implementation review's REVISE: B1–B3, N1–N4) and 2 (the re-check:
-  B3′, G158's interaction); class Major, one rule across the stored-part producers; design note `bu/g271/design.md`, fix briefs
-  `bu/g271/fix-round-1.md`, `fix-round-2.md`) SPEC 8.6.1, 8.2.3, 5.7
+  planning session; PLAN G271, unit bu53 and its fix rounds 1 (the implementation review's REVISE: B1–B3, N1–N4), 2 (the re-check:
+  B3′, G158's interaction) and 3 (re-check 2's R1, the Rejected rule's inherited arm; the owner, 2026-10-28: 「もう1回修正する」); class
+  Major, one rule across the stored-part producers; design note `bu/g271/design.md`, fix briefs `bu/g271/fix-round-1.md`, `fix-round-2.md`,
+  `fix-round-3.md`) SPEC 8.6.1, 8.2.3, 5.7
   Calls: `HA<S> { x: S.Item }` as `HA<Src>`, Src binding `Item` to `raw/u8`, stores a layer Src's declaration writes and no
   parameter's Type expression writes (5.7's positive clause; both designs of U0's revision read it so, no SPEC gap). `Substitute`
   kept `Src.Item`: `SubstituteTypeCore` substitutes a projection's subject but never completes it, and only use sites normalize one
@@ -7254,15 +7255,23 @@ resumed by R4-M86 (2026-10-20).
     payload's construction and pattern read, inline layout, C layout, zero stride, Copy's derivation, borrow retention, destruction,
     the old enum analysis, ObjectGenerationPlan), a member access's Type (Binding.Expressions), a synthesized stored-Field read and a
     stored witness's Field (Binding.PropertyWitnesses, Binding.PropertyMatching), a base part under an instance for member lookup
-    (Binding.MemberLookup) and keepers' referents. `StoredType(BoundType, owner)`, the plain substitution, remains for Types that are
+    (Binding.MemberLookup) and keepers' referents; so a lookup through a base clause naming no Type pends, a dependent of Binding's
+    rejection (SPEC 23.1.2): `struct DerC : BaseF<A.Item>` with A's binding rejected adds UnresolvedBinding_Kd at `d.g` beside Binding's
+    records, where dev gives none. `StoredType(BoundType, owner)`, the plain substitution, remains for Types that are
     no stored part: Contract references and declaring Types (BoundContracts, ConditionalConformances, InheritedConformances'
     conformance paths, RequirementInstances, RequirementWitness, Formatting, ArithmeticOperators), signatures and callable members
     (MemberType, ProjectCallableType, Structs' constructor patterns), formation Types (AssociatedOrigins), the component summaries'
     projection walk and the resolver's own instantiation (ContractTypeCore, the inherited binding arm).
-  - Rejected storage (fix round 2; SPEC 23.1.2, DECISIONS BU-38): a projection whose binding Binding rejected (state 3, which
-    `ProjectionSpecification` reports as `rejected`) names no Type, so the kept part does not substitute (null) and the instance's
-    storage is `StorageOutcome.Rejected`, a dependent of the specification's record: the collector reads it as one (no generation
-    record), so cycle1, cycle2, grow and grow2 keep exactly Binding's records on sel, as G158's collector at every `check` needs.
+  - Rejected storage (fix rounds 2 and 3; SPEC 23.1.2, DECISIONS BU-38): a projection whose binding Binding rejected names no Type, so
+    the kept part does not substitute (null) and the instance's storage is `StorageOutcome.Rejected`, a dependent of the specification's
+    record: the collector reads it as one (no generation record), so cycle1, cycle2, grow and grow2 keep exactly Binding's records on
+    sel, as G158's collector at every `check` needs. One rule for both arms (fix round 3): `ResolveAssociated(path, associated)` reports
+    `rejected` where its null rests on a binding in state 3 (conflicting, or revisited while it was being resolved; its declaration has
+    the record), a root path's own or an inherited path's matching source's, recursively, and `ProjectionSpecification` passes it on;
+    the root-only check beside it is gone. So a derived Type's projection of a base binding Binding rejected names no Type either
+    (inhcyc: `open struct BaseA { Self is HasItem; associate HasItem.Item is BaseA.Item }`, `struct DerA : BaseA`, `HA<DerA>`; two
+    levels down; `DerG : BaseG<i32>` under a cyclic generic binding), while the twin binding `Item is i32` stays valid. A null for another
+    reason is no rejection: two inherited sources disagreeing, or a base clause's arguments substituting no Type.
   - Termination (B1): SPEC 8.3.3 Recursion: `ResolveAssociated(path, associated)` marks a binding revisited while it is being resolved
     (state 4) and, when its Type stays pending through that revisit, gives it no Type (`A.Item is A.Item`, a cycle through another
     binding, `G<T> { Item is G<G<T>>.Item }`, `A<T>.Item is B<A<T>>.Item` with `B<T>.Item is A<T>.Item`). Such a Type was never stored
@@ -7270,12 +7279,20 @@ resumed by R4-M86 (2026-10-20).
     its projection and each use); completion and ContractTypeCore stop at the projection instead of expanding it (both overflowed the
     stack before, ContractTypeCore on dev too). No Type-set guard remains: every cycle of bindings revisits one of them.
   - Removes: the three faults above, the two false errors, the per-query uncompleted reads, sel's CheckFaulted_Kd beside a rejected
-    specification's records, and unit bu53's first (projection, scope) re-entry set (its cold +72 B).
+    specification's records (through an inherited conformance too), and unit bu53's first (projection, scope) re-entry set (its
+    cold +72 B).
   - Not covered (PLAN G278, pre-existing on dev, another cause): a projection-typed witness (`W<S> { Self is Holds; associate Holds.E
-    is S.Element; var item: S.Element }`, also through a base `Leaf<S> : Base<S.Element>`) is UnprovenConstraint_Kd, and a derived
-    constructor initializing a base Field whose base clause names its Type through a projection (`DerF : BaseF<Src2<raw/u8>.Item>`,
-    `self.f = null`) is UnresolvedBinding_Kd and InvalidAssignment_Kd while its twin `BaseF<raw/u8>` is valid. (`DerF : BaseF<Src2<i32>.
-    Item>` without a base constructor errs as its twin `BaseF<i32>` does, SPEC 6.3.6: no false error.)
+    is S.Element; var item: S.Element }`, also through a base `Leaf<S> : Base<S.Element>`) is UnprovenConstraint_Kd. A derived
+    constructor assigning a base Field whose base clause names its Type through a projection (`DerF : BaseF<Src2<raw/u8>.Item>`,
+    `self.f = null`) is judged correctly (SPEC 6.3.6: BaseF has no implicit constructor; 6.3.4: construction forbids inherited Field
+    access), as its twins `BaseF<raw/u8>` and `BaseF<i32>` are (review 3): no false error.
+  - Open (fix round 3's probes; PLAN G271): a kept projection that names no Type for another reason, each program with Binding's records
+    at a declaration and at the use, still faults sel's `check` beside them (CheckFaulted_Kd, as on dev; with G158 (3)'s collector merged,
+    on every pipeline): two inherited sources disagreeing (`contract Sub<A, B> : Holder<A>, Holder<B>`, `BaseP<T, U> { Self is Sub<T, U>;
+    Holder<T>.Item is i32; Holder<U>.Item is u8 }`, `DerP : BaseP<i32, i32>`, `HB<DerP>`: IncompatibleContractImplementation_Kd and
+    InvalidConstraint_Kd), two conformance paths disagreeing (`Self is Holder<T>` and `Holder<U>`: DuplicateBinding_Kd) and a subject
+    without the conformance (`DerX : BaseG`, an argument missing: InvalidTypeFormation_Kd). No probe reached a base clause whose arguments
+    substitute no source binding: a clause of the wrong arity registers no inherited conformance.
   - Rejected: completing in `SubstituteTypeCore` (every substitution pays it, and the mark forms only in `KeptType`); normalizing the
     kept part afterwards by `ContractType` (it instantiates the binding by `StoredType`, without the mark, so Src's `raw/u8` would read
     as the parameter's); marking inside a projection's subject and Contract arguments instead of completing first (a second rule beside
