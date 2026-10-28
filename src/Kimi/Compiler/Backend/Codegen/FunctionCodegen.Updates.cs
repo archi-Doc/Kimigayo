@@ -25,15 +25,9 @@ internal sealed partial class FunctionCodegen
     private void Update(in MirTerminator call, LegacyWriter writer, int glue)
     {
         var first = this.body.Operands[call.Start + ArgumentPosition(new(call.Callee.Symbol, MirBodyKind.Fn), 0)];
-        if (this.Referent(this.InstanceType(first)) is not { } type || this.Laid(type) is not { } lowering)
+        if (this.Referent(this.InstanceType(first)) is not { } type || this.Laid(type) is not { } lowering || !this.Operand(first, out var target))
         {
             return; // A broken contract, recorded.
-        }
-
-        if (!this.Operand(first, out var target))
-        {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-            return;
         }
 
         if (writer == LegacyWriter.Replace && !this.DestroyOld(type, target, glue, call.Source))
@@ -43,16 +37,15 @@ internal sealed partial class FunctionCodegen
 
         if (lowering.Layout.Size != 0 && !this.Updated(call, writer, type, lowering, target))
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-            return;
+            return; // A broken contract, recorded.
         }
 
         this.Finish(call, null);
     }
 
     // A call's steps after replace's destruction for a T of nonzero size, over its second operand: swap's exchange through the call's held
-    // slot; exchange's old value kept at its destination, then, as replace's, the new value put. False for an operand or a destination not
-    // covered yet.
+    // slot; exchange's old value kept at its destination, then, as replace's, the new value put. False after a broken contract's record (an
+    // operand's or the destination's).
     private bool Updated(in MirTerminator call, LegacyWriter writer, BoundType type, ValueLowering lowering, Value target)
     {
         var key = new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);

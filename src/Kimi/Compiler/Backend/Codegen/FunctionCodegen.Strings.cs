@@ -81,8 +81,8 @@ internal sealed partial class FunctionCodegen
     }
 
     // A string operand's bytes: a constant's (TextBytes), or the record at its terminal Place (Referent, the one walk every comparison
-    // operand takes). False after a record: a form not covered yet (Unsupported_Kd), or a string Place or a pair layer, which no valid program
-    // makes an operand (InternalInvariant_Kd).
+    // operand takes). False after a broken contract's record: the operand's (Operand), or a string Place or a pair layer, which no valid
+    // program makes an operand.
     private bool Bytes(in MirOperand operand, in SourceInfo source, out StringBytes bytes)
     {
         bytes = default;
@@ -94,8 +94,7 @@ internal sealed partial class FunctionCodegen
 
         if (!this.Operand(operand, out var value))
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, source);
-            return false;
+            return false; // Recorded.
         }
 
         if (this.Referent(operand, value, source, out var terminal, out var references) is not { } address)

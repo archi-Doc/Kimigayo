@@ -11594,3 +11594,41 @@ structure is recorded here by the unit that first implements it.
     untyped copy (shrink and element moves are untyped copies too); materializing constants for the audits (R5-M118); deleting the
     literal temporaries' counts as I-class (it loses the old generator's exact claims); probing the old generator's compile through a
     per-generator symbol helper until G4; the literal's start for an entry's failure (R5-M144).
+- **R5-M146 The codegen coverage rows closed: the D2 rows in the capability table, broken contracts recorded where detected (X2)**
+  (2026-10-28, C lane; plan X2, PD11, PD27, OQ7 and §5.3 item 3; PLAN G157 (10), (25), (38), the location halves of (36), (43) and (44),
+  G198; the planning session's rulings Q1-Q6 on x2's design; under R5-M6, R5-M18, R5-M41 and R5-M82)
+  - Census (`17cd554ab`, a local probe logging each code generation record's reporting site): under sel, the milestones, the library
+    rooted, the mutation, syntax and pair corpora, the spec cases, every SPEC `kimi` block and the MIR goldens (987 programs, as an
+    Application and as a Library) and the whole suite (24,842 tests) reached code generation's `Unsupported_Kd` only at G157 (10)'s
+    body-less witness and the simulated arena skip; CLI probes found two more valid forms, a `#LibraryImport` function as a
+    requirement's witness and a Value call of an import's Item. No milestone, library or corpus program uses a coverage row's form (no
+    defect); the other 33 sites and the 7 intrinsic rows without a MIR producer are reached only by broken contracts.
+  - Capability table: a new row `BodylessWitness`, a requirement call or requirement Item whose witness has no MIR body (FixedBuffer's
+    or HeapBuffer's `reserve` through `BufferWriter`, SPEC 22.9.4; a `#LibraryImport` witness, SPEC 22.6), decided by
+    `InstanceCollector.Called`, the requirement call's and requirement Item's edge (its implementation's body by `Selected`, shared with
+    `Implementation`), at each site that requests the target (K 4.9, as OCC-X's: the call; an Item where it is formed, called or erased),
+    at check under sel (R5-M41) and on every pipeline from G2: code generation runs a witness only as a body or shim item. The other edges a
+    requirement runs on (a compiler function's published row, `Text.writer`'s reserve witness) keep their -1: their writers read the
+    function itself. A function without a body that is no compiler function derives from Binding's error while Binding is incomplete.
+    The row also ends the narrow subset K11 accepted (an
+    Application's uncalled function with the form was built). Removal: `reserve` when R8 gives the buffers Kimigayo bodies; an import
+    witness when the collector publishes the import as the call's target. `EnclosingInstance`'s stage moves from R5 to R7 (G149).
+  - Import Item: `FunctionCodegen.Runs` runs a function Item without a target whose function is an import by the import's C signature,
+    the rule of its direct call (`ModuleCodegen.Import`; SPEC 7.7.4, 22.6).
+  - Broken contracts, one rule: an input validated MIR never has is `InternalInvariant_Kd`, recorded once by the owner that detects it,
+    at the site it has, else the body's subject (K 4.9), as `Laid` and `Location` record. The place writer's `Referent` (a Deref or
+    PairLayer step to no pointer), `Constant` (a String, TypeToken or non-arithmetic Integer constant read as a value) and `Argument` (an
+    owned constant or pair acquisition without its copy slot) record and return false, and their 29 callers lose their clauses; the
+    pair-layer callee, a compiler function's Item with no single routine (unsafe and internal functions have no Item), a conversion pair
+    Binding never admits, a string's Len and an `Unproduced` intrinsic row (renamed from `Unwritten`: no MIR producer makes its call, and
+    the unit that first produces one writes its row; G198 closed for R5) record at their sites.
+  - Ended: PD11's coverage rows and ARCH's exception for them, and R5-M18's temporary sel limit (a gate refusal hiding independent
+    coverage gaps): every D2 row reports at check. Kept: gate step 2's arena-skip `Unsupported_Kd` (R5-M96), which ARCH names as code
+    generation's one `Unsupported_Kd` until H3.
+  - The PD27 list (STATUS "Text and formatting", "Raw pointers and FFI", "Generic generation" and "Static members"; PLAN §3):
+    `BodylessWitness`; `EnclosingInstance` until R7; the confirmations of `StaticStorage` (P42; X33 (a), R5-M144) and `StorageNesting`
+    (PD30, R7). The owner approved the PD27 list on 2026-10-28 (verbatim 「一覧を承認する」).
+  - Rejected: relabeling the 35 sites in place (29 copies of one rule); deciding `BodylessWitness` in `Requirement` for every edge
+    (`Text.writer`'s witness and the interpolation rows read a body-less reserve themselves; the first implementation's tests showed it);
+    deciding it from `Bodyless`'s result (a refused edge has already recorded); writing the body-less witnesses now (a new K edge form);
+    deleting the seven `IntrinsicId` members (R8 and PD21 plan them); a capability row for the import Item (more code than its call).

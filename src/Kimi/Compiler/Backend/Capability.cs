@@ -28,7 +28,7 @@ internal enum CapabilityGap : byte
     // A function nested in a body (a block of a generic function, a function nested in one, a method or a specialization of a generic
     // container) called by a substitution that does not carry the enclosing instance, so no key holds the enclosing arguments (SPEC
     // 8.13.3; DECISIONS R5-M40, R5-M43).
-    [Transitional("R5", Reason = "PLAN G149 represents the enclosing-instance chain in a call's substitution.")]
+    [Transitional("R7", Reason = "PLAN G149 represents the enclosing-instance chain in a call's substitution (the owner's PD27 list, R5-M146).")]
     EnclosingInstance,
 
     // A requirement call whose witness is inherited and takes a receiver, which lends only its base prefix and so preserves no exclusive

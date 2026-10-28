@@ -56,8 +56,7 @@ internal sealed partial class FunctionCodegen
             {
                 if (!this.Argument(this.body.Operands[use.Start], -1, kind, out this.arguments[i]))
                 {
-                    this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
-                    return;
+                    return; // A broken contract, recorded.
                 }
 
                 continue;
@@ -168,8 +167,7 @@ internal sealed partial class FunctionCodegen
 
         if (!this.Operand(this.body.Operands[call.Start], out var borrow))
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-            return;
+            return; // A broken contract, recorded.
         }
 
         this.module.Request(ModuleCodegen.Needs.Objects);
