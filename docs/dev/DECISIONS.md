@@ -7447,6 +7447,207 @@ resumed by R4-M86 (2026-10-20).
     silent there: the family throw escapes Binding as an exception, and a Local finding fails MirCensusTest's census and every test that
     asserts a body has no validator finding.
 
+- **BU-48 An unavailable C layout is judged by Layout and reported at each by-value use of the checked set at check on every
+  pipeline; Binding publishes the declaration facts; a constructor's construction receiver is no use** (2026-10-27; G158 (3), WORKFLOW
+  Q11 under the owner's order of 2026-10-26 「診断の独立性から (推奨)」; BU's design-first candidate `bu\g158\design\design.md`, the shared
+  tests `LayoutAttributeBindingTest.CLayoutUses.cs` and `InstanceCollectorTest.CLayoutUses.cs` the judge; class Full; Binding rows BU's,
+  Layout, collector, CheckedSet, Compilation and codegen rows R5's, the builder's rows R4's) SPEC 6.7.1 makes C layout unavailable for an
+  open, derived or empty struct and for a struct storing a zero-sized Field; 8.15.3 makes a use that stores, creates, passes or returns
+  such a Type by value or needs its size the error, over the checked set; 23.2.2 makes `check` report every Language error of the
+  checked set.
+  - Choice (BU and R5 jointly, on results; WORKFLOW Q11): this candidate (`claude/bu-g158-design`) passes every counted row of the shared
+    tests on default, mir and sel; R5's prototype-first candidate (`claude/r5-g158-proto` 682cf38a5, notes e05d421a2) fails the 26 rows
+    of the `empty` declarations; the cost is the same in kind (the checked set collected at `check` on the legacy pipeline). The owner
+    accepted that cost (2026-10-27, 「受け入れる (推奨)」): the MIR build and collection per legacy `check`, G2's cost brought forward.
+  - Facts (BU): Binding keeps the Attribute's own errors and publishes, for every struct in every pass, `AdtDef.IsCLayout` (a valid C
+    selection whose layout is available at the declaration) and `AdtDef.CLayoutUnavailable` (a valid C selection on an open, derived or
+    empty struct), neither a record. `CExchangeable` (SPEC 22.6) reads `IsCLayout` alone, so a borrow of an unavailable struct in an
+    import is 22.6's `Unsupported_Kd`.
+  - Judge (R5): `Layout` is the one judge of 6.7.1's four conditions: a `CLayoutUnavailable` struct is a CLayout leaf of `Walk` (where
+    `CLayoutRejected → Rejected` was), a zero-sized Field the placed parts' CLayout, a stored Never counting as zero-sized (IMPL 21.1.3).
+  - Walker and publication (R5): `Compilation.Analyze` builds and validates the MIR and `InstanceCollector` collects the checked set on
+    every pipeline (the MIR analyses stay the mir pipeline's; the collector reads none of their results); `Compilation.MirRecords`
+    publishes the checked set's Language records (the catalog's Category: `InvalidCLayout_Kd`, `OversizedLayout_Kd`) on every pipeline
+    and its Unsupported, Resource and Internal records under MIR code generation until G2 (R5-M41's gate, unchanged; a legacy-pipeline
+    test pins it). K 4.4's roots are unchanged.
+  - The receiver contract (SPEC 6.3.2-6.3.6, 8.15.3; BU and R5, 2026-10-27): a construction expression constructs a fresh owner whose
+    storage the construction allocates before the constructor runs (6.3.2, 6.3.3); inside the body `self` is reached only for its own
+    Fields' access, as a `uniq/Self` receiver is (6.3.4), and the body returns Unit (6.3.5); the synthesized constructor behaves as
+    `init() => ()` (6.3.6). So a constructor's MIR Return local, its construction receiver, is no by-value use, written and synthesized
+    alike: the builder publishes it as `MirLocalRole.Receiver` (R4's shape: exactly a constructor's `_0`; the validator rejects the role
+    on any other local and its absence on a constructor's `_0`), `InstanceCollector.LayOutLocals` skips it beside drop flags, and the
+    caller's construction expression is the use.
+    Any other value of the struct's Type in a constructor body stays a use. Code generation, which lays out every local of a generated
+    item, maps a receiver without a layout (an uncalled constructor generated as a Library root) through the collector's one mapping
+    (`RecordOf`): a CLayout or oversized one is a located `Unsupported_Kd` at the constructor (8.15.3's last sentence), a limit its
+    Resource record (IMPL 21.3.2), anything else `InternalInvariant_Kd`. The judge's `i-init` and `i-toplevel` rows lost their record at
+    `init` in their own commit under this reading.
+  - Interim (R5's ruling on the landing merge with X2, 2026-10-29): code generation's receiver record narrows R5-M146's statements that the
+    capability table is the Backend's one source of not-yet-implemented records and that the arena skip is code generation's one
+    `Unsupported_Kd`; ARCH names it beside R5-M96's arena skip as code
+    generation's second interim `Unsupported_Kd`, not on PD27's list: by R5-M144 (G157 (41)) a constructor's receiver creating the value by
+    value is a use needing the C layout (SPEC 8.15.3 "creates ... a value of that Type by value"), so the missing record is check's.
+    Removal: R5-M144's C-lane unit (PLAN G157 (41)) reports the projection and this receiver case in the collector's layout-use rows at
+    check, after which code generation's record is a broken contract; if that unit finds 8.15.3 leaves the receiver case open, it asks the
+    owner.
+  - Vocabulary (O1, a MIR vocabulary member): `MirLocalRole.Receiver`. The owner approved it (2026-10-27; BU's question 「G158 (3) の修正で、
+    MIR の語彙に `MirLocalRole.Receiver` … を 1 つ追加しました … 承認しますか？」, the answer 「承認する (推奨)」), as R4-M132 recorded
+    `MirLocalRole.Result`'s.
+  - Locations (settled by BU and R5, 2026-10-27): (a) a parameter's record at its Type occurrence and a result's at its result Type
+    occurrence: the builder sources each written parameter's Arg local and a function's Return local at their written Type (an accessor's
+    arguments, a Closure's environment, a constructor's or destructor's `self` and a result without a written Type stay at the
+    declaration, and so do the drop tree's edges), so the MIR analyses' records and drops of a parameter move with it; (b) `keep`'s
+    parameter and result are two records; `take(make())` three (the result, the parameter, the call's value).
+  - Deleted: `ValidateCLayoutFields`, `CheckCLayoutInstance`, `cLayoutInstances`, `storagePrepared`, `HasZeroStride` (`Binding.Pointers.cs`),
+    `BindingFailure.InvalidCLayout` with its requirement row and code mapping, `InvalidTypeFormation_Kd` at a struct for a zero-sized Field,
+    the open/derived/empty failure and attribute invalidation, `AdtDef.CLayoutRejected` and Layout's Rejected mapping of it, the
+    `Instances`/records gate on the code generator, ARCH's K10b double-report row (G2b), DIAGNOSTICS' "eager report stays beside the
+    collector's", the `InferredCLayoutAtCheck` and `OversizedLayoutAtCheck` deviations (both Language errors are at check everywhere).
+  - Supersedes: R5-M55's declaration check ("lasting (X26)", already superseded by R4-M134 Q8), its declared overlap and its record "with
+    the instance's constructor" (the receiver contract; R5 co-signs); R5-M26's reader list; R5-M44's "a parameter's at its function"; R5-M41's
+    "on the default pipeline and under mir alone the collector does not run" for the checked set's Language records.
+  - Rejected: a Binding-side use judge (a second copy of Layout's rule without the checked set: every inferred row fails on default and
+    mir, and `build` keeps failing an accepted `check`); the old generator's instantiation worklist at check (a second checked set in
+    frozen code R6-gen deletes, a refusal per Type); publishing on mir only (the default pipeline is `check`, 23.2.2); Layout reading an
+    `AdtDef.IsOpen` with `Base` and `Count` (syntax facts Binding has at the attribute; one bit replaces one); excluding the implicit
+    constructor from the roots (the candidate's first form: it hid only the synthesized form, changed K 4.4 and hid a Field
+    initializer's construction); "local 0 of a constructor" inferred by the collector (a consumer deciding what the builder publishes).
+  - Landing order: G271 (DECISIONS BU-50, `claude/bu53-g271`) landed on dev before this unit, because the collector at every `check` would
+    otherwise fault on a stored projection Field (`TypeDagScalingTest.AnInstanceWithAProjectionFieldChecks`, `CheckFaulted_Kd`: Layout
+    has no row for an unsubstituted `S.Element`), a latent fault under sel before this unit.
+  - Size (net lines, the unit against fc3334cbe, the shared tests excluded): src −62 (Binding −135, Backend +43, Core +21, Mir +12,
+    Diagnostics −3), tests +54 (the 32 MIR goldens' 202 lines changed in place), docs +73.
+  - Cost (KIMI_CPU=2, tiering off; bytes deterministic over rounds): cold Bind −40 B on Hello and Milestone26, warm 0 B; cold Analyze on
+    the default pipeline Hello 15,864 → 2,933,728 B (about 50 µs → 4.4 ms) and Milestone26 216,216 → 3,235,656 B (0.3 → 5.3 ms), under mir
+    Hello +41,024 B and Milestone26 +45,704 B (the collector), under sel unchanged; warm Analyze 0 B everywhere. Quiet-slot timing is the
+    planning session's.
+  - Open: part (1), a record naming the instance (a catalog fact); part (2), Never, judged by Layout alone (the kept-apart rows pass); a
+    bodyless import's by-value parameter (the owner's); `f(s: ref/S) => s.n`, a Field projection through a borrow or raw pointer of an
+    unavailable Type, is a known limit: `check` accepts it on every pipeline; generated, it is `InternalInvariant_Kd` at the function under
+    MIR code generation and the old generator's `GenerationFailed_Kd`, until R5-M144's C-lane unit (PLAN G157 (41)) makes it a Language
+    error at the projection at `check`; a program with validator findings gets no checked-set record until G2; the old generator lowers any
+    uncalled constructor, written or synthesized, of any struct whose C layout is unavailable, so `check` accepts and the default `emit` and
+    `build` fail with `GenerationFailed_Kd` until R6-gen (STATUS; MIR code generation builds such an Application). The shared tests'
+    kept-apart theories of part (1) (`AUseRecordNamesTheInstancePendingOwnerPart1`) and the import row
+    (`AByValueImportParameterIsAUsePendingOwner` and its sel rows) do not land: they stay on `claude/bu-g158-tests` 910a5583d, reinstated by
+    the unit that decides them (part (1); the import row after the owner's answer); part (2)'s Never rows land as
+    `ANeverFieldMakesCLayoutUnavailable` and its sel twin.
+
+- **BU-50 A stored part's Type under an instance has one producer, which completes its associated projections: `Binding.KeptType`,
+  `CompleteProjections`, `ProjectionSpecification`; a projection that finally names no Type names none, whatever its subject**
+  (2026-10-27; the BU planning session; PLAN G271, unit bu53 and its fix rounds 1 (the implementation review's REVISE: B1–B3, N1–N4),
+  2 (the re-check: B3′, G158's interaction), 3 (re-check 2's R1, the Rejected rule's inherited arm, and the planning session's
+  decision 6 in its addendum; the owner, 2026-10-28: 「もう1回修正する」), 4 (review 4's B1 and N1, decisions 7–9; the owner, the
+  same day: 「もう1回修正する」) and 5 (review 5's B1, decision 10, replacing decisions 6 and 7's subject classification; the owner, the
+  same day: 「上記の方針で結構です。このまま実装して、レビューを通してください」); class Major, one rule across the stored-part producers;
+  design note `bu/g271/design.md`, fix briefs `bu/g271/fix-round-1.md` to `fix-round-5.md`, the rule's proposal
+  `bu/g271/proposal-round5.md`) SPEC 8.6.1, 8.2.3, 5.7
+  Calls: `HA<S> { x: S.Item }` as `HA<Src>`, Src binding `Item` to `raw/u8`, stores a layer Src's declaration writes and no
+  parameter's Type expression writes (5.7's positive clause; both designs of U0's revision read it so, no SPEC gap). `Substitute`
+  kept `Src.Item`: `SubstituteTypeCore` substitutes a projection's subject but never completes it, and only use sites normalize one
+  (`ContractType`). So retention met no raw layer (`HA<Src>`, `Wrap<S.Item>` and a held `HA<Src>` accepted on the MIR, unsound),
+  `HA<Src2<raw/u8>>` and `HA2<Src2<raw/u8>>` read an abstract part, Through (MIR-only false errors), and Layout met the projection in
+  AdtDef's view and in a read's local (sel's `check` CheckFaulted_Kd, "Layout has no row for the Type Element", for `W<SrcI>`'s
+  construction and `w.e`; G158 (3)'s candidate would make it a default-pipeline fault), and a Case payload read was a false
+  TypeMismatch_Kd.
+  - Decision (the rule, B2): `KeptType(written, owner)` (Binding.Storage.cs) completes the declared part's completable projections,
+    then marks each raw layer it writes without `during` (`WithUnstatedOrigins`, BU-46's one producer), then substitutes the
+    instance's arguments, then completes the projections whose subjects the substitution closed. Completion (`CompleteProjections`,
+    components first, a part without an abstract part its own result) replaces each associated projection by `ProjectionSpecification`
+    (Binding.AssociatedTypes.cs; ContractTypeCore's three arms, moved: a builtin arithmetic output or a fixed array's iterator Type,
+    complete; else the subject's conformance binding, `ResolveAssociated`, Origin parameters bound), the binding taken as a kept part
+    of the subject, `KeptType(binding, subject)`. So a layer the subject's declaration writes (Src's
+    `raw/u8`, an enum subject's, `DerI : BaseI<raw/u8>`'s inherited `Item is P`) states Unstated, one the subject's argument supplies
+    (`Item is T`) carries that argument's mark (none for `HA<Src2<raw/u8>>` written in a signature or body, the parameter's layer;
+    Unstated below a Field `h: HA<Src2<raw/u8>>`), and `struct DerQ : BaseI<Src2<raw/u8>.Item>`, which is `BaseI<raw/u8>` (SPEC
+    8.2.3), marks its `raw/u8` as a layer the declaration writes, as a Field's Type, normalized at declaration binding, already was. A
+    projection stays a projection only while it is pending (No Type below). The completion proves a
+    conformance on a marked subject (`SrcC<raw/u8 during Unstated>`'s condition `T is Copy` under `HHC`); its verdicts equal the
+    unmarked subject's in every checked form, and no relation, premise or row is formed from the mark (BU-46 N4 holds).
+  - Clarification of BU-46 (not a departure): "an abstract part kept as written" reads "after KeptType completed its completable
+    projections"; BU-46's meaning stands (a declaration's written layers marked, an argument's layer keeping its mark), and
+    `WithUnstatedOrigins` keeps its one call site.
+  - One producer (B3, fix round 2's B3′): every reader of a stored part's Type under an instance reads `PartType`, the kept part with
+    its Unstated marks removed (`WithoutUnstated`, WithUnstatedOrigins' inverse), so a body reads the one producer's completed Type and
+    no MIR local states Unstated; AdtDef's view stays the kept part WithoutRawOrigins. Its readers: `StoredType(syntax, owner)` (a Case
+    payload's construction and pattern read, inline layout, C layout, zero stride, Copy's derivation, borrow retention, destruction,
+    the old enum analysis, ObjectGenerationPlan), a member access's Type (Binding.Expressions), a synthesized stored-Field read and a
+    stored witness's Field (Binding.PropertyWitnesses, Binding.PropertyMatching), a base part under an instance for member lookup
+    (Binding.MemberLookup) and keepers' referents; so a lookup through a base clause naming no Type pends, a dependent of Binding's
+    rejection (SPEC 23.1.2): `struct DerC : BaseF<A.Item>` with A's binding rejected adds UnresolvedBinding_Kd at `d.g` beside Binding's
+    records, where dev gives none. `StoredType(BoundType, owner)`, the plain substitution, remains for Types that are
+    no stored part: Contract references and declaring Types (BoundContracts, ConditionalConformances, InheritedConformances'
+    conformance paths, RequirementInstances, RequirementWitness, Formatting, ArithmeticOperators), signatures and callable members
+    (MemberType, ProjectCallableType, Structs' constructor patterns), formation Types (AssociatedOrigins), the component summaries'
+    projection walk and the resolver's own instantiation (ContractTypeCore, the inherited binding arm).
+  - No Type (decision 10 of fix round 5, replacing decision 6 of round 3, round 2's state-3 rule, round 3's inherited arm and decision 7
+    of round 4, which classified subjects by kind; SPEC 23.1.2, DECISIONS BU-38): a projection that finally names no Type names no Type,
+    whatever its subject and the reason, and finality is independence of scope. `Binding.Instance` keys a kept part by its Type alone
+    and `CompletedProjection` asks `ProjectionSpecification` in the owner declaration's scope, so a stored part may hold only an answer
+    every scope agrees on: a Type found in the declaration scope holds in every instance (the declaration's premises are each
+    instance's obligations), while a negative may be overturned by a use scope's premise the declaration's lacks (`T is
+    PrimitiveInteger` for `Wrapping<T>.Output`). `ProjectionSpecification` publishes one outcome for every subject, a
+    `ProjectionOutcome` (a private readonly record struct: the Type, the Subject it is instantiated under, Pending; decision 8, ARCH's
+    one `out`), which ContractTypeCore and CompletedProjection read: a builtin arithmetic output or a fixed array's iterator Type; else
+    the subject's resolution's (`ResolveAssociated`, total over every receiver: one without a Symbol, a primitive, a parameter, a
+    completed projection, `Wrapping<T>`, a library struct) Type; else pending while the pass's evidence is incomplete
+    (`AssociatedEvidencePending`: before PrepareAssociatedInference has collected it, or while an inference batch collects, whose
+    state-3 verdicts are provisional; a binding revisited while it is being resolved) or the projection has an abstract part
+    (`HasAbstractPart`: a parameter, `Wrapping<T>`, `Range<T, T>`, `[2 of T]`, `(T, i32)`, a projection over one; its instance decides);
+    else none, final (nothing specifies the binding, Binding rejected it, an inherited base gives none, its base clause substitutes none
+    or its sources disagree, the Type lacks the conformance, its conditions are refuted or in error, its paths disagree, a closed
+    subject of any kind: `i32`, a Tuple, an array, a completed `Src.Item`, `bool` without Addable). No subject-kind test decides
+    pending or none. The fixed array's builtin `UniqIndexable<isize>` (SPEC 4.7.1, 22.1) associates `Element` and is unimplemented
+    (UnprovenConstraint_Kd, STATUS "Positions and ranges"), so its implementation adds the builtin arm. `CompletedProjection` keeps the
+    projection only while pending; for none the kept part does not substitute (null) and the instance's storage is Rejected, a dependent
+    the collector reads as one (no generation record). No per-reason or per-subject test remains. cycle1, cycle2, grow, grow2, inhcyc
+    and its twins, two inherited sources disagreeing (`contract Sub<A, B> : Holder<A>, Holder<B>`, `BaseP<T, U> { Self is Sub<T, U>;
+    Holder<T>.Item is i32; Holder<U>.Item is u8 }`, `DerP : BaseP<i32, i32>`), two conformance paths disagreeing (`Self is Holder<T>`,
+    `Self is Holder<U>`), a subject whose base clause gives it no conformance (`DerX : BaseG`, `BaseG<i32, u8>`), closed subjects
+    (`HA<i32>`, `HA<(i32, u8)>`, `HA<[2 of i32]>`, `HA<Src.Item>`, `HAdd<bool>`'s `S.Output`, `EW<i32>`'s payload `A(S.Item)`) and a
+    refuted condition (`HA<SrcC<string>>` with `SrcC<T> { Self is HasItem when T is Copy }`) keep exactly Binding's records on sel, and
+    with G158 (3)'s collector on every pipeline; `HAdd<i32>` stays valid, and so do `HAd<Wrapping<T>>` under `T is PrimitiveInteger`
+    (returned, in a local Tuple, in a Field, as an enum's payload; round 4's Rejected storage gave Unsupported_Kd), a conditional
+    conformance proven only by the use's premise, `HK<Range<T, T>>` and `HK<[2 of T]>`, each completed by the instance a use forms. A
+    final none with no Binding record cannot pass silently: Rejected storage in a complete compilation throws (InternalInvariant_Kd);
+    the Session shows no valid program reaches it.
+  - Revised (bu55, 2026-10-29; PLAN G271): paths disagree only when the paths whose conditions the receiver meets name different Types
+    for that receiver (SPEC 8.9.2), so `ResolveAssociated` compares two bindings as written and else as the receiver's instances
+    (`PathsAgree`: `StoredType` under the receiver, judged by `SameConformanceType` as the declaration's agreement check judges two
+    paths); `OwningIterator<Counter>.(LendingIterator).LentItem(s)`, bound `I.(LendingIterator).LentItem(step)` directly and `I.Item`
+    through `Self is Iterator when I is Iterator`, names i32 (before: none, so R4's WK requirement signature's storage was Rejected and
+    threw), as BorrowingIterator, a user Wrapper and `W<Src>` do, and so do `V<Src>` through two conditional paths, the nested `W<W<Src>>`
+    and `W<DV>` with an inherited HasMore (before: CheckFaulted_Kd, or InvalidPattern_Kd for `W<DV>`), while `WB<S>` (u8 against i32)
+    keeps Binding's records.
+  - Pending and prepared storage (decision 6's question): PrepareStorage runs in BindDeclarations after PrepareAssociatedInference, which
+    collects the pass's evidence, runs every inference batch and resolves every binding again (state 2 or 3), so from PrepareStorage on a
+    struct or enum subject's resolution is final, except inside a binding's own resolution (pending). A kept part completed before is not
+    cached: `Instance` substitutes again on each request until PrepareStorage stamps the declaration's version for the pass, and each pass
+    prepares every declaration again; so the storage the collector reads, the last pass's, never keeps a pending projection of a struct or
+    enum subject. A temporary trace of every such pending outcome over the whole suite (24,853 tests) and every probe found none (abstract
+    subjects' pending outcomes, the control, were traced). A projection with an abstract part stays pending in the generic
+    declaration's storage, which `Instantiable` never lays out (InstanceCollector.Admit.cs admits closed representatives only); its
+    closed instance's storage decides it (fix round 5).
+  - Termination (B1): SPEC 8.3.3 Recursion: `ResolveAssociated(path, associated)` marks a binding revisited while it is being resolved
+    (state 4) and, when its Type stays pending through that revisit, gives it no Type (`A.Item is A.Item`, a cycle through another
+    binding, `G<T> { Item is G<G<T>>.Item }`, `A<T>.Item is B<A<T>>.Item` with `B<T>.Item is A<T>.Item`). Such a Type was never stored
+    (a pending Type is no conformance binding), so the records stay those the proofs give (InvalidConstraint_Kd at the specification,
+    its projection and each use); completion and ContractTypeCore stop at the projection instead of expanding it (both overflowed the
+    stack before, ContractTypeCore on dev too). No Type-set guard remains: every cycle of bindings revisits one of them.
+  - Removes: the three faults above, the two false errors, the per-query uncompleted reads, sel's CheckFaulted_Kd beside Binding's records
+    where a projection names no Type (any subject, any reason), round 2's and round 3's per-reason `rejected` tests, round 3's two `out`
+    parameters, and unit bu53's first (projection, scope) re-entry set (its cold +72 B).
+  - Not covered (PLAN G278, pre-existing on dev, another cause): a projection-typed witness (`W<S> { Self is Holds; associate Holds.E
+    is S.Element; var item: S.Element }`, also through a base `Leaf<S> : Base<S.Element>`) is UnprovenConstraint_Kd. A derived
+    constructor assigning a base Field whose base clause names its Type through a projection (`DerF : BaseF<Src2<raw/u8>.Item>`,
+    `self.f = null`) is judged correctly (SPEC 6.3.6: BaseF has no implicit constructor; 6.3.4: construction forbids inherited Field
+    access), as its twins `BaseF<raw/u8>` and `BaseF<i32>` are (review 3): no false error.
+  - Rejected: completing in `SubstituteTypeCore` (every substitution pays it, and the mark forms only in `KeptType`); normalizing the
+    kept part afterwards by `ContractType` (it instantiates the binding by `StoredType`, without the mark, so Src's `raw/u8` would read
+    as the parameter's); marking inside a projection's subject and Contract arguments instead of completing first (a second rule beside
+    BU-46's, and the completed Type would still need it); a (projection, scope) or Type-set guard (an expanding specification never
+    repeats a Type); a mode on the completion for the read form (the read form is the kept part without its marks).
+
 - **BU-43 Where no source supplies a candidate, a join's Type is formed part by part; a call classifies such a join's results by
   position; Never supplies nothing at any position** (2026-10-26; the BU planning session; PLAN G159 (2), unit bu47; design bu47
   Revisions 1, 1b and 2, design review 3 ACCEPT with C1 and C2; SPEC 14.9.2 step 2 (R4-M134) and 10.5.1 as R4's SPEC revision 2
@@ -7740,6 +7941,43 @@ resumed by R4-M86 (2026-10-20).
   - Superseded in part by R4-M154 (WK): `RetentionPlace.Addressed`, `MarkClosure`'s lowering and the own-Origin rows (`1 Value
     store 1` with `during q` on both layers, use2's record) are replaced by retention per storage, and A2-put-ok, B4-chained and
     B5-result-put's six a5-writes rows go.
+- **BU-51 Every slot a call fills is an input: a default's instantiated Type bounds the call's solution and is judged at the call,
+  `RequireInputPremises(at, parameter, supplied)` over `DefaultSlots`** (2026-10-28; PLAN G277 (1), BU's Major unit bu54, pulled
+  forward by the owner (「推奨どおり」, 2026-10-28); the planning session's design, adopted without a design review, WORKFLOW Design 4)
+  SPEC 15.6.4 steps 1, 3, 7.2.3, 10.1 step 2, 10.1.1.
+  - Rule: a call fills each parameter slot by a written argument, its receiver or a default (10.1 step 2), and 15.6.4 step 3 proves
+    every instantiated parameter Type well formed, the call's fresh regions solved under it; a default keeps "the call's ordinary
+    argument and Loan checks" (7.2.3) and gives no evidence (10.1.1). One input-premise rule serves every filled slot:
+    `RequireInputPremises(at, parameter, supplied)` judges each position that `supplied` does not prove, a written input's or the
+    receiver's adapted Type behind its fit-record gate, and for a default (none supplied) every position, at the call.
+    `JudgeSelectedCall` judges the receiver, the arguments and the defaults, which `BindCallCore` forms first (`SelectedDefaults`); the
+    written slots are judged also when a default has no Type (23.1.2: `MissingType` after them). The candidate solve reads the defaults
+    through one derivation of the mapping (`DefaultSlots`: the slots no written argument or receiver supplies; none at a function
+    reference's call): each default's well-formedness shortens the solution as a written part's does (`SolveLate`), and an Origin that
+    no supplied input and no clause names is a local region of the call (`OpenResultOnlyOrigins`' rule, for the result or a default);
+    the well-formedness obligation of a default naming it, judged at the call, keeps the region under the bounds that default's Type
+    states, accepting what 15.3.6's meet of those bounds would.
+  - Cause: a default had no `BoundArgumentOperation`, and the judgment and the solve walk operations and parts. `BindCallCore` formed
+    the defaults' Types after the judgment and published them unjudged (dfl1, d1u, g1, the method and constructor forms, r1, z5, dfl2
+    were accepted on every pipeline); an Origin only a default and the result named took the expected Origin unchecked (r1) or stayed
+    pending (r2ok, r2d: a false `UnprovenConstraint_Kd`), and one only defaults named was published as the callee's own `Parameter`
+    Origin (r3ok, b1ok), which the judgment alone would have refuted (a false `UnprovenOriginRelation_Kd`, probed).
+  - Records (no new code or fact): a Finite end at a fixed one `UnsatisfiedOriginRelation_Kd` at the call, source `wellFormed`; two
+    fixed ends `UnprovenOriginRelation_Kd` there; z5's result, shortened by the premise, its own `fit` record at the returned call;
+    local ends Binding's obligation at the call (its row, `OriginRowsTest`), the old analysis' and A5's `ComparisonLoanConflict_Kd` at
+    the destroyed local. A `borrow` end supplied through a local (dfl1's `sr`) is shown by its Origin and related at the call: the
+    adapter finds a well-formedness end's Borrow inside the call only, as for a written input.
+  - Removes: `BindCallCore`'s own rebuild of the winner's slots (`used[]`) and `JudgeSelectedCall`'s `argumentCount`.
+  - Rejected: (b) one filled-slot list in `CallPlan`, defaults as operations: a published representation that 18 files on both paths
+    read, a Full change with no verdict beyond this rule (R7's CallPlan input); judging a default at its declaration (15.6.1: the call's
+    Origins instantiate it).
+  - Open: a contextual argument's Type is the call's and stays unjudged (`ReferenceEquals(adapted, parameter)`; PLAN G269 (C), with
+    r2c's false `UnprovenConstraint_Kd`).
+  - Tests: `CallOriginRelationTest.ADefaultedInputsWellFormednessIsJudgedAtTheCall` (eight forms, each accepted before) and
+    `AWellFormedDefaultIsAccepted` (thirteen twins; r2ok and r2d failed before), `OriginRowsTest.ARowIsTheBodyBindingFormsItIn`'s
+    dfl2 row, `OriginProofWorkloads`' `defaults` family (sizes 1–32).
+  - Cost: src +80/−33 lines (+61/−20 besides comments, 7 of them `JudgeSelectedCall`'s signature wrapped), after the restructuring
+    commit before it (Binding.Calls.cs split by responsibility); tests +113/−1.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
@@ -8712,7 +8950,8 @@ structure is recorded here by the unit that first implements it.
     one key for every enclosing instance and an open representative would accept such a program at check (SPEC 8.13.3, R5-M34). A
     function nested in a closed function has no enclosing instance to carry and is admitted by its own substitution.
     Removal condition: PLAN G149, a representation of the enclosing-instance chain in a call's substitution (full process, scheduled
-    inside R5 before its exit, so the gap's `[Transitional("R5")]` stage stands; R5-M43 states why K5's pure `SubstOfItem` does not carry
+    inside R5 before its exit, so the gap's `[Transitional("R5")]` stage stands; superseded by R5-M146: the owner's PD27 list moves the
+    stage to R7, since G149's full process no longer fits before R5's exit; R5-M43 states why K5's pure `SubstOfItem` does not carry
     it); the F3 reproducers in `InstanceCollectorTest` then expect two items each.
   - Departure from KD3, owned here: a closed item's representative is stored as null, which every reader treats as the identity,
     instead of `Identity(Decl)`; an accessor's executing function would need its own binder for an identity.
@@ -8786,7 +9025,8 @@ structure is recorded here by the unit that first implements it.
     Fn call (probe at 2c0371da: the nested calls of the F3 shapes are Fn callees, with `Declaring` null two levels in, in a block, in a
     method or a specialization of a generic struct), so a pure item substitution cannot carry it, and two slot-bearing levels fit in no one
     `Declaring`. The fix, a representation of the enclosing-instance chain in a call's substitution, changes shared structure under the full
-    process: PLAN G149, R5-M40's removal condition, scheduled inside R5 before its exit, so the gap stays `[Transitional("R5")]`.
+    process: PLAN G149, R5-M40's removal condition, scheduled inside R5 before its exit, so the gap stays `[Transitional("R5")]`
+    (superseded by R5-M146: stage R7, the owner's PD27 list).
   - Rejected: widening `CallDeclaringType` to the nearest slot-bearing enclosing declaration (two levels stay unrepresentable, and legacy
     CallPlans change); the collector testing `IsRequirement` or `IsVirtual` (syntax in the Backend; `Dispatches` publishes it); targets per
     operand of every statement (a site would hold several).
@@ -9918,7 +10158,8 @@ structure is recorded here by the unit that first implements it.
     value `Put` at the storage, R5-M87's copy form); Slice (the storage and length put at the Slice record's Fields 0 and 1, the Unit
     backing ignored); Copy (superseded by R5-M145: transferBytes calls the runtime's routine;
     transferBytes as `llvm.memcpy`: R5-M18 reversed PD23, the declaration rules out overlap, so `MoveBytes`'
-    comment is corrected). Every other row is `Unwritten`, its unit named in the table: C4a DestroyValues (no producer: R5-M95); C6a MakeObj, MakeRc, MakeArc,
+    comment is corrected). Every other row is `Unwritten`, its unit named in the table (superseded by R5-M146: a row no MIR producer makes
+    yet is `Unproduced`, a call of it a broken contract): C4a DestroyValues (no producer: R5-M95); C6a MakeObj, MakeRc, MakeArc,
     Clone, TypeTest; C7 StaticEnsure; C8d Capacity; C9a WriteStdout (see R5-M128); C9b FormatFloat, ErasedWriter, ErasedReserve, FormatInteger128; C9c
     the format buffer rows; C10a and C10b the test rows (C10b's deleted by R5-M137). Stride and ReinterpretLoan have no MIR producer yet (no compiler function's
     disposition serves them; an open PLAN row), so their rows are written with their first producer. Allocate and Fail call through
@@ -11826,3 +12067,68 @@ structure is recorded here by the unit that first implements it.
     untyped copy (shrink and element moves are untyped copies too); materializing constants for the audits (R5-M118); deleting the
     literal temporaries' counts as I-class (it loses the old generator's exact claims); probing the old generator's compile through a
     per-generator symbol helper until G4; the literal's start for an entry's failure (R5-M144).
+- **R5-M146 The codegen coverage rows closed: the D2 rows in the capability table, broken contracts recorded where detected (X2)**
+  (2026-10-28, C lane; plan X2, PD11, PD27, OQ7 and §5.3 item 3; PLAN G157 (10), (25), (38), the location halves of (36), (43) and (44),
+  G198; the planning session's rulings Q1-Q6 on x2's design; under R5-M6, R5-M18, R5-M41 and R5-M82)
+  - Census (`17cd554ab`, a local probe logging each code generation record's reporting site): under sel, the milestones, the library
+    rooted, the mutation, syntax and pair corpora, the spec cases, every SPEC `kimi` block and the MIR goldens (987 programs, as an
+    Application and as a Library) and the whole suite (24,842 tests) reached code generation's `Unsupported_Kd` only at G157 (10)'s
+    body-less witness and the simulated arena skip; CLI probes found two more valid forms, a `#LibraryImport` function as a
+    requirement's witness and a Value call of an import's Item. No milestone, library or corpus program uses a coverage row's form (no
+    defect); the other 33 sites and the 7 intrinsic rows without a MIR producer are reached only by broken contracts.
+  - Capability table: a new row `BodylessWitness`, a requirement call or requirement Item whose witness has no MIR body (FixedBuffer's
+    or HeapBuffer's `reserve` through `BufferWriter`, SPEC 22.9.4; a `#LibraryImport` witness, SPEC 22.6), decided by
+    `InstanceCollector.Called`, the requirement call's and requirement Item's edge (its implementation's body by `Selected`, shared with
+    `Implementation`), at each site that requests the target (K 4.9, as OCC-X's: the call; an Item where it is formed, called or erased),
+    at check under sel (R5-M41) and on every pipeline from G2: code generation runs a witness only as a body or shim item. The other edges a
+    requirement runs on (a compiler function's published row, `Text.writer`'s reserve witness) keep their -1: their writers read the
+    function itself. Such a witness is decided by `TyCtxt.Bodyless`, the one classification of a function without a MIR body: a compiler
+    or foreign function is the gap whatever else Binding rejected (SPEC 23.1.2; review B1 found a first version that dropped an import
+    witness's record beside an unrelated Binding error), a definition Binding rejected is that error's dependent (no record), and any
+    other is a broken contract in a complete compilation (`Derived`). The row also ends the narrow subset K11 accepted (an Application's
+    uncalled function with the form was built). Removal: `reserve` when R8 gives the buffers Kimigayo bodies; an import witness when the
+    collector publishes the import as the call's target. `EnclosingInstance`'s stage moves from R5 to R7 (G149).
+  - Import Item: `FunctionCodegen.Runs` runs a function Item without a target whose function is an import by the import's C signature,
+    the rule of its direct call (`ModuleCodegen.Import`; SPEC 7.7.4, 22.6).
+  - Broken contracts, one rule: an input validated MIR never has is `InternalInvariant_Kd`, recorded once by the owner that detects it,
+    at the site it has, else the body's subject (K 4.9), as `Laid` and `Location` record. The place writer's `Referent` (a Deref or
+    PairLayer step to no pointer), `Constant` (a String, TypeToken or non-arithmetic Integer constant read as a value) and `Argument` (an
+    owned constant or pair acquisition without its copy slot) record and return false, and their 29 callers lose their clauses; the
+    pair-layer callee, a compiler function's Item with no single routine (unsafe and internal functions have no Item), a conversion pair
+    Binding never admits, a string's Len and an `Unproduced` intrinsic row (renamed from `Unwritten`: no MIR producer makes its call, and
+    the unit that first produces one writes its row; G198 closed for R5) record at their sites.
+  - Ended: PD11's coverage rows and ARCH's exception for them, and R5-M18's temporary sel limit (a gate refusal hiding independent
+    coverage gaps): every D2 row reports at check. Kept: gate step 2's arena-skip `Unsupported_Kd` (R5-M96), which ARCH names as code
+    generation's one `Unsupported_Kd` until H3.
+  - The PD27 list (STATUS "Text and formatting", "Raw pointers and FFI", "Generic generation" and "Static members"; PLAN §3):
+    `BodylessWitness`; `EnclosingInstance` until R7; the confirmations of `StaticStorage` (P42; X33 (a), R5-M144) and `StorageNesting`
+    (PD30, R7). The owner approved the PD27 list on 2026-10-28 (verbatim 「一覧を承認する」).
+  - Rejected: relabeling the 35 sites in place (29 copies of one rule); deciding `BodylessWitness` in `Requirement` for every edge
+    (`Text.writer`'s witness and the interpolation rows read a body-less reserve themselves; the first implementation's tests showed it);
+    deciding it from `Bodyless`'s result (a refused edge has already recorded); writing the body-less witnesses now (a new K edge form);
+    deleting the seven `IntrinsicId` members (R8 and PD21 plan them); a capability row for the import Item (more code than its call).
+- **R5-M147 X1's exit sweep, and an address-matched control for O2 corpus A/Bs** (owner, 2026-10-28 and 2026-10-29, to the R5 planning
+  session directly; extends R5-M135) X1 (plan §4 row X1, §5.3) ran at dev `17cd554ab` (evidence
+  `artifacts/verify/reduction-R5/17cd554ab/`: `x1-summary.md`, `quiet/`, `iter/`, `scripts/`): sel fails exactly the 110 decided P42 rows
+  (R5-M144, R5-M145); the native outcomes of all 6,089 fixtures are equal, 6 of them under decided deviations; the LLVM verifier passes
+  both generators, and sel's `.ll` is identical to another run of the same tree; the five CLI harnesses pass under both generators; no
+  collector or MIR record over the library and the accepted milestones (the census rows are Milestone 41's, a `tests/mir` golden's and one
+  spec case's incomplete programs); the sel snapshot differs from the legacy one only in Milestone 42's five P42 records; 1,161 of the
+  1,162 `Purpose=Allocation` tests (M9's 186 among them) pass under sel, `TrimsUnderHighPressure` running under neither generator. O2
+  against `49cb2b5d` (CPU cycles, 21 interleaved rounds, CPU 2, `DOTNET_TieredCompilation=0`): five kernels within A=A, Array and
+  VirtualDispatch within A=A aligned (code placement, R5-M135), Iterators 1.129 plain and 1.016 aligned against an aligned A=A of
+  0.993-1.008. The owner first chose to fix its cause (verbatim 「(a) 原因を直す」); the investigation found none in code generation: the
+  kernel's executed machine code is byte-identical but for addresses; B's code sits 0xc0 (3 × 64) bytes lower because O2 deletes the
+  `__kimi_destroy_string` routine ahead of `main`, which C9c and C9d left uncalled, and 64-byte alignment cannot cancel that shift. In a
+  quiet run (21 rounds) B's code and constants at A's addresses ran at 509.6 against A's 509.6 Mcycles and A's at B's addresses at 517.3
+  against B's 518.0; moving constants alone changed nothing; over sixteen 64-byte shifts (11 rounds) A ranged 509.7-583.3 and B
+  508.4-582.4. The owner then decided, verbatim 「(1) 対照を拡張」: when a gap remains in R5-M135's aligned control, an **address-matched
+  control** follows. Its general form sweeps both sides' code over the same 64-byte shifts and compares the medians at matched code
+  addresses; a swap (each side's code placed at the other's addresses) is its two-point form. Each variant is timed as R5-M135 says (A, B
+  and A′ in one folder, 15 or more interleaved rounds, pinned), and every matched pair (each swap, or each matched shift) must lie within
+  the A=A range of the same run (for Iterators' 21-round run, A′/A 0.990-1.011). Within A=A it is code placement, recorded in the unit's
+  DECISIONS entry, and lands without an owner question; only a gap that remains at matched addresses is a slowdown under R5-M8 and goes to
+  the owner. Iterators at matched addresses: 1.000 (B at A's addresses) and 1.001 (A at B's against B), so gate 5's O2 part holds. O0
+  times (recorded, not judged): B/A 0.85 (ArrayLiteral) to 1.59 (Dictionary). Rejected: forcing B's placement to A's in code generation (a
+  clause for one kernel's layout, AGENTS). Open for X3: the PLAN10-P3 record's collection share is below the noise of its stage-3
+  subtraction on small inputs; X3 measures collection directly.

@@ -12,6 +12,9 @@ namespace XunitTest;
 
 public class AssociatedIdentityTest(ITestOutputHelper output)
 {
+    private const string CyclicBaseA = "open struct BaseA\n    Self is HasItem\n    associate HasItem.Item is BaseA.Item\n";
+    private const string CyclicBaseG = "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is BaseG<T>.Item\n    var t: T\n";
+
     [Theory]
     [InlineData("C<i32>, C<i64>")]
     [InlineData("C<i64>, C<i32>")]
@@ -240,6 +243,66 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
             Console.writeLine("inherited")
             """;
         ScalarEmissionTest.EmitFixture("AssociatedIdentityInherited", declarations + Use, "inherited\n");
+    }
+
+    // SPEC 8.3.3 Recursion, Unbounded Types (DECISIONS BU-50): a conformance binding revisited while it is being resolved, directly
+    // (`A.Item is A.Item`), through another binding (A and B) or with a growing argument (`G<T> { Item is G<G<T>>.Item }`, A<T> and B<T>),
+    // names no Type. Each specification on the cycle and its projection keep their InvalidConstraint_Kd records, as each use of the
+    // conformance (a parameter's Type, a call's) and the call's NoApplicableOverload_Kd do, and normalizing or storing an instance whose
+    // Field projects through it ends; the growing forms overflowed the stack before (ContractTypeCore at the call, KeptType in the MIR).
+    // A Field whose projection names no Type does not substitute (null), so the instance's storage is Rejected, a dependent of the
+    // specification's record (SPEC 23.1.2, DECISIONS BU-38): the analysis, and on sel the collector, add no record (before, sel's `check`
+    // added CheckFaulted_Kd, "Layout has no row for the Type Item").
+    [Theory]
+    [InlineData("struct A\n    Self is HasItem\n    associate HasItem.Item is A.Item\n", "A", "A.Item")]
+    [InlineData("struct A\n    Self is HasItem\n    associate HasItem.Item is B.Item\nstruct B\n    Self is HasItem\n    associate HasItem.Item is A.Item\n", "A", "B.Item,A.Item")]
+    [InlineData("struct G<T>\n    Self is HasItem\n    associate HasItem.Item is G<G<T>>.Item\n", "G<i32>", "G<G<T>>.Item")]
+    [InlineData("struct A<T>\n    Self is HasItem\n    associate HasItem.Item is B<A<T>>.Item\nstruct B<T>\n    Self is HasItem\n    associate HasItem.Item is A<T>.Item\n", "A<i32>", "B<A<T>>.Item,A<T>.Item")]
+    public void ABindingThatUsesItselfNamesNoType(string declarations, string subject, string specifications)
+    {
+        var source = "contract HasItem\n    associate Item\nstruct HA<S>\n    S is HasItem\n    var x: S.Item\n" +
+            "    public init(x: S.Item) => self.x = x@move\n" + declarations + $"func f(h: HA<{subject}>) => ()\npublic func main() -> ()\n" +
+            $"    var h = HA<{subject}>.init(null)\n    return\n";
+        var c = MinimalEmissionTest.Analyze(source);
+        var use = $"InvalidConstraint_Kd HA<{subject}>";
+        Assert.Equal(
+            [.. specifications.Split(',').SelectMany(static x => (string[])[$"InvalidConstraint_Kd associate HasItem.Item is {x}", $"InvalidConstraint_Kd {x}"]),
+                use, use, $"NoApplicableOverload_Kd HA<{subject}>.init(null)", use],
+            c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}"));
+        Assert.Empty(c.Problems);
+        Assert.Empty(c.Instances?.Records ?? []);
+        var holder = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters[0].Type.TypeOf()!;
+        Assert.Equal((Binding.StorageOutcome.Rejected, null), (c.Binding.PrepareTypeStorage(holder), c.Types.StoredParts(holder, out _)[0]));
+        Assert.Empty(c.BuildMir().Findings);
+    }
+
+    // SPEC 8.3.3, 8.6.1 (DECISIONS BU-50): an inherited conformance binds what its base's binds, so where the base's binding is rejected
+    // (`BaseA.Item is BaseA.Item`) a derived Type's projection names no Type either, one level down (inhcyc), two levels down or under a
+    // generic base's arguments: the base's specification and projection, each derived declaration and base clause and the use keep their
+    // records, and the Field's storage is Rejected, a dependent (before, the inherited arm reported no rejection, so the Field kept
+    // `DerA.Item`, which sel's `check` faulted on: CheckFaulted_Kd, "Layout has no row for the Type Item"). The twin whose base binds `i32`
+    // is valid, its Field i32.
+    [Theory]
+    [InlineData(CyclicBaseA + "struct DerA : BaseA\n    var m: i32\n", "DerA", "BaseA.Item", "DerA:BaseA")]
+    [InlineData(CyclicBaseA + "open struct DerA : BaseA\n    var m: i32\nstruct DerB : DerA\n    var n: i32\n", "DerB", "BaseA.Item", "DerA:BaseA,DerB:DerA")]
+    [InlineData(CyclicBaseG + "struct DerG : BaseG<i32>\n    var m: i32\n", "DerG", "BaseG<T>.Item", "DerG:BaseG<i32>")]
+    [InlineData("open struct BaseA\n    Self is HasItem\n    associate HasItem.Item is i32\nstruct DerA : BaseA\n    var m: i32\n", "DerA", "", "")]
+    public void AnInheritedBindingKeepsItsBasesVerdict(string declarations, string subject, string specification, string derivations)
+    {
+        var c = MinimalEmissionTest.Analyze("contract HasItem\n    associate Item\nstruct HA<S>\n    S is HasItem\n    var x: S.Item\n" + declarations +
+            $"func f(h: HA<{subject}>) => ()\npublic func main() -> ()\n    return\n");
+        var use = $"InvalidConstraint_Kd HA<{subject}>";
+        var derived = derivations.Split(':', ',');
+        string[] records = specification.Length == 0 ? [] :
+            [$"InvalidConstraint_Kd associate HasItem.Item is {specification}", $"InvalidConstraint_Kd {specification}",
+                .. derived.Chunk(2).SelectMany(static x => (string[])[$"InvalidTypeFormation_Kd struct {x[0]}", $"InvalidConstraint_Kd {x[1]}"]), use, use];
+        Assert.Equal(records, c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}"));
+        Assert.Empty(c.Problems);
+        Assert.Empty(c.Instances?.Records ?? []);
+        var holder = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters[0].Type.TypeOf()!;
+        var verdict = records.Length == 0 ? (Binding.StorageOutcome.Prepared, BoundType.I32) : (Binding.StorageOutcome.Rejected, null);
+        Assert.Equal(verdict, (c.Binding.PrepareTypeStorage(holder), c.Types.StoredParts(holder, out _)[0]));
+        Assert.Empty(c.BuildMir().Findings);
     }
 
     private static string Declarations(string parents) => """

@@ -285,7 +285,7 @@ public sealed partial class Binding
 
                 call.CallStorage!.Set(function.BoundSymbol!, result, null, mapping[..count], [], conformingType: requirement?.Self, declaringType: declaringType, origins: origins.AsSpan(0, originCount), inputOrigins: inputs.AsSpan(0, inputCount), operations: operations.AsSpan(0, count));
                 call.CallStorage.RequirementContract = requirement?.PropertyContracts[0];
-                this.JudgeSelectedCall(call, function, operations, count, origins, inputs, declaringType);
+                this.JudgeSelectedCall(call, function, operations.AsSpan(0, count + 1), origins, inputs, declaringType, []);
                 Complete(call, result);
                 return true;
             }

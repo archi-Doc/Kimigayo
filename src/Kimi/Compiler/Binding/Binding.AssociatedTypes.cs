@@ -11,6 +11,10 @@ public sealed partial class Binding
     private HashSet<BoundRequirement>? ambiguousAssociatedMatches;
     private Dictionary<Koto, (BoundRequirement First, BoundRequirement Second, int Count)>? associatedAmbiguities;
 
+    // Whether the pass's declaration evidence of conformance bindings is incomplete: before PrepareAssociatedInference has collected it,
+    // or while an inference batch collects (a state-3 verdict then is provisional; PrepareAssociatedInference resolves every binding again).
+    private bool AssociatedEvidencePending => !this.associatedInferenceReady || this.collectingAssociated is not null;
+
     // SPEC 8.4: whether a Type is the Self of a Contract, a Type parameter standing for any conforming Type. It is distinct
     // from every reference to the Contract itself, such as the declaring Contract of a projection.
     internal static bool IsContractSelf(BoundType? type) => type is { Kind: BoundTypeKind.Parameter, Symbol.SelfOf: not null };
@@ -440,7 +444,7 @@ public sealed partial class Binding
             for (var j = 0; j < shape.AssociatedTypes.Count; j++)
             {
                 var associated = shape.AssociatedTypes[j];
-                if (this.ResolveAssociated(path, associated) is { } result && !this.PendingAssociatedType(result))
+                if (this.ResolveAssociated(path, associated, out _) is { } result && !this.PendingAssociatedType(result))
                 {
                     path.AssociatedStorage[associated] = result;
                 }
@@ -477,8 +481,12 @@ public sealed partial class Binding
         }
     }
 
-    private BoundType? ResolveAssociated(BoundConformancePath path, BoundRequirement associated)
+    // A conformance path's binding of `associated`, or null: `pending` while its evidence is incomplete (AssociatedEvidencePending, or the
+    // binding revisited while it is being resolved), else none, final (DECISIONS BU-50): nothing specifies the binding, Binding rejected
+    // it (state 3), or an inherited path's base gives none, its base clause substitutes none or its sources disagree.
+    private BoundType? ResolveAssociated(BoundConformancePath path, BoundRequirement associated, out bool pending)
     {
+        pending = this.AssociatedEvidencePending;
         if (path.InheritedFrom is not null)
         {
             BoundType? inheritedResult = null;
@@ -492,7 +500,8 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    if (this.ResolveAssociated(source, original) is not { } inherited || this.StoredType(inherited, path.InheritedBase!) is not { } current ||
+                    if (this.ResolveAssociated(source, original, out pending) is not { } inherited ||
+                        this.StoredType(inherited, path.InheritedBase!) is not { } current ||
                         (inheritedResult is not null && !this.SameCompleteType(inheritedResult, current)))
                     {
                         return null;
@@ -521,11 +530,13 @@ public sealed partial class Binding
                 return batch.State == 2 && !ReferenceEquals(batch, this.collectingAssociated) && !binding.InferenceConflict ? binding.Inferred : null;
             }
 
-            return null; // Pending declaration evidence is not a cached negative result.
+            return null; // Pending declaration evidence is not a cached negative result (`pending`); once complete, nothing specifies it.
         }
 
         if (binding.State != 0)
         {
+            binding.State = binding.State == 1 ? (byte)4 : binding.State; // Revisited while it is being resolved.
+            pending |= binding.State == 4;
             return binding.State == 2 ? binding.Result : null;
         }
 
@@ -541,20 +552,53 @@ public sealed partial class Binding
             result = type;
         }
 
+        // SPEC 8.3.3 Recursion (DECISIONS BU-50): a binding revisited while it is being resolved supplies no evidence to itself, so a
+        // Type that stays pending through that revisit (`G<T> { Item is G<G<T>>.Item }`, `A.Item is A.Item`, a cycle through another
+        // binding) names no Type: the binding gives none, and its declaration's records stay those its proof gives.
+        valid &= binding.State != 4 || result is null || !this.PendingAssociatedType(result);
         binding.State = valid ? (byte)2 : (byte)3;
         binding.Result = valid ? result : null;
         return binding.Result;
     }
 
-    // `qualifier` is the declaring Contract reference of the projection (SPEC 8.6.1); a bound reference of a Contract with Type
-    // arguments selects that conformance, and a Contract without them has one conformance per Type.
-    private BoundType? ResolveAssociated(BoundType receiver, BindingSymbol associated, BindingScope scope, BoundType? qualifier = null)
+    // SPEC 8.6.1 (DECISIONS BU-50): what a projection names before its subject substitutes it, asked in the owner declaration's scope, one
+    // outcome for every subject. Finality is independence of scope: a Type found there is the answer, since the declaration's premises are
+    // each instance's obligations (a builtin arithmetic output or a fixed array's iterator Type, complete, no Subject; else the subject's
+    // conformance binding, ResolveAssociated, an inherited conformance's under the base clause's arguments, in the subject declaration's
+    // terms with the associated Type's Origin parameters bound to the projection's arguments, for the caller to instantiate under the
+    // Subject: as a view, ContractTypeCore, or as a kept part, CompleteProjections); no Type is pending while the pass's evidence is
+    // incomplete or the projection has an abstract part (a use scope may carry a premise the declaration's lacks: `T is PrimitiveInteger`
+    // for `Wrapping<T>.Output`), else none, final, whatever the reason: the projection names no Type, and the records are the
+    // declarations' and the use's (SPEC 23.1.2). No subject-kind test decides pending or none.
+    private ProjectionOutcome ProjectionSpecification(BoundType projection, BindingScope scope)
     {
+        if ((this.BuiltinArithmeticOutput(projection, scope) ?? this.FixedArrayIteratorType(projection)) is { } builtin)
+        {
+            return new(builtin, null, false);
+        }
+
+        var subject = projection.Components[0];
+        var qualifier = projection.Components.Count == 2 ? projection.Components[1] : null;
+        if (this.ResolveAssociated(subject, projection.Symbol!, scope, qualifier, out var pending) is not { } binding)
+        {
+            return new(null, null, pending || subject.HasAbstractPart || qualifier is { HasAbstractPart: true }); // A projection is itself abstract.
+        }
+
+        return new(this.SubstituteStoredOrigins(binding, projection.Symbol!.Declaration, (BoundOrigin[])projection.OriginArguments), subject, false);
+    }
+
+    // `qualifier` is the declaring Contract reference of the projection (SPEC 8.6.1); a bound reference of a Contract with Type
+    // arguments selects that conformance, and a Contract without them has one conformance per Type. `pending`: a null result is not final
+    // (as the path's ResolveAssociated); once the pass's evidence is complete, a Type without the conformance gives none. The paths whose
+    // conditions the receiver meets must agree (PathsAgree), else none.
+    private BoundType? ResolveAssociated(BoundType receiver, BindingSymbol associated, BindingScope scope, BoundType? qualifier, out bool pending)
+    {
+        pending = this.AssociatedEvidencePending;
         for (var current = scope; current is not null; current = current.Parent)
         {
             if (current.ConformancePath is { } path && ReferenceEquals(path.Type, receiver.Symbol) && this.AssociatedInPath(path, receiver, associated, qualifier) is { } selected)
             {
-                return this.ResolveAssociated(path, selected);
+                return this.ResolveAssociated(path, selected, out pending);
             }
         }
 
@@ -565,7 +609,7 @@ public sealed partial class Binding
         }
 
         BoundType? available = null;
-        BoundType? pending = null;
+        BoundType? unproven = null;
         var conflicting = false;
         for (var i = 0; i < identity.PathStorage.Count; i++)
         {
@@ -576,14 +620,20 @@ public sealed partial class Binding
                 return null;
             }
 
-            if (condition == ConstraintProof.Refuted || this.AssociatedInPath(path, receiver, associated, qualifier) is not { } selected || this.ResolveAssociated(path, selected) is not { } binding)
+            if (condition == ConstraintProof.Refuted || this.AssociatedInPath(path, receiver, associated, qualifier) is not { } selected)
             {
+                continue;
+            }
+
+            if (this.ResolveAssociated(path, selected, out var bindingPending) is not { } binding)
+            {
+                pending |= bindingPending;
                 continue;
             }
 
             if (condition == ConstraintProof.Proven)
             {
-                if (available is not null && !this.SameCompleteType(available, binding))
+                if (available is not null && !this.PathsAgree(available, binding, receiver, scope))
                 {
                     return null;
                 }
@@ -591,14 +641,23 @@ public sealed partial class Binding
                 available = binding;
             }
 
-            conflicting |= pending is not null && !this.SameCompleteType(pending, binding);
-            pending = binding;
+            conflicting |= unproven is not null && !this.PathsAgree(unproven, binding, receiver, scope);
+            unproven = binding;
         }
 
         // Explicit header metadata may normalize a common binding before witnesses are ready.
         // The separately retained projection obligation must still prove conformance at finalization.
-        return available ?? (conflicting ? null : pending);
+        return available ?? (conflicting ? null : unproven);
     }
+
+    // SPEC 8.9.2 (DECISIONS BU-50, revised by bu55): two conformance paths of a receiver agree on an associated Type when their bindings are
+    // one Type as written or as the receiver's Types. Each binding is in the subject declaration's terms, normalized under its own path's
+    // conditions only: OwningIterator's direct `Self is LendingIterator` binds `I.(LendingIterator).LentItem(step)` and its refinement path
+    // through `Self is Iterator when I is Iterator` binds `I.Item` (Iterator's `LendingIterator.LentItem(step) is Item`), both i32 under
+    // OwningIterator<Counter>. The instances are judged by SameConformanceType, as the declaration's agreement check judges two paths.
+    private bool PathsAgree(BoundType left, BoundType right, BoundType receiver, BindingScope scope)
+        => this.SameCompleteType(left, right) ||
+            (this.StoredType(left, receiver) is { } x && this.StoredType(right, receiver) is { } y && this.SameConformanceType(x, y, scope));
 
     // The one conformance of `owner` whose bound reference, instantiated for `receiver` (`Indexable<K>` of `Keyed<isize>`),
     // reaches `qualifier` as the declaring reference of `associated`.
@@ -650,6 +709,10 @@ public sealed partial class Binding
 
         return found;
     }
+
+    // ProjectionSpecification's one outcome (DECISIONS BU-50): the Type, with the Subject it is instantiated under (none for a builtin's
+    // complete Type); else Pending (nothing decides it yet) or none.
+    private readonly record struct ProjectionOutcome(BoundType? Type, BoundType? Subject, bool Pending);
 
     private sealed class AssociatedBinding
     {

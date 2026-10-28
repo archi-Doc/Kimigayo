@@ -164,7 +164,7 @@ public sealed partial class Binding
         {
             foreach (var identity in path.Contract.Contract!.AssociatedStorage)
             {
-                if (this.ResolveAssociated(path, identity) is { } result && !this.PendingAssociatedType(result))
+                if (this.ResolveAssociated(path, identity, out _) is { } result && !this.PendingAssociatedType(result))
                 {
                     path.AssociatedStorage[identity] = result;
                     if (this.associatedBindings.TryGetValue((path.RootPath, identity), out var binding))

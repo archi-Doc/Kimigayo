@@ -5,8 +5,8 @@ fn top-level#0 @2
       _0 = const () @3 s1
       return @3
 fn pick @4
-  _0: bool return @4
-  _1: bool arg flag @4
+  _0: bool return @6
+  _1: bool arg flag @5
   _2: bool var copy @8 s1
   _3: bool var mut other @11 s1
   _4: () temp @16 s1

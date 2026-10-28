@@ -15,15 +15,14 @@ public sealed partial class Binding
     private readonly List<bool> inlineLayoutOwnDeclaration = new();
     private readonly List<DeclarationContainerKoto> cyclicInlineLayouts = new();
     private readonly HashSet<BoundType> finiteInlineLayouts = new(ReferenceEqualityComparer.Instance);
-    private readonly List<(GenericsKoto Syntax, BoundType Type)> cLayoutInstances = [];
     private readonly List<BoundType> enumPayloadTypes = new();
-    private bool storagePrepared;
 
     // The stored Types of a struct or enum instance: its declaration's base, Fields and Case payloads under the instance's
     // substitution. They are substituted once per pass after PrepareStorage refilled the declaration, and on every request before; an
     // instance first requested after the last pass on that request. One substitution, two forms (DECISIONS BU-41): the kept parts
     // (Parts, PartsBase; TyCtxt.StoredParts) with the raw Origins it gives, `self` as Holder and Unstated on each raw layer the declaration
-    // writes without `during` (KeptType, DECISIONS BU-46), which StoredLayer and the hold walk read, and AdtDef's view, the same Types
+    // writes without `during` (KeptType, DECISIONS BU-46), each associated projection completed as its subject specifies
+    // (CompleteProjections, DECISIONS BU-50), which StoredLayer and the hold walk read, and AdtDef's view, the same Types
     // WithoutRawOrigins (DECISIONS BU-24; design-final §15): an erased instance is often the user's own
     // Type (no Origins, or only `static`), so the erasure of an AdtDef stored Type is the stored Type of the erased instance only then
     // (R5-M39).
@@ -44,15 +43,10 @@ public sealed partial class Binding
         return instance;
     }
 
-    internal BoundType? StoredType(Koto syntax, BoundType owner)
-    {
-        if (WrittenType(syntax) is not { } field || owner.Symbol is null)
-        {
-            return null;
-        }
-
-        return this.StoredType(field, owner);
-    }
+    // SPEC 8.2.3, 5.7 (DECISIONS BU-50): a stored part's Type under an instance as a body reads it (a Field, a Case payload, a base
+    // clause): its kept part without the Unstated mark, so every reader gets the one producer's Type (KeptType, its projections
+    // completed); null where it does not substitute.
+    internal BoundType? StoredType(Koto syntax, BoundType owner) => WrittenType(syntax) is { } written ? this.PartType(written, owner) : null;
 
     // The Type a Field or Case payload declaration writes, before any instance substitutes it; null for none.
     private static BoundType? WrittenType(Koto? declaration) => declaration?.BoundType ?? (declaration as PropertyKoto)?.BoundSymbol?.Type;
@@ -106,18 +100,97 @@ public sealed partial class Binding
         }
     }
 
-    // The kept part of a declared Field, Case payload or base clause (Substitute): its written Type with each raw layer it writes without
-    // `during` stating Unstated (WithUnstatedOrigins), under the instance's substitution; null where it does not substitute. The one
-    // producer of a Type stating Unstated (DECISIONS BU-46).
-    private BoundType? KeptType(Koto syntax, BoundType owner)
-        => WrittenType(syntax) is { } written && owner.Symbol is not null ? this.StoredType(this.WithUnstatedOrigins(written), owner) : null;
+    // The kept part of a declared Field, Case payload or base clause (Substitute; DECISIONS BU-46, BU-50): its written Type with its
+    // completable projections completed (CompleteProjections), then each raw layer it writes without `during` stating Unstated
+    // (WithUnstatedOrigins, the one producer of a Type stating Unstated), then under the instance's substitution, completed again for the
+    // projections whose subjects the substitution closes; null where it does not substitute or names no Type (a projection that finally
+    // names none, whatever its subject: a dependent of Binding's records, so the instance's storage is Rejected, DECISIONS BU-38).
+    // `BaseI<Src2<raw/u8>.Item>` is `BaseI<raw/u8>` (SPEC 8.2.3), so its layer is one the declaration writes.
+    private BoundType? KeptType(Koto syntax, BoundType owner) => WrittenType(syntax) is { } written ? this.KeptType(written, owner) : null;
+
+    private BoundType? KeptType(BoundType written, BoundType owner)
+    {
+        if (owner.Symbol is null)
+        {
+            return null;
+        }
+
+        var declaration = owner.Symbol.Declaration;
+        if (this.CompleteProjections(written, declaration) is not { } declared)
+        {
+            return null;
+        }
+
+        var stored = this.StoredType(this.WithUnstatedOrigins(declared), owner);
+        return stored is null ? null : this.CompleteProjections(stored, declaration);
+    }
+
+    // The read form of a member's declared Type under an instance (StoredType's, and a member access's): KeptType without its marks.
+    private BoundType? PartType(BoundType declared, BoundType owner) => this.WithoutUnstated(this.KeptType(declared, owner));
+
+    // SPEC 8.6.1, 5.7 Calls (DECISIONS BU-50): a part with each associated projection replaced by ProjectionSpecification's outcome: a
+    // builtin output or fixed-array iterator Type as it is, a subject's conformance binding as a kept part of the subject (KeptType), so
+    // a raw layer the subject's declaration writes (`Src { Item is raw/u8 }`, a base clause's argument) states Unstated and one the
+    // subject's argument supplies (`Src2<raw/u8>`, `Item is T`) carries the argument's mark; a pending projection (one with an abstract
+    // part, or a binding whose evidence is not ready yet) stays a projection; one that finally names no Type, whatever its subject and
+    // reason (SPEC 8.3.3 so ends an expanding or cyclic specification), makes the part null. A part without an abstract part is its own
+    // result, and a projection is completed after its components, so a subject that is itself a projection is completed first. A
+    // projection is resolved in the scope of the owner's `declaration`, where PrepareStorage binds its parts.
+    private BoundType? CompleteProjections(BoundType part, Koto declaration)
+    {
+        if (!part.HasAbstractPart)
+        {
+            return part;
+        }
+
+        var components = this.RentTypes(part.Components.Count);
+        try
+        {
+            var changed = false;
+            for (var i = 0; i < part.Components.Count; i++)
+            {
+                if (this.CompleteProjections(part.Components[i], declaration) is not { } component)
+                {
+                    return null;
+                }
+
+                components[i] = component;
+                changed |= !ReferenceEquals(component, part.Components[i]);
+            }
+
+            var parts = components.AsSpan(0, part.Components.Count);
+            var completed = changed ? this.types.Rebuild(part, parts, part.Origin, (BoundOrigin[])part.OriginArguments) : part;
+            return completed.Kind == BoundTypeKind.AssociatedProjection ? this.CompletedProjection(completed, declaration) : completed;
+        }
+        finally
+        {
+            this.typeScratch.Return(components, clearArray: true);
+        }
+    }
+
+    private BoundType? CompletedProjection(BoundType projection, Koto declaration)
+    {
+        var outcome = this.ProjectionSpecification(projection, this.scopes[declaration]);
+        if (outcome.Type is not { } specified)
+        {
+            return outcome.Pending ? projection : null;
+        }
+
+        if (outcome.Subject is not { } subject)
+        {
+            return specified;
+        }
+
+        return this.KeptType(specified, subject);
+    }
 
     // SPEC 5.7 Fits, Calls (DECISIONS BU-46): a declared Type with each raw layer it writes without `during` stating Unstated, the Origin
     // such a layer counts as stating, so that a kept part tells a layer a declaration writes from one a Type argument supplies at any depth.
     // Provenance follows the binding: substitution copies a layer with its mark (a Type slot's argument, a component), and a layer formed
     // from a pair binder's binding reads it through TyCtxt.PairBinding, which keeps the mark (`s/T`, and `s/U` in ApplySemantics). A layer
-    // stating an Origin, an abstract part but a pair binder's application `s/U` (whose `U` the declaration writes) and a callable are kept
-    // as written; an Unbound layer, a reported error's dependent, is not marked. A declared part is never a Semantics family (a family
+    // stating an Origin, an abstract part but a pair binder's application `s/U` (whose `U` the declaration writes; KeptType has completed
+    // the completable projections first, DECISIONS BU-50) and a callable are kept as written; an Unbound layer, a reported error's
+    // dependent, is not marked. A declared part is never a Semantics family (a family
     // comes only from an expression's adaptation): one is a broken contract.
     private BoundType WithUnstatedOrigins(BoundType declared)
     {
@@ -149,6 +222,32 @@ public sealed partial class Binding
             }
 
             return changed ? this.types.Rebuild(declared, parts, declared.Origin, (BoundOrigin[])declared.OriginArguments) : declared;
+        }
+        finally
+        {
+            this.typeScratch.Return(components, clearArray: true);
+        }
+    }
+
+    // WithUnstatedOrigins' inverse (DECISIONS BU-50): a kept part with each Unstated layer stating no Origin, the Type a body reads, so no
+    // MIR local states Unstated (MirValidator's Local row). Only a part carrying a raw Origin is walked.
+    private BoundType? WithoutUnstated(BoundType? kept)
+    {
+        if (kept is null || !kept.CarriesRawOrigin)
+        {
+            return kept;
+        }
+
+        var components = this.RentTypes(kept.Components.Count);
+        try
+        {
+            for (var i = 0; i < kept.Components.Count; i++)
+            {
+                components[i] = this.WithoutUnstated(kept.Components[i])!;
+            }
+
+            var parts = components.AsSpan(0, kept.Components.Count);
+            return TyCtxt.RawStated(kept) ? this.types.Pointer(parts[0]) : this.types.Rebuild(kept, parts, kept.Origin, (BoundOrigin[])kept.OriginArguments);
         }
         finally
         {

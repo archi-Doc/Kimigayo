@@ -167,8 +167,7 @@ internal sealed partial class FunctionCodegen
         var right = default(Computed);
         if (!this.Compute(operands[0], out var left) || (operands.Length == 2 && !this.Compute(operands[1], out right)))
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // An operand form not covered yet (Compute).
-            return;
+            return; // A broken contract, recorded (Compute).
         }
 
         right = operands.Length == 2 ? right : left; // A unary operator's operand is on both sides; its row fixes the other.
@@ -299,8 +298,8 @@ internal sealed partial class FunctionCodegen
 
     // A covered operand's value in its computation representation (I4: a local loaded, bool narrowed; a constant its literal), read at its
     // terminal Place through its safe value-reference layers (Referent; SPEC 13.4: only a comparison's operand has any, MIR's contract), its
-    // terminal Type and that Type's representation in the item's instance; false for a form not covered yet, true without a representation
-    // after a broken contract's record.
+    // terminal Type and that Type's representation in the item's instance; false after a broken contract's record (Operand's), true without
+    // a representation after another's.
     private bool Compute(in MirOperand operand, out Computed computed)
     {
         computed = default;

@@ -14,8 +14,8 @@ namespace Kimi.Compiler.Backend;
 // (FunctionCodegen.Objects), an owning interpolation's buffer, segment steps and end (FunctionCodegen.Interpolation) and a verification's
 // compared value, which the test runtime holds for its observation (Record; DECISIONS R5-M136). Each takes its operands at its
 // declaration's slots (ArgumentPosition) and ends through Finish; a call whose row's Target column names an item carries the collector's target, read once by
-// the cursor (I8) and given to the row's writer; a row not written yet is one located Unsupported_Kd at the call, its owning unit named in IntrinsicRows. In a
-// caller-location body a location is C3b's row (Location).
+// the cursor (I8) and given to the row's writer; a call of a row no MIR producer makes (Unproduced) is a broken contract at the call
+// (DECISIONS R5-M146). In a caller-location body a location is C3b's row (Location).
 internal sealed partial class FunctionCodegen
 {
     private readonly Value[] slotless = new Value[2]; // A routine row's slot-less values (Routine): a formatting row's kind, Text.writer's two.
@@ -63,8 +63,8 @@ internal sealed partial class FunctionCodegen
                 return;
             case IntrinsicWriter.Create or IntrinsicWriter.Clone or IntrinsicWriter.Writer:
                 return; // A broken contract, recorded by Routine.
-            case IntrinsicWriter.Unwritten:
-                this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // Its row's unit (IntrinsicRows).
+            case IntrinsicWriter.Unproduced:
+                this.Report(DiagnosticCode.InternalInvariant_Kd, call.Source); // No MIR producer makes its call (IntrinsicRows).
                 return;
             default:
                 throw new InvalidOperationException($"The intrinsic writer {row.Writer} has no code generation row.");
@@ -74,8 +74,8 @@ internal sealed partial class FunctionCodegen
     // SPEC 7.7.4 (DECISIONS R5-M108, R5-M116): a compiler function's routine row by its disposition, what its Item's adapter entry calls
     // (FunctionCodegen.Closures' Runs) with the target it carries, and its Item's Value call: an intrinsic's routine row (below) with the
     // Item's Type argument (its own substitution's, TyCtxt.SubstOfItem), a Body disposition's legacy routine (LegacyRuntimeHelpers.Row); null
-    // for any other row, which is not one routine call or not written yet (a Shim's, an instruction writer's, an unwritten row's), and after
-    // a record at the source.
+    // for any other row, which is not one routine call (a Shim's, an instruction writer's, an Unproduced row's), and after a record at the
+    // source.
     private FunctionAbi? Routine(BoundType item, BoundType? result, int target, SourceInfo source, out ReadOnlySpan<Value> given)
     {
         given = default;
@@ -194,8 +194,7 @@ internal sealed partial class FunctionCodegen
 
         if (!this.Operand(operand, out var value))
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-            return;
+            return; // A broken contract, recorded.
         }
 
         var bits = this.Narrow(lowering, value);
@@ -228,8 +227,7 @@ internal sealed partial class FunctionCodegen
         {
             if (!this.Operand(storage, out var address) || !this.Put(address, this.InstanceType(operand)!, lowering, operand))
             {
-                this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-                return;
+                return; // A broken contract, recorded.
             }
         }
 
@@ -243,13 +241,8 @@ internal sealed partial class FunctionCodegen
         var key = new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
         var storage = this.body.Operands[call.Start + ArgumentPosition(key, 0)];
         var length = this.body.Operands[call.Start + ArgumentPosition(key, 1)];
-        if (!this.Address(call.Place, out var record) || !this.Operand(storage, out var buffer) || !this.Operand(length, out var count))
-        {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-            return;
-        }
-
-        if (this.LoweringOf(call.Place) is not { } slice || this.LoweringOf(storage) is not { } pointer || this.LoweringOf(length) is not { } index)
+        if (!this.Address(call.Place, out var record) || !this.Operand(storage, out var buffer) || !this.Operand(length, out var count) ||
+            this.LoweringOf(call.Place) is not { } slice || this.LoweringOf(storage) is not { } pointer || this.LoweringOf(length) is not { } index)
         {
             return; // A broken contract, recorded.
         }

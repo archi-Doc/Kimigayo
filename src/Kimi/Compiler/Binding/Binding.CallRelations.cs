@@ -98,13 +98,23 @@ public sealed partial class Binding
 
     // SPEC 15.6.1, 15.6.5, 10.1: applicability uses only the structural part of each fit, so the Origin relations of the selected
     // candidate are judged here, after selection and at their own sources: the receiver's and each argument's fit to its completed
-    // parameter Type, then each substituted clause. Refuted and Unknown relations are UnsatisfiedOriginRelation_Kd and
+    // parameter Type, then the well-formedness of each slot the call fills (SPEC 15.6.4 step 3: the receiver's, each argument's and each
+    // default's, at the call), then each substituted clause. Refuted and Unknown relations are UnsatisfiedOriginRelation_Kd and
     // UnprovenOriginRelation_Kd records at the value that does not fit; a chain between body Origins, which ownership analysis cannot
     // represent yet, is an obligation that it reports as the located limit at that value. Erasures, anonymous bodies, aggregates and
-    // contextual payloads are judged where they are bound. The expected result is judged at its destination.
-    private void JudgeSelectedCall(InvocationKoto call, FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, int argumentCount, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType)
+    // contextual payloads are judged where they are bound. The expected result is judged at its destination. `operations` holds the
+    // arguments' and, last, the receiver's.
+    private void JudgeSelectedCall(
+        InvocationKoto call,
+        FunctionKoto selected,
+        ReadOnlySpan<BoundArgumentOperation> operations,
+        BoundOrigin[] origins,
+        BoundOrigin[] inputs,
+        BoundType? declaringType,
+        ReadOnlySpan<BoundDefaultArgument> defaults)
     {
         this.callRelationScratch.Clear();
+        var argumentCount = operations.Length - 1;
         var receiver = operations[argumentCount];
         if (receiver.Source is not null)
         {
@@ -116,9 +126,17 @@ public sealed partial class Binding
             this.JudgeCallFit(selected, operations, argumentCount, i);
         }
 
-        for (var i = 0; i <= argumentCount; i++)
+        foreach (ref readonly var operation in operations)
         {
-            this.RequireInputPremises(operations[i]);
+            if (operation is { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter })
+            {
+                this.RequireInputPremises(at, parameter, adapted);
+            }
+        }
+
+        foreach (var argument in defaults)
+        {
+            this.RequireInputPremises(call, argument.ParameterType, null);
         }
 
         this.JudgeCallClauses(call, selected, operations, argumentCount, origins, inputs, declaringType);

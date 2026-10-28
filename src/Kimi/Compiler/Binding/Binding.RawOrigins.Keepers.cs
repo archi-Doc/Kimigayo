@@ -132,7 +132,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (this.StoredType(keeper.Type, owner) is not { } kept)
+            if (this.PartType(keeper.Type, owner) is not { } kept)
             {
                 complete = false;
             }
