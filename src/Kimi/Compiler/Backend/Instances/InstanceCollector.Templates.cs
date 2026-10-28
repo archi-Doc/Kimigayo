@@ -87,7 +87,8 @@ internal sealed partial class InstanceCollector
         this.reach.Walk(body, 0, checks: false);
         for (var block = 0; block < blocks.Length; block++)
         {
-            var (start, end) = (blocks[block].Start, blocks[block].Count);
+            var start = blocks[block].Start;
+            var end = blocks[block].Count;
             for (var index = 0; index <= end; index++)
             {
                 if (index < end && root)

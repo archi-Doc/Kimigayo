@@ -59,8 +59,12 @@ public partial class Compilation
     /// <summary>Gets the compiler identity a check document records (SPEC 23.2.1): the pipeline and the code generator are part of the
     /// effective configuration, so the mir pipeline of the process marks <see cref="CompilerVersion"/> with <c> [mir]</c>, and MIR code
     /// generation with <c> [mir, codegen mir]</c>.</summary>
-    internal static string CompilerIdentity => DefaultPipeline != CompilerPipeline.Mir ? CompilerVersion
-        : DefaultCodegen == CompilerCodegen.Mir ? CompilerVersion + " [mir, codegen mir]" : CompilerVersion + " [mir]";
+    internal static string CompilerIdentity => (DefaultPipeline, DefaultCodegen) switch
+    {
+        (not CompilerPipeline.Mir, _) => CompilerVersion,
+        (_, CompilerCodegen.Mir) => CompilerVersion + " [mir, codegen mir]",
+        _ => CompilerVersion + " [mir]",
+    };
 
     /// <summary>Gets or sets the pipeline the entry points run; the code generator follows it, the process default's under mir and the
     /// old one otherwise. Changing it revokes prior analysis.</summary>

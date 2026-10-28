@@ -139,7 +139,9 @@ internal sealed partial class InstanceCollector
     // (TyCtxt.Signature) must be the key's, Type for Type up to Origins (Erase).
     private bool Agrees(BindingSymbol requirement, in RequirementTarget target)
     {
-        var (subst, field, access) = (target.Subst!, target.Target, target.Access);
+        var subst = target.Subst!;
+        var field = target.Target;
+        var access = target.Access;
         var agrees = Same(TyCtxt.Signature(requirement, subst, -1, out var count), this.StorageSignature(subst.Self!, field, access, -1, out var slots)) &&
             count == slots;
         for (var slot = 0; agrees && slot < count; slot++)

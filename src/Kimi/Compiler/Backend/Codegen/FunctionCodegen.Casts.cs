@@ -15,8 +15,9 @@ internal sealed partial class FunctionCodegen
     {
         switch ((MirCastKind)statement.Rvalue.Op)
         {
-            case MirCastKind.Integer or MirCastKind.Floating or MirCastKind.Numeric or MirCastKind.Wrap or MirCastKind.Bits or MirCastKind.Pointer or
-                MirCastKind.IntToPointer:
+            case MirCastKind.Integer or MirCastKind.Floating or MirCastKind.Numeric: // SPEC 13.5.4's numeric conversions.
+            case MirCastKind.Wrap or MirCastKind.Bits: // Its wrapping and bit conversions.
+            case MirCastKind.Pointer or MirCastKind.IntToPointer: // The raw pointer conversions (SPEC 5.4, 8.11.2).
                 this.ScalarCast(statement);
                 return;
             case MirCastKind.Erasure:

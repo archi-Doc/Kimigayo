@@ -241,8 +241,12 @@ internal sealed partial class FunctionCodegen
         var key = new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
         var storage = this.body.Operands[call.Start + ArgumentPosition(key, 0)];
         var length = this.body.Operands[call.Start + ArgumentPosition(key, 1)];
-        if (!this.Address(call.Place, out var record) || !this.Operand(storage, out var buffer) || !this.Operand(length, out var count) ||
-            this.LoweringOf(call.Place) is not { } slice || this.LoweringOf(storage) is not { } pointer || this.LoweringOf(length) is not { } index)
+        if (!this.Address(call.Place, out var record) || !this.Operand(storage, out var buffer) || !this.Operand(length, out var count))
+        {
+            return; // A broken contract, recorded.
+        }
+
+        if (this.LoweringOf(call.Place) is not { } slice || this.LoweringOf(storage) is not { } pointer || this.LoweringOf(length) is not { } index)
         {
             return; // A broken contract, recorded.
         }

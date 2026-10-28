@@ -49,7 +49,8 @@ internal sealed partial class FunctionCodegen
     // -1 for any other body.
     private static int ConstantOf(MirBody body)
     {
-        var (block, constant) = (body.Blocks[0], -1);
+        var block = body.Blocks[0];
+        var constant = -1;
         foreach (var statement in body.Statements.Slice(block.Start, block.Count))
         {
             if (statement.Kind is MirStatementKind.StorageLive or MirStatementKind.StorageDead)
@@ -113,7 +114,9 @@ internal sealed partial class FunctionCodegen
     // into the slot (its result slot, or its value stored) between the Initializing and Initialized stores.
     private void WriteStorage(FunctionAbi initializer)
     {
-        var (output, item, lowering) = (this.output, this.item, this.slots[0].Value);
+        var output = this.output;
+        var item = this.item;
+        var lowering = this.slots[0].Value;
         this.WriteGlobal(new('v', item), lowering.Layout, "zeroinitializer");
         this.WriteGlobal(new('w', item), StateLayout, "0");
         (this.abi, this.next, this.window) = (this.module.Ensure(item), 0, -1);
