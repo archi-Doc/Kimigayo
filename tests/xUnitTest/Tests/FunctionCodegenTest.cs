@@ -11,10 +11,10 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>The frame of MIR code generation (R5 C0b1, K11, C2a; package C 3.2, 3.3 and 3.9; DECISIONS R5-M65, R5-M77, R5-M83):
+/// <summary>The frame of MIR code generation (R5 C0b1, K11, C2a, X2; package C 3.2 and 3.3; DECISIONS R5-M65, R5-M77, R5-M83, R5-M146):
 /// <c>ModuleCodegen</c> writes the Generated items of the checked set and the output form, <c>FunctionCodegen</c> a body item's prologue,
-/// slots, runtime-reached blocks, the Places of its place writer and the forms the frame covers, and a form not covered yet is one located
-/// <c>Unsupported_Kd</c> with no module. The fixtures run under the process's generators (the old one by default, MIR code generation
+/// slots, runtime-reached blocks, the Places of its place writer and every form of an accepted program, and a broken input is one
+/// <c>InternalInvariant_Kd</c> with no module. The fixtures run under the process's generators (the old one by default, MIR code generation
 /// under <c>-Pipeline mir -Codegen mir</c>); the other tests select MIR code generation themselves.</summary>
 public sealed partial class FunctionCodegenTest
 {

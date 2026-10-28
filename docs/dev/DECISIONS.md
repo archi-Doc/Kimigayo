@@ -8480,7 +8480,8 @@ structure is recorded here by the unit that first implements it.
     one key for every enclosing instance and an open representative would accept such a program at check (SPEC 8.13.3, R5-M34). A
     function nested in a closed function has no enclosing instance to carry and is admitted by its own substitution.
     Removal condition: PLAN G149, a representation of the enclosing-instance chain in a call's substitution (full process, scheduled
-    inside R5 before its exit, so the gap's `[Transitional("R5")]` stage stands; R5-M43 states why K5's pure `SubstOfItem` does not carry
+    inside R5 before its exit, so the gap's `[Transitional("R5")]` stage stands; superseded by R5-M146: the owner's PD27 list moves the
+    stage to R7, since G149's full process no longer fits before R5's exit; R5-M43 states why K5's pure `SubstOfItem` does not carry
     it); the F3 reproducers in `InstanceCollectorTest` then expect two items each.
   - Departure from KD3, owned here: a closed item's representative is stored as null, which every reader treats as the identity,
     instead of `Identity(Decl)`; an accessor's executing function would need its own binder for an identity.
@@ -8554,7 +8555,8 @@ structure is recorded here by the unit that first implements it.
     Fn call (probe at 2c0371da: the nested calls of the F3 shapes are Fn callees, with `Declaring` null two levels in, in a block, in a
     method or a specialization of a generic struct), so a pure item substitution cannot carry it, and two slot-bearing levels fit in no one
     `Declaring`. The fix, a representation of the enclosing-instance chain in a call's substitution, changes shared structure under the full
-    process: PLAN G149, R5-M40's removal condition, scheduled inside R5 before its exit, so the gap stays `[Transitional("R5")]`.
+    process: PLAN G149, R5-M40's removal condition, scheduled inside R5 before its exit, so the gap stays `[Transitional("R5")]`
+    (superseded by R5-M146: stage R7, the owner's PD27 list).
   - Rejected: widening `CallDeclaringType` to the nearest slot-bearing enclosing declaration (two levels stay unrepresentable, and legacy
     CallPlans change); the collector testing `IsRequirement` or `IsVirtual` (syntax in the Backend; `Dispatches` publishes it); targets per
     operand of every statement (a site would hold several).
@@ -9686,7 +9688,8 @@ structure is recorded here by the unit that first implements it.
     value `Put` at the storage, R5-M87's copy form); Slice (the storage and length put at the Slice record's Fields 0 and 1, the Unit
     backing ignored); Copy (superseded by R5-M145: transferBytes calls the runtime's routine;
     transferBytes as `llvm.memcpy`: R5-M18 reversed PD23, the declaration rules out overlap, so `MoveBytes`'
-    comment is corrected). Every other row is `Unwritten`, its unit named in the table: C4a DestroyValues (no producer: R5-M95); C6a MakeObj, MakeRc, MakeArc,
+    comment is corrected). Every other row is `Unwritten`, its unit named in the table (superseded by R5-M146: a row no MIR producer makes
+    yet is `Unproduced`, a call of it a broken contract): C4a DestroyValues (no producer: R5-M95); C6a MakeObj, MakeRc, MakeArc,
     Clone, TypeTest; C7 StaticEnsure; C8d Capacity; C9a WriteStdout (see R5-M128); C9b FormatFloat, ErasedWriter, ErasedReserve, FormatInteger128; C9c
     the format buffer rows; C10a and C10b the test rows (C10b's deleted by R5-M137). Stride and ReinterpretLoan have no MIR producer yet (no compiler function's
     disposition serves them; an open PLAN row), so their rows are written with their first producer. Allocate and Fail call through
@@ -11609,10 +11612,12 @@ structure is recorded here by the unit that first implements it.
     `Implementation`), at each site that requests the target (K 4.9, as OCC-X's: the call; an Item where it is formed, called or erased),
     at check under sel (R5-M41) and on every pipeline from G2: code generation runs a witness only as a body or shim item. The other edges a
     requirement runs on (a compiler function's published row, `Text.writer`'s reserve witness) keep their -1: their writers read the
-    function itself. A function without a body that is no compiler function derives from Binding's error while Binding is incomplete.
-    The row also ends the narrow subset K11 accepted (an
-    Application's uncalled function with the form was built). Removal: `reserve` when R8 gives the buffers Kimigayo bodies; an import
-    witness when the collector publishes the import as the call's target. `EnclosingInstance`'s stage moves from R5 to R7 (G149).
+    function itself. Such a witness is decided by `TyCtxt.Bodyless`, the one classification of a function without a MIR body: a compiler
+    or foreign function is the gap whatever else Binding rejected (SPEC 23.1.2; review B1 found a first version that dropped an import
+    witness's record beside an unrelated Binding error), a definition Binding rejected is that error's dependent (no record), and any
+    other is a broken contract in a complete compilation (`Derived`). The row also ends the narrow subset K11 accepted (an Application's
+    uncalled function with the form was built). Removal: `reserve` when R8 gives the buffers Kimigayo bodies; an import witness when the
+    collector publishes the import as the call's target. `EnclosingInstance`'s stage moves from R5 to R7 (G149).
   - Import Item: `FunctionCodegen.Runs` runs a function Item without a target whose function is an import by the import's C signature,
     the rule of its direct call (`ModuleCodegen.Import`; SPEC 7.7.4, 22.6).
   - Broken contracts, one rule: an input validated MIR never has is `InternalInvariant_Kd`, recorded once by the owner that detects it,
