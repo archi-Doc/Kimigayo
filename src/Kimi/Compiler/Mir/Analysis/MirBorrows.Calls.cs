@@ -8,8 +8,8 @@ namespace Kimi.Compiler.Mir;
 // result by the result's record, and into each holder an argument's store reaches (W, MirBorrows.Reach) by the record of the storage it
 // is: a local W reaches at its first step (the argument's direct Loans or addresses name it) the output's root (Own), E reached there its
 // root and everything past it (Own and Reached.All), E reached past a holder Reached.All, and a local reached past a holder the Reached
-// entry whose Type, in the view's case and Origin-erased, is the local's (ReachedEntry; Reached.All where none names it), joined over the
-// ways the walk reached it. A Closure
+// entry whose Type, in the view's case and Origin-erased, is that of the Place the reaching Loan names (PastEntry, ReachedEntry;
+// Reached.All where none names it, never the Abstract entry), joined over the ways the walk reached it. A Closure
 // callee's call receiver is its input at position call.Count, the callee operand, read before the Moves, and a store into it takes W as
 // any argument's (ER-closure-stores; SPEC 15.8.2, DECISIONS R4-M148). At a referent store (CallRetention.ReferentStores, a per-output
 // membership: an operation of SPEC 4.6 to 4.9 writes through its exclusive receiver only what it refers to, 4.9.6) whose referent destroys
@@ -28,7 +28,7 @@ namespace Kimi.Compiler.Mir;
 // (StorageRetention.Pairs: Origins of the call's Type arguments) are judged by MirOrigins.Outlives under the view's class: one that holds
 // makes its input Value (Solved, memoized per record, body, view and site for the program version).
 // Must not choose a Call's records (MirBorrows.CallRows), compute W (MirBorrows.Reach), judge a Type (an entry's Type is Binding's, the
-// local's case Type the view's) or an Origin relation (MirOrigins').
+// Place's case Type the view's) or an Origin relation (MirOrigins').
 internal sealed partial class MirBorrows
 {
     private readonly Dictionary<(OutputRetention Written, BoundType Type, long View), StorageRetention?> reachedEntries = new();
@@ -146,9 +146,8 @@ internal sealed partial class MirBorrows
     }
 
     // The value a holder W reached receives through one output (DECISIONS R4-M154): each input's value by its kinds in the records of the
-    // ways the walk reached the holder (Keep's), their pairs judged (Solved), {Φ_E} besides where the output is untied. A local past a
-    // holder whose Type no Reached entry names, no abstract part hiding it (a raw layer's pointee read as another Type, SPEC 5.7), takes
-    // Reached.All, which bounds what any storage past the root receives: the storage walk names each one.
+    // ways the walk reached the holder (Keep's), their pairs judged (Solved), {Φ_E} besides where the output is untied. Past another
+    // holder, the record is the Reached entry of the storage the reaching Loan's Place names (PastEntry; Revision 8), E's All.
     private int Received(ulong[] state, in MirTerminator call, OutputRetention written, int target, bool checks)
     {
         var via = this.writingVia[target];
@@ -156,7 +155,7 @@ internal sealed partial class MirBorrows
         var past = (target, via & ViaPast) switch
         {
             (Escaped, _) => written.All,
-            (_, not 0) => this.ReachedEntry(written, this.writingLocal[target]) ?? written.All,
+            (_, not 0) => this.PastEntry(written, target),
             _ => null,
         };
         var value = this.sets.Union(this.RecordValue(state, call, own, checks), this.RecordValue(state, call, past, checks));
@@ -233,17 +232,35 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // The Reached entry of a local W reached past a holder: the entries whose Types, in the view's case (MirCases.Type) and Origin-erased
-    // (TyCtxt.Erase), are the local's case Type's, joined; the Abstract one where none has it and an abstract part hides storage; else
-    // none (null; Received takes All). Memoized per record, Type and view for the program version.
-    private StorageRetention? ReachedEntry(OutputRetention written, int local)
+    // The record a holder W reached past another holder receives (DECISIONS R4-M154, Revision 8): a written storage is the Place a Loan
+    // reaching the holder names, the holder its root, so the holder takes the Reached entry of that Place's Type (ReachedEntry); All
+    // where none names it, or where Loans naming Places of several Types reach it (All joins every entry, so it bounds their join).
+    private StorageRetention PastEntry(OutputRetention written, int target)
+    {
+        BoundType? place = null;
+        foreach (var (slot, type) in this.writingPlaces)
+        {
+            if (slot == target && place is not null && !ReferenceEquals(type, place))
+            {
+                return written.All;
+            }
+
+            place = slot == target ? type : place;
+        }
+
+        return (place is null ? null : this.ReachedEntry(written, place)) ?? written.All;
+    }
+
+    // The Reached entry of a Place's erased case Type (PastEntry): the entries whose Types, in the view's case (MirCases.Type) and
+    // Origin-erased (TyCtxt.Erase), are that Type, joined; none (null) where no entry names it, never the Abstract one, which only All
+    // joins. Memoized per record, Type and view for the program version.
+    private StorageRetention? ReachedEntry(OutputRetention written, BoundType place)
     {
         this.Version();
-        var type = types.Erase(cases.Type(this.body.Locals[local].Type));
-        ref var entry = ref CollectionsMarshal.GetValueRefOrAddDefault(this.reachedEntries, (written, type, this.view), out var known);
+        ref var entry = ref CollectionsMarshal.GetValueRefOrAddDefault(this.reachedEntries, (written, place, this.view), out var known);
         if (!known)
         {
-            entry = this.Matched(written, type);
+            entry = this.Matched(written, place);
         }
 
         return entry;
@@ -253,20 +270,15 @@ internal sealed partial class MirBorrows
     private StorageRetention? Matched(OutputRetention written, BoundType type)
     {
         StorageRetention? found = null;
-        StorageRetention? hidden = null;
         foreach (var (key, retention) in written.Reached)
         {
-            if (key is null)
-            {
-                hidden = retention;
-            }
-            else if (ReferenceEquals(types.Erase(cases.Type(key)), type))
+            if (key is not null && ReferenceEquals(types.Erase(cases.Type(key)), type))
             {
                 found = found is null ? retention : Join(found, retention);
             }
         }
 
-        return found ?? hidden;
+        return found;
     }
 
     // ret(i, κ) (A3 5): Value, the argument's value and, for a borrow (a reference or a view handle, Borrows), a read through it; Content,

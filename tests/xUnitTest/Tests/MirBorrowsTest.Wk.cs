@@ -70,10 +70,22 @@ public sealed partial class MirBorrowsTest
         "    public var held: Option<uniq/i32 during a> = .None\n    public func absorb(self: uniq/Self, r: uniq/i32 during a) -> () => self.held = .Some(r@move)\n";
 
     private const string WkMaker = "struct Maker<E, T>\n    public var make: (E) -> T\n    public init(make: (E) -> T) => self.make = make@move\n";
+    private const string WkLf = "struct Lf {a}\n    public var value: i32 = 0\n    public var peer: Option<ref/i32 during a>\n" +
+        "    public init(p: ref/i32 during a) => self.peer = .Some(p)\n";
+
+    private const string WkBox2 = "struct Box2 {a}\n    public var inner: uniq/i32 during a\n    public init(inner: uniq/i32 during a) => self.inner = inner\n" +
+        "func store1(y: uniq/(Box2 during a) during p, w: uniq/(uniq/i32 during p) during q) -> ()\n    w@follow = y@follow.inner@follow@uniq\n";
+
     private const string WkVirtual = "struct HoldV {a}\n    public var held: uniq/i32 during a\n    public init(held: uniq/i32 during a) => self.held = held\n" +
         "open struct BaseB<T, E>\n    public init() => ()\n    public virtual func mk(self: objref/Self, r: E) -> Option<T> => .None\n" +
         "struct DerB {a} : BaseB<HoldV during a, uniq/i32 during a>\n    public init() => ()\n" +
         "    override func mk(self: objref/Self, r: uniq/i32 during a) -> Option<HoldV during a> => .Some(HoldV.init(held: r@move))\n";
+
+    // The two-layer rows' head (BU's B1): two exclusive layers over one referent Type, `w0` refers to storage the second's Origin lets hold.
+    private const string WkTwoLayersHead = "(a1: uniq/(Box2 during a) during o, a2: uniq/(Box2 during a) during p, w0: uniq/(uniq/i32 during p) during q) -> ()\n";
+
+    // The part-Loan rows' two parts of one Type (R4's B1).
+    private const string WkTwoParts = "(Option<ref/i32>.Some(z@ref), Option<ref/i32>.Some(z@ref))";
 
     private const string WkWrap = "struct Wrap {a}\n    public var r: uniq/i32 during a\n    public init(r: uniq/i32 during a) => self.r = r\n";
 
@@ -125,6 +137,19 @@ public sealed partial class MirBorrowsTest
         ["F1"] = WkTwins("uniqCopyOk", "uniqCopyBad", "<s/T>(value: s/T, other: s/T, x: T) -> ()\n    s is uniq\n    T is Copy\n", "var v = value@move\n" + WkPut, "look(slot@ref)", "v@follow = x"),
         ["F2"] = WkTwins("uniqAnyBad", "uniqAnyLate", "<s/T>(value: s/T, other: s/T, x: T) -> ()\n    s is uniq\n", "var v = value@move\n" + WkPut, "look(slot@ref)", "v@follow = x@move"),
 
+        // M3 with R1 (a Loan on a part: the storage the call writes is the Place the Loan names, its holder the Place's root).
+        ["partLoan"] = WkLf +
+            WkForm("sneak4", "<T>(slot: uniq/((uniq/(Option<ref/i32 during q>) during q, Option<T>)), y: uniq/(Lf during q) during q) -> ()\n", "slot@follow.0@follow = .Some(y.value@ref)") +
+            WkForm(
+                "sneak5",
+                "<T>(slot: uniq/((uniq/(Option<ref/i32 during q>) during q, uniq/(Option<ref/i32 during r>) during r, Option<T>)), y: uniq/(Lf during q) during q) -> ()\n",
+                "slot@follow.0@follow = .Some(y.value@ref)") +
+            WkTwins("pa3Ok", "pa3Bad", "<T>() -> ()\n    T is Copy\n", WkPartLoan("(Option<ref/i32>.Some(z@ref), 1)", "(inner.0@uniq, Option<T>.None)", "sneak4"), "look(inner@ref)", "leaf.value = 5") +
+            WkTwins("pa3ConcreteOk", "pa3ConcreteBad", "() -> ()\n", WkPartLoan("(Option<ref/i32>.Some(z@ref), 1)", "(inner.0@uniq, Option<i32>.None)", "sneak4"), "look(inner@ref)", "leaf.value = 5") +
+            WkForm("pa3WholeBad", "<T>() -> ()\n    T is Copy\n", WkPartLoan("Option<ref/i32>.Some(z@ref)", "(inner@uniq, Option<T>.None)", "sneak4") + "\nleaf.value = 5\nlook(inner@ref)") +
+            WkForm("pa5FirstBad", "<T>() -> ()\n    T is Copy\n", WkPartLoan(WkTwoParts, "(inner.0@uniq, inner.1@uniq, Option<T>.None)", "sneak5") + "\nleaf.value = 5\nlook(inner.0@ref)") +
+            WkForm("pa5Second", "<T>() -> ()\n    T is Copy\n", WkPartLoan(WkTwoParts, "(inner.0@uniq, inner.1@uniq, Option<T>.None)", "sneak5") + "\nleaf.value = 5\nlook(inner.1@ref)"),
+
         // R5 (the borrows formed through the argument).
         ["E2"] = WkTwins("recurLeafOk", "recurLeafBad", LeafHead, "var v = value@move\n" + WkPut, "_ = slot.value", "v.value = 5"),
         ["E2a"] = WkTwins(
@@ -134,6 +159,13 @@ public sealed partial class MirBorrowsTest
             "var v = value@move\n" + WkPut,
             "_ = slot.value",
             "v.value = 5"),
+        ["twoLayers"] = WkBox2 +
+            WkForm("sneakOP", "(x: (uniq/(Box2 during a) during o, uniq/(Box2 during a) during p), w: uniq/(uniq/i32 during p) during q) -> ()\n", "var t = x@move\nstore1(t.1@move, w)") +
+            WkForm("sneakPO", "(x: (uniq/(Box2 during a) during p, uniq/(Box2 during a) during o), w: uniq/(uniq/i32 during p) during q) -> ()\n", "var t = x@move\nstore1(t.0@move, w)") +
+            WkForm("opBad", WkTwoLayersHead, "sneakOP((a1@follow@uniq, a2@follow@uniq), w0@follow@uniq)\na2@follow.inner@follow = 5") +
+            WkForm("opFirst", WkTwoLayersHead, "a2@follow.inner@follow = 5\nsneakOP((a1@follow@uniq, a2@follow@uniq), w0@follow@uniq)") +
+            WkForm("poBad", WkTwoLayersHead, "sneakPO((a2@follow@uniq, a1@follow@uniq), w0@follow@uniq)\na2@follow.inner@follow = 5") +
+            WkForm("poFirst", WkTwoLayersHead, "a2@follow.inner@follow = 5\nsneakPO((a2@follow@uniq, a1@follow@uniq), w0@follow@uniq)"),
         ["putR"] = WkForm("putRUse", RHead, "var v = value@move\n" + WkPut + "\n_ = slot.value\nv.value = 5") +
             WkForm("putRFirst", RHead, "var v = value@move\nv.value = 5\n" + WkPut + "\n_ = slot.value"),
         ["use"] = WkForm("tie0c1", "(a: ref/i32 during q, c: ref/i32 during o, b: Option<uniq/(ref/i32 during q) during o>) -> ()\n", "return") +
@@ -274,6 +306,10 @@ public sealed partial class MirBorrowsTest
     [InlineData("D1", "eHoldsBad: v@follow = x 2")]
     [InlineData("D2", "eTwoBad: v@follow = x 2")]
     [InlineData("D3", "concreteTwoBad: v@follow = x 1")]
+    // Fails on fd4f56ae3: pa3Bad valid (the holder `inner`, reached through a Loan on its part, took the entry of its whole Type, which
+    // none names: the Abstract one). pa5Second: both parts have one erased Type, whose entry joins the storages of both (Revision 2's
+    // pairs separate only a Subst's Origins).
+    [InlineData("partLoan", "pa3Bad: inner@ref 1|pa3Bad: leaf.value = 5 1|pa3ConcreteBad: inner@ref 1|pa3ConcreteBad: leaf.value = 5 1|pa3ConcreteOk: inner@ref 1|pa3Ok: inner@ref 1|pa3WholeBad: inner@ref 1|pa3WholeBad: leaf.value = 5 1|pa5FirstBad: inner.0@ref 1|pa5FirstBad: leaf.value = 5 1|pa5Second: inner.1@ref 1|pa5Second: leaf.value = 5 1")]
     public void ACallKeepsTheArgumentByTheStoragesTypeWhateverItsPosition(string row, string expected)
         => Assert.Equal(WkExpected(expected), WkRecords(row));
 
@@ -313,6 +349,8 @@ public sealed partial class MirBorrowsTest
     [InlineData("E2", "recurLeafBad: v.value = 5 1|recurLeafOk: v.value = 5 1")]
     [InlineData("E2a", "recurLeafDistinctBad: v.value = 5 1")] // Fails on dev by design: recurLeafDistinctOk `v.value = 5` 1.
     [InlineData("putR", "putRUse: v.value = 5 1")]
+    // Fails on fd4f56ae3: opBad valid (the second exclusive layer over `Box2 during a` formed no source; poBad, the Tuple swapped, erred).
+    [InlineData("twoLayers", "opBad: a2@follow.inner@follow = 5 1|poBad: a2@follow.inner@follow = 5 1")]
     [InlineData("use", "use3Bad: x.1 1")] // Fails on dev by design: use2 `x@follow` 1 (BU-49's pin).
     public void TheBorrowsFormedThroughTheArgumentCountAsItsOwnValue(string row, string expected)
         => Assert.Equal(WkExpected(expected), WkRecords(row));
@@ -371,6 +409,11 @@ public sealed partial class MirBorrowsTest
     [InlineData("virtual", "virtBad: v@follow = 5 1|virtConcreteBad: v@follow = 5 1")]
     public void ACallableTheContractHandsTheBodyLetsAnAbstractTypeHoldTheArgument(string row, string expected)
         => Assert.Equal(WkExpected(expected), WkRecords(row));
+
+    // A part-Loan row's body (R4's review B1): `inner` holds a borrow of z, `pair` a Loan on a part of it (or the whole), passed to a
+    // callee storing a borrow formed through `leaf` into it.
+    private static string WkPartLoan(string inner, string pair, string callee)
+        => $"var z = 0\nvar leaf = Lf.init(p: z@ref)\nvar inner = {inner}\nvar pair = {pair}\n{callee}(pair@uniq, leaf@uniq)";
 
     // Template P's head (problem r2 §2): a pair binding admitting owner and uniq, a Copy T and `var v = value@move`.
     private static string WkPair(string parameters = "value: s/T, other: s/T, x: T")

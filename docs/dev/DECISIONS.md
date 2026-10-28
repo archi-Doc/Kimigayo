@@ -5283,7 +5283,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `during slot` tie is that clause, not a dependency stated apart from retention", "Revision 1's `Beyond` is withdrawn; R4-M154
     records the raw-punned holder's join as an accepted precision cost" and "At a referent store whose referent does not destroy
     shallowly (R4-M143), the holders past refs(S) take the root record `Own_j`, the interim until A5 composes the destruction (G264)".
-    The planning session approved each moved pin on 2026-10-29 as Revision 4's E2 class or Revision 5's pin class.
+    The planning session approved each moved pin on 2026-10-29 as Revision 4's E2 class or Revision 5's pin class. Fix round 1 (both
+    reviews of fd4f56ae3), relayed by the planning session: Revision 7, "form (b) is the design's intended fix (one node per exclusive
+    layer with its Type set)"; Revision 8, "A written storage's identity is the Loan's place, and its holder is the place's root",
+    "choose the record by the Type of the place the Loan names: loan.Root with its steps, at the view's case Type, erased. Do not use
+    the root local's Type", "A place whose Type matches no entry takes Reached_j.All, never Abstract. Abstract is one entry and a
+    subset of All", and Revision 5.2's "only a raw-punned pointee" sentence "was a symptom of the root-Type lookup".
   - Rule 1 (per storage; Revision 1): a call's retention (`CallRetention`) has its result's `StorageRetention` and, per output j it
     may write (`Writes`, an `OutputRetention`), `Own_j`, the record of j's root storage (what the argument's direct Loans name), and
     `Reached_j`, one record per Origin-erased storage Type past the root's exclusive layers, plus `Abstract` (what an abstract part
@@ -5291,7 +5296,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     value, so a position may give Value and Chain at once), `Untied` and its pairs (below). The approved two-valued `StorageExtent`
     became the two members `Own` and `Reached` of an output's record. The MIR (`MirBorrows.Calls`) gives each holder W reaches the
     record of the way it was reached (`MirBorrows.Reach`: by its first step, `Own_j`; E at the root, `Own_j` and `All`; past a holder,
-    E `All` and a local the entry whose Type, in the view's case and Origin-erased, is its own, `All` where none names it).
+    E `All` and a holder the entry of the Type of the Place the reaching Loan names, in the view's case and Origin-erased
+    (`MirBorrows.PastEntry`, Revision 8), `All` where no entry names it or Loans naming Places of several Types reach it, never
+    `Abstract`, which only `All` joins).
   - Rule 2 (SPEC 15.6.4 read as (iii)): an argument's own value, its Loans and the holders it addresses, is retained only by a
     position whose Type can hold a value of one of its own parts or a borrow formed through it (its own layer's referent or a part the
     referent holds by value, and on through exclusive layers up to the first shared one, SPEC 15.6.3), Origins fitted; any other
@@ -5318,8 +5325,13 @@ and migration obligations remain in force; no numeric cap changes are authorized
     that argument's node in its own and the Abstract storage (SPEC 5.7 Calls, the owner's Q2 (a); `Binding.SelfAdmitted`, the one
     reading, which A5's `MirTypes.Holding` reads through TyCtxt); at a
     referent store whose referent does not destroy shallowly (R4-M143) each holder past refs(S) also takes `Own_j`, the interim until
-    A5 composes the destruction (PLAN G264); a holder with no `Reached` entry (a raw-punned pointee, `w@raw@raw/u8`) takes `All`, an
-    accepted precision cost (Revision 5: the walk names every storage past the root, so Revision 1's `Beyond` is withdrawn).
+    A5 composes the destruction (PLAN G264); a holder whose Place no `Reached` entry names takes `All` (Revision 8; Revision 1's
+    `Beyond` stays withdrawn). Each exclusive layer forms its own sources (Revision 7, form (b), BU's review B1): the source walk visits
+    a Type once per outermost layer of its path, whose node the fit needs (each inner layer's outlives it by well-formedness), so a
+    referent Type reached through two exclusive layers forms the borrows through both (`opBad`, valid on fd4f56ae3, errs as `poBad`
+    does). A Loan on a part (`inner.0@uniq`) gives its holder the entry of the part's Type (`pa3Bad`, valid on fd4f56ae3, errs as its
+    concrete and whole-local twins do). Two parts of one erased Type take that Type's one entry, the join of their storages, whose
+    Origins only Revision 2's pairs of Subst Origins separate (`pa5Second`, a precision limit).
   - One enumeration of a value's parts (fix round 1, R4's review N3): `HeldParts` gives the parts a value holds at its own address,
     each with the Type its declaration writes and its holder and whether it has an address (a nominal Type's Type argument has none
     but a collection's); the storage walk (`Parts`) and the sources and fits (`OwnParts`, which adds the layers' owned parts and what

@@ -28,6 +28,8 @@ internal sealed partial class MirBorrows
     private readonly List<int> parts = []; // The states a closure read, each through rule W's clause, which one n-ary union joins.
     private readonly Dictionary<BoundType, byte> walked = new(ReferenceEqualityComparer.Instance); // HoldsLoans' scratch.
     private readonly List<RawMember> members = []; // HoldsLoans' scratch for a stored raw layer's members.
+    private readonly List<(int Slot, BoundType Type)> writingPlaces = []; // The W walk's holders past a holder, each with the erased case
+                                                                          // Type of a Place a Loan reaching it names (PlaceType).
     // Holding's memo: each case Type's answer for the program version holdingVersion names, by reference.
     private readonly Dictionary<BoundType, (bool Holds, MirWrites Writes)> holding = new(HoldingCapacity, ReferenceEqualityComparer.Instance);
     private (int Content, int Chain)[] reads = []; // By set: its content and its chain at the location, each plus 1 (0: not read there).
@@ -38,7 +40,6 @@ internal sealed partial class MirBorrows
     private int[] writing = []; // By slot: the W walk that reached it.
     private MirWrites[] writingKind = []; // By slot: its local's MirWrites, at that walk.
     private byte[] writingVia = []; // By slot: how that walk reached it (ViaRoot, ViaPast).
-    private int[] writingLocal = []; // By slot: its local, where that walk reached it past a holder.
     private int walks; // The W walks made.
     private ulong holdingVersion; // The program version whose case Types the holding memo answers (0: none).
 
@@ -219,7 +220,7 @@ internal sealed partial class MirBorrows
         MirDataflow.Grow(ref this.writing, this.holderCount);
         MirDataflow.Grow(ref this.writingKind, this.holderCount);
         MirDataflow.Grow(ref this.writingVia, this.holderCount);
-        MirDataflow.Grow(ref this.writingLocal, this.holderCount);
+        this.writingPlaces.Clear();
         this.walks++;
         var count = 0;
         for (var i = 0; i < this.targets.Count; i++)
@@ -269,17 +270,19 @@ internal sealed partial class MirBorrows
         {
             if (element == Escaped)
             {
-                this.Written(Escaped, MirWrites.None, via, -1);
+                this.Written(Escaped, MirWrites.None, via, null);
             }
             else if (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true, Named: >= 0 } loan)
             {
-                this.Written(loan.Named, loan.Named == Escaped ? MirWrites.None : this.writable[loan.Root], via, loan.Root); // A static's names E.
+                var place = via == ViaPast && loan.Named != Escaped ? this.PlaceType(loan) : null;
+                this.Written(loan.Named, loan.Named == Escaped ? MirWrites.None : this.writable[loan.Root], via, place); // A static's names E.
             }
         }
     }
 
-    // A holder W reaches, with its local's MirWrites (E: none) and how it was reached (with its local, past a holder).
-    private void Written(int slot, MirWrites kind, byte via, int local)
+    // A holder W reaches, with its local's MirWrites (E: none) and how it was reached (past a holder, with the erased case Type of the Place
+    // the Loan names, `place`, the storage the call writes there; DECISIONS R4-M154, Revision 8).
+    private void Written(int slot, MirWrites kind, byte via, BoundType? place)
     {
         if (this.writing[slot] != this.walks)
         {
@@ -288,6 +291,13 @@ internal sealed partial class MirBorrows
         }
 
         (this.writingKind[slot], this.writingVia[slot]) = (kind, (byte)(this.writingVia[slot] | via));
-        this.writingLocal[slot] = via == ViaPast ? local : this.writingLocal[slot];
+        if (place is not null && !this.writingPlaces.Contains((slot, place)))
+        {
+            this.writingPlaces.Add((slot, place));
+        }
     }
+
+    // A direct Loan's Place's case Type under the view, Origin-erased (TyCtxt.Erase): the storage a call's write past a holder reaches
+    // through it, whose Reached entry the holder receives (MirBorrows.Calls).
+    private BoundType PlaceType(in Loan loan) => types.Erase(cases.Type(this.body.TypeOf(loan.Place)!));
 }

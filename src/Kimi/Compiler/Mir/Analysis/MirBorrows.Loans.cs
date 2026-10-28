@@ -119,6 +119,7 @@ internal sealed partial class MirBorrows
         this.loans[this.loanCount] = new()
         {
             Root = key,
+            Place = place,
             Group = place.IsStatic ? moves.Paths.Length + ~place.Root : moves.Find(place, out _),
             Start = this.loanStepCount,
             Count = count,
@@ -148,6 +149,9 @@ internal sealed partial class MirBorrows
     {
         /// <summary>Gets or sets its Place's root key.</summary>
         internal int Root { get; set; }
+
+        /// <summary>Gets or sets its Place, whose case Type names the storage it lends (a call's Reached entry, MirBorrows.Calls).</summary>
+        internal MirPlace Place { get; set; }
 
         /// <summary>Gets or sets its Place's group: the Move Path of its longest inline prefix (MirMoveData), or for a static's Place the
         /// number of paths and the static's index.</summary>

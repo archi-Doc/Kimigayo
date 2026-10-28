@@ -43,6 +43,7 @@ public sealed partial class Binding
     private readonly List<RetentionSource> retentionSources = new();
     private readonly List<int> retentionPaths = new();
     private readonly List<int> retentionPath = new();
+    private readonly HashSet<(int Layer, bool Own, BoundType Type)> retentionVisits = new(); // Sources' visits, by outermost layer.
     private readonly List<int> retentionOwnNodes = new();
     private readonly List<int> retentionOccurrences = new();
     private readonly HashSet<(BoundType Type, bool Callable)> retentionOccurred = new();
@@ -477,7 +478,7 @@ public sealed partial class Binding
         {
             if (inputs[i] is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
             {
-                this.storageSeen.Clear();
+                this.retentionVisits.Clear();
                 this.Sources(environment, inputs[i], i, own: true, 0);
             }
         }
@@ -485,10 +486,13 @@ public sealed partial class Binding
 
     // An input's sources at a part of its own value (`own`) or at a part a referent of it holds by value, past its own layer and exclusive
     // ones (else), each with the nodes of the layers it is formed through (retentionPath: a reborrow's region lies within each, SPEC
-    // 15.6.3).
+    // 15.6.3). Each exclusive layer forms its own sources (form (b), DECISIONS R4-M154): a Type is walked once per outermost layer of
+    // its path, whose node its fit needs (each inner layer's outlives it by well-formedness), so one reached through two layers forms
+    // the borrows of both.
     private void Sources(OriginPremiseEnvironment environment, BoundType? type, int input, bool own, int depth)
     {
-        if (type is null || depth > StorageBound || !this.storageSeen.Add((-1, own, type)))
+        var outermost = this.retentionPath.Count > 0 ? this.retentionPath[0] : -1;
+        if (type is null || depth > StorageBound || !this.retentionVisits.Add((outermost, own, type)))
         {
             return;
         }
