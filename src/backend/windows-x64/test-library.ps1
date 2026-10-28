@@ -55,7 +55,10 @@ try {
     if ($manifest.outputKind -cne 'Library' -or $null -ne $manifest.entry -or $null -ne $manifest.subsystem) { throw 'Incorrect Library inspection manifest' }
     if ($manifest.irSha256 -cne (Get-FileHash -LiteralPath (Join-Path (Split-Path $manifestPath) $manifest.irFile)).Hash.ToLowerInvariant()) { throw 'Library IR hash mismatch' }
     & dotnet $compiler build $project 1> (Join-Path $work 'build.stdout') 2> (Join-Path $work 'build.stderr')
-    if ($LASTEXITCODE -ne 1) { throw 'Library inspection must not become a native Application' }
+    # IMPL 20.3.2: a Library build succeeds on its product checks, publishes only a checked record and runs no native tool.
+    if ($LASTEXITCODE -ne 0) { throw 'Library build failed' }
+    $record = Get-Content -LiteralPath (Join-Path (Split-Path $manifestPath) 'Library.link.build.json') -Raw | ConvertFrom-Json
+    if ($record.status -cne 'checked' -or $record.outputKind -cne 'Library') { throw 'Library build must publish only a checked record' }
     & dotnet $compiler run $project 1> (Join-Path $work 'run.stdout') 2> (Join-Path $work 'run.stderr')
     if ($LASTEXITCODE -ne 1) { throw 'Library inspection must not become runnable' }
     if (@(Get-ChildItem -LiteralPath $projectDirectory -Recurse -Filter '*.exe').Count -ne 0) { throw 'Library command published an executable' }
