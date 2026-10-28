@@ -12,7 +12,7 @@ namespace Kimi.Compiler.Mir;
 // Unsupported_Kd where the stratum classifies nothing, and in a view PD13 holds (MirBorrows.CallRows' held; R4-M126 (iii), R4-M148) at
 // every rejection's subject, and OwnershipDepthLimit_Kd where a check's verdict rests on a part past a walk's bound, a conflict only the
 // drop tier gives at its drop-live holder's declaration (Report, Ended), as beside an own-step Warning only the drop tier gives
-// (DroppedDeparture); held to the view's end, where each subject gets one per view, the one answer MirTypes.Decides gives of them (Limits);
+// (DroppedDeparture); held to the view's end, where each subject gets one per view, the Join of their outcomes (MirOutcome; Limits);
 // InternalInvariant_Kd at a Value call whose declared signature does not number its operands (G136). Every rejection but a limit record is
 // recorded through
 // Record(code, requirement, subject, facts), so the hold is one rule there: a Loan conflict through Report(code, anchor, via, at,
@@ -22,7 +22,7 @@ namespace Kimi.Compiler.Mir;
 // Must not decide a conflict (MirBorrows.Checks), derive a requirement from a code, or apply a derived-problem rule (MirReport's).
 internal sealed partial class MirBorrows
 {
-    private readonly List<(SourceRef Subject, ulong Views, MirWrites Outcome)> limits = []; // The view run's limit records (Limit, Limits).
+    private readonly List<(SourceRef Subject, ulong Views, MirOutcome Outcome)> limits = []; // The view run's limit records (Limit, Limits).
 
     // A conflicting candidate's problem: its Loan's anchor, and its witness (E13 (6)): a holder it was found live in (for an activation, other
     // than its own), else the location, whose operation uses the value that carries it; and the static Field an effect met (R4-M92). One
@@ -32,7 +32,7 @@ internal sealed partial class MirBorrows
         ref readonly var found = ref this.candidates[candidate];
         if (!found.Tags.Takes(taking))
         {
-            this.Limit(this.Declaration(found.Dropped.Via), MirWrites.Deep);
+            this.Limit(this.Declaration(found.Dropped.Via), MirOutcome.Deep);
             return;
         }
 
@@ -55,7 +55,7 @@ internal sealed partial class MirBorrows
     {
         if (this.held)
         {
-            this.Limit(subject, MirWrites.Limit);
+            this.Limit(subject, MirOutcome.Limit);
             return;
         }
 
@@ -77,7 +77,7 @@ internal sealed partial class MirBorrows
     {
         var local = this.DropLocal(holder);
         this.Departure(entry, this.dropSlots[local], at);
-        this.Limit(this.body.Subject(this.body.Locals[local].Source), MirWrites.Deep);
+        this.Limit(this.body.Subject(this.body.Locals[local].Source), MirOutcome.Deep);
     }
 
     // A problem with its facts in the body's views.
@@ -96,16 +96,16 @@ internal sealed partial class MirBorrows
     // the stratum does not classify, and PD13's held rejection), or Deep, the depth limit (the owner's 「G272: (1)」, a part past a walk's
     // bound or a call's retention limit); no fact, a conflict's causes (rule W) dropped with it, never held, and kept at its operation inside
     // an inline default copy, since it depends on the concrete instantiation (R4-M69, R4-M71). Held until the view's run ends (Limits).
-    private void Limit(SourceRef subject, MirWrites outcome)
+    private void Limit(SourceRef subject, MirOutcome outcome)
     {
         this.causes.Clear();
-        if (outcome != MirWrites.None)
+        if (!outcome.IsNone)
         {
             this.limits.Add((subject, this.views, outcome));
         }
     }
 
-    // The view run's limit records: per subject and view, the one answer of what its checks left undecided there (MirTypes.Decides; one
+    // The view run's limit records: per subject and view, the one answer of what its checks left undecided there (MirOutcome.Join; one
     // failure, one record, SPEC 23.1.2), Unsupported_Kd for a Limit and OwnershipDepthLimit_Kd for Deep, each under its requirement.
     private void Limits()
     {
@@ -114,13 +114,13 @@ internal sealed partial class MirBorrows
             for (var mask = views; mask != 0; mask &= mask - 1)
             {
                 var view = mask & ~(mask - 1);
-                var outcome = MirWrites.None;
+                var outcome = MirOutcome.None;
                 foreach (var other in this.limits)
                 {
-                    outcome = other.Subject == subject && (other.Views & view) != 0 ? MirTypes.Decides(outcome, other.Outcome) : outcome;
+                    outcome = other.Subject == subject && (other.Views & view) != 0 ? outcome.Join(other.Outcome) : outcome;
                 }
 
-                var unsupported = outcome == MirWrites.Limit;
+                var unsupported = outcome.IsLimit;
                 var requirement = DiagnosticRequirement.Ownership(unsupported ? OwnershipRequirement.Unsupported : OwnershipRequirement.DepthLimit);
                 var code = unsupported ? DiagnosticCode.Unsupported_Kd : DiagnosticCode.OwnershipDepthLimit_Kd;
                 this.program.Problems.Add(new(code, requirement, subject, this.body.Ordinal, view));

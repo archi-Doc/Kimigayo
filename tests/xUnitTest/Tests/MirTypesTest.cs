@@ -90,7 +90,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
     // outcome, Deep, never the write fact: past an exclusive reference (unique40) and in the value's own storage (value40), while a decided
     // write elsewhere in the value outranks it (mixed40); past a shared reference nothing is read (shared40), and at depth 10 the walk is
     // exact (unique10: a Tuple of integers past an exclusive reference gives nothing). Beside a stored raw layer whose members Binding
-    // does not publish (Limit, as w), the one answer (MirTypes.Decides) is Limit (limitDeep40), as at depth 10 (limitDeep10).
+    // does not publish (Limit, as w), the one answer (MirOutcome.Join) is Limit (limitDeep40), as at depth 10 (limitDeep10).
     [Fact]
     public void APartPastTheBoundIsTheGuardsDeepOutcome()
     {
@@ -238,8 +238,8 @@ public sealed class MirTypesTest(ITestOutputHelper output)
 
     // SPEC 15.6.6, 16.3.3: destroying a value observes what it holds where its destruction runs a user drop (Logger, also as an element
     // or a Sealed handle's payload), destroys a Function value, or releases a handle whose payload is not Sealed; an abstract part not
-    // proven Copy, whose instance decides, is Unproven (DECISIONS R4-M147); a Sealed recursive handle ends. A part past the walk's depth
-    // bound, also below a growing recursive handle, is Deep: the caller's located Unsupported.
+    // proven Copy, whose instance decides, is the Limit (DECISIONS R4-M147); a Sealed recursive handle ends. A part past the walk's depth
+    // bound, also below a growing recursive handle, is Deep (DECISIONS R4-M153). An observing part is the decided answer (MirOutcome).
     [Fact]
     public void DestructionObservesUserDropsAndUnknownParts()
     {
@@ -249,12 +249,12 @@ public sealed class MirTypesTest(ITestOutputHelper output)
             "nest: Nest<i32>)\n    C is Copy\n    return\n");
         var seen = new HashSet<BoundType>(ReferenceEqualityComparer.Instance);
         Assert.Equal(
-            [("holder", MirObservation.None), ("logger", MirObservation.Observes), ("loggers", MirObservation.Observes),
-                ("owned", MirObservation.Observes), ("shared", MirObservation.None), ("atomic", MirObservation.None),
-                ("based", MirObservation.Observes), ("action", MirObservation.Observes), ("value", MirObservation.Unproven),
-                ("copied", MirObservation.None), ("chain", MirObservation.None), ("tree", MirObservation.None), ("forest", MirObservation.None),
-                ("table", MirObservation.None), ("logged", MirObservation.Observes), ("nest", MirObservation.Deep)],
-            Parameters(body).Select(x => (x.Name, MirTypes.Observation(x.Type, c.Types, body.Key.Decl, seen))).ToArray());
+            [("holder", "None"), ("logger", "Decided"), ("loggers", "Decided"),
+                ("owned", "Decided"), ("shared", "None"), ("atomic", "None"),
+                ("based", "Decided"), ("action", "Decided"), ("value", "Limit"),
+                ("copied", "None"), ("chain", "None"), ("tree", "None"), ("forest", "None"),
+                ("table", "None"), ("logged", "Decided"), ("nest", "Deep")],
+            Parameters(body).Select(x => (x.Name, MirTypes.Observation(x.Type, c.Types, body.Key.Decl, seen).ToString())).ToArray());
     }
 
     // SPEC 8.11.2 (DECISIONS R4-M58): a value holds raw authority where a part is a raw pointer or an rc handle; each Type is walked once
@@ -288,7 +288,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
         Assert.False(MirTypes.Destruction(pairs, ref walk));
         Assert.Equal((26, 51), (seen.Count, walk.Met)); // P24..P0 and i32; each struct's two Fields met once each.
         Assert.False(MirTypes.MayNeedDrop(pairs, seen));
-        Assert.Equal(MirObservation.None, MirTypes.Observation(pairs, c.Types, body.Key.Decl, seen));
+        Assert.True(MirTypes.Observation(pairs, c.Types, body.Key.Decl, seen).IsNone);
         Assert.False(MirTypes.HoldsRaw(pairs, seen) || MirTypes.HoldsLoans(pairs, c.Types, new(ReferenceEqualityComparer.Instance), [], out _));
     }
 
@@ -309,8 +309,8 @@ public sealed class MirTypesTest(ITestOutputHelper output)
                 var raw = local.Type.Semantics == Kimi.Compiler.Parsing.SemanticsKind.Raw;
                 Assert.True(holds || !(raw || MirTypes.IsReference(local.Type)), $"{body.Key.Decl?.Name}: {local.Name}");
                 var observation = MirTypes.Observation(local.Type, c.Types, body.Key.Decl, seen);
-                Assert.NotEqual(MirObservation.Deep, observation);
-                var observes = observation != MirObservation.None;
+                Assert.False(observation.IsDeep);
+                var observes = !observation.IsNone;
                 (locals, holding, observing) = (locals + 1, holding + (holds ? 1 : 0), observing + (observes ? 1 : 0));
             }
         }

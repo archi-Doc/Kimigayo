@@ -92,7 +92,7 @@ internal sealed partial class MirBorrows
         var kind = this.Destruction(target, out _);
         if (kind == AccessKind.Unclassified)
         {
-            this.Limit(this.Subject(at), MirWrites.Deep);
+            this.Limit(this.Subject(at), MirOutcome.Deep);
             return;
         }
 

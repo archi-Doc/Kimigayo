@@ -58,13 +58,16 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     private byte found; // The classes the current evaluation or local walk found.
     private ulong version; // The program version whose body views Local records (MirProgram.Version; 0: none).
 
-    /// <summary>Gets what leaves an effect undecided where nothing decides it (DECISIONS R4-M153): its <see cref="Limit"/> and
-    /// <see cref="Deep"/> classes as the walks' outcomes, of which MirTypes.Decides gives the one answer. A4's obligations and A5's effect
+    /// <summary>Gets the one answer of classes (DECISIONS R4-M153): the Join of their outcomes, an <see cref="Environment"/> or
+    /// <see cref="Unknown"/> effect decided, <see cref="Limit"/> the Limit and <see cref="Deep"/> Deep. A4's obligations and A5's effect
     /// rule record by it.</summary>
     /// <param name="classes">Classes of a summary or a site.</param>
-    /// <returns>Limit, Deep, or None for neither.</returns>
-    internal static MirWrites Undecided(byte classes)
-        => MirTypes.Decides((classes & Limit) != 0 ? MirWrites.Limit : MirWrites.None, (classes & Deep) != 0 ? MirWrites.Deep : MirWrites.None);
+    /// <returns>The classes' outcome.</returns>
+    internal static MirOutcome Outcome(byte classes)
+    {
+        var decided = (classes & (Environment | Unknown)) != 0 ? MirOutcome.Decided : MirOutcome.None;
+        return decided.Join((classes & Limit) != 0 ? MirOutcome.Limit : MirOutcome.None).Join((classes & Deep) != 0 ? MirOutcome.Deep : MirOutcome.None);
+    }
 
     /// <summary>Records the local facts of a body view (driver step 2, after the body's A1 and A2, the dataflow begun with the body): its
     /// effects and static accesses, its calls with a body as edges into the callee views their substitution selects, and the parts its

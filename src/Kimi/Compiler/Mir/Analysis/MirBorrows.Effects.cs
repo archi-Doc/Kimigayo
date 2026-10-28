@@ -13,8 +13,9 @@ namespace Kimi.Compiler.Mir;
 // - R1: for each effect root with a candidate, a write key or Unknown as an EffectWrite, else a read key as an EffectRead of the whole
 //   root (shallow, SPEC 15.6.2); its first conflict at the location its body owns (D11), coded by Code (row 1: a reservation the call does
 //   not activate) with the effect fact on the met Field, what decided it (a write key, else Unknown, else the read key);
-// - A4's Limit or Deep without Unknown, where a candidate a write would meet is met by no key: A4's answer (MirEffects.Undecided), a
-//   limit record at the location (MirBorrows.Reports' Limit: a located Unsupported_Kd for Limit, OwnershipDepthLimit_Kd for Deep);
+// - A4's Limit or Deep, where a candidate a write would meet is met by no key: the Join of a write key's decided answer and A4's
+//   (MirEffects.Outcome), a limit record at the location where it is undecided (MirBorrows.Reports' Limit: a located Unsupported_Kd for
+//   Limit, OwnershipDepthLimit_Kd for Deep);
 // - R3: at a Drop of a mutable static, its own read or write key on that static, or Unknown, ComparisonLoanConflict_Kd anchored at the
 //   Drop, no Loan issued and no witness (the destruction's hold, SPEC 16.4), its template's inside an inline default copy (D11); Limit or
 //   Deep without them, that answer's limit record;
@@ -116,7 +117,7 @@ internal sealed partial class MirBorrows
             var c = fact is { } unproved ? this.Conflict(root, [], EffectRow(unproved), taking, scope, -1) : None;
             if (fact is not { } kind || c == None)
             {
-                this.Limit(this.Subject(at), MirWrites.Limit); // Every effect that would decide it lies in a proved initializer.
+                this.Limit(this.Subject(at), MirOutcome.Limit); // Every effect that would decide it lies in a proved initializer.
             }
             else
             {
@@ -125,7 +126,8 @@ internal sealed partial class MirBorrows
             }
         }
 
-        if (MirEffects.Undecided(classes) == MirWrites.None || decided is MirFactKind.EffectWrite or MirFactKind.EffectUnknown)
+        var outcome = MirEffects.Outcome(classes).Join(decided == MirFactKind.EffectWrite ? MirOutcome.Decided : MirOutcome.None);
+        if (outcome.IsDecided || outcome.IsNone)
         {
             return;
         }
@@ -135,7 +137,7 @@ internal sealed partial class MirBorrows
         {
             if (this.Conflicts(u, root, [], AccessKind.EffectWrite, taking) && !(read && this.Conflicts(u, root, [], AccessKind.EffectRead, taking)))
             {
-                this.Limit(this.Subject(at), MirEffects.Undecided(classes)); // A Loan a write would meet and no key meets: A4's answer decides.
+                this.Limit(this.Subject(at), outcome); // A Loan a write would meet and no key meets: A4's answer decides.
                 return;
             }
         }
@@ -150,7 +152,7 @@ internal sealed partial class MirBorrows
         this.Work += 2;
         if (Decided(row, classes, field) is null)
         {
-            this.Limit(this.Subject(at), MirEffects.Undecided(classes));
+            this.Limit(this.Subject(at), MirEffects.Outcome(classes)); // No key and no Unknown: A4's Limit or Deep, if any.
         }
         else if (this.Covered(this.Source(at).Scope, -1, -1))
         {
@@ -158,7 +160,7 @@ internal sealed partial class MirBorrows
         }
         else if (this.Unproved(at, taking, row, classes, field) is not { } fact)
         {
-            this.Limit(this.Subject(at), MirWrites.Limit); // Every effect that would decide it lies in a proved initializer.
+            this.Limit(this.Subject(at), MirOutcome.Limit); // Every effect that would decide it lies in a proved initializer.
         }
         else
         {

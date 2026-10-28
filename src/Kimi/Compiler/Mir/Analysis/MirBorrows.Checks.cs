@@ -152,7 +152,7 @@ internal sealed partial class MirBorrows
         {
             if (!seen)
             {
-                this.Limit(this.Declaration(this.markDropped[mark].Via), MirWrites.Deep);
+                this.Limit(this.Declaration(this.markDropped[mark].Via), MirOutcome.Deep);
                 return;
             }
 

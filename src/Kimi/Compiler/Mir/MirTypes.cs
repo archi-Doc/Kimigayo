@@ -1,13 +1,19 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+#pragma warning disable SA1402 // The walks' outcome belongs to the Type facts.
+
 // Owns the Type facts needed by MIR construction and analyses.
 // Input: published Types, their stored shapes and Binding's Copy and Sealed proofs. Output: the destruction walk and the drop, observation,
 // Loan-holding with what a call may write past a value (its guard), raw, exclusivity, shared-layer, selection, agreement, borrow-kind and
 // pointer-cast facts.
 // Inline storage is traversed under each fact's documented bounds and Type rules; what destroying a value does is the one Destruction walk.
 // The walks share one depth bound (Bound): past it the guard and the Destruction walk answer Deep, the fact that the part is unknown
-// (DECISIONS R4-M153), and HoldsRaw yes (its reading is PLAN 2b-5's). Where two outcomes meet at one verdict, the one answer is Decides'
-// (MirWrites' order), which every reader that records by them reads: none ranks them itself.
+// (DECISIONS R4-M153), and HoldsRaw yes (its reading is PLAN 2b-5's). Their answers at a verdict are one value, MirOutcome, combined only by
+// its Join: decided outranks Limit, Limit outranks Deep, Deep outranks none. A decided answer is the verdict whatever an unknown part is
+// (SPEC 23.1.1: a decided Language violation is not "may be valid"); an unsupported or abstract part (Limit, R4-M147) leaves the verdict
+// undecided even past any bound, so it outranks Deep, and a verdict both leave undecided is one failure with one record (SPEC 23.1.2), the
+// located Unsupported_Kd. A walk composes its parts' outcomes only by Join and stops early only at decided (the top); a reader asks the
+// published answer and never ranks two outcomes itself.
 // Must not inspect source syntax or substitute new Binding decisions.
 // Its concerns: the destruction walk and the facts over it (MirTypes.Destruction.cs), what a value may hold (MirTypes.Holding.cs), and
 // here the reference, view, shared-layer, selection, borrow-kind, pointer-cast and agreement facts.
@@ -24,17 +30,6 @@ internal static partial class MirTypes
     // 15.3.5's growing recursion). The guard and the destruction walk answer it as its own outcome (Deep), never as a value they did not
     // establish; a check whose verdict rests on such a part records OwnershipDepthLimit_Kd (DECISIONS R4-M153).
     private const int Bound = 32;
-
-    /// <summary>Gets the one answer where two outcomes meet at one verdict, a holder's, a call's or a subject's (DECISIONS R4-M153): the
-    /// one ranked higher in <see cref="MirWrites"/>' order. A decided write outranks what would leave the verdict undecided, and an unsupported
-    /// part (Limit) outranks a part past the walks' bound (Deep): a verdict both leave undecided is one failure, which gets one record
-    /// (SPEC 23.1.2), the unsupported part's located Unsupported_Kd (SPEC 23.1.1, DIAGNOSTICS rule 3), since raising the bound would still
-    /// leave it undecided and supporting the part would not. The guard, A4's summaries and A5's limit records read it; none ranks
-    /// outcomes itself.</summary>
-    /// <param name="outcome">An outcome.</param>
-    /// <param name="other">The other outcome.</param>
-    /// <returns>The one that decides.</returns>
-    internal static MirWrites Decides(MirWrites outcome, MirWrites other) => outcome > other ? outcome : other;
 
     /// <summary>Gets whether a value of a Type is a reference whose Loans an EndBorrow ends: a ref, uniq, objref or objuniq, or a pair layer.</summary>
     /// <param name="type">The Type.</param>
@@ -162,4 +157,57 @@ internal static partial class MirTypes
 
         return true;
     }
+}
+
+/// <summary>The walks' one answer at a verdict (MirTypes' contract; DECISIONS R4-M153): decided, Limit (an unsupported or abstract part,
+/// R4-M147), Deep (a part past the walks' bound) or none. Its rank is private: the one operation over answers is <see cref="Join"/>, and a
+/// reader asks what an answer is, never which of two outranks the other.</summary>
+internal readonly struct MirOutcome
+{
+    private const byte DeepRank = 1;
+    private const byte LimitRank = 2;
+    private const byte DecidedRank = 3;
+
+    private readonly byte rank;
+
+    private MirOutcome(byte rank) => this.rank = rank;
+
+    /// <summary>Gets the answer of nothing met: the Join's identity.</summary>
+    internal static MirOutcome None => default;
+
+    /// <summary>Gets the answer of a part past the walks' bound, which leaves the verdict undecided.</summary>
+    internal static MirOutcome Deep => new(DeepRank);
+
+    /// <summary>Gets the answer of an unsupported or abstract part, which leaves the verdict undecided past any bound.</summary>
+    internal static MirOutcome Limit => new(LimitRank);
+
+    /// <summary>Gets the decided answer, the Join's top, after which a walk may stop.</summary>
+    internal static MirOutcome Decided => new(DecidedRank);
+
+    /// <summary>Gets a value indicating whether the answer is decided.</summary>
+    internal bool IsDecided => this.rank == DecidedRank;
+
+    /// <summary>Gets a value indicating whether the answer is Limit: the verdict's record is the located Unsupported_Kd.</summary>
+    internal bool IsLimit => this.rank == LimitRank;
+
+    /// <summary>Gets a value indicating whether the answer is Deep: the verdict's record is OwnershipDepthLimit_Kd.</summary>
+    internal bool IsDeep => this.rank == DeepRank;
+
+    /// <summary>Gets a value indicating whether nothing was met.</summary>
+    internal bool IsNone => this.rank == 0;
+
+    /// <inheritdoc/>
+    public override string ToString() => this.rank switch
+    {
+        DecidedRank => "Decided",
+        LimitRank => "Limit",
+        DeepRank => "Deep",
+        _ => "None",
+    };
+
+    /// <summary>Gets the answer of two answers met at one verdict, MirTypes' order: commutative and associative, with None its identity and
+    /// Decided its absorbing top.</summary>
+    /// <param name="other">The other answer.</param>
+    /// <returns>The joined answer.</returns>
+    internal MirOutcome Join(MirOutcome other) => this.rank >= other.rank ? this : other;
 }

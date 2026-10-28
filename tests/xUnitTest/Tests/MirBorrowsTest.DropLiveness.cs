@@ -95,7 +95,7 @@ public sealed partial class MirBorrowsTest
     }
 
     // SPEC 23.1.1, 23.1.2 (R4-M153's revision 2, implementation review 2's B2): where an unsupported part and a part past the bound meet at
-    // one call's verdict, it gets one record, MirTypes.Decides' answer, the located Unsupported_Kd: putTwo's W reaches h, a Limit holder
+    // one call's verdict, it gets one record, MirOutcome.Join's answer, the located Unsupported_Kd: putTwo's W reaches h, a Limit holder
     // (R4-M147's stored raw layer a Type argument supplies), and dd, a Deep holder whose step would reach k. Its twins: each alone (the
     // depth limit at putAny), and at depth 10 the Limit alone. dd's own depth limit, at its declaration, is another verdict's: z's write
     // conflicts with the Loan the store put in dd only through dd's Drop past the bound.

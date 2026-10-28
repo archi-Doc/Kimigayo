@@ -41,7 +41,7 @@ internal sealed partial class MirBorrows
             var access = this.accesses[a];
             if (access.Kind == AccessKind.Unclassified)
             {
-                this.Limit(this.Subject(at), MirWrites.Deep); // A borrowed root's destruction past the destruction walk's bound (R4-M153).
+                this.Limit(this.Subject(at), MirOutcome.Deep); // A borrowed root's destruction past the destruction walk's bound (R4-M153).
                 continue;
             }
 
@@ -60,12 +60,12 @@ internal sealed partial class MirBorrows
         var terminator = index == this.body.Blocks[block].Count;
         if ((terminator && this.limit) || this.layerBorrowed[location])
         {
-            this.Limit(this.Subject(at), MirWrites.Limit); // W's undecided store (R4-M147); a `during self` layer's enclosing Place (PQ-10).
+            this.Limit(this.Subject(at), MirOutcome.Limit); // W's undecided store (R4-M147); a `during self` layer's enclosing Place (PQ-10).
         }
 
         if (terminator && (this.deep || this.Retaining(this.body.Blocks[block].Terminator) is { IsLimit: true }))
         {
-            this.Limit(this.Subject(at), MirWrites.Deep); // A retention limit (R4-M51) or a store undecided past a walk's bound (R4-M153).
+            this.Limit(this.Subject(at), MirOutcome.Deep); // A retention limit (R4-M51) or a store undecided past a walk's bound (R4-M153).
         }
 
         (this.limit, this.deep) = (false, false);

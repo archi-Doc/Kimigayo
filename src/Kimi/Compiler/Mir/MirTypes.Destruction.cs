@@ -6,25 +6,6 @@ using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>What destroying a value may observe of the Origins and Loans it holds (<see cref="MirTypes.Observation"/>), from its
-/// destruction walk: one class per Type and definition.</summary>
-internal enum MirObservation : byte
-{
-    /// <summary>Nothing: no part it destroys observes.</summary>
-    None,
-
-    /// <summary>Only an abstract part not proven Copy may observe, whose instance decides (DECISIONS R4-M147).</summary>
-    Unproven,
-
-    /// <summary>A part known to observe: a struct that declares a drop, a Function value, or an owning handle whose payload is not proven
-    /// Sealed or observes.</summary>
-    Observes,
-
-    /// <summary>A part past the walk's depth bound, which this implementation does not follow: a check whose verdict rests on it records
-    /// OwnershipDepthLimit_Kd (Resource, SPEC 23.1.1, IMPL 21.3.2; DECISIONS R4-M153).</summary>
-    Deep,
-}
-
 /// <summary>What the destruction walk of a Type reports (<see cref="MirTypes.Destruction"/>).</summary>
 internal interface IMirDestruction
 {
@@ -61,24 +42,24 @@ internal static partial class MirTypes
         return Destruction(type, ref any);
     }
 
-    /// <summary>Gets what destroying a value of a Type may observe of the Origins and Loans it holds (SPEC 15.6.6, 16.3.3): its
-    /// <see cref="Destruction"/> reaches a struct that declares a drop, which observes all it reaches, a Function value, whose destruction
-    /// is unknown, or an owning handle whose payload is not proven Sealed, or is and observes, since any rc or arc release may be final
-    /// (Observes); else only an abstract part not proven Copy, whose instance decides (Unproven); and a part past the walk's bound is Deep
-    /// whatever else it reaches. The walk goes on past an abstract part, so a Type holding one and a part past the bound is Deep (DECISIONS
-    /// R4-M147). A payload is walked below its handle: a recursive Type ends, exactly where it repeats and at the walk's bound where it
-    /// grows.</summary>
+    /// <summary>Gets what destroying a value of a Type may observe of the Origins and Loans it holds (SPEC 15.6.6, 16.3.3), as the walks'
+    /// answer (<see cref="MirOutcome"/>): its <see cref="Destruction"/> reaches a struct that declares a drop, which observes all it reaches,
+    /// a Function value, whose destruction is unknown, or an owning handle whose payload is not proven Sealed, or is and observes, since
+    /// any rc or arc release may be final (decided); else only an abstract part not proven Copy, whose instance decides (Limit, DECISIONS
+    /// R4-M147); and a part past the walk's bound is Deep whatever else it reaches. The walk goes on past an abstract part, so a Type
+    /// holding one and a part past the bound is Deep (DECISIONS R4-M147). A payload is walked below its handle: a recursive Type ends,
+    /// exactly where it repeats and at the walk's bound where it grows.</summary>
     /// <param name="type">The Type.</param>
     /// <param name="types">The Type context, whose Copy and Sealed proofs Binding publishes.</param>
     /// <param name="definition">The definition whose premises prove Copy and Sealed.</param>
     /// <param name="seen">Scratch for the Types walked, cleared first.</param>
     /// <returns>What the destruction may observe.</returns>
-    internal static MirObservation Observation(BoundType? type, TyCtxt types, BindingSymbol? definition, HashSet<BoundType> seen)
+    internal static MirOutcome Observation(BoundType? type, TyCtxt types, BindingSymbol? definition, HashSet<BoundType> seen)
     {
         seen.Clear();
         var observer = new Observer(types, definition, seen);
-        var known = Destruction(type, ref observer);
-        return observer.Beyond ? MirObservation.Deep : known ? MirObservation.Observes : observer.Unproven ? MirObservation.Unproven : MirObservation.None;
+        Destruction(type, ref observer);
+        return observer.Beyond ? MirOutcome.Deep : observer.Outcome;
     }
 
     /// <summary>Walks what destroying a value of a Type does (SPEC 16.3), the one walk of its inline storage that drop elaboration and the
@@ -168,7 +149,7 @@ internal static partial class MirTypes
     {
         internal bool Beyond { get; private set; }
 
-        internal bool Unproven { get; private set; }
+        internal MirOutcome Outcome { get; private set; }
 
         public readonly bool First(BoundType type) => seen.Add(type);
 
@@ -176,22 +157,29 @@ internal static partial class MirTypes
         {
             if (type.IsAbstract)
             {
-                this.Unproven |= !types.Copy(definition, type);
+                this.Outcome = this.Outcome.Join(types.Copy(definition, type) ? MirOutcome.None : MirOutcome.Limit);
                 return false;
             }
 
             if (type.Kind == BoundTypeKind.Function || AdtDef.Destructor(type) is not null)
             {
-                return true;
+                return this.Decide();
             }
 
             var payload = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : null;
-            return payload is not null && (!types.Sealed(definition, payload) || Destruction(payload, ref this, depth + 1));
+            return payload is not null && (!types.Sealed(definition, payload) ? this.Decide() : Destruction(payload, ref this, depth + 1));
         }
 
         public bool Deep()
         {
             this.Beyond = true;
+            return true;
+        }
+
+        // A part known to observe: the decided answer, the Join's top, where the walk stops.
+        private bool Decide()
+        {
+            this.Outcome = this.Outcome.Join(MirOutcome.Decided);
             return true;
         }
     }
