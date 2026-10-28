@@ -26,13 +26,13 @@ namespace Kimi.Compiler.Mir;
 // refs(S) would store a Loan or an address, which then stops at refs(S), or a record's pair whose Origins the view's Origin class does
 // not class where its Value would store one (R4-M154); the location records it as a limit (MirBorrows.Locations). A record's pairs
 // (StorageRetention.Pairs: Origins of the call's Type arguments) are judged by MirOrigins.Outlives under the view's class: one that holds
-// makes its input Value (Solved, memoized per record, body and view for the program version).
+// makes its input Value (Solved, memoized per record, body, view and site for the program version).
 // Must not choose a Call's records (MirBorrows.CallRows), compute W (MirBorrows.Reach), judge a Type (an entry's Type is Binding's, the
 // local's case Type the view's) or an Origin relation (MirOrigins').
 internal sealed partial class MirBorrows
 {
     private readonly Dictionary<(OutputRetention Written, BoundType Type, long View), StorageRetention?> reachedEntries = new();
-    private readonly Dictionary<(StorageRetention Record, MirBody Body, long View), (ulong Proven, ulong Undecided)> solved = new();
+    private readonly Dictionary<(StorageRetention Record, MirBody Body, long View, SourceRef Site), (ulong Proven, ulong Undecided)> solved = new();
     private int[] argValues = []; // A Call's operand values by position (Input), the callee operand's at call.Count.
     private bool limit; // Whether the replay's Call at the location made an undecided store (R4-M147), read and reset by Check.
     private ulong reachedVersion; // The program version whose case Types the entry memo answers.
@@ -180,7 +180,8 @@ internal sealed partial class MirBorrows
     // The inputs a record's pairs make Value at the call (DECISIONS R4-M154, Revision 2), a bit per input: those with a pair proven under
     // the view's Origin class (MirOrigins.Outlives at the call's site). A pair whose Origins the class does not class, or of an input past
     // the mask's 64, leaves its input undecided: a limit at the call where its Value would store a Loan or an address. Memoized per
-    // record, body and view for the program version.
+    // record, body, view and site for the program version: Outlives resolves the pair's Origins at the site (OriginAtUse), so two calls
+    // sharing a record are judged apart.
     private ulong Solved(ulong[] state, in MirTerminator call, StorageRetention record, bool checks)
     {
         if (record.Pairs.IsEmpty)
@@ -189,10 +190,10 @@ internal sealed partial class MirBorrows
         }
 
         this.Version();
-        ref var entry = ref CollectionsMarshal.GetValueRefOrAddDefault(this.solved, (record, this.body, this.view), out var known);
+        var site = this.body.Subject(call.Source);
+        ref var entry = ref CollectionsMarshal.GetValueRefOrAddDefault(this.solved, (record, this.body, this.view, site), out var known);
         if (!known)
         {
-            var site = this.body.Subject(call.Source);
             foreach (var (input, longer, shorter) in record.Pairs)
             {
                 var bit = 1UL << Math.Min(input, 63);
