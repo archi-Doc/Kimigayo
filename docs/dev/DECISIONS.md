@@ -7635,7 +7635,9 @@ resumed by R4-M86 (2026-10-20).
     written slots are judged also when a default has no Type (23.1.2: `MissingType` after them). The candidate solve reads the defaults
     through one derivation of the mapping (`DefaultSlots`: the slots no written argument or receiver supplies; none at a function
     reference's call): each default's well-formedness shortens the solution as a written part's does (`SolveLate`), and an Origin that
-    no supplied input and no clause names is a region of the call (`OpenResultOnlyOrigins`' rule, for the result or a default).
+    no supplied input and no clause names is a local region of the call (`OpenResultOnlyOrigins`' rule, for the result or a default);
+    the well-formedness obligation of a default naming it, judged at the call, keeps the region under the bounds that default's Type
+    states, accepting what 15.3.6's meet of those bounds would.
   - Cause: a default had no `BoundArgumentOperation`, and the judgment and the solve walk operations and parts. `BindCallCore` formed
     the defaults' Types after the judgment and published them unjudged (dfl1, d1u, g1, the method and constructor forms, r1, z5, dfl2
     were accepted on every pipeline); an Origin only a default and the result named took the expected Origin unchecked (r1) or stayed
