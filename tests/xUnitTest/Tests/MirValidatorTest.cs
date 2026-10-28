@@ -892,6 +892,36 @@ public sealed class MirValidatorTest
         Assert.Equal(broken is null ? [] : [MirViolation.Local], Validate(body).Select(static x => x.Rule).Distinct());
     }
 
+    // DECISIONS BU-48: MirLocalRole.Receiver marks exactly a constructor's _0, its construction receiver: the builder's is valid; the role
+    // dropped from a constructor's _0, set on another local of the constructor, or set on _0 of a body that is not a constructor, is a Local
+    // finding.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("dropped")]
+    [InlineData("other")]
+    [InlineData("function")]
+    public void AReceiverIsExactlyAConstructorsResultLocal(string? broken)
+    {
+        var bodies = MirBuildTest.Compile("struct S\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc f(n: i32) -> i32 => n\n")
+            .BuildMir().Bodies.ToArray();
+        var body = bodies.Single(x => x.Source.Module == 0 && (broken == "function" ? x.Key.Decl?.Name == "f" : AdtDef.IsConstructor(x.Key.Decl)));
+        var locals = body.Locals.ToArray();
+        Assert.Equal(broken == "function" ? MirLocalRole.None : MirLocalRole.Receiver, locals[0].Role);
+        var (at, role) = broken switch
+        {
+            "dropped" => (0, MirLocalRole.None),
+            "other" => (1, MirLocalRole.Receiver),
+            "function" => (0, MirLocalRole.Receiver),
+            _ => (-1, MirLocalRole.None),
+        };
+        if (at >= 0)
+        {
+            Unsafe.AsRef(in body.Locals[at]) = locals[at] with { Role = role };
+        }
+
+        Assert.Equal(broken is null ? [] : [MirViolation.Local], Validate(body).Select(static x => x.Rule).Distinct());
+    }
+
     // DECISIONS BU-46: Unstated marks only a kept part's raw layer its declaration writes without `during`, so a local whose Type states it,
     // as a raw layer or inside a Tuple, is a Local finding; the builder's locals over unstated pointers are valid.
     [Theory]

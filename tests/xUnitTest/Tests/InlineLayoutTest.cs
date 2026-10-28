@@ -99,9 +99,9 @@ public class InlineLayoutTest
     [Fact]
     public async Task AnInferredCLayoutInstanceReportsALaterFieldsResourceLimit()
     {
-        // DECISIONS R5-M29 (a declared change of P7b): the old pool visits every Field of P<()> before Layout reports its zero-sized
-        // Field, so the later Field's resource limit is reported (GenerationFailed_Kd before); K10b's InvalidCLayout_Kd, at check under MIR
-        // code generation (K13b), supersedes both.
+        // SPEC 8.15.3 (DECISIONS R4-M134 Q8): the inferred instance's zero-sized Field is InvalidCLayout_Kd at check on every pipeline (the
+        // checked set's layout obligations), before either generator sees the later Field's resource limit (GenerationFailed_Kd before
+        // R5-M29, GenerationResourceLimit_Kd under the old generator until the checked set was judged at check).
         var directory = Path.Combine(Path.GetTempPath(), "kimi-inline-layout-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         try
@@ -110,7 +110,8 @@ public class InlineLayoutTest
             var project = new Project(new Kimigayo(console)) { Name = "layout", Directory = directory };
             project.AddSource("main.kimi", "#Layout(\"C\")\nstruct P<T>\n    var value: T\n    var big: [2147483648 of u8]\nfunc f<T>(value: T) -> i32\n    let x: Option<P<T>> = .None\n    return 0\nlet r = f(())\nConsole.writeLine(\"inferred\")");
             Assert.False(await project.Generate(TestContext.Current.CancellationToken));
-            Assert.Contains(Codegen.Expect("InvalidCLayout_Kd", "GenerationResourceLimit_Kd", CodegenDeviations.InferredCLayoutAtCheck), console.Text, StringComparison.Ordinal);
+            Assert.Contains("InvalidCLayout_Kd", console.Text, StringComparison.Ordinal);
+            Assert.DoesNotContain("GenerationResourceLimit_Kd", console.Text, StringComparison.Ordinal);
             Assert.DoesNotContain("GenerationFailed_Kd", console.Text, StringComparison.Ordinal);
         }
         finally
