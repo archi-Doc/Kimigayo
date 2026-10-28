@@ -63,7 +63,7 @@
 // Content and Chain are two measures: Content what one read through the input carries (premises, step 4), Chain any chain of reads.
 // Files: this one (the contract and its records RetentionKind, StorageRetention, OutputRetention, CallRetention); TyCtxt.Retention.Calls.cs
 // (TyCtxt.Retains, RetainsErasedDestruction and their memo, the callables handed to a body); Binding.Retention.cs with .Atoms.cs,
-// .Storage.cs, .Rows.cs and .Transfers.cs (the computation).
+// .Storage.cs, .Sources.cs, .Rows.cs and .Transfers.cs (the computation).
 // Must not: read the call's solved Origins or its arguments, judge an Origin relation, cover unknown callees or the operands an intrinsic
 // takes beyond its library declaration (A5's; an intrinsic's declaration is a callee like any other, A3 E14), or expose its premise walk as
 // a view of its own (A3 9, item 9).

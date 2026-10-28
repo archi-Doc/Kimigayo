@@ -131,7 +131,8 @@ public sealed partial class Binding
     // read from it has read authority only, SPEC 5.2.1 condition 3, 8.11.4 rule 1; D10, superseding R4-M51's raw clause), nor past a
     // pair layer whose binder admits no exclusive Semantics (an exclusive borrow layer, uniq, objuniq, or a pair layer admitting one, is
     // walked by value in every case, DECISIONS BU-3). Which of an input's occurrences retain its own value, and where, is the storage
-    // walk's and the sources' (Binding.Retention.Storage.cs, DECISIONS R4-M154). A raw layer with another Origin addresses what each borrow its Origin
+    // walk's and the sources' (Binding.Retention.Storage.cs, .Sources.cs; DECISIONS R4-M154). A raw layer with another Origin
+    // addresses what each borrow its Origin
     // belongs to admits (RawContent), and its atom is that Origin, as a borrow's; what a raw layer without one retains is the hold walk's
     // (Binding.Retention.Rows.cs). A callable Type stores nothing, and its per-call Origins belong to no value of it (SPEC 15.2.3). A
     // position of an input's writable storage whose Type is a raw layer, an abstract part, a struct or an enum is one of that input's

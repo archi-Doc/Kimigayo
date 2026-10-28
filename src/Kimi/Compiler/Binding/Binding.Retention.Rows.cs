@@ -6,8 +6,8 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // The records of TyCtxt.Retains (Binding.Retention.cs computes the atoms and premises they are read from, Binding.Retention.Storage.cs
-// the storages, positions and sources): per storage, what the premise closure from its positions reaches, and per output what its hold
-// walk meets.
+// the storages and positions, Binding.Retention.Sources.cs the sources and fits): per storage, what the premise closure from its
+// positions reaches, and per output what its hold walk meets.
 public sealed partial class Binding
 {
     // The cases a pair layer may admit, in SemanticsMask order (CaseFits).
