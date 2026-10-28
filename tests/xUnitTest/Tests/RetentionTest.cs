@@ -549,6 +549,17 @@ public sealed class RetentionTest
         Assert.Equal(["result {0 Content}, store 0: own {0 Content}, reached {0 Content}", "result {0 Content}, store 0: own {0 Content}, reached {}"], Calls(c, "next"));
     }
 
+    // DECISIONS R4-M154 (rule 1's All): All joins every entry with its pairs, the Abstract one's too. A `during self` layer whose holder has
+    // an Origin argument the Subst brings (`H during o`) lets the call write any value at that Origin, a position in the root's storage and
+    // in the Abstract one, so a source whose fit relates two Subst Origins (`p > o`) lists its pair in both, and in All.
+    [Fact]
+    public void AllJoinsTheAbstractEntrysPairs()
+    {
+        var c = Bind("struct H {a}\n    public var data: raw/i32 during self\n    public var peer: ref/i32 during a\n" +
+            "func f<T, E>(h: uniq/T, y: E) => ()\nfunc g(h: uniq/(H during o), y: uniq/i32 during p) => f(h, y)\n");
+        Assert.Equal(["store 0: own {0 Content} if {1 Value: p > o}, reached {0 Content} if {1 Value: p > o}"], Calls(c, "f"));
+    }
+
     // SPEC 22.2.3, 15.6.3, 8.4: a requirement on the caller's abstract Self is read as the caller's premises make its contract: under
     // `I is Iterator`, `next`'s item is `I.Item`, which names no `step`, so it descends from the receiver's referent (Content) and two
     // items stay valid together; with no calling definition the same Subst reads `LentItem(step)`, which retains the receiver Borrow.

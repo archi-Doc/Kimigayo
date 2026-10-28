@@ -34,7 +34,8 @@ public sealed partial class Binding
     private int[] retentionSourceNext = [];
     private int[] retentionMarks = [];
     private RetentionKind[] retentionKept = [];
-    private bool[] retentionGroup = [];
+    private bool[] retentionAssigned = []; // Written's storages already in an entry, and the storages whose pairs Pairs reads, reused.
+    private bool[] retentionMembers = [];
     private int retentionStamp;
 
     // What an output's hold walk met (SPEC 15.6.4, 5.7 Calls; DECISIONS BU-40): a raw layer without an Origin the call may write (rule
@@ -64,14 +65,23 @@ public sealed partial class Binding
     }
 
     // A reused array of at least `length` elements (grown, never shrunk); its caller sets what it reads.
-    private static int[] Reused(ref int[] array, int length)
+    private static T[] Reused<T>(ref T[] array, int length)
     {
         if (array.Length < length)
         {
-            array = new int[Math.Max(length, array.Length * 2)];
+            array = new T[Math.Max(length, array.Length * 2)];
         }
 
         return array;
+    }
+
+    // Joins one storage's kinds into another's.
+    private static void Join(RetentionKind[] into, RetentionKind[] kinds)
+    {
+        for (var i = 0; i < into.Length; i++)
+        {
+            into[i] |= kinds[i];
+        }
     }
 
     // SPEC 15.6.4 (DECISIONS R4-M154): the records of the contract being computed. The result is one storage, every position of its Type
@@ -246,9 +256,10 @@ public sealed partial class Binding
         }
     }
 
-    // An output's record from the storages' kinds and pairs (Storages): its root's, the storages past it joined by Origin-erased Type (an
-    // Origin-only difference between them is in their pairs, DECISIONS R4-M154, Revision 2), the Abstract one where the walk met an
-    // abstract part, and their join; every one untied where the output is; null where the call keeps nothing there.
+    // An output's record from the storages' kinds and pairs (Storages): its root's, the storages past it joined by Origin-erased Type, each
+    // storage in one entry (an Origin-only difference between them is in their pairs, DECISIONS R4-M154, Revision 2), the Abstract one
+    // where the walk met an abstract part, and All, their join with every one of their pairs; every one untied where the output is; null
+    // where the call keeps nothing there.
     private OutputRetention? Written(int output, bool untied)
     {
         var kinds = this.retentionKinds;
@@ -256,43 +267,34 @@ public sealed partial class Binding
         var all = new RetentionKind[inputs];
         var reached = this.retentionEntries;
         reached.Clear();
-        var group = this.retentionGroup.Length >= kinds.Count ? this.retentionGroup : this.retentionGroup = new bool[kinds.Count * 2];
-        Array.Clear(group);
+        var assigned = Reused(ref this.retentionAssigned, kinds.Count);
+        Array.Clear(assigned, 0, kinds.Count);
         for (var s = ResultStorage + 1; s < kinds.Count; s++)
         {
-            var erased = this.types.Erase(this.storageTypes[s]!);
-            if (group[s])
+            if (assigned[s])
             {
                 continue;
             }
 
-            var join = new RetentionKind[inputs];
+            var (erased, join, members) = (this.types.Erase(this.storageTypes[s]!), new RetentionKind[inputs], this.Members());
             for (var t = s; t < kinds.Count; t++)
             {
-                group[t] = ReferenceEquals(this.types.Erase(this.storageTypes[t]!), erased);
-                for (var i = 0; group[t] && i < inputs; i++)
+                if (!assigned[t] && ReferenceEquals(this.types.Erase(this.storageTypes[t]!), erased))
                 {
-                    join[i] |= kinds[t][i];
+                    (assigned[t], members[t]) = (true, true);
+                    Join(join, kinds[t]);
                 }
             }
 
-            for (var i = 0; i < inputs; i++)
-            {
-                all[i] |= join[i];
-            }
-
-            reached.Add((erased, new(join, this.Pairs(join, group, s, kinds.Count), untied)));
+            Join(all, join);
+            reached.Add((erased, new(join, this.Pairs(join, members), untied)));
         }
 
-        Array.Fill(group, true, ResultStorage + 1, kinds.Count - ResultStorage - 1);
-        if (this.storagePositions.Exists(static x => x.Storage == AbstractStorage))
+        var hidden = this.storagePositions.Exists(static x => x.Storage == AbstractStorage);
+        if (hidden)
         {
             reached.Add((null, new([.. kinds[AbstractStorage]], this.Pairs(kinds[AbstractStorage], AbstractStorage), untied)));
-            group[AbstractStorage] = true;
-            for (var i = 0; i < inputs; i++)
-            {
-                all[i] |= kinds[AbstractStorage][i];
-            }
+            Join(all, kinds[AbstractStorage]);
         }
 
         var any = untied;
@@ -307,7 +309,10 @@ public sealed partial class Binding
         }
 
         var own = new StorageRetention([.. kinds[OwnStorage]], this.Pairs(kinds[OwnStorage], OwnStorage), untied);
-        return new(output, own, [.. reached], new(all, this.Pairs(all, group, ResultStorage + 1, kinds.Count), untied));
+        var joined = this.Members();
+        Array.Fill(joined, true, ResultStorage + 1, kinds.Count - ResultStorage - 1);
+        joined[AbstractStorage] = hidden;
+        return new(output, own, [.. reached], new(all, this.Pairs(all, joined), untied));
     }
 
     // Whether a position's closure (marked `stamp`) reaches every layer a source is formed through (RetentionSource.Path).
@@ -341,26 +346,33 @@ public sealed partial class Binding
             return [];
         }
 
-        var group = new bool[storage + 1];
-        group[storage] = true;
-        return this.Pairs(kinds, group, storage, storage + 1);
+        var members = this.Members();
+        members[storage] = true;
+        return this.Pairs(kinds, members);
     }
 
-    // The pairs of the storages from `first` to `end` marked in `group` (retentionPairs) whose input `kinds` does not already give Value,
-    // each once.
-    private (int Input, BoundOrigin Longer, BoundOrigin Shorter)[] Pairs(RetentionKind[] kinds, bool[] group, int first, int end)
+    // The pairs of the storages marked in `members` (retentionPairs) whose input `kinds` does not already give Value, each once.
+    private (int Input, BoundOrigin Longer, BoundOrigin Shorter)[] Pairs(RetentionKind[] kinds, bool[] members)
     {
         List<(int Input, BoundOrigin Longer, BoundOrigin Shorter)>? pairs = null;
         foreach (var (storage, input, longer, shorter) in this.retentionPairs)
         {
-            if (storage >= first && storage < end && group[storage] && (kinds[input] & RetentionKind.Value) == 0 &&
-                !(pairs ??= []).Contains((input, longer, shorter)))
+            var open = members[storage] && (kinds[input] & RetentionKind.Value) == 0;
+            if (open && !(pairs ??= []).Contains((input, longer, shorter)))
             {
                 pairs.Add((input, longer, shorter));
             }
         }
 
         return pairs is null or [] ? [] : [.. pairs];
+    }
+
+    // The storages of the walk made, none marked (Pairs' members), reused.
+    private bool[] Members()
+    {
+        var members = Reused(ref this.retentionMembers, this.storageTypes.Count);
+        Array.Clear(members, 0, this.storageTypes.Count);
+        return members;
     }
 
     // The nodes the premise closure from a node reaches, once per computation (OriginPremiseClosure.Close's work, OriginProofMetrics measured).
