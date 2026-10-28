@@ -125,7 +125,7 @@ internal sealed partial class FunctionCodegen
     // __kimi_raw_allocate, which checks the count and the byte size and gives a nonnull aligned address for zero bytes, with T's stride; no
     // Layout alignment exceeds the heap's 16 (DECISIONS R5-M92), so no T is refused. A creation is its target descriptor's factory and a
     // clone its handle's retain (FunctionCodegen.Objects). Null for any other writer, and after a broken contract's record. A T without its
-    // layout is a broken contract, recorded by Laid (its stride 0, in a module then not written).
+    // layout (the row's TypeArguments need, Needed) is a broken contract, recorded by Laid (its stride 0, in a module then not written).
     private FunctionAbi? Routine(IntrinsicRow row, BoundType? result, Subst? subst, int target, out ReadOnlySpan<Value> given)
     {
         given = default;
@@ -138,7 +138,7 @@ internal sealed partial class FunctionCodegen
                 this.module.Request(ModuleCodegen.Needs.StorageBytes | ModuleCodegen.Needs.Memory);
                 return row.Routine;
             case IntrinsicWriter.Allocate:
-                this.slotless[0] = new('\0', this.Laid(argument)?.Layout.Stride ?? 0);
+                this.slotless[0] = new('\0', this.Needed(subst!, 0, out _)?.Layout.Stride ?? 0); // Its row's TypeArguments need.
                 given = this.slotless.AsSpan(0, 1);
                 return row.Routine;
             case IntrinsicWriter.Create:

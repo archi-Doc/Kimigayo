@@ -7367,6 +7367,9 @@ resumed by R4-M86 (2026-10-20).
     (`RecordOf`): a CLayout or oversized one is a located `Unsupported_Kd` at the constructor (8.15.3's last sentence), a limit its
     Resource record (IMPL 21.3.2), anything else `InternalInvariant_Kd`. The judge's `i-init` and `i-toplevel` rows lost their record at
     `init` in their own commit under this reading.
+  - Superseded by R5-M149 (the owner's Q1 (a): such a constructor is checked only, not generated, so MIR code generation builds a
+    Library as well as an Application): the receiver contract's code generation record and its interim; and the Open bullet's
+    `f(s: ref/S) => s.n` known limit, now a use at the projection at `check` (R5-M144, R5-M149).
   - Interim (R5's ruling on the landing merge with X2, 2026-10-29): code generation's receiver record narrows R5-M146's statements that the
     capability table is the Backend's one source of not-yet-implemented records and that the arena skip is code generation's one
     `Unsupported_Kd`; ARCH names it beside R5-M96's arena skip as code
@@ -12096,7 +12099,52 @@ structure is recorded here by the unit that first implements it.
        ACCEPT; G:test PASS (`19c23b2c1`). The end-to-end codegen review (`artifacts/benchmarks/r5-exit/review-e2e.md`) was REVISE: B1, the
        structure limits and code rules in R5's code, is unit x3b1 (one behavior-preserving commit); B2, a Type laid out only through a
        Deref projection is no layout obligation, goes into R5-M144's projection unit before R5's exit, the projection's layout use covering
-       every layout obligation (C layout and the limits; SPEC 8.15.3); B3 is this entry's correction above. Its final verdict:
+       every layout obligation (C layout and the limits; SPEC 8.15.3), closed one level higher by R5-M149's layout needs; B3 is this entry's
+       correction above. Its final verdict:
        <added at the merge>.
   - Rejected: marking `Layout.Row` (it would claim a removal that never comes); the stage-3 difference of two compilations for the
     collection share (below the noise, R5-M147); a timer inside the compiler (a hook only a measurement reads).
+- **R5-M149 Layout needs: one published fact of what a form's generated code reads a layout of, read by the collector and code
+  generation; an uncalled constructor without a layout is checked only (unit proj)** (2026-10-29, C lane; PLAN G157 (41), the end-to-end
+  review's B2; design `proj-design.md` revision 3, design review 2 ACCEPT; the owner's approval 2026-10-29, verbatim
+  「両方とも推奨どおりで進めて下さい」, of the closed vocabulary `LayoutNeed` {None, Parts, Element, TypeArguments} and of Q1 (a); an Owner
+  change under R5-M144) SPEC 8.15.3 makes a use every form that needs a Type's layout; R5-M144 adds a Field projection through a borrow or
+  raw pointer (the offset is the layout).
+  - Cause: the collector's K 4.8 listed by-value forms only, while code generation chose for itself which Types it lays out, so an
+    accepted program reached `InternalInvariant_Kd` at generation wherever code generation read a layout past a root's by-value storage:
+    a projection through a borrow, raw pointer, object handle or a sequence's buffer, a raw pointer's displacement (its pointee's
+    stride), `swap` through two references, a Dictionary kernel through a borrowed Dictionary (its K and V) and a comparison shim's Tuple
+    past a reference layer (the review's R1).
+  - The fact: `LayoutNeed` (Backend, `LayoutNeeds.cs`), a column on every table the forms are dispatched by: `LayoutNeeds.Of` of a
+    projection kind (Field, Downcast: Parts; Index, ConstIndex: Element), of an operator (Add, Sub on a raw pointer: Element, the one
+    statement of which operator displaces, moved out of the operator table's Displacement column) and of a comparison node (a Composite
+    over a Tuple: Parts); `IntrinsicRow.Need` (replacing `LaysOutType`) and `LegacyRow.Need` (whole-value updates and Dictionary kernels:
+    TypeArguments; rows in their function's instance None, their LegacyRow item being the use). `LayoutNeeds.TypeOf`, one overload per
+    table, is the one place that names a need's Type (a step's prefix or own Type, a displacement's pointee, a node's Type, every Type of
+    a call's substitution); each reader maps it into its instance. The storage boundary is `Layout.Indirect` (X34: a borrow, raw pointer,
+    handle or sequence handle is laid out without its component).
+  - Readers: the collector (K 4.8): a template's list of each Place step whose need lies past its root's storage (a PairLayer's case by
+    the item's view), a raw-pointer BinaryOp a site, a call's TypeArguments at the call or its function's Item, the comparison tree's
+    past-indirection bit in `Leaves`; each a use at its form with the existing records (`InvalidCLayout_Kd`, `OversizedLayout_Kd` at each
+    use; `GenerationResourceLimit_Kd` once per erased Type). Code generation: every such read through `FunctionCodegen.Needed`, whose
+    contract now says a Type outside the item's by-value set is laid out only through it. Index and Len no longer read a fixed array's
+    record (its length is its Type's): `p[i]` through `ref/[300000000 of i64]` was `InternalInvariant_Kd` under sel.
+  - Q1 (a), the receiver: SPEC 8.15.3 makes the construction expression, not the constructor, the use (6.3.3; BU-48), so
+    `InstanceCollector.Generates` checks only a root constructor whose Type has no layout: no program that builds calls it. Code
+    generation's receiver record (`ReceiverRecord`, its `Unsupported_Kd`) goes, and with it BU-48's interim (superseded) and ARCH's second
+    code generation `Unsupported_Kd`; a Library with an opaque `#Layout("C") public struct Handle` builds under sel.
+  - SPEC 8.15.3 states the projection, Case payload and element through such an indirection or a sequence's storage, and a comparison of
+    parts there (§13.4), in one sentence.
+  - Deleted: the operator table's Displacement column, code generation's own derivations of these Types (`Displace`'s pointee,
+    `Update`'s and the update entry's referent, the kernels' substitution reads, the place writer's per-arm choice, the shim's `Laid`),
+    the fixed-array record reads, `ReceiverRecord`, `IntrinsicRow.LaysOutType`.
+  - Rejected: projection-only (it left p11, p12, s01 and R1); each reader naming a need's Type; a clause per form in the collector; every
+    step a use (records at by-value Places and a constructor's placements); the receiver as a use (25 shared rows fail: every empty C
+    struct errs through its synthesized constructor); a lasting code generation `Unsupported_Kd`; a MirDescriptors column.
+  - Records: the snapshot against `shared-base/d3fcfd5a8` gains no row; the projection forms' Language records publish on every pipeline.
+  - Size (net lines): src +324 (Instances +195, Backend +113 with `LayoutNeeds.cs` +99, Codegen +15, Core +1; contracts included);
+    tests +198; docs +48. Cost (quiet slot, KIMI_CPU=2, tiering off, 5 interleaved rounds, minima, base 2576b0537): Analyze cold +2.4 %
+    (Hello 4,377 to 4,484 us) and +2.3 % (Milestone26, 4,731 to 4,841 us), re-collect +2.6 % and +2.8 % on the default pipeline; under
+    sel +1.3 % and +0.4 % cold, +1.4 % and +2.0 % re-collect; cold allocation +7,184 B (Hello) and +7,216 B (Milestone26), the need
+    list's and the marks' first growth; warm 0 B (raw rows `r5\proj\ab-final.txt`). The owner accepted this cost (2026-10-29, to the R5
+    planning session directly, verbatim 「受け入れる」).
