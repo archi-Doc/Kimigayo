@@ -720,12 +720,14 @@ public sealed class TyCtxtTest
     // SPEC 8.9.2, 8.2.3 (DECISIONS BU-50, revised by bu55): a projection that two proven conformance paths of its subject bind names their
     // common Type. OwningIterator, BorrowingIterator and a user Wrapper conform to LendingIterator directly, binding
     // `I.(LendingIterator).LentItem(step)`, and through `Self is Iterator when I is Iterator`, whose Iterator binds `LentItem(step) is Item`,
-    // so `I.Item`: the bindings differ as written and are both i32 under Counter, as W<Src>'s Item through HasItem and HasMore is. So the
-    // instance a call of `step` makes (TyCtxt.Instance; WK's handed `next` has this shape) is a Prepared Option<i32>, the call's Type
-    // too, and W<Src>'s Field and Case payload are i32 (before: Rejected, which threw in WK's retention; the call kept the projection,
-    // and the reads in `f` were NoApplicableOverload_Kd and InvalidPattern_Kd). The twins resolved before: a direct conformer (Cursor),
-    // one refinement path (Counter, the generic Gen<i32>, the inherited DerS), and bindings that agree as written (GenWrap's premise
-    // `I is Iterator`). Paths that disagree keep Binding's records (InstanceCollectorTest's refinedDisagree).
+    // so `I.Item`: the bindings differ as written and are both i32 under Counter, as W<Src>'s Item through HasItem and HasMore is, and
+    // V<Src>'s through two conditional paths, the nested W<W<Src>>'s and the inherited W<DerS>'s. So the instance a call of `step` makes
+    // (TyCtxt.Instance; WK's handed `next` has this shape) is a Prepared Option<i32>, the call's Type too, and each holder's Field and
+    // Case payload are i32 (before: Rejected, which threw in WK's retention; the call kept the projection, and the reads in `f` were
+    // NoApplicableOverload_Kd and InvalidPattern_Kd; V<Src>, W<W<Src>> and W<DerS> each left a binding unresolved without a record). The
+    // twins resolved before: a direct conformer (Cursor), one refinement path (Counter, the generic Gen<i32>, the inherited DerS), and
+    // bindings that agree as written (GenWrap's premise `I is Iterator`). Paths that disagree keep Binding's records (InstanceCollectorTest's
+    // refinedDisagree).
     [Fact]
     public void ProvenPathsBindTheirCommonType()
     {
@@ -737,8 +739,10 @@ public sealed class TyCtxtTest
             "    Self is HasItem\n    associate HasItem.Item is S.(HasItem).Item\n    Self is HasMore when S is HasMore\n" +
             "        associate HasMore.Elem is S.(HasMore).Elem\nopen struct BaseS\n    Self is HasMore\n    associate HasMore.Elem is i32\n" +
             "struct DerS : BaseS\n    var m: i32\nstruct HA<S>\n    S is HasItem\n    public var x: S.Item\nenum EH<S>\n    S is HasItem\n    A(S.Item)\n" +
-            "    B\nfunc f(h: HA<W<Src>>, e: EH<W<Src>>, d: HA<DerS>) -> i32\n    match e\n        .A(let n) => return n + h.x + d.x\n" +
-            "        .B => return h.x\nstruct Counter\n    Self is Iterator\n    associate Iterator.Item is i32\n    public init() => ()\n" +
+            "    B\nstruct V<S>\n    Self is HasItem when S is HasItem\n        associate HasItem.Item is S.(HasItem).Item\n" +
+            "    Self is HasMore when S is HasMore\n        associate HasMore.Elem is S.(HasMore).Elem\n" +
+            "func f(h: HA<W<Src>>, e: EH<W<Src>>, d: HA<DerS>, v: HA<V<Src>>, ev: EH<V<Src>>, ww: HA<W<W<Src>>>, wd: HA<W<DerS>>) -> i32\n" +
+            "    match e\n        .A(let n) => return n + h.x + d.x + v.x + ww.x + wd.x\n        .B => return h.x\nstruct Counter\n    Self is Iterator\n    associate Iterator.Item is i32\n    public init() => ()\n" +
             "    public func next(self: uniq/Self) -> Option<i32> => .None\nstruct Cursor\n    Self is LendingIterator\n" +
             "    associate LentItem(step) is ref/i32 during step\n    var value: i32 = 0\n    public init() => ()\n" +
             "    public func next(self: uniq/Self during step) -> Option<ref/i32 during step> => .Some(self.value@ref)\nstruct Gen<T>\n" +
@@ -764,7 +768,10 @@ public sealed class TyCtxtTest
                 .Select(static x => $"{TyCtxt.Name(x.Item1)} {x.Item2.Storage} {TyCtxt.Name(x.Item2.Type!)} {TyCtxt.Name(x.ReturnType)}"));
         var holders = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters.Select(static x => x.Type.TypeOf()!);
         Assert.Equal(
-            ["HA<W<Src>> Prepared i32", "EH<W<Src>> Prepared (i32)", "HA<DerS> Prepared i32"],
+            [
+                "HA<W<Src>> Prepared i32", "EH<W<Src>> Prepared (i32)", "HA<DerS> Prepared i32", "HA<V<Src>> Prepared i32", "EH<V<Src>> Prepared (i32)",
+                "HA<W<W<Src>>> Prepared i32", "HA<W<DerS>> Prepared i32",
+            ],
             holders.Select(x => $"{TyCtxt.Name(x)} {c.Binding.PrepareTypeStorage(x)} {TyCtxt.Name(c.Types.StoredParts(x, out _)[0]!)}"));
     }
 
