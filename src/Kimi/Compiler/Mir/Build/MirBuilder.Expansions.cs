@@ -264,7 +264,8 @@ internal sealed partial class MirBuilder
 
     // SPEC 12.4.3: a dictionary literal: the empty Dictionary, then each entry in source order: its key evaluated once and retained, looked
     // up among the entries inserted (its plan's findEntry call), a duplicate failing with KIMI_E_DUPLICATE_KEY before the value is evaluated,
-    // then the value evaluated and the pair placed (the placeEntry body, over the handle dictionaryStorage gives). The empty Dictionary is a
+    // then the value evaluated and the pair placed (the placeEntry body, over the handle dictionaryStorage gives), every step of the entry's
+    // insertion located at its key, where a failure inside it reports (SPEC 22.5.1; DECISIONS R5-M144). The empty Dictionary is a
     // part made before the entries, in a temp of its own that an interrupted entry's exit destroys, and moved to the destination after the
     // last entry, where the literal's value is created (SPEC 3.6, 16.2.1; DECISIONS R4-M129).
     private void Dictionary(MirPlace destination, DictionaryLiteralKoto dictionary)
@@ -300,14 +301,14 @@ internal sealed partial class MirBuilder
             this.Fail(fail, "KIMI_E_DUPLICATE_KEY", entry.Key);
             this.Assign(value, entry.Value);
             this.Made(value);
-            var handle = this.Hold(layout, entry.Value);
-            this.arguments.Add(this.Borrow(SemanticsKind.Uniq, built, entry.Value));
-            this.Serve(handle, CompilerFunctionKind.StorageDictionaryLayout, null, slots, start, entry.Value);
+            var handle = this.Hold(layout, entry.Key);
+            this.arguments.Add(this.Borrow(SemanticsKind.Uniq, built, entry.Key));
+            this.Serve(handle, CompilerFunctionKind.StorageDictionaryLayout, null, slots, start, entry.Key);
             this.Made(handle);
             this.arguments.Add(MirOperand.Copy(this.body.Project(handle, MirProjectionKind.Field, 0)));
             this.arguments.Add(MirOperand.Move(key));
             this.arguments.Add(MirOperand.Move(value));
-            this.Serve(this.Temp(BoundType.Unit, entry.Value), CompilerFunctionKind.StoragePlaceDictionaryEntry, null, slots, start, entry.Value);
+            this.Serve(this.Temp(BoundType.Unit, entry.Key), CompilerFunctionKind.StoragePlaceDictionaryEntry, null, slots, start, entry.Key);
         }
 
         this.Use(destination, MirOperand.Move(built), dictionary);

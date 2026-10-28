@@ -1,3 +1,0 @@
-fixture	Utf8FloatOracle.ll	1
-test	XunitTest.Utf8ReserveEffectTest.ClearingBorrowedDictionariesChecksSourceDestruction	XunitTest.Utf8ReserveEffectTest.ClearingBorrowedDictionariesChecksSourceDestruction(key: False, noisy: False)
-test	XunitTest.Utf8ReserveEffectTest.ClearingBorrowedDictionariesChecksSourceDestruction	XunitTest.Utf8ReserveEffectTest.ClearingBorrowedDictionariesChecksSourceDestruction(key: True, noisy: False)

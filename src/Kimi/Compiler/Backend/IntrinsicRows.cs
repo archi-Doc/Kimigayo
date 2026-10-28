@@ -28,12 +28,11 @@ internal enum IntrinsicWriter : byte
 {
     Unwritten, // A later unit's row (its comment names it): one located Unsupported_Kd at the call.
     Routine, // The row's runtime routine through the one call writer: the call's operands at its parameters, then the call's location.
-    TryAllocate, // Routine's, the routine defined in the module on request (LlvmModuleText.TryAllocate).
+    Requested, // Routine's, the routine the module defines on request: LlvmModuleText's TryAllocate and TransferBytes.
     Allocate, // Raw.allocate: the count, the element's stride and the location to the row's routine.
     Fail, // A fixed SPEC 22.5.2 code's Abort reason and the location to the row's routine (the runtime Abort).
     Initialize, // Raw.initialize: the value put at the storage.
     Slice, // Raw.slice: the Slice record of the storage and the length.
-    Copy, // transferBytes: llvm.memcpy of the byte count.
     Ensure, // staticEnsure: its slot's state tested inline, the slot's ensure function off the Initialized path (FunctionCodegen.Statics).
     Create, // makeObj, makeRc, makeArc: Routine's, the factory of the call's target descriptor with its control value (FunctionCodegen.Objects).
     Clone, // clone: Routine's, the runtime's retain of the result handle's counting (FunctionCodegen.Objects).
@@ -71,8 +70,8 @@ internal static class IntrinsicRows
         new(IntrinsicId.RawRelease, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Routine, RuntimeAbi.StorageRelease),
         new(IntrinsicId.RawInitialize, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Initialize, null),
         new(IntrinsicId.RawSlice, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Slice, null),
-        new(IntrinsicId.TryAllocateBytes, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.TryAllocate, RuntimeAbi.TryAllocateBytes),
-        new(IntrinsicId.MoveBytes, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Copy, null),
+        new(IntrinsicId.TryAllocateBytes, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Requested, RuntimeAbi.TryAllocateBytes),
+        new(IntrinsicId.MoveBytes, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Requested, RuntimeAbi.TransferBytes),
         new(IntrinsicId.Stride, IntrinsicTarget.None, LaysOutType: true, IntrinsicWriter.Unwritten, null), // No MIR producer yet (an open PLAN row).
         new(IntrinsicId.DestroyValues, IntrinsicTarget.Glue, LaysOutType: true, IntrinsicWriter.Unwritten, null), // No MIR producer yet (PLAN G198).
         new(IntrinsicId.ReinterpretLoan, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // No MIR producer yet (an open PLAN row).

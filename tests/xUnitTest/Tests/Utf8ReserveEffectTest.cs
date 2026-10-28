@@ -162,7 +162,8 @@ public class Utf8ReserveEffectTest
     [InlineData(true, true)]
     public void ClearingBorrowedDictionariesChecksSourceDestruction(bool key, bool noisy)
     {
-        var prefix = State + "struct Item\n    Self is Equatable\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n    drop => " + (noisy ? "State.value += 1\n" : "()\n");
+        // The static is declared only where a noisy key or value reads it (DECISIONS R5-M145).
+        var prefix = (noisy ? State : string.Empty) + "struct Item\n    Self is Equatable\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n    drop => " + (noisy ? "State.value += 1\n" : "()\n");
         var source = prefix + "struct Writer {source}\n    Self is BufferWriter\n    let items: uniq/Dictionary<" + (key ? "Item, i32" : "i32, Item") + "> during source\n    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>\n        self.items.clear()\n        return .Err(BufferFull.init())";
         var c = MinimalEmissionTest.Analyze(source);
         if (noisy)

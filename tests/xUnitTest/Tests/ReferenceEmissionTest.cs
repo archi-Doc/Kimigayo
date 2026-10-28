@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Backend;
@@ -133,27 +134,23 @@ public class ReferenceEmissionTest
         ScalarEmissionTest.EmitFixture("ReferenceAbruptComparison" + (expression.StartsWith('a') ? "Right" : "Left"), source, "a\n");
     }
 
+    // IMPL 21.3.1 (AbiRecords; DECISIONS R5-M145 under R5-M12): a shared borrow of a string is passed as its address, noundef nonnull align 8
+    // dereferenceable(24) and never noalias, at the callee's parameters and at its call alike, and the callee is not readonly; the string is
+    // neither copied nor destroyed by the borrow, which the native audit's single destruction shows under either generator.
     [Fact]
     public void BorrowedValuesNeedNoPhysicalCopyOrStorage()
     {
         const string Source = Same + "let a = \"a\"\nif same(a, a) => Console.writeLine(a)";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        var body = c.Ownership.Bodies[0];
-        var function = module.GetFunction(0);
-        Assert.Equal(3, body.Operations.Count(x => x.Kind == OwnershipOperationKind.Borrow)); // Two for same, one for writeLine (SPEC 22.1).
-        Assert.DoesNotContain(function.Slots, x => ReferenceTypes.IsString(body.Places[x.Place].Type));
-        var borrowed = module.GetFunction(1);
-        Assert.Empty(borrowed.Slots);
-        Assert.DoesNotContain(borrowed.Instructions, x => x.Callee == RuntimeAbi.DestroyString || x.Opcode == EmissionOpcode.MoveString);
+        Assert.Equal(3, c.Ownership.Bodies[0].Operations.Count(x => x.Kind == OwnershipOperationKind.Borrow)); // Two for same, one for writeLine (SPEC 22.1).
         using var writer = new StringWriter();
-        Assert.True(c.WriteIr(writer, out error), error);
+        Assert.True(c.WriteIr(writer, out var error), error);
         var ir = writer.ToString();
-        Assert.Contains("ptr noundef nonnull align 8 dereferenceable(24) %a0", ir);
-        Assert.Contains("ptr noundef nonnull align 8 dereferenceable(24) %p", ir);
+        const string Shared = @"ptr noundef nonnull align 8 dereferenceable\(24\) %\w+";
+        var same = Assert.Single(Regex.Matches(ir, @"(?ms)^define internal i1 @([\w.]+)\(" + Shared + ", " + Shared + @"\) #0 \{\n.*?^\}"));
+        Assert.Single(Regex.Matches(ir, @"call i1 @" + Regex.Escape(same.Groups[1].Value) + @"\(" + Shared + ", " + Shared + @"\)"));
         Assert.DoesNotContain("noalias", ir);
-        var functionText = ir[ir.IndexOf("define internal i1 @__kimi_f0", StringComparison.Ordinal)..];
-        Assert.DoesNotContain("readonly", functionText);
+        Assert.DoesNotContain("readonly", same.Value);
         StringEmissionTest.WriteAuditedFixture("ReferenceSingleDestruction", ir, "a\n", "a=1");
     }
 
