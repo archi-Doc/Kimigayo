@@ -5175,8 +5175,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     judges and from which W derives the storage end's Loan conflict (R4-M132): one record on each pipeline (t7a, t7d, e1-e3). The
     Closure keeps its Type (F2: no `Never` result, no derived NotCallable_Kd or UnresolvedBinding_Kd, no validator finding).
     The view's row 5, a body's own call receiver and call result, is one predicate (`Binding.OwnCallAtom`) that `FixedIn` and
-    `ClassifyAtom` read. Deleted: `CallLocalOrigin` and the Closure's
-    failure (OQ-F7-2 (a)), with the 2c-0 "Environment only" rule.
+    `ClassifyAtom` read. Deleted: `CallLocalOrigin` and the Closure's failure (OQ-F7-2 (a)), with the 2c-0 "Environment only" rule.
   - P9 (`Binding.ValueCalls`): R1's Unsupported_Kd is deleted. A Closure's call result naming ρ takes the receiver acquisition's Origin
     (`ReceiverImage`: the published acquisition, a payload's borrow or a stored exclusive callee's Reborrow; through any other reference,
     its referent's; any owned callee's Borrow, `PlaceOrigin`), and its call result atom the call's Unbound atom, R4-M118's second source
@@ -5184,25 +5183,26 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `SubstituteStoredOrigin`, each built only where the result names its atom (`CallAtomsOf`): a result with no Origin costs nothing.
     `PlaceOrigin` names a Closure literal's own temporary by its ClosureValueSlot, the atom that is ρ in the literal's body (it was slot
     0, read as the literal's parameter 0), so a call on the literal needs no row of its own, and a Borrow of the literal kept past its
-    statement is the Loan conflict on the default pipeline too (the old analysis roots that atom at the temporary). The result then carries the receiver's Loan through R4-M148's Value
-    row: on the MIR t1a-t1d, t3a-t3d, t4a-t4c, t5, t5b, f7e1, f7e2 and r1a-r1c take their SPEC verdicts (15.8.2's `let moved = get@move`
-    is ComparisonLoanConflict_Kd).
+    statement is the Loan conflict on the default pipeline too (the old analysis roots that atom at the temporary). The result then
+    carries the receiver's Loan through R4-M148's Value row: on the MIR t1a-t1d, t3a-t3d, t4a-t4c, t5, t5b, f7e1, f7e2 and r1a-r1c take
+    their SPEC verdicts (15.8.2's `let moved = get@move` is ComparisonLoanConflict_Kd).
   - F1, the owner's (c') (supersedes in part R4-M126 §2.7's "through its closure context"): a Closure Subst binds only its target's
     declared Origins and inputs, and a context a call made would be codegen-visible (`ClosePart` skips a Type with one, relations compare
     contexts by identity), so a Closure value returned from another Closure's call keeps that Closure's atoms in its signature: its
     receiver's, and its inputs' (BU's review N1). A value call whose callee signature names an atom of another Closure that does not
     enclose the call is the located Unsupported_Kd in Binding (`CallAtomsOf`): n1's inner calls, f1a, f1c, f1h, and f1in (a false
     UnprovenOriginRelation_Kd before), f1inbad (accepted by the default with a dangling read) and f1inok. The maker's calls bind (n1's
-    second `outer()` is the MIR's Loan conflict), as an inner Closure's call in its maker's body does. Removal: F1's representation unit (PLAN), (b) the design's recommended start. No ClosureContext arises in a
-    definition, so R4-M148's "no A5 callee carries a closure context" holds after 2c-5, and BU's N3 stays latent.
+    second `outer()` is the MIR's Loan conflict), as an inner Closure's call in its maker's body does. Removal: F1's representation unit
+    (PLAN), (b) the design's recommended start. No ClosureContext arises in a definition, so R4-M148's "no A5 callee carries a closure
+    context" holds after 2c-5, and BU's N3 stays latent.
   - The gate (OQ4 (a), OQ-F7-1 (vi), the owner's D5 exception; `Binding.ValueCallGate`, removed at R6-check): BindValueCall keeps R1's
     condition (`dependent`, or a per-call result naming the receiver) as `CallPlan.ReceiverDependentResult`, overwritten by each
     binding, and lists each call once per pass: the list is pass-stamped (no reset, created with its first call) and a plan flag,
     `ReceiverDependentListed`, sharing the fact's byte (a plan field would cost 8 B per call), makes the listing O(1);
-    `OwnershipAnalysis.Analyze`, after the completeness check and before the old reporter,
-    reports Ownership.Unsupported at each listed call whose current plan holds it (F4) and analyzes nothing else. R1's code and span stay
-    in a program Binding accepts; in one Binding rejects elsewhere no gate runs, so R1's records go (r1a-r1c, 15.8.2's
-    closure-dependencies). `ResultFixedForCall` moved into the gate file first (behavior-preserving commit).
+    `OwnershipAnalysis.Analyze`, after the completeness check and before the old reporter, reports Ownership.Unsupported at each listed
+    call whose current plan holds it (F4) and analyzes nothing else. R1's code and span stay in a program Binding accepts; in one
+    Binding rejects elsewhere no gate runs, so R1's records go (r1a-r1c, 15.8.2's closure-dependencies). `ResultFixedForCall` moved
+    into the gate file first (behavior-preserving commit).
   - Also: R5-M63's failed-Closure row (a Closure failed after its definition completes) has no input left: HirFormsTest, MirInitTest and
     the `opaque` golden (its `return n@ref` now `return n`: MirCensusTest's GoldensHaveNoProblems rejects the A5 twin the failed
     returned value keeps) take a typed Closure. Its replaced-parent row stays, a let whose Type annotation fails (`let g: Missing = ...`).
