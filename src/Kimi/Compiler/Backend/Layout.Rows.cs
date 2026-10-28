@@ -7,7 +7,8 @@ namespace Kimi.Compiler.Backend;
 
 // The static rows of Layout (IMPL 21.1.3; plan P7a): scalars, Unit, string, Never, borrows and raw pointers, object and function handles,
 // and until R8 the Slice, Array and Dictionary handle words, each one shared record, which placement (Layout.Placement.cs) reads for a
-// Type that is not placed and the old scalar-value gate reads through Row until G8; and an enum's tag (Tag), which placement places.
+// Type that is not placed and code generation reads through Row (the old scalar-value gate too, until the old Emission goes at R6-gen;
+// DECISIONS R5-M148); and an enum's tag (Tag), which placement places.
 internal sealed partial class Layout
 {
     private const string Removal = "R8 declares the Slice, Array and Dictionary handles in the Kimigayo library, whose struct placement lays them out.";
@@ -33,7 +34,7 @@ internal sealed partial class Layout
     /// before its payload at Field 1, which placement places and code generation reads and writes.</summary>
     internal static ValueLowering Tag => Primitives[BoundType.I32];
 
-    /// <summary>Gets IMPL 21.1.3's static row of a Type, which the old scalar-value gate reads until G8.</summary>
+    /// <summary>Gets IMPL 21.1.3's static row of a Type, which code generation reads (and the old scalar-value gate until R6-gen).</summary>
     /// <param name="type">A scalar, Unit, string, Never, borrow, raw pointer, handle or sequence Type.</param>
     /// <returns>The row's shared record; a Type without a row is an internal error.</returns>
     internal static ValueLowering Row(BoundType type) => type.Kind switch

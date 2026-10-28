@@ -81,6 +81,21 @@ each result reports mean milliseconds and current-thread allocated bytes, the ma
 collected items. Follow the
 measurement protocol below and save `--analyze-cost` output beside it.
 
+## Collection cost (`--collection-cost`)
+
+`--collection-cost` times the instance collector inside one compilation, for each of the twelve inputs above (PLAN10-P3's
+collection share at the R5, R6-gen and R6-check exits; DECISIONS R5-M148). Each operation binds a fresh compilation under the
+`mir` pipeline without MIR code generation and builds, validates and analyzes its MIR untimed (sel's stage 3 before it
+collects), then times three fresh collectors over that program: `cold`, with the compilation's `Layout`, as sel's stage 3
+runs it (the collection-and-layout share and the check-time cost of collection); `freshLayout`, a new `Layout` with the Type
+context's memos warm; `warm`, the compilation's `Layout` again. `layoutMedianMilliseconds` is freshLayout − warm and
+`firstQueriesMedianMilliseconds` cold − freshLayout, per operation. Four warmups precede seven samples of four operations;
+each variant reports median, mean and minimum milliseconds, mean allocated bytes and its per-operation ticks.
+`--collection-cost-check` times nothing: it requires the three collections to agree and to equal the checked set of a `sel`
+compilation's `Analyze`. Sel's code generation cost against the old generator's is then `cold` + sel stages 5-6 against
+legacy stages 5-6, without the stage-3 subtraction, which is below the noise on small inputs (DECISIONS R5-M147). Follow the
+measurement protocol below.
+
 ## Validation
 
 In an isolated checkout, restore dependencies and follow repository verification:

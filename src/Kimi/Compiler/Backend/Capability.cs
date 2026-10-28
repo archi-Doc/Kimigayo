@@ -23,7 +23,9 @@ namespace Kimi.Compiler.Backend;
 /// <summary>A row of the capability table: a form or instance the backend does not generate (IMPL 21.3.3).</summary>
 internal enum CapabilityGap : byte
 {
-    StorageNesting, // An instance whose stored Types nest past Binding's bound, so TyCtxt.Apply refuses it (PLAN G128).
+    // An instance whose stored Types nest past Binding's bound, so TyCtxt.Apply refuses it (PLAN G128).
+    [Transitional("R7", Reason = "PLAN G128's storage bound gives way to a substitution TyCtxt.Apply makes (R5 PD30; the owner's PD27 list, R5-M146).")]
+    StorageNesting,
 
     // A function nested in a body (a block of a generic function, a function nested in one, a method or a specialization of a generic
     // container) called by a substitution that does not carry the enclosing instance, so no key holds the enclosing arguments (SPEC
@@ -35,9 +37,11 @@ internal enum CapabilityGap : byte
     // or owning requirement receiver (OCC-X, SPEC 12.7.1; Binding's refused witness, DECISIONS R5-M22, R5-M67).
     ExclusiveInheritedWitness,
 
-    // A requirement call or requirement Item whose witness is a function without a MIR body (SPEC 8.6.4, 7.7.4; DECISIONS R5-M146):
-    // FixedBuffer's or HeapBuffer's reserve through BufferWriter (SPEC 22.9.4) until R8 gives them Kimigayo bodies, or a #LibraryImport
-    // function (SPEC 22.6) until the collector publishes the import as the call's target; a witness runs as a body item or a shim item.
+    // A requirement call or requirement Item whose witness is a function without a MIR body (SPEC 8.6.4, 7.7.4; DECISIONS R5-M146,
+    // R5-M148): FixedBuffer's or HeapBuffer's reserve through BufferWriter (SPEC 22.9.4) until R8 gives them Kimigayo bodies, or a
+    // #LibraryImport function (SPEC 22.6) until R8 too, when the collector publishes the import as the call's target; a witness runs as a
+    // body item or a shim item.
+    [Transitional("R8", Reason = "R8 gives the buffers' reserve Kimigayo bodies and publishes an import as its call's target (R5-M146, R5-M148).")]
     BodylessWitness,
 
     // A static whose storage P42 has not brought (SPEC 22.4, 22.4.4; STATUS "Static members"): one a root module declares that can be set,

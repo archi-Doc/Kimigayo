@@ -232,7 +232,7 @@ Measurement commands and fixed conditions belong to their dedicated documents be
 | `Benchmark --inheritance-plans`, `--inheritance-lifecycle` | [Inheritance.md](../../src/Benchmark/Inheritance.md); lifecycle adds fresh/edited snapshots and retained ownership storage. |
 | `Benchmark --arithmetic-plans`, `benchmark-arithmetic.ps1` | [Arithmetic.md](../../src/Benchmark/Arithmetic.md) |
 | `Benchmark --hover` | [HOVER.md](HOVER.md#responsiveness-measurements) |
-| `Benchmark --compiler-pipeline`, `--compiler-pipeline-check`, `--analyze-cost` | [CompilerPipeline.md](../../src/Benchmark/CompilerPipeline.md); the check has no timing thresholds; save its output under `artifacts/verify/`. |
+| `Benchmark --compiler-pipeline`, `--compiler-pipeline-check`, `--analyze-cost`, `--collection-cost`, `--collection-cost-check` | [CompilerPipeline.md](../../src/Benchmark/CompilerPipeline.md); the checks have no timing thresholds; save their output under `artifacts/verify/`. |
 | `Benchmark --named-arguments` | [NamedArguments.md](../../src/Benchmark/NamedArguments.md#reproduce) |
 | `Benchmark --diagnostics` | No document; `DiagnosticMeasurements` writes its input projects under `temp/diagnostic-measurements/` and prints one JSON report to stdout: compiler and runtime versions, and per input the median and minimum microseconds and median bytes per operation. |
 | `benchmark-o2-corpus.ps1` | [O2Corpus.md](../../src/Benchmark/O2Corpus.md) |

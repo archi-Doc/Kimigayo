@@ -8657,7 +8657,8 @@ structure is recorded here by the unit that first implements it.
     and records are cleared by `Compilation.InvalidateSourceAnalysis` (R5-M20), on R4-M51's premise; a warm call allocates 0 B, and
     both hold only the current program's Types and representations. One record per representation within a program version; one
     thread at a time; the concurrent table and thread-static scratch are deleted.
-  - IMPL 21.1.3's rows stay static in `Layout.Row`, read only by `WindowsLowering.GetValue` until G8 (then private).
+  - IMPL 21.1.3's rows stay static in `Layout.Row`, read only by `WindowsLowering.GetValue` until G8 (then private) (superseded by
+    R5-M148: MIR code generation reads `Row` too, so it stays internal; only the old gate's read goes, with the old Emission).
   - The old pool takes the instance through `BodyLowering`, maps Size and Count to its size failure, Depth to its depth failure,
     CLayout to its refusal and Rejected to an internal error. Declared change: a Type of placement height over 64 that the old pool
     accepted only because the same body had resolved its inner Types first now reports `GenerationResourceLimit_Kd` (a chain of
@@ -11920,3 +11921,74 @@ structure is recorded here by the unit that first implements it.
   times (recorded, not judged): B/A 0.85 (ArrayLiteral) to 1.59 (Dictionary). Rejected: forcing B's placement to A's in code generation (a
   clause for one kernel's layout, AGENTS). Open for X3: the PLAN10-P3 record's collection share is below the noise of its stage-3
   subtraction on small inputs; X3 measures collection directly.
+- **R5-M148 X3: R5's exit gate item by item; the owner's review of R5's exceptions and Transitional declarations** (owner, 2026-10-29,
+  to the R5 planning session directly, on X3's table; planning session; plan X3, §5.3; under R5-M1, R5-M8, R5-M18, R5-M146 and
+  R5-M147)
+  - The owner (verbatim 「推奨どおり承認」) approved X3's table of R5's exceptions and Transitional declarations as recommended (25 rows;
+    102 declarations at X2's head: "R6" 50, "R6-gen" 14, "R7" 11, "R8" 27; `artifacts/benchmarks/r5-exit/exceptions-and-transitional.md`):
+    gate step 2's arena-skip `Unsupported_Kd` (R5-M96) stays after R5 until H3; `BodylessWitness`'s import witness leaves at R8 with
+    `reserve`'s (R5-M146 left it unscheduled; STATUS, the Capability row and ARCH say so); the legacy comparison composition keeps its R7
+    fallback, A-12 being R4's open ask (R5-M68); R5-M7's shared-file hold protocol carries over to R6-gen beside R4 (ARCH). The other
+    rows stand as listed.
+  - Correction (planning session, reported to the owner): no `[Transitional]` is added. `Layout.Row`'s internal visibility, a temporary
+    until G8 in R5-M37 and ARCH, is lasting: MIR code generation reads `Row` (`FunctionCodegen.Arrays`, `.Closures`, `.Erasures`, `.Flags`,
+    `.Places`, `.Statics`, `.Strings`), and only the old scalar gate's read (`WindowsLowering.GetValue`) goes, with the old Emission at
+    R6-gen. ARCH drops the entry; R5-M37's clause is superseded here. Binding's eager C-layout instance check (K10b's double report, G2b)
+    is removed by G158 (3) (BU-48), not marked. Layout's contract and `Row`'s summary say so (the end-to-end review's B3).
+  - Capability rows: `StorageNesting` (R7, PD30) and `BodylessWitness` (R8) carry `[Transitional]` as `EnclosingInstance` (R7) does;
+    `StaticStorage` (P42, after R6-check, R5-M13 (b)) and `ExclusiveInheritedWitness` (OCC-X) state their conditions in their comments,
+    naming no ledger stage; `WideDivision` and `WideFloatConversion` are IMPL 21.3.3's lasting rows. ARCH's Backend dependency row names
+    `LegacyRuntimeHelpers.FormatKind` among `ScalarTypes`' readers (the review's N8, N9).
+  - Gate (plan §5.3), at X1's dev `17cd554ab` unless stated:
+    1. M1: sel fails exactly the 110 decided P42 rows, OQ7 (e) rows that leave with P42 (R5-M144, R5-M145); the pending ledger holds no
+       other row (110 tests, 0 fixtures), so none is undecided; sel's `'*.ll'` at O0 and O2, the 40 harnessed milestones and the five CLI
+       harnesses pass (R5-M147).
+    2. The native outcomes of all 6,089 fixtures equal the legacy run's, 6 under decided deviations (`InheritedObjectReceiverLayers*` 5,
+       `StaticInitializationCycle`), each a `CodegenDeviations` entry with its item and clause (R5-M147).
+    3. No coverage row remains; the PD27 D2 rows are capability rows, the owner's list of 2026-10-28, in STATUS and PLAN (R5-M146).
+    4. The audit fixtures' native outcomes are equal, their counts being the audits' exit codes (R5-M147), beside R5-M145's census of the
+       string lifetime, transfer and capacity audits and its decided `constant-temporaries` deviation. M5 is unshown: no instrument counts
+       its three classes (zero-expect audits, negative names, ad-hoc rewrites) at the exit. E1 classified them, E2 (`a7500fc68`,
+       `9e882fbc8`) and E3 (`594856da8`) made the instruments fail closed and deleted 32 rows under OQ16, and E3 left B10-B12 and E1's 26
+       C rows to their family units, whose closing no record states. Open issue for R6-gen: count M5 before G3.
+    5. O2 within variance against `49cb2b5d` under R5-M135's aligned and R5-M147's address-matched controls; O0 times recorded (B/A
+       0.85-1.59); per-function O2 metrics recorded (6,089 fixtures; O2 instructions 859,352 legacy, 832,061 sel) (R5-M147).
+    6. The LLVM verifier passes every fixture under both generators (each native run verifies with opt before llc), and sel's `.ll` equals
+       another run of the same tree, 6,089 of 6,089 (R5-M147). Stability across restructuring commits is per unit: item 7's list marks
+       R5's behavior-preserving commits with their records.
+    7. Per unit, not end to end (X1 ran no legacy reference): of R5's 432 commits, 174 change a file the old generator's output can
+       depend on; 84 state their legacy run in their message (an identical or explained `.ll` comparison, a bp record), 7 declare a legacy
+       change: C6a (the Runtime Type key constant, R5-M110), P5b (Abort location text with `/`), P7b (the C-layout record order, R5-M29),
+       P7c (the placement depth limit, R5-M37), C7a (the `KIMI_E_STATIC_CYCLE` reason row), G157 (19) (f32 signaling-NaN constants) and
+       C10a (failure values held for the test frame, R5-M136), and 83 state none in their message, their units' reviews and evidence
+       holding the comparison (`artifacts/benchmarks/r5-exit/legacy-ll-records.tsv`, a message search).
+    8. M9: 1,161 of the 1,162 `Purpose=Allocation` tests pass under sel, M9's 186 among them; `TrimsUnderHighPressure` runs under neither
+       generator (R5-M147).
+    9. No collector or MIR record over the library and the accepted milestones; Milestone 42's five `StaticStorage` records are P42's
+       (R5-M144), and 39, 41 and 43 keep their recorded first diagnostic (X1's sel `MilestoneSourcesTest` differs only at 42).
+    10. Measured inside one compilation by `Benchmark --collection-cost` (`CompilerPipeline.md`; three fresh collectors over one built
+       program, no compiler hook; its check equals sel's checked set), in a quiet window at dev `1fee3a32d` (before BU-51), pinned to CPU
+       2 with `DOTNET_TieredCompilation=0`, 3 runs (`artifacts/benchmarks/r5-exit/collection-1fee3a32d/`). Collection, which runs at
+       check under sel: 0.12-0.23 ms on the Scalar and Branching inputs (3 to 130 items), 0.36 ms on Generic 1, and 5.97, 11.75 and
+       25.3 ms on Generic 32, 64 and 128 (650, 1,290 and 2,570 items; 2.2, 4.1 and 7.7 MB allocated); of it, layout's first
+       computations 0.01-0.02 ms and 0.24, 0.48 and 0.77 ms, the Type context's first queries 0.03-0.09 ms and 1.0, 1.7 and 4.3 ms.
+       MIR code generation (collection plus sel's stages 5-6) against the old generator's stages 5-6: B/A 2.08 and 2.01 on the
+       one-function inputs (0.15 against 0.07 ms), 0.39-0.84 on the other Scalar and Branching inputs, 0.18-0.25 on Generic (71.4
+       against 363.9 ms at 128). The same runs' stage-3 difference ranged from -1.29 to +2.13 ms on the small inputs, so the direct
+       figure replaces R5-M147's subtraction.
+    11. ARCH's ledger marks R5 done. The area record `artifacts/benchmarks/r5-exit-areas.md` (`x3-areas.ps1`, which reproduces R3's exit
+       lines), at dev `66c856d81`: 170,941 compiler lines, +33,572 since `5c42b5773`, of which R5's commits +14,468 (Backend 14,240 in
+       75 files, Binding +2,302, Mir +1,161, Core +388, Emission -2,697, Analysis -897); no Backend or Mir file over 5,000 tokens; the
+       hotspots are the dispatchers (`FunctionCodegen.cs` 43 R5 commits, `InstanceCollector.cs` 34, `ModuleCodegen.cs` 32); the
+       duplication candidates are G157's, two line clones and the end-to-end review's. This entry records the owner's review. Group reviews:
+       G:K-core PASS (`59b0cff2d`); G:K-edges, K5 and K10a PASS (`833999b1d`), K7 and K13b per unit; G:K-capability, K9a and K9b PASS
+       (`154e10a81`), K13a per unit with E12; G:compare per unit (R5-M68's departure to G:library-2); G:call PASS (`c69ba0a1f`); G:C-frame
+       per unit (E10, E15, C0a, C0b1, C0b2, K11); G:C-scalar PASS; G:C-aggregate PASS (`7c133bdc7`); G:C-drop PASS (`e324a7e94`),
+       re-passed with C3c, ACCEPT; G:closure PASS; G:object PASS; G:library-1 PASS; G:library-2 ACCEPT after alit's re-pass; G:format
+       ACCEPT; G:test PASS (`19c23b2c1`). The end-to-end codegen review (`artifacts/benchmarks/r5-exit/review-e2e.md`) was REVISE: B1,
+       the structure limits and code rules in R5's code, is unit x3b1 (one behavior-preserving commit); B2, a Type laid out only through
+       a Deref projection is no layout obligation, goes into R5-M144's projection unit before R5's exit, the projection's layout use
+       covering every layout obligation (C layout and the limits; SPEC 8.15.3); B3 is this entry's correction above. Its final verdict:
+       <added at the merge>.
+  - Rejected: marking `Layout.Row` (it would claim a removal that never comes); the stage-3 difference of two compilations for the
+    collection share (below the noise, R5-M147); a timer inside the compiler (a hook only a measurement reads).
