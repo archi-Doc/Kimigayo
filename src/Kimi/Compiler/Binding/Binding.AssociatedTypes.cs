@@ -589,7 +589,8 @@ public sealed partial class Binding
 
     // `qualifier` is the declaring Contract reference of the projection (SPEC 8.6.1); a bound reference of a Contract with Type
     // arguments selects that conformance, and a Contract without them has one conformance per Type. `pending`: a null result is not final
-    // (as the path's ResolveAssociated); once the pass's evidence is complete, a Type without the conformance gives none.
+    // (as the path's ResolveAssociated); once the pass's evidence is complete, a Type without the conformance gives none. The paths whose
+    // conditions the receiver meets must agree (PathsAgree), else none.
     private BoundType? ResolveAssociated(BoundType receiver, BindingSymbol associated, BindingScope scope, BoundType? qualifier, out bool pending)
     {
         pending = this.AssociatedEvidencePending;
@@ -632,7 +633,7 @@ public sealed partial class Binding
 
             if (condition == ConstraintProof.Proven)
             {
-                if (available is not null && !this.SameCompleteType(available, binding))
+                if (available is not null && !this.PathsAgree(available, binding, receiver, scope))
                 {
                     return null;
                 }
@@ -640,7 +641,7 @@ public sealed partial class Binding
                 available = binding;
             }
 
-            conflicting |= unproven is not null && !this.SameCompleteType(unproven, binding);
+            conflicting |= unproven is not null && !this.PathsAgree(unproven, binding, receiver, scope);
             unproven = binding;
         }
 
@@ -648,6 +649,15 @@ public sealed partial class Binding
         // The separately retained projection obligation must still prove conformance at finalization.
         return available ?? (conflicting ? null : unproven);
     }
+
+    // SPEC 8.9.2 (DECISIONS BU-50, revised by bu55): two conformance paths of a receiver agree on an associated Type when their bindings are
+    // one Type as written or as the receiver's Types. Each binding is in the subject declaration's terms, normalized under its own path's
+    // conditions only: OwningIterator's direct `Self is LendingIterator` binds `I.(LendingIterator).LentItem(step)` and its refinement path
+    // through `Self is Iterator when I is Iterator` binds `I.Item` (Iterator's `LendingIterator.LentItem(step) is Item`), both i32 under
+    // OwningIterator<Counter>. The instances are judged by SameConformanceType, as the declaration's agreement check judges two paths.
+    private bool PathsAgree(BoundType left, BoundType right, BoundType receiver, BindingScope scope)
+        => this.SameCompleteType(left, right) ||
+            (this.StoredType(left, receiver) is { } x && this.StoredType(right, receiver) is { } y && this.SameConformanceType(x, y, scope));
 
     // The one conformance of `owner` whose bound reference, instantiated for `receiver` (`Indexable<K>` of `Keyed<isize>`),
     // reaches `qualifier` as the declaring reference of `associated`.
