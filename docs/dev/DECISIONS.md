@@ -12025,6 +12025,10 @@ structure is recorded here by the unit that first implements it.
     `StaticStorage` (P42, after R6-check, R5-M13 (b)) and `ExclusiveInheritedWitness` (OCC-X) state their conditions in their comments,
     naming no ledger stage; `WideDivision` and `WideFloatConversion` are IMPL 21.3.3's lasting rows. ARCH's Backend dependency row names
     `LegacyRuntimeHelpers.FormatKind` among `ScalarTypes`' readers (the review's N8, N9).
+  - ARCH's MIR builder row names the root Type predicate `ScalarTypes` (SPEC 3.1's Scalar) beside its pure `TyCtxt` functions (planning
+    session): the builder's verification already reads it (`MirBuilder.Verifications.cs:100, 109`), and x3b1's `MirValidator`
+    TestRecordValue row reads the same pure predicate (the end-to-end review's B1 and R4's review: one Scalar definition). The row
+    documents an existing read and the producer's validator reading the same predicate. Rejected: (b) moving it into Binding.
   - Gate (plan §5.3), at X1's dev `17cd554ab` unless stated:
     1. M1: sel fails exactly the 110 decided P42 rows, OQ7 (e) rows that leave with P42 (R5-M144, R5-M145); the pending ledger holds no
        other row (110 tests, 0 fixtures), so none is undecided; sel's `'*.ll'` at O0 and O2, the 40 harnessed milestones and the five CLI

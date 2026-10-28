@@ -25,7 +25,7 @@ checks. Only completed ledger entries describe the current compiler; the rest is
 | --- | --- | --- |
 | Syntax | Source | Binding |
 | Binding | Syntax tree, its own tables | Mir, Backend |
-| MIR builder (`Mir/Build`) | `HirTables`, Plans, declaration tables, pure `TyCtxt` functions, syntax children, `SourceRef` | Binding internals, semantic slots on Koto, parent-walking inference |
+| MIR builder (`Mir/Build`) | `HirTables`, Plans, declaration tables, pure `TyCtxt` functions, the root Type predicate `ScalarTypes` (SPEC 3.1's Scalar: the builder's verification and `MirValidator`'s TestRecordValue row; DECISIONS R5-M148), syntax children, `SourceRef` | Binding internals, semantic slots on Koto, parent-walking inference |
 | MIR analyses | MIR, declaration tables, pure `TyCtxt` functions | Syntax, HIR |
 | Backend | MIR, declaration tables, `TyCtxt`, the root Type predicates `SlotTypes` and `ReferenceTypes` (`Abi`'s parameter kinds; DECISIONS R5-M65) and `ScalarTypes` (the capability table's operation and static-storage rows and the formatting runtime's kind numbering, `LegacyRuntimeHelpers.FormatKind`; DECISIONS R5-M53, R5-M82, R5-M148), Core's runtime-location text (`Compilation.Locations`), the Testing catalog's symbol column (DECISIONS R5-M18), its site numbers and case and artifact identities, and the test runtime's text, entry writer, value kind and phase writer and numbering (`TestRuntime`; DECISIONS R5-M136, R5-M138, R5-M137, R5-M140) | HIR, borrow-checker state, syntax |
 | Hover and LSP | `SemanticQuery` | Private Binding state |
