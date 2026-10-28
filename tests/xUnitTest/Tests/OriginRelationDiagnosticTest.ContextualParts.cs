@@ -194,7 +194,8 @@ public partial class OriginRelationDiagnosticTest
 
     // Probes 2 and 3 (d3 §4.9): j02 wraps put2's position in E's Type argument (as j01n does k's) and errs at the argument (dev accepts it);
     // a Case construction's payload Type that another payload instantiates must be well-formed (cx2 errs at `.None`, dev accepts it), while
-    // cx1's slot `s` takes the meet of its upper bounds, the third payload's well-formedness among them (SPEC 15.3.6), so cx1 is valid;
+    // cx1's slot `s` takes the meet of its upper bounds, the third payload's well-formedness among them (SPEC 15.3.6), so cx1 is valid, as
+    // are cx5 (whose clause `a outlives s` holds by that meet), its call analogue cxc and cxc's concrete twin cxc2 (probe 4);
     // t7c_ok's clause follows from k's premise; fn0's Origins without evidence are local regions; dl1's contextual payload supplies two
     // failing positions, each at the argument with the payload related (D-1). j01f is j01 (not repeated); t7c has its own theory below.
     [Theory]
@@ -203,6 +204,9 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("t7c_ok", ClauseCall + "    origin p outlives static\n    return g(.None, p)\n", "", null)]
     [InlineData("cx1", "enum W<T> {s}\n    Make(T, ref/i32 during s, Option<ref/T during s>)\n    Empty\nfunc bad(p: ref/i32) -> i32\n    let short = 2\n    let w = W.Make(short@ref, p, .None)\n    return 0\n", "", null)]
     [InlineData("cx1_ok", "enum W<T> {s}\n    Make(T, ref/i32 during s, Option<ref/T during s>)\n    Empty\nfunc ok(p: ref/i32) -> i32\n    let short = 2\n    let sr = short@ref\n    let w = W.Make(p, sr, .None)\n    return 0\n", "", null)]
+    [InlineData("cx5", "enum W3 {a, s}\n    origin a outlives s\n    Make(ref/i32 during a, ref/i32 during s, Option<ref/(ref/i32 during a) during s>)\n    Empty\nfunc ok(p: ref/i32) -> i32\n    let short = 2\n    let w = W3.Make(short@ref, p, .None)\n    return 0\n", "", null)]
+    [InlineData("cxc", "func mk<T>(t: T, x: ref/i32 during s, w: Option<ref/T during s>) -> i32\n    return 0\nfunc ok(p: ref/i32) -> i32\n    let short = 2\n    return mk(short@ref, p, .None)\n", "", null)]
+    [InlineData("cxc2", "func mk(t: ref/i32 during a, x: ref/i32 during s, w: Option<ref/(ref/i32 during a) during s>) -> i32\n    return 0\nfunc ok(p: ref/i32) -> i32\n    let short = 2\n    return mk(short@ref, p, .None)\n", "", null)]
     [InlineData("cx2", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc bad() -> i32\n    let short = 2\n    let w = W.Make(short@ref, .None)\n    return 0\n", "UnsatisfiedOriginRelation_Kd .None", null)]
     [InlineData("cx2_ok", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc ok(p: ref/i32) -> i32\n    origin p outlives static\n    let w = W.Make(p, .None)\n    return 0\n", "", null)]
     [InlineData("fn0", "func f(w: Option<ref/(ref/i32 during c) during d>) -> i32\n    return 0\nfunc g() -> i32\n    return f(.None)\n", "", null)]
