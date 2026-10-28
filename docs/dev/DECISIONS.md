@@ -7450,6 +7450,92 @@ resumed by R4-M86 (2026-10-20).
     silent there: the family throw escapes Binding as an exception, and a Local finding fails MirCensusTest's census and every test that
     asserts a body has no validator finding.
 
+- **BU-48 An unavailable C layout is judged by Layout and reported at each by-value use of the checked set at check on every
+  pipeline; Binding publishes the declaration facts; a constructor's construction receiver is no use** (2026-10-27; G158 (3), WORKFLOW
+  Q11 under the owner's order of 2026-10-26 「診断の独立性から (推奨)」; BU's design-first candidate `bu\g158\design\design.md`, the shared
+  tests `LayoutAttributeBindingTest.CLayoutUses.cs` and `InstanceCollectorTest.CLayoutUses.cs` the judge; class Full; Binding rows BU's,
+  Layout, collector, CheckedSet, Compilation and codegen rows R5's, the builder's rows R4's) SPEC 6.7.1 makes C layout unavailable for an
+  open, derived or empty struct and for a struct storing a zero-sized Field; 8.15.3 makes a use that stores, creates, passes or returns
+  such a Type by value or needs its size the error, over the checked set; 23.2.2 makes `check` report every Language error of the
+  checked set.
+  - Choice (BU and R5 jointly, on results; WORKFLOW Q11): this candidate (`claude/bu-g158-design`) passes every counted row of the shared
+    tests on default, mir and sel; R5's prototype-first candidate (`claude/r5-g158-proto` 682cf38a5, notes e05d421a2) fails the 26 rows
+    of the `empty` declarations; the cost is the same in kind (the checked set collected at `check` on the legacy pipeline). The owner
+    accepted that cost (2026-10-27, 「受け入れる (推奨)」): the MIR build and collection per legacy `check`, G2's cost brought forward.
+  - Facts (BU): Binding keeps the Attribute's own errors and publishes, for every struct in every pass, `AdtDef.IsCLayout` (a valid C
+    selection whose layout is available at the declaration) and `AdtDef.CLayoutUnavailable` (a valid C selection on an open, derived or
+    empty struct), neither a record. `CExchangeable` (SPEC 22.6) reads `IsCLayout` alone, so a borrow of an unavailable struct in an
+    import is 22.6's `Unsupported_Kd`.
+  - Judge (R5): `Layout` is the one judge of 6.7.1's four conditions: a `CLayoutUnavailable` struct is a CLayout leaf of `Walk` (where
+    `CLayoutRejected → Rejected` was), a zero-sized Field the placed parts' CLayout, a stored Never counting as zero-sized (IMPL 21.1.3).
+  - Walker and publication (R5): `Compilation.Analyze` builds and validates the MIR and `InstanceCollector` collects the checked set on
+    every pipeline (the MIR analyses stay the mir pipeline's; the collector reads none of their results); `Compilation.MirRecords`
+    publishes the checked set's Language records (the catalog's Category: `InvalidCLayout_Kd`, `OversizedLayout_Kd`) on every pipeline
+    and its Unsupported, Resource and Internal records under MIR code generation until G2 (R5-M41's gate, unchanged; a legacy-pipeline
+    test pins it). K 4.4's roots are unchanged.
+  - The receiver contract (SPEC 6.3.2-6.3.6, 8.15.3; BU and R5, 2026-10-27): a construction expression constructs a fresh owner whose
+    storage the construction allocates before the constructor runs (6.3.2, 6.3.3); inside the body `self` is reached only for its own
+    Fields' access, as a `uniq/Self` receiver is (6.3.4), and the body returns Unit (6.3.5); the synthesized constructor behaves as
+    `init() => ()` (6.3.6). So a constructor's MIR Return local, its construction receiver, is no by-value use, written and synthesized
+    alike: the builder publishes it as `MirLocalRole.Receiver` (R4's shape: exactly a constructor's `_0`; the validator rejects the role
+    on any other local and its absence on a constructor's `_0`), `InstanceCollector.LayOutLocals` skips it beside drop flags, and the
+    caller's construction expression is the use.
+    Any other value of the struct's Type in a constructor body stays a use. Code generation, which lays out every local of a generated
+    item, maps a receiver without a layout (an uncalled constructor generated as a Library root) through the collector's one mapping
+    (`RecordOf`): a CLayout or oversized one is a located `Unsupported_Kd` at the constructor (8.15.3's last sentence), a limit its
+    Resource record (IMPL 21.3.2), anything else `InternalInvariant_Kd`. The judge's `i-init` and `i-toplevel` rows lost their record at
+    `init` in their own commit under this reading.
+  - Interim (R5's ruling on the landing merge with X2, 2026-10-29): code generation's receiver record narrows R5-M146's statements that the
+    capability table is the Backend's one source of not-yet-implemented records and that the arena skip is code generation's one
+    `Unsupported_Kd`; ARCH names it beside R5-M96's arena skip as code
+    generation's second interim `Unsupported_Kd`, not on PD27's list: by R5-M144 (G157 (41)) a constructor's receiver creating the value by
+    value is a use needing the C layout (SPEC 8.15.3 "creates ... a value of that Type by value"), so the missing record is check's.
+    Removal: R5-M144's C-lane unit (PLAN G157 (41)) reports the projection and this receiver case in the collector's layout-use rows at
+    check, after which code generation's record is a broken contract; if that unit finds 8.15.3 leaves the receiver case open, it asks the
+    owner.
+  - Vocabulary (O1, a MIR vocabulary member): `MirLocalRole.Receiver`. The owner approved it (2026-10-27; BU's question 「G158 (3) の修正で、
+    MIR の語彙に `MirLocalRole.Receiver` … を 1 つ追加しました … 承認しますか？」, the answer 「承認する (推奨)」), as R4-M132 recorded
+    `MirLocalRole.Result`'s.
+  - Locations (settled by BU and R5, 2026-10-27): (a) a parameter's record at its Type occurrence and a result's at its result Type
+    occurrence: the builder sources each written parameter's Arg local and a function's Return local at their written Type (an accessor's
+    arguments, a Closure's environment, a constructor's or destructor's `self` and a result without a written Type stay at the
+    declaration, and so do the drop tree's edges), so the MIR analyses' records and drops of a parameter move with it; (b) `keep`'s
+    parameter and result are two records; `take(make())` three (the result, the parameter, the call's value).
+  - Deleted: `ValidateCLayoutFields`, `CheckCLayoutInstance`, `cLayoutInstances`, `storagePrepared`, `HasZeroStride` (`Binding.Pointers.cs`),
+    `BindingFailure.InvalidCLayout` with its requirement row and code mapping, `InvalidTypeFormation_Kd` at a struct for a zero-sized Field,
+    the open/derived/empty failure and attribute invalidation, `AdtDef.CLayoutRejected` and Layout's Rejected mapping of it, the
+    `Instances`/records gate on the code generator, ARCH's K10b double-report row (G2b), DIAGNOSTICS' "eager report stays beside the
+    collector's", the `InferredCLayoutAtCheck` and `OversizedLayoutAtCheck` deviations (both Language errors are at check everywhere).
+  - Supersedes: R5-M55's declaration check ("lasting (X26)", already superseded by R4-M134 Q8), its declared overlap and its record "with
+    the instance's constructor" (the receiver contract; R5 co-signs); R5-M26's reader list; R5-M44's "a parameter's at its function"; R5-M41's
+    "on the default pipeline and under mir alone the collector does not run" for the checked set's Language records.
+  - Rejected: a Binding-side use judge (a second copy of Layout's rule without the checked set: every inferred row fails on default and
+    mir, and `build` keeps failing an accepted `check`); the old generator's instantiation worklist at check (a second checked set in
+    frozen code R6-gen deletes, a refusal per Type); publishing on mir only (the default pipeline is `check`, 23.2.2); Layout reading an
+    `AdtDef.IsOpen` with `Base` and `Count` (syntax facts Binding has at the attribute; one bit replaces one); excluding the implicit
+    constructor from the roots (the candidate's first form: it hid only the synthesized form, changed K 4.4 and hid a Field
+    initializer's construction); "local 0 of a constructor" inferred by the collector (a consumer deciding what the builder publishes).
+  - Landing order: G271 (DECISIONS BU-50, `claude/bu53-g271`) landed on dev before this unit, because the collector at every `check` would
+    otherwise fault on a stored projection Field (`TypeDagScalingTest.AnInstanceWithAProjectionFieldChecks`, `CheckFaulted_Kd`: Layout
+    has no row for an unsubstituted `S.Element`), a latent fault under sel before this unit.
+  - Size (net lines, the unit against fc3334cbe, the shared tests excluded): src −62 (Binding −135, Backend +43, Core +21, Mir +12,
+    Diagnostics −3), tests +54 (the 32 MIR goldens' 202 lines changed in place), docs +73.
+  - Cost (KIMI_CPU=2, tiering off; bytes deterministic over rounds): cold Bind −40 B on Hello and Milestone26, warm 0 B; cold Analyze on
+    the default pipeline Hello 15,864 → 2,933,728 B (about 50 µs → 4.4 ms) and Milestone26 216,216 → 3,235,656 B (0.3 → 5.3 ms), under mir
+    Hello +41,024 B and Milestone26 +45,704 B (the collector), under sel unchanged; warm Analyze 0 B everywhere. Quiet-slot timing is the
+    planning session's.
+  - Open: part (1), a record naming the instance (a catalog fact); part (2), Never, judged by Layout alone (the kept-apart rows pass); a
+    bodyless import's by-value parameter (the owner's); `f(s: ref/S) => s.n`, a Field projection through a borrow or raw pointer of an
+    unavailable Type, is a known limit: `check` accepts it on every pipeline; generated, it is `InternalInvariant_Kd` at the function under
+    MIR code generation and the old generator's `GenerationFailed_Kd`, until R5-M144's C-lane unit (PLAN G157 (41)) makes it a Language
+    error at the projection at `check`; a program with validator findings gets no checked-set record until G2; the old generator lowers any
+    uncalled constructor, written or synthesized, of any struct whose C layout is unavailable, so `check` accepts and the default `emit` and
+    `build` fail with `GenerationFailed_Kd` until R6-gen (STATUS; MIR code generation builds such an Application). The shared tests'
+    kept-apart theories of part (1) (`AUseRecordNamesTheInstancePendingOwnerPart1`) and the import row
+    (`AByValueImportParameterIsAUsePendingOwner` and its sel rows) do not land: they stay on `claude/bu-g158-tests` 910a5583d, reinstated by
+    the unit that decides them (part (1); the import row after the owner's answer); part (2)'s Never rows land as
+    `ANeverFieldMakesCLayoutUnavailable` and its sel twin.
+
 - **BU-50 A stored part's Type under an instance has one producer, which completes its associated projections: `Binding.KeptType`,
   `CompleteProjections`, `ProjectionSpecification`; a projection that finally names no Type names none, whatever its subject**
   (2026-10-27; the BU planning session; PLAN G271, unit bu53 and its fix rounds 1 (the implementation review's REVISE: B1–B3, N1–N4),

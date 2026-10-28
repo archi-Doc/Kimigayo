@@ -5,9 +5,9 @@ fn top-level#0 @2
       _0 = const () @3 s1
       return @3
 fn grow @4
-  _0: isize return @4
-  _1: uniq/Array<i32> arg values @4
-  _2: i32 arg x @4
+  _0: isize return @10
+  _1: uniq/Array<i32> arg values @5
+  _2: i32 arg x @9
   _3: () temp @12 s1
   _4: uniq/Array<i32> temp @14 s1
   _5: () temp @17 s1
@@ -57,9 +57,9 @@ fn grow @4
       StorageDead(_9) @23 s1
       unreachable @11
 fn lookup @26
-  _0: i32 return @26
-  _1: ref/Dictionary<string, i32> arg table @26
-  _2: string arg key @26
+  _0: i32 return @33
+  _1: ref/Dictionary<string, i32> arg table @27
+  _2: string arg key @32
   _3: ref/i32 temp @34
   _4: ref/Dictionary<string, i32> temp @35
   _5: ref/string temp @36
@@ -75,12 +75,12 @@ fn lookup @26
       StorageDead(_5) @36
       StorageDead(_4) @35
       StorageDead(_3) @34
-      drop _2 -> bb2 [keep] @26
+      drop _2 -> bb2 [keep] @32
   bb2:
       return @34
 fn iterate @37
-  _0: i32 return @37
-  _1: ref/Array<i32> arg values @37
+  _0: i32 return @42
+  _1: ref/Array<i32> arg values @38
   _2: i32 var mut sum @44 s1
   _3: () temp @47 s1
   _4: ArrayIterator<i32> temp @47 s1

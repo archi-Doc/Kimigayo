@@ -169,7 +169,7 @@ public sealed partial class MirBorrowsTest
             """);
         Assert.Equal(
             [
-                "dd3: t = 2", "count: func count<S>(items: S) -> i32", "cleanRoute: xs.append(b) CallActivationConflict_Kd",
+                "dd3: t = 2", "count: S", "cleanRoute: xs.append(b) CallActivationConflict_Kd", // count's at its parameter's Type (BU-48 (a)).
                 "notHeld: x = 2", "heldDefault: k = 2", "emptyStore: k = 2",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));

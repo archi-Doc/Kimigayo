@@ -1958,7 +1958,8 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // R4-M36, R4-M51, A3 5: a Drop whose Type's destruction walk passes its depth bound and a call whose contract Binding does not
     // instantiate (CallRetention.Limit: storage nested past its depth bound, as a growing recursive Type's) are not classified:
     // OwnershipDepthLimit_Kd there (the owner's 「G272: (1)」, R4-M153), and no Loan problem; a body without a Loan, which no conflict can
-    // depend on, reports neither.
+    // depend on, reports neither. The parameter's Drop is located at its parameter (DECISIONS BU-48's locations, settled (a): a parameter's
+    // record at its Type occurrence, R4-M90 D6's rule extended).
     [Fact]
     public void AnUnclassifiedDestructionOrCallIsUnsupported()
     {
@@ -1967,7 +1968,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             "func unlent(x: ref/i32)\n    let n = Nest<ref/i32>.init(value: x)\n");
         var program = Analyze(c);
         Assert.Equal(
-            ["OwnershipDepthLimit_Kd func deep(n: Nest<ref/i32 during a>)", "OwnershipDepthLimit_Kd Nest<ref/i32>.init(value: y@ref)"],
+            ["OwnershipDepthLimit_Kd Nest<ref/i32 during a>", "OwnershipDepthLimit_Kd Nest<ref/i32>.init(value: y@ref)"], // The parameter's at its Type (BU-48 (a)).
             program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0).Select(x => $"{x.Code} {Line(c, x.Subject)}"));
     }
 
