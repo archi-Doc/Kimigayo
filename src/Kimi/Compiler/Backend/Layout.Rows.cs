@@ -53,6 +53,14 @@ internal sealed partial class Layout
         _ => throw Outside(type),
     };
 
+    /// <summary>Gets whether a Type is laid out without its component (X34; DECISIONS R5-M149): a borrow, a raw pointer, an object or
+    /// function handle or a sequence handle, whose referent, element or entries lie outside its own storage, the boundary of a root's
+    /// storage that LayoutNeeds' readers apply.</summary>
+    /// <param name="type">A Type.</param>
+    /// <returns>Whether its row stores a pointer to its component rather than the component.</returns>
+    internal static bool Indirect(BoundType type) => type.Kind is BoundTypeKind.Function or BoundTypeKind.Slice or BoundTypeKind.Array or
+        BoundTypeKind.Dictionary || type is { Kind: BoundTypeKind.Semantics, Semantics: not SemanticsKind.Owner };
+
     /// <summary>Gets the Field of a sequence handle's record that holds its length (SPEC 4.7.3, IMPL 21.1.3): its handle row's length word.</summary>
     /// <param name="sequence">A Slice, Array or Dictionary Type.</param>
     /// <returns>The Field's index in the handle's record; a Type without a handle is an internal error.</returns>

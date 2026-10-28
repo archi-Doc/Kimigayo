@@ -47,6 +47,7 @@ internal sealed partial class InstanceCollector
 
         var body = program.Bodies[set.Items[item].BodyOrdinal];
         this.LayOutLocals(item, body);
+        this.LayOutNeeds(item, body);
         for (var i = this.starts[body.Ordinal]; i < this.starts[body.Ordinal + 1]; i++)
         {
             this.Work++;
@@ -115,7 +116,7 @@ internal sealed partial class InstanceCollector
     // callee without a body the witness its published row runs; a Requirement callee's witness under the composed substitution
     // (InstanceCollector.Witnesses.cs); the body a Value callee's Closure or function item runs; an intrinsic's target where its row names
     // one (an erased writer's reserve witness, a staticEnsure's StaticInit, a creation's payload descriptor, a DestroyValues' glue) and a
-    // dropped value's glue; an intrinsic's Type argument a by-value use (K 4.8) where its row says so. The admitted item, or -1
+    // dropped value's glue; an intrinsic's Type arguments uses where its row's need says so (K 4.8, IntrinsicRow.Need). The admitted item, or -1
     // for a callee without a body or row or a refused edge.
     private int Edge(MirProgram program, int item, MirBody body, in MirTerminator call)
     {
@@ -135,6 +136,11 @@ internal sealed partial class InstanceCollector
         if (callee.Kind == MirCalleeKind.Intrinsic)
         {
             var row = IntrinsicRows.Of((IntrinsicId)callee.Arg);
+            if (row.Need == LayoutNeed.TypeArguments)
+            {
+                this.LaysOutArguments(item, subject, callee.Subst!);
+            }
+
             return row.Target == IntrinsicTarget.StaticInit
                 ? this.Static(program, item, body, subject, call)
                 : this.Intrinsic(program, item, subject, row, this.In(item, subject, callee.Subst!.Types[0]!));
@@ -180,8 +186,8 @@ internal sealed partial class InstanceCollector
     }
 
     // K 4.5 rows 6, 8 and 9 (DECISIONS R5-M74): the target an intrinsic's row names, for its call or for an Item of its function, from the
-    // substitution's Type argument in the item's instance (the one operand form the rows read), which is a by-value use where the row says
-    // so (K 4.8, IntrinsicRows.LaysOutType): an erased writer's reserve witness on its destination (SPEC 22.10.1), a creation's payload
+    // substitution's Type argument in the item's instance (the one operand form the rows read; its layout need, IntrinsicRow.Need, is its
+    // caller's, LaysOutArguments): an erased writer's reserve witness on its destination (SPEC 22.10.1), a creation's payload
     // descriptor (Descriptor), a DestroyValues' element glue. -1 for a row without a target or a Type not made, whose verdict the caller
     // read (In); a staticEnsure's initializer is its call's operand row (Static), so it never reaches here.
     private int Intrinsic(MirProgram program, int item, SourceRef subject, in IntrinsicRow row, BoundType? argument)
@@ -189,11 +195,6 @@ internal sealed partial class InstanceCollector
         if (argument is null)
         {
             return -1;
-        }
-
-        if (row.LaysOutType)
-        {
-            _ = this.LaysOut(subject, argument);
         }
 
         return row.Target switch
@@ -240,6 +241,13 @@ internal sealed partial class InstanceCollector
         if (rvalue.Kind == MirRvalueKind.BinaryOp || rvalue is { Kind: MirRvalueKind.Cast, Op: not (byte)MirCastKind.Erasure })
         {
             this.CheckOperation(item, subject, body, rvalue);
+            if (rvalue.Kind == MirRvalueKind.BinaryOp &&
+                LayoutNeeds.Of((MirBinaryOp)rvalue.Op, OperandType(body, body.Operands[rvalue.Start])) != LayoutNeed.None &&
+                this.In(item, subject, LayoutNeeds.TypeOf(body, rvalue)) is { } needed)
+            {
+                _ = this.LaysOut(subject, needed); // K 4.8 (DECISIONS R5-M149): a raw pointer's displacement reads its pointee's stride.
+            }
+
             return -1;
         }
 

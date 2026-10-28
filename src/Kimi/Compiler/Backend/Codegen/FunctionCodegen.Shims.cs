@@ -119,11 +119,11 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // SPEC 13.4: a Tuple's parts left to right at their Field offsets; each but the last returns its value from the shim when it is not
-    // equal (Decide), and the last one's value is the Tuple's.
+    // SPEC 13.4: a Tuple's parts left to right at their Field offsets (the node's Parts need, Needed; DECISIONS R5-M149); each but the last
+    // returns its value from the shim when it is not equal (Decide), and the last one's value is the Tuple's.
     private Value? Parts(ComparisonNode node, KimiDeclarationId? contract, Value left, Value right)
     {
-        if (this.Laid(node.Type) is not { } tuple)
+        if (this.Needed(node) is not { } tuple)
         {
             return null; // Recorded.
         }

@@ -473,16 +473,16 @@ public sealed partial class FunctionCodegenTest
     public void FrameProgramsRun(string name, string source)
         => ScalarEmissionTest.EmitFixture(name, source, string.Empty);
 
-    // DECISIONS BU-48 (SPEC 6.3.2-6.3.4, 8.15.3, IMPL 21.3.2): a constructor's construction receiver is no use, so an uncalled constructor
-    // whose receiver has no layout is accepted at check. A Library generates every root, and the frame maps the receiver's layout failure
-    // through the collector's RecordOf, at the constructor: an unavailable C layout is Unsupported_Kd, a size over 2^31 - 1 its Resource
-    // record, never InternalInvariant_Kd. An Application, which generates only its startup's closure, is written.
+    // DECISIONS BU-48 and R5-M149 (the owner's Q1 (a); SPEC 6.3.2-6.3.4, 8.15.3, IMPL 21.3.2): a constructor's construction receiver is no
+    // use, so an uncalled constructor whose receiver has no layout is accepted at check; no program that builds calls it (each construction
+    // expression is a use of that layout), so a Library checks it only and does not generate it (InstanceCollector.Generates), and an
+    // Application, which generates only its startup's closure, neither: both are written without a record, its Generated column clear.
     [Theory]
-    [InlineData(OutputKind.Library, "clayout", "Unsupported_Kd")]
-    [InlineData(OutputKind.Library, "limit", "GenerationResourceLimit_Kd")]
-    [InlineData(OutputKind.Application, "clayout", null)]
-    [InlineData(OutputKind.Application, "limit", null)]
-    public void AnUncalledConstructorsReceiverWithoutALayoutIsItsOutcomesRecord(OutputKind output, string form, string? code)
+    [InlineData(OutputKind.Library, "clayout")]
+    [InlineData(OutputKind.Library, "limit")]
+    [InlineData(OutputKind.Application, "clayout")]
+    [InlineData(OutputKind.Application, "limit")]
+    public void AnUncalledConstructorWithoutAReceiverLayoutIsCheckedOnly(OutputKind output, string form)
     {
         var source = form == "clayout" ? "#Layout(\"C\")\npublic struct S\n    public init() => ()\n" :
             "public struct Big\n    public var a: [1073741824 of u8]\n    public var b: [1073741824 of u8]\n    public var c: [1073741824 of u8]\n" +
@@ -491,9 +491,25 @@ public sealed partial class FunctionCodegenTest
         var c = Analyze(source + (output == OutputKind.Application ? "let zz = 1\n" : string.Empty), output);
         Assert.True(c.Accepts, string.Join(", ", Records(c)));
         using var writer = new StringWriter();
-        Assert.Equal(code is null, c.Generate(writer));
-        var init = form == "clayout" ? "init() => ()" : "init(a: [1073741824 of u8], b: [1073741824 of u8], c: [1073741824 of u8])";
-        Assert.Equal(code is null ? [] : [(code, init)], Records(c).Select(static x => (x.Code, x.Text?.Split('\n')[0].TrimEnd())));
+        Assert.True(c.Generate(writer), string.Join(", ", Records(c)));
+        Assert.Empty(Records(c));
+        var set = c.Instances!;
+        var init = Assert.Single(Enumerable.Range(0, set.RootCount), x => set.Items[x].Key.Body.Def.Kind == MirBodyKind.Fn &&
+            set.Items[x].Key.Body.Def.Decl?.Declaration?.ToString().Contains("init(", StringComparison.Ordinal) == true);
+        Assert.False(set.IsGenerated(init));
+    }
+
+    // SPEC 4.7.4, 8.15.3 (DECISIONS R5-M149): an element of a fixed array behind a reference needs only the element's stride and the array's
+    // closed length, so an array over the size limit is indexed without its layout (fail-before: the place writer read the array's record,
+    // InternalInvariant_Kd); its element's verdict is the collector's.
+    [Fact]
+    public void AFixedArrayBehindAReferenceIsIndexedWithoutItsLayout()
+    {
+        var c = Analyze("public func f(p: ref/[300000000 of i64], i: isize) -> i64 => p[i]\n", OutputKind.Library);
+        Assert.True(c.Accepts, string.Join(", ", Records(c)));
+        using var writer = new StringWriter();
+        Assert.True(c.Generate(writer), string.Join(", ", Records(c)));
+        Assert.Contains("icmp uge i64", writer.ToString(), StringComparison.Ordinal);
     }
 
     [Theory]
