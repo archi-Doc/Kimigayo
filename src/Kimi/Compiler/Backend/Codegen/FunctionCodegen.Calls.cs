@@ -11,8 +11,8 @@ namespace Kimi.Compiler.Backend;
 // too; each argument is FunctionCodegen.Arguments' (its parameter's kind, a copy slot). A call that dispatches (SPEC 6.4.3, 6.4.6) runs
 // through a virtual slot, which only makes the callee value it writes (EntryOf): a Virtual callee, without a target (X5), under its slot's
 // signature (ModuleCodegen.Slot); a body target that implements a slot, a requirement's virtual witness (BodyRun); a Builtin or
-// PropertyWitness target its shim's function (FunctionCodegen.Shims; DECISIONS R5-M126, R5-M130, R5-M141). Row not written yet: a
-// requirement whose witness has no body (PLAN G157 (10), K's: the collector publishes no target for a body-less compiler function).
+// PropertyWitness target its shim's function (FunctionCodegen.Shims; DECISIONS R5-M126, R5-M130, R5-M141). A requirement whose witness has
+// no MIR body is the collector's BodylessWitness gap at check, so no generated program has one (DECISIONS R5-M146).
 internal sealed partial class FunctionCodegen
 {
     private int cursor; // The item's first target not passed yet (I8).
@@ -28,7 +28,7 @@ internal sealed partial class FunctionCodegen
 
     // A Call by its callee's row: a compiler function of the Body disposition (KimiLibraryKinds' published IntrinsicDisposition) by its
     // legacy row, any other Fn callee and a Requirement by its target (Function), an intrinsic by its row's writer
-    // (FunctionCodegen.Intrinsics); the other rows are not written yet, each at the call.
+    // (FunctionCodegen.Intrinsics), a Value or Virtual callee by its own row.
     private void Call(in MirTerminator call)
     {
         var callee = call.Callee;
@@ -58,18 +58,14 @@ internal sealed partial class FunctionCodegen
     // whose signature is the call's, since compatibility inserts no conversion): what the target runs (Witness), a body item by its
     // signature (ModuleCodegen.Signature) with its operands in its body's order, a caller-location one given the call's location (Invoke); a
     // Fn callee calls the function it names whatever it implements (a direct base call, SPEC 6.4.4), a Requirement callee through the
-    // virtual slot its witness runs. Without a target, a #LibraryImport function is called by its C signature (SPEC 22.6), a requirement's
-    // witness has no body (R5-M67; a row not written yet, PLAN G157 (10)), and any other callee is a broken contract.
+    // virtual slot its witness runs. Without a target, a #LibraryImport function is called by its C signature (SPEC 22.6), and any other
+    // callee is a broken contract: a requirement whose witness has no MIR body is the collector's BodylessWitness gap at check (R5-M146).
     private void Function(in MirTerminator call)
     {
         var target = this.Target(new(this.at, this.body.Blocks[this.at].Count));
         if (target < 0)
         {
-            if (call.Callee.Kind == MirCalleeKind.Requirement)
-            {
-                this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-            }
-            else if (this.module.Import(call.Callee.Symbol!) is { } import)
+            if (this.module.Import(call.Callee.Symbol!) is { } import)
             {
                 this.Invoke(call, import, new(call.Callee.Symbol, MirBodyKind.Fn));
             }
@@ -222,8 +218,7 @@ internal sealed partial class FunctionCodegen
                 : this.Argument(this.body.Operands[index], this.copyOf[index], parameter.Kind, out this.arguments[i]);
             if (!found)
             {
-                this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-                return false;
+                return false; // A broken contract, recorded.
             }
         }
 

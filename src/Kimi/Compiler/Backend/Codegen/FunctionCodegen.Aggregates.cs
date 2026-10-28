@@ -50,8 +50,7 @@ internal sealed partial class FunctionCodegen
         {
             if (!this.Evaluate(operands[i], out this.arguments[i]))
             {
-                this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
-                return;
+                return; // A broken contract, recorded.
             }
         }
 

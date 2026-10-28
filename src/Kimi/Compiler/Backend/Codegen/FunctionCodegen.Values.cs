@@ -17,10 +17,10 @@ internal sealed partial class FunctionCodegen
     // signed range is the negative number with the same bits.
     private static Int128 Signed(Int128 bits, int width) => width >= 128 ? bits : (bits << (128 - width)) >> (128 - width);
 
-    // An operand's value in its Type's representation (Read; a value in memory is its address); false for a form not covered yet. A
-    // zero-sized operand has no value. A PairAcquire Copies its Place or Reborrows it, as the item's view decides (SPEC 8.14), and both
-    // write the Place's bits in its case Type: a Reborrow of an exclusive reference is the pointer the Place holds (IMPL 21.1.3), so it
-    // needs no case decision here (DECISIONS R5-M87).
+    // An operand's value in its Type's representation (Read; a value in memory is its address); false after a broken contract's record (the
+    // place writer's or Constant's; DECISIONS R5-M146). A zero-sized operand has no value. A PairAcquire Copies its Place or Reborrows it,
+    // as the item's view decides (SPEC 8.14), and both write the Place's bits in its case Type: a Reborrow of an exclusive reference is the
+    // pointer the Place holds (IMPL 21.1.3), so it needs no case decision here (DECISIONS R5-M87).
     private bool Operand(in MirOperand operand, out Value value)
     {
         value = default;
@@ -38,7 +38,9 @@ internal sealed partial class FunctionCodegen
     // A constant of a covered kind: Bool (stored 0 or 1), Integer of an integer or char Type or a raw pointer's null (SPEC 5.1), Float (its
     // IEEE bits), Unit, a function item (zero-sized: a Function Item stores none of its Components, SPEC 7.7.4; DECISIONS R5-M102) and a
     // Location, a verification site's number in the test catalog (TestCatalog.SiteOf, SPEC 20.6.2; DECISIONS R5-M136), which discovery
-    // gives every verification of the accepted test build, so an unnumbered site is a broken contract.
+    // gives every verification of the accepted test build, so an unnumbered site is a broken contract. Any other constant read as a value,
+    // a String or TypeToken one (its writer reads it) or an Integer one of a Type without integer arithmetic, char or raw pointer (Binding
+    // fits literals), is a broken contract too, recorded at the body's subject; false after it (DECISIONS R5-M146).
     private bool Constant(in MirConst constant, out Value value)
     {
         value = default;
@@ -56,7 +58,8 @@ internal sealed partial class FunctionCodegen
 
         if (constant.Kind is not (MirConstKind.Bool or MirConstKind.Integer or MirConstKind.Float or MirConstKind.Unit or MirConstKind.FnItem))
         {
-            return false; // String, which has no value (above), and TypeToken (its call's writer reads it: C6a, C9c).
+            this.Report(DiagnosticCode.InternalInvariant_Kd, default); // String, which has no value (above), and TypeToken (C6a, C9c).
+            return false;
         }
 
         if (this.Representation(constant.Type) is not { } lowering)
@@ -79,7 +82,8 @@ internal sealed partial class FunctionCodegen
 
         if (constant.Kind == MirConstKind.Integer && !type.HasIntegerArithmetic && !ReferenceEquals(type, BoundType.Char))
         {
-            return false; // A later row's Type.
+            this.Report(DiagnosticCode.InternalInvariant_Kd, default);
+            return false;
         }
 
         value = lowering.Layout.Size == 0 ? default : new('\0', Signed(constant.Bits, 8 * lowering.Layout.Size));

@@ -44,16 +44,20 @@ internal sealed partial class InstanceCollector
             return this.Implementation(program, item, subject, symbol, this.types.SubstOfItem(callable));
         }
 
-        return this.types.Witness(callable) is { } target ? this.Requirement(program, item, subject, symbol, target) : -1;
+        return this.types.Witness(callable) is { } target ? this.Called(program, item, subject, symbol, target) : -1;
     }
 
     // SPEC 8.13.3: the body of the implementation a function's substitution selects, admitted for a site of an item's body; without one,
     // what its call runs (Bodyless).
     private int Implementation(MirProgram program, int item, SourceRef subject, BindingSymbol function, Subst? subst)
-    {
-        var implementation = this.types.Implementation(function, subst, 0)!;
-        return program.Callee(new(MirCalleeKind.Fn, implementation)) is { } body
+        => this.Selected(program, function, subst, out var implementation) is { } body
             ? this.Admit(item, subject, body, subst) : this.Bodyless(program, item, subject, implementation, subst);
+
+    // SPEC 8.13.3: the implementation a function's substitution selects, and its MIR body; null for a function without one.
+    private MirBody? Selected(MirProgram program, BindingSymbol function, Subst? subst, out BindingSymbol implementation)
+    {
+        implementation = this.types.Implementation(function, subst, 0)!;
+        return program.Callee(new(MirCalleeKind.Fn, implementation));
     }
 
     // K 4.5 rows 2, 6 and 8 (DECISIONS R5-M30, R5-M74, R5-M116): a callee without a MIR body whose published row runs a requirement on the

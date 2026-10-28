@@ -19,15 +19,10 @@ internal sealed partial class FunctionCodegen
     private void FixedStorage(in MirTerminator call)
     {
         var source = this.body.Operands[call.Start + ArgumentPosition(new(call.Callee.Symbol, MirBodyKind.Fn), 0)];
-        if (this.Referent(this.InstanceType(source)) is not { } array || this.LoweringOf(call.Place) is not { } remainder)
+        if (this.Referent(this.InstanceType(source)) is not { } array || this.LoweringOf(call.Place) is not { } remainder ||
+            !this.Operand(source, out var storage) || !this.Address(call.Place, out var record))
         {
             return; // A broken contract, recorded.
-        }
-
-        if (!this.Operand(source, out var storage) || !this.Address(call.Place, out var record))
-        {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-            return;
         }
 
         var input = new StorageKernelInput(
@@ -70,8 +65,7 @@ internal sealed partial class FunctionCodegen
         var source = this.body.Operands[call.Start + ArgumentPosition(new(call.Callee.Symbol, MirBodyKind.Fn), 0)];
         if (!this.Operand(source, out var storage) || !(scalar || this.Address(call.Place, out record)))
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-            return;
+            return; // A broken contract, recorded.
         }
 
         var defined = scalar ? new Value('t', this.next++) : default;

@@ -47,15 +47,10 @@ internal sealed partial class FunctionCodegen
         var key = new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
         var handle = this.body.Operands[call.Start + ArgumentPosition(key, 0)];
         var length = this.body.Operands[call.Start + ArgumentPosition(key, 1)];
-        if (this.Referent(this.InstanceType(handle)) is not { } array || this.Laid(array) is not { } record || this.LoweringOf(length) is not { } isize)
+        if (this.Referent(this.InstanceType(handle)) is not { } array || this.Laid(array) is not { } record || this.LoweringOf(length) is not { } isize ||
+            !this.Operand(handle, out var address) || !this.Operand(length, out var value))
         {
             return; // A broken contract, recorded.
-        }
-
-        if (!this.Operand(handle, out var address) || !this.Operand(length, out var value))
-        {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-            return;
         }
 
         this.StoreAt(this.Offset(address, record.Layout.FieldOffsets.Span[Layout.LengthWord(array)]), isize.Layout, value);
@@ -67,8 +62,7 @@ internal sealed partial class FunctionCodegen
     {
         if (!this.Operand(this.body.Operands[call.Start + ArgumentPosition(new(call.Callee.Symbol, MirBodyKind.Fn), 0)], out var handle))
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-            return;
+            return; // A broken contract, recorded.
         }
 
         var capacity = new Value('t', this.next++);
