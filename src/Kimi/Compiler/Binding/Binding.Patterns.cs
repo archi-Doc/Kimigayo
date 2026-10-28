@@ -461,7 +461,8 @@ public sealed partial class Binding
                 syntax.BoundSymbol = selected.Symbol;
                 for (var i = 0; i < children.Length; i++)
                 {
-                    var payload = this.StoredType(selected.Payload[i], type) is { } stored ? this.PayloadRead(stored, plan, reach, children[i]) : null;
+                    var payload = WrittenType(selected.Payload[i]) is { } written && this.PartTypeIn(written, type, outer) is { } stored ?
+                        this.PayloadRead(stored, plan, reach, children[i]) : null;
                     if (payload is null)
                     {
                         plan.Invalid = true;

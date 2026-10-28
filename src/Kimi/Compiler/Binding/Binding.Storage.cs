@@ -43,9 +43,9 @@ public sealed partial class Binding
         return instance;
     }
 
-    // SPEC 8.2.3, 5.7 (DECISIONS BU-50): a stored part's Type under an instance as a body reads it (a Field, a Case payload, a base
-    // clause): its kept part without the Unstated mark, so every reader gets the one producer's Type (KeptType, its projections
-    // completed); null where it does not substitute.
+    // SPEC 8.2.3, 5.7 (DECISIONS BU-50): a stored part's Type under an instance (a Field, a Case payload, a base clause) as a reader
+    // outside a body reads it (a body reads PartTypeIn): its kept part without the Unstated mark, so every reader gets the one
+    // producer's Type (KeptType, its projections completed); null where it does not substitute.
     internal BoundType? StoredType(Koto syntax, BoundType owner) => WrittenType(syntax) is { } written ? this.PartType(written, owner) : null;
 
     // The Type a Field or Case payload declaration writes, before any instance substitutes it; null for none.
@@ -125,8 +125,14 @@ public sealed partial class Binding
         return stored is null ? null : this.CompleteProjections(stored, declaration);
     }
 
-    // The read form of a member's declared Type under an instance (StoredType's, and a member access's): KeptType without its marks.
+    // The read form of a member's declared Type under an instance (StoredType's): KeptType without its marks.
     private BoundType? PartType(BoundType declared, BoundType owner) => this.WithoutUnstated(this.KeptType(declared, owner));
+
+    // SPEC 8.2.3 (DECISIONS BU-50): the read form as a body in `scope` reads it (a member access, a Case payload's construction and
+    // pattern, a stored witness Field): PartType normalized there as a call's signature is (ContractType), so the use scope's premises
+    // complete a projection the storage keeps pending (`HAd<T>`'s `T.Output` is T under `T is PrimitiveInteger`).
+    private BoundType? PartTypeIn(BoundType declared, BoundType owner, BindingScope scope)
+        => this.PartType(declared, owner) is { } part ? this.ContractType(part, scope) : null;
 
     // SPEC 8.6.1, 5.7 Calls (DECISIONS BU-50): a part with each associated projection replaced by ProjectionSpecification's outcome: a
     // builtin output or fixed-array iterator Type as it is, a subject's conformance binding as a kept part of the subject (KeptType), so

@@ -7504,6 +7504,12 @@ resumed by R4-M86 (2026-10-20).
     threw), as BorrowingIterator, a user Wrapper and `W<Src>` do, and so do `V<Src>` through two conditional paths, the nested `W<W<Src>>`
     and `W<DV>` with an inherited HasMore (before: CheckFaulted_Kd, or InvalidPattern_Kd for `W<DV>`), while `WB<S>` (u8 against i32)
     keeps Binding's records.
+  - Revised (bu57, 2026-10-29; PLAN G281): a body reads a stored part in its own scope, as a call's signature is read (SPEC 8.2.3):
+    `PartTypeIn` (Binding.Storage), PartType normalized there by `ContractType`, is the read form of a member access (read and write),
+    a Case payload's construction and pattern and a stored witness's Field (replacing PropertyMatching's own composition). So the use's
+    premise completes a projection the storage keeps pending (`HAd<T>`'s `T.Output` and `Wrapping<T>.Output` under `T is
+    PrimitiveInteger`, `T.(HasItem).Item is i32`), where each was a false TypeMismatch_Kd; the storage stays scope independent
+    (decision 10), and readers outside a body keep `PartType` and `StoredType`.
   - Pending and prepared storage (decision 6's question): PrepareStorage runs in BindDeclarations after PrepareAssociatedInference, which
     collects the pass's evidence, runs every inference batch and resolves every binding again (state 2 or 3), so from PrepareStorage on a
     struct or enum subject's resolution is final, except inside a binding's own resolution (pending). A kept part completed before is not
