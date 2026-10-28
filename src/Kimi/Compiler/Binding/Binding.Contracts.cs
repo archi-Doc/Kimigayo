@@ -632,7 +632,8 @@ public sealed partial class Binding
             result.Use = use;
             result.Declaration = use;
             result.RootContract = root;
-            result.RootPath = ReferenceEquals(contract, root) ? result : this.conformancePaths[(type, root, use, root)];
+            // A path registers its root path, so callers may list paths in any order (an inherited base lists them by identity).
+            result.RootPath = ReferenceEquals(contract, root) ? result : this.RegisterConformance(type, root, root, use, scope, premises);
             result.Premises = premises;
             result.Scope.Parent = scope;
             this.activeConformancePaths.Add(result);

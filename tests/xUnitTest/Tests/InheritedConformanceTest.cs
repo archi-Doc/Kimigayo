@@ -37,6 +37,39 @@ public class InheritedConformanceTest
 
     private const string Bumps = "contract Bumps\n    func bump(self: uniq/Self) -> ()\n";
 
+    // BW and BX declare HasItem before its refinement HasMore, conditionally and unconditionally.
+    private const string Refinements = """
+        contract HasItem
+            associate Item
+        contract HasMore: HasItem
+            associate Elem
+            associate HasItem.Item is Elem
+        struct Src
+            Self is HasMore
+            associate HasMore.Elem is i32
+        struct SrcI
+            Self is HasItem
+            associate HasItem.Item is i32
+        struct HA<S>
+            S is HasItem
+            public var x: S.Item
+        struct HM<S>
+            S is HasMore
+            public var x: S.Elem
+        open struct BW<S>
+            S is HasItem
+            Self is HasItem
+            associate HasItem.Item is S.(HasItem).Item
+            Self is HasMore when S is HasMore
+                associate HasMore.Elem is S.(HasMore).Elem
+        open struct BX
+            Self is HasItem
+            associate HasItem.Item is i32
+            Self is HasMore
+            associate HasMore.Elem is i32
+
+        """;
+
     // SPEC 12.7, 23.1.1, 23.1.2: an exclusive implementation reached through a base has no computed ObjectCallCompatible status
     // (OCC-X). Its conformance is one location-only Unsupported_Kd at its declaration: an explicit `Self is C`, or the derived Type's base
     // clause for an inherited conformance once a check that needs it fails. Every check resting on it is derived; an unused inherited
@@ -175,6 +208,23 @@ public class InheritedConformanceTest
     {
         var c = CompilationTestHelper.ParseSuccess("contract C\n    associate E\nopen struct Base\n    Self is C\n    associate E is i32\nstruct Derived: Base\n    Self is C\n    associate E is " + associated);
         Assert.Equal(valid, c.Bind().IsComplete);
+    }
+
+    // SPEC 8.6.2, 8.9.2: a derived Type inherits every path of its base, also a refinement path the base declares after the refined
+    // Contract's own conformance (registration read its root path before registering it); it gives the base's verdict.
+    [Theory]
+    [InlineData("struct D: BW<Src>\n", "HA<D>, g: HM<D>", true)]
+    [InlineData("struct D<T>: BW<T>\n    T is HasItem\n", "HA<D<Src>>, g: HM<D<Src>>", true)]
+    [InlineData("struct D<T>: BW<T>\n    T is HasItem\n", "HA<D<SrcI>>, g: HM<D<SrcI>>", false)] // The condition is refuted.
+    [InlineData("struct D<T>: BW<T>\n    T is HasItem\n", "HA<D<i32>>, g: HM<D<Src>>", false)]
+    [InlineData("open struct D<T>: BW<T>\n    T is HasItem\nstruct E<T>: D<T>\n    T is HasItem\n", "HA<E<Src>>, g: HM<E<Src>>", true)]
+    [InlineData("struct D: BX\n", "HA<D>, g: HM<D>", true)]
+    [InlineData(null, "HA<BW<Src>>, g: HM<BW<Src>>", true)] // The base itself.
+    public void ARefinementDeclaredAfterItsParentIsInherited(string? derived, string parameters, bool valid)
+    {
+        var c = CompilationTestHelper.ParseSuccess(Refinements + derived + "func f(h: " + parameters + ") -> i32 => h.x + g.x\n");
+        Assert.Equal(valid, c.Bind().IsComplete);
+        Assert.All(c.Binding.Issues, static x => Assert.Equal(DiagnosticCode.UnsatisfiedConstraint_Kd, x.Code));
     }
 
     [Fact]
