@@ -70,6 +70,11 @@ public sealed partial class MirBorrowsTest
         "    public var held: Option<uniq/i32 during a> = .None\n    public func absorb(self: uniq/Self, r: uniq/i32 during a) -> () => self.held = .Some(r@move)\n";
 
     private const string WkMaker = "struct Maker<E, T>\n    public var make: (E) -> T\n    public init(make: (E) -> T) => self.make = make@move\n";
+    private const string WkVirtual = "struct HoldV {a}\n    public var held: uniq/i32 during a\n    public init(held: uniq/i32 during a) => self.held = held\n" +
+        "open struct BaseB<T, E>\n    public init() => ()\n    public virtual func mk(self: objref/Self, r: E) -> Option<T> => .None\n" +
+        "struct DerB {a} : BaseB<HoldV during a, uniq/i32 during a>\n    public init() => ()\n" +
+        "    override func mk(self: objref/Self, r: uniq/i32 during a) -> Option<HoldV during a> => .Some(HoldV.init(held: r@move))\n";
+
     private const string WkWrap = "struct Wrap {a}\n    public var r: uniq/i32 during a\n    public init(r: uniq/i32 during a) => self.r = r\n";
 
     // The bodies and head the rows share: a store of the child into the local `slot`, the moves and reborrow of `*v` a builder row passes,
@@ -232,6 +237,17 @@ public sealed partial class MirBorrowsTest
         ["writerReq"] = WkAbsorb + WkForm("sneakA", "<T, E>(slot: uniq/T, y: E) -> ()\n    T is Absorb<E>\n", "slot.absorb(y@move)") +
             WkBuilders("writerReq", "<T>(value: uniq/i32 during o, other: T) -> ()\n    T is Absorb<uniq/i32 during o>\n", "sneakA<T, uniq/i32 during o>(slot@uniq, child@move)") +
             WkForm("writerReqDirectBad", "<T>(value: uniq/i32 during o, other: T) -> ()\n    T is Absorb<uniq/i32 during o>\n", WkMoved + "slot.absorb(child@move)\nv@follow = 5\nlook(slot@ref)"),
+        ["virtual"] = WkVirtual +
+            WkEnded(
+                "virtOk",
+                "virtBad",
+                "<T>(value: uniq/i32 during o, b: objref/BaseB<T, uniq/i32 during o>) -> ()\n",
+                "var v = value@move\nlet child: uniq/i32 during o = v\nlet t = b.mk(child@move)",
+                "t") +
+            WkForm(
+                "virtConcreteBad",
+                "(value: uniq/i32 during o, b: objref/BaseB<HoldV during o, uniq/i32 during o>) -> ()\n",
+                "var v = value@move\nlet child: uniq/i32 during o = v\nlet t = b.mk(child@move)\nv@follow = 5\nlook(t@ref)"),
         ["writerFn"] = WkForm("sneakW", "<T, E>(slot: uniq/T, y: E, set: (uniq/T, E) -> ()) -> ()\n", "set(slot, y@move)") +
             WkBuilders("writerFn", "<T>(value: uniq/i32 during o, other: T, set: (uniq/T, uniq/i32 during o) -> ()) -> ()\n", "sneakW(slot@uniq, child@move, set@move)") +
             WkForm("writerFnDirectBad", "<T>(value: uniq/i32 during o, other: T, set: (uniq/T, uniq/i32 during o) -> ()) -> ()\n", WkMoved + "set(slot@uniq, child@move)\nv@follow = 5\nlook(slot@ref)"),
@@ -351,6 +367,8 @@ public sealed partial class MirBorrowsTest
     [InlineData("writerReq", "writerReqBad: v@follow = 5 1|writerReqDirectBad: v@follow = 5 1|writerReqOk: v@follow = 5 1")] // Fails on dev by design: all valid.
     [InlineData("writerFn", "writerFnBad: v@follow = 5 1|writerFnDirectBad: v@follow = 5 1|writerFnOk: v@follow = 5 1")]
     [InlineData("callableBound", "callableBad: v@follow = 5 1")] // Fails on dev by design: callableOk `v@follow = 5` 1.
+    // Fails on fd4f56ae3: virtBad valid (a virtual callee on an abstract declaring Type read its base's contract, not as erased).
+    [InlineData("virtual", "virtBad: v@follow = 5 1|virtConcreteBad: v@follow = 5 1")]
     public void ACallableTheContractHandsTheBodyLetsAnAbstractTypeHoldTheArgument(string row, string expected)
         => Assert.Equal(WkExpected(expected), WkRecords(row));
 

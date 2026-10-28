@@ -5307,7 +5307,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rule 3 ((β′)): the callables a callee's premises and inputs hand its body are erased callables it may call: each Callable bound,
     each requirement signature of a Contract premise on its subject (with the clauses of its Contract on associated Types the
     contract's Types reach) and each Function part of an input or result (`TyCtxt.HandedCallables`: Tuple and Option elements,
-    nominal Fields included); a requirement callee on an abstract Self is erased itself. `IsFixed` excludes a requirement's own
+    nominal Fields included); a requirement callee on an abstract Self, and a virtual or overriding callee on an abstract declaring Type
+    (fix round 1, Revision 8: any deriving Type's override, bounded by the original's declared contract, SPEC 6.4, 8.13.2; R4's review
+    B2, `virtBad`), is erased itself; on a concrete Self the standard computation reads the contract, never a body. `IsFixed` excludes a requirement's own
     universal Origins. A carrier has, besides its own node (a value of T, R4-M36), its reached node (Revision 3, `ReachedNode`):
     only a relation whose output is a writable carrier position (an erased writer's `uniq/Self` or `uniq/T` input) reaches it, and it
     fills `Abstract`; a result builder's relation fills the carrier's own node.

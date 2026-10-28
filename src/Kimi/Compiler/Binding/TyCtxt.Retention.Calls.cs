@@ -208,9 +208,12 @@ internal sealed partial class TyCtxt
         return found;
     }
 
-    // SPEC 15.6.4 (β′, DECISIONS R4-M154): whether a callee's implementation is erased at the call: a requirement on a Self with an
-    // abstract part, whose implementation is any conforming Type's (SPEC 8.15.1), read as its own signature (AddErasedRelations).
-    private static bool ErasedCallee(FunctionKoto callee, Subst? types) => callee.IsRequirement && types?.Self?.HasAbstractPart == true;
+    // SPEC 15.6.4 (β′, DECISIONS R4-M154 rule 3): whether a callee's implementation is erased at the call, read as its own instantiated
+    // signature (AddErasedRelations): a requirement on a Self with an abstract part, whose implementation is any conforming Type's (SPEC
+    // 8.15.1), or a virtual or overriding function on a declaring Type with one, whose implementation is any deriving Type's override,
+    // bounded by the original's declared contract (SPEC 6.4, 8.13.2). On a concrete Self the standard computation reads the contract.
+    private static bool ErasedCallee(FunctionKoto callee, Subst? types)
+        => callee.IsRequirement ? types?.Self?.HasAbstractPart == true : (callee.IsVirtual || callee.IsOverride) && types?.Declaring?.HasAbstractPart == true;
 
     // A callee's declared parameter and result Types, in its own terms.
     private static BoundType[] Declared(BindingSymbol callee)
