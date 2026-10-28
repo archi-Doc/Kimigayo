@@ -5271,6 +5271,15 @@ and migration obligations remain in force; no numeric cap changes are authorized
   先に」, and on SPEC 15.6.4's reading 「SPEC 15.6.4 の読み (iii) と (β)」, then 「(β′) 推奨」; implemented by R4's implementer in three
   commits (structure, rule 3, rules 1 and 2), the design owner deciding Revisions 1–5 on the implementer's findings) SPEC 15.6.4,
   15.6.3, 8.4, 8.10, 5.7, 15.3.5.
+  - The design owner's revisions, verbatim (`r4-notes\wk\design-20261028.md`): Revision 1, "Rule 1 is replaced by a table in the
+    contract's own terms, no Type from the MIR"; Revision 2, "Binding publishes the condition, A5 evaluates it."; Revision 3,
+    "Revision 1's `Abstract` entry of `Reached_j` is filled from the reached node only; a result builder's relation (fixed input → the
+    result's carrier) fills the carrier's own node"; Revision 4, "A5 judges a Revision 2 pair (longer, shorter) over the call's
+    instantiated Origins by (S): the pair holds when it is satisfiable for every value of the Fixed Origins"; Revision 5, "the explicit
+    `during slot` tie is that clause, not a dependency stated apart from retention", "Revision 1's `Beyond` is withdrawn; R4-M154
+    records the raw-punned holder's join as an accepted precision cost" and "At a referent store whose referent does not destroy
+    shallowly (R4-M143), the holders past refs(S) take the root record `Own_j`, the interim until A5 composes the destruction (G264)".
+    The planning session approved each moved pin on 2026-10-29 as Revision 4's E2 class or Revision 5's pin class.
   - Rule 1 (per storage; Revision 1): a call's retention (`CallRetention`) has its result's `StorageRetention` and, per output j it
     may write (`Writes`, an `OutputRetention`), `Own_j`, the record of j's root storage (what the argument's direct Loans name), and
     `Reached_j`, one record per Origin-erased storage Type past the root's exclusive layers, plus `Abstract` (what an abstract part
