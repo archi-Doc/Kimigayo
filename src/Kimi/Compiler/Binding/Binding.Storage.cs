@@ -23,8 +23,8 @@ public sealed partial class Binding
     // substitution. They are substituted once per pass after PrepareStorage refilled the declaration, and on every request before; an
     // instance first requested after the last pass on that request. One substitution, two forms (DECISIONS BU-41): the kept parts
     // (Parts, PartsBase; TyCtxt.StoredParts) with the raw Origins it gives, `self` as Holder and Unstated on each raw layer the declaration
-    // writes without `during` (KeptType, DECISIONS BU-46), each associated projection of a struct or enum subject completed by the subject's
-    // conformance (CompleteProjections, DECISIONS BU-50), which StoredLayer and the hold walk read, and AdtDef's view, the same Types
+    // writes without `during` (KeptType, DECISIONS BU-46), each associated projection completed as its subject specifies
+    // (CompleteProjections, DECISIONS BU-50), which StoredLayer and the hold walk read, and AdtDef's view, the same Types
     // WithoutRawOrigins (DECISIONS BU-24; design-final §15): an erased instance is often the user's own
     // Type (no Origins, or only `static`), so the erasure of an AdtDef stored Type is the stored Type of the erased instance only then
     // (R5-M39).
@@ -105,8 +105,8 @@ public sealed partial class Binding
     // The kept part of a declared Field, Case payload or base clause (Substitute; DECISIONS BU-46, BU-50): its written Type with its
     // completable projections completed (CompleteProjections), then each raw layer it writes without `during` stating Unstated
     // (WithUnstatedOrigins, the one producer of a Type stating Unstated), then under the instance's substitution, completed again for the
-    // projections whose subjects the substitution closes; null where it does not substitute or names no Type (a struct or enum subject's
-    // projection that finally names none: a dependent of Binding's records, so the instance's storage is Rejected, DECISIONS BU-38).
+    // projections whose subjects the substitution closes; null where it does not substitute or names no Type (a projection that finally
+    // names none, whatever its subject: a dependent of Binding's records, so the instance's storage is Rejected, DECISIONS BU-38).
     // `BaseI<Src2<raw/u8>.Item>` is `BaseI<raw/u8>` (SPEC 8.2.3), so its layer is one the declaration writes.
     private BoundType? KeptType(Koto syntax, BoundType owner) => WrittenType(syntax) is { } written ? this.KeptType(written, owner) : null;
 
@@ -130,14 +130,14 @@ public sealed partial class Binding
     // The read form of a member's declared Type under an instance (StoredType's, and a member access's): KeptType without its marks.
     private BoundType? PartType(BoundType declared, BoundType owner) => this.WithoutUnstated(this.KeptType(declared, owner));
 
-    // SPEC 8.6.1, 5.7 Calls (DECISIONS BU-50): a part with each associated projection of a struct or enum subject replaced by what the
-    // subject specifies (ProjectionSpecification): a builtin output or fixed-array iterator Type as it is, a conformance binding as a kept
-    // part of the subject (KeptType), so a raw layer the subject's declaration writes (`Src { Item is raw/u8 }`, a base clause's argument)
-    // states Unstated and one the subject's argument supplies (`Src2<raw/u8>`, `Item is T`) carries the argument's mark; a projection whose
-    // subject is abstract, or whose binding's evidence is not ready yet, stays a projection; one of a struct or enum subject that finally
-    // names no Type (whatever the reason; SPEC 8.3.3 so ends an expanding or cyclic specification) makes the part null. A part without an
-    // abstract part is its own result, and a projection is completed after its components, so a subject that is itself a projection is
-    // completed first. A projection is resolved in the scope of the owner's `declaration`, where PrepareStorage binds its parts.
+    // SPEC 8.6.1, 5.7 Calls (DECISIONS BU-50): a part with each associated projection replaced by ProjectionSpecification's outcome: a
+    // builtin output or fixed-array iterator Type as it is, a struct or enum subject's conformance binding as a kept part of the subject
+    // (KeptType), so a raw layer the subject's declaration writes (`Src { Item is raw/u8 }`, a base clause's argument) states Unstated and
+    // one the subject's argument supplies (`Src2<raw/u8>`, `Item is T`) carries the argument's mark; a pending projection (an abstract
+    // subject, or a binding whose evidence is not ready yet) stays a projection; one that finally names no Type, whatever its subject and
+    // reason (SPEC 8.3.3 so ends an expanding or cyclic specification), makes the part null. A part without an abstract part is its own
+    // result, and a projection is completed after its components, so a subject that is itself a projection is completed first. A
+    // projection is resolved in the scope of the owner's `declaration`, where PrepareStorage binds its parts.
     private BoundType? CompleteProjections(BoundType part, Koto declaration)
     {
         if (!part.HasAbstractPart)
@@ -172,12 +172,13 @@ public sealed partial class Binding
 
     private BoundType? CompletedProjection(BoundType projection, Koto declaration)
     {
-        if (this.ProjectionSpecification(projection, this.scopes[declaration], out var subject, out var pending) is not { } specified)
+        var outcome = this.ProjectionSpecification(projection, this.scopes[declaration]);
+        if (outcome.Type is not { } specified)
         {
-            return pending ? projection : null;
+            return outcome.Pending ? projection : null;
         }
 
-        if (subject is null)
+        if (outcome.Subject is not { } subject)
         {
             return specified;
         }

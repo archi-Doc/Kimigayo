@@ -561,35 +561,33 @@ public sealed partial class Binding
         return binding.Result;
     }
 
-    // SPEC 8.6.1: what a projection of a Type subject names, before the subject substitutes it: a builtin arithmetic output or a fixed
-    // array's iterator Type, complete (`subject` null); or a struct or enum subject's conformance binding of the associated Type in the
-    // subject declaration's terms (ResolveAssociated; an inherited conformance's under the base clause's arguments), the associated Type's
-    // Origin parameters bound to the projection's arguments, for the caller to instantiate under `subject`: as a view (ContractTypeCore)
-    // or as a kept part (CompleteProjections, DECISIONS BU-50). Null and `pending` where nothing decides it yet: the subject is not a struct
-    // or enum (abstract: its instance decides) or its binding's evidence is not ready; a null otherwise is final, the projection names no
-    // Type whatever the reason (DECISIONS BU-50), and the records are the declarations' and the use's (SPEC 23.1.2).
-    private BoundType? ProjectionSpecification(BoundType projection, BindingScope scope, out BoundType? subject, out bool pending)
+    // SPEC 8.6.1 (DECISIONS BU-50): what a projection names before its subject substitutes it, one outcome for every subject. A builtin
+    // arithmetic output or a fixed array's iterator Type, complete (no Subject): the only conformances with an associated binding that a
+    // subject other than a struct or enum has. A struct or enum subject's conformance binding (ResolveAssociated; an inherited
+    // conformance's under the base clause's arguments) in the subject declaration's terms, the associated Type's Origin parameters bound to
+    // the projection's arguments, for the caller to instantiate under the Subject: as a view (ContractTypeCore) or as a kept part
+    // (CompleteProjections); pending while its evidence is not ready. Any other subject is pending only when it has an abstract part (a
+    // parameter, or a projection over one: its instance decides). Else none, final, whatever the reason (a closed subject: `i32`, a Tuple,
+    // an array, a completed `Src.Item`): the projection names no Type, and the records are the declarations' and the use's (SPEC 23.1.2).
+    private ProjectionOutcome ProjectionSpecification(BoundType projection, BindingScope scope)
     {
-        (subject, pending) = (null, true);
-        if (this.BuiltinArithmeticOutput(projection, scope) is { } numericOutput)
+        if ((this.BuiltinArithmeticOutput(projection, scope) ?? this.FixedArrayIteratorType(projection)) is { } builtin)
         {
-            return numericOutput;
+            return new(builtin, null, false);
         }
 
-        if (this.FixedArrayIteratorType(projection) is { } fixedIterator)
+        if (projection.Components[0] is not { Symbol.Declaration: StructKoto or EnumKoto } subject)
         {
-            return fixedIterator;
+            return new(null, null, projection.Components[0].HasAbstractPart);
         }
 
         var qualifier = projection.Components.Count == 2 ? projection.Components[1] : null;
-        if (projection.Components[0] is not { Symbol.Declaration: StructKoto or EnumKoto } receiver ||
-            this.ResolveAssociated(receiver, projection.Symbol!, scope, qualifier, out pending) is not { } binding)
+        if (this.ResolveAssociated(subject, projection.Symbol!, scope, qualifier, out var pending) is not { } binding)
         {
-            return null;
+            return new(null, null, pending);
         }
 
-        subject = receiver;
-        return this.SubstituteStoredOrigins(binding, projection.Symbol!.Declaration, (BoundOrigin[])projection.OriginArguments);
+        return new(this.SubstituteStoredOrigins(binding, projection.Symbol!.Declaration, (BoundOrigin[])projection.OriginArguments), subject, false);
     }
 
     // `qualifier` is the declaring Contract reference of the projection (SPEC 8.6.1); a bound reference of a Contract with Type
@@ -704,6 +702,10 @@ public sealed partial class Binding
 
         return found;
     }
+
+    // ProjectionSpecification's one outcome (DECISIONS BU-50): the Type, with the Subject it is instantiated under (none for a builtin's
+    // complete Type); else Pending (nothing decides it yet) or none.
+    private readonly record struct ProjectionOutcome(BoundType? Type, BoundType? Subject, bool Pending);
 
     private sealed class AssociatedBinding
     {

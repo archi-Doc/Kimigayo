@@ -7219,11 +7219,12 @@ resumed by R4-M86 (2026-10-20).
     asserts a body has no validator finding.
 
 - **BU-50 A stored part's Type under an instance has one producer, which completes its associated projections: `Binding.KeptType`,
-  `CompleteProjections`, `ProjectionSpecification`; a struct or enum subject's projection that finally names no Type names none**
+  `CompleteProjections`, `ProjectionSpecification`; a projection that finally names no Type names none, whatever its subject**
   (2026-10-27; the BU planning session; PLAN G271, unit bu53 and its fix rounds 1 (the implementation review's REVISE: B1–B3, N1–N4),
-  2 (the re-check: B3′, G158's interaction) and 3 (re-check 2's R1, the Rejected rule's inherited arm, and the planning session's
-  decision 6 in its addendum; the owner, 2026-10-28: 「もう1回修正する」); class Major, one rule across the stored-part producers;
-  design note `bu/g271/design.md`, fix briefs `bu/g271/fix-round-1.md`, `fix-round-2.md`, `fix-round-3.md`) SPEC 8.6.1, 8.2.3, 5.7
+  2 (the re-check: B3′, G158's interaction), 3 (re-check 2's R1, the Rejected rule's inherited arm, and the planning session's
+  decision 6 in its addendum; the owner, 2026-10-28: 「もう1回修正する」) and 4 (review 4's B1 and N1, decisions 7–9; the owner, the
+  same day: 「もう1回修正する」); class Major, one rule across the stored-part producers; design note `bu/g271/design.md`, fix briefs
+  `bu/g271/fix-round-1.md` to `fix-round-4.md`) SPEC 8.6.1, 8.2.3, 5.7
   Calls: `HA<S> { x: S.Item }` as `HA<Src>`, Src binding `Item` to `raw/u8`, stores a layer Src's declaration writes and no
   parameter's Type expression writes (5.7's positive clause; both designs of U0's revision read it so, no SPEC gap). `Substitute`
   kept `Src.Item`: `SubstituteTypeCore` substitutes a projection's subject but never completes it, and only use sites normalize one
@@ -7235,15 +7236,15 @@ resumed by R4-M86 (2026-10-20).
   - Decision (the rule, B2): `KeptType(written, owner)` (Binding.Storage.cs) completes the declared part's completable projections,
     then marks each raw layer it writes without `during` (`WithUnstatedOrigins`, BU-46's one producer), then substitutes the
     instance's arguments, then completes the projections whose subjects the substitution closed. Completion (`CompleteProjections`,
-    components first, a part without an abstract part its own result) replaces each associated projection of a struct or enum subject
-    by `ProjectionSpecification` (Binding.AssociatedTypes.cs; ContractTypeCore's three arms, moved: a builtin arithmetic output or a
-    fixed array's iterator Type, complete; else the subject's conformance binding, `ResolveAssociated`, Origin parameters bound), the
-    binding taken as a kept part of the subject, `KeptType(binding, subject)`. So a layer the subject's declaration writes (Src's
+    components first, a part without an abstract part its own result) replaces each associated projection by `ProjectionSpecification`
+    (Binding.AssociatedTypes.cs; ContractTypeCore's three arms, moved: a builtin arithmetic output or a fixed array's iterator Type,
+    complete; else a struct or enum subject's conformance binding, `ResolveAssociated`, Origin parameters bound), the binding taken as a
+    kept part of the subject, `KeptType(binding, subject)`. So a layer the subject's declaration writes (Src's
     `raw/u8`, an enum subject's, `DerI : BaseI<raw/u8>`'s inherited `Item is P`) states Unstated, one the subject's argument supplies
     (`Item is T`) carries that argument's mark (none for `HA<Src2<raw/u8>>` written in a signature or body, the parameter's layer;
     Unstated below a Field `h: HA<Src2<raw/u8>>`), and `struct DerQ : BaseI<Src2<raw/u8>.Item>`, which is `BaseI<raw/u8>` (SPEC
     8.2.3), marks its `raw/u8` as a layer the declaration writes, as a Field's Type, normalized at declaration binding, already was. A
-    projection whose subject is a parameter, or whose conformance binds nothing, stays a projection. The completion proves a
+    projection stays a projection only while it is pending (No Type below). The completion proves a
     conformance on a marked subject (`SrcC<raw/u8 during Unstated>`'s condition `T is Copy` under `HHC`); its verdicts equal the
     unmarked subject's in every checked form, and no relation, premise or row is formed from the mark (BU-46 N4 holds).
   - Clarification of BU-46 (not a departure): "an abstract part kept as written" reads "after KeptType completed its completable
@@ -7262,27 +7263,37 @@ resumed by R4-M86 (2026-10-20).
     conformance paths, RequirementInstances, RequirementWitness, Formatting, ArithmeticOperators), signatures and callable members
     (MemberType, ProjectCallableType, Structs' constructor patterns), formation Types (AssociatedOrigins), the component summaries'
     projection walk and the resolver's own instantiation (ContractTypeCore, the inherited binding arm).
-  - No Type (decision 6 of fix round 3, replacing round 2's state-3 rule and round 3's inherited arm; SPEC 23.1.2, DECISIONS BU-38): a
-    struct or enum subject's projection that finally names no Type names no Type, whatever the reason. Its resolution's owner
-    (`ResolveAssociated`, `ProjectionSpecification`) publishes one outcome: a Type; pending, while the pass's declaration evidence is
-    incomplete (`AssociatedEvidencePending`: before PrepareAssociatedInference has collected it, or while an inference batch collects,
-    whose state-3 verdicts are provisional) or the binding is revisited while it is being resolved; else none, final (nothing specifies
-    the binding, Binding rejected it, an inherited base gives none, its base clause substitutes none or its sources disagree, the Type
-    lacks the conformance, its conditions are refuted or in error, its paths disagree). `CompletedProjection` keeps the projection only
-    for an abstract subject or pending; for none the kept part does not substitute (null) and the instance's storage is Rejected, a
-    dependent the collector reads as one (no generation record). No per-reason test remains. cycle1, cycle2, grow, grow2, inhcyc and its
-    twins, two inherited sources disagreeing (`contract Sub<A, B> : Holder<A>, Holder<B>`, `BaseP<T, U> { Self is Sub<T, U>;
-    Holder<T>.Item is i32; Holder<U>.Item is u8 }`, `DerP : BaseP<i32, i32>`), two conformance paths disagreeing (`Self is Holder<T>`,
-    `Self is Holder<U>`) and a subject whose base clause gives it no conformance (`DerX : BaseG`, `BaseG<i32, u8>`) keep exactly Binding's
-    records on sel, and with G158 (3)'s collector on every pipeline. A final none with no Binding record cannot pass silently: Rejected
-    storage in a complete compilation throws (InternalInvariant_Kd); the Session shows no valid program reaches it.
+  - No Type (decision 6 of fix round 3, replacing round 2's state-3 rule and round 3's inherited arm, and decision 7 of fix round 4,
+    which extends it to every subject; SPEC 23.1.2, DECISIONS BU-38): a projection that finally names no Type names no Type, whatever its
+    subject and the reason. `ProjectionSpecification` publishes one outcome for every subject, a `ProjectionOutcome` (a private readonly
+    record struct: the Type, the Subject it is instantiated under, Pending; decision 8, ARCH's one `out`), which ContractTypeCore and
+    CompletedProjection read: a builtin arithmetic output or a fixed array's iterator Type; for a struct or enum subject its resolution's
+    (`ResolveAssociated`) Type, or pending while the pass's declaration evidence is incomplete (`AssociatedEvidencePending`: before
+    PrepareAssociatedInference has collected it, or while an inference batch collects, whose state-3 verdicts are provisional) or the
+    binding is revisited while it is being resolved, else none, final (nothing specifies the binding, Binding rejected it, an inherited
+    base gives none, its base clause substitutes none or its sources disagree, the Type lacks the conformance, its conditions are refuted
+    or in error, its paths disagree); any other subject is pending only when it has an abstract part (a parameter, or a projection over
+    one: its instance decides), and a closed one is none (`i32`, a Tuple, an array, a completed `Src.Item`, `bool` without Addable). The
+    builtin arms cover every builtin conformance with an associated binding such a subject can have (ResolveConformance): the arithmetic
+    Contracts' `Output` for a numeric Type or Wrapping (`BuiltinArithmeticConformance`, which both read; no builtin Left Contract) and
+    the owned fixed array's entry conformances' `IteratorType` (`IsFixedArrayEntry`); the comparison, formatting, Position and intrinsic
+    Contracts associate no Type, Array, Dictionary and Slice carry their library struct's symbol (the struct arm), and no declaration
+    adds a conformance to another Type (SPEC 8.7.1). `CompletedProjection` keeps the projection only while pending; for none the kept part
+    does not substitute (null) and the instance's storage is Rejected, a dependent the collector reads as one (no generation record). No
+    per-reason or per-subject test remains. cycle1, cycle2, grow, grow2, inhcyc and its twins, two inherited sources disagreeing
+    (`contract Sub<A, B> : Holder<A>, Holder<B>`, `BaseP<T, U> { Self is Sub<T, U>; Holder<T>.Item is i32; Holder<U>.Item is u8 }`,
+    `DerP : BaseP<i32, i32>`), two conformance paths disagreeing (`Self is Holder<T>`, `Self is Holder<U>`), a subject whose base clause
+    gives it no conformance (`DerX : BaseG`, `BaseG<i32, u8>`) and closed subjects (`HA<i32>`, `HA<(i32, u8)>`, `HA<[2 of i32]>`,
+    `HA<Src.Item>`, `HAdd<bool>`'s `S.Output`, `EW<i32>`'s payload `A(S.Item)`) keep exactly Binding's records on sel, and with G158
+    (3)'s collector on every pipeline; `HAdd<i32>` stays valid. A final none with no Binding record cannot pass silently: Rejected storage
+    in a complete compilation throws (InternalInvariant_Kd); the Session shows no valid program reaches it.
   - Pending and prepared storage (decision 6's question): PrepareStorage runs in BindDeclarations after PrepareAssociatedInference, which
     collects the pass's evidence, runs every inference batch and resolves every binding again (state 2 or 3), so from PrepareStorage on a
     struct or enum subject's resolution is final, except inside a binding's own resolution (pending). A kept part completed before is not
     cached: `Instance` substitutes again on each request until PrepareStorage stamps the declaration's version for the pass, and each pass
     prepares every declaration again; so the storage the collector reads, the last pass's, never keeps a pending projection of a struct or
     enum subject. A temporary trace of every such pending outcome over the whole suite (24,853 tests) and every probe found none (abstract
-    subjects' pending outcomes, the control, were traced).
+    subjects' pending outcomes, the control, were traced). A closed subject of another kind is never pending (fix round 4).
   - Termination (B1): SPEC 8.3.3 Recursion: `ResolveAssociated(path, associated)` marks a binding revisited while it is being resolved
     (state 4) and, when its Type stays pending through that revisit, gives it no Type (`A.Item is A.Item`, a cycle through another
     binding, `G<T> { Item is G<G<T>>.Item }`, `A<T>.Item is B<A<T>>.Item` with `B<T>.Item is A<T>.Item`). Such a Type was never stored
@@ -7290,8 +7301,8 @@ resumed by R4-M86 (2026-10-20).
     its projection and each use); completion and ContractTypeCore stop at the projection instead of expanding it (both overflowed the
     stack before, ContractTypeCore on dev too). No Type-set guard remains: every cycle of bindings revisits one of them.
   - Removes: the three faults above, the two false errors, the per-query uncompleted reads, sel's CheckFaulted_Kd beside Binding's records
-    where a struct or enum subject's projection names no Type (any reason), round 2's and round 3's per-reason `rejected` tests, and unit
-    bu53's first (projection, scope) re-entry set (its cold +72 B).
+    where a projection names no Type (any subject, any reason), round 2's and round 3's per-reason `rejected` tests, round 3's two `out`
+    parameters, and unit bu53's first (projection, scope) re-entry set (its cold +72 B).
   - Not covered (PLAN G278, pre-existing on dev, another cause): a projection-typed witness (`W<S> { Self is Holds; associate Holds.E
     is S.Element; var item: S.Element }`, also through a base `Leaf<S> : Base<S.Element>`) is UnprovenConstraint_Kd. A derived
     constructor assigning a base Field whose base clause names its Type through a projection (`DerF : BaseF<Src2<raw/u8>.Item>`,

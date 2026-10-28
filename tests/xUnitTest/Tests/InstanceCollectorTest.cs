@@ -251,6 +251,7 @@ public sealed class InstanceCollectorTest
                 "InvalidConstraint_Kd InvalidConstraint_Kd";
             const string Holder = "contract Holder<K>\n    associate Item\nstruct HB<S>\n    S is Holder<i32>\n    var x: S.Item\n";
             const string Bindings = "    associate Holder<T>.Item is i32\n    associate Holder<U>.Item is u8\n";
+            const string HAdd = "struct HAdd<S>\n    S is Addable<S>\n    public var x: S.Output\n";
             var b65 = Nest("B", 65, "i32");
             return new()
             {
@@ -268,6 +269,19 @@ public sealed class InstanceCollectorTest
                 { "replaceGeneric", Bad + "func put<T>(slot: uniq/Option<T>) => Kimi.Intrinsics.replace(slot, with: .None)\nfunc g(slot: uniq/Option<Bad>) => put(slot)\n", "UnresolvedBinding_Kd", string.Empty },
                 { "row", Bad + "struct Sx\n    public var x: Array<Bad>\nfunc g(s: uniq/Sx) => s.x.reserve(1)\n", "UnresolvedBinding_Kd", string.Empty },
                 { "noType", NoType + "func g(b: HA<A>) => ()\n", "InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty },
+                { "closedPrimitive", HasItem + "func g(h: HA<i32>) => ()\n", "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty },
+                { "closedTuple", HasItem + "func g(h: HA<(i32, u8)>) => ()\n", "UnprovenConstraint_Kd UnprovenConstraint_Kd", string.Empty },
+                { "closedArray", HasItem + "func g(h: HA<[2 of i32]>) => ()\n", "UnprovenConstraint_Kd UnprovenConstraint_Kd", string.Empty },
+                {
+                    "closedProjection", HasItem + "struct Src\n    Self is HasItem\n    associate HasItem.Item is raw/u8\nfunc g(h: HA<Src.Item>) => ()\n",
+                    "UnprovenConstraint_Kd UnprovenConstraint_Kd", string.Empty
+                },
+                { "closedOutput", HAdd + "func g(h: HAdd<bool>) => ()\n", "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty },
+                { "closedOutputValid", HAdd + "func g(h: HAdd<i32>) -> i32 => h.x\n", string.Empty, string.Empty },
+                {
+                    "closedPayload", HasItem + "enum EW<S>\n    S is HasItem\n    A(S.Item)\n    B\nfunc g(e: EW<i32>) => ()\n",
+                    "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty
+                },
                 { "inherited", BaseA + "struct DerA : BaseA\n    var m: i32\nfunc g(b: HA<DerA>) => ()\n", Inherited, string.Empty },
                 {
                     "inheritedTwice", BaseA + "open struct DerA : BaseA\n    var m: i32\nstruct DerB : DerA\n    var n: i32\nfunc g(b: HA<DerB>) => ()\n",
@@ -616,11 +630,12 @@ public sealed class InstanceCollectorTest
     // SPEC 23.1.2, 23.1.1 (DECISIONS BU-38): a part Binding rejected is a dependent, never a limit. A program whose instance, composed
     // substitution or bodyless callee's parameter rests on storage Binding rejected keeps exactly its Binding record and gains no generation
     // record (before: the storage-nesting gap at the requesting call, C8d's LegacyRow item InternalInvariant_Kd), while a Type nested past the
-    // bound keeps the gap at its site, beside a failed part in either order too: the limit wins. A Field whose projection of a struct
-    // subject finally names no Type is such a part, whatever the reason (DECISIONS BU-50): its specification rejected by SPEC 8.3.3
-    // (noType), also through an inherited conformance one or two levels down or under a generic base (inherited*), two inherited sources or
-    // two conformance paths disagreeing (sourcesDisagree, pathsDisagree), a subject whose base clause gives it no conformance
-    // (noConformance*); before, Layout's "no row for the Type Item".
+    // bound keeps the gap at its site, beside a failed part in either order too: the limit wins. A Field whose projection finally names no
+    // Type is such a part, whatever its subject and reason (DECISIONS BU-50): its specification rejected by SPEC 8.3.3 (noType), also
+    // through an inherited conformance one or two levels down or under a generic base (inherited*), two inherited sources or two
+    // conformance paths disagreeing (sourcesDisagree, pathsDisagree), a subject whose base clause gives it no conformance (noConformance*),
+    // a closed subject that is no struct or enum (closed*: a primitive, a Tuple, an array, a completed `Src.Item`, `bool` without Addable,
+    // a Case payload); before, Layout's "no row for the Type Item" ("Output"). A builtin output names its Type (closedOutputValid).
     [Theory]
     [MemberData(nameof(RejectedCases))]
     public void APartBindingRejectedIsNoGenerationRecord(string name, string source, string issues, string records)
