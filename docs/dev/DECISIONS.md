@@ -12101,7 +12101,8 @@ structure is recorded here by the unit that first implements it.
        Deref projection is no layout obligation, goes into R5-M144's projection unit before R5's exit, the projection's layout use covering
        every layout obligation (C layout and the limits; SPEC 8.15.3), closed one level higher by R5-M149's layout needs; B3 is this entry's
        correction above. Its final verdict:
-       <added at the merge>.
+       ACCEPT (review 2, parts 1 and 2: B1 by x3b1, B2 by proj and R5-M149, B3 here; its non-blocking items are PLAN G157
+       and G285-G289).
   - Rejected: marking `Layout.Row` (it would claim a removal that never comes); the stage-3 difference of two compilations for the
     collection share (below the noise, R5-M147); a timer inside the compiler (a hook only a measurement reads).
 - **R5-M149 Layout needs: one published fact of what a form's generated code reads a layout of, read by the collector and code
