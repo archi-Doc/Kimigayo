@@ -8,11 +8,13 @@ namespace Kimi.Compiler.Mir;
 // its requirement with its code and facts, which MirBorrows.Witnesses builds: the Loan's or candidate's anchor, its witness (a holder's
 // next use in its chain, the location for a value an access takes, a transit value's or E's store; none for a destruction's own
 // hold, R3), an activation's reservation, the static Field an effect met and, inside an inline default copy, the default's operation
-// (Evaluated) with the outermost omitting call as subject (D13); a located Unsupported_Kd where the stratum classifies nothing, and in a
-// view PD13 holds (MirBorrows.CallRows' held; R4-M126 (iii), R4-M148) at every rejection's subject; OwnershipDepthLimit_Kd (DepthLimit,
-// R4-M153) where a check's verdict rests on a part past a walk's bound, a conflict only the drop tier gives at its drop-live holder's
-// declaration (Report, Ended), as beside an own-step Warning only the drop tier gives (DroppedDeparture); InternalInvariant_Kd at a Value
-// call whose declared signature does not number its operands (G136). Every rejection but a limit record is recorded through
+// (Evaluated) with the outermost omitting call as subject (D13); the limit records, through the one recorder Limit (R4-M153): a located
+// Unsupported_Kd where the stratum classifies nothing, and in a view PD13 holds (MirBorrows.CallRows' held; R4-M126 (iii), R4-M148) at
+// every rejection's subject, and OwnershipDepthLimit_Kd where a check's verdict rests on a part past a walk's bound, a conflict only the
+// drop tier gives at its drop-live holder's declaration (Report, Ended), as beside an own-step Warning only the drop tier gives
+// (DroppedDeparture); held to the view's end, where each subject gets one per view, the one answer MirTypes.Decides gives of them (Limits);
+// InternalInvariant_Kd at a Value call whose declared signature does not number its operands (G136). Every rejection but a limit record is
+// recorded through
 // Record(code, requirement, subject, facts), so the hold is one rule there: a Loan conflict through Report(code, anchor, via, at,
 // reservation, effect), A5-F9's template rules (MirBorrows.Defaults) with their parameter. The own-step Warning (OwnStepDeparture_Kd,
 // MirBorrows.OwnSteps), which is no Loan problem and rejects nothing, is recorded through Departure under its own requirement, never
@@ -20,6 +22,8 @@ namespace Kimi.Compiler.Mir;
 // Must not decide a conflict (MirBorrows.Checks), derive a requirement from a code, or apply a derived-problem rule (MirReport's).
 internal sealed partial class MirBorrows
 {
+    private readonly List<(SourceRef Subject, ulong Views, MirWrites Outcome)> limits = []; // The view run's limit records (Limit, Limits).
+
     // A conflicting candidate's problem: its Loan's anchor, and its witness (E13 (6)): a holder it was found live in (for an activation, other
     // than its own), else the location, whose operation uses the value that carries it; and the static Field an effect met (R4-M92). One
     // only the drop tier takes rests on a Drop past the destruction walk's bound: the depth limit at its drop-live holder's declaration.
@@ -28,7 +32,7 @@ internal sealed partial class MirBorrows
         ref readonly var found = ref this.candidates[candidate];
         if (!found.Tags.Takes(taking))
         {
-            this.DepthLimit(this.Declaration(found.Dropped.Via));
+            this.Limit(this.Declaration(found.Dropped.Via), MirWrites.Deep);
             return;
         }
 
@@ -51,7 +55,7 @@ internal sealed partial class MirBorrows
     {
         if (this.held)
         {
-            this.Unsupported(subject);
+            this.Limit(subject, MirWrites.Limit);
             return;
         }
 
@@ -66,13 +70,14 @@ internal sealed partial class MirBorrows
         this.AddProblem(DiagnosticCode.OwnStepDeparture_Kd, OwnershipRequirement.OwnStepDeparture, subject, this.facts.AsSpan(0, count));
     }
 
-    // An own-step departure only the drop tier gives (R4-M153), which rests on a Drop past the destruction walk's bound: the Warning, as the
-    // holder's use there witnesses it (its drop slot's use, MirBorrows.Liveness), and the depth limit at the holder's declaration.
+    // An own-step departure only the drop tier gives (R4-M153), which rests on a Drop past the destruction walk's bound: the Warning, its
+    // witness by the one rule (Facts: the holder's next use in the location's chain, here its drop slot's, MirBorrows.Liveness; none where
+    // that Drop lies past the chain), and the depth limit at the holder's declaration.
     private void DroppedDeparture(int entry, int holder, MirLocation at)
     {
         var local = this.DropLocal(holder);
         this.Departure(entry, this.dropSlots[local], at);
-        this.DepthLimit(this.body.Subject(this.body.Locals[local].Source));
+        this.Limit(this.body.Subject(this.body.Locals[local].Source), MirWrites.Deep);
     }
 
     // A problem with its facts in the body's views.
@@ -87,25 +92,42 @@ internal sealed partial class MirBorrows
         this.program.Problems.Add(new(DiagnosticCode.InternalInvariant_Kd, requirement, this.Subject(at), this.body.Ordinal, this.views));
     }
 
-    // A located Unsupported_Kd at a location whose access or call the stratum does not classify; a limit record, which depends on the
-    // concrete instantiation, so an inline default copy's stays at its operation (SPEC 23.1.1, R4-M69, R4-M71).
-    private void Unsupported(MirLocation at) => this.Unsupported(this.Subject(at));
-
-    // A located Unsupported_Kd at a subject, with no fact, a conflict's causes (rule W) dropped with it.
-    private void Unsupported(SourceRef subject)
+    // A limit record at a subject (SPEC 23.1.1; R4-M153), what leaves a check there undecided: a Limit, the located Unsupported_Kd (a form
+    // the stratum does not classify, and PD13's held rejection), or Deep, the depth limit (the owner's 「G272: (1)」, a part past a walk's
+    // bound or a call's retention limit); no fact, a conflict's causes (rule W) dropped with it, never held, and kept at its operation inside
+    // an inline default copy, since it depends on the concrete instantiation (R4-M69, R4-M71). Held until the view's run ends (Limits).
+    private void Limit(SourceRef subject, MirWrites outcome)
     {
         this.causes.Clear();
-        var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
-        this.program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, requirement, subject, this.body.Ordinal, this.views));
+        if (outcome != MirWrites.None)
+        {
+            this.limits.Add((subject, this.views, outcome));
+        }
     }
 
-    // The depth limit at a subject (SPEC 23.1.1, IMPL 21.3.2; the owner's 「G272: (1)」, DECISIONS R4-M153): OwnershipDepthLimit_Kd, a
-    // Resource Error with no fact, where a check's verdict rests on a part past a walk's bound or on a call's retention limit; a conflict's
-    // causes dropped with it, never held (a limit record, as a located Unsupported_Kd is), kept at its operation inside a copy.
-    private void DepthLimit(SourceRef subject)
+    // The view run's limit records: per subject and view, the one answer of what its checks left undecided there (MirTypes.Decides; one
+    // failure, one record, SPEC 23.1.2), Unsupported_Kd for a Limit and OwnershipDepthLimit_Kd for Deep, each under its requirement.
+    private void Limits()
     {
-        this.causes.Clear();
-        this.AddProblem(DiagnosticCode.OwnershipDepthLimit_Kd, OwnershipRequirement.DepthLimit, subject, default);
+        foreach (var (subject, views, _) in this.limits)
+        {
+            for (var mask = views; mask != 0; mask &= mask - 1)
+            {
+                var view = mask & ~(mask - 1);
+                var outcome = MirWrites.None;
+                foreach (var other in this.limits)
+                {
+                    outcome = other.Subject == subject && (other.Views & view) != 0 ? MirTypes.Decides(outcome, other.Outcome) : outcome;
+                }
+
+                var unsupported = outcome == MirWrites.Limit;
+                var requirement = DiagnosticRequirement.Ownership(unsupported ? OwnershipRequirement.Unsupported : OwnershipRequirement.DepthLimit);
+                var code = unsupported ? DiagnosticCode.Unsupported_Kd : DiagnosticCode.OwnershipDepthLimit_Kd;
+                this.program.Problems.Add(new(code, requirement, subject, this.body.Ordinal, view));
+            }
+        }
+
+        this.limits.Clear();
     }
 
     // The declaration of a holder the drop tier found a record's candidate or marker through.

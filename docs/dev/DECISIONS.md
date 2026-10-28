@@ -5272,15 +5272,23 @@ and migration obligations remain in force; no numeric cap changes are authorized
   conflicts), and Locations, Activations and A4 recorded a located `Unsupported_Kd`.
   - Fact and owner: `MirTypes.Bound` (32) is the one bound of the holding walks and the destruction walk (`HoldsRaw`'s too, whose reading
     is 2b-5's). Past it the guard answers its own outcome: `Holding.Holds` gives Loan in the value's own storage and the walk fact Deep
-    where the mode would give Write, and `MirWrites` is None, Through, Limit and Deep, Through over Limit over Deep over None (no
+    where the mode would give Write, and `MirWrites` is None, Deep, Limit and Through, whose order is the walks' one ranking (no
     vocabulary entry, an internal enum). `MirObservation.Deep` and `IMirDestruction.Deep` name the depth limit. Holding's "holds"
     (tracking) and `MayNeedDrop` (generation) keep their yes: no check rests on them.
+  - The one answer (revision 2): where outcomes meet at one verdict, a holder's, a call's or a subject's, `MirTypes.Decides` gives the one
+    ranked higher in `MirWrites`' order: a decided write over an unsupported part (Limit), Limit over a part past the bound (Deep). A
+    verdict both leave undecided is one failure with one record (SPEC 23.1.2), the located `Unsupported_Kd` (DIAGNOSTICS rule 3), since
+    raising the bound would still leave it undecided. Its readers rank nothing themselves: the guard combines its facts by it, A4 maps its
+    classes to outcomes and reads it (`MirEffects.Undecided`), and A5 holds every limit record of a view (`MirBorrows.Limit`: Locations,
+    Activations, the effect rule, the drop tier, the own-step pass and PD13's hold) to the view's end, where each subject gets one record
+    per view by it (`Limits`).
   - Record: one code, `OwnershipDepthLimit_Kd` (Error, Resource, location-only; message "Ownership analysis reaches a Type whose nesting
     passes an implementation bound", which also fits `CallRetention.Limit`'s height, path and keeper limits and a record at a declaration
     or an obligation), under the new requirement `Ownership.DepthLimit`. The owner's answers (verbatim): on the category, 「G272: (1)」 (2026-10-27: Resource, one new
     code); on the requirement member (PD21), 「G272 要件: (a)」 (2026-10-27: the code's approval covers `Ownership.DepthLimit`). No fact
     (the planning session's Q2): R4-M51's records rest on Binding's unpublished bounds, and a `limit` fact would be invented evidence.
-    One recorder per analysis: `MirBorrows.DepthLimit` (never held: a limit record, as a located `Unsupported_Kd` is) and A4's `Verdict`.
+    One recorder per analysis: `MirBorrows.Limit` with `Limits` (never held: a limit record, as a located `Unsupported_Kd` is) and A4's
+    `Verdict`.
   - Drop-liveness (A5): a holder a kept Drop past the destruction walk's bound drops gets a drop slot right after its own, in its region,
     whose state is always empty (`Holders`; the table is reset only for a view with such a Drop); that Drop uses the drop slot instead of
     the holder and every kill of the holder kills it (`Liveness`). After every pass, the gather's drop tier reads each holder live only
@@ -5290,16 +5298,18 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `Report` records such a candidate, and `Ended` such a marker, as the depth limit at the drop-live holder's declaration. The readers that
     only ask whether a candidate is taken (the effect rule's Limit loop, the initialization proof) read both tiers. An own-step entry the
     drop tier finds is tagged apart (`OwnSteps`): a departure only it keeps open keeps SPEC 5.2.1 condition 3's Warning, as the base gives
-    it, witnessed by the holder's Drop (its drop slot's use), beside the depth limit at the holder's declaration (`DroppedDeparture`).
+    it, with its witness by the one rule (the holder's next use in the location's chain, here its drop slot's; none past the chain, as the
+    base's records at depth 10), beside the depth limit at the holder's declaration (`DroppedDeparture`). A location's departure is the one
+    a counted pass gives where one stands; a departure only the drop tier gives is recorded only where none does (revision 2).
   - Rule W and the referent store: `Writes` returns two facts: a Limit holder reached (R4-M147, unchanged) and a Deep holder whose step,
     at W's fixed point, would reach a holder W does not (that step's holders are left out; a step that adds nothing decides nothing). At a
     referent store whose referent's destruction passes the bound, a store of a Loan or an address stops at refs(S), as R4-M147's abstract
-    referent does, with the depth fact. The call's location records each fact it has (`Locations`).
+    referent does, with the depth fact. The call's location records the one answer of its facts (`Locations` through `Limit`).
   - Re-coded records: a borrowed root's Drop past the bound (`Locations`), err(destroy) past it (`Activations`), a call's retention limit
     (R4-M51), A4's class `Deep` (`MirEffects.Deep`, set by `Glue.Deep`, carried by `Keys` and `Summary`; `Verdict`: Environment or Unknown
-    records the row's code, else what leaves it undecided by the guard's one ranking, Limit over Deep (`MirEffects.Undecided`): a Limit the
-    located `Unsupported_Kd`, else Deep the depth limit) and A5's effect rule by the same answer (`Undecided`). The old model's code map and the ledger's compared set pair the code with the
-    requirement (MIR-only: the old path keeps its own bound, 64).
+    records the row's code, else the one answer of its Limit and Deep (`MirEffects.Undecided`): a Limit the located `Unsupported_Kd`, else
+    Deep the depth limit) and A5's effect rule by the same answer. The old model's code map and the ledger's compared set pair the code
+    with the requirement (MIR-only: the old path keeps its own bound, 64).
   - Supersedes in part: R4-M36 (item 8): "a growing one at the bound of 32, where HoldsLoans answers yes and Observes sets deep, the
     caller's located `Unsupported_Kd` as A4's Limit is" now reads: at `MirTypes.Bound`, HoldsLoans answers yes for tracking and its guard
     Deep, never the write fact, and Observation answers Deep; a check whose verdict rests on such a part records `OwnershipDepthLimit_Kd`
@@ -5327,8 +5337,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Revision 1 (implementation review 1, REJECT on B1; the planning session's design revision 1, 2026-10-29): design 2's own-step row read
     "a Warning rejects nothing" as "no record is due", so a departure only a drop-live holder keeps open lost its Warning and recorded
     nothing (owndtor and ownpast at depth 40); it now keeps the Warning beside the depth limit, as `deepAtReturn`'s are. With it: A4's
-    obligations and A5's effect rule rank Limit over Deep as the guard does, one rule (N3; before, two records beside an unsupported part
-    there and one in a holder); the message names no operation (N5).
+    obligations and A5's effect rule rank Limit over Deep as the guard does (N3); the message names no operation (N5).
+  - Revision 2 (implementation review 2, REVISE on B2, 2026-10-29): revision 1's N3 wrote the ranking twice (the guard's switch and A4's)
+    and left A5's call-site records outside it, so a call whose W met a Limit holder and a Deep holder got both codes (`limit+deep 40`). The
+    ranking is now one answer, `MirTypes.Decides`, which every reader reads (the bullet above); a subject gets one limit record per view.
+    With it: the own-step Warning's witness is stated as the records carry it (N-a), and a location records the departure a counted pass
+    gives before one only the drop tier gives, whatever the entries' order (N-b: `two-owners 40` in both orders).
   - Rejected: one tier (a deep Drop as a use is Language at the TypeDag rows; no use with a record at every deep Drop over-records the
     nowrite rows, B3); exact walks for finite nesting (moves the threshold; G144's stack safety); a forward invalidated-Loans problem at
     each deep Drop (a per-Loan bitset per location for a rare Drop); running A5 twice and keeping the difference (try-then-compare and
@@ -5356,7 +5370,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     through the closure and its depth-10 twin, err(ended)'s γ kept by a drop-live holder, its twin at 10 and with a real use),
     `MirBorrowsTest.AnOwnStepDepartureOnlyDropLivenessKeepsOpenKeepsItsWarning` (revision 1: owndtor and ownpast at 40, the Warning and
     the depth limit; at 10 owndtor's Warning alone and ownpast nothing, as the base), `MirEffectsTest.AnUnsupportedPartOutranksAPartPastTheBound`
-    (N3) and `MirTypesTest.APartPastTheBoundIsTheGuardsDeepOutcome`; the expectations (codes and the code lists their helpers filter by) of the
+    (N3), revision 2's `MirBorrowsTest.OneVerdictAnUnsupportedPartAndAPartPastTheBoundMeetAtGetsOneRecord` (`limit+deep` at 40 and 10, each
+    alone) and `ALocationsDepartureIsTheCountedOneBeforeTheDropTiers` (`two-owners` in both orders, and at 10), and
+    `MirTypesTest.APartPastTheBoundIsTheGuardsDeepOutcome` (with `limitDeep` at 40 and 10); the expectations (codes and the code lists their helpers filter by) of the
     bound's pins change by the owner's decision: `AnUnclassifiedDestructionOrCallIsUnsupported`,
     `AnOwnStepViewIsAProducerOnlyWhereAnAccessMayDepart`, `ADestructionMeetsItsOwnStaticAndTheLiveStaticLoans`,
     `AnUninstantiableDefaultHidesNoRecord`,

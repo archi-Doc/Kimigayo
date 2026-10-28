@@ -789,7 +789,7 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(
             [
                 "flat: h.put(z@ref) Unsupported_Kd", "nested: o.put(z@ref) Unsupported_Kd", "optionNested: putAny(o@uniq, z@ref) Unsupported_Kd",
-                "looped: h.put(z@ref) Unsupported_Kd", "looped: h.touch() Unsupported_Kd", "looped: k = 2", "reachedByStep: G.init(h@uniq) Unsupported_Kd",
+                "looped: k = 2", "looped: h.put(z@ref) Unsupported_Kd", "looped: h.touch() Unsupported_Kd", "reachedByStep: G.init(h@uniq) Unsupported_Kd",
                 "reachedByStep: g.put(z@ref) Unsupported_Kd", "sharedSupplied: h.put(z@ref) Unsupported_Kd", "nestedPointee: inspect(w)",
                 "mixed: inspect(v)", "tupleTyped: inspect(w)",
             ],

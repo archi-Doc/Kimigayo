@@ -47,7 +47,7 @@ public sealed partial class MirBorrowsTest
     }
 
     // SPEC 5.2.1 condition 3, 23.1.1 (R4-M153's revision 1, implementation review 1's B1): an own-step departure that only a drop-live
-    // holder's Drop past the bound keeps open keeps its Warning, witnessed by that Drop, beside the depth limit at the holder: d keeps the
+    // holder's Drop past the bound keeps open keeps its Warning beside the depth limit at the holder: d keeps the
     // pointer p formed through b's own step, and `b@follow = …` replaces b's owning value. Whether d's destruction uses p (owndtor: a
     // Reader whose drop releases it) or not (ownpast: a Tuple of the pointer) the walk cannot see past the bound. At depth 10 the walk
     // decides: owndtor's destruction uses p (the Warning alone) and ownpast's does not (nothing), as on dev.
@@ -70,6 +70,57 @@ public sealed partial class MirBorrowsTest
             $"func f(b: uniq/Buf<i32>)\n    let p = b.data\n    {declaration}\n    b@follow = Buf<i32>.init(1)\n    return\n");
         Assert.Equal(
             Rows(expected.Replace("{d}", declaration, StringComparison.Ordinal)),
+            DepthRecords(c, Analyze(c), "f").Select(static x => $"{x.Line} {x.Code}"));
+    }
+
+    // SPEC 5.2.1 condition 3, 23.1.2 (R4-M153's revision 2, implementation review 2's N-b): a location records the departure a counted pass
+    // gives before one only the drop tier gives, whatever the order its entries were found in: `t@follow = …` departs t.y's pointer, which
+    // the live s keeps (its Warning, anchored at t.y.data and witnessed by s's next use), and t.x's, which only the deep d keeps, so only
+    // the first is recorded, with no depth limit, in both orders of the declarations; at depth 10 d's Drop is no use.
+    [Theory]
+    [InlineData("y first", 40)]
+    [InlineData("x first", 40)]
+    [InlineData("y first", 10)]
+    public void ALocationsDepartureIsTheCountedOneBeforeTheDropTiers(string order, int depth)
+    {
+        const string Owners = "struct BB\n    public var x: Buf<i32>\n    public var y: Buf<i32>\n    public init()\n" +
+            "        self.x = Buf<i32>.init(1)\n        self.y = Buf<i32>.init(1)\n";
+        const string Y = "    let q = t.y.data\n    let s = (q, 1)\n";
+        var x = $"    let p = t.x.data\n    let d = {Nested("p", depth)}\n";
+        var c = CompileDepthForm(Prelude + RawShapes + OwnStepShapes + Owners + "func h(t: uniq/BB)\n" + (order == "y first" ? Y + x : x + Y) +
+            "    t@follow = BB.init()\n    let e = s\n    return\n");
+        var program = Analyze(c);
+        Assert.Equal(["t@follow = BB.init() OwnStepDeparture_Kd"], DepthRecords(c, program, "h").Select(static x => $"{x.Line} {x.Code}"));
+        Assert.Equal(["Anchor t.y.data", "Use s"], FactsOf(c, program, "h"));
+    }
+
+    // SPEC 23.1.1, 23.1.2 (R4-M153's revision 2, implementation review 2's B2): where an unsupported part and a part past the bound meet at
+    // one call's verdict, it gets one record, MirTypes.Decides' answer, the located Unsupported_Kd: putTwo's W reaches h, a Limit holder
+    // (R4-M147's stored raw layer a Type argument supplies), and dd, a Deep holder whose step would reach k. Its twins: each alone (the
+    // depth limit at putAny), and at depth 10 the Limit alone. dd's own depth limit, at its declaration, is another verdict's: z's write
+    // conflicts with the Loan the store put in dd only through dd's Drop past the bound.
+    [Theory]
+    [InlineData("limit", 40, "h.put(z@ref) Unsupported_Kd")]
+    [InlineData("deep", 40, "putAny(dd@uniq, z@ref) OwnershipDepthLimit_Kd|{dd} OwnershipDepthLimit_Kd")]
+    [InlineData("limit+deep", 40, "putTwo(h@uniq, dd@uniq, z@ref) Unsupported_Kd|{dd} OwnershipDepthLimit_Kd")]
+    [InlineData("limit+deep", 10, "putTwo(h@uniq, dd@uniq, z@ref) Unsupported_Kd")]
+    public void OneVerdictAnUnsupportedPartAndAPartPastTheBoundMeetAtGetsOneRecord(string form, int depth, string expected)
+    {
+        const string Wrap = "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value\n    public func put<U>(self: uniq/Self, v: U) => ()\n" +
+            "func putAny<U, V>(t: uniq/U, v: V) => ()\nfunc putTwo<U, V, T>(a: uniq/U, b: uniq/V, v: T) => ()\n";
+        const string Lead = "    var x = 1\n    var y = 2\n    var z = 3\n    var w: ref/i32 = x@ref\n    var r = w@uniq\n" +
+            "    var h = Wrap.init(r@follow@raw@raw/u8)\n    var k: ref/i32 = y@ref\n";
+        var dd = $"var dd = {Nested("k@ref", depth)}";
+        var call = form switch
+        {
+            "limit" => "h.put(z@ref)",
+            "deep" => "putAny(dd@uniq, z@ref)",
+            "limit+deep" => "putTwo(h@uniq, dd@uniq, z@ref)",
+            _ => throw new ArgumentOutOfRangeException(nameof(form), form, null),
+        };
+        var c = CompileDepthForm(Prelude + Wrap + "func f()\n" + Lead + $"    {dd}\n    {call}\n    z = 5\n    inspect(w)\n    inspect(k)\n");
+        Assert.Equal(
+            Rows(expected.Replace("{dd}", dd, StringComparison.Ordinal)),
             DepthRecords(c, Analyze(c), "f").Select(static x => $"{x.Line} {x.Code}"));
     }
 }

@@ -6,26 +6,26 @@ using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 namespace Kimi.Compiler.Mir;
 
 /// <summary>What a call that writes a value's storage may write past it (A3 E16, DECISIONS R4-M73, R4-M147, R4-M153), from HoldsLoans'
-/// walk: the guard of a value that may hold a Loan, part by part, four ways; Through wins over Limit, Limit over Deep, Deep over None.
-/// That ranking of Limit over Deep is the one rule of the two undecided outcomes: A4's classes follow it (MirEffects.Undecided).</summary>
+/// walk: the guard of a value that may hold a Loan, part by part. Its order is the walks' one ranking of outcomes (MirTypes.Decides): a
+/// later member outranks every earlier one, so Through outranks Limit, Limit outranks Deep and Deep outranks None.</summary>
 internal enum MirWrites : byte
 {
     /// <summary>Nothing past it: no exclusive reference to storage that may hold a Loan.</summary>
     None,
 
-    /// <summary>Some part gives the write fact: past no shared layer, an exclusive reference to storage that may hold a Loan (a raw
-    /// layer whose step lets a call write past it counting as one), an abstract part, or a Function value, which may be one (the guard);
-    /// a Closure value by its environment's parts (DECISIONS R4-M148).</summary>
-    Through,
+    /// <summary>No part gives the write fact, and a part past the walk's bound, where the write fact would be read, leaves it undecided: a
+    /// Call whose W from the value would reach a holder W does not is OwnershipDepthLimit_Kd at the call (DECISIONS R4-M153).</summary>
+    Deep,
 
     /// <summary>No part gives the write fact, and a stored raw layer stepping Exclusive whose members Binding does not publish (a Type
     /// argument supplies it, or the member walk is incomplete) leaves it undecided: a Call whose W reaches the value is the located
     /// Unsupported_Kd at the call (DECISIONS R4-M147).</summary>
     Limit,
 
-    /// <summary>No part gives the write fact, and a part past the walk's bound, where the write fact would be read, leaves it undecided: a
-    /// Call whose W from the value would reach a holder W does not is OwnershipDepthLimit_Kd at the call (DECISIONS R4-M153).</summary>
-    Deep,
+    /// <summary>Some part gives the write fact: past no shared layer, an exclusive reference to storage that may hold a Loan (a raw
+    /// layer whose step lets a call write past it counting as one), an abstract part, or a Function value, which may be one (the guard);
+    /// a Closure value by its environment's parts (DECISIONS R4-M148).</summary>
+    Through,
 }
 
 // What a value may hold: raw authority (HoldsRaw) and Loans with what a call may write past them (HoldsLoans), each a walk of its parts.
@@ -43,6 +43,9 @@ internal static partial class MirTypes
     private const int Write = 2;
     private const int Limit = 4;
     private const int Deep = 8; // A part past the walk's bound where the mode would read the write fact (DECISIONS R4-M153).
+
+    // The guard's outcome of each fact the walk finds; a value that may hold a Loan gets the one Decides ranks highest.
+    private static readonly (int Fact, MirWrites Outcome)[] Outcomes = [(Write, MirWrites.Through), (Limit, MirWrites.Limit), (Deep, MirWrites.Deep)];
 
     /// <summary>Gets whether a value of a Type holds a raw pointer, an rc handle or a Weak of one at any depth, so that reading it from an
     /// immutable static obtains authority from the environment (SPEC 8.11.2); a referent reached through the value counts too. A Field or
@@ -94,13 +97,12 @@ internal static partial class MirTypes
         seen.Clear();
         var walk = new Holding(types, seen, members, stackalloc int[Bound + 2]);
         var found = walk.Holds(type, Own, 0);
-        writes = ((found & Loan) != 0, (found & Write) != 0, (found & Limit) != 0, (found & Deep) != 0) switch
+        writes = MirWrites.None;
+        for (var i = 0; (found & Loan) != 0 && i < Outcomes.Length; i++)
         {
-            (true, true, _, _) => MirWrites.Through,
-            (true, false, true, _) => MirWrites.Limit,
-            (true, false, false, true) => MirWrites.Deep,
-            _ => MirWrites.None,
-        };
+            writes = Decides(writes, (found & Outcomes[i].Fact) != 0 ? Outcomes[i].Outcome : MirWrites.None);
+        }
+
         return (found & Loan) != 0;
     }
 

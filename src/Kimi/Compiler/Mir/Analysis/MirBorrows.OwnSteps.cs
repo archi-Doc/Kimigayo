@@ -7,16 +7,16 @@ namespace Kimi.Compiler.Mir;
 // used. An own-step entry (MirBorrows.Addresses) found at the check is tagged by MirBorrows.Candidates where a pass counts it (Based or
 // Stored: live after the access, or stored there into a holder live after it or into E; Valued: an operand's value, which counts for an
 // activation, whose call uses its operands after taking the owner; the drop tier: kept only by a holder live through a Drop past the
-// destruction walk's bound, DECISIONS R4-M153) and listed on its root, so an access scans only its root's. An access
-// with path S departs an entry with owning path O when S prefixes O step by step (15.6.2, MirBorrows.Checks' Meets) and it is a Move (a
-// Take of a raw Place included), a write or a destruction of any class with no borrow or raw Deref of O past S, or an exclusive borrow or
-// a call's activation of a reservation across any steps. A departure whose operation and formation lie in one inline default copy is its
-// template's (Covered). A departure only the drop tier gives rests on that Drop: the Warning, witnessed by the Drop, and the depth limit at
-// the holder's declaration (DroppedDeparture). One record per location: every record at a location has its subject, which MirReport
-// merges. Before the holders,
-// a view whose only producer input is its own-step entries is a producer only where a use may depart one by the same test with no
-// liveness (MayDepart, D5, R4-M141): its other records, a retention Limit's and a storage limit's, then leave it as any view no conflict
-// can depend on.
+// destruction walk's bound, DECISIONS R4-M153) and listed on its root, so an access scans only its root's. An access with path S departs
+// an entry with owning path O when S prefixes O step by step (15.6.2, MirBorrows.Checks' Meets) and it is a Move (a Take of a raw Place
+// included), a write or a destruction of any class with no borrow or raw Deref of O past S, or an exclusive borrow or a call's activation
+// of a reservation across any steps. A departure whose operation and formation lie in one inline default copy is its template's (Covered).
+// One record per location: every record at a location has its subject, which MirReport merges. A departure a counted pass gives is the
+// location's, else one only the drop tier gives, which rests on that Drop: the Warning, its witness by the one rule (the holder's next use
+// in the location's chain, here its drop slot's; none past the chain), and the depth limit at the holder's declaration (DroppedDeparture).
+// Before the holders, a view whose only producer input is its own-step entries is a producer only where a use may depart one by the same
+// test with no liveness (MayDepart, D5, R4-M141): its other records, a retention Limit's and a storage limit's, then leave it as any view no
+// conflict can depend on.
 // Must not issue, end or conflict a Loan (an entry is never a candidate, D19).
 internal sealed partial class MirBorrows
 {
@@ -28,6 +28,7 @@ internal sealed partial class MirBorrows
     private (int Stamp, int Via, int Next, int Dropped)[] ownTags = [];
     private (int Stamp, int First)[] ownRoots = []; // By root key: the first own-step entry found on it at that check (or listed).
     private int ownEntries; // The own-step entries of the view.
+    private (int Entry, int Holder) dropDeparture; // The location's first departure only the drop tier gives, and its drop-live holder.
 
     // Restarts the tags for the view, where it has own-step entries.
     private void RestampOwnSteps(int keys)
@@ -69,13 +70,15 @@ internal sealed partial class MirBorrows
     }
 
     // The location's departures: its listed accesses but reads and shared borrows (the effect access follows them), then the reservations
-    // it activates, up to the first recorded.
+    // it activates, up to the first recorded. One departure only the drop tier gives is recorded where no other is (the first met).
     private void Departures(MirLocation at, int accessed)
     {
         if (this.ownEntries == 0)
         {
             return;
         }
+
+        this.dropDeparture = (None, None);
 
         for (var a = 0; a < accessed; a++)
         {
@@ -102,10 +105,16 @@ internal sealed partial class MirBorrows
                 return;
             }
         }
+
+        if (this.dropDeparture.Entry != None)
+        {
+            this.DroppedDeparture(this.dropDeparture.Entry, this.dropDeparture.Holder, at);
+        }
     }
 
-    // The first own-step entry found on a root that an access departs and whose departure is not its template's, recorded: found by a pass
-    // that counts for the access (a holder's or transit value's, or for an activation also an operand's), else only by the drop tier.
+    // The first own-step entry found on a root that an access departs and whose departure is not its template's, found by a pass that
+    // counts for the access (a holder's or transit value's, or for an activation also an operand's), recorded; the location's first entry
+    // only the drop tier found that it departs is kept for Departures.
     private bool Depart(MirLocation at, int root, ReadOnlySpan<MirStep> steps, AccessKind kind)
     {
         var scope = this.Source(at).Scope;
@@ -114,19 +123,16 @@ internal sealed partial class MirBorrows
             this.Work++;
             var tag = this.ownTags[entry - this.loanCount];
             var counted = tag.Via != None && (tag.Via != Taken || kind is AccessKind.Activate or AccessKind.ActivateInPlace);
-            if ((counted || tag.Dropped != None) && this.Departs(steps, kind, entry) &&
-                !this.Covered(this.body.Common(scope, this.IssueScope(entry)), -1, -1))
+            var dropped = !counted && tag.Dropped != None && this.dropDeparture.Entry == None;
+            if ((counted || dropped) && this.Departs(steps, kind, entry) && !this.Covered(this.body.Common(scope, this.IssueScope(entry)), -1, -1))
             {
                 if (counted)
                 {
                     this.Departure(entry, tag.Via, at);
-                }
-                else
-                {
-                    this.DroppedDeparture(entry, tag.Dropped, at);
+                    return true;
                 }
 
-                return true;
+                this.dropDeparture = (entry, tag.Dropped);
             }
         }
 

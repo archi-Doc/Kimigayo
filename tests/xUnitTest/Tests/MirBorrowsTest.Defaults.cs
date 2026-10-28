@@ -626,7 +626,7 @@ public sealed partial class MirBorrowsTest
             ["dep: v = 2", "dep3: v = 2", "dep2: v = 2", "val: v = 2", "val2: v = 2"],
             Analyzed(MirBuildTest.RejectedCopies));
         Assert.Equal(
-            ["lim: f(b) OwnershipDepthLimit_Kd", "lim: v = 2", "lim64: f(b) OwnershipDepthLimit_Kd", "lim64: v = 2", "n30: v = 2"],
+            ["lim: v = 2", "lim: f(b) OwnershipDepthLimit_Kd", "lim64: v = 2", "lim64: f(b) OwnershipDepthLimit_Kd", "n30: v = 2"],
             Analyzed(MirBuildTest.LimitCopies));
 
         // The pipeline's own analyses (MirAnalysis), which analyze nothing in a program with a validator finding.

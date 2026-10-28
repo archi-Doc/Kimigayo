@@ -6,7 +6,8 @@
 // pointer-cast facts.
 // Inline storage is traversed under each fact's documented bounds and Type rules; what destroying a value does is the one Destruction walk.
 // The walks share one depth bound (Bound): past it the guard and the Destruction walk answer Deep, the fact that the part is unknown
-// (DECISIONS R4-M153), and HoldsRaw yes (its reading is PLAN 2b-5's).
+// (DECISIONS R4-M153), and HoldsRaw yes (its reading is PLAN 2b-5's). Where two outcomes meet at one verdict, the one answer is Decides'
+// (MirWrites' order), which every reader that records by them reads: none ranks them itself.
 // Must not inspect source syntax or substitute new Binding decisions.
 // Its concerns: the destruction walk and the facts over it (MirTypes.Destruction.cs), what a value may hold (MirTypes.Holding.cs), and
 // here the reference, view, shared-layer, selection, borrow-kind, pointer-cast and agreement facts.
@@ -23,6 +24,17 @@ internal static partial class MirTypes
     // 15.3.5's growing recursion). The guard and the destruction walk answer it as its own outcome (Deep), never as a value they did not
     // establish; a check whose verdict rests on such a part records OwnershipDepthLimit_Kd (DECISIONS R4-M153).
     private const int Bound = 32;
+
+    /// <summary>Gets the one answer where two outcomes meet at one verdict, a holder's, a call's or a subject's (DECISIONS R4-M153): the
+    /// one ranked higher in <see cref="MirWrites"/>' order. A decided write outranks what would leave the verdict undecided, and an unsupported
+    /// part (Limit) outranks a part past the walks' bound (Deep): a verdict both leave undecided is one failure, which gets one record
+    /// (SPEC 23.1.2), the unsupported part's located Unsupported_Kd (SPEC 23.1.1, DIAGNOSTICS rule 3), since raising the bound would still
+    /// leave it undecided and supporting the part would not. The guard, A4's summaries and A5's limit records read it; none ranks
+    /// outcomes itself.</summary>
+    /// <param name="outcome">An outcome.</param>
+    /// <param name="other">The other outcome.</param>
+    /// <returns>The one that decides.</returns>
+    internal static MirWrites Decides(MirWrites outcome, MirWrites other) => outcome > other ? outcome : other;
 
     /// <summary>Gets whether a value of a Type is a reference whose Loans an EndBorrow ends: a ref, uniq, objref or objuniq, or a pair layer.</summary>
     /// <param name="type">The Type.</param>

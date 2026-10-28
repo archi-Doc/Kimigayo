@@ -13,16 +13,16 @@ namespace Kimi.Compiler.Mir;
 // - R1: for each effect root with a candidate, a write key or Unknown as an EffectWrite, else a read key as an EffectRead of the whole
 //   root (shallow, SPEC 15.6.2); its first conflict at the location its body owns (D11), coded by Code (row 1: a reservation the call does
 //   not activate) with the effect fact on the met Field, what decided it (a write key, else Unknown, else the read key);
-// - A4's Limit or Deep without Unknown, where a candidate a write would meet is met by no key: a located Unsupported_Kd for Limit, else
-//   OwnershipDepthLimit_Kd for Deep, at the location (Undecided: MirEffects.Undecided's ranking, R4-M153);
+// - A4's Limit or Deep without Unknown, where a candidate a write would meet is met by no key: A4's answer (MirEffects.Undecided), a
+//   limit record at the location (MirBorrows.Reports' Limit: a located Unsupported_Kd for Limit, OwnershipDepthLimit_Kd for Deep);
 // - R3: at a Drop of a mutable static, its own read or write key on that static, or Unknown, ComparisonLoanConflict_Kd anchored at the
 //   Drop, no Loan issued and no witness (the destruction's hold, SPEC 16.4), its template's inside an inline default copy (D11); Limit or
-//   Deep without them, Undecided's record;
+//   Deep without them, that answer's limit record;
 // - the initialization proof: a conflict every effect that would decide it may be the first-access initialization of a static a live
 //   Loan proves initialized (Proved) is the located Unsupported_Kd at the location instead (PD12 (ii): liveness is a may-property);
 //   otherwise the first effect outside the proof decides the Language problem (Unproved).
 // Invariants: a Derived class reports nothing by itself (R4-M10); the case view Keys selects is the run's again when the rule returns.
-// Must not decide whether an access meets a Loan (MirBorrows.Checks), record other than through Report, Unsupported and DepthLimit, or read keys
+// Must not decide whether an access meets a Loan (MirBorrows.Checks), record other than through Report and Limit, rank outcomes, or read keys
 // outside a Call or a Drop. A static a Loan or a Drop roots has its initializer: the validator checks that its body ensures it and that
 // each staticEnsure's static has one (G191).
 internal sealed partial class MirBorrows
@@ -116,7 +116,7 @@ internal sealed partial class MirBorrows
             var c = fact is { } unproved ? this.Conflict(root, [], EffectRow(unproved), taking, scope, -1) : None;
             if (fact is not { } kind || c == None)
             {
-                this.Unsupported(at); // Every effect that would decide it lies in a proved initializer.
+                this.Limit(this.Subject(at), MirWrites.Limit); // Every effect that would decide it lies in a proved initializer.
             }
             else
             {
@@ -135,24 +135,9 @@ internal sealed partial class MirBorrows
         {
             if (this.Conflicts(u, root, [], AccessKind.EffectWrite, taking) && !(read && this.Conflicts(u, root, [], AccessKind.EffectRead, taking)))
             {
-                this.Undecided(at, classes); // A Loan a write would meet and no key meets: A4's Limit or Deep decides (AGENTS Diagnostics).
+                this.Limit(this.Subject(at), MirEffects.Undecided(classes)); // A Loan a write would meet and no key meets: A4's answer decides.
                 return;
             }
-        }
-    }
-
-    // What leaves an effect undecided by A4's classes (MirEffects.Undecided, the guard's ranking), its record at the location: a Limit the
-    // located Unsupported_Kd, Deep the depth limit (R4-M153).
-    private void Undecided(MirLocation at, byte classes)
-    {
-        var undecided = MirEffects.Undecided(classes);
-        if (undecided == MirWrites.Limit)
-        {
-            this.Unsupported(at);
-        }
-        else if (undecided == MirWrites.Deep)
-        {
-            this.DepthLimit(this.Subject(at));
         }
     }
 
@@ -165,7 +150,7 @@ internal sealed partial class MirBorrows
         this.Work += 2;
         if (Decided(row, classes, field) is null)
         {
-            this.Undecided(at, classes);
+            this.Limit(this.Subject(at), MirEffects.Undecided(classes));
         }
         else if (this.Covered(this.Source(at).Scope, -1, -1))
         {
@@ -173,7 +158,7 @@ internal sealed partial class MirBorrows
         }
         else if (this.Unproved(at, taking, row, classes, field) is not { } fact)
         {
-            this.Unsupported(at); // Every effect that would decide it lies in a proved initializer.
+            this.Limit(this.Subject(at), MirWrites.Limit); // Every effect that would decide it lies in a proved initializer.
         }
         else
         {
