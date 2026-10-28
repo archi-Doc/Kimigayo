@@ -44,7 +44,7 @@ public sealed partial class Binding
     // SPEC 15.6.4: the retention of a callee's contract whose inputs and result are instantiated (a function, or the closure or item a
     // Value call names), under the premises its body is checked under: its own part, its clauses substituted under the declaring Type,
     // and the catalog's walk from its binder's parent outward. An output retains an input when the premises entail that an atom of the
-    // input outlives an atom of the output, or when both name one carrier. Its Callable bounds (CallableBoundSignatures), instantiated as its
+    // input outlives an atom of the output, or when both name one carrier. Its Callable bounds (HandedSignatures), instantiated as its
     // inputs, are erased callables its body may call. `types`: the call's Subst (null: a Value callee's declared signature), whose Type
     // arguments, Self and declaring Type bring the Origins a fit may relate under the call's solved Origins (Instantiation). `premises`:
     // the scope TyCtxt read an instance with an abstract part under (null: none), which the transfer rule's Iterator key reads
@@ -114,8 +114,8 @@ public sealed partial class Binding
     // SPEC 8.10, 8.4, 15.6.4 (β′; DECISIONS R4-M52, R4-M154): the callables the premises at `use` hand its body, in its constraint scope and
     // those enclosing it, each one erased callable: each Callable bound's signature, and each requirement signature of each Contract premise
     // on its subject (TyCtxt.RequirementSignatures, a refinement's inherited requirements included), then of the Contract premises its
-    // Contract's and ancestors' clauses state on the subject's associated Types (ContractConstraint, as a requirement call's resolution
-    // adds them, AddContractPremises) that the contract's own Types reach (`signature`, its declared inputs and result: a projection
+    // supply states on the subject's associated Types (ContractSupply, as a requirement call's resolution adds them, AddContractPremises)
+    // that the contract's own Types reach (`signature`, its declared inputs and result: a projection
     // occurring in them or its base; a recursive clause, `associate Child is Branch`, grows no further), each (subject, Contract) once;
     // whether each substitutes (false: CallRetention.Limit).
     internal bool HandedSignatures(Koto use, ReadOnlySpan<BoundType> signature, List<BoundType> handed)
@@ -160,8 +160,8 @@ public sealed partial class Binding
         => atom.Carrier is not null || atom.Origin is { Kind: not OriginKind.Static } and not { Kind: OriginKind.Input, Binder: FunctionTypeKoto } and
             not { Kind: OriginKind.Input or OriginKind.Parameter, Binder: FunctionKoto { IsRequirement: true } };
 
-    // A Contract premise's requirement signatures (HandedSignatures), then those of the Contract premises its Contract's and ancestors'
-    // clauses state on its subject's associated Types; whether each substitutes.
+    // A Contract premise's requirement signatures (HandedSignatures), then those of the Contract premises its supply states on its subject's
+    // associated Types that the contract's own Types reach (ContractSupply); whether each substitutes.
     private bool HandedContract(BoundType subject, BindingSymbol contract, BindingScope scope, List<BoundType> handed)
     {
         if (contract.Contract is not { } shape || !this.retentionContracts.Add((subject, contract)))
@@ -174,19 +174,13 @@ public sealed partial class Binding
             return false;
         }
 
-        for (var i = -1; i < shape.Ancestors.Count; i++)
+        foreach (var (_, _, premise) in new ContractSupply(this, shape, subject, scope))
         {
-            var declaration = i < 0 ? shape : shape.Ancestors[i].Contract!;
-            foreach (var clause in declaration.ClauseStorage)
+            var reached = premise is { Kind: ConstraintKind.Contract, Subject: { } associated, Contract: not null } &&
+                (ReferenceEquals(associated, subject) || this.retentionReached.Contains(associated));
+            if (reached && !this.HandedContract(premise!.Subject!, premise.Contract!, scope, handed))
             {
-                if (clause.BoundConstraint is { } constraint && DependentConstraint(constraint, contractSelf: true) &&
-                    this.ContractConstraint(constraint, scope, subject, normalize: false, declaration.Symbol) is
-                    { Kind: ConstraintKind.Contract, Subject: { } associated, Contract: { } required } &&
-                    (ReferenceEquals(associated, subject) || this.retentionReached.Contains(associated)) &&
-                    !this.HandedContract(associated, required, scope, handed))
-                {
-                    return false;
-                }
+                return false;
             }
         }
 

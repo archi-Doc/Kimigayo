@@ -205,7 +205,12 @@ public sealed partial class Binding
     {
         if (written || storage == ResultStorage)
         {
-            var past = storage is ResultStorage ? ResultStorage : storage < 0 ? OwnStorage : this.StorageOf(referent);
+            var past = storage switch
+            {
+                ResultStorage => ResultStorage,
+                < 0 => OwnStorage,
+                _ => this.StorageOf(referent),
+            };
             this.StorageWalk(environment, referent, past, writable: true, at);
         }
         else if (targets >= 0)
@@ -600,17 +605,27 @@ public sealed partial class Binding
     }
 
     // A library Type whose storage the compiler implements: a nominal Type that keeps no part, no base and no Type argument (HeapBuffer).
-    private bool Opaque(BoundType type)
-        => type.Symbol?.LibraryDeclaration is not null && type.Components.Count == 0 && (AdtDef.IsStruct(type) || AdtDef.IsEnum(type)) &&
-            this.Readable(type, this.PrepareTypeStorage(type)) && this.Instance(type) is { Parts.Length: 0, PartsBase: null };
+    private bool Opaque(BoundType type) => type is { Symbol.LibraryDeclaration: not null, Components.Count: 0 } && this.KeepsNoPart(type);
+
+    // A struct or enum whose instance keeps no part and no base (Instance): a compiler-managed collection, whose Type arguments are its
+    // elements (SPEC 4.5, 4.9), or, with none, storage the compiler implements (Opaque).
+    private bool KeepsNoPart(BoundType type)
+        => (AdtDef.IsStruct(type) || AdtDef.IsEnum(type)) && this.Readable(type, this.PrepareTypeStorage(type)) &&
+            this.Instance(type) is { Parts.Length: 0, PartsBase: null };
 
     // What a borrow-shaped Type refers to, through which a borrow of it is formed (SPEC 15.6.3): a borrow, Slice or UniqSlice
     // (BorrowReferent), a pair layer admitting a borrow, or a raw layer stating an Origin, which retains as the borrow that Origin belongs
     // to would (SPEC 5.7); null for any other.
     private BoundType? BorrowTarget(BoundType type)
-        => TryPairLayer(type, out _, out var target) ? ((this.LayerAdmitted(type) & SemanticsMask.Borrow) != 0 ? target : null)
-            : type.Semantics == SemanticsKind.Raw && OwnedOrigin(type) is { Kind: not (OriginKind.Static or OriginKind.Unstated) }
-            ? type.Components[0] : this.BorrowReferent(type, out _, out _);
+    {
+        if (TryPairLayer(type, out _, out var target))
+        {
+            return (this.LayerAdmitted(type) & SemanticsMask.Borrow) != 0 ? target : null;
+        }
+
+        var stated = type.Semantics == SemanticsKind.Raw && OwnedOrigin(type) is { Kind: not (OriginKind.Static or OriginKind.Unstated) };
+        return stated ? type.Components[0] : this.BorrowReferent(type, out _, out _);
+    }
 
     // Whether a storage holds a value of a Type as itself or a part (OwnParts; `carried`: also a shared handle's payload, which a new value
     // built there carries); an abstract part, a part Binding did not bind (Rejected storage keeps the rows that hold whatever it is, BU-36)

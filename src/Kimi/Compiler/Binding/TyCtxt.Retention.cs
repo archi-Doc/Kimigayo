@@ -49,7 +49,7 @@
 // output. A raw result layer with an Origin retains as that borrow would. A raw layer without an Origin that the call may write (SPEC
 // 15.6.4 as DECISIONS R4-M131 states it; BU-40), in the result (a nominal Type's Fields included) or in input j's writable storage,
 // retains every input by what any chain of reads through it carries (Chain) and every input but j by its own value (Value), and unties
-// that output (Untied, UntiedStores), as a `static` layer does without these rows; one behind a borrow in the result (a Slice's or
+// that output (its records' Untied), as a `static` layer does without these rows; one behind a borrow in the result (a Slice's or
 // UniqSlice's elements included, and a result raw layer stating a borrow's Origin, which retains as that borrow would) is lent, not
 // written: it retains only the raw inputs, by Value and Chain, and unties nothing (R′). A
 // published operation that transfers values (an Iterator's `next`, `exchange`, `swap`, an operation of SPEC 4.6 to 4.9, keyed by

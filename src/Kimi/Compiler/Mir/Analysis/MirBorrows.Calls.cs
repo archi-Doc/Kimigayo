@@ -116,7 +116,7 @@ internal sealed partial class MirBorrows
     }
 
     // The store through one output: W from its argument's value (at a referent store whose referent destroys shallowly, refs(S) alone),
-    // each holder taking its storage's record (Kept); where the referent may observe a destruction, which the record leaves to its
+    // each holder taking its storage's record (Received); where the referent may observe a destruction, which the record leaves to its
     // callers, each holder past refs(S) also takes the root's record (R4-M143: W stays, with what the referent holds). An undecided store
     // of a Loan or an address (R4-M147; V16: one read, the sorted set's last element) stops at refs(S), a limit at the call.
     private void Keep(ulong[] state, in MirTerminator call, OutputRetention written, bool checks)
@@ -133,7 +133,7 @@ internal sealed partial class MirBorrows
         for (var t = 0; t < this.targets.Count; t++)
         {
             var target = this.targets[t];
-            var value = this.Kept(state, call, written, target, checks);
+            var value = this.Received(state, call, written, target, checks);
             value = t >= reach && stored && !shallow ? this.sets.Union(value, this.RecordValue(state, call, written.Own, checks)) : value;
             if (t >= reach && undecided && this.sets.Elements(value) is [.., var last] && last >= this.loanBase)
             {
@@ -149,11 +149,16 @@ internal sealed partial class MirBorrows
     // ways the walk reached the holder (Keep's), their pairs judged (Solved), {Φ_E} besides where the output is untied. A local past a
     // holder whose Type no Reached entry names, no abstract part hiding it (a raw layer's pointee read as another Type, SPEC 5.7), takes
     // Reached.All, which bounds what any storage past the root receives: the storage walk names each one.
-    private int Kept(ulong[] state, in MirTerminator call, OutputRetention written, int target, bool checks)
+    private int Received(ulong[] state, in MirTerminator call, OutputRetention written, int target, bool checks)
     {
         var via = this.writingVia[target];
         var own = (via & ViaRoot) != 0 ? written.Own : null;
-        var past = target == Escaped ? written.All : (via & ViaPast) != 0 ? this.ReachedEntry(written, this.writingLocal[target]) ?? written.All : null;
+        var past = (target, via & ViaPast) switch
+        {
+            (Escaped, _) => written.All,
+            (_, not 0) => this.ReachedEntry(written, this.writingLocal[target]) ?? written.All,
+            _ => null,
+        };
         var value = this.sets.Union(this.RecordValue(state, call, own, checks), this.RecordValue(state, call, past, checks));
         return (own ?? past)!.Untied ? this.sets.Union(value, this.escapedSet) : value;
     }
@@ -191,7 +196,12 @@ internal sealed partial class MirBorrows
             foreach (var (input, longer, shorter) in record.Pairs)
             {
                 var bit = 1UL << Math.Min(input, 63);
-                bool? holds = input >= 63 ? null : (entry.Proven & bit) != 0 ? true : origins.Outlives(this.body, this.view, longer, shorter, site);
+                bool? holds = (input >= 63, (entry.Proven & bit) != 0) switch
+                {
+                    (true, _) => null,
+                    (_, true) => true,
+                    _ => origins.Outlives(this.body, this.view, longer, shorter, site),
+                };
                 (entry.Proven, entry.Undecided) = holds switch
                 {
                     true => (entry.Proven | bit, entry.Undecided),
@@ -224,7 +234,7 @@ internal sealed partial class MirBorrows
 
     // The Reached entry of a local W reached past a holder: the entries whose Types, in the view's case (MirCases.Type) and Origin-erased
     // (TyCtxt.Erase), are the local's case Type's, joined; the Abstract one where none has it and an abstract part hides storage; else
-    // none (null; Kept takes All). Memoized per record, Type and view for the program version.
+    // none (null; Received takes All). Memoized per record, Type and view for the program version.
     private StorageRetention? ReachedEntry(OutputRetention written, int local)
     {
         this.Version();

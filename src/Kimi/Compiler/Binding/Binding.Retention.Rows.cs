@@ -363,7 +363,7 @@ public sealed partial class Binding
         return pairs is null or [] ? [] : [.. pairs];
     }
 
-    // The nodes the premise closure from a node reaches, once per computation (MarkClosure's work, OriginProofMetrics measured).
+    // The nodes the premise closure from a node reaches, once per computation (OriginPremiseClosure.Close's work, OriginProofMetrics measured).
     private ReadOnlySpan<int> Closure(OriginPremiseEnvironment environment, int target)
     {
         if (!this.retentionClosures.TryGetValue(target, out var run))
@@ -451,7 +451,7 @@ public sealed partial class Binding
     // elements) or below a result raw layer stating an input's or slot's Origin (stepping Exclusive or Shared: it retains as that borrow
     // would, SPEC 5.7 Calls, so what it addresses is that borrow's storage, 5.2.1; PLAN G255's C1). Each raw input other than `output`
     // whose Type the position can hold retains its own value there (R-B4: a raw layer stating an Origin or `static` that agrees with it,
-    // Origins fitted: their erasures, TyCtxt.Erase, are one Type, SPEC 3.8; or an abstract part, which an instance may make one); at a raw
+    // Origins fitted as rule 2 fits a position, Fits, SPEC 3.8; or an abstract part, which an instance may make one); at a raw
     // layer without an Origin rule A or R′ decides it (RetentionRows); a pointer is never part of its own pointee. A raw layer steps by
     // DeclaredStep (its declaration's cap where `written` states the layer, its Origin's kind elsewhere, DECISIONS BU-24): Unstated is
     // what the call writes there (Holding.Unstated) or lends (Holding.Lent), and Static is storage the body does not own (Holding.Static,
@@ -486,7 +486,7 @@ public sealed partial class Binding
         RawStep? step = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } ? this.DeclaredStep(type, written, holder) : null;
         foreach (var (input, pointer) in this.retentionRawInputs)
         {
-            var holds = type.IsAbstract || (step is not (null or RawStep.Unstated) && ReferenceEquals(this.types.Erase(type), this.types.Erase(pointer)));
+            var holds = type.IsAbstract || (step is not (null or RawStep.Unstated) && this.Fits(type, pointer));
             kept[input] |= input != output && holds ? RetentionKind.Value : RetentionKind.None;
         }
 
