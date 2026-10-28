@@ -61,6 +61,31 @@ internal sealed partial class InstanceCollector
         return this.AdmitType(item, subject, key, target.Subst!.Self!, target.Subst);
     }
 
+    // K 4.5 rows 3, 5 and 13 (DECISIONS R5-M146): the target of a requirement call or of a requirement Item, where it is formed, called or
+    // erased, which code generation runs as a body or shim item (FunctionCodegen.Calls' Witness), so a Body witness without a MIR body
+    // (FixedBuffer's or HeapBuffer's reserve, a #LibraryImport function) is the BodylessWitness gap at each such site: a compiler function
+    // always (SPEC 22.1), another once Binding is complete (a function Binding rejected derives from its error). The other edges a requirement runs on (a compiler function's
+    // published row, Text.writer's reserve witness) keep Requirement's -1 for such a witness; their writers read the function itself.
+    private int Called(MirProgram program, int item, SourceRef subject, BindingSymbol requirement, in RequirementTarget target)
+    {
+        if (target.Kind != RequirementTargetKind.Body)
+        {
+            return this.Requirement(program, item, subject, requirement, target);
+        }
+
+        if (this.Selected(program, target.Target!, target.Subst, out var implementation) is { } body)
+        {
+            return this.Admit(item, subject, body, target.Subst);
+        }
+
+        if (implementation.CompilerFunction != CompilerFunctionKind.None || this.types.BindingComplete)
+        {
+            this.Set.Report(Capability.Code(CapabilityGap.BodylessWitness), subject);
+        }
+
+        return -1;
+    }
+
     // K 4.5 rows 2 and 6, F 4.5: a compiler function's call of a requirement on a Type of the item's instance, through the requirement's own
     // Contract under the Self-bearing factory (TyCtxt.Synthesized), a Type whose verdict its caller read (Below; an intrinsic's argument In
     // or Edge's Compose).
