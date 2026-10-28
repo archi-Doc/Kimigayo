@@ -5,6 +5,8 @@
 // Loan-holding with what a call may write past a value (its guard), raw, exclusivity, shared-layer, selection, agreement, borrow-kind and
 // pointer-cast facts.
 // Inline storage is traversed under each fact's documented bounds and Type rules; what destroying a value does is the one Destruction walk.
+// The walks share one depth bound (Bound): past it the guard and the Destruction walk answer Deep, the fact that the part is unknown
+// (DECISIONS R4-M153), and HoldsRaw yes (its reading is PLAN 2b-5's).
 // Must not inspect source syntax or substitute new Binding decisions.
 // Its concerns: the destruction walk and the facts over it (MirTypes.Destruction.cs), what a value may hold (MirTypes.Holding.cs), and
 // here the reference, view, shared-layer, selection, borrow-kind, pointer-cast and agreement facts.
@@ -17,6 +19,11 @@ namespace Kimi.Compiler.Mir;
 /// a struct's Fields and base and an enum's Case payloads (plan 5.5).</summary>
 internal static partial class MirTypes
 {
+    // The deepest part the walks of a Type enter, the holding walks and the destruction walk alike: past it a part may be anything (SPEC
+    // 15.3.5's growing recursion). The guard and the destruction walk answer it as its own outcome (Deep), never as a value they did not
+    // establish; a check whose verdict rests on such a part records OwnershipDepthLimit_Kd (DECISIONS R4-M153).
+    private const int Bound = 32;
+
     /// <summary>Gets whether a value of a Type is a reference whose Loans an EndBorrow ends: a ref, uniq, objref or objuniq, or a pair layer.</summary>
     /// <param name="type">The Type.</param>
     /// <returns>Whether the value is a reference.</returns>

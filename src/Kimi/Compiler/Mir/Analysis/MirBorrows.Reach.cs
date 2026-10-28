@@ -228,11 +228,13 @@ internal sealed partial class MirBorrows
 
     // W(S) (A3 E16, DECISIONS R4-M73, R4-M116, R4-M147) into the targets, the holders a call's store through S writes: past refs(S), which
     // Referents put there first, from each holder h ≠ E of W whose Type passes the guard (MirWrites.Through), the holder each direct Loan or
-    // address of σ(h) names, in any mode, and E where σ(h) carries Φ_E. Whether W reached a holder the guard leaves undecided
-    // (MirWrites.Limit): the call's location records it as a limit (MirBorrows.Calls, .Locations). Every store path (a Call's rows, its
-    // untied stores among them; A5-F7's capture stores, unit 2c; A5-F6's desc(c) stores, 2f) takes W here, except a 4.6 to 4.9
-    // operation's referent store whose referent destroys shallowly, which takes refs(S) alone (Referents; DECISIONS R4-M143).
-    private bool Writes(ulong[] state, int set)
+    // address of σ(h) names, in any mode, and E where σ(h) carries Φ_E. The two facts that leave the store undecided, which the call's
+    // location records (MirBorrows.Calls, .Locations): whether W reached a holder the guard leaves undecided (MirWrites.Limit, R4-M147),
+    // and whether, at W's fixed point, the step from a holder whose guard is Deep would reach a holder W does not (R4-M153; that step's
+    // holders are left out, and a Deep holder whose step adds nothing decides nothing). Every store path (a Call's rows, its untied stores
+    // among them; A5-F7's capture stores, unit 2c; A5-F6's desc(c) stores, 2f) takes W here, except a 4.6 to 4.9 operation's referent store
+    // whose referent destroys shallowly, which takes refs(S) alone (Referents; DECISIONS R4-M143).
+    private (bool Limit, bool Deep) Writes(ulong[] state, int set)
     {
         this.Write(set); // The kinds of refs(S)'s holders, which Referents put in the targets.
         var limited = false;
@@ -246,7 +248,19 @@ internal sealed partial class MirBorrows
             }
         }
 
-        return limited;
+        var count = this.targets.Count;
+        var deep = false;
+        for (var i = 0; i < count && !deep; i++)
+        {
+            if (this.writingKind[this.targets[i]] == MirWrites.Deep)
+            {
+                this.Write((int)state[this.targets[i]]);
+                deep = this.targets.Count > count;
+                this.targets.RemoveRange(count, this.targets.Count - count);
+            }
+        }
+
+        return (limited, deep);
     }
 
     // A step of W from a set (Writes): E where it carries Φ_E, and the holder each direct Loan or address names. A value that may refer to

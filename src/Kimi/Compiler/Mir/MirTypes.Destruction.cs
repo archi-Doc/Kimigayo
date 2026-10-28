@@ -20,8 +20,8 @@ internal enum MirObservation : byte
     /// Sealed or observes.</summary>
     Observes,
 
-    /// <summary>A part past the walk's depth bound, which this implementation does not follow (SPEC 8.15): the caller's located
-    /// Unsupported_Kd.</summary>
+    /// <summary>A part past the walk's depth bound, which this implementation does not follow: a check whose verdict rests on it records
+    /// OwnershipDepthLimit_Kd (Resource, SPEC 23.1.1, IMPL 21.3.2; DECISIONS R4-M153).</summary>
     Deep,
 }
 
@@ -40,7 +40,8 @@ internal interface IMirDestruction
     /// <returns>Whether the walk stops.</returns>
     bool Visit(BoundType type, int depth);
 
-    /// <summary>A part past the walk's depth bound, whose destruction the walk does not follow.</summary>
+    /// <summary>A part past the walk's depth bound, whose destruction the walk does not follow: the walk's own outcome, which a check
+    /// resting on it records as OwnershipDepthLimit_Kd (DECISIONS R4-M153).</summary>
     /// <returns>Whether the walk stops.</returns>
     bool Deep();
 }
@@ -83,12 +84,12 @@ internal static partial class MirTypes
     /// <summary>Walks what destroying a value of a Type does (SPEC 16.3), the one walk of its inline storage that drop elaboration and the
     /// effect summaries share. It reports each part that runs or releases something: an abstract Type (its instance decides), an owning
     /// handle, a Function value (its environment), a string, an Array or a Dictionary, a struct that declares a drop (whose destructor body
-    /// alone destroys its parts, R4-M6b), and as Deep a part past depth 32; it walks on into the components of a Tuple, fixed array,
-    /// Closure, Array or Dictionary, a struct's Fields and base and an enum's Case payloads; a Field or Case Binding did not substitute
-    /// (null; <see cref="AdtDef.CaseTypes"/>) destroys nothing, a dependent of Binding's rejection. References, raw pointers, Slices, scalars and
-    /// an InlineStorage, whose owner destroys its contents (<see cref="AdtDef.IsInlineStorage"/>), release nothing. It enters each Type
-    /// once per query (<see cref="IMirDestruction.First"/>): a Type met again was walked already, so the walk is linear in the distinct
-    /// Types it meets, and a growing Type, new at each level, still ends at the bound.</summary>
+    /// alone destroys its parts, R4-M6b), and as Deep a part past depth 32 (Bound, the holding walks' too); it walks on into the components
+    /// of a Tuple, fixed array, Closure, Array or Dictionary, a struct's Fields and base and an enum's Case payloads; a Field or Case Binding
+    /// did not substitute (null; <see cref="AdtDef.CaseTypes"/>) destroys nothing, a dependent of Binding's rejection. References, raw
+    /// pointers, Slices, scalars and an InlineStorage, whose owner destroys its contents (<see cref="AdtDef.IsInlineStorage"/>), release
+    /// nothing. It enters each Type once per query (<see cref="IMirDestruction.First"/>): a Type met again was walked already, so the walk
+    /// is linear in the distinct Types it meets, and a growing Type, new at each level, still ends at the bound.</summary>
     /// <typeparam name="TVisitor">The visitor's struct type.</typeparam>
     /// <param name="type">The Type.</param>
     /// <param name="visitor">The visitor.</param>
@@ -102,7 +103,7 @@ internal static partial class MirTypes
             return false;
         }
 
-        if (depth > 32)
+        if (depth > Bound)
         {
             return visitor.Deep();
         }

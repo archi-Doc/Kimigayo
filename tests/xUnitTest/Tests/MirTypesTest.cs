@@ -86,6 +86,31 @@ public sealed class MirTypesTest(ITestOutputHelper output)
         }
     }
 
+    // SPEC 23.1.1, IMPL 21.3.2 (DECISIONS R4-M153): a part past the walk's bound where the write fact would be read is the guard's own
+    // outcome, Deep, never the write fact: past an exclusive reference (unique40) and in the value's own storage (value40), while a decided
+    // write elsewhere in the value outranks it (mixed40); past a shared reference nothing is read (shared40), and at depth 10 the walk is
+    // exact (unique10: a Tuple of integers past an exclusive reference gives nothing).
+    [Fact]
+    public void APartPastTheBoundIsTheGuardsDeepOutcome()
+    {
+        var (body, c) = Probe(
+            $"func probe(unique40: uniq/{Nested(40)}, value40: {Nested(40)}, mixed40: (uniq/(ref/i32 during a) during a, uniq/{Nested(40)} during a), " +
+            $"shared40: ref/{Nested(40)}, unique10: uniq/{Nested(10)})\n    return\n");
+        var seen = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
+        Assert.Equal(
+            [("unique40", MirWrites.Deep), ("value40", MirWrites.Deep), ("mixed40", MirWrites.Through), ("shared40", MirWrites.None),
+                ("unique10", MirWrites.None)],
+            Parameters(body).Select(x => (x.Name, Writes(x.Type))).ToArray());
+
+        MirWrites Writes(BoundType type)
+        {
+            _ = MirTypes.HoldsLoans(type, c.Types, seen, [], out var writes);
+            return writes;
+        }
+
+        static string Nested(int levels) => new string('(', levels) + "i32" + string.Concat(Enumerable.Repeat(", i32)", levels));
+    }
+
     // SPEC 15.8.2, IMPL 21.1.2 (DECISIONS R4-M148): a Closure value holds its environment's parts, a Tuple of its bindings: a captured
     // exclusive reference to storage that may hold a Loan (exclusive), an abstract binding (abstract) and a Function value (function) let a
     // call write past it; a shared reference, a `var` one included (shared), and an exclusive reference to a scalar (scalar) do not; a stored

@@ -1,12 +1,12 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns A4 (plan 5.5; SPEC 8.11.2, 8.11.3, 8.11.4, 15.6.4; DECISIONS R4-M22): per body view the effect summary — the classes
-// Environment, Unknown, Limit and Derived and atoms over the definition's abstract Types (Drop(T), a call through a Callable input T) — and
+// Environment, Unknown, Limit, Derived and Deep (R4-M153) and atoms over the definition's abstract Types (Drop(T), a call through a Callable input T) — and
 // the `confined` obligations Binding publishes (TyCtxt.EffectObligations).
 // Input: validated bodies per MirCases view, their uses (MirUses), the blocks the runtime edges reach (MirDataflow.Begin), A2's verdicts
 // (MirProgram.Drops), TyCtxt's obligations and callee facts.
 // Output: IncompatibleContractImplementation_Kd,
-// UnsatisfiedEffectBound_Kd and Unsupported_Kd through MirReport, and for A5 the per-node summaries and a site's key row and classes
+// UnsatisfiedEffectBound_Kd, Unsupported_Kd and OwnershipDepthLimit_Kd through MirReport, and for A5 the per-node summaries and a site's key row and classes
 // per view (Keys, Field).
 // Atoms compose through each call's substitution into the caller (an atom concrete there is resolved there, one on a projection with a
 // recursive base where it arises, SPEC 15.6.4: the fixed point is finite where the view finds the base, and a base G170 hides still ends at
@@ -36,6 +36,10 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     /// <summary>A class of a summary: an effect only an Opaque site or a callee Binding rejected causes, a dependent of that error
     /// (R4-M10).</summary>
     internal const byte Derived = 8;
+
+    /// <summary>A class of a summary: a destroyed part past the destruction walk's bound, whose effects the walk does not follow (the depth
+    /// limit, <c>OwnershipDepthLimit_Kd</c>; DECISIONS R4-M153).</summary>
+    internal const byte Deep = 16;
 
     private const byte Environment = 1; // The class of an environment effect (SPEC 8.11.2).
     private const byte Drop = 0; // An atom's kind: the destruction of a value of its Type, else 1 + the receiver of a call through it,

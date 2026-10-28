@@ -93,17 +93,26 @@ internal sealed partial class MirEffects
         this.Obligations(report);
     }
 
-    // An obligation row's verdict, at Binding's row, which no body describes (R4-M71).
+    // An obligation row's verdict, at Binding's row, which no body describes (R4-M71): an Environment or Unknown effect fails it; else each
+    // class that leaves it undecided is its own record, Limit the located Unsupported_Kd and Deep the depth limit (R4-M153).
     private static void Verdict(MirReport report, in EffectObligation row, byte found, ulong views)
     {
         if ((found & (Environment | Unknown)) != 0)
         {
             report.Add(new(row.Code, row.Requirement, row.Subject, MirProblem.NoBody, views));
+            return;
         }
-        else if ((found & Limit) != 0)
+
+        if ((found & Limit) != 0)
         {
             var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
             report.Add(new(DiagnosticCode.Unsupported_Kd, requirement, row.Subject, MirProblem.NoBody, views));
+        }
+
+        if ((found & Deep) != 0)
+        {
+            var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.DepthLimit);
+            report.Add(new(DiagnosticCode.OwnershipDepthLimit_Kd, requirement, row.Subject, MirProblem.NoBody, views));
         }
     }
 
@@ -401,7 +410,7 @@ internal sealed partial class MirEffects
         }
     }
 
-    // The destruction walk's visitor: each part reached, and past the walk's depth bound a part this implementation does not follow.
+    // The destruction walk's visitor: each part reached, and past the walk's depth bound a part this implementation does not follow (Deep).
     private readonly struct Glue(MirEffects owner) : IMirDestruction
     {
         public bool First(BoundType type) => owner.glued.Add(type);
@@ -414,7 +423,7 @@ internal sealed partial class MirEffects
 
         public bool Deep()
         {
-            owner.found |= Limit;
+            owner.found |= MirEffects.Deep;
             return false;
         }
     }

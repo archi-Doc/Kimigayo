@@ -123,8 +123,9 @@ public sealed partial class MirBorrowsTest
     // is, so A5 reports its repaired program's Loan conflicts beside it and no Unsupported_Kd at the call (fail-before: Unsupported_Kd at
     // keep2, stash and choose; i-field's at D.init), with no builder record or validator finding. A conflict that rests on the failed
     // part is its dependent and goes (q1: `result` holds `first` only through the failed payload, its repair's conflict). An independent
-    // conflict stays (m1: y written while r lives, also in its repair). A genuine limit stays the Unsupported_Kd at the call beside the
-    // failed part (a Field of height 66, a growing Field) and in its repair, and so do X and T, which reach T's Box^64 Field.
+    // conflict stays (m1: y written while r lives, also in its repair). A genuine limit stays its record at the call, the depth limit (the
+    // owner's 「G272: (1)」, R4-M153), beside the failed part (a Field of height 66, a growing Field) and in its repair, and so do X and T,
+    // which reach T's Box^64 Field.
     [Theory]
     [InlineData(RetentionTest.Keep2, "Missing", "i32", "g: v = 2")]
     [InlineData(RetentionTest.Stash, "Missing", "i32", "g: x = 3")]
@@ -134,9 +135,9 @@ public sealed partial class MirBorrowsTest
     [InlineData(Kept, "Missing", "i32", "g: y = 3")]
     [InlineData(RetentionTest.Fielded, "C{x}\n        origin x.s == zz", "C{x}\n        origin x.s == s", "")]
     [InlineData(RetentionTest.Fielded, "Missing", "C{x}\n        origin x.s == s", "")]
-    [InlineData(RetentionTest.Tall, "Missing", "i32", "g: f(b, null) Unsupported_Kd")]
-    [InlineData(RetentionTest.Growing, "Missing", "i32", "h: f(g, null) Unsupported_Kd")]
-    [InlineData(RetentionTest.Beyond + "func g(t: uniq/T, x: uniq/X)\n    fx(x, null)\n    ft(t, null)\n", "Missing", "i32", "g: fx(x, null) Unsupported_Kd | g: ft(t, null) Unsupported_Kd")]
+    [InlineData(RetentionTest.Tall, "Missing", "i32", "g: f(b, null) OwnershipDepthLimit_Kd")]
+    [InlineData(RetentionTest.Growing, "Missing", "i32", "h: f(g, null) OwnershipDepthLimit_Kd")]
+    [InlineData(RetentionTest.Beyond + "func g(t: uniq/T, x: uniq/X)\n    fx(x, null)\n    ft(t, null)\n", "Missing", "i32", "g: fx(x, null) OwnershipDepthLimit_Kd | g: ft(t, null) OwnershipDepthLimit_Kd")]
     public void ACallOverRejectedStorageKeepsItsRows(string source, string failed, string repaired, string expected, string? twin = null)
     {
         Assert.Equal(expected, CallRecords(source.Replace("MISSING", failed, StringComparison.Ordinal), complete: false));
@@ -186,8 +187,9 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(twin, CallRecords(source.Replace("MISSING", repaired, StringComparison.Ordinal), complete: true));
     }
 
-    // A5's Loan conflicts, A1's MovedPlace_Kd and located Unsupported_Kd over a program (with an `inspect` of its own), which Binding
-    // completes or rejects, whose build has no validator finding (InternalInvariant_Kd under the mir pipeline) and no record of construction.
+    // A5's Loan conflicts, A1's MovedPlace_Kd and limit records (a located Unsupported_Kd, the depth limit) over a program (with an
+    // `inspect` of its own), which Binding completes or rejects, whose build has no validator finding (InternalInvariant_Kd under the mir
+    // pipeline) and no record of construction.
     private static string CallRecords(string source, bool complete)
     {
         var c = MirBuildTest.Compile("func inspect<T>(value: ref/T) => ()\n" + source);
@@ -196,6 +198,6 @@ public sealed partial class MirBorrowsTest
         Assert.Empty(program.Findings);
         Assert.Empty(program.Records);
         new Stratum(c.Types).Run(program);
-        return string.Join(" | ", Problems(c, program, [.. LoanCodes, DiagnosticCode.MovedPlace_Kd, DiagnosticCode.Unsupported_Kd]));
+        return string.Join(" | ", Problems(c, program, [.. LoanCodes, DiagnosticCode.MovedPlace_Kd, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnershipDepthLimit_Kd]));
     }
 }

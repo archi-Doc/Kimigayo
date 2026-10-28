@@ -9,20 +9,23 @@ namespace Kimi.Compiler.Mir;
 // per-output membership: an operation of SPEC 4.6 to 4.9 writes through its exclusive receiver only what it refers to, 4.9.6) whose
 // referent destroys shallowly (Destruction), the store reaches refs(S) alone (W's first step, Referents; R4-M143); where the referent may
 // observe a destruction, which the row leaves to its callers, W stays, until A5 composes it there (PLAN G264); where it observes only
-// through an abstract part not proven Copy, W past refs(S) is undecided for a Loan or an address (R4-M147).
+// through an abstract part not proven Copy, or past the destruction walk's bound, W past refs(S) is undecided for a Loan or an address
+// (R4-M147, R4-M153).
 // Input: the state before the Call, its inspection Loans ended (R-a, MirBorrows.Endings), its terminator, and whether the checks replay
 // runs; the Call's rows.
 // Output: the Call's entries: its arguments' Moves, each row's value into the result or into the holders its W reaches ({Φ_E} for a row
 // with no input, an untied store), and the result into the destination; Φ_E for an untied result, and for a result that may hold a raw
-// pointer where it is untracked (MirBorrows.Addresses); in the checks replay, whether a store is undecided (R4-M147): its W reached a
-// holder the guard leaves undecided (MirWrites.Limit), or at a referent store whose referent observes only through an abstract part not
-// proven Copy (MirBorrows.Destruction's unproven), W past refs(S) would store a Loan or an address, which then stops at refs(S); the
-// location records it as a limit (MirBorrows.Locations).
+// pointer where it is untracked (MirBorrows.Addresses); in the checks replay, whether a store is undecided, two facts: the limit (R4-M147),
+// where its W reached a holder the guard leaves undecided (MirWrites.Limit), or at a referent store whose referent observes only through
+// an abstract part not proven Copy (MirBorrows.Destruction's unproven) W past refs(S) would store a Loan or an address, which then stops
+// at refs(S); and the depth fact (R4-M153), where W met a holder whose guard is Deep and whose step would reach a holder W does not, or a
+// referent past the destruction walk's bound stops such a store at refs(S); the location records each (MirBorrows.Locations).
 // Must not choose a Call's rows (MirBorrows.CallRows) or compute W (MirBorrows.Reach).
 internal sealed partial class MirBorrows
 {
     private int[] argValues = []; // A Call's operand values by position (Input), the callee operand's at call.Count.
     private bool limit; // Whether the replay's Call at the location made an undecided store (R4-M147), read and reset by Check.
+    private bool deep; // Whether that store is undecided past a walk's bound (R4-M153), read and reset by Check.
 
     // Whether a value of a case Type is a borrow, through which a read reaches what it refers to (A3 5's ret): a reference or a pair layer,
     // or a view handle, whose Index is a borrow Deref (E6).
@@ -53,7 +56,9 @@ internal sealed partial class MirBorrows
         var result = 0;
         var writesOf = Retention.Result; // The output whose writable holders the targets are.
         BoundType? referent = null; // Rule W: the Type the written argument refers to, every part of which may receive the value.
-        var (reach, undecided) = (0, false); // refs(S)'s count, and whether W past it rests on an abstract part's destruction.
+
+        // refs(S)'s count, whether W past it rests on the referent's destruction, and whether that destruction passes the walk's bound.
+        var (reach, undecided, deepReferent) = (0, false, false);
         foreach (var row in retained)
         {
             var value = row.Input == NoInput ? this.escapedSet : this.Retained(state, this.Input(call, row.Input), row.Input, row.Kind);
@@ -69,16 +74,24 @@ internal sealed partial class MirBorrows
                 var written = this.Input(call, row.Output);
                 referent = (this.wCount > 0 || stored) && this.TypeOf(written) is { Kind: BoundTypeKind.Semantics, Components: [var to, ..] } ? to : null;
                 var unproven = false;
-                var shallow = stored && referent is not null && this.Destruction(referent, out unproven) == AccessKind.Destroy;
+                var destroys = stored && referent is not null ? this.Destruction(referent, out unproven) : AccessKind.Observe;
                 reach = this.Referents(this.argValues[row.Output]);
-                this.limit |= !shallow && this.Writes(state, this.argValues[row.Output]) && checks;
-                (undecided, writesOf) = (unproven && this.targets.Count > reach, row.Output);
+                if (destroys != AccessKind.Destroy)
+                {
+                    var (limited, deepHolder) = this.Writes(state, this.argValues[row.Output]);
+                    this.limit |= limited && checks;
+                    this.deep |= deepHolder && checks;
+                }
+
+                deepReferent = destroys == AccessKind.Unclassified;
+                (undecided, writesOf) = ((unproven || deepReferent) && this.targets.Count > reach, row.Output);
             }
 
             // An undecided store of a Loan or an address (R4-M147; V16: one read, the sorted set's last element) stops at refs(S), a limit at
-            // the call.
+            // the call, the depth limit for a referent past the destruction walk's bound (R4-M153).
             var count = undecided && this.sets.Elements(value) is [.., var last] && last >= this.loanBase ? reach : this.targets.Count;
-            this.limit |= count < this.targets.Count && checks;
+            this.limit |= count < this.targets.Count && checks && !deepReferent;
+            this.deep |= count < this.targets.Count && checks && deepReferent;
             for (var t = 0; t < count; t++)
             {
                 var target = this.targets[t];

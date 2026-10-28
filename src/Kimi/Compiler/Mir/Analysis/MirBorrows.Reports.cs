@@ -9,8 +9,10 @@ namespace Kimi.Compiler.Mir;
 // next use in its chain, the location for a value an access takes, a transit value's or E's store; none for a destruction's own
 // hold, R3), an activation's reservation, the static Field an effect met and, inside an inline default copy, the default's operation
 // (Evaluated) with the outermost omitting call as subject (D13); a located Unsupported_Kd where the stratum classifies nothing, and in a
-// view PD13 holds (MirBorrows.CallRows' held; R4-M126 (iii), R4-M148) at every rejection's subject; InternalInvariant_Kd at a Value call
-// whose declared signature does not number its operands (G136). Every rejection but a located Unsupported_Kd is recorded through
+// view PD13 holds (MirBorrows.CallRows' held; R4-M126 (iii), R4-M148) at every rejection's subject; OwnershipDepthLimit_Kd (DepthLimit,
+// R4-M153) where a check's verdict rests on a part past a walk's bound, a conflict only the drop tier gives at its drop-live holder's
+// declaration (Report, Ended); InternalInvariant_Kd at a Value call
+// whose declared signature does not number its operands (G136). Every rejection but a limit record is recorded through
 // Record(code, requirement, subject, facts), so the hold is one rule there: a Loan conflict through Report(code, anchor, via, at,
 // reservation, effect), A5-F9's template rules (MirBorrows.Defaults) with their parameter. The own-step Warning (OwnStepDeparture_Kd,
 // MirBorrows.OwnSteps), which is no Loan problem and rejects nothing, is recorded through Departure under its own requirement, never
@@ -19,10 +21,17 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirBorrows
 {
     // A conflicting candidate's problem: its Loan's anchor, and its witness (E13 (6)): a holder it was found live in (for an activation, other
-    // than its own), else the location, whose operation uses the value that carries it; and the static Field an effect met (R4-M92).
+    // than its own), else the location, whose operation uses the value that carries it; and the static Field an effect met (R4-M92). One
+    // only the drop tier takes rests on a Drop past the destruction walk's bound: the depth limit at its drop-live holder's declaration.
     private void Report(DiagnosticCode code, int candidate, int taking, MirLocation at, int reservation, MirFact? effect)
     {
         ref readonly var found = ref this.candidates[candidate];
+        if (!found.Tags.Takes(taking))
+        {
+            this.DepthLimit(this.Declaration(found.Dropped.Via));
+            return;
+        }
+
         var tags = found.Tags;
         var live = taking <= Activating ? (tags.Flags & Based) != 0 && Activation(tags.Via) != taking : (tags.Flags & (Based | Stored)) != 0;
         this.Report(code, this.Site(found.Loan), live ? tags.Via : Taken, at, reservation, effect);
@@ -79,5 +88,26 @@ internal sealed partial class MirBorrows
         this.causes.Clear();
         var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
         this.program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, requirement, subject, this.body.Ordinal, this.views));
+    }
+
+    // The depth limit at a subject (SPEC 23.1.1, IMPL 21.3.2; the owner's 「G272: (1)」, DECISIONS R4-M153): OwnershipDepthLimit_Kd, a
+    // Resource Error with no fact, where a check's verdict rests on a part past a walk's bound or on a call's retention limit; a conflict's
+    // causes dropped with it, never held (a limit record, as a located Unsupported_Kd is), kept at its operation inside a copy.
+    private void DepthLimit(SourceRef subject)
+    {
+        this.causes.Clear();
+        this.AddProblem(DiagnosticCode.OwnershipDepthLimit_Kd, OwnershipRequirement.DepthLimit, subject, default);
+    }
+
+    // The declaration of a holder the drop tier found a record's candidate or marker through (the drop list keeps its local).
+    private SourceRef Declaration(int holder)
+    {
+        var i = 0;
+        while (this.slots[this.drops[i].Local] != holder)
+        {
+            i++;
+        }
+
+        return this.body.Subject(this.body.Locals[this.drops[i].Local].Source);
     }
 }

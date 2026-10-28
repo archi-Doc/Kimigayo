@@ -5,22 +5,26 @@ using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>What a call that writes a value's storage may write past it (A3 E16, DECISIONS R4-M73, R4-M147), from HoldsLoans' walk:
-/// the guard of a value that may hold a Loan, part by part, three ways; Through wins over Limit, Limit over None.</summary>
+/// <summary>What a call that writes a value's storage may write past it (A3 E16, DECISIONS R4-M73, R4-M147, R4-M153), from HoldsLoans'
+/// walk: the guard of a value that may hold a Loan, part by part, four ways; Through wins over Limit, Limit over Deep, Deep over None.</summary>
 internal enum MirWrites : byte
 {
     /// <summary>Nothing past it: no exclusive reference to storage that may hold a Loan.</summary>
     None,
 
     /// <summary>Some part gives the write fact: past no shared layer, an exclusive reference to storage that may hold a Loan (a raw
-    /// layer whose step lets a call write past it counting as one), an abstract part, or a Function value or a part past the walk's
-    /// bound, which may be one (the guard); a Closure value by its environment's parts (DECISIONS R4-M148).</summary>
+    /// layer whose step lets a call write past it counting as one), an abstract part, or a Function value, which may be one (the guard);
+    /// a Closure value by its environment's parts (DECISIONS R4-M148).</summary>
     Through,
 
     /// <summary>No part gives the write fact, and a stored raw layer stepping Exclusive whose members Binding does not publish (a Type
     /// argument supplies it, or the member walk is incomplete) leaves it undecided: a Call whose W reaches the value is the located
     /// Unsupported_Kd at the call (DECISIONS R4-M147).</summary>
     Limit,
+
+    /// <summary>No part gives the write fact, and a part past the walk's bound, where the write fact would be read, leaves it undecided: a
+    /// Call whose W from the value would reach a holder W does not is OwnershipDepthLimit_Kd at the call (DECISIONS R4-M153).</summary>
+    Deep,
 }
 
 // What a value may hold: raw authority (HoldsRaw) and Loans with what a call may write past them (HoldsLoans), each a walk of its parts.
@@ -37,9 +41,7 @@ internal static partial class MirTypes
     private const int Loan = 1;
     private const int Write = 2;
     private const int Limit = 4;
-
-    // The deepest part the holding walks enter: past it a part may be anything (SPEC 15.3.5's growing recursion).
-    private const int Bound = 32;
+    private const int Deep = 8; // A part past the walk's bound where the mode would read the write fact (DECISIONS R4-M153).
 
     /// <summary>Gets whether a value of a Type holds a raw pointer, an rc handle or a Weak of one at any depth, so that reading it from an
     /// immutable static obtains authority from the environment (SPEC 8.11.2); a referent reached through the value counts too. A Field or
@@ -62,8 +64,9 @@ internal static partial class MirTypes
     /// them, IMPL 21.1.2; DECISIONS R4-M148), an owning handle's payload, and a Type argument, which its
     /// storage may hold behind a raw pointer (a library collection, its iterators) or as a Loan or a Weak (SPEC 3.2.2, 15.3.5); a function
     /// item holds none. The same walk gives what a call may write past the value (A3 E16): its guard, whether it may hold, past no shared
-    /// layer, an exclusive reference (a pair layer's exclusive case and an abstract part counting, as do a Function value and a
-    /// part past the bound) to storage that may hold a Loan; a struct's or enum's Type argument, which has no address and grants no access
+    /// layer, an exclusive reference (a pair layer's exclusive case and an abstract part counting, as does a Function value) to storage that
+    /// may hold a Loan, a part past the bound there being the walk's Deep fact, never the write fact (DECISIONS R4-M153); a struct's or
+    /// enum's Type argument, which has no address and grants no access
     /// (SPEC 15.3.5), adds only whether the value may hold one. A struct's or enum's own storage is its stored parts as the holding value's
     /// substitution makes them, raw Origins kept (TyCtxt.StoredParts, DECISIONS BU-41), so a raw layer below the holder is read on the
     /// instance that stores it. Past a raw layer of the value's own storage (DECISIONS R4-M147; SPEC 5.7 Calls, 15.6.4), a layer a struct's
@@ -78,7 +81,7 @@ internal static partial class MirTypes
     /// a declaration wrote it (an Array element of a Field, a `self` pointee's content), else an exclusive reference to its pointee
     /// (DECISIONS R4-M120). Each Type is walked once per query and
     /// mode, a raw layer and the inline Tuples and fixed arrays of a stored part once per part, so a repeating recursive Type ends exactly;
-    /// past depth 32, where one grows (SPEC 15.3.5), the answer is yes.</summary>
+    /// past depth 32, where one grows (SPEC 15.3.5), the answer is yes for tracking and the guard's Deep.</summary>
     /// <param name="type">The Type.</param>
     /// <param name="types">The Type context, whose stored parts and stored raw layers' facts the walk reads.</param>
     /// <param name="seen">Scratch for the modes each Type was walked in, cleared first.</param>
@@ -90,10 +93,11 @@ internal static partial class MirTypes
         seen.Clear();
         var walk = new Holding(types, seen, members, stackalloc int[Bound + 2]);
         var found = walk.Holds(type, Own, 0);
-        writes = ((found & Loan) != 0, (found & Write) != 0, (found & Limit) != 0) switch
+        writes = ((found & Loan) != 0, (found & Write) != 0, (found & Limit) != 0, (found & Deep) != 0) switch
         {
-            (true, true, _) => MirWrites.Through,
-            (true, false, true) => MirWrites.Limit,
+            (true, true, _, _) => MirWrites.Through,
+            (true, false, true, _) => MirWrites.Limit,
+            (true, false, false, true) => MirWrites.Deep,
             _ => MirWrites.None,
         };
         return (found & Loan) != 0;
@@ -151,11 +155,11 @@ internal static partial class MirTypes
 
         // The facts a part adds in its mode, each (Type, mode) once per query (a LoanOnly mode not after its full one), a raw layer and an
         // inline Tuple or fixed array of a stored part once per part. A part that may hold a Loan (a borrow, pair or raw layer, a Slice, a
-        // Function value, an abstract part, a part past the bound) gives Loan in the value's own storage, and Write past an
-        // exclusive reference from it, but in a LoanOnly mode. In the value's own storage an exclusive reference, a UniqSlice's elements, a
-        // pair layer's exclusive case and what lies past a raw layer by its step (Past) are walked past, and an abstract part (the owner's
-        // Q1 (a)), a callable and a part past the bound may be such a reference; a struct's or enum's Type arguments are walked LoanOnly. A
-        // mode's walk stops once it has the facts no other part changes.
+        // Function value, an abstract part) gives Loan in the value's own storage, and Write past an exclusive reference from it, but in a
+        // LoanOnly mode. In the value's own storage an exclusive reference, a UniqSlice's elements, a pair layer's exclusive case and what
+        // lies past a raw layer by its step (Past) are walked past, and an abstract part (the owner's Q1 (a)) and a callable may be such a
+        // reference; a struct's or enum's Type arguments are walked LoanOnly. A part past the bound gives Loan in the value's own storage
+        // and Deep where its mode would give Write (DECISIONS R4-M153). A mode's walk stops once it has the facts no other part changes.
         internal int Holds(BoundType? type, int mode, int depth)
         {
             if (type is null || type.Kind == BoundTypeKind.FunctionItem)
@@ -179,7 +183,12 @@ internal static partial class MirTypes
             }
 
             modes |= (byte)(inline ? 0 : 1 << mode);
-            if (depth > Bound || type.Kind == BoundTypeKind.Function)
+            if (depth > Bound)
+            {
+                return (own ? Loan : 0) | (exclusive != 0 ? Deep : 0);
+            }
+
+            if (type.Kind == BoundTypeKind.Function)
             {
                 return met | (own ? exclusive : 0);
             }
