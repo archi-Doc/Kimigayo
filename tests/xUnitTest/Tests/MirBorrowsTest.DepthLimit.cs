@@ -97,13 +97,14 @@ public sealed partial class MirBorrowsTest
 
     // Problem r2 §3 (design review 1, B3 and N3): no record where no check rests on a part past the bound: a5-w's twin at depth 10; p5,
     // whose deep-Typed d no Loan flows into; p6, a deep Tuple of i32 beside a borrow; a by-value store's destruction at return that is
-    // shallow (Store's drop, an Array) keeps only its own-step Warning, and an integer's gives nothing.
+    // shallow (Store's drop, an Array) keeps only its own-step Warning, and an integer's gives nothing. A parameter's Drop is located at
+    // its Type occurrence (DECISIONS BU-48's locations, settled (a), with dev 855c1ee31's G158 (3)).
     [Theory]
     [InlineData("a5-w-10", "")]
     [InlineData("p5", "")]
     [InlineData("p6", "")]
-    [InlineData("shallowAtReturn", "func shallowAtReturn(s: Store) -> raw/i32 => s.data OwnStepDeparture_Kd")]
-    [InlineData("arrAtReturn", "func arrAtReturn(s: ArrStore) -> raw/i32 => s.data OwnStepDeparture_Kd")]
+    [InlineData("shallowAtReturn", "Store OwnStepDeparture_Kd")]
+    [InlineData("arrAtReturn", "ArrStore OwnStepDeparture_Kd")]
     [InlineData("flatAtReturn", "")]
     public void NoCheckRestingOnTheBoundGivesNoRecord(string form, string expected)
         => Assert.Equal(Rows(expected), DepthRows(form).Select(static x => $"{x.Line} {x.Code}"));
@@ -113,12 +114,12 @@ public sealed partial class MirBorrowsTest
     // keeps its Warning; AnUnclassifiedDestructionOrCallIsUnsupported's made (`let n`'s call) and deep (p4's form on a parameter, at its
     // function), and AnOwnStepViewIsAProducerOnlyWhereAnAccessMayDepart's ownLimitLocal (`let n`'s call), ownDeep's two records and DeepBuf's
     // init (the call ownDeep's first record makes). Those pins keep their other functions' records; a lane updates their bound records to
-    // these verdicts.
+    // these verdicts. A parameter's Drop is located at its Type occurrence (BU-48's locations, settled (a): deepAtReturn's and deep's).
     [Theory]
     [InlineData("p4", "let d = mk(value@ref) OwnershipDepthLimit_Kd")]
-    [InlineData("deepAtReturn", "func deepAtReturn(s: DeepStore) -> raw/i32 => s.data OwnStepDeparture_Kd|func deepAtReturn(s: DeepStore) -> raw/i32 => s.data OwnershipDepthLimit_Kd")]
+    [InlineData("deepAtReturn", "DeepStore OwnStepDeparture_Kd|DeepStore OwnershipDepthLimit_Kd")]
     [InlineData("made", "Nest<ref/i32>.init(value: y@ref) OwnershipDepthLimit_Kd")]
-    [InlineData("deep", "func deep(n: Nest<ref/i32 during a>) OwnershipDepthLimit_Kd")]
+    [InlineData("deep", "Nest<ref/i32 during a> OwnershipDepthLimit_Kd")]
     [InlineData("ownLimitLocal", "Nest<ref/i32>.init(value: x) OwnershipDepthLimit_Kd")]
     [InlineData("ownDeep", "Nest<i32>.init(value: 2) OwnershipDepthLimit_Kd|d.n = Nest<i32>.init(value: 2) OwnershipDepthLimit_Kd")]
     [InlineData("init", "Nest<i32>.init(value: 1) OwnershipDepthLimit_Kd")]

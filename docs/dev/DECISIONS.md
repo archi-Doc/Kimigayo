@@ -5350,22 +5350,26 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Out of scope, open: `HoldsRaw`, `MirStatic.RawHolding` and `RawStaticRead` (2b-5); Binding's `ContainsRawPointer` past depth 32 (BU);
     A4's null-instance Limit (`TyCtxt.ReadableInstance`'s null mixes Binding's storage limit with other nulls until TyCtxt publishes the
     outcome, BU); `MirWrites.Limit`'s "reached" rule beside Deep's "would add" (a later unit). Not temporary.
-  - Evidence (revision 1, merged with dev b610377e8): the shared tests (`MirBorrowsTest`, `MirEffectsTest`, `TypeDagScalingTest`
+  - Evidence (revision 2, merged with dev 855c1ee31): the shared tests (`MirBorrowsTest`, `MirEffectsTest`, `TypeDagScalingTest`
     `.DepthLimit`) pass 36 of 36 on both pipelines (33 counted, 3 kept apart: a5-w-40 at `store(d@uniq, value@ref)`, A4's nest and
-    tuple40 at `Self is Sink`). The mir Functional run with the ledger (23,791 tests, no failure) against `shared-base/15beffcfb`: rows
-    3,336 to 3,338, 24 removed and 26 added, row for row the delta fe1ec9d37 gave against `shared-base/03d158d07` (the revision changes
-    no corpus row), all the bound's, as design 2 predicted: 20 MIR-only `Unsupported_Kd` rows in 13 sources (retention limits and
-    borrowed roots' Drops) become the depth code at the same locations; 07dc9460e03d's and 0984e5818869's MIR-only conflict at
-    `value = 99` becomes the record at `let d`; 56024d19baf2's and e5c59f5f3cbf's both-side conflict becomes the old path's alone (its
-    bound, 64) beside the MIR's record. `classification.tsv` row a5-depth (b) takes the complete section's signatures from a5-p13:
-    unclassified 9 (43 rows) and open blocking rows 103 of 554, as the base. Cost against dev (the G258 host: A = b610377e8, A' its
-    byte-identical copy, B = this revision built as 0.1.1+e7b088a1d, sibling folders of one parent, interleaved per program and rep,
-    KIMI_CPU=2, tiering off, 3 runs of 8 reps over the 122 census programs, others' heavy runs beside every run): A5 (step 4) B/A 1.0076
-    against A'/A 1.0006 (B/A' 1.0070, each run 1.0059 to 1.0086), step 2 (A1, A2 and A4's local walks) B/A' 1.0001. Loan-set Bytes and
-    problems equal on every program; Work +1.34% (Holders counts its per-view scan of the Drop terminators); A5's cold allocation +21,264 B
-    of 47,669,936 (+0.045%: the candidates' second Tags); warm steps 2 and 4 allocate exactly as dev (BuildMir+A5 warm: nothing new);
-    retained memory with the analyses and the program alive after both runs +19,096 B of 46,545,584 summed over the programs (+0.04%;
-    A'-A 0). Bind is unchanged (no Binding file; its warm allocation not measured here).
+    tuple40 at `Self is Sink`); with dev's G158 (3) a parameter's Drop record lies at its Type occurrence (BU-48's locations, settled
+    (a)), so four shared rows read it there: deep's depth limit at `Nest<ref/i32 during a>`, deepAtReturn's Warning and depth limit at
+    `DeepStore`, and the guards shallowAtReturn and arrAtReturn at `Store` and `ArrStore`. The mir Functional run with the ledger (24,518 tests, no failure)
+    against `shared-base/855c1ee31`: rows 3,429 to 3,431, 24 removed and 26 added, row for row the delta fe1ec9d37 gave against
+    `shared-base/03d158d07`, revision 1 against 15beffcfb and revision 2 against 66c856d81 (no revision and no dev merge moves a row of
+    it), all the bound's, as design 2 predicted: 20 MIR-only `Unsupported_Kd` rows in 13 sources (retention limits and borrowed roots'
+    Drops) become the depth code at the same locations; 07dc9460e03d's and 0984e5818869's MIR-only conflict at `value = 99` becomes the
+    record at `let d`; 56024d19baf2's and e5c59f5f3cbf's both-side conflict becomes the old path's alone (its bound, 64) beside the MIR's
+    record. `classification.tsv` row a5-depth (b) takes the complete section's signatures from a5-p13: unclassified 12 (61 rows) and
+    open blocking rows 115 of 626, as the base. Cost of revision 2 against dev
+    66c856d81 (the G258 host: A' A's byte-identical copy, B built as 0.1.1+6b7187f44, sibling folders of one parent, interleaved per
+    program and rep, KIMI_CPU=2, tiering off, 3 runs of 8 reps over the 122 census programs, others' heavy runs beside them): A5 (step 4)
+    B/A' 1.0028 (each run 1.0025 to 1.0032; B/A 1.0095, A'/A 1.0067), step 2 B/A' 0.9959. Loan-set Bytes and problems equal on every
+    program; Work +1.34% (Holders counts its per-view scan of the Drop terminators); A5's cold allocation +21,384 B of 47,669,936
+    (+0.045%: the candidates' second Tags and the limit list); warm steps 2 and 4 allocate exactly as dev (BuildMir+A5 warm: nothing new);
+    retained memory with the analyses and the program alive after both runs +25,120 B of 46,545,584 summed over the programs (+0.05%; A'-A
+    0). Bind is unchanged by this unit (no Binding file; its warm allocation not measured here). Revision 1 measured against b610377e8:
+    A5 B/A' 1.0070, cold +21,264 B, retained +19,096 B.
   - Tests: the new `MirBorrowsTest.AConflictOnlyDropLivenessGivesIsTheDepthLimit` (a borrowed deep root, a real use, a Loan reached
     through the closure and its depth-10 twin, err(ended)'s γ kept by a drop-live holder, its twin at 10 and with a real use),
     `MirBorrowsTest.AnOwnStepDepartureOnlyDropLivenessKeepsOpenKeepsItsWarning` (revision 1: owndtor and ownpast at 40, the Warning and
