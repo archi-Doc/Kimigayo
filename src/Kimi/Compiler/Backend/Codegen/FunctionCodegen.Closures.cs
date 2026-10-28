@@ -118,7 +118,8 @@ internal sealed partial class FunctionCodegen
     // `given`, a formatting row's capacity measured by the adapter's entry, Forward; DECISIONS R5-M128); any other function's is what
     // its target runs (the collector's: its function's body or a requirement Item's witness; FunctionCodegen.Calls' Witness, a virtual
     // witness through its slot); a virtual function's Item, which has no target (X5), runs its slot (SPEC 6.4.3) under the Item's own
-    // substitution (ModuleCodegen.Slot).
+    // substitution (ModuleCodegen.Slot); a #LibraryImport function's Item, which has no target either, its import by its C signature, the
+    // rule of its direct call (ModuleCodegen.Import; SPEC 22.6, DECISIONS R5-M146).
     // Null after a record at the source (an adapter's: its site): a row not written yet, its unit's located Unsupported_Kd, or a broken
     // contract.
     private Run? Runs(BoundType item, int target, BoundType? result, SourceInfo source, out ReadOnlySpan<Value> given)
@@ -133,6 +134,11 @@ internal sealed partial class FunctionCodegen
         if (kind == CompilerFunctionKind.None && item.Symbol is { } function && VTableDef.SlotOf(function) >= 0)
         {
             return this.module.Slot(item, this.item) is { } slot ? new Run(slot, function) : null; // Null after a record.
+        }
+
+        if (kind == CompilerFunctionKind.None && item.Symbol is { } foreign && this.module.Import(foreign) is { } import)
+        {
+            return new Run(import, null); // SPEC 22.6: its C signature, as its direct call (Function).
         }
 
         if (kind != CompilerFunctionKind.None && this.Routine(item, result, target, source, out given) is { } routine)
