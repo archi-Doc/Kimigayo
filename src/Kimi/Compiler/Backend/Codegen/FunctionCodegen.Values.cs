@@ -56,7 +56,8 @@ internal sealed partial class FunctionCodegen
             return true;
         }
 
-        if (constant.Kind is not (MirConstKind.Bool or MirConstKind.Integer or MirConstKind.Float or MirConstKind.Unit or MirConstKind.FnItem))
+        var scalar = constant.Kind is MirConstKind.Bool or MirConstKind.Integer or MirConstKind.Float;
+        if (!scalar && constant.Kind is not (MirConstKind.Unit or MirConstKind.FnItem))
         {
             this.Report(DiagnosticCode.InternalInvariant_Kd, default); // String, which has no value (above), and TypeToken (C6a, C9c).
             return false;

@@ -18,36 +18,19 @@ namespace Kimi.Compiler.Backend;
 // comparison operand (FunctionCodegen.Arithmetic's Compute; DECISIONS R5-M143).
 internal sealed partial class FunctionCodegen
 {
-    // SPEC 3.4.3, 13.4: the terminal of a comparison operand's Type below its safe value-reference layers (ref, uniq and pair layers; an
-    // object handle or borrow is not followed): the one walk of those layers, which also counts the layers followed and, of those, the
-    // ref and uniq ones.
-    private static BoundType? Terminal(BoundType? type, out int layers, out int references)
-    {
-        (layers, references) = (0, 0);
-        while (TyCtxt.Layer(type, out var below, out _) is var layer && (layer == HirPlaceKind.PairLayer ||
-            (layer == HirPlaceKind.Deref && type!.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)))
-        {
-            layers++;
-            references += layer == HirPlaceKind.Deref ? 1 : 0;
-            type = below;
-        }
-
-        return type;
-    }
-
     // SPEC 3.4.3, 13.4: where an operand of safe value-reference layers denotes its terminal Place, given the operand's value: the referent of
     // its outer ref or uniq layer through the pointer each further one stores (the place writer's Deref rule), or the value itself without
-    // layers (references 0); its terminal Type. Null after a record: a pair layer, which no valid program leaves on an operand (above).
-    private Value? Referent(in MirOperand operand, Value value, in SourceInfo source, out BoundType? terminal, out int references)
+    // layers (References 0); its Terminal. Null after a record: a pair layer, which no valid program leaves on an operand (above).
+    private Value? Referent(in MirOperand operand, Value value, in SourceInfo source, out Terminal terminal)
     {
-        terminal = Terminal(this.InstanceType(operand), out var layers, out references);
-        if (layers != references)
+        terminal = Terminal.Of(this.InstanceType(operand));
+        if (terminal.Layers != terminal.References)
         {
             this.Report(DiagnosticCode.InternalInvariant_Kd, source);
             return null;
         }
 
-        for (var layer = 1; layer < references; layer++)
+        for (var layer = 1; layer < terminal.References; layer++)
         {
             value = this.LoadAt(value, PointerLayout);
         }
@@ -97,12 +80,12 @@ internal sealed partial class FunctionCodegen
             return false; // Recorded.
         }
 
-        if (this.Referent(operand, value, source, out var terminal, out var references) is not { } address)
+        if (this.Referent(operand, value, source, out var terminal) is not { } address)
         {
             return false; // Recorded.
         }
 
-        if (references == 0 || !ReferenceEquals(terminal, BoundType.String))
+        if (terminal.References == 0 || !ReferenceEquals(terminal.Type, BoundType.String))
         {
             this.Report(DiagnosticCode.InternalInvariant_Kd, source);
             return false;
@@ -125,5 +108,26 @@ internal sealed partial class FunctionCodegen
     {
         this.module.Request(ModuleCodegen.Needs.Strings);
         return this.WriteCall(routine, [left.Data, left.Length, right.Data, right.Length])!.Value;
+    }
+
+    // SPEC 3.4.3, 13.4: the terminal of a comparison operand's Type below its safe value-reference layers (ref, uniq and pair layers; an
+    // object handle or borrow is not followed), the layers followed and, of those, the ref and uniq ones (References).
+    private readonly record struct Terminal(BoundType? Type, int Layers, int References)
+    {
+        // The one walk of those layers.
+        internal static Terminal Of(BoundType? type)
+        {
+            var layers = 0;
+            var references = 0;
+            while (TyCtxt.Layer(type, out var below, out _) is var layer && (layer == HirPlaceKind.PairLayer ||
+                (layer == HirPlaceKind.Deref && type!.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)))
+            {
+                layers++;
+                references += layer == HirPlaceKind.Deref ? 1 : 0;
+                type = below;
+            }
+
+            return new(type, layers, references);
+        }
     }
 }
