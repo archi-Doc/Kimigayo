@@ -6439,7 +6439,9 @@ resumed by R4-M86 (2026-10-20).
   `ContractType`'s likewise (the environment substitutes slots and Origins, Self is a Parameter, normalization rewrites abstract
   kinds only); a projection is abstract. The existing per-query or per-pass Type sets keep their form (EffectBounds' `destroyed`,
   `capabilityTypeDepths`, BU-12's `storageMarks`, `MirTypes`' seen sets, Layout's memo): each already decides a part once.
-  Open (PLAN G140, U3): walks with the same shape that no reproducer reaches with a shared part, measured flat on the eight shapes
+  Open (PLAN G140, U3; BU-55 closed seven of them on G243's V16 family: `VisitInlineLayout`'s Tuples, `CheckTypeConstraints`,
+  `ComparisonProof`, `RetentionWalk`, `DependentType`, `ProveTypeLengths`, `HasUnsubstitutedInput`; the Origin-carrying rest is PLAN
+  G309): walks with the same shape that no reproducer reaches with a shared part, measured flat on the eight shapes
   (Bind did not grow): in Binding `ContainsRawPointer`, `RetainsBorrow`, `CExchangeable`, `HasZeroStride`, `VisitInlineLayout`'s
   Tuples, `CheckTypeConstraints`, `AddTypeClauseObligations`, `TypeAccessCovers`, `ComparisonProof`, EffectBounds' `Reachable`,
   `Conflicts`, `CollectItemParts`, `MentionsItemPart` and `Comparison`, `RetentionWalk`, `Witnesses.Leaves`, the predicates
@@ -7239,7 +7241,7 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: (b) one shared structure for Held, RetentionWalk/RetentionParts and VisitInlineLayout (one shape, three contracts and
     states; a generic walker over Types is a utility without semantics; a summary flag cached at interning prunes but does not bound:
     raw leaves); (c) a memo keyed by the path (one per leaf).
-  - Open (BU; pre-existing on `ece46cfa5`): O1 `RetentionWalk`/`RetentionParts` walk a contract's instantiated Types as trees (a
+  - Open (BU; pre-existing on `ece46cfa5`; closed by BU-55): O1 `RetentionWalk`/`RetentionParts` walk a contract's instantiated Types as trees (a
     generic callee at `D_n<T_{n-1}>`: 56 ms at n = 20, 2^n + 2 visits); O2 `VisitInlineLayout` recurses into Tuples unremembered (Bind
     10 to 12 s at n = 28); O3 the other component-recursive Binding walks (about 60) have no V16 DAG probe.
 - **BU-36 Storage resting on a Binding failure passes through; CallRetention.Limit is a genuine limit** (2026-10-25; the BU planning
@@ -8373,6 +8375,74 @@ resumed by R4-M86 (2026-10-20).
   - Tests: `BaseCallBindingTest`: the native fixture `BaseCallGetter` (a getter, the original default), a setter's and a `[self]`
     Closure's rows in a getter, the capture-less Closure's reason and the warm getter row fail before; the static accessor's row
     is their twin.
+- **BU-55 Binding's walks over a shared Type part decide each distinct part once per query: BU-19's table for the answer and
+  existence walks, the atom walk's positions, a container frame's Tuples** (2026-10-30; PLAN G243's O1 to O3, unit bu69; the BU
+  planning session's answers of 2026-10-30 to bu69's questions: O2's key (a′), and the Origin-free family as the unit's scope) SPEC
+  3.8, R4's V16: a walk's work is linear in the distinct parts of an interned Type, not in the paths to them.
+  - Census (O3). A Roslyn call-graph pass over `src/Kimi/Compiler/Binding` found 974 recursive members and 155 SCCs that descend into
+    a Type's parts; every recursive member got a visit counter. The probe is R4's V16 family `D_i<T> { x: D_{i+1}<(T, T)> }` through
+    Tuples, a Tuple of two fixed arrays, enum payloads, Option, a struct with two Fields of one Type, rc handles and raw leaves, used
+    through a member path, a generic callee at D_n, `==`, `T is Copy` and a called closure capturing the Tuple tree, at n = 16, 20
+    and 24 over Bind, every call's retention and BuildMir. Eight walks grew as 2^n; their visits at n = 20, before and after, on the
+    same program: RetentionWalk/RetentionParts 9,437,236 and 374, VisitInlineLayout 2,097,514 and 784, CompleteProjections 6,293,913
+    and 7,684, ProveTypeLengths 8,389,879 and 1,422, CheckTypeConstraints (CheckTypeOriginRelations once per visit) 17,832,428 and
+    10,935, ComparisonProof 1,048,575 and 40, DependentType 1,048,982 and 428, HasUnsubstitutedInput 1,048,589 and 11. Bind fell from
+    3.8 s to 0.9 s and the retentions from 0.87 s to 0.04 s, both flat in n afterwards. Every other walk stays polynomial on the
+    family.
+  - Cause, shared by all eight: a part reached along many paths is walked as a tree, with neither a table nor an exact gate. BU-19 had
+    named seven of them as open adopters ("in the unit whose reproducer first reaches it").
+  - Answer walks adopt BU-19's `TypeMemo`, each entry call a query:
+    - `CompleteProjections` (`completedParts`, through `CompletedPart`; the declaration fixed).
+    - `CheckTypeConstraints` (`formedParts`, through `FormedPart`). A part's answer is its proof and the cause it rests on; a part met
+      again reads both into its own proof scope (`ReadVerdict`), so `EndProof` gives what a recomputation gives. `EndProof`'s cause
+      rule is `ProofCause`, shared.
+    - `ComparisonProof` (`comparedParts`, composite parts; contract, scope and operators fixed).
+    - Only a component with components (and a query's root, `ComparisonPlans`) is recorded, never a leaf (cheaper to answer again
+      than to record, as `FirstVisit` rules). Recording every part cost about 91 KB of cold Bind bytes on Hello; recording only
+      those components costs about 21 KB.
+  - Existence walks share `visitedParts` through `FirstVisit`: `ProveTypeLengths` and `DependentType`. `DependentType` becomes an
+    instance member that walks through a local function, keeping its parameters; `DependentConstraint` and `IsDependentConstraint`
+    follow. `HasUnsubstitutedInput` takes BU-19's exact gate: a part carrying no Origin (`CarriesOrigin`) names none.
+  - O1, `RetentionWalk`. What a position adds depends on its Type, `at`, `variance` and `callable` alone, the scope, raw inputs and
+    raw visits being fixed for a contract or an erased signature. A second visit appends the same atoms again, so each such position
+    is walked once (`retentionPositions`, cleared with `retentionRawVisits`): the atom list loses duplicates only, which change no
+    node, edge or row. bu36's candidate key.
+  - O2, `VisitInlineLayout`. A visit's effect depends on the Type and the container stack. Each container frame (the root and each
+    pushed struct or enum instance) is one query of `layoutParts`, whose stack is fixed. A Tuple or fixed array whose visit closed no
+    cycle is not visited again in its frame. Every struct or enum instance below it is then finite (skipped) or meets a container on
+    the same stack, which adds nothing again, so the skipped revisit is a no-op under dev's rule. `finiteInlineLayouts` is unchanged.
+  - Rejected:
+    - (a), any part met again in a frame skipped. It changes a verdict: dev marks a struct finite when its visit adds no new cycle
+      member, so in `struct A {p: (M, M)}; struct R2<T> {m: M}; struct M {r: R2<i32>}` the second M marks M finite and R2 goes
+      unreported; (a) would report R2.
+    - (b), a global Tuple memo. It would miss C in `struct R {r: C<u8>}; struct C<T> {t: (C<i32>, u8)}`, whose Tuple first closes
+      nothing under R's stack.
+    - (c), a declaration-level cycle graph: a redesign.
+    - BU-35's (b), one shared walker.
+  - Evidence:
+    - The probe's every call's and function's retention, Bind's records and BuildMir's counts are identical before and after for
+      the tuple, raw, array, enum and two-Field forms at n = 16 and 20 and the `ref` form at n = 12, 16 and 20.
+    - The diagnostic snapshot and the registered mir ledger show no difference.
+    - Tests: TypeDagScalingTest `InstanceChainWalksAreLinearInDistinctParts` (tuple, array, enum and raw rows at n = 40, so a walk
+      that re-visits shared parts meets 2^40 paths). It hangs on dev; undoing any one of the eight fixes alone hangs it again.
+      InlineLayoutTest's rows pin the two forms above at dev's verdicts.
+    - Cost (the review's run: pinned, full JIT, one folder, interleaved, A/A ≤ 0.2%): cold Bind time +1.3% to +2.4% on Hello and
+      +0.8% on Milestone 27, BuildMir equal; cold Bind bytes +21 KB to +27 KB and BuildMir +12 KB (the tables' capacity); retained
+      +19 KB / +22 KB; warm Bind 0 B.
+  - Open (PLAN G309, G310):
+    - The Origin-carrying family (`D1<ref/i32 during a>`) reaches about twenty more exponential Binding walks. Among them is
+      ContractType, whose table BU-19 rejected for its path-dependent `normalizingAssociated` guard.
+    - BuildMir's own walks over these shapes are exponential (R5's W1 and R4's W2); W3, TyCtxt.Retains for A5, is O1's and closed.
+    - Inline-cycle diagnostics depend on declaration order and duplicated parts, as in (a)'s example (pinned), and
+      `struct R {r: C<i32>}; struct C<T> {t: (C<i32>, u8)}` is accepted with no InvalidInlineLayout_Kd (on dev too; G310).
+
+- **BU-57 A declaration's closed-clause check has one owner, `Binding.SourceStates`** (2026-10-30; the BU planning session after
+  N6's design re-review ACCEPT, design `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g170-id\n6-design-r1.md`; PLAN G170 N6 under
+  C1 §5, unit U0, bu73) `Binding.SourceStates` owns declarations' closed-clause checking and, from U1, their published source states
+  (C1 §5's N6). U0 moves `CheckClosedDeclarationConstraints` from `Binding.ConstraintValidation` and extracts `ClosedClause` (neither
+  associated, a Self clause nor dependent on the declaration's parameters; an unbound clause counts as closed, its answer Unknown),
+  the filter it applied inline, which U1's publication shares; behaviour unchanged. At its landing with bu69 (BU-55 made
+  `DependentConstraint` an instance member) `ClosedClause` became an instance member too. U1's entry states the states, the writer, B1's rule and the readers.
 
 - **BU-56 A declaration's written Origin that names a body local's written Type over a body local's atom is a located
   `Unsupported_Kd`, an interim for wrong code until PLAN G230's (A)** (2026-10-30; PLAN G230, BU's unit bu70: option (B) of its

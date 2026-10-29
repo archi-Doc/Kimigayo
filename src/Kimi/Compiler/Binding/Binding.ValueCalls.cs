@@ -126,9 +126,15 @@ public sealed partial class Binding
         return callee is not null && SignatureOwner(callee) is { } declaration ? declaration : FunctionTypeBinder(signature);
     }
 
-    // Whether a result still names a per-call input or a universal Origin of `binder`.
+    // Whether a result still names a per-call input or a universal Origin of `binder`; a part carrying no Origin names none, which bounds
+    // the walk over a shared Origin-free part (DECISIONS BU-19's exact gate, BU-55).
     private static bool HasUnsubstitutedInput(BoundType type, Koto binder)
     {
+        if (!type.CarriesOrigin)
+        {
+            return false;
+        }
+
         if (InputAtom(type.Origin, binder))
         {
             return true;

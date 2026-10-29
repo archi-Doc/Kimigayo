@@ -16,6 +16,8 @@ public sealed partial class Binding
     private readonly List<DeclarationContainerKoto> cyclicInlineLayouts = new();
     private readonly HashSet<BoundType> finiteInlineLayouts = new(ReferenceEqualityComparer.Instance);
     private readonly List<BoundType> enumPayloadTypes = new();
+    private readonly TypeMemo<BoundType?> completedParts = new(); // CompleteProjections' results.
+    private readonly TypeMemo<bool> layoutParts = new(); // The Tuples and fixed arrays a container frame met that added no cycle.
 
     // The stored Types of a struct or enum instance: its declaration's base, Fields and Case payloads under the instance's
     // substitution. They are substituted once per pass after PrepareStorage refilled the declaration, and on every request before; an
@@ -154,21 +156,44 @@ public sealed partial class Binding
     // part, or a binding whose evidence is not ready yet) stays a projection; one that finally names no Type, whatever its subject and
     // reason (SPEC 8.3.3 so ends an expanding or cyclic specification), makes the part null. A part without an abstract part is its own
     // result, and a projection is completed after its components, so a subject that is itself a projection is completed first. A
-    // projection is resolved in the scope of the owner's `declaration`, where PrepareStorage binds its parts.
+    // projection is resolved in the scope of the owner's `declaration`, where PrepareStorage binds its parts. A part's result depends on
+    // the part alone in one query (its declaration fixed), so each distinct part is completed once (DECISIONS BU-19, BU-55).
     private BoundType? CompleteProjections(BoundType part, Koto declaration)
+        => part.HasAbstractPart ? this.CompletedParts(part, declaration, this.completedParts.Begin(this.storageVersion)) : part;
+
+    // A component's result (CompleteProjections), each distinct one with components completed once per query; a leaf is cheaper to
+    // complete again than to record.
+    private BoundType? CompletedPart(BoundType part, Koto declaration, uint query)
     {
         if (!part.HasAbstractPart)
         {
             return part;
         }
 
+        if (part.Components.Count == 0)
+        {
+            return this.CompletedParts(part, declaration, query);
+        }
+
+        if (!this.completedParts.TryGet(part, query, out var result))
+        {
+            result = this.CompletedParts(part, declaration, query);
+            this.completedParts.Set(part, query, result);
+        }
+
+        return result;
+    }
+
+    // A part with an abstract part, its components completed first (CompleteProjections).
+    private BoundType? CompletedParts(BoundType part, Koto declaration, uint query)
+    {
         var components = this.RentTypes(part.Components.Count);
         try
         {
             var changed = false;
             for (var i = 0; i < part.Components.Count; i++)
             {
-                if (this.CompleteProjections(part.Components[i], declaration) is not { } component)
+                if (this.CompletedPart(part.Components[i], declaration, query) is not { } component)
                 {
                     return null;
                 }
@@ -310,7 +335,7 @@ public sealed partial class Binding
             {
                 this.inlineLayoutStack.Clear();
                 this.inlineLayoutOwnDeclaration.Clear();
-                this.VisitInlineLayout(type);
+                this.VisitInlineLayout(type, this.layoutParts.Begin(this.storageVersion));
             }
         }
 
@@ -321,7 +346,12 @@ public sealed partial class Binding
         }
     }
 
-    private void VisitInlineLayout(BoundType? type)
+    // A visit adds the cycles it closes against the containers on the stack and marks a struct or enum instance whose visit added none
+    // finite (finiteInlineLayouts): what it adds depends on the Type and the stack. Each container frame (the root and each pushed
+    // instance) is one query of layoutParts, whose stack is fixed, and a Tuple or fixed array whose visit added no cycle is not visited
+    // again in its frame (DECISIONS BU-55): every struct or enum instance below it is then finite (skipped) or met a container on the
+    // same stack, which adds nothing again, so the revisit is a no-op, and the walk is linear in a frame's distinct parts (V16).
+    private void VisitInlineLayout(BoundType? type, uint frame)
     {
         if (type is null || this.finiteInlineLayouts.Contains(type))
         {
@@ -330,9 +360,20 @@ public sealed partial class Binding
 
         if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray)
         {
+            if (this.layoutParts.TryGet(type, frame, out _))
+            {
+                return;
+            }
+
+            var added = this.cyclicInlineLayouts.Count;
             for (var i = 0; i < type.Components.Count; i++)
             {
-                this.VisitInlineLayout(type.Components[i]);
+                this.VisitInlineLayout(type.Components[i], frame);
+            }
+
+            if (this.cyclicInlineLayouts.Count == added)
+            {
+                this.layoutParts.Set(type, frame, true);
             }
 
             return;
@@ -366,9 +407,10 @@ public sealed partial class Binding
         this.inlineLayoutStack.Add(container);
         this.inlineLayoutOwnDeclaration.Add(own);
         var cycles = this.cyclicInlineLayouts.Count;
+        var inner = this.layoutParts.Begin(this.storageVersion);
         for (var i = 0; i < shape.Types.Count; i++)
         {
-            this.VisitInlineLayout(own ? shape.Types[i].BoundType : this.StoredType(shape.Types[i], type));
+            this.VisitInlineLayout(own ? shape.Types[i].BoundType : this.StoredType(shape.Types[i], type), inner);
         }
 
         this.inlineLayoutStack.RemoveAt(this.inlineLayoutStack.Count - 1);

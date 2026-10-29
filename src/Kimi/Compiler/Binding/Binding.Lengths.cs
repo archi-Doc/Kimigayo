@@ -342,7 +342,12 @@ public sealed partial class Binding
         }
     }
 
+    // Whether every length of a Type's parts is proven in `function` (ProveLength); an existence walk for an unproven one, each distinct
+    // part visited once (DECISIONS BU-19, BU-55).
     private bool ProveTypeLengths(BoundType type, FunctionKoto? function)
+        => this.ProveTypeLengths(type, function, this.visitedParts.Begin(this.storageVersion));
+
+    private bool ProveTypeLengths(BoundType type, FunctionKoto? function, uint query)
     {
         if (type.LengthExpression is { } expression && !this.ProveLength(expression, function))
         {
@@ -359,7 +364,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            if (!this.ProveTypeLengths(type.Components[i], function))
+            if (this.FirstVisit(type.Components[i], query) && !this.ProveTypeLengths(type.Components[i], function, query))
             {
                 return false;
             }
