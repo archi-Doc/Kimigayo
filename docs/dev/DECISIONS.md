@@ -12179,3 +12179,25 @@ structure is recorded here by the unit that first implements it.
     a result row per shape; the 44 parameter and result cases failed on dev `c2ab38ee7` (only 22.6's record). The snapshot against
     `shared-base/02b1d68a1` gains no row. Cost: no item or replay; per `check` a memoized `Layout.Of` per import slot, none without
     imports, warm runs allocate nothing; below the collector's measured cost (R5-M148), not measured.
+- **R5-M151 A broken contract presupposes a complete Binding: the collector's one record path (unit G285)** (2026-10-29, planning
+  session; PLAN G285, G157 (15), the R5 end-to-end review's N7; amends BU-38's Guard; Major, design accepted by the planning session)
+  SPEC 23.1.2 lets a failure caused only by another reported failure go unreported; `InternalInvariant_Kd` is a broken contract on a
+  program Binding accepted (AGENTS Diagnostics, DIAGNOSTICS rule 9, R5-M146).
+  - Defect: a virtual slot whose original's constraint Binding rejected (`T is Missing` in its body or a Block's `when`, a misplaced
+    constraint) leaves `TyCtxt.Applies` undecided, and the VTable item recorded `InternalInvariant_Kd` at the creation beside Binding's
+    error under sel (the default's from G2).
+  - Rule: every record of the instance collector goes through one private `Report`, which keeps a broken contract
+    (`InternalInvariant_Kd`) only where `TyCtxt.BindingComplete` holds. In an incomplete compilation a fact the collector reads (Applies,
+    a witness, a comparison tree, a storage or Layout verdict, a view, a published row) may be undecided because it rests on a part
+    Binding rejected, which the collector cannot name (it reads no syntax; the facts carry no cause): the record is that error's
+    dependent. BU-38's Guard (`Derived`, for Rejected verdicts) now covers the collector's ten other broken-contract sites, and `Derived`
+    is deleted. Each site's control flow is unchanged: the edge is refused all the same, only the record is dropped. Acceptance is
+    unchanged (Binding's error rejects); Language, capability and Resource records still record beside it (BU-38's `limitBesideError`).
+  - Rejected: `Derived` at each site (a check per site; `Requirement`'s and `Leaves`' switches read a null record as admitting the edge);
+    a Dependent answer per fact from TyCtxt (`Applies`, `Witness`, `Comparison`: one check per fact in Binding's hold files, and BU-38
+    rejected a Rejected target kind; `View`, `Admit` and `Below` have no such fact); no collection when incomplete (drops independent
+    records, SPEC 23.1.2); a filter at publication (`Compilation.MirRecords`: a consumer suppressing afterwards).
+  - Judge: `RejectedCases`' `virtualClause` and `virtualBlock` rows failed on dev `07a5ca2da`; the forged complete-program tests keep
+    their records; `RecordOf(Rejected)` is `InternalInvariant_Kd` in both compilations, since the record path decides. No other site is
+    reached: nine probes stop at Binding's error at the call, and the 349 Binding-incomplete ledger sources of `shared-base/228d6f0b4`
+    give no `InternalInvariant_Kd` under sel.

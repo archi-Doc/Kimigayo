@@ -118,7 +118,7 @@ internal sealed partial class InstanceCollector
             return this.Admit(item, site, body, subst);
         }
 
-        this.Set.Report(DiagnosticCode.InternalInvariant_Kd, site);
+        this.Report(DiagnosticCode.InternalInvariant_Kd, site);
         return -1;
     }
 }

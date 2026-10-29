@@ -26,7 +26,7 @@ internal sealed class CheckedSet
 
     /// <summary>Gets the records of the collection, one per code and subject: a capability gap's <c>Unsupported_Kd</c>, a limit's
     /// <c>GenerationResourceLimit_Kd</c>, a C-layout instance's <c>InvalidCLayout_Kd</c>, a layout over 2^63 - 1 bytes' <c>OversizedLayout_Kd</c>
-    /// at a use (K 4.8), a broken contract's <c>InternalInvariant_Kd</c>.</summary>
+    /// at a use (K 4.8), a broken contract's <c>InternalInvariant_Kd</c>, which only a complete Binding gives (DECISIONS R5-M151).</summary>
     internal List<Problem> Records { get; } = [];
 
     /// <summary>Gets the items in admission order.</summary>
