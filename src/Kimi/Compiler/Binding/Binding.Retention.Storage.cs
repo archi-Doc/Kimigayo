@@ -39,7 +39,7 @@ public sealed partial class Binding
     // position's node and Type, null for any value) and the Content targets (every Origin occurrence's node); reused.
     private readonly List<BoundType?> storageTypes = new();
     private readonly Dictionary<BoundType, int> storageOf = new(ReferenceEqualityComparer.Instance);
-    private readonly HashSet<(int Storage, bool Writable, int Input, bool Held, int Path, BoundType Type)> storageSeen = new();
+    private readonly HashSet<(int Storage, bool Writable, SourceAt Source, BoundType Type)> storageSeen = new();
     private readonly HashSet<(int Storage, BoundType Type)> storageTargeted = new();
     private readonly List<(int Storage, int Node, BoundType? Type)> storagePositions = new();
     private readonly List<(int Storage, int Node)> storageTargets = new();
@@ -96,7 +96,9 @@ public sealed partial class Binding
     // a raw layer by its step, `during self` content as Admitted), its parts by value (Parts); an abstract part or a callable, nothing.
     private void StorageWalk(OriginPremiseEnvironment environment, BoundType? type, StorageAt at)
     {
-        if (type is null || (at.Input >= 0 && at.Depth > StorageBound) || !this.storageSeen.Add((at.Storage, at.Writable, at.Input, at.Held, at.Path, type)))
+        var source = at.Source.Input >= 0;
+        var visit = (at.Storage, at.Writable, at.Source with { Above = -1 }, type!); // The layer above is no part of the state's key.
+        if (type is null || (source && at.Depth > StorageBound) || !this.storageSeen.Add(visit))
         {
             return;
         }
@@ -107,12 +109,12 @@ public sealed partial class Binding
             this.Position(environment, type, at.Storage);
         }
 
-        var layer = at.Input >= 0 ? this.Source(environment, type, at) : -1;
+        var layer = source ? this.Source(environment, type, at) : -1;
         var below = at with { Written = null, Holder = null, Depth = at.Depth + 1 };
         if (TryPairLayer(type, out _, out var target))
         {
             this.Past(environment, target, targets, IsInvariantLayer(type, this), layer, below);
-            if (at.Input >= 0 && this.BorrowTarget(type) is null)
+            if (source && this.BorrowTarget(type) is null)
             {
                 this.Parts(environment, type, at); // A pair layer admitting no borrow holds its target by value in its owning cases.
             }
@@ -233,7 +235,7 @@ public sealed partial class Binding
         for (var i = run.Start; i < run.End; i++)
         {
             var part = this.retentionHeld[i];
-            if (part.Addressed && (!part.Admitted || at.Storage == NoStorage))
+            if (part.Addressed && (part.Place != PartPlace.Admitted || at.Storage == NoStorage))
             {
                 this.StorageWalk(environment, part.Type, at with { Written = part.Written, Holder = part.Holder, Depth = at.Depth + 1 });
             }
@@ -518,7 +520,7 @@ public sealed partial class Binding
         var start = parts.Count;
         if (this.Owned(type, carried, out var owned))
         {
-            parts.AddRange(owned is null ? [] : [new(owned, null, null, true, false)]);
+            parts.AddRange(owned is null ? [] : [new(owned, null, null, PartPlace.Addressed)]);
             run = (start, parts.Count);
             return true;
         }
@@ -535,27 +537,27 @@ public sealed partial class Binding
         var addressed = instance is null or { Parts.Length: 0, PartsBase: null };
         if (TyCtxt.CoreContent(value) is { } content)
         {
-            parts.Add(new(content, null, holder, true, false));
+            parts.Add(new(content, null, holder, PartPlace.Addressed));
         }
 
         for (var i = 0; i < value.Components.Count; i++)
         {
-            parts.Add(new(value.Components[i], InlinePart(written, i), holder, addressed, false));
+            parts.Add(new(value.Components[i], InlinePart(written, i), holder, addressed ? PartPlace.Addressed : PartPlace.Unaddressed));
         }
 
         if (instance is { Parts: var stored, PartsBase: var parent } && value.Symbol?.Adt is { } adt)
         {
-            parts.AddRange(parent is null ? [] : [new(parent, null, null, true, false)]);
+            parts.AddRange(parent is null ? [] : [new(parent, null, null, PartPlace.Addressed)]);
             for (var i = 0; AdtDef.IsStruct(value) && i < adt.Fields.Length; i++)
             {
-                parts.Add(new(stored[i], WrittenType(adt.Fields[i]), value, true, false));
+                parts.Add(new(stored[i], WrittenType(adt.Fields[i]), value, PartPlace.Addressed));
             }
 
             for (var i = 0; AdtDef.IsEnum(value) && i < stored.Length; i++)
             {
                 for (var j = 0; stored[i] is { } payloads && adt.Cases[i] is { } selected && j < selected.Payload.Length; j++)
                 {
-                    parts.Add(new(payloads.Components[j], WrittenType(selected.Payload[j]), value, true, false));
+                    parts.Add(new(payloads.Components[j], WrittenType(selected.Payload[j]), value, PartPlace.Addressed));
                 }
             }
         }
@@ -567,10 +569,10 @@ public sealed partial class Binding
                 ReferenceEquals(owner, value) && this.DeclaredStep(raw, parts[i].Written, owner) == RawStep.Own)
             {
                 _ = SelfAdmitted(owner, out var arguments);
-                parts.Add(new(pointee, null, null, true, true));
+                parts.Add(new(pointee, null, null, PartPlace.Admitted));
                 foreach (var argument in arguments)
                 {
-                    parts.Add(new(argument, null, null, true, true));
+                    parts.Add(new(argument, null, null, PartPlace.Admitted));
                 }
             }
         }
@@ -606,22 +608,36 @@ public sealed partial class Binding
         return true;
     }
 
+    // Where a part of a value lies (HeldParts): no address in the value's storage (a nominal Type's Type argument, but a collection's),
+    // an address, or the content a `during self` layer addresses (Admitted), whose layer's step the output fold reads it through.
+    private enum PartPlace : byte
+    {
+        Unaddressed,
+        Addressed,
+        Admitted,
+    }
+
     // A part of a value (HeldParts): its Type (null: a part Binding did not bind), the Type its declaration writes there and the instance
-    // holding it, whether it has an address in the value's storage (a nominal Type's Type argument has none, but a collection's), and
-    // whether it is `during self` content (Admitted).
-    private readonly record struct HeldPart(BoundType? Type, BoundType? Written, BoundType? Holder, bool Addressed, bool Admitted);
+    // holding it, and where it lies.
+    private readonly record struct HeldPart(BoundType? Type, BoundType? Written, BoundType? Holder, PartPlace Place)
+    {
+        // Whether the part has an address in the value's storage.
+        internal bool Addressed => this.Place != PartPlace.Unaddressed;
+    }
 
     // The walk's state at a Type (StorageWalk; DECISIONS R4-M154, r2.3). For the output fold: the storage (-1 before the root, NoStorage
     // in an input fold's walk) and whether the call writes there; the Type the stored part's declaration writes there and the instance
-    // holding it (a raw layer's step, as Held reads it). For the input fold: the input (-1 in an output's walk), whether the Type is held
-    // by value from the input or reached through a layer, the node of the layer above (Related) and the path's id (its reduced prefix,
-    // Revision 10). And the depth.
-    private readonly record struct StorageAt(int Storage, bool Writable, BoundType? Written, BoundType? Holder, int Depth, int Input, bool Held, int Above, int Path)
+    // holding it (a raw layer's step, as Held reads it); the depth. For the input fold, its own state (Source).
+    private readonly record struct StorageAt(int Storage, bool Writable, BoundType? Written, BoundType? Holder, int Depth, SourceAt Source)
     {
         // An output's walk from a storage.
-        internal static StorageAt Output(int storage, bool writable) => new(storage, writable, null, null, 0, -1, false, -1, 0);
+        internal static StorageAt Output(int storage, bool writable) => new(storage, writable, null, null, 0, new(-1, Held: false, -1, 0));
 
         // An input fold's walk from input `input`'s own value.
-        internal static StorageAt Source(int input) => new(NoStorage, false, null, null, 0, input, true, -1, 0);
+        internal static StorageAt Input(int input) => new(NoStorage, false, null, null, 0, new(input, Held: true, -1, 0));
     }
+
+    // The input fold's state at a Type (StorageAt): the input (-1 in an output's walk), whether the Type is held by value from the input or
+    // reached through a layer, the node of the layer above (Related) and the path's id (its reduced prefix, Revision 10).
+    private readonly record struct SourceAt(int Input, bool Held, int Above, int Path);
 }

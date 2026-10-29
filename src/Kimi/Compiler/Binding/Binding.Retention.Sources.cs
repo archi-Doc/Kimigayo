@@ -29,10 +29,12 @@ public sealed partial class Binding
     private readonly Dictionary<(int Path, int Layer), int> retentionPathIds = new(); // The paths walked, each by its prefix and last layer.
     private readonly HashSet<BoundType> retentionParts = new(ReferenceEqualityComparer.Instance);
 
-    // Whether the premise catalog's well-formedness rule (R2, AddTypePremises: an Origin stored below a borrow or Slice layer outlives
-    // that layer's) relates a layer's node to the layer above's (`above`, -1: none), in every case, or the two are one node: then the
-    // layer adds nothing to a fit (DECISIONS R4-M154, Revision 10). The rule's edges decide, never a layer's kind: a raw layer's own
-    // Origin is stored nowhere (BoundType.Origin), so it stays unless another stored occurrence relates it.
+    // Whether an unconditional `Input` premise edge relates a layer's node to the layer above's (`above`, -1: none), or the two are one
+    // node: then the layer adds nothing to a fit, being reached whenever the layer above is (DECISIONS R4-M154, Revision 10). Such edges
+    // are the premise catalog's well-formedness rule (R2, AddTypePremises: an Origin stored below a borrow or Slice layer outlives that
+    // layer's) and the relations retention writes under that rule (an erased callable's, AddErasedRelations; a carrier's layers). The
+    // edges decide, never a layer's kind: a raw layer's own Origin is stored nowhere (BoundType.Origin), so it stays unless another stored
+    // occurrence relates it.
     private static bool Related(OriginPremiseEnvironment environment, int node, int above)
         => above >= 0 && (node == above || environment.Closure.States(node, above, OriginPremiseRule.Input));
 
@@ -53,23 +55,23 @@ public sealed partial class Binding
             if (inputs[i] is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
             {
                 this.storageSeen.Clear();
-                this.StorageWalk(environment, inputs[i], StorageAt.Source(i));
+                this.StorageWalk(environment, inputs[i], StorageAt.Input(i));
             }
         }
     }
 
     // The input fold at a Type the walk visits (StorageWalk): the sources of the input there, by node, each with its path (retentionPath,
     // Revision 10): the nodes of the layers it is formed through (a reborrow's region lies within each, SPEC 15.6.3; a borrow of a raw
-    // place within the raw layer's Origin, 5.2.2) but those Related to the layer above (`at.Above`). A Type held by value from the input
-    // is a source of its own Type; a Type reached through a layer is one only as an exclusive layer, of the borrows formed through it (its
-    // referent, Through), as a shared layer held by value is too. Returns the node past which a source goes through the Type's layer (-1:
-    // none, also below a shared layer reached through another): each path forms its own sources (form (b)), the walk visiting a Type once
-    // per path (`at.Path`, an interned id), so one reached through two layers forms the borrows of both.
+    // place within the raw layer's Origin, 5.2.2) but those Related to the layer above (`at.Source.Above`). A Type held by value from the
+    // input is a source of its own Type; a Type reached through a layer is one only as an exclusive layer, of the borrows formed through it
+    // (its referent, Through), as a shared layer held by value is too. Returns the node past which a source goes through the Type's
+    // layer (-1: none, also below a shared layer reached through another): each path forms its own sources (form (b)), the walk visiting
+    // a Type once per path (`at.Source.Path`, an interned id), so one reached through two layers forms the borrows of both.
     private int Source(OriginPremiseEnvironment environment, BoundType type, StorageAt at)
     {
         var referent = Abstract(type) ? null : this.BorrowTarget(type);
         var exclusive = referent is not null && (IsInvariantLayer(type, this) || type.Symbol?.LibraryDeclaration == KimiDeclarationId.UniqSlice);
-        if (!at.Held && !exclusive)
+        if (!at.Source.Held && !exclusive)
         {
             return -1;
         }
@@ -79,12 +81,13 @@ public sealed partial class Binding
         {
             var start = this.retentionPaths.Count;
             this.retentionPaths.AddRange(this.retentionPath);
-            if (!Related(environment, node, at.Above))
+            if (!Related(environment, node, at.Source.Above))
             {
                 this.retentionPaths.Add(node);
             }
 
-            this.retentionSources.Add(new(node, at.Input, at.Held ? type : null, referent, (start, this.retentionPaths.Count - start)));
+            var own = at.Source.Held ? type : null;
+            this.retentionSources.Add(new(node, at.Source.Input, own, referent, (start, this.retentionPaths.Count - start)));
             layer = node;
         }
 
@@ -95,18 +98,19 @@ public sealed partial class Binding
     // layer on its path unless Related to the layer above.
     private void Through(OriginPremiseEnvironment environment, BoundType referent, int layer, StorageAt at)
     {
-        if (at.Input < 0 || layer < 0)
+        if (at.Source.Input < 0 || layer < 0)
         {
             return;
         }
 
-        var kept = !Related(environment, layer, at.Above);
+        var kept = !Related(environment, layer, at.Source.Above);
         if (kept)
         {
             this.retentionPath.Add(layer);
         }
 
-        this.StorageWalk(environment, referent, at with { Held = false, Above = layer, Path = kept ? this.PathId(at.Path, layer) : at.Path });
+        var path = kept ? this.PathId(at.Source.Path, layer) : at.Source.Path;
+        this.StorageWalk(environment, referent, at with { Source = at.Source with { Held = false, Above = layer, Path = path } });
         this.retentionPath.RemoveRange(this.retentionPath.Count - (kept ? 1 : 0), kept ? 1 : 0);
     }
 

@@ -217,7 +217,12 @@ internal sealed partial class TyCtxt
     // concrete Self the standard computation reads the contract.
     private static Koto? ErasedCallee(FunctionKoto callee, Subst? types)
     {
-        var self = callee.IsRequirement ? types?.Self : (callee.IsVirtual || callee.IsOverride) ? types?.Declaring : null;
+        var self = callee switch
+        {
+            { IsRequirement: true } => types?.Self,
+            { IsVirtual: true } or { IsOverride: true } => types?.Declaring,
+            _ => null,
+        };
         return self?.HasAbstractPart == true ? callee.Accessor?.Binder ?? callee : null;
     }
 

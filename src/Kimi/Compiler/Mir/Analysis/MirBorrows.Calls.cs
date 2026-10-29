@@ -232,7 +232,12 @@ internal sealed partial class MirBorrows
         foreach (var (_, longer, shorter, _) in conjunction)
         {
             var pair = origins.Outlives(this.body, this.view, longer, shorter, site);
-            holds = pair == false || holds == false ? false : pair is null || holds is null ? null : true;
+            holds = (holds, pair) switch
+            {
+                (false, _) or (_, false) => false,
+                (null, _) or (_, null) => null,
+                _ => true,
+            };
         }
 
         return holds;
