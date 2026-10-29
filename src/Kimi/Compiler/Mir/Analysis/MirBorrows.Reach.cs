@@ -28,8 +28,6 @@ internal sealed partial class MirBorrows
     private readonly List<int> parts = []; // The states a closure read, each through rule W's clause, which one n-ary union joins.
     private readonly Dictionary<BoundType, byte> walked = new(ReferenceEqualityComparer.Instance); // HoldsLoans' scratch.
     private readonly List<RawMember> members = []; // HoldsLoans' scratch for a stored raw layer's members.
-    private readonly List<(int Slot, BoundType Type)> writingPlaces = []; // The W walk's holders past a holder, each with the erased case
-                                                                          // Type of a Place a Loan reaching it names (PlaceType).
     // Holding's memo: each case Type's answer for the program version holdingVersion names, by reference.
     private readonly Dictionary<BoundType, (bool Holds, MirWrites Writes)> holding = new(HoldingCapacity, ReferenceEqualityComparer.Instance);
     private (int Content, int Chain)[] reads = []; // By set: its content and its chain at the location, each plus 1 (0: not read there).
@@ -40,6 +38,8 @@ internal sealed partial class MirBorrows
     private int[] writing = []; // By slot: the W walk that reached it.
     private MirWrites[] writingKind = []; // By slot: its local's MirWrites, at that walk.
     private byte[] writingVia = []; // By slot: how that walk reached it (ViaRoot, ViaPast).
+    private (BoundType? Type, bool Several)[] writingPlace = []; // By slot: the erased case Type of the Places named by the Loans by
+                                                                 // which that walk reached it past a holder (PlaceType), or several.
     private int walks; // The W walks made.
     private ulong holdingVersion; // The program version whose case Types the holding memo answers (0: none).
 
@@ -220,7 +220,7 @@ internal sealed partial class MirBorrows
         MirDataflow.Grow(ref this.writing, this.holderCount);
         MirDataflow.Grow(ref this.writingKind, this.holderCount);
         MirDataflow.Grow(ref this.writingVia, this.holderCount);
-        this.writingPlaces.Clear();
+        MirDataflow.Grow(ref this.writingPlace, this.holderCount);
         this.walks++;
         var count = 0;
         for (var i = 0; i < this.targets.Count; i++)
@@ -228,6 +228,7 @@ internal sealed partial class MirBorrows
             if (this.targets[i] is var target && this.writing[target] != this.walks)
             {
                 (this.writing[target], this.writingKind[target], this.writingVia[target]) = (this.walks, MirWrites.None, ViaRoot);
+                this.writingPlace[target] = default;
                 this.targets[count++] = target;
             }
         }
@@ -286,14 +287,14 @@ internal sealed partial class MirBorrows
     {
         if (this.writing[slot] != this.walks)
         {
-            (this.writing[slot], this.writingVia[slot]) = (this.walks, 0);
+            (this.writing[slot], this.writingVia[slot], this.writingPlace[slot]) = (this.walks, 0, default);
             this.targets.Add(slot);
         }
 
         (this.writingKind[slot], this.writingVia[slot]) = (kind, (byte)(this.writingVia[slot] | via));
-        if (place is not null && !this.writingPlaces.Contains((slot, place)))
+        if (place is not null && this.writingPlace[slot] is var (known, several) && !several && !ReferenceEquals(known, place))
         {
-            this.writingPlaces.Add((slot, place));
+            this.writingPlace[slot] = (known ?? place, known is not null);
         }
     }
 

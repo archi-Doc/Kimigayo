@@ -253,20 +253,7 @@ internal sealed partial class MirBorrows
     // reaching the holder names, the holder its root, so the holder takes the Reached entry of that Place's Type (ReachedEntry); All
     // where none names it, or where Loans naming Places of several Types reach it (All joins every entry, so it bounds their join).
     private StorageRetention PastEntry(OutputRetention written, int target)
-    {
-        BoundType? place = null;
-        foreach (var (slot, type) in this.writingPlaces)
-        {
-            if (slot == target && place is not null && !ReferenceEquals(type, place))
-            {
-                return written.All;
-            }
-
-            place = slot == target ? type : place;
-        }
-
-        return (place is null ? null : this.ReachedEntry(written, place)) ?? written.All;
-    }
+        => this.writingPlace[target] is (BoundType place, false) ? this.ReachedEntry(written, place) ?? written.All : written.All;
 
     // The Reached entry of a Place's erased case Type (PastEntry): the entries whose Types, in the view's case (MirCases.Type) and
     // Origin-erased (TyCtxt.Erase), are that Type, joined; none (null) where no entry names it, never the Abstract one, which only All
