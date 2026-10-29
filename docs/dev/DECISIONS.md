@@ -1456,6 +1456,14 @@ and migration obligations remain in force; no numeric cap changes are authorized
     chain. Not a loss. Rejected: a hold with a located `Unsupported_Kd`. Census: library 0, milestones 0 (grep proxies).
   - Superseded in part by R4-M154 (WK): the erased callables are rule 3's one list ((β′)), every callable the callee's premises and
     inputs hand its body, and a requirement's own Origins are not fixed.
+  - Amendment (2026-10-29, owed since R5's X3 gate item 7): prerequisite α's commit 578d69771 changed the old generator's `.ll` of six
+    fixtures whose sources it left unchanged, and its message declared no fixture change: AggregateDefaultAbandoned
+    (AggregateDefaultTest, `f(x: ("first", (exit to done)))`), AggregatePartialExit and AggregatePartialReturn (AggregateEmissionTest,
+    `let value: (string, i32) = ("a", (exit))` and `("a", (return))`), and their `Audit` twins. The Never element of each Tuple
+    literal now takes its expected Type, so the literal has the expected Tuple Type: its slot is materialized and the string already
+    evaluated is destroyed from that slot on the abandoning path. The fixtures' expected outputs and allocation counts are unchanged
+    (578d69771 touches no test of theirs). R5 attributed the six by builds at 460d289de and 578d69771:
+    `artifacts/verify/reduction-R5/17cd554ab/gate7/x3leg-report.md` (finding 2) and `final.tsv` there.
   The implementing units record their contracts in the commits that first implement them, including the planning
   session's decisions of A3 §12 (E1–E7, E10, E11): E7 replaces R4-M37's `EndBorrow` meaning for guards (unit 1b-4), and
   G123 and G94 amend R4-M40's handle copy and its Open.
@@ -5287,7 +5295,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     a decided part is the verdict whatever an unknown part is (SPEC 23.1.1: a decided Language violation is not "may be valid"), and a
     verdict an unsupported part and a part past the bound both leave undecided is one failure with one record (SPEC 23.1.2), the located
     `Unsupported_Kd` (DIAGNOSTICS rule 3), since raising the bound would still leave it undecided. Each walk composes its parts only by
-    Join and stops early only at decided; each check records its own failure where it fails, from the Join of what met at its verdict
+    Join and stops early only where no other part changes its answer (decided, the outcome's top; the holding walk's LoanOnly mode,
+    which reads no outcome, at Loan; a disjunction at yes; implementation review 4's N4);
+    each check records its own failure where it fails, from the Join of what met at its verdict
     (`MirBorrows.Limit`), so independent checks at one subject keep their own records (MirReport merges one code at one subject).
     - The memo below the Join: a walk's per-query memo (R4-M58) entered a Type at its first meeting, so a Type one query meets both past
       the bound and within it answered by whichever meeting came first (`(Nested(R.init(r: value@ref), 40), Nested(R.init(r: value@ref),
@@ -5446,7 +5456,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `MirEffectsTest.APartsTypeEnteredWithinTheBoundIsNoDeepInEitherOrder` (one Type at depths 41 and 9, both orders), the holding walk's
     `MirTypesTest.AGuardsTypeMetPastAndWithinTheBoundAnswersAlikeInEitherOrder` (the guard of one Type at depths 41 and 9, both orders;
     fail-first on f4f19739c, deep first Deep) and its scaling row
-    `MirTypesTest.AnOutcomeWalkEntersATypeAtMostOncePerDepth` (Fibonacci structs 60 deep: 557 entries over 62 Types, nothing Deep); the
+    `MirTypesTest.AnOutcomeWalkEntersATypeAtMostOncePerDepth` (Fibonacci structs 60 deep: 557 entries over 62 Types, nothing Deep), and
+    at landing (implementation review 4's N1) `MirBorrowsTest.ADeepHoldersStepRecordsTheLimitWhereItWouldChangeWhatWWrites`: `Changes`'
+    clauses at 40 with their depth-10 twins (a holder reached only at the first step, past at another Place Type, E unreached: the
+    record; past at the same Place Type, E reached past or at the first step: none), and the invalid counterparts (a write read after
+    the call: the conflict beside the record or alone); with the way clauses removed the first and other-Place rows fail, with E's
+    exception removed the first-step E row; the
     expectations (codes and the code lists their helpers filter by) of the
     bound's pins change by the owner's decision: `AnUnclassifiedDestructionOrCallIsUnsupported`,
     `AnOwnStepViewIsAProducerOnlyWhereAnAccessMayDepart`, `ADestructionMeetsItsOwnStaticAndTheLiveStaticLoans`,
