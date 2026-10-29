@@ -145,9 +145,10 @@ public sealed partial class MirBuildTest
     }
 
     // SPEC 4.6.1, 4.6.3, 4.7.1 (DECISIONS R5-M154): a position of a Type parameter, whose range its instance decides, is tested in its own
-    // Type (0 <= p) and, widened by a Proven Cast to u128, which holds every nonnegative integer, against isize's maximum; a failing test
-    // gives -1, which the selection's one check rejects as it rejects any negative position (an element; a written ^x, 0 <= x; a range,
-    // 0 <= start <= end). The tests read the key's value, which only the conversion moves (fail-before: a located Unsupported_Kd at p).
+    // Type (0 <= p) and, widened by a Proven Cast to u128, which holds every nonnegative value of every PrimitiveInteger Type, against
+    // isize's maximum; a failing test gives -1, which the selection's one check rejects as it rejects any negative position (an element;
+    // a written ^x, 0 <= x; a range, 0 <= start <= end). The tests read the key's value, which only the conversion moves (fail-before: a
+    // located Unsupported_Kd at p).
     [Theory]
     [InlineData("return values[p]", "")]
     [InlineData("return values[conv<I>(b@move)]", "")]

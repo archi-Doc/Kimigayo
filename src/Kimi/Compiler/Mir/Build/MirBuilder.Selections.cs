@@ -63,8 +63,8 @@ internal sealed partial class MirBuilder
     // of its own. A Type whose range lies within isize's (Within: i8 to i32 and u8 to u32 on a 64-bit target) converts proven; another is
     // first compared with isize's extremes in its own Type, the minimum only where it is signed. A Type parameter's range is its instance's:
     // it is compared with 0 in its own Type, a negative value being -1, which every selection rejects as it rejects any negative position
-    // (SPEC 4.6.3), and then, by a Proven Cast to u128, which holds every nonnegative integer, with isize's maximum there. The local is
-    // located at its selection, whose subject A1 reports an access through its Index under (DECISIONS R4-M56).
+    // (SPEC 4.6.3), and then, by a Proven Cast to u128, which holds every nonnegative value of every PrimitiveInteger Type, with isize's
+    // maximum there. The local is located at its selection, whose subject A1 reports an access through its Index under (DECISIONS R4-M56).
     private MirPlace Position(in MirOperand position, Koto node, Koto selection)
     {
         var type = this.TypeOf(position) ?? BoundType.ISize;
