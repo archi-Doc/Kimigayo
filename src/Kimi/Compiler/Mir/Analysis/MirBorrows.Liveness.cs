@@ -3,10 +3,12 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's holder liveness (A3 5, Liveness): the holders each location uses and kills, solved backward over the dataflow's chains, and in its
-// replay each location's live-after bit of the holders it touches, from which the checks replay rebuilds every location's live holders. A
-// kept Drop past the destruction walk's bound, whose class is unknown, uses its root's drop slot instead of the root, and every kill of the
-// root kills that slot too, so the slot is live where such a Drop may come before the holder's next kill (drop-liveness, DECISIONS
-// R4-M153); the check sets read it where the holder itself is not live (MirBorrows.CheckSets).
+// replay each location's live-after bit of the holders it touches, from which the checks replay rebuilds every location's live holders.
+// After a Return local 0's holder is live, as the caller uses the value it delivers (the exit's fact, R4-M156), so every reader of a live
+// holder counts the delivered value: the Loan check, the own-step departures and rule W's escape holder. A kept Drop past the destruction
+// walk's bound, whose class is unknown, uses its root's drop slot instead of the root, and every kill of the root kills that slot too, so
+// the slot is live where such a Drop may come before the holder's next kill (drop-liveness, DECISIONS R4-M153); the check sets read it
+// where the holder itself is not live (MirBorrows.CheckSets).
 internal sealed partial class MirBorrows
 {
     private const byte Uses = 1;
@@ -107,6 +109,13 @@ internal sealed partial class MirBorrows
 
         public void Block(int block)
         {
+            // The exit's fact (IMirFlow.Entry): a Return delivers local 0 to its caller, which uses it, so its holder is live after the
+            // Return (SPEC 16.2.2, 6.3.4; DECISIONS R4-M156); a diverging exit delivers nothing.
+            if (owner.body.Blocks[block].Terminator.Kind == MirTerminatorKind.Return && owner.slots[0] >= 0)
+            {
+                state[owner.slots[0] >> 6] |= 1UL << owner.slots[0];
+            }
+
             for (var i = owner.body.Blocks[block].Count; i >= 0; i--)
             {
                 var (start, count) = owner.touched[owner.Location(block, i)];

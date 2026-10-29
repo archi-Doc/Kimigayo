@@ -233,7 +233,8 @@ public sealed partial class Binding
 
                 for (; this.next <= declaration.ClauseStorage.Count; this.next++)
                 {
-                    if (declaration.ClauseStorage[this.next - 1].BoundConstraint is { } constraint && DependentConstraint(constraint, contractSelf: true))
+                    if (declaration.ClauseStorage[this.next - 1].BoundConstraint is { } constraint &&
+                        binding.DependentConstraint(constraint, contractSelf: true))
                     {
                         this.Current = (this.ancestor, declaration, binding.ContractConstraint(constraint, scope, self, false, declaration.Symbol));
                         this.next++;

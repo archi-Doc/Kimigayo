@@ -126,9 +126,17 @@ public sealed partial class Binding
     // addresses what each borrow its Origin
     // belongs to admits (RawContent), and its atom is that Origin, as a borrow's; what a raw layer without one retains is the hold walk's
     // (Binding.Retention.Rows.cs), which starts at the positions of the storage walk (DECISIONS BU-52), not here. A callable Type stores
-    // nothing, and its per-call Origins belong to no value of it (SPEC 15.2.3).
+    // nothing, and its per-call Origins belong to no value of it (SPEC 15.2.3). What a position adds depends on its Type, `at`, `variance`
+    // and `callable` alone (the scope and raw inputs are fixed for the contract or erased signature), and a second visit adds the same atoms
+    // again, so each position is walked once (retentionPositions): the walk is linear in the distinct positions, not in the paths to them
+    // through the interned Types (V16; DECISIONS BU-55).
     private void RetentionWalk(BoundType type, RetentionAtom at, OriginVariance variance, bool callable)
     {
+        if (!this.retentionPositions.Add((type, at, variance, callable)))
+        {
+            return;
+        }
+
         var here = at with { Writable = at.Writable && variance == OriginVariance.Invariant };
         if (TryPairLayer(type, out _, out var target))
         {
