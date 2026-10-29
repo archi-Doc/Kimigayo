@@ -1,5 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
@@ -38,16 +41,45 @@ public class Utf8ConsoleTest
         Assert.Contains("alloca [33 x i8], align 1", outputIr); // The region's own name is each generator's (R5-M12 class I).
     }
 
+    // Each side of the limit with a region partly empty (7 writes one of i8's four bytes), and the limit's region full (i8's widest value).
     [Trait("Purpose", "Allocation")]
     [Theory]
-    [InlineData(1023, 0)]
-    [InlineData(1024, 0)]
-    [InlineData(1025, 1)]
-    public void StackLimitSelectsOnePathBeforeEvaluation(int bound, int allocations)
+    [InlineData("1023", 1023, "7", 0)]
+    [InlineData("1024", 1024, "7", 0)]
+    [InlineData("1025", 1025, "7", 1)]
+    [InlineData("1024Full", 1024, "-128", 0)]
+    public void StackLimitSelectsOnePathBeforeEvaluation(string name, int bound, string value, int allocations)
     {
         var text = new string('x', bound - 4);
-        var source = "func next() -> i8\n    Console.writeLine(\"once\")\n    return 7\nConsole.writeLine(\"" + text + "\\(next())\")";
-        NativeAllocationAudit.WriteFixture("Utf8ConsoleLimit" + bound, source, allocations, allocations, allocations * bound, "once\n" + text + "7\n");
+        var source = "func next() -> i8\n    Console.writeLine(\"once\")\n    return " + value + "\nConsole.writeLine(\"" + text + "\\(next())\")";
+        NativeAllocationAudit.WriteFixture("Utf8ConsoleLimit" + name, source, allocations, allocations, allocations * bound, "once\n" + text + value + "\n");
+    }
+
+    // SPEC 22.10.5 (G286): a direct interpolation of one value at its formatting kind's widest value fills its stack region exactly
+    // (DECISIONS R5-M131's premise: the HeapBuffer arm of the runtime's reserve never grows a region), so a bound one byte short fails.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("I8", "-128@i8", "-128")]
+    [InlineData("U8", "255@u8", "255")]
+    [InlineData("I16", "-32768@i16", "-32768")]
+    [InlineData("U16", "65535@u16", "65535")]
+    [InlineData("I32", "-2147483648@i32", "-2147483648")]
+    [InlineData("U32", "4294967295@u32", "4294967295")]
+    [InlineData("I64", "-9223372036854775808@i64", "-9223372036854775808")]
+    [InlineData("U64", "18446744073709551615@u64", "18446744073709551615")]
+    [InlineData("I128", "-170141183460469231731687303715884105728@i128", "-170141183460469231731687303715884105728")]
+    [InlineData("U128", "340282366920938463463374607431768211455@u128", "340282366920938463463374607431768211455")]
+    [InlineData("F32", "-1e15@f32", "-1000000000000000")]
+    [InlineData("F64", "-2.2250738585072014e-308", "-2.2250738585072014e-308")]
+    [InlineData("Char", "'😀'", "😀")]
+    [InlineData("Bool", "false", "false")]
+    [InlineData("Unit", "()", "()")]
+    public void StackRegionsHoldEachKindsWidestValue(string kind, string value, string text)
+    {
+        var source = "let v = " + value + "\nConsole.writeLine(\"\\(v)\")";
+        NativeAllocationAudit.WriteFixture("Utf8ConsoleWidest" + kind, source, 0, 0, 0, text + "\n");
+        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(source));
+        Assert.Equal(Encoding.UTF8.GetByteCount(text), Assert.Single(RegionBytes(ir)));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -110,6 +142,15 @@ public class Utf8ConsoleTest
         var c = MinimalEmissionTest.Analyze("let text = Text.utf8(\"\\(42)\")\nConsole.writeLine(text)");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+    }
+
+    // The sizes of a module's stack regions: the byte arrays its __kimi_text_fixed calls format into (each generator names its own).
+    private static IEnumerable<int> RegionBytes(string ir)
+    {
+        var buffers = Regex.Matches(ir, @"call void @__kimi_text_fixed\(ptr [^,]+, ptr (%[\w.]+), ").Select(static x => x.Groups[1].Value).ToHashSet();
+        return Regex.Matches(ir, @"(%[\w.]+) = alloca \[(\d+) x i8\], align 1(?!\d)")
+            .Where(x => buffers.Contains(x.Groups[1].Value))
+            .Select(static x => int.Parse(x.Groups[2].Value, CultureInfo.InvariantCulture));
     }
 
     private sealed class SelectionVisitor : KotoVisitor
