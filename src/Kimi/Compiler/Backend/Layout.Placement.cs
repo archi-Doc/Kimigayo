@@ -111,7 +111,7 @@ internal sealed partial class Layout
         var structure = AdtDef.IsStruct(type);
         var cLayout = structure && type.Symbol!.Adt is { IsCLayout: true };
         var fold = new Fold(type);
-        Entry? inherited = structure && AdtDef.Base(type) is { } parent ? fold.Add(this.Walk(parent, budget), false) : null;
+        Entry? inherited = structure && AdtDef.Base(type) is { } parent ? fold.Add(this.Walk(parent, budget), cField: false) : null;
         var count = type.Kind switch
         {
             BoundTypeKind.Tuple or BoundTypeKind.Closure => type.Components.Count,
@@ -217,7 +217,7 @@ internal sealed partial class Layout
         }
 
         var fold = new Fold(type);
-        var element = fold.Add(this.Walk(type.Components[0], budget), false);
+        var element = fold.Add(this.Walk(type.Components[0], budget), cField: false);
         var alignment = Math.Max(element.Alignment, 1);
         var size = (UInt128)(ulong)type.Length * element.Size;
         if (fold.Decide(budget, size, alignment, type.Length > MaximumSize ? Outcome.CountLimit : Outcome.Ok) is { } decided)
@@ -247,7 +247,7 @@ internal sealed partial class Layout
                 continue;
             }
 
-            var part = fold.Add(this.Walk(item, budget), false);
+            var part = fold.Add(this.Walk(item, budget), cField: false);
             alignment = Math.Max(alignment, Math.Max(part.Alignment, 1));
             payload = UInt128.Max(payload, part.Size);
         }

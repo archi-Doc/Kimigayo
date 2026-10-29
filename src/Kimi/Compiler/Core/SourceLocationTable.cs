@@ -46,8 +46,8 @@ internal sealed class SourceLocationTable(Compilation compilation)
             return text;
         }
 
-        var path = Path.IsPathFullyQualified(source.Path) ?
-            Path.GetRelativePath(Path.GetFullPath(directory.Length > 0 ? directory : "."), source.Path) : source.Path;
+        var root = directory.Length > 0 ? directory : ".";
+        var path = Path.IsPathFullyQualified(source.Path) ? Path.GetRelativePath(Path.GetFullPath(root), source.Path) : source.Path;
         var builder = this.buffer.Clear();
         Span<char> hex = stackalloc char[8];
         foreach (var rune in path.EnumerateRunes())
