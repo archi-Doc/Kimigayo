@@ -28,6 +28,7 @@ public class ElementUpdateEmissionTest
         { "Covered", "var a = (40, true)\nmatch true\n    _ => a.0 += 2\n    true => a.0 -= 1\nif a.0 == 42 => Console.writeLine(\"ok\")" },
         { "RhsTransfer", "func f() -> i32\n    var a = (0, true)\n    defer => a.0++\n    a.0 += (return 42)\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
         { "IndexTransfer", "func f() -> i32\n    var a: [1 of i32] = [0]\n    a[(return 42)] += 2\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
+        { "FieldTransfer", "struct S\n    public var n: i32 = 0\n    public init() => ()\nfunc make() -> i32 => 1\nfunc f() -> i32\n    var b: [1 of S] = [S.init()]\n    defer => if b[0].n != 0 => Console.writeLine(\"bad\")\n    b[(return 42)].n += make()\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
         { "IncrementTransfer", "func f() -> i32\n    var a: [1 of i32] = [0]\n    ++a[(return 42)]\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
         { "ShiftTransfer", "func f() -> i32\n    var a: [1 of i32] = [0]\n    a[0] <<= (return 42)\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
         { "TransferPriority", "func f() -> i32\n    var a: [1 of i32] = [0]\n    a[(return 42)] += (return 1)\n    return 0\nif f() == 1 => Console.writeLine(\"ok\")" }, // SPEC 13.7.2: the right-hand side transfers first.

@@ -30,8 +30,7 @@ public class InheritedObjectCallTest(ITestOutputHelper output)
         => ScalarEmissionTest.EmitFixture("InheritedObject" + name, Types + body, string.Empty);
 
     // SPEC 3.4.3, 9.6.1, 13.5.5 (E9, P34_REMAINING R1; DECISIONS R5-M114): an inherited base getter and ref/Self method reached through
-    // reference layers read the base subobject of the value or object below them, and a virtual call there dispatches on that object. The old
-    // generator reads the reference's own slot (R1, frozen on the old path): its outcome is the deviation's, the first check's Abort.
+    // reference layers read the base subobject of the value or object below them, and a virtual call there dispatches on that object.
     [Theory]
     [InlineData("RefRef", "ref/(ref/Leaf during a)", "var owner = Leaf.init()\nlet view = owner@ref\n", "view@ref", false)]
     [InlineData("UniqUniq", "uniq/(uniq/Leaf during a)", "var owner = Leaf.init()\nvar view = owner@uniq\n", "view@uniq", false)]
@@ -46,10 +45,7 @@ public class InheritedObjectCallTest(ITestOutputHelper output)
             $"func probe(r: {parameter}) -> i32\n    require r.read() == 7 else => $abort(\"read\")\n    require r.twice == 14 else => $abort(\"getter\")\n" +
             (objects ? "    require r.slot() == 100 else => $abort(\"slot\")\n" : string.Empty) + "    return 0\n" +
             setup + $"require probe({argument}) == 0 else => $abort(\"probe\")\nConsole.writeLine(\"layers\")\n";
-        var at = source.IndexOf("$abort(\"read\")", StringComparison.Ordinal);
-        var location = $"Hello.kimi:{source[..at].Count(static x => x == '\n') + 1}:{at - source.LastIndexOf('\n', at - 1)}";
-        var legacy = new LegacyNative(CodegenDeviations.ReceiverLayers, string.Empty, 1, $"{location}: abort KIMI_E_ABORT: read\n");
-        ScalarEmissionTest.EmitFixture("InheritedObjectReceiverLayers" + name, source, "layers\n", legacy: legacy);
+        ScalarEmissionTest.EmitFixture("InheritedObjectReceiverLayers" + name, source, "layers\n");
     }
 
     [Fact]

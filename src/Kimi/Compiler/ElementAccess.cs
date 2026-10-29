@@ -97,10 +97,6 @@ internal static class ElementAccess
         _ => KotoHelper.CompoundOperation(kind),
     };
 
-    internal static BoundType? DestinationType(Koto source, BoundType? type)
-        => ReferenceEquals(type, BoundType.Never) && KotoHelper.UnwrapParentheses(source) is BinaryKoto element &&
-            IsSyntax(element) && TryType(element, out var destination, out _) ? destination : type;
-
     // A transferred operand (x@move), an Identity acquisition or an adapted literal (5@isize) is the operand Place's own
     // value: its temporary keeps the Place's syntax, so each unwraps like a label.
     internal static Koto ValueSource(Koto source, OwnershipBody? body = null, int operation = -1)
@@ -414,11 +410,6 @@ internal static class ElementAccess
         element = null;
         position = -1;
         var type = source.Left.BoundType;
-        if (ReferenceEquals(type, BoundType.Never) && KotoHelper.UnwrapParentheses(source.Left) is BinaryKoto parent && IsSyntax(parent))
-        {
-            TryType(parent, out type, out _); // Preserve a nested destination's Type after an abrupt earlier index.
-        }
-
         if (type?.Semantics != SemanticsKind.Owner)
         {
             return false;

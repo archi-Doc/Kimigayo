@@ -95,7 +95,7 @@ Each entry file begins with the component's contract (AGENTS). Paths are under `
 | --- | --- | --- |
 | Child walk | `ForEachChildSlot`, shared by visiting, collecting and replacing | `Parsing/Koto/Common/ChildSlots.cs` |
 | Syntax identity | Dense pre-order `SyntaxId` per module; `SourceRef(Module, SyntaxId)`, the only way MIR and its records name syntax. Attachment publishes current module/diagnostic ownership while preserving source snapshots; foreign rows are discarded, same-table renumbering preserves rows (DECISIONS AST2) | `Parsing/Koto/Common/SyntaxTable.cs`, `Core/SourceRef.cs` |
-| Phases after Binding | The `Compilation` entry points (`Analyze`, `Analysis`, `Problems`, `ReportAnalysis`, `SyntaxOf`); the pipeline switch and, under mir, the code generator selector (DECISIONS R5-M35) | `Core/Compilation.Pipeline.cs`; the switch and the selector `Core/Compilation.Switch.cs` |
+| Phases after Binding | The `Compilation` entry points (`Analyze`, `Analysis`, `Problems`, `ReportAnalysis`, `SyntaxOf`); the pipeline switch and the code generator selector: MIR code generation by default from R6-gen's G3, `KIMI_CODEGEN=legacy` its rollback until G4 (DECISIONS R5-M152, R5-M158) | `Core/Compilation.Pipeline.cs`; the switch and the selector `Core/Compilation.Switch.cs` |
 | Generation | `Compilation.Generate(TextWriter)`, the one generation entry: the gate first (no MIR records of the version; MIR code generation also needs the check's acceptance, `Compilation.Accepts`, which `Project` reads too), under MIR code generation the Generated mark from the output roots (an Application's startup body, a test build's discovered tests, a Library's every root but the body of a closed virtual or override whose slot `TyCtxt.Applies` refutes, each a declaration's own body (never a Closure's, made at an `Aggregate(Closure)` site, or that of a function declared in a function's or Closure's body, which the bodies that make or call it reach), `InstanceCollector.Generates`; DECISIONS R5-M77, R5-M153), then the code generator, which writes the complete module or writes nothing and records why in the Emission partition (under MIR code generation `ModuleCodegen`'s records, each keyed by its location, `DiagnosticCollection.ReportLocation`; DECISIONS R5-M65); `EmissionArtifacts.Publish`, and through `Project.PublishArtifacts` `kimi build` and `kimi test`, generate only through it; `WriteIr` and `Validate` are its R6-gen out-string adapters until G9b, the same gate with its text (DECISIONS R5-M64) | `Core/Compilation.Generation.cs` |
 | Analysis records | `Problem(Code, SourceRef)`, merged per code and location; until R6-check the MIR analyses' problems stay unpublished on `MirProgram.Problems` (DECISIONS R4-M1) | `Core/Compilation.Pipeline.cs` |
 | Runtime locations | `SourceLocationTable` (`Compilation.Locations.Text(SourceRef)`): the `path:line:column` an Abort reports (SPEC 22.5.1), its source's logical name (IMPL 20.1) escaped (IMPL 21.4.2), memoized for the current program (cleared when the source analysis is revoked); the Backend reads it, and which site an Abort reports stays its generator's rule | `Core/SourceLocationTable.cs` |
@@ -228,7 +228,14 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   Calls Reach by Paths (2026-10-22): the old Analysis, Binding's `EffectSummary` and `PublishesIndependentResults` drop rule 1's Origin reach, rule 3
   and `preserves results` (units U1, U2), so the default pipeline accepts the forms that proposal makes valid and rejects G193's
   forms by containment; a form U1 or U2 newly accepts that SPEC does not make valid stops the unit for the owner (DECISIONS
-  R4-M106, the proposal's adoption entry).
+  R4-M106, the proposal's adoption entry), and the owner's exceptions for g2never (2026-10-30, 「(a) D5 の例外として認める」 and
+  「推奨の内容で決定します」): the old analysis accepts the forms Binding's element typing makes valid (an owned fixed-array element
+  whose key diverges, its Field written or updated, updated by a user operator, read through a Tuple element, borrowed into a local,
+  for a call or as an intrinsic's exclusive input) and applies the reachable Move rules where such an element's access cannot complete
+  normally (`AcquireElement`), until R6-check; the old generator generates them except an exclusive borrow of such an element, or of
+  a part of one (a Field, a Tuple element, a nested element), taken as a call's input (a `@uniq` argument, a `uniq/Self` receiver,
+  user or library, `replace`, `exchange`), which it refuses with `GenerationFailed_Kd`, three part forms it generated before
+  included, until G4 ends its selection (DECISIONS R5-M159).
 - **Size.** Code size has no caps, stage ceilings or forecasts (DECISIONS Q5). Each compiler commit states its net size
   change per area, and stage exits record area sizes (AGENTS). `ArchitectureRulesTest` retains its no-growth ratchets.
 - **Missing facts (R3–R5).** Binding publishes a fact the MIR side lacks as a small view; Mir never re-derives it.
@@ -252,7 +259,7 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   and the legacy row map of the Body-disposition compiler functions, with the formatting runtime's kind numberings (`FormatKind`,
   `WriterKind`), its interpolation estimate (`FormatBound`, `FormatEstimate`) and the conversion text both generators write (R8, DECISIONS
   R5-M16, R5-M116, R5-M128, R5-M130, R5-M131); `Layout`'s Slice, Array and Dictionary handle word counts (R8, DECISIONS R5-M19). R5's
-  temporaries, recorded by their first units (DECISIONS R5-M18) and reviewed with the owner at R5's exit (DECISIONS R5-M148): the `KIMI_CODEGEN` selector, the pending ledger, the `CodegenDeviations` catalog and `.deviation` targets (G4);
+  temporaries, recorded by their first units (DECISIONS R5-M18) and reviewed with the owner at R5's exit (DECISIONS R5-M148): the `KIMI_CODEGEN` selector, the pending ledger, the `CodegenDeviations` catalog (empty from G3, DECISIONS R5-M158) and `.deviation` targets (G4);
   gate step 2's arena-skip `Unsupported_Kd` (H3, DECISIONS R5-M96, R5-M148); `MonoKind.LegacyRow` (R8; first implemented by C8d, DECISIONS R5-M121); the out-string `WriteIr`/`Validate` adapters (C0a to G9b) in the generation entry (DECISIONS R5-M64; its sel `build`
   refusal, K1 to C0b1, went with C0b1, R5-M65); Binding's i128 division and remainder and its 128-bit float conversion gates beside the capability table's operation rows (H7, DECISIONS R5-M53); the legacy comparison composition (A-12, else R7; DECISIONS R5-M68, R5-M148); the F2c Dictionary-storage view and its TyCtxt forward, `TyCtxt.DictionaryStorage`, whose one reader is the instance collector (R8, deleted with `KimiLibrary.DictionaryStorage.cs`; DECISIONS R5-M28, R5-M124); the
   `Binding.ClosureCall` bridge (R6-gen); `TyCtxt.StorageSubst`, the Self-less substitution of the CallPlan form of
@@ -278,7 +285,7 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   `tests/xUnitTest/MirDifferenceLedger.cs`. R5 puts new Binding views in new partial files and batches its shared MIR edits
   into windows (W1, W2 of the R5 plan §3.5), each held the same way.
 - **R5 progress (DECISIONS R5-M8)** ended with R5's exit (DECISIONS R5-M148). **R6-gen progress** (DECISIONS R5-M152): the R5
-  and R6 plan's §5.1 metrics M4 (Emission lines), M7 (deviations), M8 (ratchets) and the pending ledger (0 from G2), and §5.2's
+  and R6 plan's §5.1 metrics M4 (Emission lines), M7 (deviations, 0 from G3), M8 (ratchets) and the pending ledger (0 from G2), and §5.2's
   two-session and switch-revert rules.
 
 ## Stage ledger

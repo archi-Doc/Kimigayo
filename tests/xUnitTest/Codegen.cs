@@ -1,10 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // The codegen deviation form of R5 (plan E12, PD10, OQ7; DECISIONS R5-M85, R5-M106): a temporary structure. The stage that makes a target
-// the default reduces its Expect or LegacyNative to it (G2 did so for acceptance-time records, DECISIONS R5-M156; G3 for generated
-// output); G4 removes the form with the catalog, the .deviation sidecar and compare-fixtures.ps1's deviating count.
-// Responsibility: an expectation that MIR code generation (sel) meets differently from the old generator by a decided item states its
-// target and keeps the legacy value beside it, naming the item's one catalog entry; a native fixture's outcome so (LegacyNative, which
+// the default reduces its Expect or LegacyNative to it: G2 for acceptance-time records (DECISIONS R5-M156), G3 for generated output, so
+// the catalog is empty from G3 and CodegenDeviationTest checks the form on synthetic samples (DECISIONS R5-M158); G4 deletes the form with
+// the catalog, the .deviation sidecar and compare-fixtures.ps1's deviating count.
+// Responsibility: an expectation that MIR code generation meets differently from the old generator by a decided item states its target
+// and keeps the legacy value beside it, naming the item's one catalog entry; a native fixture's outcome so (LegacyNative, which
 // ScalarEmissionTest's fixture writers take), whose .deviation sidecar both runs write byte-equal (Sidecar).
 // Input: the process's code generator, the selector's one reading (Compilation.DefaultCodegen). Output: the value the running code
 // generator meets. Invariants: one entry per decided item (CodegenDeviationTest checks the catalog); a deviation's two values differ, by content.
@@ -103,44 +104,9 @@ internal enum DeviationClass
     E,
 }
 
-/// <summary>The deviation catalog: one entry per decided item, which every expectation of that item names (M7 counts the entries).</summary>
+/// <summary>The deviation catalog: one entry per decided item, which every expectation of that item names (M7 counts the entries). Empty
+/// from G3, which reduced constant-temporaries (R5-M145), inline-env (R5-M104), receiver-layers (R5-M114) and static-cycle (R5-M106) to
+/// their targets (DECISIONS R5-M158).</summary>
 internal static class CodegenDeviations
 {
-    /// <summary>G188 (x1rows): MIR code generation makes no temporary for a string constant operand (a literal comparison operand, an argument
-    /// a later one abandons, a component a transfer abandons), so the string lifetime audits count none of the Static destructions the old
-    /// generator makes for it.</summary>
-    internal static readonly Deviation ConstantTemporaries = new(
-        "constant-temporaries",
-        DeviationClass.D,
-        "R5-M145",
-        "16.2.1",
-        "A string constant has no destruction obligation in MIR (R5-M118), so MIR code generation never materializes one as an operand or an abandoned component and destroys none; the old generator makes a temporary and destroys it, which a Static string's no-op release (IMPL 21.1.3) leaves unobservable. Program output stays equal.");
-
-    /// <summary>C5b: an erased environment of 8 bytes or less and alignment 8 or less that needs destruction is stored in the common
-    /// Function value's word under MIR code generation (PD19, IMPL 21.1.3); the old generator allocates it.</summary>
-    internal static readonly Deviation InlineEnvironment = new(
-        "inline-env",
-        DeviationClass.A,
-        "R5-M104",
-        "7.7.4",
-        "IMPL 21.1.3 stores such an environment inline even when it needs destruction; the old generator heap-allocates every environment that needs destruction, one allocation more. Values, Moves and cleanup stay equal.");
-
-    /// <summary>E9 (P34_REMAINING R1), landed with C6c: an inherited base getter or <c>ref/Self</c> method reached through reference layers
-    /// (<c>ref/(ref/T)</c>, <c>uniq/(uniq/T)</c>, <c>ref/(obj/T)</c>, <c>ref/(rc/T)</c>, <c>uniq/(obj/T)</c>) reads the base subobject under MIR
-    /// code generation; the old generator reads the reference's own slot.</summary>
-    internal static readonly Deviation ReceiverLayers = new(
-        "receiver-layers",
-        DeviationClass.A,
-        "R5-M114",
-        "3.4.3 7.3.1 9.6.1 13.5.5",
-        "Selection passes every reference layer to the object or the value whose base subobject the receiver projects (SPEC 3.4.3, 9.6.1); the old generator projects from the reference's slot, so the value it reads is an address's low bits and the program aborts at its first check (P34_REMAINING R1, frozen on the old path).");
-
-    /// <summary>C7b: an access to a static slot that its own initialization is initializing Aborts with KIMI_E_STATIC_CYCLE at the accessing
-    /// Place expression under MIR code generation (PD19); the old generator Aborts with KIMI_E_ABORT at the Field's declaration.</summary>
-    internal static readonly Deviation StaticCycle = new(
-        "static-cycle",
-        DeviationClass.A,
-        "R5-M106",
-        "22.4.3 22.5.1 22.5.2",
-        "SPEC 22.4.3 and 22.5.2 give an access to an Initializing slot KIMI_E_STATIC_CYCLE, reported at the start of the accessing Place expression (22.5.1); the old generator reports KIMI_E_ABORT with the text Static initialization cycle at the Field's declaration. Exit codes and output stay equal.");
 }

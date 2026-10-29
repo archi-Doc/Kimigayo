@@ -8,6 +8,8 @@ namespace XunitTest;
 
 public class AggregateEmissionTest
 {
+    private const string Echo = "func echo(x: string) -> string => x@move\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
         { "AggregateTuple", "let value = (\"a\", \"b\")", "a=1;b=1" },
@@ -27,10 +29,12 @@ public class AggregateEmissionTest
         { "AggregateConditionalLoop", "var value = (\"a\", \"b\")\nvar i = 0\nwhile i < 3\n    if i == 1 => value@move\n    value = (\"c\", \"d\")\n    i += 1", "a=1;b=1;c=3;d=3" },
         { "AggregateMixed", "let value: (u8, string, u64, string, ()) = (200, \"a\", 255, \"b\", ())", "a=1;b=1" },
         { "AggregateResultPayload", "let value = (if true => \"a\" else => \"b\", \"c\")", "a=1;b=0;c=1" },
-        { "AggregateCallPayload", "func echo(x: string) -> string => x@move\nlet value = (echo(\"a\"), \"b\")", "a=1;b=1" },
-        { "AggregatePartialExit", "loop\n    let value: (string, i32) = (\"a\", (exit))", Codegen.Expect("a=0", "a=1", CodegenDeviations.ConstantTemporaries) },
-        { "AggregatePartialReturn", "func f() -> ()\n    let value: (string, i32) = (\"a\", (return))\nf()", Codegen.Expect("a=0", "a=1", CodegenDeviations.ConstantTemporaries) },
-        { "AggregateArrayPartialExit", "loop\n    let value: [2 of string] = [\"a\", (exit)]", Codegen.Expect("a=0", "a=1", CodegenDeviations.ConstantTemporaries) },
+        { "AggregateCallPayload", Echo + "let value = (echo(\"a\"), \"b\")", "a=1;b=1" },
+
+        // The component a transfer abandons is a call's result, which has a destruction to audit; a constant has none (PLAN G157 (45)).
+        { "AggregatePartialExit", Echo + "loop\n    let value: (string, i32) = (echo(\"a\"), (exit))", "a=1" },
+        { "AggregatePartialReturn", Echo + "func f() -> ()\n    let value: (string, i32) = (echo(\"a\"), (return))\nf()", "a=1" },
+        { "AggregateArrayPartialExit", Echo + "loop\n    let value: [2 of string] = [echo(\"a\"), (exit)]", "a=1" },
         { "AggregateMatch", "match true\n    true\n        let value = (\"a\", \"b\")\n    false\n        let value = (\"c\", \"d\")", "a=1;b=1;c=0;d=0" },
         { "AggregateCovered", "match true\n    _ => ()\n    true\n        let value = (\"a\", \"b\")", "a=0;b=0" },
         { "AggregateDefer", "var i = 0\nloop\n    defer\n        let value = (\"a\", \"b\")\n    i += 1\n    if i == 3 => exit\n    continue", "a=3;b=3" },

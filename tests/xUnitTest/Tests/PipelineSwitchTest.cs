@@ -45,14 +45,16 @@ public sealed class PipelineSwitchTest
         }
     }
 
-    // R5 PD4: KIMI_CODEGEN selects the old generator when unset or legacy, and MIR code generation when mir, on either pipeline (DECISIONS
-    // R5-M152 ends PD4's pairing); any other value is a configuration error. A compilation's code generator is independent of its pipeline.
+    // R5 PD4: KIMI_CODEGEN selects MIR code generation when unset or mir, the default from G3, and the old generator when legacy, G3's
+    // rollback until G4 (DECISIONS R5-M152 S6), on either pipeline (R5-M156); any other value is a configuration error. A compilation's code
+    // generator is independent of its pipeline.
     [Fact]
     public void TheEnvironmentSelectsTheCodegenOnEitherPipeline()
     {
-        Assert.Equal(CompilerCodegen.Legacy, Compilation.CodegenOf(null));
-        Assert.Equal(CompilerCodegen.Legacy, Compilation.CodegenOf("legacy"));
+        Assert.Equal(CompilerCodegen.Mir, Compilation.CodegenOf(null));
+        Assert.Equal(CompilerCodegen.Mir, Compilation.CodegenOf(string.Empty));
         Assert.Equal(CompilerCodegen.Mir, Compilation.CodegenOf("mir"));
+        Assert.Equal(CompilerCodegen.Legacy, Compilation.CodegenOf("legacy"));
         Assert.Equal(Compilation.CodegenOf(Environment.GetEnvironmentVariable("KIMI_CODEGEN")), Compilation.DefaultCodegen);
         Assert.Equal(Compilation.DefaultCodegen, Compilation.CreateForTest().Codegen);
         foreach (var value in new[] { "MIR", "Legacy", " mir", "both" })
@@ -109,23 +111,23 @@ public sealed class PipelineSwitchTest
         Assert.All(pairs, static x => Assert.Equal((Compilation.DefaultPipeline, Compilation.DefaultCodegen), x));
     }
 
-    // Each non-default selection marks the check identity, the pipeline first, and adds its entry to the test artifact manifest (DECISIONS
-    // R5-M156: MIR code generation on either pipeline).
+    // Each non-default selection marks the check identity, the pipeline first, and adds its entry to the test artifact manifest: the mir
+    // pipeline and, from G3, the old generator (DECISIONS R5-M152, R5-M156).
     [Fact]
     public void EachNonDefaultSelectionMarksTheIdentity()
     {
         var identity = (Compilation.DefaultPipeline, Compilation.DefaultCodegen) switch
         {
-            (CompilerPipeline.Legacy, CompilerCodegen.Legacy) => Compilation.CompilerVersion,
-            (CompilerPipeline.Mir, CompilerCodegen.Legacy) => Compilation.CompilerVersion + " [mir]",
-            (CompilerPipeline.Legacy, _) => Compilation.CompilerVersion + " [codegen mir]",
-            _ => Compilation.CompilerVersion + " [mir, codegen mir]",
+            (CompilerPipeline.Legacy, CompilerCodegen.Mir) => Compilation.CompilerVersion,
+            (CompilerPipeline.Mir, CompilerCodegen.Mir) => Compilation.CompilerVersion + " [mir]",
+            (CompilerPipeline.Legacy, _) => Compilation.CompilerVersion + " [codegen legacy]",
+            _ => Compilation.CompilerVersion + " [mir, codegen legacy]",
         };
         Assert.Equal(identity, Compilation.CompilerIdentity);
-        var legacy = Manifest(CompilerPipeline.Legacy, CompilerCodegen.Legacy);
-        Assert.Equal(legacy.Take(7).Concat(["pipeline", "mir"]).Concat(legacy.Skip(7)), Manifest(CompilerPipeline.Mir, CompilerCodegen.Legacy));
-        Assert.Equal(legacy.Take(7).Concat(["codegen", "mir"]).Concat(legacy.Skip(7)), Manifest(CompilerPipeline.Legacy, CompilerCodegen.Mir));
-        Assert.Equal(legacy.Take(7).Concat(["pipeline", "mir", "codegen", "mir"]).Concat(legacy.Skip(7)), Manifest(CompilerPipeline.Mir, CompilerCodegen.Mir));
+        var plain = Manifest(CompilerPipeline.Legacy, CompilerCodegen.Mir);
+        Assert.Equal(plain.Take(7).Concat(["pipeline", "mir"]).Concat(plain.Skip(7)), Manifest(CompilerPipeline.Mir, CompilerCodegen.Mir));
+        Assert.Equal(plain.Take(7).Concat(["codegen", "legacy"]).Concat(plain.Skip(7)), Manifest(CompilerPipeline.Legacy, CompilerCodegen.Legacy));
+        Assert.Equal(plain.Take(7).Concat(["pipeline", "mir", "codegen", "legacy"]).Concat(plain.Skip(7)), Manifest(CompilerPipeline.Mir, CompilerCodegen.Legacy));
     }
 
     // R5 K1, C0b1 (DECISIONS R5-M65, R5-M146): the checked set exists on every pipeline; MIR code generation, on the process's pipeline

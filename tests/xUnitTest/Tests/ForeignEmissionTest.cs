@@ -1032,7 +1032,7 @@ public class ForeignEmissionTest
             name,
             ir,
             stdout,
-            Codegen.Expect("=0;first=1;second=1;third=1;compare=1;skip=0;done=1", "=0;first=1;second=1;third=1;compare=2;skip=0;done=1", CodegenDeviations.ConstantTemporaries));
+            "=0;first=1;second=1;third=1;compare=1;skip=0;done=1");
     }
 
     [Theory]
@@ -1086,7 +1086,7 @@ public class ForeignEmissionTest
             "ForeignPointerStringCompare",
             ir,
             "alpha\nbeta\nkept\ndone\n",
-            Codegen.Expect("=0;alpha=1;beta=1;kept=1;done=1", "=0;alpha=3;beta=2;kept=2;done=1", CodegenDeviations.ConstantTemporaries));
+            "=0;alpha=1;beta=1;kept=1;done=1");
     }
 
     [Fact]
