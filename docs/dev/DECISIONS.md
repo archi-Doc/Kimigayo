@@ -8552,7 +8552,9 @@ structure is recorded here by the unit that first implements it.
   two working sessions is re-split or becomes an owner question; from C0b2, if M1 does not fall across three consecutive C
   units, the session states why, and a missing input becomes a fact or builder unit; an O2 kernel regression beyond the A=B
   variance blocks its family's merge, fixed in codegen, never by a tolerance. VERIFICATION gains R5's rows, a sel Session
-  beside the default one at the end of every R5 working session and the pending-ledger gate, both removed at G4. Ask A-10
+  beside the default one at the end of every R5 working session and the pending-ledger gate, both removed at G4 (the sel Session
+  ended at G3 under R5-M152's OI-3, R5-M158: MIR code generation is the default Session's; the gate runs on an explicit `-Codegen mir`
+  until G4). Ask A-10
   goes to R4: from C0b2, R4's MIR-builder merges run the sel pending check and record any rise; from G3, they select the
   affected native families and O2 kernels. Rejected: a CI sel lane (full sweeps run at family group reviews, X1 and G3).
 - **R5-M9 Binding syntax reads and synthetic Koto at R7** (owner, 2026-10-18; OQ12, OQ13; a later removal stage) Binding's
@@ -9116,7 +9118,8 @@ structure is recorded here by the unit that first implements it.
     per-compilation `Codegen`), read once per process, `mir` valid only with `KIMI_PIPELINE=mir` (any other value or combination is a
     configuration error), a compilation's code generator following its pipeline, marked in `CompilerIdentity` (` [mir, codegen mir]`)
     and the test artifact manifest; G4 removes it. (The pairing superseded by R5-M156: from G2 `mir` is valid on either pipeline, the
-    two selections are independent and each non-default one marks the identity.) The sel generation refusal (`Compilation.RefusesCodegen`), read by `WriteIr`,
+    two selections are independent and each non-default one marks the identity. From G3 `mir` is the default and `legacy` the
+    non-default code generator, R5-M158.) The sel generation refusal (`Compilation.RefusesCodegen`), read by `WriteIr`,
     `Validate` and `EmissionArtifacts.Publish`: one `Unsupported_Kd` in the Emission partition at the body of each output root (an
     Application's startup, a test build's tests, a Library's roots), never the old generator, which `Project.Emit` leaves in place; C0a
     moves it into the generation entry and C0b1 deletes it.
@@ -9619,7 +9622,7 @@ structure is recorded here by the unit that first implements it.
     then the old generator's text without its record, for their test callers. `verify.ps1 -Codegen legacy|mir` sets `KIMI_CODEGEN` for the
     run and records `codegen` in `summary.json`; `-Codegen mir` without `-Pipeline mir` is rejected before building (PD4); both go with
     the selector at G4. (The rejection superseded by R5-M156: from G2 `-Codegen mir` is valid with either pipeline. Gate step 1 counts
-    the checked set's records on every pipeline.)
+    the checked set's records on every pipeline. From G3 `-Codegen` defaults to `mir`, R5-M158.)
   - Rejected: an entry returning the prepared old module (Core would publish `EmissionModule`, which MIR code generation replaces);
     buffering the module before the publication checks (an allocation the size of the module); a writer opened on first write (a wrapper
     kept only for the old order); reporting publication failures in `Generate` (publication is `EmissionArtifacts`', G9b's record).
@@ -10309,6 +10312,8 @@ structure is recorded here by the unit that first implements it.
     half before a consumer; null targets for the old generator's own facts.
   - Superseded in part by R5-M156 (G2): `checked-set-at-check` is deleted with its 10 `Expect` sites reduced to their targets, and
     the old generator's halves after a check that now rejects are deleted; the own-limit pins whose programs pass check stay until G4.
+  - Amended by R5-M158 (G3): every generated-output `Expect` and `LegacyNative` is reduced to its target; the catalog is empty and
+    the form, checked on a synthetic sample, stays until G4.
 - **R5-M86 The owner's decisions of 2026-10-21: R5's departures list and PLAN G157 (19)** (owner, 2026-10-21, on the R5 planning
   session's explanation; verbatim 「departures list：K6b（R5-M70）、K8（R5-M74）、C0c（R5-M78）の 3 件を、すべて承認します。」 and
   「G157は、(a) 旧生成器を直す（推奨）でお願いします」, then, asked about R5-M6, the answer 「(a) のまま（R5-M6 の例外）」; the
@@ -10815,6 +10820,7 @@ structure is recorded here by the unit that first implements it.
   - Deviation `inline-env` (class (a), `CodegenDeviations.InlineEnvironment`; OQ7, PD19; ruling Q2): the old generator heap-allocates every
     erased environment that needs destruction; `ConsumingCallableCleanupTest`'s erased environment of 4 bytes and `GenericClosureIdentityTest`'s
     zero-sized one state both bounds through `Codegen.Expect` (R5-M85's form; no native outcome differs, so its native half is not needed).
+    (Reduced to the target by R5-M158: from G3 the default generator stores these environments inline.)
     The rows that C6a and C6b block (`ContextualClosureTest` "Object", the `HeapClosureErasureTest` and `FunctionCaptureTest` handle rows)
     keep their pending rows and take the entry with the unit that makes them run.
   - Departure (for the owner's departures list), confirmed by the owner (R5-M105): plan row C5b's verification "the ErasedCalls kernel O2
@@ -10887,7 +10893,8 @@ structure is recorded here by the unit that first implements it.
     generator nothing deviates and `.deviation` compares like any file (review round 1 rejected the first rule, which counted a stem
     deviating in every comparison and so dropped a same-generator `.ll` change and native failure). Removal with R5-M85's form: G3 reduces a
     row to its target, G4 deletes `LegacyNative`, the sidecar and the deviating count. First entry: `static-cycle` (class (a), SPEC 22.4.3 22.5.1 22.5.2), the old generator's
-    `KIMI_E_ABORT` at the Field's declaration against `KIMI_E_STATIC_CYCLE` at the access (`StaticInitializationTest.DetectsIndirectCycle`).
+    `KIMI_E_ABORT` at the Field's declaration against `KIMI_E_STATIC_CYCLE` at the access (`StaticInitializationTest.DetectsIndirectCycle`;
+    reduced to the target by R5-M158: from G3 the default reports `KIMI_E_STATIC_CYCLE` at the access, SPEC 22.4.3).
     C5b's `inline-env` rows deviate only in allocation bounds, managed values `Codegen.Expect` states, and need no native half.
   - Departure (for the owner's departures list), confirmed by the owner (R5-M107): plan row E12 names `NativeAllocationAudit.WriteFixture`
     among the writers taking `LegacyNative`; it takes it with its first consumer, not now (ruling Q3 (a); no audit deviates in its
@@ -11143,7 +11150,8 @@ structure is recorded here by the unit that first implements it.
     `ref/(ref/Leaf)`, `uniq/(uniq/Leaf)`, `ref/(obj/Leaf)`, `ref/(rc/Leaf)` and `uniq/(obj/Leaf)` (a virtual call too through the object
     forms), each a fixture with the SPEC result; the old generator reads the reference's own slot, so its outcome is the deviation
     `receiver-layers` (class (a), R5-M85's and R5-M106's form, `LegacyNative`): the first check's `KIMI_E_ABORT`, an address's low
-    bits never being 7. The old path's miscompile stays frozen (R5-M6; U7 or G7).
+    bits never being 7. The old path's miscompile stays frozen (R5-M6; U7 or G7). (Reduced to the target by R5-M158: from G3 the
+    default reads the base subobject.)
   - Restructured first, behavior unchanged: the unnamed signatures' search in `ModuleCodegen.Signatures` (`Unnamed`); `VTableDef.SlotOf`
     and the collector's use of it; the Run channel above.
   - Departure (for the owner's departures list), confirmed by the owner (R5-M115): the `VirtualDispatch` corpus kernel's O2 A/B (plan row
@@ -12377,7 +12385,8 @@ structure is recorded here by the unit that first implements it.
     abandons, and destroys none; the old generator destroys such a Static temporary, a no-op (IMPL 21.1.3). 31 audit fixtures take
     `Codegen.Expect` with sel's measured counts and orders, which Expect compares by content (an order's array too, one structural
     comparison for every value, so a target equal to its legacy value fails); `NamedArgumentsDistinguishCallerAndCalleeDestructionOrder` passes calls'
-    results instead, so its order and its wrong-order control keep values both generators make.
+    results instead, so its order and its wrong-order control keep values both generators make. (Reduced to the target by R5-M158,
+    with G157 (45)'s cleanup audits in that call-result form.)
   - Decided rows (X1; R5-M13 (b), R5-M144): the P42 set, 110 test rows that fail only on sel's located `Unsupported_Kd` for P42's static
     storage at check (R5-M41) beside their expected records: PathCapabilityDiagnosticTest 108, EffectBoundReportTest's mutable-static
     row and MilestoneSourcesTest (Milestone 42). They are OQ7 (e) "form not ported" rows (R5-M6) and leave with P42. The ledger goes
@@ -12825,7 +12834,7 @@ structure is recorded here by the unit that first implements it.
     "until G2"; R5-M85's `checked-set-at-check`; under OI-1 (a′), R5-M144's "(not G2's)" and R5-M145's "leave with P42" for the 108 rows
     and EffectBound's row, which leave the pending ledger here.
   - Verification lanes (OI-3 (a)): from G2 the `-Pipeline mir` lane runs only as the difference ledger's run; the sel lane runs until
-    G3.
+    G3. (Ended by R5-M158.)
   - Cost (S4, measured 2026-10-29 in a quiet slot; `artifacts/benchmarks/r6-g2-cost/`; G2's head `90697ecfa` against its merge base
     `acc2f12ad`, both builds run from one folder, CPU 2 pinned at High priority, tiering off, 5 interleaved rounds; bytes exact, times
     medians of the rounds): `--analyze-cost`, default configuration, Generic 1/32/64/128: a fresh check 34.6, 54.5, 95.6 and 156.7 ms
@@ -12843,3 +12852,34 @@ structure is recorded here by the unit that first implements it.
   - Rejected: a per-row exception for `StaticStorage` or any other record (a per-row gate); filtering a record away or shrinking a
     scaling input to keep a pinned test's old expectation (a weakening); an environment rollback for the records (a second mode); a
     test of K9b's library location through a source module run as a non-root (G157 (2); a path production never takes).
+- **R5-M158 MIR code generation is the default (R6-gen G3)** (2026-10-29, R6-gen; plan §4.9 row G3, §5.2, §5.4; R5-M152 S3, S6, S7 and
+  OI-3 as applied, with the planning session's rulings Q1 (b) and Q2 (a) on G3's census; under R5-M6, R5-M85, R5-M106 and R5-M156)
+  - Rule: `KIMI_CODEGEN` unset, empty or `mir` selects MIR code generation on either pipeline; `legacy` selects the old generator, G3's
+    rollback until G4 (S6). `CompilerIdentity` and the test manifest mark the non-default selection (` [codegen legacy]`, ` [mir, codegen
+    legacy]`). Gate step 2 (R5-M96) applies on default builds (S3). Since G2 the pipeline changes no record, so the default runs what sel
+    ran: a full default run of the prototype failed only `PipelineSwitchTest`'s two selector methods, and its sweep at `0d4108f0d` (both
+    generators, every fixture at O0 and O2, 40 milestones, the 5 CLI harnesses, the snapshot) differed only at the decided deviations.
+  - Deviations at their targets (R5-M6; the catalog is empty): `constant-temporaries` (R5-M145, 38 `Expect` uses), `inline-env` (R5-M104,
+    16), `receiver-layers` (R5-M114: the default reads the base subobject; the five `InheritedObjectReceiverLayers*` fixtures lose
+    `LegacyNative` and their `.deviation`) and `static-cycle` (R5-M106: `StaticInitializationTest.DetectsIndirectCycle` asserts
+    `Hello.kimi:3:30: abort KIMI_E_STATIC_CYCLE` at the accessing Place; the reason is SPEC 22.4.3, which gives an access to an
+    Initializing slot that code, reported at the start of the Place expression, 22.5.1 and 22.5.2; the old `KIMI_E_ABORT` at the
+    declaration goes).
+  - G157 (45): an audit of a transfer's cleanup whose abandoned or secured value is a constant audits nothing under MIR code generation (a
+    constant has no destruction, R5-M118), so its target alone would lose the check. `AggregatePartialExit`, `AggregatePartialReturn`,
+    `AggregateArrayPartialExit`, `StringFunctionEarlyArgument`, `ElementReplacementTransferAggregate` and, found by the same search,
+    `AggregateDefaultAbandoned` take a call's result (`echo(...)`, as `StringFunctionCallerOrder`): each expects its one destruction and
+    passes natively on both generators. `ElementReplacementTransferString` keeps its constant target: its call-result form is a
+    validator finding at check (the MIR builder gives a call's result at a transferring index the Place's Never Type; an open issue).
+  - Q1 (b): the deviation form stays (`Codegen.Expect`, `LegacyNative`, `Sidecar`, `CodegenDeviationTest`, compare-fixtures' deviating
+    count) with an empty catalog, checked on a synthetic sample; G4 deletes it (S7). Q2 (a): `verify.ps1 -Codegen` defaults to `mir`;
+    full theory names, the pending gate and `-UpdatePending` run only on an explicit `-Codegen mir`; the sel lane ends (OI-3).
+    `-Codegen legacy` is the rollback lane: until G4 it fails exactly the 39 native fixtures of the reduced sites (constant-temporaries
+    25: ElementBorrowOwner 8, StringComparison 9, ForeignPointerString 3, FixedArrayCapture 2, GuardCleanup 2,
+    ElementReplacementTransferString; inline-env 8; receiver-layers 5; static-cycle 1) and no managed test.
+  - Also: `LibraryEmissionTest.EmitsInspectionWithoutAnOsEntry` (R5-M12 class S) reads the generation entry's module (no exported
+    definition, no OS entry); `GenericGenerationDiagnosticTest`'s four `FailedInstance`/`FailureInstance` null checks on default
+    compilations, which MIR code generation never sets, are deleted (their programs' success is already asserted). The
+    `CompilerCodegen.Legacy` pins (99 in 71 files) and the direct `Emission.TryPrepare` readers stay (G4, G5, G7; R5-M85).
+  - Rejected: Q1 (a), deleting the form at G3 (S7 deletes it with the selector at G4); Q2 (b), the gate on every default run (the sel
+    lane's tooling as a second mode after OI-3); the String row's call-result form through `@move` (a form chosen to avoid a defect).
