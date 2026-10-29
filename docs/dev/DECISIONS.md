@@ -5330,7 +5330,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     owner, 2026-10-29, after the Q11 suspension 「WK をどう進めますか？ (1) 一段上でもう 1 回 / (2) 保留する」: 「一段上でもう1回」), the
     design owner's Revision 9: an erased callable is one representation, its erased signature (`Binding.ErasedSignature`: the
     instantiated signature Type and the declaration whose syntax binds its per-call Origins, its Binder: a Function Type's
-    `FunctionTypeKoto`, a requirement's or Virtual's own declaration, a property requirement's accessor), and an Origin is per-call
+    `FunctionTypeKoto`, a requirement's or Virtual's own declaration, a Property accessor's Binder), and an Origin is per-call
     exactly when it is an input or parameter Origin whose binder is the signature's Binder (`IsFixed(atom, binder)`); any other but
     `static`, and a carrier's hidden Origins, are fixed. `TyCtxt.ErasedCallee` gives the Binder of a requirement or Virtual callee on an
     abstract Self, `TyCtxt.Retains` a Value callee's (`FunctionTypeBinder`), `HandedSignatures`, `RequirementSignatures` and
@@ -5343,7 +5343,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `MirEffects` reads `MirCalleeKind.Requirement`/`Virtual` for A4's dispatch bounds (another analysis, kept); MirBorrows' other
     `MirCalleeKind.Value` tests place the callee operand, not erasure. Wk row `erasedOrigins`: virtPickOk and reqPickOk valid,
     virtPickBad errs, virtPickConcreteOk valid; a Function Type's or Callable bound's signature writes no `during` (SPEC 8.10), so their
-    per-call twins are the existing fnValue, resultF and callableBound rows. A carrier has, besides its own node (a value of T, R4-M36),
+    per-call twins are the existing fnValue, resultF and callableBound rows. r2.1 (design-r2 §9a): an erased accessor's Binder is
+    `BoundAccessor.Binder` (its declaration, else its Property's), the `use` Binding.Retains takes; `ErasedCallee` had given the
+    accessor's `FunctionKoto`, so since 4b58be003 (rule 3) a Property requirement setter's own Origins read as fixed and `s.item = 9;
+    return s.item` erred at `s` (Wk row `erasedSetter`). A carrier has, besides its own node (a value of T, R4-M36),
     its reached node (Revision 3, `ReachedNode`): only a relation whose output is a writable carrier position (an erased writer's
     `uniq/Self` or `uniq/T` input) reaches it, and it fills `Abstract`; a result builder's relation fills the carrier's own node.
   - Made precise by rows during implementation (the design owner's Revisions 3–5, the planning session's acceptance): a `during self`

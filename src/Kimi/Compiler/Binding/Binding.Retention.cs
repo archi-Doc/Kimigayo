@@ -14,8 +14,9 @@ namespace Kimi.Compiler;
 // - Responsibility: what such a callable relates, read from its signature alone (AddErasedRelations): each fixed Origin of an input
 //   outlives each fixed Origin of an output.
 // - Inputs: the instantiated signature Type and the declaration whose syntax binds its per-call Origins, its Binder: a Function Type's
-//   FunctionTypeKoto (FunctionTypeBinder, null where it binds none), a requirement's or a Virtual's own declaration, a property
-//   requirement's accessor. TyCtxt.ErasedCallee gives one for a requirement or Virtual callee on an abstract Self, TyCtxt.Retains for a
+//   FunctionTypeKoto (FunctionTypeBinder, null where it binds none), a requirement's or a Virtual's own declaration, a Property
+//   accessor's Binder (BoundAccessor.Binder: its declaration, else its Property's), never the accessor's FunctionKoto. TyCtxt.ErasedCallee
+//   gives one for a requirement or Virtual callee on an abstract Self, TyCtxt.Retains for a
 //   Value callee's signature, and HandedSignatures (with TyCtxt.RequirementSignatures) and HandedCallables for each callable a contract
 //   hands its body.
 // - Outputs: the relations (premise edges) the contract's environment takes.

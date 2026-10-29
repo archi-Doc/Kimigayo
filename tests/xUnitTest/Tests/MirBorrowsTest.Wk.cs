@@ -301,6 +301,12 @@ public sealed partial class MirBorrowsTest
             WkForm("virtPickBad", "<T>(b: objref/BaseG<T>) -> ()\n", WkPick("b") + "m = 5\nlook(r@ref)") +
             WkForm("virtPickConcreteOk", "(b: objref/BaseG<i32>) -> ()\n", WkPick("b") + "n = 5\nlook(r@ref)") +
             WkForm("reqPickOk", "<T>(t: ref/T) -> ()\n    T is Pk\n", WkPick("t") + "n = 5\nlook(r@ref)"),
+        ["erasedSetter"] = "contract Ct<E>\n    E is Copy\n    property item: E has get, set\n" +
+            "struct Sp\n    Self is Ct<i32>\n    public var item: i32 = 7\n    public init() => ()\n" +
+            WkForm("setGetOk", "<T>(s: uniq/T) -> i32\n    T is Ct<i32>\n", "s.item = 9\nreturn s.item") +
+            WkForm("setAddOk", "<T>(s: uniq/T) -> i32\n    T is Ct<i32>\n", "s.item += 2\nreturn s.item") +
+            WkForm("setGetConcreteOk", "(s: uniq/Sp) -> i32\n", "s.item = 9\nreturn s.item") +
+            WkForm("setHeldBad", "<T>(s: uniq/T) -> i32\n    T is Ct<i32>\n", "let r = s@follow@ref\ns.item = 9\nlook(r)\nreturn 0"),
         ["writerFn"] = WkForm("sneakW", "<T, E>(slot: uniq/T, y: E, set: (uniq/T, E) -> ()) -> ()\n", "set(slot, y@move)") +
             WkBuilders("writerFn", "<T>(value: uniq/i32 during o, other: T, set: (uniq/T, uniq/i32 during o) -> ()) -> ()\n", "sneakW(slot@uniq, child@move, set@move)") +
             WkForm("writerFnDirectBad", "<T>(value: uniq/i32 during o, other: T, set: (uniq/T, uniq/i32 during o) -> ()) -> ()\n", WkMoved + "set(slot@uniq, child@move)\nv@follow = 5\nlook(slot@ref)"),
@@ -443,6 +449,11 @@ public sealed partial class MirBorrowsTest
     // Revision 9: an erased signature's per-call Origins are its Binder's, the virtual's own as a requirement's (`x`, `y`, the receiver's):
     // only `x` reaches the result. Fails on c1389e455: virtPickOk errs at `n = 5` (a virtual's Origins read as fixed, R4's R2-B1).
     [InlineData("erasedOrigins", "virtPickBad: m = 5 1")]
+    // A Property requirement's accessor is erased on an abstract Self as a requirement is, its per-call Origins bound by the accessor's
+    // Binder (the Property requirement): setGetOk and setAddOk are valid, as their concrete twin is; setHeldBad's setter meets the live
+    // `r`. Fails on 295224f0e (since 4b58be003): setGetOk and setAddOk err at `s` (the erased signature's Binder was the accessor's
+    // FunctionKoto, so the setter's own Origins read as fixed).
+    [InlineData("erasedSetter", "setHeldBad: s.item = 9 CallActivationConflict_Kd 1")]
     public void ACallableTheContractHandsTheBodyLetsAnAbstractTypeHoldTheArgument(string row, string expected)
         => Assert.Equal(WkExpected(expected), WkRecords(row));
 

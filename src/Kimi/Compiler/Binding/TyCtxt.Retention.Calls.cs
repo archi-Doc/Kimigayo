@@ -213,11 +213,12 @@ internal sealed partial class TyCtxt
     // erased at the call, read as its own instantiated signature (Binding.RetainsErased), else null: a requirement on a Self with an
     // abstract part, whose implementation is any conforming Type's (SPEC 8.15.1), or a virtual or overriding function on a declaring Type
     // with one, whose implementation is any deriving Type's override, bounded by the original's declared contract (SPEC 6.4, 8.13.2); the
-    // callee's own declaration binds its per-call Origins. On a concrete Self the standard computation reads the contract.
-    private static FunctionKoto? ErasedCallee(FunctionKoto callee, Subst? types)
+    // callee's own declaration binds its per-call Origins, an accessor's Binder an accessor's (the `use` Binding.Retains takes). On a
+    // concrete Self the standard computation reads the contract.
+    private static Koto? ErasedCallee(FunctionKoto callee, Subst? types)
     {
         var self = callee.IsRequirement ? types?.Self : (callee.IsVirtual || callee.IsOverride) ? types?.Declaring : null;
-        return self?.HasAbstractPart == true ? callee : null;
+        return self?.HasAbstractPart == true ? callee.Accessor?.Binder ?? callee : null;
     }
 
     // A callee's declared parameter and result Types, in its own terms.
@@ -357,8 +358,7 @@ internal sealed partial class TyCtxt
         }
 
         var result = accessor.Result is null ? BoundType.Unit : this.Instance(accessor.Result, subst, null);
-        var binder = (Koto?)accessor.Declaration ?? accessor.Property.Declaration;
-        return result is not null && this.AddSignature(CollectionsMarshal.AsSpan(inputs), result, binder, signatures);
+        return result is not null && this.AddSignature(CollectionsMarshal.AsSpan(inputs), result, accessor.Binder, signatures);
     }
 
     // The erased signature of the Function Type `(inputs) -> result` with the Binder of its per-call Origins into `signatures`, once.
