@@ -89,9 +89,10 @@ public class CallOriginRelationTest(ITestOutputHelper output)
         Assert.Equal([("p", "requires p outlives static, which is not proven"), ("q", "requires q outlives static, which is not proven")], errors.Select(x => (Text(source, x.Span), x.Label)));
     }
 
-    // SPEC 15.6.1: a contextual payload that fits its expected payload Type only structurally is an Origin relation at the payload when the
-    // expected enum comes from an annotation, never a Type mismatch.
+    // SPEC 15.6.1: a contextual payload that fits its expected payload Type only structurally is an Origin relation at the payload,
+    // whether the expected enum comes from a selected parameter or an annotation, never a Type mismatch.
     [Theory]
+    [InlineData("func needs(o: Option<ref/i32 during static>) -> i32 => 1\nfunc caller(p: ref/i32) -> i32\n    let local: i32 = 3\n    return needs(.Some(local@ref)) + needs(.Some(p))\n")]
     [InlineData("func caller(p: ref/i32) -> i32\n    let local: i32 = 3\n    let o: Option<ref/i32 during static> = .Some(local@ref)\n    let q: Option<ref/i32 during static> = .Some(p)\n    return 1\n")]
     public void AContextualPayloadRelationIsJudgedAtThePayload(string body)
     {
@@ -101,21 +102,6 @@ public class CallOriginRelationTest(ITestOutputHelper output)
             [(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref", "requires the borrow local@ref outlives static, which is false"), (nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "p", "requires p outlives static, which is not proven")],
             errors.Select(x => (x.Code, Text(source, x.Span), x.Label)));
         Assert.All(errors, static x => Assert.Equal(("fit", "ref/i32 during static"), (x.Reason![3].Value, x.Reason[4].Value)));
-    }
-
-    // SPEC 15.6.1 and D-1 (the owner, 2026-10-29, 「選択肢 (a)：引数に記録し、payload を関連位置に添える」, G216 (a)): when the expected enum
-    // comes from a selected parameter, the call records the relation its argument's contextual payload supplies at that argument, with
-    // the payload as a related location; it stays a fit, never a Type mismatch.
-    [Fact]
-    public void AContextualPayloadRelationOfACallArgumentIsRecordedAtTheArgument()
-    {
-        var source = "func needs(o: Option<ref/i32 during static>) -> i32 => 1\nfunc caller(p: ref/i32) -> i32\n    let local: i32 = 3\n    return needs(.Some(local@ref)) + needs(.Some(p))\n" + Main;
-        var errors = DiagnosticCorpus.Check(source).Diagnostics;
-        Assert.Equal(
-            [(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), ".Some(local@ref)", "requires the borrow local@ref outlives static, which is false"), (nameof(DiagnosticCode.UnprovenOriginRelation_Kd), ".Some(p)", "requires p outlives static, which is not proven")],
-            errors.Select(x => (x.Code, Text(source, x.Span), x.Label)));
-        Assert.All(errors, static x => Assert.Equal(("fit", "ref/i32 during static"), (x.Reason![3].Value, x.Reason[4].Value)));
-        Assert.Equal(["local@ref", "p"], errors.Select(x => (x.Related ?? []).Select(r => Text(source, r.Span)).FirstOrDefault(static t => t is "local@ref" or "p")));
     }
 
     // SPEC 23.1: at an inner position of a Borrow argument, the failing Origin is the stored Borrow, not the argument's own one: the
