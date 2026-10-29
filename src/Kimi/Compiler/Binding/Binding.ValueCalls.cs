@@ -577,7 +577,7 @@ public sealed partial class Binding
             }
             else if (ownBinder is not FunctionKoto { IsAnonymous: false })
             {
-                this.RequireNestedResult(call.Method, signature.Components[1], result, call);
+                this.RequireNestedResult(signature.Components[1], result, call);
             }
 
             var inputs = count == 0 ? BoundType.Unit : this.types.Tuple(instantiated.AsSpan(0, count));

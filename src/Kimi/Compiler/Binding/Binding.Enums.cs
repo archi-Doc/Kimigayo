@@ -317,7 +317,7 @@ public sealed partial class Binding
         {
             if (this.SubstituteType(payload[i].BoundType!, solution.SlotOwner, solution.Types, solution.Lengths) is { } payloadType)
             {
-                this.CollectInputPremises(payloadType, inference, use);
+                this.CollectFilledPremises(payloadType, null, inference, use);
             }
         }
 

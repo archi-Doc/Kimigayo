@@ -247,7 +247,7 @@ public sealed partial class Binding
             {
                 this.OriginInference ??= binding.BeginOriginInference(this.Call, binder);
                 binding.CollectOriginInference(pattern, actual, this.OriginInference, known: quantifier);
-                binding.CollectInputPremises(pattern, this.OriginInference, this.Call);
+                binding.CollectFilledPremises(pattern, null, this.OriginInference, this.Call);
             }
 
             pattern = binding.SubstituteStoredOrigins(pattern, binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());

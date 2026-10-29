@@ -629,7 +629,7 @@ public sealed partial class Binding
         {
             if ((defaults.Contains(i) || TakesCallTypeAt(i)) && solution.Pattern(function.Parameters[i].Type.BoundType!) is { } pattern)
             {
-                this.CollectInputPremises(this.SubstituteType(pattern, solution.SlotOwner, solution.Types, solution.Lengths) ?? this.FormedApplication(pattern, solution.SlotOwner, solution.Types), inference, call);
+                this.CollectFilledPremises(this.SubstituteType(pattern, solution.SlotOwner, solution.Types, solution.Lengths) ?? this.FormedApplication(pattern, solution.SlotOwner, solution.Types), null, inference, call);
             }
         }
 
