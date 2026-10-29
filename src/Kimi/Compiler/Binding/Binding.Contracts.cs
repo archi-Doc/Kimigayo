@@ -636,7 +636,8 @@ public sealed partial class Binding
                 this.associatedIdentityChecks.Clear();
                 foreach (var a in environment.Facts)
                 {
-                    if (a is not { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.AssociatedProjection, RequiredType: { } ta } || DependentType(ta))
+                    if (a is not { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.AssociatedProjection, RequiredType: { } ta } ||
+                        this.DependentType(ta))
                     {
                         continue;
                     }
