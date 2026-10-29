@@ -63,16 +63,14 @@ public class GenericClosureIdentityTest
     [Theory]
     [InlineData(false, "")]
     [InlineData(true, "zero\n")]
-    public void ZeroSizedEnvironmentsAllocateOnlyForRequiredDestruction(bool destructor, string output)
+    public void ZeroSizedEnvironmentsAllocateNothing(bool destructor, string output)
     {
         var source = "struct Zero\n" + (destructor ? "    drop => Console.writeLine(\"zero\")\n" : string.Empty) +
             "func keep<T>(value: T) -> () -> i32\n    T is Owned\n    let action = func [value@move] () -> i32 => 7\n    return action@move\nlet result = keep(Zero.init())\nrequire result() == 7 else => $abort(\"zero\")";
 
-        // The zero-sized environment that needs destruction is stored in the Function value's word under MIR code generation (PD19, IMPL
-        // 21.1.3); the old generator allocates it (DECISIONS R5-M104's inline-env deviation).
-        var count = destructor ? Codegen.Expect(0, 1, CodegenDeviations.InlineEnvironment) : 0;
-        var bytes = destructor ? Codegen.Expect(0L, 1L, CodegenDeviations.InlineEnvironment) : 0L;
-        NativeAllocationAudit.WriteFixture("GenericClosureIdentityZero" + destructor, source, count, count, bytes, output);
+        // A zero-sized environment is stored in the Function value's word, also one that needs destruction (PD19, IMPL 21.1.3; DECISIONS
+        // R5-M104).
+        NativeAllocationAudit.WriteFixture("GenericClosureIdentityZero" + destructor, source, 0, 0, 0, output);
     }
 
     [Trait("Purpose", "Allocation")]

@@ -64,8 +64,6 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
         var source = WideDivision.Replace("10@i128", "10@i64", StringComparison.Ordinal) + "\nrequire result == 5 else => $abort(\"result\")";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Validate(out var failure), failure);
-        Assert.Null(c.Ownership.FailedInstance);
-        Assert.Null(c.Emission.FailureInstance);
         ScalarEmissionTest.EmitFixture("GenericGenerationDiagnosticValid", source, string.Empty);
     }
 
@@ -146,8 +144,6 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid);
-        Assert.Null(c.Ownership.FailedInstance);
-        Assert.Null(c.Emission.FailureInstance);
     }
 
     [Fact]

@@ -8,8 +8,8 @@ namespace XunitTest;
 
 public class LibraryEmissionTest
 {
-    // The old generator's module (R5-M12 class S, rewritten at G3); test-library.ps1 emits these sources through the CLI and
-    // checks the selected generator's IR natively.
+    // A Library's module from the generation entry exports no definition and has no OS entry (DECISIONS R5-M12's class S assertion on the
+    // old generator's module, rewritten at G3); test-library.ps1 emits these sources through the CLI and checks the IR natively.
     [Theory]
     [InlineData("")]
     [InlineData("public func main(value: i32) -> i32 => value + 1")]
@@ -22,15 +22,9 @@ public class LibraryEmissionTest
         var c = Analyze(source);
         Assert.True(c.Binding.Startup.IsComplete);
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
-        for (var i = 0; i < module.FunctionCount; i++)
-        {
-            Assert.False(module.GetFunction(i).Exported);
-        }
-
-        using var writer = new StringWriter();
-        module.WriteIr(writer);
-        var ir = writer.ToString();
+        var ir = CompilationTestHelper.WriteIr(c);
+        Assert.Matches(@"(?m)^define internal ", ir);
+        Assert.DoesNotMatch(@"(?m)^define (?!internal )", ir);
         Assert.DoesNotContain("@__kimi_start", ir);
         Assert.DoesNotContain("@__kimi_entry_body", ir);
         Assert.Contains("@_fltused = global i32 0, align 4", ir);

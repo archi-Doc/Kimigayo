@@ -24,11 +24,12 @@
 // an item or with an undecided slot is a broken contract, as is a test build whose catalog was not discovered for the version generated
 // (its version stamp; PLAN G157 (15), DECISIONS R5-M136): its roots and its verification sites' numbers are that discovery's.
 // Invariants: every product generation request (EmissionArtifacts.Publish, and through Project.PublishArtifacts kimi build and kimi test)
-// and the out-string adapters pass this gate, and under MIR code generation none runs the old generator. Outside the gate until G7 deletes
-// LlvmEmitter, and with it Compilation.Emission: its direct readers in tests (TryPrepare inspections and failure facts, which G5 deletes)
-// and src/Benchmark (three stage measurements of the old generator; the pipeline benchmark generates through this entry under MIR code
-// generation, R5-M94) run the old generator without the gate, under MIR code generation too. One ModuleCodegen per compilation keeps MIR
-// code generation's storage.
+// and the out-string adapters pass this gate, and under MIR code generation, the default from G3 (the old generator under
+// KIMI_CODEGEN=legacy until G4; DECISIONS R5-M158), none runs the old generator. Outside the gate until G7 deletes LlvmEmitter, and with it
+// Compilation.Emission: its direct readers in tests (TryPrepare inspections and failure facts, which G5 deletes) and src/Benchmark (three
+// stage measurements of the old generator; the pipeline benchmark generates through this entry under MIR code generation, R5-M94) run
+// the old generator without the gate, under MIR code generation too. One ModuleCodegen per compilation keeps MIR code generation's
+// storage.
 // Must not: decide acceptance again, return failure text from new code (the adapters' text is transitional) or fall back to the old
 // generator under MIR code generation.
 
