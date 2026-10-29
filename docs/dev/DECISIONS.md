@@ -12495,7 +12495,20 @@ structure is recorded here by the unit that first implements it.
     and EffectBound's row, which leave the pending ledger here.
   - Verification lanes (OI-3 (a)): from G2 the `-Pipeline mir` lane runs only as the difference ledger's run; the sel lane runs until
     G3.
-  - Cost (S4): measured in a quiet slot before the group lands (`artifacts/benchmarks/r6-g2-cost/`); the figures follow here.
+  - Cost (S4, measured 2026-10-29 in a quiet slot; `artifacts/benchmarks/r6-g2-cost/`; G2's head `90697ecfa` against its merge base
+    `acc2f12ad`, both builds run from one folder, CPU 2 pinned at High priority, tiering off, 5 interleaved rounds; bytes exact, times
+    medians of the rounds): `--analyze-cost`, default configuration, Generic 1/32/64/128: a fresh check 34.6, 54.5, 95.6 and 156.7 ms
+    against 26.8, 52.5, 83.7 and 135.9 ms, allocating 10.00, 19.80, 29.95 and 49.49 MB against 9.17, 18.23, 27.71 and 45.59 MB (+0.83,
+    +1.57, +2.23, +3.90 MB: the MIR analyses of the bundled library's and the source's bodies); a warm Analyze 20.8, 37.0, 54.9 and 89.0
+    ms against 17.2, 31.7, 47.5 and 78.8 ms, allocating the same 315 to 1,192 B; the checked compilation retains 7.42, 14.17, 21.14 and
+    34.73 MB against 6.92, 13.31, 19.97 and 32.74 MB (+0.50 to +1.99 MB), its growth over warm Analyzes unchanged; on G2 the mir and sel
+    configurations equal the default within the rounds' spread and a few hundred bytes, as the base's mir did. BU-48's pinned harness:
+    cold Analyze Hello 9.74 ms against 4.42 ms (minima), 3,816,576 against 2,925,312 B, Milestone26 10.22 against 4.79 ms, 4,181,680
+    against 3,230,640 B; warm Hello 7.43 against 4.00 ms, Milestone26 7.83 against 4.31 ms, 0 B on both. The `Purpose=Allocation` tests
+    pass on the default pipeline (1,179 tests). G0's estimate held for time (+5 to +8 ms per small check); the bytes are about twice its
+    +0.4 to 0.5 MB and retained memory somewhat above its +0.3 to 1.3 MB; a warm Analyze takes +3.4 to +10.2 ms. R5-M4 accepted the
+    driver in every default Analyze subject to this measurement; the owner is asked whether the warm (LSP) cost is acceptable (G0 §10's
+    latency risk; the alternative, the driver at generation only until H5, departs from R5-M4).
   - Rejected: a per-row exception for `StaticStorage` or any other record (a per-row gate); filtering a record away or shrinking a
     scaling input to keep a pinned test's old expectation (a weakening); an environment rollback for the records (a second mode); a
     test of K9b's library location through a source module run as a non-root (G157 (2); a path production never takes).
