@@ -786,6 +786,26 @@ public sealed class TyCtxtTest
             holders.Select(x => $"{TyCtxt.Name(x)} {c.Binding.PrepareTypeStorage(x)} {TyCtxt.Name(c.Types.StoredParts(x, out _)[0]!)}"));
     }
 
+    // SPEC 8.6.1 (PLAN G290): a requirement call through a bound reference, in each closed instance, names the conformance whose reference
+    // has a projection over the Type's parameter as its argument (InstanceContract): `x.size()` in `use<T>` under `T is Iter<i32>` has
+    // B.size as its Body witness for `B<SrcI>` and for `B<Src>`, whose Item HasMore's refinement binds (before: Binding refuted both
+    // calls, and once it accepted them Witness found no conformance, sel's InternalInvariant_Kd).
+    [Fact]
+    public void ABoundReferenceWithAProjectionArgumentHasItsInstancesWitness()
+    {
+        var c = MinimalEmissionTest.Analyze("contract HasItem\n    associate Item\ncontract HasMore: HasItem\n    associate Elem\n" +
+            "    associate HasItem.Item is Elem\nstruct Src\n    Self is HasMore\n    associate HasMore.Elem is i32\nstruct SrcI\n    Self is HasItem\n" +
+            "    associate HasItem.Item is i32\ncontract Iter<T>\n    func size(self: ref/Self) -> i32\nstruct B<S>\n    S is HasItem\n" +
+            "    Self is Iter<S.(HasItem).Item>\n    var n: i32\n    public init(n: i32) => self.n = n\n" +
+            "    public func size(self: ref/Self) -> i32 => self.n\nfunc use<T>(x: ref/T) -> i32\n    T is Iter<i32>\n    return x.size()\n" +
+            "let a = B<SrcI>.init(n: 7)\nlet b = B<Src>.init(n: 8)\nrequire use(a@ref) == 7 and use(b@ref) == 8 else => $abort(\"size\")\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(
+            ["B<SrcI> Body size", "B<Src> Body size"],
+            RequirementCalls(c, c.Kotonoha).Select(x => (Composed(c, x)!.Self!, Witness(c, x)))
+                .Select(static x => $"{TyCtxt.Name(x.Item1)} {x.Item2.Kind} {x.Item2.Target?.Name}"));
+    }
+
     // SPEC 5.7 Calls, Fits (DECISIONS BU-46): a kept part states Unstated on each raw layer its declaration writes without `during`, so an
     // instance's kept parts tell such a layer from one a Type argument supplies at any depth below it (RawStated): in a Field, a Tuple, a
     // Type argument of a Field, a base clause (also an intermediate one's), beside a supplied argument, a nested holder, a pair slot's
