@@ -1,8 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Globalization;
 using System.Text;
-using System.Text.RegularExpressions;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
@@ -78,8 +76,11 @@ public class Utf8ConsoleTest
     {
         var source = "let v = " + value + "\nConsole.writeLine(\"\\(v)\")";
         NativeAllocationAudit.WriteFixture("Utf8ConsoleWidest" + kind, source, 0, 0, 0, text + "\n");
-        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(source));
-        Assert.Equal(Encoding.UTF8.GetByteCount(text), Assert.Single(RegionBytes(ir)));
+        var ir = GeneratedIr.Parse(CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(source)));
+        var region = Assert.Single(
+            ir.Functions.SelectMany(static x => x.Instructions),
+            x => x.Callee == ir.Function("__kimi_text_fixed") && x.Operands[1].Opcode == "alloca").Operands[1];
+        Assert.Equal($"alloca [{Encoding.UTF8.GetByteCount(text)} x i8], align 1", region.Shape);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -142,15 +143,6 @@ public class Utf8ConsoleTest
         var c = MinimalEmissionTest.Analyze("let text = Text.utf8(\"\\(42)\")\nConsole.writeLine(text)");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
-    }
-
-    // The sizes of a module's stack regions: the byte arrays its __kimi_text_fixed calls format into (each generator names its own).
-    private static IEnumerable<int> RegionBytes(string ir)
-    {
-        var buffers = Regex.Matches(ir, @"call void @__kimi_text_fixed\(ptr [^,]+, ptr (%[\w.]+), ").Select(static x => x.Groups[1].Value).ToHashSet();
-        return Regex.Matches(ir, @"(%[\w.]+) = alloca \[(\d+) x i8\], align 1(?!\d)")
-            .Where(x => buffers.Contains(x.Groups[1].Value))
-            .Select(static x => int.Parse(x.Groups[2].Value, CultureInfo.InvariantCulture));
     }
 
     private sealed class SelectionVisitor : KotoVisitor
