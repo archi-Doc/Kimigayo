@@ -15,8 +15,8 @@ is outside timing.
 | 2 | `BindingAndStartup` | `Compilation.Bind` and application `CheckStartup` |
 | 3 | `MirPublishBuildValidate` | `Compilation.BuildMir`: HIR publication, MIR construction and validation of every body, the source's and the Kimi library's, and the MIR analyses (R4; V18 later times them as their own intervals); and the instance collector, which lays out every by-value use of the items it admits (R5; on every pipeline since DECISIONS BU-48) |
 | 4 | `ControlFlowAndOwnership` | `Compilation.Analyze`: the old analysis; on every pipeline it reuses stage 3's MIR and checked set, memoized, and keeps them for generation |
-| 5 | `EmissionLowering` | `LlvmEmitter.TryPrepare`: emission preconditions, layouts, ABI and lowered output model; empty under sel |
-| 6 | `LlvmIrWriting` | `EmissionModule.WriteIr`: serialize that prepared model to LLVM IR; under sel `Compilation.WriteIr`, the generation entry (gate, output roots and `ModuleCodegen`) |
+| 5 | `EmissionLowering` | `LlvmEmitter.TryPrepare`: emission preconditions, layouts, ABI and lowered output model; empty under MIR code generation, the default from R6-gen's G3 |
+| 6 | `LlvmIrWriting` | `EmissionModule.WriteIr`: serialize that prepared model to LLVM IR; under MIR code generation `Compilation.WriteIr`, the generation entry (gate, output roots and `ModuleCodegen`) |
 
 Every operation creates a new `Compilation` and runs these stages exactly once in
 order. Stage 3 builds, validates and analyzes the MIR and collects its checked set
@@ -36,14 +36,16 @@ stages; stage 3 requires a MIR without construction records or validator finding
 The compiler implementation and public APIs are unchanged.
 
 A process follows `KIMI_PIPELINE` and `KIMI_CODEGEN`, and the report's `compiler` names
-each non-default selection (`[mir]`, `[codegen mir]`, `[mir, codegen mir]`). Under MIR code
-generation (`KIMI_CODEGEN=mir`, on either pipeline since DECISIONS R5-M156) the
+each non-default selection (`[mir]`, `[codegen legacy]`, `[mir, codegen legacy]`). So
+`--compiler-pipeline` measures MIR code generation by default (DECISIONS R5-M158), and
+`KIMI_CODEGEN=legacy` measures the old generator until G4. Under MIR code generation the
 collector lays out every by-value use in stage 3 and code generation reads those layouts
 as it writes, so stage 5 is empty and stage 6 is the whole generation entry; the stage
-names stay, so reports remain comparable (DECISIONS R5-M94). An input that sel does not
-generate fails the run with the entry's failure. Since DECISIONS BU-48 both stage 3s
-collect, so sel's code generation cost against the old generator's is `--collection-cost`'s
-`cold` collection plus sel stages 5-6, against legacy stages 5-6 (DECISIONS R5-M148).
+names stay, so reports remain comparable (DECISIONS R5-M94). An input that MIR code
+generation does not generate fails the run with the entry's failure. Since DECISIONS BU-48
+both stage 3s collect, so MIR code generation's cost against the old generator's is
+`--collection-cost`'s `cold` collection plus its stages 5-6, against legacy stages 5-6
+(DECISIONS R5-M148).
 
 Seven boundaries record monotonic timestamps and current-thread allocated bytes.
 Differences between adjacent boundaries partition the same operation's first-to-last
@@ -100,7 +102,7 @@ allocated bytes and its per-operation ticks.
 `--collection-cost-check` times nothing: it requires the three collections to equal one another and the compilation's own
 checked set (its `Analyze`'s) element by element, the items' keys in admission order and the records' codes and locations; the
 comparison to fail on the same collection reordered and on a changed record code or location; and `cold` to allocate more than
-`warm` on every input, so a warm `cold` fails. Sel's code generation cost against the old generator's is then `cold` + sel
+`warm` on every input, so a warm `cold` fails. MIR code generation's cost against the old generator's is then `cold` + its
 stages 5-6 against legacy stages 5-6, without a stage-3 subtraction, which is below the noise on small inputs (DECISIONS
 R5-M147). Follow the measurement protocol below.
 
@@ -116,7 +118,7 @@ dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --compiler-pipeline-check
 
 The check runs every input repeatedly. It verifies nonempty IR and exact agreement
 between the measured stages' IR and the public `Compilation.WriteIr` under the process's
-selector (set `KIMI_PIPELINE=mir` and `KIMI_CODEGEN=mir` for sel), agreement with uninstrumented
+selector (set `KIMI_CODEGEN=legacy` for the old generator), agreement with uninstrumented
 fresh compilation, monotonic boundaries and conservation of stage time/allocation
 totals. It has no timing thresholds. Save output under `artifacts/verify/`.
 
