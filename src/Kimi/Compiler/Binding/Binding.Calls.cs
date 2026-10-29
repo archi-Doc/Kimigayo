@@ -475,7 +475,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (!this.CompleteArguments(call, selected, scope, selectedOperations))
+            if (!this.CompleteArguments(call, selected, scope, selectedOperations, evaluated[winnerIndex].FromExpected))
             {
                 return Complete(call, null);
             }

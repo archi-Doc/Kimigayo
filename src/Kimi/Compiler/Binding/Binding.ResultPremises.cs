@@ -9,8 +9,11 @@ namespace Kimi.Compiler;
 // result, a relation that the callee's inputs and declared relations already prove needs no premise; only the others, which the
 // definition would otherwise fail, are carried to the uses: each call solves its Origins with them and proves them for its substituted
 // result, and a function reference or a conformance proves them from the required contract. Every input relation is a premise, so each
-// is carried: each call shortens its solution with them and judges them at each input whose instantiation replaced an Origin, and a
-// whole-contract comparison proves them where its solve replaced a required Origin. One visitor serves both.
+// is carried: each call, construction and value call shortens its solution with the substituted well-formedness of every part it fills,
+// beside the part's own Type (CollectFilledPremises), and judges it at each input whose instantiation replaced an Origin, a part with no
+// Type of its own at its site; a whole-contract comparison proves them where its solve replaced a required Origin, and every Callable
+// comparison proves the implementation's own well-formedness under its instantiation (FailedSignatureWellFormedness). One visitor serves
+// all, its subject explicit (WellFormedSubject); a nested signature's well-formedness is its own (the owner's (A)).
 public sealed partial class Binding
 {
     // The callee whose result premise is set aside while a use asks whether its definition proves a relation from its other premises.
@@ -265,13 +268,14 @@ public sealed partial class Binding
     // SPEC 15.3.7, 15.6.4 step 3: the selected call's obligations for the instantiated parameter Type of a slot it fills (SPEC 10.1 step 2),
     // judged at `at`. A written argument's or the receiver's own Type, `supplied`, is well formed, so only a position that the fit replaced,
     // such as an Origin shared with another input, can fail. As for the fit, an argument that carries no Origin, such as one that transfers
-    // control, supplies none; and an input whose fit already failed is no instance of its parameter, so its well-formedness would only
-    // restate that failure. A default supplies no Type (SPEC 10.1.1), so every position of its Type is judged, at the call (SPEC 7.2.3).
+    // control, supplies none; and a supplied input whose fit already failed is no instance of its parameter, so its well-formedness would
+    // only restate that failure. A part with no Type of its own (a default, SPEC 10.1.1, judged at the call, SPEC 7.2.3, or a part that
+    // takes its Type from the call, at its site) has every position judged, a relation it repeats merging at its location (SPEC 15.6.1).
     private void RequireInputPremises(Koto at, BoundType parameter, BoundType? supplied)
     {
         at = supplied is null ? this.JudgedAt(at) : at;
-        if (parameter.StoresOrigin && (supplied is null || (supplied.StoresOrigin && !ReferenceEquals(supplied, parameter))) &&
-            this.originRelations?.ContainsKey(at) != true && !this.HasCallRelation(at))
+        if (parameter.StoresOrigin && (supplied is null ||
+            (supplied.StoresOrigin && !ReferenceEquals(supplied, parameter) && this.originRelations?.ContainsKey(at) != true && !this.HasCallRelation(at))))
         {
             this.VisitWellFormedPremises(parameter, parameter, supplied, new(WellFormedSubject.Input, null, at, WellFormedAction.Require));
         }

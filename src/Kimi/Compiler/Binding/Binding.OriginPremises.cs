@@ -353,8 +353,8 @@ public sealed partial class Binding
     }
 
     // SPEC 15.6.1 well-formedness as a premise: every Origin stored below a borrow layer of the result outlives that layer's Origin.
-    // A nested Function Type ends the premise: its per-call Origins cannot leave their binder (SPEC 15.3.4), so the well-formedness
-    // inside it stays an obligation of the definition.
+    // A nested Function Type ends the premise: its well-formedness is its own (the owner's (A); DECISIONS R4-M155), a premise of its own
+    // body and proven at each of its calls, never a premise or an obligation of the enclosing definition.
     private void AddResultPremises(OriginPremiseEnvironment environment, BoundType type)
     {
         if (!type.StoresOrigin || type.Kind == BoundTypeKind.Function || !environment.Results.Add(type))

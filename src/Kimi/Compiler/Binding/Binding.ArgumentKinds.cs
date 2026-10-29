@@ -28,9 +28,13 @@ namespace Kimi.Compiler;
 //   one candidate or one Case construction, whose evidence walk takes each part's evidence for the slots by its kind (InferArgument,
 //   Binding.ArgumentKinds.Evidence.cs) and applies the defaults (DefaultArguments, DefaultPayloads), and whose candidate operations
 //   substitute the solution (Type) and judge the Constraints over it (Prove); CompleteUnselected, the parts of a call that completes
-//   none, bound on their own (SPEC 23.1.2).
-// - Invariants: a recorded kind and a Literal's default are keyed by syntax identity (SourceRef) and live for one pass; a deferred
-//   part stays deferred after its completion, so its Type is never evidence for an outer slot (WasDeferred); a Literal
+//   none, bound on their own (SPEC 23.1.2); TakesCallType, whether a part's recorded kind takes its Type from its call; PublishPartSite,
+//   the one entry through which a completing call (named, value, a Case construction) publishes where a part's relations are recorded,
+//   following outward a call that takes the position's Type from its own expected Type (EvaluatedCandidate.FromExpected, InferExpected;
+//   DECISIONS R4-M155).
+// - Invariants: a recorded kind, a Literal's default and a part's site are keyed by syntax identity (SourceRef) and live for one pass;
+//   a part's kind is SPEC 10.5.1's for every classified part, and its deferral a separate fact written only by the probe and control
+//   flow; a deferred part stays deferred after its completion, so its Type is never evidence for an outer slot (WasDeferred); a Literal
 //   is evidence only through the default recorded for the selected candidate; a Never-typed part is no evidence (SPEC 10.8).
 // - Prohibitions: a consumer reads a part's kind from KindOf and tells only the forms of one kind apart (an anonymous function from a
 //   reference) to fit them; the call, element, Case-payload and value-call paths keep no evidence or fit dispatch of their own;
@@ -447,9 +451,8 @@ public sealed partial class Binding
                 {
                     completedWaiting[i] = true;
                     waitingContexts[i] = operations[i].ParameterType;
-                    var judged = this.EnterArgument(call, selected, argument, pattern);
+                    this.PublishPartSite(call, selected, argument, pattern, evaluation.Evaluated[winner].FromExpected, this.OpensPosition(call, selected, pattern) ? argument : null);
                     var completed = this.CompleteWaitingPart(argument, pattern, solution.SlotOwner, operations[i].ParameterType, evaluation.Scope);
-                    (this.judgedArgument, this.openedArgument) = judged;
                     if (completed is null)
                     {
                         return false;
@@ -496,7 +499,7 @@ public sealed partial class Binding
     // SPEC 10.5, 10.2: completes the selected candidate's arguments at its operations: a part still unbound is bound at its parameter's
     // Type, and a Closure or Function Item the candidate erases is converted to the common Function Type. False when one fails; every
     // failing erasure is reported, since the call rests on it and another candidate is never selected.
-    private bool CompleteArguments(InvocationKoto call, FunctionKoto selected, BindingScope scope, Span<BoundArgumentOperation> operations)
+    private bool CompleteArguments(InvocationKoto call, FunctionKoto selected, BindingScope scope, Span<BoundArgumentOperation> operations, in SlotSet fromExpected)
     {
         var erased = true;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
@@ -507,10 +510,14 @@ public sealed partial class Binding
                 // The argument is an expression of the caller's context, not of the selected requirement.
                 var selectedContract = this.activeRequirementContract;
                 this.activeRequirementContract = null;
-                var judged = this.EnterArgument(call, selected, argument, operations[i].ParameterIndex >= 0 && operations[i].ParameterIndex < selected.Parameters.Count ? selected.Parameters[operations[i].ParameterIndex].Type.BoundType : null);
+                if (operations[i].ParameterIndex >= 0 && operations[i].ParameterIndex < selected.Parameters.Count &&
+                    selected.Parameters[operations[i].ParameterIndex].Type.BoundType is { } pattern)
+                {
+                    this.PublishPartSite(call, selected, argument, pattern, fromExpected, this.OpensPosition(call, selected, pattern) ? argument : null);
+                }
+
                 this.RequireType(argument, scope, operations[i].SourceType ?? operations[i].ParameterType);
                 this.activeRequirementContract = selectedContract;
-                (this.judgedArgument, this.openedArgument) = judged;
                 if (argument.BindingState != BindingState.Resolved)
                 {
                     return false;
@@ -693,7 +700,8 @@ public sealed partial class Binding
     }
 
     // A part's kind as its call classified it (SPEC 10.5.1, every classified part; RecordKind, or the probe's and control flow's own
-    // records), the default a Literal part takes for the selected candidate (SPEC 10.2.1), and whether the argument probe deferred it
-    // (WasDeferred; written only where the probe defers a part and where control flow waits).
-    private readonly record struct ArgumentFact(ArgumentKind Kind, BoundType? Default, bool Deferred);
+    // records), the default a Literal part takes for the selected candidate (SPEC 10.2.1), whether the argument probe deferred it
+    // (WasDeferred; written only where the probe defers a part and where control flow waits), and where its relations are recorded,
+    // which the call that completes it publishes (PublishPartSite): its well-formedness at Site, a contextual payload's fit at Opened.
+    private readonly record struct ArgumentFact(ArgumentKind Kind, BoundType? Default, bool Deferred, Koto? Site = null, Koto? Opened = null);
 }

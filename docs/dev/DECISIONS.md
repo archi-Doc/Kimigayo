@@ -4536,7 +4536,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Numbering: R4-M136 is free on dev and every branch (R4-M133 2c-3B, R4-M134 the spec-rest session, R4-M135 the owner's withdrawal of
     the 70% rule).
 - **R4-M137 G216: a nested signature's input well-formedness forms no row of the body it is written in (2c-9)** (2026-10-26, R4's
-  implementer lane under R4-M126 §2.15 (P10) and D-11, the planning session's scope confirmation; supersedes R4-M101 O1)
+  implementer lane under R4-M126 §2.15 (P10) and D-11, the planning session's scope confirmation; supersedes R4-M101 O1; superseded in
+  part by R4-M155: its nested-result half)
   - Rule (SPEC 15.3.4 "Nested signatures", which names Function Types, Callable and anonymous functions together as nested signatures
     with per-call direct-input quantification; SPEC 15.6.1: a definition assumes its signature's Types well-formed and each call proves
     it): an input's well-formedness is a premise of its signature (R2, `ExtractOriginPremises` for a `FunctionKoto` or `FunctionTypeKoto`),
@@ -5675,13 +5676,32 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Supersedes R4-M137's nested-result half and, for a nested Function Type part of a signature, BU-26's Type-occurrence judgment.
   - Input rule (SPEC 10.5.1, 15.6.1, 15.6.4 step 3): an argument part that takes its Type from its call (`TakesCallType`: a Literal or
     waiting part, a contextual Case, a Tuple or array literal; ArgumentKinds' class) has no well-formed Type of its own; the call
-    (`RequireArgumentPremises`, named and value calls, Case payloads) judges every position of its instantiated parameter Type at it. A
-    part inside such an argument that takes its Type from the same call is recorded at the argument, once (`judgedArgument`, `JudgedAt`).
+    (`RequireArgumentPremises`, named and value calls, Case payloads) judges every position of its instantiated parameter Type at its
+    site (§3 below).
   - D-1 with amendment 1: a contextual payload's fit is the call's relation, at the argument with the payload related (role `payload`,
     `OriginRelationFact.Payload`, set on the argument's records by the construction that completes the payload, `RelatePayload`), only
     where the call determines that position's Type: its pattern names a callee Type parameter or a callee Origin the solve takes from
-    bounds rather than an equality with another input (`OpensPosition`, `OriginInference.IsFixed`, `openedArgument`); elsewhere it is
-    the Case's own fit, at the payload.
+    bounds (`OpensPosition`, `ArgumentFact.Opened`); elsewhere it is the Case's own fit, at the payload. "Solved by the call" is one rule
+    (revision 2 §6, R4-N1): an Origin whose inference variable has an invariant occurrence, an equality bound from any input or the
+    expected result, is fixed, not solved (`OriginInference.IsFixed`, Polarity 3), so swap3's `T` opens and cr5's `q` does not; the
+    former "an equality with another input" is corrected to it.
+  - §3 (revision 2, R4-B3, BU-B2; Q1, the planning session's exact form): a part's record lies at the argument of the call whose
+    solution determines its Type, published by the completing call through one entry, `PublishPartSite` (a named call's
+    `CompleteWaiting` and `CompleteArguments`, a Case construction's `CompletePayloads`; a value call, whose known signature takes
+    nothing from an expected result, publishes each argument as its own site and opens no position): `ArgumentFact.Site`, read by
+    `JudgedAt`, and `Opened`, read by `OpenedAt` (D-1). Where the call takes the position's Type from its own expected Type and is itself
+    a part of an outer argument, it hands on its own site and opened site; a Tuple or array literal's elements share their literal's.
+    The provenance is `EvaluatedCandidate.FromExpected`, the slots (Type and Origin) that the expected result bound (`InferExpected`; a
+    construction's slots fixed by its expected Type form the same set), kept with the candidate's evaluation record and not on
+    `SlotSolution` (U7a; the planning session's decision (iii), after a behavior-preserving commit in which `TryCandidate` writes its
+    facts into that record). `judgedArgument`, `openedArgument`, `EnterArgument` and `Within` go: no location is found by walking
+    `Parent`. lift1, lift2 and lift3 record at `.None`, open1 and open2 at the payload, a deferred call's part at the outer argument for
+    a value call as for a named one (bv3/bn3; bv4/bn4 as a Tuple's element), and mk4, whose waiting call takes the position from its own
+    evidence, at its own argument.
+  - §7 (BU-B3, BU-N2, R4-N6): a payload's operation carries its AdaptedType and the construction judges it through
+    `RequireArgumentPremises`; a payload's failed fit is one `RecordMismatch` at its opened site, the payload related there (no
+    try-then-fallback); `RequireInputPremises`' skip for a node that already has a record applies only where a supplied Type exists,
+    while a part with none is judged at every position, a relation it repeats merging at its location (SPEC 15.6.1).
   - SPEC 15.3.6, 15.6.4 step 3 (revision 2 §2, R4-B2): a call's solve satisfies the well-formedness, slots substituted, of every
     parameter it fills, a default's and each argument's; a Case construction without an expected Type and a value call do the same for
     their payloads and arguments, through one collector (`CollectFilledPremises` from `SolveLate`, `SolveConstructionOrigins`,
@@ -5742,7 +5762,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     obligation (`RequireWellFormedOutlives`), as an annotation's is; a Type's own clause at an input stays a Binding `declared` record.
   - Rejected: every relation and clause as an obligation (t7c's clause record dies beside the Type-constraint failures); input
     well-formedness as a Binding record (n7g2, ea1 and cs1_ty lose their independent records); every relation inside a call argument at
-    the argument (amendment 1); keeping BU-26's occurrence judgment of a nested result (fails r3, v2, z1, e1a, cz6 and 34 more rows).
+    the argument (amendment 1); keeping BU-26's occurrence judgment of a nested result (fails r3, v2, z1, e1a, cz6 and 34 more rows);
+    the design-first candidate (revision 5, §4.9 alternative (b): an opened region per argument position, which reads a part's own fit
+    through the call's open region); a narrower site rule, "a waiting part's site is its call's site" (wrong where a waiting call solves
+    the position by its own evidence, mk4).
   - Decided moves (the planning session, 2026-10-30: under the owner's answers already given): BU-26's nested-result rows
     (ADeclarationsRelationIsBindingsRecordAtItsTypeOccurrence `contract C` and `get`, now valid; ResultPremiseTest's nested Function
     Type test, its getter's record at the call and `converted` valid) by (A) and (a); AConversionProvesTheImplementationsConditions'

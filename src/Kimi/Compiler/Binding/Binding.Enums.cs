@@ -189,6 +189,7 @@ public sealed partial class Binding
         var operations = this.argumentOperationScratch.Rent(count);
         var lengths = this.lengthScratch.Rent(slots);
         var settled = this.RentSlotSet(count);
+        var fromExpected = this.RentSlotSet(slots + originCount);
         Array.Clear(arguments, 0, slots);
         Array.Clear(origins, 0, originCount);
         try
@@ -216,6 +217,11 @@ public sealed partial class Binding
                     }
 
                     arguments[i] = expected.Components[i];
+                }
+
+                for (var i = 0; i < slots + originCount; i++)
+                {
+                    fromExpected.Add(i); // A construction's slots fixed by its expected Type (PublishPartSite).
                 }
 
                 for (var i = 0; i < Math.Min(originCount, expected.OriginArguments.Count); i++)
@@ -272,7 +278,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (!this.CompletePayloads(use, payload, result, scope, operations))
+            if (!this.CompletePayloads(use, payload, result, scope, operations, fromExpected))
             {
                 return null;
             }
@@ -303,6 +309,7 @@ public sealed partial class Binding
             this.argumentOperationScratch.Return(operations, clearArray: true);
             this.lengthScratch.Return(lengths, clearArray: true);
             this.ReturnSlotSet(settled);
+            this.ReturnSlotSet(fromExpected);
             this.originScratch.Return(origins, clearArray: true);
             this.typeScratch.Return(arguments, clearArray: true);
         }
@@ -452,18 +459,22 @@ public sealed partial class Binding
 
     // SPEC 6.5.2, 10.5.1, 10.2: each payload in source order fits its decided payload Type as an argument does, is completed at it
     // (ErasePart for a callable) and adapted to it. The construction judges the fit once: a misfit is its
-    // Type mismatch, one only in Origin relations fails at the payload (SPEC 15.6.1), and a bare Non-Copy Place names its required
-    // spelling (SPEC 6.5.2); a payload's own failure while bound is its record, on which the construction rests.
+    // Type mismatch, one only in Origin relations fails at the payload (SPEC 15.6.1), or at the argument of the call that determines and
+    // opens its position (D-1, PublishPartSite: through `fromExpected`, the slots the construction's expected Type fixed), and a bare
+    // Non-Copy Place names its required spelling (SPEC 6.5.2); a payload's own failure while bound is its record, on which the
+    // construction rests.
     private bool CompletePayloads(
         Koto use,
         ReadOnlySpan<Koto> payload,
         BoundType result,
         BindingScope scope,
-        BoundArgumentOperation[] operations)
+        BoundArgumentOperation[] operations,
+        in SlotSet fromExpected)
     {
         for (var i = 0; i < payload.Length; i++)
         {
             var source = ((InvocationKoto)use).ArgumentNodes[i];
+            this.PublishPartSite(use, result.Symbol!.Declaration, source, payload[i].BoundType!, fromExpected, null);
             var stored = this.PartTypeIn(payload[i], result, scope)!;
             var type = this.ReplaceHolder(stored, null); // SPEC 5.7: a Case holding `during self` is constructed through no dereference.
             var fitted = default(BoundArgumentOperation);
@@ -491,7 +502,7 @@ public sealed partial class Binding
 
             var actual = this.ArgumentType(source, source.ErasedFunctionType ?? completed);
             // A payload's Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow). D-1: the fit of a
-            // payload at a position whose Type its call determines is that call's, at the argument (OpenedAt), also when it waits.
+            // payload at a position whose Type its call determines and opens is that call's, at the argument (OpenedAt), also when it waits.
             var judged = this.OpenedAt(source);
             if (!this.AdaptInput(source, type, actual, scope, null, null, out var adapted, out var quality, out var kind) ||
                 (!this.FailStaticBorrow(source, kind, type.Semantics) && !this.FitsTypeAt(adapted, type, judged) &&
@@ -503,11 +514,8 @@ public sealed partial class Binding
                 }
                 else if (FitsStructurally(adapted, type))
                 {
-                    if (ReferenceEquals(judged, source) || !this.RecordOriginFitFailure(judged, judged, adapted, type))
-                    {
-                        this.RecordMismatch(source, source, adapted, type);
-                    }
-                    else
+                    this.RecordMismatch(judged, judged, adapted, type);
+                    if (!ReferenceEquals(judged, source))
                     {
                         this.RelatePayload(judged, source); // D-1: the payload that supplies the call's relation.
                     }
@@ -522,10 +530,10 @@ public sealed partial class Binding
                 return false;
             }
 
-            // SPEC 15.6.1: a payload that takes its Type from the construction has no well-formed Type of its own; that inferred Type is
-            // judged at the payload, or at the call argument that supplies it (JudgedAt).
-            this.RequireInputPremises(source, type, this.TakesCallType(source) ? null : adapted);
-            operations[i] = new(source, actual, type, kind, quality, ParameterIndex: i);
+            // SPEC 15.6.1: a payload's instantiated Type is judged as an argument's is (RequireArgumentPremises): one that takes its Type
+            // from the construction, at its site (JudgedAt).
+            operations[i] = new(source, actual, type, kind, quality, ParameterIndex: i, AdaptedType: adapted);
+            this.RequireArgumentPremises(operations[i]);
         }
 
         return true;

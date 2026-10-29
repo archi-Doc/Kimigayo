@@ -266,8 +266,7 @@ public sealed partial class Binding
 
                 // SPEC 10.1 step 4, 15.6.1: the expected result fills the still-unbound slots by its structure; its Origin relations to
                 // the completed result are judged at the destination.
-                expectedStructure = this.Infer(returnPattern, expected, CallSlotOwner(function), arguments, true, lengths);
-                this.MatchResultOrigins(returnPattern, expected, function, origins, inputs);
+                expectedStructure = this.InferExpected(solution, returnPattern, expected, ref candidate);
                 if (returnPattern.CarriesOrigin)
                 {
                     solution.OriginInference ??= this.BeginOriginInference(call, function);
@@ -636,5 +635,52 @@ public sealed partial class Binding
 
             return null;
         }
+    }
+
+    // SPEC 10.1 step 4, 15.6.1: the expected result fills the still-unbound slots by its structure and the per-call Origins it names; the
+    // slots it fills are the candidate's FromExpected (PublishPartSite reads them).
+    private bool InferExpected(in SlotSolution solution, BoundType pattern, BoundType expected, ref EvaluatedCandidate candidate)
+    {
+        var function = solution.Function;
+        var (count, types, originCount) = (ExpectedSlotCount(function), CallSlotCount(function), CallOriginCount(function));
+        var unbound = this.RentSlotSet(count);
+        try
+        {
+            for (var slot = 0; slot < count; slot++)
+            {
+                if (!Filled(solution, slot, types, originCount))
+                {
+                    unbound.Add(slot);
+                }
+            }
+
+            var fits = this.Infer(pattern, expected, CallSlotOwner(function), solution.Types, true, solution.Lengths);
+            this.MatchResultOrigins(pattern, expected, function, solution.Origins, solution.Inputs);
+            var words = count > 64 ? (count - 1) >> 6 : 0;
+            var filled = new SlotSet(words == 0 ? [] : new ulong[words], words); // Kept with the candidate; a tail only past 64 slots.
+            for (var slot = 0; slot < count; slot++)
+            {
+                if (unbound.Contains(slot) && Filled(solution, slot, types, originCount))
+                {
+                    filled.Add(slot);
+                }
+            }
+
+            candidate = candidate with { FromExpected = filled };
+            return fits;
+        }
+        finally
+        {
+            this.ReturnSlotSet(unbound);
+        }
+
+        // Whether the solve holds a value for the slot; a slot beyond the solve's storage holds none.
+        static bool Filled(in SlotSolution solution, int slot, int types, int originCount)
+            => slot < types ? Holds(solution.Types, slot) || Holds(solution.Lengths, slot)
+                : slot < types + originCount ? Holds(solution.Origins, slot - types) : Holds(solution.Inputs, slot - types - originCount);
+
+        static bool Holds<T>(T?[] values, int index)
+            where T : class
+            => (uint)index < (uint)values.Length && values[index] is not null;
     }
 }

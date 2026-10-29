@@ -6,34 +6,12 @@ namespace Kimi.Compiler;
 
 // Call relations (SPEC 15.6.1, 15.6.5, 10.1): the Origin relations of a selected call, judged after selection at their own sources
 // (the receiver's and each argument's fit to its completed parameter Type, then each substituted clause and a Within row), the bounds
-// its fits give omitted Origins (CollectFitBounds) and the input that fixed an equality. Files: this one; .Records.cs (the records of
-// a node beyond the first).
+// its fits give omitted Origins (CollectFitBounds) and the input that fixed an equality. A part that takes its Type from a call records
+// its well-formedness, and a contextual payload its fit, at the site the completing call published (JudgedAt, OpenedAt; ArgumentKinds'
+// PublishPartSite, DECISIONS R4-M155); no relation's location is found by walking the syntax. Files: this one; .Records.cs (the records
+// of a node beyond the first).
 public sealed partial class Binding
 {
-    // SPEC 10.5.1, 15.6.4 step 3: the outermost call argument whose Type its call supplies while the call completes it. A part of it that
-    // takes its Type from that call (a waiting nested call's contextual argument, a contextual Case's payload) has no well-formed Type of
-    // its own: its well-formedness is part of the argument's, recorded once, at the argument (JudgedAt).
-    private Koto? judgedArgument;
-
-    // D-1 (the owner; d3 amendment 1): the outermost call argument at a position whose Type the call itself determines (OpensPosition)
-    // while the call completes it. A contextual payload's fit there is the call's relation, recorded at the argument with the payload
-    // related (OpenedAt); at a position the parameter fixes completely it is the Case's own fit, at the payload.
-    private Koto? openedArgument;
-
-    // `argument` when `part` lies in it within the same body, otherwise `part`.
-    private static Koto Within(Koto? argument, Koto part)
-    {
-        for (var node = argument is null ? null : part; node is not null; node = node is FunctionKoto ? null : node.Parent)
-        {
-            if (ReferenceEquals(node, argument))
-            {
-                return argument;
-            }
-        }
-
-        return part;
-    }
-
     private static bool MentionsOrigin(BoundType type, BoundOrigin origin)
     {
         if (!type.CarriesOrigin)
@@ -120,21 +98,13 @@ public sealed partial class Binding
         }
     }
 
-    // Enters `argument` of the selected call, at the parameter Type `pattern`, for its completion; returns the state to restore. The
-    // outermost argument wins (a nested call's argument lies within it).
-    private (Koto? Judged, Koto? Opened) EnterArgument(InvocationKoto call, FunctionKoto selected, Koto argument, BoundType? pattern)
-    {
-        var saved = (this.judgedArgument, this.openedArgument);
-        this.judgedArgument ??= argument;
-        this.openedArgument ??= pattern is not null && this.OpensPosition(call, selected, pattern) ? argument : null;
-        return saved;
-    }
+    // SPEC 10.5.1, 15.6.4 step 3: where the well-formedness of `part`, a part that takes its Type from its call, is recorded: the site
+    // the completing call published (PublishPartSite), the argument of the call whose solution determines the part's Type.
+    private Koto JudgedAt(Koto part) => this.RecordedFact(KotoHelper.UnwrapParentheses(part)).Site ?? part;
 
-    // Where the well-formedness of `part`, a part that takes its Type from its context, is recorded.
-    private Koto JudgedAt(Koto part) => Within(this.judgedArgument, part);
-
-    // Where the fit of `part`, a contextual payload, is recorded.
-    private Koto OpenedAt(Koto part) => Within(this.openedArgument, part);
+    // D-1 (the owner; d3 amendment 1): where the fit of `part`, a contextual payload, is recorded: the argument of the call that determines
+    // the position's Type and opens it (OpensPosition), with the payload related, else the payload, the Case's own fit.
+    private Koto OpenedAt(Koto part) => this.RecordedFact(KotoHelper.UnwrapParentheses(part)).Opened ?? part;
 
     // D-1 (amendment 1 of d3): whether the selected call determines the Type at the position of the parameter Type `pattern` itself: the
     // pattern names one of the callee's Type parameters, or an Origin of the callee that its solve takes from bounds (a meet or a join,
