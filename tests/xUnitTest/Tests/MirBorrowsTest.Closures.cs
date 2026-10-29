@@ -829,14 +829,13 @@ public sealed partial class MirBorrowsTest
     // ClosureReceiverClassificationTest's body) stores no Loan on `v` into the parameter's referent: `v@follow = x` and the second
     // `take0c` are valid in the owner and the uniq view, as the corpus
     // (tests/diagnostics/pair-cases.json) and the old path accept. A call storing the child through `put0c` (A2-put-ok, B4-chained,
-    // B5-result-put) keeps W's record in the uniq view: `1 Value store 0` carries the child's own value past the written local `slot`
-    // into E, each holder W reaches taking the row's kind (MirBorrows.Calls), where only `slot` can hold it; removed by WK, R4's
-    // per-storage retention kind (PLAN G276). A3-closure, which reads the capture `slot` after the write, stays rejected (pairStoreBad
-    // above).
+    // B5-result-put) is valid too: only the written local `slot` (its root, Own) can hold the child's own value, and the storage past
+    // it keeps what a read through the child carries (the owner's WK decision, DECISIONS R4-M154; on dev W carried `1 Value store 0`
+    // past `slot` into E). A3-closure, which reads the capture `slot` after the write, stays rejected (pairStoreBad above).
     [Fact]
     public void AByValuePairCarrierIsNotStoredIntoItsOwnReferent()
         => Assert.Equal(
-            ["a2PutOk: v@follow = x 2", "b4Chained: v@follow = x 2", "b5ResultPut: v@follow = x 2"],
+            [],
             ViewProblems("""
             func put0c<U>(slot: uniq/U, y: U) -> () => slot@follow = y@move
             func keep0c<F>(f: F) -> F => f@move
@@ -910,14 +909,14 @@ public sealed partial class MirBorrowsTest
                 _ = r@follow
             """).Select(static x => x.Replace(" ComparisonLoanConflict_Kd views", string.Empty, StringComparison.Ordinal)).ToArray());
 
-    // SPEC 15.6.4 (DECISIONS BU-49): a call given `.Some(x@uniq)` by value stores into x what a read through the borrow carries; it keeps
-    // the borrow's own Loan in x only where x's referent can hold a borrow of the layer's own Origin. With a distinct `o` it cannot, so
-    // reading x after the call is valid (use1; rustc accepts the analog); with `o` the referent's `q` it can, so the read conflicts with
-    // the Loan x now carries (use2; rustc rejects `&'q mut &'q i32`).
+    // SPEC 15.6.4 (DECISIONS BU-49, superseded in part by R4-M154): a call given `.Some(x@uniq)` by value stores into x what a read
+    // through the borrow carries, never the borrow's own Loan: x's referent `ref/i32 during q` can hold neither the borrow nor a borrow
+    // formed through it, whatever its Origins (the owner's WK decision; BU-49's own-Origin row kept it with `o` the referent's `q`), so
+    // reading x after the call is valid in use1 and use2.
     [Fact]
     public void AnExclusiveLayerHeldByValueKeepsItsOwnOriginsLoan()
         => Assert.Equal(
-            ["use2: x@follow 1"],
+            [],
             ViewProblems("""
             func tie0c1(a: ref/i32 during q, c: ref/i32 during o, b: Option<uniq/(ref/i32 during q) during o>) -> ()
                 return

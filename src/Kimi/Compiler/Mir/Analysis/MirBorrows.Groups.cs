@@ -12,14 +12,16 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirBorrows
 {
     private int[] loanStart = []; // By group (Loan.Group): its first Loan, the Loans being in group order.
-    private Loan[] ordered = []; // The Loans being put in group order.
+    private Loan[] ordered = []; // The Loans being put in group order, as long as `loans`, whose role it takes (Order).
     private int[] renumbered = []; // By Loan in issue order: its id in group order.
 
-    // Orders the Loans by group, stably, so the Loans a Move Path prefixes are one run of ids (Subtree).
+    // Orders the Loans by group, stably, so the Loans a Move Path prefixes are one run of ids (Subtree). The two Loan arrays swap roles
+    // here, so `ordered` is kept as long as `loans`: a later pass, whichever role each array then has, grows neither beyond what the
+    // longest view needed (a warm run allocates nothing).
     private void Order(int groups)
     {
         MirDataflow.Grow(ref this.loanStart, groups + 1);
-        MirDataflow.Grow(ref this.ordered, this.loanCount);
+        MirDataflow.Grow(ref this.ordered, this.loans.Length);
         MirDataflow.Grow(ref this.renumbered, this.loanCount);
         Array.Clear(this.loanStart, 0, groups + 1);
         for (var l = 0; l < this.loanCount; l++)
