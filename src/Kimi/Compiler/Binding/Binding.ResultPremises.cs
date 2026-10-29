@@ -368,13 +368,18 @@ public sealed partial class Binding
     }
 
     // A value call instantiates the same nested input/signature Origins and result premises as an ordinary call.
-    // The selected contract supplies structure; Origin relations are checked after solving, at their supplying values.
+    // The selected contract supplies structure; Origin relations are checked after solving, at their supplying values. An argument whose
+    // Type holds a region the call handed it is no Origin evidence (G216 (a) U7); its input premise bounds the solution as every one does.
     private bool SolveValueCallOrigins(Koto binder, BoundType parameters, ReadOnlySpan<BoundType> actuals, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use)
     {
         var inference = this.BeginOriginInference(use, binder);
         for (var i = 0; i < actuals.Length; i++)
         {
-            this.CollectOriginInference(parameters.Components[i], actuals[i], inference);
+            if (!HasOpenOriginFrom(actuals[i], use))
+            {
+                this.CollectOriginInference(parameters.Components[i], actuals[i], inference);
+            }
+
             this.CollectInputPremises(parameters.Components[i], inference, use);
         }
 
@@ -385,7 +390,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            this.OpenResultOnlyOrigins(use, function, origins, default); // A function reference's call uses no default (SPEC 10.1.1).
+            this.OpenUnmentionedOrigins(use, function, origins, default); // A function reference's call uses no default (SPEC 10.1.1).
             return true; // Selected-call clauses are judged at their supplying arguments, never as applicability.
         }
 

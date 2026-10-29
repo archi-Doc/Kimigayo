@@ -238,6 +238,14 @@ public sealed partial class Binding
                 actual = closure.Signature;
             }
 
+            // SPEC 10.5: a nested call checked against this candidate supplies relations for checking, never outer slot evidence; nor
+            // Origin evidence does any part that took its Type from this call (TookCallType, G216 (a) U7). Its input premise is collected
+            // with every input's, instantiated, after slot inference (InstantiatedPremise).
+            if (binding.TookCallType(source, this.Call))
+            {
+                return true;
+            }
+
             pattern = binding.FormedApplication(pattern, this.SlotOwner, this.Types);
             var known = pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function
                 ? new SignatureEvidence(CalleeBinder(callee, actual), source) : (SignatureEvidence?)null;
@@ -247,15 +255,9 @@ public sealed partial class Binding
             {
                 this.OriginInference ??= binding.BeginOriginInference(this.Call, binder);
                 binding.CollectOriginInference(pattern, actual, this.OriginInference, known: quantifier);
-                binding.CollectInputPremises(pattern, this.OriginInference, this.Call);
             }
 
             pattern = binding.SubstituteStoredOrigins(pattern, binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());
-            // SPEC 10.5: a nested call checked against this candidate supplies relations for checking, never outer slot evidence.
-            if (binding.WasWaitingPart(source))
-            {
-                return true;
-            }
 
             var common = this.Generic is null && (!this.Constructor || inferred);
             var structural = pattern.Kind == BoundTypeKind.Function;

@@ -594,8 +594,9 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.6.4, 15.1.5: each argument of a value call, bound against its parameter and adapted to it: its operation and the Type it
-    // acquires, which the call's substitution then instantiates; false when one fails, which fails or leaves unresolved the call.
+    // SPEC 15.6.4, 15.1.5: each argument of a value call, bound against the Type the call hands it (OpenCallPosition) and adapted to its
+    // parameter: its operation and the Type it acquires, which the call's substitution then instantiates; false when one fails, which
+    // fails or leaves unresolved the call.
     private bool AcquireValueCallArguments(
         InvocationKoto call, BindingScope scope, BoundType parameters, Span<BoundArgumentOperation> operations, Span<BoundType> instantiated)
     {
@@ -610,7 +611,7 @@ public sealed partial class Binding
             var source = call.ArgumentNodes[i];
             var parameter = parameters.Components[i];
             var literal = IsUnfittedLiteral(source);
-            var actual = this.BindNode(source, scope, literal ? LiteralInputType(parameter) : parameter);
+            var actual = this.BindNode(source, scope, literal ? LiteralInputType(parameter) : this.OpenCallPosition(parameter, call, i));
             if (actual is null || source.BindingState != BindingState.Resolved)
             {
                 Complete(call, null);

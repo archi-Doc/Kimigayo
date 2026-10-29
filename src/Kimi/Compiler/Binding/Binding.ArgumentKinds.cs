@@ -58,6 +58,11 @@ public sealed partial class Binding
         => KotoHelper.UnwrapParentheses(source) is RangeKoto range && !IsLiteralOnlyRange(range) &&
             ((range.Start is { } start && IsLiteralOnlyPosition(start)) || (range.End is { } end && IsLiteralOnlyPosition(end)));
 
+    // The Type a part bound at an operation's source Type takes: at `ref/T`, whose source is the parameter's referent, the referent of the
+    // Type the call hands (`handed`); any other source Type is the part's own.
+    private static BoundType HandedReferent(BoundType source, BoundType? parameter, BoundType? handed)
+        => parameter is { Components.Count: 1 } && ReferenceEquals(source, parameter.Components[0]) ? handed!.Components[0] : source;
+
     // SPEC 10.5.1: the kind of an argument part as this pass has decided it so far; an unbound part that PrepareArgument or the argument
     // probe classified (a control-flow part, a deferred nested call) by its recorded fact.
     private ArgumentKind KindOf(Koto part)
@@ -84,6 +89,14 @@ public sealed partial class Binding
     // Whether the part waited for its call's selected candidate: a deferred part stays waiting after its completion, so its Type is
     // never evidence for an outer slot.
     private bool WasWaitingPart(Koto node) => this.RecordedFact(KotoHelper.UnwrapParentheses(node)).Kind == ArgumentKind.Waiting;
+
+    // SPEC 10.5.1, 15.6.4 (G216 (a) U7): whether a part takes its Type from `call`: a waiting part that the selected candidate completes,
+    // a contextual Case among them (SPEC 6.5.2: it resolves only in its expected enum), or a part whose Type holds a region the call
+    // handed it (OpenCallPosition). Such a part is no Origin evidence for that call, as a deferred part is no slot evidence; a waiting
+    // callable's written header is (SPEC 10.5.4).
+    private bool TookCallType(Koto part, Koto call)
+        => !IsWaitingCallable(part) && (this.KindOf(part) == ArgumentKind.Waiting || this.WasWaitingPart(part) || NeedsEnumContext(part) ||
+            (KotoHelper.UnwrapParentheses(part).BoundType is { } type && HasOpenOriginFrom(type, call)));
 
     // SPEC 10.2.1: the default a Literal part takes for the selected candidate of its call, once DefaultArguments applied it.
     private BoundType? DefaultOf(Koto part)
@@ -416,9 +429,11 @@ public sealed partial class Binding
                 var pattern = selected.Parameters[evaluation.Mapping[i]].Type.BoundType!;
                 if (this.KindOf(argument) == ArgumentKind.Waiting)
                 {
+                    // SPEC 15.6.4 step 3: the part takes the Type the call hands it; the fixed construction's re-check compares P′ itself.
                     completedWaiting[i] = true;
                     waitingContexts[i] = operations[i].ParameterType;
-                    if (this.CompleteWaitingPart(argument, pattern, solution.SlotOwner, operations[i].ParameterType, evaluation.Scope) is null)
+                    var handed = operations[i].ParameterType is { } parameter ? this.OpenCallPosition(parameter, call, i) : null;
+                    if (this.CompleteWaitingPart(argument, pattern, solution.SlotOwner, handed, evaluation.Scope) is null)
                     {
                         return false;
                     }
@@ -461,21 +476,27 @@ public sealed partial class Binding
             ? this.BindFunctionReference(part, node.BoundSymbol!, signature, scope, erase: false) : this.BindFunctionItem(part, node.BoundSymbol!, scope);
     }
 
-    // SPEC 10.5, 10.2: completes the selected candidate's arguments at its operations: a part still unbound is bound at its parameter's
-    // Type, and a Closure or Function Item the candidate erases is converted to the common Function Type. False when one fails; every
-    // failing erasure is reported, since the call rests on it and another candidate is never selected.
+    // SPEC 10.5, 10.2: completes the selected candidate's arguments at its operations: a part still unbound, or one that awaits its
+    // position, takes the Type the call hands it (OpenCallPosition; at `ref/T` its referent), and a Closure or Function Item the candidate
+    // erases is converted to the common Function Type. A Composite bound here publishes the Type its elements formed as its adapted Type
+    // (at `ref/T` under the parameter's layer), which the call judges against P′. False when one fails; every failing erasure is reported,
+    // since the call rests on it and another candidate is never selected.
     private bool CompleteArguments(InvocationKoto call, BindingScope scope, Span<BoundArgumentOperation> operations)
     {
         var erased = true;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             var argument = call.ArgumentNodes[i];
-            if (this.PropagateBound(argument, operations[i].ParameterType) is null)
+            var parameter = operations[i].ParameterType;
+            var handed = parameter is not null && (argument.BoundType is null || this.AwaitsPosition(argument)) ? this.OpenCallPosition(parameter, call, i) : parameter;
+            var composite = argument.BoundType is null && this.KindOf(argument) == ArgumentKind.Composite;
+            if (this.PropagateBound(argument, handed) is null)
             {
                 // The argument is an expression of the caller's context, not of the selected requirement.
                 var selectedContract = this.activeRequirementContract;
                 this.activeRequirementContract = null;
-                this.RequireType(argument, scope, operations[i].SourceType ?? operations[i].ParameterType);
+                var referent = operations[i].SourceType is { } source && !ReferenceEquals(source, parameter);
+                this.RequireType(argument, scope, referent ? HandedReferent(operations[i].SourceType!, parameter, handed) : handed);
                 this.activeRequirementContract = selectedContract;
                 if (argument.BindingState != BindingState.Resolved)
                 {
@@ -483,6 +504,11 @@ public sealed partial class Binding
                 }
 
                 operations[i] = operations[i] with { SourceType = argument.BoundType };
+                if (composite && operations[i].AdaptedType is null && argument.BoundType is { } built && parameter is not null)
+                {
+                    var layered = referent ? this.types.Rebuild(parameter, [built], parameter.Origin, (BoundOrigin[])parameter.OriginArguments) : built;
+                    operations[i] = operations[i] with { AdaptedType = layered };
+                }
             }
             else if (argument.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } closureType &&
                 operations[i].ParameterType is { Kind: BoundTypeKind.Function } erasedType && operations[i].Adaptation == ArgumentAdaptation.Erasure)

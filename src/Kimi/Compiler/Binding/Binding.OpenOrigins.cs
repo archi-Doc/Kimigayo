@@ -13,6 +13,11 @@ public sealed partial class Binding
     // The key of a call's own open region for the callee's i-th Origin, apart from the keys of argument evidence.
     private const int ResultOnlyKey = int.MinValue / 2;
 
+    // The key of the open region a call hands the n-th well-formedness position of its argument i's Type (OpenCallPosition),
+    // HandedKey + i * HandedStride + n, apart from argument evidence and ResultOnlyKey.
+    private const int HandedKey = int.MinValue / 4;
+    private const int HandedStride = 4096;
+
     // One open region per argument and per Origin the argument's known call signature quantifies (Input slot, or -1 - Parameter slot).
     private readonly Dictionary<(Koto Source, int Key), BoundOrigin> openOrigins = new();
 
@@ -143,7 +148,8 @@ public sealed partial class Binding
         return false;
     }
 
-    // Whether `type` holds an open region that the known call signature of `source` supplied.
+    // Whether `type` holds an open region of `source`: one the known call signature of an argument `source` supplied, or one a call
+    // `source` opened (a result-only Origin, OpenResultOnlyOrigins, or a position it handed a part, OpenCallPosition).
     private static bool HasOpenOriginFrom(BoundType type, Koto source)
     {
         if (!type.CarriesOrigin)
@@ -193,13 +199,46 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 15.3.6, 15.6.4 step 1 (G216 (a)): at a named call whose result is solved with an Origin unsubstituted, or that has a parameter
+    // supplying no evidence, the callee's Origins that no supplied parameter mentions are the call's own (OpenUnmentionedOrigins). A
+    // parameter supplies none when the call uses its default (SPEC 10.1.1) or its argument takes its Type from the call (TookCallType).
+    private bool OpenResultOnlyOrigins(InvocationKoto call, FunctionKoto function, int[] mapping, BoundType result, BoundOrigin[] origins, in SlotSet defaults)
+    {
+        var unsupplied = this.RentSlotSet(function.Parameters.Count);
+        try
+        {
+            for (var p = 0; p < function.Parameters.Count; p++)
+            {
+                if (defaults.Contains(p))
+                {
+                    unsupplied.Add(p);
+                }
+            }
+
+            for (var i = 0; i < call.ArgumentNodes.Count; i++)
+            {
+                if (this.TookCallType(call.ArgumentNodes[i], call))
+                {
+                    unsupplied.Add(mapping[i]);
+                }
+            }
+
+            return (HasUnsubstitutedOrigin(result, function) || !unsupplied.IsEmpty) && this.OpenUnmentionedOrigins(call, function, origins, unsupplied);
+        }
+        finally
+        {
+            this.ReturnSlotSet(unsupplied);
+        }
+    }
+
     // SPEC 15.3.6, 15.6.4 step 1: a callee's own Origin that no supplied parameter's Type and no relation clause mentions, such as the
-    // result-only `s` of `constant() -> ref/i32 during s` or one only the Types of the `defaults` the call uses name (SPEC 10.1.1: a
-    // default gives no evidence), has no evidence at a call that no expected result fixes. It is a local region of the call, solved with
-    // the body's other local regions by its uses; it needs no annotation and is never replaced by static. The well-formedness obligation
-    // of a default naming it, judged at the call, keeps the region under the bounds that default's Type states, accepting what 15.3.6's
-    // meet of those bounds would. It is the call's open region, keyed apart from argument evidence by ResultOnlyKey.
-    private bool OpenResultOnlyOrigins(Koto call, FunctionKoto function, BoundOrigin[] origins, in SlotSet defaults)
+    // result-only `s` of `constant() -> ref/i32 during s` or one only the Types of the `unsupplied` parameters name (a default the call
+    // uses, SPEC 10.1.1, or an argument that took its Type from the call: neither gives evidence), has no evidence at a call that no
+    // expected result fixes. It is a local region of the call, solved with the body's other local regions by its uses; it needs no
+    // annotation and is never replaced by static. The well-formedness obligation of such a parameter's Type, judged at the call, keeps the
+    // region under the bounds that Type states, accepting what 15.3.6's meet of those bounds would. It is the call's open region, keyed
+    // apart from argument evidence by ResultOnlyKey.
+    private bool OpenUnmentionedOrigins(Koto call, FunctionKoto function, BoundOrigin[] origins, in SlotSet unsupplied)
     {
         var opened = false;
         var relations = this.originDeclarations.GetValueOrDefault(function)?.Relations;
@@ -213,7 +252,7 @@ public sealed partial class Binding
             var mentioned = false;
             for (var p = 0; p < function.Parameters.Count && !mentioned; p++)
             {
-                mentioned = !defaults.Contains(p) && (function.Parameters[p].Type.BoundType is not { } parameter || MentionsOriginSlot(parameter, function, i));
+                mentioned = !unsupplied.Contains(p) && (function.Parameters[p].Type.BoundType is not { } parameter || MentionsOriginSlot(parameter, function, i));
             }
 
             for (var r = 0; relations is not null && r < relations.Count && !mentioned; r++)
@@ -289,6 +328,18 @@ public sealed partial class Binding
         }
 
         return origin;
+    }
+
+    // SPEC 15.6.4 steps 1, 3 (G216 (a)): the Type a call hands the parts at its argument `argument` (a construction its payload's): P′ with
+    // the Origin at each position the well-formedness check reads (WalkWellFormed) replaced by the call's open region for that position,
+    // the same object in every trial and pass. A part that takes it is formed over those regions, so its Type keeps no position of P′ and
+    // the call judges each one with its final solution (RequireInputPremises). An open Origin (an enclosing call's) and an anchor-like one
+    // stay; a nested Function Type is not entered. Only a call opens what it hands; a written Type never is.
+    private BoundType OpenCallPosition(BoundType parameter, Koto call, int argument)
+    {
+        var handed = new HandedPositions(this, call, HandedKey + (argument * HandedStride));
+        this.WalkWellFormed(parameter, ref parameter, null, ref handed);
+        return parameter;
     }
 
     // The evidence Type with each Origin that `binder` quantifies replaced by the open region of `source`.
@@ -486,5 +537,26 @@ public sealed partial class Binding
 
         static BoundOrigin? Fill(BoundOrigin? origin, BoundOrigin? supplied, bool takeOpen)
             => origin is { Open: true } && supplied is not null && (supplied.Kind != OriginKind.Inference || (takeOpen && supplied.Open)) ? supplied : origin;
+    }
+
+    // The open regions a call hands at the positions of the walk (OpenCallPosition), numbered in its order from `key`.
+    private struct HandedPositions(Binding binding, Koto call, int key) : IWellFormedPositions
+    {
+        private int order;
+
+        public readonly Koto Use => call;
+
+        public readonly bool Enter(BoundType type) => true;
+
+        public readonly bool Clauses(BoundType type, BoundType? kept, OriginDeclaration declaration) => true;
+
+        public readonly bool Stored(in WellFormedPosition position) => true;
+
+        public BoundOrigin Replace(BoundOrigin origin)
+        {
+            var position = key + this.order++;
+            return origin.Open || origin.Kind is OriginKind.Anchor or OriginKind.Holder or OriginKind.Unstated or OriginKind.Unbound
+                ? origin : binding.OpenOrigin(call, position);
+        }
     }
 }

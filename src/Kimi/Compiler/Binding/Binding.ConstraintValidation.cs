@@ -258,7 +258,7 @@ public sealed partial class Binding
 
     private ConstraintProof CheckOperationTypeConstraints(in BoundArgumentOperation operation, BindingScope scope)
     {
-        var proof = operation.SourceType is { } source ? this.CheckTypeConstraints(source, scope) : ConstraintProof.Proven;
+        var proof = operation.SourceType is { } source ? this.CheckPartTypeConstraints(source, scope) : ConstraintProof.Proven;
         if (operation.ParameterType is { } parameter && !ReferenceEquals(parameter, operation.SourceType))
         {
             proof = CombineProof(proof, this.CheckTypeConstraints(parameter, scope), true);
@@ -266,6 +266,11 @@ public sealed partial class Binding
 
         return proof;
     }
+
+    // SPEC 10.8 (G216 (a) §4.4): a part's own Type that holds an open region is unsolved, so its clauses are not judged at the part: the
+    // call that hands the part its Type judges them over P′ (RequireInputPremises), as for a construction's own Type and payloads.
+    private ConstraintProof CheckPartTypeConstraints(BoundType type, BindingScope scope)
+        => HasOpenOrigin(type) ? ConstraintProof.Proven : this.CheckTypeConstraints(type, scope);
 
     // Late witness/Effect failures invalidate declarations even when normalization already erased
     // their projections. Reuse the ordinary validation until declaration states stop changing.

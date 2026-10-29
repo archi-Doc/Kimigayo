@@ -241,6 +241,8 @@ public sealed partial class Binding
                 return null;
             }
 
+            this.SolveConstructionOrigins(ref solution, enumeration.Owner, payload, expected, use);
+
             for (var i = 0; i < slots; i++)
             {
                 if (arguments[i] is null)
@@ -396,6 +398,33 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 6.5.2, 10.8.1, 15.3.6, 15.6.4 step 3 (G216 (a) P5): a Case construction with payloads is its Case constructor's call, whose
+    // Origins are solved as a call's are: from the payloads' evidence (the meet MatchInputOrigin forms), the expected Type as a result
+    // bound, the enum's declared relations, and each payload's well-formedness over its instantiated Case parameter Type
+    // (InstantiatedPremise); each slot takes the meet of its upper bounds.
+    private void SolveConstructionOrigins(ref SlotSolution solution, BindingSymbol owner, ReadOnlySpan<Koto> payload, BoundType? expected, Koto use)
+    {
+        if (solution.OriginInference is not { } inference)
+        {
+            return;
+        }
+
+        if (expected is not null && !ReferenceEquals(expected, BoundType.Never) && expected.OriginArguments.Count != 0)
+        {
+            this.CollectOriginInference(this.SelfType(owner), expected, inference, result: true);
+        }
+
+        for (var i = 0; i < payload.Length; i++)
+        {
+            if (solution.InstantiatedPremise(payload[i].BoundType!) is { } pattern)
+            {
+                this.CollectInputPremises(pattern, inference, use);
+            }
+        }
+
+        this.SolveOriginInference(inference, solution.Origins, [], use, select: true);
+    }
+
     // SPEC 10.5.1: whether the construction holds a slot that no evidence binds (`unsolved`) or an F that its waiting callable does not
     // fix with no outer expectation (OpenWaitingSlots).
     private bool HoldsOpenSlot(ReadOnlySpan<Koto> payload, in SlotSolution solution, SlotSet unsolved)
@@ -439,9 +468,11 @@ public sealed partial class Binding
     }
 
     // SPEC 6.5.2, 10.5.1, 10.2: each payload in source order fits its decided payload Type as an argument does (a settled one is bound at
-    // it instead), is completed at it (ErasePart for a callable) and adapted to it. The construction judges the fit once: a misfit is its
-    // Type mismatch, one only in Origin relations fails at the payload (SPEC 15.6.1), and a bare Non-Copy Place names its required
-    // spelling (SPEC 6.5.2); a payload's own failure while bound is its record, on which the construction rests.
+    // it instead), is completed at the Type the construction hands it (OpenCallPosition; ErasePart for a callable) and adapted to it. The
+    // construction judges the fit once: a misfit is its Type mismatch, one only in Origin relations fails at the payload (SPEC 15.6.1), and
+    // a bare Non-Copy Place names its required spelling (SPEC 6.5.2); a payload's own failure while bound is its record, on which the
+    // construction rests. Then, as its Case constructor's call (G216 (a) P5), it judges each payload's Case parameter Type at the payload
+    // (RequireInputPremises), beside the payload's adapted Type.
     private bool CompletePayloads(
         Koto use,
         ReadOnlySpan<Koto> payload,
@@ -450,61 +481,84 @@ public sealed partial class Binding
         BoundArgumentOperation[] operations,
         SlotSet settled)
     {
-        for (var i = 0; i < payload.Length; i++)
+        var adaptedTypes = this.RentTypes(payload.Length);
+        try
         {
-            var source = ((InvocationKoto)use).ArgumentNodes[i];
-            var stored = this.PartTypeIn(payload[i], result, scope)!;
-            var type = this.ReplaceHolder(stored, null); // SPEC 5.7: a Case holding `during self` is constructed through no dereference.
-            var fitted = default(BoundArgumentOperation);
-            var fit = settled.Contains(i) ? CandidateApplicability.Applicable : this.FitArgument(source, type, scope, source, out fitted);
-            if (fit is CandidateApplicability.Inapplicable or CandidateApplicability.Pending)
+            for (var i = 0; i < payload.Length; i++)
             {
-                this.Fail(use, BindingFailure.TypeMismatch);
-                return false;
-            }
-
-            this.acquisitionFailure = null;
-            if (fit == CandidateApplicability.Error || (this.PropagateBound(source, type) ?? this.BindNode(source, scope, type)) is not { } completed ||
-                (fitted.Adaptation == ArgumentAdaptation.Erasure && completed is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } &&
-                !this.ErasePart(source, completed, type)))
-            {
-                Complete(use, null); // The payload's own failure, on which the construction rests.
-                return false;
-            }
-
-            if (HoldsHolder(stored) && this.HolderWriteFailure(stored, HolderAccess.Write, source, source))
-            {
-                Complete(use, null);
-                return false;
-            }
-
-            var actual = this.ArgumentType(source, source.ErasedFunctionType ?? completed);
-            // A payload's Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
-            if (!this.AdaptInput(source, type, actual, scope, null, null, out var adapted, out var quality, out var kind) ||
-                (!this.FailStaticBorrow(source, kind, type.Semantics) && !this.FitsTypeAt(adapted, type, source) &&
-                !this.CheckLocalTypeUse(adapted, type, source)))
-            {
-                if (this.acquisitionFailure is { } acquisition)
-                {
-                    this.FailAcquisition(use, acquisition.Kind, source, acquisition.Object);
-                }
-                else if (FitsStructurally(adapted, type))
-                {
-                    this.RecordMismatch(source, source, adapted, type);
-                    Complete(use, null);
-                }
-                else
+                var source = ((InvocationKoto)use).ArgumentNodes[i];
+                var stored = this.PartTypeIn(payload[i], result, scope)!;
+                var type = this.ReplaceHolder(stored, null); // SPEC 5.7: a Case holding `during self` is constructed through no dereference.
+                var handed = this.OpenCallPosition(type, use, i);
+                var fitted = default(BoundArgumentOperation);
+                var fit = settled.Contains(i) ? CandidateApplicability.Applicable : this.FitArgument(source, type, scope, source, out fitted);
+                if (fit is CandidateApplicability.Inapplicable or CandidateApplicability.Pending)
                 {
                     this.Fail(use, BindingFailure.TypeMismatch);
+                    return false;
                 }
 
-                return false;
+                this.acquisitionFailure = null;
+                if (fit == CandidateApplicability.Error || (this.PropagateBound(source, handed) ?? this.BindNode(source, scope, handed)) is not { } completed ||
+                    (fitted.Adaptation == ArgumentAdaptation.Erasure && completed is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } &&
+                    !this.ErasePart(source, completed, type)))
+                {
+                    Complete(use, null); // The payload's own failure, on which the construction rests.
+                    return false;
+                }
+
+                if (HoldsHolder(stored) && this.HolderWriteFailure(stored, HolderAccess.Write, source, source))
+                {
+                    Complete(use, null);
+                    return false;
+                }
+
+                var actual = this.ArgumentType(source, source.ErasedFunctionType ?? completed);
+                // A payload's Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
+                if (!this.AdaptInput(source, type, actual, scope, null, null, out var adapted, out var quality, out var kind) ||
+                    (!this.FailStaticBorrow(source, kind, type.Semantics) && !this.FitsTypeAt(adapted, type, source) &&
+                    !this.CheckLocalTypeUse(adapted, type, source)))
+                {
+                    this.FailPayloadFit(use, source, adapted, type);
+                    return false;
+                }
+
+                operations[i] = new(source, actual, type, kind, quality, ParameterIndex: i);
+                adaptedTypes[i] = adapted;
             }
 
-            operations[i] = new(source, actual, type, kind, quality, ParameterIndex: i);
-        }
+            this.callRelationScratch.Clear();
+            for (var i = 0; i < payload.Length; i++)
+            {
+                this.RequireInputPremises(operations[i].Source!, operations[i].ParameterType!, adaptedTypes[i]);
+            }
 
-        return true;
+            this.PublishCallRelations();
+            return true;
+        }
+        finally
+        {
+            this.typeScratch.Return(adaptedTypes, clearArray: true);
+        }
+    }
+
+    // A payload's failed adaptation or fit to its payload Type: its missing spelling, a mismatch only in Origin relations at the payload
+    // (on which the construction rests), or the construction's Type mismatch.
+    private void FailPayloadFit(Koto use, Koto source, BoundType adapted, BoundType type)
+    {
+        if (this.acquisitionFailure is { } acquisition)
+        {
+            this.FailAcquisition(use, acquisition.Kind, source, acquisition.Object);
+        }
+        else if (FitsStructurally(adapted, type))
+        {
+            this.RecordMismatch(source, source, adapted, type);
+            Complete(use, null);
+        }
+        else
+        {
+            this.Fail(use, BindingFailure.TypeMismatch);
+        }
     }
 
     private void CompleteEnumAcquisitions()
@@ -528,10 +582,10 @@ public sealed partial class Binding
             }
 
             var scope = this.ConstraintScope(entry.Key);
-            var formation = this.CheckTypeConstraints(plan.Type, scope);
+            var formation = this.CheckPartTypeConstraints(plan.Type, scope);
             for (var i = 0; i < plan.PayloadOperations.Length; i++)
             {
-                formation = CombineProof(formation, this.CheckTypeConstraints(plan.PayloadOperations[i].ParameterType!, scope), true);
+                formation = CombineProof(formation, this.CheckPartTypeConstraints(plan.PayloadOperations[i].ParameterType!, scope), true);
             }
 
             if (formation != ConstraintProof.Proven)

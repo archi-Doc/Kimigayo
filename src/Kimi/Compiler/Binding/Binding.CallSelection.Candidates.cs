@@ -286,7 +286,7 @@ public sealed partial class Binding
                 DefaultSlots(function, mapping.AsSpan(0, call.ArgumentNodes.Count), receiverSlot, ref defaults);
             }
 
-            if (!this.SolveLate(ref solution, mapping, defaults))
+            if (!this.SolveLate(ref solution, mapping))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -484,13 +484,13 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
 
-            if (result is not null && (HasUnsubstitutedOrigin(result, function) || !defaults.IsEmpty) &&
-                this.OpenResultOnlyOrigins(call, function, origins, defaults))
+            if (result is not null && this.OpenResultOnlyOrigins(call, function, mapping, result, origins, defaults))
             {
                 // SPEC 15.3.6: an Origin of the callee that nothing at the call bounds, such as the result-only `s` of `constant() ->
-                // ref/i32 during s` initializing an unannotated local, or one only a default names, is a local region of the call, never
-                // a pending candidate.
+                // ref/i32 during s` initializing an unannotated local, or one only a default or a part the call types names, is a local
+                // region of the call, never a pending candidate; the parameter Types read it too.
                 result = solution.Type(resultPattern!);
+                solution.CompleteOperationTypes(operations);
             }
 
             // SPEC 10.8: a result that keeps an unsolved slot is no failure of its own; the parts of its fit that do not contain the slot are
@@ -584,10 +584,11 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 10.2.1, 4.6.2, 15.6.4 steps 1, 3: after the expected result, the late pass of the evidence walk (the Literal parts' defaults
-    // applied to the selected candidate and range typing), then the first solve of the candidate's Origins, which the well-formedness of
-    // each default it uses (`defaults`, DefaultSlots) shortens as a written part's does; false when the candidate is inapplicable.
-    private bool SolveLate(ref SlotSolution solution, int[] mapping, in SlotSet defaults)
+    // SPEC 10.2.1, 4.6.2, 15.6.4 steps 1, 3, 15.3.6: after the expected result, the late pass of the evidence walk (the Literal parts'
+    // defaults applied to the selected candidate and range typing), then the first solve of the candidate's Origins, which each input's
+    // instantiated well-formedness shortens (G216 (a) §4.9: every parameter's, an argument's, a default's and the receiver's, over its
+    // pattern with the solved slots, InstantiatedPremise); false when the candidate is inapplicable.
+    private bool SolveLate(ref SlotSolution solution, int[] mapping)
     {
         var call = solution.Call;
         var function = solution.Function;
@@ -610,11 +611,11 @@ public sealed partial class Binding
             return true;
         }
 
-        for (var i = 0; !defaults.IsEmpty && i < function.Parameters.Count; i++)
+        for (var i = 0; i < function.Parameters.Count; i++)
         {
-            if (defaults.Contains(i) && solution.Pattern(function.Parameters[i].Type.BoundType!) is { } pattern)
+            if (solution.Pattern(function.Parameters[i].Type.BoundType!) is { } member && solution.InstantiatedPremise(member) is { } pattern)
             {
-                this.CollectInputPremises(this.FormedApplication(pattern, solution.SlotOwner, solution.Types), inference, call);
+                this.CollectInputPremises(pattern, inference, call);
             }
         }
 
