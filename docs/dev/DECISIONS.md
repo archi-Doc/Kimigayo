@@ -5370,6 +5370,18 @@ and migration obligations remain in force; no numeric cap changes are authorized
     proves r outlives p. A Loan on a part (`inner.0@uniq`) gives its holder the entry of the part's Type (`pa3Bad`, valid on
     fd4f56ae3, errs as its concrete and whole-local twins do). Two parts of one erased Type take that Type's one entry, the join of
     their storages, whose Origins only Revision 2's pairs of Subst Origins separate (`pa5Second`, a precision limit).
+  - r2.1 and r2.2 (design-r2 §9a, §9b; round 2's full mir ledger against dev): since 0fd5e2f37 (rules 1 and 2) `Dictionary.iterate`
+    and `iterateUniq`'s results and `Text.utf8`'s view kept only the argument's Content, so a `clear`, `length` or move while the
+    iterator or view lives was accepted (both paths reject it). The design owner's rule, verbatim: "as a position it is read as the
+    borrow its Origin belongs to among the contract's inputs" and "`string` holds elements of Type `u8` by value". A raw layer stating
+    an Origin, as a position, reads for its fit as each borrow that Origin belongs to (`Binding.Reads` over RawContent's members:
+    `ref/R` or `uniq/R` by mode; itself where none), so `DictionaryRefRemainder`'s `raw/u8 during source` reads as `ref/Dictionary<K,
+    V>`, the argument's own value; `Loan<ref/(K, V)>`'s Type argument fits no source and no rule makes a Tuple of parts a part.
+    `TyCtxt.CoreContent` is the one table of a built-in Core's stored content (`string` -> `u8`; the other Cores none; never "holds
+    any"), which `HeldParts` reads for the positions and the sources alike, so `Utf8Slice`'s `Slice<u8> during source` borrows a part
+    reached through `text`. Wk row `viewHolds` (each Bad form valid on 295224f0e). The per-contract comparison against e9ad0a5fa
+    differs only there: iterate, iterateUniq and utf8 results Content -> Value (census Milestone31, 32, 35 and the iterations golden
+    among them), and the raw slots of the rawPath rows' callees, which now hold `zr`'s value as the borrow their Origin `r` belongs to.
   - An abstract referent holds any part (`Holds`; BU's review N2, the design owner's answer recorded with its exact rule): the exact
     rule is (β′) applied to the source side, a borrow formed through an argument whose referent is abstract having, besides `ref/T` and
     `uniq/T`, the Types a handed callable forms from a `ref/T` or `uniq/T` input (a requirement `n(self: ref/Self) -> ref/i32 during

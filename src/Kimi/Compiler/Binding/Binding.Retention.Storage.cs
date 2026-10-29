@@ -12,8 +12,9 @@ namespace Kimi.Compiler;
 // Inputs: the contract's instantiated inputs and result, its premise environment's nodes (Binding.Retention.cs), and the stored parts
 // Binding's instances keep (Instance), with each stored raw layer's step (DeclaredStep, SignatureStep).
 // Outputs: per walk, the storages (the root, Own; the Abstract one, what an abstract part hides, at each carrier's ReachedNode; one per
-// contract Type past an exclusive layer, keyed for its Origin-erased Type), each position's node and Type (Value tests; no Type: any
-// value) and every Origin occurrence's node (Content targets).
+// contract Type past an exclusive layer, keyed for its Origin-erased Type), each position's node and the Types its fit reads (Value
+// tests, Reads: a raw layer stating an Origin as the borrows that Origin belongs to; no Type: any value) and every Origin occurrence's
+// node (Content targets).
 // Invariants: a position is storage the call may write: a part a value of the storage holds by value (Tuple and fixed-array elements, a
 // struct's Fields and base, an enum's payloads, a Closure's environment bindings, a raw layer's pointee by its own step and what a
 // `during self` layer admits, Admitted), the layer of a borrow, pair or raw layer, an abstract part (whose hidden storage is the
@@ -44,6 +45,7 @@ public sealed partial class Binding
     private readonly List<int> retentionOccurrences = new();
     private readonly HashSet<(BoundType Type, bool Callable)> retentionOccurred = new();
     private readonly List<HeldPart> retentionHeld = new(); // HeldParts' and OwnParts' runs, a stack: each caller reads its run and removes it.
+    private readonly List<BoundType> retentionReads = new(); // Reads' runs, a stack.
 
     // An abstract part a carrier stands for: a Type parameter that is no pair layer, or a pair's target (RetentionWalk's carriers).
     private static bool IsCarrier(BoundType type)
@@ -236,14 +238,21 @@ public sealed partial class Binding
     }
 
     // A position: its Value tests, one per node naming the Type's own layer or its Origin arguments (an abstract part's carrier node, also
-    // for the Abstract storage it hides), and its own Origins as targets.
+    // for the Abstract storage it hides) and per Type its fit reads (Reads), and its own Origins as targets.
     private void Position(OriginPremiseEnvironment environment, BoundType type, int storage)
     {
+        var (start, end) = this.Reads(type);
         foreach (var node in this.OwnNodes(environment, type))
         {
-            this.storagePositions.Add((storage, node, type));
+            for (var i = start; i < end; i++)
+            {
+                this.storagePositions.Add((storage, node, this.retentionReads[i]));
+            }
+
             this.storageTargets.Add((storage, node));
         }
+
+        this.retentionReads.RemoveRange(start, end - start);
 
         if (Abstract(type) && storage != ResultStorage)
         {
@@ -251,6 +260,31 @@ public sealed partial class Binding
         }
 
         this.Targets(environment, type, storage);
+    }
+
+    // The Types a position's fit reads (SPEC 5.7 "retains as that borrow would"; DECISIONS R4-M154, r2.2), appended to retentionReads as a
+    // run its caller removes: a raw layer stating an Origin reads as each borrow that Origin belongs to among the contract's inputs
+    // (RawMembers: an input whose outer Origin it is, a slot keeper), `ref/R` or `uniq/R` of its referent R by its mode, and as itself
+    // where none does; any other Type as itself. An incomplete member walk is the Limit.
+    private (int Start, int End) Reads(BoundType type)
+    {
+        var start = this.retentionReads.Count;
+        var stated = type.Semantics == SemanticsKind.Raw && OwnedOrigin(type) is { Kind: not (OriginKind.Static or OriginKind.Unstated or OriginKind.Holder) };
+        var members = this.rawMembers.Count;
+        this.retentionLimit |= stated && !this.RawMembers(OwnedOrigin(type)!, CollectionsMarshal.AsSpan(this.retentionScope), this.rawMembers);
+        for (var i = members; i < this.rawMembers.Count; i++)
+        {
+            var member = this.rawMembers[i];
+            this.retentionReads.Add(this.types.Reference(member.Exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, member.Referent));
+        }
+
+        this.rawMembers.RemoveRange(members, this.rawMembers.Count - members);
+        if (this.retentionReads.Count == start)
+        {
+            this.retentionReads.Add(type);
+        }
+
+        return (start, this.retentionReads.Count);
     }
 
     // The storage an abstract part hides (the Abstract one), a position per carrier it names at that carrier's ReachedNode, which only an
@@ -464,8 +498,9 @@ public sealed partial class Binding
     // declaration writes there and the instance holding it (Held's reading): a Closure's environment bindings as its body sees them and
     // any other non-nominal Type's components (a Tuple's and a fixed array's at their inline positions); a struct's Fields, an enum's
     // payloads and the base in the instance's kept parts; a nominal Type's Type arguments, with an address only in a compiler-managed
-    // collection, whose elements they are (it keeps no part: SPEC 4.5, 4.9). A layer of the value (a borrow, pair, raw or shared handle
-    // layer) is its caller's. False where a struct's or enum's storage is past Binding's limits.
+    // collection, whose elements they are (it keeps no part: SPEC 4.5, 4.9); a built-in Core's stored content (TyCtxt.CoreContent: a
+    // string's `u8` bytes). A layer of the value (a borrow, pair, raw or shared handle layer) is its caller's. False where a struct's or
+    // enum's storage is past Binding's limits.
     private bool HeldParts(BoundType type, BoundType? written, BoundType? holder, out (int Start, int End) run)
     {
         var parts = this.retentionHeld;
@@ -480,6 +515,11 @@ public sealed partial class Binding
 
         var instance = nominal ? this.Instance(value) : null;
         var addressed = instance is null or { Parts.Length: 0, PartsBase: null };
+        if (TyCtxt.CoreContent(value) is { } content)
+        {
+            parts.Add(new(content, null, holder, true));
+        }
+
         for (var i = 0; i < value.Components.Count; i++)
         {
             parts.Add(new(value.Components[i], InlinePart(written, i), holder, addressed));

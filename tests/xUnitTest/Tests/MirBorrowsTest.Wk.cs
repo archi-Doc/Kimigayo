@@ -87,6 +87,9 @@ public sealed partial class MirBorrowsTest
     // The raw-path rows' Type (Revision 10): a raw Field stating the Type's own Origin, which the premise catalog relates to a layer above.
     private const string WkRBox = "struct RBox {a}\n    public var p: raw/(Box2 during a) during a\n    public init(p: raw/(Box2 during a) during a) => self.p = p\n";
 
+    // The view rows' Dictionary (r2.2).
+    private const string WkDict = "var d: Dictionary<i32, i32> = [1: 2]\n";
+
     // The part-Loan rows' two parts of one Type (R4's B1).
     private const string WkTwoParts = "(Option<ref/i32>.Some(z@ref), Option<ref/i32>.Some(z@ref))";
 
@@ -181,6 +184,13 @@ public sealed partial class MirBorrowsTest
             WkForm("r3Ok", "(zr: ref/i32 during r, zp: ref/(Box2 during a) during p, a2: uniq/(raw/(Box2 during a) during r) during p, a3: raw/(Box2 during a) during r, w0: uniq/(uniq/i32 during p) during q) -> ()\n", "sneakR3(zr, zp, a2@follow@uniq, w0@follow@uniq)\na2@follow = a3") +
             WkForm("sneakR3R", "(zr: ref/i32 during r, x: uniq/(RBox during r) during p, w: uniq/(uniq/i32 during p) during q) -> () => ()\n") +
             WkForm("r3RBad", "(zr: ref/i32 during r, a2: uniq/(RBox during r) during p, a3: RBox during r, w0: uniq/(uniq/i32 during p) during q) -> ()\n", "sneakR3R(zr, a2@follow@uniq, w0@follow@uniq)\na2@follow = a3"),
+        ["viewHolds"] =
+            WkForm("iterClearBad", "() -> ()\n", WkDict + "var it = d.iterate()\nd.clear()\n_ = it.next()") +
+            WkForm("iterClearOk", "() -> ()\n", WkDict + "var it = d.iterate()\n_ = it.next()\nd.clear()") +
+            WkForm("iterUniqLengthBad", "() -> ()\n", WkDict + "var it = d.iterateUniq()\n_ = d.length\n_ = it.next()") +
+            WkForm("iterUniqLengthOk", "() -> ()\n", WkDict + "var it = d.iterateUniq()\n_ = it.next()\n_ = d.length") +
+            WkForm("utf8MoveBad", "() -> ()\n", "let text = \"ab\"\nlet view = Text.utf8(text)\nconsume(text@move)\nlook(view@ref)") +
+            WkForm("utf8MoveOk", "() -> ()\n", "let text = \"ab\"\nlet view = Text.utf8(text)\nlook(view@ref)\nconsume(text@move)"),
         ["putR"] = WkForm("putRUse", RHead, "var v = value@move\n" + WkPut + "\n_ = slot.value\nv.value = 5") +
             WkForm("putRFirst", RHead, "var v = value@move\nv.value = 5\n" + WkPut + "\n_ = slot.value"),
         ["use"] = WkForm("tie0c1", "(a: ref/i32 during q, c: ref/i32 during o, b: Option<uniq/(ref/i32 during q) during o>) -> ()\n", "return") +
@@ -354,6 +364,11 @@ public sealed partial class MirBorrowsTest
     // Fails on fd4f56ae3: dictIndexBad and dictGetBad valid (a Dictionary's values were no part held by value, so `ref/V during self`
     // kept only Content).
     [InlineData("C7", "dictGetBad: d.clear() CallActivationConflict_Kd 1|dictIndexBad: d.clear() CallActivationConflict_Kd 1")]
+    // r2.2 (design-r2 §9b): a raw layer stating the argument's Origin, as a position, reads as the argument's borrow (DictionaryRefRemainder's
+    // `raw/u8 during source`: `ref/Dictionary<K, V>`, which holds the argument's own value), and a string holds its `u8` bytes, so
+    // Utf8Slice's `Slice<u8> during source` is a borrow of a part reached through `text`. Fails on 295224f0e (since 0fd5e2f37): every Bad
+    // form valid (the results kept only Content).
+    [InlineData("viewHolds", "iterClearBad: d.clear() CallActivationConflict_Kd 1|iterUniqLengthBad: d.length 1|utf8MoveBad: text 1")]
     [InlineData("D4", "optEBad: v@follow = x 1")]
     [InlineData("E1", "concretePutBad: v@follow = x 1")] // Fails on dev by design: concretePutOk `v@follow = x` 1.
     [InlineData("E3", "recurNodeBad: v.value = 5 1")]
