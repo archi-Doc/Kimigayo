@@ -14,7 +14,9 @@ internal sealed partial class TyCtxt
     internal IReadOnlyList<BindingSymbol> Imports => binding.ImportDeclarations;
 
     /// <summary>Gets the site of a slot of a function's signature: a parameter's written Type, the written result Type at -1, else the
-    /// declaration, the nodes the MIR builder locates a body's parameter and result locals at (DECISIONS R4-M90 D6, BU-48).</summary>
+    /// declaration, the nodes the MIR builder locates a body's parameter and result locals at (DECISIONS R4-M90 D6, BU-48). It indexes the
+    /// written parameters by the slot directly, so it holds only for a receiverless signature without special parameters, such as an
+    /// import's (SPEC 22.6).</summary>
     /// <param name="function">The function.</param>
     /// <param name="slot">A parameter slot, or -1 for the result.</param>
     /// <returns>The site.</returns>
