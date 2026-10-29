@@ -234,7 +234,9 @@ public sealed partial class InstanceCollectorTest
     // storage Binding rejected, with Binding's records and the collector's; and their genuine-limit twins, which keep the storage-nesting gap,
     // beside a failed part in either order too, and C8d's LegacyRow over a Type nested past the bound (before: InternalInvariant_Kd). DECISIONS
     // R5-M151 (PLAN G285): a virtual slot whose applicability rests on a constraint Binding rejected, in the clause and the Block form, which
-    // the VTable leaves undecided (before: InternalInvariant_Kd at the creation).
+    // the VTable leaves undecided (before: InternalInvariant_Kd at the creation). DECISIONS R5-M155 (PLAN G293): a local, a parameter (with a
+    // generic subject), an Array's element (its glue's) and a captured value typed by a qualified projection that names no Type after
+    // Binding's constraint error, an abstract Type Layout gives Rejected (before: Layout.Row threw, CheckFaulted_Kd).
     public static TheoryData<string, string, string, string> RejectedCases
     {
         get
@@ -257,6 +259,10 @@ public sealed partial class InstanceCollectorTest
             const string Bindings = "    associate Holder<T>.Item is i32\n    associate Holder<U>.Item is u8\n";
             const string HAdd = "struct HAdd<S>\n    S is Addable<S>\n    public var x: S.Output\n";
             const string SrcC = HasItem + "struct SrcC<T>\n    Self is HasItem when T is Copy\n        associate HasItem.Item is T\n";
+            const string Iter = "contract Iter<T>\n    associate Tag\n";
+            const string IterB = Iter + "struct IB\n    Self is Iter<i32>\n    associate Tag is bool\n";
+            const string IterG = HasItem + Iter + "struct SrcU\n    Self is HasItem\n    associate HasItem.Item is u8\nstruct IG<S>\n    S is HasItem\n" +
+                "    Self is Iter<S.(HasItem).Item>\n    associate Tag is bool\n";
             var b65 = Nest("B", 65, "i32");
             return new()
             {
@@ -343,6 +349,16 @@ public sealed partial class InstanceCollectorTest
                 { "outerLimit", Box + $"func inner<T>() => ()\nfunc outer<T>() => inner<T>()\nfunc g() => outer<{b65}>()\n", string.Empty, "Unsupported_Kd inner<T>()" },
                 { "toStringLimit", "struct B<T>\n" + Format + $"    public var v: T\nfunc g(b: ref/{b65}) -> string => Text.toString(b)\n", string.Empty, "Unsupported_Kd Text.toString(b)" },
                 { "rowLimit", Box + $"func g(a: uniq/Array<{b65}>) => a.reserve(1)\n", string.Empty, "Unsupported_Kd a.reserve(1)" },
+                {
+                    "localProjection", IterB + "func g() -> ()\n    let t: IB.(Iter<u8>).Tag = true\n    return\n",
+                    "TypeMismatch_Kd UnsatisfiedConstraint_Kd", string.Empty
+                },
+                { "parameterProjection", IterG + "func g(t: IG<SrcU>.(Iter<i32>).Tag) => ()\n", "UnsatisfiedConstraint_Kd", string.Empty },
+                { "elementProjection", IterB + "func g(a: Array<IB.(Iter<u8>).Tag>) => ()\n", "UnsatisfiedConstraint_Kd", string.Empty },
+                {
+                    "capturedProjection", IterB + "func g(t: IB.(Iter<u8>).Tag) -> ()\n    let c = func [t@move] () -> () => ()\n    return\n",
+                    "UnsatisfiedConstraint_Kd Unsupported_Kd", string.Empty
+                },
             };
         }
     }
@@ -1922,6 +1938,22 @@ public sealed partial class InstanceCollectorTest
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal([(DiagnosticCode.InternalInvariant_Kd, "pick(1)")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
         Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x).StartsWith("Fn pick", StringComparison.Ordinal));
+    }
+
+    // DECISIONS R5-M155 (PLAN G187's R5 half): in a complete compilation an abstract Type reaching Layout is a broken contract, a located
+    // InternalInvariant_Kd at its use, never a fault. Binding and the builder never give a closed body such a local, so the test forges one:
+    // main's `x` typed by probe's slot T.
+    [Fact]
+    public void AnAbstractLocalIsABrokenContractInACompleteCompilation()
+    {
+        var c = MirBuildTest.Compile("func probe<T>(value: T) => ()\npublic func main() -> ()\n    let x = 1\n    return\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        var main = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "main");
+        var slot = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters[0].Type.TypeOf()!;
+        main.AddLocal(main.Locals.ToArray().Single(static x => x.Name == "x") with { Type = slot });
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal([(DiagnosticCode.InternalInvariant_Kd, "let x = 1")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
     }
 
     // X19: an item past depth 128 on its admission chain, and the 1,025th item of one definition, are GenerationResourceLimit_Kd at their calls.

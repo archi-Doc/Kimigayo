@@ -12503,3 +12503,33 @@ structure is recorded here by the unit that first implements it.
     `tryResolve`'s own contract (`length >= 0`, `p <= length`) costs 2 compares and 2 selects per element and 1 -> 4 branches per
     range at O2 on both generators (default 18, 16, 15, 14, 17, 17, 23), and it moves a Binding decision every later phase reads;
     a located record left in place (OI-2: from G2 the default would reject a form it builds today).
+- **R5-M155 An abstract Type reaching Layout is Rejected (G293; G187's R5 half)** (2026-10-29, planning session; PLAN G293, G187; BU's
+  input on BU-50; Major, design accepted by the planning session) SPEC 23.1.2 lets a failure caused only by another reported failure go
+  unreported; a broken contract on a program Binding accepted stays a located `InternalInvariant_Kd` (AGENTS Diagnostics, R5-M151).
+  - Defect: after Binding's `UnsatisfiedConstraint_Kd` or `UnprovenConstraint_Kd` on a qualified projection (`let t: B.(Iter<u8>).Tag`
+    with B only `Iter<i32>`, the generic `B<SrcU>.(Iter<i32>).Tag`), `BindAssociatedProjection` publishes the projection, which names no
+    Type, as the symbol's Type; the MIR local takes it, a closed item reads it Prepared with no TyCtxt query, and `Layout.Walk` asked
+    `Row`, whose default arm threw: `CheckFaulted_Kd` ("Layout has no row for the Type Tag") beside Binding's records on every pipeline,
+    at check and emit. Sixteen probe forms: a local, a parameter, a result, a Tuple part, a fixed-array element, an `Array<…>` element
+    (its glue), a captured value, a primitive or Tuple subject (`UnprovenConstraint_Kd`) and the subjects of the G290 review's q2, q3, q6.
+  - Rule: `Layout.Walk` gives an abstract Type (`BoundType.IsAbstract`: a parameter, a projection or a dependent Semantics term), which
+    no closed Type holds, the existing Rejected verdict: a leaf where a row would be, 0 high, of no size, naming itself; a Type storing
+    one by value takes it on through Fold. The collector is unchanged: `RecordOf(Rejected)` is `InternalInvariant_Kd` through R5-M151's
+    `Report`, so no record while Binding is incomplete (a dependent of Binding's rejection, as BU-50's none is; SPEC 23.1.2) and a
+    located `InternalInvariant_Kd` at the use in a complete compilation (an open Type; PLAN G187: "an open Type reaching `Layout.Of` is
+    a located `InternalInvariant_Kd`, never a fault"). Binding's `TypeMismatch_Kd` at the initializer stays, Binding's own cascade.
+  - Owner: Layout decides the verdict, as for the other parts Binding did not resolve (a null Field or Case, `Length < 0`, InlineCycle;
+    R5-M37, BU-37); the collector alone maps it. No new outcome, record path or notion. `Row`'s default arms stay a throw: Of never asks
+    it for an abstract Type, and any other kind without a row (the `Range` marker, a Nominal that is no struct or enum, an Owner
+    Semantics term) lies outside Layout's input contract in every compilation; no form reaches one (a failed type expression publishes
+    no Type, which the builder types Unit, R4-M125).
+  - Rejected: (b) BU-50's Rejected path reused for locals (its verdict is Binding's storage verdict on a kept part; a local's Type is no
+    part and the collector's closed path reads no verdict, so it needs a second Binding producer of storage verdicts for non-stored Types,
+    in Binding's and TyCtxt's hold files, and a storage query per closed local); (c) an error Type from the MIR builder or Binding (none
+    exists; a builder test by kind is a consumer deciding what Binding publishes; Binding's null drops its `TypeMismatch_Kd`, makes every
+    enclosing Type fail too and touches BU's and R4's held files); Rejected for every kind without a row (a catch-all hiding a MIR or
+    Binding contract break).
+  - Judge: InstanceCollectorTest's `RejectedCases` rows localProjection, parameterProjection (a generic subject), elementProjection and
+    capturedProjection, `AnAbstractLocalIsABrokenContractInACompleteCompilation` (a forged local typed by a slot) and LayoutTest's
+    `AnAbstractTypeIsRejected` threw on dev `acc2f12ad` and pass. Valid programs are unchanged: an abstract Type reaching Walk always
+    threw.
