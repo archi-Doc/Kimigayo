@@ -232,7 +232,7 @@ internal static partial class MirTypes
             ReadOnlySpan<int> at = stored is null ? default : this.positions[this.start..this.top];
             return (stored is null ? RawStep.Unstated : types.RawStep(stored, this.part, at)) switch
             {
-                RawStep.Own => stored!.OriginArguments.Count > 0 ? Write : this.Admitted(stored, pointee, depth),
+                RawStep.Own => this.Admitted(stored!, pointee, depth),
                 RawStep.Shared => 0,
                 RawStep.Static => this.Part(pointee, Exclusive, depth),
                 RawStep.Exclusive => this.Members(stored!, at, depth) | this.Part(pointee, Exclusive, depth),
@@ -255,14 +255,20 @@ internal static partial class MirTypes
             return found;
         }
 
-        // What a `during self` layer admits past it (SPEC 5.7 Calls, "for self, the holding value's Type"; the owner's Q2 (a)): its pointee
-        // and the holding instance's Type arguments by their actual Types, in the value's own storage.
+        // What a `during self` layer admits past it (TyCtxt.SelfAdmitted, SPEC 5.7 Calls; the owner's Q2 (a)): the write fact where the
+        // holding instance has an Origin argument, else its pointee and the instance's Type arguments by their actual Types, in the value's
+        // own storage.
         private int Admitted(BoundType stored, BoundType pointee, int depth)
         {
-            var found = this.Part(pointee, Own, depth);
-            for (var i = 0; i < stored.Components.Count; i++)
+            if (TyCtxt.SelfAdmitted(stored, out var arguments))
             {
-                found |= this.Part(stored.Components[i], Own, depth);
+                return Write;
+            }
+
+            var found = this.Part(pointee, Own, depth);
+            for (var i = 0; i < arguments.Count; i++)
+            {
+                found |= this.Part(arguments[i], Own, depth);
             }
 
             return found;

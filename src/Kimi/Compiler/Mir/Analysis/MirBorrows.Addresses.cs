@@ -186,6 +186,7 @@ internal sealed partial class MirBorrows
         this.loans[entry] = new()
         {
             Root = this.Key(root),
+            Place = new(root, owner >= 0 ? owner : 0),
             Group = -1,
             Start = this.loanStepCount,
             Count = steps.Length,

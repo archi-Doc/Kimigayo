@@ -131,8 +131,12 @@ public class ResultPremiseTest
         Assert.Equal("requires x outlives h, which is not proven", error.Label); // The failing operand of the meet (h and x and h.a).
     }
 
-    // SPEC 15.3.7: a method's premise may name its container's slot; the call relates the receiver Type's argument instead, so the
-    // result of viaSlot over `other` keeps that Loan.
+    // SPEC 15.3.7: a method's premise may name its container's slot; the call relates the receiver Type's argument instead. The default
+    // pipeline keeps `other`'s Loan in viaSlot's result by its `during q` (the old rule, until R6-check, DECISIONS R4-M50); on the MIR the
+    // result `ref/(ref/i32 during a) during q` can hold neither q's own value nor a borrow formed through q at its own layer, and the
+    // storage behind its own shared layer is lent, not filled by the call, so it keeps q's Content and `other = 4` is valid (the owner's
+    // 「SPEC 15.6.4 の読み (iii) と (β)」; DECISIONS R4-M154, design-r2 §9c).
+    [Trait("OldRule", "ledger:e953d3c484f2:22")]
     [Fact]
     public void AMethodPremiseUsesTheReceiverTypesSlots()
     {
@@ -145,6 +149,7 @@ public class ResultPremiseTest
         var invalid = MinimalEmissionTest.Analyze(source.Replace("        Console.writeLine(\"\\(z@follow@follow)\")", "        other = 4\n        Console.writeLine(\"\\(z@follow@follow)\")", StringComparison.Ordinal));
         Assert.True(invalid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(invalid, null));
         Assert.Contains(invalid.Problems, static issue => issue.Code.IsLoanConflict());
+        MirTargetSide.Check(invalid);
     }
 
     // SPEC 15.3.7, 15.6.1: a fixed caller whose arguments leave the outer Origin free is valid, since the call's Origins satisfy the
