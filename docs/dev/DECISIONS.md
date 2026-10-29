@@ -7511,11 +7511,12 @@ resumed by R4-M86 (2026-10-20).
     keeps Binding's records.
   - Revised (bu57, 2026-10-29; PLAN G281): a body reads a stored part in its own scope, as a call's signature is read (SPEC 8.2.3):
     `PartTypeIn` (Binding.Storage), PartType normalized there by `ContractType`, is the read form of a member access (read and write;
-    `MemberRead`, which a constructor's `self.f` shares, so a conditional constructor's premise completes it too, SPEC 7.5), a Case
-    payload's construction and pattern, a stored witness's Field (replacing PropertyMatching's own composition) and its bridge's member
-    (in the conformance path's scope). So the use's premise completes a projection the storage keeps pending (`HAd<T>`'s `T.Output`
-    and `Wrapping<T>.Output` under `T is PrimitiveInteger`, `T.(HasItem).Item is i32`), where each was a false TypeMismatch_Kd; the
-    storage stays scope independent (decision 10), and readers outside a body keep `PartType` and `StoredType`.
+    `MemberRead`, which a constructor's `self.f` shares, so a conditional constructor's premise completes it too, SPEC 7.5, and a
+    property update's standard `get` result, standard `set` input and storage node beside a custom accessor, SPEC 13.7.1; bu59, PLAN
+    G292), a Case payload's construction and pattern, a stored witness's Field (replacing PropertyMatching's own composition) and its
+    bridge's member (in the conformance path's scope). So the use's premise completes a projection the storage keeps pending
+    (`HAd<T>`'s `T.Output` and `Wrapping<T>.Output` under `T is PrimitiveInteger`, `T.(HasItem).Item is i32`), where each was a false
+    TypeMismatch_Kd; the storage stays scope independent (decision 10), and readers outside a body keep `PartType` and `StoredType`.
   - Pending and prepared storage (decision 6's question): PrepareStorage runs in BindDeclarations after PrepareAssociatedInference, which
     collects the pass's evidence, runs every inference batch and resolves every binding again (state 2 or 3), so from PrepareStorage on a
     struct or enum subject's resolution is final, except inside a binding's own resolution (pending). A kept part completed before is not
