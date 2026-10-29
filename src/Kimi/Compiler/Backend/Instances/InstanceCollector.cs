@@ -59,10 +59,9 @@
 // whose binder declares no slot and whose substitution binds no Self or declaring Type, R5-M157, until TyCtxt.EnclosingFunction gives
 // every nested definition the declaration whose instance it holds, BU's fact), a substitution or Type whose storage is a limit (Made),
 // OCC-X's refused witness and a requirement call's or requirement Item's witness without a MIR body (Called) are the capability table's
-// gaps (an access of a static of a generic
-// container's group is none: its declaration is, X33 (a), R5-M82); depth past 128, 16 ancestors of the same definition and 1,024 items of
-// one definition are GenerationResourceLimit_Kd; a representative that is open or leaves its body open, and a requirement call of a closed
-// Self without a witness, are broken contracts.
+// gaps (an access of a static of a generic container's group is none: its declaration is, X33 (a), R5-M82); depth past 128, 16 ancestors
+// of the same definition and 1,024 items of one definition are GenerationResourceLimit_Kd; a representative that is open or leaves its
+// body open, and a requirement call of a closed Self without a witness, are broken contracts.
 // A refused edge is dropped and collection continues.
 // Records (DECISIONS R5-M151): every record goes through one path (Report). A broken contract is InternalInvariant_Kd where Binding is
 // complete; in an incomplete compilation a fact the collector reads may be undecided because it rests on a part Binding rejected, which the

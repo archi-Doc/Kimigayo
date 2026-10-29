@@ -20,10 +20,14 @@ public sealed partial class InstanceCollectorTest
     private const string Built = "let a = Box<i32>.init()\nlet b = Box<i64>.init()\n";
     private const string Got = "let a = Box<i32>.init().get()\nlet b = Box<i64>.init().get()\n";
     private const string Read = "let a = Box<i32>.init().size\nlet b = Box<i64>.init().size\n";
+    private const string Stored = "    public func get(self: ref/Self) -> isize => self.f()\n" + Got;
+    private const string Inner = "let a = Outer<i32>.Inner.init()\nlet b = Outer<i64>.Inner.init()\n";
 
-    // The struct's declaration up to a definition: a Field initializer's, a constructor's (also a method's) and a getter's; a constructor
-    // after a Field; a getter's body declaring a function; a closed struct's Field initializer with a Closure.
+    // The struct's declaration up to a definition: a Field initializer's (also in a struct nested in a generic one), a constructor's (also a
+    // method's) and a getter's; a constructor after a Field; a getter's body declaring a function; a closed struct's Field initializer with
+    // a Closure.
     private const string FieldHead = "struct Box<T>\n    var v: isize = ";
+    private const string NestedHead = "struct Outer<T>\n    public struct Inner\n        var v: isize = ";
     private const string Plain = "struct Box<T>\n    var v: isize\n    public init() => self.v = ";
     private const string GetterHead = Plain + "0\n    public computed size: isize\n        get() -> isize";
     private const string Init = "\n    public init() => ()\n";
@@ -39,6 +43,8 @@ public sealed partial class InstanceCollectorTest
         { "initializer", $"{FieldHead}({Sized})(){Init}{Built}", 0, MadeAndCalled },
         { "two constructors", $"{FieldHead}({Sized})(){Init}    public init(n: isize) => ()\n{Built}", 0, MadeAndCalled },
         { "erased", $"struct Box<T>\n    var f: () -> isize = {Sized}{Init}{Built}", 0, $"Unsupported_Kd {Sized}" },
+        { "stored, called in a method", $"struct Box<T>\n    var f = {Sized}{Init}{Stored}", 0, $"Unsupported_Kd {Sized} | Unsupported_Kd self.f()" },
+        { "nested Type", $"{NestedHead}({Sized})()\n        public init() => ()\n{Inner}", 0, MadeAndCalled },
         { "naming no slot", $"{FieldHead}({Four})(){Init}{Built}", 0, $"Unsupported_Kd {Four} | Unsupported_Kd ({Four})()" },
         { "function in the initializer", $"{FieldHead}({Sizer}\n    )(){Init}{Built}", 0, $"Unsupported_Kd {Sizer} | Unsupported_Kd ({Sizer}\n    )()" },
         { "function in a getter", $"{GetterHead}{Make}{Read}", 0, "Unsupported_Kd make()" },
@@ -50,8 +56,9 @@ public sealed partial class InstanceCollectorTest
     };
 
     // SPEC 6.1.3, 6.3.3, 8.13.3 (DECISIONS R5-M43, R5-M157): an instance of a definition generic in its context holds the instance it
-    // instantiates in. A Closure in a generic struct's Field initializer, wherever it is made, called or erased and whether or not its body
-    // names a slot, gets no enclosing instance from Binding yet, so its substitution binds nothing and each request of its body is the
+    // instantiates in. A Closure in a generic struct's Field initializer (also a nested struct's), wherever it is made, called, erased or
+    // stored and called from a method's instance, and whether or not its body names a slot, gets no enclosing instance from Binding yet
+    // (PLAN G300), so its substitution binds nothing and each request of its body is the
     // EnclosingInstance gap (before: InternalInvariant_Kd from an open representative, or one identity item every instance shared); a
     // function nested in a generic getter is the gap at its call, as in a method (PLAN G149). A Closure in a getter, a constructor or a method
     // has one item per instance, a closed struct's initializer Closure is a root and an initializer without a definition has none, each
