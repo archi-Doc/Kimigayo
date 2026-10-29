@@ -5699,6 +5699,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
     publish, a second Move representation; own steps count Valued only for an activation); the builder giving the Return an operand
     (Full, unneeded); a check at the exit request's FakeRead (before Scope Exit; design review 1). The delivery's records carry their
     Anchor and no witness (DIAGNOSTICS); an early `return`'s record lies at the constructor's declaration (an open issue).
+  - Cost (the G258 host over the 122 census programs: the library, the milestones, the MIR goldens and the accepted SPEC variants; A
+    dev 4f57b57f4, A' its byte copy, B 0470ceaee, from one folder, interleaved with the side order rotated, 3 runs x 8 reps, CPU 2
+    pinned, tiering off; sums of per-program medians): A5's step 4 B/A 0.991, A'/A 0.988, B/A' 1.004 (minima 0.992, 0.989, 1.002), step 2
+    B/A' 1.003; Work 12,254,995, Bytes 268,904 and the 7 problems equal on every side, and so are cold step 4 (87,463,456 B), warm step 4
+    (3,424 B) and warm step 2 (3,622,752 B). Bind on Hello and Milestone26 (3 runs x 20 reps): cold B/A 0.995 and 0.995 (A'/A 0.999 and
+    0.997), warm 0.993 and 0.997; cold allocation equal (4,858,160 and 4,932,944 B), warm 0 B.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

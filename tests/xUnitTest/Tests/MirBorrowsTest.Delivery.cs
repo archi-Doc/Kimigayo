@@ -261,4 +261,58 @@ public sealed partial class MirBorrowsTest
 
             """));
     }
+
+    // SPEC 15.6.3 and 15.6's holders, the same rule at an operand Move (DECISIONS R4-M156 (2)): a value holding a child formed through its
+    // own reference Field, or a Tuple element's through another, conflicts at the Move that takes it into a local (moved, tupleMoved), a
+    // call (consumed), the result (returned, tupleReturned) or an aggregate (aggregated); valid: its scope ends without a Move (scoped),
+    // and a replacement ends the child before the Move (replacedFirst).
+    [Fact]
+    public void AnOperandMoveOfASelfHoldingValueConflictsAtTheMove()
+        => Assert.Equal(
+            ["moved: h", "consumed: h", "returned: h", "tupleMoved: t", "tupleReturned: t", "aggregated: x"],
+            AnchorProblems(DeliveryShapes + """
+                struct SelfPin {a}
+                    public var u: uniq/Cel during a
+                    public var view: ref/Cel during a
+                    public init(o: uniq/Cel during a, r: ref/Cel during a)
+                        self.u = o
+                        self.view = r
+                func take(h: SelfPin) => ()
+                func moved(b: uniq/Cel, c: ref/Cel)
+                    var h = SelfPin.init(b, r: c)
+                    h.view = h.u@follow@ref
+                    let m = h@move
+                    let k = m.view.n
+                func consumed(b: uniq/Cel, c: ref/Cel)
+                    var h = SelfPin.init(b, r: c)
+                    h.view = h.u@follow@ref
+                    take(h@move)
+                func returned(b: uniq/Cel during a, c: ref/Cel during a) -> SelfPin during a
+                    var h = SelfPin.init(b, r: c)
+                    h.view = h.u@follow@ref
+                    return h
+                func tupleMoved(b: uniq/Cel, c: ref/Cel)
+                    var t: (uniq/Cel, ref/Cel) = (b, c)
+                    t.1 = t.0@follow@ref
+                    let m = t@move
+                    let k = m.1.n
+                func tupleReturned(b: uniq/Cel during a, c: ref/Cel during a) -> (uniq/Cel during a, ref/Cel during a)
+                    var t: (uniq/Cel during a, ref/Cel during a) = (b, c)
+                    t.1 = t.0@follow@ref
+                    return t
+                func aggregated(b: uniq/Cel during a) -> (ref/Cel during a, uniq/Cel during a)
+                    var x = b
+                    return (x@follow@ref, x)
+                func scoped(b: uniq/Cel, c: ref/Cel)
+                    var h = SelfPin.init(b, r: c)
+                    h.view = h.u@follow@ref
+                    seeCel(h.view)
+                func replacedFirst(b: uniq/Cel, c: ref/Cel, d: uniq/Cel)
+                    var h = SelfPin.init(b, r: c)
+                    h.view = h.u@follow@ref
+                    h.u = d
+                    let m = h@move
+                    let k = m.view.n
+
+                """));
 }
