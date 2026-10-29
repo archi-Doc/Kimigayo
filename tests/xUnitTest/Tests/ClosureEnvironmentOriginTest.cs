@@ -89,6 +89,32 @@ public class ClosureEnvironmentOriginTest
         "    let f = func [q] (y: ref/i32) -> i32\n        let h: H{x} = H.init(y)\n            origin x.s outlives q\n        return h.item@follow\n" +
         "    let a: i32 = 1\n    return f(a@ref)\npublic func main() => ()\n";
 
+    // PLAN G230's d6 family (G227's design B): `leak` and a `var w` whose Type names the set `x`; the nested functions name `x.s` or `w.s`.
+    private const string WStruct = "struct W {s}\n    public var items: Array<ref/i32 during s>\n" +
+        "    public init(items: Array<ref/i32 during s>) => self.items = items@move\n";
+
+    private const string Leak = "func leak(a: ref/i32) -> i32\n    var arr: Array<ref/i32> = []\n    arr.append(a)\n";
+
+    private const string NestedHead = WStruct + Leak + "    var w: W{x} = W.init(items: arr@move)\n";
+
+    // d6's `put` stores its own input into `x.s`; d6c's input is `during x.s` too.
+    private const string PutSignatureStore = "(slot: uniq/Array<ref/i32 during x.s>, v: ref/i32) => slot@follow.append(v)\n";
+
+    private const string PutSignatureBoth = "(slot: uniq/Array<ref/i32 during x.s>, v: ref/i32 during x.s) => slot@follow.append(v)\n";
+
+    private const string PutStore = "    func put" + PutSignatureStore;
+
+    private const string PutBoth = "    func put" + PutSignatureBoth;
+
+    // d6's store of a block's `inner` and the later read of it.
+    private const string NestedStore = "    if true\n        let inner: i32 = 41\n        put(w.items@uniq, inner@ref)\n    let items = w.items@move\n" +
+        "    let old: i32 = items[1]@follow\n    return old\npublic func main() => ()\n";
+
+    private const string NestedValid = "    put(w.items@uniq, a)\n    let items = w.items@move\n    let old: i32 = items[1]@follow\n    return old\n" +
+        "public func main() => ()\n";
+
+    private const string OtherStore = "    var other: Array<ref/i32> = []\n    put(other@uniq, a)\n    return 0\npublic func main() => ()\n";
+
     // G6's two forms of a function whose Closure stores through a captured `q` into an Origin of the enclosing body (2c-D design B's g6).
     private const string G6Single = "func use(p: uniq/i32, q: uniq/(uniq/i32 during p)) -> i32\n";
 
@@ -436,6 +462,87 @@ public class ClosureEnvironmentOriginTest
         foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
         {
             Assert.Empty(ContextualCaptureTest.PublishedRecords(function + "public func main() => ()\n", pipeline));
+        }
+    }
+
+    // SPEC 15.3.4 (PLAN G230; DECISIONS BU-56, an interim until G230's (A)): a named nested function's signature or clause that names an
+    // enclosing body local's set or annotated value, whose Type names a body local's atom, is, valid or not, a located Unsupported_Kd at
+    // each such written Origin on both pipelines, and nothing rests on it. dev bound the name to an atom of the local's annotation that no
+    // body links to the local's region and accepted the store (d6 ran `leak 41`, d6c failed LLVM generation); d6v and d6r are the valid
+    // twins.
+    [Theory]
+    [InlineData(NestedHead + PutStore + NestedStore, "x.s>")]
+    [InlineData(NestedHead + PutBoth + NestedStore, "x.s>", "x.s)")]
+    [InlineData(NestedHead + PutBoth + NestedValid, "x.s>", "x.s)")]
+    [InlineData(
+        WStruct + Leak + "    var w: W = W.init(items: arr@move)\n    func put(slot: uniq/Array<ref/i32 during w.s>, v: ref/i32) => slot@follow.append(v)\n" +
+            NestedStore,
+        "w.s>")]
+    [InlineData(
+        Leak + "    let r: ref/i32 = arr[0]\n    func put(slot: uniq/Array<ref/i32 during r>, v: ref/i32) => slot@follow.append(v)\n" + OtherStore,
+        "r>")]
+    [InlineData(
+        NestedHead + "    func first(slot: ref/Array<ref/i32 during x.s>) -> i32 => slot[0]@follow\n    let got = first(w.items@ref)\n" +
+            "    let items = w.items@move\n    return got + items[0]@follow\npublic func main() => ()\n",
+        "x.s>")]
+    [InlineData(
+        NestedHead + "    func put(slot: uniq/Array<ref/i32 during q>, v: ref/i32 during q)\n        origin q == x.s\n        slot@follow.append(v)\n" +
+            NestedStore,
+        "x.s\n")]
+    public void ANestedSignatureNamingABodyLocalIsUnsupported(string source, params string[] at)
+    {
+        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
+        {
+            var errors = ContextualCaptureTest.PublishedRecords(source, pipeline).Where(static x => x.Severity == DiagnosticSeverity.Error)
+                .OrderBy(static x => x.Span.Start).ToArray();
+            Assert.Equal(at.Length, errors.Length);
+            for (var i = 0; i < at.Length; i++)
+            {
+                Assert.Equal(nameof(DiagnosticCode.Unsupported_Kd), errors[i].Code);
+                Assert.StartsWith(at[i], source[errors[i].Span.Start..], StringComparison.Ordinal);
+            }
+        }
+    }
+
+    // The forms BU-56 leaves to their judges: an enclosing parameter's Origin, also through a local annotated with it (d6b's store of the
+    // call's own input stays Unknown), an enclosing contract's (SPEC 15.3.4's `pass`), an unannotated local's value, whose Type the
+    // body gives it before it binds the header again (d6u; LocalRegionCompletionTest's NestedNamedFinite), and a Closure header naming
+    // the same local set, bound in its evaluating body (BU-28's EnclosingAtom: storing the call's own input is Unknown, the valid twin is
+    // accepted).
+    [Theory]
+    [InlineData(
+        Leak + "    func put(slot: uniq/Array<ref/i32 during a>, v: ref/i32) => slot@follow.append(v)\n    return 0\npublic func main() => ()\n",
+        Unproven,
+        "v)")]
+    [InlineData(
+        Leak + "    let r: ref/i32 during a = arr[0]\n    func put(slot: uniq/Array<ref/i32 during r>, v: ref/i32) => slot@follow.append(v)\n" +
+            "    return 0\npublic func main() => ()\n",
+        Unproven,
+        "v)")]
+    [InlineData(
+        Leak + "    let r = arr[0]\n    func put(slot: uniq/Array<ref/i32 during r>, v: ref/i32 during r) => slot@follow.append(v)\n" +
+            "    var other: Array<ref/i32> = []\n    other.append(a)\n    put(other@uniq, r)\n    return 0\npublic func main() => ()\n",
+        null,
+        null)]
+    [InlineData(
+        "func use(source: uniq/i32, bound: ref/i32) -> i32\n    origin source outlives bound\n" +
+            "    func pass(value: uniq/i32 during bound) -> uniq/i32 during bound => value\n    let child = pass(source)\n    child@follow = 42\n" +
+            "    return source@follow\npublic func main() => ()\n",
+        null,
+        null)]
+    [InlineData(NestedHead + "    let put = func [] " + PutSignatureBoth + NestedValid, null, null)]
+    [InlineData(NestedHead + "    let put = func [] " + PutSignatureStore + NestedStore, Unproven, "v)")]
+    public void AnEnclosingContractOriginOrAClosureHeaderKeepsItsJudgment(string source, string? code, string? at)
+    {
+        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
+        {
+            var errors = ContextualCaptureTest.PublishedRecords(source, pipeline).Where(static x => x.Severity == DiagnosticSeverity.Error)
+                .ToArray();
+            Assert.Equal(code is null ? Array.Empty<string>() : [code], errors.Select(static x => x.Code));
+            if (at is not null)
+            {
+                Assert.StartsWith(at, source[errors[0].Span.Start..], StringComparison.Ordinal);
+            }
         }
     }
 

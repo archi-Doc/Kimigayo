@@ -37,6 +37,42 @@ public sealed partial class Binding
         return -1;
     }
 
+    // Whether a Type names a body local's atom where a written Origin selects one: its Origin or a slot, past its borrow layers.
+    private static bool NamesLocalAtom(BoundType? type)
+    {
+        for (; type is not null; type = type.Kind == BoundTypeKind.Semantics && IsBorrow(type.Semantics) ? type.Components[0] : null)
+        {
+            if (type.Origin is { } origin && LocalAtom(origin))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < type.OriginArguments.Count; i++)
+            {
+                if (type.OriginArguments[i] is { } argument && LocalAtom(argument))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // An atom of a body local (a FieldKoto's Type or region), or a meet with one.
+    private static bool LocalAtom(BoundOrigin origin)
+    {
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            if (LocalAtom(origin.Operands[i]))
+            {
+                return true;
+            }
+        }
+
+        return origin.Binder is { } binder && OriginOwner(binder) is FieldKoto;
+    }
+
     private BoundType? BoundInputType(Koto owner, int index)
         => ReferenceEquals(owner, this.closureHeader) && InputType(owner, index) is SyntaxFormKoto { Akind: KotoKind.InferredType }
             ? this.closureHeaderInputs!.Components[index]
@@ -241,6 +277,11 @@ public sealed partial class Binding
             {
                 carrier = this.BindOriginSetType(local, current);
                 repeated = RepeatedSet(local) ? local : null;
+                if (repeated is null && this.UnlinkedLocalType(use, carrier))
+                {
+                    carrier = null;
+                }
+
                 return true;
             }
 
@@ -275,12 +316,33 @@ public sealed partial class Binding
 
                 (use is MemberAccessKoto member ? member.Left : use).BoundSymbol = symbol;
                 carrier = symbol.Type ?? (symbol.Declaration is VariableKoto { TypeKoto: { } type } ? this.BindType(type, current) : null);
+                if (symbol is { Kind: BindingSymbolKind.Local, Declaration: VariableKoto { TypeKoto: not null } } && this.UnlinkedLocalType(use, carrier))
+                {
+                    carrier = null;
+                }
 
                 return true; // An unsuitable nearest candidate never falls through.
             }
         }
 
         return false;
+    }
+
+    // SPEC 15.3.4 (DECISIONS BU-56, an interim until PLAN G230's (A)): a declaration's written Origin, bound with no body outside a
+    // local's own declaration, that names a body local's written Type (its set's Type or its annotation) reads that annotation's atoms,
+    // formed outside every body, or the local's region where the body binds the header again (BindFunction): nothing links either to
+    // the local in its body. Where that Type names a body local's atom, not a parameter's or a contract's, the name is a located
+    // Unsupported_Kd and resolves to nothing a judge could read. A Closure's header is bound in its evaluating body and keeps
+    // EnclosingAtom's rule; an unannotated local has the Type its body gives it before the header is bound there again.
+    private bool UnlinkedLocalType(Koto use, BoundType? type)
+    {
+        if (this.formingBody.IsBody || OriginOwner(use) is FieldKoto || !NamesLocalAtom(type))
+        {
+            return false;
+        }
+
+        this.Fail(use, BindingFailure.Unsupported);
+        return true;
     }
 
     private BoundOrigin? OmittedOrigin(Koto use, BindingScope scope, TypeBindingContext context, LoanRequirement requirement = LoanRequirement.Ref, int aggregateSlot = -1, BindingSymbol? borrowCondition = null)
