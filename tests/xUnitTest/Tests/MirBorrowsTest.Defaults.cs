@@ -616,8 +616,8 @@ public sealed partial class MirBorrowsTest
     // SPEC 23.1.2 (DECISIONS R4-M127, R4-M139): a default the call's substitution does not instantiate is an Opaque value at the call
     // (MirBuildTest's ACopyTheCallDoesNotInstantiateIsAnOpaqueValue), and one over storage Binding rejected a copy (its
     // ACopyOverRejectedStorageIsBuilt), so no validator finding hides the caller's independent records: `v = 2` stays, over storage Binding
-    // rejected and in a complete program past the storage depth, as in the twins. The Unsupported_Kd at lim's and lim64's
-    // calls is A5's own, their retention past the depth bound (CallRetention.Limit, a genuine limit); a call over storage Binding rejected
+    // rejected and in a complete program past the storage depth, as in the twins. The depth limit at lim's and lim64's calls (the owner's
+    // 「G272: (1)」, R4-M153) is A5's own, their retention past the depth bound (CallRetention.Limit, a genuine limit); a call over storage Binding rejected
     // keeps its other rows instead (DECISIONS BU-36, SPEC 23.1.2). Before, the copies' Type findings left both programs unanalyzed.
     [Fact]
     public void AnUninstantiableDefaultHidesNoRecord()
@@ -626,7 +626,7 @@ public sealed partial class MirBorrowsTest
             ["dep: v = 2", "dep3: v = 2", "dep2: v = 2", "val: v = 2", "val2: v = 2"],
             Analyzed(MirBuildTest.RejectedCopies));
         Assert.Equal(
-            ["lim: f(b) Unsupported_Kd", "lim: v = 2", "lim64: f(b) Unsupported_Kd", "lim64: v = 2", "n30: v = 2"],
+            ["lim: f(b) OwnershipDepthLimit_Kd", "lim: v = 2", "lim64: f(b) OwnershipDepthLimit_Kd", "lim64: v = 2", "n30: v = 2"],
             Analyzed(MirBuildTest.LimitCopies));
 
         // The pipeline's own analyses (MirAnalysis), which analyze nothing in a program with a validator finding.
@@ -635,7 +635,7 @@ public sealed partial class MirBorrowsTest
             var c = MirBuildTest.Compile(source);
             var program = c.BuildMir();
             Assert.Empty(program.Findings);
-            return Problems(c, program, [.. LoanCodes, DiagnosticCode.Unsupported_Kd]);
+            return Problems(c, program, [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnershipDepthLimit_Kd]);
         }
     }
 
@@ -1034,9 +1034,9 @@ public sealed partial class MirBorrowsTest
         return [.. program.Problems.Facts(problem).ToArray().Select(x => $"{x.Kind} {Line(c, x.Site)}")];
     }
 
-    // The codes of A5's Loan stratum, its template rules and its located Unsupported_Kd.
-    private static DiagnosticCode[] DefaultCodes => [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.DefaultArgumentAccess_Kd,
-        DiagnosticCode.DefaultArgumentBorrow_Kd];
+    // The codes of A5's Loan stratum, its template rules and its limit records (a located Unsupported_Kd, the depth limit).
+    private static DiagnosticCode[] DefaultCodes => [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnershipDepthLimit_Kd,
+        DiagnosticCode.DefaultArgumentAccess_Kd, DiagnosticCode.DefaultArgumentBorrow_Kd];
 
     // The Loan, default and Unsupported_Kd problems of a program's own bodies.
     private static string[] AllProblems(string source)
