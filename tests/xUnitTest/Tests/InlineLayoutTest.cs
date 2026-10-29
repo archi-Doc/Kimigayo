@@ -22,6 +22,14 @@ public class InlineLayoutTest
     [InlineData("enum E\n    Empty\n    Again(E)\nlet x = E.Empty", "E")]
     [InlineData("enum E<T>\n    Empty\n    Again(E<E<T>>)\nlet x = E<i32>.Empty", "E")]
     [InlineData("enum A\n    Empty\n    Again(B)\nenum B\n    Again(A)\nlet x = A.Empty", "A,B")]
+
+    // DECISIONS BU-55: a Tuple is visited once per container frame only when its visit closed no cycle, so these keep dev's verdicts. R's
+    // walk meets C<i32> while C<u8> is on the stack and closes nothing; C's own walk meets the same Tuple and closes C's cycle.
+    [InlineData("struct R\n    let r: C<u8>\nstruct C<T>\n    let t: (C<i32>, u8)\n", "C")]
+
+    // The second M of A's Tuple, met after M's cycle was recorded, marks M finite, so R2's own walk skips M and R2 is not reported (with
+    // `p: M` it is): the verdict depends on duplicated parts and declaration order, an open defect (PLAN G310, BU-55), pinned at dev's.
+    [InlineData("struct A\n    let p: (M, M)\nstruct R2<T>\n    let m: M\nstruct M\n    let r: R2<i32>\n", "M")]
     public void SelfContainingDeclarationsAreDiagnosed(string source, string cyclic)
     {
         var c = MinimalEmissionTest.Analyze(source);

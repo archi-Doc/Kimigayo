@@ -8,6 +8,9 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // CheckTypeConstraints' proofs of a Type's parts in one query, each with the cause it rests on (DECISIONS BU-55).
+    private readonly TypeMemo<(ConstraintProof Proof, ICheckCause? Cause)> formedParts = new();
+
     // The causes of each pair occurrence that a final check failed with a Language cause, for its evidence and for the separate record
     // of an unproven target role (Check).
     private Dictionary<Koto, TypeRoleCause>? formationCauses;
@@ -167,7 +170,13 @@ public sealed partial class Binding
         return node is SyntaxFormKoto { Akind: KotoKind.EnumCase, Parent: EnumKoto enumeration } ? enumeration : null;
     }
 
+    // SPEC 8.3: a Type's formation in `scope`: each part's declaration context, its Origin clauses and a constructed part's clauses under
+    // its arguments. A part's proof and the cause it rests on depend on the part alone in one query (its scope fixed), so each distinct
+    // part is proven once (FormedPart; DECISIONS BU-19, BU-55).
     private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope)
+        => this.CheckTypeConstraints(type, scope, this.formedParts.Begin(this.storageVersion));
+
+    private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope, uint query)
     {
         if (type.Symbol is { } symbol && this.InvalidDeclarationContext(symbol.Declaration))
         {
@@ -179,7 +188,7 @@ public sealed partial class Binding
         proof = CombineProof(proof, this.CheckTypeOriginRelations(type, scope), true);
         for (var i = 0; i < type.Components.Count; i++)
         {
-            proof = CombineProof(proof, this.CheckTypeConstraints(type.Components[i], scope), true);
+            proof = CombineProof(proof, this.FormedPart(type.Components[i], scope, query), true);
         }
 
         if (type is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto container } &&
@@ -192,6 +201,27 @@ public sealed partial class Binding
         }
 
         return this.EndProof(outer, proof);
+    }
+
+    // A component's formation (CheckTypeConstraints), each distinct one with components proven once per query: its proof and the cause it
+    // rests on are read again into its own proof scope (ReadVerdict) where it recurs, as EndProof reads a recomputation; a leaf is cheaper
+    // to prove again than to record.
+    private ConstraintProof FormedPart(BoundType part, BindingScope scope, uint query)
+    {
+        if (part.Components.Count == 0)
+        {
+            return this.CheckTypeConstraints(part, scope, query);
+        }
+
+        var outer = this.BeginProof();
+        if (!this.formedParts.TryGet(part, query, out var known))
+        {
+            var proof = this.CheckTypeConstraints(part, scope, query);
+            known = (proof, this.ProofCause(proof));
+            this.formedParts.Set(part, query, known);
+        }
+
+        return this.EndProof(outer, this.ReadVerdict(known.Proof, known.Cause));
     }
 
     private ConstraintProof CheckSignatureTypeConstraints(FunctionKoto function)
@@ -337,38 +367,6 @@ public sealed partial class Binding
     private ConstraintProof CheckProjectionInputs(BoundType type, BindingSymbol contract, BindingScope scope)
         => CombineProof(this.CheckTypeConstraints(type, scope), this.ProveConformance(type, contract, scope), true);
 
-    private ConstraintProof CheckClosedDeclarationConstraints(DeclarationContainerKoto container)
-    {
-        var outer = this.BeginProof();
-        var proof = ConstraintProof.Proven;
-        for (var i = 0; i < container.ConstraintNodes.Count; i++)
-        {
-            var clause = container.ConstraintNodes[i];
-            if (clause.IsAssociatedConstraint || IsSelfConstraint(clause))
-            {
-                continue;
-            }
-
-            if (clause.BoundConstraint is not { } constraint)
-            {
-                proof = CombineProof(proof, ConstraintProof.Unknown, true);
-                continue;
-            }
-
-            if (DependentConstraint(constraint, contractSelf: container is ContractKoto))
-            {
-                continue;
-            }
-
-            var scope = this.scopes[container];
-            var subject = clause.Left.BoundType;
-            var formation = subject is null ? ConstraintProof.Unknown : this.CheckTypeConstraints(subject, scope);
-            proof = CombineProof(proof, CombineProof(formation, this.ProveConstraint(constraint, scope), true), true);
-        }
-
-        return this.EndProof(outer, proof);
-    }
-
     private bool ValidateClosedTypeConstraints(BindingMode mode)
     {
         var changed = false;
@@ -425,7 +423,9 @@ public sealed partial class Binding
                 }
             }
 
-            if (this.nodes[i] is not IsKoto { Parent: DeclarationContainerKoto container, IsAssociatedConstraint: false, BoundConstraint: { } constraint, Left.BoundType: { } subject } clause || container is not (StructKoto or EnumKoto or ContractKoto) || IsSelfConstraint(clause) || DependentConstraint(constraint, contractSelf: container is ContractKoto))
+            if (this.nodes[i] is not IsKoto { Parent: DeclarationContainerKoto container, IsAssociatedConstraint: false, BoundConstraint: { } constraint, Left.BoundType: { } subject } clause ||
+                container is not (StructKoto or EnumKoto or ContractKoto) || IsSelfConstraint(clause) ||
+                this.DependentConstraint(constraint, contractSelf: container is ContractKoto))
             {
                 continue;
             }
@@ -657,7 +657,7 @@ public sealed partial class Binding
     private ConstraintProof EndProof((ICheckCause? Limit, ICheckCause? Error) outer, ConstraintProof proof)
     {
         this.proofNesting--;
-        var cause = proof == ConstraintProof.Unknown ? this.limitRead : proof == ConstraintProof.Error ? this.errorRead : null;
+        var cause = this.ProofCause(proof);
         this.limitRead = outer.Limit;
         this.errorRead = outer.Error;
         if (this.proofNesting != 0 || this.capabilityConsumer is not null)
@@ -673,6 +673,10 @@ public sealed partial class Binding
         this.failedCause ??= cause;
         return ConstraintProof.Error;
     }
+
+    // The cause the answer of the proof scope in progress rests on: an Unknown's limit, an Error's cause (EndProof).
+    private ICheckCause? ProofCause(ConstraintProof proof)
+        => proof switch { ConstraintProof.Unknown => this.limitRead, ConstraintProof.Error => this.errorRead, _ => null };
 
     // A read of an answer joins the proof in progress with what it rests on: an Unknown's limit, an Error's cause.
     private ConstraintProof ReadVerdict(ConstraintProof proof, ICheckCause? cause)
