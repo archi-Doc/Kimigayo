@@ -478,19 +478,27 @@ public sealed partial class FunctionCodegenTest
     // expression is a use of that layout), so a Library checks it only and does not generate it (InstanceCollector.Generates), and an
     // Application, which generates only its startup's closure, neither: both are written without a record, its Generated column clear, and
     // so are the bodies only it makes (DECISIONS R5-M153): a Closure in its body, and a Closure in a Field's initializer with the function
-    // declared in it (fail-before: a Library generated each, at the base and under the lexical-nesting rule alike).
+    // declared in it (fail-before: a Library generated each, at the base and under the lexical-nesting rule alike); its default templates
+    // take its verdict, a constant's and a Closure's (fail-before: a Library generated each template, the Closure in it too).
     [Theory]
     [InlineData(OutputKind.Library, "clayout")]
     [InlineData(OutputKind.Library, "limit")]
+    [InlineData(OutputKind.Library, "default")]
+    [InlineData(OutputKind.Library, "closure default")]
     [InlineData(OutputKind.Application, "clayout")]
     [InlineData(OutputKind.Application, "limit")]
     public void AnUncalledConstructorWithoutAReceiverLayoutIsCheckedOnly(OutputKind output, string form)
     {
-        var source = form == "clayout" ? "#Layout(\"C\")\npublic struct S\n    public init()\n        let add = func [] (x: i32) -> i32 => x + x\n" :
-            "public struct Big\n    public var a: [1073741824 of u8]\n    public var b: [1073741824 of u8]\n    public var c: [1073741824 of u8]\n" +
-            "    public var d: i32 = (func [] (x: i32) -> i32\n        func twice(y: i32) -> i32 => y * 2\n        return twice(x)\n    )(2)\n" +
-            "    public init(a: [1073741824 of u8], b: [1073741824 of u8], c: [1073741824 of u8])\n" +
-            "        self.a = a@move\n        self.b = b@move\n        self.c = c@move\n";
+        var source = form switch
+        {
+            "clayout" => "#Layout(\"C\")\npublic struct S\n    public init()\n        let add = func [] (x: i32) -> i32 => x + x\n",
+            "default" => "#Layout(\"C\")\npublic struct S\n    public init(n: i32 = 2) => ()\n",
+            "closure default" => "#Layout(\"C\")\npublic struct S\n    public init(f: (i32) -> i32 = func [] (x: i32) -> i32 => x + 1) => ()\n",
+            _ => "public struct Big\n    public var a: [1073741824 of u8]\n    public var b: [1073741824 of u8]\n    public var c: [1073741824 of u8]\n" +
+                "    public var d: i32 = (func [] (x: i32) -> i32\n        func twice(y: i32) -> i32 => y * 2\n        return twice(x)\n    )(2)\n" +
+                "    public init(a: [1073741824 of u8], b: [1073741824 of u8], c: [1073741824 of u8])\n" +
+                "        self.a = a@move\n        self.b = b@move\n        self.c = c@move\n",
+        };
         var c = Analyze(source + (output == OutputKind.Application ? "let zz = 1\n" : string.Empty), output);
         Assert.True(c.Accepts, string.Join(", ", Records(c)));
         using var writer = new StringWriter();
@@ -1528,7 +1536,8 @@ public sealed partial class FunctionCodegenTest
             "            let f = func [] (x: i32) -> i32 => x + 1\n            return f(self.stored)\n        set(value: i32) -> ()\n" +
             "            let g = func [] (x: i32) -> i32 => x * 2\n            self.stored = g(value)\n    public init() => ()\n    drop\n" +
             "        let h = func [] (y: i32) -> i32 => y + 1\n        _ = h(2)\n" +
-            "func apply(x: i32, f: (i32) -> i32 = func [] (y: i32) -> i32 => y + 1) -> i32 => f(x)\ngroup Registry\n    public let limit: i32 = (func [] (y: i32) -> i32 => y + 1)(3)\n",
+            "func apply(x: i32, f: (i32) -> i32 = func [] (y: i32) -> i32 => y + 1) -> i32 => f(x)\n" +
+            "group Registry\n    public let limit: i32 = (func [] (y: i32) -> i32 => y + 1)(3)\n",
             OutputKind.Library);
         _ = Generate(c);
         var program = c.BuildMir();

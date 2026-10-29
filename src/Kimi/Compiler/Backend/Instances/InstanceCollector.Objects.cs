@@ -29,7 +29,8 @@ internal sealed partial class InstanceCollector
     /// layout (no C layout, or over a limit or 2^63 - 1 bytes), which no program that builds calls, since each construction expression is
     /// a use of that layout (SPEC 8.15.3; DECISIONS R5-M149, the owner's Q1 (a)); both are checked only. An output root is a declaration's
     /// own body: a Closure's body, made at an Aggregate(Closure) site, and a function declared in a function's or Closure's body (its
-    /// declaring scope's Function) are none; the bodies that make or call them reach them (DECISIONS R5-M153).</summary>
+    /// declaring scope's Function) are none; the bodies that make or call them reach them; a default template takes the verdict of its
+    /// declaration's own body, so a public function's is a root and a checked-only constructor's is none (DECISIONS R5-M153).</summary>
     /// <param name="program">The program.</param>
     /// <param name="root">The root.</param>
     /// <returns>Whether it is an output root, or null where its slot's applicability is undecided, a broken contract.</returns>
@@ -39,6 +40,12 @@ internal sealed partial class InstanceCollector
         if (this.Set.Items[root].Key.Body.Def.Kind == MirBodyKind.Closure || function?.Scope.Function is not null)
         {
             return false;
+        }
+
+        if (this.Set.Items[root].Key.Body.Def.Kind == MirBodyKind.DefaultTemplate &&
+            this.Set.Find(new(MonoKind.Body, new(new(function, MirBodyKind.Fn), null), null, null, 0, null)) is >= 0 and var own)
+        {
+            return this.Generates(program, own);
         }
 
         if (program.Bodies[this.Set.Items[root].BodyOrdinal].Locals is [{ Role: MirLocalRole.Receiver } receiver, ..] &&

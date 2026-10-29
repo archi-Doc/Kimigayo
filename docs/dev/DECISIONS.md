@@ -12191,7 +12191,10 @@ structure is recorded here by the unit that first implements it.
     `Aggregate(Closure)` site, which `CheckedSet.Mark` follows. No body of a function declared in a function's or Closure's body is one:
     its declaring scope's `BindingScope.Function` (Binding's scope fact, read without walking through Closures) is set; its calls,
     function items and erasures reach it. So a checked-only body leaves out what only it makes, wherever that is written (a Field's
-    initializer runs in its constructor), and a generated body generates what it reaches, as in an Application.
+    initializer runs in its constructor), and a generated body generates what it reaches, as in an Application. A default template
+    takes the verdict of its declaration's own body (R5-M149's reads that body's Receiver local, which a template lacks), so a public
+    function's template stays a root for external callers and a checked-only constructor's (`init(n: i32 = 2)`, or one whose default is
+    a Closure) is none.
   - Left: a function declared directly in an accessor's body has no `BindingScope.Function` (an accessor is no function declaration),
     so it stays an output root; accessors are never virtual (SPEC 6.4) or constructors, so never checked only: an uncalled one is dead
     code only.
