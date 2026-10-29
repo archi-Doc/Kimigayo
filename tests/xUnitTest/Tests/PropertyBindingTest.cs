@@ -4,6 +4,7 @@ using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -21,6 +22,36 @@ public class PropertyBindingTest
             public init(x: S.Output) => self.x = x
 
         """;
+
+    // A group Property's custom accessors (ABareGroupPropertyUpdateBesideACustomAccessorIsTheLocatedLimit).
+    private const string CountGetter = "        get() -> i32\n            return storage\n";
+    private const string CountSetter = "        set(value: i32) -> ()\n            storage = value\n";
+
+    // Fields whose stored Type an instance leaves unresolved, beside a custom or the standard `set` (AnUpdateWithoutAStoredTypeAddsNoRecord).
+    private const string RejectedField = "struct HS<S>\n    S is Addable<S>\n    public var x: S.Output\n";
+    private const string RejectedRest = "    public init(x: S.Output) => self.x = x@move\nfunc f(h: uniq/HS<bool>) -> ()\n";
+    private const string RejectedHolder = RejectedField + "        set(value: S.Output) -> ()\n            storage = value@move\n" + RejectedRest;
+    private const string RejectedStandard = RejectedField + RejectedRest;
+    private const string UnresolvedField = "struct HU<S>\n    public var x: Missing<S>\n";
+    private const string UnresolvedRest = "func f(h: uniq/HU<i32>) -> ()\n";
+    private const string UnresolvedHolder = UnresolvedField + "        set(value: Missing<S>) -> ()\n            storage = value@move\n" + UnresolvedRest;
+    private const string UnresolvedStandard = UnresolvedField + UnresolvedRest;
+
+    // An `x: i32` Field beside a custom accessor of another Type, and its twin (AnUpdateFitsItsResultToItsPublishedDestination).
+    private const string ClosedField = "struct HW\n    public var x: i32\n";
+    private const string ClosedInit = "    public init(x: i32) => self.x = x\n";
+    private const string WrongGetter = ClosedField + "        get() -> i64\n            return 1\n" + ClosedInit;
+    private const string GenericWrongGetter = "struct HW<S>\n    S is Copy\n    public var x: S\n        get() -> i64\n            return 1\n" +
+        "    public init(x: S) => self.x = x\n";
+
+    private const string WrongSetter = ClosedField + "        set(value: i64) -> ()\n            storage = 1\n" + ClosedInit;
+    private const string RightGetter = ClosedField + "        get() -> i32\n            return storage\n" + ClosedInit;
+
+    // A custom `get` of an Addable Type beside the standard `set`, so `+=` takes the user arithmetic path (TryArithmetic).
+    private const string AddableWrongGetter = "struct Counter\n    Self is Addable<Counter>\n    associate Output is Counter\n    public let value: i32\n" +
+        "    public init(value: i32) => self.value = value\n" +
+        "    public func added(self: ref/Self, right: ref/Counter) -> Counter => Counter.init(self.value + right.value)\n    drop => ()\n" +
+        ClosedField + "        get() -> Counter\n            return Counter.init(1)\n" + ClosedInit;
 
     [Theory]
     [InlineData("let", false)]
@@ -352,6 +383,72 @@ public class PropertyBindingTest
         var c = MinimalEmissionTest.Analyze(Holders + declarations + $"public func main() -> ()\n    {use}\n    return\n");
         Assert.Equal(record.Length == 0 ? [] : [record], c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}".Split('\n')[0]));
         Assert.Empty(c.Problems);
+    }
+
+    // SPEC 13.7.1, 11.1 (PLAN G296): each update fits its result to the destination Type BindPropertyUpdate publishes, so beside a custom
+    // `get` of another Type than the Field's, `+=` is a labelled TypeMismatch_Kd at the update after the declaration's, as `|=` and `++`
+    // are (before, `+=` was never fitted and mir and sel recorded InternalInvariant_Kd; `|=` and `++` were unlabelled at `h.x`); so is
+    // an update beside a custom `set` of another input Type, and a user arithmetic `+=` beside an Addable `get` (TryArithmetic; before,
+    // no record at the update, and InternalInvariant_Kd on mir and sel). Twins: a generic Field, and a `get` of the Field's Type, which
+    // is valid.
+    [Theory]
+    [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x += 4", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd h.x += 4")]
+    [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x |= 4", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd h.x |= 4")]
+    [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x++", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd h.x++")]
+    [InlineData(GenericWrongGetter, "var h = HW<i32>.init(x: 3)\n    h.x += 4", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd h.x += 4")]
+    [InlineData(AddableWrongGetter, "var h = HW.init(x: 3)\n    h.x += Counter.init(2)", "TypeMismatch_Kd get() -> Counter;TypeMismatch_Kd h.x += Counter.init(2)")]
+    [InlineData(WrongSetter, "var h = HW.init(x: 3)\n    h.x |= 4", "TypeMismatch_Kd set(value: i64) -> ();TypeMismatch_Kd h.x |= 4")]
+    [InlineData(WrongSetter, "var h = HW.init(x: 3)\n    --h.x", "TypeMismatch_Kd set(value: i64) -> ();TypeMismatch_Kd --h.x")]
+    [InlineData(RightGetter, "var h = HW.init(x: 3)\n    h.x += 4\n    h.x |= 4\n    h.x++", "")]
+    public void AnUpdateFitsItsResultToItsPublishedDestination(string holder, string use, string records)
+    {
+        var c = MinimalEmissionTest.Analyze(holder + $"public func main() -> ()\n    {use}\n    return\n");
+        Assert.Equal(records.Length == 0 ? [] : records.Split(';'), c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}".Split('\n')[0]));
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
+    }
+
+    // SPEC 23.1.2 (PLAN G296): an update beside a custom `set` whose standard side has no Type (a rejected instance, an unresolved Field
+    // Type) completes unresolved, a dependent of the reported failure that adds no record (before, a direct TypeMismatch_Kd at `h.x`).
+    // Twins: the standard accessors' update, which added none before either.
+    [Theory]
+    [InlineData(RejectedHolder, "h.x += 1")]
+    [InlineData(RejectedHolder, "h.x |= 1")]
+    [InlineData(RejectedHolder, "h.x++")]
+    [InlineData(UnresolvedHolder, "h.x += 1")]
+    [InlineData(RejectedStandard, "h.x += 1")]
+    [InlineData(UnresolvedStandard, "h.x += 1")]
+    public void AnUpdateWithoutAStoredTypeAddsNoRecord(string holder, string update)
+    {
+        const string Main = "    return\npublic func main() -> ()\n    return\n";
+        Assert.Equal(Errors(holder + Main), Errors(holder + $"    {update}\n" + Main));
+
+        static string[] Errors(string source)
+        {
+            var c = MinimalEmissionTest.Analyze(source);
+            c.Binding.ReportDiagnostics();
+            return [.. TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => x.Code)];
+        }
+    }
+
+    // SPEC 11.8, 13.7.2, 23.1.1 (PLAN G295): a bare update of a group Property beside a custom accessor, inside its group, completes its
+    // sides, then is Binding's located Unsupported_Kd at the target until P42 (before, no record and a PrerequisiteUnavailable_Kd without
+    // a root). Twins bind: the standard accessors, the qualified form (the later phases' limit), a bare read and a bare write.
+    [Theory]
+    [InlineData(CountSetter, "count += 1", "Unsupported_Kd count")]
+    [InlineData(CountSetter, "count++", "Unsupported_Kd count")]
+    [InlineData(CountGetter, "count |= 1", "Unsupported_Kd count")]
+    [InlineData(CountGetter + CountSetter, "--count", "Unsupported_Kd count")]
+    [InlineData("", "count += 1", "")]
+    [InlineData(CountSetter, "Config.count += 1", "")]
+    [InlineData(CountGetter, "let v = count", "")]
+    [InlineData(CountSetter, "count = 1", "")]
+    public void ABareGroupPropertyUpdateBesideACustomAccessorIsTheLocatedLimit(string accessors, string use, string record)
+    {
+        var c = MinimalEmissionTest.Analyze($"group Config\n    public var count: i32 = 0\n{accessors}    public func bump() -> ()\n        {use}\n" +
+            "        return\npublic func main() -> ()\n    Config.bump()\n    return\n");
+        c.Binding.ReportDiagnostics();
+        Assert.Equal(record.Length == 0 ? [] : [record], c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}"));
+        Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.PrerequisiteUnavailable_Kd));
     }
 
     [Fact]
