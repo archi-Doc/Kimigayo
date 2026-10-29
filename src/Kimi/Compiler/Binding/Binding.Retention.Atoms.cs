@@ -11,12 +11,8 @@ namespace Kimi.Compiler;
 // borrow a Type refers through (BorrowReferent); Binding.Retention.cs reads them into premises, Binding.Retention.Rows.cs into rows.
 public sealed partial class Binding
 {
-    // SPEC 15.6.4 (DECISIONS R4-M116, BU-40): the raw inputs of the contract being computed with their Types, and the holds of its outputs,
-    // each with its output, in walk order: the result's whole Type (CallRetention.ResultOutput), and each position of input j's writable storage
-    // whose Type a raw input's own value or a raw layer may reach (a raw layer, an abstract part, or a struct or enum whose stored content
-    // may hold one); reused.
+    // SPEC 15.6.4 (DECISIONS R4-M116, BU-40): the raw inputs of the contract being computed with their Types, in walk order; reused.
     private readonly List<(int Input, BoundType Type)> retentionRawInputs = new();
-    private readonly List<(int Output, BoundType Type)> retentionHolds = new();
 
     // Where an atom lies below its input's layers (RetentionAtom.Place, RetentionWalk): past a shared layer or a raw layer whose step is
     // Shared (Shared).
@@ -34,11 +30,6 @@ public sealed partial class Binding
     internal BoundType ClosureReceiver(FunctionKoto closure, BoundType callee)
         => closure.ClosureDefinition!.Receiver is var receiver && receiver == SemanticsKind.Owner ? callee
             : this.types.Reference(receiver, callee, this.OriginAtom(closure, OriginKind.Projection, ClosureValueSlot));
-
-    // Whether a position of the Type may hold a raw input's own value or a raw layer, at it or in its stored content (the hold walk,
-    // Binding.Retention.Rows.cs): a raw layer, an abstract part (a pair layer among them), a struct or an enum.
-    private static bool MayHold(BoundType type)
-        => type.IsAbstract || type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } || AdtDef.IsStruct(type) || AdtDef.IsEnum(type);
 
     // A callable Type, which stores nothing (SPEC 15.2.3): no position below it is storage a call writes (RetentionParts, the hold walk).
     private static bool IsCallable(BoundType type) => type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem;
@@ -134,17 +125,11 @@ public sealed partial class Binding
     // walk's and the sources' (Binding.Retention.Storage.cs, .Sources.cs; DECISIONS R4-M154). A raw layer with another Origin
     // addresses what each borrow its Origin
     // belongs to admits (RawContent), and its atom is that Origin, as a borrow's; what a raw layer without one retains is the hold walk's
-    // (Binding.Retention.Rows.cs). A callable Type stores nothing, and its per-call Origins belong to no value of it (SPEC 15.2.3). A
-    // position of an input's writable storage whose Type is a raw layer, an abstract part, a struct or an enum is one of that input's
-    // holds; the result's one hold is its whole Type (BeginRetention).
+    // (Binding.Retention.Rows.cs), which starts at the positions of the storage walk (DECISIONS BU-52), not here. A callable Type stores
+    // nothing, and its per-call Origins belong to no value of it (SPEC 15.2.3).
     private void RetentionWalk(BoundType type, RetentionAtom at, OriginVariance variance, bool callable)
     {
         var here = at with { Writable = at.Writable && variance == OriginVariance.Invariant };
-        if (!callable && here.Writable && MayHold(type))
-        {
-            this.retentionHolds.Add((here.Input, type));
-        }
-
         if (TryPairLayer(type, out _, out var target))
         {
             var exclusive = IsInvariantLayer(type, this);
