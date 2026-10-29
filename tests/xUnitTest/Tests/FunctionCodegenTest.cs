@@ -476,7 +476,8 @@ public sealed partial class FunctionCodegenTest
     // DECISIONS BU-48 and R5-M149 (the owner's Q1 (a); SPEC 6.3.2-6.3.4, 8.15.3, IMPL 21.3.2): a constructor's construction receiver is no
     // use, so an uncalled constructor whose receiver has no layout is accepted at check; no program that builds calls it (each construction
     // expression is a use of that layout), so a Library checks it only and does not generate it (InstanceCollector.Generates), and an
-    // Application, which generates only its startup's closure, neither: both are written without a record, its Generated column clear.
+    // Application, which generates only its startup's closure, neither: both are written without a record, its Generated column clear, and
+    // so is a Closure's in its body, which only its body reaches (DECISIONS R5-M153; fail-before: a Library generated the Closure's body).
     [Theory]
     [InlineData(OutputKind.Library, "clayout")]
     [InlineData(OutputKind.Library, "limit")]
@@ -484,7 +485,7 @@ public sealed partial class FunctionCodegenTest
     [InlineData(OutputKind.Application, "limit")]
     public void AnUncalledConstructorWithoutAReceiverLayoutIsCheckedOnly(OutputKind output, string form)
     {
-        var source = form == "clayout" ? "#Layout(\"C\")\npublic struct S\n    public init() => ()\n" :
+        var source = form == "clayout" ? "#Layout(\"C\")\npublic struct S\n    public init()\n        let add = func [] (x: i32) -> i32 => x + x\n" :
             "public struct Big\n    public var a: [1073741824 of u8]\n    public var b: [1073741824 of u8]\n    public var c: [1073741824 of u8]\n" +
             "    public init(a: [1073741824 of u8], b: [1073741824 of u8], c: [1073741824 of u8])\n" +
             "        self.a = a@move\n        self.b = b@move\n        self.c = c@move\n";
@@ -497,6 +498,7 @@ public sealed partial class FunctionCodegenTest
         var init = Assert.Single(Enumerable.Range(0, set.RootCount), x => set.Items[x].Key.Body.Def.Kind == MirBodyKind.Fn &&
             set.Items[x].Key.Body.Def.Decl?.Declaration?.ToString().Contains("init(", StringComparison.Ordinal) == true);
         Assert.False(set.IsGenerated(init));
+        Assert.DoesNotContain(Enumerable.Range(0, set.Items.Length), x => set.Items[x].Key.Body.Def.Kind == MirBodyKind.Closure && set.IsGenerated(x));
     }
 
     // SPEC 4.7.4, 8.15.3 (DECISIONS R5-M149): an element of a fixed array behind a reference needs only the element's stride and the array's
@@ -1491,6 +1493,8 @@ public sealed partial class FunctionCodegenTest
 
     // K11 with R4-M28 (K package 4.4, 4.10): a Library generates every root but the body of a closed override whose slot TyCtxt.Applies
     // refutes at its owning layer, which is checked only (the old generator skips it too); where the slot applies, the override is generated.
+    // A Closure and a function nested in its body are no output roots: the override's runtime targets reach them, so they follow its mark
+    // (DECISIONS R5-M153; fail-before: both generated where the slot is refuted).
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -1499,11 +1503,36 @@ public sealed partial class FunctionCodegenTest
         var c = Analyze(
             "contract Marker\nstruct Thing\n" + (applies ? "    Self is Marker\n" : string.Empty) + "    public init() => ()\nopen struct Base<T>\n" +
             "    public init() => ()\n    public virtual func mark(self: objref/Self) -> i32\n        T is Marker\n        return 5\n" +
-            "struct Plain : Base<Thing>\n    public init() => ()\n    override func mark(self: objref/Self) -> i32 => 7\n",
+            "struct Plain : Base<Thing>\n    public init() => ()\n    override func mark(self: objref/Self) -> i32\n" +
+            "        let add = func [] (x: i32) -> i32 => x + x\n        func twice(x: i32) -> i32 => x * 2\n        return add(3) + twice(2)\n",
             OutputKind.Library);
         Assert.True(c.Accepts, MinimalEmissionTest.Describe(c, null));
         _ = c.Generate(TextWriter.Null);
-        Assert.Equal(applies, Assert.Single(Generated(c.Instances!), static x => x.Name == "mark").Generated);
+        var set = c.Instances!;
+        Assert.Equal(applies, Assert.Single(Generated(set), static x => x.Name == "mark").Generated);
+        Assert.Equal(applies, Assert.Single(Generated(set), static x => x.Name == "twice").Generated);
+        var closure = Assert.Single(Enumerable.Range(0, set.Items.Length), x => set.Items[x].Key.Body.Def.Kind == MirBodyKind.Closure);
+        Assert.Equal(applies, set.IsGenerated(closure));
+    }
+
+    // DECISIONS R5-M153: a Closure in a default template or a destructor is no Library output root, its enclosing body's runtime target
+    // reaching it; one in an accessor or a static's initializer has no enclosing function (TyCtxt.EnclosingFunction), so it is an output
+    // root as that body is (accessors are never virtual, SPEC 6.4, so never checked only). Each is Generated.
+    [Fact]
+    public void ALibraryGeneratesTheClosuresOfItsOtherBodies()
+    {
+        var c = Analyze(
+            "struct Gauge\n    var stored: i32 = 2\n    public computed count: i32\n        get() -> i32\n            let f = func [] (x: i32) -> i32 => x + 1\n" +
+            "            return f(self.stored)\n        set(value: i32) -> ()\n            let g = func [] (x: i32) -> i32 => x * 2\n" +
+            "            self.stored = g(value)\n    public init() => ()\n    drop\n        let h = func [] (y: i32) -> i32 => y + 1\n        _ = h(2)\n" +
+            "func apply(x: i32, f: (i32) -> i32 = func [] (y: i32) -> i32 => y + 1) -> i32 => f(x)\n" +
+            "group Registry\n    public let limit: i32 = (func [] (y: i32) -> i32 => y + 1)(3)\n",
+            OutputKind.Library);
+        _ = Generate(c);
+        var set = c.Instances!;
+        var closures = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Body.Def.Kind == MirBodyKind.Closure).ToArray();
+        Assert.Equal(5, closures.Length);
+        Assert.All(closures, x => Assert.True(set.IsGenerated(x)));
     }
 
     // DECISIONS R5-M146: every milestone check accepts under MIR code generation is generated with no record (no coverage row remains);
