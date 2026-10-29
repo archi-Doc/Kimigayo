@@ -281,6 +281,24 @@ public partial class LayoutTest
     }
 
     [Fact]
+    public void AnAbstractTypeIsRejected()
+    {
+        // DECISIONS R5-M155 (PLAN G293, G187): an abstract Type, which no closed Type holds, is Rejected naming itself, and a Type storing it
+        // takes that on: after a failed Binding a qualified projection that names no Type, in a complete compilation an open Type (a broken
+        // contract the collector records at its use). Before, Layout.Row threw.
+        var failed = CompilationTestHelper.Parse("contract Iter<T>\n    associate Tag\nstruct B\n    Self is Iter<i32>\n    associate Tag is bool\n" +
+            "let t: B.(Iter<u8>).Tag = true");
+        Assert.False(failed.Bind().IsComplete);
+        var projection = Variable(failed, "t");
+        Assert.Equal(BoundTypeKind.AssociatedProjection, projection.Kind);
+        Assert.Equal(new Layout.Result(Layout.Outcome.Rejected, null, projection, false), failed.Layout.Of(failed.Types.Tuple([BoundType.I32, projection])));
+
+        var complete = CompilationTestHelper.BindSuccess("func probe<T>(value: T) => ()");
+        var slot = Parameters(complete)[0];
+        Assert.Equal(new Layout.Result(Layout.Outcome.Rejected, null, slot, false), complete.Layout.Of(slot));
+    }
+
+    [Fact]
     public void AnUnresolvedBaseIsLaidOutWithoutIt()
     {
         // R5-M37: Binding publishes an unresolved base as no base, so the struct is laid out without it; no record follows the failure.
@@ -582,9 +600,12 @@ public partial class LayoutTest
         Assert.Equal(16, value.Layout.Size);
     }
 
+    // DECISIONS R5-M155: Of gives an abstract Type Rejected (AnAbstractTypeIsRejected, where the parameter this test probed before moved);
+    // a kind outside the rows, placement and abstract Types, here the direct range marker, breaks Layout's input contract in any
+    // compilation, an internal error.
     [Fact]
     public void ATypeWithoutARowIsAnInternalError()
-        => Assert.Throws<InvalidOperationException>(() => new Layout().Of(new BoundType("T", BoundTypeKind.Parameter)));
+        => Assert.Throws<InvalidOperationException>(() => new Layout().Of(BoundType.Range));
 
     // SPEC 5.7, R5-M37 (DECISIONS BU-24): a raw Origin is no part of a layout; the memo is keyed by the interned Type, so a Type that
     // differs in a raw Origin alone is its own entry with the same layout.

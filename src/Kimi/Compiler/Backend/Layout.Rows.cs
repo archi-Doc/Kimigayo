@@ -34,7 +34,9 @@ internal sealed partial class Layout
     /// before its payload at Field 1, which placement places and code generation reads and writes.</summary>
     internal static ValueLowering Tag => Primitives[BoundType.I32];
 
-    /// <summary>Gets IMPL 21.1.3's static row of a Type, which code generation reads (and the old scalar-value gate until R6-gen).</summary>
+    /// <summary>Gets IMPL 21.1.3's static row of a Type, which code generation reads (and the old scalar-value gate until R6-gen). Of never
+    /// asks it for an abstract Type, which it gives Rejected (DECISIONS R5-M155); any other kind without a row lies outside Layout's input
+    /// contract in every compilation, so the default arms stay a throw, the closed-kind fault.</summary>
     /// <param name="type">A scalar, Unit, string, Never, borrow, raw pointer, handle or sequence Type.</param>
     /// <returns>The row's shared record; a Type without a row is an internal error.</returns>
     internal static ValueLowering Row(BoundType type) => type.Kind switch
