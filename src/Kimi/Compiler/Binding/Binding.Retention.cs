@@ -48,10 +48,11 @@ public sealed partial class Binding
     // The inputs (and declaring Type) of the contract or erased signature being walked, whose borrows a raw layer's Origin belongs to
     // (RawContent), reused, and how many of them are a callee's own signature inputs, which the signature cap reads (SignatureStep; none
     // for an erased signature, a Function Type's or a Callable bound's, whose raw layers read their kind: SPEC 5.2.1 caps a layer written
-    // in a function's own signature); the (Origin, input) pairs whose content that walk has added, so each is walked once; and whether a
-    // member walk was incomplete (CallRetention.Limit).
+    // in a function's own signature); the (Origin, input) pairs whose content that walk has added and the positions its atom walk has met
+    // (RetentionWalk), so each is walked once; and whether a member walk was incomplete (CallRetention.Limit).
     private readonly List<BoundType> retentionErasedScope = new();
     private readonly HashSet<(BoundOrigin Origin, int Input)> retentionRawVisits = new();
+    private readonly HashSet<(BoundType Type, RetentionAtom At, OriginVariance Variance, bool Callable)> retentionPositions = new();
     private List<BoundType> retentionScope = new();
     private int retentionInputs;
     private bool retentionLimit;
@@ -205,10 +206,9 @@ public sealed partial class Binding
         return true;
     }
 
-    // Begins a retention computation at `use`: resets the per-computation fields, registers each input's atoms and holds and the result's
-    // atoms and its one hold, its whole Type (Held walks what lies behind its borrows as lent, DECISIONS BU-40), over the scope of the
-    // inputs and declaring Type, of which `signatureInputs` are a callee's own signature inputs (none for an erased signature), then rents
-    // the premise environment, which EndRetention returns.
+    // Begins a retention computation at `use`: resets the per-computation fields, registers each input's atoms and the result's atoms,
+    // over the scope of the inputs and declaring Type, of which `signatureInputs` are a callee's own signature inputs (none for an erased
+    // signature), then rents the premise environment, which EndRetention returns.
     private OriginPremiseEnvironment BeginRetention(Koto use, ReadOnlySpan<BoundType> inputs, BoundType result, BoundType? declaring, int signatureInputs)
     {
         this.retentionAtoms.Clear();
@@ -216,7 +216,6 @@ public sealed partial class Binding
         this.retentionCarriers.Clear();
         this.retentionReachedNodes.Clear();
         this.retentionRawInputs.Clear();
-        this.retentionHolds.Clear();
         this.retentionScope.Clear();
         this.retentionScope.AddRange(inputs);
         this.retentionInputs = signatureInputs;
@@ -226,6 +225,7 @@ public sealed partial class Binding
         }
 
         this.retentionRawVisits.Clear();
+        this.retentionPositions.Clear();
         this.retentionLimit = false;
         for (var i = 0; i < inputs.Length; i++)
         {
@@ -234,7 +234,6 @@ public sealed partial class Binding
 
         var atom = new RetentionAtom(CallRetention.ResultOutput, RetentionKind.Value, Writable: false, null, null, null);
         this.RetentionWalk(result, atom, OriginVariance.Covariant, callable: false);
-        this.retentionHolds.Add((CallRetention.ResultOutput, result));
         return this.RentPremises(use) ??
             throw new InvalidOperationException($"The premise environment of a retention at `{use}` is not ready: it depends on itself (PLAN G74).");
     }
@@ -248,7 +247,6 @@ public sealed partial class Binding
         this.retentionCarriers.Clear();
         this.retentionReachedNodes.Clear();
         this.retentionRawInputs.Clear();
-        this.retentionHolds.Clear();
         this.retentionInstantiated.Clear();
     }
 
@@ -360,12 +358,11 @@ public sealed partial class Binding
     }
 
     // An erased signature's own atoms, walked after the contract's in its own scope (retentionErasedScope, the contract's restored after
-    // it, which the storage walk reads), its relations added, then dropped with its raw inputs and holds, which are no outputs of the
-    // contract.
+    // it, which the storage walk reads), its relations added, then dropped with its raw inputs, which are no inputs of the contract.
     private void AddErasedSignature(OriginPremiseEnvironment environment, ErasedSignature erased)
     {
         var (atoms, signature) = (this.retentionAtoms, erased.Signature);
-        var (start, raws, holds) = (atoms.Count, this.retentionRawInputs.Count, this.retentionHolds.Count);
+        var (start, raws) = (atoms.Count, this.retentionRawInputs.Count);
         var inputs = signature.Components[0];
         var (contract, signatureInputs) = (this.retentionScope, this.retentionInputs);
         (this.retentionScope, this.retentionInputs) = (this.retentionErasedScope, 0);
@@ -376,7 +373,7 @@ public sealed partial class Binding
         }
 
         this.retentionRawVisits.Clear();
-
+        this.retentionPositions.Clear();
         for (var i = 0; !ReferenceEquals(inputs, BoundType.Unit) && i < inputs.Components.Count; i++)
         {
             this.RetentionInput(inputs.Components[i], i);
@@ -387,7 +384,6 @@ public sealed partial class Binding
         this.AddErasedRelations(environment, start, erased.Binder);
         atoms.RemoveRange(start, atoms.Count - start);
         this.retentionRawInputs.RemoveRange(raws, this.retentionRawInputs.Count - raws);
-        this.retentionHolds.RemoveRange(holds, this.retentionHolds.Count - holds);
         (this.retentionScope, this.retentionInputs) = (contract, signatureInputs);
     }
 

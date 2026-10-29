@@ -5,9 +5,10 @@ namespace Kimi.Compiler.Mir;
 // A5's conflicts relation (A3 5's hits and conflicts, with E1, E3, E11, R4-M68 and R4-M92): what an access does (AccessKind), a Call's or
 // Drop's effect rows included; the first Loan of its check set on the access's root it conflicts with, by mode (a reservation the call
 // activates is unique at its effect rows, W6) and syntactically by Place prefix, with the route rule for a Loan in its reservation holder,
-// a Loan its template owns skipped (MirBorrows.Defaults' Covered, D11, R4-M97); and err(ended) (E7): at a guard candidate's EndBorrow, a
-// value live after it that keeps its guard-local Origin, but where the EndBorrow and the candidate lie in one inline default copy (D12). A
-// candidate or marker only the drop tier found (MirBorrows.CheckSets) is the answer only where no real one is, as the depth limit (R4-M153).
+// never a raw Place borrow's Loan, its fresh anchor's (SPEC 5.2.2, 15.6.2; DECISIONS R4-M156), a Loan its template owns skipped
+// (MirBorrows.Defaults' Covered, D11, R4-M97); and err(ended) (E7): at a guard candidate's EndBorrow, a value live after it that keeps its
+// guard-local Origin, but where the EndBorrow and the candidate lie in one inline default copy (D12). A candidate or marker only the drop
+// tier found (MirBorrows.CheckSets) is the answer only where no real one is, as the depth limit (R4-M153).
 // Must not list or classify a location's accesses (MirBorrows.Accesses) or record a problem (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
@@ -91,13 +92,14 @@ internal sealed partial class MirBorrows
             this.Hits(root, steps, kind, candidate);
     }
 
-    // hits(A, X, k) (A3 5, E1, E3): within(A, X), or within(X, A) where the access is deep, or no borrow or raw Deref of X lies below A, or
-    // it writes, destroys or activates in place a prefix of a Loan that sits in its reservation holder across borrow Derefs (E1, SPEC
-    // 15.6.7); err(destroy) hits what a deep access does and the write does not (E11).
+    // hits(A, X, k) (A3 5, E1, E3): never where X is a raw Place borrow's Loan, its fresh anchor's, compared with no Place not derived from
+    // it (SPEC 5.2.2, 15.6.2; DECISIONS R4-M156), whatever k; else within(A, X), or within(X, A) where the access is deep, or no borrow Deref
+    // of X lies below A, or it writes, destroys or activates in place a prefix of a Loan that sits in its reservation holder across borrow
+    // Derefs (E1, SPEC 15.6.7); err(destroy) hits what a deep access does and the write does not (E11).
     private bool Hits(int root, ReadOnlySpan<MirStep> steps, AccessKind kind, in Candidate candidate)
     {
         ref readonly var loan = ref this.loans[candidate.Loan];
-        if (root != loan.Root)
+        if (root != loan.Root || loan.Anchored)
         {
             return false;
         }
@@ -120,7 +122,7 @@ internal sealed partial class MirBorrows
         var route = kind is AccessKind.Write or AccessKind.Destroy or AccessKind.ActivateInPlace or AccessKind.ObservePast && this.Reserved(candidate, kind);
         for (var i = steps.Length; i < loan.Count; i++)
         {
-            if (this.loanSteps[loan.Start + i].Class is var step && (step == MirStepClass.Raw || (!route && step is MirStepClass.Shared or MirStepClass.Uniq)))
+            if (!route && this.loanSteps[loan.Start + i].Class is MirStepClass.Shared or MirStepClass.Uniq)
             {
                 return past;
             }

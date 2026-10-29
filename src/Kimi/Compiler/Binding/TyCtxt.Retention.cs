@@ -16,9 +16,10 @@
 // scope or declaration it reads, for the latest Binding pass and reused by later passes until an edit (DECISIONS R4-M154): its Result
 // (a StorageRetention: per input the RetentionKind flags the result retains it by, and Untied), per output it may write (Writes, ascending)
 // an OutputRetention, and ReferentStores; an OutputRetention holds the StorageRetention of the output's root storage (Own: what the
-// argument's direct Loans name, the referent of a borrowed input, a raw input's pointee, or the referents of the exclusive layers a
-// by-value input holds) and of the storage past its exclusive layers (Reached: one entry per Origin-erased storage Type, joined over that
-// Type's occurrences, an Abstract entry for what an abstract part hides, and All, their join);
+// argument's direct Loans name, the referent of a borrowed input, a raw input's pointee, or what the exclusive layers and the raw
+// layers the call may write that a by-value input holds refer to, in its Fields, payloads and elements too) and of the storage past its
+// exclusive layers (Reached: one entry per Origin-erased storage Type, joined over that Type's occurrences, an Abstract entry for what
+// an abstract part hides, and All, their join);
 // CallRetention.Limit, a genuine limit only, where the contract or a Type its hold walk reaches has storage past Binding's limits (nested
 // past its depth bound, which a growing recursive Type of SPEC 15.3.5 always reaches; Binding.StorageOutcome.Limit), the contract's
 // substitution does not complete (no reproducer), or a raw layer's member walk is incomplete (a keeper cycle that changes its Type
@@ -50,18 +51,20 @@
 // stored there brings its whole Type, every layer but a callable's, a struct's or enum's stored content included), of a result the call
 // forms within its storage (Raw.slice), or by the rules below; never of its own pointee, so a raw input may have both rows to one
 // output. A raw result layer with an Origin retains as that borrow would. A raw layer without an Origin that the call may write (SPEC
-// 15.6.4 as DECISIONS R4-M131 states it; BU-40), in the result (a nominal Type's Fields included) or in input j's writable storage,
-// retains every input by what any chain of reads through it carries (Chain) and every input but j by its own value (Value), and unties
-// that output (its records' Untied), as a `static` layer does without these rows; one behind a borrow in the result (a Slice's or
-// UniqSlice's elements included, and a result raw layer stating a borrow's Origin, which retains as that borrow would) is lent, not
-// written: it retains only the raw inputs, by Value and Chain, and unties nothing (R′). A
-// published operation that transfers values (an Iterator's `next`, `exchange`, `swap`, an operation of SPEC 4.6 to 4.9, keyed by
-// declaring identity in Binding.Retention.Transfers.cs) retains there a borrowed input by its Chain only, `exchange`'s result only its
-// target's Chain, and a 4.9 operation's receiver storage, of the other inputs, only its added ones (KimiLibraryCatalog.Added; a member
-// without a receiver, construction, has no receiver storage, so its result keeps every input). It writes only its own outputs
-// (TransferWrites): a 4.9 operation its result and its receiver's element storage, `exchange` its result and its target; rule A forms
-// no row at another output. An operation of SPEC 4.6 to 4.9 writes the store at its borrowed receiver only in the storage that receiver
-// refers to (ReferentStores; 4.9.6).
+// 15.6.4 as DECISIONS R4-M131 states it; BU-40), in the result (a nominal Type's Fields included) or in input j's writable storage
+// (each position of it, a by-value input's included, DECISIONS BU-52; a consuming callee's cleanup of the input writes only there, so
+// its drop's rows are among these, SPEC 15.6.4 "including callee cleanup"), retains every input by what any chain of reads through it
+// carries (Chain) and every input but j by its own value (Value), and unties that output (its records' Untied), as a `static` layer
+// does without these rows; one behind a borrow in the result (a Slice's or UniqSlice's elements included, and a result raw layer
+// stating a borrow's Origin, which retains as that borrow would) is lent, not written: it retains only the raw inputs, by Value and
+// Chain, and unties nothing (R′). A published operation that transfers values (an Iterator's `next`, `exchange`, `swap`, an operation
+// of SPEC 4.6 to 4.9, keyed by declaring identity in Binding.Retention.Transfers.cs) retains there a borrowed input by its Chain only,
+// `exchange`'s result only its target's Chain, and a 4.9 operation's receiver storage, of the other inputs, only its added ones
+// (KimiLibraryCatalog.Added; a member without a receiver, construction, has no receiver storage, so its result keeps every input). It
+// writes only its own outputs (TransferWrites): a 4.9 operation its result and its receiver's element storage, `exchange` its result
+// and its target; at another output rule A forms no row and a raw layer there unties nothing (DECISIONS BU-52: an added value's
+// Fields, payloads and elements are no storage the operation writes). An operation of SPEC 4.6 to 4.9 writes the store at its
+// borrowed receiver only in the storage that receiver refers to (ReferentStores; 4.9.6).
 // Content and Chain are two measures: Content what one read through the input carries (premises, step 4), Chain any chain of reads.
 // Files: this one (the contract and its records RetentionKind, StorageRetention, OutputRetention, CallRetention); TyCtxt.Retention.Calls.cs
 // (TyCtxt.Retains, RetainsErasedDestruction and their memo, the callables handed to a body); Binding.Retention.cs with .Atoms.cs,

@@ -3,10 +3,12 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's Loans of the view (A3 4's issued, E3, E13 (4)): one per non-raw Ref and Reborrowing PairAcquire past no shared borrow Deref, by
-// location, each with its Place's steps, in group order (MirBorrows.Groups); whether the view has an input of a Loan-stratum producer (D5, R4-M98): a Loan, a
-// guard candidate, whose guard-local Origin a check follows without a Loan (E7), a Drop of a mutable static (R3) or a write rooted at a
-// default template's PreparedInput (R26-access); for the effect rule (R4-M92) the view's effect roots, the mutable statics its Loans are
-// on, and each static's A4 Field number; and whether the view has a raw Ref, whose address MirBorrows.Addresses forms.
+// location, each with its Place's steps and whether it is a raw Place borrow's (Anchored: its Place passes a raw Deref, so its fresh
+// anchor's, which no access reaches, R4-M156), in group order (MirBorrows.Groups); whether the view has an input of a Loan-stratum producer
+// (D5, R4-M98): a Loan, a guard candidate, whose guard-local Origin a check follows without a Loan (E7), a Drop of a mutable static (R3) or
+// a write rooted at a default template's PreparedInput (R26-access); for the effect rule (R4-M92) the view's effect roots, the mutable
+// statics its Loans are on, and each static's A4 Field number; and whether the view has a raw Ref, whose address MirBorrows.Addresses
+// forms.
 internal sealed partial class MirBorrows
 {
     private readonly List<int> effectRoots = []; // The root keys of the mutable statics the view's Loans are on, each once.
@@ -101,7 +103,7 @@ internal sealed partial class MirBorrows
     private int Issue(MirPlace place, bool reborrow, MirRefKind mode, int into, int location)
     {
         var count = this.placeSteps.Walk(this.body, place, reborrow, ref this.walk);
-        var direct = true;
+        var (direct, anchored) = (true, false);
         for (var i = 0; i < count; i++)
         {
             if (this.walk[i].Class == MirStepClass.Shared)
@@ -110,6 +112,7 @@ internal sealed partial class MirBorrows
             }
 
             direct &= this.walk[i].Class is not (MirStepClass.Uniq or MirStepClass.Raw);
+            anchored |= this.walk[i].Class == MirStepClass.Raw;
         }
 
         MirDataflow.Grow(ref this.loans, this.loanCount + 1);
@@ -127,6 +130,7 @@ internal sealed partial class MirBorrows
             Holder = into,
             Named = root,
             Direct = direct,
+            Anchored = anchored,
             Location = location,
         };
         this.loanStepCount += count;
@@ -174,6 +178,10 @@ internal sealed partial class MirBorrows
 
         /// <summary>Gets or sets a value indicating whether it is direct: its Place passes no borrow or raw Deref.</summary>
         internal bool Direct { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether it is a raw Place borrow's: its Place passes a raw Deref, so it is its fresh
+        /// anchor's, which no access reaches (SPEC 5.2.2, 15.6.2; DECISIONS R4-M156).</summary>
+        internal bool Anchored { get; set; }
 
         /// <summary>Gets or sets a value indicating whether it is a destroying reservation: its call destroys its target in place.</summary>
         internal bool Destroying { get; set; }
