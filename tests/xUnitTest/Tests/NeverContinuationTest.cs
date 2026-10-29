@@ -166,19 +166,22 @@ public class NeverContinuationTest
     // SPEC 14.10.3, 15.1.3, 3.5 (DECISIONS R5-M159): an element consumed where its access cannot complete normally is checked on the
     // assumed path by its reachable twin's Move rules, with the twin's codes at the element: an explicit Move into a local or into a
     // call has no static Move Path, a part of a temporary neither, and a bare consume is TransferRequired_Kd beside the element path's
-    // Unsupported_Kd (fail-before: each accepted, the old analysis checking nothing there).
+    // Unsupported_Kd (fail-before: each accepted, the old analysis checking nothing there). A Copy element, a Tuple element's or an
+    // element's own, is read as its twin is, with no record.
     [Theory]
     [InlineData("let s = a[(return 42)]@move", "a[(return 42)]", "StaticMovePathRequired_Kd")]
     [InlineData("take(a[(return 42)]@move)", "a[(return 42)]", "StaticMovePathRequired_Kd")]
     [InlineData("take(make2((return 42)).0@move)", "make2((return 42)).0", "StaticMovePathRequired_Kd")]
     [InlineData("let x = a[(return 42)]", "a[(return 42)]", "TransferRequired_Kd Unsupported_Kd")]
+    [InlineData("let k = t[(return 42)].1", "t[(return 42)].1", "")]
+    [InlineData("let c = n[0][(return 42)]", "n[0][(return 42)]", "")]
     public void AMoveBelowADivergingKeyIsCheckedAsItsReachableTwin(string statement, string element, string codes)
     {
         var c = MinimalEmissionTest.Analyze(Elements + statement + "\n    return 0\n");
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
         c.ReportAnalysis();
         Assert.Equal(
-            codes.Split(' ').Select(x => (x, (string?)element)),
+            codes.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(x => (x, (string?)element)),
             TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text)));
     }
 
