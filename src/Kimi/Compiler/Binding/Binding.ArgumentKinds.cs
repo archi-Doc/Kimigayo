@@ -98,6 +98,16 @@ public sealed partial class Binding
         => !IsWaitingCallable(part) && (this.KindOf(part) == ArgumentKind.Waiting || this.WasWaitingPart(part) || NeedsEnumContext(part) ||
             (KotoHelper.UnwrapParentheses(part).BoundType is { } type && HasOpenOriginFrom(type, call)));
 
+    // SPEC 15.6.4, 10.2 (G216 (a) U7 as the planning session revised it, 2026-10-30, for `value + make()`): the Origin evidence a part that
+    // took its Type from the call still gives, the layer the call's own adaptation forms over the part's value (an implicit Borrow), as the
+    // pattern's and the adapted Type's layers over Unit, which holds none of the part's Type; null when the adaptation forms no layer.
+    private (BoundType Pattern, BoundType Actual)? AdaptationLayer(BoundType pattern, BoundType adapted, Koto part)
+        => KotoHelper.UnwrapParentheses(part).BoundType is { } own && adapted.Components.Count == 1 && ReferenceEquals(adapted.Components[0], own) &&
+            pattern.Kind == adapted.Kind && pattern.Components.Count == 1
+            ? (this.types.Rebuild(pattern, [BoundType.Unit], pattern.Origin, (BoundOrigin[])pattern.OriginArguments),
+                this.types.Rebuild(adapted, [BoundType.Unit], adapted.Origin, (BoundOrigin[])adapted.OriginArguments))
+            : null;
+
     // SPEC 10.2.1: the default a Literal part takes for the selected candidate of its call, once DefaultArguments applied it.
     private BoundType? DefaultOf(Koto part)
         => this.RecordedFact(KotoHelper.UnwrapParentheses(part)) is { Kind: ArgumentKind.Literal, Default: { } literalDefault } ? literalDefault : null;

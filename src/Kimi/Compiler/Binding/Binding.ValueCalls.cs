@@ -525,7 +525,7 @@ public sealed partial class Binding
             // Collect the complete parameter structure, including nested slots, through the ordinary call solver.
             // Scratch inputs hold acquired Types until substitution commits the one selected call's contract.
             var conditioned = ownBinder is FunctionKoto { IsAnonymous: false } named && this.HasOriginConditions(named) ? named : null;
-            if (ownBinder is not null && HasUnsubstitutedInput(signature, ownBinder) && !this.SolveValueCallOrigins(ownBinder, parameters, instantiated.AsSpan(0, count), origins, argumentOrigins, call))
+            if (ownBinder is not null && HasUnsubstitutedInput(signature, ownBinder) && !this.SolveValueCallOrigins(ownBinder, parameters, operations.AsSpan(0, count), origins, argumentOrigins, call))
             {
                 if (conditioned is not null)
                 {

@@ -407,18 +407,25 @@ public sealed partial class Binding
 
     // A value call instantiates the same nested input/signature Origins and result premises as an ordinary call.
     // The selected contract supplies structure; Origin relations are checked after solving, at their supplying values. An argument whose
-    // Type holds a region the call handed it is no Origin evidence (G216 (a) U7); its input premise bounds the solution as every one does.
-    private bool SolveValueCallOrigins(Koto binder, BoundType parameters, ReadOnlySpan<BoundType> actuals, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use)
+    // Type holds a region the call handed it gives Origin evidence only of the layer the call's adaptation forms over it (G216 (a) U7,
+    // AdaptationLayer); its input premise bounds the solution as every one does.
+    private bool SolveValueCallOrigins(
+        Koto binder, BoundType parameters, ReadOnlySpan<BoundArgumentOperation> operations, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use)
     {
         var inference = this.BeginOriginInference(use, binder);
-        for (var i = 0; i < actuals.Length; i++)
+        for (var i = 0; i < operations.Length; i++)
         {
-            if (!HasOpenOriginFrom(actuals[i], use))
+            var (pattern, actual) = (parameters.Components[i], operations[i].AdaptedType!);
+            if (!HasOpenOriginFrom(actual, use))
             {
-                this.CollectOriginInference(parameters.Components[i], actuals[i], inference);
+                this.CollectOriginInference(pattern, actual, inference);
+            }
+            else if (this.AdaptationLayer(pattern, actual, operations[i].Source!) is { } layer)
+            {
+                this.CollectOriginInference(layer.Pattern, layer.Actual, inference);
             }
 
-            this.CollectInputPremises(parameters.Components[i], inference, use);
+            this.CollectInputPremises(pattern, inference, use);
         }
 
         if (binder is FunctionKoto function)

@@ -586,8 +586,8 @@ public sealed partial class Binding
 
     // SPEC 10.2.1, 4.6.2, 15.6.4 steps 1, 3, 15.3.6: after the expected result, the late pass of the evidence walk (the Literal parts'
     // defaults applied to the selected candidate and range typing), then the first solve of the candidate's Origins, which each input's
-    // instantiated well-formedness shortens (G216 (a) §4.9: every parameter's, an argument's, a default's and the receiver's, over its
-    // pattern with the solved slots, InstantiatedPremise); false when the candidate is inapplicable.
+    // well-formedness shortens (G216 (a): every parameter's, an argument's, a default's and the receiver's, over its formed pattern,
+    // FormedPremise, at this one point); false when the candidate is inapplicable.
     private bool SolveLate(ref SlotSolution solution, int[] mapping)
     {
         var call = solution.Call;
@@ -613,9 +613,9 @@ public sealed partial class Binding
 
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            if (solution.Pattern(function.Parameters[i].Type.BoundType!) is { } member && solution.InstantiatedPremise(member) is { } pattern)
+            if (solution.Pattern(function.Parameters[i].Type.BoundType!) is { } pattern)
             {
-                this.CollectInputPremises(pattern, inference, call);
+                this.CollectInputPremises(solution.FormedPremise(pattern), inference, call);
             }
         }
 

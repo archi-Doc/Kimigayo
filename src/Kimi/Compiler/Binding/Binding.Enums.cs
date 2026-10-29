@@ -400,8 +400,8 @@ public sealed partial class Binding
 
     // SPEC 6.5.2, 10.8.1, 15.3.6, 15.6.4 step 3 (G216 (a) P5): a Case construction with payloads is its Case constructor's call, whose
     // Origins are solved as a call's are: from the payloads' evidence (the meet MatchInputOrigin forms), the expected Type as a result
-    // bound, the enum's declared relations, and each payload's well-formedness over its instantiated Case parameter Type
-    // (InstantiatedPremise); each slot takes the meet of its upper bounds.
+    // bound, the enum's declared relations, and each payload's well-formedness over its formed Case parameter Type (FormedPremise); each
+    // slot takes the meet of its upper bounds.
     private void SolveConstructionOrigins(ref SlotSolution solution, BindingSymbol owner, ReadOnlySpan<Koto> payload, BoundType? expected, Koto use)
     {
         if (solution.OriginInference is not { } inference)
@@ -416,10 +416,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < payload.Length; i++)
         {
-            if (solution.InstantiatedPremise(payload[i].BoundType!) is { } pattern)
-            {
-                this.CollectInputPremises(pattern, inference, use);
-            }
+            this.CollectInputPremises(solution.FormedPremise(payload[i].BoundType!), inference, use);
         }
 
         this.SolveOriginInference(inference, solution.Origins, [], use, select: true);

@@ -186,6 +186,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("e3c4d30c20af", "leak: var local = values <- local@uniq")]
     [InlineData("0433a531b1ba", "leak: var v = view@move <- v[0]@follow@uniq")]
     [InlineData("38df74b325ce", "leak: var slot = p <- rr@follow@follow@uniq")]
+    [InlineData("27e4888a2ae9", "g: let m: i32 = 5 <- q")]
     [InlineData("d4a09871a00b", "g: let local: i32 = 1 <- x")]
     [InlineData("write-through-store", "w: let local = 1 <- x")]
     [InlineData("content-retention", "cr: let local = 1 <- first(h@ref)")]
@@ -206,9 +207,7 @@ public sealed partial class MirBorrowsTest
     // report of one key both derived and direct (one direct problem, R4-M96 per report), a Content or a Chain row's read through E, the
     // storage the body does not own (B's read-through clause; one rule for both, R4-M138: Chain's read of E's state unmarked fails
     // chain-through-e); the twins' literal forms report the relation only (H11, R4-M122) and a repair loses the conflict. Pins: each passes
-    // before. 27e4888a2ae9 (G216 (a), the planning session's decision): f's covariant slot `c` takes the meet of all its upper bounds, the
-    // inputs' instantiated well-formedness among them (SPEC 15.3.6, 15.6.4 step 3), so every input is well formed and the same relation
-    // fails once, at the `return`'s fit of `f(m@ref, q)`: the program stays rejected by that one record, with no conflict to derive.
+    // before.
     [Theory]
     [InlineData("m-write", "w: x = 1")]
     [InlineData("m-write-var", "w: x = 1")]
@@ -241,13 +240,12 @@ public sealed partial class MirBorrowsTest
     [InlineData("m-write4", "")]
     [InlineData("j-bad-v.r1", "")]
     [InlineData("m-store-v.r1", "")]
-    [InlineData("27e4888a2ae9", "")]
     public void AConflictAnotherCarrierKeepsStaysIndependent(string name, string expected)
         => Assert.Equal(expected, string.Join(" | ", Caused(CausedSources[name])));
 
     // PD31 (DECISIONS R4-M132): each Cause fact names, by its index, an UnsatisfiedOriginRelation_Kd of the derived problem's body at the
     // fact's site whose finite source is its Borrow's Origin: anchored at the conflict's Borrow, or where two Refs of one root share the
-    // atom (noncfl-candidate-v's s.0 and s.1) at the first of them. 27e4888a2ae9 derives none (SPEC 15.3.6; its row above).
+    // atom (noncfl-candidate-v's s.0 and s.1) at the first of them.
     [Fact]
     public void EachCauseNamesARefutedProblemOfTheBorrowsOrigin()
     {
@@ -275,7 +273,7 @@ public sealed partial class MirBorrowsTest
         }
 
         Assert.Equal(["noncfl-candidate-v"], shared);
-        Assert.Equal(33, causes);
+        Assert.Equal(34, causes);
     }
 
     // SPEC 7.2.3 (R26; 2g-5's PreparedInput grouping): a default template's Borrow its result keeps is DefaultArgumentBorrow_Kd, a

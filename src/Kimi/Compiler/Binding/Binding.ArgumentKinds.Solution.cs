@@ -172,17 +172,10 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 15.6.4 step 3, 15.3.6 (G216 (a) §4.9): the pattern of an input whose well-formedness bounds the solution, collected once the
-        // slots are inferred: the formed pattern with its solved Type slots substituted, since a slot's solution may store an Origin the
-        // pattern does not (`Option<ref/T during s>` with T over a Borrow), or the formed pattern while a slot is unsolved; null when it
-        // stores no Origin. The substitution runs only when a slot's solution stores an Origin.
-        internal readonly BoundType? InstantiatedPremise(BoundType pattern)
-        {
-            var formed = this.Binding.FormedApplication(pattern, this.SlotOwner, this.Types);
-            var instantiated = formed.ContainsParameter && this.SlotStoresOrigin()
-                ? this.Binding.SubstituteType(formed, this.SlotOwner, this.Types, this.Lengths) ?? formed : formed;
-            return instantiated.StoresOrigin ? instantiated : null;
-        }
+        // SPEC 15.6.4 step 3: the pattern of an input whose well-formedness bounds the solution, collected once the slots are inferred:
+        // the formed pattern, without its Type slots' solutions (G216 (a): revision 5's alternative (b) to section 4.9, a bound that a
+        // slot's solution carries is not collected).
+        internal readonly BoundType FormedPremise(BoundType pattern) => this.Binding.FormedApplication(pattern, this.SlotOwner, this.Types);
 
         // SPEC 10.8: the Constraints and premises whose judgment needs an unsolved slot are not judged.
         internal readonly ConstraintProof Prove(ReadOnlySpan<BoundType?> slots, bool incomplete, SlotSet unbound = default)
@@ -271,20 +264,6 @@ public sealed partial class Binding
         }
 
         private readonly Span<BoundOrigin> InputSpan() => this.Inputs.AsSpan(0, Math.Min(this.Inputs.Length, InputOriginCount(this.Binder)));
-
-        // Whether a solved Type slot stores an Origin.
-        private readonly bool SlotStoresOrigin()
-        {
-            for (var i = 0; i < CallSlotCount(this.Binder); i++)
-            {
-                if (this.Types[i] is { StoresOrigin: true })
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
 
         // A slot's own validity: a length is Unknown while unbound; a Type slot is checked when bound and Proven when it is unbound only
         // because it is unsolved.

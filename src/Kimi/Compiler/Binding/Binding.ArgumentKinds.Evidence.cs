@@ -239,11 +239,18 @@ public sealed partial class Binding
             }
 
             // SPEC 10.5: a nested call checked against this candidate supplies relations for checking, never outer slot evidence; nor
-            // Origin evidence does any part that took its Type from this call (TookCallType, G216 (a) U7). Its input premise is collected
-            // with every input's, instantiated, after slot inference (InstantiatedPremise).
-            if (binding.TookCallType(source, this.Call))
+            // does a part that took its Type from this call give Origin evidence of that Type (TookCallType, G216 (a) U7), only of the
+            // layer the call's own adaptation forms over it (AdaptationLayer). Its input premise is collected with every input's after
+            // slot inference (SolveLate).
+            var took = binding.TookCallType(source, this.Call);
+            if (took)
             {
-                return true;
+                if (binding.AdaptationLayer(pattern, actual, source) is not { } layer)
+                {
+                    return true;
+                }
+
+                (pattern, actual) = layer;
             }
 
             pattern = binding.FormedApplication(pattern, this.SlotOwner, this.Types);
@@ -257,8 +264,12 @@ public sealed partial class Binding
                 binding.CollectOriginInference(pattern, actual, this.OriginInference, known: quantifier);
             }
 
-            pattern = binding.SubstituteStoredOrigins(pattern, binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());
+            if (took)
+            {
+                return true;
+            }
 
+            pattern = binding.SubstituteStoredOrigins(pattern, binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());
             var common = this.Generic is null && (!this.Constructor || inferred);
             var structural = pattern.Kind == BoundTypeKind.Function;
             return binding.Infer(
