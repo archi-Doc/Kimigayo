@@ -38,7 +38,7 @@ public sealed partial class Binding
         callee.RequirementStorage = selected;
         selected.TupleOperator = tupleOperator;
         // Fixed source Origins affect fitting and Loans, but do not require a generic Type instance.
-        if (!DependentType(self, includeOrigins: false))
+        if (!this.DependentType(self, includeOrigins: false))
         {
             var resolved = this.InstantiateRequirementCall(selected, selected, callee.ImplementationStorage);
             if (resolved is null)
