@@ -1,7 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the Transitional pipeline switch: the pipeline (plan 12.1) and the code generator (R5 PD4) a compilation runs, two independent
-// selections, and the compiler identity the process defaults mark (SPEC 23.2.1).
+// selections, and the compiler identity the non-default selections of the process mark (SPEC 23.2.1). MIR code generation is the default
+// from R6-gen's G3; KIMI_CODEGEN=legacy selects the old generator, G3's rollback until G4 (DECISIONS R5-M152 S6).
 // Input: KIMI_PIPELINE and KIMI_CODEGEN, read once per process. Output: the process defaults (DefaultPipeline, DefaultCodegen), a
 // compilation's selection (Pipeline, Codegen) and CompilerIdentity. The generation entry (Compilation.Generation.cs) follows the code
 // generator; every pipeline analyzes and publishes alike (DECISIONS R5-M156), so the pipeline selects only the difference ledger's
@@ -33,13 +34,13 @@ public partial class Compilation
 
     /// <summary>Gets the compiler identity a check document records (SPEC 23.2.1): the pipeline and the code generator are part of the
     /// effective configuration, so each non-default selection of the process marks <see cref="CompilerVersion"/>, the pipeline first:
-    /// <c> [mir]</c>, <c> [codegen mir]</c> or <c> [mir, codegen mir]</c> (DECISIONS R5-M156).</summary>
+    /// <c> [mir]</c>, <c> [codegen legacy]</c> or <c> [mir, codegen legacy]</c> (DECISIONS R5-M152, R5-M156).</summary>
     internal static string CompilerIdentity => (DefaultPipeline, DefaultCodegen) switch
     {
-        (CompilerPipeline.Legacy, CompilerCodegen.Legacy) => CompilerVersion,
-        (CompilerPipeline.Mir, CompilerCodegen.Legacy) => CompilerVersion + " [mir]",
-        (CompilerPipeline.Legacy, _) => CompilerVersion + " [codegen mir]",
-        _ => CompilerVersion + " [mir, codegen mir]",
+        (CompilerPipeline.Legacy, CompilerCodegen.Mir) => CompilerVersion,
+        (CompilerPipeline.Mir, CompilerCodegen.Mir) => CompilerVersion + " [mir]",
+        (CompilerPipeline.Legacy, _) => CompilerVersion + " [codegen legacy]",
+        _ => CompilerVersion + " [mir, codegen legacy]",
     };
 
     /// <summary>Gets or sets the pipeline; changing it revokes prior analysis.</summary>
@@ -85,16 +86,16 @@ public partial class Compilation
         _ => throw new InvalidOperationException($"KIMI_PIPELINE must be mir or legacy, not '{value}'."),
     };
 
-    /// <summary>Reads a <c>KIMI_CODEGEN</c> value: <c>legacy</c> or unset for the old generator, or <c>mir</c>, on either pipeline
-    /// (DECISIONS R5-M156).</summary>
+    /// <summary>Reads a <c>KIMI_CODEGEN</c> value: <c>mir</c> or unset for MIR code generation, or <c>legacy</c> for the old generator
+    /// (G3's rollback until G4), on either pipeline (DECISIONS R5-M152, R5-M156).</summary>
     /// <param name="value">The value.</param>
     /// <returns>The code generator.</returns>
     /// <exception cref="InvalidOperationException">Any other value: a configuration error, never a silent fallback.</exception>
     [Transitional("R6-gen", Reason = "G4 removes the code generator selection once MIR code generation is the only one.")]
     internal static CompilerCodegen CodegenOf(string? value) => value switch
     {
-        null or "" or "legacy" => CompilerCodegen.Legacy,
-        "mir" => CompilerCodegen.Mir,
+        null or "" or "mir" => CompilerCodegen.Mir,
+        "legacy" => CompilerCodegen.Legacy,
         _ => throw new InvalidOperationException($"KIMI_CODEGEN must be mir or legacy, not '{value}'."),
     };
 }
@@ -114,9 +115,9 @@ internal enum CompilerPipeline : byte
 [Transitional("R6-gen", Reason = "G4 removes the code generator selection once MIR code generation is the only one.")]
 internal enum CompilerCodegen : byte
 {
-    /// <summary>The old Emission path.</summary>
+    /// <summary>The old Emission path, selected only by <c>KIMI_CODEGEN=legacy</c> or a test's pin until G4.</summary>
     Legacy,
 
-    /// <summary>MIR code generation, on either pipeline.</summary>
+    /// <summary>MIR code generation, the default on either pipeline.</summary>
     Mir,
 }
