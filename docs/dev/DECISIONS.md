@@ -5668,9 +5668,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the SPEC blocks (MirCensusTest's rows and the KIMI_MIR_DIFF rows of GenericOwnershipCaseTest and
     MirDifferenceTest.RequestedCorpus, under (S) and under the proven-only reading); against dev the whole change removes exactly
     pair-cases' six a5-writes rows.
-- **R4-M156 G161, A5's part of SPEC 6.3.4's completion rule: a raw Place borrow's Loan is its fresh anchor's** (2026-10-30; the R4
-  planning session's design `r4-notes\g161\design.md` revision 3, design review 3 ACCEPT; Major, two commits) SPEC 5.2.2, 15.6.2,
-  15.6.3, 5.2.1, 5.7.
+- **R4-M156 G161, A5's part of SPEC 6.3.4's completion rule: a raw Place borrow's Loan is its fresh anchor's, and the result is live
+  after a Return** (2026-10-30; the R4 planning session's design `r4-notes\g161\design.md` revision 3, design review 3 ACCEPT; Major,
+  two commits, (1) before (2)) SPEC 5.2.2, 15.6.2, 15.6.3, 5.2.1, 5.7, 6.3.4, 16.2.2, 16.2.3.
   - (1) The raw anchor. A Loan whose Place passes a raw Deref is a raw Place borrow's: its referent is a fresh anchor that "recovers no
     owner or Loan" and is not compared with Places not derived from it (SPEC 5.2.2, 15.6.2's table). `MirBorrows.Loans` publishes it
     (`Anchored`) and `Hits` lets no access of any kind reach it; the shallow kinds' stop at a raw Deref past the access becomes part of
@@ -5684,6 +5684,21 @@ and migration obligations remain in force; no numeric cap changes are authorized
     result) and parent Loans of a Reborrow through a reference reached by a raw pointer stay checked. It removes MIR-only false errors at
     a Move, an exclusive or shared borrow, an activation and an observing destruction of the pointer's holder, a read and a second raw
     borrow through the same pointer; the old path accepted each.
+  - (2) The delivery. A Return delivers local 0 to its caller, which uses it (SPEC 16.2.2 step 5, 16.2.3; a constructor's object is
+    built in the storage its caller's construction expression made, 6.3.2-6.3.4), so local 0's holder is live after the Return: the
+    exit's fact, which `IMirFlow.Entry`'s contract puts in the Return terminator's block (`MirBorrows.Liveness`); a diverging exit
+    delivers nothing. The Return stays a Move of local 0 that takes no value (R4-M66): its check set's Based pass now reads the delivered
+    value, so every reader of a live holder counts it. The Loan check meets a Loan rooted at local 0 by the Move row, which is SPEC
+    6.3.4's "Field borrows end before completion" at the delivery (15.6.3: Moving a prefix of a live child's path; 15.6's holders, so a
+    part overwritten later still carries it); the own-step departures give 5.2.1 condition 3's Warning for a pointer formed through a
+    part's own step (the delivery ends the receiver as the constructor's holder, an ancestor with no dereference between); rule W reads
+    local 0's escape slot, so its marker decides `Kept`. How an operand Move compares: for Loans it counts its own value (the Valued
+    pass) whatever its destination, and own-step departures count it only through its destination live after the Move (Stored); the
+    delivery's value is counted by both as a live holder's (Based). Rejected: the Return's Move taking its value (`TakesValue`, the
+    observing destruction's class, which own-step departures do not count) or an operand's class (Valued: an operand the MIR does not
+    publish, a second Move representation; own steps count Valued only for an activation); the builder giving the Return an operand
+    (Full, unneeded); a check at the exit request's FakeRead (before Scope Exit; design review 1). The delivery's records carry their
+    Anchor and no witness (DIAGNOSTICS); an early `return`'s record lies at the constructor's declaration (an open issue).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
