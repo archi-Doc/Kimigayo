@@ -21,7 +21,8 @@ public class NeverContinuationTest
     private const string Elements = "struct S\n    public var n: i32 = 0\n    public init() => ()\n    public func inc(self: uniq/Self) => self.n += 1\n" +
         "struct Counter\n    Self is Addable<Counter>\n    associate Output is Counter\n    public let value: i32\n    public init(value: i32) => self.value = value\n" +
         "    public func added(self: ref/Self, right: ref/Counter) -> Counter => Counter.init(self.value + right.value)\n    drop => ()\n" +
-        "func make() -> i32 => 1\nfunc see(v: ref/string) => ()\nfunc bump(s: uniq/string) => ()\n" +
+        "func make() -> i32 => 1\nfunc see(v: ref/string) => ()\nfunc bump(s: uniq/string) => ()\nfunc take(s: string) => ()\n" +
+        "func make2(k: i32) -> (string, i32) => (\"m\", k)\n" +
         "func f() -> i32\n    var a: [1 of string] = [\"old\"]\n    var b: [1 of S] = [S.init()]\n    var other = \"other\"\n    let n: [1 of [1 of i32]] = [[1]]\n" +
         "    let t: [1 of (i32, bool)] = [(1, true)]\n    var u: [1 of Counter] = [Counter.init(1)]\n    ";
 
@@ -160,6 +161,25 @@ public class NeverContinuationTest
         c.ReportAnalysis();
         (string Code, string? Text)[] expected = unsupported is null ? [] : [(nameof(DiagnosticCode.Unsupported_Kd), unsupported)];
         Assert.Equal(expected, TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text)));
+    }
+
+    // SPEC 14.10.3, 15.1.3, 3.5 (DECISIONS R5-M159): an element consumed where its access cannot complete normally is checked on the
+    // assumed path by its reachable twin's Move rules, with the twin's codes at the element: an explicit Move into a local or into a
+    // call has no static Move Path, a part of a temporary neither, and a bare consume is TransferRequired_Kd beside the element path's
+    // Unsupported_Kd (fail-before: each accepted, the old analysis checking nothing there).
+    [Theory]
+    [InlineData("let s = a[(return 42)]@move", "a[(return 42)]", "StaticMovePathRequired_Kd")]
+    [InlineData("take(a[(return 42)]@move)", "a[(return 42)]", "StaticMovePathRequired_Kd")]
+    [InlineData("take(make2((return 42)).0@move)", "make2((return 42)).0", "StaticMovePathRequired_Kd")]
+    [InlineData("let x = a[(return 42)]", "a[(return 42)]", "TransferRequired_Kd Unsupported_Kd")]
+    public void AMoveBelowADivergingKeyIsCheckedAsItsReachableTwin(string statement, string element, string codes)
+    {
+        var c = MinimalEmissionTest.Analyze(Elements + statement + "\n    return 0\n");
+        Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
+        c.ReportAnalysis();
+        Assert.Equal(
+            codes.Split(' ').Select(x => (x, (string?)element)),
+            TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text)));
     }
 
     // SPEC 3.1.3, 4.7.1 (DECISIONS R5-M159): the HIR publishes that element Type for the element, for an element and a Tuple element
