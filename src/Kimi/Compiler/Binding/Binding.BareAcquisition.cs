@@ -12,7 +12,8 @@ namespace Kimi.Compiler;
 //   common adaptation (ExpectedAdaptation), which names the Reborrow.
 // - Outputs: the recorded adaptation and its Type; the bare entries of pair layers per Semantics case are Binding.PairCases'; how a
 //   consumer takes each child is the Adjust rule's (Binding.Hir.Adjust.cs).
-// - Invariants: a position with a fixed expected Type adapts by the common adaptation instead.
+// - Invariants: a position with a fixed expected Type adapts by the common adaptation instead, and Reborrows a fitting Place that stores
+//   an exclusive reference by the same predicate (StoresExclusiveReference).
 // - Prohibitions: no consumer decides by its own position test whether a bare acquisition Reborrows.
 public sealed partial class Binding
 {
@@ -54,13 +55,18 @@ public sealed partial class Binding
     // operand, is no such group.
     private static bool IsGroup(Koto? node) => node is ParenthesizedKoto or LabeledKoto;
 
-    // SPEC 3.5.1: the bare acquisition of a Place storing an exclusive reference, `uniq/T` or `objuniq/T`, Reborrows it in its own
-    // Semantics, exactly as an annotation of the same complete Type would; the Reborrow's Type is Binding's name for it (DECISIONS
-    // BU-27), which a join's common Type takes from each such source. Returns that Type, null when the node is acquired otherwise.
+    // SPEC 3.5.1, 10.2.2: whether a node is a bare Place storing an exclusive reference, `uniq/T` or `objuniq/T`, which its bare acquisition
+    // Reborrows in its own Semantics, at a bare acquisition position (StoredReborrow) and at a fixed expected Type it fits alike.
+    private static bool StoresExclusiveReference(Koto node, BoundType actual)
+        => actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } &&
+            node.ErasedFunctionType is null && IsBarePlace(node);
+
+    // SPEC 3.5.1: the bare acquisition of a Place storing an exclusive reference Reborrows it in its own Semantics, exactly as an
+    // annotation of the same complete Type would; the Reborrow's Type is Binding's name for it (DECISIONS BU-27), which a join's common
+    // Type takes from each such source. Returns that Type, null when the node is acquired otherwise.
     private BoundType? StoredReborrow(Koto node, BoundType? actual)
     {
-        if (actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } &&
-            node.ErasedFunctionType is null && IsBareAcquisitionPosition(node) && IsBarePlace(node) &&
+        if (actual is not null && StoresExclusiveReference(node, actual) && IsBareAcquisitionPosition(node) &&
             this.ExpectedAdaptation(node, actual, actual) is { } reborrow)
         {
             this.adaptations[node] = reborrow;

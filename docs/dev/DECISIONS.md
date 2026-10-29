@@ -8412,6 +8412,17 @@ resumed by R4-M86 (2026-10-20).
   - Tests: `BaseCallBindingTest`: the native fixture `BaseCallGetter` (a getter, the original default), a setter's and a `[self]`
     Closure's rows in a getter, the capture-less Closure's reason and the warm getter row fail before; the static accessor's row
     is their twin.
+- **BU-54 A fixed expected Type Reborrows a stored exclusive reference by one predicate; the default pipeline's newly accepted forms
+  are a recorded difference** (2026-10-30; PLAN G232, BU's Minor unit bu67; review `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g232\review.md`; the owner, 2026-10-30,
+  verbatim 「すべて推奨の内容でOkです」 on BU's pending questions, among them: record the forms the default pipeline newly accepts with
+  bu67, valid ones and the G231-class invalid one, as a recorded difference until R6-check, and land bu67) SPEC 3.5.1, 10.2.2, 7.7.3.
+  - Rule: `Binding.StoresExclusiveReference` is the one predicate the fixed-expected clause and `StoredReborrow` read, so a stored
+    `objuniq/T` at a fixed expected Type it fits Reborrows as `uniq/T` does; a Closure capturing it so is Exclusive.
+  - Difference (recorded, until R6-check): the old analysis has G231's limit (a second Reborrow of a stored reference while one is live
+    and used), so `let r1: objuniq/P during a = h.o` then `let r2: objuniq/P during a = h.o; r1.x = 1` is newly accepted on the default
+    pipeline; A5 rejects it (ComparisonLoanConflict_Kd). Its `uniq` and inferred twins are accepted on dev the same way (PLAN G231).
+    The newly accepted valid forms run correctly on both generators (the review's r-ret, r-tuple).
+
 - **BU-55 Binding's walks over a shared Type part decide each distinct part once per query: BU-19's table for the answer and
   existence walks, the atom walk's positions, a container frame's Tuples** (2026-10-30; PLAN G243's O1 to O3, unit bu69; the BU
   planning session's answers of 2026-10-30 to bu69's questions: O2's key (a′), and the Origin-free family as the unit's scope) SPEC
