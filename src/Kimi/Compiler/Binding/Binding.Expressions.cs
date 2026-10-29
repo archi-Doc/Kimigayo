@@ -828,8 +828,12 @@ public sealed partial class Binding
                     return null;
                 }
 
-                return update ? this.BindPropertyUpdate(node, scope)
-                    : Complete(node, write ? this.PropertySetterInput(node) : this.propertyCalls.GetValueOrDefault((node, PropertyAccessorKind.Get))?.BoundType);
+                if (update)
+                {
+                    return this.BindPropertyUpdate(node, scope);
+                }
+
+                return Complete(node, write ? this.PropertySetterInput(node) : this.propertyCalls[(node, PropertyAccessorKind.Get)].BoundType);
             }
 
             if (node is MemberAccessKoto stored && sourceReceiver?.BoundType is { } storedSource && this.memberSelections.TryGetValue(stored, out var storageSelection) && storageSelection.Path is not null)
