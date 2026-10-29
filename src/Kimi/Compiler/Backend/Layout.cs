@@ -5,27 +5,28 @@
 // the old pool calls it, never a copy), and its verdict: OK, a typed generation limit, an unavailable C layout anywhere in the 64-level
 // window (SPEC 6.7.1, the one judge of its four conditions: open, derived or empty from Binding's published AdtDef.CLayoutUnavailable,
 // a zero-sized Field from the placed parts; S2-S4 X18), a layout over 2^63 - 1 bytes (Oversized, IMPL 21.1.1), or a failure derived
-// from Binding's rejected storage or from an abstract Type. Rows (Layout.Rows.cs; static, Row): IMPL 21.1.3's scalars, Unit, string,
-// Never, borrows and raw pointers, object and function handles, and the sequence handles (Slice, Array, Dictionary words, each with its
-// length word, LengthWord).
+// from Binding's rejected storage or from an abstract Type (Inputs). Rows (Layout.Rows.cs; static, Row): IMPL 21.1.3's scalars, Unit,
+// string, Never, borrows and raw pointers, object and function handles, and the sequence handles (Slice, Array, Dictionary words, each
+// with its length word, LengthWord).
 // Placement (Layout.Placement.cs): structs (Loan<T> among them), Tuples, fixed arrays, enums, Closures and Function Items, memoized
 // per program version, each placement's entry and its one decision in Layout.Decision.cs; Weak<S> comes with its operations (P41).
-// Inputs: a closed, interned Type of the owning compilation; AdtDef (stored Types, IsCLayout, CLayoutUnavailable, InlineCycle);
-// IMPL 21.1.3's rows. A borrow, raw pointer, handle or sequence is laid out without reading its referent or element Type (X34; Indirect
-// states it, the boundary of a root's storage, DECISIONS R5-M149).
+// Inputs: a closed, interned Type of the owning compilation, or an abstract Type (BoundType.IsAbstract: a parameter, a projection or a
+// dependent Semantics term), which no closed Type holds: Of gives it Rejected naming itself without asking Row (DECISIONS R5-M155;
+// after a failed Binding a qualified projection that names no Type, PLAN G293; in a complete compilation an open Type, a broken
+// contract the collector records at its use, PLAN G187: never a fault); AdtDef (stored Types, IsCLayout, CLayoutUnavailable,
+// InlineCycle); IMPL 21.1.3's rows. A borrow, raw pointer, handle or sequence is laid out without reading its referent or element Type
+// (X34; Indirect states it, the boundary of a root's storage, DECISIONS R5-M149).
 // Outputs: a Result (Outcome, Value, Instance, Oversized); Indirect(type); Row(type), a static row, which code generation reads (and the old
-// scalar-value gate until the old Emission goes at R6-gen; DECISIONS R5-M148). Of gives an abstract Type (BoundType.IsAbstract: a
-// parameter, a projection or a dependent Semantics term), which no closed Type holds, Rejected naming itself and never asks Row for it
-// (R5-M155); Row throws for a Type without a row, a kind outside Layout's input contract in any compilation. The
+// scalar-value gate until the old Emission goes at R6-gen; DECISIONS R5-M148), never asked for an abstract Type (Inputs); it throws
+// for a Type without a row, a kind outside Layout's input contract in every compilation. The
 // collector (InstanceCollector) alone maps the outcomes (and, until G8, the old AggregateLayout.Represent onto its own failures): a
 // limit to a Resource record at the Type's first use (R5-M44), CLayout to InvalidCLayout_Kd and Oversized to
 // OversizedLayout_Kd at each use (R5-M55, R5-M52), Rejected to a derived failure without a record (InternalInvariant_Kd in a complete
 // compilation, DECISIONS BU-38); codegen after acceptance treats any outcome but Ok as a broken contract (InternalInvariant_Kd): the
 // collector's uses cover every Type it lays out (its by-value set and LayoutNeeds; DECISIONS R5-M149). No size is published.
 // After a failed Binding: Rejected for a declaration with InlineCycle, a null stored Field Type or Case (BU-37), a fixed array with
-// Length < 0, or a qualified projection that names no Type (an abstract Type; R5-M155, PLAN G293); an unresolved base,
-// which Binding publishes as no base, is laid out without it (Ok; no record follows a failed Binding). In a complete compilation an
-// abstract Type is an open Type, a broken contract the collector records at its use (PLAN G187: never a fault).
+// Length < 0, or an abstract Type (Inputs); an unresolved base,
+// which Binding publishes as no base, is laid out without it (Ok; no record follows a failed Binding).
 // Invariants: no alignment exceeds 16, the heap's (SPEC 21.4.3; DECISIONS R5-M92): a row's is at most 16 and a placement takes its parts'
 // maximum; an answer depends only on the Type and the program version, never on query order; one record per representation
 // within a program version; Oversized only for Outcome Oversized and an oversized CLayout; every memo entry's size is exact or a lower
@@ -75,8 +76,9 @@ internal sealed partial class Layout
         Oversized,
     }
 
-    /// <summary>Gets the layout and verdict of a closed Type of this compilation, memoized for the program version.</summary>
-    /// <param name="type">A Type of one of the laid-out rows, or an abstract Type (Rejected).</param>
+    /// <summary>Gets the layout and verdict of a closed Type of this compilation, memoized for the program version; an abstract Type is
+    /// Rejected (the contract's Inputs).</summary>
+    /// <param name="type">A Type of one of the laid-out rows, or an abstract Type.</param>
     /// <returns>Ok with the representation's one record, or the Type's other outcome (precedence: CLayout in the window,
     /// Oversized, DepthLimit, a limit, Rejected, the Type's own size).</returns>
     internal Result Of(BoundType type) => this.Walk(type, MaximumHeight).Result;

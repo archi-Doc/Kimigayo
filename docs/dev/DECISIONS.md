@@ -12461,9 +12461,9 @@ structure is recorded here by the unit that first implements it.
   - Rule: `Layout.Walk` gives an abstract Type (`BoundType.IsAbstract`: a parameter, a projection or a dependent Semantics term), which
     no closed Type holds, the existing Rejected verdict: a leaf where a row would be, 0 high, of no size, naming itself; a Type storing
     one by value takes it on through Fold. The collector is unchanged: `RecordOf(Rejected)` is `InternalInvariant_Kd` through R5-M151's
-    `Report`, so no record while Binding is incomplete (BU-50's none, a dependent) and a located `InternalInvariant_Kd` at the use in a
-    complete compilation (an open Type; PLAN G187: "an open Type reaching `Layout.Of` is a located `InternalInvariant_Kd`, never a
-    fault"). Binding's `TypeMismatch_Kd` at the initializer stays, Binding's own cascade.
+    `Report`, so no record while Binding is incomplete (a dependent of Binding's rejection, as BU-50's none is; SPEC 23.1.2) and a
+    located `InternalInvariant_Kd` at the use in a complete compilation (an open Type; PLAN G187: "an open Type reaching `Layout.Of` is
+    a located `InternalInvariant_Kd`, never a fault"). Binding's `TypeMismatch_Kd` at the initializer stays, Binding's own cascade.
   - Owner: Layout decides the verdict, as for the other parts Binding did not resolve (a null Field or Case, `Length < 0`, InlineCycle;
     R5-M37, BU-37); the collector alone maps it. No new outcome, record path or notion. `Row`'s default arms stay a throw: Of never asks
     it for an abstract Type, and any other kind without a row (the `Range` marker, a Nominal that is no struct or enum, an Owner
