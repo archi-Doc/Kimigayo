@@ -6,7 +6,8 @@ namespace Kimi.Compiler;
 // 2): the authority such a layer's Origin can keep (RawStep, which A5 and MirTypes.Holding read), the borrows it belongs to (RawMembers)
 // and whether a declaration states it without an Origin (RawStated), with the stored parts through which a walk reaches the instance
 // storing it (StoredParts), for G148 (1)'s per-part guard (R4-M76), read after Binding over Raw Origins (Binding.RawOrigins.Steps.cs,
-// .Keepers.cs) and Binding's instance storage (Binding.Storage.cs); and whether a Type states Unstated (StatesUnstated), which only a kept
+// .Keepers.cs) and Binding's instance storage (Binding.Storage.cs); what a `during self` layer admits past its pointee (SelfAdmitted,
+// Binding's one reading forwarded, which MirTypes.Holding reads); and whether a Type states Unstated (StatesUnstated), which only a kept
 // part does (MirValidator's Local row).
 internal sealed partial class TyCtxt
 {
