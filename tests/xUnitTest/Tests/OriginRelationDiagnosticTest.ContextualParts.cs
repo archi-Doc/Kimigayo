@@ -129,12 +129,13 @@ public partial class OriginRelationDiagnosticTest
 
     // Inside Closures (d3 §3): r03 to r06 (`.Some(a@ref)`, `swap3(.Some(a@uniq), b@uniq)`, `(a@ref, .None)`, `[.Some(a@ref), .None]`) are
     // valid and stay ClosureEnvironmentOriginTest's rows (not repeated). Their twins store a Closure local's Borrow toward the enclosing `q`
-    // through the same shapes: a Refuted relation at the argument, the payload related (D-1).
+    // through the same shapes: a Refuted relation. A Case whose expected Type the parameter fixes (r03_n, r04_n, r06_n) is judged by its own
+    // fit, at the payload; only a position the call opens records at the argument (r05_n's `.None`; D-1's scope, decided 2026-10-29).
     [Theory]
-    [InlineData("r03_n", CaseStore + ClosureStore + "        g(.Some(short@ref), o)\n    f(p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd .Some(short@ref)", "short@ref")]
-    [InlineData("r04_n", "func g4(x: Option<uniq/i32 during q>, s: uniq/(Option<uniq/i32 during q>)) -> ()\n    s@follow = x@move\nfunc use(p: uniq/(Option<uniq/i32 during q>)) -> i32\n    let f = func [] (o: uniq/(Option<uniq/i32 during q>)) -> ()\n        var short = 2\n        g4(.Some(short@uniq), o)\n    f(p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd .Some(short@uniq)", "short@uniq")]
+    [InlineData("r03_n", CaseStore + ClosureStore + "        g(.Some(short@ref), o)\n    f(p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref", null)]
+    [InlineData("r04_n", "func g4(x: Option<uniq/i32 during q>, s: uniq/(Option<uniq/i32 during q>)) -> ()\n    s@follow = x@move\nfunc use(p: uniq/(Option<uniq/i32 during q>)) -> i32\n    let f = func [] (o: uniq/(Option<uniq/i32 during q>)) -> ()\n        var short = 2\n        g4(.Some(short@uniq), o)\n    f(p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@uniq", null)]
     [InlineData("r05_n", "func put7(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: (ref/i32 during b, Option<ref/(ref/i32 during b) during a>))\n    slot@follow = v\nfunc use(p: uniq/(ref/i32 during q)) -> i32\n    let f = func [] (s: uniq/(ref/i32 during q)) -> ()\n        let short = 2\n        put7(s, short@ref, (short@ref, .None))\n    f(p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd (short@ref, .None)", null)]
-    [InlineData("r06_n", "func put8(x: [2 of Option<ref/i32 during q>], s: uniq/(Option<ref/i32 during q>)) => ()\n" + ClosureStore + "        put8([.Some(short@ref), .None], o)\n    f(p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd [.Some(short@ref), .None]", "short@ref")]
+    [InlineData("r06_n", "func put8(x: [2 of Option<ref/i32 during q>], s: uniq/(Option<ref/i32 during q>)) => ()\n" + ClosureStore + "        put8([.Some(short@ref), .None], o)\n    f(p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref", null)]
     public void AContextualPartInsideAClosureIsJudged(string form, string body, string records, string? payload)
         => AssertRecordsRelating(form, body, records, payload);
 
@@ -155,8 +156,8 @@ public partial class OriginRelationDiagnosticTest
     // Explicit qualifiers and Cases with payload (d3 §6): `Option.Some(v)` types itself from `v`, whose signature Type gives q outlives r
     // (cv1 to cv3 valid); with `v` during q the argument's fit fails once at the argument. cs1's contextual inner `Option.None` is judged at
     // the argument; when an annotation settles the construction (cs1_ty), its contextual payload and the annotation each have a record (D-3's
-    // analogue). cr5's contextual payload supplies the relation that the call judges: at the argument, the payload related (D-1; call
-    // arguments only); cr6's assignment is no call and records at the payload, as dev does. cp1 is cs1 (not repeated).
+    // analogue). cr5's Case takes a Type its parameter fixes, so the relation is the Case's own fit, recorded at the payload as cr6's
+    // assignment and dev do; D-1 covers only relations the call judges at a position it opens (decided 2026-10-29). cp1 is cs1 (not repeated).
     [Theory]
     [InlineData("cv1", PayloadHead + NestedInner + "    return inner(Option.Some(v), q)\n", "", null)]
     [InlineData("cv1_n", WeakPayloadHead + NestedInner + "    return inner(Option.Some(v), q)\n", "UnprovenOriginRelation_Kd Option.Some(v)", null)]
@@ -167,7 +168,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("cs1", NestedHead + InnerNested + "    return inner(Option.Some(Option.None), q)\n", "UnprovenOriginRelation_Kd Option.Some(Option.None)", null)]
     [InlineData("cs1_ok", NestedHead + WithPremise + InnerNested + "    return inner(Option.Some(Option.None), q)\n", "", null)]
     [InlineData("cs1_ty", NestedHead + "    let t: Option<Option<ref/(ref/i32 during q) during r>> = Option.Some(Option.None)\n" + InnerNested + "    return inner(t, q)\n", "UnprovenOriginRelation_Kd Option.None; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r", null)]
-    [InlineData("cr5", CaseStore + "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    g(.Some(short@ref), p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd .Some(short@ref)", "short@ref")]
+    [InlineData("cr5", CaseStore + "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    g(.Some(short@ref), p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref", null)]
     [InlineData("cr5_ok", CaseStore + "func bad(p: uniq/(Option<ref/i32 during q>), v: ref/i32 during q) -> i32\n    g(.Some(v), p)\n    return 0\n", "", null)]
     [InlineData("cr6", "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    p@follow = .Some(short@ref)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref", null)]
     [InlineData("cr6_ok", "func good(p: uniq/(Option<ref/i32 during q>), v: ref/i32 during q) -> i32\n    p@follow = .Some(v)\n    return 0\n", "", null)]
