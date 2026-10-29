@@ -251,7 +251,8 @@ public sealed partial class OwnershipAnalysis
                 var refuted = Binding.RefutesOriginRelation(longer, shorter, obligation.Body);
                 var supplier = this.compilation.Binding.SuppliedAtUse(longer, obligation.Use);
                 var (clause, wellFormed) = (obligation.Clause, obligation.WellFormed);
-                var relation = new OriginRelationFact(at, longer, supplier, shorter, obligation.Equality, obligation.Type, refuted, clause, WellFormed: wellFormed);
+                var relation = new OriginRelationFact(
+                    at, longer, supplier, shorter, obligation.Equality, obligation.Type, refuted, clause, WellFormed: wellFormed, SuppliedBy: obligation.SuppliedBy);
                 var (evidence, related) = Binding.OriginRelationFacts(relation, fit ? "fit" : obligation.Clause is not null ? "declared" : "wellFormed");
                 if (ChainOrdinal(at, issue.Code, evidence) is { } chain)
                 {

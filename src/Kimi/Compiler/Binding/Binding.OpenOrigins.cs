@@ -129,6 +129,28 @@ public sealed partial class Binding
         return true;
     }
 
+    // SPEC 15.6.4 step 3, D-1 (G216 (a) §4.6): the value whose bound on `region`, an open region a call handed a part (OpenCallPosition),
+    // brought `source` into it, such as a contextual Case's payload; a record of a relation over that region relates it. Null for any other
+    // region.
+    internal Koto? HandedSupply(BoundOrigin region, BoundOrigin source)
+    {
+        if (region is not { Open: true, Kind: OriginKind.Inference, Slot: >= HandedKey and < HandedKey / 2 } ||
+            !this.localRegions.TryGetValue(region, out var bounds))
+        {
+            return null;
+        }
+
+        for (var i = 0; i < bounds.Parents.Count; i++)
+        {
+            if (this.RegionContains(this.OriginAtUse(bounds.Parents[i], bounds.Values[i]), source))
+            {
+                return bounds.Values[i];
+            }
+        }
+
+        return null;
+    }
+
     // An Origin that a known call signature's binder quantifies, or that a nested Function Type's own syntax binds per call.
     private static bool QuantifiedBy(BoundOrigin origin, Koto binder)
     {

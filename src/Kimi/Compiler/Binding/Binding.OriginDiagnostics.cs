@@ -32,8 +32,10 @@ public sealed partial class Binding
     internal static (object[] Evidence, (string Role, Koto At, string? Label)[]? Related) OriginRelationFacts(OriginRelationFact relation, string source)
     {
         // SPEC 15.6.5: a local initialized by a Borrow shows that Borrow, which is also the related location. An input's well-formedness
-        // fails over an Origin that another input of the call supplied, so its Borrow is found in that call.
+        // fails over an Origin that another input of the call supplied, so its Borrow is found in that call; a region a call handed, in the
+        // value that supplied it.
         var borrow = BorrowSource(relation.At, relation.Supplier) ??
+            (relation.SuppliedBy is { } supplied ? BorrowSource(supplied, relation.Supplier) : null) ??
             (relation.WellFormed && EnclosingCall(relation.At) is { } call ? BorrowSource(call, relation.Supplier) : null);
         // A clause of a Field or Case names its Type's own slots as written there, without `self.`; a Type's clause substituted at
         // a use in a body names the substituted Origins as that body does.
@@ -63,6 +65,12 @@ public sealed partial class Binding
         {
             // SPEC 15.6.1: the input whose equality made a call's fresh Origin equal to a fixed one is related with the role `relation`.
             related = related is null ? [("relation", input, null)] : [.. related, ("relation", input, null)];
+        }
+
+        if (relation.SuppliedBy is { } payload)
+        {
+            // D-1 (G216 (a)): a relation over a region a call handed a part relates the value that supplied it, such as a Case's payload.
+            related = related is null ? [("payload", payload, null)] : [.. related, ("payload", payload, null)];
         }
 
         if (source != "fit")

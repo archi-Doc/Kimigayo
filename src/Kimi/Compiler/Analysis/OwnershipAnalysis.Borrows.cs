@@ -131,7 +131,8 @@ public sealed partial class OwnershipAnalysis
             {
                 foreach (var source in this.compilation.Binding.LocalRegionSources(longer))
                 {
-                    this.ReportUnprovenOriginObligation(obligation with { Longer = source, Equality = false }, true);
+                    var supplied = obligation.SuppliedBy ?? this.compilation.Binding.HandedSupply(longer, source); // D-1: the supplying value.
+                    this.ReportUnprovenOriginObligation(obligation with { Longer = source, Equality = false, SuppliedBy = supplied }, true);
                 }
 
                 return false;
