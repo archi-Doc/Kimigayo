@@ -218,7 +218,7 @@ public sealed partial class Binding
                 this.symbols.TryGetValue(variable, out var local) && local.Type is { Semantics: SemanticsKind.Owner or SemanticsKind.Ref or SemanticsKind.Uniq } stored &&
                 !IsWithin(environment.Use, variable))
             {
-                this.AddStoredPremises(environment, stored, node, OriginPremiseRule.LocalPlace, false);
+                this.AddStoredPremises(environment, stored, node, OriginPremiseRule.LocalPlace);
             }
         }
     }
@@ -272,7 +272,7 @@ public sealed partial class Binding
             this.AddTypePremises(environment, binding, OriginPremiseRule.Input);
             if (receiver >= 0)
             {
-                this.AddStoredPremises(environment, binding, receiver, OriginPremiseRule.Input, false);
+                this.AddStoredPremises(environment, binding, receiver, OriginPremiseRule.Input);
             }
         }
     }
@@ -313,7 +313,7 @@ public sealed partial class Binding
                 (this.AdmittedSemantics(whole, environment.Scope ??= this.ConstraintScope(environment.Use)) & SemanticsMask.Borrow) != 0 &&
                 this.PairSlotCondition(type, environment.Use) is { } condition)
             {
-                this.AddStoredPremises(environment, target, this.PremiseNode(environment, slot), rule, false, condition);
+                this.AddStoredPremises(environment, target, this.PremiseNode(environment, slot), rule, condition);
             }
 
             this.AddTypePremises(environment, target, rule);
@@ -325,41 +325,28 @@ public sealed partial class Binding
             var inner = type.Components[i];
             if (inner.StoresOrigin && (IsBorrow(type.Semantics) || type.Kind == BoundTypeKind.Slice) && type.Origin is { } outer)
             {
-                this.AddStoredPremises(environment, inner, this.PremiseNode(environment, outer), rule, false);
+                this.AddStoredPremises(environment, inner, this.PremiseNode(environment, outer), rule);
             }
 
             this.AddTypePremises(environment, inner, rule);
         }
     }
 
-    // SPEC 15.6.1 well-formedness as a premise: every Origin stored below a borrow layer of the result outlives that layer's Origin.
-    // A nested Function Type ends the premise: its per-call Origins cannot leave their binder (SPEC 15.3.4), so the well-formedness
-    // inside it stays an obligation of the definition.
+    // SPEC 15.6.1 well-formedness as a premise: every Origin stored below a borrow layer of the result outlives that layer's Origin (the
+    // walk's positions without the clauses, WalkWellFormed), each Type once per environment. A nested Function Type ends the premise: its
+    // per-call Origins cannot leave their binder (SPEC 15.3.4), so the well-formedness inside it stays an obligation of the definition.
     private void AddResultPremises(OriginPremiseEnvironment environment, BoundType type)
     {
-        if (!type.StoresOrigin || type.Kind == BoundTypeKind.Function || !environment.Results.Add(type))
-        {
-            return;
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            var inner = type.Components[i];
-            if ((IsBorrow(type.Semantics) || type.Kind == BoundTypeKind.Slice) && type.Origin is { } outer)
-            {
-                this.AddStoredPremises(environment, inner, this.PremiseNode(environment, outer), OriginPremiseRule.Result, true);
-            }
-
-            this.AddResultPremises(environment, inner);
-        }
+        var premises = new ResultPremiseEdges(this, environment);
+        this.WalkWellFormed(type, ref type, null, ref premises);
     }
 
-    // Every Origin stored in `type` outlives the node `shorter`; with `result`, Origins inside a nested Function Type are not stored.
-    // `condition` is the Semantics case of the storage itself; a pair layer's own slot, the implicit `o` of an original `s/T` included
-    // (SPEC 8.1.1), is stored only in its binder's borrow cases, while its target is stored in every case (SPEC 15.6.5).
-    private void AddStoredPremises(OriginPremiseEnvironment environment, BoundType type, int shorter, OriginPremiseRule rule, bool result, ulong condition = 0)
+    // Every Origin stored in `type` outlives the node `shorter`. `condition` is the Semantics case of the storage itself; a pair layer's
+    // own slot, the implicit `o` of an original `s/T` included (SPEC 8.1.1), is stored only in its binder's borrow cases, while its target
+    // is stored in every case (SPEC 15.6.5).
+    private void AddStoredPremises(OriginPremiseEnvironment environment, BoundType type, int shorter, OriginPremiseRule rule, ulong condition = 0)
     {
-        if ((result && type.Kind == BoundTypeKind.Function) || !type.StoresOrigin)
+        if (!type.StoresOrigin)
         {
             return;
         }
@@ -376,8 +363,28 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            this.AddStoredPremises(environment, type.Components[i], shorter, rule, result, condition);
+            this.AddStoredPremises(environment, type.Components[i], shorter, rule, condition);
         }
+    }
+
+    // The result premise's edges at the positions of the walk: a stored Origin outlives its layer's, under the pair binder's case (a
+    // premise under an unknown binder is never usable, PairSlotCondition).
+    private readonly struct ResultPremiseEdges(Binding binding, OriginPremiseEnvironment environment) : IWellFormedPositions
+    {
+        public Koto Use => environment.Use;
+
+        public bool Enter(BoundType type) => environment.Results.Add(type);
+
+        public bool Clauses(BoundType type, BoundType? kept, OriginDeclaration declaration) => true;
+
+        public bool Stored(in WellFormedPosition position)
+        {
+            var shorter = binding.PremiseNode(environment, position.Substituted);
+            AddPremiseEdge(environment, binding.PremiseNode(environment, position.Value), shorter, OriginPremiseRule.Result, position.Condition);
+            return true;
+        }
+
+        public BoundOrigin Replace(BoundOrigin origin) => origin;
     }
 
     // The storage of one proof request: its graph and closure, the resolved endpoint of each premise Origin, the Types already

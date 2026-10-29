@@ -92,6 +92,34 @@ public sealed partial class Binding
     private static bool EnumArityMatches(int payloadCount, InvocationKoto? call)
         => payloadCount == (call?.ArgumentNodes.Count ?? 0) && (call is null) == (payloadCount == 0);
 
+    // SPEC 6.5.2 item 2, 10.8.1: an expected Type of the construction's own enum gives every slot and Origin argument; a slot its qualifier
+    // fixed must be the expected one. False on a Type mismatch.
+    private static bool TakeEnumExpectation(EnumKoto declaration, BindingSymbol owner, BoundType expected, BoundType?[] arguments, BoundOrigin[] origins)
+    {
+        if (expected.Semantics != SemanticsKind.Owner || !ReferenceEquals(expected.Symbol, owner))
+        {
+            return false;
+        }
+
+        var schema = declaration.BoundSymbol!.Schema!;
+        for (var i = 0; i < schema.GenericSlots.Count; i++)
+        {
+            if (i >= expected.Components.Count || (arguments[i] is { } fixedType && !ReferenceEquals(fixedType, expected.Components[i])))
+            {
+                return false;
+            }
+
+            arguments[i] = expected.Components[i];
+        }
+
+        for (var i = 0; i < Math.Min(schema.Origins.Count, expected.OriginArguments.Count); i++)
+        {
+            origins[i] = expected.OriginArguments[i];
+        }
+
+        return true;
+    }
+
     // SPEC 10.8, 10.5: the construction's slots that no evidence binds, other than an F that a waiting callable binds (`unsolved`); false
     // when every slot is bound.
     private static bool UnsolvedPayloadSlots(ReadOnlySpan<Koto> payload, in SlotSolution solution, ref SlotSet unsolved)
@@ -201,27 +229,10 @@ public sealed partial class Binding
                 }
             }
 
-            if (expected is not null && !ReferenceEquals(expected, BoundType.Never))
+            if (expected is not null && !ReferenceEquals(expected, BoundType.Never) &&
+                !TakeEnumExpectation(declaration, enumeration.Owner, expected, arguments, origins))
             {
-                if (expected.Semantics != SemanticsKind.Owner || !ReferenceEquals(expected.Symbol, enumeration.Owner))
-                {
-                    return this.Fail(use, BindingFailure.TypeMismatch);
-                }
-
-                for (var i = 0; i < slots; i++)
-                {
-                    if (i >= expected.Components.Count || (arguments[i] is { } fixedType && !ReferenceEquals(fixedType, expected.Components[i])))
-                    {
-                        return this.Fail(use, BindingFailure.TypeMismatch);
-                    }
-
-                    arguments[i] = expected.Components[i];
-                }
-
-                for (var i = 0; i < Math.Min(originCount, expected.OriginArguments.Count); i++)
-                {
-                    origins[i] = expected.OriginArguments[i];
-                }
+                return this.Fail(use, BindingFailure.TypeMismatch);
             }
 
             var solution = this.Solution(call, declaration, scope, arguments, lengths, origins);

@@ -43,9 +43,11 @@ public sealed partial class Binding
     }
 
     // The callee whose result premises are visited, or null for an input's, which no other premise of the definition replaces; the
-    // use; and for Bound and Unbound the call's inference and, for a result, the receiver Type whose arguments a member's container
-    // Origins project to (an input's pattern is already projected where the call collects it).
-    private readonly record struct WellFormedVisit(FunctionKoto? Function, Koto Use, WellFormedAction Action, OriginInference? Inference = null, BoundType? Owner = null);
+    // use; the premise the visit judges by its catalog rule, an input's (R2, which covers its Types' own clauses) or a result's (R3); and
+    // for Bound and Unbound the call's inference and, for a result, the receiver Type whose arguments a member's container Origins project
+    // to (an input's pattern is already projected where the call collects it).
+    private readonly record struct WellFormedVisit(
+        FunctionKoto? Function, Koto Use, WellFormedAction Action, OriginPremiseRule Premise, OriginInference? Inference = null, BoundType? Owner = null);
 
     // SPEC 15.3.7, 10.7: instantiate all of an Item's call Origins together, including named and result-only universals, against the
     // required contract. Repeated invariant occurrences and declared conditions constrain the same solution. An open evidence region
@@ -163,9 +165,6 @@ public sealed partial class Binding
         inference.Add(longer, shorter);
     }
 
-    private static bool SameLayer(BoundType actual, BoundType result)
-        => actual.Kind == result.Kind && actual.Components.Count == result.Components.Count && actual.OriginArguments.Count == result.OriginArguments.Count;
-
     // SPEC 15.6.4 steps 1-4: a call's fresh Origins satisfy its callee's result premises where a solution does, so a result over
     // body-local borrows is bounded by every Origin it holds. Otherwise the call is solved without them and the obligation at the
     // selected call reports the relation; a premise never decides applicability (SPEC 15.6.1). With `select`, candidate applicability,
@@ -178,10 +177,11 @@ public sealed partial class Binding
         }
 
         var result = function.BoundSymbol!.Type!;
-        this.VisitWellFormedPremises(result, result, null, new(function, use, WellFormedAction.Unbound, inference, declaringType)); // Left by an earlier pass.
+        var unbound = new WellFormedVisit(function, use, WellFormedAction.Unbound, OriginPremiseRule.Result, inference, declaringType);
+        this.VisitWellFormedPremises(result, result, null, unbound); // Left by an earlier pass.
         var count = inference.Bounds.Count;
         var variables = inference.Variables.Count;
-        this.VisitWellFormedPremises(result, result, null, new(function, use, WellFormedAction.Bound, inference, declaringType));
+        this.VisitWellFormedPremises(result, result, null, unbound with { Action = WellFormedAction.Bound });
         if (inference.Bounds.Count != count)
         {
             if (this.SolveOriginInference(inference, origins, inputs, use, declaringType))
@@ -189,7 +189,7 @@ public sealed partial class Binding
                 return true;
             }
 
-            this.VisitWellFormedPremises(result, result, null, new(function, use, WellFormedAction.Unbound, inference, declaringType));
+            this.VisitWellFormedPremises(result, result, null, unbound);
             inference.Variables.RemoveRange(variables, inference.Variables.Count - variables); // The result-only Origins they discovered.
         }
 
@@ -201,7 +201,7 @@ public sealed partial class Binding
     {
         if (CarriesResultPremises(function))
         {
-            this.VisitWellFormedPremises(function.BoundSymbol!.Type!, result, null, new(function, use, WellFormedAction.Require));
+            this.VisitWellFormedPremises(function.BoundSymbol!.Type!, result, null, new(function, use, WellFormedAction.Require, OriginPremiseRule.Result));
         }
     }
 
@@ -213,7 +213,7 @@ public sealed partial class Binding
     {
         if (pattern.StoresOrigin)
         {
-            this.VisitWellFormedPremises(pattern, pattern, null, new(null, use, WellFormedAction.Bound, inference));
+            this.VisitWellFormedPremises(pattern, pattern, null, new(null, use, WellFormedAction.Bound, OriginPremiseRule.Input, inference));
         }
     }
 
@@ -227,7 +227,7 @@ public sealed partial class Binding
         if (parameter.StoresOrigin && (supplied is null || (supplied.StoresOrigin && !ReferenceEquals(supplied, parameter) &&
             this.originRelations?.ContainsKey(at) != true && !this.HasCallRelation(at))))
         {
-            this.VisitWellFormedPremises(parameter, parameter, supplied, new(null, at, WellFormedAction.Require));
+            this.VisitWellFormedPremises(parameter, parameter, supplied, new(null, at, WellFormedAction.Require, OriginPremiseRule.Input));
         }
     }
 
@@ -235,18 +235,20 @@ public sealed partial class Binding
     // wherever its solve replaced an Origin of the required input, whose own well-formedness covers every position it kept.
     private bool ProvesInputPremises(BoundType implementation, BoundType required, Koto use)
         => ReferenceEquals(implementation, required) || !implementation.StoresOrigin ||
-            this.VisitWellFormedPremises(implementation, implementation, required, new(null, use, WellFormedAction.Prove));
+            this.VisitWellFormedPremises(implementation, implementation, required, new(null, use, WellFormedAction.Prove, OriginPremiseRule.Input));
 
     // SPEC 15.3.7: a whole-contract comparison proves the implementation's result premises for its substituted result from the
     // required contract's premises at `use`.
     private bool ProvesResultPremises(FunctionKoto function, BoundType result, Koto use)
-        => !CarriesResultPremises(function) || this.VisitWellFormedPremises(function.BoundSymbol!.Type!, result, null, new(function, use, WellFormedAction.Prove));
+        => !CarriesResultPremises(function) ||
+            this.VisitWellFormedPremises(function.BoundSymbol!.Type!, result, null, new(function, use, WellFormedAction.Prove, OriginPremiseRule.Result));
 
     // SPEC 15.3.7, 15.6.4 step 3: whether a use of a named function must prove Origin conditions beyond its inputs' Types: a declared
     // relation, or a result premise that its inputs and clauses do not prove.
     private bool HasOriginConditions(FunctionKoto function)
         => this.originDeclarations.GetValueOrDefault(function)?.Relations.Count > 0 ||
-            (CarriesResultPremises(function) && !this.VisitWellFormedPremises(function.BoundSymbol!.Type!, function.BoundSymbol!.Type!, null, new(function, function, WellFormedAction.Detect)));
+            (CarriesResultPremises(function) && function.BoundSymbol!.Type is { } signature &&
+            !this.VisitWellFormedPremises(signature, signature, null, new(function, function, WellFormedAction.Detect, OriginPremiseRule.Result)));
 
     // A failed Item comparison explains the same joint instantiation as acceptance. A representative is chosen only to locate
     // the refuted/Unknown relation; it never admits the contract. In particular, repeated invariant occurrences name the two
@@ -318,7 +320,8 @@ public sealed partial class Binding
         try
         {
             var result = function.BoundSymbol!.Type!;
-            return !this.VisitWellFormedPremises(result, actual.Components[1], null, new(function, use, WellFormedAction.Instance)) && this.failedResultPremise is { } failed
+            var visit = new WellFormedVisit(function, use, WellFormedAction.Instance, OriginPremiseRule.Result);
+            return !this.VisitWellFormedPremises(result, actual.Components[1], null, visit) && this.failedResultPremise is { } failed
                 ? this.ConditionFact(at, "the result's well-formedness", failed.Longer, failed.Shorter, false, instance, use) : null;
         }
         finally
@@ -389,116 +392,14 @@ public sealed partial class Binding
         return this.SolveOriginInference(inference, origins, inputs, use, select: true);
     }
 
-    // Visits each borrow layer of a well-formed Type pattern beside the same layer of `result`, the pattern itself or its substitution
-    // at a use; false only when Prove fails. The visit stops at a nested Function Type, as the premise does (AddResultPremises). An
-    // input's visit also covers its Types' own clauses (SPEC 15.3.3), as the input premise does (AddTypePremises); beside `actual`, the
-    // argument's own Type, which is well formed, it covers only the positions that the fit replaced.
+    // Visits the well-formedness positions (WalkWellFormed) of `result`, a Type pattern itself or its substitution at a use, beside the
+    // pattern; false only when Prove fails. The visit stops at a nested Function Type, as the premise does (AddResultPremises). An input's
+    // visit also covers its Types' own clauses (SPEC 15.3.3), as the input premise does (AddTypePremises); beside `actual`, the argument's
+    // own Type, which is well formed, it covers only the positions that the fit replaced.
     private bool VisitWellFormedPremises(BoundType pattern, BoundType result, BoundType? actual, in WellFormedVisit visit)
     {
-        if (!pattern.StoresOrigin || pattern.Kind == BoundTypeKind.Function || pattern.Kind != result.Kind || pattern.Components.Count != result.Components.Count)
-        {
-            return true;
-        }
-
-        if (actual is not null && !SameLayer(actual, result))
-        {
-            actual = null; // Every position is covered when the shapes differ.
-        }
-
-        if (visit.Function is null && result.Symbol is { } symbol && result.OriginArguments.Count != 0 && !SameOriginArguments(result, actual) &&
-            this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) && declaration.State == 3)
-        {
-            foreach (var relation in declaration.Relations)
-            {
-                var longer = this.SubstituteStoredOrigin(relation.Longer, symbol.Declaration, (BoundOrigin[])result.OriginArguments);
-                var shorter = this.SubstituteStoredOrigin(relation.Shorter, symbol.Declaration, (BoundOrigin[])result.OriginArguments);
-                if (!this.VisitTypeClause(longer, shorter, relation.Equality, relation.Syntax, visit))
-                {
-                    return false;
-                }
-            }
-        }
-
-        if ((IsBorrow(pattern.Semantics) || pattern.Kind == BoundTypeKind.Slice) && pattern.Origin is { } outer && result.Origin is { } substituted &&
-            pattern.Components.Count != 0 && !this.VisitStoredPremises(pattern.Components[0], result.Components[0], actual?.Components[0], outer, substituted, visit))
-        {
-            return false;
-        }
-
-        for (var i = 0; i < pattern.Components.Count; i++)
-        {
-            if (!this.VisitWellFormedPremises(pattern.Components[i], result.Components[i], actual?.Components[i], visit))
-            {
-                return false;
-            }
-        }
-
-        return true;
-
-        static bool SameOriginArguments(BoundType result, BoundType? actual)
-        {
-            if (actual is null)
-            {
-                return false;
-            }
-
-            for (var i = 0; i < result.OriginArguments.Count; i++)
-            {
-                if (!ReferenceEquals(result.OriginArguments[i], actual.OriginArguments[i]))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-    }
-
-    private bool VisitStoredPremises(BoundType pattern, BoundType result, BoundType? actual, BoundOrigin outer, BoundOrigin substituted, in WellFormedVisit visit)
-    {
-        // A pair layer of the pattern stores its slot whatever its substitution is; any other layer only beside the same shape.
-        var shaped = pattern.Kind == result.Kind && pattern.Components.Count == result.Components.Count;
-        if (!pattern.StoresOrigin || pattern.Kind == BoundTypeKind.Function || (!shaped && !TryPairLayer(pattern, out _, out _)))
-        {
-            return true;
-        }
-
-        if (actual is not null && !SameLayer(actual, result))
-        {
-            actual = null;
-        }
-
-        // SPEC 8.1.1, 8.1.2, 15.6.5: a pair layer's slot, the implicit `o` of an original `s/T` included, is stored only in its binder's
-        // borrow cases. At a use it is the slot its substitution stores: a borrow's Origin, a caller's pair slot in that pair's borrow
-        // cases, and none for a value binding, which leaves the relation vacuous.
-        if (this.OuterOrigin(pattern) is { } origin && this.StoredSlot(result, visit.Use, out var slot) is { } value &&
-            !this.VisitWellFormedPremise(origin, outer, result, value, actual is null ? null : this.OuterOrigin(actual), substituted, visit, RequiredCondition(slot)))
-        {
-            return false;
-        }
-
-        if (!shaped)
-        {
-            return true;
-        }
-
-        for (var i = 0; i < Math.Min(pattern.OriginArguments.Count, result.OriginArguments.Count); i++)
-        {
-            if (!this.VisitWellFormedPremise(pattern.OriginArguments[i], outer, result, result.OriginArguments[i], actual?.OriginArguments[i], substituted, visit))
-            {
-                return false;
-            }
-        }
-
-        for (var i = 0; i < pattern.Components.Count; i++)
-        {
-            if (!this.VisitStoredPremises(pattern.Components[i], result.Components[i], actual?.Components[i], outer, substituted, visit))
-            {
-                return false;
-            }
-        }
-
-        return true;
+        var obligations = new WellFormedObligations(this, visit);
+        return this.WalkWellFormed(pattern, ref result, actual, ref obligations);
     }
 
     // `kept` is the argument's Origin at the same position, which satisfies the relation already when the fit kept it: the argument's
@@ -548,7 +449,7 @@ public sealed partial class Binding
                 this.failedResultPremise = (value, substituted);
                 return false;
             case WellFormedAction.Bound:
-                BoundOrigins(visit.Inference!, longer, outer, visit.Function is not null);
+                BoundOrigins(visit.Inference!, longer, outer, visit.Premise == OriginPremiseRule.Result);
                 return true;
             case WellFormedAction.Unbound:
                 visit.Inference!.Bounds.Remove((longer, outer, true, true));
@@ -556,7 +457,7 @@ public sealed partial class Binding
             case WellFormedAction.Prove:
                 return this.ProvesOriginOutlives(value, substituted, visit.Use, condition);
             default:
-                if (visit.Function is null)
+                if (visit.Premise == OriginPremiseRule.Input)
                 {
                     this.JudgeCallPosition(visit.Use, value, substituted, false, null, null, wellFormed: true, condition: condition);
                 }
@@ -609,6 +510,64 @@ public sealed partial class Binding
         else if (!OriginOutlives(value, substituted))
         {
             this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, result, value, substituted, WellFormed: true, Condition: condition));
+        }
+    }
+
+    // The obligations, bounds and proofs of a visit at the positions of the walk.
+    private readonly struct WellFormedObligations(Binding binding, WellFormedVisit visit) : IWellFormedPositions
+    {
+        public Koto Use => visit.Use;
+
+        public bool Enter(BoundType type) => true;
+
+        // An input's own clauses, substituted with the Origins of its occurrence, unless the argument's own Type kept every one.
+        public bool Clauses(BoundType type, BoundType? kept, OriginDeclaration declaration)
+        {
+            if (visit.Premise != OriginPremiseRule.Input || SameOriginArguments(type, kept))
+            {
+                return true;
+            }
+
+            var owner = type.Symbol!.Declaration;
+            foreach (var relation in declaration.Relations)
+            {
+                var longer = binding.SubstituteStoredOrigin(relation.Longer, owner, (BoundOrigin[])type.OriginArguments);
+                var shorter = binding.SubstituteStoredOrigin(relation.Shorter, owner, (BoundOrigin[])type.OriginArguments);
+                if (!binding.VisitTypeClause(longer, shorter, relation.Equality, relation.Syntax, visit))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // A requirement under an unknown binder's case is judged unconditionally (RequiredCondition).
+        public bool Stored(in WellFormedPosition position)
+        {
+            var condition = RequiredCondition(position.Condition);
+            return binding.VisitWellFormedPremise(
+                position.Longer, position.Outer, position.Type, position.Value, position.Kept, position.Substituted, visit, condition);
+        }
+
+        public BoundOrigin Replace(BoundOrigin origin) => origin;
+
+        private static bool SameOriginArguments(BoundType type, BoundType? kept)
+        {
+            if (kept is null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < type.OriginArguments.Count; i++)
+            {
+                if (!ReferenceEquals(type.OriginArguments[i], kept.OriginArguments[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
     }
 }
