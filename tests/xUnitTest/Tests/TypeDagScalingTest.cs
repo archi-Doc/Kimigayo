@@ -134,7 +134,12 @@ public partial class TypeDagScalingTest
     public void OldAnalysisWalksAreLinearInDistinctParts(string shape, int size)
     {
         var c = OldPath(Source(shape, size));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+
+        // originLets' last Tuple holds 2^28 references, 2^31 bytes, past the layout size bound: check's one record, at the local's
+        // declaration (DECISIONS R5-M44), on every pipeline (DECISIONS R5-M156).
+        var bound = shape == "originLets" ? "GenerationResourceLimit_Kd let a27 = (a26, a26)" : string.Empty;
+        Assert.Equal(bound, MinimalEmissionTest.Problems(c));
+        Assert.Equal(bound.Length == 0, c.Analysis.IsVerified);
         if (shape.StartsWith("chain", StringComparison.Ordinal))
         {
             Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
@@ -142,7 +147,8 @@ public partial class TypeDagScalingTest
     }
 
     // SPEC 15.6.6: a part shared at depth 0 and 60 or 70 levels down a Tuple keeps the bound's verdict in either order: at 70 a later
-    // write conflicts with the Loan the bound retains, at 60 it does not.
+    // write conflicts with the Loan the bound retains, at 60 it does not. At 70 each Tuple more than 64 levels high is also a layout depth
+    // record at check, one per erased Type (DECISIONS R5-M44), on every pipeline (DECISIONS R5-M156).
     [Theory]
     [InlineData(60, false, true, "")]
     [InlineData(60, true, true, "")]
@@ -154,7 +160,7 @@ public partial class TypeDagScalingTest
         var deep = $"    let d = {Nest(depth)}\n";
         var shallow = $"    let s = {Nest(10)}\n";
         var source = "public func main() -> ()\n    var value = 42\n" + (shallowFirst ? shallow + deep : deep + shallow) + (written ? "    value = 99\n" : string.Empty) + "    return\n";
-        Assert.Equal(Codes(code), Problems(OldPath(source)));
+        Assert.Equal(Codes(code).Concat(Enumerable.Repeat("GenerationResourceLimit_Kd", Math.Max(0, depth - 64))), Problems(OldPath(source)));
 
         static string Nest(int levels) => new string('(', levels) + "value@ref" + string.Concat(Enumerable.Range(0, levels).Select(static i => $", {i})"));
     }
@@ -317,8 +323,8 @@ public partial class TypeDagScalingTest
 
     private static string[] Codes(string code) => code.Length == 0 ? [] : [code];
 
-    // A checked compilation pinned to the old generator: the old analysis's rows judge its walks, and the checked set of MIR code
-    // generation would add its own resource limits on these shapes.
+    // A checked compilation pinned to the old generator: the old analysis's rows judge its walks, and the chain shapes generate through the
+    // old Emission's instance analyses; the checked set's records publish at check under either generator (DECISIONS R5-M156).
     private static Compilation OldPath(string source) => MinimalEmissionTest.Analyze(source, codegen: CompilerCodegen.Legacy);
 
     // The codes of the analysis's problems: the old path's, then the MIR's records.

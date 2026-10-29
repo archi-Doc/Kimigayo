@@ -575,7 +575,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
 ## R3 (2026-10-11, main session as recommended; R3-9 and R3-10 by the owner)
 
 - **R3-1** MIR records (construction `Unsupported_Kd`, validator `InternalInvariant_Kd`) are published only under the
-  `mir` pipeline, in the ControlFlow partition.
+  `mir` pipeline, in the ControlFlow partition. Superseded by R5-M156 (R6-gen G2): they publish on every pipeline, still in the
+  ControlFlow partition.
 - **R3-2** The R3-exit `-Pipeline mir` Session is a measurement, classified into `artifacts/verify/mir-diff/r3.tsv`; the
   gate is the plan's R3 gate.
 - **R3-3** Tests read analysis and generation through the `Compilation` entry points. `TryPrepare(out var module)` reads
@@ -603,7 +604,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
 
 ## R4 (accepted 2026-10-11)
 
-- **R4-M1** (superseded for generation-time refusals under sel by R5-M96) Shadow: under `mir` the old path still decides acceptance,
+- **R4-M1** (superseded for generation-time refusals under sel by R5-M96; for construction records, validator findings and collector
+  records by R5-M156: they join acceptance at check on every pipeline, the MIR analysis problems staying unpublished until H3) Shadow: under `mir` the old path still decides acceptance,
   Problems and diagnostics. The analyses run once
   per program version after build and validation (`MirBuilder.Build`, then `MirAnalysis.Run`); MIR problems stay
   unpublished on `MirProgram` until R6 unit a; an analysis exception fails the test. Rejected: MIR deciding codes in R4
@@ -1176,7 +1178,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     R6-check (owner exception); OD6 review and records as plan §9.3, in force once AGENTS "Review weight" is revised on the owner's
     instruction (until then AGENTS and Q5 govern); OD7 each rule the audit finds not finitely expressible gets its own SPEC proposal
     (O3 and O4 apply); OD10 R6 runs in two stages, R6-gen after R5 and R6-check after R4 and R6-gen, with `AnalyzeInstance` a
-    check-only step until R6-check; OD11 confirmed: a complete write through a reference ends none of the referent's earlier Loans
+    check-only step until R6-check (its split superseded by R5-M156: R6-gen's G2 moves the MIR-owned records, construction records,
+    validator findings and collector records, into acceptance; MIR problems move at R6-check's H5); OD11 confirmed: a complete write through a reference ends none of the referent's earlier Loans
     (S4); OD12 simple, then fast, then precise, never trading soundness, a precision loss being allowed only as a rule clause decided
     as plan §5.3 states, which is the owner's request for the resulting SPEC revisions; OD13 each list of precision losses is approved
     as one decision. Not adopted: OD8 (no Case terminator; case dependence stays per view, R4-M19) and OD9 (the inline default fold
@@ -9363,7 +9366,8 @@ structure is recorded here by the unit that first implements it.
   - Temporary structures: the `KIMI_CODEGEN` selector (`CompilerCodegen`, `Compilation.DefaultCodegen`, `CodegenOf` and the
     per-compilation `Codegen`), read once per process, `mir` valid only with `KIMI_PIPELINE=mir` (any other value or combination is a
     configuration error), a compilation's code generator following its pipeline, marked in `CompilerIdentity` (` [mir, codegen mir]`)
-    and the test artifact manifest; G4 removes it. The sel generation refusal (`Compilation.RefusesCodegen`), read by `WriteIr`,
+    and the test artifact manifest; G4 removes it. (The pairing superseded by R5-M156: from G2 `mir` is valid on either pipeline, the
+    two selections are independent and each non-default one marks the identity.) The sel generation refusal (`Compilation.RefusesCodegen`), read by `WriteIr`,
     `Validate` and `EmissionArtifacts.Publish`: one `Unsupported_Kd` in the Emission partition at the body of each output root (an
     Application's startup, a test build's tests, a Library's roots), never the old generator, which `Project.Emit` leaves in place; C0a
     moves it into the generation entry and C0b1 deletes it.
@@ -9528,7 +9532,8 @@ structure is recorded here by the unit that first implements it.
   MIR code generation (sel), `Compilation.MirRecords` counts and lists the records of the checked set of the program version (R5-M40)
   with the MIR's construction records and validator findings: analysis Errors in the ControlFlow partition (R5-M4, PD7), so they reject
   at check, count in `Analysis` and block generation. On the default pipeline and under `mir` alone the collector does not run (PD4)
-  until G2.
+  until G2. (Superseded by BU-48 for the run, the collector running on every pipeline, and by R5-M156 for the records: from G2 they
+  publish on every pipeline, whatever the code generator.)
   - D-A: the collector runs in `Compilation.BuildMir`, after the MIR analyses and before acceptance, not as a Mir pass; ARCH's pipeline
     table moves the definition-stage capability check from P7-P9 to it (A3b joins its body scan at K9a).
   - D-B (P5): the bundled library is no root in user compilations. `KimiLibraryShapeTest.TheLibraryCollectsWithoutRecords` collects it
@@ -9864,7 +9869,8 @@ structure is recorded here by the unit that first implements it.
   - Temporary structures: the out-string adapters `WriteIr` and `Validate` (`[Transitional("R6-gen")]`, G9b): the same gate with its text,
     then the old generator's text without its record, for their test callers. `verify.ps1 -Codegen legacy|mir` sets `KIMI_CODEGEN` for the
     run and records `codegen` in `summary.json`; `-Codegen mir` without `-Pipeline mir` is rejected before building (PD4); both go with
-    the selector at G4.
+    the selector at G4. (The rejection superseded by R5-M156: from G2 `-Codegen mir` is valid with either pipeline. Gate step 1 counts
+    the checked set's records on every pipeline.)
   - Rejected: an entry returning the prepared old module (Core would publish `EmissionModule`, which MIR code generation replaces);
     buffering the module before the publication checks (an allocation the size of the module); a writer opened on first write (a wrapper
     kept only for the old order); reporting publication failures in `Generate` (publication is `EmissionArtifacts`', G9b's record).
@@ -10552,6 +10558,8 @@ structure is recorded here by the unit that first implements it.
   fixture as deviating only when both runs carry the same `.deviation` and each run's output matches its side.
   - Rejected: per-test pipeline branches and xfail markers (PD10); item and class as arguments (declared at each use); the native
     half before a consumer; null targets for the old generator's own facts.
+  - Superseded in part by R5-M156 (G2): `checked-set-at-check` is deleted with its 10 `Expect` sites reduced to their targets, and
+    the old generator's halves after a check that now rejects are deleted; the own-limit pins whose programs pass check stay until G4.
 - **R5-M86 The owner's decisions of 2026-10-21: R5's departures list and PLAN G157 (19)** (owner, 2026-10-21, on the R5 planning
   session's explanation; verbatim 「departures list：K6b（R5-M70）、K8（R5-M74）、C0c（R5-M78）の 3 件を、すべて承認します。」 and
   「G157は、(a) 旧生成器を直す（推奨）でお願いします」, then, asked about R5-M6, the answer 「(a) のまま（R5-M6 の例外）」; the
@@ -12574,7 +12582,8 @@ structure is recorded here by the unit that first implements it.
     declarations get R5-M82's `StaticStorage` records at check under sel (`checked-set-at-check`, R5-M41) before its recorded first
     diagnostic. Reason: R5-M13 (b) defers static `var` to P42 after R6-check with Milestone 42 as its completion condition, so the gate
     cannot hold for 42 within R5. `MilestoneSourcesTest.AuthoredProgramsMatchTheirRecordedStageAndDiagnostic` is a P42 decided row (not
-    G2's); P42 restores the recorded first diagnostic. Rejected: (b) a `Codegen.Expect` deviation now (a second record P42 must remove).
+    G2's); P42 restores the recorded first diagnostic. ("Not G2's" superseded by R5-M156 under OI-1 (a′): G2 re-baselines Milestone 42,
+    and P42 restores it.) Rejected: (b) a `Codegen.Expect` deviation now (a second record P42 must remove).
 - **R5-M145 The sel pending ledger before X1: one byte copy for both generators, an entry's insertion at its key, generator-neutral
   audits and IR assertions, and the decided P42 set (x1rows)** (2026-10-28, C lane; plan X1, PLAN G157 (25), (28), (29), (32), (33), (35)
   and G188; SPEC 16.2.1, 22.2, 22.5.1, IMPL 21.1.3, 21.3.1; the planning session's rulings Q1-Q5 on x1rows' design (`x1rows-design.md`,
@@ -12624,7 +12633,8 @@ structure is recorded here by the unit that first implements it.
   - Decided rows (X1; R5-M13 (b), R5-M144): the P42 set, 110 test rows that fail only on sel's located `Unsupported_Kd` for P42's static
     storage at check (R5-M41) beside their expected records: PathCapabilityDiagnosticTest 108, EffectBoundReportTest's mutable-static
     row and MilestoneSourcesTest (Milestone 42). They are OQ7 (e) "form not ported" rows (R5-M6) and leave with P42. The ledger goes
-    from 123 and 47 rows to 110 and 0.
+    from 123 and 47 rows to 110 and 0. ("Leave with P42" superseded by R5-M156 under OI-1 (a′): the rows leave the ledger at G2, which
+    empties it; P42 reverts only the pin test, EffectBound's and VirtualEffectObligationTest's records and Milestone 42's baseline.)
   - Rejected: a test-only per-generator arm reading MIR in the audit (a consumer re-deriving code generation's mapping); counting every
     untyped copy (shrink and element moves are untyped copies too); materializing constants for the audits (R5-M118); deleting the
     literal temporaries' counts as I-class (it loses the old generator's exact claims); probing the old generator's compile through a
@@ -13029,3 +13039,59 @@ structure is recorded here by the unit that first implements it.
     erased, at a Closure declaring a function, and at the call of a function nested in a getter. No record and one item per instance for
     a Closure in a getter, a constructor and a method. A closed struct's initializer Closure is a root. Every admitted representative
     closes its body, and `AnOpenRepresentativeIsABrokenContract` is unchanged.
+- **R5-M156 The default pipeline publishes the MIR's records at check (R6-gen G2)** (2026-10-29, R6-gen; plan §4.9 row G2, §5.4, K-package
+  §6 S1–S4 and S6 as R5-M152 applies them, with the owner's 「推奨どおり」 on OI-1 to OI-3; under R5-M4 (OQ5), R5-M18 and R5-M152)
+  - Core: `Compilation.Analyze` builds, validates, analyzes (the whole `MirAnalysis.Run`, its problems unpublished until H3) and
+    collects on every pipeline; `MirRecords` publishes the construction records, validator findings and every record of the checked set
+    on every pipeline and under either code generator, analysis Errors in the ControlFlow partition (the code generator gate is gone).
+    PD4's pairing ends: `KIMI_CODEGEN=mir` is valid on either pipeline (`CodegenOf(value)`), the two selections are independent, and
+    `CompilerIdentity` marks each non-default one, the pipeline first (` [mir]`, ` [codegen mir]`, ` [mir, codegen mir]`), as the test
+    manifest already did. `KIMI_PIPELINE=mir` now changes no published record: it selects the difference ledger's observation, the
+    identity mark and the manifest entry until H12. No environment value hides the records (S6); `KIMI_CODEGEN=legacy` stays G3's
+    rollback until G4. `verify.ps1` no longer rejects `-Codegen mir` without `-Pipeline mir`.
+  - Tests (OI-1 (a′)): the 108 `PathCapabilityDiagnosticTest` rows assert the records their own text locates, after `Statics.Length`;
+    `ThePreludesStaticsAreUnsupportedAtCheck` asserts the prelude's 26 `StaticStorage` records once, in a complete program (beside the
+    old analysis's own record at the custom setter's static write) and beside a Binding error (SPEC 23.1.2); EffectBound's mutable-static
+    row and `VirtualEffectObligationTest`'s unrelated group storage assert their `StaticStorage` record; Milestone 42's first record is
+    re-baselined to `var count: i32 = Registry.initialCount()`. The pending ledger is empty (`C-frame.tsv` kept, G4 deletes it with its
+    tooling). `checked-set-at-check` is deleted and its 10 `Expect` sites reduced to their targets; a method whose program the collector
+    rejects asserts its check-time records exactly (`MinimalEmissionTest.Problems`; `AssertGenerationResourceLimit` takes the record's
+    subject), and an old-generator half that a rejecting check makes unreachable is deleted. The census found 9 rows in 5 methods G0's
+    "(H) no further movement" missed, all pinned to the old generator, which hid non-Language collector records under sel:
+    `ComponentSummaryTest`'s non-regular `Chain<i32>` (two G128 `StorageNesting` records, the requesting calls' storage verdict Limit, under
+    PD30's (e) row, and its layout depth record), `InstanceCollectorTest.TheDepthLimitCountsPlacedLevels` (R5-M73's old half deleted for the
+    65-level rows check rejects, kept until G4 for the 64-level rows it accepts), `TypeDagScalingTest`'s depth-70 Tuple (six layout depth
+    records, one per erased Type, R5-M44) and `originLets` at 28 (2^31 bytes, one size record at `let a27`), and
+    `VirtualEffectObligationTest`'s storage. Scaling inputs keep their sizes. The ratchets of instance-analysis reads and generation failure
+    facts fall from 11 to 7 and 13 to 9. `PipelineSwitchTest` asserts that every pipeline publishes, and that an accepted program's
+    diagnostics and IR round-trip across a pipeline switch. Since every pipeline and code generator checks alike, the CLayout uses' mir and
+    sel columns go, as do PD4's pairing pins (the mir pipeline set only so that MIR code generation was allowed). P42 reverts the pin test,
+    the EffectBound and VirtualEffectObligation records and Milestone 42's baseline.
+  - G157 (2) stays open: no shipped library body reaches K9b's open-operation location rule (every library division or remainder has
+    closed Types, the `PrimitiveInteger` generics only add, subtract, compare or cast between integers, and every source module is a
+    root), so a test would take a path production never takes.
+  - Supersedes by name, each with its amendment line: R3-1 (the records publish on every pipeline); R4-M1 for construction records,
+    validator findings and collector records (they join acceptance at check on every pipeline; MIR analysis problems stay unpublished
+    until H3 and decide from H5; reason: the owner decided this publication in R5-M4); OD10's split (R4-M35: R6-gen moves these
+    MIR-owned records into acceptance, R6-check the MIR problems at H5); R5-M35's pairing; R5-M64's `-Codegen mir` rule; R5-M41's
+    "until G2"; R5-M85's `checked-set-at-check`; under OI-1 (a′), R5-M144's "(not G2's)" and R5-M145's "leave with P42" for the 108 rows
+    and EffectBound's row, which leave the pending ledger here.
+  - Verification lanes (OI-3 (a)): from G2 the `-Pipeline mir` lane runs only as the difference ledger's run; the sel lane runs until
+    G3.
+  - Cost (S4, measured 2026-10-29 in a quiet slot; `artifacts/benchmarks/r6-g2-cost/`; G2's head `90697ecfa` against its merge base
+    `acc2f12ad`, both builds run from one folder, CPU 2 pinned at High priority, tiering off, 5 interleaved rounds; bytes exact, times
+    medians of the rounds): `--analyze-cost`, default configuration, Generic 1/32/64/128: a fresh check 34.6, 54.5, 95.6 and 156.7 ms
+    against 26.8, 52.5, 83.7 and 135.9 ms, allocating 10.00, 19.80, 29.95 and 49.49 MB against 9.17, 18.23, 27.71 and 45.59 MB (+0.83,
+    +1.57, +2.23, +3.90 MB: the MIR analyses of the bundled library's and the source's bodies); a warm Analyze 20.8, 37.0, 54.9 and 89.0
+    ms against 17.2, 31.7, 47.5 and 78.8 ms, allocating the same 315 to 1,192 B; the checked compilation retains 7.42, 14.17, 21.14 and
+    34.73 MB against 6.92, 13.31, 19.97 and 32.74 MB (+0.50 to +1.99 MB), its growth over warm Analyzes unchanged; on G2 the mir and sel
+    configurations equal the default within the rounds' spread and a few hundred bytes, as the base's mir did. BU-48's pinned harness:
+    cold Analyze Hello 9.74 ms against 4.42 ms (minima), 3,816,576 against 2,925,312 B, Milestone26 10.22 against 4.79 ms, 4,181,680
+    against 3,230,640 B; warm Hello 7.43 against 4.00 ms, Milestone26 7.83 against 4.31 ms, 0 B on both. The `Purpose=Allocation` tests
+    pass on the default pipeline (1,179 tests). G0's estimate held for time (+5 to +8 ms per small check); the bytes are about twice its
+    +0.4 to 0.5 MB and retained memory somewhat above its +0.3 to 1.3 MB; a warm Analyze takes +3.4 to +10.2 ms. R5-M4 accepted the
+    driver in every default Analyze subject to this measurement, and the owner accepted the measured cost (verbatim 「受け入れる」,
+    2026-10-29), so G0 §10's departure (the driver at generation only until H5) is not taken.
+  - Rejected: a per-row exception for `StaticStorage` or any other record (a per-row gate); filtering a record away or shrinking a
+    scaling input to keep a pinned test's old expectation (a weakening); an environment rollback for the records (a second mode); a
+    test of K9b's library location through a source module run as a non-root (G157 (2); a path production never takes).

@@ -136,10 +136,7 @@ public partial class LayoutAttributeBindingTest
     [Theory]
     [MemberData(nameof(ConstructorRows))]
     public void AConstructorsReceiverIsNoUseItsConstructionIs(string form, string source, string records)
-    {
-        AssertUses(form, source, records, sel: false);
-        AssertUses(form, source, records, sel: true);
-    }
+        => AssertUses(form, source, records);
 
     [Theory]
     [InlineData("#Layout(\"C\")\nstruct S\n    static var count: i32\n    var n: i32")]

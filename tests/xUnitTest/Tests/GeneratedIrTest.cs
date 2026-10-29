@@ -138,11 +138,10 @@ public sealed class GeneratedIrTest
         Assert.ThrowsAny<XunitException>(() => GeneratedIr.Parse("declare void @g()\ndefine internal void @a() {\nentry:\n  call void @g() #1\n  ret void\n}"));
     }
 
-    // The program's text for an output form under one generator, whatever the process's: the old one or MIR code generation (sel).
+    // The program's text for an output form under one generator, whatever the process's: the old one or MIR code generation.
     private static string Generate(string source, OutputKind output, bool mir)
     {
         var c = Compilation.CreateForTest();
-        c.Pipeline = mir ? CompilerPipeline.Mir : CompilerPipeline.Legacy;
         c.Codegen = mir ? CompilerCodegen.Mir : CompilerCodegen.Legacy;
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));

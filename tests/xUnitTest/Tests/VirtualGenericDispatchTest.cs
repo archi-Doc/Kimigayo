@@ -56,15 +56,15 @@ public class VirtualGenericDispatchTest(ITestOutputHelper output)
     public void DescriptorDependenciesReuseFiniteCyclesAndRejectGrowingKeys()
         => ScalarEmissionTest.EmitFixture("VirtualGenericDispatchCycle", DependencyProgram("i32"), string.Empty);
 
-    // A growing descriptor key is a Resource record. Check, then generation, as a build runs them: MIR code generation reports it at check
-    // at the creation (K13c, DECISIONS R5-M74), and the old generator's note names the generated dependencies.
+    // A growing descriptor key is a Resource record. Check, then generation, as a build runs them: check reports it at the creation (K13c,
+    // DECISIONS R5-M74), on every pipeline (DECISIONS R5-M156).
     [Fact]
     public void GrowingDescriptorKeysAreResourceDiagnosed()
     {
         var source = DependencyProgram("Next<T>");
         var path = Path.GetFullPath("virtual-growing-table.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
-        Assert.True(c.Analysis.IsVerified == Codegen.Expect(false, true, CodegenDeviations.CheckedSetAtCheck), MinimalEmissionTest.Describe(c, null));
+        Assert.Equal("GenerationResourceLimit_Kd Leaf<Next<T>>.init()@obj", MinimalEmissionTest.Problems(c));
         c.ReportAnalysis();
         using var ir = new StringWriter();
         Assert.False(c.Generate(ir));
@@ -77,22 +77,14 @@ public class VirtualGenericDispatchTest(ITestOutputHelper output)
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         output.WriteLine(console.Text);
-        Assert.Contains(Codegen.Expect("Leaf<Next<T>>.init()@obj", "generated dependencies", CodegenDeviations.CheckedSetAtCheck), console.Text, StringComparison.Ordinal);
+        Assert.Contains("Leaf<Next<T>>.init()@obj", console.Text, StringComparison.Ordinal);
         var identity = SourceIdentity.FromPath(path);
         foreach (var related in new[] { false, true })
         {
             var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, related)[identity]);
-            Assert.Contains(Codegen.Expect(record.Message, "generated dependencies", CodegenDeviations.CheckedSetAtCheck), sent.Message, StringComparison.Ordinal);
+            Assert.Contains(record.Message, sent.Message, StringComparison.Ordinal);
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
-
-        // The old generator's resource failure and its record's note, on a compilation pinned to it until G2 (DECISIONS R5-M85).
-        var old = MinimalEmissionTest.Analyze(source, path, CompilerCodegen.Legacy);
-        Assert.False(old.Generate(TextWriter.Null));
-        Assert.True(old.Emission.FailureIsResourceLimit);
-        var note = Assert.Single(TestDiagnostics.Of(old)).Note;
-        Assert.Contains("substitutions", note, StringComparison.Ordinal);
-        Assert.Contains("generated dependencies", note, StringComparison.Ordinal);
     }
 
     [Fact]
