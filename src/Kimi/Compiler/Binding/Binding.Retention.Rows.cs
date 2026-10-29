@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -89,8 +90,9 @@ public sealed partial class Binding
     // (StorageWalk); each input's writable storage is its root (Own) and the storages past its exclusive layers (Reached, by contract Type,
     // and Abstract). A storage retains an input by Content where the premise closure (OriginPremiseClosure, every Semantics case's
     // premises followed) from one of its targets reaches an occurrence of the input, by Value where the closure from a position's node
-    // reaches one of the input's sources that the position can hold (CanHold), and by what the output's hold walk keeps (Held, each
-    // position once per lent bit, BU-35, BU-40): a raw input's own value where a layer with an Origin or an abstract part can hold it
+    // reaches one of the input's sources that the position can hold (CanHold), and by what the output's hold walk keeps (Held from its
+    // holds, the result's whole Type or each position the storage walk names for input j, DECISIONS BU-52; each position once per lent
+    // bit, BU-35, BU-40): a raw input's own value where a layer with an Origin or an abstract part can hold it
     // (R4-M116 R-B4), every input at a raw layer the call writes without an Origin (rule A, WrittenUnstated, the transfer rule narrowing
     // it), the raw inputs at one the result lends (R′); one stepping Unstated or Static, not lent, unties every storage of the output, and
     // a result atom whose non-static Origin reaches no input unties the result. A result the call forms within a raw parameter's storage
@@ -143,7 +145,8 @@ public sealed partial class Binding
             this.retentionKindPool.Clear();
         }
 
-        var untied = this.Hold(CallRetention.ResultOutput, inputs, kept, (key, callee, premises), ref transfer);
+        var whole = (result, (BoundType?)null, (BoundType?)null);
+        var untied = this.Hold(CallRetention.ResultOutput, new(in whole), inputs, kept, (key, callee, premises), ref transfer);
         if (within >= 0)
         {
             kept[within] |= RetentionKind.Value;
@@ -165,9 +168,9 @@ public sealed partial class Binding
         for (var output = 0; output < inputs.Length; output++)
         {
             Array.Clear(kept);
-            var held = this.Hold(output, inputs, kept, (key, callee, premises), ref transfer);
             this.BeginStorages();
             this.RootWalk(environment, inputs[output]);
+            var held = this.Hold(output, CollectionsMarshal.AsSpan(this.storageHolds), inputs, kept, (key, callee, premises), ref transfer);
             this.Storages(environment, links, kept);
             if (this.Written(output, held) is { } written)
             {
@@ -458,7 +461,7 @@ public sealed partial class Binding
             this.retentionClosures.Add(target, run);
         }
 
-        return System.Runtime.InteropServices.CollectionsMarshal.AsSpan(this.retentionClosureNodes).Slice(run.Start, run.Count);
+        return CollectionsMarshal.AsSpan(this.retentionClosureNodes).Slice(run.Start, run.Count);
     }
 
     // Whether the closure from a node reaches an occurrence of an input.
@@ -475,11 +478,13 @@ public sealed partial class Binding
         return false;
     }
 
-    // An output's hold walk (Held from each of its holds, each position once per lent bit) and what it keeps (`kept`): rule A's rows at a
-    // written unstated layer (WrittenUnstated, the transfer read once per contract), the raw inputs at a lent one (R′); whether it met a
-    // layer stepping Unstated or Static, not lent, which unties the output.
+    // An output's hold walk (Held from each of its holds: the result's whole Type, or each position of input j's storages the storage walk
+    // emits with the Type its declaration writes there and the instance holding it, DECISIONS BU-52; each position once per lent bit)
+    // and what it keeps (`kept`): rule A's rows at a written unstated layer (WrittenUnstated, the transfer read once per contract), the
+    // raw inputs at a lent one (R′); whether it met a layer stepping Unstated or Static, not lent, which unties the output.
     private bool Hold(
         int output,
+        ReadOnlySpan<(BoundType Type, BoundType? Written, BoundType? Holder)> holds,
         ReadOnlySpan<BoundType> inputs,
         RetentionKind[] kept,
         (Transfer Key, FunctionKoto? Callee, BindingScope? Premises) call,
@@ -487,9 +492,9 @@ public sealed partial class Binding
     {
         this.retentionMet.Clear();
         var met = Holding.None;
-        foreach (var (at, type) in this.retentionHolds)
+        foreach (var (type, written, holder) in holds)
         {
-            met |= at == output ? this.Held(type, null, null, output, kept, lent: false) : Holding.None;
+            met |= this.Held(type, written, holder, output, kept, lent: false);
         }
 
         if ((met & Holding.Unstated) != 0)
@@ -520,7 +525,7 @@ public sealed partial class Binding
     }
 
     // SPEC 15.6.4, 5.7 Calls (DECISIONS R4-M116 items 2 and 5, R-B2, BU-30, BU-35, BU-40), the hold walk: a position of `output` the call
-    // may write or lend, a hold (retentionHolds: the result's whole Type, or a position of input j's writable storage) or a position below
+    // may write or lend, a hold (Hold's: the result's whole Type, or a position of input j's writable storage) or a position below
     // one, with `written`, the Type a struct's Field or an enum's Case payload declares there while it is a Tuple, a fixed array or a raw
     // layer (null elsewhere: off a declaration, or below a Type parameter or another part it does not write inline), the instance holding
     // it there (`holder`, whose case a declared slot's step reads, SPEC 15.3.5; DECISIONS BU-44), and whether it is

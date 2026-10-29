@@ -63,6 +63,45 @@ public sealed partial class MirBorrowsTest
 
         """;
 
+    // A struct holding raw layers without an Origin, built by an untied constructor, written through its own Field by value (writeVia)
+    // and through a borrow (writeViaRef).
+    private const string PlainShapes = """
+        struct Plain
+            public var p: raw/(raw/u8)
+            public var q: raw/u8
+            public init(q: raw/u8)
+                self.p = null
+                self.q = q
+        func writeVia(x: Plain)
+            unsafe => *x.p = x.q
+        func writeViaRef(x: uniq/Plain)
+            unsafe => *x.p = x.q
+
+        """;
+
+    // By-value arguments holding raw layers without an Origin (PLAN G266): PlainShapes' struct written through another argument
+    // (writeVia2); a Tuple; a generic box, a `uniq/(raw/u8)` holder; and callees taking them by value in an Option, a box's Field or an
+    // Array (ReferentShapes' Writer and consume beside them).
+    private const string ByValueShapes = PlainShapes + """
+        struct Bx<T>
+            public var item: T
+            public init(item: T) => self.item = item@move
+        struct WU {a}
+            public var r: uniq/(raw/u8) during a
+            public init(r: uniq/(raw/u8) during a) => self.r = r
+        func consumeW(x: Writer) => ()
+        func writeVia2(x: Plain, q: raw/u8)
+            unsafe => *x.p = q
+        func writeT(x: (raw/(raw/u8), raw/u8))
+            unsafe => *x.0 = x.1
+        func writeO(x: Option<Plain>, q: raw/u8) => ()
+        func writeBP(x: Bx<Plain>, q: raw/u8) => ()
+        func writeA(x: Array<Plain>, q: raw/u8) => ()
+        func writeU(x: WU during a, q: raw/u8)
+            x.r@follow = q
+
+        """;
+
     // Calls whose unstated raw layers give Chain rows (SPEC 15.6.4: rule A, R′): two reads through a raw argument, through a reference,
     // into a raw slot, through the written argument itself, and three behind a result borrow (lent); and a raw pointer passed on.
     private const string ChainShapes = """
@@ -232,6 +271,195 @@ public sealed partial class MirBorrowsTest
                     x = 5
                     inspect(w)
                 """));
+
+    // SPEC 15.6.4 (PLAN G266; DECISIONS BU-52): a call writes through the raw layers without an Origin a by-value argument holds, in a
+    // struct's Field (viaBad, via2Bad), an enum's payload (optBad), a Type argument's Field (boxPlainBad), an Array's element
+    // (arrPlainBad) or behind a `uniq` Field (uBad), and a consuming callee's cleanup does through its drop (consumeWBad, consumeDrop2Bad,
+    // arrConsumeBad), so `slot` may keep w's address and with it y's Loan: each errs at `y = 5` as its borrowed twin does (fail-before:
+    // accepted). viaUntiedBad leaves `x.p` as `Plain.init` made it, which by that contract may address storage the body does not own, so
+    // the write may keep y's Loan there. Valid: a Tuple no untied constructor built, used before `y = 5` (tupOk), and arguments whose chain
+    // carries no Loan (viaQuietOk, consumeQuietOk).
+    [Fact]
+    public void ACallWritesThroughTheRawLayersOfAByValueArgument()
+        => Assert.Equal(
+            [
+                "viaBad: y = 5", "via2Bad: y = 5", "viaUntiedBad: y = 5", "consumeWBad: y = 5", "consumeDrop2Bad: y = 5", "arrConsumeBad: y = 5",
+                "optBad: y = 5", "boxPlainBad: y = 5", "arrPlainBad: y = 5", "uBad: y = 5",
+            ],
+            Problems(RawShapes + ReferentShapes + ByValueShapes + """
+                func viaBad()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    var slot: raw/u8 = null
+                    var x = Plain.init(q: w@raw@raw/u8)
+                    x.p = slot@raw
+                    writeVia(x@move)
+                    y = 5
+                    usep(slot)
+                func via2Bad()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    var slot: raw/u8 = null
+                    var x = Plain.init(q: null)
+                    x.p = slot@raw
+                    writeVia2(x@move, w@raw@raw/u8)
+                    y = 5
+                    usep(slot)
+                func viaUntiedBad()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    var slot: raw/u8 = null
+                    var x = Plain.init(q: w@raw@raw/u8)
+                    writeVia(x@move)
+                    y = 5
+                    usep(slot)
+                func consumeWBad()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    var slot: raw/u8 = null
+                    var x = Writer.init(q: w@raw@raw/u8)
+                    x.p = slot@raw
+                    consumeW(x@move)
+                    y = 5
+                    usep(slot)
+                func consumeDrop2Bad()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    var slot: raw/u8 = null
+                    var x = Writer.init(q: w@raw@raw/u8)
+                    x.p = slot@raw
+                    consume(x@move)
+                    y = 5
+                    usep(slot)
+                func arrConsumeBad()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    var slot: raw/u8 = null
+                    var x = Writer.init(q: w@raw@raw/u8)
+                    x.p = slot@raw
+                    var a: Array<Writer> = []
+                    a.append(x@move)
+                    consume(a@move)
+                    y = 5
+                    usep(slot)
+                func optBad()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    var slot: raw/u8 = null
+                    var x = Plain.init(q: null)
+                    x.p = slot@raw
+                    writeO(.Some(x@move), w@raw@raw/u8)
+                    y = 5
+                    usep(slot)
+                func boxPlainBad()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    var slot: raw/u8 = null
+                    var x = Plain.init(q: null)
+                    x.p = slot@raw
+                    writeBP(Bx.init(item: x@move), w@raw@raw/u8)
+                    y = 5
+                    usep(slot)
+                func arrPlainBad()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    var slot: raw/u8 = null
+                    var x = Plain.init(q: null)
+                    x.p = slot@raw
+                    var a: Array<Plain> = []
+                    a.append(x@move)
+                    writeA(a@move, w@raw@raw/u8)
+                    y = 5
+                    usep(slot)
+                func uBad()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    var slot: raw/u8 = null
+                    writeU(WU.init(r: slot@uniq), w@raw@raw/u8)
+                    y = 5
+                    usep(slot)
+                func tupOk()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    var slot: raw/u8 = null
+                    writeT((slot@raw, w@raw@raw/u8))
+                    usep(slot)
+                    y = 5
+                func viaQuietOk()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    var slot: raw/u8 = null
+                    var x = Plain.init(q: null)
+                    x.p = slot@raw
+                    writeVia(x@move)
+                    y = 5
+                    usep(slot)
+                func consumeQuietOk()
+                    var y: i32 = 1
+                    var w: ref/i32 = y@ref
+                    var slot: raw/u8 = null
+                    var x = Writer.init(q: null)
+                    x.p = slot@raw
+                    consume(x@move)
+                    y = 5
+                    usep(slot)
+                """));
+
+    // The interim of DECISIONS BU-52 (the owner's 「暫定として認める (推奨)」): viaOk, consumeDrop2Ok and arrConsumeOk use `slot` before
+    // `y = 5` and are valid by the parts their raw layers address, yet err on the MIR, as dev's viaRefOk (the borrowed twin) does: A5
+    // keeps Φ_E per whole value at a call (DECISIONS R4-M120, departure 1), so W from x, built by an untied constructor, reaches E, which
+    // keeps x's chain and y's Loan. They flip back to valid when part-level raw reach lands (PLAN G303, G264 U2). The default pipeline's
+    // analysis reports nothing (its old analysis reads no retention, and the MIR's records are unpublished until R6-check).
+    [Fact]
+    public void AWholeValueEscapeKeepsByValueTwinsErringInTheInterim()
+    {
+        const string Source = WriterShapes + PlainShapes + """
+            func usep<T>(p: raw/T) => ()
+            func viaOk()
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var slot: raw/u8 = null
+                var x = Plain.init(q: w@raw@raw/u8)
+                x.p = slot@raw
+                writeVia(x@move)
+                usep(slot)
+                y = 5
+            func viaRefOk()
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var slot: raw/u8 = null
+                var x = Plain.init(q: w@raw@raw/u8)
+                x.p = slot@raw
+                writeViaRef(x@uniq)
+                usep(slot)
+                y = 5
+            func consumeDrop2Ok()
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var slot: raw/u8 = null
+                var x = Writer.init(q: w@raw@raw/u8)
+                x.p = slot@raw
+                consume(x@move)
+                usep(slot)
+                y = 5
+            func arrConsumeOk()
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var slot: raw/u8 = null
+                var x = Writer.init(q: w@raw@raw/u8)
+                x.p = slot@raw
+                var a: Array<Writer> = []
+                a.append(x@move)
+                consume(a@move)
+                usep(slot)
+                y = 5
+            public func main() => ()
+
+            """;
+        var c = MirBuildTest.Compile(Source);
+        Assert.Equal(["viaOk: y = 5", "viaRefOk: y = 5", "consumeDrop2Ok: y = 5", "arrConsumeOk: y = 5"], Problems(c, Analyze(c), LoanCodes));
+        Assert.Empty(MinimalEmissionTest.Analyze(Source).Problems);
+    }
 
     // SPEC 5.7 Reading a Field, 5.2.1 (G184, `during self`): a pointer read from a `during self` Field reaches its holder's own storage, so a
     // Loan pushed into the buffer is read back through it, directly and through a borrow of the buffer; a dead buffer is valid; the Loan

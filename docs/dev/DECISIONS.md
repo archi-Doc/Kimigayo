@@ -8080,6 +8080,44 @@ resumed by R4-M86 (2026-10-20).
   - Cost: src +80/−33 lines (+61/−20 besides comments, 7 of them `JudgeSelectedCall`'s signature wrapped), after the restructuring
     commit before it (Binding.Calls.cs split by responsibility); tests +113/−1.
 
+- **BU-52 Rule A starts at every position the one walk names for input j: a by-value input's raw layers are storage the call writes,
+  its cleanup among the writes; six shadow false errors as the owner's interim** (2026-10-29; PLAN G266, unit bu61; BU's design
+  `g266\design.md` with R4's sizing of option (c), `r4-notes\g266-c\sizing.md`; the owner, 2026-10-29, verbatim 「暫定として認める (推奨)」 on
+  BU's question "For G266, do you accept the six shadow-only false errors as an interim and land it?", the option read
+  「暫定として認める: G266 を (a) で取り込む。MIR 側だけの誤エラー 6 本は、部品単位の raw 到達（G264 U2）が入るまでの暫定として認める。」) SPEC
+  15.6.4, 16.3.1, 16.3.3, 5.2.1.
+  - Rule: rule A's hold walk (`Hold`, `Held`) starts at the result's whole Type and, for input j, at each position the one walk
+    (`StorageWalk` from `RootWalk`; R4-M154 r2.3) emits for j's storages, with the Type its declaration writes there and the instance
+    holding it (`storageHolds`). A raw layer without an Origin that a by-value input holds in a struct's Field, an enum's payload, an
+    Array's element, a Type argument's Field at the instance or behind a `uniq` Field is then storage the call writes through j, as a
+    borrowed input's referent is: j keeps its chain, every other input its own value and chain, untied (`writeVia(x: Plain)`,
+    `consumeW(x: Writer)`, `consume<Array<Writer>>`: `own {0 Chain}, reached {0 Chain} untied`). Supersedes in part BU-30's
+    "`RetentionWalk` [registers] each hold of an output" and BU-40's "`RetentionWalk` registers writable positions only": the one walk
+    does. Deleted: `RetentionWalk`'s hold registration, `MayHold`, `retentionHolds` and `AddErasedSignature`'s hold bookkeeping.
+  - Cause: two owners of "the storage the call may write through input j". The one walk reached a by-value input's Fields, payloads and
+    elements past their layers; the hold walk started from the atom walk's positions writable by variance along a Type's Components,
+    which a nominal's Fields are not, so a Tuple element and a Type argument had rule A's rows and a struct's Field none (RetentionTest's
+    `Pp` row pinned it beside its Tuple and Option twins).
+  - Callee cleanup (15.6.4 "including callee cleanup", 16.3.3): a callee's destruction of a by-value input writes only into the storages
+    the walk names for that input, so its drop's rows are among the call's (`consume<Writer>` = BU-47's Writer drop row at input 0); no
+    separate composition.
+  - Verdicts (MIR, shadow): viaBad, via2Bad, consumeWBad, consumeDrop2Bad, arrConsumeBad, optBad, boxPlainBad, arrPlainBad and uBad err
+    at `y = 5` (accepted before), and viaUntiedBad does (`x.p` as `Plain.init` left it may address storage the body does not own); tupOk,
+    viaQuietOk and consumeQuietOk stay valid. The default pipeline is unchanged (its old analysis reads no retention).
+  - Interim (the owner's words above): six valid programs err on the MIR at `y = 5`, litDropOk, lit2DropOk and litObjOk (R5-M129's pins)
+    and viaOk, consumeDrop2Ok and arrConsumeOk. Class: A5 keeps Φ_E per whole value at a call (R4-M120, departure 1), so W from an
+    argument an untied constructor built reaches E, which keeps the argument's chain, though only `*x.p` can hold it; dev's viaRefOk,
+    flushOk and inlineOk are this class. Removal condition: part-level raw reach (PLAN G303, G264 U2), before H5. The default pipeline's
+    `check` accepts all six. R5's conditions for accepting (a), each met: that acceptance shown (a CLI probe; MirBorrowsTest for three);
+    each pin's comment names the class, this entry and G303; G303 opened; R5-M129 amended.
+  - Rejected: (b) holding G266 until G264 U2, which keeps nine unsound acceptances on both pipelines; (c) A5 reporting the
+    whole-value-Φ_E route as a located Unsupported_Kd (R4's sizing): A5 has no route fact (E's state has no provenance, Φ_E one shared
+    element, holders no parts); its side-table experiment turned 36 pinned tests Pass→Fail, about 30 of them true errors downgraded to
+    Unsupported_Kd, and a precise form is G264 U2's part-level reach; walking Fields in `RetentionWalk` (a second `HeldParts`);
+    composing each by-value input's drop rows (drops only, a second rule for one write).
+  - Tests: RetentionTest `AByValueArgumentsLayersAreStorageTheCallWrites` (five kinds, failing before, and a `ref/(raw/u8)` twin),
+    `AConsumingCallRetainsItsArgumentsCleanup` and the `Pp` row; MirBorrowsTest `ACallWritesThroughTheRawLayersOfAByValueArgument` and
+    `AWholeValueEscapeKeepsByValueTwinsErringInTheInterim`, and R5-M129's test re-expected.
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and
@@ -11534,6 +11572,7 @@ structure is recorded here by the unit that first implements it.
     - reusing FixedArray for an Array (R4's one-meaning rule);
     - a separate `Collection` or `ArrayLiteral` path beside the aggregate's (design review 1's B1);
     - a new rvalue kind, CompilerFunctionKind or IntrinsicId (PD21).
+  - Amended by BU-52: litDropOk, lit2DropOk and litObjOk err on the MIR as an owner-accepted interim until part-level raw reach (PLAN G303).
 - **R5-M130 The BuiltinFormat shim, user-formatter wrappers and the erased writer in MIR code generation (C9b)** (2026-10-26, C lane; plan
   C9b, package C 3.2, PD2, PD3, PD21, K package 4.5 rows 2 and 6; SPEC 6.4.6, 7.7.4, 8.6.3, 22.5.1, 22.9.2, 22.9.4, 22.10.1, 22.10.2,
   22.10.5; the planning session's go and rulings Q1-Q8 on C9b's design, `c9b-design.md` and `c9b-go.md`; under R5-M18 form 2 (G:format),

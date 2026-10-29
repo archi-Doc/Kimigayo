@@ -864,12 +864,13 @@ public sealed class RetentionTest
     // SPEC 15.6.4, 5.7 Calls (DECISIONS R4-M131, BU-40): a raw layer without an Origin that the call may write, in its result (a nominal
     // Type's Fields included) or in storage it writes through argument j, retains every argument with what any chain of reads through it
     // carries (Chain), and every argument but j by its own value: a Tuple's, an Option's or a struct's raw layer is read through once by
-    // the result (fail-before: a Value row only, which keeps no read, or none), as a raw-of-raw and a ref-of-raw argument are; j keeps
-    // its chain without its own value. A `static` layer unties without these rows.
+    // the result (fail-before: a Value row only, which keeps no read, or none), as a raw-of-raw and a ref-of-raw argument are, and the
+    // pointee of each, a raw layer without an Origin, is storage the call writes through the by-value argument (store 0; the struct's
+    // fail-before: none, DECISIONS BU-52); j keeps its chain without its own value. A `static` layer unties without these rows.
     [Theory]
     [InlineData("func f(t: (raw/(raw/u8), i32)) -> raw/u8\n    unsafe => return *t.0", "result {0 Value Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied")]
     [InlineData("func f(o: Option<raw/(raw/u8)>) -> raw/u8 => null", "result {0 Value Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied")]
-    [InlineData(Pp + "func f(s: Pp) -> raw/u8\n    unsafe => return *s.p", "result {0 Value Chain}, untied")]
+    [InlineData(Pp + "func f(s: Pp) -> raw/u8\n    unsafe => return *s.p", "result {0 Value Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied")]
     [InlineData(Pp + "func f(x: ref/i32, n: i32) -> Pp => Pp.init(p: null)", "result {0 Value Chain, 1 Value Chain}, untied")]
     [InlineData("func f(pp: raw/(raw/u8)) -> raw/u8\n    unsafe => return *pp", "result {0 Value Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied")]
     [InlineData("func f(r: ref/(raw/(raw/u8))) -> raw/u8\n    unsafe => return *r@follow", "result {0 Value Chain}, untied")]
@@ -880,6 +881,35 @@ public sealed class RetentionTest
     [InlineData("func f(r: ref/i32, slot: uniq/(raw/u8 during static)) => ()", "store 1: own {1 Content}, reached {} untied")]
     public void AnUnstatedLayerACallWritesRetainsEveryArgument(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // SPEC 15.6.4 (DECISIONS BU-52): the storage a call writes through a by-value argument is what the exclusive layers and the raw layers
+    // without an Origin it holds refer to, wherever the argument holds them: in a struct's Field, an enum's payload, an Array's element,
+    // a Type argument's Field at the instance, or behind a `uniq` Field; a raw layer without an Origin there retains as rule A states
+    // (the argument written through by its chain, every other by its own value and chain, untied; fail-before: no row). Past a shared
+    // layer the call writes nothing (SPEC 5.2.1), so a `ref/(raw/u8)` Field gives no row.
+    [Theory]
+    [InlineData(Pp + "func f(s: Pp, q: raw/u8)\n    unsafe => *s.p = q", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData(Pp + "func f(o: Option<Pp>, q: raw/u8) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData(Pp + "func f(a: Array<Pp>, q: raw/u8) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData(Box + Pp + "func f(b: B<Pp>, q: raw/u8) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData(
+        "struct WU {a}\n    public var r: uniq/(raw/u8) during a\nfunc f(x: WU during a, q: raw/u8) => x.r@follow = q",
+        "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData("struct RU {a}\n    public var r: ref/(raw/u8) during a\nfunc f(x: RU during a, q: raw/u8) => ()", "")]
+    public void AByValueArgumentsLayersAreStorageTheCallWrites(string function, string expected)
+        => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // SPEC 15.6.4 ("including callee cleanup"), 16.3.1 (DECISIONS BU-52, BU-47): a callee that destroys a by-value argument runs its drop
+    // over that argument, which writes only into the storage the call writes through it, so the call's rows include the drop's: a consuming
+    // call of a Writer, concrete and generic, retains as Writer's drop over its receiver at input 0 (fail-before: no row).
+    [Fact]
+    public void AConsumingCallRetainsItsArgumentsCleanup()
+    {
+        var c = Bind(Writer + "func consumeW(x: Writer) => ()\nfunc consume<T>(x: T) => ()\nfunc at(w: Writer, v: Writer)\n    consumeW(w@move)\n    consume(v@move)\n");
+        var drop = Show(c.Types.Retains(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.IsDestructor).SymbolOf()!, null, null));
+        Assert.Equal("store 0: own {0 Chain}, reached {0 Chain} untied", drop);
+        Assert.Equal([drop, drop], [.. Calls(c, "consumeW"), .. Calls(c, "consume")]);
+    }
 
     // SPEC 15.6.4 (R′; DECISIONS R4-M131, BU-40): a raw layer without an Origin behind a borrow in the result, a Slice's elements included,
     // is lent, not written: it retains only the raw arguments, each by its own value and its chain, and unties nothing (fail-before: every
