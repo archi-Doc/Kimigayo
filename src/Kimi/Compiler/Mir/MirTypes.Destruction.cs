@@ -159,13 +159,12 @@ internal static partial class MirTypes
     // are parts of their own.
     private struct Observer(TyCtxt types, BindingSymbol? definition, Dictionary<BoundType, byte> entered) : IMirDestruction
     {
-        private MirDepths depths = new(entered);
-
-        internal readonly MirOutcome Answer => this.Outcome.Join(this.depths.Deep ? MirOutcome.Deep : MirOutcome.None);
+        internal readonly MirOutcome Answer => this.Outcome.Join(entered.ContainsValue(MirDepths.Past) ? MirOutcome.Deep : MirOutcome.None);
 
         private MirOutcome Outcome { get; set; }
 
-        public bool First(BoundType type, int depth) => this.depths.Enter(type, depth);
+        public readonly bool First(BoundType type, int depth)
+            => MirDepths.Enter(ref CollectionsMarshal.GetValueRefOrAddDefault(entered, type, out _), depth);
 
         public bool Visit(BoundType type, int depth)
         {
@@ -184,9 +183,9 @@ internal static partial class MirTypes
             return payload is not null && (!types.Sealed(definition, payload) ? this.Decide() : Destruction(payload, ref this, depth + 1));
         }
 
-        public bool Deep(BoundType type)
+        public readonly bool Deep(BoundType type)
         {
-            this.depths.Meet(type);
+            MirDepths.Meet(ref CollectionsMarshal.GetValueRefOrAddDefault(entered, type, out _));
             return false;
         }
 
@@ -196,54 +195,5 @@ internal static partial class MirTypes
             this.Outcome = this.Outcome.Join(MirOutcome.Decided);
             return true;
         }
-    }
-}
-
-/// <summary>An outcome walk's per-query record of the depth it entered each Type at (DECISIONS R4-M58, R4-M153's revision 3): a Type is
-/// entered at the shallowest depth the query meets it at, again where it is met shallower than before (at most once per depth within the
-/// bound), so the walk's answer is the same in every order of the parts; a part past the bound is Deep only where its Type is never
-/// entered within the bound, since a Type's parts are its own wherever it lies.</summary>
-/// <param name="entered">Scratch: by Type, the depth it was entered at, or past the bound only; cleared by the walk's owner.</param>
-internal struct MirDepths(Dictionary<BoundType, byte> entered)
-{
-    private const byte Past = byte.MaxValue; // Met only past the bound: deeper than every depth within it.
-    private int past; // The Types met only past the bound.
-
-    /// <summary>Gets a value indicating whether a part past the bound has a Type the walk never entered within it.</summary>
-    internal readonly bool Deep => this.past > 0;
-
-    /// <summary>Gets whether the walk enters a Type it meets within the bound: never entered, or entered deeper than this meeting.</summary>
-    /// <param name="type">The Type.</param>
-    /// <param name="depth">The depth of the meeting.</param>
-    /// <returns>Whether the walk enters it.</returns>
-    internal bool Enter(BoundType type, int depth)
-    {
-        ref var at = ref CollectionsMarshal.GetValueRefOrAddDefault(entered, type, out var met);
-        if (met && at <= depth)
-        {
-            return false;
-        }
-
-        this.past -= met && at == Past ? 1 : 0;
-        at = (byte)depth;
-        return true;
-    }
-
-    /// <summary>Notes a part past the bound, whose Type the walk does not enter there.</summary>
-    /// <param name="type">The part's Type.</param>
-    internal void Meet(BoundType type)
-    {
-        ref var at = ref CollectionsMarshal.GetValueRefOrAddDefault(entered, type, out var met);
-        if (!met)
-        {
-            (at, this.past) = (Past, this.past + 1);
-        }
-    }
-
-    /// <summary>Starts a query.</summary>
-    internal void Clear()
-    {
-        entered.Clear();
-        this.past = 0;
     }
 }

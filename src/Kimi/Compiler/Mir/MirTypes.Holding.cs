@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
@@ -24,9 +25,17 @@ internal enum MirWrites : byte
     Limit,
 
     /// <summary>No part gives the write fact or the Limit, and a part past the walk's bound, where the write fact would be read, leaves it
-    /// undecided: a Call whose W from the value would reach a holder W does not is OwnershipDepthLimit_Kd at the call (DECISIONS
+    /// undecided: a Call whose W from the value would change what W writes is OwnershipDepthLimit_Kd at the call (DECISIONS
     /// R4-M153).</summary>
     Deep,
+}
+
+/// <summary>The holding walk's slots for one Type (<see cref="MirTypes.HoldsLoans"/>, <see cref="MirDepths"/>), by mode: Own, Exclusive and
+/// Own with LoanOnly (Exclusive with LoanOnly never occurs).</summary>
+[InlineArray(3)]
+internal struct MirModeDepths
+{
+    private byte mode;
 }
 
 // What a value may hold: raw authority (HoldsRaw) and Loans with what a call may write past them (HoldsLoans), each a walk of its parts.
@@ -75,23 +84,38 @@ internal static partial class MirTypes
     /// pointee, the parameter's Type expression writing the layer (a Type argument's or a pair slot's argument's included). Any other raw
     /// layer (a local's or parameter's own Type, an element or a Tuple outside an instance) is read by the same rule: the write fact where
     /// a declaration wrote it (an Array element of a Field, a `self` pointee's content), else an exclusive reference to its pointee
-    /// (DECISIONS R4-M120). Each Type is walked once per query and
-    /// mode, a raw layer and the inline Tuples and fixed arrays of a stored part once per part, so a repeating recursive Type ends exactly;
-    /// past depth 32, where one grows (SPEC 15.3.5), the answer is yes for tracking and the guard's Deep.</summary>
+    /// (DECISIONS R4-M120). Each Type is entered once per query and mode at the shallowest depth the walk meets it at, again where it is
+    /// met shallower (<see cref="MirDepths"/>, at most once per depth), a raw layer and the inline Tuples and fixed arrays of a stored part
+    /// once per part, so a repeating recursive Type ends exactly and the answer is the same in every order of the parts; a part past depth
+    /// 32, where one grows (SPEC 15.3.5), gives yes for tracking and the guard's Deep where its mode reads the write fact, only where its
+    /// Type is never entered within the bound in that mode (for a LoanOnly part, nor in its full mode).</summary>
     /// <param name="type">The Type.</param>
     /// <param name="types">The Type context, whose stored parts and stored raw layers' facts the walk reads.</param>
-    /// <param name="seen">Scratch for the modes each Type was walked in, cleared first.</param>
+    /// <param name="seen">Scratch for the depth each Type was entered at in each mode (<see cref="MirModeDepths"/>), cleared first.</param>
     /// <param name="members">Scratch for a stored layer's members, used in stack order and left as given.</param>
     /// <param name="writes">What a call may write past the value.</param>
     /// <returns>Whether the value may hold a Loan.</returns>
-    internal static bool HoldsLoans(BoundType? type, TyCtxt types, Dictionary<BoundType, byte> seen, List<RawMember> members, out MirWrites writes)
+    internal static bool HoldsLoans(BoundType? type, TyCtxt types, Dictionary<BoundType, MirModeDepths> seen, List<RawMember> members, out MirWrites writes)
     {
         seen.Clear();
         var walk = new Holding(types, seen, members, stackalloc int[Bound + 2]);
         var found = walk.Holds(type, Own, 0);
+        foreach (var modes in seen.Values)
+        {
+            for (var mode = Own; mode <= LoanOnly; mode++)
+            {
+                var past = modes[mode] == MirDepths.Past && (mode != LoanOnly || !MirDepths.Entered(modes[Own], Bound));
+                found = past ? found.Join(Beyond(mode)) : found;
+            }
+        }
+
         writes = found.Loan ? Guard(found.Writes) : MirWrites.None;
         return found.Loan;
     }
+
+    // What a part past the bound gives in a mode (DECISIONS R4-M153): Loan in the value's own storage, and Deep where the mode reads the
+    // write fact. The modes are Own, Exclusive and Own|LoanOnly (LoanOnly's value), the slots of MirModeDepths.
+    private static Facts Beyond(int mode) => new((mode & ~LoanOnly) == Own, (mode & LoanOnly) == 0 ? MirOutcome.Deep : MirOutcome.None);
 
     // The guard rule W reads, read off the walk's answer: decided is the write fact (Through), and Limit and Deep leave it undecided.
     private static MirWrites Guard(MirOutcome writes)
@@ -151,7 +175,7 @@ internal static partial class MirTypes
 
     // HoldsLoans' walk, with the stored part it is inside: a struct's Field or an enum's Case payload, whose inline positions (a Tuple's
     // components, a fixed array's element) from `start` the walk is at, so a raw layer there reads that part's step (TyCtxt.RawStep).
-    private ref struct Holding(TyCtxt types, Dictionary<BoundType, byte> seen, List<RawMember> members, Span<int> positions)
+    private ref struct Holding(TyCtxt types, Dictionary<BoundType, MirModeDepths> seen, List<RawMember> members, Span<int> positions)
     {
         private readonly Span<int> positions = positions; // The inline positions of the stored parts the walk is inside, outermost first.
         private BoundType? instance; // The struct or enum whose stored part the walk is inside (null: none).
@@ -159,14 +183,16 @@ internal static partial class MirTypes
         private int start; // The stored part's first inline position.
         private int top; // The positions in use.
 
-        // The facts a part adds in its mode, each (Type, mode) once per query (a LoanOnly mode not after its full one), a raw layer and an
-        // inline Tuple or fixed array of a stored part once per part. A part that may hold a Loan (a borrow, pair or raw layer, a Slice, a
+        // The facts a part adds in its mode, each (Type, mode) entered at the shallowest depth it is met at (MirDepths; a LoanOnly mode not
+        // where its full one was entered as shallow), a raw layer and an inline Tuple or fixed array of a stored part once per part. A part
+        // past the bound is met, not entered: its slot gives its facts after the walk where it stays Past (HoldsLoans), but an inline Tuple
+        // or fixed array, whose positions decide it, gives them at once. A part that may hold a Loan (a borrow, pair or raw layer, a Slice, a
         // Function value, an abstract part) gives Loan in the value's own storage, and the write fact (decided) past an exclusive
         // reference from it, but in a LoanOnly mode. In the value's own storage an exclusive reference, a UniqSlice's elements, a pair
         // layer's exclusive case and what lies past a raw layer by its step (Past) are walked past, and an abstract part (the owner's Q1
-        // (a)) and a callable may be such a reference; a struct's or enum's Type arguments are walked LoanOnly. A part past the bound gives
-        // Loan in the value's own storage and Deep where its mode reads the write fact (DECISIONS R4-M153). Parts compose by Join, and a
-        // mode's walk stops only once it has the facts no other part changes (the write fact being the outcome's top).
+        // (a)) and a callable may be such a reference; a struct's or enum's Type arguments are walked LoanOnly. Parts compose by Join, and a
+        // mode's walk stops only once it has the facts no other part changes (the write fact being the outcome's top), so a part past the
+        // bound it skips adds nothing the answer lacks.
         internal Facts Holds(BoundType? type, int mode, int depth)
         {
             if (type is null || type.Kind == BoundTypeKind.FunctionItem)
@@ -184,16 +210,24 @@ internal static partial class MirTypes
             }
 
             var inline = this.instance is not null && type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray;
-            ref var modes = ref CollectionsMarshal.GetValueRefOrAddDefault(seen, type, out _);
-            if (!inline && (modes & ((1 << mode) | (1 << (mode & ~LoanOnly)))) != 0)
+            if (depth > Bound && inline)
             {
-                return default;
+                return Beyond(mode);
             }
 
-            modes |= (byte)(inline ? 0 : 1 << mode);
-            if (depth > Bound)
+            if (!inline)
             {
-                return new(own, writes ? MirOutcome.Deep : MirOutcome.None);
+                ref var modes = ref CollectionsMarshal.GetValueRefOrAddDefault(seen, type, out _); // Used before any recursion moves it.
+                if (depth > Bound)
+                {
+                    MirDepths.Meet(ref modes[mode]);
+                    return default;
+                }
+
+                if ((mode == LoanOnly && MirDepths.Entered(modes[Own], depth)) || !MirDepths.Enter(ref modes[mode], depth))
+                {
+                    return default;
+                }
             }
 
             if (type.Kind == BoundTypeKind.Function || type.IsAbstract)

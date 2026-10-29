@@ -212,3 +212,40 @@ internal readonly struct MirOutcome
     /// <returns>The joined answer.</returns>
     internal MirOutcome Join(MirOutcome other) => this.rank >= other.rank ? this : other;
 }
+
+/// <summary>The outcome walks' one depth policy (DECISIONS R4-M58, R4-M153's revision 3), over a walk's per-query slot for a Type (the
+/// destruction walk's) or a Type in a mode (the holding walk's): 0 never met, else one more than the depth it was entered at, or
+/// <see cref="Past"/>, met only past the bound. A Type is entered at the shallowest depth the query meets it at, again where it is met
+/// shallower than before (at most once per depth within the bound), so the walk's answer is the same in every order of the parts; a part
+/// past the bound is Deep only where its slot stays <see cref="Past"/> at the walk's end, its Type never entered within the bound, since a
+/// Type's parts are its own wherever it lies.</summary>
+internal static class MirDepths
+{
+    /// <summary>The slot of a Type met only past the bound: deeper than every depth within it, so a later meeting within enters it.</summary>
+    internal const byte Past = byte.MaxValue;
+
+    /// <summary>Gets whether a slot was entered at the depth of a meeting or shallower.</summary>
+    /// <param name="at">The slot.</param>
+    /// <param name="depth">The depth of the meeting.</param>
+    /// <returns>Whether it was entered there or shallower.</returns>
+    internal static bool Entered(byte at, int depth) => at != 0 && at <= depth + 1;
+
+    /// <summary>Gets whether the walk enters a slot it meets within the bound: never entered, or entered deeper than this meeting.</summary>
+    /// <param name="at">The slot, set to this meeting where entered; read before any recursion, which may move it.</param>
+    /// <param name="depth">The depth of the meeting.</param>
+    /// <returns>Whether the walk enters it.</returns>
+    internal static bool Enter(ref byte at, int depth)
+    {
+        if (Entered(at, depth))
+        {
+            return false;
+        }
+
+        at = (byte)(depth + 1);
+        return true;
+    }
+
+    /// <summary>Notes a meeting past the bound, where the walk does not enter the slot's Type.</summary>
+    /// <param name="at">The slot, Past where never met.</param>
+    internal static void Meet(ref byte at) => at = at == 0 ? Past : at;
+}

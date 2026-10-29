@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using System.Text;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
@@ -33,7 +34,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
             "handle: obj/Holder, slice: Slice<i32>, view: UniqSlice<i32>, loan: Loan<ref/i32 during a>, " +
             "iterator: ArrayOwningIterator<ref/i32 during a>, action: () -> (), layer: s/T, nest: Nest<i32>)\n    s is owner or ref\n" +
             "    return\n");
-        var seen = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
+        var seen = new Dictionary<BoundType, MirModeDepths>(ReferenceEqualityComparer.Instance);
         Assert.Equal(
             [("scalar", false), ("text", false), ("numbers", false), ("plain", false), ("raw", true), ("chain", false), ("tree", false),
                 ("forest", true), ("rows", false),
@@ -68,7 +69,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
             "refKept: RefKept<ref/i32 during a>, uniqKept: UniqKept<ref/i32 during a>, owned: Owned<ref/i32 during a>, " +
             "ownedUniq: Owned<uniq/(ref/i32 during a) during a>, cursor: Cursor<ref/i32 during a>)\n" +
             "    s is owner or uniq\n    return\n");
-        var seen = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
+        var seen = new Dictionary<BoundType, MirModeDepths>(ReferenceEqualityComparer.Instance);
         Assert.Equal(
             [("borrow", MirWrites.None), ("scalar", MirWrites.None), ("writer", MirWrites.None), ("shared", MirWrites.None),
                 ("unique", MirWrites.Through), ("array", MirWrites.Through), ("option", MirWrites.Through), ("slot", MirWrites.Through),
@@ -99,7 +100,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
             $"mixed40: (uniq/(ref/i32 during a) during a, uniq/{Nested(40)} during a), shared40: ref/{Nested(40)}, unique10: uniq/{Nested(10)}, " +
             $"w: Wrap<raw/u8 during x>, limitDeep40: (Wrap<raw/u8 during x>, uniq/{Nested(40)} during a), " +
             $"limitDeep10: (Wrap<raw/u8 during x>, uniq/{Nested(10)} during a))\n    return\n");
-        var seen = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
+        var seen = new Dictionary<BoundType, MirModeDepths>(ReferenceEqualityComparer.Instance);
         Assert.Equal(
             [("x", MirWrites.Through), ("unique40", MirWrites.Deep), ("value40", MirWrites.Deep), ("mixed40", MirWrites.Through),
                 ("shared40", MirWrites.None), ("unique10", MirWrites.None), ("w", MirWrites.Limit), ("limitDeep40", MirWrites.Limit),
@@ -113,6 +114,24 @@ public sealed class MirTypesTest(ITestOutputHelper output)
         }
 
         static string Nested(int levels) => new string('(', levels) + "i32" + string.Concat(Enumerable.Repeat(", i32)", levels));
+    }
+
+    // SPEC 23.1.1 (DECISIONS R4-M153's revision 3): the holding walk enters a (Type, mode) at the shallowest depth it meets it, so one
+    // Type at two depths answers alike in either order: an exclusive reference to a borrow 41 levels down a Tuple and 9 levels down beside
+    // it (the deep one's tail being the shallow one's Type) is the guard's write fact, never Deep, the deep component first or last.
+    [Fact]
+    public void AGuardsTypeMetPastAndWithinTheBoundAnswersAlikeInEitherOrder()
+    {
+        const string Unique = "uniq/(ref/i32 during a) during a";
+        var deep = Nested(Unique, 40);
+        var shallow = Nested(Unique, 8);
+        var (body, c) = Probe($"func probe(x: {Unique}, deepFirst: ({deep}, {shallow}), shallowFirst: ({shallow}, {deep}))\n    return\n");
+        var walked = new Dictionary<BoundType, MirModeDepths>(ReferenceEqualityComparer.Instance);
+        Assert.Equal(
+            [("x", MirWrites.Through), ("deepFirst", MirWrites.Through), ("shallowFirst", MirWrites.Through)],
+            Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, c.Types, walked, [], out var writes) ? writes : MirWrites.None)).ToArray());
+
+        static string Nested(string inner, int levels) => new string('(', levels) + inner + string.Concat(Enumerable.Repeat(", i32)", levels));
     }
 
     // SPEC 23.1.1, 23.1.2 (DECISIONS R4-M153's revision 3): a walk's answer is the Join of its parts' outcomes, the same in every order of
@@ -133,12 +152,13 @@ public sealed class MirTypesTest(ITestOutputHelper output)
             "struct Wrap<E>\n    var value: E\nstruct Two<A, B>\n    var a: A\n    var b: B\n" +
             $"func probe<T>(x: uniq/(ref/i32 during a) during a, {string.Join(", ", observed.Concat(guarded).Select(static x => $"{x.Name}: {x.Type}"))})\n" +
             "    return\n");
-        var walked = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
+        var entered = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
+        var walked = new Dictionary<BoundType, MirModeDepths>(ReferenceEqualityComparer.Instance);
         Assert.Equal(
             observed.Concat(guarded).Select(static x => (x.Name, x.Answer)).ToArray(),
             Parameters(body).Skip(1).Select(x => (x.Name, x.Name[0] == 'o' ? Observed(x.Type) : Guard(x.Type))).ToArray());
 
-        string Observed(BoundType type) => MirTypes.Observation(type, c.Types, body.Key.Decl, walked).ToString();
+        string Observed(BoundType type) => MirTypes.Observation(type, c.Types, body.Key.Decl, entered).ToString();
 
         string Guard(BoundType type)
         {
@@ -181,7 +201,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
             "    var h = Wrap2c3.init(u@follow@raw@raw/u8)\n    let limit = func [h@move] () => ()\n" +
             "public func main() => ()\n");
         Assert.Empty(c.Binding.Issues);
-        var seen = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
+        var seen = new Dictionary<BoundType, MirModeDepths>(ReferenceEqualityComparer.Instance);
         Assert.Equal(
             ["Through", "None", "None", "no Loan", "Through", "Through", "Limit"],
             KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.FunctionKoto>().Where(static x => x.IsAnonymous)
@@ -214,7 +234,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
             "plain: Outer<raw/u8>, plainA: Hold<raw/u8>, plainE: Opt2<raw/u8>, st: Outer<raw/u8 during static>, dp: Der<raw/u8>, " +
             "ds: DerS)\n" +
             "    return\n");
-        var seen = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
+        var seen = new Dictionary<BoundType, MirModeDepths>(ReferenceEqualityComparer.Instance);
         var members = new List<RawMember>();
         Assert.Equal(
             [("x", MirWrites.Through), ("q", MirWrites.None), ("w", MirWrites.Limit), ("wr", MirWrites.Through), ("o", MirWrites.Limit),
@@ -263,7 +283,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
             "top: (Outer<raw/u8>, Holder2), outer: Outer<raw/u8>, wrap: Wrap<raw/u8>, m2: M2<raw/u8>, ps: PS<raw/u8>, pu: PU<raw/u8>, " +
             "hold: Hold<raw/u8>, opt2: Opt2<raw/u8>, derX: DerX<raw/u8>, arr: Array<raw/u8>, ow: Outer<Wrap<raw/u8>>, box2: Box2<raw/u8>)\n" +
             "    return\n");
-        var seen = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
+        var seen = new Dictionary<BoundType, MirModeDepths>(ReferenceEqualityComparer.Instance);
         var members = new List<RawMember>();
         string[] through =
         [
@@ -382,7 +402,8 @@ public sealed class MirTypesTest(ITestOutputHelper output)
     public void LibraryTypesClassify()
     {
         var c = MirBuildTest.Compile("public func main() => ()\n");
-        var walked = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
+        var walked = new Dictionary<BoundType, MirModeDepths>(ReferenceEqualityComparer.Instance);
+        var entered = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
         var (locals, holding, observing) = (0, 0, 0);
         foreach (var body in c.BuildMir().Bodies)
         {
@@ -391,7 +412,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
                 var holds = MirTypes.HoldsLoans(local.Type, c.Types, walked, [], out _);
                 var raw = local.Type.Semantics == Kimi.Compiler.Parsing.SemanticsKind.Raw;
                 Assert.True(holds || !(raw || MirTypes.IsReference(local.Type)), $"{body.Key.Decl?.Name}: {local.Name}");
-                var observation = MirTypes.Observation(local.Type, c.Types, body.Key.Decl, walked);
+                var observation = MirTypes.Observation(local.Type, c.Types, body.Key.Decl, entered);
                 Assert.False(observation.IsDeep);
                 var observes = !observation.IsNone;
                 (locals, holding, observing) = (locals + 1, holding + (holds ? 1 : 0), observing + (observes ? 1 : 0));
@@ -434,24 +455,22 @@ public sealed class MirTypesTest(ITestOutputHelper output)
     // A walk that reports nothing and counts the Types it enters by the outcome walks' memo (MirDepths).
     private struct DepthWalk(Dictionary<BoundType, byte> entered) : IMirDestruction
     {
-        private MirDepths depths = new(entered);
-
         public int Entered { get; private set; }
 
-        public readonly bool Past => this.depths.Deep;
+        public readonly bool Past => entered.ContainsValue(MirDepths.Past);
 
         public bool First(BoundType type, int depth)
         {
-            var enters = this.depths.Enter(type, depth);
+            var enters = MirDepths.Enter(ref CollectionsMarshal.GetValueRefOrAddDefault(entered, type, out _), depth);
             this.Entered += enters ? 1 : 0;
             return enters;
         }
 
         public readonly bool Visit(BoundType type, int depth) => false;
 
-        public bool Deep(BoundType type)
+        public readonly bool Deep(BoundType type)
         {
-            this.depths.Meet(type);
+            MirDepths.Meet(ref CollectionsMarshal.GetValueRefOrAddDefault(entered, type, out _));
             return false;
         }
     }
