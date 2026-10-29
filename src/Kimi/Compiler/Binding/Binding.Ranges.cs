@@ -139,6 +139,11 @@ public sealed partial class Binding
             ResetSynthetic(storage);
         }
 
+        foreach (var input in this.propertyUpdateInputs.Values)
+        {
+            ResetSynthetic(input);
+        }
+
         this.resolvedSlices.Clear();
         this.uniqIndexing.Clear();
         this.positionWarnings.Clear();

@@ -130,6 +130,12 @@ public sealed partial class Binding
                     return Complete(unary, null);
                 }
 
+                // SPEC 13.7.1: the result, computed in the read Type, is fitted to a Property's destination Type.
+                if (this.PropertyUpdateDestination(unary.Operand) is { } written && !this.FitsTypeAt(destination, written, unary))
+                {
+                    return this.FailMismatch(unary, unary.Operand, destination, written);
+                }
+
                 var update = this.OperatorApplicabilityOf(unary, destination, null, scope);
                 return update.Failure == BindingFailure.None ? Complete(unary, destination) : this.FailOperator(unary, unary, update);
             case KotoKind.Dereference:
@@ -268,10 +274,9 @@ public sealed partial class Binding
             return false;
         }
 
-        if (binary.Akind != KotoKind.Equals && this.PropertySetterInput(KotoHelper.UnwrapParentheses(binary.Left)) is { } setterInput &&
-            !this.FitsTypeAt(left, setterInput, binary))
+        if (binary.Akind != KotoKind.Equals && this.PropertyUpdateDestination(binary.Left) is { } destination && !this.FitsTypeAt(left, destination, binary))
         {
-            this.FailMismatch(binary, binary.Left, left, setterInput);
+            this.FailMismatch(binary, binary.Left, left, destination);
             return false;
         }
 
