@@ -4,8 +4,9 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// Layout obligations (K package 4.8, X18; DECISIONS R5-M37, R5-M44, R5-M55, R5-M149): the verdict of each use in an item's instance, a
-// by-value use or a layout need past its root's storage (LayoutNeeds), and each body's list of the latter.
+// Layout obligations (K package 4.8, X18; DECISIONS R5-M37, R5-M44, R5-M55, R5-M149, R5-M150): the verdict of each use in an item's
+// instance, a by-value use or a layout need past its root's storage (LayoutNeeds), each body's list of the latter, and the by-value uses
+// of a root module's import signatures.
 internal sealed partial class InstanceCollector
 {
     // K 4.8 (DECISIONS R5-M149): each body's projection steps whose layout need lies past its roots' storage, `needs` from
@@ -30,6 +31,32 @@ internal sealed partial class InstanceCollector
         Layout.Outcome.CLayout => DiagnosticCode.InvalidCLayout_Kd,
         _ => throw new InvalidOperationException($"The layout outcome {outcome} has no record row."),
     };
+
+    // SPEC 8.15.3, 22.6 (DECISIONS R5-M150): an import a root module declares is checked as a nongeneric body is, called or not (22.6 makes
+    // it nongeneric): its parameters' and result's Types (TyCtxt.Signature; none where Binding failed it) are by-value uses at their written
+    // Types (TyCtxt.SignatureSite), beside the Unsupported_Kd Binding gives a struct, Tuple or fixed array there (a valid import's Types are
+    // always laid out). It is no item: no body, no target, nothing generated.
+    private void LayOutImports()
+    {
+        var imports = this.types.Imports; // Read by index: a warm run allocates no enumerator.
+        for (var i = 0; i < imports.Count; i++)
+        {
+            var function = imports[i];
+            if (TyCtxt.SignatureSite(function, -1).Module >= this.rootModules)
+            {
+                continue;
+            }
+
+            _ = TyCtxt.Signature(function, null, -1, out var count);
+            for (var slot = -1; slot < count; slot++)
+            {
+                if (TyCtxt.Signature(function, null, slot, out _) is { } type)
+                {
+                    _ = this.LaysOut(TyCtxt.SignatureSite(function, slot), type);
+                }
+            }
+        }
+    }
 
     // The locals of an item's body in its instance, each a by-value use at its declaration, but its drop flags and a constructor's
     // construction receiver (MirLocalRole.Receiver), whose storage its caller's construction expression made and laid out (SPEC 6.3.2-6.3.4,

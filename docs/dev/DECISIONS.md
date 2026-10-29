@@ -12156,3 +12156,26 @@ structure is recorded here by the unit that first implements it.
     sel +1.3 % and +0.4 % cold, +1.4 % and +2.0 % re-collect; cold allocation +7,184 B (Hello) and +7,216 B (Milestone26), the need
     list's and the marks' first growth; warm 0 B (raw rows `r5\proj\ab-final.txt`). The owner accepted this cost (2026-10-29, to the R5
     planning session directly, verbatim 「受け入れる」).
+- **R5-M150 A bodyless import's by-value parameter and result are layout uses: the collector checks each root module's import
+  signatures (unit G288)** (2026-10-29, R5; PLAN G288, G158's open import row; the owner's answer relayed by BU, verbatim
+  「みなす (推奨)」, PLAN `63f54877e`; extends BU-48; Major, design accepted by the R5 planning session; BU reviews the Binding part and
+  the reinstated theory) SPEC 8.15.3 checks a layout where the program passes or returns a value by value, over the checked set whether or not reachable;
+  22.6 makes an import nongeneric and promises it behaves as a Kimigayo function with its signature; 23.1.2 reports independent errors.
+  - Rule: every import a root module declares is checked as a nongeneric body is, called or not: each parameter's and its result's Type
+    is a by-value use at its written Type (where the MIR builder locates a body's parameter and result locals, R4-M90 D6, BU-48), with
+    `LaysOut`'s records (`InvalidCLayout_Kd`, `OversizedLayout_Kd` at each use; a limit once per erased Type), beside 22.6's
+    `Unsupported_Kd`. An import is a declaration whose signature Binding checks as one (`ImportAbi`); one whose Attribute fails as a whole
+    (`InvalidLibraryImport_Kd`: a body, a generic or other non-import shape, invalid name arguments) is none and keeps its one record (the
+    planning session's ruling; the `unit.importname` row). A valid import's Types (integers, floats, raw pointers, borrows) are always laid
+    out, so only programs 22.6 already rejects gain a record; a caller's by-value argument stays its own use at the call.
+  - Mechanism: Binding publishes `ImportDeclarations` (`Binding.Attributes.cs`; `LibraryImports` stays its valid subset), TyCtxt
+    forwards it as `Imports` with `SignatureSite`, a slot's written Type (`TyCtxt.Imports.cs`); the collector's `LayOutImports` reads them
+    after the roots: no item, no target, nothing generated; a program with validator findings has none (as every checked-set record, G2).
+  - Rejected: a collector root kind (an import item: a vocabulary entry and an item code generation skips, for no body and no target);
+    only called imports (the verdict would depend on reachability, which 8.15.3 excludes, and differ from an uncalled function's
+    parameter; every judge row's import is uncalled). Also a signature-only MIR body (a `MirBodyKind` every MIR consumer skips), Binding
+    reporting the record (a second judge, contrary to BU-48) and widening `LibraryImports` (its three code generation readers would filter).
+  - Judge: BU's kept-apart theory (`claude/bu-g158-tests` 910a5583d) reinstated as `AByValueImportParameterIsAUse` and its sel twin, with
+    a result row per shape; the 44 parameter and result cases failed on dev `c2ab38ee7` (only 22.6's record). The snapshot against
+    `shared-base/02b1d68a1` gains no row. Cost: no item or replay; per `check` a memoized `Layout.Of` per import slot, none without
+    imports, warm runs allocate nothing; below the collector's measured cost (R5-M148), not measured.

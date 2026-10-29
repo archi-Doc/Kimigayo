@@ -1,14 +1,14 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the checked set (SPEC 8.15.3, IMPL 21.3.1; R5 package K 4.3-4.9; DECISIONS R5-M35, R5-M40, R5-M43, R5-M44, R5-M52-55, R5-M60,
-// R5-M67, R5-M70, R5-M74, R5-M146, R5-M149): every body instance, type-driven item and shim a root requires through runtime or
+// R5-M67, R5-M70, R5-M74, R5-M146, R5-M149, R5-M150): every body instance, type-driven item and shim a root requires through runtime or
 // check-only edges, its instance-stage records, and the one resolution of each site's target that code generation reads.
 // Input: a built, validated MirProgram; the number of root modules (a range of Source.Module, not a mode); TyCtxt (Instantiates, Erase,
 // Compose, Instance, BindingComplete, Implementation, Witness, Comparison, OwnRequirement, Published, Bodyless, Signature,
-// SubstOfClosure, SubstOfItem, Synthesized, Applies); MirCases (Views, and an item's view for a PairLayer's case); MirUses;
-// MirTypes.MayNeedDrop; DropGlue.Parts; AdtDef.FindField; VTableDef; MirProgram.StaticInit; the Target and Need columns of the intrinsic
-// rows and the legacy rows; LayoutNeeds; the capability table; the compilation's Layout (Indirect), whose outcomes the collector alone
-// maps (R5-M37).
+// SubstOfClosure, SubstOfItem, Synthesized, Applies, Imports, SignatureSite); MirCases (Views, and an item's view for a PairLayer's
+// case); MirUses; MirTypes.MayNeedDrop; DropGlue.Parts; AdtDef.FindField; VTableDef; MirProgram.StaticInit; the Target and Need columns
+// of the intrinsic rows and the legacy rows; LayoutNeeds; the capability table; the compilation's Layout (Indirect), whose outcomes the
+// collector alone maps (R5-M37).
 // Output: the CheckedSet of the program version: the roots, in MirProgram.Bodies order, then the items a FIFO worklist admits, each with one
 // target per resolved site of its body, in location order, with whether a runtime path reaches the site; and its records, which
 // Compilation.MirRecords publishes: its Language records on every pipeline, the others under MIR code generation (K4b; DECISIONS BU-48,
@@ -41,7 +41,8 @@
 // each type-driven item's Type and a DropGlue's collection element Types (X34), and each layout need a form's generated code has past its
 // root's storage (LayoutNeeds, DECISIONS R5-M149: a projection step past a Deref, PairLayer or sequence handle, a raw pointer's
 // displacement, a call's Type arguments where its intrinsic or legacy row's need says so, a compared Tuple past a reference layer of a
-// comparison shim's tree) take Layout's verdict: a limit is GenerationResourceLimit_Kd once per erased Type at its
+// comparison shim's tree), and the parameters and result of each import a root module declares, at their written Types (no item; SPEC
+// 22.6, DECISIONS R5-M150) take Layout's verdict: a limit is GenerationResourceLimit_Kd once per erased Type at its
 // first use, a C-layout instance whose C layout is unavailable (open, derived, empty or storing a zero-sized Field) InvalidCLayout_Kd and
 // a layout over 2^63 - 1 bytes OversizedLayout_Kd at each use (both at one use when both hold); Rejected storage derives from a Binding
 // error (Derived); a type-driven item needs an Ok verdict.
@@ -141,6 +142,7 @@ internal sealed partial class InstanceCollector
         }
 
         set.EndRoots();
+        this.LayOutImports();
         for (var item = 0; item < set.Items.Length; item++)
         {
             this.Replay(program, item);
