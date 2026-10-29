@@ -80,28 +80,29 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 13.7.1, 13.7.2 (DECISIONS BU-50): an update with a custom accessor, completed with its read Type; null after a failure and
-    // for a target without a member access, which this path does not bind. A standard `get` reads and a standard `set` writes the
-    // Field's Place as the body reads it (MemberRead), which also types the storage node; a custom accessor's Type is its call's.
+    // SPEC 13.7.1, 13.7.2 (DECISIONS BU-50): an update with a custom accessor completes its two sides once, as a read and a write
+    // complete theirs: the read Type (the node's) and the destination Type (its computed input's, PropertyUpdateDestination), to which
+    // the update's operation fits its result. A standard `get` reads and a standard `set` writes the Field's Place as the body reads it
+    // (MemberRead), which also types the storage node; a custom accessor's Type is its call's. A side without a Type leaves the update
+    // unresolved, as the read is. The storage is reached through the receiver the target names: a bare static Property names none, so
+    // its update is the located Unsupported_Kd until P42 binds a static Property's update (the qualified form is the later phases' limit).
     private BoundType? BindPropertyUpdate(Koto target, BindingScope scope)
     {
+        var property = target.BoundSymbol!.Property!;
+        var stored = this.MemberRead(target, property.Symbol, scope);
+        var result = property.Getter.IsStandard ? stored : this.AccessorUseType(target, property.Getter);
+        var destination = property.Setter.IsStandard ? stored : this.AccessorUseType(target, property.Setter);
+        if (result is null || destination is null)
+        {
+            return Complete(target, null);
+        }
+
         if (target is not MemberAccessKoto node)
         {
-            return null;
+            return this.Fail(target, BindingFailure.Unsupported);
         }
 
-        var property = node.BoundSymbol!.Property!;
-        var stored = this.MemberRead(node, property.Symbol, scope);
-        var getterResult = property.Getter.IsStandard ? stored : this.AccessorUseType(node, property.Getter);
-        var setterInput = property.Setter.IsStandard ? stored : this.AccessorUseType(node, property.Setter);
-        var arithmetic = this.propertyUpdateInputs.TryGetValue(node, out var computed) && computed.Source is BinaryKoto { Akind: >= KotoKind.PlusEquals and <= KotoKind.PercentEquals };
-        if (getterResult is not { } result || setterInput is not { } input ||
-            (!arithmetic && !this.FitsTypeAt(result, input, node)))
-        {
-            this.Fail(node, BindingFailure.TypeMismatch);
-            return null;
-        }
-
+        Complete(this.propertyUpdateInputs[node], destination);
         var owner = node.Left.BoundType!;
         var referent = owner is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } ? owner.Components[0] : owner;
         var type = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [referent], origin: this.PlaceOrigin(node.Left));
@@ -127,14 +128,17 @@ public sealed partial class Binding
         return Complete(node, result);
     }
 
-    private BoundType? PropertySetterInput(Koto node)
-        => this.propertyCalls.GetValueOrDefault((node, PropertyAccessorKind.Set))?.BoundCall is { ArgumentOperations.Length: > 0 } call
-            ? call.ArgumentOperations[0].ParameterType : null;
+    // SPEC 13.7.1: the destination Type of an update with a custom accessor (BindPropertyUpdate), to which its operation fits the result.
+    private BoundType? PropertyUpdateDestination(Koto target)
+        => this.propertyUpdateInputs.GetValueOrDefault(KotoHelper.UnwrapParentheses(target)) is { BindingState: BindingState.Resolved } input
+            ? input.BoundType : null;
 
     // SPEC 13.7.1: the Type a custom accessor's bound call gives its use at `node`: a `set`'s value input (the destination Type), a
     // `get`'s result (the read Type).
     private BoundType? AccessorUseType(Koto node, BoundAccessor accessor)
-        => accessor.Kind == PropertyAccessorKind.Set ? this.PropertySetterInput(node) : this.propertyCalls[(node, accessor.Kind)].BoundType;
+        => accessor.Kind != PropertyAccessorKind.Set ? this.propertyCalls[(node, accessor.Kind)].BoundType
+            : this.propertyCalls.GetValueOrDefault((node, accessor.Kind))?.BoundCall is { ArgumentOperations.Length: > 0 } call
+                ? call.ArgumentOperations[0].ParameterType : null;
 
     private void BindStorageProjection(Koto node, BoundAccessor accessor)
     {
