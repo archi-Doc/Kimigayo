@@ -92,8 +92,8 @@ public sealed partial class Binding
 
         var property = node.BoundSymbol!.Property!;
         var stored = this.MemberRead(node, property.Symbol, scope);
-        var getterResult = property.Getter.IsStandard ? stored : this.propertyCalls.GetValueOrDefault((node, PropertyAccessorKind.Get))?.BoundType;
-        var setterInput = property.Setter.IsStandard ? stored : this.PropertySetterInput(node);
+        var getterResult = property.Getter.IsStandard ? stored : this.AccessorUseType(node, property.Getter);
+        var setterInput = property.Setter.IsStandard ? stored : this.AccessorUseType(node, property.Setter);
         var arithmetic = this.propertyUpdateInputs.TryGetValue(node, out var computed) && computed.Source is BinaryKoto { Akind: >= KotoKind.PlusEquals and <= KotoKind.PercentEquals };
         if (getterResult is not { } result || setterInput is not { } input ||
             (!arithmetic && !this.FitsTypeAt(result, input, node)))
@@ -130,6 +130,11 @@ public sealed partial class Binding
     private BoundType? PropertySetterInput(Koto node)
         => this.propertyCalls.GetValueOrDefault((node, PropertyAccessorKind.Set))?.BoundCall is { ArgumentOperations.Length: > 0 } call
             ? call.ArgumentOperations[0].ParameterType : null;
+
+    // SPEC 13.7.1: the Type a custom accessor's bound call gives its use at `node`: a `set`'s value input (the destination Type), a
+    // `get`'s result (the read Type).
+    private BoundType? AccessorUseType(Koto node, BoundAccessor accessor)
+        => accessor.Kind == PropertyAccessorKind.Set ? this.PropertySetterInput(node) : this.propertyCalls[(node, accessor.Kind)].BoundType;
 
     private void BindStorageProjection(Koto node, BoundAccessor accessor)
     {
