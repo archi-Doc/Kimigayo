@@ -19,6 +19,12 @@ public sealed partial class InstanceCollectorTest
     public void UnderMirCodeGenerationEachUseOfAnUnavailableCLayoutIsOneRecord(string form, string source, string records)
         => LayoutAttributeBindingTest.AssertUses(form, source, records, sel: true);
 
+    // A bodyless import's by-value parameter and result, with its default-pipeline rows (LayoutAttributeBindingTest.AByValueImportParameterIsAUse).
+    [Theory]
+    [MemberData(nameof(LayoutAttributeBindingTest.ImportRows), MemberType = typeof(LayoutAttributeBindingTest))]
+    public void UnderMirCodeGenerationAByValueImportParameterIsAUse(string form, string source, string records)
+        => LayoutAttributeBindingTest.AssertUses(form, source, records, sel: true);
+
     // Part (2) of the row, a Never Field, with its default-pipeline rows (LayoutAttributeBindingTest.ANeverFieldMakesCLayoutUnavailable).
     [Theory]
     [MemberData(nameof(LayoutAttributeBindingTest.NeverRows), MemberType = typeof(LayoutAttributeBindingTest))]
