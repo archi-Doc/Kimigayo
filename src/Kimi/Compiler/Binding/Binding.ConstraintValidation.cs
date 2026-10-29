@@ -337,38 +337,6 @@ public sealed partial class Binding
     private ConstraintProof CheckProjectionInputs(BoundType type, BindingSymbol contract, BindingScope scope)
         => CombineProof(this.CheckTypeConstraints(type, scope), this.ProveConformance(type, contract, scope), true);
 
-    private ConstraintProof CheckClosedDeclarationConstraints(DeclarationContainerKoto container)
-    {
-        var outer = this.BeginProof();
-        var proof = ConstraintProof.Proven;
-        for (var i = 0; i < container.ConstraintNodes.Count; i++)
-        {
-            var clause = container.ConstraintNodes[i];
-            if (clause.IsAssociatedConstraint || IsSelfConstraint(clause))
-            {
-                continue;
-            }
-
-            if (clause.BoundConstraint is not { } constraint)
-            {
-                proof = CombineProof(proof, ConstraintProof.Unknown, true);
-                continue;
-            }
-
-            if (DependentConstraint(constraint, contractSelf: container is ContractKoto))
-            {
-                continue;
-            }
-
-            var scope = this.scopes[container];
-            var subject = clause.Left.BoundType;
-            var formation = subject is null ? ConstraintProof.Unknown : this.CheckTypeConstraints(subject, scope);
-            proof = CombineProof(proof, CombineProof(formation, this.ProveConstraint(constraint, scope), true), true);
-        }
-
-        return this.EndProof(outer, proof);
-    }
-
     private bool ValidateClosedTypeConstraints(BindingMode mode)
     {
         var changed = false;
