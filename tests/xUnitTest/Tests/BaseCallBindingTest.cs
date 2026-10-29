@@ -49,6 +49,30 @@ public class BaseCallBindingTest
         ScalarEmissionTest.WriteFixture("BaseCallGeneric", CompilationTestHelper.WriteIr(c), string.Empty);
     }
 
+    // SPEC 6.4.4 per the owner's reading (DECISIONS BU-53): an instance getter's body is a derived instance body; its base call takes the
+    // getter's self and the original default.
+    [Fact]
+    public void AGetterBodyIsADerivedInstanceBody()
+    {
+        var c = MinimalEmissionTest.Analyze(Accessors("get() -> i32 => base.read() + 1"));
+        ScalarEmissionTest.WriteFixture("BaseCallGetter", CompilationTestHelper.WriteIr(c), string.Empty);
+    }
+
+    // SPEC 6.4.4, 11.3.1 (DECISIONS BU-53): a setter's body takes its uniq/Self as lexical self, a Closure in a getter's body through its
+    // explicit self capture.
+    [Theory]
+    [InlineData("get() -> i32 => 0\n        set(value: i32) -> ()\n            let n = base.read(value)")]
+    [InlineData("get() -> i32\n            let operation = func[self]() -> i32 => base.read() + 1\n            return operation()")]
+    public void AccessorBodiesTakeTheAccessorsSelf(string accessors)
+    {
+        var c = MinimalEmissionTest.Analyze(Accessors(accessors));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        c.Binding.ReportDiagnostics();
+        Assert.Empty(TestDiagnostics.Of(c));
+        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(x => x.Method is MemberAccessKoto { Left: BaseReferenceKoto });
+        Assert.Equal("Base", call.CallOf()!.DeclaringType!.Symbol!.Name);
+    }
+
     [Fact]
     public void ParenthesizedCalleesKeepDirectBaseSelection()
     {
@@ -60,6 +84,8 @@ public class BaseCallBindingTest
     [InlineData("func f(self: ref/Self, n: i32 = base.read()) -> i32 => n", "instance body")]
     [InlineData("func f(self: ref/Self) -> i32 => base.value()", "instance function")]
     [InlineData("func f(self: ref/Self) -> i32 => base()", "base.name(arguments)")]
+    [InlineData("group Settings\n        computed limit: i32\n            get() -> i32 => base.read()", "derived instance function")]
+    [InlineData("computed again: i32\n        get() -> i32\n            let operation = func() -> i32 => base.read()\n            return operation()", "explicit self capture")]
     public void HeadersAndNonInstanceTargetsDoNotAcquireBaseValues(string declaration, string expected)
     {
         var c = MinimalEmissionTest.Analyze("open struct Base\n    public let value: i32 = 7\n    public func read(self: ref/Self) -> i32 => 1\nstruct Derived : Base\n    " + declaration + "\n()");
@@ -92,10 +118,12 @@ public class BaseCallBindingTest
     }
 
     [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void WarmBaseCallsReuseAllPlans()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WarmBaseCallsReuseAllPlans(bool getter)
     {
-        var c = MinimalEmissionTest.Analyze(Source);
+        var c = MinimalEmissionTest.Analyze(getter ? Accessors("get() -> i32 => base.read() + 1") : Source);
         Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
@@ -104,4 +132,9 @@ public class BaseCallBindingTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid);
     }
+
+    // Source with readAgain as the computed member `again` declaring the given accessors.
+    private static string Accessors(string accessors)
+        => Source.Replace("func readAgain(self: ref/Self) -> i32 => base.read() + 1", "computed again: i32\n        " + accessors, StringComparison.Ordinal)
+            .Replace("value.readAgain()", "value.again", StringComparison.Ordinal);
 }
