@@ -613,18 +613,10 @@ public sealed partial class Binding
 
     private BoundConformancePath RegisterConformance(BindingSymbol type, BindingSymbol contract, BindingSymbol root, IsKoto use, BindingScope scope, SyntaxFormKoto? premises)
     {
-        if (!this.conformances.TryGetValue((type, contract), out var identity))
-        {
-            this.conformances.Add((type, contract), identity = new(type, contract));
-        }
-
-        if (!this.conformancePaths.TryGetValue((type, contract, use, root), out var result))
-        {
-            this.conformancePaths.Add((type, contract, use, root), result = new(type, contract) { Identity = identity });
-        }
-
+        var result = this.ConformancePath(type, contract, use, root);
         if (!result.Active)
         {
+            var identity = result.Identity;
             result.Active = true;
             result.InheritedFrom = null;
             result.AdditionalInheritedSources?.Clear();
@@ -632,8 +624,9 @@ public sealed partial class Binding
             result.Use = use;
             result.Declaration = use;
             result.RootContract = root;
-            // A path registers its root path, so callers may list paths in any order (an inherited base lists them by identity).
-            result.RootPath = ReferenceEquals(contract, root) ? result : this.RegisterConformance(type, root, root, use, scope, premises);
+            // The root path is named here and registered by its own call, so the lists below follow the caller's order whichever
+            // path comes first: an inherited base's order, where a refinement may follow its parent Contract's own conformance.
+            result.RootPath = ReferenceEquals(contract, root) ? result : this.ConformancePath(type, root, use, root);
             result.Premises = premises;
             result.Scope.Parent = scope;
             this.activeConformancePaths.Add(result);
@@ -648,6 +641,22 @@ public sealed partial class Binding
             }
 
             identity.PathStorage.Add(result);
+        }
+
+        return result;
+    }
+
+    // One path per Type, Contract, declaration and root Contract, created when first named; only its registration activates it.
+    private BoundConformancePath ConformancePath(BindingSymbol type, BindingSymbol contract, IsKoto use, BindingSymbol root)
+    {
+        if (!this.conformances.TryGetValue((type, contract), out var identity))
+        {
+            this.conformances.Add((type, contract), identity = new(type, contract));
+        }
+
+        if (!this.conformancePaths.TryGetValue((type, contract, use, root), out var result))
+        {
+            this.conformancePaths.Add((type, contract, use, root), result = new(type, contract) { Identity = identity });
         }
 
         return result;

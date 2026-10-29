@@ -227,6 +227,18 @@ public class InheritedConformanceTest
         Assert.All(c.Binding.Issues, static x => Assert.Equal(DiagnosticCode.UnsatisfiedConstraint_Kd, x.Code));
     }
 
+    // SPEC 8.6.2, DIAGNOSTICS I2: the derived Type lists its base's conformances in the base's order, whatever order registration
+    // meets their paths in (KB's root path is met first, through HasItem), so DB.Z's ambiguity is BB.Z's record.
+    [Fact]
+    public void AnInterleavedBaseKeepsItsConformanceOrder()
+    {
+        const string Types = "contract HasItem\n    associate Item\ncontract KA: HasItem\ncontract KC\n    associate Z\ncontract KB: HasItem\n    associate Z\nopen struct BB\n    Self is KA\n    associate HasItem.Item is i32\n    Self is KC\n    associate KC.Z is i64\n    Self is KB\n    associate KB.Z is u8\nstruct DB: BB\n";
+        var records = Array.ConvertAll(["BB", "DB"], static x => Assert.Single(DiagnosticCorpus.Check(Types + "func f(z: " + x + ".Z) -> () => ()\n()\n").Diagnostics));
+        Assert.Equal(nameof(DiagnosticCode.AmbiguousBinding_Kd), records[0].Code);
+        Assert.Equal((records[0].Code, records[0].Message, records[0].Note), (records[1].Code, records[1].Message, records[1].Note));
+        Assert.Equal(records[0].Related, records[1].Related);
+    }
+
     [Fact]
     public void RefinementAndConditionalBodiesKeepTheOriginalMapping()
     {
