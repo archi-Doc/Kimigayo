@@ -320,7 +320,7 @@ public sealed partial class Binding
                     var binding = this.associatedBindings[(path, identity)];
                     foreach (var source in evidence)
                     {
-                        if (!ReferenceEquals(this.ContractType(source.Identity.Contract.Type!, path.Scope), this.ContractType(identity.Contract.Type!, path.Scope)) ||
+                        if (!this.SameConformanceType(source.Identity.Contract.Type!, identity.Contract.Type!, path.Scope) ||
                             this.ProveConformanceConditions(source.Path, this.SelfType(path.Type), path.Scope) != ConstraintProof.Proven)
                         {
                             continue;

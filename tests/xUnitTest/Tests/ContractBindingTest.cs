@@ -16,6 +16,9 @@ public class ContractBindingTest
     private const string Added = "S.(HasItem).Item is PrimitiveInteger\n    Self is Addable<S.(HasItem).Item>\n    associate Output is i32\n" +
         "    public func added(self: ref/Self, right: ref/S.(HasItem).Item) -> i32 => 6";
 
+    private const string Add = "func add<T, U>(a: T, b: U.(HasItem).Item) -> T.Output\n    U is HasItem\n    T is Addable<U.(HasItem).Item>\n" +
+        "    return a + b\n";
+
     private const string Keyed = "Self is Indexable<Option<S.(HasItem).Item>>\n    Self is Indexable<Name>\n" +
         "    associate Indexable<Option<S.(HasItem).Item>>.Element is i32\n    associate Indexable<Name>.Element is i64\n    var small: i32 = 3\n" +
         "    var large: i64 = 4\n    public func index(self, key: ref/Option<S.(HasItem).Item>) -> ref/i32 during self => self.small@ref\n" +
@@ -306,10 +309,11 @@ public class ContractBindingTest
     // `Iter<S.(HasItem).Item>`) is, for an instance, the reference the projection names: `B<SrcI>` and `B<Src>` (HasMore's refinement
     // binds its Item) are `Iter<i32>` through a direct, refinement, conditional or inherited path and as a projection's qualifier, and
     // `B<SrcI>` is `Addable<i32>` for `a + 2`, `Indexable<Option<i32>>` beside `Indexable<Name>` for an `Option<i32>` key and
-    // `B<SrcR>` `Indexable<Range<isize, isize>>` for a range key; `B<U>` is under the use scope's premise `U.(HasItem).Item is i32` and
-    // unproven without one (DECISIONS BU-50); `B<SrcU>` is not, nor is it `Iter<u8>` as a qualifier, nor does `B<SrcI>` take an
-    // `Option<u8>` key. Before, each valid form was NoApplicableOverload_Kd, UnprovenConstraint_Kd, TypeMismatch_Kd, Unsupported_Kd,
-    // AmbiguousBinding_Kd or NotIndexable_Kd.
+    // `B<SrcR>` `Indexable<Range<isize, isize>>` for a range key, and i32 is the builtin `Addable<SrcI.(HasItem).Item>`; `B<U>` is under
+    // the use scope's premise `U.(HasItem).Item is i32` and unproven without one (DECISIONS BU-50); `B<SrcU>` is not, nor is it
+    // `Iter<u8>` as a qualifier, nor does `B<SrcI>` take an `Option<u8>` key, nor is i32 `Addable<SrcU.(HasItem).Item>`. Before, each
+    // valid form was NoApplicableOverload_Kd, UnprovenConstraint_Kd, TypeMismatch_Kd, Unsupported_Kd, AmbiguousBinding_Kd or
+    // NotIndexable_Kd.
     [Theory]
     [InlineData(Projected, Uses, null)]
     [InlineData("Self is Seq<S.(HasItem).Item>\n    associate Tag is bool", Uses, null)]
@@ -317,6 +321,7 @@ public class ContractBindingTest
     [InlineData(Projected, "struct D : B<SrcI>\nfunc f(d: ref/D) -> ()\n    use(d)", null)]
     [InlineData(Projected, "func f(a: ref/B<SrcI>) -> ()\n    let t: B<SrcI>.(Iter<i32>).Tag = true", null)]
     [InlineData(Added, "func f(a: ref/B<SrcI>) -> i32\n    return a + 2", null)]
+    [InlineData(Projected, Add + "func f() -> i32\n    return add<i32, SrcI>(1, 2)", null)]
     [InlineData(Keyed, NameKey + "func f(m: ref/B<SrcI>, k: Option<i32>) -> i32\n    return m[k]", null)]
     [InlineData(
         "Self is Indexable<S.(HasItem).Item>\n    associate Element is i32\n    var small: i32 = 3\n" +
@@ -328,6 +333,7 @@ public class ContractBindingTest
     [InlineData(Projected, "func f(a: ref/B<SrcU>) -> ()\n    use(a)", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData(Projected, "func f(a: ref/B<SrcI>) -> ()\n    let t: B<SrcI>.(Iter<u8>).Tag = true", DiagnosticCode.UnsatisfiedConstraint_Kd)]
     [InlineData(Keyed, NameKey + "func f(m: ref/B<SrcI>, k: Option<u8>) -> i32\n    return m[k]", DiagnosticCode.AmbiguousBinding_Kd)]
+    [InlineData(Projected, Add + "func f() -> i32\n    return add<i32, SrcU>(1, 2)", DiagnosticCode.NoApplicableOverload_Kd)]
     public void ABoundReferenceIsTheTypeItsProjectionArgumentNames(string conformance, string use, DiagnosticCode? code)
     {
         var c = CompilationTestHelper.ParseSuccess(
