@@ -13120,16 +13120,17 @@ structure is recorded here by the unit that first implements it.
     declaration goes).
   - G157 (45): an audit of a transfer's cleanup whose abandoned or secured value is a constant audits nothing under MIR code generation (a
     constant has no destruction, R5-M118), so its target alone would lose the check. `AggregatePartialExit`, `AggregatePartialReturn`,
-    `AggregateArrayPartialExit`, `StringFunctionEarlyArgument`, `ElementReplacementTransferAggregate` and, found by the same search,
-    `AggregateDefaultAbandoned` take a call's result (`echo(...)`, as `StringFunctionCallerOrder`): each expects its one destruction and
-    passes natively on both generators. `ElementReplacementTransferString` keeps its constant target: its call-result form is a
-    validator finding at check (the MIR builder gives a call's result at a transferring index the Place's Never Type; an open issue).
+    `AggregateArrayPartialExit`, `StringFunctionEarlyArgument` and, found by the same search, `AggregateDefaultAbandoned` take a call's
+    result (`echo(...)`, as `StringFunctionCallerOrder`): each expects its one destruction and passes natively on both generators. The
+    `ElementReplacementTransfer*` audits were G304's Never-typed target instead (R5-M159): with it MIR code generation secures every right
+    side, so they keep R5-M159's rows without a deviation, `ElementReplacementTransferString` in the call-result form and
+    `ElementReplacementTransferConstant` the constant.
   - Q1 (b): the deviation form stays (`Codegen.Expect`, `LegacyNative`, `Sidecar`, `CodegenDeviationTest`, compare-fixtures' deviating
     count) with an empty catalog, checked on a synthetic sample; G4 deletes it (S7). Q2 (a): `verify.ps1 -Codegen` defaults to `mir`;
     full theory names, the pending gate and `-UpdatePending` run only on an explicit `-Codegen mir`; the sel lane ends (OI-3).
-    `-Codegen legacy` is the rollback lane: until G4 it fails exactly the 39 native fixtures of the reduced sites (constant-temporaries
-    25: ElementBorrowOwner 8, StringComparison 9, ForeignPointerString 3, FixedArrayCapture 2, GuardCleanup 2,
-    ElementReplacementTransferString; inline-env 8; receiver-layers 5; static-cycle 1) and no managed test.
+    `-Codegen legacy` is the rollback lane: until G4 it fails exactly the 38 native fixtures of the reduced sites (constant-temporaries
+    24: ElementBorrowOwner 8, StringComparison 9, ForeignPointerString 3, FixedArrayCapture 2, GuardCleanup 2; inline-env 8;
+    receiver-layers 5; static-cycle 1) and no managed test (R5-M159's exclusive-input fixtures pin MIR code generation in every run).
   - Also: `LibraryEmissionTest.EmitsInspectionWithoutAnOsEntry` (R5-M12 class S) reads the generation entry's module (no exported
     definition, no OS entry); `GenericGenerationDiagnosticTest`'s four `FailedInstance`/`FailureInstance` null checks on default
     compilations, which MIR code generation never sets, are deleted (their programs' success is already asserted). The
