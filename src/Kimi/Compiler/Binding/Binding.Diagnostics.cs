@@ -94,22 +94,15 @@ public sealed partial class Binding
             : longerAt is not null ? [("origin", longerAt, null)]
             : shorterAt is not null ? [("origin", shorterAt, null)]
             : null;
-        if (relation.Clause is { } clause)
+        // SPEC 23.1: a declared relation relates its clause with the role `relation`; SPEC 15.6.1: so does the input whose equality made a
+        // call's fresh Origin equal to a fixed one; D-1: the contextual payload that supplies a relation the call records at its argument has
+        // the role `payload`.
+        foreach (var (role, at) in (ReadOnlySpan<(string, Koto?)>)[("relation", relation.Clause), ("relation", relation.FixedBy), ("payload", relation.Payload)])
         {
-            // SPEC 23.1: a declared relation relates its clause with the role `relation`.
-            related = related is null ? [("relation", clause, null)] : [.. related, ("relation", clause, null)];
-        }
-
-        if (relation.FixedBy is { } input)
-        {
-            // SPEC 15.6.1: the input whose equality made a call's fresh Origin equal to a fixed one is related with the role `relation`.
-            related = related is null ? [("relation", input, null)] : [.. related, ("relation", input, null)];
-        }
-
-        if (relation.Payload is { } payload)
-        {
-            // D-1: the contextual payload that supplies a relation recorded at its call's argument.
-            related = related is null ? [("payload", payload, null)] : [.. related, ("payload", payload, null)];
+            if (at is not null)
+            {
+                related = related is null ? [(role, at, null)] : [.. related, (role, at, null)];
+            }
         }
 
         if (source != "fit")

@@ -272,7 +272,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (!this.CompletePayloads(use, payload, result, scope, operations, settled))
+            if (!this.CompletePayloads(use, payload, result, scope, operations))
             {
                 return null;
             }
@@ -324,9 +324,9 @@ public sealed partial class Binding
         this.SolveOriginInference(inference, solution.Origins, [], use, select: true);
     }
 
-    // SPEC 6.5.2 item 2, 10.8.1, 10.5.1: a Case construction's own slots after those its qualifier and expected Type fix. A payload whose
-    // payload Type those fixed slots settle (`settled`) is bound only at it, on completion; every other payload is prepared as an argument
-    // is and is evidence by its kind (SlotSolution.InferArgument). Under the argument probe a construction with a slot that no evidence
+    // SPEC 6.5.2 item 2, 10.8.1, 10.5.1: a Case construction's own slots after those its qualifier and expected Type fix. Every payload
+    // is prepared as an argument is; one whose payload Type those fixed slots settle (`settled`) is no evidence, every other is evidence by
+    // its kind (SlotSolution.InferArgument). Under the argument probe a construction with a slot that no evidence
     // binds waits; otherwise the Literal parts' defaults apply to the slots that neither evidence nor a waiting callable at an F binds
     // (SPEC 10.5, TakeWaiting), and are evidence once applied. Once every other slot is bound, the waiting callables at an F are
     // completed with S and are evidence (SPEC 10.5.4), as a call's are after selection. False when the construction is complete: failed
@@ -341,7 +341,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            // SPEC 10.5.1: every payload is classified as an argument is (TakesCallType), a settled one too.
+            // SPEC 10.5.1: every payload is classified as an argument is, a settled one too (TakesCallType).
             if (!this.PrepareArgument(solution.Call.ArgumentNodes[i], solution.Scope, null, callableContext: true))
             {
                 Complete(use, null); // The payload's own failure, on which the construction rests.
@@ -450,8 +450,8 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 6.5.2, 10.5.1, 10.2: each payload in source order fits its decided payload Type as an argument does (a settled one is bound at
-    // it instead), is completed at it (ErasePart for a callable) and adapted to it. The construction judges the fit once: a misfit is its
+    // SPEC 6.5.2, 10.5.1, 10.2: each payload in source order fits its decided payload Type as an argument does, is completed at it
+    // (ErasePart for a callable) and adapted to it. The construction judges the fit once: a misfit is its
     // Type mismatch, one only in Origin relations fails at the payload (SPEC 15.6.1), and a bare Non-Copy Place names its required
     // spelling (SPEC 6.5.2); a payload's own failure while bound is its record, on which the construction rests.
     private bool CompletePayloads(
@@ -459,8 +459,7 @@ public sealed partial class Binding
         ReadOnlySpan<Koto> payload,
         BoundType result,
         BindingScope scope,
-        BoundArgumentOperation[] operations,
-        SlotSet settled)
+        BoundArgumentOperation[] operations)
     {
         for (var i = 0; i < payload.Length; i++)
         {
@@ -468,7 +467,7 @@ public sealed partial class Binding
             var stored = this.PartTypeIn(payload[i], result, scope)!;
             var type = this.ReplaceHolder(stored, null); // SPEC 5.7: a Case holding `during self` is constructed through no dereference.
             var fitted = default(BoundArgumentOperation);
-            var fit = settled.Contains(i) ? CandidateApplicability.Applicable : this.FitArgument(source, type, scope, source, out fitted);
+            var fit = this.FitArgument(source, type, scope, source, out fitted);
             if (fit is CandidateApplicability.Inapplicable or CandidateApplicability.Pending)
             {
                 this.Fail(use, BindingFailure.TypeMismatch);
@@ -492,8 +491,8 @@ public sealed partial class Binding
 
             var actual = this.ArgumentType(source, source.ErasedFunctionType ?? completed);
             // A payload's Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow). D-1: the fit of a
-            // payload of a call argument that takes its Type from the call is that call's, at the argument (JudgedAt), also when it waits.
-            var judged = this.JudgedAt(source);
+            // payload at a position whose Type its call determines is that call's, at the argument (OpenedAt), also when it waits.
+            var judged = this.OpenedAt(source);
             if (!this.AdaptInput(source, type, actual, scope, null, null, out var adapted, out var quality, out var kind) ||
                 (!this.FailStaticBorrow(source, kind, type.Semantics) && !this.FitsTypeAt(adapted, type, judged) &&
                 !this.CheckLocalTypeUse(adapted, type, judged)))

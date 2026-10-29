@@ -427,10 +427,9 @@ public sealed partial class Binding
                 {
                     completedWaiting[i] = true;
                     waitingContexts[i] = operations[i].ParameterType;
-                    var judged = this.judgedArgument;
-                    this.judgedArgument ??= argument;
+                    var judged = this.EnterArgument(call, selected, argument, pattern);
                     var completed = this.CompleteWaitingPart(argument, pattern, solution.SlotOwner, operations[i].ParameterType, evaluation.Scope);
-                    this.judgedArgument = judged;
+                    (this.judgedArgument, this.openedArgument) = judged;
                     if (completed is null)
                     {
                         return false;
@@ -477,7 +476,7 @@ public sealed partial class Binding
     // SPEC 10.5, 10.2: completes the selected candidate's arguments at its operations: a part still unbound is bound at its parameter's
     // Type, and a Closure or Function Item the candidate erases is converted to the common Function Type. False when one fails; every
     // failing erasure is reported, since the call rests on it and another candidate is never selected.
-    private bool CompleteArguments(InvocationKoto call, BindingScope scope, Span<BoundArgumentOperation> operations)
+    private bool CompleteArguments(InvocationKoto call, FunctionKoto selected, BindingScope scope, Span<BoundArgumentOperation> operations)
     {
         var erased = true;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
@@ -487,12 +486,11 @@ public sealed partial class Binding
             {
                 // The argument is an expression of the caller's context, not of the selected requirement.
                 var selectedContract = this.activeRequirementContract;
-                var judged = this.judgedArgument;
                 this.activeRequirementContract = null;
-                this.judgedArgument ??= argument;
+                var judged = this.EnterArgument(call, selected, argument, operations[i].ParameterIndex >= 0 && operations[i].ParameterIndex < selected.Parameters.Count ? selected.Parameters[operations[i].ParameterIndex].Type.BoundType : null);
                 this.RequireType(argument, scope, operations[i].SourceType ?? operations[i].ParameterType);
                 this.activeRequirementContract = selectedContract;
-                this.judgedArgument = judged;
+                (this.judgedArgument, this.openedArgument) = judged;
                 if (argument.BindingState != BindingState.Resolved)
                 {
                     return false;

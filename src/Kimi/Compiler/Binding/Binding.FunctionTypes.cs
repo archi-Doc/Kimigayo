@@ -275,56 +275,65 @@ public sealed partial class Binding
     // `container` with `arguments` bound, or those of the Function Item `item`.
     private bool ContractFits(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, BoundType? container, BoundType? item, BoundType?[]? arguments, Span<BoundArgumentOperation> operations, BoundOrigin[] origins, BoundOrigin[] inputs, bool explain = false, BoundLength?[]? lengths = null)
     {
-        var parameters = required.Components[0];
         var generic = function.GenericArguments.Count;
         var inputCount = InputOriginCount(function);
-        var inference = this.BeginOriginInference(use, function);
-        for (var i = 0; i < function.Parameters.Count; i++)
+        var saved = this.contractPremises;
+        this.contractPremises = required; // The owner's (a): the comparison assumes the required signature's own well-formedness.
+        try
         {
-            if (function.Parameters[i].Type.BoundType is not { } written || Bound(written) is not { } parameter)
+            var parameters = required.Components[0];
+            var inference = this.BeginOriginInference(use, function);
+            for (var i = 0; i < function.Parameters.Count; i++)
+            {
+                if (function.Parameters[i].Type.BoundType is not { } written || Bound(written) is not { } parameter)
+                {
+                    return false;
+                }
+
+                // Only the implementation's per-call binders are inferred; the
+                // required signature's quantifiers and fixed Origins remain rigid.
+                this.MatchInputOrigins(parameter, parameters.Components[i], function, origins, inputs);
+                this.CollectOriginInference(parameter, parameters.Components[i], inference);
+            }
+
+            if (symbol.Type is { } writtenResult && Bound(writtenResult) is { } produced)
+            {
+                this.CollectOriginInference(produced, required.Components[1], inference, result: true);
+            }
+
+            if (!this.SolveCallOriginInference(function, inference, origins, inputs, use, null, select: explain))
             {
                 return false;
             }
 
-            // Only the implementation's per-call binders are inferred; the
-            // required signature's quantifiers and fixed Origins remain rigid.
-            this.MatchInputOrigins(parameter, parameters.Components[i], function, origins, inputs);
-            this.CollectOriginInference(parameter, parameters.Components[i], inference);
-        }
-
-        if (symbol.Type is { } writtenResult && Bound(writtenResult) is { } produced)
-        {
-            this.CollectOriginInference(produced, required.Components[1], inference, result: true);
-        }
-
-        if (!this.SolveCallOriginInference(function, inference, origins, inputs, use, null, select: explain))
-        {
-            return false;
-        }
-
-        for (var i = 0; i < function.Parameters.Count; i++)
-        {
-            var parameter = Substitute(Bound(function.Parameters[i].Type.BoundType!)!);
-            if (HasUnsubstitutedOrigin(parameter, function) || !this.IsSubtypeAt(parameters.Components[i], parameter, use) ||
-                !this.ProvesInputPremises(parameter, parameters.Components[i], use))
+            for (var i = 0; i < function.Parameters.Count; i++)
             {
-                return false;
+                var parameter = Substitute(Bound(function.Parameters[i].Type.BoundType!)!);
+                if (HasUnsubstitutedOrigin(parameter, function) || !this.IsSubtypeAt(parameters.Components[i], parameter, use) ||
+                    !this.ProvesInputPremises(parameter, parameters.Components[i], use))
+                {
+                    return false;
+                }
+
+                if (!operations.IsEmpty)
+                {
+                    // Compare the same substituted contract that established applicability. In particular,
+                    // independently named per-call Origins are fixed to the required signature before ranking.
+                    // References insert no adaptations and use no defaults; results never rank candidates.
+                    operations[i] = new(null, null, parameter, ArgumentOperationKind.Value, ArgumentAdaptation.Exact);
+                }
             }
 
-            if (!operations.IsEmpty)
-            {
-                // Compare the same substituted contract that established applicability. In particular,
-                // independently named per-call Origins are fixed to the required signature before ranking.
-                // References insert no adaptations and use no defaults; results never rank candidates.
-                operations[i] = new(null, null, parameter, ArgumentOperationKind.Value, ArgumentAdaptation.Exact);
-            }
+            return this.CheckCallOriginRelations(function, origins, inputs, use, null) &&
+                symbol.Type is { } result && Bound(result) is { } boundResult &&
+                !HasUnsubstitutedOrigin(result = Substitute(boundResult), function) &&
+                this.IsSubtypeAt(result, CompatibleResult(result, required.Components[1]), use) &&
+                this.ProvesResultPremises(function, result, use);
         }
-
-        return this.CheckCallOriginRelations(function, origins, inputs, use, null) &&
-            symbol.Type is { } result && Bound(result) is { } boundResult &&
-            !HasUnsubstitutedOrigin(result = Substitute(boundResult), function) &&
-            this.IsSubtypeAt(result, CompatibleResult(result, required.Components[1]), use) &&
-            this.ProvesResultPremises(function, result, use);
+        finally
+        {
+            this.contractPremises = saved;
+        }
 
         BoundType? Bound(BoundType type)
         {

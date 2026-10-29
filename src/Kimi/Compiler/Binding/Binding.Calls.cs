@@ -485,7 +485,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (!this.CompleteArguments(call, scope, selectedOperations))
+            if (!this.CompleteArguments(call, selected, scope, selectedOperations))
             {
                 return Complete(call, null);
             }

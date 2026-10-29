@@ -10,30 +10,24 @@ namespace Kimi.Compiler;
 // a node beyond the first).
 public sealed partial class Binding
 {
-    // SPEC 10.5.1, 15.6.4 step 3 (D-1): the outermost call argument whose Type its call supplies (TakesCallType) while the call completes
-    // it. A part of it that takes its Type from that call (a waiting nested call's contextual argument, a contextual Case's payload) is
-    // judged as part of the argument, so its relations are recorded at the argument (JudgedAt).
+    // SPEC 10.5.1, 15.6.4 step 3: the outermost call argument whose Type its call supplies while the call completes it. A part of it that
+    // takes its Type from that call (a waiting nested call's contextual argument, a contextual Case's payload) has no well-formed Type of
+    // its own: its well-formedness is part of the argument's, recorded once, at the argument (JudgedAt).
     private Koto? judgedArgument;
 
-    // Where a relation of `part`, a part that takes its Type from its context, is recorded: the call argument being completed when `part`
-    // lies in it within the same body, otherwise `part` itself.
-    private Koto JudgedAt(Koto part)
-    {
-        if (this.judgedArgument is not { } argument)
-        {
-            return part;
-        }
+    // D-1 (the owner; d3 amendment 1): the outermost call argument at a position whose Type the call itself determines (OpensPosition)
+    // while the call completes it. A contextual payload's fit there is the call's relation, recorded at the argument with the payload
+    // related (OpenedAt); at a position the parameter fixes completely it is the Case's own fit, at the payload.
+    private Koto? openedArgument;
 
-        for (var node = part; node is not null; node = node.Parent)
+    // `argument` when `part` lies in it within the same body, otherwise `part`.
+    private static Koto Within(Koto? argument, Koto part)
+    {
+        for (var node = argument is null ? null : part; node is not null; node = node is FunctionKoto ? null : node.Parent)
         {
             if (ReferenceEquals(node, argument))
             {
                 return argument;
-            }
-
-            if (node is FunctionKoto)
-            {
-                break;
             }
         }
 
@@ -126,6 +120,83 @@ public sealed partial class Binding
         }
     }
 
+    // Enters `argument` of the selected call, at the parameter Type `pattern`, for its completion; returns the state to restore. The
+    // outermost argument wins (a nested call's argument lies within it).
+    private (Koto? Judged, Koto? Opened) EnterArgument(InvocationKoto call, FunctionKoto selected, Koto argument, BoundType? pattern)
+    {
+        var saved = (this.judgedArgument, this.openedArgument);
+        this.judgedArgument ??= argument;
+        this.openedArgument ??= pattern is not null && this.OpensPosition(call, selected, pattern) ? argument : null;
+        return saved;
+    }
+
+    // Where the well-formedness of `part`, a part that takes its Type from its context, is recorded.
+    private Koto JudgedAt(Koto part) => Within(this.judgedArgument, part);
+
+    // Where the fit of `part`, a contextual payload, is recorded.
+    private Koto OpenedAt(Koto part) => Within(this.openedArgument, part);
+
+    // D-1 (amendment 1 of d3): whether the selected call determines the Type at the position of the parameter Type `pattern` itself: the
+    // pattern names one of the callee's Type parameters, or an Origin of the callee that its solve takes from bounds (a meet or a join,
+    // SPEC 15.3.6) rather than fixing it by an equality with another input (SPEC 10.8). A contextual part at a position the parameter
+    // fixes completely is judged by its own fit, where it is.
+    private bool OpensPosition(InvocationKoto call, FunctionKoto selected, BoundType pattern)
+    {
+        this.originInferences.TryGetValue((call, selected), out var inference);
+        return Opens(pattern, selected, inference, 0);
+
+        static bool Opens(BoundType type, FunctionKoto selected, OriginInference? inference, int depth)
+        {
+            if (depth > 64 || (type.Kind == BoundTypeKind.Parameter && type.Symbol is { } symbol && ContainerSlot(selected, symbol) >= 0))
+            {
+                return depth <= 64;
+            }
+
+            if (type.CarriesOrigin && (Solved(type.Origin, selected, inference) || AnySolved(type.OriginArguments, selected, inference)))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (Opens(type.Components[i], selected, inference, depth + 1))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        static bool AnySolved(IReadOnlyList<BoundOrigin> origins, FunctionKoto selected, OriginInference? inference)
+        {
+            for (var i = 0; i < origins.Count; i++)
+            {
+                if (Solved(origins[i], selected, inference))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        static bool Solved(BoundOrigin? origin, FunctionKoto selected, OriginInference? inference)
+        {
+            if (origin is null)
+            {
+                return false;
+            }
+
+            if (origin.Kind is OriginKind.Parameter or OriginKind.Input && ReferenceEquals(origin.Binder, selected))
+            {
+                return inference?.IsFixed(origin) != true;
+            }
+
+            return AnySolved(origin.Operands, selected, inference);
+        }
+    }
+
     // SPEC 15.6.1, 15.6.5, 10.1: applicability uses only the structural part of each fit, so the Origin relations of the selected
     // candidate are judged here, after selection and at their own sources: the receiver's and each argument's fit to its completed
     // parameter Type, then the well-formedness of each slot the call fills (SPEC 15.6.4 step 3: the receiver's, each argument's and each
@@ -144,15 +215,6 @@ public sealed partial class Binding
         ReadOnlySpan<BoundDefaultArgument> defaults)
     {
         this.callRelationScratch.Clear();
-        if (Environment.GetEnvironmentVariable("KIMI_TRACE216") is { } traceFilter && call.ToString()!.StartsWith(traceFilter, StringComparison.Ordinal))
-        {
-            static string T(BoundType? t) => t is null ? "-" : HoverTypeName(t);
-            foreach (ref readonly var op in operations)
-            {
-                Console.Error.WriteLine($"TRACE-TEMP call={call} src={op.Source} kind={op.Kind} adapt={op.Adaptation} srcT={T(op.SourceType)} paramT={T(op.ParameterType)} adapted={T(op.AdaptedType)} argT={T(op.Source?.BoundType)} same={ReferenceEquals(op.ParameterType, op.Source?.BoundType)} kindOf={(op.Source is null ? "-" : this.KindOf(op.Source).ToString())} was={(op.Source is not null && this.WasWaitingPart(op.Source))} fact={(op.Source is null ? "-" : this.RecordedFact(KotoHelper.UnwrapParentheses(op.Source)).Kind.ToString())} enumctx={(op.Source is not null && NeedsEnumContext(op.Source))}");
-            }
-        }
-
         var argumentCount = operations.Length - 1;
         var receiver = operations[argumentCount];
         if (receiver.Source is not null)

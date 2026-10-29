@@ -188,35 +188,6 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.3.7, the owner's (a): the first part of the implementation's own well-formedness, its n-th input's or its result's, that the
-    // required signature's own well-formedness and the premises at `use` do not prove under the instantiation (null when every part holds),
-    // with the failing relation.
-    private (int Part, BoundOrigin Longer, BoundOrigin Shorter)? FailedSignatureWellFormedness(BoundType actual, in CallableInstance instance, Koto use)
-    {
-        var saved = this.resultPremiseInstance;
-        this.resultPremiseInstance = instance;
-        try
-        {
-            var inputs = actual.Components[0];
-            for (var i = 0; i <= inputs.Components.Count; i++)
-            {
-                var part = i < inputs.Components.Count ? inputs.Components[i] : actual.Components[1];
-                this.failedResultPremise = null;
-                if (!this.VisitWellFormedPremises(part, part, null, new(null, use, WellFormedAction.Instance)) && this.failedResultPremise is { } failed)
-                {
-                    return (i, failed.Longer, failed.Shorter);
-                }
-            }
-
-            return null;
-        }
-        finally
-        {
-            this.resultPremiseInstance = saved;
-            this.failedResultPremise = null;
-        }
-    }
-
     // SPEC 10.7: within one Callable comparison, `a` outlives `b` after the implementation's call-time Origins are instantiated. The
     // required per-call Origins are rigid: one outlives another only at the same position, and a fixed Origin outlives one only when
     // it is static, since the call that binds it may come after every point of the enclosing body. A meet outlives an Origin when
@@ -323,10 +294,13 @@ public sealed partial class Binding
             }
 
             // The owner's (a): the implementation's own well-formedness, proven from the required signature's.
-            return this.FailedSignatureWellFormedness(actual, instance, use) is { } formed
-                ? new(at, formed.Part < inputs.Components.Count ? $"the {Ordinal(formed.Part + 1)} parameter's well-formedness" : "the result's well-formedness",
-                    this.Instantiated(formed.Longer, instance), this.Instantiated(formed.Shorter, instance), false)
-                : null;
+            if (this.FailedSignatureWellFormedness(actual, instance, use) is not { } formed)
+            {
+                return null;
+            }
+
+            var member = formed.Part < inputs.Components.Count ? $"the {Ordinal(formed.Part + 1)} parameter's well-formedness" : "the result's well-formedness";
+            return new(at, member, this.Instantiated(formed.Longer, instance), this.Instantiated(formed.Shorter, instance), false);
         }
         finally
         {

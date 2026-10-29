@@ -153,11 +153,6 @@ public sealed partial class Binding
                 }
 
                 var candidate = variable.Polarity == 2 ? (incomparable ? null : lower) : upper ?? (incomparable ? null : lower);
-                if (Environment.GetEnvironmentVariable("KIMI_TRACE216S") is { } solveFilter && binder is FunctionKoto { Name: { } traceName } && traceName == solveFilter)
-                {
-                    Console.Error.WriteLine($"TRACE-TEMP solve {traceName} var={variable.Origin} pol={variable.Polarity} upper={upper} lower={lower} wf={string.Join(",", inference.WellFormed.Select(w => $"{w.Longer}>{w.Shorter}"))} select={select}");
-                }
-
                 if (variable.Polarity == 3 && (incomparable || upper is null || lower is null ||
                     !this.ProvesOriginOutlives(upper, lower, use) || !this.ProvesOriginOutlives(lower, upper, use)))
                 {
@@ -311,6 +306,20 @@ public sealed partial class Binding
             {
                 this.Bounds.Add(bound);
             }
+        }
+
+        // Whether an equality (an invariant occurrence, both polarities) fixes the variable `origin`, rather than its bounds solving it.
+        internal bool IsFixed(BoundOrigin origin)
+        {
+            for (var i = 0; i < this.Variables.Count; i++)
+            {
+                if (ReferenceEquals(this.Variables[i].Origin, origin))
+                {
+                    return this.Variables[i].Polarity == 3;
+                }
+            }
+
+            return false;
         }
 
         internal void Discover(BoundOrigin expression, int polarity)

@@ -42,10 +42,11 @@ public sealed partial class Binding
         Unbound,
     }
 
-    // The callee whose result premises are visited, or null for an input's, which no other premise of the definition replaces; the
-    // use; and for Bound and Unbound the call's inference and, for a result, the receiver Type whose arguments a member's container
-    // Origins project to (an input's pattern is already projected where the call collects it).
-    private readonly record struct WellFormedVisit(FunctionKoto? Function, Koto Use, WellFormedAction Action, OriginInference? Inference = null, BoundType? Owner = null);
+    // The callee whose result premises are visited (a named function, or the callee value of a nested signature, whose result premise
+    // no definition proves), or null for an input's, which no other premise of the definition replaces; the use; and for Bound and
+    // Unbound the call's inference and, for a result, the receiver Type whose arguments a member's container Origins project to (an
+    // input's pattern is already projected where the call collects it).
+    private readonly record struct WellFormedVisit(Koto? Function, Koto Use, WellFormedAction Action, OriginInference? Inference = null, BoundType? Owner = null);
 
     // SPEC 15.3.7, 10.7: instantiate all of an Item's call Origins together, including named and result-only universals, against the
     // required contract. Repeated invariant occurrences and declared conditions constrain the same solution. An open evidence region
@@ -58,20 +59,6 @@ public sealed partial class Binding
         }
 
         signature = this.ContractType(signature, this.ConstraintScope(use));
-        var saved = this.contractPremises;
-        this.contractPremises = required; // The owner's (a): the comparison assumes the required signature's own well-formedness.
-        try
-        {
-            return this.ItemContractHolds(symbol, function, signature, required, item, use);
-        }
-        finally
-        {
-            this.contractPremises = saved;
-        }
-    }
-
-    private bool ItemContractHolds(BindingSymbol symbol, FunctionKoto function, BoundType signature, BoundType required, BoundType item, Koto use)
-    {
         if (function.Origins.Count == 0 || HasOpenOrigin(required, evidenceOnly: true))
         {
             if (!this.CallableSignatureFits(signature, required, SignatureOwner(item)))
@@ -231,13 +218,14 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.6.4 step 3 (the owner's (A)): a value call of a nested signature (a Function Type's or an anonymous function's), whose
-    // well-formedness is its own, proves its instantiated result well formed at the call, every position and its Types' own clauses.
-    private void RequireNestedResult(BoundType declared, BoundType result, Koto use)
+    // SPEC 15.6.4 step 3 (the owner's (A)): a value call of a nested signature (a Function Type's or an anonymous function's) through
+    // `callee` proves its instantiated result well formed at the call, as a named call proves its callee's result premises; its Types'
+    // own clauses are the call's Type constraints (CheckValueCallTypeConstraints).
+    private void RequireNestedResult(Koto callee, BoundType declared, BoundType result, Koto use)
     {
         if (declared.StoresOrigin)
         {
-            this.VisitWellFormedPremises(declared, result, null, new(null, use, WellFormedAction.Require));
+            this.VisitWellFormedPremises(declared, result, null, new(callee, use, WellFormedAction.Require));
         }
     }
 
@@ -301,20 +289,6 @@ public sealed partial class Binding
             return null;
         }
 
-        var saved = this.contractPremises;
-        this.contractPremises = required; // The owner's (a): the comparison assumes the required signature's own well-formedness.
-        try
-        {
-            return this.ItemContractFailure(symbol, function, signature, required, item, at, use);
-        }
-        finally
-        {
-            this.contractPremises = saved;
-        }
-    }
-
-    private OriginContractFact? ItemContractFailure(BindingSymbol symbol, FunctionKoto function, BoundType signature, BoundType required, BoundType item, Koto at, Koto use)
-    {
         if (function.Origins.Count == 0 || HasOpenOrigin(required, evidenceOnly: true))
         {
             return this.ConversionContractFailure(signature, required, function, at, use) ?? this.ConditionContractFailure(function, signature, required, at, use);
@@ -350,33 +324,58 @@ public sealed partial class Binding
         }
 
         var instance = new CallableInstance(actual, function, expected, FunctionTypeBinder(expected));
-        if (this.originDeclarations.GetValueOrDefault(function) is { } declaration)
-        {
-            foreach (var relation in declaration.Relations)
-            {
-                var longer = origins is null ? relation.Longer : this.SubstituteStoredOrigin(relation.Longer, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, InputOriginCount(function)));
-                var shorter = origins is null ? relation.Shorter : this.SubstituteStoredOrigin(relation.Shorter, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, InputOriginCount(function)));
-                if (!InstanceOutlives(longer, shorter, instance, this, use, 0) ||
-                    (relation.Equality && !InstanceOutlives(shorter, longer, instance, this, use, 0)))
-                {
-                    return this.ConditionFact(at, $"the clause '{relation.Syntax}'", longer, shorter, relation.Equality, instance, use);
-                }
-            }
-        }
-
-        if (!CarriesResultPremises(function))
-        {
-            return null;
-        }
-
-        var saved = this.resultPremiseInstance;
+        var saved = (this.contractPremises, this.resultPremiseInstance);
+        this.contractPremises = expected; // SPEC 15.3.7, the owner's (a): the comparison assumes the required signature's own well-formedness.
         this.resultPremiseInstance = instance;
         this.failedResultPremise = null;
         try
         {
+            if (this.originDeclarations.GetValueOrDefault(function) is { } declaration)
+            {
+                foreach (var relation in declaration.Relations)
+                {
+                    var longer = origins is null ? relation.Longer : this.SubstituteStoredOrigin(relation.Longer, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, InputOriginCount(function)));
+                    var shorter = origins is null ? relation.Shorter : this.SubstituteStoredOrigin(relation.Shorter, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, InputOriginCount(function)));
+                    if (!InstanceOutlives(longer, shorter, instance, this, use, 0) ||
+                        (relation.Equality && !InstanceOutlives(shorter, longer, instance, this, use, 0)))
+                    {
+                        return this.ConditionFact(at, $"the clause '{relation.Syntax}'", longer, shorter, relation.Equality, instance, use);
+                    }
+                }
+            }
+
             var result = function.BoundSymbol!.Type!;
-            return !this.VisitWellFormedPremises(result, actual.Components[1], null, new(function, use, WellFormedAction.Instance)) && this.failedResultPremise is { } failed
-                ? this.ConditionFact(at, "the result's well-formedness", failed.Longer, failed.Shorter, false, instance, use) : null;
+            return CarriesResultPremises(function) && !this.VisitWellFormedPremises(result, actual.Components[1], null, new(function, use, WellFormedAction.Instance)) &&
+                this.failedResultPremise is { } failed ? this.ConditionFact(at, "the result's well-formedness", failed.Longer, failed.Shorter, false, instance, use) : null;
+        }
+        finally
+        {
+            (this.contractPremises, this.resultPremiseInstance) = saved;
+            this.failedResultPremise = null;
+        }
+    }
+
+    // SPEC 15.3.7, the owner's (a): the first part of the implementation's own well-formedness, its n-th input's or its result's, that the
+    // required signature's own well-formedness and the premises at `use` do not prove under the instantiation (null when every part holds),
+    // with the failing relation.
+    private (int Part, BoundOrigin Longer, BoundOrigin Shorter)? FailedSignatureWellFormedness(BoundType actual, in CallableInstance instance, Koto use)
+    {
+        var saved = this.resultPremiseInstance;
+        this.resultPremiseInstance = instance;
+        try
+        {
+            var inputs = actual.Components[0];
+            for (var i = 0; i <= inputs.Components.Count; i++)
+            {
+                var part = i < inputs.Components.Count ? inputs.Components[i] : actual.Components[1];
+                this.failedResultPremise = null;
+                if (!this.VisitWellFormedPremises(part, part, null, new(null, use, WellFormedAction.Instance)) && this.failedResultPremise is { } failed)
+                {
+                    return (i, failed.Longer, failed.Shorter);
+                }
+            }
+
+            return null;
         }
         finally
         {
@@ -567,7 +566,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (visit.Function is { } function)
+        if (visit.Function is FunctionKoto function)
         {
             var excluded = this.resultPremiseExcluded;
             this.resultPremiseExcluded = function;
@@ -624,11 +623,7 @@ public sealed partial class Binding
     {
         if (visit.Action == WellFormedAction.Require)
         {
-            if (!ReferenceEquals(longer, shorter))
-            {
-                this.AddObligation(new(BindingObligationKind.OriginOutlives, visit.Use, BindingDeadline.BodyOrigins, null, longer, shorter, Equality: equality, Clause: clause));
-            }
-
+            this.JudgeCallPosition(visit.Use, longer, shorter, equality, null, clause, declared: true);
             return true;
         }
 
@@ -661,9 +656,10 @@ public sealed partial class Binding
         return true;
     }
 
-    // A well-formedness relation of a Type at a use, an obligation there that ownership judges and reports (SPEC 15.6.5): a located record
-    // that never fails Binding, so the body's other records stay (SPEC 23.1.2). A meet outlives an Origin exactly when each operand does,
-    // so each failing operand is its own chain (SPEC 15.6.1 Identity).
+    // A well-formedness relation of an instantiated Type at a use, an input's or a result's: an obligation there that ownership judges
+    // and reports (SPEC 15.6.5), as an annotation's is, a located record that never fails Binding, so the body's other records stay
+    // (SPEC 23.1.2). A meet outlives an Origin exactly when each operand does, so each failing operand is its own chain (SPEC 15.6.1
+    // Identity).
     private void RequireWellFormedOutlives(BoundType result, BoundOrigin value, BoundOrigin substituted, Koto use, ulong condition)
     {
         if (value.Kind == OriginKind.Intersection)

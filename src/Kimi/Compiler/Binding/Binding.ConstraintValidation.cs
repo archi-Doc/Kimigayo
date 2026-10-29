@@ -587,6 +587,28 @@ public sealed partial class Binding
         return true;
     }
 
+    // The Type constraints of a call after selection: a named call's (a target whose declaration failed leaves the call resting on that
+    // failure, SPEC 23.1.2), and a value call's instantiated result, as a named call's (SPEC 15.6.4 step 3; the owner's (A)).
+    private void RequireCallConstraints(InvocationKoto node, BindingMode mode)
+    {
+        if (node.BoundCall is { } call)
+        {
+            if (node.BindingFailure == BindingFailure.None &&
+                this.InvalidDeclarationContextCause(this.Library.PresentedTarget(call.Target).Declaration) is { } invalidTarget)
+            {
+                this.CompleteDependent(node, invalidTarget);
+            }
+            else
+            {
+                this.RequireConstraint(node, this.CheckCallTypeConstraints(call, this.ConstraintScope(node)), mode);
+            }
+        }
+        else if (node is { BoundValueCall: not null, BoundType: { } result })
+        {
+            this.RequireConstraint(node, this.CheckTypeConstraints(result, this.ConstraintScope(node)), mode);
+        }
+    }
+
     private void RequireConstraint(Koto use, ConstraintProof proof, BindingMode mode, Koto? diagnosticCause = null)
     {
         if (proof == ConstraintProof.Error)

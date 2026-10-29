@@ -186,7 +186,9 @@ public sealed partial class MirBorrowsTest
     [InlineData("e3c4d30c20af", "leak: var local = values <- local@uniq")]
     [InlineData("0433a531b1ba", "leak: var v = view@move <- v[0]@follow@uniq")]
     [InlineData("38df74b325ce", "leak: var slot = p <- rr@follow@follow@uniq")]
-    [InlineData("27e4888a2ae9", "g: let m: i32 = 5 <- q")]
+    // G216 (a) (SPEC 15.3.6; the planning session's decision for mb27, 2026-10-29): `s/T`'s Origin takes the meet of its upper bounds, y's
+    // well-formedness among them, so the call's result, not q's well-formedness, fails: one record at that fit, no derived conflict.
+    [InlineData("27e4888a2ae9", "")]
     [InlineData("d4a09871a00b", "g: let local: i32 = 1 <- x")]
     [InlineData("write-through-store", "w: let local = 1 <- x")]
     [InlineData("content-retention", "cr: let local = 1 <- first(h@ref)")]
@@ -273,7 +275,7 @@ public sealed partial class MirBorrowsTest
         }
 
         Assert.Equal(["noncfl-candidate-v"], shared);
-        Assert.Equal(34, causes);
+        Assert.Equal(33, causes); // G216 (a): 27e4888a2ae9's cause leaves with its derived conflict (SPEC 15.3.6, the mb27 decision).
     }
 
     // SPEC 7.2.3 (R26; 2g-5's PreparedInput grouping): a default template's Borrow its result keeps is DefaultArgumentBorrow_Kd, a

@@ -210,15 +210,15 @@ public sealed partial class Binding
             }
         }
 
-        if (this.contractPremises is { Components: [var inputs, var result] })
+        if (this.contractPremises is { Components: [var requiredInputs, var requiredResult] })
         {
             // SPEC 15.3.7, the owner's (a): a Callable comparison assumes the required signature's own well-formedness.
-            for (var i = 0; i < inputs.Components.Count; i++)
+            for (var i = 0; i < requiredInputs.Components.Count; i++)
             {
-                this.AddTypePremises(environment, inputs.Components[i], OriginPremiseRule.Input);
+                this.AddTypePremises(environment, requiredInputs.Components[i], OriginPremiseRule.Input);
             }
 
-            this.AddResultPremises(environment, result);
+            this.AddResultPremises(environment, requiredResult);
         }
 
         var closure = environment.Closure;

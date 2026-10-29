@@ -5465,6 +5465,40 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the SPEC blocks (MirCensusTest's rows and the KIMI_MIR_DIFF rows of GenericOwnershipCaseTest and
     MirDifferenceTest.RequestedCorpus, under (S) and under the proven-only reading); against dev the whole change removes exactly
     pair-cases' six a5-writes rows.
+- **R4-M155 A call proves the instantiated Type of each argument that takes its Type from it; a nested signature's well-formedness is
+  its own (G216 (a), prototype-first candidate)** (2026-10-29; Full change, DECISIONS Q11: problem statement d3 with amendment 1, the
+  shared tests `a3b648925`; the owner's (A) 「(A) 入れ子自身のもの (推奨)」, (a) 「(a) 無名関数と同じ規則 (推奨)」, D-1
+  「選択肢 (a)：引数に記録し、payload を関連位置に添える」, D-2 「D-2（probe 2 の再計測後に残るコスト）許容します」, D-3 「2 記録でよい」).
+  Supersedes R4-M137's nested-result half and, for a nested Function Type part of a signature, BU-26's Type-occurrence judgment.
+  - Input rule (SPEC 10.5.1, 15.6.1, 15.6.4 step 3): an argument part that takes its Type from its call (`TakesCallType`: a Literal or
+    waiting part, a contextual Case, a Tuple or array literal; ArgumentKinds' class) has no well-formed Type of its own; the call
+    (`RequireArgumentPremises`, named and value calls, Case payloads) judges every position of its instantiated parameter Type at it. A
+    part inside such an argument that takes its Type from the same call is recorded at the argument, once (`judgedArgument`, `JudgedAt`).
+  - D-1 with amendment 1: a contextual payload's fit is the call's relation, at the argument with the payload related (role `payload`,
+    `OriginRelationFact.Payload`), only where the call determines that position's Type: its pattern names a callee Type parameter or a
+    callee Origin the solve takes from bounds rather than an equality with another input (`OpensPosition`, `OriginInference.IsFixed`,
+    `openedArgument`); elsewhere it is the Case's own fit, at the payload.
+  - SPEC 15.3.6: a call's solve takes the well-formedness of every filled parameter, slots substituted, and a Case construction without
+    an expected Type solves its Origins the same way (`SolveConstructionOrigins`), so a covariant slot takes the meet of all its upper
+    bounds (cx1, cx5, cxc valid; cx2 errs).
+  - The owner's (A): the premise catalog adds nothing for a Function Type inside a signature; an anonymous function's result is a
+    premise of its body; TypeOrigins forms no occurrence relation for a nested signature's input or result; each value call proves its
+    callee's result (`RequireNestedResult`) and, as a named call does, its result Type's constraints (`RequireCallConstraints`).
+    BU-26's reason for judging a nested Function Type part at the declaration, that no premise covers its per-call Origin so leaving it
+    unjudged would accept an escape, no longer holds: each call of the nested signature proves it.
+  - The owner's (a), SPEC 15.3.7: every Callable comparison assumes the required signature's own well-formedness (`contractPremises`,
+    set by FunctionFits, ContractFits, ConversionContractFailure and ConditionContractFailure; read by `ExtractOriginPremises`), and a
+    Function value's conversion proves its own well-formedness from it (`FailedSignatureWellFormedness`).
+  - Record classes (SPEC 23.1.2): an instantiated Type's well-formedness at a call, an input's as a result's, is an ownership
+    obligation (`RequireWellFormedOutlives`), as an annotation's is; a Type's own clause at an input stays a Binding `declared` record.
+  - Rejected: every relation and clause as an obligation (t7c's clause record dies beside the Type-constraint failures); input
+    well-formedness as a Binding record (n7g2, ea1 and cs1_ty lose their independent records); every relation inside a call argument at
+    the argument (amendment 1); keeping BU-26's occurrence judgment of a nested result (fails r3, v2, z1, e1a, cz6 and 34 more rows).
+  - Moves awaiting the owner (no expectation changed): BU-26's nested-result rows (ADeclarationsRelationIsBindingsRecordAtItsTypeOccurrence
+    `contract C`, `get`; ANestedFunctionTypeKeepsItsWellFormednessAtTheDefinition), (a)'s `premise` form of
+    AConversionProvesTheImplementationsConditions, and ANestedSignaturesInputIsWellFormedByPremiseAndAtEachCall's row beside `m`'s
+    Binding error (G56's class). Open: c2, c4 (a conversion inside a Tuple or array literal is the literal's TypeMismatch_Kd); the owner's
+    (i) limit for c2bg, c2dg, c2_fnvalue_converted_weaker, c15, p1b.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -6382,7 +6416,9 @@ resumed by R4-M86 (2026-10-20).
   an accessor storage witness; R4 restores row 6's Closure case), the effect rule's witnesses being `MirBorrowsTest.Rooted`'s.
   Temporary: P42's static-Borrow unit replaces the denial and the U with SPEC 11.8's Origins.
 - **BU-26** (2026-10-22; the BU planning session after the full process: designs A and B, the design review's merge M, R4
-  agreeing; the owner's answers Q1 and Q2; PLAN G210, unit bu24) Binding judges every Origin relation it forms with no executable
+  agreeing; the owner's answers Q1 and Q2; PLAN G210, unit bu24; superseded in part by R4-M155: a nested Function Type part of a
+  signature is no longer judged at its Type occurrence, since under the owner's (A) each call of that signature proves it) Binding
+  judges every Origin relation it forms with no executable
   body, a declaration's row (R4-M101 E1, E2): a Field's, payload's or base's declared Type, a computed Property's header, a
   signature's well-formedness (a requirement's, an override's, a specialization's, a nested Function Type part) and a clause's
   unrepresentable end. `Binding.JudgeDeclarationRows`, at the end of `ValidateOriginRelations` in every pass, consumes each such row

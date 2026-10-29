@@ -985,19 +985,10 @@ public sealed partial class Binding
         for (var i = 0; i < this.nodes.Count; i++)
         {
             var node = this.nodes[i];
-            // API and constraint validation can invalidate a target or Type after call selection; a target whose declaration
-            // failed leaves the call resting on that failure (SPEC 23.1.2).
-            if (node is InvocationKoto { BoundCall: { } call })
+            // API and constraint validation can invalidate a target or Type after call selection (RequireCallConstraints).
+            if (node is InvocationKoto call)
             {
-                if (node.BindingFailure == BindingFailure.None &&
-                    this.InvalidDeclarationContextCause(this.Library.PresentedTarget(call.Target).Declaration) is { } invalidTarget)
-                {
-                    this.CompleteDependent(node, invalidTarget);
-                }
-                else
-                {
-                    this.RequireConstraint(node, this.CheckCallTypeConstraints(call, this.ConstraintScope(node)), mode);
-                }
+                this.RequireCallConstraints(call, mode);
             }
             else if (node is IsKoto { BoundRuntimeTest: { } runtimeTest } test)
             {
