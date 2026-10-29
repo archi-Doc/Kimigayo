@@ -98,18 +98,20 @@ internal enum RetentionKind : byte
 /// <see cref="TyCtxt.Signature"/> numbers, the receiver at its written slot, a Callable signature's input positions, or a destruction's
 /// input 0), whether it may receive a pointer tied to no input (<see cref="Untied"/>: a raw layer stepping Unstated or Static that the
 /// call may write there, or for the result an atom reached from no input, design A3's Φ_E), and the conditions under which an input not
-/// Value in <see cref="Kinds"/> is Value (<see cref="Pairs"/>: an input with the two Origins of the call's Type arguments, Self or
-/// declaring Type whose relation `Longer outlives Shorter` the fit needs and the premises do not prove, the call's solved Origins'
-/// to judge; any one proven suffices; DECISIONS R4-M154, Revision 2). Immutable.</summary>
-internal sealed class StorageRetention(RetentionKind[] kinds, (int Input, BoundOrigin Longer, BoundOrigin Shorter)[] pairs, bool untied)
+/// Value in <see cref="Kinds"/> is Value (<see cref="Pairs"/>: conjunctions, each of an input and the pairs of two Origins of the call's
+/// Type arguments, Self or declaring Type whose relations `Longer outlives Shorter` the fit needs and the premises do not prove, one per
+/// layer of a source's path the position's closure misses, the call's solved Origins' to judge; a pair `Joined` continues the previous
+/// pair's conjunction; the input is Value where every pair of one of its conjunctions holds; DECISIONS R4-M154, Revisions 2 and 10).
+/// Immutable.</summary>
+internal sealed class StorageRetention(RetentionKind[] kinds, (int Input, BoundOrigin Longer, BoundOrigin Shorter, bool Joined)[] pairs, bool untied)
 {
     private readonly RetentionKind[] kinds = kinds;
-    private readonly (int Input, BoundOrigin Longer, BoundOrigin Shorter)[] pairs = pairs;
+    private readonly (int Input, BoundOrigin Longer, BoundOrigin Shorter, bool Joined)[] pairs = pairs;
     private readonly bool untied = untied;
 
     internal ReadOnlySpan<RetentionKind> Kinds => this.kinds;
 
-    internal ReadOnlySpan<(int Input, BoundOrigin Longer, BoundOrigin Shorter)> Pairs => this.pairs;
+    internal ReadOnlySpan<(int Input, BoundOrigin Longer, BoundOrigin Shorter, bool Joined)> Pairs => this.pairs;
 
     internal bool Untied => this.untied;
 }

@@ -176,11 +176,11 @@ internal sealed partial class MirBorrows
         return value;
     }
 
-    // The inputs a record's pairs make Value at the call (DECISIONS R4-M154, Revision 2), a bit per input: those with a pair proven under
-    // the view's Origin class (MirOrigins.Outlives at the call's site). A pair whose Origins the class does not class, or of an input past
-    // the mask's 64, leaves its input undecided: a limit at the call where its Value would store a Loan or an address. Memoized per
-    // record, body, view and site for the program version: Outlives resolves the pair's Origins at the site (OriginAtUse), so two calls
-    // sharing a record are judged apart.
+    // The inputs a record's pairs make Value at the call (DECISIONS R4-M154, Revisions 2 and 10), a bit per input: those with a conjunction
+    // whose every pair is proven under the view's Origin class (MirOrigins.Outlives at the call's site, Holds). A conjunction with a pair
+    // whose Origins the class does not class and none refuted, or of an input past the mask's 64, leaves its input undecided: a limit at
+    // the call where its Value would store a Loan or an address. Memoized per record, body, view and site for the program version:
+    // Outlives resolves the pair's Origins at the site (OriginAtUse), so two calls sharing a record are judged apart.
     private ulong Solved(ulong[] state, in MirTerminator call, StorageRetention record, bool checks)
     {
         if (record.Pairs.IsEmpty)
@@ -193,21 +193,24 @@ internal sealed partial class MirBorrows
         ref var entry = ref CollectionsMarshal.GetValueRefOrAddDefault(this.solved, (record, this.body, this.view, site), out var known);
         if (!known)
         {
-            foreach (var (input, longer, shorter) in record.Pairs)
+            var pairs = record.Pairs;
+            for (var start = 0; start < pairs.Length;)
             {
-                var bit = 1UL << Math.Min(input, 63);
-                bool? holds = (input >= 63, (entry.Proven & bit) != 0) switch
+                var (input, end) = (pairs[start].Input, start + 1);
+                while (end < pairs.Length && pairs[end].Joined)
                 {
-                    (true, _) => null,
-                    (_, true) => true,
-                    _ => origins.Outlives(this.body, this.view, longer, shorter, site),
-                };
+                    end++;
+                }
+
+                var bit = 1UL << Math.Min(input, 63);
+                var holds = input >= 63 ? null : this.Holds(pairs[start..end], site);
                 (entry.Proven, entry.Undecided) = holds switch
                 {
                     true => (entry.Proven | bit, entry.Undecided),
                     null => (entry.Proven, entry.Undecided | bit),
                     false => entry,
                 };
+                start = end;
             }
         }
 
@@ -219,6 +222,20 @@ internal sealed partial class MirBorrows
         }
 
         return entry.Proven;
+    }
+
+    // Whether one conjunction of a record's pairs holds at the call's site (MirOrigins.Outlives): false where one pair does not, null where
+    // none fails and one is undecided, true where each holds.
+    private bool? Holds(ReadOnlySpan<(int Input, BoundOrigin Longer, BoundOrigin Shorter, bool Joined)> conjunction, SourceRef site)
+    {
+        bool? holds = true;
+        foreach (var (_, longer, shorter, _) in conjunction)
+        {
+            var pair = origins.Outlives(this.body, this.view, longer, shorter, site);
+            holds = pair == false || holds == false ? false : pair is null || holds is null ? null : true;
+        }
+
+        return holds;
     }
 
     // Clears the entry and record memos at a new program version, whose case Types and records they answer.

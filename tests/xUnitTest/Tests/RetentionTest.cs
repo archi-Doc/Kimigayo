@@ -560,6 +560,19 @@ public sealed class RetentionTest
         Assert.Equal(["store 0: own {0 Content} if {1 Value: p > o}, reached {0 Content} if {1 Value: p > o}"], Calls(c, "f"));
     }
 
+    // DECISIONS R4-M154, Revision 10: a source's fit is the conjunction over the layers of its path, but those the premise catalog's
+    // well-formedness relates to the layer above, so a borrow formed through `x`'s raw layer lists one pair per layer the position's
+    // closure misses: into `*w`, `p`, `r` (the raw layer's, which no well-formedness relates to `p`) and `a` (none relates it to `r`);
+    // into Box2's `uniq/i32 during a` past x's referent, `p` and `r`.
+    [Fact]
+    public void ASourcesPairsAreOneConjunctionOverItsPath()
+    {
+        var c = Bind("struct Box2 {a}\n    public var inner: uniq/i32 during a\n    public init(inner: uniq/i32 during a) => self.inner = inner\n" +
+            "func f<T, E>(x: T, w: uniq/E) => ()\n" +
+            "func g(zr: ref/i32 during r, x: uniq/(raw/(Box2 during a) during r) during p, w: uniq/(uniq/i32 during s) during q) => f(x, w)\n");
+        Assert.Equal(["store 0: own {0 Content} if {0 Value: p > r}, reached {0 Content} if {0 Value: p > a & 0 Value: r > a}, store 1: own {1 Content} if {0 Value: p > s & 0 Value: r > s & 0 Value: a > s}, reached {}"], Calls(c, "f"));
+    }
+
     // SPEC 22.2.3, 15.6.3, 8.4: a requirement on the caller's abstract Self is read as the caller's premises make its contract: under
     // `I is Iterator`, `next`'s item is `I.Item`, which names no `step`, so it descends from the receiver's referent (Content) and two
     // items stay valid together; with no calling definition the same Subst reads `LentItem(step)`, which retains the receiver Borrow.
@@ -1371,8 +1384,8 @@ public sealed class RetentionTest
 
         static string Flags(RetentionKind kind) => string.Join(' ', new[] { RetentionKind.Value, RetentionKind.Content, RetentionKind.Chain }.Where(x => (kind & x) != 0));
 
-        // A record's pairs: ` if {i Value: longer > shorter, ...}`.
+        // A record's pairs: ` if {i Value: longer > shorter, ...}`, the pairs of one conjunction joined by ` & `.
         static string Pairs(StorageRetention record)
-            => record.Pairs.IsEmpty ? string.Empty : $" if {{{string.Join(", ", record.Pairs.ToArray().Select(static x => $"{x.Input} Value: {x.Longer.Name} > {x.Shorter.Name}"))}}}";
+            => record.Pairs.IsEmpty ? string.Empty : $" if {{{string.Concat(record.Pairs.ToArray().Select(static (x, i) => $"{(i == 0 ? string.Empty : x.Joined ? " & " : ", ")}{x.Input} Value: {x.Longer.Name} > {x.Shorter.Name}"))}}}";
     }
 }

@@ -13,10 +13,10 @@ namespace Kimi.Compiler;
 // (HeldParts) and the pair layers' admitted cases (LayerAdmitted).
 // Outputs: per computation, the sources by node (retentionSources, with their layer paths, retentionPaths); per question, whether a
 // position's Type can hold a source.
-// Invariants: each exclusive layer forms its own sources: a Type is walked once per outermost layer of its path, whose node the fit
-// needs (each inner layer's outlives it by well-formedness); a fit compares Origin-erased Types (TyCtxt.Erase), a pair layer by its
-// admitted cases; an abstract part, a part Binding did not bind and a library Type keeping no part hold any; the walks stop at the
-// depth bound (StorageBound).
+// Invariants: a source is identified by its path (Revision 10): the layers it is formed through but those the premise catalog's
+// well-formedness rule relates to the layer above (Related), each of which a fit needs, so a Type is walked once per path; a fit compares
+// Origin-erased Types (TyCtxt.Erase), a pair layer by its admitted cases; an abstract part, a part Binding did not bind and a library Type
+// keeping no part hold any; the walks stop at the depth bound (StorageBound).
 // Must not: judge an Origin relation (the premise closure's), walk a storage (the storage walk's), or read the call's arguments.
 public sealed partial class Binding
 {
@@ -25,8 +25,16 @@ public sealed partial class Binding
     private readonly List<RetentionSource> retentionSources = new();
     private readonly List<int> retentionPaths = new();
     private readonly List<int> retentionPath = new();
-    private readonly HashSet<(int Layer, bool Own, BoundType Type)> retentionVisits = new(); // Sources' visits, by outermost layer.
+    private readonly HashSet<(int Path, bool Own, BoundType Type)> retentionVisits = new(); // Sources' visits, by path.
+    private readonly Dictionary<(int Path, int Layer), int> retentionPathIds = new(); // The paths walked, each by its prefix and last layer.
     private readonly HashSet<BoundType> retentionParts = new(ReferenceEqualityComparer.Instance);
+
+    // Whether the premise catalog's well-formedness rule (R2, AddTypePremises: an Origin stored below a borrow or Slice layer outlives
+    // that layer's) relates a layer's node to the layer above's (`above`, -1: none), in every case, or the two are one node: then the
+    // layer adds nothing to a fit (DECISIONS R4-M154, Revision 10). The rule's edges decide, never a layer's kind: a raw layer's own
+    // Origin is stored nowhere (BoundType.Origin), so it stays unless another stored occurrence relates it.
+    private static bool Related(OriginPremiseEnvironment environment, int node, int above)
+        => above >= 0 && (node == above || environment.Closure.States(node, above, OriginPremiseRule.Input));
 
     // The Value sources of the contract's inputs (SPEC 15.6.4 read as (iii), 15.6.3; DECISIONS R4-M154), by node: a value of an input's
     // Type and of each part it holds by value (a borrowed input's part is its layer; a by-value input's, its parts by value), named by the
@@ -39,25 +47,25 @@ public sealed partial class Binding
     {
         this.retentionSources.Clear();
         this.retentionPaths.Clear();
+        this.retentionPathIds.Clear();
         for (var i = 0; i < inputs.Length; i++)
         {
             if (inputs[i] is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
             {
                 this.retentionVisits.Clear();
-                this.Sources(environment, inputs[i], i, own: true, 0);
+                this.Sources(environment, inputs[i], i, own: true, (-1, 0), 0);
             }
         }
     }
 
     // An input's sources at a part of its own value (`own`) or at a part a referent of it holds by value, past its own layer and exclusive
-    // ones (else), each with the nodes of the layers it is formed through (retentionPath: a reborrow's region lies within each, SPEC
-    // 15.6.3). Each exclusive layer forms its own sources (form (b), DECISIONS R4-M154): a Type is walked once per outermost layer of
-    // its path, whose node its fit needs (each inner layer's outlives it by well-formedness), so one reached through two layers forms
-    // the borrows of both.
-    private void Sources(OriginPremiseEnvironment environment, BoundType? type, int input, bool own, int depth)
+    // ones (else), each with its path (retentionPath, Revision 10): the nodes of the layers it is formed through (a reborrow's region lies
+    // within each, SPEC 15.6.3; a borrow of a raw place within the raw layer's Origin, 5.2.2) but those Related to the layer above
+    // (`at.Above`, the node of the layer whose referent the walk is in, -1: none). Each path forms its own sources (form (b)): a Type is
+    // walked once per path (`at.Path`, an interned id), so one reached through two layers forms the borrows of both.
+    private void Sources(OriginPremiseEnvironment environment, BoundType? type, int input, bool own, (int Above, int Path) at, int depth)
     {
-        var outermost = this.retentionPath.Count > 0 ? this.retentionPath[0] : -1;
-        if (type is null || depth > StorageBound || !this.retentionVisits.Add((outermost, own, type)))
+        if (type is null || depth > StorageBound || !this.retentionVisits.Add((at.Path, own, type)))
         {
             return;
         }
@@ -71,16 +79,25 @@ public sealed partial class Binding
             {
                 var start = this.retentionPaths.Count;
                 this.retentionPaths.AddRange(this.retentionPath);
-                this.retentionPaths.Add(node);
-                this.retentionSources.Add(new(node, input, own ? type : null, referent, (start, this.retentionPath.Count + 1)));
+                if (!Related(environment, node, at.Above))
+                {
+                    this.retentionPaths.Add(node);
+                }
+
+                this.retentionSources.Add(new(node, input, own ? type : null, referent, (start, this.retentionPaths.Count - start)));
                 layer = node;
             }
 
-            if ((own || exclusive) && referent is not null && layer >= 0)
+            if (referent is not null && layer >= 0)
             {
-                this.retentionPath.Add(layer);
-                this.Sources(environment, referent, input, own: false, depth + 1);
-                this.retentionPath.RemoveAt(this.retentionPath.Count - 1);
+                var kept = !Related(environment, layer, at.Above);
+                if (kept)
+                {
+                    this.retentionPath.Add(layer);
+                }
+
+                this.Sources(environment, referent, input, own: false, (layer, kept ? this.PathId(at.Path, layer) : at.Path), depth + 1);
+                this.retentionPath.RemoveRange(this.retentionPath.Count - (kept ? 1 : 0), kept ? 1 : 0);
                 return;
             }
         }
@@ -93,10 +110,22 @@ public sealed partial class Binding
         var (from, to) = this.OwnParts(type, carried: false);
         for (var i = from; i < to; i++)
         {
-            this.Sources(environment, this.retentionHeld[i].Type, input, own, depth + 1);
+            this.Sources(environment, this.retentionHeld[i].Type, input, own, at, depth + 1);
         }
 
         this.retentionHeld.RemoveRange(from, to - from);
+    }
+
+    // The id of a path (Sources): its prefix's id with one more layer, interned for the computation (0: the empty path).
+    private int PathId(int prefix, int layer)
+    {
+        if (!this.retentionPathIds.TryGetValue((prefix, layer), out var id))
+        {
+            id = this.retentionPathIds.Count + 1;
+            this.retentionPathIds.Add((prefix, layer), id);
+        }
+
+        return id;
     }
 
     // SPEC 15.6.4 read as (iii) (DECISIONS R4-M154): whether a position can hold a source's value: an abstract part, or a position of no
@@ -294,7 +323,8 @@ public sealed partial class Binding
     }
 
     // A Value source of an input (RetentionSources): its node, the part of its own value it is (null: one reached through an exclusive
-    // layer), the referent of the borrow layer it is, through which it forms borrows (null: none), and the nodes every one of which a
-    // position's closure must reach (retentionPaths: the layers it is formed through, its own last).
+    // layer), the referent of the borrow layer it is, through which it forms borrows (null: none), and its path, the nodes every one of
+    // which a position's closure must reach (retentionPaths: the layers it is formed through but those Related to the layer above, its own
+    // last unless Related).
     private readonly record struct RetentionSource(int Node, int Input, BoundType? Own, BoundType? Through, (int Start, int Count) Path);
 }

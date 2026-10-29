@@ -84,6 +84,9 @@ public sealed partial class MirBorrowsTest
     // The two-layer rows' head (BU's B1): two exclusive layers over one referent Type, `w0` refers to storage the second's Origin lets hold.
     private const string WkTwoLayersHead = "(a1: uniq/(Box2 during a) during o, a2: uniq/(Box2 during a) during p, w0: uniq/(uniq/i32 during p) during q) -> ()\n";
 
+    // The raw-path rows' Type (Revision 10): a raw Field stating the Type's own Origin, which the premise catalog relates to a layer above.
+    private const string WkRBox = "struct RBox {a}\n    public var p: raw/(Box2 during a) during a\n    public init(p: raw/(Box2 during a) during a) => self.p = p\n";
+
     // The part-Loan rows' two parts of one Type (R4's B1).
     private const string WkTwoParts = "(Option<ref/i32>.Some(z@ref), Option<ref/i32>.Some(z@ref))";
 
@@ -173,6 +176,11 @@ public sealed partial class MirBorrowsTest
             WkForm("opFirst", WkTwoLayersHead, "a2@follow.inner@follow = 5\nsneakOP((a1@follow@uniq, a2@follow@uniq), w0@follow@uniq)") +
             WkForm("poBad", WkTwoLayersHead, "sneakPO((a2@follow@uniq, a1@follow@uniq), w0@follow@uniq)\na2@follow.inner@follow = 5") +
             WkForm("poFirst", WkTwoLayersHead, "a2@follow.inner@follow = 5\nsneakPO((a2@follow@uniq, a1@follow@uniq), w0@follow@uniq)"),
+        ["rawPath"] = WkBox2 + WkRBox + WkRawForms(string.Empty, "a", "raw/(Box2 during a) during r") + WkRawForms("Rel", "r", "RBox during r") +
+            WkForm("sneakR3", "(zr: ref/i32 during r, zp: ref/(Box2 during a) during p, x: uniq/(raw/(Box2 during a) during r) during p, w: uniq/(uniq/i32 during p) during q) -> () => ()\n") +
+            WkForm("r3Ok", "(zr: ref/i32 during r, zp: ref/(Box2 during a) during p, a2: uniq/(raw/(Box2 during a) during r) during p, a3: raw/(Box2 during a) during r, w0: uniq/(uniq/i32 during p) during q) -> ()\n", "sneakR3(zr, zp, a2@follow@uniq, w0@follow@uniq)\na2@follow = a3") +
+            WkForm("sneakR3R", "(zr: ref/i32 during r, x: uniq/(RBox during r) during p, w: uniq/(uniq/i32 during p) during q) -> () => ()\n") +
+            WkForm("r3RBad", "(zr: ref/i32 during r, a2: uniq/(RBox during r) during p, a3: RBox during r, w0: uniq/(uniq/i32 during p) during q) -> ()\n", "sneakR3R(zr, a2@follow@uniq, w0@follow@uniq)\na2@follow = a3"),
         ["putR"] = WkForm("putRUse", RHead, "var v = value@move\n" + WkPut + "\n_ = slot.value\nv.value = 5") +
             WkForm("putRFirst", RHead, "var v = value@move\nv.value = 5\n" + WkPut + "\n_ = slot.value"),
         ["use"] = WkForm("tie0c1", "(a: ref/i32 during q, c: ref/i32 during o, b: Option<uniq/(ref/i32 during q) during o>) -> ()\n", "return") +
@@ -369,6 +377,13 @@ public sealed partial class MirBorrowsTest
     [InlineData("putR", "putRUse: v.value = 5 1")]
     // Fails on fd4f56ae3: opBad valid (the second exclusive layer over `Box2 during a` formed no source; poBad, the Tuple swapped, erred).
     [InlineData("twoLayers", "opBad: a2@follow.inner@follow = 5 1|poBad: a2@follow.inner@follow = 5 1")]
+    // Revision 10: a source's path keeps each layer the premise catalog's well-formedness does not relate to the layer above, so a raw
+    // element's path no longer hides the uniq one to the same Type. Fails on ca38e24ad: rdBad valid (rdSwapBad, the Tuple swapped, erred).
+    // RBox's raw Field states RBox's Origin, which the catalog relates, so it drops from the key (rdRelBad, rdRelSwapBad, r3RBad). r3Ok
+    // (BU's r3Bad), as (iii) intends: the `during p` position can hold neither the argument's Type nor a borrow formed through its path,
+    // which through the raw layer lies within r (SPEC 5.2.2), and nothing proves r outlives p. Fails on dev by design: r3Ok
+    // `a2@follow = a3` 1.
+    [InlineData("rawPath", "r3RBad: a2@follow = a3 1|rdBad: x@follow.1@follow@uniq 1|rdRelBad: x@follow.1@follow@uniq 1|rdRelSwapBad: x@follow.0@follow@uniq 1|rdSwapBad: x@follow.0@follow@uniq 1")]
     [InlineData("use", "use3Bad: x.1 1")] // Fails on dev by design: use2 `x@follow` 1 (BU-49's pin).
     public void TheBorrowsFormedThroughTheArgumentCountAsItsOwnValue(string row, string expected)
         => Assert.Equal(WkExpected(expected), WkRecords(row));
@@ -430,6 +445,23 @@ public sealed partial class MirBorrowsTest
     [InlineData("erasedOrigins", "virtPickBad: m = 5 1")]
     public void ACallableTheContractHandsTheBodyLetsAnAbstractTypeHoldTheArgument(string row, string expected)
         => Assert.Equal(WkExpected(expected), WkRecords(row));
+
+    // A raw-path row's forms (Revision 10): sneak{name} stores into `*w` a borrow formed through the Tuple `*x`'s uniq element beside
+    // `other` (both over `Box2 during {origin}`), sneak{name}S with the Tuple swapped; rd{name}Bad and rd{name}SwapBad write through that
+    // element after the call, rd{name}First before it.
+    private static string WkRawForms(string name, string origin, string other)
+    {
+        var uniq = $"uniq/(Box2 during {origin}) during p";
+        string Head(string first, string second)
+            => $"(zr: ref/i32 during r, zp: ref/(Box2 during {origin}) during p, x: uniq/(({first}, {second})) during o, w: uniq/(uniq/i32 during o) during q) -> ()\n";
+        string Through(int element) => $"let b = x@follow.{element}@follow@uniq\n";
+        var call = "(zr, zp, x@follow@uniq, w@follow@uniq)\n";
+        return WkForm($"sneak{name}", Head(other, uniq), Through(1) + "w@follow = b@follow.inner@follow@uniq") +
+            WkForm($"sneak{name}S", Head(uniq, other), Through(0) + "w@follow = b@follow.inner@follow@uniq") +
+            WkForm($"rd{name}Bad", Head(other, uniq), $"sneak{name}{call}" + Through(1) + "b@follow.inner@follow = 5") +
+            WkForm($"rd{name}First", Head(other, uniq), Through(1) + $"b@follow.inner@follow = 5\nsneak{name}{call}") +
+            WkForm($"rd{name}SwapBad", Head(uniq, other), $"sneak{name}S{call}" + Through(0) + "b@follow.inner@follow = 5");
+    }
 
     // The erased-Origin rows' body: `pick` on the receiver `on` over m and n, its result kept in `r`.
     private static string WkPick(string on) => $"var m = 1\nvar n = 2\nlet r = {on}.pick(m@ref, n@ref)\n";

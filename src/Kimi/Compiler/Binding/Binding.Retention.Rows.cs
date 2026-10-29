@@ -27,7 +27,8 @@ public sealed partial class Binding
     private readonly List<RetentionKind[]> retentionKindPool = new(); // retentionKinds' arrays, by storage, for the computation's input count.
     private readonly List<(BoundType? Type, StorageRetention Retention)> retentionEntries = new();
     private readonly List<OutputRetention> retentionWrites = new();
-    private readonly List<(int Storage, int Input, BoundOrigin Longer, BoundOrigin Shorter)> retentionPairs = new();
+    private readonly List<(int Storage, int Input, int Start, int Count)> retentionPairs = new(); // Each a run of retentionConjuncts.
+    private readonly List<(BoundOrigin Longer, BoundOrigin Shorter)> retentionConjuncts = new();
     private int[] retentionFirst = []; // The links of RetentionRows by node and by atom or source, and the closure marks by node, reused.
     private int[] retentionNext = [];
     private int[] retentionSourceFirst = [];
@@ -181,8 +182,8 @@ public sealed partial class Binding
     // occurrence of an input (none for a raw input's own layer), Value where the closure from a position's node reaches a source the
     // position can hold (CanHold), Content for one it cannot, Value over Content; then the output's hold walk's kinds, Chain over Content.
     // A position whose Origin the call's Subst brings can also hold a source whose fit relates such Origins the premises do not prove: the
-    // pair (retentionPairs) of the source's outermost layer the closure misses and the position (Unfitted) is the solved Origins' to
-    // judge (DECISIONS R4-M154, Revision 2).
+    // conjunction (retentionPairs) of a pair per layer of the source's path the closure misses and the position (Conjunction) is the
+    // solved Origins' to judge (DECISIONS R4-M154, Revisions 2 and 10).
     private void Storages(
         OriginPremiseEnvironment environment,
         (int[] First, int[] Next, int[] SourceFirst, int[] SourceNext, int[] Marks) links,
@@ -213,6 +214,7 @@ public sealed partial class Binding
         }
 
         this.retentionPairs.Clear();
+        this.retentionConjuncts.Clear();
         foreach (var (storage, node, type) in this.storagePositions)
         {
             var stamp = ++this.retentionStamp;
@@ -238,10 +240,9 @@ public sealed partial class Binding
             for (var s = 0; position is not null && s < this.retentionSources.Count; s++)
             {
                 var found = this.retentionSources[s];
-                if (this.Unfitted(found, links.Marks, stamp) is var layer and >= 0 && this.Instantiated(environment, layer) is { } longer &&
-                    this.CanHold(type, found) && !this.retentionPairs.Contains((storage, found.Input, longer, position)))
+                if (this.Conjunction(environment, found, links.Marks, stamp, position) is var (start, count) && count > 0)
                 {
-                    this.retentionPairs.Add((storage, found.Input, longer, position));
+                    this.Conjoined(storage, found.Input, start, count, this.CanHold(type, found));
                 }
             }
         }
@@ -315,31 +316,85 @@ public sealed partial class Binding
         return new(output, own, [.. reached], new(all, this.Pairs(all, joined), untied));
     }
 
-    // Whether a position's closure (marked `stamp`) reaches every layer a source is formed through (RetentionSource.Path).
-    private bool Fitted(in RetentionSource source, int[] marks, int stamp) => this.Unfitted(source, marks, stamp) < 0;
-
-    // The outermost layer a source is formed through (RetentionSource.Path, outermost first) that a position's closure (marked `stamp`)
-    // does not reach, -1 where it reaches each. Each inner layer's Origin outlives the outer one's (the source's Type is well-formed), so
-    // the fit needs that layer's alone.
-    private int Unfitted(in RetentionSource source, int[] marks, int stamp)
+    // Whether a position's closure (marked `stamp`) reaches every layer of a source's path (RetentionSource.Path: the layers the premise
+    // catalog's well-formedness rule does not relate to the layer above, Revision 10), the conjunction its fit is.
+    private bool Fitted(in RetentionSource source, int[] marks, int stamp)
     {
         for (var i = source.Path.Start; i < source.Path.Start + source.Path.Count; i++)
         {
             if (this.retentionPaths[i] is var layer && (layer >= marks.Length || marks[layer] != stamp))
             {
-                return layer;
+                return false;
             }
         }
 
-        return -1;
+        return true;
+    }
+
+    // The pairs of a source's path layers a position's closure (marked `stamp`) misses with the position's Origin, appended to
+    // retentionConjuncts as a run (Start, Count): the conjunction the call's solved Origins judge, where each such layer's Origin the
+    // call's Subst brings (Instantiated); none (Count 0) where the closure reaches each layer or a missed one is no Subst Origin, whose
+    // relation no solved Origin decides.
+    private (int Start, int Count) Conjunction(OriginPremiseEnvironment environment, in RetentionSource source, int[] marks, int stamp, BoundOrigin position)
+    {
+        var start = this.retentionConjuncts.Count;
+        for (var i = source.Path.Start; i < source.Path.Start + source.Path.Count; i++)
+        {
+            var layer = this.retentionPaths[i];
+            if (layer < marks.Length && marks[layer] == stamp)
+            {
+                continue;
+            }
+
+            if (this.Instantiated(environment, layer) is not { } longer)
+            {
+                this.retentionConjuncts.RemoveRange(start, this.retentionConjuncts.Count - start);
+                return (start, 0);
+            }
+
+            this.retentionConjuncts.Add((longer, position));
+        }
+
+        return (start, this.retentionConjuncts.Count - start);
+    }
+
+    // A storage's conjunction for an input (the run of retentionConjuncts from `start`), kept where the position can hold the source
+    // (`holds`) and the storage does not already list it, else dropped.
+    private void Conjoined(int storage, int input, int start, int count, bool holds)
+    {
+        var listed = !holds;
+        foreach (var (s, i, from, n) in this.retentionPairs)
+        {
+            listed |= s == storage && i == input && this.SameConjunction(from, n, start, count);
+        }
+
+        if (listed)
+        {
+            this.retentionConjuncts.RemoveRange(start, count);
+            return;
+        }
+
+        this.retentionPairs.Add((storage, input, start, count));
+    }
+
+    // Whether two runs of retentionConjuncts are one conjunction.
+    private bool SameConjunction(int a, int count, int b, int other)
+    {
+        var same = count == other;
+        for (var k = 0; same && k < count; k++)
+        {
+            same = this.retentionConjuncts[a + k] == this.retentionConjuncts[b + k];
+        }
+
+        return same;
     }
 
     // A node's Origin where the call's Subst brings it (retentionInstantiated), else null.
     private BoundOrigin? Instantiated(OriginPremiseEnvironment environment, int node)
         => environment.Closure.Origin(node) is { } origin && this.retentionInstantiated.Contains(origin) ? origin : null;
 
-    // The pairs of one storage (retentionPairs) whose input `kinds` does not already give Value, each once.
-    private (int Input, BoundOrigin Longer, BoundOrigin Shorter)[] Pairs(RetentionKind[] kinds, int storage)
+    // The conjunctions of one storage (retentionPairs) whose input `kinds` does not already give Value, each once.
+    private (int Input, BoundOrigin Longer, BoundOrigin Shorter, bool Joined)[] Pairs(RetentionKind[] kinds, int storage)
     {
         if (this.retentionPairs.Count == 0)
         {
@@ -351,20 +406,30 @@ public sealed partial class Binding
         return this.Pairs(kinds, members);
     }
 
-    // The pairs of the storages marked in `members` (retentionPairs) whose input `kinds` does not already give Value, each once.
-    private (int Input, BoundOrigin Longer, BoundOrigin Shorter)[] Pairs(RetentionKind[] kinds, bool[] members)
+    // The conjunctions of the storages marked in `members` (retentionPairs) whose input `kinds` does not already give Value, each once, as a
+    // record's pairs (a pair after the first of its conjunction Joined).
+    private (int Input, BoundOrigin Longer, BoundOrigin Shorter, bool Joined)[] Pairs(RetentionKind[] kinds, bool[] members)
     {
-        List<(int Input, BoundOrigin Longer, BoundOrigin Shorter)>? pairs = null;
-        foreach (var (storage, input, longer, shorter) in this.retentionPairs)
+        List<(int Input, int Start, int Count)>? listed = null;
+        foreach (var (storage, input, start, count) in this.retentionPairs)
         {
             var open = members[storage] && (kinds[input] & RetentionKind.Value) == 0;
-            if (open && !(pairs ??= []).Contains((input, longer, shorter)))
+            if (open && !(listed ??= []).Exists(x => x.Input == input && this.SameConjunction(x.Start, x.Count, start, count)))
             {
-                pairs.Add((input, longer, shorter));
+                listed.Add((input, start, count));
             }
         }
 
-        return pairs is null or [] ? [] : [.. pairs];
+        var pairs = new List<(int Input, BoundOrigin Longer, BoundOrigin Shorter, bool Joined)>();
+        foreach (var (input, start, count) in listed ?? [])
+        {
+            for (var k = 0; k < count; k++)
+            {
+                pairs.Add((input, this.retentionConjuncts[start + k].Longer, this.retentionConjuncts[start + k].Shorter, k > 0));
+            }
+        }
+
+        return pairs.Count == 0 ? [] : [.. pairs];
     }
 
     // The storages of the walk made, none marked (Pairs' members), reused.
