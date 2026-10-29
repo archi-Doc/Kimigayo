@@ -12209,3 +12209,37 @@ structure is recorded here by the unit that first implements it.
     their records; `RecordOf(Rejected)` is `InternalInvariant_Kd` in both compilations, since the record path decides. No other site is
     reached: nine probes stop at Binding's error at the call, and the 349 Binding-incomplete ledger sources of `shared-base/228d6f0b4`
     give no `InternalInvariant_Kd` under sel.
+- **R5-M152 The R6-gen switch contract as applied (G0)** (2026-10-29, planning session, on the owner's go 「G0 に進む」, and the owner
+  on its items OI-1 to OI-3, verbatim 「推奨どおり」; plan G0, K-package §6 S1–S8 under R5-M18; R5-M4, R5-M5, R5-M88, R5-M148; design
+  `draft/Sketches/R6-gen/G0-design.md`, its independent review passed in two rounds) S1–S8 hold on dev `07a5ca2da` with these
+  applications:
+  - S1: from G2 `Compilation.Analyze` builds, validates, analyzes (the whole `MirAnalysis.Run`, unpublished) and collects on every
+    pipeline; the branch S1 names lives in `Analyze` and `MirRecords`' code generator gate (BU-48 moved it out of `BuildMir`); PD4's
+    pairing (R5-M35) ends at G2, and `CompilerIdentity` marks each non-default selection (`[mir]`, `[codegen mir]`, `[mir, codegen mir]`).
+  - S2: G2 publishes construction records, validator findings and collector records at check on every pipeline. "The 20
+    instance-failure methods" reads as those whose program the collector rejects; the old generator's own-limit methods keep their pins
+    until G4, which deletes them or re-points kept ones to `Compilation.Emission` (R5-M85). The 110 P42 rows move at G2, not G3: their
+    `StaticStorage` record is the collector's check-time capability row (R5-M82).
+  - The P42 rows (OI-1 (a′), the owner's 「推奨どおり」): each row asserts its own records after `Statics.Length`; one test pins the
+    prelude's 26 `StaticStorage` records, also beside a Binding error; EffectBound's row gains one record; Milestone 42 is
+    re-baselined. G2's entry supersedes R5-M144's "(not G2's)" and R5-M145's "leave with P42" for these rows; P42 reverts the pin
+    test, EffectBound's record and Milestone 42's baseline.
+  - Valid forms G2 rejects at default `check` (OI-2 (a), the owner's 「推奨どおり」): G167 (`values[p]` with `p: I`) lands before G2 (Binding
+    with BU); the MIR builder's two G128 storage-bound limits, which the old build already refuses (an unlocated
+    `GenerationFailed_Kd`), are under PD30's (e) row (confirmed).
+  - S3 as written, wherever MIR code generation runs (R5-M96). S4: an A/B of default `check` and warm Analyze time, allocations and
+    retained memory against G2's base, recorded in G2's entry (K4b's files are absent). S5: G2b was done by BU-48 (R5-M148), so
+    G:R6-gen-switch is G2 and G3; G1 adds `Compilation.Switch.cs`, the Transitional switch as its own concern (landed with this entry).
+    S6: no environment rollback for G2 (an environment value hiding the records would be a second mode); `KIMI_CODEGEN=legacy` stays
+    G3's rollback until G4. S7 with G9a/G9b (R5-M18) and the remaining pins at G4.
+  - Prerequisites (S8): X3 (R5-M148), R5-M4, R5-M5 with Q4 (R5-M88), A-6 (X1, the ledger at `228d6f0b4`, the MIR builder's 19
+    `Unsupported_Kd` sites by reachability), A-8 (R5-M42).
+  - Order: G285 (R5-M151) before G2; G286, G287 and G157 (15) before G3; H1a after G2; R6-gen holds `Compilation.Pipeline.cs` and
+    `Compilation.Switch.cs` from G1 through G4.
+  - Verification lanes (OI-3 (a), the owner's 「推奨どおり」): from G2 the `-Pipeline mir` lane runs only as the ledger's run; from G3 the
+    sel lane ends; VERIFICATION follows at G2 and G3.
+  - G2's entry supersedes by name R3-1 (MIR records publish on every pipeline), R4-M1 for these records (they join acceptance at check;
+    MIR analysis problems stay unpublished until H3 and decide from H5; reason: the owner's R5-M4), OD10's split (R4-M35), R5-M35's
+    pairing, R5-M64's `-Codegen mir` rule, R5-M41's "until G2" and R5-M85's `checked-set-at-check`.
+  - Rejected: a per-row exception for `StaticStorage` (a per-row gate); G2 waiting for P42 (P42 follows H5: circular); a `Codegen.Expect`
+    deviation for the P42 rows (R5-M144 (b); keyed by the code generator, which G2 does not switch); a third G1 file for the records.
