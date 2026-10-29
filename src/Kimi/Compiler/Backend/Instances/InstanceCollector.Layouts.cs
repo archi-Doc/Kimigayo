@@ -19,8 +19,8 @@ internal sealed partial class InstanceCollector
     /// <summary>Gets the record of a Layout outcome (K 4.8; R5-M37: the collector alone maps Layout's outcomes). A size, count or depth limit
     /// is Resource (IMPL 21.3.2); a C-layout instance whose C layout is unavailable (open, derived, empty or storing a zero-sized Field), at
     /// any depth in the window, is the Language error InvalidCLayout_Kd (SPEC 6.7.1, 8.15.3); Ok has none, and Rejected storage, which rests on
-    /// a part Binding rejected, is a broken contract (Report; DECISIONS BU-38, R5-M151). Oversized is reported through Result.Oversized, which an oversized
-    /// CLayout carries too.</summary>
+    /// a part Binding rejected, is a broken contract in a complete compilation and otherwise a dependent that Report drops (DECISIONS BU-38,
+    /// R5-M151). Oversized is reported through Result.Oversized, which an oversized CLayout carries too.</summary>
     /// <param name="outcome">The outcome.</param>
     /// <returns>Its record, or null for none.</returns>
     internal DiagnosticCode? RecordOf(Layout.Outcome outcome) => outcome switch

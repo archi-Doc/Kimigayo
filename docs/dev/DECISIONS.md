@@ -6959,7 +6959,9 @@ resumed by R4-M86 (2026-10-20).
   - Guard (R5's condition): `Derived` gives a Rejected verdict no record in an incomplete compilation and `InternalInvariant_Kd` at
     its site in a complete one, which has no part Binding rejected (DIAGNOSTICS rule 8), reading completeness only through
     `TyCtxt.BindingComplete`, as `Binding.Retained` (BU-36) and R4-M118's `OriginFinding` do; Layout's Rejected row (`RecordOf`,
-    R5-M37) reads the same member. No source reaches it; `Made` and `RecordOf` are tested directly.
+    R5-M37) reads the same member. No source reaches it; `Made` and `RecordOf` are tested directly. Amended by R5-M151: `Derived` is
+    deleted; the Guard is the instance collector's one record path, which keeps InternalInvariant_Kd only where TyCtxt.BindingComplete
+    holds, for every site, Rejected verdicts included; StorageOutcome.Rejected and its readers are unchanged.
   - Under MIR code generation the collector's `Unsupported_Kd` over Rejected storage leaves (designs A's c01-c07, c11 and B's a1-a4,
     c1, c2, d1, d6-d8, x2, r2, r4, with the sel halves of the EffectBounds forms), and the collector's duplicate of x3's and r8's
     builder record; every genuine-limit twin keeps its record and no record is added.
@@ -12190,9 +12192,14 @@ structure is recorded here by the unit that first implements it.
     (`InternalInvariant_Kd`) only where `TyCtxt.BindingComplete` holds. In an incomplete compilation a fact the collector reads (Applies,
     a witness, a comparison tree, a storage or Layout verdict, a view, a published row) may be undecided because it rests on a part
     Binding rejected, which the collector cannot name (it reads no syntax; the facts carry no cause): the record is that error's
-    dependent. BU-38's Guard (`Derived`, for Rejected verdicts) now covers the collector's ten other broken-contract sites, and `Derived`
-    is deleted. Each site's control flow is unchanged: the edge is refused all the same, only the record is dropped. Acceptance is
-    unchanged (Binding's error rejects); Language, capability and Resource records still record beside it (BU-38's `limitBesideError`).
+    dependent. BU-38's Guard, formerly `Derived` for Rejected verdicts, now covers every collector site through `Report`. Each site's
+    control flow is unchanged: the edge is refused all the same, only the record is dropped. Acceptance is unchanged (Binding's error
+    rejects); Language, capability and Resource records still record beside it (BU-38's `limitBesideError`).
+  - Not BU-38's rejected "collector filter of Rejected records": that filter would have dropped, by their cause, the `Unsupported_Kd`
+    records sites gave by misreading Rejected storage as a limit, in place of reading the verdict at its site; `Report` keys on no cause
+    and drops no capability, Resource or Language record, only `InternalInvariant_Kd`, whose premise (a complete Binding) the compilation
+    lacks, and each site still reads its verdict once (`Made`). Cost: a genuine collector defect in an independent part of an incomplete
+    program stays unseen until Binding completes.
   - Rejected: `Derived` at each site (a check per site; `Requirement`'s and `Leaves`' switches read a null record as admitting the edge);
     a Dependent answer per fact from TyCtxt (`Applies`, `Witness`, `Comparison`: one check per fact in Binding's hold files, and BU-38
     rejected a Rejected target kind; `View`, `Admit` and `Below` have no such fact); no collection when incomplete (drops independent

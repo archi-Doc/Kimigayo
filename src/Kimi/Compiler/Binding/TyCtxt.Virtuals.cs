@@ -4,8 +4,8 @@
 // struct's VTableDef.
 // Input: an original and the layer of a representative that declares it.
 // Output: true or false as Binding.VirtualApplicability proves it under the public premises, else null, which for a closed declaring Type
-// is a broken contract its reader records as InternalInvariant_Kd; false makes the slot's entry null (VTableDef's consumer rule). One
-// answer per (original, declaring), discarded at an edit (ResetDispatch).
+// is a broken contract its reader records as InternalInvariant_Kd in a complete compilation (DECISIONS R5-M151); false makes the slot's
+// entry null (VTableDef's consumer rule). One answer per (original, declaring), discarded at an edit (ResetDispatch).
 // Must not: write a diagnostic, HIR or pass state, or prove on an erased value.
 
 using Kimi.Compiler.Parsing;

@@ -44,16 +44,15 @@
 // comparison shim's tree), and the parameters and result of each import a root module declares, at their written Types (no item; SPEC
 // 22.6, DECISIONS R5-M150) take Layout's verdict: a limit is GenerationResourceLimit_Kd once per erased Type at its
 // first use, a C-layout instance whose C layout is unavailable (open, derived, empty or storing a zero-sized Field) InvalidCLayout_Kd and
-// a layout over 2^63 - 1 bytes OversizedLayout_Kd at each use (both at one use when both hold); Rejected storage is a broken contract
-// (Report); a type-driven item needs an Ok verdict.
+// a layout over 2^63 - 1 bytes OversizedLayout_Kd at each use (both at one use when both hold); Rejected storage is a broken contract in a
+// complete compilation and otherwise a dependent that Report drops; a type-driven item needs an Ok verdict.
 // Storage (DECISIONS BU-36, BU-38): TyCtxt's verdict on a Type or substitution of an item's instance is read once, at its requesting site
 // (Made): Prepared makes it; Rejected rests on a part Binding rejected, as Layout's Rejected, which a complete compilation has none of
 // (TyCtxt.BindingComplete), so it is a broken contract at its site (Report); a limit is the storage-nesting gap. Every row reads a Type of
-// an instance at its site through In, Below or
-// Instantiable, so through Made, never through TypeOf, TyCtxt.Apply or TyCtxt.Signature under a substitution; those read no verdict and
-// serve code generation and a Type whose verdict its site already read (Rest's operand and environment, Agrees' signature under a
-// witness's substitution whose Self the call's composition made, Bodyless's intrinsic row's Type argument, a part of the Item Type its site
-// made).
+// an instance at its site through In, Below or Instantiable, so through Made, never through TypeOf, TyCtxt.Apply or TyCtxt.Signature
+// under a substitution; those read no verdict and serve code generation and a Type whose verdict its site already read (Rest's operand and
+// environment, Agrees' signature under a witness's substitution whose Self the call's composition made, Bodyless's intrinsic row's Type
+// argument, a part of the Item Type its site made).
 // Admission (K 4.6, X19): a new key is admitted once; its representative is the first composed substitution or Type, erased only into the
 // key (KD3). A call of a nested function whose substitution does not carry its enclosing instance (DECISIONS R5-M43), a substitution or
 // Type whose storage is a limit (Made), OCC-X's refused witness and a requirement call's or requirement Item's witness without a MIR body
