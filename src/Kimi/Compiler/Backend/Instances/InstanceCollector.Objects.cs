@@ -2,7 +2,7 @@
 
 // Owns the targets of the object items of the checked set (R5 package K 4.3, F 4.2-4.3; SPEC 6.4, 13.6.2, 16.3.3; IMPL 21.1.3; S2-S4 X5;
 // DECISIONS R5-M62, R5-M74, R5-M77, R5-M153): a created payload's object descriptor and the VTable of its struct, in an item's instance, and
-// by the same slot rule whether a closed root is a Library's output root (a nested definition never is: its enclosing body reaches it).
+// by the same slot rule whether a closed root is a Library's output root (a Closure's or a body-declared function's never is).
 // Input: an ObjectDescriptor item, which a creation (MakeObj, MakeRc, MakeArc, or an Item of their functions) admitted with its payload's
 // layout verdict (InstanceCollector.Edges.cs); VTableDef (slots and implementations), AdtDef.Base and TyCtxt.Applies on the representative
 // (a root's: its receiver's Self).
@@ -27,15 +27,16 @@ internal sealed partial class InstanceCollector
     /// <summary>Gets whether a root is a Library's output root (K package 4.4, 4.10; R4-M28): every root but the body of a closed virtual or
     /// override whose slot <see cref="TyCtxt.Applies"/> refutes on its struct, and a constructor whose construction receiver's Type has no
     /// layout (no C layout, or over a limit or 2^63 - 1 bytes), which no program that builds calls, since each construction expression is
-    /// a use of that layout (SPEC 8.15.3; DECISIONS R5-M149, the owner's Q1 (a)); both are checked only. A definition nested in a function
-    /// body (SPEC 6.1.3) is none: its enclosing body's runtime targets reach it, so it follows that body's mark (DECISIONS R5-M153).</summary>
+    /// a use of that layout (SPEC 8.15.3; DECISIONS R5-M149, the owner's Q1 (a)); both are checked only. An output root is a declaration's
+    /// own body: a Closure's body, made at an Aggregate(Closure) site, and a function declared in a function's or Closure's body (its
+    /// declaring scope's Function) are none; the bodies that make or call them reach them (DECISIONS R5-M153).</summary>
     /// <param name="program">The program.</param>
     /// <param name="root">The root.</param>
     /// <returns>Whether it is an output root, or null where its slot's applicability is undecided, a broken contract.</returns>
     internal bool? Generates(MirProgram program, int root)
     {
         var function = this.Set.Items[root].Key.Body.Def.Decl;
-        if (function is not null && this.types.EnclosingFunction(function) is not null)
+        if (this.Set.Items[root].Key.Body.Def.Kind == MirBodyKind.Closure || function?.Scope.Function is not null)
         {
             return false;
         }

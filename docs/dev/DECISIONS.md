@@ -9672,8 +9672,8 @@ structure is recorded here by the unit that first implements it.
     slot rule K8's VTable targets read (`Applies(type, table, slot)`), and an undecided slot is a broken contract, `InternalInvariant_Kd`
     at the root's site (as K8 records it at a VTable's). Such a body is accepted at check when its condition is refuted without contradiction (a non-conforming Type under
     `T is Marker`); the old generator skips it too (`IsInapplicableVirtualBody`). An Application or a test build reaches none: a refuted
-    slot has no target and a call of it is a Binding error. Amended by R5-M153: a definition nested in a function body is no Library
-    output root; its enclosing body's runtime targets reach it, so it follows that body's mark.
+    slot has no target and a call of it is a Binding error. Amended by R5-M153: a Library output root is a declaration's own body; a
+    Closure's body and a body-declared function's are reached only through the mark, from the bodies that make or call them.
   - Rejected: a Generated field on `MonoItem`, the collector's row (the mark is emit state, replaced per mark); a side table of marked
     items; discovering tests in the entry, as the old generator's `TryPrepare` does (a second discovery per generation; `Project` owns
     it after acceptance); TestEntry roots from the root module's Test bodies (a second copy of discovery's selection); the mark in
@@ -12180,25 +12180,31 @@ structure is recorded here by the unit that first implements it.
     a result row per shape; the 44 parameter and result cases failed on dev `c2ab38ee7` (only 22.6's record). The snapshot against
     `shared-base/02b1d68a1` gains no row. Cost: no item or replay; per `check` a memoized `Layout.Of` per import slot, none without
     imports, warm runs allocate nothing; below the collector's measured cost (R5-M148), not measured.
-- **R5-M153 A nested definition is reached through its enclosing body in a Library (unit g157-15)** (2026-10-29, planning session;
-  PLAN G157 (15), K11 review r2's (4); amends R5-M77's Library roots; Major, design accepted by the planning session) K 4.4 makes every
-  closed body of a root module a root, a Closure's or a nested function's included, and R5-M77 made a Library's every root but the
-  checked-only ones an output root, so a nested body was marked apart from its enclosing body: a Closure in the override of a refuted
-  slot (R4-M28) or in a layout-less constructor (R5-M149) was Generated while that body was checked only. It was dead code, an internal
-  function nothing references that both generators wrote and O2 deletes; not wrong code (the collector replays every root at check)
-  nor an unresolved reference (the mark is transitive).
-  - Rule: a definition nested in a function body (`TyCtxt.EnclosingFunction` non-null, SPEC 6.1.3) is no Library output root
-    (`InstanceCollector.Generates`); `CheckedSet.Mark` reaches it through its enclosing body's runtime targets (its Closure environment,
-    call, function item or erasure site), as in an Application, so the enclosing body's exclusion governs its nested bodies. A Closure in
-    a default template or a destructor follows that body so; one in an accessor or a static's initializer has no enclosing function and
-    stays an output root as that body is (accessors are never virtual, SPEC 6.4, so never checked only).
-  - Behavior change: an uncalled nested function of a generated Library body is no longer written, as in an Application. The old
+- **R5-M153 A Library output root is a declaration's own body: a Closure or a body-declared function is reached through the mark (unit
+  g157-15)** (2026-10-29, planning session; PLAN G157 (15), K11 review r2's (4) and g157-15's review; amends R5-M77's Library roots;
+  Major) K 4.4 makes every closed body of a root module a root, a Closure's and a body-declared function's included, and R5-M77 made a
+  Library's every root but the checked-only ones an output root, so such a body was marked apart from the body that makes or calls it: a
+  Closure in the override of a refuted slot (R4-M28) or in a layout-less constructor (R5-M149) was Generated while that body was checked
+  only. It was dead code, an internal function nothing references that both generators wrote and O2 deletes; not wrong code (the
+  collector replays every root at check) nor an unresolved reference (the mark is transitive).
+  - Rule (`InstanceCollector.Generates`): a Library output root is a declaration's own body. No Closure's body is one: each is made at an
+    `Aggregate(Closure)` site, which `CheckedSet.Mark` follows. No body of a function declared in a function's or Closure's body is one:
+    its declaring scope's `BindingScope.Function` (Binding's scope fact, read without walking through Closures) is set; its calls,
+    function items and erasures reach it. So a checked-only body leaves out what only it makes, wherever that is written (a Field's
+    initializer runs in its constructor), and a generated body generates what it reaches, as in an Application.
+  - Left: a function declared directly in an accessor's body has no `BindingScope.Function` (an accessor is no function declaration),
+    so it stays an output root; accessors are never virtual (SPEC 6.4) or constructors, so never checked only: an uncalled one is dead
+    code only.
+  - Behavior change: an uncalled body-declared function of a generated Library body is no longer written, as in an Application. The old
     generator stays frozen (R5-M6) and writes both, so such a Library's IR differs between the generators (no native fixture compares a
     Library).
-  - Rejected: a nested root following its outermost enclosing function's verdict (a walk to that function's root item by its body kind,
-    Fn, Getter, Setter or DefaultTemplate: a second lookup, and unreached nested bodies kept as dead code); the check in
-    `Compilation.OutputRoots` (the collector owns the Library root rule and reads TyCtxt).
+  - Rejected: lexical nesting, `TyCtxt.EnclosingFunction` non-null (this unit's first revision): a Closure outside any function's body
+    stays a root; a `limit` struct `Big` with the Field `public var d: i32 = (func [] (x: i32) -> i32 => x + 1)(2)` has its `init`
+    checked only and the Closure Generated (and a function declared in it, since EnclosingFunction walks through the Closure). A nested
+    root following its outermost enclosing function's verdict (a second lookup by body kind; unreached nested bodies kept as dead
+    code). The check in `Compilation.OutputRoots` (the collector owns the Library root rule).
   - Verified: the amendment of R5-M77's "a Library every root but the override of a refuted slot": a Closure and a called nested function
     in that override follow it, Generated exactly where the slot applies (both Generated before where it is refuted); a Closure in a
-    layout-less constructor is not Generated (Generated before); the Closures of an accessor's get and set, a default template, a
-    destructor and a static's initializer are Generated.
+    layout-less constructor, and a Closure in a Field's initializer of a `limit` struct with the function declared in it, are not
+    Generated (Generated at the base and under the lexical rule); the Closures of an accessor's get and set, a destructor, a default
+    template and a static's initializer are no output roots and Generated by reach.
