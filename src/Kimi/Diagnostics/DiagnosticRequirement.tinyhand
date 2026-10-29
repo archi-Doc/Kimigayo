@@ -649,6 +649,9 @@
   + Name="Ownership.OwnStepDeparture"
     Description="no pointer formed through an own step is used after its owning value may leave its holder"
 
+  + Name="Ownership.DepthLimit"
+    Description="ownership analysis stays within its Type nesting bound"
+
   + Name="Binding.CaseLimit"
     Description="the Semantics cases of the definition stay within the implementation bound"
 

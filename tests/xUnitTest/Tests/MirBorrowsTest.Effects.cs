@@ -16,7 +16,8 @@ namespace XunitTest;
 public sealed partial class MirBorrowsTest
 {
     // The effect rule's Types and group State: statics, an initializer that writes another static (x's), destructors that read, write or
-    // pass A4's Limit (Lim.run destroys a growing Nest<i32>, past the destruction walk's bound), and helpers that read and write statics.
+    // pass A4's Deep (Lim.run destroys a growing Nest<i32>, past the destruction walk's bound; R4-M153), and helpers that read and write
+    // statics.
     private const string EffectTypes = """
         struct Counter
             public var n: i32 = 0
@@ -168,13 +169,14 @@ public sealed partial class MirBorrowsTest
 
     // SPEC 16.4 with 16.3.1, 16.3.3 (R3) and 15.6.4: destroying a mutable static's old value holds an exclusive Loan on it until it
     // completes, so its own effects on that static conflict, a read (e8) or an erased destruction's unknown effects (e9), at the
-    // assignment's Drop, with no Loan issued; a quiet destructor does not (e8b), and one past A4's Limit is the located Unsupported_Kd (e8c).
+    // assignment's Drop, with no Loan issued; a quiet destructor does not (e8b), and one past A4's Deep is the depth limit (e8c; the owner's
+    // 「G272: (1)」, R4-M153).
     // R4-M90 PQ-1: exchange's way out (e9b) borrows the static and e9s's Loan is a receiver's, each Binding's Unsupported_Kd until P42, so
     // A5 checks neither (AnErasedDestructionMeetsTheLiveStaticLoansRooted). Fail-before: e8, e8c and e9.
     [Fact]
     public void ADestructionMeetsItsOwnStaticAndTheLiveStaticLoans()
         => Assert.Equal(
-            ["e8: watch = Watch.init()", "e8c: limited = Limited.init() Unsupported_Kd", "e9: action = func []() => ()"],
+            ["e8: watch = Watch.init()", "e8c: limited = Limited.init() OwnershipDepthLimit_Kd", "e9: action = func []() => ()"],
             Effects(
                 """
                     public func e8() => watch = Watch.init()
@@ -619,11 +621,11 @@ public sealed partial class MirBorrowsTest
         Assert.Empty(Problems(c, AnalyzeUnsupported(c, borrows), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
-    // The Loan problems and located Unsupported_Kd records of a program: the prelude, the effect Types and group State with the given
-    // members, then the given declarations, whose static Borrows are Binding's Unsupported_Kd (AnalyzeUnsupported).
+    // The Loan problems and limit records (a located Unsupported_Kd, the depth limit) of a program: the prelude, the effect Types and group
+    // State with the given members, then the given declarations, whose static Borrows are Binding's Unsupported_Kd (AnalyzeUnsupported).
     private static string[] Effects(string members, string[] borrows, string declarations = "")
     {
         var c = MirBuildTest.Compile(Prelude + EffectTypes + members + declarations);
-        return Problems(c, AnalyzeUnsupported(c, borrows), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]);
+        return Problems(c, AnalyzeUnsupported(c, borrows), [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnershipDepthLimit_Kd]);
     }
 }

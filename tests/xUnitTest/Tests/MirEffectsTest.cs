@@ -258,6 +258,41 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 "    public func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + "        return f()\n"));
     }
 
+    // SPEC 23.1.1 (DECISIONS R4-M153, implementation review 1's N3): beside the limit of several signatures, the same witness destroys a
+    // Tuple nested past the destruction walk's bound: the guard's one ranking decides, the unsupported part over the part past the bound,
+    // so one record; with one signature the depth limit alone.
+    [Theory]
+    [InlineData("", "OwnershipDepthLimit_Kd Self is Work 1")]
+    [InlineData("        F is Callable<(i32) -> i32>\n            effect confined\n", "Unsupported_Kd Self is Work 1")]
+    public void AnUnsupportedPartOutranksAPartPastTheBound(string second, string expected)
+    {
+        var premises = "        F is Callable<() -> i32>\n            effect confined\n" + second;
+        var deep = new string('(', 40) + "0" + string.Concat(Enumerable.Range(0, 40).Select(static i => $", {i})"));
+        Assert.Equal(
+            Expected(expected),
+            Problems("contract Work\n    func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + "        effect confined\nstruct W\n    Self is Work\n" +
+                "    public func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + $"        _ = {deep}\n        return f()\n"));
+    }
+
+    // SPEC 23.1.1 (DECISIONS R4-M153's revision 3): a destruction walk enters a Type at the shallowest depth it meets it, so a destroyed
+    // Loud, 41 levels down a Tuple and 9 levels down beside it (one Type at both depths), gives its environment effect, which fails the
+    // contract's `confined`, in either order of the components, never the depth limit for the part past the bound.
+    [Theory]
+    [InlineData("deep first")]
+    [InlineData("shallow first")]
+    public void APartsTypeEnteredWithinTheBoundIsNoDeepInEitherOrder(string order)
+    {
+        var (deep, shallow) = (Nested(40), Nested(8));
+        var premises = "        F is Callable<() -> i32>\n            effect confined\n";
+        Assert.Equal(
+            Expected("IncompatibleContractImplementation_Kd Self is Work 1"),
+            Problems(Loud + "contract Work\n    func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + "        effect confined\nstruct W\n" +
+                "    Self is Work\n    public func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises +
+                $"        _ = ({(order == "deep first" ? $"{deep}, {shallow}" : $"{shallow}, {deep}")})\n        return f()\n"));
+
+        static string Nested(int levels) => new string('(', levels) + "Loud.init()" + string.Concat(Enumerable.Range(0, levels).Select(static i => $", {i})"));
+    }
+
     [Theory]
     [InlineData("ref", "")]
     [InlineData("owner", "UnsatisfiedEffectBound_Kd f@move 18446744073709551615")]
@@ -456,14 +491,16 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
 
     // SPEC 15.3.5, 16.3.3, 8.15: a growing recursive Type, Nest<(T, T)> below a Sealed rc payload, ends at the destruction walk's bound,
     // since the payload's walk goes on below its handle: a body destroying one is analyzed (it hung before), and where it owes confined
-    // that destruction is a limit, the located Unsupported_Kd.
+    // that destruction is a limit, OwnershipDepthLimit_Kd (the owner's 「G272: (1)」, R4-M153).
     [Fact]
     public void AGrowingRecursiveDestructionEndsAtTheBound()
     {
         const string Nest = "struct Nest<T>\n    var value: T\n    var next: Option<rc/Nest<(T, T)>>\n    public init(value: T)\n" +
             "        self.value = value@move\n        self.next = .None\n";
         Assert.Empty(Problems(Nest + "func release(nest: Nest<i32>) => ()\n"));
-        Assert.Equal(["Unsupported_Kd Self is Sink 1"], Problems(Sink + Loud + Nest + Witness + "        _ = Nest<i32>.init(value: 1)\n        return .Ok(())\n"));
+        Assert.Equal(
+            ["OwnershipDepthLimit_Kd Self is Sink 1"],
+            Problems(Sink + Loud + Nest + Witness + "        _ = Nest<i32>.init(value: 1)\n        return .Ok(())\n"));
     }
 
     // SPEC 16.3, 15.3.5 (DECISIONS R4-M58): the destruction walk enters each Type once per query, so a recursive Type that repeats through
@@ -627,5 +664,5 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
 
     private static string[] Problems(Compilation c, MirReport report)
         => [.. report.All.ToArray().Where(static x => x.Subject.Module == 0 && x.Code is DiagnosticCode.IncompatibleContractImplementation_Kd or
-            DiagnosticCode.UnsatisfiedEffectBound_Kd or DiagnosticCode.Unsupported_Kd).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}")];
+            DiagnosticCode.UnsatisfiedEffectBound_Kd or DiagnosticCode.Unsupported_Kd or DiagnosticCode.OwnershipDepthLimit_Kd).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}")];
 }

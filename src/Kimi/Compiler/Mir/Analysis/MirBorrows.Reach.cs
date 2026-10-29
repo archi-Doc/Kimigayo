@@ -26,7 +26,7 @@ internal sealed partial class MirBorrows
     private readonly List<int> read = []; // The sets whose content or chain the location read, reset by Plan.
     private readonly List<int> chained = []; // A closure's holders to read, each queued once (Chain).
     private readonly List<int> parts = []; // The states a closure read, each through rule W's clause, which one n-ary union joins.
-    private readonly Dictionary<BoundType, byte> walked = new(ReferenceEqualityComparer.Instance); // HoldsLoans' scratch.
+    private readonly Dictionary<BoundType, MirModeDepths> walked = new(ReferenceEqualityComparer.Instance); // HoldsLoans' scratch.
     private readonly List<RawMember> members = []; // HoldsLoans' scratch for a stored raw layer's members.
     // Holding's memo: each case Type's answer for the program version holdingVersion names, by reference.
     private readonly Dictionary<BoundType, (bool Holds, MirWrites Writes)> holding = new(HoldingCapacity, ReferenceEqualityComparer.Instance);
@@ -239,11 +239,13 @@ internal sealed partial class MirBorrows
 
     // W(S) (A3 E16, DECISIONS R4-M73, R4-M116, R4-M147) into the targets, the holders a call's store through S writes: past refs(S), which
     // Referents put there first, from each holder h ≠ E of W whose Type passes the guard (MirWrites.Through), the holder each direct Loan or
-    // address of σ(h) names, in any mode, and E where σ(h) carries Φ_E. Whether W reached a holder the guard leaves undecided
-    // (MirWrites.Limit): the call's location records it as a limit (MirBorrows.Calls, .Locations). Every store path (a Call's rows, its
-    // untied stores among them; A5-F7's capture stores, unit 2c; A5-F6's desc(c) stores, 2f) takes W here, except a 4.6 to 4.9
-    // operation's referent store whose referent destroys shallowly, which takes refs(S) alone (Referents; DECISIONS R4-M143).
-    private bool Writes(ulong[] state, int set)
+    // address of σ(h) names, in any mode, and E where σ(h) carries Φ_E. The two facts that leave the store undecided, which the call's
+    // location records (MirBorrows.Calls, .Locations): whether W reached a holder the guard leaves undecided (MirWrites.Limit, R4-M147),
+    // and whether, at W's fixed point, the step from a holder whose guard is Deep would change what W writes (Changes, R4-M153; that step
+    // is left out, and a Deep holder whose step changes nothing decides nothing). Every store path (a Call's rows, its untied stores
+    // among them; A5-F7's capture stores, unit 2c; A5-F6's desc(c) stores, 2f) takes W here, except a 4.6 to 4.9 operation's referent store
+    // whose referent destroys shallowly, which takes refs(S) alone (Referents; DECISIONS R4-M143).
+    private (bool Limit, bool Deep) Writes(ulong[] state, int set)
     {
         this.Write(set, ViaRoot); // The kinds of refs(S)'s holders, which Referents put in the targets.
         var limited = false;
@@ -257,8 +259,37 @@ internal sealed partial class MirBorrows
             }
         }
 
-        return limited;
+        var deep = false;
+        for (var i = 0; i < this.targets.Count && !deep; i++)
+        {
+            deep = this.writingKind[this.targets[i]] == MirWrites.Deep && this.Changes((int)state[this.targets[i]]);
+        }
+
+        return (limited, deep);
     }
+
+    // Whether W's step from a set past a holder whose guard is Deep, which W leaves out (Writes), would change what the store writes, by
+    // Written's ways (R4-M153, R4-M154): reach a holder W does not, one W reaches only at its first step, or one past a holder by another
+    // Place's Type; E, which takes Reached.All by either way, only where W does not reach it.
+    private bool Changes(int set)
+    {
+        this.Work += this.sets.Count(set);
+        foreach (var element in this.sets.Elements(set))
+        {
+            if (element == Escaped ? this.writing[Escaped] != this.walks :
+                element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true, Named: >= 0 } loan && this.Changes(loan))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Changes' answer for the holder one direct Loan names.
+    private bool Changes(in Loan loan)
+        => this.writing[loan.Named] != this.walks || (loan.Named != Escaped && ((this.writingVia[loan.Named] & ViaPast) == 0 ||
+            (this.writingPlace[loan.Named] is (var known, false) && !ReferenceEquals(known, this.PlaceType(loan)))));
 
     // A step of W from a set (Writes), at its first step (ViaRoot) or past a holder (ViaPast): E where it carries Φ_E, and the holder each direct
     // Loan or address names. A value that may refer to storage the body does not own carries Φ_E where it is formed (an untied result or

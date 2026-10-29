@@ -797,6 +797,10 @@
     Evidence="table:Text"
     Label="ownership storage limit reached for {2} in this function"
 
+  + Name="OwnershipDepthLimit_Kd"
+    Category="Resource"
+    Message="Ownership analysis reaches a Type whose nesting passes an implementation bound"
+
   + Name="OwnershipCaseLimit_Kd"
     Category="Resource"
     Message="The Semantics cases of this definition exceed the implementation bound: {0} cases, where at most {1} are analyzed"

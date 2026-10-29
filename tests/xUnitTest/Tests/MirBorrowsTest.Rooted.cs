@@ -381,14 +381,15 @@ public sealed partial class MirBorrowsTest
                     .Where(static k => k is MirFactKind.EffectRead or MirFactKind.EffectWrite or MirFactKind.EffectUnknown))}"));
     }
 
-    // ALimitIsUnsupportedAndADerivedEffectReportsNothing on rooted bodies (AGENTS Diagnostics; R4-M10, R4-M91, R4-M92): A4's Limit is the
-    // located Unsupported_Kd where a live mutable-static Loan would be met (e12a), nothing where none is (e12b), Unknown beside it decides
-    // (e12c); a dependent of an error reports nothing by itself (e13a), a key beside it stays checked (e13b).
+    // ALimitIsUnsupportedAndADerivedEffectReportsNothing on rooted bodies (AGENTS Diagnostics; R4-M10, R4-M91, R4-M92): A4's Deep (Lim's
+    // destruction past the walk's bound) is the depth limit where a live mutable-static Loan would be met (e12a; the owner's 「G272: (1)」,
+    // R4-M153), nothing where none is (e12b), Unknown beside it decides (e12c); a dependent of an error reports nothing by itself (e13a), a
+    // key beside it stays checked (e13b).
     [Fact]
     public void ALimitIsUnsupportedAndADerivedEffectReportsNothingRooted()
     {
         Assert.Equal(
-            ["e12a: Lim.run() Unsupported_Kd", "e12c: both(g@move)"],
+            ["e12a: Lim.run() OwnershipDepthLimit_Kd", "e12c: both(g@move)"],
             RootedEffects("""
                     public func e12a()
                         var sc = Root.counter()
@@ -762,7 +763,7 @@ public sealed partial class MirBorrowsTest
                 "fx: sc.add() CallReservationConflict_Kd", "fxExplicit: State.touch() CallReservationConflict_Kd", "n1: State.f() CallReservationConflict_Kd",
                 "twiceBoth: State.add(sc@uniq) CallReservationConflict_Kd", "twiceBoth: State.add(sc@uniq) CallReservationConflict_Kd",
                 "gen: State.addg(v, sc@uniq) CallReservationConflict_Kd", "held: y0 = 2", "held: State.addh(sc@uniq) CallReservationConflict_Kd",
-                "addl: Lim.run() Unsupported_Kd", "limit: y0 = 2",
+                "addl: Lim.run() OwnershipDepthLimit_Kd", "limit: y0 = 2",
             ],
             Problems(c, program, DefaultCodes));
         Assert.Equal(
@@ -802,13 +803,13 @@ public sealed partial class MirBorrowsTest
         Assert.ThrowsAny<XunitException>(() => Sound(program));
     }
 
-    // The Loan problems and located Unsupported_Kd records of an effect program's rooted bodies: the prelude, the effect Types and group
-    // State with the given members, the markers, then the given declarations.
+    // The Loan problems and limit records (a located Unsupported_Kd, the depth limit) of an effect program's rooted bodies: the prelude, the
+    // effect Types and group State with the given members, the markers, then the given declarations.
     private static string[] RootedEffects(string members, string declarations = "")
     {
         var c = MirBuildTest.Compile(Prelude + EffectTypes + members + EffectRoots + declarations);
         Assert.Empty(c.Binding.Issues);
-        return Problems(c, AnalyzeRooted(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]);
+        return Problems(c, AnalyzeRooted(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnershipDepthLimit_Kd]);
     }
 
     // A5's work on a program's rooted bodies with no Loan problem.

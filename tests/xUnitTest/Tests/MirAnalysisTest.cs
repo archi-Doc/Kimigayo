@@ -205,8 +205,8 @@ public sealed class MirAnalysisTest
 
     // R4-M69 (G125): the Language problems of a default's inline copies are its template's: A5's conflict in the default of the 1c design's
     // p11 and A1's and A2's in another keep the template's one view, though a caller of two views and another caller call both; a limit
-    // record a copy finds stays (SPEC 23.1.1): A5's at a call whose contract Binding does not instantiate, one problem in the template and
-    // one with the two-view copy's views (R4-M71).
+    // record a copy finds stays (SPEC 23.1.1): A5's at a call whose contract Binding does not instantiate (the depth limit, R4-M153), one
+    // problem in the template and one with the two-view copy's views (R4-M71).
     [Fact]
     public void ADefaultsProblemsAreItsTemplates()
     {
@@ -259,7 +259,7 @@ public sealed class MirAnalysisTest
         Assert.Equal(
             [
                 "ComparisonLoanConflict_Kd a = 2 1", "MovedPlace_Kd s 1", "MovedPlace_Kd var box = Box.init(make()) 1",
-                "Unsupported_Kd Nest<ref/i32>.init(value: z@ref) 1", "Unsupported_Kd Nest<ref/i32>.init(value: z@ref) 3",
+                "OwnershipDepthLimit_Kd Nest<ref/i32>.init(value: z@ref) 1", "OwnershipDepthLimit_Kd Nest<ref/i32>.init(value: z@ref) 3",
             ],
             c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
                 .Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}").Order(StringComparer.Ordinal));
@@ -310,10 +310,10 @@ public sealed class MirAnalysisTest
 
     // R5-M23, DIAGNOSTICS rule 1: each recording rule names the requirement it judged, beside its code: A1's uses, Moves without a Move
     // Path and second initializations of a let, A2's incomplete layer at a Drop, A3's falling failure body, A4's confined obligations as
-    // Binding's row carries them (a conformance, a virtual function, a Callable binding) and its limit, and A5's Loan conflicts and its
-    // limit (a destruction past the walk's bound) and its effect rule, which the driver gives A4's keys (R4-M92). The storage limits need
-    // large bodies: A5ChecksTheViewsA1Completed has A1's. A parameter's record is at its Type occurrence (DECISIONS BU-48's locations,
-    // settled (a): R4-M90 D6's rule extended).
+    // Binding's row carries them (a conformance, a virtual function, a Callable binding) and its depth limit, and A5's Loan conflicts and
+    // its depth limit (a destruction past the walk's bound; R4-M153) and its effect rule, which the driver gives A4's keys (R4-M92). The
+    // storage limits need large bodies: A5ChecksTheViewsA1Completed has A1's. A parameter's record is at its Type occurrence
+    // (DECISIONS BU-48's locations, settled (a): R4-M90 D6's rule extended).
     [Fact]
     public void EachRecordingRuleNamesItsRequirement()
     {
@@ -324,10 +324,11 @@ public sealed class MirAnalysisTest
                 "ControlFlow RequireFallthrough_Kd ()", "Ownership.CallableEffectBound UnsatisfiedEffectBound_Kd noisy",
                 "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd tally = Tally.init()",
                 "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd x = 2",
+                "Ownership.DepthLimit OwnershipDepthLimit_Kd Nest<ref/i32 during a>",
+                "Ownership.DepthLimit OwnershipDepthLimit_Kd Self is Store",
                 "Ownership.EffectBound IncompatibleContractImplementation_Kd Self is Sink", "Ownership.PossiblyMovedUse MovedPlace_Kd r",
                 "Ownership.PossiblyMovedUse MovedPlace_Kd var box = Box.init(make())", "Ownership.ReassignedLet ReassignedLet_Kd resource = make()",
                 "Ownership.StaticMovePathRequired StaticMovePathRequired_Kd values[i]", "Ownership.UninitializedUse UninitializedPlace_Kd n",
-                "Ownership.Unsupported Unsupported_Kd Nest<ref/i32 during a>", "Ownership.Unsupported Unsupported_Kd Self is Store",
                 "Ownership.VirtualEffectBound UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32",
             ],
             c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
@@ -335,7 +336,8 @@ public sealed class MirAnalysisTest
     }
 
     // R4-M71: each recording rule names the body whose views number its problem's views: A1's, A2's, A3's and A5's the body they analyze,
-    // and A4's obligation rows (a conformance, a virtual function, a Callable binding and its limit) none, since they lie at Binding's rows.
+    // and A4's obligation rows (a conformance, a virtual function, a Callable binding and its depth limit) none, since they lie at Binding's
+    // rows.
     // A parameter's record is at its Type occurrence (DECISIONS BU-48's locations, settled (a): R4-M90 D6's rule extended).
     [Fact]
     public void EachRecordingRuleNamesItsBody()
@@ -347,10 +349,11 @@ public sealed class MirAnalysisTest
                 "ComparisonLoanConflict_Kd tally = Tally.init() effect", "ComparisonLoanConflict_Kd x = 2 conflict",
                 "IncompatibleContractImplementation_Kd Self is Sink -",
                 "MovedPlace_Kd r moved",
-                "MovedPlace_Kd var box = Box.init(make()) layer", "ReassignedLet_Kd resource = make() twice", "RequireFallthrough_Kd () falls",
+                "MovedPlace_Kd var box = Box.init(make()) layer", "OwnershipDepthLimit_Kd Nest<ref/i32 during a> deep",
+                "OwnershipDepthLimit_Kd Self is Store -",
+                "ReassignedLet_Kd resource = make() twice", "RequireFallthrough_Kd () falls",
                 "StaticMovePathRequired_Kd values[i] runtime", "UninitializedPlace_Kd n unset", "UnsatisfiedEffectBound_Kd noisy -",
-                "UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32 -", "Unsupported_Kd Nest<ref/i32 during a> deep",
-                "Unsupported_Kd Self is Store -",
+                "UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32 -",
             ],
             program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
                 .Select(x => $"{x.Code} {Line(c, x.Subject)} {(x.Body == MirProblem.NoBody ? "-" : program.Bodies[x.Body].Key.Decl!.Name)}")

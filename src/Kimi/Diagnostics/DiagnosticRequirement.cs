@@ -11,7 +11,7 @@ namespace Kimi.Diagnostics;
 /// <summary>The requirement kinds of the Ownership partition: the Kind of a requirement named <c>Ownership.&lt;Kind&gt;</c>, each with
 /// its row in the requirement table. Invariant: the one kind enumeration of its partition, which the ownership analysis records
 /// as its failure kind. Prohibitions: no copy or mapping in an analysis; a member is removed with its last producer, and none
-/// is added without the owner's approval (PD21; OwnStepDeparture: DECISIONS R4-M116).</summary>
+/// is added without the owner's approval (PD21; OwnStepDeparture: DECISIONS R4-M116; DepthLimit: R4-M153).</summary>
 public enum OwnershipRequirement : byte
 {
     UninitializedUse,
@@ -47,6 +47,10 @@ public enum OwnershipRequirement : byte
     // SPEC 5.2.1 condition 3: the own-step Warning, a pointer formed through an own step that may be used after its owning value
     // may leave its holder (A5 on MIR).
     OwnStepDeparture,
+
+    // SPEC 23.1.1, IMPL 21.3.2: a check whose verdict rests on a Type nested past an analysis bound, the Resource record
+    // OwnershipDepthLimit_Kd (A4 and A5 on MIR).
+    DepthLimit,
 }
 
 /// <summary>

@@ -236,8 +236,9 @@ public sealed partial class MirBorrowsTest
     // D5 (DECISIONS R4-M141): own-step entries make a view a producer only where a use may depart one, so a view no access may depart
     // records nothing, as any view no conflict can depend on: a retention Limit's call where no access departs the owner (ownLimit, as
     // unlent in AnUnclassifiedDestructionOrCallIsUnsupported), while the same call where the local owner's destruction may depart it keeps
-    // its Unsupported_Kd (ownLimitLocal), as does a destruction past the walk's bound of a root the entries borrow (ownDeep: d.n's old
-    // value; DeepBuf.init's Limit stays too), and a departure warns (ownWriteThrough).
+    // its limit record (ownLimitLocal), as does a destruction past the walk's bound of a root the entries borrow (ownDeep: d.n's old
+    // value; DeepBuf.init's Limit stays too), and a departure warns (ownWriteThrough). The limit records are OwnershipDepthLimit_Kd (the
+    // owner's 「G272: (1)」, R4-M153).
     [Fact]
     public void AnOwnStepViewIsAProducerOnlyWhereAnAccessMayDepart()
     {
@@ -268,11 +269,11 @@ public sealed partial class MirBorrowsTest
             """);
         Assert.Equal(
             [
-                "init: Nest<i32>.init(value: 1) Unsupported_Kd", "ownLimitLocal: Nest<ref/i32>.init(value: x) Unsupported_Kd",
-                "ownDeep: Nest<i32>.init(value: 2) Unsupported_Kd", "ownDeep: d.n = Nest<i32>.init(value: 2) Unsupported_Kd",
+                "init: Nest<i32>.init(value: 1) OwnershipDepthLimit_Kd", "ownLimitLocal: Nest<ref/i32>.init(value: x) OwnershipDepthLimit_Kd",
+                "ownDeep: Nest<i32>.init(value: 2) OwnershipDepthLimit_Kd", "ownDeep: d.n = Nest<i32>.init(value: 2) OwnershipDepthLimit_Kd",
                 "ownWriteThrough: b@follow = Buf<i32>.init(1) OwnStepDeparture_Kd",
             ],
-            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnStepDeparture_Kd]));
+            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnershipDepthLimit_Kd, DiagnosticCode.OwnStepDeparture_Kd]));
     }
 
     // D5 (DECISIONS R4-M141): a view that reads a `during self` layer N times and departs no own-step entry runs no stratum: it makes no

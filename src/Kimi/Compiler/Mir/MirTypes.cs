@@ -1,10 +1,21 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+#pragma warning disable SA1402 // The walks' outcome belongs to the Type facts.
+
 // Owns the Type facts needed by MIR construction and analyses.
 // Input: published Types, their stored shapes and Binding's Copy and Sealed proofs. Output: the destruction walk and the drop, observation,
 // Loan-holding with what a call may write past a value (its guard), raw, exclusivity, shared-layer, selection, agreement, borrow-kind and
 // pointer-cast facts.
 // Inline storage is traversed under each fact's documented bounds and Type rules; what destroying a value does is the one Destruction walk.
+// The walks share one depth bound (Bound): past it the guard and the Destruction walk answer Deep, the fact that the part is unknown
+// (DECISIONS R4-M153), and HoldsRaw yes (its reading is PLAN 2b-5's). Their answers at a verdict are one value, MirOutcome, combined only by
+// its Join: decided outranks Limit, Limit outranks Deep, Deep outranks none. A decided answer is the verdict whatever an unknown part is
+// (SPEC 23.1.1: a decided Language violation is not "may be valid"); an unsupported or abstract part (Limit, R4-M147) leaves the verdict
+// undecided even past any bound, so it outranks Deep, and a verdict both leave undecided is one failure with one record (SPEC 23.1.2), the
+// located Unsupported_Kd. A walk composes its parts' outcomes only by Join and stops early only where no other part changes its answer
+// (decided, the outcome's top; the holding walk's LoanOnly mode, which reads no outcome, at Loan; a disjunction at yes), and its memo
+// enters a Type at the shallowest depth it meets it (MirDepths), so the answer is the same in every order of the parts; a reader asks the
+// published answer and never ranks two outcomes itself.
 // Must not inspect source syntax or substitute new Binding decisions.
 // Its concerns: the destruction walk and the facts over it (MirTypes.Destruction.cs), what a value may hold (MirTypes.Holding.cs), and
 // here the reference, view, shared-layer, selection, borrow-kind, pointer-cast and agreement facts.
@@ -17,6 +28,11 @@ namespace Kimi.Compiler.Mir;
 /// a struct's Fields and base and an enum's Case payloads (plan 5.5).</summary>
 internal static partial class MirTypes
 {
+    // The deepest part the walks of a Type enter, the holding walks and the destruction walk alike: past it a part may be anything (SPEC
+    // 15.3.5's growing recursion). The guard and the destruction walk answer it as its own outcome (Deep), never as a value they did not
+    // establish; a check whose verdict rests on such a part records OwnershipDepthLimit_Kd (DECISIONS R4-M153).
+    private const int Bound = 32;
+
     /// <summary>Gets whether a value of a Type is a reference whose Loans an EndBorrow ends: a ref, uniq, objref or objuniq, or a pair layer.</summary>
     /// <param name="type">The Type.</param>
     /// <returns>Whether the value is a reference.</returns>
@@ -143,4 +159,94 @@ internal static partial class MirTypes
 
         return true;
     }
+}
+
+/// <summary>The walks' one answer at a verdict (MirTypes' contract; DECISIONS R4-M153): decided, Limit (an unsupported or abstract part,
+/// R4-M147), Deep (a part past the walks' bound) or none. Its rank is private: the one operation over answers is <see cref="Join"/>, and a
+/// reader asks what an answer is, never which of two outranks the other.</summary>
+internal readonly struct MirOutcome
+{
+    private const byte DeepRank = 1;
+    private const byte LimitRank = 2;
+    private const byte DecidedRank = 3;
+
+    private readonly byte rank;
+
+    private MirOutcome(byte rank) => this.rank = rank;
+
+    /// <summary>Gets the answer of nothing met: the Join's identity.</summary>
+    internal static MirOutcome None => default;
+
+    /// <summary>Gets the answer of a part past the walks' bound, which leaves the verdict undecided.</summary>
+    internal static MirOutcome Deep => new(DeepRank);
+
+    /// <summary>Gets the answer of an unsupported or abstract part, which leaves the verdict undecided past any bound.</summary>
+    internal static MirOutcome Limit => new(LimitRank);
+
+    /// <summary>Gets the decided answer, the Join's top, after which a walk may stop.</summary>
+    internal static MirOutcome Decided => new(DecidedRank);
+
+    /// <summary>Gets a value indicating whether the answer is decided.</summary>
+    internal bool IsDecided => this.rank == DecidedRank;
+
+    /// <summary>Gets a value indicating whether the answer is Limit: the verdict's record is the located Unsupported_Kd.</summary>
+    internal bool IsLimit => this.rank == LimitRank;
+
+    /// <summary>Gets a value indicating whether the answer is Deep: the verdict's record is OwnershipDepthLimit_Kd.</summary>
+    internal bool IsDeep => this.rank == DeepRank;
+
+    /// <summary>Gets a value indicating whether nothing was met.</summary>
+    internal bool IsNone => this.rank == 0;
+
+    /// <inheritdoc/>
+    public override string ToString() => this.rank switch
+    {
+        DecidedRank => "Decided",
+        LimitRank => "Limit",
+        DeepRank => "Deep",
+        _ => "None",
+    };
+
+    /// <summary>Gets the answer of two answers met at one verdict, MirTypes' order: commutative and associative, with None its identity and
+    /// Decided its absorbing top.</summary>
+    /// <param name="other">The other answer.</param>
+    /// <returns>The joined answer.</returns>
+    internal MirOutcome Join(MirOutcome other) => this.rank >= other.rank ? this : other;
+}
+
+/// <summary>The outcome walks' one depth policy (DECISIONS R4-M58, R4-M153's revision 3), over a walk's per-query slot for a Type (the
+/// destruction walk's) or a Type in a mode (the holding walk's): 0 never met, else one more than the depth it was entered at, or
+/// <see cref="Past"/>, met only past the bound. A Type is entered at the shallowest depth the query meets it at, again where it is met
+/// shallower than before (at most once per depth within the bound), so the walk's answer is the same in every order of the parts; a part
+/// past the bound is Deep only where its slot stays <see cref="Past"/> at the walk's end, its Type never entered within the bound, since a
+/// Type's parts are its own wherever it lies.</summary>
+internal static class MirDepths
+{
+    /// <summary>The slot of a Type met only past the bound: deeper than every depth within it, so a later meeting within enters it.</summary>
+    internal const byte Past = byte.MaxValue;
+
+    /// <summary>Gets whether a slot was entered at the depth of a meeting or shallower.</summary>
+    /// <param name="at">The slot.</param>
+    /// <param name="depth">The depth of the meeting.</param>
+    /// <returns>Whether it was entered there or shallower.</returns>
+    internal static bool Entered(byte at, int depth) => at != 0 && at <= depth + 1;
+
+    /// <summary>Gets whether the walk enters a slot it meets within the bound: never entered, or entered deeper than this meeting.</summary>
+    /// <param name="at">The slot, set to this meeting where entered; read before any recursion, which may move it.</param>
+    /// <param name="depth">The depth of the meeting.</param>
+    /// <returns>Whether the walk enters it.</returns>
+    internal static bool Enter(ref byte at, int depth)
+    {
+        if (Entered(at, depth))
+        {
+            return false;
+        }
+
+        at = (byte)(depth + 1);
+        return true;
+    }
+
+    /// <summary>Notes a meeting past the bound, where the walk does not enter the slot's Type.</summary>
+    /// <param name="at">The slot, Past where never met.</param>
+    internal static void Meet(ref byte at) => at = at == 0 ? Past : at;
 }
