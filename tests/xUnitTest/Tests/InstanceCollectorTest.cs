@@ -23,7 +23,7 @@ public sealed partial class InstanceCollectorTest
     private const string CopyBox = "struct Box<T>\n    T is Copy\n    public var value: T\n    public init(value: T) => self.value = value\n";
 
     // The F3 reproducers' nested functions (X40): one level into a generic function, one there calling a selected specialization, two
-    // levels in, in a block, in a generic struct's method and in a specialization inside a generic struct.
+    // levels in, in a block, in a generic struct's method and in a specialization inside a generic struct; and in its getter and setter.
     private const string OneLevel = Outer + "    func middle(y: T) -> T => y\n    return middle(x)\n";
 
     private const string OneLevelSpecialized = "func describe<T>() -> i32 => 1\nspecialize func describe<i32>() -> i32 => 2\nfunc outer<T>(x: T) -> i32\n" +
@@ -35,6 +35,18 @@ public sealed partial class InstanceCollectorTest
 
     private const string InMethod = CopyBox + "    public func get(self: ref/Self) -> T\n        func inner(z: T) -> T => z\n        return inner(self.value)\n" +
         Outer + "    return Box<T>.init(x).get()\n";
+
+    private const string InGetter = CopyBox + "    public computed got: T\n        get() -> T\n            func inner(z: T) -> T => z\n" +
+        "            return inner(self.value)\n" + Outer + "    return Box<T>.init(x).got\n";
+
+    private const string InSetter = CopyBox + "    public computed put: T\n        get() -> T => self.value\n        set(value: T) -> ()\n" +
+        "            func inner(z: T) -> T => z\n            self.value = inner(value)\n" + Outer + "    var box = Box<T>.init(x)\n    box.put = x\n" +
+        "    return box.value\n";
+
+    // A Closure in a generic struct's getter and in its setter.
+    private const string AccessorClosures = CopyBox + "    public computed got: T\n        get() -> T\n            let f = func [] (y: T) -> T => y\n" +
+        "            return f(self.value)\n        set(value: T) -> ()\n            let g = func [] (y: T) -> T => y\n            self.value = g(value)\n" +
+        Outer + "    var box = Box<T>.init(x)\n    box.got = x\n    return box.got\n";
 
     private const string InSpecialization = CopyBox + "    public func f<U>(x: U) -> i32 => 1\n    specialize func f<i32>(x: i32) -> i32\n" +
         "        func inner(y: i32) -> i32 => y\n        return inner(2)\nfunc outer<T>(x: T) -> i32\n    T is Copy\n    return Box<T>.f(5)\n";
@@ -201,8 +213,12 @@ public sealed partial class InstanceCollectorTest
 
         """;
 
-    // A generic function nested in a closed function, which has no instance to carry.
+    // A generic function nested in a closed function, and in a closed struct's getter, which have no instance to carry.
     private const string InClosed = "func host() -> i32\n    func pick<U>(x: U) -> U => x@move\n    return pick(1)\n" + Outer + "    _ = host()\n    return x\n";
+
+    private const string InClosedGetter = "struct Fixed\n    public var value: i32\n    public init(value: i32) => self.value = value\n" +
+        "    public computed got: i32\n        get() -> i32\n            func pick<U>(x: U) -> U => x@move\n            return pick(self.value)\n" + Outer +
+        "    _ = Fixed.init(1).got\n    return x\n";
 
     // Closed functions, a generic one and a generic struct, a closure, calls only the checks reach, a computed property with both
     // accessors, mutually recursive defaults (template calls) and top-level statements that call them and the library.
@@ -226,7 +242,10 @@ public sealed partial class InstanceCollectorTest
         { InBlock, "inner", 0, "inner(x)" },
         { InMethod, "inner", 0, "inner(self.value)" },
         { InSpecialization, "inner", 0, "inner(2)" },
+        { InGetter, "inner", 0, "inner(self.value)" },
+        { InSetter, "inner", 0, "inner(value)" },
         { InClosed, "pick", 1, null },
+        { InClosedGetter, "pick", 1, null },
     };
 
     // DECISIONS BU-38 (PLAN G242; designs A and B, the review's combination C): programs whose instance (a local, a Type argument, a
@@ -234,7 +253,9 @@ public sealed partial class InstanceCollectorTest
     // storage Binding rejected, with Binding's records and the collector's; and their genuine-limit twins, which keep the storage-nesting gap,
     // beside a failed part in either order too, and C8d's LegacyRow over a Type nested past the bound (before: InternalInvariant_Kd). DECISIONS
     // R5-M151 (PLAN G285): a virtual slot whose applicability rests on a constraint Binding rejected, in the clause and the Block form, which
-    // the VTable leaves undecided (before: InternalInvariant_Kd at the creation).
+    // the VTable leaves undecided (before: InternalInvariant_Kd at the creation). DECISIONS R5-M155 (PLAN G293): a local, a parameter (with a
+    // generic subject), an Array's element (its glue's) and a captured value typed by a qualified projection that names no Type after
+    // Binding's constraint error, an abstract Type Layout gives Rejected (before: Layout.Row threw, CheckFaulted_Kd).
     public static TheoryData<string, string, string, string> RejectedCases
     {
         get
@@ -257,6 +278,10 @@ public sealed partial class InstanceCollectorTest
             const string Bindings = "    associate Holder<T>.Item is i32\n    associate Holder<U>.Item is u8\n";
             const string HAdd = "struct HAdd<S>\n    S is Addable<S>\n    public var x: S.Output\n";
             const string SrcC = HasItem + "struct SrcC<T>\n    Self is HasItem when T is Copy\n        associate HasItem.Item is T\n";
+            const string Iter = "contract Iter<T>\n    associate Tag\n";
+            const string IterB = Iter + "struct IB\n    Self is Iter<i32>\n    associate Tag is bool\n";
+            const string IterG = HasItem + Iter + "struct SrcU\n    Self is HasItem\n    associate HasItem.Item is u8\nstruct IG<S>\n    S is HasItem\n" +
+                "    Self is Iter<S.(HasItem).Item>\n    associate Tag is bool\n";
             var b65 = Nest("B", 65, "i32");
             return new()
             {
@@ -343,6 +368,16 @@ public sealed partial class InstanceCollectorTest
                 { "outerLimit", Box + $"func inner<T>() => ()\nfunc outer<T>() => inner<T>()\nfunc g() => outer<{b65}>()\n", string.Empty, "Unsupported_Kd inner<T>()" },
                 { "toStringLimit", "struct B<T>\n" + Format + $"    public var v: T\nfunc g(b: ref/{b65}) -> string => Text.toString(b)\n", string.Empty, "Unsupported_Kd Text.toString(b)" },
                 { "rowLimit", Box + $"func g(a: uniq/Array<{b65}>) => a.reserve(1)\n", string.Empty, "Unsupported_Kd a.reserve(1)" },
+                {
+                    "localProjection", IterB + "func g() -> ()\n    let t: IB.(Iter<u8>).Tag = true\n    return\n",
+                    "TypeMismatch_Kd UnsatisfiedConstraint_Kd", string.Empty
+                },
+                { "parameterProjection", IterG + "func g(t: IG<SrcU>.(Iter<i32>).Tag) => ()\n", "UnsatisfiedConstraint_Kd", string.Empty },
+                { "elementProjection", IterB + "func g(a: Array<IB.(Iter<u8>).Tag>) => ()\n", "UnsatisfiedConstraint_Kd", string.Empty },
+                {
+                    "capturedProjection", IterB + "func g(t: IB.(Iter<u8>).Tag) -> ()\n    let c = func [t@move] () -> () => ()\n    return\n",
+                    "UnsatisfiedConstraint_Kd Unsupported_Kd", string.Empty
+                },
             };
         }
     }
@@ -713,9 +748,10 @@ public sealed partial class InstanceCollectorTest
 
     // SPEC 6.1.3, 8.13.3, DECISIONS R5-M40 (the F3 reproducers, X40): an instance of a nested function holds its enclosing instance. A call
     // one level into a generic function carries it, so each instance of the enclosing function has its own item; a call two levels in,
-    // from a block, in a generic struct's method or in a specialization inside a generic struct does not, so the edge is the
-    // EnclosingInstance gap at the call until a representation of the enclosing chain carries it (DECISIONS R5-M43; then two items each).
-    // Every admitted representative closes its body.
+    // from a block, in a generic struct's method or accessor (SPEC 11.3: an accessor's body is its executing function's; before PLAN
+    // G157 (49), InternalInvariant_Kd at the getter's and the setter's call) or in a specialization inside a generic struct does not, so the
+    // edge is the EnclosingInstance gap at the call until a representation of the enclosing chain carries it (DECISIONS R5-M43; then two
+    // items each). Every admitted representative closes its body; a closed enclosing function or accessor has no instance to carry.
     [Theory]
     [MemberData(nameof(NestedCases))]
     public void NestedFunctionsNeedTheirEnclosingInstance(string declarations, string nested, int items, string? refused)
@@ -751,6 +787,24 @@ public sealed partial class InstanceCollectorTest
             ["Fn pick [i32]", "Fn apply [i32]", "Fn apply [bool]", "Fn make [i32]", "Fn pick [i32]", "Fn one [bool]", "Fn run [function item one<bool>]"],
             Targets(program, set, "Fn top"));
         Assert.Equal(["Fn one [bool]"], Targets(program, set, "Fn run [function item one<bool>]"));
+        Assert.All(set.Items.ToArray(), x => Assert.True(Closed(c, program, x), Label(program, x)));
+    }
+
+    // SPEC 11.3, 6.1.3 (PLAN G157 (49)): a Closure in a generic struct's accessor is an instance of its body under the accessor's instance,
+    // as one in a function is: one per instance of the getter and of the setter, with no record (before: InternalInvariant_Kd where it is
+    // made and where it is called, since no context carried the accessor's instance).
+    [Fact]
+    public void ClosuresOfAccessorInstancesAreTheirBodies()
+    {
+        var c = MirBuildTest.Compile(AccessorClosures + "require outer(3) == 3 and outer(true) else => $abort(\"accessor\")\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Empty(set.Records);
+        var closures = set.Items.ToArray().Select(x => Label(program, x)).Where(static x => x.StartsWith("Closure ", StringComparison.Ordinal));
+        Assert.Equal(
+            ["Closure got.Get [Box<bool>]", "Closure got.Get [Box<i32>]", "Closure got.Set [Box<bool>]", "Closure got.Set [Box<i32>]"],
+            closures.Order(StringComparer.Ordinal));
         Assert.All(set.Items.ToArray(), x => Assert.True(Closed(c, program, x), Label(program, x)));
     }
 
@@ -1924,6 +1978,22 @@ public sealed partial class InstanceCollectorTest
         Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x).StartsWith("Fn pick", StringComparison.Ordinal));
     }
 
+    // DECISIONS R5-M155 (PLAN G187's R5 half): in a complete compilation an abstract Type reaching Layout is a broken contract, a located
+    // InternalInvariant_Kd at its use, never a fault. Binding and the builder never give a closed body such a local, so the test forges one:
+    // main's `x` typed by probe's slot T.
+    [Fact]
+    public void AnAbstractLocalIsABrokenContractInACompleteCompilation()
+    {
+        var c = MirBuildTest.Compile("func probe<T>(value: T) => ()\npublic func main() -> ()\n    let x = 1\n    return\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        var main = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "main");
+        var slot = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters[0].Type.TypeOf()!;
+        main.AddLocal(main.Locals.ToArray().Single(static x => x.Name == "x") with { Type = slot });
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal([(DiagnosticCode.InternalInvariant_Kd, "let x = 1")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+    }
+
     // X19: an item past depth 128 on its admission chain, and the 1,025th item of one definition, are GenerationResourceLimit_Kd at their calls.
     [Fact]
     public void TheDepthAndSetLimitsStopAtTheirCalls()
@@ -2241,7 +2311,7 @@ public sealed partial class InstanceCollectorTest
         var name = body.Key.Decl?.Declaration switch
         {
             null => "top",
-            FunctionKoto { IsAnonymous: true } closure => Enclosing(closure.Parent!).Name,
+            FunctionKoto { IsAnonymous: true } closure => Enclosing(closure.Parent!),
             FunctionKoto function => function.Name,
             _ => body.Key.Decl!.Name, // A static's initializer.
         };
@@ -2250,7 +2320,13 @@ public sealed partial class InstanceCollectorTest
             : string.Empty;
         return (body.Source.Module == 0 ? $"{body.Key.Kind} {name}" : $"library {body.Key.Kind} {name} in {body.Key.Decl!.Scope.Owner}") + instance;
 
-        static FunctionKoto Enclosing(Koto node) => node is FunctionKoto { IsAnonymous: false } named ? named : Enclosing(node.Parent!);
+        // The named function or accessor whose body holds a node (an accessor as its executing function is named, SPEC 11.3).
+        static string Enclosing(Koto node) => node switch
+        {
+            FunctionKoto { IsAnonymous: false } named => named.Name,
+            PropertyAccessorKoto accessor => ((PropertyKoto)accessor.Parent!).NameKoto.IdentifierName + "." + accessor.AccessorKind,
+            _ => Enclosing(node.Parent!),
+        };
     }
 
     // The parts the destruction walk's direct descents give: a destructor's struct and a handle are not descended (the destructor; a Sealed

@@ -447,7 +447,7 @@ public sealed partial class Binding
         for (var i = 0; i < shape.Ancestors.Count; i++)
         {
             var candidate = shape.Ancestors[i];
-            if (ReferenceEquals(candidate.Declaration, declaration) && (reference is null || ReferenceEquals(candidate.Type, reference)))
+            if (ReferenceEquals(candidate.Declaration, declaration) && (reference is null || this.SameConformanceType(candidate.Type, reference, scope)))
             {
                 ancestor = candidate;
                 matches++;

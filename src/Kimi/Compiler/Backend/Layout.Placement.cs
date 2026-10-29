@@ -56,13 +56,19 @@ internal sealed partial class Layout
     // CLayout at once, a leaf one level high naming itself, of no known size: no part is placed.
     private static Entry Unavailable(BoundType type) => Entry.Of(Outcome.CLayout, null, type, 1, 0, 0);
 
-    // A Type placed with `budget` levels left. A row is 0 high; a complete entry serves every budget not below its height; at budget
-    // 0 a placed Type lies outside the window; an exhausted entry is `budget` + 1 high.
+    // A Type placed with `budget` levels left. A row is 0 high, and so is an abstract Type, Rejected naming itself, of no known size
+    // (Layout.cs' Inputs; DECISIONS R5-M155); a complete entry serves every budget not below its height; at budget 0 a placed Type lies
+    // outside the window; an exhausted entry is `budget` + 1 high.
     private Entry Walk(BoundType type, int budget)
     {
         if (type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.FunctionItem or BoundTypeKind.FixedArray) &&
             !AdtDef.IsStruct(type) && !AdtDef.IsEnum(type))
         {
+            if (type.IsAbstract)
+            {
+                return Entry.Of(Outcome.Rejected, null, type, 0, 0, 0);
+            }
+
             var row = Row(type);
             return Entry.Of(Outcome.Ok, row, null, 0, (ulong)row.Layout.Size, row.Layout.Alignment);
         }
