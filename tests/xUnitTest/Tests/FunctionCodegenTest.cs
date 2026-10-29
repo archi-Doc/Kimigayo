@@ -114,13 +114,8 @@ public sealed partial class FunctionCodegenTest
     private const string Imports = "group Native\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n    public unsafe func lastError() -> u32\n" +
         "func last() -> u32\n    var e: u32 = 0\n    unsafe => e = Native.lastError()\n    return e\n";
 
-    // Functions with scalar, string-borrow, zero-sized and Never signatures, a Library's roots.
-    private const string Signatures =
-        "func identity(flag: bool, value: i32, text: ref/string, unit: ()) -> i32\n    if flag => return value\n    return 0\n" +
-        "func stop() -> Never\n    loop\n        let x = 1\n";
-
-    // Programs of the frame's forms only: scalar locals and constants, branches, loops and labels and an explicit startup (an Application
-    // generates only what its startup body reaches, K11; Signatures are a Library's).
+    // Programs of the frame's forms only: scalar locals and constants, branches, loops and labels and an explicit startup, which calls
+    // functions with scalar, string-borrow, zero-sized and Never signatures (an Application generates only what its startup body reaches, K11).
     public static TheoryData<string, string> Frames => new()
     {
         {
@@ -134,7 +129,12 @@ public sealed partial class FunctionCodegenTest
             "var running = true\nlabel outer: loop\n    if running\n        running = false\n        continue to outer\n    exit to outer\n" +
             "let found: i32 = loop => exit 5\nvar again = true\nwhile again\n    again = false\n"
         },
-        { "FrameMain", "public func main()\n    var running = true\n    while running\n        running = false\n" },
+        {
+            "FrameMain",
+            "func identity(flag: bool, value: i32, text: ref/string, unit: ()) -> i32\n    if flag => return value\n    return 0\n" +
+            "func stop() -> Never\n    loop\n        let x = 1\npublic func main()\n    var running = true\n    while running\n        running = false\n" +
+            "    let text = \"frame\"\n    if running => stop()\n    let check = 1 / (identity(true, 1, text@ref, ()) - identity(false, 1, text@ref, ()))\n"
+        },
     };
 
     // The first programs (R5 C0b2, C0c): console output through writeLine, one line, several lines, an empty line and non-ASCII text: the
@@ -1404,7 +1404,6 @@ public sealed partial class FunctionCodegenTest
     [InlineData(DictionaryLoop, OutputKind.Library)]
     [InlineData("group Registry\n    public let limit: i32 = 4\n", OutputKind.Library)]
     [InlineData("func twice(a: i32) -> i32 => a\n", OutputKind.Library)]
-    [InlineData(Signatures, OutputKind.Library)]
     public void EveryAcceptedFormIsWritten(string source, OutputKind output)
     {
         var c = Analyze(source, output);
