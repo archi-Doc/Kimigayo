@@ -10069,7 +10069,8 @@ structure is recorded here by the unit that first implements it.
     slot rule K8's VTable targets read (`Applies(type, table, slot)`), and an undecided slot is a broken contract, `InternalInvariant_Kd`
     at the root's site (as K8 records it at a VTable's). Such a body is accepted at check when its condition is refuted without contradiction (a non-conforming Type under
     `T is Marker`); the old generator skips it too (`IsInapplicableVirtualBody`). An Application or a test build reaches none: a refuted
-    slot has no target and a call of it is a Binding error.
+    slot has no target and a call of it is a Binding error. Amended by R5-M153: a Library output root is a declaration's own body; a
+    Closure's body and a body-declared function's are reached only through the mark, from the bodies that make or call them.
   - Rejected: a Generated field on `MonoItem`, the collector's row (the mark is emit state, replaced per mark); a side table of marked
     items; discovering tests in the entry, as the old generator's `TryPrepare` does (a second discovery per generation; `Project` owns
     it after acceptance); TestEntry roots from the root module's Test bodies (a second copy of discovery's selection); the mark in
@@ -10262,6 +10263,8 @@ structure is recorded here by the unit that first implements it.
   - Rejected: `MirCastKind.Position` (option A: a vocabulary entry); failing at the conversion (option C: an Abort before later
     boundaries are evaluated); a branchless shift-and-or encoding (not a MIR form, opaque to review); keeping Wrap for a same-width
     unsigned position (a second encoding of an unresolved position).
+  - Superseded in part by R5-M154 (G167): a Type parameter's position is compared with 0 in its own Type and with isize's maximum
+    in u128, not a located `Unsupported_Kd`.
 - **R5-M85 The codegen deviation form** (2026-10-20, E lane; plan E12 and K13a, PD10, OQ7; under R5-M8, R5-M66 and R5-M73; DEC Q6
   form 1; temporary: the stage that makes an `Expect`'s target the default reduces it to the target, G2 for acceptance-time records
   such as this entry's (the collector runs on the default pipeline from G2, R5-M41) and G3 for generated output; G4 removes the form
@@ -12637,3 +12640,84 @@ structure is recorded here by the unit that first implements it.
     pairing, R5-M64's `-Codegen mir` rule, R5-M41's "until G2" and R5-M85's `checked-set-at-check`.
   - Rejected: a per-row exception for `StaticStorage` (a per-row gate); G2 waiting for P42 (P42 follows H5: circular); a `Codegen.Expect`
     deviation for the P42 rows (R5-M144 (b); keyed by the code generator, which G2 does not switch); a third G1 file for the records.
+- **R5-M153 A Library output root is a declaration's own body: a Closure or a body-declared function is reached through the mark (unit
+  g157-15)** (2026-10-29, planning session; PLAN G157 (15), K11 review r2's (4) and g157-15's review; amends R5-M77's Library roots;
+  Major) K 4.4 makes every closed body of a root module a root, a Closure's and a body-declared function's included, and R5-M77 made a
+  Library's every root but the checked-only ones an output root, so such a body was marked apart from the body that makes or calls it: a
+  Closure in the override of a refuted slot (R4-M28) or in a layout-less constructor (R5-M149) was Generated while that body was checked
+  only. It was dead code, an internal function nothing references that both generators wrote and O2 deletes; not wrong code (the
+  collector replays every root at check) nor an unresolved reference (the mark is transitive).
+  - Rule (`InstanceCollector.Generates`): a Library output root is a declaration's own body. No Closure's body is one: each is made at an
+    `Aggregate(Closure)` site, which `CheckedSet.Mark` follows. No body of a function declared in a function's or Closure's body is one:
+    its declaring scope's `BindingScope.Function` (Binding's scope fact, read without walking through Closures) is set; its calls,
+    function items and erasures reach it. So a checked-only body leaves out what only it makes, wherever that is written (a Field's
+    initializer runs in its constructor), and a generated body generates what it reaches, as in an Application. A default template
+    takes the verdict of its declaration's own body (R5-M149's reads that body's Receiver local, which a template lacks), so a public
+    function's template stays a root for external callers and a checked-only constructor's (`init(n: i32 = 2)`, or one whose default is
+    a Closure) is none.
+  - Left: a function declared directly in an accessor's body has no `BindingScope.Function` (an accessor is no function declaration),
+    so it stays an output root; accessors are never virtual (SPEC 6.4) or constructors, so never checked only: an uncalled one is dead
+    code only.
+  - Behavior change: an uncalled body-declared function of a generated Library body is no longer written, as in an Application. The old
+    generator stays frozen (R5-M6) and writes both, so such a Library's IR differs between the generators (no native fixture compares a
+    Library).
+  - Rejected: lexical nesting, `TyCtxt.EnclosingFunction` non-null (this unit's first revision): a Closure outside any function's body
+    stays a root; a `limit` struct `Big` with the Field `public var d: i32 = (func [] (x: i32) -> i32 => x + 1)(2)` has its `init`
+    checked only and the Closure Generated (and a function declared in it, since EnclosingFunction walks through the Closure). A nested
+    root following its outermost enclosing function's verdict (a second lookup by body kind; unreached nested bodies kept as dead
+    code). The check in `Compilation.OutputRoots` (the collector owns the Library root rule).
+  - Verified: the amendment of R5-M77's "a Library every root but the override of a refuted slot": a Closure and a called nested function
+    in that override follow it, Generated exactly where the slot applies (both Generated before where it is refuted); a Closure in a
+    layout-less constructor, and a Closure in a Field's initializer of a `limit` struct with the function declared in it, are not
+    Generated (Generated at the base and under the lexical rule); the Closures of an accessor's get and set, a destructor, a default
+    template and a static's initializer are no output roots and Generated by reach.
+- **R5-M154 A position typed by a Type parameter is tested in its own Type and u128 (G167)** (2026-10-29, planning session; PLAN
+  G167; the owner's OI-2 (a) 「推奨どおり」 under R5-M152; supersedes R5-M84's Type-parameter clause; Major, design (D) accepted by the
+  planning session) SPEC 4.6.1, 4.6.3, 4.7.1: a position of a Type parameter (`values[p]` with `p: I`, `I is PrimitiveInteger`) is
+  valid and the default builds it; the MIR recorded it as a located `Unsupported_Kd` (R5-M84), the one valid form G2 would newly
+  reject at default `check` (R6-gen G0 §1, OI-2).
+  - Rule: `MirBuilder.Position` converts a Type parameter's position as R5-M84 converts any other Type's, with the tests its unknown
+    range cannot drop: `Le(const 0_I, p)`, then p widened by a Proven Integer Cast to u128, which holds every nonnegative value of
+    every PrimitiveInteger Type, and `Le(w, const isize.max)` in u128; each failing test leaves for -1 (`Unresolved`), else the
+    Proven Cast to isize. One conversion is valid for every integer Type an instance can take, and each instance's code folds the
+    tests its Type proves. A negative value gives -1, not itself: every selection's one check rejects any negative position alike, at
+    the selection (an element's index, a written `^x`'s `0 <= x`, a range's `0 <= start <= end`; SPEC 4.6.3). Binding is unchanged
+    (it applies a generic integer key directly, as a concrete one): no new fact and no vocabulary entry, and the default generator's
+    output is unchanged. R5-M84's extension of R5-M63 (an Opaque at a position names the built value's root) loses its one site.
+  - O2 (`opt -O2` instructions per instance: an element at i8, i64, u64, isize, u128; `^x` at i32; a range at u16): sel 14, 12, 12,
+    12, 14, 15, 18 against a concrete key's 12, 11, 12, 11, 14, 15, 18; the default stays 12, 11, 11, 11, 14, 13, 12.
+  - Rejected: (A) Binding applying only a concrete integer key directly, so a generic one resolves through
+    `PositionSyntax.resolved`/`resolvedRange` (`IntegerPosition.tryResolve<I>`; PLAN G167's "shorter rule", a review suggestion):
+    `tryResolve`'s own contract (`length >= 0`, `p <= length`) costs 2 compares and 2 selects per element and 1 -> 4 branches per
+    range at O2 on both generators (default 18, 16, 15, 14, 17, 17, 23), and it moves a Binding decision every later phase reads;
+    a located record left in place (OI-2: from G2 the default would reject a form it builds today).
+- **R5-M155 An abstract Type reaching Layout is Rejected (G293; G187's R5 half)** (2026-10-29, planning session; PLAN G293, G187; BU's
+  input on BU-50; Major, design accepted by the planning session) SPEC 23.1.2 lets a failure caused only by another reported failure go
+  unreported; a broken contract on a program Binding accepted stays a located `InternalInvariant_Kd` (AGENTS Diagnostics, R5-M151).
+  - Defect: after Binding's `UnsatisfiedConstraint_Kd` or `UnprovenConstraint_Kd` on a qualified projection (`let t: B.(Iter<u8>).Tag`
+    with B only `Iter<i32>`, the generic `B<SrcU>.(Iter<i32>).Tag`), `BindAssociatedProjection` publishes the projection, which names no
+    Type, as the symbol's Type; the MIR local takes it, a closed item reads it Prepared with no TyCtxt query, and `Layout.Walk` asked
+    `Row`, whose default arm threw: `CheckFaulted_Kd` ("Layout has no row for the Type Tag") beside Binding's records on every pipeline,
+    at check and emit. Sixteen probe forms: a local, a parameter, a result, a Tuple part, a fixed-array element, an `Array<…>` element
+    (its glue), a captured value, a primitive or Tuple subject (`UnprovenConstraint_Kd`) and the subjects of the G290 review's q2, q3, q6.
+  - Rule: `Layout.Walk` gives an abstract Type (`BoundType.IsAbstract`: a parameter, a projection or a dependent Semantics term), which
+    no closed Type holds, the existing Rejected verdict: a leaf where a row would be, 0 high, of no size, naming itself; a Type storing
+    one by value takes it on through Fold. The collector is unchanged: `RecordOf(Rejected)` is `InternalInvariant_Kd` through R5-M151's
+    `Report`, so no record while Binding is incomplete (a dependent of Binding's rejection, as BU-50's none is; SPEC 23.1.2) and a
+    located `InternalInvariant_Kd` at the use in a complete compilation (an open Type; PLAN G187: "an open Type reaching `Layout.Of` is
+    a located `InternalInvariant_Kd`, never a fault"). Binding's `TypeMismatch_Kd` at the initializer stays, Binding's own cascade.
+  - Owner: Layout decides the verdict, as for the other parts Binding did not resolve (a null Field or Case, `Length < 0`, InlineCycle;
+    R5-M37, BU-37); the collector alone maps it. No new outcome, record path or notion. `Row`'s default arms stay a throw: Of never asks
+    it for an abstract Type, and any other kind without a row (the `Range` marker, a Nominal that is no struct or enum, an Owner
+    Semantics term) lies outside Layout's input contract in every compilation; no form reaches one (a failed type expression publishes
+    no Type, which the builder types Unit, R4-M125).
+  - Rejected: (b) BU-50's Rejected path reused for locals (its verdict is Binding's storage verdict on a kept part; a local's Type is no
+    part and the collector's closed path reads no verdict, so it needs a second Binding producer of storage verdicts for non-stored Types,
+    in Binding's and TyCtxt's hold files, and a storage query per closed local); (c) an error Type from the MIR builder or Binding (none
+    exists; a builder test by kind is a consumer deciding what Binding publishes; Binding's null drops its `TypeMismatch_Kd`, makes every
+    enclosing Type fail too and touches BU's and R4's held files); Rejected for every kind without a row (a catch-all hiding a MIR or
+    Binding contract break).
+  - Judge: InstanceCollectorTest's `RejectedCases` rows localProjection, parameterProjection (a generic subject), elementProjection and
+    capturedProjection, `AnAbstractLocalIsABrokenContractInACompleteCompilation` (a forged local typed by a slot) and LayoutTest's
+    `AnAbstractTypeIsRejected` threw on dev `acc2f12ad` and pass. Valid programs are unchanged: an abstract Type reaching Walk always
+    threw.

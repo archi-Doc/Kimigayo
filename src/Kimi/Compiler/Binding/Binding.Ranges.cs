@@ -140,7 +140,7 @@ public sealed partial class Binding
         }
 
         this.resolvedSlices.Clear();
-        this.exclusiveIndexers.Clear();
+        this.uniqIndexing.Clear();
         this.positionWarnings.Clear();
     }
 

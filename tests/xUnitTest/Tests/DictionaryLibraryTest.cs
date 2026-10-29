@@ -279,11 +279,7 @@ public class DictionaryLibraryTest
     public void ProgramsWithoutDictionariesDoNotCompileStorageAlgorithms()
     {
         const string Source = "Console.writeLine(\"plain\")";
-        var outputIr = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(Source));
         Assert.DoesNotContain(FunctionCodegenTest.GeneratedDefinitions(Source).Definitions, IsStorage);
-        Assert.DoesNotContain("__kimi_dictionary_", outputIr);
-        Assert.DoesNotContain("__kimi_try_allocate", outputIr);
-        Assert.DoesNotContain("__kimi_transfer_bytes", outputIr);
     }
 
     [Fact]

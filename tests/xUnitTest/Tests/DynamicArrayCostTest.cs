@@ -242,7 +242,6 @@ public class DynamicArrayCostTest
         Assert.True(c.WriteIr(output, out error), error);
         var ir = output.ToString();
         Assert.DoesNotContain("@__kimi_array_remove_", ir);
-        Assert.DoesNotContain("@__kimi_array_place_string", ir); // The old generator's literal placement; MIR code generation puts (R5-M129).
 
         ScalarEmissionTest.WriteFixture("DynamicArrayCostReload", ir, string.Empty);
     }

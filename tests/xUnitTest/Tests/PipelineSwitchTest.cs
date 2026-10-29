@@ -18,8 +18,13 @@ namespace XunitTest;
 /// generation records as <c>kimi build</c> does.</summary>
 public sealed class PipelineSwitchTest
 {
-    // A position of a Type parameter is the MIR's one Unsupported record here, a form the old path accepts, until PLAN G167 builds it.
+    // A program both paths build, whose old IR the round trip compares.
     private const string Source = "func at<I>(values: [3 of i32], p: I) -> i32\n    I is PrimitiveInteger\n    return values[p]\nlet x = at([1, 2, 3], 1@u8)\n";
+
+    // The MIR's one Unsupported record here, at `a == b`, a form the old path's check accepts (its generation refuses it): the tuple operator
+    // without its comparison (MirBuildTest.Unbuilt; PD30's (e) row until R7).
+    private static readonly string Unbuilt = MirBuildTest.Unbuilt.Declarations +
+        $"func same(a: ref/{MirBuildTest.Unbuilt.Tuple}, b: ref/{MirBuildTest.Unbuilt.Tuple}) -> bool => a == b\nlet x = 1\n";
 
     // The default is the pipeline KIMI_PIPELINE names, legacy when unset; any other value is a configuration error, not a fallback.
     [Fact]
@@ -180,7 +185,7 @@ public sealed class PipelineSwitchTest
             c.Pipeline = CompilerPipeline.Mir;
             c.Codegen = CompilerCodegen.Legacy;
             Assert.True(c.Prepare(WindowsProfile.Target));
-            c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Source));
+            c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Unbuilt));
             Assert.False(Analyze(c, OutputKind.Application));
             Assert.Equal(DiagnosticCode.Unsupported_Kd, Assert.Single(c.Problems).Code);
             c.Project.Directory = directory;
@@ -305,7 +310,8 @@ public sealed class PipelineSwitchTest
     }
 
     // Under mir the MIR's records are the analysis's problems and control-flow Errors that reject the program and block generation;
-    // switching back to legacy gives the old path's diagnostics and IR unchanged.
+    // switching back to legacy gives the old path's diagnostics and IR unchanged. No form the old path writes has a MIR record since PLAN
+    // G167, so the record is added to the analyzed version's program as a construction rule adds it, at the position.
     [Fact]
     public void OnlyMirPublishesTheMirRecords()
     {
@@ -320,7 +326,8 @@ public sealed class PipelineSwitchTest
         Assert.False(c.Analysis.IsVerified); // The switch revokes the analysis.
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.False(c.Analyze().IsVerified);
+        Assert.True(c.Analyze().IsVerified);
+        c.BuildMir().Report(SourceRef.Of(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IndexKoto>().Single().Right));
         var problem = Assert.Single(c.Problems);
         Assert.Equal(DiagnosticCode.Unsupported_Kd, problem.Code);
         Assert.Equal("p", c.SyntaxOf(problem.Subject).ToString());
@@ -369,7 +376,7 @@ public sealed class PipelineSwitchTest
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Source));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Unbuilt));
         var observed = new List<AnalysisResult>();
         void Observe(Compilation x)
         {
