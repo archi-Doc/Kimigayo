@@ -153,6 +153,11 @@ public sealed partial class Binding
                 }
 
                 var candidate = variable.Polarity == 2 ? (incomparable ? null : lower) : upper ?? (incomparable ? null : lower);
+                if (Environment.GetEnvironmentVariable("KIMI_TRACE216S") is { } solveFilter && binder is FunctionKoto { Name: { } traceName } && traceName == solveFilter)
+                {
+                    Console.Error.WriteLine($"TRACE-TEMP solve {traceName} var={variable.Origin} pol={variable.Polarity} upper={upper} lower={lower} wf={string.Join(",", inference.WellFormed.Select(w => $"{w.Longer}>{w.Shorter}"))} select={select}");
+                }
+
                 if (variable.Polarity == 3 && (incomparable || upper is null || lower is null ||
                     !this.ProvesOriginOutlives(upper, lower, use) || !this.ProvesOriginOutlives(lower, upper, use)))
                 {

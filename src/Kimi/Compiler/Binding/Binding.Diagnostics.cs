@@ -106,6 +106,12 @@ public sealed partial class Binding
             related = related is null ? [("relation", input, null)] : [.. related, ("relation", input, null)];
         }
 
+        if (relation.Payload is { } payload)
+        {
+            // D-1: the contextual payload that supplies a relation recorded at its call's argument.
+            related = related is null ? [("payload", payload, null)] : [.. related, ("payload", payload, null)];
+        }
+
         if (source != "fit")
         {
             // SPEC 23.1: only a fit names its destination Type; a declared relation relates its clause instead, and well-formedness

@@ -553,12 +553,18 @@ public sealed partial class Binding
             // SPEC 15.6.1, 15.6.4 step 3: as at a selected call, each input's instantiated Type is well formed and each clause holds, also
             // where no input is per-call: a written input's well-formedness is its signature's premise, proven at each call (R4-M137).
             this.callRelationScratch.Clear();
+            if (Environment.GetEnvironmentVariable("KIMI_TRACE216") is { } traceFilter && call.ToString()!.StartsWith(traceFilter, StringComparison.Ordinal))
+            {
+                for (var i = 0; i < count; i++)
+                {
+                    var op = operations[i];
+                    Console.Error.WriteLine($"TRACE-TEMP vcall={call} src={op.Source} same={ReferenceEquals(op.ParameterType, op.AdaptedType)} kindOf={(op.Source is null ? "-" : this.KindOf(op.Source).ToString())} was={(op.Source is not null && this.WasWaitingPart(op.Source))} fact={(op.Source is null ? "-" : this.RecordedFact(KotoHelper.UnwrapParentheses(op.Source)).Kind.ToString())}");
+                }
+            }
+
             for (var i = 0; i < count; i++)
             {
-                if (operations[i] is { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter })
-                {
-                    this.RequireInputPremises(at, parameter, adapted);
-                }
+                this.RequireArgumentPremises(operations[i]);
             }
 
             if (conditioned is not null)
@@ -577,6 +583,10 @@ public sealed partial class Binding
             if (conditioned is not null)
             {
                 this.RequireResultPremises(conditioned, result, call); // SPEC 15.3.7: the callee's result premises.
+            }
+            else if (ownBinder is not FunctionKoto { IsAnonymous: false })
+            {
+                this.RequireNestedResult(signature.Components[1], result, call);
             }
 
             var inputs = count == 0 ? BoundType.Unit : this.types.Tuple(instantiated.AsSpan(0, count));
@@ -599,6 +609,8 @@ public sealed partial class Binding
     private bool AcquireValueCallArguments(
         InvocationKoto call, BindingScope scope, BoundType parameters, Span<BoundArgumentOperation> operations, Span<BoundType> instantiated)
     {
+        // SPEC 10.5.1: each argument is classified as at any call, so one that takes its Type from the call is known (TakesCallType).
+        _ = this.PrepareCallArguments(call, scope);
         for (var i = 0; i < instantiated.Length; i++)
         {
             if (call.GetArgumentLabel(i) is not null)

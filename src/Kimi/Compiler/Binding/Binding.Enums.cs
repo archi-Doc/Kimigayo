@@ -244,6 +244,11 @@ public sealed partial class Binding
                 }
             }
 
+            if (expected is null && solution.OriginInference is { } inference)
+            {
+                this.SolveConstructionOrigins(use, payload, solution, inference);
+            }
+
             for (var i = 0; i < originCount; i++)
             {
                 if (origins[i] is null)
@@ -303,6 +308,22 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 15.3.6, 15.6.4 step 3: without an expected Type, a construction's Origins are fresh regions solved from their bounds: the
+    // payloads' fits, the well-formedness of every payload Type and the enum's clauses (SolveOriginInference), so that a covariant slot
+    // takes the meet of all its upper bounds.
+    private void SolveConstructionOrigins(Koto use, ReadOnlySpan<Koto> payload, in SlotSolution solution, OriginInference inference)
+    {
+        for (var i = 0; i < payload.Length; i++)
+        {
+            if (this.SubstituteType(payload[i].BoundType!, solution.SlotOwner, solution.Types, solution.Lengths) is { } payloadType)
+            {
+                this.CollectInputPremises(payloadType, inference, use);
+            }
+        }
+
+        this.SolveOriginInference(inference, solution.Origins, [], use, select: true);
+    }
+
     // SPEC 6.5.2 item 2, 10.8.1, 10.5.1: a Case construction's own slots after those its qualifier and expected Type fix. A payload whose
     // payload Type those fixed slots settle (`settled`) is bound only at it, on completion; every other payload is prepared as an argument
     // is and is evidence by its kind (SlotSolution.InferArgument). Under the argument probe a construction with a slot that no evidence
@@ -320,16 +341,18 @@ public sealed partial class Binding
                 return false;
             }
 
+            // SPEC 10.5.1: every payload is classified as an argument is (TakesCallType), a settled one too.
+            if (!this.PrepareArgument(solution.Call.ArgumentNodes[i], solution.Scope, null, callableContext: true))
+            {
+                Complete(use, null); // The payload's own failure, on which the construction rests.
+                return false;
+            }
+
             if (this.SubstituteType(payload[i].BoundType!, solution.SlotOwner, solution.Types, solution.Lengths) is { } fixedType &&
                 !HasUnsubstitutedOrigin(
                     this.SubstituteStoredOrigins(fixedType, solution.SlotOwner, solution.Origins.AsSpan(0, solution.OriginCount)), solution.SlotOwner))
             {
                 settled.Add(i);
-            }
-            else if (!this.PrepareArgument(solution.Call.ArgumentNodes[i], solution.Scope, null, callableContext: true))
-            {
-                Complete(use, null); // The payload's own failure, on which the construction rests.
-                return false;
             }
         }
 
@@ -468,10 +491,12 @@ public sealed partial class Binding
             }
 
             var actual = this.ArgumentType(source, source.ErasedFunctionType ?? completed);
-            // A payload's Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
+            // A payload's Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow). D-1: the fit of a
+            // payload of a call argument that takes its Type from the call is that call's, at the argument (JudgedAt), also when it waits.
+            var judged = this.JudgedAt(source);
             if (!this.AdaptInput(source, type, actual, scope, null, null, out var adapted, out var quality, out var kind) ||
-                (!this.FailStaticBorrow(source, kind, type.Semantics) && !this.FitsTypeAt(adapted, type, source) &&
-                !this.CheckLocalTypeUse(adapted, type, source)))
+                (!this.FailStaticBorrow(source, kind, type.Semantics) && !this.FitsTypeAt(adapted, type, judged) &&
+                !this.CheckLocalTypeUse(adapted, type, judged)))
             {
                 if (this.acquisitionFailure is { } acquisition)
                 {
@@ -479,7 +504,11 @@ public sealed partial class Binding
                 }
                 else if (FitsStructurally(adapted, type))
                 {
-                    this.RecordMismatch(source, source, adapted, type);
+                    if (ReferenceEquals(judged, source) || !this.RecordOriginFitFailure(judged, judged, adapted, type, source))
+                    {
+                        this.RecordMismatch(source, source, adapted, type);
+                    }
+
                     Complete(use, null);
                 }
                 else
@@ -490,6 +519,9 @@ public sealed partial class Binding
                 return false;
             }
 
+            // SPEC 15.6.1: a payload that takes its Type from the construction has no well-formed Type of its own; that inferred Type is
+            // judged at the payload, or at the call argument that supplies it (JudgedAt).
+            this.RequireInputPremises(source, type, this.TakesCallType(source) ? null : adapted);
             operations[i] = new(source, actual, type, kind, quality, ParameterIndex: i);
         }
 

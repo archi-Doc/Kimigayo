@@ -85,6 +85,15 @@ public sealed partial class Binding
     // never evidence for an outer slot.
     private bool WasWaitingPart(Koto node) => this.RecordedFact(KotoHelper.UnwrapParentheses(node)).Kind == ArgumentKind.Waiting;
 
+    // SPEC 10.5.1: whether an argument part takes its Type from its call rather than being independently typable: a Literal or waiting
+    // part, a contextual Case, or a Tuple or array literal (classified element by element); its Type is the call's instantiated parameter
+    // Type, no well-formed Type of its own.
+    private bool TakesCallType(Koto part)
+    {
+        var node = KotoHelper.UnwrapParentheses(part);
+        return IsAggregateArgument(node) || NeedsEnumContext(node) || node is FunctionKoto { IsAnonymous: true } || this.RecordedFact(node).Kind != ArgumentKind.Typed;
+    }
+
     // SPEC 10.2.1: the default a Literal part takes for the selected candidate of its call, once DefaultArguments applied it.
     private BoundType? DefaultOf(Koto part)
         => this.RecordedFact(KotoHelper.UnwrapParentheses(part)) is { Kind: ArgumentKind.Literal, Default: { } literalDefault } ? literalDefault : null;
@@ -418,7 +427,11 @@ public sealed partial class Binding
                 {
                     completedWaiting[i] = true;
                     waitingContexts[i] = operations[i].ParameterType;
-                    if (this.CompleteWaitingPart(argument, pattern, solution.SlotOwner, operations[i].ParameterType, evaluation.Scope) is null)
+                    var judged = this.judgedArgument;
+                    this.judgedArgument ??= argument;
+                    var completed = this.CompleteWaitingPart(argument, pattern, solution.SlotOwner, operations[i].ParameterType, evaluation.Scope);
+                    this.judgedArgument = judged;
+                    if (completed is null)
                     {
                         return false;
                     }
@@ -474,9 +487,12 @@ public sealed partial class Binding
             {
                 // The argument is an expression of the caller's context, not of the selected requirement.
                 var selectedContract = this.activeRequirementContract;
+                var judged = this.judgedArgument;
                 this.activeRequirementContract = null;
+                this.judgedArgument ??= argument;
                 this.RequireType(argument, scope, operations[i].SourceType ?? operations[i].ParameterType);
                 this.activeRequirementContract = selectedContract;
+                this.judgedArgument = judged;
                 if (argument.BindingState != BindingState.Resolved)
                 {
                     return false;

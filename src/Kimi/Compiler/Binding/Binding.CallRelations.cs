@@ -10,6 +10,36 @@ namespace Kimi.Compiler;
 // a node beyond the first).
 public sealed partial class Binding
 {
+    // SPEC 10.5.1, 15.6.4 step 3 (D-1): the outermost call argument whose Type its call supplies (TakesCallType) while the call completes
+    // it. A part of it that takes its Type from that call (a waiting nested call's contextual argument, a contextual Case's payload) is
+    // judged as part of the argument, so its relations are recorded at the argument (JudgedAt).
+    private Koto? judgedArgument;
+
+    // Where a relation of `part`, a part that takes its Type from its context, is recorded: the call argument being completed when `part`
+    // lies in it within the same body, otherwise `part` itself.
+    private Koto JudgedAt(Koto part)
+    {
+        if (this.judgedArgument is not { } argument)
+        {
+            return part;
+        }
+
+        for (var node = part; node is not null; node = node.Parent)
+        {
+            if (ReferenceEquals(node, argument))
+            {
+                return argument;
+            }
+
+            if (node is FunctionKoto)
+            {
+                break;
+            }
+        }
+
+        return part;
+    }
+
     private static bool MentionsOrigin(BoundType type, BoundOrigin origin)
     {
         if (!type.CarriesOrigin)
@@ -114,6 +144,15 @@ public sealed partial class Binding
         ReadOnlySpan<BoundDefaultArgument> defaults)
     {
         this.callRelationScratch.Clear();
+        if (Environment.GetEnvironmentVariable("KIMI_TRACE216") is { } traceFilter && call.ToString()!.StartsWith(traceFilter, StringComparison.Ordinal))
+        {
+            static string T(BoundType? t) => t is null ? "-" : HoverTypeName(t);
+            foreach (ref readonly var op in operations)
+            {
+                Console.Error.WriteLine($"TRACE-TEMP call={call} src={op.Source} kind={op.Kind} adapt={op.Adaptation} srcT={T(op.SourceType)} paramT={T(op.ParameterType)} adapted={T(op.AdaptedType)} argT={T(op.Source?.BoundType)} same={ReferenceEquals(op.ParameterType, op.Source?.BoundType)} kindOf={(op.Source is null ? "-" : this.KindOf(op.Source).ToString())} was={(op.Source is not null && this.WasWaitingPart(op.Source))} fact={(op.Source is null ? "-" : this.RecordedFact(KotoHelper.UnwrapParentheses(op.Source)).Kind.ToString())} enumctx={(op.Source is not null && NeedsEnumContext(op.Source))}");
+            }
+        }
+
         var argumentCount = operations.Length - 1;
         var receiver = operations[argumentCount];
         if (receiver.Source is not null)
@@ -128,10 +167,7 @@ public sealed partial class Binding
 
         foreach (ref readonly var operation in operations)
         {
-            if (operation is { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter })
-            {
-                this.RequireInputPremises(at, parameter, adapted);
-            }
+            this.RequireArgumentPremises(operation);
         }
 
         foreach (var argument in defaults)

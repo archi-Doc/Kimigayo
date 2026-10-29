@@ -11,6 +11,11 @@ namespace Kimi.Compiler;
 // callable one (CallableSignatureFits).
 public sealed partial class Binding
 {
+    // SPEC 15.3.7, the owner's (a): the required signature of the Callable comparison in progress, whose own well-formedness (its inputs'
+    // and result's, proven at each of its calls) the comparison assumes while it proves the implementation's conditions
+    // (ExtractOriginPremises reads it); null outside a comparison.
+    private BoundType? contractPremises;
+
     /// <summary>Compares interned complete types without erasing their Origin contracts.</summary>
     /// <param name="left">The first canonical type.</param>
     /// <param name="right">The second canonical type from the same compilation.</param>
@@ -139,29 +144,77 @@ public sealed partial class Binding
     // SPEC 10.7, 15.3.7: an implementation fits a required signature when its inputs accept the required inputs and its result fits
     // the required result. Each input the implementation binds per call is instantiated at the required input in the same position,
     // per call or fixed, so only its referent is compared; every other input is compared as written, contravariantly.
+    // Under the owner's (a) and (A), the implementation's own well-formedness, its inputs' and result's, is one of its conditions, proven
+    // from the required signature's own well-formedness (contractPremises) and the premises at the use (FailedSignatureWellFormedness).
     private static bool FunctionFits(BoundType actual, BoundType expected, Binding? binding, Koto? use, bool invariant, CallableInstance instance, bool everywhere = false)
     {
-        var actualInputs = actual.Components[0];
-        var expectedInputs = expected.Components[0];
-        if (!ReferenceEquals(actualInputs, expectedInputs))
+        var saved = binding?.contractPremises;
+        if (binding is not null && !everywhere)
         {
-            if (actualInputs.Kind != expectedInputs.Kind || actualInputs.Components.Count != expectedInputs.Components.Count)
-            {
-                return false;
-            }
+            binding.contractPremises = expected;
+        }
 
-            for (var i = 0; i < actualInputs.Components.Count; i++)
+        try
+        {
+            var actualInputs = actual.Components[0];
+            var expectedInputs = expected.Components[0];
+            if (!ReferenceEquals(actualInputs, expectedInputs))
             {
-                var input = actualInputs.Components[i];
-                var required = expectedInputs.Components[i];
-                if (!FitsTypeCore(required, input, binding, use, invariant, skipOrigin: instance.IsQuantifiedInput(input, i), instance: instance, structural: everywhere, everywhere: everywhere))
+                if (actualInputs.Kind != expectedInputs.Kind || actualInputs.Components.Count != expectedInputs.Components.Count)
                 {
                     return false;
                 }
+
+                for (var i = 0; i < actualInputs.Components.Count; i++)
+                {
+                    var input = actualInputs.Components[i];
+                    var required = expectedInputs.Components[i];
+                    if (!FitsTypeCore(required, input, binding, use, invariant, skipOrigin: instance.IsQuantifiedInput(input, i), instance: instance, structural: everywhere, everywhere: everywhere))
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return FitsTypeCore(actual.Components[1], expected.Components[1], binding, use, invariant, instance: instance, structural: everywhere, everywhere: everywhere) &&
+                (binding is null || everywhere || binding.FailedSignatureWellFormedness(actual, instance, use!) is null);
+        }
+        finally
+        {
+            if (binding is not null)
+            {
+                binding.contractPremises = saved;
             }
         }
+    }
 
-        return FitsTypeCore(actual.Components[1], expected.Components[1], binding, use, invariant, instance: instance, structural: everywhere, everywhere: everywhere);
+    // SPEC 15.3.7, the owner's (a): the first part of the implementation's own well-formedness, its n-th input's or its result's, that the
+    // required signature's own well-formedness and the premises at `use` do not prove under the instantiation (null when every part holds),
+    // with the failing relation.
+    private (int Part, BoundOrigin Longer, BoundOrigin Shorter)? FailedSignatureWellFormedness(BoundType actual, in CallableInstance instance, Koto use)
+    {
+        var saved = this.resultPremiseInstance;
+        this.resultPremiseInstance = instance;
+        try
+        {
+            var inputs = actual.Components[0];
+            for (var i = 0; i <= inputs.Components.Count; i++)
+            {
+                var part = i < inputs.Components.Count ? inputs.Components[i] : actual.Components[1];
+                this.failedResultPremise = null;
+                if (!this.VisitWellFormedPremises(part, part, null, new(null, use, WellFormedAction.Instance)) && this.failedResultPremise is { } failed)
+                {
+                    return (i, failed.Longer, failed.Shorter);
+                }
+            }
+
+            return null;
+        }
+        finally
+        {
+            this.resultPremiseInstance = saved;
+            this.failedResultPremise = null;
+        }
     }
 
     // SPEC 10.7: within one Callable comparison, `a` outlives `b` after the implementation's call-time Origins are instantiated. The
@@ -210,7 +263,8 @@ public sealed partial class Binding
 
         if (instance.IsRequiredSlot(a) || instance.IsRequiredSlot(b))
         {
-            return false;
+            // A required per-call Origin relates to another only through the required signature's own well-formedness.
+            return binding?.contractPremises is not null && binding.ProvesOriginOutlives(a, b, use!);
         }
 
         if (b is { Kind: OriginKind.Inference, Open: true } && instance.IsResultOnlyOrigin(a))
@@ -247,20 +301,37 @@ public sealed partial class Binding
         var instance = new CallableInstance(actual, own ?? FunctionTypeBinder(actual), expected, FunctionTypeBinder(expected));
         var inputs = actual.Components[0];
         var required = expected.Components[0];
-        for (var i = 0; i < inputs.Components.Count && i < required.Components.Count; i++)
+        var saved = this.contractPremises;
+        this.contractPremises = expected;
+        try
         {
-            var input = inputs.Components[i];
-            var part = instance.IsQuantifiedInput(input, i)
-                ? this.FailedInstancePart(required.Components[i].Components[0], input.Components[0], input.Semantics == SemanticsKind.Uniq, instance, use)
-                : this.FailedInstancePart(required.Components[i], input, false, instance, use);
-            if (part is { } failed)
+            for (var i = 0; i < inputs.Components.Count && i < required.Components.Count; i++)
             {
-                return new(at, $"the {Ordinal(i + 1)} parameter", failed.Longer, failed.Shorter, failed.Equality);
+                var input = inputs.Components[i];
+                var part = instance.IsQuantifiedInput(input, i)
+                    ? this.FailedInstancePart(required.Components[i].Components[0], input.Components[0], input.Semantics == SemanticsKind.Uniq, instance, use)
+                    : this.FailedInstancePart(required.Components[i], input, false, instance, use);
+                if (part is { } failed)
+                {
+                    return new(at, $"the {Ordinal(i + 1)} parameter", failed.Longer, failed.Shorter, failed.Equality);
+                }
             }
-        }
 
-        return this.FailedInstancePart(actual.Components[1], expected.Components[1], false, instance, use) is { } result
-            ? new(at, "the result", result.Longer, result.Shorter, result.Equality) : null;
+            if (this.FailedInstancePart(actual.Components[1], expected.Components[1], false, instance, use) is { } result)
+            {
+                return new(at, "the result", result.Longer, result.Shorter, result.Equality);
+            }
+
+            // The owner's (a): the implementation's own well-formedness, proven from the required signature's.
+            return this.FailedSignatureWellFormedness(actual, instance, use) is { } formed
+                ? new(at, formed.Part < inputs.Components.Count ? $"the {Ordinal(formed.Part + 1)} parameter's well-formedness" : "the result's well-formedness",
+                    this.Instantiated(formed.Longer, instance), this.Instantiated(formed.Shorter, instance), false)
+                : null;
+        }
+        finally
+        {
+            this.contractPremises = saved;
+        }
 
         static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
     }

@@ -622,11 +622,11 @@ public sealed partial class Binding
             return true;
         }
 
-        for (var i = 0; !defaults.IsEmpty && i < function.Parameters.Count; i++)
+        for (var i = 0; i < function.Parameters.Count; i++)
         {
-            if (defaults.Contains(i) && solution.Pattern(function.Parameters[i].Type.BoundType!) is { } pattern)
+            if ((defaults.Contains(i) || mapping.AsSpan(0, call.ArgumentNodes.Count).Contains(i)) && solution.Pattern(function.Parameters[i].Type.BoundType!) is { } pattern)
             {
-                this.CollectInputPremises(this.FormedApplication(pattern, solution.SlotOwner, solution.Types), inference, call);
+                this.CollectInputPremises(this.SubstituteType(pattern, solution.SlotOwner, solution.Types, solution.Lengths) ?? this.FormedApplication(pattern, solution.SlotOwner, solution.Types), inference, call);
             }
         }
 
