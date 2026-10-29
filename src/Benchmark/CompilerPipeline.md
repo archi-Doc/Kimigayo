@@ -13,17 +13,17 @@ is outside timing.
 | --- | --- | --- |
 | 1 | `PreparationTokenizerParser` | `Compilation.CreateForTest`, target `Prepare`, document creation and `Kotonoha.AddSource` (registration, tokenization and parsing) |
 | 2 | `BindingAndStartup` | `Compilation.Bind` and application `CheckStartup` |
-| 3 | `MirPublishBuildValidate` | `Compilation.BuildMir`: HIR publication, MIR construction and validation of every body, the source's and the Kimi library's, and the MIR analyses (R4; V18 later times them as their own intervals); and the instance collector, which lays out every by-value use of the items it admits (R5; on every pipeline since DECISIONS BU-48, under MIR code generation only before) |
-| 4 | `ControlFlowAndOwnership` | `Compilation.Analyze`: the old analysis; under the `mir` pipeline it reuses stage 3's MIR, memoized, and keeps it for generation |
+| 3 | `MirPublishBuildValidate` | `Compilation.BuildMir`: HIR publication, MIR construction and validation of every body, the source's and the Kimi library's, and the MIR analyses (R4; V18 later times them as their own intervals); and the instance collector, which lays out every by-value use of the items it admits (R5; on every pipeline since DECISIONS BU-48) |
+| 4 | `ControlFlowAndOwnership` | `Compilation.Analyze`: the old analysis; on every pipeline it reuses stage 3's MIR and checked set, memoized, and keeps them for generation |
 | 5 | `EmissionLowering` | `LlvmEmitter.TryPrepare`: emission preconditions, layouts, ABI and lowered output model; empty under sel |
 | 6 | `LlvmIrWriting` | `EmissionModule.WriteIr`: serialize that prepared model to LLVM IR; under sel `Compilation.WriteIr`, the generation entry (gate, output roots and `ModuleCodegen`) |
 
 Every operation creates a new `Compilation` and runs these stages exactly once in
 order. Stage 3 builds, validates and analyzes the MIR and collects its checked set
 (`Compilation.BuildMir`), each memoized per program version, so stage 4's `Analyze`
-reuses them on either pipeline; the old analysis still decides (R3-R5). A `legacy`
-compilation's own `Analyze` builds and collects the MIR without analyzing it (DECISIONS
-BU-48), so its stage 3 includes the MIR analyses, which a legacy check does not run.
+reuses them on either pipeline; the old analysis still decides (R3-R6). Since DECISIONS
+R5-M156 every pipeline's `Analyze` builds, analyzes and collects the MIR and publishes its
+records, so `KIMI_PIPELINE` changes no stage: stage 3 is work every check runs.
 Each result reports `mirBodies`, the bodies stage 3
 builds, and the stage's mean time and allocation per body (`mirMeanMicrosecondsPerBody`,
 `mirMeanAllocatedBytesPerBody`): a fresh compilation's builder starts empty, so these are
@@ -36,7 +36,8 @@ stages; stage 3 requires a MIR without construction records or validator finding
 The compiler implementation and public APIs are unchanged.
 
 A process follows `KIMI_PIPELINE` and `KIMI_CODEGEN`, and the report's `compiler` names
-them (`[mir]`, `[mir, codegen mir]`). Under MIR code generation (sel, both `mir`) the
+each non-default selection (`[mir]`, `[codegen mir]`, `[mir, codegen mir]`). Under MIR code
+generation (`KIMI_CODEGEN=mir`, on either pipeline since DECISIONS R5-M156) the
 collector lays out every by-value use in stage 3 and code generation reads those layouts
 as it writes, so stage 5 is empty and stage 6 is the whole generation entry; the stage
 names stay, so reports remain comparable (DECISIONS R5-M94). An input that sel does not
@@ -75,14 +76,14 @@ fraction of a fresh compilation. Other feature-specific benchmarks are unchanged
 ## Check cost (`--analyze-cost`)
 
 `--analyze-cost` measures the check of the `Generic` shape (sizes 1, 32, 64 and 128) under three configurations set per
-compilation: `legacy`, `mir` (the MIR built, validated and analyzed beside the old path) and `sel` (`mir` with MIR code
-generation, R5 K1-K4b). Every configuration's `Analyze` collects the checked set (DECISIONS BU-48); `sel` also publishes its
-Unsupported, Resource and Internal records (DECISIONS R5-M41). `freshCheck` is one fresh compilation's
+compilation: `legacy`, `mir` and `sel` (`mir` with MIR code generation, R5 K1-K4b). Since DECISIONS R5-M156 every
+configuration's `Analyze` builds, validates, analyzes and collects the MIR and publishes every record of its checked set, so
+the three measure the same check (DECISIONS BU-48 brought the collection to every pipeline first). `freshCheck` is one fresh compilation's
 `Bind`, `CheckStartup` and `Analyze` (the stages 2 to 4 above; preparation and parsing are untimed); `warmAnalyze` repeats
 them on one compilation without an edit, as an LSP server does. Four warmups precede seven samples of four operations;
 each result reports mean milliseconds and current-thread allocated bytes, the managed heap the checked compilation retains
-(`retainedBytes`, after full collections) and its growth over the warm Analyzes (`warmRetainedGrowthBytes`) and, under `sel`, the
-collected items. Follow the
+(`retainedBytes`, after full collections) and its growth over the warm Analyzes (`warmRetainedGrowthBytes`) and the collected
+items. Follow the
 measurement protocol below and save `--analyze-cost` output beside it.
 
 ## Collection cost (`--collection-cost`)
