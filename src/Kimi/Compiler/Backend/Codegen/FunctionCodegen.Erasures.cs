@@ -52,7 +52,8 @@ internal sealed partial class FunctionCodegen
         (this.collector, this.item, this.output, this.next) = (collector, item, output, 0);
         var entry = this.module.Adapter(item);
         var targets = collector.Set.Targets(item);
-        var (key, represented) = (collector.Set.Items[item].Key, collector.Set.Items[item].RepresentativeType!);
+        var key = collector.Set.Items[item].Key;
+        var represented = collector.Set.Items[item].RepresentativeType!;
         var closure = key.Kind == MonoKind.ClosureErasure;
         if (!closure && LegacyRuntimeHelpers.Row(represented.Symbol?.CompilerFunction ?? CompilerFunctionKind.None) is { Updates: true } row)
         {
@@ -61,9 +62,16 @@ internal sealed partial class FunctionCodegen
         }
 
         var given = default(ReadOnlySpan<Value>);
-        var run = closure
-            ? (this.module.Signature(targets[0].Item) is { } body ? new Run(body, null) : null)
-            : this.Runs(represented, targets.Length > 0 ? targets[0].Item : -1, key.Function!.Components[1], default, out given);
+        Run? run;
+        if (closure)
+        {
+            run = this.module.Signature(targets[0].Item) is { } body ? new Run(body, null) : null;
+        }
+        else
+        {
+            run = this.Runs(represented, targets.Length > 0 ? targets[0].Item : -1, key.Function!.Components[1], default, out given);
+        }
+
         if (run is not { Signature: var callee, Slot: var slot } || this.Laid(represented) is not { } source)
         {
             return; // A broken contract, recorded.
@@ -71,7 +79,13 @@ internal sealed partial class FunctionCodegen
 
         var heap = Heap(source.Layout);
         var glue = closure && targets.Length > 1 ? targets[1].Item : -1;
-        this.Table(item, entry, heap ? this.module.Release(item) : glue >= 0 ? this.module.Glue(glue) : null);
+        var drop = (heap, glue) switch
+        {
+            (true, _) => this.module.Release(item),
+            (false, >= 0) => this.module.Glue(glue),
+            _ => null,
+        };
+        this.Table(item, entry, drop);
         this.abi = entry;
         output.Write(entry.GetDefinition(exported: false));
         output.Write("entry:\n");

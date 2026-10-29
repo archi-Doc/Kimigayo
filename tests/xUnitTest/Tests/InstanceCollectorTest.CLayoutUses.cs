@@ -15,6 +15,7 @@ public sealed partial class InstanceCollectorTest
     [MemberData(nameof(LayoutAttributeBindingTest.UseRows), MemberType = typeof(LayoutAttributeBindingTest))]
     [MemberData(nameof(LayoutAttributeBindingTest.InferredRows), MemberType = typeof(LayoutAttributeBindingTest))]
     [MemberData(nameof(LayoutAttributeBindingTest.TwinRows), MemberType = typeof(LayoutAttributeBindingTest))]
+    [MemberData(nameof(LayoutAttributeBindingTest.NeedRows), MemberType = typeof(LayoutAttributeBindingTest))]
     public void UnderMirCodeGenerationEachUseOfAnUnavailableCLayoutIsOneRecord(string form, string source, string records)
         => LayoutAttributeBindingTest.AssertUses(form, source, records, sel: true);
 

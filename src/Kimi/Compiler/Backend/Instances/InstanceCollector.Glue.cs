@@ -104,7 +104,8 @@ internal sealed partial class InstanceCollector
     private int Entries(MirProgram program, int item, SourceRef site, BoundType dictionary)
     {
         var row = LegacyRuntimeHelpers.DictionaryRow(DictionaryHelperKind.Drop);
-        var (key, value) = (dictionary.Components[0], dictionary.Components[1]);
+        var key = dictionary.Components[0];
+        var value = dictionary.Components[1];
         if (!row.CallsEntries(MirTypes.MayNeedDrop(key, this.seen) || MirTypes.MayNeedDrop(value, this.seen)))
         {
             return -1;

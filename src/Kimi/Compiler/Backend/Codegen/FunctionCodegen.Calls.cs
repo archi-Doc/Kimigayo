@@ -35,7 +35,7 @@ internal sealed partial class FunctionCodegen
         switch (callee.Kind)
         {
             case MirCalleeKind.Fn when LegacyRuntimeHelpers.Row(callee.Symbol!.CompilerFunction) is { } row:
-                this.Legacy(call, row, this.Target(new(this.at, this.body.Blocks[this.at].Count)));
+                this.Legacy(call, row, this.Target(new(this.at, this.body.Blocks[this.at].Count)), callee.Subst);
                 return;
             case MirCalleeKind.Fn or MirCalleeKind.Requirement:
                 this.Function(call);
@@ -249,18 +249,19 @@ internal sealed partial class FunctionCodegen
     // its call's LegacyRow item's in the function's instance (Routine; DECISIONS R5-M121, R5-M124) or a formatting routine
     // (FunctionCodegen.Formatting; DECISIONS R5-M128), the call's operands at its parameters' slots placed by the call's own key and the call
     // site's location; a whole-value update (FunctionCodegen.Updates); a fixed array's or a Dictionary's storage kernel
-    // (FunctionCodegen.Storage); setArrayLength's length (FunctionCodegen.Arrays).
-    private void Legacy(in MirTerminator call, LegacyRow row, int target)
+    // (FunctionCodegen.Storage); setArrayLength's length (FunctionCodegen.Arrays). The call's substitution is its direct call's or its Item's
+    // (SubstOfItem), whose Types a row's TypeArguments need names (LayoutNeeds; DECISIONS R5-M149).
+    private void Legacy(in MirTerminator call, LegacyRow row, int target, Subst? subst)
     {
         if (row.Updates)
         {
-            this.Update(call, row.Writer, target);
+            this.Update(call, row.Writer, target, subst!);
             return;
         }
 
         if (row.DictionaryKernel)
         {
-            this.DictionaryKernel(call, row.Writer);
+            this.DictionaryKernel(call, row.Writer, subst!);
             return;
         }
 

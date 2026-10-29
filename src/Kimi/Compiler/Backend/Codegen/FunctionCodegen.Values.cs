@@ -56,7 +56,8 @@ internal sealed partial class FunctionCodegen
             return true;
         }
 
-        if (constant.Kind is not (MirConstKind.Bool or MirConstKind.Integer or MirConstKind.Float or MirConstKind.Unit or MirConstKind.FnItem))
+        var scalar = constant.Kind is MirConstKind.Bool or MirConstKind.Integer or MirConstKind.Float;
+        if (!scalar && constant.Kind is not (MirConstKind.Unit or MirConstKind.FnItem))
         {
             this.Report(DiagnosticCode.InternalInvariant_Kd, default); // String, which has no value (above), and TypeToken (C6a, C9c).
             return false;
@@ -93,8 +94,24 @@ internal sealed partial class FunctionCodegen
     // The representation of a Type of the body in the item's instance (I7): Laid of its instance Type.
     private ValueLowering? Representation(BoundType type) => this.Laid(this.collector.TypeOf(this.item, type));
 
+    // The layout a form needs past the item's by-value set (LayoutNeeds; DECISIONS R5-M149), the one path code generation reads such a Type
+    // by: the Type the form's row names (LayoutNeeds.TypeOf: a projection step's, a raw pointer displacement's, a compared Tuple's, a call's
+    // Type argument at an index, that Type given too) laid out in the item's instance; null after a record (Laid).
+    private ValueLowering? Needed(MirPlace step) => this.Representation(LayoutNeeds.TypeOf(this.body, step));
+
+    private ValueLowering? Needed(in MirRvalue operation) => this.Representation(LayoutNeeds.TypeOf(this.body, operation));
+
+    private ValueLowering? Needed(ComparisonNode node) => this.Laid(LayoutNeeds.TypeOf(node)); // A shim's tree is of its closed Self.
+
+    private ValueLowering? Needed(Subst subst, int index, out BoundType? type)
+    {
+        type = LayoutNeeds.TypeOf(subst)[index] is { } argument ? this.collector.TypeOf(this.item, argument) : null;
+        return this.Laid(type);
+    }
+
     // The representation of a Type in the item's instance (I7); null, with InternalInvariant_Kd at the body, where TypeOf made none or Layout
-    // has none (the collector laid out every Type of an admitted item).
+    // has none: the collector laid out every Type of an admitted item's by-value set and every layout need its forms have (K 4.8), so that is
+    // a broken contract.
     private ValueLowering? Laid(BoundType? closed)
     {
         if (closed is not null && this.module.Layout.Of(closed).Value is { } lowering)

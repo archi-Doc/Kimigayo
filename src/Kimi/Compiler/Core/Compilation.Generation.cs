@@ -19,9 +19,10 @@
 // Generated (R5 K11, K package 4.10, DECISIONS R5-M77): MIR code generation writes exactly the checked set's items the output requires, the
 // closure of its output roots over runtime targets (CheckedSet.Mark): an Application's startup body, a test build's discovered tests (the
 // catalog Project discovers after acceptance, never discovered again here) or a Library's every root but the body of a closed virtual or
-// override whose slot Applies refutes (InstanceCollector.Generates, checked only, R4-M28); a root without an item or with an undecided slot
-// is a broken contract, as is a test build whose catalog was not discovered for the version generated (its version stamp; PLAN G157 (15),
-// DECISIONS R5-M136): its roots and its verification sites' numbers are that discovery's.
+// override whose slot Applies refutes and a constructor whose Type has no layout (InstanceCollector.Generates, checked only, R4-M28,
+// R5-M149); a root without an item or with an undecided slot is a broken contract, as is a test build whose catalog was not discovered
+// for the version generated (its version stamp; PLAN G157 (15), DECISIONS R5-M136): its roots and its verification sites' numbers are
+// that discovery's.
 // Invariants: every product generation request (EmissionArtifacts.Publish, and through Project.PublishArtifacts kimi build and kimi test)
 // and the out-string adapters pass this gate, and under sel none of them runs the old generator. Outside the gate until G7 deletes
 // LlvmEmitter, and with it Compilation.Emission: its direct readers in tests (TryPrepare inspections and failure facts, which G5 deletes)
@@ -186,7 +187,7 @@ public partial class Compilation
         {
             for (var root = 0; root < set.RootCount; root++)
             {
-                if (collector.Generates(root) is not { } generates)
+                if (collector.Generates(program, root) is not { } generates)
                 {
                     this.ReportLocation(DiagnosticCode.InternalInvariant_Kd, set.Items[root].Site);
                     return false;

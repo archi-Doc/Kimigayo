@@ -8,7 +8,7 @@
 // (a root's: its receiver's Self).
 // Output: a descriptor's targets: its payload's glue (the finalizer's destruction of the actual Type, SPEC 16.3.3) and, when the payload's
 // struct has a slot, its VTable item, keyed by the erased struct; a VTable's targets in slot order: the body each slot runs,
-// VTableDef.Implementations[slot] in the first layer on the struct's base chain that owns it (TyCtxt.Synthesized); Generates(root).
+// VTableDef.Implementations[slot] in the first layer on the struct's base chain that owns it (TyCtxt.Synthesized); Generates(program, root).
 // Invariants: a slot whose original Applies refutes at the layer owning the original has no target, its override's body staying checked
 // only (a closed root, which a Library does not generate either (Generates, K11), or a generic body no instance applies; R4-M28); a slot
 // naming a definition without a MIR body has none (an override Binding failed after slot selection, R4-M18; a struct whose slot selection
@@ -25,11 +25,20 @@ namespace Kimi.Compiler.Backend;
 internal sealed partial class InstanceCollector
 {
     /// <summary>Gets whether a Library generates a root (K package 4.4, 4.10; R4-M28): every root but the body of a closed virtual or
-    /// override whose slot <see cref="TyCtxt.Applies"/> refutes on its struct, which is checked only.</summary>
+    /// override whose slot <see cref="TyCtxt.Applies"/> refutes on its struct, and a constructor whose construction receiver's Type has no
+    /// layout (no C layout, or over a limit or 2^63 - 1 bytes), which no program that builds calls, since each construction expression is
+    /// a use of that layout (SPEC 8.15.3; DECISIONS R5-M149, the owner's Q1 (a)); both are checked only.</summary>
+    /// <param name="program">The program.</param>
     /// <param name="root">The root.</param>
     /// <returns>Whether it is generated, or null where its slot's applicability is undecided, a broken contract.</returns>
-    internal bool? Generates(int root)
+    internal bool? Generates(MirProgram program, int root)
     {
+        if (program.Bodies[this.Set.Items[root].BodyOrdinal].Locals is [{ Role: MirLocalRole.Receiver } receiver, ..] &&
+            this.layout.Of(receiver.Type).Outcome != Layout.Outcome.Ok)
+        {
+            return false;
+        }
+
         var function = this.Set.Items[root].Key.Body.Def.Decl;
         var slot = function is null ? -1 : VTableDef.SlotOf(function);
         if (slot < 0)
