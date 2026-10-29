@@ -71,7 +71,7 @@ public sealed partial class Binding
         };
 
     // The environment binding of `source` in `function`, null when it cannot hold it, or `source` itself when its Type failed. An
-    // unsupported captured Type is reported at the written capture entry when there is one.
+    // unsupported captured Type is reported at the written capture entry when there is one, resting on the TypeSource of `source`.
     private BindingSymbol? Capture(FunctionKoto function, BindingSymbol source, BindingScope scope, CaptureKoto? entry = null)
     {
         if (entry is null && IsContextualBinding(source))
@@ -115,6 +115,13 @@ public sealed partial class Binding
                 (function.ClosureStorage?.EnvironmentType is not null && (type.Kind == BoundTypeKind.Parameter || SlotTypes.IsResult(type) ||
                     ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type)))))
         {
+            // SPEC 23.1.2: a Type kept from a written Type that did not resolve (a projection that names no Type, R5-M155) fails as a
+            // dependent of that part. Only the closure's first failure records it, so an earlier independent failure stays direct.
+            if (function.BindingFailure == BindingFailure.None && TypeSource(source) is { } part)
+            {
+                this.AddPrerequisite(function, part);
+            }
+
             if (entry is { } written)
             {
                 this.FailExplained(ref this.unsupportedSpans, function, BindingFailure.Unsupported, written.Span);

@@ -163,20 +163,36 @@ public class CaptureDiagnosticTest
 
     // SPEC 7.7.2, 23.1.2 (PLAN G260): an omitted list captures no binding whose Type failed, and the use rests on the binding's
     // declaration, as a written entry does: a local's failed initializer, a loop's failed iterable, a parameter's failed Type, also
-    // through an enclosing omitted list. A use that an explicit list does not hold stays its own error. Each twin writes `valid`.
+    // through an enclosing omitted list. A use that an explicit list does not hold stays its own error. Each twin writes `valid`. A
+    // written entry of a parameter whose Type failed rests on that Type (PLAN G293; it rested on the function, an unresolved link
+    // published as PrerequisiteUnavailable_Kd at the binding).
     [Theory]
     [InlineData("func g() -> i32\n    let z = MISSING\n    let w = func () -> i32 => z\n    return w()", "missing", "1", "", "")]
     [InlineData("func g() -> i32\n    for i in MISSING\n        let w = func () => i\n        _ = w()\n    return 0", "missing", "0..3", "", "")]
     [InlineData("func g(p: MISSING) -> i32\n    let w = func () -> i32 => p\n    return w()", "Missing", "i32", "", "")]
     [InlineData("func g() -> i32\n    let z = MISSING\n    let w = func () -> i32\n        let u = func () -> i32 => z\n        return u()\n    return w()", "missing", "1", "", "")]
     [InlineData("func g() -> i32\n    let z = MISSING\n    let y = 1\n    let w = func [y] () -> i32 => z\n    return w()", "missing", "1", " | InvalidCaptureBinding_Kd z", "InvalidCaptureBinding_Kd z")]
+    [InlineData("func g(p: MISSING) -> i32\n    let w = func [p] () -> i32 => 1\n    return w()", "Missing", "i32", "", "")]
     public void AnOmittedListCapturesNoBindingWhoseTypeFailed(string source, string failed, string valid, string other, string twin)
     {
         Assert.Equal($"UnresolvedBinding_Kd {failed}{other}", Records(source.Replace("MISSING", failed, StringComparison.Ordinal) + Main));
         Assert.Equal(twin, Records(source.Replace("MISSING", valid, StringComparison.Ordinal) + Main));
+    }
 
-        static string Records(string source)
-            => string.Join(" | ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}"));
+    // SPEC 23.1.2 (PLAN G293): a binding whose written Type was rejected keeps the projection that names no Type (R5-M155); a capture
+    // that fails on it rests on that Type, so `[t@move]`, `[t]` and an annotated local's entry publish only the rejection (a located
+    // Unsupported_Kd at the entry beside it before). A capture Unsupported for its own reason (an abstract projection) stays beside
+    // the rejection. Each twin writes `i32`, under which the projection is `bool`.
+    [Theory]
+    [InlineData("func f(t: B.(Iter<ARG>).Tag) -> ()\n    let c = func [t@move] () -> () => ()\n    return", "", "")]
+    [InlineData("func f(t: B.(Iter<ARG>).Tag) -> ()\n    let c = func [t] () -> () => ()\n    return", "", "")]
+    [InlineData("func f() -> ()\n    let t: B.(Iter<ARG>).Tag = true\n    let c = func [t@move] () -> () => ()\n    return", " | TypeMismatch_Kd true", "")]
+    [InlineData("func f<T>(t: B.(Iter<ARG>).Tag, x: T.Tag) -> ()\n    T is Iter<i32>\n    let c = func [x@move] () -> () => ()\n    return", " | Unsupported_Kd x@move", "Unsupported_Kd x@move")]
+    public void ACaptureOfARejectedTypeRestsOnIt(string body, string other, string twin)
+    {
+        const string Tag = "contract Iter<T>\n    associate Tag\nstruct B\n    Self is Iter<i32>\n    associate Tag is bool\n";
+        Assert.Equal($"UnsatisfiedConstraint_Kd B.(Iter<u8>).Tag{other}", Records(Tag + body.Replace("ARG", "u8", StringComparison.Ordinal) + Main));
+        Assert.Equal(twin, Records(Tag + body.Replace("ARG", "i32", StringComparison.Ordinal) + Main));
     }
 
     // SPEC 7.7.3, 8.10: a closure argument whose minimum call receiver its Callable Constraint does not permit names both receivers in
@@ -254,4 +270,8 @@ public class CaptureDiagnosticTest
     [InlineData("Receivers", "func apply<F>(f: F) -> string\n    F is Callable<owner, () -> string>\n    return f@move()\nfunc count<F>(f: uniq/F) -> i32\n    F is Callable<uniq, () -> i32>\n    return f()\nlet text = \"abc\"\nlet take = func [text@move] () => text@move\nConsole.writeLine(apply(take@move))\nlet start = 0\nvar step = func [var start] () -> i32\n    start += 1\n    return start\nlet first = count(step@uniq)\nlet second = count(step@uniq)\nrequire first == 1 and second == 2 else => $abort(\"count\")", "abc\n")]
     public void PermittedCapturesAndReceiversRun(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("CaptureDiagnostic" + name, source, stdout);
+
+    // Each record as its code and the source text it is located at.
+    private static string Records(string source)
+        => string.Join(" | ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}"));
 }
