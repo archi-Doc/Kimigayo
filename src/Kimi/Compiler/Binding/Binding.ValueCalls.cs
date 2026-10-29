@@ -600,8 +600,15 @@ public sealed partial class Binding
     private bool AcquireValueCallArguments(
         InvocationKoto call, BindingScope scope, BoundType parameters, Span<BoundArgumentOperation> operations, Span<BoundType> instantiated)
     {
-        // SPEC 10.5.1: each argument is classified as at any call, so one that takes its Type from the call is known (TakesCallType).
-        _ = this.PrepareCallArguments(call, scope);
+        // SPEC 10.5.1, 10.5.3: each argument is classified as a selected candidate's is (callable context), so its kind is recorded
+        // (TakesCallType) and a reference that needs S waits for its parameter Type rather than being bound alone; a failed preparation
+        // fails the call, as a named call's does.
+        if (!this.PrepareCallArguments(call, scope, callableContext: true))
+        {
+            Complete(call, null);
+            return false;
+        }
+
         for (var i = 0; i < instantiated.Length; i++)
         {
             if (call.GetArgumentLabel(i) is not null)

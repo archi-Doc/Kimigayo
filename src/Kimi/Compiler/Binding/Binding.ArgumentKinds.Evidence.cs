@@ -77,7 +77,7 @@ public sealed partial class Binding
             {
                 var source = arguments[i];
                 if (this.CallableSlot(this.Function.Parameters[mapping[i]].Type.BoundType!) is not { } callableSlot ||
-                    KotoHelper.UnwrapParentheses(source) is FunctionKoto { IsAnonymous: true } || binding.WasWaitingPart(source) ||
+                    KotoHelper.UnwrapParentheses(source) is FunctionKoto { IsAnonymous: true } || binding.WasDeferred(source) ||
                     source.BoundType is not { } actual ||
                     !binding.TryCallable(callableSlot, binding.ConstraintScope(this.Function), out var requiredSignature, out _) ||
                     !binding.TryCallable(actual, this.Scope, out var actualSignature, out _))
@@ -251,7 +251,7 @@ public sealed partial class Binding
 
             pattern = binding.SubstituteStoredOrigins(pattern, binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());
             // SPEC 10.5: a nested call checked against this candidate supplies relations for checking, never outer slot evidence.
-            if (binding.WasWaitingPart(source))
+            if (binding.WasDeferred(source))
             {
                 return true;
             }
@@ -521,7 +521,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            binding.argumentKinds[SourceRef.Of(KotoHelper.UnwrapParentheses(literal))] = new(ArgumentKind.Literal, type);
+            binding.argumentKinds[SourceRef.Of(KotoHelper.UnwrapParentheses(literal))] = new(ArgumentKind.Literal, type, false);
             applied = true;
             if (binding.FitsLiteralPart(literal, type, this.Scope))
             {

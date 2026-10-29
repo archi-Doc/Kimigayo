@@ -129,6 +129,40 @@ public class ContextualFunctionReferenceTest(ITestOutputHelper output)
         ScalarEmissionTest.EmitFixture("ContextualReferenceGeneric", Source, string.Empty);
     }
 
+    // SPEC 10.5.1, 10.5.3 (G216 (a) revision 2 §4, DECISIONS R4-M155): a value call classifies its arguments as a named call's selected
+    // candidate does, so a reference that needs S waits for its parameter Type instead of being bound alone: an overloaded reference
+    // (`choose`) and a generic one (`same`) are selected by it, as at the named twin `named`; a reference no candidate of which fits S stays
+    // the call's NoApplicableOverload_Kd at both.
+    [Theory]
+    [InlineData("g(choose, 41)", "")]
+    [InlineData("named(choose, 41)", "")]
+    [InlineData("g(same, 41)", "")]
+    [InlineData("named(same, 41)", "")]
+    [InlineData("g(text, 41)", "NoApplicableOverload_Kd")]
+    [InlineData("named(text, 41)", "NoApplicableOverload_Kd")]
+    public void AValueCallsReferenceTakesItsParameterTypeAsANamedCallsDoes(string call, string records)
+    {
+        var source = Functions + "func same<T>(value: T) -> T => value@move\nfunc text(value: string) -> i32 => 0\n" +
+            "func named(action: (i32) -> i32, value: i32) -> i32 => action(value)\nfunc run(g: ((i32) -> i32, i32) -> i32) -> i32\n    return " + call +
+            "\npublic func main() => ()\n";
+        Assert.Equal(records, string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => x.Code)));
+    }
+
+    // SPEC 10.5.1, 10.5.3 (DECISIONS R4-M155: an argument's kind and the probe's deferral are two facts): `make()` and `choose` are both
+    // Waiting, but only the nested call is deferred. The completed reference still gives F its Item Type as evidence, which fixes T for the
+    // deferred call's completion.
+    [Fact]
+    public void AWaitingReferenceIsEvidenceWhereADeferredCallIsNot()
+    {
+        const string Source = Functions + "func make<T>() -> Option<T> => .None\nfunc pick<T, F>(value: T, first: Option<T>, action: ref/F) -> T\n" +
+            "    F is Callable<(T) -> T>\n    return action(value@move)\nrequire pick(41, make(), choose) == 42 else => $abort(\"pick\")";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().ToArray();
+        Assert.Equal(BoundTypeKind.FunctionItem, Assert.Single(calls, static x => x.CallOf()?.Target.Name == "pick").CallOf()!.TypeArguments[1]!.Kind);
+        Assert.Same(BoundType.I32, Assert.Single(Assert.Single(calls, static x => x.CallOf()?.Target.Name == "make").TypeOf()!.Components));
+    }
+
     private const string Select = "func select<F>(action: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    return action(41)\n";
 
     // SPEC 10.5: the outer candidates are compared without the waiting reference; the winner's fixed call signature then

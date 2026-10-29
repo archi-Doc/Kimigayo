@@ -30,7 +30,7 @@ namespace Kimi.Compiler;
 //   substitute the solution (Type) and judge the Constraints over it (Prove); CompleteUnselected, the parts of a call that completes
 //   none, bound on their own (SPEC 23.1.2).
 // - Invariants: a recorded kind and a Literal's default are keyed by syntax identity (SourceRef) and live for one pass; a deferred
-//   part stays waiting after its completion, so its Type is never evidence for an outer slot (WasWaitingPart); a Literal
+//   part stays deferred after its completion, so its Type is never evidence for an outer slot (WasDeferred); a Literal
 //   is evidence only through the default recorded for the selected candidate; a Never-typed part is no evidence (SPEC 10.8).
 // - Prohibitions: a consumer reads a part's kind from KindOf and tells only the forms of one kind apart (an anonymous function from a
 //   reference) to fit them; the call, element, Case-payload and value-call paths keep no evidence or fit dispatch of their own;
@@ -81,18 +81,20 @@ public sealed partial class Binding
         return literal ? ArgumentKind.Literal : ArgumentKind.Typed;
     }
 
-    // Whether the part waited for its call's selected candidate: a deferred part stays waiting after its completion, so its Type is
-    // never evidence for an outer slot.
-    private bool WasWaitingPart(Koto node) => this.RecordedFact(KotoHelper.UnwrapParentheses(node)).Kind == ArgumentKind.Waiting;
+    // Whether the argument probe deferred the part (a nested call or construction only an outer expectation could type, or control flow
+    // that waits with it) until its call's selected candidate: it stays deferred after its completion, so its Type is never evidence for
+    // an outer slot. A part that waits by its kind alone (an anonymous function, a reference that needs S) is not deferred.
+    private bool WasDeferred(Koto node) => this.RecordedFact(KotoHelper.UnwrapParentheses(node)).Deferred;
 
-    // SPEC 10.5.1: whether an argument part takes its Type from its call rather than being independently typable: a Literal or waiting
-    // part, a contextual Case, or a Tuple or array literal (classified element by element); its Type is the call's instantiated parameter
-    // Type, no well-formed Type of its own.
-    private bool TakesCallType(Koto part)
-    {
-        var node = KotoHelper.UnwrapParentheses(part);
-        return IsAggregateArgument(node) || NeedsEnumContext(node) || node is FunctionKoto { IsAnonymous: true } || this.RecordedFact(node).Kind != ArgumentKind.Typed;
-    }
+    // SPEC 10.5.1: whether an argument part takes its Type from its call rather than being independently typable: the kind its call
+    // recorded when it classified the part (PrepareArgument) is not Typed. A Literal or waiting part (an anonymous function, a reference
+    // that needs S, a contextual Case, a deferred call) has no well-formed Type of its own; a Tuple or array literal (Composite) takes the
+    // call's Type while its typed elements keep their own Types, the positions the fit kept.
+    private bool TakesCallType(Koto part) => this.RecordedFact(KotoHelper.UnwrapParentheses(part)).Kind != ArgumentKind.Typed;
+
+    // Records the kind the call decided for a part it classified; a kind recorded earlier in the pass (a deferred call's, control flow's, a
+    // Literal's default) stays.
+    private void RecordKind(Koto part, ArgumentKind kind) => this.argumentKinds.TryAdd(SourceRef.Of(KotoHelper.UnwrapParentheses(part)), new(kind, null, false));
 
     // The Type a filled part gives of its own, which is well formed: a written part's bound Type; null for a part that takes its Type from
     // the call (TakesCallType).
@@ -106,7 +108,7 @@ public sealed partial class Binding
         => node.SyntaxOwner is { } owner && this.argumentKinds.TryGetValue(new(owner.Module, node.SyntaxId), out var fact) ? fact : default;
 
     // Whether the part still waits for its call: deferred, not yet completed and with no failure of its own.
-    private bool IsWaitingPart(Koto node) => node.BoundType is null && node.BindingFailure == BindingFailure.None && this.WasWaitingPart(node);
+    private bool IsWaitingPart(Koto node) => node.BoundType is null && node.BindingFailure == BindingFailure.None && this.WasDeferred(node);
 
     // SPEC 10.5.1, 14.9.2: whether the part is the argument probe's, or a result source of a control-flow expression that is: nested
     // results propagate the same way.
@@ -143,7 +145,7 @@ public sealed partial class Binding
 
         if (shape is TupleLiteralKoto or ArrayLiteralKoto || this.HoldsWaitingFunction(join))
         {
-            this.argumentKinds[SourceRef.Of(probe)] = new(ArgumentKind.Composite, null);
+            this.argumentKinds[SourceRef.Of(probe)] = new(ArgumentKind.Composite, null, false);
         }
 
         return true;
@@ -187,7 +189,7 @@ public sealed partial class Binding
         {
             TupleLiteralKoto tuple => tuple.Elements,
             ArrayLiteralKoto array => array.Elements,
-            InvocationKoto nested when this.WasWaitingPart(nested) || NeedsEnumContext(nested) => nested.ArgumentNodes,
+            InvocationKoto nested when this.WasDeferred(nested) || NeedsEnumContext(nested) => nested.ArgumentNodes,
             _ => null,
         };
         for (var i = 0; parts is not null && i < parts.Count; i++)
@@ -244,20 +246,23 @@ public sealed partial class Binding
         return valid;
     }
 
-    // SPEC 10.5.1: prepares an argument part once per pass, by its kind. An anonymous function waits for a candidate's signature; a
-    // Composite prepares its parts; control flow is classified by the survey of its result sources (SPEC 14.9.1); a Literal is fitted
-    // after selection, unless the parser kept it as a recovery, which fails here so that the call rests on its Error; every other part
-    // is bound under the argument probe, where a nested call that only an expectation could type waits, also as a result source of
-    // a control-flow part, which then waits with it, and a function reference that needs S waits for the selected candidate's (10.5.3).
+    // SPEC 10.5.1: prepares an argument part once per pass, by its kind, which it records (RecordKind). An anonymous function waits for a
+    // candidate's signature; a Composite prepares its parts; control flow is classified by the survey of its result sources (SPEC 14.9.1);
+    // a Literal is fitted after selection, unless the parser kept it as a recovery, which fails here so that the call rests on its Error;
+    // every other part is bound under the argument probe, where a nested call that only an expectation could type waits, also as a
+    // result source of a control-flow part, which then waits with it, and a function reference that needs S waits for the selected
+    // candidate's (10.5.3).
     private bool PrepareArgument(Koto part, BindingScope scope, BindingSymbol? group, bool callableContext)
     {
         if (KotoHelper.UnwrapParentheses(part) is FunctionKoto { IsAnonymous: true } || NeedsEnumContext(part))
         {
+            this.RecordKind(part, ArgumentKind.Waiting);
             return true; // SPEC 10.5.1, 6.5.2: it waits for a candidate's Type, as a contextual Case resolves only in its expected enum.
         }
 
         if (this.KindOf(part) == ArgumentKind.Composite)
         {
+            this.RecordKind(part, ArgumentKind.Composite);
             return this.PrepareComposite(part, scope);
         }
 
@@ -268,12 +273,17 @@ public sealed partial class Binding
             // when every result source other than Never is a literal, since Never supplies nothing at any position; with an unknown
             // source beside its literals it needs an expectation or a default, so it waits. It is bound once its call selects a
             // candidate, as an anonymous function is. A recovered part is bound as any other.
-            this.argumentKinds[SourceRef.Of(KotoHelper.UnwrapParentheses(part))] = new(survey.Unknown ? ArgumentKind.Waiting : ArgumentKind.Literal, null);
+            this.argumentKinds[SourceRef.Of(KotoHelper.UnwrapParentheses(part))] = new(survey.Unknown ? ArgumentKind.Waiting : ArgumentKind.Literal, null, survey.Unknown);
             return true;
         }
 
-        if ((this.KindOf(part) == ArgumentKind.Literal && part.CodeContext.RecoveryCause(part) is null) ||
-            this.BindIndependentArgument(part, scope) is not null || this.IsWaitingPart(part) || this.KindOf(part) == ArgumentKind.Composite)
+        if (this.KindOf(part) == ArgumentKind.Literal && part.CodeContext.RecoveryCause(part) is null)
+        {
+            this.RecordKind(part, ArgumentKind.Literal);
+            return true;
+        }
+
+        if (this.BindIndependentArgument(part, scope) is not null || this.IsWaitingPart(part) || this.KindOf(part) == ArgumentKind.Composite)
         {
             return true;
         }
@@ -285,9 +295,15 @@ public sealed partial class Binding
 
         // SPEC 10.5: a single closed declaration supplies its own Item Type as generic argument evidence. A generic Callable contract
         // checks that Type without erasing it to a common Function handle.
-        return ((callableContext || this.TakesCallableContext(group)) &&
+        if ((callableContext || this.TakesCallableContext(group)) &&
             !IndependentFunctionItem(item, this.UnboundMemberReference(part), this.ReferenceDeclaringType(part)) &&
-            !this.ExplicitReferenceValue(part, item, scope)) || this.BindFunctionItem(part, item, scope) is not null;
+            !this.ExplicitReferenceValue(part, item, scope))
+        {
+            this.RecordKind(part, ArgumentKind.Waiting); // SPEC 10.5.3: it waits for the selected candidate's S.
+            return true;
+        }
+
+        return this.BindFunctionItem(part, item, scope) is not null;
     }
 
     // SPEC 10.5: first obtain independent evidence. Only an inner call that would need a result expectation waits; failures of
@@ -330,10 +346,10 @@ public sealed partial class Binding
             return false;
         }
 
-        this.argumentKinds[SourceRef.Of(call)] = new(ArgumentKind.Waiting, null);
+        this.argumentKinds[SourceRef.Of(call)] = new(ArgumentKind.Waiting, null, true);
         if (this.argumentProbe is { } probe && this.UnderArgumentProbe(call))
         {
-            this.argumentKinds[SourceRef.Of(probe)] = new(ArgumentKind.Waiting, null); // SPEC 14.9.2: so does its control-flow argument.
+            this.argumentKinds[SourceRef.Of(probe)] = new(ArgumentKind.Waiting, null, true); // SPEC 14.9.2: so does its control-flow argument.
         }
 
         return true;
@@ -686,7 +702,8 @@ public sealed partial class Binding
         return valid;
     }
 
-    // A part's kind as the pass recorded it where its syntax does not give it, and the default a Literal part takes for the selected
-    // candidate (SPEC 10.2.1).
-    private readonly record struct ArgumentFact(ArgumentKind Kind, BoundType? Default);
+    // A part's kind as its call classified it (SPEC 10.5.1, every classified part; RecordKind, or the probe's and control flow's own
+    // records), the default a Literal part takes for the selected candidate (SPEC 10.2.1), and whether the argument probe deferred it
+    // (WasDeferred; written only where the probe defers a part and where control flow waits).
+    private readonly record struct ArgumentFact(ArgumentKind Kind, BoundType? Default, bool Deferred);
 }

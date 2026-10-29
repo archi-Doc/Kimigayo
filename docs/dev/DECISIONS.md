@@ -5728,6 +5728,16 @@ and migration obligations remain in force; no numeric cap changes are authorized
     an expected Function Type where it meets it (`FailsFunctionConversion` from `BindAndAdaptNode`, beside a Closure's or a Function Item's erasure), so a failed
     contract is the conversion's own record at the converted value, also as a Tuple or array literal's element (c2, c4); a target that
     names an Origin a local still infers is judged by the local's fit after that inference (`NamesInferredOrigin`; the S3 demo).
+  - §5 (the planning session's decision (A), confirmed by BU, 2026-10-30): `ArgumentFact` keeps two facts apart: `Kind`, SPEC
+    10.5.1's kind of every part its call classifies (PrepareArgument's `RecordKind`; Waiting for an anonymous function, a reference that
+    needs S and a contextual Case too), and `Deferred`, the argument probe's deferral of a nested call or construction and of control
+    flow that waits with it, written only there (`WasDeferred`: such a part's Type is never evidence after its completion). `TakesCallType`
+    is `Kind != Typed` and re-derives no syntax; a completed reference stays evidence for F
+    (`AWaitingReferenceIsEvidenceWhereADeferredCallIsNot`).
+  - §4 (BU-B1): a value call prepares its arguments as a named call's selected candidate does (callable context), so a reference that
+    needs S waits for its parameter Type and a failed preparation fails the call (`g(choose, 41)` and `g(same, 41)` valid, as their named
+    twins). A join of references is an error at a named call and a value call alike (AmbiguousBinding_Kd, TypeMismatch_Kd), outside
+    this unit.
   - Record classes (SPEC 23.1.2): an instantiated Type's well-formedness at a call, an input's as a result's, is an ownership
     obligation (`RequireWellFormedOutlives`), as an annotation's is; a Type's own clause at an input stays a Binding `declared` record.
   - Rejected: every relation and clause as an obligation (t7c's clause record dies beside the Type-constraint failures); input
