@@ -503,9 +503,13 @@ public sealed partial class Binding
                 }
                 else if (FitsStructurally(adapted, type))
                 {
-                    if (ReferenceEquals(judged, source) || !this.RecordOriginFitFailure(judged, judged, adapted, type, source))
+                    if (ReferenceEquals(judged, source) || !this.RecordOriginFitFailure(judged, judged, adapted, type))
                     {
                         this.RecordMismatch(source, source, adapted, type);
+                    }
+                    else
+                    {
+                        this.RelatePayload(judged, source); // D-1: the payload that supplies the call's relation.
                     }
 
                     Complete(use, null);

@@ -10,7 +10,8 @@ namespace Kimi.Compiler;
 // - Responsibility: the Origin relation records that one judgment collects (callRelationScratch: a selected call's JudgeCallPosition,
 //   a value call's inputs, OriginClauses' declaration rows), each node failed with its first record (PublishCallRelations) and its
 //   other records kept (RecordMoreRelation, also for RecordOriginFitFailure's other chains), then reported with the node, each with
-//   its own condition (ReportMoreCallRelations); whether a node has a collected record (HasCallRelation).
+//   its own condition (ReportMoreCallRelations); whether a node has a collected record (HasCallRelation); the payload related to a
+//   node's records (RelatePayload, D-1).
 // - Inputs: OriginRelationFact values with their nodes; the node's first record in originRelations.
 // - Outputs: the OriginRelation failure of each node and its further records.
 // - Invariants: callRelationScratch is empty after PublishCallRelations; a node's further records exclude its first and hold no
@@ -72,6 +73,24 @@ public sealed partial class Binding
         }
 
         this.callRelationScratch.Clear();
+    }
+
+    // D-1: relates `payload`, the contextual payload whose fit a call judged at its argument `node`, to the node's records that fit just
+    // recorded, those relating no payload yet (role `payload`): the fact the construction completing the payload owns.
+    private void RelatePayload(Koto node, Koto payload)
+    {
+        if (this.originRelations?.TryGetValue(node, out var first) == true && first.Payload is null)
+        {
+            this.originRelations[node] = first with { Payload = payload };
+        }
+
+        if (this.callRelations?.TryGetValue(node, out var more) == true)
+        {
+            for (var i = 0; i < more.Count; i++)
+            {
+                more[i] = more[i].Payload is null ? more[i] with { Payload = payload } : more[i];
+            }
+        }
     }
 
     // A record of `node` after its first, published with it (ReportMoreCallRelations).

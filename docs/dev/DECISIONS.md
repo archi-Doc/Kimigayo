@@ -5475,14 +5475,16 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (`RequireArgumentPremises`, named and value calls, Case payloads) judges every position of its instantiated parameter Type at it. A
     part inside such an argument that takes its Type from the same call is recorded at the argument, once (`judgedArgument`, `JudgedAt`).
   - D-1 with amendment 1: a contextual payload's fit is the call's relation, at the argument with the payload related (role `payload`,
-    `OriginRelationFact.Payload`), only where the call determines that position's Type: its pattern names a callee Type parameter or a
-    callee Origin the solve takes from bounds rather than an equality with another input (`OpensPosition`, `OriginInference.IsFixed`,
-    `openedArgument`); elsewhere it is the Case's own fit, at the payload.
+    `OriginRelationFact.Payload`, set on the argument's records by the construction that completes the payload, `RelatePayload`), only
+    where the call determines that position's Type: its pattern names a callee Type parameter or a callee Origin the solve takes from
+    bounds rather than an equality with another input (`OpensPosition`, `OriginInference.IsFixed`, `openedArgument`); elsewhere it is
+    the Case's own fit, at the payload.
   - SPEC 15.3.6: a call's solve takes the well-formedness, slots substituted, of each parameter no written Type gives (a default's, an
     argument's that takes its Type from the call), and a Case construction without an expected Type solves its Origins the same way
     (`SolveConstructionOrigins`), so a covariant slot takes the meet of all its upper bounds (cx1, cx5, cxc valid; cx2 errs). A written
-    argument's Type is well formed and adds none: taking it shortened an exclusive argument's region by its referent's Origin, and the
-    old analysis then reported CallActivationConflict_Kd (ContentUpdateTest, found by the full Session).
+    argument adds nothing there: the evidence walk already bounds the solve by its parameter's well-formedness (`InferArgument` ->
+    `CollectInputPremises`), so no solution changes; taking it again, slots substituted, added a redundant operand (an exclusive
+    argument's region met with its referent's Origin) that the old analysis read as a retained Loan (ContentUpdateTest).
   - The owner's (A): the premise catalog adds nothing for a Function Type inside a signature; an anonymous function's result is a
     premise of its body; TypeOrigins forms no occurrence relation for a nested signature's input or result; each value call proves its
     callee's result (`RequireNestedResult`) and, as a named call does, its result Type's constraints (`RequireCallConstraints`).
@@ -5490,7 +5492,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     unjudged would accept an escape, no longer holds: each call of the nested signature proves it.
   - The owner's (a), SPEC 15.3.7: every Callable comparison assumes the required signature's own well-formedness (`contractPremises`,
     set by FunctionFits, ContractFits, ConversionContractFailure and ConditionContractFailure; read by `ExtractOriginPremises`), and a
-    Function value's conversion proves its own well-formedness from it (`FailedSignatureWellFormedness`).
+    Function value's conversion proves its own well-formedness from it (`FailedSignatureWellFormedness`). A Function value converts to
+    an expected Function Type where it meets it (`FailsFunctionConversion` from `BindAndAdaptNode`, beside a Closure's or a Function Item's erasure), so a failed
+    contract is the conversion's own record at the converted value, also as a Tuple or array literal's element (c2, c4).
   - Record classes (SPEC 23.1.2): an instantiated Type's well-formedness at a call, an input's as a result's, is an ownership
     obligation (`RequireWellFormedOutlives`), as an annotation's is; a Type's own clause at an input stays a Binding `declared` record.
   - Rejected: every relation and clause as an obligation (t7c's clause record dies beside the Type-constraint failures); input
@@ -5501,7 +5505,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Type test, its getter's record at the call and `converted` valid) by (A) and (a); AConversionProvesTheImplementationsConditions'
     `premise` form valid by (a); ANestedSignaturesInputIsWellFormedByPremiseAndAtEachCall's row beside `m`'s Binding error by the G56
     answer. MirBorrowsTest's mb27 pins keep dev's record. Kept apart (the owner's (i)): c2bg, c2dg,
-    c2_fnvalue_converted_weaker, c15, p1b. Open: c2, c4 (a conversion inside a Tuple or array literal is the literal's TypeMismatch_Kd).
+    c2_fnvalue_converted_weaker, c15, p1b.
   - Cost (D-2; 2026-10-30, A edfd4afee, A' a copy, B 3239f9bff, one folder, CPU 2 pinned, tiering off, interleaved): Bind (BindBench
     minima) cold B/A' Hello 1.004, Milestone26 1.010, census (121 programs) 0.987; warm 1.007, 1.005, 0.992 (A'/A up to 1.016); cold
     +24 B per program (census +3,864 B of 592.8 MB), warm 0 B. A5 step 4 on the census (G258 host, 3 runs x 8): B/A' 1.0046, Work,

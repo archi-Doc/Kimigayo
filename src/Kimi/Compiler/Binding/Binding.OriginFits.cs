@@ -65,7 +65,7 @@ public sealed partial class Binding
     // body chain (2a0-D D1, ends resolved at the use) gives every position of the fit, fixed-fixed ones included, a row of its body for
     // A5 (CheckTypeUse's obligations, up to its first differing Function Type component); the records stay Binding's until H11
     // (DECISIONS R4-M108).
-    private bool RecordOriginFitFailure(Koto node, Koto at, BoundType actual, BoundType expected, Koto? payload = null)
+    private bool RecordOriginFitFailure(Koto node, Koto at, BoundType actual, BoundType expected)
     {
         var all = this.relationScratch;
         all.Clear();
@@ -93,7 +93,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (this.RecordOriginChains(node, at, this.formingBody, expected, recorded, payload))
+        if (this.RecordOriginChains(node, at, this.formingBody, expected, recorded))
         {
             _ = this.CheckTypeUse(actual, expected, node);
         }
@@ -106,7 +106,7 @@ public sealed partial class Binding
     // others published with it (RecordMoreRelation), each at `at` with the destination Type (none for a relation without one). A
     // failure that no chain refutes in a failed Origin environment is a dependent of that failure instead. Returns whether a recorded
     // chain is a body chain of `body`, its ends resolved at the use; the node is then a twin (DECISIONS R4-M108, R4-M111).
-    private bool RecordOriginChains(Koto node, Koto at, ExecutableBody body, BoundType? destination, OriginRelationFact recorded, Koto? payload = null)
+    private bool RecordOriginChains(Koto node, Koto at, ExecutableBody body, BoundType? destination, OriginRelationFact recorded)
     {
         var all = this.relationScratch;
         var refuted = recorded.Refuted;
@@ -129,12 +129,12 @@ public sealed partial class Binding
             rows |= BodyChain(this.OriginAtUse(all[i].Longer, node), this.OriginAtUse(all[i].Shorter, node), body);
             if (!all[i].Equals(recorded))
             {
-                this.RecordMoreRelation(node, all[i] with { At = at, Destination = destination, Payload = payload });
+                this.RecordMoreRelation(node, all[i] with { At = at, Destination = destination });
             }
         }
 
         all.Clear();
-        this.FailExplained(ref this.originRelations, node, BindingFailure.OriginRelation, recorded with { At = at, Destination = destination, Payload = payload });
+        this.FailExplained(ref this.originRelations, node, BindingFailure.OriginRelation, recorded with { At = at, Destination = destination });
         if (rows)
         {
             (this.originTwins ??= new(ReferenceEqualityComparer.Instance)).Add(node);

@@ -269,6 +269,42 @@ public sealed partial class Binding
         static bool Omitted(BoundOrigin? written, BoundOrigin? binding) => ReferenceEquals(written, binding) || written?.Kind == OriginKind.Inference;
     }
 
+    // SPEC 7.7.4: a concrete Closure converts to an expected common Function Type when its signature fits, its minimum
+    // receiver is Shared and its complete environment is Owned. Initializations, returns and call arguments share this judgment.
+    private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
+        => this.ErasureSignatureFits(actual, expected, node) &&
+            (actual.Kind != BoundTypeKind.Closure || BoundClosure.Of(actual) is { Receiver: SemanticsKind.Ref }) &&
+            this.ProveOwned(actual, node) == ConstraintProof.Proven;
+
+    // SPEC 7.7.4, 10.5, 10.7: the signature part of an erasure, which a call's applicability uses; the Shared receiver and the Owned
+    // environment are judged after selection, at the argument, and a failure there never selects another candidate. A Function Item's
+    // Origin conditions belong to its signature, proven from the required contract at `use` (SPEC 15.3.7).
+    private bool ErasureSignatureFits(BoundType actual, BoundType expected, Koto use)
+        => expected.Kind == BoundTypeKind.Function &&
+            ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature && this.ItemContractFits(actual, signature, expected, use)) ||
+            (actual.Kind == BoundTypeKind.Closure && this.ClosureSignature(actual) is { } closureSignature &&
+            this.CallableSignatureFits(closureSignature, expected, SignatureOwner(actual))));
+
+    // SPEC 10.7, 15.3.7: a Function value converts to an expected Function Type of its storage where it meets it, as a Closure or a
+    // Function Item erases (ErasesToFunction), also as a Tuple or array literal's element: a contract that does not fit fails the value
+    // with that conversion's own record (RecordMismatch), never a mismatch of the literal holding it.
+    private bool FailsFunctionConversion(Koto node, BoundType actual, BoundType expected)
+    {
+        if (expected.Kind != BoundTypeKind.Function || actual.Kind != BoundTypeKind.Function || ReferenceEquals(actual, expected) ||
+            !ReferenceTypes.StorageMatches(expected, actual))
+        {
+            return false;
+        }
+
+        var fails = !this.CheckTypeUse(actual, expected, node);
+        if (fails)
+        {
+            this.FailMismatch(node, node, actual, expected);
+        }
+
+        return fails;
+    }
+
     // SPEC 10.7, 15.3.7: the implementation's per-call Origins are solved against the required signature, whose quantifiers and fixed
     // Origins stay rigid, under its declared relations and result premises; then the required inputs fit the implementation's, its
     // result fits the required one, and its conditions are proven for the solution. The implementation's Types are its members within
