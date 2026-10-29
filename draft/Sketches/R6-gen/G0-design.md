@@ -1,6 +1,6 @@
 # R6-gen G0: the switch design (K-package §6 applied to dev)
 
-Status: G0's one design (plan §4.9 row G0, Doc, D+R under S2), revision 1 after the independent review. Working record, not authority:
+Status: G0's one design (plan §4.9 row G0, Doc, D+R under S2), revision 2 after the re-review (PASS) and its rulings. Working record, not authority:
 what it decides becomes authority only as the DECISIONS entry of §6, and its owner items only by the owner's answers.
 
 Base: dev `07a5ca2da` (code, DECISIONS, PLAN, STATUS). "Plan" is the [R5 and R6 Implementation Plan](../../Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md);
@@ -9,7 +9,9 @@ Base: dev `07a5ca2da` (code, DECISIONS, PLAN, STATUS). "Plan" is the [R5 and R6 
 (`artifacts/verify/reduction-R5/17cd554ab/`), `artifacts/verify/shared-base/228d6f0b4/` (default Session, mir-diff ledger) and batch
 56's Sessions (`artifacts/verify/r5-units/session/batch56-228d6f0b4/`). No build or test was run. (H) marks an unchecked inference.
 
-## Revision 1
+## Revisions
+
+Revision 1 (findings B1, N1–N8) and revision 2 (R2-1–R2-5, the re-review's rulings):
 
 | Finding | Change |
 | --- | --- |
@@ -22,15 +24,20 @@ Base: dev `07a5ca2da` (code, DECISIONS, PLAN, STATUS). "Plan" is the [R5 and R6 
 | N6 | §8: G157 (15)'s two parts, one unit before G3 |
 | N7 | §0, §5, §8: G1's reason is the switch's own concern; G289 (2) moves to G2 |
 | N8 | §1: the MIR builder's 19 `Unsupported_Kd` sites with verdicts; two G128-cause limits join OI-2 |
+| R2-1 (re-review) | §4, §10: `Statics.Length` 2,435, the calls' records from 2,447; the check (a′) would drop is named and kept: the pin test gets a row with a Binding error beside the prelude |
+| R2-2 | §1, §10: a CLI probe replaces "(H) the old build refuses": default `check` accepts, the old `emit` refuses with unlocated `GenerationFailed_Kd`; sel rejects at check |
+| R2-3 | §2, §10: the two limits stay MIR construction records; they widen PD30's (e) row, not a `CapabilityGap` row |
+| R2-4 | §6: the G0 entry states OI-1's recommendation (a′), as §10 does |
+| R2-5 | §2 S7: G4 handles "the remaining pins" (G2 deletes about 6) |
 
 ## 0. Decisions in one screen
 
 | # | Decision | § |
 | --- | --- | --- |
-| G0-1 | Every S8 prerequisite holds on dev; of the builder's 19 sites, G167's is the one a valid program the default builds reaches, and two G128-cause limits reach valid programs the old build already refuses | 1 |
+| G0-1 | Every S8 prerequisite holds on dev; of the builder's 19 sites, G167's is the one a valid program the default builds reaches, and two G128-cause limits reach valid programs the old build already refuses (CLI probe) | 1 |
 | G0-2 | S1 as applied: the "sel branch" now lives in `Analyze`'s pipeline branch and `MirRecords`' generator gate; both go at G2 with PD4's pairing (`KIMI_CODEGEN=mir` valid on either pipeline), which G3 needs | 2 |
 | G0-3 | The 110 P42 rows move at **G2**, not G3: their record is the collector's check-time `StaticStorage` row | 3, 4 |
-| G0-4 | Recommended for them (OI-1): rows assert their own records exactly; one test pins the prelude's 26 `StaticStorage` records | 4 |
+| G0-4 | Recommended for them (OI-1): rows assert their own records exactly; one test pins the prelude's 26 `StaticStorage` records, also beside a Binding error | 4 |
 | G0-5 | G1 adds `Compilation.Switch.cs`: the Transitional switch as its own concern, its contract and removal stages in one place | 5 |
 | G0-6 | G2b is gone (BU-48): G:R6-gen-switch is G2 + G3 | 2 |
 | G0-7 | Cost estimate: about +7–8 ms and +0.4 MB per small fresh check, +0.3–1.3 MB retained, warm 0 B (H); G2 records an A/B against its base | 7 |
@@ -60,8 +67,8 @@ The builder's `Unsupported_Kd` sites (`C/Mir/Build/`; `derived` and `Rejected(va
 | Site | Form | Valid program? | Shown by |
 | --- | --- | --- | --- |
 | `Selections.cs:87` | a position of a Type parameter (G167) | **yes**; the default builds it today | ledger `92bc1b2de957`; `MirBuildTest.Places.cs:154` |
-| `Calls.Comparisons.cs:54` | `TyCtxt.Comparison` Limit: a tuple operator's leaf past Binding's storage bound (PD30) | **yes**, past the G128 bound; old build refuses it (H) | `MirBuildTest.Calls.cs:272` (BuildMir, not in the ledger) |
-| `Defaults.cs:124` | a default its call does not instantiate, a Limit only (R4-M127) | **yes**, past the G128 bound; old build refuses it (H) | `MirBuildTest.Defaults.cs:186`; `InstanceCollectorTest.cs:1936` |
+| `Calls.Comparisons.cs:54` | `TyCtxt.Comparison` Limit: a tuple operator's leaf past Binding's storage bound (PD30) | **yes**, past the G128 bound; default `check` accepts, the old `emit` refuses (probe below) | `MirBuildTest.Calls.cs:272` (BuildMir, not in the ledger) |
+| `Defaults.cs:124` | a default its call does not instantiate, a Limit only (R4-M127) | **yes**, past the G128 bound; default `check` accepts, the old `emit` refuses (probe below) | `MirBuildTest.Defaults.cs:186`; `InstanceCollectorTest.cs:1936` |
 | `Calls.cs:54` | a plan whose operations do not cover the parameters | after a Binding error (H) | no ledger row |
 | `Operators.cs:58`, `:91` | a Primitive or metadata form without a row | no published form reaches them (H) | no ledger row |
 | `Places.cs:49`, `:104`, `:117`, `:181` | a Place kind, Res, receiver-less storage or ownerless Field outside the rows | after a Binding error (`Rejected`) (H) | `MirBuildTest.Values.cs:26` rows |
@@ -85,12 +92,13 @@ default builds (R5-M96; ask A-10). G272, WK and G264 are A5 problems (unpublishe
 | S4 measurement | Holds, refined | K4b's files (`r5-k4b-analyze-cost-*`) are absent; `--analyze-cost` exists (`src/Benchmark/Benchmarks/AnalyzeCostMeasurements.cs`). G2 measures an A/B against its base (§7) | One quiet slot |
 | S5 G1 split; G2, G2b, G3 merged together after G:R6-gen-switch | Holds, refined | BU-48 deleted Binding's eager C-layout check (R5-M148), so the group is G2 + G3. G1 adds one file (§5) | −1 unit |
 | S6 rollback | Holds | §9 | None |
-| S7 deletion order | Holds, refined | G4 → G5, G6 → G7 → G8 → G9a → G9b → G10 (R5-M18). G4 also deletes the remaining G3 deviations of `tests/xUnitTest/Codegen.cs`, the empty pending ledger, `verify.ps1 -Codegen`, and the 110 `CompilerCodegen.Legacy` pins in 77 test files (K13a–K13c's, G157 (21)'s, R5-M73's depth test): each deleted or re-pointed to `Compilation.Emission` until G7 (R5-M85: "goes by G4 at the latest", since G4 deletes the `Codegen` setter) | None |
+| S7 deletion order | Holds, refined | G4 → G5, G6 → G7 → G8 → G9a → G9b → G10 (R5-M18). G4 also deletes the remaining G3 deviations of `tests/xUnitTest/Codegen.cs`, the empty pending ledger, `verify.ps1 -Codegen`, and the remaining `CompilerCodegen.Legacy` pins (110 sites in 77 test files at the base, of which G2 deletes about 6; K13a–K13c's, G157 (21)'s, R5-M73's depth test): each deleted or re-pointed to `Compilation.Emission` until G7 (R5-M85: "goes by G4 at the latest", since G4 deletes the `Codegen` setter) | None |
 | S8 prerequisites | Holds | §1 | — |
 
 Departures from owner-approved text (§10): **D1** the P42 rows and Milestone 42's baseline change at G2, against R5-M144's "(not
 G2's)" and R5-M145's "leave with P42" (OI-1). **D2** valid forms become `Unsupported_Kd` at default `check` from G2 without being on
-PD27's list: G167, and the builder's two G128-cause limits (OI-2). The rest is refinement within S1–S8.
+PD27's list: G167 (OI-2). The builder's two G128-cause limits stay MIR construction records and widen the PD30 (e) row; the old build
+already refuses them (probe, §10), so OI-2 asks the owner only to confirm PD30 covers them. The rest is refinement within S1–S8.
 
 ## 3. G2's records census
 
@@ -125,20 +133,21 @@ milestones) on its prototype; **not run: it needs approval** (a heavy run).
 Their record is the `StaticStorage` capability row at the static's declaration, reported at check (R5-M82) and published today only
 under MIR code generation. G2 publishes it on every pipeline, so the rows fail in G2's default Session. Counted from batch 56's sel
 failure messages: every one of the 108 `PathCapabilityDiagnosticTest` rows gains exactly the shared `Statics` prelude's 26 records
-(positions 711–2158, all inside the prelude, `PathCapabilityDiagnosticTest.cs:74`), beside its own 1 (98 rows) or 2 (10 rows)
-records after `Statics.Length`; `EffectBoundReportTest`'s row gains 1 (its `public var puts`); Milestone 42 has 5.
+(positions 711–2158, all inside the prelude, `PathCapabilityDiagnosticTest.cs:74`; `Statics.Length` = 2,435), beside its own 1 (98
+rows) or 2 (10 rows) records after it; `EffectBoundReportTest`'s row gains 1 (its `public var puts`); Milestone 42 has 5.
 
 | | (a) exact sets gain the records | (a′) rows assert after `Statics.Length`; one pin | (b) Binding's records only |
 | --- | --- | --- | --- |
-| G2 change | 108 rows × 26 added records (one shared expected list in 2 methods), EffectBound +1, Milestone 42's baseline | 2 methods assert the records located after `Statics.Length` exactly (98 rows 1, 10 rows 2); one new test pins the prelude's 26 `StaticStorage` records once; EffectBound +1; Milestone 42's baseline | 2 methods filter to Binding's partition; EffectBound and Milestone 42 as (a) |
+| G2 change | 108 rows × 26 added records (one shared expected list in 2 methods), EffectBound +1, Milestone 42's baseline | 2 methods assert the records located after `Statics.Length` exactly (98 rows 1, 10 rows 2); one new test pins the prelude's 26 `StaticStorage` records once, with a second row whose program adds a Binding error after the prelude and asserts the 26 still appear; EffectBound +1; Milestone 42's baseline | 2 methods filter to Binding's partition; EffectBound and Milestone 42 as (a) |
 | G3, G4 | nothing at G3 (check rejects); G4 drops the empty ledger | same | same |
 | P42 reverts | the shared list in 2 methods (2,808 asserted records), EffectBound's record, the baseline | the one pin test, EffectBound's record, the baseline | nothing; the filter stays |
-| Checks kept | everything, the `StaticStorage` rule asserted 108 times (duplicate cases) | each rule once at its layer; `AStaticCalleeKeepsTheCallsRecords`' SPEC 23.1.2 check (the callee's `Unsupported_Kd` beside the call's own record) lies wholly after `Statics.Length` (positions ≥ 2,463 in the sel messages), so it is kept. Dropped: each row's check that its body adds no record inside the prelude, which no rule under test produces | loses records of other partitions at the body, so the independence check where the call's record is not Binding's (H): a weakening |
+| Checks kept | everything, the `StaticStorage` rule asserted 108 times (duplicate cases) | each rule once at its layer; `AStaticCalleeKeepsTheCallsRecords`' SPEC 23.1.2 check (the callee's `Unsupported_Kd` beside the call's own record) lies wholly after `Statics.Length` (its records from position 2,447), so it is kept. Without the pin's second row it would drop the check that the prelude's `StaticStorage` records appear beside the rows' Binding errors (SPEC 23.1.2), which only EffectBound's +1 row would still assert, on the path G285 changes (records while `BindingComplete` is false); the second row keeps it | loses records of other partitions at the body, so the independence check where the call's record is not Binding's (H): a weakening |
 
 Rejected outright: publishing collector records except `StaticStorage` (a per-row gate); G2 waiting for P42 (P42 follows H5, which
 follows G11: circular); P42 before G2 (a full-process package, untestable natively while the old analysis rejects static `var`,
 against R5-M13 (b)); a `Codegen.Expect` deviation (rejected by R5-M144 (b), keyed by the generator). **Recommendation (a′)**: it
-asserts each rule once (AGENTS: no duplicate cases), keeps the independence check, and P42 reverts one test, not 108 rows.
+asserts each rule once (AGENTS: no duplicate cases), keeps both independence checks (the calls' records, and the prelude's records
+beside a Binding error, in the pin test's second row), and P42 reverts one test, not 108 rows.
 
 ## 5. G1: split `Compilation.Pipeline.cs` (behavior-preserving)
 
@@ -172,7 +181,9 @@ change there (H).
 >   pairing (R5-M35) ends at G2, and `CompilerIdentity` marks each non-default selection (`[mir]`, `[codegen mir]`, `[mir, codegen mir]`).
 > - S2: G2 publishes construction records, validator findings and collector records at check on every pipeline. "The 20
 >   instance-failure methods" reads as those whose program the collector rejects; the old generator's own-limit methods keep their
->   pins until G4, which deletes them or re-points kept ones to `Compilation.Emission` (R5-M85). [OI-1's answer.] [OI-2's answer.]
+>   pins until G4, which deletes them or re-points kept ones to `Compilation.Emission` (R5-M85). The P42 rows [OI-1; recommended (a′)]: each row asserts its records after `Statics.Length`; one test pins the
+>   prelude's 26 `StaticStorage` records, also beside a Binding error; EffectBound's row gains 1; Milestone 42 re-baselined. [OI-2's
+>   answer: G167; the two G128-cause construction records under the PD30 (e) row.]
 > - S3 as written, wherever MIR code generation runs (R5-M96). S4: an A/B of default `check` and warm Analyze against G2's base, K4b's
 >   files being absent. S5: G2b was done by BU-48 (R5-M148); G:R6-gen-switch is G2 and G3; G1 adds `Compilation.Switch.cs`, the switch
 >   as its own concern. S6: no environment rollback for G2; `KIMI_CODEGEN=legacy` until G4. S7 with G9a/G9b (R5-M18) and the pins at G4.
@@ -247,14 +258,26 @@ H1a (Q8) after G2. G157 (48): off this path.
 ## 10. Owner questions and risks
 
 **OI-1 (D1). The 110 P42 rows at G2** (§4). (a′) Recommended: each row's exact set covers its records after `Statics.Length`, one
-test pins the prelude's 26 `StaticStorage` records, EffectBound's row gains 1, Milestone 42 is re-baselined; P42 reverts the one test.
+test pins the prelude's 26 `StaticStorage` records, with a row whose program has a Binding error beside the prelude, asserting the 26
+still appear (SPEC 23.1.2; G285 changes that path); EffectBound's row gains 1; Milestone 42 is re-baselined; P42 reverts the one test.
 (a) Every row's exact set gains the 26 records; P42 reverts 2,808 asserted records through one shared list. (b) Binding's records only
 (a weakening). Either (a) or (a′) supersedes R5-M144's "(not G2's)" and R5-M145's "leave with P42" for these rows.
 
 **OI-2 (D2). Valid forms rejected at default `check` from G2.** G167 (`values[p]`, `p: I`), which the default builds today; and the
-builder's two G128-cause limits (`Calls.Comparisons.cs:54`, `Defaults.cs:124`), which the old build already refuses (H, K0). (a)
-Recommended: G167 lands before G2 as an R6-gen unit (Binding with BU, a W1-type hold); the two limits join PD27's `StorageNesting` row
-(PD30, R7), STATUS's "Generic generation" row naming them. (b) All three as PD27 (e) rows, G167 later. (c) Neither: not allowed.
+builder's two G128-cause limits (`Calls.Comparisons.cs:54`, `Defaults.cs:124`). (a) Recommended: G167 lands before G2 as an R6-gen
+unit (Binding with BU, a W1-type hold); the owner confirms that PD30's "From G2 such a program is an (e) row in STATUS and PLAN until
+R7" covers the two limits, which stay MIR construction records (not a `CapabilityGap` row of R5-M146's table): the probe below shows
+the old build already refuses both, so G2 makes no program unbuildable that builds today. (b) G167 as a PD27 (e) row too, G167
+later. (c) Neither: not allowed.
+
+Probe (built CLI of `bin/worktrees/r6-g286`, `src` = `07a5ca2da`, copied to the G0 session's scratchpad with the sources in `g0probe/`; `check` and `emit`, the generation step
+of `build`; native `build` not run, no toolchain beside the copy):
+
+| Program | default `check` | default `emit` (old generator) | sel `check` |
+| --- | --- | --- | --- |
+| `a == b` over `(Wrap^80<i32>, i32)`, uncalled / called from `main` | accepts | `GenerationFailed_Kd` at the project, unlocated: "Generic entry parameter requires a concrete storage representation." | `Unsupported_Kd` at `a == b`; called, also at the tuple's `Wrap^80.init()` |
+| `f(b)` omitting `k: Option<T> = .None`, `b: ref/Bx^65<i32>`, uncalled / called | accepts | the same `GenerationFailed_Kd` | `GenerationResourceLimit_Kd` + `Unsupported_Kd` at `f(b)`; called, also at the local and its construction |
+| twin `Bx^30` (control) | accepts | writes the module | accepts; writes the module |
 
 **OI-3. Verification lanes.** From G2 the default Session publishes what `-Pipeline mir` does, from G3 what sel does. (a)
 Recommended: from G2 the mir lane runs only as the ledger's run, from G3 the sel lane stops (G4 removes its rows). (b) Keep all to G4.
