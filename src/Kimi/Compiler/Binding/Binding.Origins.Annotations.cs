@@ -37,26 +37,18 @@ public sealed partial class Binding
         return -1;
     }
 
-    // Whether a Type names a body local's atom where a written Origin selects one: its Origin or a slot, past its borrow layers.
-    private static bool NamesLocalAtom(BoundType? type)
+    // SPEC 15.3.1: the Origin a written name selects in its candidate's Type: a projection's (`use` a member access) declared slot past
+    // the Type's borrow layers (`type` becomes that Type; `slot` -1 when it declares none), a name's borrow layer's own Origin.
+    private static BoundOrigin? SelectedOrigin(Koto use, ref BoundType? type, out int slot)
     {
-        for (; type is not null; type = type.Kind == BoundTypeKind.Semantics && IsBorrow(type.Semantics) ? type.Components[0] : null)
+        if (use is not MemberAccessKoto { Right: IdentifierNameKoto target })
         {
-            if (type.Origin is { } origin && LocalAtom(origin))
-            {
-                return true;
-            }
-
-            for (var i = 0; i < type.OriginArguments.Count; i++)
-            {
-                if (type.OriginArguments[i] is { } argument && LocalAtom(argument))
-                {
-                    return true;
-                }
-            }
+            slot = -1;
+            return type is { Origin: { } origin } && IsBorrow(type.Semantics) ? origin : null;
         }
 
-        return false;
+        slot = ProjectedSlot(ref type, target.IdentifierName);
+        return slot < 0 ? null : type!.Kind == BoundTypeKind.Slice ? type.Origin : slot < type.OriginArguments.Count ? type.OriginArguments[slot] : null;
     }
 
     // An atom of a body local (a FieldKoto's Type or region), or a meet with one.
@@ -146,7 +138,7 @@ public sealed partial class Binding
                 return scalar;
             }
 
-            if (carrier is { Origin: { } origin } && IsBorrow(carrier.Semantics))
+            if (SelectedOrigin(use, ref carrier, out _) is { } origin)
             {
                 return origin;
             }
@@ -194,14 +186,9 @@ public sealed partial class Binding
         {
             if (this.OriginCandidate(input.IdentifierName, syntax, scope, out _, out var type, out var repeated))
             {
-                var slot = ProjectedSlot(ref type, target.IdentifierName);
+                result = SelectedOrigin(syntax, ref type, out var slot);
                 var schema = type?.Symbol?.Schema;
                 var declared = slot >= 0;
-                if (declared)
-                {
-                    result = type!.Kind == BoundTypeKind.Slice ? type.Origin : slot < type.OriginArguments.Count ? type.OriginArguments[slot] : null;
-                }
-
                 if (repeated is not null && (declared || schema is null))
                 {
                     // The slot of a repeated set is unknown; a slot name its Type does not declare is still its own problem.
@@ -328,15 +315,21 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 15.3.4 (DECISIONS BU-56, an interim until PLAN G230's (A)): a declaration's written Origin, bound with no body outside a
-    // local's own declaration, that names a body local's written Type (its set's Type or its annotation) reads that annotation's atoms,
-    // formed outside every body, or the local's region where the body binds the header again (BindFunction): nothing links either to
-    // the local in its body. Where that Type names a body local's atom, not a parameter's or a contract's, the name is a located
-    // Unsupported_Kd and resolves to nothing a judge could read. A Closure's header is bound in its evaluating body and keeps
-    // EnclosingAtom's rule; an unannotated local has the Type its body gives it before the header is bound there again.
+    // SPEC 15.3.4 (DECISIONS BU-56, an interim until PLAN G230's (A)): a declaration's written Origin (a name or projection, bound with
+    // no body outside a local's own declaration) that names a body local's written Type (its set's Type or its annotation) reads that
+    // annotation's atoms, formed outside every body, or the local's region where the body binds the header again (BindFunction):
+    // nothing links either to the local in its body. Where the Origin the name selects is a body local's atom, not a parameter's or a
+    // contract's, the name is a located Unsupported_Kd and resolves to nothing a judge could read; a name that selects no Origin keeps
+    // its own failure. A Closure's header is bound in its evaluating body and keeps EnclosingAtom's rule; an unannotated local has the
+    // Type its body gives it before the header is bound there again. A re-query over the annotation (WrittenProjection) decides nothing.
     private bool UnlinkedLocalType(Koto use, BoundType? type)
     {
-        if (this.formingBody.IsBody || OriginOwner(use) is FieldKoto || !NamesLocalAtom(type))
+        if (this.formingBody.IsBody || use is not (IdentifierNameKoto or MemberAccessKoto) || OriginOwner(use) is FieldKoto)
+        {
+            return false;
+        }
+
+        if (SelectedOrigin(use, ref type, out _) is not { } selected || !LocalAtom(selected))
         {
             return false;
         }

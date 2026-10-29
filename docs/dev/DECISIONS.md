@@ -8444,9 +8444,9 @@ resumed by R4-M86 (2026-10-20).
   the filter it applied inline, which U1's publication shares; behaviour unchanged. At its landing with bu69 (BU-55 made
   `DependentConstraint` an instance member) `ClosedClause` became an instance member too. U1's entry states the states, the writer, B1's rule and the readers.
 
-- **BU-56 A declaration's written Origin that names a body local's written Type over a body local's atom is a located
+- **BU-56 A declaration's written Origin that names a body local's written Type and selects a body local's atom is a located
   `Unsupported_Kd`, an interim for wrong code until PLAN G230's (A)** (2026-10-30; PLAN G230, BU's unit bu70: option (B) of its
-  stopped design, the planning session's decision, R4 agreeing) SPEC 15.3.4, 23.1.1, 23.1.2.
+  stopped design, the planning session's decision, R4 agreeing; fix round 1 after review 1) SPEC 15.3.4, 23.1.1, 23.1.2.
   - SPEC reading: a named nested function's signature may name visible Origins of enclosing functions, each a fixed Origin of it, and a
     local set is visible in the following scope, so SPEC decides the forms: d6 (a store of `put`'s own input through `during x.s` of an
     enclosing `var w: W{x}`) is Unproven at the input, as d6b (an enclosing parameter's Origin) is; d6v (a store `during x.s` of an
@@ -8454,30 +8454,37 @@ resumed by R4-M86 (2026-10-20).
   - Cause: a nested header is its declaration's, bound with no body before the body binds the local (R4-M101 E1, E3), so `x.s`, `w.s`
     or `r` read the local's annotation, whose omitted Origins are atoms formed outside every body (E5's broken-contract class) that
     nothing links to the local's region: the store was accepted on both pipelines (d6 ran `leak 41`; d6c passed `check` and failed
-    LLVM generation). An unannotated local has no Type yet there; the header fails, and `BindFunction` binds it again in the body,
-    which has typed the local (d6u, `LocalRegionCompletionTest`'s NestedNamedFinite). The old path judges that class (d6u's invalid
-    twins are rejected), so the interim leaves it; the MIR builder (shadow) reports d6u's local region in `put`'s declaration row as
-    `InternalInvariant_Kd` (E2's broken contract, a ledger row since d6u's test), which (A) also removes.
+    LLVM generation). A root function naming a document-local is the same form (`leak 41` under MIR code generation). An unannotated
+    local has no Type yet there; the header fails, and `BindFunction` binds it again in the body, which has typed the local (d6u,
+    `LocalRegionCompletionTest`'s NestedNamedFinite). The interim leaves that class: every probe of it is sound, but its invalid twins
+    get misplaced records (`CallActivationConflict_Kd` in `put`, `ComparisonLoanConflict_Kd` at a block's local), a valid
+    `pick(r)` of `func pick(v: ref/i32 during r) -> ref/i32 during r` is `NoApplicableOverload_Kd`, and the MIR build (shadow)
+    reports d6u's local region in `put`'s declaration row as `InternalInvariant_Kd` (E2's broken contract; the ledger's (b) rows
+    `b-g230-e2`): (A) removes them.
   - Rule: `Binding.OriginCandidate`, where a written Origin's name resolves, records the located `Unsupported_Kd` at the written Origin
-    (`UnlinkedLocalType`) when the name is a body local's set or annotated value, the Origin is bound with no body outside a local's
-    own declaration, and the local's Type names a body local's atom (`NamesLocalAtom`; not a parameter's or a contract's, so `let r:
-    ref/i32 during a` keeps d6b's record); the name resolves to nothing, so no relation, row or call judges it and its dependents rest
-    on it. It decides by the name, so it holds where `BindFunction` binds the header again and the Type has become the local's region.
-    One rule for every declaration form (a parameter's or result's Type, a Type argument's `during`, a clause). A Closure header,
-    bound in its evaluating body, keeps BU-28's `EnclosingAtom`; SPEC 15.3.4's `pass` is accepted. Valid forms are `Unsupported_Kd`
-    (d6v, d6r; STATUS Origins). In a meet (`during (x.s and a)`) the U adds `BindOrigin`'s existing parent
-    `InvalidOriginBinding_Kd`s, which any failed operand adds (`w.zz`): an open issue of that cascade, not of this rule.
+    (`UnlinkedLocalType`) when the name is a body local's set or annotated value, the Origin (a name or projection) is bound with no
+    body outside a local's own declaration, and the Origin the name selects (`SelectedOrigin`, shared with `BindOriginName` and the
+    projection: a borrow's outer Origin, a declared slot) is a body local's atom; the name resolves to nothing, so no relation, row or
+    call judges it and its dependents rest on it. It decides by the name, so it holds where `BindFunction` binds the header again and
+    the Type has become the local's region. A name that selects no Origin keeps its Language error (`during w` of a non-borrow `w`,
+    SPEC 15.2.1, and an absent slot `w.zz` or `x.zz`: `InvalidOriginBinding_Kd`); one that selects a parameter's or a contract's is
+    judged (d6b; `let r: ref/i32 during a`; `r.s` of `r: ref/W during a`, whose slot the body completes from `a`: dev accepted its
+    store, now Unknown at the input). One rule for every declaration form (a parameter's or result's Type, a Type argument's `during`,
+    a clause, a root function's signature). A Closure header, bound in its evaluating body, keeps BU-28's `EnclosingAtom`; SPEC 15.3.4's
+    `pass` is accepted. Valid forms are `Unsupported_Kd` (d6v, d6r; STATUS Origins).
   - Removal condition: (A) lands, with R4 (R4-M101 is R4's): a recorded declaring body of a named nested function (bound in
     `BindFunction` beside `BoundClosure.EvaluatingBody`; Binding.ExecutableBodies.cs forbids deriving it from syntax) extending
     `EnclosingAtom`'s chain, the name link (a nested header's local name resolving through the local's declaration, or nested headers
     bound after the local, changing E3) and E2's declaration-row reading of an enclosing body's atom under the signature's
-    well-formedness premise. Then this rule and its rows go: d6 is Unproven at its input, d6v and d6r are accepted.
+    well-formedness premise. Then this rule, its rows and `b-g230-e2` go: d6 is Unproven at its input, d6v and d6r are accepted.
   - Rejected: (A) now (the design's prototype: the chain alone changes nothing; the link alone judges w's region as `put`'s; both
     make every form Unproven at the parameter, and admitting body atoms as declaration-row atoms loops in `check` on d6); testing
     the resolved atom alone (where `BindFunction` binds the header again the name finds the local's region, so the U did not stick
-    and d6 fell into the unannotated class); every local's name (moves NestedNamedFinite, a valid native fixture, and d6u).
-  - Tests: `ClosureEnvironmentOriginTest`: d6, d6c, d6w, d6r2, d6v, d6r and a clause `origin q == x.s` fail before; d6b, a local
-    annotated with a parameter's Origin, d6u, `pass` and the Closure twins (BU-28's Unproven store, a valid read) are unchanged.
+    and d6 fell into the unannotated class); every local's name (moves NestedNamedFinite, a valid native fixture, and d6u); testing
+    every Origin of the local's Type before the name selects one (review 1, B1: invalid names became `Unsupported_Kd`).
+  - Tests: `ClosureEnvironmentOriginTest`: d6, d6c, d6w, d6r2, d6v, d6r, a clause `origin q == x.s` and the root form fail before,
+    and so does the store through `r.s` (Unknown); d6b, a local annotated with a parameter's Origin, d6u, `pass`, the three invalid
+    names and the Closure twins (BU-28's Unproven store, a valid read) are unchanged.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

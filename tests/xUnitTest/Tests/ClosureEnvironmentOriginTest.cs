@@ -166,6 +166,8 @@ public class ClosureEnvironmentOriginTest
 
     private const string Unproven = nameof(DiagnosticCode.UnprovenOriginRelation_Kd);
 
+    private const string InvalidOrigin = nameof(DiagnosticCode.InvalidOriginBinding_Kd);
+
     // The forms whose records name the call receiver ρ or a Borrow resolved to it (ARecordNamingTheCallReceiverShowsTheClosure).
     private const string EnvBorrow = "func use(p: ref/i32) -> i32\n    let n: i32 = 1\n";
     private const string LocalAnnotated = EnvBorrow + "    let c = func [n] () -> i32\n        let r: ref/i32 during p = n@ref\n        return 0\n    return 0\n";
@@ -465,11 +467,11 @@ public class ClosureEnvironmentOriginTest
         }
     }
 
-    // SPEC 15.3.4 (PLAN G230; DECISIONS BU-56, an interim until G230's (A)): a named nested function's signature or clause that names an
-    // enclosing body local's set or annotated value, whose Type names a body local's atom, is, valid or not, a located Unsupported_Kd at
-    // each such written Origin on both pipelines, and nothing rests on it. dev bound the name to an atom of the local's annotation that no
-    // body links to the local's region and accepted the store (d6 ran `leak 41`, d6c failed LLVM generation); d6v and d6r are the valid
-    // twins.
+    // SPEC 15.3.4 (PLAN G230; DECISIONS BU-56, an interim until G230's (A)): a named nested or root function's signature or clause that
+    // names an enclosing body local's set or annotated value and selects a body local's atom is, valid or not, a located Unsupported_Kd
+    // at each such written Origin on both pipelines, and nothing rests on it. dev bound the name to an atom of the local's annotation that
+    // no body links to the local's region and accepted the store (d6 ran `leak 41`, d6c failed LLVM generation; the root form, a
+    // document-local named by a top-level function, ran `leak 41` under MIR code generation); d6v and d6r are the valid twins.
     [Theory]
     [InlineData(NestedHead + PutStore + NestedStore, "x.s>")]
     [InlineData(NestedHead + PutBoth + NestedStore, "x.s>", "x.s)")]
@@ -489,6 +491,11 @@ public class ClosureEnvironmentOriginTest
         NestedHead + "    func put(slot: uniq/Array<ref/i32 during q>, v: ref/i32 during q)\n        origin q == x.s\n        slot@follow.append(v)\n" +
             NestedStore,
         "x.s\n")]
+    [InlineData(
+        "var arr: Array<ref/i32> = []\nlet z: i32 = 0\narr.append(z@ref)\nlet r: ref/i32 = arr[0]\n" +
+            "func put(slot: uniq/Array<ref/i32 during r>, v: ref/i32) => slot@follow.append(v)\nif true\n    let inner: i32 = 41\n" +
+            "    put(arr@uniq, inner@ref)\nlet old: i32 = arr[1]@follow\nConsole.writeLine(\"leak \\(old)\")\n",
+        "r>")]
     public void ANestedSignatureNamingABodyLocalIsUnsupported(string source, params string[] at)
     {
         foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
@@ -505,10 +512,12 @@ public class ClosureEnvironmentOriginTest
     }
 
     // The forms BU-56 leaves to their judges: an enclosing parameter's Origin, also through a local annotated with it (d6b's store of the
-    // call's own input stays Unknown), an enclosing contract's (SPEC 15.3.4's `pass`), an unannotated local's value, whose Type the
-    // body gives it before it binds the header again (d6u; LocalRegionCompletionTest's NestedNamedFinite), and a Closure header naming
-    // the same local set, bound in its evaluating body (BU-28's EnclosingAtom: storing the call's own input is Unknown, the valid twin is
-    // accepted).
+    // call's own input stays Unknown) or through a slot the local's Type completes from it, where the body binds the header again (dev
+    // accepted the store `during r.s` of `r: ref/W during a`; it is Unknown as d6b's), an enclosing contract's (SPEC 15.3.4's `pass`),
+    // an unannotated local's value, whose Type the body gives it before it binds the header again (d6u; LocalRegionCompletionTest's
+    // NestedNamedFinite), a name that selects no Origin (a non-borrow local, an absent slot: InvalidOriginBinding_Kd, SPEC 15.2.1,
+    // 15.3.1) and a Closure header naming the same local set, bound in its evaluating body (BU-28's EnclosingAtom: storing the call's own
+    // input is Unknown, the valid twin is accepted).
     [Theory]
     [InlineData(
         Leak + "    func put(slot: uniq/Array<ref/i32 during a>, v: ref/i32) => slot@follow.append(v)\n    return 0\npublic func main() => ()\n",
@@ -530,6 +539,14 @@ public class ClosureEnvironmentOriginTest
             "    return source@follow\npublic func main() => ()\n",
         null,
         null)]
+    [InlineData(
+        WStruct + "func leak(a: ref/W) -> i32\n    let r: ref/W during a = a\n" +
+            "    func keep(slot: uniq/Array<ref/i32 during r.s>, v: ref/i32) => slot@follow.append(v)\n    return 0\npublic func main() => ()\n",
+        Unproven,
+        "v)")]
+    [InlineData(NestedHead + "    func get(v: ref/i32 during w) -> i32 => v@follow\n    return 0\npublic func main() => ()\n", InvalidOrigin, "w)")]
+    [InlineData(NestedHead + "    func get(v: ref/i32 during w.zz) -> i32 => v@follow\n    return 0\npublic func main() => ()\n", InvalidOrigin, "zz)")]
+    [InlineData(NestedHead + "    func get(v: ref/i32 during x.zz) -> i32 => v@follow\n    return 0\npublic func main() => ()\n", InvalidOrigin, "zz)")]
     [InlineData(NestedHead + "    let put = func [] " + PutSignatureBoth + NestedValid, null, null)]
     [InlineData(NestedHead + "    let put = func [] " + PutSignatureStore + NestedStore, Unproven, "v)")]
     public void AnEnclosingContractOriginOrAClosureHeaderKeepsItsJudgment(string source, string? code, string? at)
