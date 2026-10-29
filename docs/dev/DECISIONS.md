@@ -5379,7 +5379,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     V>`, the argument's own value; `Loan<ref/(K, V)>`'s Type argument fits no source and no rule makes a Tuple of parts a part.
     `TyCtxt.CoreContent` is the one table of a built-in Core's stored content (`string` -> `u8`; the other Cores none; never "holds
     any"), which `HeldParts` reads for the positions and the sources alike, so `Utf8Slice`'s `Slice<u8> during source` borrows a part
-    reached through `text`. Wk row `viewHolds` (each Bad form valid on 295224f0e). The per-contract comparison against e9ad0a5fa
+    reached through `text`. Its `string` row's source is SPEC 3.1.2 as written (a string's content is its UTF-8 bytes): asked about
+    the design owner's offered clarifying sentence there, the owner answered 「加えない」 (2026-10-29), so no SPEC text changes. Wk row `viewHolds` (each Bad form valid on 295224f0e). The per-contract comparison against e9ad0a5fa
     differs only there: iterate, iterateUniq and utf8 results Content -> Value (census Milestone31, 32, 35 and the iterations golden
     among them), and the raw slots of the rawPath rows' callees, which now hold `zr`'s value as the borrow their Origin `r` belongs to.
   - An abstract referent holds any part (`Holds`; BU's review N2, the design owner's answer recorded with its exact rule): the exact
