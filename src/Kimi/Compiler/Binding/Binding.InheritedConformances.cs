@@ -163,7 +163,7 @@ public sealed partial class Binding
                 }
 
                 path.AssociatedStorage[associated] = binding;
-                if (!TypeAccessCovers(binding, path.Type, path.Contract))
+                if (!this.TypeAccessCovers(binding, path.Type, path.Contract))
                 {
                     return ConstraintProof.Refuted;
                 }
