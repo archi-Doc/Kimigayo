@@ -47,6 +47,12 @@ public class PropertyBindingTest
     private const string WrongSetter = ClosedField + "        set(value: i64) -> ()\n            storage = 1\n" + ClosedInit;
     private const string RightGetter = ClosedField + "        get() -> i32\n            return storage\n" + ClosedInit;
 
+    // A custom `get` of an Addable Type beside the standard `set`, so `+=` takes the user arithmetic path (TryArithmetic).
+    private const string AddableWrongGetter = "struct Counter\n    Self is Addable<Counter>\n    associate Output is Counter\n    public let value: i32\n" +
+        "    public init(value: i32) => self.value = value\n" +
+        "    public func added(self: ref/Self, right: ref/Counter) -> Counter => Counter.init(self.value + right.value)\n    drop => ()\n" +
+        ClosedField + "        get() -> Counter\n            return Counter.init(1)\n" + ClosedInit;
+
     [Theory]
     [InlineData("let", false)]
     [InlineData("var", true)]
@@ -382,12 +388,15 @@ public class PropertyBindingTest
     // SPEC 13.7.1, 11.1 (PLAN G296): each update fits its result to the destination Type BindPropertyUpdate publishes, so beside a custom
     // `get` of another Type than the Field's, `+=` is a labelled TypeMismatch_Kd at the update after the declaration's, as `|=` and `++`
     // are (before, `+=` was never fitted and mir and sel recorded InternalInvariant_Kd; `|=` and `++` were unlabelled at `h.x`); so is
-    // an update beside a custom `set` of another input Type. Twins: a generic Field, and a `get` of the Field's Type, which is valid.
+    // an update beside a custom `set` of another input Type, and a user arithmetic `+=` beside an Addable `get` (TryArithmetic; before,
+    // no record at the update, and InternalInvariant_Kd on mir and sel). Twins: a generic Field, and a `get` of the Field's Type, which
+    // is valid.
     [Theory]
     [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x += 4", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd h.x += 4")]
     [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x |= 4", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd h.x |= 4")]
     [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x++", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd h.x++")]
     [InlineData(GenericWrongGetter, "var h = HW<i32>.init(x: 3)\n    h.x += 4", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd h.x += 4")]
+    [InlineData(AddableWrongGetter, "var h = HW.init(x: 3)\n    h.x += Counter.init(2)", "TypeMismatch_Kd get() -> Counter;TypeMismatch_Kd h.x += Counter.init(2)")]
     [InlineData(WrongSetter, "var h = HW.init(x: 3)\n    h.x |= 4", "TypeMismatch_Kd set(value: i64) -> ();TypeMismatch_Kd h.x |= 4")]
     [InlineData(WrongSetter, "var h = HW.init(x: 3)\n    --h.x", "TypeMismatch_Kd set(value: i64) -> ();TypeMismatch_Kd --h.x")]
     [InlineData(RightGetter, "var h = HW.init(x: 3)\n    h.x += 4\n    h.x |= 4\n    h.x++", "")]

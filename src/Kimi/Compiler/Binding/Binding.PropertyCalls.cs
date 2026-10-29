@@ -133,14 +133,12 @@ public sealed partial class Binding
         => this.propertyUpdateInputs.GetValueOrDefault(KotoHelper.UnwrapParentheses(target)) is { BindingState: BindingState.Resolved } input
             ? input.BoundType : null;
 
-    private BoundType? PropertySetterInput(Koto node)
-        => this.propertyCalls.GetValueOrDefault((node, PropertyAccessorKind.Set))?.BoundCall is { ArgumentOperations.Length: > 0 } call
-            ? call.ArgumentOperations[0].ParameterType : null;
-
     // SPEC 13.7.1: the Type a custom accessor's bound call gives its use at `node`: a `set`'s value input (the destination Type), a
     // `get`'s result (the read Type).
     private BoundType? AccessorUseType(Koto node, BoundAccessor accessor)
-        => accessor.Kind == PropertyAccessorKind.Set ? this.PropertySetterInput(node) : this.propertyCalls[(node, accessor.Kind)].BoundType;
+        => accessor.Kind != PropertyAccessorKind.Set ? this.propertyCalls[(node, accessor.Kind)].BoundType
+            : this.propertyCalls.GetValueOrDefault((node, accessor.Kind))?.BoundCall is { ArgumentOperations.Length: > 0 } call
+                ? call.ArgumentOperations[0].ParameterType : null;
 
     private void BindStorageProjection(Koto node, BoundAccessor accessor)
     {
