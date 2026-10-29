@@ -62,42 +62,6 @@ public sealed partial class Binding
         return left == decisive || right == decisive ? decisive : left == both && right == both ? both : ConstraintProof.Unknown;
     }
 
-    // Whether a Type depends on a generic input; a Contract's Self counts only with `contractSelf`, since a Contract clause on
-    // Self is an obligation of every conformer rather than a closed proposition.
-    private static bool DependentType(BoundType type, bool unresolvedProjection = true, bool contractSelf = false, bool includeOrigins = true)
-    {
-        if ((type.Kind == BoundTypeKind.Parameter && (contractSelf || !IsContractSelf(type))) || type.Kind is BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation || (unresolvedProjection && type.Kind == BoundTypeKind.AssociatedProjection) || type.LengthExpression is not null || (includeOrigins && type.Origin is not null && type.Origin.Kind != OriginKind.Static))
-        {
-            return true;
-        }
-
-        foreach (var length in type.LengthArguments)
-        {
-            if (length is { IsConstant: false })
-            {
-                return true;
-            }
-        }
-
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (includeOrigins && type.OriginArguments[i].Kind != OriginKind.Static)
-            {
-                return true;
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (DependentType(type.Components[i], unresolvedProjection, contractSelf, includeOrigins))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private static bool IsSelfConstraint(IsKoto clause)
     {
         var subject = clause.Left;
@@ -113,14 +77,60 @@ public sealed partial class Binding
         => (constraint.Contract is { } contract && IntrinsicContract.Of(contract.Intrinsic).SelfRequirement) ||
         (constraint.Kind == ConstraintKind.Not && constraint.Left?.Contract?.Intrinsic == IntrinsicKind.ObjectPayload);
 
-    private static bool IsDependentConstraint(IsKoto clause)
-        => !IsSelfConstraint(clause) && clause.BoundConstraint is { } constraint && DependentConstraint(constraint);
+    // Whether a Type depends on a generic input; a Contract's Self counts only with `contractSelf`, since a Contract clause on
+    // Self is an obligation of every conformer rather than a closed proposition. An existence walk: each distinct part visited once
+    // (DECISIONS BU-19, BU-55).
+    private bool DependentType(BoundType type, bool unresolvedProjection = true, bool contractSelf = false, bool includeOrigins = true)
+    {
+        var query = this.visitedParts.Begin(this.storageVersion);
+        return Dependent(type);
 
-    private static bool DependentConstraint(BoundConstraint constraint, bool contractSelf = false)
-        => (constraint.Subject is { } subject && DependentType(subject, unresolvedProjection: false, contractSelf)) ||
-        (constraint.RequiredType is { } required && DependentType(required, unresolvedProjection: false, contractSelf)) ||
-        (constraint.Left is { } left && DependentConstraint(left, contractSelf)) ||
-        (constraint.Right is { } right && DependentConstraint(right, contractSelf));
+        bool Dependent(BoundType part)
+        {
+            if ((part.Kind == BoundTypeKind.Parameter && (contractSelf || !IsContractSelf(part))) ||
+                part.Kind is BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation ||
+                (unresolvedProjection && part.Kind == BoundTypeKind.AssociatedProjection) || part.LengthExpression is not null ||
+                (includeOrigins && part.Origin is not null && part.Origin.Kind != OriginKind.Static))
+            {
+                return true;
+            }
+
+            foreach (var length in part.LengthArguments)
+            {
+                if (length is { IsConstant: false })
+                {
+                    return true;
+                }
+            }
+
+            for (var i = 0; i < part.OriginArguments.Count; i++)
+            {
+                if (includeOrigins && part.OriginArguments[i].Kind != OriginKind.Static)
+                {
+                    return true;
+                }
+            }
+
+            for (var i = 0; i < part.Components.Count; i++)
+            {
+                if (this.FirstVisit(part.Components[i], query) && Dependent(part.Components[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
+    private bool IsDependentConstraint(IsKoto clause)
+        => !IsSelfConstraint(clause) && clause.BoundConstraint is { } constraint && this.DependentConstraint(constraint);
+
+    private bool DependentConstraint(BoundConstraint constraint, bool contractSelf = false)
+        => (constraint.Subject is { } subject && this.DependentType(subject, unresolvedProjection: false, contractSelf)) ||
+        (constraint.RequiredType is { } required && this.DependentType(required, unresolvedProjection: false, contractSelf)) ||
+        (constraint.Left is { } left && this.DependentConstraint(left, contractSelf)) ||
+        (constraint.Right is { } right && this.DependentConstraint(right, contractSelf));
 
     private ConstraintProof JudgeConstraintAtom(BoundConstraint proposition, BindingScope scope)
     {
@@ -142,7 +152,8 @@ public sealed partial class Binding
                 return ConstraintProof.Proven;
             }
 
-            return DependentType(proposition.Subject!) || DependentType(proposition.RequiredType!) ? ConstraintProof.Unknown : ConstraintProof.Refuted;
+            return this.DependentType(proposition.Subject!) || this.DependentType(proposition.RequiredType!)
+                ? ConstraintProof.Unknown : ConstraintProof.Refuted;
         }
 
         if (proposition.Kind == ConstraintKind.Callable)
@@ -152,7 +163,7 @@ public sealed partial class Binding
             var signature = this.ClosureSignature(subject) ?? this.FunctionItemSignature(subject) ?? (subject.Kind == BoundTypeKind.Function ? subject : null);
             if (signature is null)
             {
-                return DependentType(subject) ? ConstraintProof.Unknown : ConstraintProof.Refuted;
+                return this.DependentType(subject) ? ConstraintProof.Unknown : ConstraintProof.Refuted;
             }
 
             var receiver = closure?.Receiver ?? SemanticsKind.Ref;
@@ -382,9 +393,10 @@ public sealed partial class Binding
         // that the Contract is available for, and obligations of every conformer.
         var contractSelfClause = scope.Owner is ContractKoto && IsSelfConstraint(clause) && IsSelfRequirement(requirement);
         var input = symbol?.Kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter || (subject?.Kind == BoundTypeKind.AssociatedProjection && root?.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection);
-        input |= scope.Owner is StructKoto or EnumKoto && !IsSelfConstraint(clause) && DependentConstraint(requirement);
+        input |= scope.Owner is StructKoto or EnumKoto && !IsSelfConstraint(clause) && this.DependentConstraint(requirement);
         input |= contractSelfClause;
-        var closedSubject = (scope.Owner is StructKoto or EnumKoto || (scope.Owner is ContractKoto && !IsSelfConstraint(clause))) && subject is not null && !DependentType(subject, unresolvedProjection: false);
+        var closedSubject = (scope.Owner is StructKoto or EnumKoto || (scope.Owner is ContractKoto && !IsSelfConstraint(clause))) && subject is not null &&
+            !this.DependentType(subject, unresolvedProjection: false);
         var validSubject = subject is not null && (scope.Owner is FunctionKoto member ? input && (ReferenceEquals((root?.Symbol ?? symbol)?.Scope, scope) || ReferenceEquals((root?.Symbol ?? symbol)?.Scope.Owner, member.Parent)) : input || closedSubject || (IsSelfConstraint(clause) && scope.Owner is DeclarationContainerKoto and not (GroupKoto or ContractKoto)));
         if ((!validSubject && !unresolvedSubject) || (clause.IsAssociatedConstraint && scope.Owner is not ContractKoto))
         {
