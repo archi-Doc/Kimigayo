@@ -39,9 +39,10 @@
 // role table, Marker, and rule W's indirect markers, MirBorrows.Causes). An
 // Opaque site's value is {Φ_E}: it rests on a recorded error, so it carries none of its roots' Loans (R4-M70). A Loan exists per non-raw
 // Ref site, and per PairAcquire the view makes a Reborrow, in its Use's marked mode (E13 (4)), whose Place passes no shared borrow Deref
-// (E3), named by its whole Place; an address, after the Loans, names the holder a raw pointer addresses (SPEC 15.6 Addresses, R4-M116), as
-// a direct Loan does, and a value that may refer to storage the body does not own carries Φ_E where it is formed, E's own state from the
-// entry; access is syntactic, by Place prefix. A check reads holders, never Loan ids: the holders live after the access but those it
+// (E3), named by its whole Place, a raw Place borrow's, past a raw Deref, its fresh anchor's, which no access reaches (SPEC 5.2.2,
+// R4-M156); an address, after the Loans, names the holder a raw pointer addresses (SPEC 15.6 Addresses, R4-M116), as a direct Loan does,
+// and a value that may refer to storage the body does not own carries Φ_E where it is formed, E's own state from the entry; access is
+// syntactic, by Place prefix. A check reads holders, never Loan ids: the holders live after the access but those it
 // overwrites, E, and the values the access takes (E13 (1): an operand's, its operation's operands' values up to it and roots after it in
 // evaluation order; a borrow's R2 parents and E5's seed; an observing destruction's value; another access's, the values it stores into a
 // live holder, transit, and E5's seed), closed through the holders their direct Loans name; an activation the operation's operands' values
