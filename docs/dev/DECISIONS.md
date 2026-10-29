@@ -1716,7 +1716,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   A5-side rule over operands the MIR does not build; a diverging Call writing its destination on its check edge (SPEC 14.10.3
   leaves it open). Not temporary. Amended by R5-M38: the Never value is a temp of Type Never; an unadapted acquisition of a named
   Place of Type Never goes into a fresh Never temp, which every consumer takes as it is (the placement rule unchanged), and an
-  adapted one is built as Binding publishes it.
+  adapted one is built as Binding publishes it. Amended by R5-M159: an element whose index diverges has its element Type, so the
+  increment's target node is no longer Never (`++a[(return 0)]`); its one stays of the old value's Type.
 - **R4-M63** (2026-10-18; A3 §12 E14, decided by the planning session on the core lane's group review B4 and N2 and its design review
   of 2026-10-18; supersedes R4-M57's intrinsic rule and its separate unknown-callee loop, and R4-M40's "every operand to the result";
   its store target refs(val(a_j)) superseded by R4-M73's W) A Call retains as its callee's contract says (SPEC 15.6, 15.6.4).
@@ -11554,7 +11555,7 @@ structure is recorded here by the unit that first implements it.
     destruction obligation in MIR, so a literal comparison operand or a constant a transfer abandons is never materialized and the audit
     counts no Static destruction the old generator made (`StringComparison*Audit` 9, `ElementBorrowOwnerLifetime*Audit` 8,
     `ForeignPointerString*Audit` 3, `FixedArrayCapture*Audit` 2, `GuardCleanup*Audit` 2 and `ElementReplacementTransfer*Audit` 2, the last two
-    a constant abandoned by a transfer). G188's owner (R5's W1 or E lane) decides the builder or the audits before R5's exit. No R5-M85
+    a constant abandoned by a transfer; amended by R5-M159: those two were G304's Never-typed target). G188's owner (R5's W1 or E lane) decides the builder or the audits before R5's exit. No R5-M85
     deviation now.
   - Fixture row (ruling Q3 (a)): `ElementBorrowOwnerLifetimeCalleeCleanupAudit`, under PLAN G248 (R4's builder unit): a
     call's destination temporary registers its cleanup before its arguments' (`Console.writeLine(inspect(("head", "tail").0))` destroys the
@@ -13135,3 +13136,54 @@ structure is recorded here by the unit that first implements it.
     `CompilerCodegen.Legacy` pins (99 in 71 files) and the direct `Emission.TryPrepare` readers stay (G4, G5, G7; R5-M85).
   - Rejected: Q1 (a), deleting the form at G3 (S7 deletes it with the selector at G4); Q2 (b), the gate on every default run (the sel
     lane's tooling as a second mode after OI-3); the String row's call-result form through `@move` (a form chosen to avoid a defect).
+- **R5-M159 An element whose key diverges has its element Type (g2never)** (2026-10-30, planning session with BU's agreement; PLAN
+  G304; amends R4-M62's increment sentence; Major) SPEC 3.1.3: only a transfer, `$abort` and a call by its Never result Type are
+  Never forms, other control flow only under result validation; an element access is none, so its Type is the element's (SPEC
+  4.7.1), as Binding already gave an Array, Slice, Dictionary or referenced element and a call with a diverging argument.
+  - Cause: `Binding.Elements` typed an owned fixed-array element whose key is Never as Never, and `ElementAccess.DestinationType`
+    with `TryType`'s "abrupt earlier index" clause recovered the element Type for assignment destinations only. The MIR builder took
+    the target's Never for the right side's secured temporary (SPEC 13.7.1 step 1): `a[(return 42)] = echo("new")` was
+    `InternalInvariant_Kd` under sel (a call writing the Never value; a Reborrow right side's own record), and a right side built by
+    `Set` lost its value and Loans. Binding rejected valid forms: a Field written or updated below such an element
+    (`UnresolvedBinding_Kd`), its borrow for a call, `replace`, `exchange` and `swap` (`NoApplicableOverload_Kd`).
+  - Rule: only a Never receiver, which has no elements, leaves an element Never. The recovery and its callers' wrapping go
+    (`Binding.Operators`, `Binding.ArithmeticOperators`; the old analysis's `UpdateElement` reads the target's Type). No MIR change.
+  - D5 (the owner, 2026-10-30, verbatim 「(a) D5 の例外として認める」, to: the old paths accept the newly valid forms until
+    R6-check, each shown natively to be generated and run correctly under both generators): the old analysis accepts them. Shown on
+    both generators: a call's right side (the old element stays, the secured result is destroyed), a nested element, a Field written
+    and updated or updated by a user operator (`u[(return 42)] += Counter.init(2)`), shared reads (`let k = t[(return 42)].1`),
+    comparisons, `++`, a shared borrow for a call or a local (`let r = a[(return 42)]@ref`), a `match` scrutinee. The old generator
+    refuses with `GenerationFailed_Kd` (`ValidateComparisonLoans`; no code) an exclusive borrow of such an element, or of a part of one (a Field,
+    a Tuple element, a nested element), taken as a call's input: a `@uniq` argument, a `uniq/Self` receiver, user or library
+    (`Array.append`), `replace`, `exchange`. MIR code generation runs each. Three of them the old generator generated before, typing
+    the part Never: `bump(n2[(return 42)][0]@uniq)`, `bump(t[(return 42)].1@uniq)` and `replace(t[(return 42)].1@uniq, with: …)`
+    (base MIR code generation gave `InternalInvariant_Kd`). The owner, 2026-10-30, verbatim 「推奨の内容で決定します」 (option (a)):
+    the refusal stands in the rollback lane until G4 ends the old generator's selection, MIR code generation being the default after
+    G2's and G3's window.
+  - Newly rejected, SPEC-correctly (3.1.3, 3.8): an element used at a mismatched Type (`let x: bool = ia[(return 42)]`,
+    `TypeMismatch_Kd`; base accepted it at default, `InternalInvariant_Kd` under sel). Under MIR code generation `build` rejects a
+    Move of such an element (`take(a[(return 42)]@move)`, `_ = a[(return 42)]@move`) with A1's `StaticMovePathRequired_Kd` (SPEC
+    15.1.3, 14.10.3), and `check` gives the same code from the old analysis (below).
+  - The old analysis's Move rules on the assumed path (BU's review): without them the default pipeline accepted a Move of such an
+    element into an untyped local (`let s = a[(return 42)]@move`, `let x = a[(return 42)]` of a string, `var v = …@move`,
+    `let q = (a[(return 42)], 1)`, `let e = b[(return 42)]@move`), which dev rejected only because the local was Never, since
+    `AcquireElement` checked nothing where the access cannot complete normally (R1's limit), as dev accepted `take(…@move)`,
+    `_ = …@move`, `let w: string = …@move`, `other = …@move` and a temporary's part (`take(make2((return 42)).0@move)`). The owner,
+    2026-10-30, verbatim 「推奨の内容で決定します」 (variant (2')): there `AcquireElement` applies the reachable Move rules, SPEC
+    14.10.3 checking the assumed path: the reachable twin's codes at the element (`StaticMovePathRequired_Kd`, no static Move Path
+    existing there; a bare consume's `TransferRequired_Kd` with the element path's `Unsupported_Kd`), no temporary and no other
+    check, until R6-check (D5). Rejected: an `Unsupported_Kd` guard (a Language violation is a Language diagnostic, AGENTS); keeping
+    R1's limit.
+  - Not newly accepted: `swap`'s later input and a later read of a local such an element initializes are the old analysis's first
+    unreachable local use, its located `Unsupported_Kd` (STATUS Unreachable code) until R6-check, a better category than the former
+    Language error. AD4's assumed-path Loan conflict is PLAN G305's.
+  - Rejected: a builder walk typing the destination over HIR shapes (a second copy of `TryType`, Binding's rejections kept); a
+    published destination-Type fact (the target's Meaning carries it once Binding follows SPEC); the right side's own Type for the
+    temporary (wrong for a ReferenceRead, an Erasure, a borrow); a BU-10-style guard for the newly valid forms (the owner's (b)).
+  - Verified (fail-first): `NeverContinuationTest` (the forms accepted, the published element Types, the Never receiver's
+    `InvalidAssignment_Kd`, the mismatched Type's `TypeMismatch_Kd`, the Moves' twin codes),
+    `MirBuildTest.ARightSideIsSecuredAtTheElementTypeBeforeADivergingKey`,
+    Element* native fixtures (the exclusive inputs under MIR code generation). The
+    `ElementReplacementTransfer*` audits lose their `constant-temporaries` deviation: MIR code generation now secures and destroys the
+    right side as the old generator does, so R5-M118's two `ElementReplacementTransfer*Audit` rows were this cause, not a constant a
+    transfer abandons (G157 (45)'s part for them).

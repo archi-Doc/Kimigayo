@@ -257,8 +257,8 @@ public sealed partial class MirBuildTest
     }
 
     // SPEC 3.8, 14.10.3 (DECISIONS R4-M62): where only the checks continue, any acquisition takes the Never value as it is (a comparison's
-    // borrow, a tuple operator's leaves, R5-M75), an increment's one is of the old value's Type, not of its Never-typed target's, and a
-    // rejected node of Type Never keeps its Opaque value: each body validates.
+    // borrow, a tuple operator's leaves, R5-M75), an increment's one is of the old value's Type, and a rejected node of Type Never keeps
+    // its Opaque value: each body validates.
     [Theory]
     [InlineData("func f() -> bool\n    let s = \"a\"\n    return s == (return false)\n")]
     [InlineData("func f(b: (string, i32)) -> bool\n    return (return false) < b\n")]
