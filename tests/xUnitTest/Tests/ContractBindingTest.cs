@@ -9,6 +9,11 @@ namespace XunitTest;
 
 public class ContractBindingTest
 {
+    private const string Projected = "Self is Iter<S.(HasItem).Item>\n    associate Tag is bool";
+    private const string Uses = "func f(a: ref/B<SrcI>, b: ref/B<Src>) -> ()\n    use(a)\n    use(b)";
+    private const string Added = "S.(HasItem).Item is PrimitiveInteger\n    Self is Addable<S.(HasItem).Item>\n    associate Output is i32\n" +
+        "    public func added(self: ref/Self, right: ref/S.(HasItem).Item) -> i32 => 6";
+
     [Fact]
     public void AppendingSourceRevokesRetainedConformanceAndPropertyCertificates()
     {
@@ -288,6 +293,37 @@ public class ContractBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess("contract C\n    associate E\nstruct S<T>\n    T is i32\n    Self is C\n    associate C.E is T");
         Assert.True(c.Bind().IsComplete, Describe(c));
+    }
+
+    // SPEC 8.6.1, 8.2.3 (PLAN G290): a bound reference whose argument is a projection over the Type's parameter (`B<S>`'s
+    // `Iter<S.(HasItem).Item>`) is, for an instance, the reference the projection names: `B<SrcI>` and `B<Src>` (HasMore's refinement
+    // binds its Item) are `Iter<i32>` through a direct, refinement, conditional or inherited path and as a projection's qualifier, and
+    // `B<SrcI>` is `Addable<i32>` for `a + 2`; `B<U>` is under the use scope's premise `U.(HasItem).Item is i32` and unproven without
+    // one (DECISIONS BU-50); `B<SrcU>` is not, nor is it `Iter<u8>` as a qualifier. Before, each valid form was NoApplicableOverload_Kd,
+    // UnprovenConstraint_Kd, TypeMismatch_Kd or Unsupported_Kd.
+    [Theory]
+    [InlineData(Projected, Uses, null)]
+    [InlineData("Self is Seq<S.(HasItem).Item>\n    associate Tag is bool", Uses, null)]
+    [InlineData("Self is Iter<S.(HasItem).Item> when S is Copy\n        associate Tag is bool", Uses, null)]
+    [InlineData(Projected, "struct D : B<SrcI>\nfunc f(d: ref/D) -> ()\n    use(d)", null)]
+    [InlineData(Projected, "func f(a: ref/B<SrcI>) -> ()\n    let t: B<SrcI>.(Iter<i32>).Tag = true", null)]
+    [InlineData(Added, "func f(a: ref/B<SrcI>) -> i32\n    return a + 2", null)]
+    [InlineData(Projected, "func g<U>(x: ref/B<U>) -> ()\n    U is HasItem\n    U.(HasItem).Item is i32\n    use(x)", null)]
+    [InlineData(Projected, "func g<U>(x: ref/B<U>) -> ()\n    U is HasItem\n    use(x)", DiagnosticCode.UnprovenConstraint_Kd)]
+    [InlineData(Projected, "func f(a: ref/B<SrcU>) -> ()\n    use(a)", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData(Projected, "func f(a: ref/B<SrcI>) -> ()\n    let t: B<SrcI>.(Iter<u8>).Tag = true", DiagnosticCode.UnsatisfiedConstraint_Kd)]
+    public void ABoundReferenceIsTheTypeItsProjectionArgumentNames(string conformance, string use, DiagnosticCode? code)
+    {
+        var c = CompilationTestHelper.ParseSuccess(
+            "contract HasItem\n    associate Item\ncontract HasMore: HasItem\n    associate Elem\n    associate HasItem.Item is Elem\nstruct Src\n" +
+            "    Self is HasMore\n    Self is Copy\n    associate HasMore.Elem is i32\nstruct SrcI\n    Self is HasItem\n    Self is Copy\n" +
+            "    associate HasItem.Item is i32\nstruct SrcU\n    Self is HasItem\n    associate HasItem.Item is u8\ncontract Iter<T>\n    associate Tag\n" +
+            $"contract Seq<T>: Iter<T>\nopen struct B<S>\n    S is HasItem\n    {conformance}\nfunc use<T>(x: ref/T) -> ()\n    T is Iter<i32>\n    ()\n{use}");
+        Assert.True(c.Bind().IsComplete == (code is null), Describe(c));
+        if (code is { } expected)
+        {
+            Assert.Contains(c.Binding.Issues, x => x.Code == expected);
+        }
     }
 
     [Theory]

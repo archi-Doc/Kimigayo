@@ -194,6 +194,26 @@ public class PropertyBindingTest
         Assert.Equal(valid, c.Bind().IsComplete);
     }
 
+    // SPEC 8.6.1, 11.9.1, 11.9.2 (PLAN G278): a projection-typed Field, own or a base's, is a by-value witness only where its Type is
+    // proven Copy, as a parameter-typed one: `W<S>`'s unconditional `Self is Holds` storing `S.Element` holds for every S, so its Copy
+    // bridge is unproven (UnprovenConstraint_Kd), while the conformance conditional on `S.Element is Copy` and a borrowing getter are valid.
+    [Theory]
+    [InlineData("E", "", false)]
+    [InlineData("E", " when S.Element is Copy", true)]
+    [InlineData("ref/E", "", true)]
+    [InlineData("E", " when S.Element is Copy", true, true)]
+    [InlineData("E", "", false, true)]
+    public void AProjectionTypedFieldIsAWitnessUnderItsCopyEvidence(string result, string condition, bool valid, bool inherited = false)
+    {
+        var associate = condition.Length == 0 ? "\n    associate Holds.E is S.Element" : "\n        associate Holds.E is S.Element";
+        var c = CompilationTestHelper.ParseSuccess(
+            $"contract HasElem\n    associate Element\ncontract Holds\n    associate E\n    property item: {result} has get\nopen struct Base<T>\n" +
+            $"    public var item: T\nstruct W<S>{(inherited ? " : Base<S.Element>" : string.Empty)}\n    S is HasElem\n    Self is Holds{condition}{associate}\n" +
+            (inherited ? string.Empty : "    public var item: S.Element\n"));
+        Assert.True(c.Bind().IsComplete == valid, Describe(c));
+        Assert.True(valid || c.Binding.Issues.Any(static x => x.Code == DiagnosticCode.UnprovenConstraint_Kd), Describe(c));
+    }
+
     [Theory]
     [InlineData("Resource", false)]
     [InlineData("ref/Resource", true)]
