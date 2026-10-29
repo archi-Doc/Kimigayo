@@ -488,7 +488,8 @@ public sealed partial class Binding
         {
             var argument = call.ArgumentNodes[i];
             var parameter = operations[i].ParameterType;
-            var handed = parameter is not null && (argument.BoundType is null || this.AwaitsPosition(argument)) ? this.OpenCallPosition(parameter, call, i) : parameter;
+            var handed = parameter is not null && (argument.BoundType is null || this.AwaitsPosition(argument))
+                ? this.OpenCallPosition(parameter, call, i) : parameter;
             var composite = argument.BoundType is null && this.KindOf(argument) == ArgumentKind.Composite;
             if (this.PropagateBound(argument, handed) is null)
             {

@@ -252,7 +252,8 @@ public sealed partial class Binding
             var mentioned = false;
             for (var p = 0; p < function.Parameters.Count && !mentioned; p++)
             {
-                mentioned = !unsupplied.Contains(p) && (function.Parameters[p].Type.BoundType is not { } parameter || MentionsOriginSlot(parameter, function, i));
+                mentioned = !unsupplied.Contains(p) &&
+                    (function.Parameters[p].Type.BoundType is not { } parameter || MentionsOriginSlot(parameter, function, i));
             }
 
             for (var r = 0; relations is not null && r < relations.Count && !mentioned; r++)
