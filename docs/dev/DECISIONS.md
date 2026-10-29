@@ -8096,6 +8096,8 @@ resumed by R4-M86 (2026-10-20).
     never virtual, 6.4.1).
   - Cause: `Binding.BaseCalls` kept its own walk over scope Functions, which an accessor's scopes do not set: a false
     `InvalidBaseCall_Kd` ("requires a derived instance function") in every getter and setter, on every pipeline. The walk is deleted.
+  - `Binding.ObjectViews.FindObjectErasure` (6.4.5's lexical self of an override body) reads the same `EnclosingFunction`; its own walk is
+    deleted too (review 1, B1), so `BaseReceiver`'s `lexical` has one producer.
   - Tests: `BaseCallBindingTest`: the native fixture `BaseCallGetter` (a getter, the original default), a setter's and a `[self]`
     Closure's rows in a getter, the capture-less Closure's reason and the warm getter row fail before; the static accessor's row
     is their twin.

@@ -51,8 +51,8 @@ public sealed partial class Binding
     }
 
     // Lexical self as `function`, the innermost activation (a scope's Function), reads it: through the explicit self capture of each
-    // anonymous function between them. The first activation that is not anonymous is lexical's own, or null in an accessor's body, whose
-    // scopes record no Function.
+    // anonymous function between them. `lexical` is TyCtxt.EnclosingFunction of that scope, for both callers (base calls, ObjectViews);
+    // the first activation that is not anonymous is lexical's own, or null in an accessor's body, whose scopes record no Function.
     private BindingSymbol? BaseReceiver(FunctionKoto? function, FunctionKoto lexical)
     {
         if (function is not { IsAnonymous: true })
