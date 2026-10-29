@@ -5502,6 +5502,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `premise` form valid by (a); ANestedSignaturesInputIsWellFormedByPremiseAndAtEachCall's row beside `m`'s Binding error by the G56
     answer. MirBorrowsTest's mb27 pins keep dev's record. Kept apart (the owner's (i)): c2bg, c2dg,
     c2_fnvalue_converted_weaker, c15, p1b. Open: c2, c4 (a conversion inside a Tuple or array literal is the literal's TypeMismatch_Kd).
+  - Cost (D-2; 2026-10-30, A edfd4afee, A' a copy, B 3239f9bff, one folder, CPU 2 pinned, tiering off, interleaved): Bind (BindBench
+    minima) cold B/A' Hello 1.004, Milestone26 1.010, census (121 programs) 0.987; warm 1.007, 1.005, 0.992 (A'/A up to 1.016); cold
+    +24 B per program (census +3,864 B of 592.8 MB), warm 0 B. A5 step 4 on the census (G258 host, 3 runs x 8): B/A' 1.0046, Work,
+    Bytes, problems and allocation equal; MIR step 2 0.9954. Diagnostic snapshot: 0 differences against edfd4afee. Mir ledger:
+    3,413 -> 3,482 rows, all new rows from the shared tests' programs but swap3's row moving to its argument and one record becoming
+    an obligation (no old-only row); three A5 located Unsupported_Kd rows of nested Function Type results leave with G216 (b)'s cause.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
