@@ -5,8 +5,9 @@
 // - Responsibility: the records of a per-call slot (ReportPerCallSlot), an undeclared storage Origin name
 //   (ReportUndeclaredStorageOrigin, StorageOriginType, TypeNameSpan), an absent slot (RecordAbsentSlot, ReportAbsentSlot) and an
 //   invalid slot (ReportInvalidOriginSlot); the omitted-result Note (OmittedResultNote); an Origin relation record's end displays
-//   (OriginDisplay, SlotProjection, OriginIncludes) and the Borrow that supplies an end (BorrowSource, LocalBorrow), which the
-//   records of Binding.Diagnostics.cs show and relate.
+//   (OriginDisplay, SlotProjection, OriginIncludes) and the Borrow that supplies an end (BorrowSource, LocalBorrow, EnclosingCall); an
+//   Origin relation record's Reason facts and related locations, shared by every phase that reports one (OriginRelationFacts,
+//   OriginRelationCode, TypeLevelClause).
 // - Inputs: the failing node and the facts its check recorded (absentSlotProjections, invalidStaticOriginSlots, phantomRawOrigins,
 //   PerCallSlotFact), the result contexts, the bound syntax.
 // - Outputs: the records with their Notes, evidence and related locations; the Borrow node.
@@ -25,6 +26,61 @@ public sealed partial class Binding
     // SPEC 15.3.2: the projections of a slot their Type does not declare, with that Type.
     // Recorded only on failure and reused across passes; dependent checks use the failed Origin contract's cause.
     private Dictionary<Koto, BoundType>? absentSlotProjections;
+
+    // SPEC 15.6.1, 23.1: the Reason facts and related locations of an Origin relation record, shared by every phase that reports
+    // one; `source` is `fit` for a fit, `declared` for a relation clause and `wellFormed` for a Type occurrence.
+    internal static (object[] Evidence, (string Role, Koto At, string? Label)[]? Related) OriginRelationFacts(OriginRelationFact relation, string source)
+    {
+        // SPEC 15.6.5: a local initialized by a Borrow shows that Borrow, which is also the related location. An input's well-formedness
+        // fails over an Origin that another input of the call supplied, so its Borrow is found in that call.
+        var borrow = BorrowSource(relation.At, relation.Supplier) ??
+            (relation.WellFormed && EnclosingCall(relation.At) is { } call ? BorrowSource(call, relation.Supplier) : null);
+        // A clause of a Field or Case names its Type's own slots as written there, without `self.`; a Type's clause substituted at
+        // a use in a body names the substituted Origins as that body does.
+        var typeLevel = relation.Clause is not null && !relation.Substituted && TypeLevelClause(relation.At);
+        var longer = OriginDisplay(relation.Longer, borrow, typeLevel);
+        // SPEC 15.6.1, 23.1: a shorter end that an equality fixed to another argument's Borrow shows that Borrow too.
+        var shorterBorrow = relation.FixedBy is { } fixedBy && relation.Shorter.Kind is OriginKind.Projection or OriginKind.Anchor
+            ? BorrowSource(fixedBy, relation.Shorter) : null;
+        var shorter = OriginDisplay(relation.Shorter, shorterBorrow, typeLevel);
+        var operation = relation.Equality ? "==" : "outlives";
+        // SPEC 23.1: a borrow or omitted end is also related at its syntax.
+        var longerAt = longer.Kind == "borrow" ? borrow ?? relation.At : longer.Kind == "omitted" ? OmittedAt(relation.Longer)
+            : longer.Kind == "closure" && RoleOf(relation.Longer) == ProjectionRole.ClosureValue ? relation.Longer.Binder : null; // ρ's literal.
+        var shorterAt = shorter.Kind == "omitted" ? OmittedAt(relation.Shorter) : shorter.Kind == "borrow" ? shorterBorrow : null;
+        (string Role, Koto At, string? Label)[]? related = longerAt is not null && shorterAt is not null
+            ? [("origin", longerAt, null), ("origin", shorterAt, null)]
+            : longerAt is not null ? [("origin", longerAt, null)]
+            : shorterAt is not null ? [("origin", shorterAt, null)]
+            : null;
+        if (relation.Clause is { } clause)
+        {
+            // SPEC 23.1: a declared relation relates its clause with the role `relation`.
+            related = related is null ? [("relation", clause, null)] : [.. related, ("relation", clause, null)];
+        }
+
+        if (relation.FixedBy is { } input)
+        {
+            // SPEC 15.6.1: the input whose equality made a call's fresh Origin equal to a fixed one is related with the role `relation`.
+            related = related is null ? [("relation", input, null)] : [.. related, ("relation", input, null)];
+        }
+
+        if (source != "fit")
+        {
+            // SPEC 23.1: only a fit names its destination Type; a declared relation relates its clause instead, and well-formedness
+            // its Type occurrence, which is the primary location.
+            return ([operation, longer, shorter, source], related);
+        }
+
+        // SPEC 23.1: the destination shows only the Origin at the failed position, also below another borrow layer; a borrow, omitted
+        // or closure end is never written as an Origin expression.
+        var destination = relation.Destination is not { } type ? $"during {shorter.Text}"
+            : DiagnosticTypeName(type, shorter.Kind == "expression" ? relation.Shorter : null, shorter.Text);
+        return ([operation, longer, shorter, source, destination], related);
+    }
+
+    internal static DiagnosticCode OriginRelationCode(OriginRelationFact relation)
+        => relation.Refuted ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd;
 
     // SPEC 15.3.2: the struct or enum whose storage (an instance Field Type, an enum payload or a base) writes this Origin name;
     // null for any other position, such as an accessor signature or an attached relation.
@@ -151,6 +207,34 @@ public sealed partial class Binding
         }
 
         static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
+    }
+
+    // The call whose argument or receiver `at` is.
+    private static InvocationKoto? EnclosingCall(Koto at)
+    {
+        for (var node = at.Parent; node is not null and not (FunctionKoto or CodeBlockKoto); node = node.Parent)
+        {
+            if (node is InvocationKoto call)
+            {
+                return call;
+            }
+        }
+
+        return null;
+    }
+
+    // Whether a clause belongs to a Field or Case, whose Type's premises decide it, rather than to a local of a function or accessor.
+    private static bool TypeLevelClause(Koto clause)
+    {
+        for (var node = clause.Parent; node is not null and not DeclarationContainerKoto; node = node.Parent)
+        {
+            if (node is FunctionKoto or PropertyAccessorKoto)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     // The first Borrow in a value whose Origin supplies `supplier`, which the record names and relates (BorrowSource).
