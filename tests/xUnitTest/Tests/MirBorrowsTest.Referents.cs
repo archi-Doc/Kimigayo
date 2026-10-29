@@ -11,15 +11,8 @@ namespace XunitTest;
 /// (PLAN G264).</summary>
 public sealed partial class MirBorrowsTest
 {
-    // A raw-linked node; a writer whose destruction stores through its raw slot (SPEC 16.3), in a struct and by a generic maker; an open
-    // class whose leaf's destruction does the same, held through its base's handle.
-    private const string ReferentShapes = """
-        struct Node
-            public var next: raw/Node
-            public var data: raw/u8
-            public init(next: raw/Node, data: raw/u8)
-                self.next = next
-                self.data = data
+    // A writer whose destruction stores through its raw slot (SPEC 16.3), and a consuming callee.
+    private const string WriterShapes = """
         struct Writer
             public var p: raw/(raw/u8)
             public var q: raw/u8
@@ -28,6 +21,19 @@ public sealed partial class MirBorrowsTest
                 self.q = q
             drop
                 unsafe => *self.p = self.q
+        func consume<T>(x: T) => ()
+
+        """;
+
+    // A raw-linked node; the writer (WriterShapes) in a struct and by a generic maker; an open class whose leaf's destruction does the
+    // same, held through its base's handle.
+    private const string ReferentShapes = WriterShapes + """
+        struct Node
+            public var next: raw/Node
+            public var data: raw/u8
+            public init(next: raw/Node, data: raw/u8)
+                self.next = next
+                self.data = data
         struct Wrap
             public var w: Writer
             public init(w: Writer) => self.w = w@move
@@ -43,7 +49,6 @@ public sealed partial class MirBorrowsTest
             public init(q: raw/u8) : base(q: q) => ()
             drop
                 unsafe => *self.p = self.q
-        func consume<T>(x: T) => ()
         func setData(a: uniq/Array<raw/Node>, d: raw/u8)
             let p = a[0]
             unsafe => (*p).data = d
@@ -522,13 +527,17 @@ public sealed partial class MirBorrowsTest
     }
 
     // DECISIONS R5-M129: an Array literal is one aggregate, which places its elements at construction through no receiver store, so their
-    // Loans reach only the Array: litDropOk, lit2DropOk (another element first) and litObjOk (an object through its base's handle), whose
-    // element's drop stores through its raw slot, consumed, then the slot used before `y = 5`, and litPairOk, a generic literal of a pair
-    // layer's value removed again, are valid (fail-before: each erred at `y = 5` or `v@follow = x`, the literal's reserve and append keeping
-    // W). Their twins that use the slot after `y = 5` are accepted on the MIR until PLAN G264 (a destruction's retention at callers).
+    // Loans reach only the Array: litPairOk, a generic literal of a pair layer's value removed again, is valid (fail-before: it erred at
+    // `v@follow = x`, the literal's append keeping W), and so are litDropOk, lit2DropOk (another element first) and litObjOk (an object
+    // through its base's handle), whose element's drop stores through its raw slot, consumed, then the slot used before `y = 5`. Those three
+    // err on the MIR at `y = 5` as the interim of DECISIONS BU-52 (the owner's 「暫定として認める (推奨)」, then 「類として認める」): the
+    // consuming call's cleanup writes through the element's raw layers (PLAN G266), and in A5's whole-value Φ_E at calls (DECISIONS
+    // R4-M120, departure 1, the class of dev's viaRefOk) W from the Array, whose element carries an untied constructor's Φ_E, reaches E,
+    // which receives every input the row retains and keeps every chain the whole value carries, y's Loan with it. They flip back to valid
+    // when part-level raw reach lands (PLAN G303, G264 U2); the default pipeline's old analysis reports no conflict at `y = 5`.
     [Fact]
     public void AnArrayLiteralPlacesItsElementsThroughNoReceiverStore()
-        => Assert.Empty(Problems(RawShapes + ReferentShapes + """
+        => Assert.Equal(["litDropOk: y = 5", "lit2DropOk: y = 5", "litObjOk: y = 5"], Problems(RawShapes + ReferentShapes + """
             func litDropOk()
                 var y: i32 = 1
                 var w: ref/i32 = y@ref

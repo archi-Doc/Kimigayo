@@ -7,15 +7,17 @@ namespace Kimi.Compiler;
 
 // Call retention, per storage (SPEC 15.6.4 read as (iii) with (β′); DECISIONS R4-M154; contract in TyCtxt.Retention.cs).
 // Responsibility: the one walk of what a value holds by value and reaches through its layers (StorageWalk; DECISIONS R4-M154, r2.3),
-// which the output fold reads into the storages a call may write through an input and their positions (Position) and the input fold
-// into an input's sources (Binding.Retention.Sources.cs, Source), and the parts a value holds at its own address (HeldParts), which the
-// fits read too; Binding.Retention.Rows.cs reads the storages into StorageRetentions.
+// which the output fold reads into the storages a call may write through an input and their positions (Position, which also start the
+// hold walk, DECISIONS BU-52) and the input fold into an input's sources (Binding.Retention.Sources.cs, Source), and the parts a value
+// holds at its own address (HeldParts), which the fits read too; Binding.Retention.Rows.cs reads the storages into StorageRetentions.
 // Inputs: the contract's instantiated inputs and result, its premise environment's nodes (Binding.Retention.cs), and the stored parts
 // Binding's instances keep (Instance), with each stored raw layer's step (DeclaredStep, SignatureStep).
 // Outputs: per walk, the storages (the root, Own; the Abstract one, what an abstract part hides, at each carrier's ReachedNode; one per
 // contract Type past an exclusive layer, keyed for its Origin-erased Type), each position's node and the Types its fit reads (Value
-// tests, Reads: a raw layer stating an Origin as the borrows that Origin belongs to; no Type: any value) and every Origin occurrence's
-// node (Content targets).
+// tests, Reads: a raw layer stating an Origin as the borrows that Origin belongs to; no Type: any value), every Origin occurrence's
+// node (Content targets), and for an input's walk each position with the Type its declaration writes there and the instance holding
+// it (storageHolds: where rule A's hold walk starts, so a by-value input's Fields, payloads and elements reach it as a borrowed
+// input's referent does).
 // Invariants: a position is storage the call may write: a part a value of the storage holds by value (Tuple and fixed-array elements, a
 // struct's Fields and base, an enum's payloads, a Closure's environment bindings, a raw layer's pointee by its own step and what a
 // `during self` layer admits, Admitted), the layer of a borrow, pair or raw layer, an abstract part (whose hidden storage is the
@@ -36,13 +38,14 @@ public sealed partial class Binding
 
     // The storages of the walk being made (by index: Own, Abstract, the result's, then one per contract Type past an exclusive layer)
     // with each one's contract Type, its index by that Type, the (storage, Type) pairs walked and targeted, the positions (Value tests: a
-    // position's node and Type, null for any value) and the Content targets (every Origin occurrence's node); reused.
+    // position's node and Type, null for any value), the Content targets (every Origin occurrence's node) and an input's holds; reused.
     private readonly List<BoundType?> storageTypes = new();
     private readonly Dictionary<BoundType, int> storageOf = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<(int Storage, bool Writable, SourceAt Source, BoundType Type)> storageSeen = new();
     private readonly HashSet<(int Storage, BoundType Type)> storageTargeted = new();
     private readonly List<(int Storage, int Node, BoundType? Type)> storagePositions = new();
     private readonly List<(int Storage, int Node)> storageTargets = new();
+    private readonly List<(BoundType Type, BoundType? Written, BoundType? Holder)> storageHolds = new();
     private readonly List<int> retentionOwnNodes = new();
     private readonly List<int> retentionOccurrences = new();
     private readonly HashSet<(BoundType Type, bool Callable)> retentionOccurred = new();
@@ -67,6 +70,7 @@ public sealed partial class Binding
         this.storageTargeted.Clear();
         this.storagePositions.Clear();
         this.storageTargets.Clear();
+        this.storageHolds.Clear();
     }
 
     // The storage walk from input j's value (DECISIONS R4-M154): the value itself is the callee's, not storage; what its first exclusive
@@ -91,9 +95,10 @@ public sealed partial class Binding
     }
 
     // The one walk (DECISIONS R4-M154, r2.3): a Type the walk visits, once per state it is in (StorageAt, the path's reduced prefix
-    // included). Each visit emits to the fold its state names: the output fold its position where the call writes it (Position), the input
-    // fold its sources (Source). Then what the Type holds and reaches: what a pair, borrow, shared handle or raw layer refers to (Past;
-    // a raw layer by its step, `during self` content as Admitted), its parts by value (Parts); an abstract part or a callable, nothing.
+    // included). Each visit emits to the fold its state names: the output fold its position where the call writes it (Position; an input's
+    // also a hold, storageHolds), the input fold its sources (Source). Then what the Type holds and reaches: what a pair, borrow, shared
+    // handle or raw layer refers to (Past; a raw layer by its step, `during self` content as Admitted), its parts by value (Parts); an
+    // abstract part or a callable, nothing.
     private void StorageWalk(OriginPremiseEnvironment environment, BoundType? type, StorageAt at)
     {
         var source = at.Source.Input >= 0;
@@ -107,6 +112,10 @@ public sealed partial class Binding
         if (targets >= 0)
         {
             this.Position(environment, type, at.Storage);
+            if (at.Storage != ResultStorage)
+            {
+                this.storageHolds.Add((type, at.Written, at.Holder));
+            }
         }
 
         var layer = source ? this.Source(environment, type, at) : -1;
