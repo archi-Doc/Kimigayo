@@ -128,11 +128,24 @@ public sealed partial class Binding
     // The read form of a member's declared Type under an instance (StoredType's): KeptType without its marks.
     private BoundType? PartType(BoundType declared, BoundType owner) => this.WithoutUnstated(this.KeptType(declared, owner));
 
-    // SPEC 8.2.3 (DECISIONS BU-50): the read form as a body in `scope` reads it (a member access, a Case payload's construction and
-    // pattern, a stored witness Field): PartType normalized there as a call's signature is (ContractType), so the use scope's premises
-    // complete a projection the storage keeps pending (`HAd<T>`'s `T.Output` is T under `T is PrimitiveInteger`).
+    // SPEC 8.2.3 (DECISIONS BU-50): the read form as a body in `scope` reads it (a member access, a constructor's `self.f` included, a
+    // Case payload's construction and pattern, a stored witness Field and its bridge): PartType normalized there as a call's signature is
+    // (ContractType), so the use scope's premises complete a projection the storage keeps pending (`HAd<T>`'s `T.Output` is T under
+    // `T is PrimitiveInteger`).
     private BoundType? PartTypeIn(BoundType declared, BoundType owner, BindingScope scope)
         => this.PartType(declared, owner) is { } part ? this.ContractType(part, scope) : null;
+
+    private BoundType? PartTypeIn(Koto syntax, BoundType owner, BindingScope scope)
+        => WrittenType(syntax) is { } written ? this.PartTypeIn(written, owner, scope) : null;
+
+    // SPEC 5.7, 8.2.3: the Type a member access `node` of `symbol` reads in `scope`: the stored part of the declaring Type member
+    // selection published, as a body reads it (PartTypeIn), else the symbol's Type; its `during self` layer read through the access.
+    private BoundType? MemberRead(Koto node, BindingSymbol symbol, BindingScope scope)
+    {
+        var type = symbol.Type is { } declared && node is MemberAccessKoto member && this.memberSelections.TryGetValue(member, out var selection) &&
+            selection.DeclaringType is { } owner ? this.PartTypeIn(declared, owner, scope) : symbol.Type;
+        return type is null ? null : this.ReadHolder(type, node, node);
+    }
 
     // SPEC 8.6.1, 5.7 Calls (DECISIONS BU-50): a part with each associated projection replaced by ProjectionSpecification's outcome: a
     // builtin output or fixed-array iterator Type as it is, a subject's conformance binding as a kept part of the subject (KeptType), so

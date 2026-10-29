@@ -14,6 +14,7 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
 {
     private const string CyclicBaseA = "open struct BaseA\n    Self is HasItem\n    associate HasItem.Item is BaseA.Item\n";
     private const string CyclicBaseG = "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is BaseG<T>.Item\n    var t: T\n";
+    private const string ConditionalInit = "struct HC<S>\n    S is Addable<S>\n    public var x: S.Output\n    public var y: S\n    public init(a: S)\n        S is PrimitiveInteger\n";
 
     [Theory]
     [InlineData("C<i32>, C<i64>")]
@@ -308,23 +309,31 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
     // SPEC 8.2.3, 8.7.4 (PLAN G281): a body reads a stored part in its own scope, as a call's signature is read, so the use's premise
     // completes a projection the generic declaration's storage keeps pending (DECISIONS BU-50): `h.x` of `HAd<T>` and `HAd<Wrapping<T>>`
     // (also through `ref/`) and `HNg<Wrapping<T>>` under `T is PrimitiveInteger`, a Case payload constructed (`.A(a + a)`, `.A(s@move)`)
-    // and bound by a Pattern, a Field written, and `T.(HasItem).Item is i32`'s premise; closed instances read as before. Before, each was
-    // TypeMismatch_Kd ("found T.Output", "found T.Item"). Read as another Type (bool) or without the premise (`T is Addable<T>`), it stays
-    // TypeMismatch_Kd at the read.
+    // and bound by a Pattern, a Field written, and `T.(HasItem).Item is i32`'s premise, also as a conditional constructor's `self.x`
+    // (SPEC 7.5: written, read, under the identity premise); closed instances read as before. Before, each was TypeMismatch_Kd ("found
+    // T.Output", "expected S.Output"). Read without the premise (`T is Addable<T>`), or a read, write, payload, Pattern binding or
+    // constructor write as bool, stays TypeMismatch_Kd.
     [Theory]
-    [InlineData("<T>(a: T) -> T\n    T is PrimitiveInteger\n    let h = HAd<T>.init(x: a + a)\n    return h.x\n", "let v = f(3@i32)", "")]
-    [InlineData("<T>(a: Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    let h = HAd<Wrapping<T>>.init(x: a + a)\n    return h.x\n", "let v = f(3@Wrapping<i32>)", "")]
-    [InlineData("<T>(a: Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    let h = HNg<Wrapping<T>>.init(x: -a)\n    return h.x\n", "let v = f(3@Wrapping<u8>)", "")]
-    [InlineData("<T>(h: ref/HAd<Wrapping<T>>) -> Wrapping<T>\n    T is PrimitiveInteger\n    return h.x\n", "let h = HAd<Wrapping<i32>>.init(x: 3@Wrapping<i32>)\n    let v = f(h@ref)", "")]
-    [InlineData("<T>(a: Wrapping<T>) -> EW<Wrapping<T>>\n    T is PrimitiveInteger\n    let e = EW<Wrapping<T>>.A(a + a)\n    return e@move\n", "let v = f(3@Wrapping<i32>)", "")]
-    [InlineData("<T>(a: Wrapping<T>) -> EW<Wrapping<T>>\n    T is PrimitiveInteger\n    let s = a + a\n    let e: EW<Wrapping<T>> = .A(s@move)\n    return e@move\n", "let v = f(3@Wrapping<i32>)", "")]
-    [InlineData("<T>(e: EW<Wrapping<T>>, a: Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    return match e@move\n        .A(let v) => v\n        .B => a\n", "let v = f(EW<Wrapping<i32>>.A(3@Wrapping<i32>), 1@Wrapping<i32>)", "")]
-    [InlineData("<T>(h: uniq/HAd<T>, a: T) -> ()\n    T is PrimitiveInteger\n    h.x = a + a\n    return\n", "var h = HAd<i32>.init(x: 1)\n    f(h@uniq, 2)", "")]
-    [InlineData("<T>(h: ref/HP<T>) -> i32\n    T is HasItem\n    T.(HasItem).Item is i32\n    return h.x\n", "let h = HP<SrcI>.init(x: 3)\n    let v = f(h@ref)", "")]
-    [InlineData("(a: i32, w: Wrapping<i32>) -> (i32, Wrapping<i32>)\n    let h = HAd<i32>.init(x: a + a)\n    let k = HAd<Wrapping<i32>>.init(x: w + w)\n    return (h.x, k.x)\n", "let v = f(3, 4@Wrapping<i32>)", "")]
-    [InlineData("<T>(a: T) -> bool\n    T is PrimitiveInteger\n    let h = HAd<T>.init(x: a + a)\n    return h.x\n", "let v = f(3@i32)", "return h.x")]
-    [InlineData("<T>(h: ref/HAd<T>) -> T\n    T is Addable<T>\n    return h.x\n", "let h = HAd<i32>.init(x: 3)\n    let v = f(h@ref)", "return h.x")]
-    public void AStoredPartIsReadInItsUseScope(string function, string use, string mismatch)
+    [InlineData("func f<T>(a: T) -> T\n    T is PrimitiveInteger\n    let h = HAd<T>.init(x: a + a)\n    return h.x\n", "let v = f(3@i32)", "")]
+    [InlineData("func f<T>(a: Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    let h = HAd<Wrapping<T>>.init(x: a + a)\n    return h.x\n", "let v = f(3@Wrapping<i32>)", "")]
+    [InlineData("func f<T>(a: Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    let h = HNg<Wrapping<T>>.init(x: -a)\n    return h.x\n", "let v = f(3@Wrapping<u8>)", "")]
+    [InlineData("func f<T>(h: ref/HAd<Wrapping<T>>) -> Wrapping<T>\n    T is PrimitiveInteger\n    return h.x\n", "let h = HAd<Wrapping<i32>>.init(x: 3@Wrapping<i32>)\n    let v = f(h@ref)", "")]
+    [InlineData("func f<T>(a: Wrapping<T>) -> EW<Wrapping<T>>\n    T is PrimitiveInteger\n    let e = EW<Wrapping<T>>.A(a + a)\n    return e@move\n", "let v = f(3@Wrapping<i32>)", "")]
+    [InlineData("func f<T>(a: Wrapping<T>) -> EW<Wrapping<T>>\n    T is PrimitiveInteger\n    let s = a + a\n    let e: EW<Wrapping<T>> = .A(s@move)\n    return e@move\n", "let v = f(3@Wrapping<i32>)", "")]
+    [InlineData("func f<T>(e: EW<Wrapping<T>>, a: Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    return match e@move\n        .A(let v) => v\n        .B => a\n", "let v = f(EW<Wrapping<i32>>.A(3@Wrapping<i32>), 1@Wrapping<i32>)", "")]
+    [InlineData("func f<T>(h: uniq/HAd<T>, a: T) -> ()\n    T is PrimitiveInteger\n    h.x = a + a\n    return\n", "var h = HAd<i32>.init(x: 1)\n    f(h@uniq, 2)", "")]
+    [InlineData("func f<T>(h: ref/HP<T>) -> i32\n    T is HasItem\n    T.(HasItem).Item is i32\n    return h.x\n", "let h = HP<SrcI>.init(x: 3)\n    let v = f(h@ref)", "")]
+    [InlineData(ConditionalInit + "        self.x = a + a\n        self.y = a\n", "let h = HC<i32>.init(a: 3)", "")]
+    [InlineData(ConditionalInit + "        self.x = a + a\n        self.y = self.x + a\n", "let h = HC<i32>.init(a: 3)", "")]
+    [InlineData("struct HQ<S>\n    S is HasItem\n    public var x: S.Item\n    public init(n: i32)\n        S.(HasItem).Item is i32\n        self.x = n\n", "let h = HQ<SrcI>.init(n: 3)", "")]
+    [InlineData("func f(a: i32, w: Wrapping<i32>) -> (i32, Wrapping<i32>)\n    let h = HAd<i32>.init(x: a + a)\n    let k = HAd<Wrapping<i32>>.init(x: w + w)\n    return (h.x, k.x)\n", "let v = f(3, 4@Wrapping<i32>)", "")]
+    [InlineData("func f<T>(a: T) -> bool\n    T is PrimitiveInteger\n    let h = HAd<T>.init(x: a + a)\n    return h.x\n", "let v = f(3@i32)", "return h.x")]
+    [InlineData("func f<T>(h: ref/HAd<T>) -> T\n    T is Addable<T>\n    return h.x\n", "let h = HAd<i32>.init(x: 3)\n    let v = f(h@ref)", "return h.x")]
+    [InlineData("func f<T>(h: uniq/HAd<T>, a: T) -> ()\n    T is PrimitiveInteger\n    h.x = true\n    return\n", "var h = HAd<i32>.init(x: 1)\n    f(h@uniq, 2)", "h.x = true")]
+    [InlineData("func f<T>(a: T) -> EW<T>\n    T is PrimitiveInteger\n    return EW<T>.A(true)\n", "let v = f(3@i32)", "EW<T>.A(true)")]
+    [InlineData("func f<T>(e: EW<T>, a: T) -> bool\n    T is PrimitiveInteger\n    return match e@move\n        .A(let v) => v\n        .B => true\n", "let v = f(EW<i32>.A(3), 1)", "match e@move")]
+    [InlineData(ConditionalInit + "        self.x = true\n        self.y = a\n", "let h = HC<i32>.init(a: 3)", "self.x = true")]
+    public void AStoredPartIsReadInItsUseScope(string declarations, string use, string mismatch)
     {
         const string Holders = """
             contract HasItem
@@ -350,8 +359,8 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
                 B
 
             """;
-        var c = MinimalEmissionTest.Analyze(Holders + "func f" + function + $"public func main() -> ()\n    {use}\n    return\n");
-        Assert.Equal(mismatch.Length == 0 ? [] : [$"TypeMismatch_Kd {mismatch}"], c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}"));
+        var c = MinimalEmissionTest.Analyze(Holders + declarations + $"public func main() -> ()\n    {use}\n    return\n");
+        Assert.Equal(mismatch.Length == 0 ? [] : [$"TypeMismatch_Kd {mismatch}"], c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}".Split('\n')[0]));
         Assert.Empty(c.Problems);
     }
 
