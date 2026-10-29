@@ -569,6 +569,7 @@ public sealed partial class Binding
             }
         }
 
+        this.PublishSourceStates();
         for (var i = 0; i < this.activeConformancePaths.Count; i++)
         {
             var conformance = this.activeConformancePaths[i];

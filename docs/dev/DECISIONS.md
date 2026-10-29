@@ -8534,6 +8534,58 @@ resumed by R4-M86 (2026-10-20).
     and so does the store through `r.s` (Unknown); d6b, a local annotated with a parameter's Origin, d6u, `pass`, the three invalid
     names and the Closure twins (BU-28's Unproven store, a valid read) are unchanged.
 
+- **BU-59 A premise source's own check is published on its source, `BindingSymbol.SourceState` and `SourceCause`, in rounds of a
+  fresh capability epoch, each in the reverse of the previous round's order** (2026-10-30; PLAN G170 N6 under C1 §5, unit U1, bu74;
+  design `C:\Users\bwff1\AppData\Local\Temp\claude\bu\g170-id\n6-design-r1.md`, re-review ACCEPT, its N1–N3 here; the owner,
+  2026-10-30, on the state's place among BU's pending questions: 「すべて推奨の内容でOkです」) SPEC 8.3.3 Finality: proof reads a
+  declaration's closed-clause check and never runs it (C1 §5: C never runs verification).
+  - States: every declaration container's own symbol, ConstraintProof and its cause (no new vocabulary): Pending = Unknown, Valid =
+    Proven, Invalid = Refuted or Error. A source under check is Pending, so a check reaching itself reads no evidence (SPEC 8.3.3
+    Recursion); `contractPremiseQueries` is deleted. Pending also encodes the final Unknown a publication leaves after its rounds; no
+    reader tells them apart, and C3's Provisional marking makes them final at the publication's end, the one point that knows.
+  - Writer: `Binding.SourceStates.PublishSourceStates`, the only caller of `CheckClosedDeclarationConstraints`, after
+    `ExpandContractPremises` and in each `ValidateConformances` after its re-verification reset; `ResetSourceStates` makes every state
+    Pending at `BindConstraints`' start, so no state crosses passes.
+  - B1's rule: a publication (1) makes Valid every declaration with nothing to prove (no `ClosedClause`), the rest Pending; (2) runs
+    rounds over the Pending ones until a round changes none, each in a fresh capability epoch (`ClearCapabilityResults`). An answer
+    computed from a Pending read dies with its round; the last round changes nothing, so its answers read final states only, and the
+    least fixpoint is order-free. A state resolved in a round that read a Pending state is kept: that is order-free because an Unknown
+    read never decides a verdict (SPEC 8.3.2); contradictory evidence hidden by a Pending premise is the one case where it could (none
+    constructed; re-review N3). The epoch rather than a Provisional capability node: the epoch is the existing lifecycle of every
+    cached proof answer (component summaries follow it); a Provisional node needs a per-node mark, its propagation to dependents and
+    its own re-run, a second scheduler before C3's. With nothing to prove (the library, the 44 milestones) no round runs.
+  - Order (re-review N2; the planning session's decision): each round runs over the Pending declarations in the reverse of the
+    previous round's order, so a chain settles in at most three rounds in either declaration order, and a publication ends within one
+    round more than its Pending declarations. Forward rounds took N rounds on a top-down chain, O(N²) checks (warm Bind, chain of 400:
+    454 ms against its base's 30.9 ms). Alternation changes no record or verdict against forward rounds: 76 probes (the reviews' 74 and
+    two chains of 25) give byte-identical output on both pipelines. Any remaining quadratic case (dependencies running against both
+    directions) is C3's, removed by its scheduler (PLAN G170). `SourceCheckWork` publishes a pass's checks to the scaling test.
+  - Readers: `AvailableContractPremise` (the Contract and each ancestor: declaration context, then the state) and
+    `VerifyConformance`'s prerequisite, each through `ReadSourceState`, `EndProof(BeginProof(), ReadVerdict(state, cause))`, the
+    proof scope the check had (BU-22). Path memos keep only Proven and Invalid, which a Pending read cannot produce wrongly.
+  - Staged to C3 (with its removal condition): `ResolveConformance`'s on-demand verification stays in proof. `VerifyConformance`
+    keeps Proven (`IsVerified`) and Invalid only; Unknown and a non-Invalid Error are verified again at each read, `Checking`
+    answering Unknown. Removed when conformance verification is a node of C3's scheduler (C1 §5) and `ResolveConformance` reads the
+    path's published state, Pending as Provisional.
+  - Supersedes BU-29's staging of `SourceState` (and the source check's `UnderCheck`) to C3 as `EvidenceView` fields, which stays
+    `Premises`: one state per source, a view would only point at it. It also supersedes BU-29's reason for staging `Completion`,
+    "every answer is final for its pass", which no longer holds inside a publication: a round's answers are final only when the rounds
+    end. The owner's answer holds only with B1's rule: the view's Provisional and UnderCheck existed so that no Pending read is kept,
+    which the round epoch now guarantees.
+  - Records (SPEC 8.3.3 Finality: the check order never changes the result; acceptance unchanged): mutual prerequisites, direct
+    (pr2), three (n3a) or through a premise (cyc1), leave every `Self is C` UnprovenConstraint_Kd in every order (dev: one
+    InvalidConstraint_Kd chosen by the declaration order; SPEC 23.1.2 keeps both independent failures); an OCC-X-limited closed clause
+    (occ1r) is InvalidConstraint_Kd in both orders, the check running outside conformance verification, so the limit is an Error on
+    its site (BU-22); Contracts whose closed clauses read each other as premises (n3d, re-review N1) make Y1–Y3's `Self is Ri` and
+    headers InvalidConstraint_Kd in every order (dev: Unproven through `contractPremiseQueries`' re-entry cut; the Contract's Error
+    absorbs, SPEC 8.3.1–8.3.2).
+  - Tests (ClosedConformancePrerequisiteBindingTest): cap6, cap6n, cap3b, cap9, cap10, n3b and n3c (top-down chains) valid in both
+    orders, which fail without the epoch where a Pending read is kept (cap6n, cap10, n3b, n3c); pr2, n3a and cyc1 unproven and occ1
+    and n3d invalid in both orders, failing on dev where they assert a change; a chain of 64 against one of 16 in both orders, at most
+    5 times the checks (forward rounds: 303 against 4,287).
+  - Rejected: forward rounds (quadratic chains); a Provisional capability node (above); the state in `EvidenceView` (the owner);
+    keeping the per-read check with a re-entry set (the order-dependent records above).
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and
