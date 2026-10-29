@@ -597,6 +597,88 @@ public sealed class TyCtxtTest
         Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.RawStep(p[20], 0, [])).Message, StringComparison.Ordinal);
     }
 
+    // DECISIONS BU-58: WrittenAt is the Type a part's declaration writes at inline positions while it is a Tuple, a fixed array or a raw
+    // layer: a struct Field's root, a Case payload's component at its first position, a Tuple's component and a fixed array's element
+    // below them, a raw-free written Tuple included; null at or past a scalar, a Type parameter, a pair layer or an open projection, and
+    // at an enum's [], so null at p is null below p.
+    [Fact]
+    public void WrittenAtIsTheTypeADeclarationWritesInline()
+    {
+        var (_, p) = StoredLayers();
+        (BoundType Instance, int Part, int[] Positions)[] rows =
+        [
+            (p[3], 0, []), (p[4], 0, [0]), (p[7], 0, []), (p[8], 0, []), (p[8], 0, [0]), (p[8], 1, []), (p[8], 1, [1]), (p[16], 0, []),
+            (p[17], 0, []), (p[8], 0, [1]), (p[4], 0, []), (p[16], 0, [0]), (p[17], 0, [1]), (p[9], 0, []), (p[18], 0, [0]), (p[13], 0, []),
+            (p[15], 0, [0]), (p[15], 1, [0]),
+        ];
+        Assert.Equal(
+            [
+                "raw/u8 during Holder", "raw/u8 during Holder", "raw/E during Parameter", "(raw/u8, isize)", "raw/u8 during Holder", "[2 of raw/u8]",
+                "raw/u8 during Holder", "(T, i32)", "[2 of T]", "-", "-", "-", "-", "-", "-", "-", "-", "-",
+            ],
+            rows.Select(static x => Shown(TyCtxt.WrittenAt(x.Instance, x.Part, x.Positions))));
+        var c = MirBuildTest.Compile("contract HasElem\n    associate Element\nstruct Src\n    Self is HasElem\n    associate Element is i32\nstruct W<S>\n" +
+            "    S is HasElem\n    internal var e: S.Element\nfunc probe(w: W<Src>) => ()\npublic func main() => ()\n");
+        var w = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters[0].Type.TypeOf()!;
+        Assert.Equal((BoundType.I32, null), (c.Types.StoredParts(w, out _)[0], TyCtxt.WrittenAt(w, 0, [])));
+    }
+
+    // DECISIONS BU-58 (G307's Q1): one kept part at two positions whose declarations write different Types, P's Fields x and y and E's and
+    // E3's Cases A and B sharing one kept payload Tuple, steps by what each writes there (a slot's ref cap, Shared, against a supplied
+    // layer's own Origin, Exclusive, or `static`), so WrittenAt tells the positions apart. Where WrittenAt is null, the layer steps by its
+    // kept Origin's kind alone and has no member (an Exclusive one's members are incomplete).
+    [Fact]
+    public void WrittenAtTellsApartThePositionsOfOneKeptPart()
+    {
+        var c = MirBuildTest.Compile(
+            "enum E<T> {s}\n    A(raw/i32 during s, i32)\n    B(T, i32)\n    C(Loan<ref/i32 during s>)\nstruct P<T> {s}\n    internal let loan: Loan<ref/i32 during s>\n" +
+            "    internal var x: (raw/i32 during s, i32)\n    internal var y: T\nenum E3 {s}\n    A(raw/(ref/i32 during s) during s, i32)\n" +
+            "    B(raw/(ref/i32 during static) during static, i32)\n    C(ref/i32 during s)\n" +
+            "func probe(y: uniq/i32, e: E<raw/i32 during y> during y, p: P<(raw/i32 during y, i32)> during y, e3: E3 during static) => ()\npublic func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var types = c.Types;
+        var q = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
+        (BoundType Instance, int Part, int Other)[] twins = [(q[1], 0, 1), (q[2], 1, 2), (q[3], 0, 1)];
+        Assert.All(twins, x => Assert.Same(types.StoredParts(x.Instance, out _)[x.Part], types.StoredParts(x.Instance, out _)[x.Other]));
+        (BoundType Instance, int Part, int[] Positions)[] rows = [(q[1], 0, [0]), (q[1], 1, [0]), (q[2], 1, [0]), (q[2], 2, [0]), (q[3], 0, [0]), (q[3], 1, [0])];
+        var members = new List<RawMember>();
+        Assert.Equal(
+            ["raw/i32 during Parameter Shared True 1", "- Exclusive False 0", "raw/i32 during Parameter Shared True 1", "- Exclusive False 0",
+                "raw/ref/i32 during Parameter Shared True 0", "raw/ref/i32 during Static Static True 0"],
+            rows.Select(x => $"{Shown(TyCtxt.WrittenAt(x.Instance, x.Part, x.Positions))} {types.RawStep(x.Instance, x.Part, x.Positions)} " +
+                $"{types.RawMembers(x.Instance, x.Part, x.Positions, Cleared(members))} {members.Count}"));
+        Assert.Equal(
+            [Binding.StepOf(KeptLayer(types, q[1], 1, [0]).RawOrigin), Binding.StepOf(KeptLayer(types, q[2], 2, [0]).RawOrigin)],
+            [types.RawStep(q[1], 1, [0]), types.RawStep(q[2], 2, [0])]);
+        (BoundType Instance, int Part)[] roots = [(q[2], 1), (q[2], 2), (q[1], 0)];
+        Assert.Equal(["(raw/i32, i32)", "-", "-"], roots.Select(static x => Shown(TyCtxt.WrittenAt(x.Instance, x.Part, []))));
+
+        static List<RawMember> Cleared(List<RawMember> list)
+        {
+            list.Clear();
+            return list;
+        }
+    }
+
+    // DECISIONS BU-58: a closed projection's resolution is the Type the declaration writes, so WrittenAt follows the written DAG of
+    // TypeDagScalingTest's projection chain down to its leaf, the kept part's own nodes where the leaf states `static` (as written).
+    [Fact]
+    public void WrittenAtFollowsAWrittenProjectionDag()
+    {
+        var c = MirBuildTest.Compile(TypeDagScalingTest.ProjectionChain("raw/i32 during static", 8));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var holder = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "pv").Parameters[1].Type.TypeOf()!;
+        var kept = c.Types.StoredParts(holder, out _)[1]!;
+        var path = new int[8];
+        for (var k = 0; k <= 8; k++)
+        {
+            Assert.Same(kept, TyCtxt.WrittenAt(holder, 1, path.AsSpan(0, k)));
+            kept = k < 8 ? kept.Components[0] : kept;
+        }
+
+        Assert.Equal(RawStep.Static, c.Types.RawStep(holder, 1, path));
+    }
+
     // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-41): an instance's stored parts (StoredParts) are its substitution of the declared Fields,
     // Case payload Tuples and base with the raw Origins its Type arguments give, AdtDef's being these without them (the same Types by
     // reference, null where AdtDef's are, also where Binding rejected a Field or a Case): below the holder, a layer a Type argument
@@ -857,7 +939,8 @@ public sealed class TyCtxtTest
             Assert.DoesNotContain(erased, static x => x?.CarriesRawOrigin == true);
         }
 
-        Assert.DoesNotContain(c.BuildMir().Bodies.ToArray().SelectMany(static x => x.Locals.ToArray()), static x => TyCtxt.StatesUnstated(x.Type));
+        var seen = new HashSet<BoundType>(ReferenceEqualityComparer.Instance);
+        Assert.DoesNotContain(c.BuildMir().Bodies.ToArray().SelectMany(static x => x.Locals.ToArray()), x => TyCtxt.StatesUnstated(x.Type, seen));
 
         // A kept Field (the kept base at -1), or the kept payload Tuple of an enum's Case `part`.
         BoundType Part(BoundType x, int part)
@@ -895,8 +978,9 @@ public sealed class TyCtxtTest
         Assert.Same(references[0], references[1]);
     }
 
-    // design-final §15 (DECISIONS BU-41, BU-46): the stored-layer readers and the kept parts allocate nothing when warm, also on a kept
-    // nested instance, which its first read substitutes, and on one whose kept part states Unstated (Holder2's Wrap).
+    // design-final §15 (DECISIONS BU-41, BU-46, BU-58): the stored-layer readers and the kept parts allocate nothing when warm, also on a
+    // kept nested instance, which its first read substitutes, and on one whose kept part states Unstated (Holder2's Wrap); so do WrittenAt
+    // and StatesUnstated over the caller's scratch.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmStoredRawLayerReadAllocatesNothing()
@@ -908,6 +992,7 @@ public sealed class TyCtxtTest
         var wrap = declared.Types.StoredParts(holder2, out _)[0]!;
         _ = declared.Types.StoredParts(wrap, out _);
         var members = new List<RawMember>();
+        var seen = new HashSet<BoundType>(ReferenceEqualityComparer.Instance);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (types.RawStep(p[3], 0, []) != RawStep.Own || types.RawStep(p[6], 1, []) != RawStep.Shared || types.RawStep(p[8], 1, [1]) != RawStep.Own ||
@@ -923,6 +1008,12 @@ public sealed class TyCtxtTest
                 !TyCtxt.RawStated(declared.Types.StoredParts(wrap, out _)[0]!) || !declared.Types.RawMembers(wrap, 0, [], members))
             {
                 throw new InvalidOperationException("A declared raw layer's reads changed.");
+            }
+
+            if (TyCtxt.WrittenAt(p[8], 1, [1]) is null || TyCtxt.WrittenAt(p[8], 0, [1]) is not null || !TyCtxt.StatesUnstated(wrap, seen) ||
+                TyCtxt.StatesUnstated(types.StoredParts(p[8], out _)[0]!, seen))
+            {
+                throw new InvalidOperationException("The written and Unstated views changed.");
             }
         }));
     }
@@ -943,9 +1034,10 @@ public sealed class TyCtxtTest
         var stated = types.Pointer(BoundType.I32, origin);
         var marked = types.Pointer(BoundType.I32, BoundOrigin.Unstated);
         Assert.Equal((null, BoundOrigin.Unstated, false, true), (marked.Origin, marked.RawOrigin, marked.CarriesOrigin, marked.CarriesRawOrigin));
+        var seen = new HashSet<BoundType>(ReferenceEqualityComparer.Instance);
         Assert.Equal(
             (true, false, true, false),
-            (TyCtxt.RawStated(marked), TyCtxt.RawStated(stated), TyCtxt.StatesUnstated(types.Tuple([BoundType.I32, marked])), TyCtxt.StatesUnstated(stated)));
+            (TyCtxt.RawStated(marked), TyCtxt.RawStated(stated), TyCtxt.StatesUnstated(types.Tuple([BoundType.I32, marked]), seen), TyCtxt.StatesUnstated(stated, seen)));
         Assert.Equal((marked, types.Pointer(BoundType.I32)), (types.PairBinding(marked), types.PairBinding(stated)));
         Assert.Same(types.Erase(types.Pointer(BoundType.I32)), types.Erase(marked));
         Assert.Same(types.Pointer(BoundType.I32), c.Binding.WithoutRawOrigins(marked));
@@ -1518,6 +1610,14 @@ public sealed class TyCtxtTest
 
     // The raw layer an instance stores at a part and inline positions, as RawStep reads it: its kept part (an enum Case's payload Tuple),
     // then per position a Tuple's component or a fixed array's element.
+    // A Type for a row: its diagnostic name, a raw layer's with its Origin's kind; "-" for none.
+    private static string Shown(BoundType? type) => type switch
+    {
+        null => "-",
+        { RawOrigin: { } raw } => $"{Binding.DiagnosticTypeName(type)} during {raw.Kind}",
+        _ => Binding.DiagnosticTypeName(type),
+    };
+
     private static BoundType KeptLayer(TyCtxt types, BoundType instance, int part, int[] positions)
     {
         var layer = types.StoredParts(instance, out _)[part]!;

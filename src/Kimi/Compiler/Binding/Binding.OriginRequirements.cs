@@ -252,7 +252,7 @@ public sealed partial class Binding
         {
             if (collectEdges)
             {
-                this.CollectRequirementEdges(type, work);
+                this.CollectRequirementEdges(type, work, this.visitedParts.Begin(this.storageVersion));
             }
             else
             {
@@ -261,7 +261,9 @@ public sealed partial class Binding
         }
     }
 
-    private void CollectRequirementEdges(BoundType type, OriginRequirementWork consumer)
+    // The edges from the declarations a Type names to their consumer, each distinct part visited once per call: a part's edge is added
+    // once per consumer (its Consumer mark), so a part met again adds nothing (DECISIONS BU-55, BU-58).
+    private void CollectRequirementEdges(BoundType type, OriginRequirementWork consumer, uint query)
     {
         if (type.Symbol?.Declaration is { } declaration && this.originRequirementNodes.TryGetValue(declaration, out var source) &&
             source.Pass == this.originRequirementPass && source.Consumer != this.originRequirementConsumer)
@@ -272,7 +274,10 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            this.CollectRequirementEdges(type.Components[i], consumer);
+            if (this.FirstVisit(type.Components[i], query))
+            {
+                this.CollectRequirementEdges(type.Components[i], consumer, query);
+            }
         }
     }
 

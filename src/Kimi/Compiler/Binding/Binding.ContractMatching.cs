@@ -28,24 +28,6 @@ public sealed partial class Binding
         return true;
     }
 
-    private static bool TypeAccessCovers(BoundType type, BindingSymbol a, BindingSymbol b)
-    {
-        if (type.Symbol is { Kind: BindingSymbolKind.Type } symbol && !AccessCovers(symbol, a, b))
-        {
-            return false;
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (!TypeAccessCovers(type.Components[i], a, b))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
     private static bool AccessCovers(BindingSymbol member, BindingSymbol a, BindingSymbol b, ModifierKind? memberAccess = null)
     {
         for (var current = member; current is not null; current = EnclosingAccessDeclaration(current))
@@ -146,6 +128,29 @@ public sealed partial class Binding
         return path.Unsupported ? ConstraintProof.Unknown : proof;
     }
 
+    // SPEC 9.4: whether the accessibility of every Type a Type names covers a and b, each distinct part judged once per call (DECISIONS
+    // BU-55, BU-58): a part met again was covered, or the walk has ended.
+    private bool TypeAccessCovers(BoundType type, BindingSymbol a, BindingSymbol b)
+        => this.AccessPart(type, a, b, this.visitedParts.Begin(this.storageVersion));
+
+    private bool AccessPart(BoundType type, BindingSymbol a, BindingSymbol b, uint query)
+    {
+        if (type.Symbol is { Kind: BindingSymbolKind.Type } symbol && !AccessCovers(symbol, a, b))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (this.FirstVisit(type.Components[i], query) && !this.AccessPart(type.Components[i], a, b, query))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private ConstraintProof VerifyConformance(BoundConformancePath conformance, ConstraintProof? inheritedProof = null)
     {
         // A limit is the fact of a completed verification; an early or in-progress answer has none (ResolveConformance).
@@ -215,7 +220,8 @@ public sealed partial class Binding
             {
                 for (var p = 0; p < premises.Operands.Length; p++)
                 {
-                    if (premises.Operands[p] is IsKoto { BoundConstraint: { } constraint } clause && !ConstraintAccessCovers(constraint, conformance.Type, conformance.Contract))
+                    if (premises.Operands[p] is IsKoto { BoundConstraint: { } constraint } clause &&
+                        !this.ConstraintAccessCovers(constraint, conformance.Type, conformance.Contract))
                     {
                         this.Fail(clause, BindingFailure.Access);
                         this.Fail(premises.Parent!, BindingFailure.Access);
@@ -261,7 +267,7 @@ public sealed partial class Binding
                     return Invalid(BindingFailure.InvalidAssociatedType);
                 }
 
-                if (!TypeAccessCovers(associated, conformance.Type, conformance.Contract))
+                if (!this.TypeAccessCovers(associated, conformance.Type, conformance.Contract))
                 {
                     return Invalid(BindingFailure.Access);
                 }

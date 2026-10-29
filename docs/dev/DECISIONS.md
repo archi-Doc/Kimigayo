@@ -7514,8 +7514,9 @@ resumed by R4-M86 (2026-10-20).
     while the hold walk keeps its untied store, two answers to "the call writes output j", conservative (one more Φ_E target).
     Pre-existing: a lent `static` layer unties; `unlinkOk` is SPEC-invalid (`Node.init` stores through the null `next` into storage
     the body does not own: R4's triage).
-- **BU-41 An instance keeps its stored parts with their raw Origins: `TyCtxt.StoredParts`, `RawSupplied`** (superseded in part by BU-46) (2026-10-26; the BU
-  planning session's design S1′, `p13u0/design-U0.md`, accepted with P13's v3 by R4's design review 3; PLAN G148 (1), P13's U0, unit
+- **BU-41 An instance keeps its stored parts with their raw Origins: `TyCtxt.StoredParts`, `RawSupplied`** (superseded in part by BU-46;
+  amended by BU-58: `TyCtxt.WrittenAt`) (2026-10-26; the BU planning session's design S1′, `p13u0/design-U0.md`, accepted with
+  P13's v3 by R4's design review 3; PLAN G148 (1), P13's U0, unit
   bu46; the owner's answers on P13, Q1 (a), Q2 (a) and 「進める (推奨)」, and SPEC 5.7's clarification ② of 2026-10-26) P13's per-part
   guard (R4-M76) reads, for every raw layer in a holder's own storage at any depth, its step under the holder's substitution, whether
   its declaration states it or a Type argument supplies it, and an Exclusive one's members. Below the holder a walk entered nested
@@ -7716,7 +7717,8 @@ resumed by R4-M86 (2026-10-20).
     shared and `let y = x`'s uniq case would be denied; the weakest-case walk (above); Binding reporting every bare acquisition
     without a plan, R6's move of TransferRequired (it moves the old path's records at every bare position). Not temporary.
 - **BU-46 A kept part states Unstated on each raw layer its declaration writes without `during`: `Binding.WithUnstatedOrigins`,
-  `TyCtxt.RawStated`** (2026-10-27; the BU planning session after the full process: design 1 (`p13u0/design-U0r.md`), R4's design
+  `TyCtxt.RawStated`** (amended by BU-58: the Local row's walk enters each part once)
+  (2026-10-27; the BU planning session after the full process: design 1 (`p13u0/design-U0r.md`), R4's design
   review 1 REVISE (B1 the `s/U` application, B2 the class), design 1's revision 1 (`design-U0r-1r1.md`), design 2 written without
   either, the choice of design 1 revision 1 with design 2's findings, R4's design review 2 ACCEPT with N1–N5; PLAN G148 (1), U0's
   revision, unit bu50; class Full; the owner at the choice, 「許可して設計 1 (推奨)」, 2026-10-27) SPEC 5.7 Calls decides an Origin-less
@@ -8480,6 +8482,59 @@ resumed by R4-M86 (2026-10-20).
   associated, a Self clause nor dependent on the declaration's parameters; an unbound clause counts as closed, its answer Unknown),
   the filter it applied inline, which U1's publication shares; behaviour unchanged. At its landing with bu69 (BU-55 made
   `DependentConstraint` an instance member) `ClosedClause` became an instance member too. U1's entry states the states, the writer, B1's rule and the readers.
+
+- **BU-58 A stored part's written Type at inline positions is one TyCtxt view, `TyCtxt.WrittenAt`; the raw-Origin views and the walks
+  over a written Type decide each distinct part once per call** (2026-10-30; the BU planning session after G307's joint design: BU's
+  design `bu\g307\design-r1.md`, BU's design review 1 REVISE (B1) and review 2 ACCEPT with N1–N4, all taken; R4's part R4-M157; PLAN
+  G307's Binding part, unit bu72; class Major) SPEC 5.2.1 condition 3, 5.7; R4's V16. A5's holding and address walks skipped their
+  per-Type memo at a stored part's inline Tuples, because `RawStep` reads positions. At an inline node `RawStep` and `RawMembers` read
+  the kept Type K (A5's node), the Type the declaration writes there, W, and the instance I, and W below a node follows from W at it.
+  - `TyCtxt.WrittenAt(instance, part, positions)` (Binding's `WrittenAt`, extracted from `StoredLayer` by bu72's (a)) answers W: the
+    Type the part's declaration writes at the positions (as for RawStep: a struct's root is [], an enum's positions start at the
+    payload), followed through Tuples and fixed arrays, while it is a Tuple, a fixed array or a raw layer (BU-35's `written`, one
+    private `Written` that the hold walk reads too); null at or past a Type parameter, a pair layer, a nominal or an open projection,
+    where no declaration writes the part, and at an enum's []. It reads the declaration only, in O(|p|), total, 0 B warm.
+  - Invariants from a part's first positions (a struct's [], a Case's [i]): monotone (null at p is null at p·s); at a raw layer it is
+    non-null exactly where `StoredLayer`'s `declared` is, the layer the cap reads; where it is null (G307's Q1 and Q3), every raw layer
+    at or below steps StepOf of its kept Origin (Unstated, Static or Exclusive): never Shared, since only `declared` caps, and never
+    Own, since `self` binds Holder only on a layer a Field's or payload's Type writes inline (`StoredLayer` raises InternalInvariant on
+    a Holder layer whose `declared` is null, so a new admitting form cannot merge silently); and RawMembers appends nothing. At an
+    enum's [] the guarantee does not hold (a payload may step Shared or Own).
+  - The guarantee's two uses (R4-M157): A5's holding key, (K, Stored) below the region and (K, Stored, W, I) in it, is exact because
+    the facts at or below a node are a function of (K, W, I) and, where W is null, of K inside a stored part; `Encloses` ends at a null
+    W (Own needs W). BU's review 2 measured it over 13 classes and its probes, legacy and mir: W equals `declared` at all 175,969
+    StoredStep and StoredMembers calls and is monotone; 0 conflicts for (K, W, I) over 175,525 keys and for K alone below the region
+    (649 keys); dropping I conflicts 72 times (a conditional slot's case) and dropping W once (a twin).
+  - A view and not a bool: a closed projection's resolution is what a declaration writes, so `x: Dup<…Dup<L>.Item…>.Item` with
+    `associate HasItem.Item is (T, T)` writes a Tuple DAG of 2^n positions from O(n) text (review 1's B1). Design 1's `RawWritten`
+    walked it as a tree; W is read at a node instead.
+  - Memos (BU-19's components, each entry call a query; only components with components are recorded, BU-55):
+    `TyCtxt.StatesUnstated(type, seen)` takes the caller's scratch, cleared, and enters each raw-Origin part once (MirTypes.HoldsRaw's
+    form; MirValidator keeps one set for its Local row); `WithoutRawOrigins` records a component's erasure (`erasedParts`) and
+    `WithUnstatedOrigins` its mark (`markedParts`); `TypeAccessCovers` (an existence walk whose false ends the query) and
+    `CollectRequirementEdges` (an edge added once per consumer) share `visitedParts` through `FirstVisit`, so TypeAccessCovers,
+    ProjectionAccessCovers and ConstraintAccessCovers become instance members. Each answer is a function of the part (review 2).
+  - Census (BU-55's instrumentation; the chain `H {s} { loan: Loan<ref/i32 during s>, x: Dup<…Dup<L>.Item…>.Item }` read and passed
+    by value, at n = 16 / 20 / 24): with L = i32, Bind took 0.6 / 1.1 / 2.2 s, from TypeAccessCovers (67,111,065 visits at 24),
+    CollectRequirementEdges (67,110,402) and WithUnstatedOrigins (33,555,065 at Bind and again at MIR); StatesUnstated and
+    WithoutRawOrigins added 50 M each at MIR on the raw chains. After: the i32 chain binds in about 50 ms at n = 40 (676 marked, 3,127
+    access and 1,588 edge visits); StatesUnstated on `T_40 = (T_39, T_39)` enters 40 parts, and `D<T_40>`'s erasure 41.
+  - Amends BU-46's Local-row clause (StatesUnstated walks each raw-Origin part once over the caller's scratch) and BU-41's TyCtxt list
+    (adds WrittenAt). BU-39's kept readers are unchanged: `TyCtxt.RawStep(instance, part, positions)` and `TyCtxt.RawMembers(instance,
+    part, positions, members)`, and Binding's `StepOf`, `SignatureStep` and `RawMembers(origin, scope, members)`.
+  - Rejected: the bool `RawWritten` (above); a BoundType bit (a shared representation for one row); Binding's `visitedParts` for
+    StatesUnstated (the Checker would need a TyCtxt, and the row's seen keys would be hidden); a cross-query cache.
+  - Open (PLAN G309): with raw leaves (`raw/i32 during static`, `raw/i32 during s`) the chain reaches Binding's raw-Origin walks, still
+    exponential (Bind 4.1 / 5.4 s at n = 24 after this unit); their TypeDagScalingTest rows are Explicit until G309.
+  - Evidence: TyCtxtTest `WrittenAtIsTheTypeADeclarationWritesInline`, `WrittenAtTellsApartThePositionsOfOneKeptPart` (P's two Fields,
+    E's and E3's two Cases over one kept part), `WrittenAtFollowsAWrittenProjectionDag`; TypeDagScalingTest
+    `StatesUnstatedEntersEachRawPartOnce` (seen keys), `AnInstancesKeptPartIsErasedOncePerPart`, `AWrittenProjectionDagIsWalkedOncePerPart`
+    (n = 40), together about 1 s; with any one of the five memos undone its row passes the runner's 120 s timeout. The diagnostic
+    snapshot and the registered mir ledger are unchanged.
+  - Cost (pinned, full JIT, A, B and A's byte copy interleaved from one folder, Hello, Milestone 26 and 27): cold +7.1 / +7.1 / +1.6
+    KB and retained +4.1 / +4.1 / +1.1 KB (the tables' capacity, byte-exact; A equals its copy), warm Bind 0 B. Times were noisy, two
+    other sessions' heavy runs having started (cold minima B/A 1.05 / 1.03 / 0.97, A/A 0.99 / 1.00 / 0.98); BU's review 2 measured
+    0.99 / 1.00 / 1.00 on the prototype, within its ±0.7% A/A.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and

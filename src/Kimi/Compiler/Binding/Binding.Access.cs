@@ -26,10 +26,6 @@ public sealed partial class Binding
     private static BoundType EffectiveCore(BoundType type)
         => type.Kind == BoundTypeKind.Semantics && type.Components.Count == 1 ? type.Components[0] : type;
 
-    private static bool ProjectionAccessCovers(Koto use, BoundType qualifier, BindingSymbol contract, BindingSymbol domain, BindingSymbol? intersection = null)
-        => TypeAccessCovers(qualifier, domain, intersection ?? domain) && AccessCovers(contract, domain, intersection ?? domain) &&
-            (use.BoundSymbol is not { Kind: BindingSymbolKind.AssociatedType } requirement || AccessCovers(requirement, domain, intersection ?? domain));
-
     // SPEC 9.4: the written access of a declaration that may carry a protected form.
     private static ModifierKind WrittenAccess(Koto declaration) => (declaration switch
     {
@@ -108,6 +104,10 @@ public sealed partial class Binding
         return null;
     }
 
+    private bool ProjectionAccessCovers(Koto use, BoundType qualifier, BindingSymbol contract, BindingSymbol domain, BindingSymbol? intersection = null)
+        => this.TypeAccessCovers(qualifier, domain, intersection ?? domain) && AccessCovers(contract, domain, intersection ?? domain) &&
+            (use.BoundSymbol is not { Kind: BindingSymbolKind.AssociatedType } requirement || AccessCovers(requirement, domain, intersection ?? domain));
+
     // A fixed-array member receives some `[N of E]`, in the ref, uniq or owning form (PLAN G32); the integer Position
     // witness receives an integer Type parameter (SPEC 4.6.1).
     private bool IsReceiverType(BoundType? type, BindingSymbol owner)
@@ -141,7 +141,8 @@ public sealed partial class Binding
                 for (var p = 0; p < this.activeConformancePaths.Count; p++)
                 {
                     var path = this.activeConformancePaths[p];
-                    if (ReferenceEquals(path.Premises, clause.Parent) && !ProjectionAccessCovers(use.Use, use.Type, use.Contract, path.Type, path.Contract))
+                    if (ReferenceEquals(path.Premises, clause.Parent) &&
+                        !this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, path.Type, path.Contract))
                     {
                         path.Invalid = true;
                         path.IsVerified = false;
@@ -156,7 +157,8 @@ public sealed partial class Binding
                     for (var m = 0; m < block.Items.Count; m++)
                     {
                         var member = block.Items[m];
-                        if (member is FunctionKoto or PropertyKoto && member.BoundSymbol is { } memberDomain && !ProjectionAccessCovers(use.Use, use.Type, use.Contract, memberDomain))
+                        if (member is FunctionKoto or PropertyKoto && member.BoundSymbol is { } memberDomain &&
+                            !this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, memberDomain))
                         {
                             this.Fail(member, BindingFailure.Access);
                         }
@@ -180,7 +182,7 @@ public sealed partial class Binding
 
                     // A narrower child Contract cannot narrow an ancestor's domain.
                     // Conditional specifications belong only to their root path.
-                    if (!ProjectionAccessCovers(use.Use, use.Type, use.Contract, path.Type, path.Contract))
+                    if (!this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, path.Type, path.Contract))
                     {
                         path.Invalid = true;
                         path.IsVerified = false;
@@ -219,7 +221,7 @@ public sealed partial class Binding
             {
                 if (ReferenceEquals(clauses[c], clause))
                 {
-                    if (!ProjectionAccessCovers(use.Use, use.Type, use.Contract, domain))
+                    if (!this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, domain))
                     {
                         this.Fail(clause, BindingFailure.Access);
                         this.Fail(owner, BindingFailure.Access);
@@ -256,7 +258,7 @@ public sealed partial class Binding
                         // The normalized base may no longer contain its projection qualifier.
                         this.RequireConstraint(node, this.CheckTypeConstraints(use.Type, this.scopes[structure]), bindingMode);
                     }
-                    else if (!ProjectionAccessCovers(use.Use, use.Type, use.Contract, structure.BoundSymbol!))
+                    else if (!this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, structure.BoundSymbol!))
                     {
                         this.Fail(node, BindingFailure.Access);
                         this.Fail(structure, BindingFailure.Access);
@@ -287,7 +289,7 @@ public sealed partial class Binding
                     this.RequireConstraint(node, proof, bindingMode);
                     this.RequireConstraint(enumeration, proof, bindingMode);
                 }
-                else if (!ProjectionAccessCovers(use.Use, use.Type, use.Contract, enumeration.BoundSymbol!))
+                else if (!this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, enumeration.BoundSymbol!))
                 {
                     this.Fail(node, BindingFailure.Access);
                     this.Fail(enumeration, BindingFailure.Access);
@@ -315,7 +317,7 @@ public sealed partial class Binding
                 var premises = (SyntaxFormKoto)conditional.Operands[1];
                 for (var p = 0; p < premises.Operands.Length; p++)
                 {
-                    if (premises.Operands[p] is IsKoto { BoundConstraint: { } premise } && !ConstraintAccessCovers(premise, member))
+                    if (premises.Operands[p] is IsKoto { BoundConstraint: { } premise } && !this.ConstraintAccessCovers(premise, member))
                     {
                         this.Fail(this.nodes[i], BindingFailure.Access);
                     }
@@ -330,7 +332,9 @@ public sealed partial class Binding
                     // Self conformances have the intersection of the Type and
                     // Contract domains; their separate witness checks own this case.
                     if (!IsSelfConstraint(clause) && !clause.IsAssociatedConstraint &&
-                        clause.BoundConstraint is { } constraint && (!ConstraintAccessCovers(constraint, domain) || (clause.Left.BoundType is { } subject && !TypeAccessCovers(subject, domain, domain))))
+                        clause.BoundConstraint is { } constraint &&
+                        (!this.ConstraintAccessCovers(constraint, domain) ||
+                            (clause.Left.BoundType is { } subject && !this.TypeAccessCovers(subject, domain, domain))))
                     {
                         this.Fail(clause, BindingFailure.Access);
                         this.Fail(container, BindingFailure.Access);
@@ -345,14 +349,14 @@ public sealed partial class Binding
 
             // Run after body constraints have been bound, even for unused APIs.
             // Named functions retain their declared result (or the Unit default).
-            if (symbol.Type is { } result && !TypeAccessCovers(result, symbol, symbol))
+            if (symbol.Type is { } result && !this.TypeAccessCovers(result, symbol, symbol))
             {
                 this.Fail(function, BindingFailure.Access);
             }
 
             for (var p = 0; p < function.Parameters.Count; p++)
             {
-                if (function.Parameters[p].Type.BoundType is { } parameter && !TypeAccessCovers(parameter, symbol, symbol))
+                if (function.Parameters[p].Type.BoundType is { } parameter && !this.TypeAccessCovers(parameter, symbol, symbol))
                 {
                     this.Fail(function, BindingFailure.Access);
                 }
@@ -360,7 +364,7 @@ public sealed partial class Binding
 
             for (var c = 0; c < function.TypeConstraints.Count; c++)
             {
-                if (function.TypeConstraints[c] is IsKoto { BoundConstraint: { } constraint } && !ConstraintAccessCovers(constraint, symbol))
+                if (function.TypeConstraints[c] is IsKoto { BoundConstraint: { } constraint } && !this.ConstraintAccessCovers(constraint, symbol))
                 {
                     this.Fail(function, BindingFailure.Access);
                 }
@@ -378,7 +382,7 @@ public sealed partial class Binding
             }
 
             var domain = function.IsRequirement ? symbol.Scope.Owner.BoundSymbol! : symbol;
-            if (!ProjectionAccessCovers(use.Use, use.Type, use.Contract, domain))
+            if (!this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, domain))
             {
                 this.Fail(function, BindingFailure.Access);
             }

@@ -67,7 +67,7 @@ internal sealed partial class MirValidator
                 ref readonly var local = ref locals[i];
                 this.At(local.Source);
                 arguments &= i == 0 || local.Kind == MirLocalKind.Arg;
-                var typed = local.Type is { } type && !TyCtxt.StatesUnstated(type); // Unstated marks kept parts only (DECISIONS BU-46).
+                var typed = local.Type is { } type && !TyCtxt.StatesUnstated(type, parts); // Unstated marks kept parts only (DECISIONS BU-46).
                 var placed = (local.Kind == MirLocalKind.Return) == (i == 0) && (local.Kind != MirLocalKind.Arg || arguments);
                 if (!typed || !placed || local.Kind > MirLocalKind.DropFlag ||
                     (local.Role == MirLocalRole.Result && (local.Kind != MirLocalKind.Temp || !ReferenceEquals(local.Type, locals[0].Type))) ||
