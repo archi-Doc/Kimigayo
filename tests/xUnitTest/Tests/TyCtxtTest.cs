@@ -575,7 +575,8 @@ public sealed class TyCtxtTest
     // declared layer: it has the kind of the Origin the argument states (none Unstated, `static` Static, any other Exclusive), never the
     // stored cap, and a pair's raw case states none (SPEC 8.1.2), nor does a raw argument a pair slot binds (SPEC 8.1.1, DECISIONS BU-34:
     // `Holder<raw/i32 during y>` is `Holder<raw/i32>`). Its Origin's borrows are not the instance's, so an Exclusive one's members are
-    // incomplete. No declaration states such a layer (RawStated). A path whose substituted part is no raw layer stays a broken contract.
+    // incomplete. No declaration states such a layer (RawStated). A path whose substituted part is no raw layer stays a broken contract, as
+    // does a `during self` layer a Type argument supplies (DECISIONS BU-58: `self` binds Holder only on a layer its declaration writes).
     [Fact]
     public void ARawLayerATypeArgumentSuppliesStepsByItsOwnOrigin()
     {
@@ -595,6 +596,8 @@ public sealed class TyCtxtTest
         Assert.Empty(members);
         Assert.Same(p[13], p[21]);
         Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.RawStep(p[20], 0, [])).Message, StringComparison.Ordinal);
+        var supplied = types.Intern(BoundTypeKind.Constructed, p[9].Symbol, SemanticsKind.Owner, [types.Pointer(BoundType.I32, BoundOrigin.Holder)]);
+        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.RawStep(supplied, 0, [])).Message, StringComparison.Ordinal);
     }
 
     // DECISIONS BU-58: WrittenAt is the Type a part's declaration writes at inline positions while it is a Tuple, a fixed array or a raw
@@ -1608,8 +1611,6 @@ public sealed class TyCtxtTest
         return (c, probe.Parameters.Select(static x => x.Type.TypeOf()!).ToArray());
     }
 
-    // The raw layer an instance stores at a part and inline positions, as RawStep reads it: its kept part (an enum Case's payload Tuple),
-    // then per position a Tuple's component or a fixed array's element.
     // A Type for a row: its diagnostic name, a raw layer's with its Origin's kind; "-" for none.
     private static string Shown(BoundType? type) => type switch
     {
@@ -1618,6 +1619,8 @@ public sealed class TyCtxtTest
         _ => Binding.DiagnosticTypeName(type),
     };
 
+    // The raw layer an instance stores at a part and inline positions, as RawStep reads it: its kept part (an enum Case's payload Tuple),
+    // then per position a Tuple's component or a fixed array's element.
     private static BoundType KeptLayer(TyCtxt types, BoundType instance, int part, int[] positions)
     {
         var layer = types.StoredParts(instance, out _)[part]!;
