@@ -66,18 +66,27 @@ internal sealed partial class TyCtxt
         return erased;
     }
 
-    // The named function whose body declares a definition (through anonymous functions, as SubstOfClosure's binder): a function or Closure
-    // nested in a body; null for a member or a top-level declaration. An instance of a nested definition holds that function's instance
-    // (SPEC 6.1.3), which the instance collector requires its substitution to carry.
+    // The named function whose body declares a definition, through anonymous functions and blocks: for a function or Closure nested in a
+    // body, the first named function on its scope chain, or in a custom accessor's body the accessor's executing function (SPEC 11.3), the
+    // definition its body is keyed by; null for a member or a top-level declaration, whose chain reaches a container first. An instance of
+    // a nested definition holds that function's instance (SPEC 6.1.3, 9.3): the instance collector requires its substitution to carry it,
+    // and a Closure takes it as its context (SubstOfClosure, Binding.ClosePart).
     internal BindingSymbol? EnclosingFunction(BindingSymbol definition)
     {
-        var function = definition.Scope.Function;
-        while (function is { IsAnonymous: true })
+        for (var scope = definition.Scope; scope is not null; scope = scope.Parent)
         {
-            function = function.BoundSymbol?.Scope.Function;
+            switch (scope.Owner)
+            {
+                case FunctionKoto { IsAnonymous: false } function:
+                    return function.BoundSymbol;
+                case PropertyAccessorKoto accessor:
+                    return CallPlan.Accessor(accessor);
+                case DeclarationContainerKoto:
+                    return null;
+            }
         }
 
-        return function?.BoundSymbol;
+        return null;
     }
 
     // SPEC 6.4.6, 8.4: whether a call of a function dispatches (CallPlan.KindOf), a requirement to the witness of its conforming Type and a
