@@ -1713,7 +1713,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   A5-side rule over operands the MIR does not build; a diverging Call writing its destination on its check edge (SPEC 14.10.3
   leaves it open). Not temporary. Amended by R5-M38: the Never value is a temp of Type Never; an unadapted acquisition of a named
   Place of Type Never goes into a fresh Never temp, which every consumer takes as it is (the placement rule unchanged), and an
-  adapted one is built as Binding publishes it.
+  adapted one is built as Binding publishes it. Amended by R5-M159: an element whose index diverges has its element Type, so the
+  increment's target node is no longer Never (`++a[(return 0)]`); its one stays of the old value's Type.
 - **R4-M63** (2026-10-18; A3 §12 E14, decided by the planning session on the core lane's group review B4 and N2 and its design review
   of 2026-10-18; supersedes R4-M57's intrinsic rule and its separate unknown-callee loop, and R4-M40's "every operand to the result";
   its store target refs(val(a_j)) superseded by R4-M73's W) A Call retains as its callee's contract says (SPEC 15.6, 15.6.4).
@@ -11309,7 +11310,7 @@ structure is recorded here by the unit that first implements it.
     destruction obligation in MIR, so a literal comparison operand or a constant a transfer abandons is never materialized and the audit
     counts no Static destruction the old generator made (`StringComparison*Audit` 9, `ElementBorrowOwnerLifetime*Audit` 8,
     `ForeignPointerString*Audit` 3, `FixedArrayCapture*Audit` 2, `GuardCleanup*Audit` 2 and `ElementReplacementTransfer*Audit` 2, the last two
-    a constant abandoned by a transfer). G188's owner (R5's W1 or E lane) decides the builder or the audits before R5's exit. No R5-M85
+    a constant abandoned by a transfer; amended by R5-M159: those two were G304's Never-typed target). G188's owner (R5's W1 or E lane) decides the builder or the audits before R5's exit. No R5-M85
     deviation now.
   - Fixture row (ruling Q3 (a)): `ElementBorrowOwnerLifetimeCalleeCleanupAudit`, under PLAN G248 (R4's builder unit): a
     call's destination temporary registers its cleanup before its arguments' (`Console.writeLine(inspect(("head", "tail").0))` destroys the
@@ -12799,3 +12800,31 @@ structure is recorded here by the unit that first implements it.
     erased, at a Closure declaring a function, and at the call of a function nested in a getter. No record and one item per instance for
     a Closure in a getter, a constructor and a method. A closed struct's initializer Closure is a root. Every admitted representative
     closes its body, and `AnOpenRepresentativeIsABrokenContract` is unchanged.
+- **R5-M159 An element whose key diverges has its element Type (g2never)** (2026-10-30, planning session with BU's agreement; PLAN
+  G304; amends R4-M62's increment sentence; Major) SPEC 3.1.3: only a transfer, `$abort` and a call by its Never result Type are
+  Never forms, other control flow only under result validation; an element access is none, so its Type is the element's (SPEC
+  4.7.1), as Binding already gave an Array, Slice, Dictionary or referenced element and a call with a diverging argument.
+  - Cause: `Binding.Elements` typed an owned fixed-array element whose key is Never as Never, and `ElementAccess.DestinationType`
+    with `TryType`'s "abrupt earlier index" clause recovered the element Type for assignment destinations only. The MIR builder took
+    the target's Never for the right side's secured temporary (SPEC 13.7.1 step 1): `a[(return 42)] = echo("new")` was
+    `InternalInvariant_Kd` under sel (a call writing the Never value; a Reborrow right side's own record), and a right side built by
+    `Set` lost its value and Loans. Binding rejected valid forms: a Field written or updated below such an element
+    (`UnresolvedBinding_Kd`), its borrow for a call, `replace`, `exchange` and `swap` (`NoApplicableOverload_Kd`).
+  - Rule: only a Never receiver, which has no elements, leaves an element Never. The recovery and its callers' wrapping go
+    (`Binding.Operators`, `Binding.ArithmeticOperators`; the old analysis's `UpdateElement` reads the target's Type). No MIR change.
+  - D5 (the owner, 2026-10-30, verbatim 「(a) D5 の例外として認める」, to: the old paths accept the newly valid forms until
+    R6-check, each shown natively to be generated and run correctly under both generators): the old analysis accepts them. Shown on
+    both generators: a call's right side (the old element stays, the secured result is destroyed), a nested element, a Field written
+    and updated, a borrow for a call. The old generator refuses `replace` and `exchange` of such an element with `GenerationFailed_Kd`
+    (`ValidateComparisonLoans`; no code), which MIR code generation runs; the owner's answer on that: (pending).
+  - Not newly accepted: `swap`'s later input and a read of a local such an element initializes are the old analysis's first
+    unreachable local use, its located `Unsupported_Kd` (STATUS Unreachable code) until R6-check, a better category than the former
+    Language error. AD4's assumed-path Loan conflict is PLAN G305's.
+  - Rejected: a builder walk typing the destination over HIR shapes (a second copy of `TryType`, Binding's rejections kept); a
+    published destination-Type fact (the target's Meaning carries it once Binding follows SPEC); the right side's own Type for the
+    temporary (wrong for a ReferenceRead, an Erasure, a borrow); a BU-10-style old-analysis guard (the owner's (b)).
+  - Verified (fail-first): `NeverContinuationTest` (the forms accepted, the published element Types, the Never receiver's
+    `InvalidAssignment_Kd`), `MirBuildTest.ARightSideIsSecuredAtTheElementTypeBeforeADivergingKey`, Element* native fixtures. The
+    `ElementReplacementTransfer*` audits lose their `constant-temporaries` deviation: MIR code generation now secures and destroys the
+    right side as the old generator does, so R5-M118's two `ElementReplacementTransfer*Audit` rows were this cause, not a constant a
+    transfer abandons (G157 (45)'s part for them).

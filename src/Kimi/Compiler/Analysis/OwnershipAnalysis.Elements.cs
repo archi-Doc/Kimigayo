@@ -109,7 +109,7 @@ public sealed partial class OwnershipAnalysis
     private int UpdateElement(Koto source, BinaryKoto target)
     {
         var operation = ElementAccess.UpdateOperator(source.Akind);
-        var type = ElementAccess.DestinationType(target, target.BoundType);
+        var type = target.BoundType;
         if (!this.SupportsUpdate(target, type, operation) || ElementAccess.WritableRoot(target) is null)
         {
             this.Unsupported(source);

@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Verification;
@@ -15,6 +16,11 @@ public class NeverContinuationTest
 
     private const string Joins = "struct P\n    public var x: i64 = 5\nfunc g(t: (i64, i64)) => ()\nfunc id<T>(value: T) -> T => value@move\n" +
         "func f(c: bool, d: bool, a: i64, p: P) -> i64\n    ";
+
+    // Owned fixed arrays whose element a diverging key selects, and the start of their function f.
+    private const string Elements = "struct S\n    public var n: i32 = 0\n    public init() => ()\nfunc make() -> i32 => 1\nfunc see(v: ref/string) => ()\n" +
+        "func f() -> i32\n    var a: [1 of string] = [\"old\"]\n    var b: [1 of S] = [S.init()]\n    var other = \"other\"\n    let n: [1 of [1 of i32]] = [[1]]\n" +
+        "    let t: [1 of (i32, bool)] = [(1, true)]\n    ";
 
     // The program of JoinedLiteralsRunAtTheirJoinsType.
     private const string JoinedLiterals =
@@ -96,6 +102,7 @@ public class NeverContinuationTest
     [InlineData("func f(x: Never)\n    var y = x\n    --y", DiagnosticCode.NonIntegerOperand_Kd)]
     [InlineData("func f(x: Never)\n    var y = x\n    y <<= 1", DiagnosticCode.NonIntegerOperand_Kd)]
     [InlineData("func f(x: Never)\n    var y = x\n    y &= 1", DiagnosticCode.NonIntegerOperand_Kd)]
+    [InlineData("func f() -> i32\n    (return 42)[0] = 1\n    return 0", DiagnosticCode.InvalidAssignment_Kd)] // A Never receiver has no element.
     [InlineData("let n = stop() & stop()", DiagnosticCode.NonIntegerOperand_Kd)]
     [InlineData("let n = stop() + stop()", DiagnosticCode.ArithmeticSelection_Kd)]
     [InlineData("let n = stop() & true", DiagnosticCode.NonNumericOperand_Kd)]
@@ -125,6 +132,43 @@ public class NeverContinuationTest
         var c = MirBuildTest.Compile(source);
         Assert.Empty(c.Binding.Issues);
         Assert.Equal("(i32, i32)", TyCtxt.Name((BoundType)HirTables.Meaning(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<TupleLiteralKoto>().Single())!));
+    }
+
+    // SPEC 3.1.3, 4.7.1 (DECISIONS R5-M159): an element access is no Never form, so an owned fixed-array element whose key diverges has its
+    // element Type, as an Array's element has: its Field is written and updated, and it is borrowed for a call and for an intrinsic's
+    // exclusive input (fail-before: UnresolvedBinding_Kd, NoApplicableOverload_Kd). Binding accepts `swap`'s, whose later input is the old
+    // analysis's first unreachable local use, its located Unsupported_Kd until R6-check (STATUS Unreachable code).
+    [Theory]
+    [InlineData("b[(return 42)].n = 1")]
+    [InlineData("b[(return 42)].n += make()")]
+    [InlineData("see(a[(return 42)]@ref)")]
+    [InlineData("Kimi.Intrinsics.replace(a[(return 42)]@uniq, with: \"new\")")]
+    [InlineData("let old = Kimi.Intrinsics.exchange(a[(return 42)]@uniq, with: \"new\")")]
+    [InlineData("Kimi.Intrinsics.swap(a[(return 42)]@uniq, other@uniq)", "other")]
+    public void AnElementBelowADivergingKeyIsUsedAtItsElementType(string statement, string? unsupported = null)
+    {
+        var c = MinimalEmissionTest.Analyze(Elements + statement + "\n    return 0\n");
+        Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
+        c.ReportAnalysis();
+        (string Code, string? Text)[] expected = unsupported is null ? [] : [(nameof(DiagnosticCode.Unsupported_Kd), unsupported)];
+        Assert.Equal(expected, TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text)));
+    }
+
+    // SPEC 3.1.3, 4.7.1 (DECISIONS R5-M159): the HIR publishes that element Type for the element, for an element and a Tuple element
+    // below it and for the local it initializes, which MIR builds with no record (fail-before: Never, and a Type finding at the local).
+    [Theory]
+    [InlineData("let x = b[(return 42)].n", "b[(return 42)]", "S")]
+    [InlineData("let x = n[0][(return 42)]", "n[0][(return 42)]", "i32")]
+    [InlineData("let x = n[(return 42)][0]", "n[(return 42)][0]", "i32")]
+    [InlineData("let x = t[(return 42)].0", "t[(return 42)].0", "i32")]
+    public void AnElementBelowADivergingKeyHasItsElementType(string statement, string element, string type)
+    {
+        var c = MirBuildTest.Compile(Elements + statement + "\n    return 0\n");
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(type, TyCtxt.Name((BoundType)HirTables.Meaning(KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x.ToString() == element))!));
+        var f = c.BuildMir().Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" });
+        Assert.Equal("i32", TyCtxt.Name(f.Locals.ToArray().Single(static x => x.Name == "x").Type));
+        BuildsWithoutRecords(c);
     }
 
     // SPEC 14.9.2 step 3, 3.8: a literal whose element is Never awaits its position: beside a source that supplies a candidate it supplies

@@ -227,7 +227,11 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   Calls Reach by Paths (2026-10-22): the old Analysis, Binding's `EffectSummary` and `PublishesIndependentResults` drop rule 1's Origin reach, rule 3
   and `preserves results` (units U1, U2), so the default pipeline accepts the forms that proposal makes valid and rejects G193's
   forms by containment; a form U1 or U2 newly accepts that SPEC does not make valid stops the unit for the owner (DECISIONS
-  R4-M106, the proposal's adoption entry).
+  R4-M106, the proposal's adoption entry), and the owner's exception for g2never (2026-10-30, 「(a) D5 の例外として認める」): the
+  old analysis accepts the forms Binding's element typing makes valid (an owned fixed-array element whose key diverges, its Field
+  written or updated, borrowed for a call or an intrinsic's exclusive input) until R6-check, and the old generator generates them
+  except `replace` and `exchange` of such an element, which it refuses with `GenerationFailed_Kd` (the owner's second answer: pending)
+  (DECISIONS R5-M159).
 - **Size.** Code size has no caps, stage ceilings or forecasts (DECISIONS Q5). Each compiler commit states its net size
   change per area, and stage exits record area sizes (AGENTS). `ArchitectureRulesTest` retains its no-growth ratchets.
 - **Missing facts (R3–R5).** Binding publishes a fact the MIR side lacks as a small view; Mir never re-derives it.

@@ -324,10 +324,11 @@ public class MinimalEmissionTest
         }
     }
 
-    // A program analyzed for an Application, by the process's code generator unless one is named.
+    // A program analyzed for an Application, by the process's code generator unless one is named (MIR code generation on the mir pipeline).
     internal static Compilation Analyze(string source, string path = "Hello.kimi", CompilerCodegen? codegen = null)
     {
         var c = Compilation.CreateForTest();
+        c.Pipeline = codegen == CompilerCodegen.Mir ? CompilerPipeline.Mir : c.Pipeline;
         c.Codegen = codegen ?? c.Codegen;
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument(path, source));
