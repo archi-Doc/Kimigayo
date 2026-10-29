@@ -213,6 +213,7 @@ public readonly record struct OwnershipIssue(Koto Source, OwnershipRequirement F
         OwnershipRequirement.StaticMovePathRequired => DiagnosticCode.StaticMovePathRequired_Kd,
         OwnershipRequirement.StorageLimit => DiagnosticCode.OwnershipStorageLimit_Kd,
         OwnershipRequirement.OwnStepDeparture => DiagnosticCode.OwnStepDeparture_Kd, // A5's alone (R4-M116); the consistency set's pair.
+        OwnershipRequirement.DepthLimit => DiagnosticCode.OwnershipDepthLimit_Kd, // A4's and A5's alone (R4-M153); the consistency set's pair.
         _ => DiagnosticCode.Unsupported_Kd,
     };
 }

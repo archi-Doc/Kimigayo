@@ -116,20 +116,16 @@ public sealed partial class Binding
         }
 
         if (operand is not IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Parameter or BindingSymbolKind.Capture } receiver } ||
-            receiver.MutableCapture || this.ConstraintScope(operand).Function is not { } function)
+            receiver.MutableCapture)
         {
             return false;
         }
 
-        var lexical = function;
-        while (lexical.IsAnonymous && this.scopes[lexical].Parent?.Function is { } outer)
-        {
-            lexical = outer;
-        }
-
-        if (lexical.IsOverride &&
+        // SPEC 6.4.5: lexical self as a direct base call takes it (TyCtxt.EnclosingFunction, DECISIONS BU-53); an accessor is never an override.
+        var scope = this.ConstraintScope(operand);
+        if (this.types.EnclosingFunction(scope) is { Declaration: FunctionKoto { IsOverride: true } lexical } &&
             this.virtualOverrides.TryGetValue(lexical, out var implementation) && ReferenceEquals(source, implementation.ImplementingType) &&
-            ReferenceEquals(receiver, this.BaseReceiver(function, lexical)))
+            ReferenceEquals(receiver, this.BaseReceiver(scope.Function, lexical)))
         {
             entry = lexical;
             return true;

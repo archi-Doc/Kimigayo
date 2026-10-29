@@ -932,7 +932,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   90,000 is consolidated first or returns to the owner. Per-unit Binding-line exceptions stay owner decisions (U6 about 240
   lines, R4-M23; U7 about 150 lines, R4-M9b). Rejected: cutting R4 scope (Q1 through-reference replacement, U9's preserves
   witnesses) to R5, which would leave (b) rows at the R4 exit; raising the stage ceiling (not needed by the projection).
-- **R4-M22** (2026-10-12, planning session; design B of two independent U6 designs, with design A's classification of the
+- **R4-M22** (superseded in part by R4-M153: a part past the depth bound is the class Deep) (2026-10-12, planning session; design B of two independent U6 designs, with design A's classification of the
   Binding-rejected virtual functions) A4, `MirEffects`, decides `confined` (SPEC 8.11.2, 8.11.4, 8.11.6, 15.6.4). Per body view a
   union summary: the classes Environment, Unknown, Limit and Derived and atoms Drop(T) and Call(T, receiver) over the definition's
   abstract Types. Local facts come from `MirUses` (a mutable static's access, an environment effect, an integer made a pointer and a
@@ -1202,7 +1202,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Superseded later in part (2026-10-18): plan §9.1's "both measured" by R5-M3 and its forwarding properties at R6-check by
     R5-M9. OD4's parallel run was suspended by R4-M77, restored by R4-M78 and suspended again by R4-M79 (all 2026-10-19), and restored
     by R4-M86 (2026-10-20).
-- **R4-M36** (2026-10-17; design A3 §4.1 G2, owner approval of its §9 item 8 on 2026-10-17) The Type facts A5's holders and destruction
+- **R4-M36** (superseded in part by R4-M153: the bound's answer and record) (2026-10-17; design A3 §4.1 G2, owner approval of its §9 item 8 on 2026-10-17) The Type facts A5's holders and destruction
   checks read. `MirTypes.HoldsLoans(type, seen)` (A3 §3's holder rule): a part of the value is a borrow or pair layer, a Slice, a
   Function or Closure value or an abstract Type; its parts are its own storage (Fields and base, payloads) and its components (elements,
   an owning handle's payload, Type arguments); a raw pointer and a function item hold none (a raw layer holds since R4-M120). Two
@@ -1337,7 +1337,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   pipeline decides acceptance until R6-check); splitting mixed theories (churn for a marker); per-row markers (xUnit traits
   are per method). Temporary: removed at R6-check. (Superseded in part by BU-27: tests whose S1 verdict the default pipeline now
   gives through Binding's meet names drop OldRule now, not at R6-check.)
-- **R4-M51** (2026-10-17; design A3 §4.3's C1+C8 view and §4.1's In place row, owner approval of its §9 items 8 and 9 on
+- **R4-M51** (superseded in part by R4-M153: A5's record of `CallRetention.Limit`) (2026-10-17; design A3 §4.3's C1+C8 view and §4.1's In place row, owner approval of its §9 items 8 and 9 on
   2026-10-17; A5 step 1, unit 1a, redone after its review) Call retention, the Binding view A5's Loan flow reads for calls
   (SPEC 15.6.4). `TyCtxt.Retains(callee, Subst, definition)` and `TyCtxt.Retains(calleeType, signature, definition)` (a Value
   callee's Type and declared Callable signature, R4-M41; `definition` is the calling body's, null at top level) give an
@@ -1456,6 +1456,14 @@ and migration obligations remain in force; no numeric cap changes are authorized
     chain. Not a loss. Rejected: a hold with a located `Unsupported_Kd`. Census: library 0, milestones 0 (grep proxies).
   - Superseded in part by R4-M154 (WK): the erased callables are rule 3's one list ((β′)), every callable the callee's premises and
     inputs hand its body, and a requirement's own Origins are not fixed.
+  - Amendment (2026-10-29, owed since R5's X3 gate item 7): prerequisite α's commit 578d69771 changed the old generator's `.ll` of six
+    fixtures whose sources it left unchanged, and its message declared no fixture change: AggregateDefaultAbandoned
+    (AggregateDefaultTest, `f(x: ("first", (exit to done)))`), AggregatePartialExit and AggregatePartialReturn (AggregateEmissionTest,
+    `let value: (string, i32) = ("a", (exit))` and `("a", (return))`), and their `Audit` twins. The Never element of each Tuple
+    literal now takes its expected Type, so the literal has the expected Tuple Type: its slot is materialized and the string already
+    evaluated is destroyed from that slot on the abandoning path. The fixtures' expected outputs and allocation counts are unchanged
+    (578d69771 touches no test of theirs). R5 attributed the six by builds at 460d289de and 578d69771:
+    `artifacts/verify/reduction-R5/17cd554ab/gate7/x3leg-report.md` (finding 2) and `final.tsv` there.
   The implementing units record their contracts in the commits that first implement them, including the planning
   session's decisions of A3 §12 (E1–E7, E10, E11): E7 replaces R4-M37's `EndBorrow` meaning for guards (unit 1b-4), and
   G123 and G94 amend R4-M40's handle copy and its Open.
@@ -1647,7 +1655,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   consumer subject passed down `Place` and `Operand` (option 1: partial, over the parameter limits); duplicate problems (option 3);
   skipping the access's check (first implemented: it lost the Moved read after a Move inside the index); a guard only where the
   index builds code (a gate; MIR cost measured instead). Not temporary.
-- **R4-M58** (2026-10-17; PLAN G91, the planning session's design A3 E10 in design A's form, with the A1–A4 audit's finding 3,
+- **R4-M58** (superseded in part by R4-M153: the outcome walks' memo) (2026-10-17; PLAN G91, the planning session's design A3 E10 in design A's form, with the A1–A4 audit's finding 3,
   implemented on its instruction of the same day; supersedes R4-M36's "The Destruction walk cuts no cycle through a sequence") The
   Destruction walk enters each Type once per query, by interned identity: `IMirDestruction.First(type)` at the walk's entry for every
   Type, the visitor's set (`AnyPart` and `Observer`: the caller's `seen`, A4's `Glue`: the evaluation's `glued`). A Type met again was
@@ -4900,7 +4908,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
       1.297 ms (×1.025; A′/A ×1.023, within the noise).
     - Warm runs allocate nothing.
   - Numbering: R4-M146 was reserved for 2x-E5 by the R4 planning session (R4-M145 S2, R4-M147 P13-1, R4-M148 2c-3).
-- **R4-M147 A5's per-part guard; P13's body hold removed (PLAN G148 (1), P13-1)** (superseded in part by R4-M151) (2026-10-26; R4's lane B under design P13 v3,
+- **R4-M147 A5's per-part guard; P13's body hold removed (PLAN G148 (1), P13-1)** (superseded in part by R4-M151 and R4-M153) (2026-10-26; R4's lane B under design P13 v3,
   ACCEPT at its design review 3, on BU-41's view (U0, unit bu46); the planning session's ruling D″ of 2026-10-26 on an abstract
   referent; class Full with BU).
   - Rule (SPEC 15.6.4, 5.7 Calls, 15.3.5; A3 E16): `MirTypes.HoldsLoans` reads the guard per part. A struct's or enum's Type argument
@@ -5267,6 +5275,201 @@ and migration obligations remain in force; no numeric cap changes are authorized
     shared representation in one unit, R4-M119); a fit of the raw sources (an enclosing region is fixed in the Closure, so arr1 and arr2
     were falsely Unknown); a per-call gate (N1).
   - Numbering: R4-M152 is free on dev and every remote branch (R4-M150 is G264's, R4-M151 BU-46's R4 side).
+- **R4-M153 One past-bound answer, decided by the checks that rest on it: `OwnershipDepthLimit_Kd` and drop-liveness (PLAN G272)**
+  (2026-10-28; G272's design-first candidate, design 2 with the planning session's structure check and additions; class Full, Q11; the
+  owner's 「G272: (1)」 and 「G272 要件: (a)」)
+  SPEC 23.1.1 makes an exceeded resource limit Resource, never Language, and IMPL 21.3.2 an analysis limit a Resource diagnostic at the
+  affected declaration, call or token. `MirTypes`' walks end a growing Type (SPEC 15.3.5) at the bound of 32 and answered there with a
+  value they did not establish (the guard's write fact, a destruction that is a use), so each reader guessed: liveness kept the Loan of a
+  holder only a deep Drop keeps (Language conflicts at the depth-40, 60 and 70 forms), rule W stepped past a deep holder (a5-w's three
+  conflicts), and Locations, Activations and A4 recorded a located `Unsupported_Kd`.
+  - Fact and owner: `MirTypes.Bound` (32) is the one bound of the holding walks and the destruction walk (`HoldsRaw`'s too, whose reading
+    is 2b-5's). Past it the guard answers its own outcome: `Holding.Holds` gives Loan in the value's own storage and the walk fact Deep
+    where the mode would give Write, and the guard's `MirWrites` gains Deep (None, Through, Limit and Deep, read off the walk's answer;
+    no vocabulary entry, an internal enum). `MirOutcome.Deep` and `IMirDestruction.Deep` name the depth limit. Holding's "holds"
+    (tracking) and `MayNeedDrop` (generation) keep their yes: no check rests on them.
+  - The one answer (revision 3): the walks' answer at a verdict is one value, `MirOutcome` (MirTypes' representation, an internal
+    struct, no vocabulary entry): decided, Limit, Deep or none. Its rank is private: its one combining operation is `Join` (decided over
+    Limit over Deep over none; commutative and associative, none its identity, decided its absorbing top), and a reader asks only
+    `IsDecided`, `IsLimit`, `IsDeep` or `IsNone`, so no reader can rank two outcomes. `MirTypes`' contract states the order and why once:
+    a decided part is the verdict whatever an unknown part is (SPEC 23.1.1: a decided Language violation is not "may be valid"), and a
+    verdict an unsupported part and a part past the bound both leave undecided is one failure with one record (SPEC 23.1.2), the located
+    `Unsupported_Kd` (DIAGNOSTICS rule 3), since raising the bound would still leave it undecided. Each walk composes its parts only by
+    Join and stops early only where no other part changes its answer (decided, the outcome's top; the holding walk's LoanOnly mode,
+    which reads no outcome, at Loan; a disjunction at yes; implementation review 4's N4);
+    each check records its own failure where it fails, from the Join of what met at its verdict
+    (`MirBorrows.Limit`), so independent checks at one subject keep their own records (MirReport merges one code at one subject).
+    - The memo below the Join: a walk's per-query memo (R4-M58) entered a Type at its first meeting, so a Type one query meets both past
+      the bound and within it answered by whichever meeting came first (`(Nested(R.init(r: value@ref), 40), Nested(R.init(r: value@ref),
+      8))` gave the depth limit, swapped `value = 99`'s conflict, as on dev). An outcome walk now enters a Type at the shallowest depth it
+      meets it (`MirDepths`: again where met shallower, at most once per depth within the bound, so linear), and a part past the bound is
+      Deep only where its Type is never entered within it, since a Type's parts are its own wherever it lies. The destruction walk's
+      outcome visitors (Observation's, A4's `Glue`) and the holding walk use it, one static policy over a per-query slot (`MirDepths`: 0
+      never met, one more than the depth entered at, `Past` met only past the bound; Deep where a slot stays `Past` at the walk's end, a
+      linear scan). The holding walk keys its slots by Type with one per mode (`MirModeDepths`, Reach's map `walked`; a LoanOnly part not
+      where its full mode was entered as shallow), since its mode bits gave the same symptom: the guard of `(N40(u), N8(u))`, `u` an
+      exclusive reference to a borrow, was Deep and `(N8(u), N40(u))`'s the write fact (it waited for WK, which owned Reach).
+      `MayNeedDrop`'s `AnyPart` keeps its once-per-query answer (generation).
+    - The walks: the destruction walk with `Observation`'s visitor (a known observer decided, where it stops; an abstract part not proven
+      Copy Limit, after which it goes on; Deep by `MirDepths`), with A4's `Glue` (never stops; its classes, Deep by `MirDepths` at the
+      evaluation's end, are read by `MirEffects.Outcome`) and with `MayNeedDrop`'s `AnyPart` (a disjunction for generation, no outcome); the holding walk (`Holds`,
+      `Past`, `Admitted`, `Members`, `Part`, `Stored`, `Inline` compose `Facts`, Loan and the guard's outcome, by Join; a loop stops once
+      it covers its mode's facts, the write fact being decided); `HoldsRaw` (a disjunction, 2b-5's).
+    - The readers: the guard (`HoldsLoans` reads `MirWrites` off the outcome; Reach compares it by equality); liveness, Locations'
+      borrowed roots, Activations' err(destroy) and Calls' referent store through `MirBorrows.Destruction` (decided or Limit observes,
+      Limit unproven, Deep unclassified, none shallow; Calls is unchanged and now reads Limit beside a part past the bound); Locations'
+      call store (the Join of W's Limit, its Deep fact and the retention limit, one record); A4's `Verdict` and A5's effect rule through
+      `MirEffects.Outcome` (Environment or Unknown, or a write key, decided); the drop tier (`Report`, `Ended`), the own-step pass
+      (`DroppedDeparture`) and PD13's hold (`Record`), each one record through `Limit`.
+    - Deleted re-rankers: `MirTypes.Decides` and `MirWrites`' ranking order; the `MirObservation` enum and `Observation`'s first-met answer
+      (Deep whatever else it reaches); the outcome walks' first-meeting memo and the holding walk's mode bits; Holding's fact bits and outcome table; `Members`' stop at its first non-none member;
+      `MirEffects.Undecided`; `Limits`, revision 2's per-subject grouping held to the view's end.
+  - Record: one code, `OwnershipDepthLimit_Kd` (Error, Resource, location-only; message "Ownership analysis reaches a Type whose nesting
+    passes an implementation bound", which also fits `CallRetention.Limit`'s height, path and keeper limits and a record at a declaration
+    or an obligation), under the new requirement `Ownership.DepthLimit`. The owner's answers (verbatim): on the category, 「G272: (1)」 (2026-10-27: Resource, one new
+    code); on the requirement member (PD21), 「G272 要件: (a)」 (2026-10-27: the code's approval covers `Ownership.DepthLimit`). No fact
+    (the planning session's Q2): R4-M51's records rest on Binding's unpublished bounds, and a `limit` fact would be invented evidence.
+    One recorder per analysis: `MirBorrows.Limit`, one record per failure (never held: a limit record, as a located `Unsupported_Kd`
+    is), and A4's `Verdict`.
+  - Drop-liveness (A5): a holder a kept Drop past the destruction walk's bound drops gets a drop slot right after its own, in its region,
+    whose state is always empty (`Holders`; the table is reset only for a view with such a Drop); that Drop uses the drop slot instead of
+    the holder and every kill of the holder kills it (`Liveness`). After every pass, the gather's drop tier reads each holder live only
+    through its drop slot: its Based pass and its Stored pass again, marked by the pass byte's bit 128, with that holder as via (`CheckSets`;
+    the Stored loop is one member both call). A candidate keeps the drop tier's `Tags` apart and a marker a drop stamp (`Candidates`);
+    `Takes` is either tier. `Conflict` passes over a candidate only the drop tier takes and returns it only where no real one conflicts;
+    `Report` records such a candidate, and `Ended` such a marker, as the depth limit at the drop-live holder's declaration. The readers that
+    only ask whether a candidate is taken (the effect rule's Limit loop, the initialization proof) read both tiers. An own-step entry the
+    drop tier finds is tagged apart (`OwnSteps`): a departure only it keeps open keeps SPEC 5.2.1 condition 3's Warning, as the base gives
+    it, with its witness by the one rule (the holder's next use in the location's chain, here its drop slot's; none past the chain, as the
+    base's records at depth 10), beside the depth limit at the holder's declaration (`DroppedDeparture`). A location's departure is the one
+    a counted pass gives where one stands; a departure only the drop tier gives is recorded only where none does (revision 2).
+  - Rule W and the referent store: `Writes` returns two facts: a Limit holder reached (R4-M147, unchanged) and a Deep holder whose step,
+    at W's fixed point, would change what W writes (`Changes`: reach a holder W does not, or, by R4-M154's ways, one W reaches only at
+    its first step or past a holder by another Place's Type; that step is left out, and a step that changes nothing decides nothing). At a
+    referent store whose referent's destruction passes the bound, a store of a Loan or an address stops at refs(S), as R4-M147's abstract
+    referent does, with the depth fact. The call's store is one verdict: `Locations` joins W's Limit, the Deep fact and the retention
+    limit and records once (`Limit`).
+  - Re-coded records: a borrowed root's Drop past the bound (`Locations`), err(destroy) past it (`Activations`), a call's retention limit
+    (R4-M51), A4's class `Deep` (`MirEffects.Deep`, set by `Glue.Deep`, carried by `Keys` and `Summary`; `Verdict`: the classes' one answer
+    (`MirEffects.Outcome`): decided (Environment or Unknown) records the row's code, Limit the located `Unsupported_Kd`, Deep the depth
+    limit) and A5's effect rule by the same answer. The old model's code map and the ledger's compared set pair the code
+    with the requirement (MIR-only: the old path keeps its own bound, 64).
+  - Supersedes in part: R4-M36 (item 8): "a growing one at the bound of 32, where HoldsLoans answers yes and Observes sets deep, the
+    caller's located `Unsupported_Kd` as A4's Limit is" now reads: at `MirTypes.Bound`, HoldsLoans answers yes for tracking and its guard
+    Deep, never the write fact, and Observation answers Deep; a check whose verdict rests on such a part records `OwnershipDepthLimit_Kd`
+    (reason no longer holding: the record was read as SPEC 8.15's instance this implementation cannot analyze; the owner chose Resource).
+    R4-M51: "A5 records a located `Unsupported_Kd` at the call" now reads "`OwnershipDepthLimit_Kd` at the call" (BU-36: a genuine limit
+    only); A4's null instance keeps its Limit. R4-M147: its Rule bullet's "a callable and a part past the bound may be an exclusive
+    reference" now reads "a callable may be one; a part past the bound is the walk's Deep fact"; its Representation bullet's "None, Through
+    and Limit, with Through over Limit over None" now reads "None, Through, Limit and Deep, read off the walk's `MirOutcome` (decided, Limit, Deep, none)"; its
+    walk bullet's located `Unsupported_Kd` for Deep now reads `OwnershipDepthLimit_Kd`; its Limit's-record bullet gains the Deep holder's
+    fact. R4-M58 (revision 3): "The Destruction walk enters each Type once per query" now reads: `MayNeedDrop`'s visitor enters each Type
+    once per query, the outcome walks' (Observation's, A4's `Glue`) at the shallowest depth they meet it (`MirDepths`), since past the bound
+    a Type's walk depends on where it is entered. R4-M22 (the MirDrops paragraph): a part past the depth bound is the class Deep, recorded as `OwnershipDepthLimit_Kd`; an atom
+    whose substitution fails stays a Limit, the located `Unsupported_Kd`.
+  - R5's codegen gate (R5's answer, as written): "the codegen gate is unchanged: A4's and A5's records do not refuse generation (R5-M4);
+    an A1 or A2 record of the bound refuses the body with its code (R5-M96)".
+  - Meanwhile on the default pipeline: each record that moves from `CallRetention.Limit`'s `Unsupported_Kd` to the depth code (made's,
+    ownLimitLocal's, DeepBuf.init's and ownDeep's `Nest` calls, lim's and lim64's `f(b)`, the Tall, Growing and Beyond calls, a default's
+    `Nest` call) is unpublished until R5's H3 (R4-M1), and the default pipeline reports nothing at those calls, before and after this
+    unit (a probe of the pins' programs under `CompilerPipeline.Legacy`); it accepts them, as it did, and no acceptance changes.
+  - Choice (WORKFLOW Full changes step 4; the R4 planning session, 2026-10-28): this design-first candidate (fe1ec9d37) over the
+    prototype-first one (`claude/a5-g272-proto` c9e309d99), by results: it meets the required meaning where the prototype keeps three
+    Language conflicts at a Function value at depth 33 (problem r2 §1 and §3; SPEC 23.1.1), and it goes through the owning components
+    while the prototype carries a `byte ignored` mode parameter steering Liveness; size (src net +265 against +271) and cost (both within
+    noise) did not decide; the prototype's branch and results stay as evidence. The owner's exceptions to R4-M119's one shared
+    representation unit at a time: G272 beside 2c-5's re-review, 「はい、始めて」 (2026-10-28); this revision beside WK, 「並べて今すぐ」
+    (2026-10-29).
+  - Revision 1 (implementation review 1, REJECT on B1; the planning session's design revision 1, 2026-10-29): design 2's own-step row read
+    "a Warning rejects nothing" as "no record is due", so a departure only a drop-live holder keeps open lost its Warning and recorded
+    nothing (owndtor and ownpast at depth 40); it now keeps the Warning beside the depth limit, as `deepAtReturn`'s are. With it: A4's
+    obligations and A5's effect rule rank Limit over Deep as the guard does (N3); the message names no operation (N5).
+  - Revision 2 (implementation review 2, REVISE on B2, 2026-10-29): revision 1's N3 wrote the ranking twice (the guard's switch and A4's)
+    and left A5's call-site records outside it, so a call whose W met a Limit holder and a Deep holder got both codes (`limit+deep 40`). The
+    ranking is now one answer, `MirTypes.Decides`, which every reader reads (the bullet above); a subject gets one limit record per view.
+    With it: the own-step Warning's witness is stated as the records carry it (N-a), and a location records the departure a counted pass
+    gives before one only the drop tier gives, whatever the entries' order (N-b: `two-owners 40` in both orders).
+  - Revision 3 (implementation review 3, REVISE on B3; the unit suspended under Q11, the owner asked
+    「G272 をどう進めますか？ (1) 一段上でもう 1 回 / (2) WK の後まで保留」 and answered 「[1]」, 2026-10-29: one more round, fixed one level higher): two reviews
+    found a reader ranking outcomes itself, revision 1's guard switch and A4's, then revision 2's `Observation`, whose first-met Deep made
+    `(Nested(0, 40), R.init(r: value@ref))` the depth limit instead of `value = 99`'s conflict (B3 (i)) and `clearGenDeep`'s referent
+    store the depth limit instead of `Unsupported_Kd` (B3 (ii)). A ranking rule every reader must apply leaves the next reader free to
+    break it, so the level higher makes the outcome a value only `Join` ranks (the bullet above), with the census of walks and readers, in
+    a behavior-preserving restructure and then the behavior change. With it, N1: `Limits` grouped by subject, which hid an independent
+    failure at one subject (err(destroy) past the bound beside W's Limit store at one `replace`) and scanned the view's records per entry;
+    records are now per failure and linear, and the four pins' order is revision 1's again. Below the Join the walks' first-meeting memo
+    gave the same symptom by the order of one Type's meetings; the outcome walks' memo enters a Type at its shallowest meeting (the bullet
+    above). `MirBorrows.Calls` needed no edit for it. The holding walk's half followed WK's merge (acc2f12ad), where Calls' `Keep` took
+    the depth fact and the Deep step's probe became `Changes`: under R4-M154 a probe `Write` would also change the existing targets' ways.
+  - Rejected: one tier (a deep Drop as a use is Language at the TypeDag rows; no use with a record at every deep Drop over-records the
+    nowrite rows, B3); exact walks for finite nesting (moves the threshold; G144's stack safety); a forward invalidated-Loans problem at
+    each deep Drop (a per-Loan bitset per location for a rare Drop); running A5 twice and keeping the difference (try-then-compare and
+    duplicate suppression); raising the bound to 64 (moves the threshold); a ranking rule each reader applies (B2, B3: the next reader
+    breaks it); grouping limit records by subject (N1: hides an independent failure).
+  - Out of scope, open: `HoldsRaw`, `MirStatic.RawHolding` and `RawStaticRead` (2b-5); Binding's `ContainsRawPointer` past depth 32 (BU);
+    A4's null-instance Limit (`TyCtxt.ReadableInstance`'s null mixes Binding's storage limit with other nulls until TyCtxt publishes the
+    outcome, BU); `MirWrites.Limit`'s "reached" rule beside Deep's "would add" (a later unit). Not temporary.
+  - Evidence (revision 3 with the holding walk's half, merged with dev acc2f12ad, WK): the mir Functional run with the ledger (24,906
+    tests, no failure) against `shared-base/acc2f12ad` (dev 501eb9712's ledger is the same): rows 3,414 to 3,416, 24 removed and 26 added
+    over 17 sources, the classes of revision 2's delta: 20 MIR-only `Unsupported_Kd` rows in 13 sources (retention limits, 6 complete
+    and 14 Binding-incomplete since G158 (3)) become the depth code at the same locations; 07dc9460e03d's and 0984e5818869's MIR-only
+    conflict at `value = 99` becomes the record at `let d`; 56024d19baf2's and e5c59f5f3cbf's both-side conflict becomes the old path's
+    alone beside the MIR's record. The holding walk's memo and `Changes` move no row. `classification.tsv` row a5-depth takes section *
+    (G158 (3)'s Binding-incomplete rows, a5-p13's on dev): unclassified 0, open (b) 140 (base 138), open blocking rows 104 of 627, as
+    the base. Cost against dev acc2f12ad (the G258 host as below, B built from f4f19739c with this change, 3 runs of 8 reps): A5
+    (step 4) B/A' 1.0088 (each run 1.0059 to 1.0142; B/A 1.0052, A'/A 0.9965; BU's heavy window beside it), step 2 B/A' 0.9953; Loan-set Bytes and problems equal on every program; Work
+    +1.34% (12,093,467 to 12,255,320, revision 2's delta); A5's cold allocation +37,360 B of 87,457,128 (+0.043%); warm steps 2 and 4
+    allocate exactly as dev; retained memory +51,576 B of 67,308,216 (+0.08%; A'-A 0).
+  - Evidence (revision 2, merged with dev 855c1ee31): the shared tests (`MirBorrowsTest`, `MirEffectsTest`, `TypeDagScalingTest`
+    `.DepthLimit`) pass 36 of 36 on both pipelines (33 counted, 3 kept apart: a5-w-40 at `store(d@uniq, value@ref)`, A4's nest and
+    tuple40 at `Self is Sink`); with dev's G158 (3) a parameter's Drop record lies at its Type occurrence (BU-48's locations, settled
+    (a)), so four shared rows read it there: deep's depth limit at `Nest<ref/i32 during a>`, deepAtReturn's Warning and depth limit at
+    `DeepStore`, and the guards shallowAtReturn and arrAtReturn at `Store` and `ArrStore`. The mir Functional run with the ledger (24,518 tests, no failure)
+    against `shared-base/855c1ee31`: rows 3,429 to 3,431, 24 removed and 26 added, row for row the delta fe1ec9d37 gave against
+    `shared-base/03d158d07`, revision 1 against 15beffcfb and revision 2 against 66c856d81 (no revision and no dev merge moves a row of
+    it), all the bound's, as design 2 predicted: 20 MIR-only `Unsupported_Kd` rows in 13 sources (retention limits and borrowed roots'
+    Drops) become the depth code at the same locations; 07dc9460e03d's and 0984e5818869's MIR-only conflict at `value = 99` becomes the
+    record at `let d`; 56024d19baf2's and e5c59f5f3cbf's both-side conflict becomes the old path's alone (its bound, 64) beside the MIR's
+    record. `classification.tsv` row a5-depth (b) takes the complete section's signatures from a5-p13: unclassified 12 (61 rows) and
+    open blocking rows 115 of 626, as the base. Cost of revision 2 against dev
+    66c856d81 (the G258 host: A' A's byte-identical copy, B built as 0.1.1+6b7187f44, sibling folders of one parent, interleaved per
+    program and rep, KIMI_CPU=2, tiering off, 3 runs of 8 reps over the 122 census programs, others' heavy runs beside them): A5 (step 4)
+    B/A' 1.0028 (each run 1.0025 to 1.0032; B/A 1.0095, A'/A 1.0067), step 2 B/A' 0.9959. Loan-set Bytes and problems equal on every
+    program; Work +1.34% (Holders counts its per-view scan of the Drop terminators); A5's cold allocation +21,384 B of 47,669,936
+    (+0.045%: the candidates' second Tags and the limit list); warm steps 2 and 4 allocate exactly as dev (BuildMir+A5 warm: nothing new);
+    retained memory with the analyses and the program alive after both runs +25,120 B of 46,545,584 summed over the programs (+0.05%; A'-A
+    0). Bind is unchanged by this unit (no Binding file; its warm allocation not measured here). Revision 1 measured against b610377e8:
+    A5 B/A' 1.0070, cold +21,264 B, retained +19,096 B.
+  - Tests: the new `MirBorrowsTest.AConflictOnlyDropLivenessGivesIsTheDepthLimit` (a borrowed deep root, a real use, a Loan reached
+    through the closure and its depth-10 twin, err(ended)'s γ kept by a drop-live holder, its twin at 10 and with a real use),
+    `MirBorrowsTest.AnOwnStepDepartureOnlyDropLivenessKeepsOpenKeepsItsWarning` (revision 1: owndtor and ownpast at 40, the Warning and
+    the depth limit; at 10 owndtor's Warning alone and ownpast nothing, as the base), `MirEffectsTest.AnUnsupportedPartOutranksAPartPastTheBound`
+    (N3), revision 2's `MirBorrowsTest.OneVerdictAnUnsupportedPartAndAPartPastTheBoundMeetAtGetsOneRecord` (`limit+deep` at 40 and 10, each
+    alone) and `ALocationsDepartureIsTheCountedOneBeforeTheDropTiers` (`two-owners` in both orders, and at 10), and
+    `MirTypesTest.APartPastTheBoundIsTheGuardsDeepOutcome` (with `limitDeep` at 40 and 10), and revision 3's (fail-first on revision 2)
+    `MirBorrowsTest.AnObserverDecidesBesideAPartPastTheBoundInEitherOrder` (B3 (i): observer first and last, at 40 and 10),
+    `AnAbstractPartBesideAPartPastTheBoundIsUnsupportedAtAReferentStore` (B3 (ii): at 40 and 10, and the abstract part alone),
+    `IndependentChecksAtOneSubjectKeepTheirOwnRecords` (N1: a `replace` at 40 and 10) and
+    `MirTypesTest.AWalksAnswerIsTheSameInEveryOrderOfItsParts` (Observation and the guard over a Tuple, an Array element and a struct's
+    Fields, a decided part before and after a part past the bound and a Limit part beside it, at 40 and 10), the memo's
+    `MirBorrowsTest.AnObserversTypeMetPastAndWithinTheBoundDecidesInEitherOrder` and
+    `MirEffectsTest.APartsTypeEnteredWithinTheBoundIsNoDeepInEitherOrder` (one Type at depths 41 and 9, both orders), the holding walk's
+    `MirTypesTest.AGuardsTypeMetPastAndWithinTheBoundAnswersAlikeInEitherOrder` (the guard of one Type at depths 41 and 9, both orders;
+    fail-first on f4f19739c, deep first Deep) and its scaling row
+    `MirTypesTest.AnOutcomeWalkEntersATypeAtMostOncePerDepth` (Fibonacci structs 60 deep: 557 entries over 62 Types, nothing Deep), and
+    at landing (implementation review 4's N1) `MirBorrowsTest.ADeepHoldersStepRecordsTheLimitWhereItWouldChangeWhatWWrites`: `Changes`'
+    clauses at 40 with their depth-10 twins (a holder reached only at the first step, past at another Place Type, E unreached: the
+    record; past at the same Place Type, E reached past or at the first step: none), and the invalid counterparts (a write read after
+    the call: the conflict beside the record or alone); with the way clauses removed the first and other-Place rows fail, with E's
+    exception removed the first-step E row; the
+    expectations (codes and the code lists their helpers filter by) of the
+    bound's pins change by the owner's decision: `AnUnclassifiedDestructionOrCallIsUnsupported`,
+    `AnOwnStepViewIsAProducerOnlyWhereAnAccessMayDepart`, `ADestructionMeetsItsOwnStaticAndTheLiveStaticLoans`,
+    `AnUninstantiableDefaultHidesNoRecord`,
+    `ALimitIsUnsupportedAndADerivedEffectReportsNothingRooted`, `ACopysFailureIsItsTemplatesOnlyWithinOneEvaluationRooted`,
+    `ACallOverRejectedStorageKeepsItsRows`, `MirEffectsTest.AGrowingRecursiveDestructionEndsAtTheBound` and `MirAnalysisTest`'s
+    `EachRecordingRuleNamesItsRequirement`, `EachRecordingRuleNamesItsBody` and `ADefaultsProblemsAreItsTemplates`.
+  - Numbering: R4-M153 was reserved for G272's chosen candidate by the R4 planning session.
 - **R4-M154 Retention per storage (WK, PLAN G276 with G279): a call keeps an argument's own value only in storage that can hold it,
   and the callables its contract hands its body retain as erased callees** (2026-10-29; design by the WK planning session (「WK
   G276/G279 準備書作成」, 2026-10-28; `r4-notes\wk-impl\design-r2.md`, one text replacing the first and Revisions 1–10), the
@@ -6925,26 +7128,27 @@ resumed by R4-M86 (2026-10-20).
     a borrow's outer Origin does, and gives no row.
   - The hold walk (items 2 and 5, R-B2, R-B4; the reviews' B1 and R2, R4's F1 and B2): `RetentionInput` records each raw input with its
     Type and `RetentionWalk` each hold of an output (a position of the result, or of input j's writable storage, whose Type is a raw
-    layer, an abstract part, a struct or an enum). One walk, `Binding.Held` (Binding.Retention.Rows.cs), goes from each hold through all
-    the call may write, by BU-1's one reach rule (a value stored at a writable position brings its whole Type), as `RetentionParts`'
-    writable positions do: every layer below but a callable's (`IsCallable`, which both read), a raw layer whatever its step, a shared
-    borrow or an rc or arc handle included, a nominal Type's Type arguments (as `RetentionParts` walks them: `Dictionary<K, V>`, which
-    declares no Fields, holds through `V`), and a struct's or enum's stored content (SPEC 5.7's inline storage: the base, Fields, Case
-    payloads and their Tuple and fixed-array elements), each struct or enum once per output (superseded by BU-35: each position, a
-    Type with what its declaration writes there, once per output). At each position, a raw input other than j
-    whose Type the position can hold (a raw layer agreeing with it with Origins fitted, their `TyCtxt.Erase` forms one Type, or an
-    abstract part) gets a Value row, never j itself; a raw layer stepping Unstated or Static (`StoredStep` on an instance's inline path,
-    its Origin's kind elsewhere, BU-24) unties the output (superseded in part by BU-40): `CallRetention.Untied` for the result,
-    `CallRetention.UntiedStores` (the inputs ascending, beside `Untied`; A5's 4b joins Φ_E into their write targets) for input j. So
-    `link(head: raw/Node, n: raw/Node)`
-    stores `n` into `head` through Node's `next`; `s.r@follow = p` through `S.r: uniq/(raw/i32) during a`, `Raw.initialize(r.q, p)`
-    through `R.q: raw/(raw/i32)`, `Raw.initialize(c.at, p)` through a Loan-kept `Cell.at: raw/(raw/i32) during a`, `s.x = Bx.init(v:
-    p)@rc` through `S.x: rc/Bx` (arc and `Option<rc/Bx>` alike) and a shared `Sh.r: ref/(raw/i32) during a` give `p`'s Value row, as
-    `g(p) -> R` does to the result; a direct `uniq/(raw/i32)` referent, `static` alike, is an untied store as `uniq/Option<raw/i32>` is,
-    and so are `Raw.initialize<raw/T>`'s `storage` and an input whose rc payload holds an allocated pointer. D6's unstated result layer
-    is one of the result's holds, so the walk decides its Untied too, and a `static` result layer now unties as a stored one does. A raw
-    input may have a Value and a Content row to one output. `Text.writer`'s Utf8Writer (`dispatch`, `pending`) is untied, and so is
-    every input storing one or a `DictionaryStorage.Handle` (`buffer`).
+    layer, an abstract part, a struct or an enum; superseded in part by BU-52: input j's holds are the positions the one walk names
+    for its storages, a by-value input's Fields, payloads and elements included, and `RetentionWalk` registers none). One walk,
+    `Binding.Held` (Binding.Retention.Rows.cs), goes from each hold through all the call may write, by BU-1's one reach rule (a value
+    stored at a writable position brings its whole Type), as `RetentionParts`' writable positions do: every layer below but a
+    callable's (`IsCallable`, which both read), a raw layer whatever its step, a shared borrow or an rc or arc handle included, a
+    nominal Type's Type arguments (as `RetentionParts` walks them: `Dictionary<K, V>`, which declares no Fields, holds through `V`),
+    and a struct's or enum's stored content (SPEC 5.7's inline storage: the base, Fields, Case payloads and their Tuple and
+    fixed-array elements), each struct or enum once per output (superseded by BU-35: each position, a Type with what its declaration
+    writes there, once per output). At each position, a raw input other than j whose Type the position can hold (a raw layer agreeing
+    with it with Origins fitted, their `TyCtxt.Erase` forms one Type, or an abstract part) gets a Value row, never j itself; a raw
+    layer stepping Unstated or Static (`StoredStep` on an instance's inline path, its Origin's kind elsewhere, BU-24) unties the
+    output (superseded in part by BU-40): `CallRetention.Untied` for the result, `CallRetention.UntiedStores` (the inputs ascending,
+    beside `Untied`; A5's 4b joins Φ_E into their write targets) for input j. So `link(head: raw/Node, n: raw/Node)` stores `n` into
+    `head` through Node's `next`; `s.r@follow = p` through `S.r: uniq/(raw/i32) during a`, `Raw.initialize(r.q, p)` through `R.q:
+    raw/(raw/i32)`, `Raw.initialize(c.at, p)` through a Loan-kept `Cell.at: raw/(raw/i32) during a`, `s.x = Bx.init(v: p)@rc` through
+    `S.x: rc/Bx` (arc and `Option<rc/Bx>` alike) and a shared `Sh.r: ref/(raw/i32) during a` give `p`'s Value row, as `g(p) -> R` does
+    to the result; a direct `uniq/(raw/i32)` referent, `static` alike, is an untied store as `uniq/Option<raw/i32>` is, and so are
+    `Raw.initialize<raw/T>`'s `storage` and an input whose rc payload holds an allocated pointer. D6's unstated result layer is one of
+    the result's holds, so the walk decides its Untied too, and a `static` result layer now unties as a stored one does. A raw input
+    may have a Value and a Content row to one output. `Text.writer`'s Utf8Writer (`dispatch`, `pending`) is untied, and so is every
+    input storing one or a `DictionaryStorage.Handle` (`buffer`).
   - The bound (the reviews' R1, R4's B1): a stored Type Binding does not instantiate (superseded by BU-36: it holds nothing, and its
     owner's Rejected storage passes through), and a struct or enum the walk reaches whose storage
     preparation does not complete (`PrepareTypeStorage`, BU-12's height and path limits, which a Type growing through an indirection
@@ -7260,6 +7464,8 @@ resumed by R4-M86 (2026-10-20).
     a hold). The memo key is (Type, written, lent): at most two visits per position and output, still linear (supersedes BU-35's key
     sentence).
   - One result hold: `BeginRetention` registers the result's whole Type; `RetentionWalk` registers writable positions only.
+    Superseded in part by BU-52 (no registration: `Hold` takes the result's whole Type and, for input j, the positions the one walk
+    names for its storages; a transfer operation's untied verdict is gated by `TransferWrites` as its rows are).
   - Rows from the input list after each output's hold walk: rule A (Unstated): every input i ≠ O keeps its own value and Chain, the
     written-through O its Chain only; R′ (Lent, not Unstated, the result): each raw input its own value and Chain. `Held` keeps a raw
     input's own value only at a layer stating an Origin or `static` and at an abstract part; at an unstated layer rule A decides,
@@ -8129,6 +8335,94 @@ resumed by R4-M86 (2026-10-20).
     dfl2 row, `OriginProofWorkloads`' `defaults` family (sizes 1–32).
   - Cost: src +80/−33 lines (+61/−20 besides comments, 7 of them `JudgeSelectedCall`'s signature wrapped), after the restructuring
     commit before it (Binding.Calls.cs split by responsibility); tests +113/−1.
+
+- **BU-52 Rule A starts at every position the one walk names for input j: a by-value input's raw layers are storage the call writes,
+  its cleanup among the writes; the class of shadow false errors of A5's whole-value Φ_E at calls as the owner's interim** (2026-10-29;
+  PLAN G266, unit bu61 and its fix round 1; BU's design `g266\design.md` with R4's sizing of option (c), `r4-notes\g266-c\sizing.md`; the
+  owner, 2026-10-29, verbatim 「暫定として認める (推奨)」 on BU's question "For G266, do you accept the six shadow-only false errors as an
+  interim and land it?", the option read
+  「暫定として認める: G266 を (a) で取り込む。MIR 側だけの誤エラー 6 本は、部品単位の raw 到達（G264 U2）が入るまでの暫定として認める。」) SPEC
+  15.6.4, 4.9.6, 16.3.1, 16.3.3, 5.2.1.
+  - Rule: rule A's hold walk (`Hold`, `Held`) starts at the result's whole Type and, for input j, at each position the one walk
+    (`StorageWalk` from `RootWalk`; R4-M154 r2.3) emits for j's storages, with the Type its declaration writes there and the instance
+    holding it (`storageHolds`). A raw layer without an Origin that a by-value input holds in a struct's Field, an enum's payload, an
+    Array's element, a Type argument's Field at the instance or behind a `uniq` Field is then storage the call writes through j, as a
+    borrowed input's referent is: j keeps its chain, every other input its own value and chain, untied (`writeVia(x: Plain)`,
+    `consumeW(x: Writer)`, `consume<Array<Writer>>`: `own {0 Chain}, reached {0 Chain} untied`). Supersedes in part BU-30's
+    "`RetentionWalk` [registers] each hold of an output" and BU-40's "`RetentionWalk` registers writable positions only": the one walk
+    does. Deleted: `RetentionWalk`'s hold registration, `MayHold`, `retentionHolds` and `AddErasedSignature`'s hold bookkeeping.
+  - A published transfer operation writes only its own outputs (`TransferWrites`, SPEC 4.9.6, 15.7), which `Hold` reads once for both
+    rule A's rows and the untied verdict: at an output it does not write, a raw layer gives no row and unties nothing, so an added value
+    (`a.append(.A(slot@raw))`, `insertOrReplace`'s value, a struct's Field, an Option's Type argument) has no record there. Before fix
+    round 1 that output kept `own {}, reached {} untied`, which handed what the added value addresses Φ_E: appEnumOk, dictEnumOk and
+    appStructOk erred at `y = 5` on the MIR, and dev's optAppOk and appTupleOk (the same row from a Component); all are valid now, and
+    RetentionTest's `append` of a `raw/(raw/u8)` and `exchange`'s `with` lose that record. Rejected: a clause per operation or input kind.
+  - Cause: two owners of "the storage the call may write through input j". The one walk reached a by-value input's Fields, payloads and
+    elements past their layers; the hold walk started from the atom walk's positions writable by variance along a Type's Components,
+    which a nominal's Fields are not, so a Tuple element and a Type argument had rule A's rows and a struct's Field none (RetentionTest's
+    `Pp` row pinned it beside its Tuple and Option twins).
+  - Callee cleanup (15.6.4 "including callee cleanup", 16.3.3): a callee's destruction of a by-value input writes only into the storages
+    the walk names for that input, so its drop's rows are among the call's (`consume<Writer>` = BU-47's Writer drop row at input 0); no
+    separate composition.
+  - Verdicts (MIR, shadow): viaBad, via2Bad, consumeWBad, consumeDrop2Bad, arrConsumeBad, optBad, boxPlainBad, arrPlainBad and uBad err
+    at `y = 5` (accepted before), and viaUntiedBad does (`x.p` as `Plain.init` left it may address storage the body does not own, R4-M116
+    S2's hiddenInit), as do three forms by a constructor's contract however `slot` is used (the reviews' genPOk, boxPlainOk and deepOk,
+    pinned as genUntiedBad, boxUntiedBad and deepUntiedBad): `Bx.init(item: x@move)` after `x.p = slot@raw` has an untied result, so the
+    box's `item.p` may address such storage, and `Outer.init(inner: Plain.init(q: w..))` may write w's chain through `inner.p` as
+    `Plain.init` left it. tupOk, viaQuietOk and consumeQuietOk stay valid. The default pipeline is unchanged (its old analysis reads no
+    retention).
+  - Interim (the owner's words above; then, on BU's question of 2026-10-29
+    「G266 の暫定を、同じ原因の誤エラーの類全体（今回見つかった4本を含む）に広げますか？」, verbatim 「類として認める」: the interim covers the
+    class with this cause, not only the six). Class: A5's whole-value Φ_E at calls (R4-M120, departure 1): where a call's row writes
+    through an argument whose value carries Φ_E (from an untied constructor, the untracked rule or a parameter), W reaches E at its first
+    step, and at a call E receives every input the row retains, so a W reaching E keeps every chain the whole value carries, though by
+    parts the part carrying Φ_E was rewritten or cannot hold the stored value. Pins (MirBorrowsTest; each a MIR error at `y = 5` on a
+    valid program): the six, litDropOk, lit2DropOk and litObjOk (R5-M129's) and viaOk, consumeDrop2Ok and arrConsumeOk (the argument's
+    own chain), and via2Ok, deepQOk, enumBOk, optOk, genPLateOk and arrPlainOk (input 1's chain, y's Loan). The question's four forms
+    included genPOk, which R4's review showed is a correct error (above); the class is as the owner accepted it. Dev's viaRefOk and
+    flushOk are this class at a call, E reached past the borrowed holder; dev's inlineOk, a direct store in the body, has the same
+    whole-value Φ_E. Removal condition: part-level raw reach (PLAN G303, G264 U2), before H5. arrConsumeOk and arrPlainOk have a second
+    Φ_E source, `append`'s untied receiver store 0 (rule A at the element storage it writes; arrTup2Ok errs on dev from it alone), so they
+    flip back only when that row's reading is settled too (PLAN G264's arrAppendOk item, R4's U2), and are correct errors if it stands.
+    The old analysis reports no conflict at `y = 5` in any of them, and `check` accepts each program but litObjOk's, which has an
+    unrelated pre-existing `Unsupported_Kd` at WLeaf's drop `*self.p = self.q` (both pipelines, dev too); CLI probes on the built
+    Kimi.dll, and for the interim test's ten MirBorrowsTest's default-pipeline assertion. R5's conditions for accepting (a), each met for
+    every pin: that acceptance shown; each pin's comment names the class, this entry and G303 and says it flips back; G303 names them;
+    R5-M129 amended; both owner answers quoted here.
+  - Rejected: (b) holding G266 until G264 U2, which keeps nine unsound acceptances on both pipelines; (c) A5 reporting the
+    whole-value-Φ_E route as a located Unsupported_Kd (R4's sizing): A5 has no route fact (E's state has no provenance, Φ_E one shared
+    element, holders no parts); its side-table experiment turned 36 pinned tests Pass→Fail, about 30 of them true errors downgraded to
+    Unsupported_Kd, and a precise form is G264 U2's part-level reach; walking Fields in `RetentionWalk` (a second `HeldParts`);
+    composing each by-value input's drop rows (drops only, a second rule for one write).
+  - Tests: RetentionTest `AByValueArgumentsLayersAreStorageTheCallWrites` (five kinds, failing before, and a `ref/(raw/u8)` twin),
+    `AConsumingCallRetainsItsArgumentsCleanup`, the `Pp` row and `TransferOperationsRetainBorrowedArgumentsByTheirChains`' rows of an
+    added struct and enum value (failing before) and of the two lost records; MirBorrowsTest
+    `ACallWritesThroughTheRawLayersOfAByValueArgument` (with the three constructor-contract errors),
+    `ATransferOperationWritesNoRawLayerOfAnAddedValue` (failing before) and `AWholeValueEscapeKeepsByValueTwinsErringInTheInterim`
+    (its default-pipeline source is the ledger's one (b) acceptance program of this entry, `classification.tsv` a5-writes), and
+    R5-M129's test re-expected.
+
+- **BU-53 An instance accessor's body is a derived instance body: a direct base call takes lexical self and the lexical declaring
+  struct from `TyCtxt.EnclosingFunction` of its scope** (2026-10-29; PLAN G301, BU's Minor unit bu63, on bu60's `EnclosingFunction`)
+  SPEC 6.4.4, 11.3, 11.3.1.
+  - Reading (the owner, 2026-10-29, verbatim 「含める (推奨)」, choosing 「含める: インスタンス accessor の本体は SPEC 6.4.4 の derived
+    instance body に含める。base.f() は getter/setter でも使える。」): `base.f()` is available in a derived Type's getter and setter.
+    A reading, not a revision: SPEC is unchanged.
+  - Rule: lexical self and the declaring struct are those of the function whose body holds the reference, which bu60's one scope walk
+    answers (`EnclosingFunction(scope)`; a definition's is that of the scope declaring it): a named function, or a custom accessor's
+    executing function, whose symbol publishes the receiver slot (the accessor's `self`), the container and the body. A static
+    accessor has no receiver (11.3.1) and keeps `InvalidBaseCall_Kd`; an anonymous function still needs an explicit `self` capture
+    (`BaseReceiver` ends at the first activation that is not anonymous, none in an accessor's body). Receiver modes are the ordinary
+    call judgment (an exclusive base function from a getter: the method twin's `NoApplicableOverload_Kd`; from a setter: its
+    `Unsupported_Kd`, STATUS' exclusive ObjectCallCompatible limit); an accessor body has no 6.4.5 override evidence (accessors are
+    never virtual, 6.4.1).
+  - Cause: `Binding.BaseCalls` kept its own walk over scope Functions, which an accessor's scopes do not set: a false
+    `InvalidBaseCall_Kd` ("requires a derived instance function") in every getter and setter, on every pipeline. The walk is deleted.
+  - `Binding.ObjectViews.FindObjectErasure` (6.4.5's lexical self of an override body) reads the same `EnclosingFunction`; its own walk is
+    deleted too (review 1, B1), so `BaseReceiver`'s `lexical` has one producer.
+  - Tests: `BaseCallBindingTest`: the native fixture `BaseCallGetter` (a getter, the original default), a setter's and a `[self]`
+    Closure's rows in a getter, the capture-less Closure's reason and the warm getter row fail before; the static accessor's row
+    is their twin.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
@@ -9178,7 +9472,9 @@ structure is recorded here by the unit that first implements it.
     method or a specialization of a generic struct), so a pure item substitution cannot carry it, and two slot-bearing levels fit in no one
     `Declaring`. The fix, a representation of the enclosing-instance chain in a call's substitution, changes shared structure under the full
     process: PLAN G149, R5-M40's removal condition, scheduled inside R5 before its exit, so the gap stays `[Transitional("R5")]`
-    (superseded by R5-M146: stage R7, the owner's PD27 list).
+    (superseded by R5-M146: stage R7, the owner's PD27 list). Amended by R5-M157: the gap also covers a definition whose binder declares
+    no slot and whose substitution binds no Self or declaring Type (a Field initializer's Closure, a function declared in it), until
+    Binding publishes the enclosing instance of every nested definition.
   - Rejected: widening `CallDeclaringType` to the nearest slot-bearing enclosing declaration (two levels stay unrepresentable, and legacy
     CallPlans change); the collector testing `IsRequirement` or `IsVirtual` (syntax in the Backend; `Dispatches` publishes it); targets per
     operand of every statement (a site would hold several).
@@ -11584,6 +11880,7 @@ structure is recorded here by the unit that first implements it.
     - reusing FixedArray for an Array (R4's one-meaning rule);
     - a separate `Collection` or `ArrayLiteral` path beside the aggregate's (design review 1's B1);
     - a new rvalue kind, CompilerFunctionKind or IntrinsicId (PD21).
+  - Amended by BU-52: litDropOk, lit2DropOk and litObjOk err on the MIR as an owner-accepted interim until part-level raw reach (PLAN G303).
 - **R5-M130 The BuiltinFormat shim, user-formatter wrappers and the erased writer in MIR code generation (C9b)** (2026-10-26, C lane; plan
   C9b, package C 3.2, PD2, PD3, PD21, K package 4.5 rows 2 and 6; SPEC 6.4.6, 7.7.4, 8.6.3, 22.5.1, 22.9.2, 22.9.4, 22.10.1, 22.10.2,
   22.10.5; the planning session's go and rulings Q1-Q8 on C9b's design, `c9b-design.md` and `c9b-go.md`; under R5-M18 form 2 (G:format),
@@ -12583,3 +12880,42 @@ structure is recorded here by the unit that first implements it.
     capturedProjection, `AnAbstractLocalIsABrokenContractInACompleteCompilation` (a forged local typed by a slot) and LayoutTest's
     `AnAbstractTypeIsRejected` threw on dev `acc2f12ad` and pass. Valid programs are unchanged: an abstract Type reaching Walk always
     threw.
+- **R5-M157 A nested definition without its enclosing instance is the EnclosingInstance gap (fi-closure, interim)** (2026-10-29,
+  planning session; PLAN G300; amends R5-M43; Major) SPEC 6.1.3 and 6.3.3: an instance of a definition generic in its
+  context holds the instance it instantiates in. A Field initializer belongs to the declaring Type: every constructor runs it, and it is
+  judged under the Type's premises, never under a constructor's signature. Binding publishes no enclosing instance for a Closure in a
+  generic container's Field initializer, or for a function declared in it:
+  - `TyCtxt.EnclosingFunction` is null, since no function encloses it.
+  - `Binding.ClosePartCore` closes a Closure Type only under its enclosing function's instance. So the Closure Type in each
+    constructor's instance has no context, and `SubstOfClosure` falls back to the identity.
+  - R5-M43's check did not apply, and `Instantiable` met the body's open Types. On a valid, complete program that was
+    `InternalInvariant_Kd` under sel, and at default `check` from G2. For a Closure naming no slot it was one identity item shared by
+    every instance.
+  - Rule (`InstanceCollector.CarriesInstance`, in `Admit`, the path every request passes through): the substitution of a definition
+    generic in its context carries the instance it instantiates in. With an enclosing function that instantiates, that is `Carries`
+    (R5-M43, unchanged). Without one, it is the binder's own slots, a Self or a declaring Type.
+  - A binder that declares no slot of its own (its schema), with a substitution that binds no Self and no declaring Type, is the
+    `EnclosingInstance` gap (R5-M146's row): `Unsupported_Kd` at each requesting site, which for a Closure is its literal and its call.
+  - A binder with slots stays `Instantiable`'s concern: a forged identity is still `InternalInvariant_Kd`
+    (`AnOpenRepresentativeIsABrokenContract`).
+  - An accessor's definitions have their executing function from bu60 (PLAN G157 (49)). So a Closure in a getter is admitted per
+    instance, and a function nested in one is R5-M43's gap at its call.
+  - Behavior change: under sel, `fieldclosureplain` and `erasedplain` (a Field initializer's Closure that names no slot, called or
+    erased) become `Unsupported_Kd`. The default's old generator already refuses them with `GenerationFailed_Kd` ("Generic closure
+    requires its enclosing concrete substitution").
+  - Removal condition (BU's fact): `TyCtxt.EnclosingFunction` gives every nested definition the declaration whose instance it holds,
+    and a Field initializer's definitions get their declaring Type. Binding then closes such a Closure Type under any instance of that
+    Type, with a context that binds the declaring Type only. The else branch goes, and these forms are admitted per Type instance, one
+    item shared by every constructor and member.
+  - Rejected: reaching the Closure through each constructor instance's body under that body's substitution. That makes one key per
+    constructor, under the constructor's Origins and inputs, against SPEC 6.3.3 and 6.1.3's declaration reference. A method calling a
+    stored Closure Field is not a constructor either.
+  - Rejected: keys the collector forms alone, with the Closure Type left without a context. `ClosureErasure` is keyed by the erased
+    Closure Type, so `Box<i32>` and `Box<i64>` would share one adapter: wrong code.
+  - Rejected: a gap on an identity or empty substitution alone. A forged identity of a generic function is a broken contract, not a
+    gap.
+  - Verified (`InstanceCollectorTest.DefinitionsOutsideAFunctionBodyNeedTheirEnclosingInstance`, fail-first): `Unsupported_Kd` at the
+    literal and the call for an initializer's Closure (also with two constructors, and naming no slot), at the literal when it is
+    erased, at a Closure declaring a function, and at the call of a function nested in a getter. No record and one item per instance for
+    a Closure in a getter, a constructor and a method. A closed struct's initializer Closure is a root. Every admitted representative
+    closes its body, and `AnOpenRepresentativeIsABrokenContract` is unchanged.

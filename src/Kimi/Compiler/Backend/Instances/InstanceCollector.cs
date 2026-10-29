@@ -54,12 +54,14 @@
 // environment, Agrees' signature under a witness's substitution whose Self the call's composition made, Bodyless's intrinsic row's Type
 // argument, a part of the Item Type its site made).
 // Admission (K 4.6, X19): a new key is admitted once; its representative is the first composed substitution or Type, erased only into the
-// key (KD3). A call of a nested function whose substitution does not carry its enclosing instance (DECISIONS R5-M43), a substitution or
-// Type whose storage is a limit (Made), OCC-X's refused witness and a requirement call's or requirement Item's witness without a MIR body
-// (Called) are the capability table's gaps (an access of a static of a generic
-// container's group is none: its declaration is, X33 (a), R5-M82); depth past 128, 16 ancestors of the same definition and 1,024 items of
-// one definition are GenerationResourceLimit_Kd; a representative that is open or leaves its body open, and a requirement call of a closed
-// Self without a witness, are broken contracts.
+// key (KD3). A request of a definition generic in its context whose substitution does not carry the instance it instantiates in
+// (CarriesInstance: a nested function's enclosing instance, DECISIONS R5-M43; a Field initializer's Closure or a function declared in it,
+// whose binder declares no slot and whose substitution binds no Self or declaring Type, R5-M157, until TyCtxt.EnclosingFunction gives
+// every nested definition the declaration whose instance it holds, BU's fact), a substitution or Type whose storage is a limit (Made),
+// OCC-X's refused witness and a requirement call's or requirement Item's witness without a MIR body (Called) are the capability table's
+// gaps (an access of a static of a generic container's group is none: its declaration is, X33 (a), R5-M82); depth past 128, 16 ancestors
+// of the same definition and 1,024 items of one definition are GenerationResourceLimit_Kd; a representative that is open or leaves its
+// body open, and a requirement call of a closed Self without a witness, are broken contracts.
 // A refused edge is dropped and collection continues.
 // Records (DECISIONS R5-M151): every record goes through one path (Report). A broken contract is InternalInvariant_Kd where Binding is
 // complete; in an incomplete compilation a fact the collector reads may be undecided because it rests on a part Binding rejected, which the
