@@ -270,10 +270,10 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   included, and the `tests/mir` goldens are shared; a test file follows the file it tests. One stream at a time changes a
   shared file: before the unit starts, its planning session records the hold (stream, branch, files) in PLAN §3 on dev
   and removes it in the merge that brings the unit into dev; the other stream merges dev before its next change to that
-  file. The same protocol covers these files outside Mir (DECISIONS R5-M7): `Core/Compilation.Pipeline.cs` with `Compilation.Switch.cs`,
-  `Binding/TyCtxt.cs` with `TyCtxt.Substitutions.cs`, `TyCtxt.Effects.cs`, `TyCtxt.Retention.cs` with `TyCtxt.Retention.Calls.cs`,
-  `BindingModel.cs`, `Binding.ClosureInstances.cs`, `Binding.RequirementInstances.cs`, `KimiLibraryCatalog*.cs`,
-  `src/Kimi/Checking/Hover/HoverBuilder.cs`, `src/Kimi/Diagnostics/DiagnosticRequirement.cs` and
+  file. The same protocol covers these files outside Mir (DECISIONS R5-M7): `Core/Compilation.Pipeline.cs` with
+  `Compilation.Switch.cs`, `Binding/TyCtxt.cs` with `TyCtxt.Substitutions.cs`, `TyCtxt.Effects.cs`, `TyCtxt.Retention.cs` with
+  `TyCtxt.Retention.Calls.cs`, `BindingModel.cs`, `Binding.ClosureInstances.cs`, `Binding.RequirementInstances.cs`,
+  `KimiLibraryCatalog*.cs`, `src/Kimi/Checking/Hover/HoverBuilder.cs`, `src/Kimi/Diagnostics/DiagnosticRequirement.cs` and
   `tests/xUnitTest/MirDifferenceLedger.cs`. R5 puts new Binding views in new partial files and batches its shared MIR edits
   into windows (W1, W2 of the R5 plan §3.5), each held the same way.
 - **R5 progress (DECISIONS R5-M8)** ended with R5's exit (DECISIONS R5-M148); R6-gen's metrics and stop rules are the R5 and R6

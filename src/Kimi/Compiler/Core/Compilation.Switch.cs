@@ -1,14 +1,14 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the Transitional pipeline switch: the pipeline (plan 12.1) and the code generator (R5 PD4) a compilation runs, and the compiler
-// identity they mark (SPEC 23.2.1).
+// identity the process defaults mark (SPEC 23.2.1).
 // Input: KIMI_PIPELINE and KIMI_CODEGEN, read once per process. Output: the process defaults (DefaultPipeline, DefaultCodegen), a
 // compilation's selection (Pipeline, Codegen), which the analysis entry (Compilation.Pipeline.cs) and the generation entry
 // (Compilation.Generation.cs) follow, and CompilerIdentity.
 // Invariants: the type initializer reads both variables once, so every thread gets the one pair the environment names (PLAN G199); MIR
 // code generation needs the mir pipeline (R5 PD4); changing either selection revokes prior analysis.
 // Must not: read the environment again, fall back silently from an invalid value, or decide what a selection runs (the entries do).
-// Removal (G0 design §5): G2 drops PD4's pairing, G4 the code generator selection, H12 the rest.
+// Removal (DECISIONS R5-M152): G2 drops PD4's pairing, G4 the code generator selection, H12 the rest.
 
 namespace Kimi.Compiler;
 
