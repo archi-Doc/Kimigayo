@@ -60,7 +60,7 @@ internal sealed partial class MirBuilder
 
     // SPEC 4.6.1, 4.7.1, 22.5.2 (DECISIONS R5-M84, R5-M154): a position as the isize a selection reads, its value compared mathematically:
     // the value where isize holds it, else -1 (Unresolved), which the selection's one bounds check rejects at the selection; it has no check
-    // of its own. A Type whose range lies within isize's (Within: i8 to i32 and u8 to u32 on a 64-bit target) converts proven; another is
+    // of its own. A Type whose range lies within isize's (Within: i8 to i64 and u8 to u32 on a 64-bit target) converts proven; another is
     // first compared with isize's extremes in its own Type, the minimum only where it is signed. A Type parameter's range is its instance's:
     // it is compared with 0 in its own Type, a negative value being -1, which every selection rejects as it rejects any negative position
     // (SPEC 4.6.3), and then, by a Proven Cast to u128, which holds every nonnegative value of every PrimitiveInteger Type, with isize's
