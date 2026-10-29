@@ -358,12 +358,13 @@ public class MinimalEmissionTest
     internal static string Problems(Compilation c)
         => string.Join(" | ", c.Problems.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}"));
 
-    // The failure message of an analysis or generation assertion: the results, the old path's records (requirement, code and location) and,
-    // under mir, the problems with their Op. It only reads, since a message argument is evaluated whether or not the assertion fails.
+    // The failure message of an analysis or generation assertion: the results, the old path's records (requirement, code and location) and
+    // the problems with their Op, the MIR's records among them on every pipeline (DECISIONS R5-M156). It only reads, since a message
+    // argument is evaluated whether or not the assertion fails.
     internal static string Describe(Compilation c, string? error)
         => $"{error}; Binding={c.Binding.Result}; Startup={c.Binding.Startup}; Analysis={c.Analysis}; " +
-            string.Join(", ", LegacyRecords.Of(c).Select(static x => $"{x.Requirement} {x.Code} {LegacyRecords.Location(x.Node)}")) +
-            (c.Pipeline == CompilerPipeline.Mir ? "; " + string.Join(", ", c.Problems.Select(x => $"{x.Code} {HirTables.Op(c.SyntaxOf(x.Subject))}")) : string.Empty);
+            string.Join(", ", LegacyRecords.Of(c).Select(static x => $"{x.Requirement} {x.Code} {LegacyRecords.Location(x.Node)}")) + "; " +
+            string.Join(", ", c.Problems.Select(x => $"{x.Code} {HirTables.Op(c.SyntaxOf(x.Subject))}"));
 
     // SPEC 8.6: an effect bound rejects its conformance at Binding for the Loans and calls, and after ownership analysis
     // for the destructions the implementation's bodies actually perform (their planned cleanups).
