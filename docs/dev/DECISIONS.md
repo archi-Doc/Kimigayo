@@ -5668,6 +5668,22 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the SPEC blocks (MirCensusTest's rows and the KIMI_MIR_DIFF rows of GenericOwnershipCaseTest and
     MirDifferenceTest.RequestedCorpus, under (S) and under the proven-only reading); against dev the whole change removes exactly
     pair-cases' six a5-writes rows.
+- **R4-M156 G161, A5's part of SPEC 6.3.4's completion rule: a raw Place borrow's Loan is its fresh anchor's** (2026-10-30; the R4
+  planning session's design `r4-notes\g161\design.md` revision 3, design review 3 ACCEPT; Major, two commits) SPEC 5.2.2, 15.6.2,
+  15.6.3, 5.2.1, 5.7.
+  - (1) The raw anchor. A Loan whose Place passes a raw Deref is a raw Place borrow's: its referent is a fresh anchor that "recovers no
+    owner or Loan" and is not compared with Places not derived from it (SPEC 5.2.2, 15.6.2's table). `MirBorrows.Loans` publishes it
+    (`Anchored`) and `Hits` lets no access of any kind reach it; the shallow kinds' stop at a raw Deref past the access becomes part of
+    that rule (its clause is deleted). Supersedes design A3 §5's "raw-anchored chains compare only through the same raw Deref" and the
+    deep kinds' within(X, A) across a raw Deref that `Hits` kept from A3's step comparison (E3, R4-M66): the reason to compare a raw
+    borrow's Loan with the pointer's holder, that the Loan sits on the holder's path, does not hold under 5.2.2, where the anchor starts a
+    path of its own and a `uniq` raw borrow's exclusivity "rests on this promise alone" (a read or a second raw borrow through the same
+    pointer is an unsafe obligation). Reading (design review 3, N4): 5.2.2's anchor governs every raw Place borrow's Loan, `during self`
+    storage and object payloads included, while what the pointer addresses and its authority stay 5.7's and 5.2.1 condition 3's, so where
+    a conflict came only from the raw hit the own-step Warning stays. Places derived from the anchor (reached through the borrow's
+    result) and parent Loans of a Reborrow through a reference reached by a raw pointer stay checked. It removes MIR-only false errors at
+    a Move, an exclusive or shared borrow, an activation and an observing destruction of the pointer's holder, a read and a second raw
+    borrow through the same pointer; the old path accepted each.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
