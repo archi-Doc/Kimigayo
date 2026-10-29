@@ -774,7 +774,7 @@ public sealed partial class Binding
                     return this.Fail(node, BindingFailure.InvalidAssignment);
                 }
 
-                return Complete(node, symbol.Type is { } field ? this.ReadHolder(field, node, node) : null);
+                return Complete(node, this.MemberRead(node, symbol, scope));
             }
 
             var operation = write ? property.Setter : property.Getter;
@@ -838,17 +838,12 @@ public sealed partial class Binding
             }
         }
 
-        var type = symbol.Type;
-        if (node is MemberAccessKoto member && type is not null && this.memberSelections.TryGetValue(member, out var selection) && selection.DeclaringType is { } declaringType)
-        {
-            type = this.PartType(type, declaringType);
-        }
-        else if (type is null)
+        if (symbol.Type is null)
         {
             this.ConsultTypeSource(symbol);
         }
 
-        return Complete(node, node is MemberAccessKoto && type is not null ? this.ReadHolder(type, node, node) : type);
+        return Complete(node, node is MemberAccessKoto ? this.MemberRead(node, symbol, scope) : symbol.Type);
     }
 
     private BoundType? RequireType(Koto node, BindingScope scope, BoundType? expected)
