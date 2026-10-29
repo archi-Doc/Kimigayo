@@ -235,6 +235,56 @@ public sealed partial class Binding
         }
     }
 
+    // Whether `type` names an Origin that local inference has not solved yet (SPEC 15.4.4), at any depth.
+    private static bool NamesInferredOrigin(BoundType type)
+    {
+        if (!type.CarriesOrigin)
+        {
+            return false;
+        }
+
+        if (Inferred(type.Origin))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (Inferred(type.OriginArguments[i]))
+            {
+                return true;
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (NamesInferredOrigin(type.Components[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+
+        static bool Inferred(BoundOrigin? origin)
+        {
+            if (origin is null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (Inferred(origin.Operands[i]))
+                {
+                    return true;
+                }
+            }
+
+            return origin.Kind == OriginKind.Inference;
+        }
+    }
+
     // SPEC 15.4.4: whether a written Type argument is the binding except in Origins it omits, which local inference would solve.
     private static bool SameExceptOmittedOrigins(BoundType written, BoundType binding, int depth)
     {
@@ -287,7 +337,8 @@ public sealed partial class Binding
 
     // SPEC 10.7, 15.3.7: a Function value converts to an expected Function Type of its storage where it meets it, as a Closure or a
     // Function Item erases (ErasesToFunction), also as a Tuple or array literal's element: a contract that does not fit fails the value
-    // with that conversion's own record (RecordMismatch), never a mismatch of the literal holding it.
+    // with that conversion's own record (RecordMismatch), never a mismatch of the literal holding it. An expected Type naming an Origin a
+    // local still infers (SPEC 15.4.4) is judged by the local's fit once that Origin is inferred.
     private bool FailsFunctionConversion(Koto node, BoundType actual, BoundType expected)
     {
         if (expected.Kind != BoundTypeKind.Function || actual.Kind != BoundTypeKind.Function || ReferenceEquals(actual, expected) ||
@@ -296,7 +347,7 @@ public sealed partial class Binding
             return false;
         }
 
-        var fails = !this.CheckTypeUse(actual, expected, node);
+        var fails = !NamesInferredOrigin(expected) && !this.CheckTypeUse(actual, expected, node);
         if (fails)
         {
             this.FailMismatch(node, node, actual, expected);

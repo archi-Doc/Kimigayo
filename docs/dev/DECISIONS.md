@@ -5494,7 +5494,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     set by FunctionFits, ContractFits, ConversionContractFailure and ConditionContractFailure; read by `ExtractOriginPremises`), and a
     Function value's conversion proves its own well-formedness from it (`FailedSignatureWellFormedness`). A Function value converts to
     an expected Function Type where it meets it (`FailsFunctionConversion` from `BindAndAdaptNode`, beside a Closure's or a Function Item's erasure), so a failed
-    contract is the conversion's own record at the converted value, also as a Tuple or array literal's element (c2, c4).
+    contract is the conversion's own record at the converted value, also as a Tuple or array literal's element (c2, c4); a target that
+    names an Origin a local still infers is judged by the local's fit after that inference (`NamesInferredOrigin`; the S3 demo).
   - Record classes (SPEC 23.1.2): an instantiated Type's well-formedness at a call, an input's as a result's, is an ownership
     obligation (`RequireWellFormedOutlives`), as an annotation's is; a Type's own clause at an input stays a Binding `declared` record.
   - Rejected: every relation and clause as an obligation (t7c's clause record dies beside the Type-constraint failures); input
