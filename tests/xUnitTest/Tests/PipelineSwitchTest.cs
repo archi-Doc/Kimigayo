@@ -18,8 +18,10 @@ namespace XunitTest;
 /// <c>kimi test</c> publishes its records as <c>kimi build</c> does.</summary>
 public sealed class PipelineSwitchTest
 {
-    // A position of a Type parameter is the MIR's one Unsupported record here, a form the old path accepts, until PLAN G167 builds it.
-    private const string Source = "func at<I>(values: [3 of i32], p: I) -> i32\n    I is PrimitiveInteger\n    return values[p]\nlet x = at([1, 2, 3], 1@u8)\n";
+    // The MIR's one Unsupported record here, at `a == b`, a form the old path's check accepts (its generation refuses it): the tuple operator
+    // without its comparison (MirBuildTest.Unbuilt; PD30's (e) row until R7).
+    private static readonly string Unbuilt = MirBuildTest.Unbuilt.Declarations +
+        $"func same(a: ref/{MirBuildTest.Unbuilt.Tuple}, b: ref/{MirBuildTest.Unbuilt.Tuple}) -> bool => a == b\nlet x = 1\n";
 
     // Every selection a compilation can make: either pipeline with either code generator (DECISIONS R5-M156).
     private static readonly (CompilerPipeline Pipeline, CompilerCodegen Codegen)[] Configurations =
@@ -189,7 +191,7 @@ public sealed class PipelineSwitchTest
             var c = Compilation.CreateForTest();
             c.Codegen = CompilerCodegen.Legacy;
             Assert.True(c.Prepare(WindowsProfile.Target));
-            c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Source));
+            c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Unbuilt));
             Assert.False(Analyze(c, OutputKind.Application));
             Assert.Equal(DiagnosticCode.Unsupported_Kd, Assert.Single(c.Problems).Code);
             c.Project.Directory = directory;
@@ -298,14 +300,15 @@ public sealed class PipelineSwitchTest
         }
     }
 
-    // DECISIONS R5-M156 (superseding R3-1): every pipeline publishes the MIR's construction records as the analysis's problems, control-flow
-    // Errors that reject the program and block generation; switching the pipeline revokes the analysis and changes no record.
+    // DECISIONS R5-M156 (superseding R3-1): every pipeline publishes the MIR's construction records, here the unbuilt tuple operator's
+    // (PD30's (e) row), as the analysis's problems, control-flow Errors that reject the program and block generation; switching the
+    // pipeline revokes the analysis and changes no record.
     [Fact]
     public void EveryPipelinePublishesTheMirRecords()
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Source));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Unbuilt));
         foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
         {
             c.Pipeline = pipeline;
@@ -314,11 +317,11 @@ public sealed class PipelineSwitchTest
             Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
             Assert.False(c.Analyze().IsVerified);
             var problem = Assert.Single(c.Problems);
-            Assert.Equal((DiagnosticCode.Unsupported_Kd, "p"), (problem.Code, c.SyntaxOf(problem.Subject).ToString()));
+            Assert.Equal((DiagnosticCode.Unsupported_Kd, "a == b"), (problem.Code, c.SyntaxOf(problem.Subject).ToString()));
             Assert.Equal((false, 1), (c.Analysis.IsVerified, c.Analysis.ErrorCount));
             c.ReportAnalysis();
             var record = Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error);
-            Assert.Equal(("Unsupported_Kd", "p"), (record.Code, record.Text));
+            Assert.Equal(("Unsupported_Kd", "a == b"), (record.Code, record.Text));
             Assert.False(c.WriteIr(TextWriter.Null, out var failure));
             Assert.Contains("MIR", failure);
             Assert.False(c.Validate(out _));
@@ -357,7 +360,7 @@ public sealed class PipelineSwitchTest
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Source));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Unbuilt));
         var observed = new List<AnalysisResult>();
         void Observe(Compilation x)
         {

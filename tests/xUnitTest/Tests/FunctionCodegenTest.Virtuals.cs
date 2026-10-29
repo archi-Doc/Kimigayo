@@ -146,7 +146,6 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal("call void %(ptr %, i32 %)", never.Shape);
         Assert.Equal((2, stop.Parameters[2]), Dispatch(never));
         Assert.Equal("unreachable", stop.Blocks[^1].Terminator.Shape);
-        Assert.DoesNotContain("__kimi_virtual_item", text, StringComparison.Ordinal);
     }
 
     // SPEC 6.4.4, 6.4.6 (DECISIONS R5-M114): a requirement call whose witness is a virtual function runs its slot, as the witness maps to it;

@@ -142,8 +142,7 @@ public class IntegerEmissionTest
     {
         var ir = ScalarEmissionTest.EmitFixture("IntegerAbiStructure", Mixed, "ok\n");
         Assert.Contains("i8 -128, i8 -56, i16 -32768, i16 -1, i64 -1, i64 -1)", ir);
-        Assert.DoesNotContain("signext", ir);
-        Assert.DoesNotContain("zeroext", ir);
+        GeneratedIr.Parse(ir).Single("internal i64 (i8, i8, i16, i16, i64, i64)");
         var c = MinimalEmissionTest.Analyze(Mixed);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var function = Enumerable.Range(0, module.FunctionCount).Select(module.GetFunction).First(x => x.Abi.Parameters.Length == 6);

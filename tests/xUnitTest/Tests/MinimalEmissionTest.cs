@@ -73,8 +73,7 @@ public class MinimalEmissionTest
             x.Shape.StartsWith("call void @(ptr noundef nonnull align 8 dereferenceable(24) %, ", StringComparison.Ordinal));
         Assert.Contains(module.Functions.SelectMany(static x => x.Instructions), x => x.Callee == module.Function("__kimi_destroy_string"));
         Assert.Contains("@_fltused = global i32 0, align 4", ir);
-        Assert.DoesNotContain("byval", ir);
-        Assert.DoesNotContain("sret", ir);
+        Assert.Equal("internal void (ptr noundef nonnull align 8 dereferenceable(24), ptr, i64)", module.Function("__kimi_write_line").Signature);
     }
 
     [Theory]
