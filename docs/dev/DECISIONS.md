@@ -5478,9 +5478,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `OriginRelationFact.Payload`), only where the call determines that position's Type: its pattern names a callee Type parameter or a
     callee Origin the solve takes from bounds rather than an equality with another input (`OpensPosition`, `OriginInference.IsFixed`,
     `openedArgument`); elsewhere it is the Case's own fit, at the payload.
-  - SPEC 15.3.6: a call's solve takes the well-formedness of every filled parameter, slots substituted, and a Case construction without
-    an expected Type solves its Origins the same way (`SolveConstructionOrigins`), so a covariant slot takes the meet of all its upper
-    bounds (cx1, cx5, cxc valid; cx2 errs).
+  - SPEC 15.3.6: a call's solve takes the well-formedness, slots substituted, of each parameter no written Type gives (a default's, an
+    argument's that takes its Type from the call), and a Case construction without an expected Type solves its Origins the same way
+    (`SolveConstructionOrigins`), so a covariant slot takes the meet of all its upper bounds (cx1, cx5, cxc valid; cx2 errs). A written
+    argument's Type is well formed and adds none: taking it shortened an exclusive argument's region by its referent's Origin, and the
+    old analysis then reported CallActivationConflict_Kd (ContentUpdateTest, found by the full Session).
   - The owner's (A): the premise catalog adds nothing for a Function Type inside a signature; an anonymous function's result is a
     premise of its body; TypeOrigins forms no occurrence relation for a nested signature's input or result; each value call proves its
     callee's result (`RequireNestedResult`) and, as a named call does, its result Type's constraints (`RequireCallConstraints`).
@@ -5494,11 +5496,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: every relation and clause as an obligation (t7c's clause record dies beside the Type-constraint failures); input
     well-formedness as a Binding record (n7g2, ea1 and cs1_ty lose their independent records); every relation inside a call argument at
     the argument (amendment 1); keeping BU-26's occurrence judgment of a nested result (fails r3, v2, z1, e1a, cz6 and 34 more rows).
-  - Moves awaiting the owner (no expectation changed): BU-26's nested-result rows (ADeclarationsRelationIsBindingsRecordAtItsTypeOccurrence
-    `contract C`, `get`; ANestedFunctionTypeKeepsItsWellFormednessAtTheDefinition), (a)'s `premise` form of
-    AConversionProvesTheImplementationsConditions, and ANestedSignaturesInputIsWellFormedByPremiseAndAtEachCall's row beside `m`'s
-    Binding error (G56's class). Open: c2, c4 (a conversion inside a Tuple or array literal is the literal's TypeMismatch_Kd); the owner's
-    (i) limit for c2bg, c2dg, c2_fnvalue_converted_weaker, c15, p1b.
+  - Decided moves (the planning session, 2026-10-30: under the owner's answers already given): BU-26's nested-result rows
+    (ADeclarationsRelationIsBindingsRecordAtItsTypeOccurrence `contract C` and `get`, now valid; ResultPremiseTest's nested Function
+    Type test, its getter's record at the call and `converted` valid) by (A) and (a); AConversionProvesTheImplementationsConditions'
+    `premise` form valid by (a); ANestedSignaturesInputIsWellFormedByPremiseAndAtEachCall's row beside `m`'s Binding error by the G56
+    answer. MirBorrowsTest's mb27 pins keep dev's record. Kept apart (the owner's (i)): c2bg, c2dg,
+    c2_fnvalue_converted_weaker, c15, p1b. Open: c2, c4 (a conversion inside a Tuple or array literal is the literal's TypeMismatch_Kd).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

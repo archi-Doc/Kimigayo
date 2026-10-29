@@ -622,14 +622,30 @@ public sealed partial class Binding
             return true;
         }
 
+        // SPEC 15.3.6: a parameter whose argument takes its Type from the call (TakesCallType) has no well-formed Type of its own either,
+        // so its well-formedness, slots substituted, is an upper bound of the meet as a default's is; a written argument's Type is well
+        // formed and gives none.
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            if ((defaults.Contains(i) || mapping.AsSpan(0, call.ArgumentNodes.Count).Contains(i)) && solution.Pattern(function.Parameters[i].Type.BoundType!) is { } pattern)
+            if ((defaults.Contains(i) || TakesCallTypeAt(i)) && solution.Pattern(function.Parameters[i].Type.BoundType!) is { } pattern)
             {
                 this.CollectInputPremises(this.SubstituteType(pattern, solution.SlotOwner, solution.Types, solution.Lengths) ?? this.FormedApplication(pattern, solution.SlotOwner, solution.Types), inference, call);
             }
         }
 
         return this.SolveCallOriginInference(function, inference, solution.Origins, solution.Inputs, call, solution.DeclaringType, select: true);
+
+        bool TakesCallTypeAt(int parameter)
+        {
+            for (var j = 0; j < call.ArgumentNodes.Count; j++)
+            {
+                if (mapping[j] == parameter && this.TakesCallType(call.ArgumentNodes[j]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 }
