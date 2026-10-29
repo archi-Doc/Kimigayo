@@ -1242,7 +1242,7 @@ public sealed partial class FunctionCodegenTest
     public void AnImportIsCalledByItsCSignature()
     {
         var imported = Compilation.CreateForTest();
-        (imported.Pipeline, imported.Codegen) = (CompilerPipeline.Mir, CompilerCodegen.Mir);
+        imported.Codegen = CompilerCodegen.Mir;
         imported.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
         Assert.True(imported.Prepare(WindowsProfile.Target));
         const string Source =
@@ -1633,12 +1633,11 @@ public sealed partial class FunctionCodegenTest
         return (c, [.. generated.Where(x => set.Items[x].Key.Kind == MonoKind.Body).Select(x => set.Items[x].Key.Body.Def.Decl?.Declaration).OfType<Koto>()]);
     }
 
-    // A program analyzed under MIR code generation (sel) for an output form; a source that declares a test is a test build's test-only
-    // source, its catalog discovered after acceptance as Project discovers it.
+    // A program analyzed under MIR code generation for an output form; a source that declares a test is a test build's test-only source,
+    // its catalog discovered after acceptance as Project discovers it.
     private static Compilation Analyze(string source, OutputKind output = OutputKind.Application)
     {
         var c = Compilation.CreateForTest();
-        c.Pipeline = CompilerPipeline.Mir;
         c.Codegen = CompilerCodegen.Mir;
         c.IsTestBuild = source.Contains("#Test", StringComparison.Ordinal);
         Assert.True(c.Prepare(WindowsProfile.Target));

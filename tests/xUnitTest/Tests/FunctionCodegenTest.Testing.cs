@@ -287,7 +287,7 @@ public sealed partial class FunctionCodegenTest
     private static Compilation TestBuild(params (string File, string Source)[] sources)
     {
         var c = Compilation.CreateForTest();
-        (c.Pipeline, c.Codegen, c.IsTestBuild) = (CompilerPipeline.Mir, CompilerCodegen.Mir, true);
+        (c.Codegen, c.IsTestBuild) = (CompilerCodegen.Mir, true);
         Assert.True(c.Prepare(WindowsProfile.Target));
         foreach (var (file, source) in sources)
         {

@@ -328,6 +328,25 @@ public sealed class PipelineSwitchTest
         }
     }
 
+    // An accepted program round-trips across a pipeline switch: the switch revokes the analysis, and the next one gives the same diagnostics
+    // and IR, since every pipeline publishes the same records (DECISIONS R5-M156).
+    [Fact]
+    public void AnAcceptedProgramIsTheSameOnEitherPipeline()
+    {
+        const string Source = "struct Box\n    public let v: i32\n    public init(v: i32) => self.v = v\nfunc twice(b: ref/Box) -> i32 => b.v * 2\n" +
+            "let b = Box.init(21)\nrequire twice(b@ref) == 42 else => $abort(\"twice\")\nConsole.writeLine(\"ok\")\n";
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Source));
+        var legacy = Check(c);
+        c.Pipeline = CompilerPipeline.Mir;
+        Assert.False(c.Analysis.IsVerified);
+        Assert.Equal(legacy, Check(c));
+        c.Pipeline = CompilerPipeline.Legacy;
+        Assert.False(c.Analysis.IsVerified);
+        Assert.Equal(legacy, Check(c));
+    }
+
     // R4-M71, PLAN G157 (8) (DIAGNOSTICS §4.1): a MIR record is a code without facts, published keyed by its location, so the records of a
     // for expansion's synthesized siblings $for.some and $for.none, which share their span, depth and kind, are one problem, not an
     // undefined order. No form records at them at check today, so the records are added to the analyzed version's program as a
@@ -435,6 +454,18 @@ public sealed class PipelineSwitchTest
                 }
             }
         }
+    }
+
+    // A checked program's published diagnostics and IR.
+    private static (string Diagnostics, string Ir) Check(Compilation c)
+    {
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.ReportDiagnostics();
+        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        c.Binding.ReportStartupDiagnostics();
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        c.ReportAnalysis();
+        return (string.Join('\n', TestDiagnostics.Of(c).Select(static x => x.ToString())), CompilationTestHelper.WriteIr(c));
     }
 
     private static bool Analyze(Compilation c, OutputKind output)

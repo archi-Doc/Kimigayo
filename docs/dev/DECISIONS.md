@@ -12603,12 +12603,15 @@ structure is recorded here by the unit that first implements it.
     rejects asserts its check-time records exactly (`MinimalEmissionTest.Problems`; `AssertGenerationResourceLimit` takes the record's
     subject), and an old-generator half that a rejecting check makes unreachable is deleted. The census found 9 rows in 5 methods G0's
     "(H) no further movement" missed, all pinned to the old generator, which hid non-Language collector records under sel:
-    `ComponentSummaryTest`'s non-regular `Chain<i32>` (two G128 `StorageNesting` records, the requesting calls' storage verdict Limit,
-    under PD30's (e) row, and its layout depth record), `InstanceCollectorTest.TheDepthLimitCountsPlacedLevels` (R5-M73's old half
-    deleted), `TypeDagScalingTest`'s depth-70 Tuple (six layout depth records, one per erased Type, R5-M44) and `originLets` at 28 (2^31
-    bytes, one size record at `let a27`), and `VirtualEffectObligationTest`'s storage. Scaling inputs keep their sizes. The ratchets of
-    instance-analysis reads and generation failure facts fall from 11 to 7 and 13 to 9. `PipelineSwitchTest` asserts that every
-    pipeline publishes. P42 reverts the pin test, the EffectBound and VirtualEffectObligation records and Milestone 42's baseline.
+    `ComponentSummaryTest`'s non-regular `Chain<i32>` (two G128 `StorageNesting` records, the requesting calls' storage verdict Limit, under
+    PD30's (e) row, and its layout depth record), `InstanceCollectorTest.TheDepthLimitCountsPlacedLevels` (R5-M73's old half deleted for the
+    65-level rows check rejects, kept until G4 for the 64-level rows it accepts), `TypeDagScalingTest`'s depth-70 Tuple (six layout depth
+    records, one per erased Type, R5-M44) and `originLets` at 28 (2^31 bytes, one size record at `let a27`), and
+    `VirtualEffectObligationTest`'s storage. Scaling inputs keep their sizes. The ratchets of instance-analysis reads and generation failure
+    facts fall from 11 to 7 and 13 to 9. `PipelineSwitchTest` asserts that every pipeline publishes, and that an accepted program's
+    diagnostics and IR round-trip across a pipeline switch. Since every pipeline and code generator checks alike, the CLayout uses' mir and
+    sel columns go, as do PD4's pairing pins (the mir pipeline set only so that MIR code generation was allowed). P42 reverts the pin test,
+    the EffectBound and VirtualEffectObligation records and Milestone 42's baseline.
   - G157 (2) stays open: no shipped library body reaches K9b's open-operation location rule (every library division or remainder has
     closed Types, the `PrimitiveInteger` generics only add, subtract, compare or cast between integers, and every source module is a
     root), so a test would take a path production never takes.
