@@ -8,7 +8,9 @@ namespace Kimi.Compiler;
 // refinement paths here; conditional blocks (BindConditionalDeclarations) and inherited paths (RegisterInheritedConformances) add
 // theirs through RegisterConformanceDeclaration and RegisterConformance.
 // Input: bound Self clauses, conditional blocks and a base's paths. Output: `conformances` (one identity per Type and Contract),
-// `conformancePaths` (one path per Type, Contract, declaration and root Contract), `conformancesByType` and `activeConformancePaths`.
+// `conformancePaths` (one path per Type, Contract, declaration and root Contract), `conformancesByType` and `activeConformancePaths`;
+// each Type's ObjectPayload opt-out, its own or inherited (SPEC 8.7.3); the Self-clause failures: a closed or intrinsic Contract's
+// grant, an invalid negated clause and a colliding direct conformance (SPEC 8.7, 8.7.1, 8.9.1).
 // Invariants: a path joins the lists only at its own registration, so they follow its caller's order and a derived Type's equal its
 // base's; the caller that registers a path registers its root path; each key keeps one object across binds.
 // Must not: verify a path (ContractMatching, InheritedConformances) or decide availability at a use (ResolveConformance).
