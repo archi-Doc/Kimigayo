@@ -247,6 +247,12 @@ public sealed partial class Binding
             {
                 this.OriginInference ??= binding.BeginOriginInference(this.Call, binder);
                 binding.CollectOriginInference(pattern, actual, this.OriginInference, known: quantifier);
+
+                // Entailed operands only (DECISIONS R4-M155): the formed parameter's well-formedness adds no bound the call's one operand
+                // set (CollectFilledPremises) leaves out except ones the argument's own Type entails, so no verdict depends on it; it stays
+                // because the legacy Emission's structural value check (ValidateValues, FitsValue at an Alias) reads region expressions
+                // instead of Binding's proof (UniqSliceTest's indexUniq). Removed with the legacy Emission.
+                binding.CollectFilledPremises(pattern, null, this.OriginInference, this.Call);
             }
 
             pattern = binding.SubstituteStoredOrigins(pattern, binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());

@@ -76,6 +76,7 @@ public sealed partial class OriginRowsTest
     [InlineData(Guard, "g", "v@ref", "Finite", "Place")]
     [InlineData(Pick + "func g(n: i32, r: i32 = pick(n@ref, 5@ref)) -> i32 => r\n", "g", "n@ref", "Finite", "Parameter")]
     [InlineData(Pick + "func g(n: i32, r: i32 = pick(n@ref, 5@ref)) -> i32 => r\n", "g", "5@ref", "Finite", "Place")]
+    [InlineData("func total(values: Slice<i32>) -> i32\n    var sum = 0\n    for v in values\n        sum = sum + v@follow\n    return sum\n", "total", "$for.iterator", "Finite", "Place")]
     [InlineData(MirOriginsTest.RepeatedSet, "run", "ref/Holder{x}", "Dependent", "None")]
     [InlineData(LocalOmission, "f", "x", "Fixed", "None")]
     public void TheLongerEndOfARowTakesItsClass(string source, string body, string site, string kind, string role)
@@ -94,32 +95,12 @@ public sealed partial class OriginRowsTest
     [InlineData(MeetTrans, "mt", "t@uniq", "Unclassed")]
     [InlineData("func needsStatic(x: ref/i32 during static) -> i32 => x@follow\nfunc caller() -> i32\n    let local = 3\n    return needsStatic(local@ref)\n", "caller", "local@ref", "Fixed")]
     [InlineData(MirOriginsTest.FailedClause, "f", "local@ref", "Dependent")]
+    [InlineData(MirOriginsTest.RepeatedSet, "run", "k", "Dependent")]
     [InlineData(LocalOmission, "f", "x", "Inferred")]
     public void TheShorterEndOfARowTakesItsClass(string source, string body, string site, string kind)
     {
         var (slice, row) = RowAt(source, body, site);
         Assert.Equal(kind, slice.Atoms[row.Shorter].Kind.ToString());
-    }
-
-    // Row 8 and DECISIONS R4-M118 on constructed inputs, where no program forms the row since G216 (a)'s one operand set (DECISIONS R4-M155;
-    // the planning session's decision of 2026-10-30), its relation being entailed under the exact solution: a `for`'s Borrow of its
-    // iterator at the parentless `$for.iterator` Use is a Finite Place (Iterator.next's receiver fit related it to itself), and a meet of
-    // ends a Binding failure left Unbound (a repeated binding set's two slots, which k's receiver fit met) is Dependent.
-    [Fact]
-    public void AConstructedEndTakesTheClassOfItsRow()
-    {
-        var c = MirBuildTest.Compile(Total + Main);
-        var (borrow, use) = IteratorBorrow(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>().Single());
-        var total = Bodies(c).Single(static x => x.Key.Decl?.Name == "total").Key.Body;
-        var iterator = Atom(c, total, borrow, use);
-        Assert.Equal((OriginAtomKind.Finite, ProjectionRole.Place), (iterator.Kind, iterator.Role));
-
-        var r = MirBuildTest.Compile(MirOriginsTest.RepeatedSet + Main);
-        var run = Bodies(r).Single(static x => x.Key.Decl?.Name == "run").Key.Body;
-        var unbound = r.Types.OriginRows(run).Atoms.Select(static x => x.Atom).Where(static x => x.Kind == OriginKind.Unbound).Distinct().ToArray();
-        Assert.Equal(2, unbound.Length);
-        var k = KotoTree.Walk(r.Kotonoha.RootKoto).Single(static x => x is IdentifierNameKoto { Parent: MemberAccessKoto } && First(x) == "k");
-        Assert.Equal(OriginAtomKind.Dependent, Atom(r, run, new BoundOrigin(OriginKind.Intersection, operands: unbound), k).Kind);
     }
 
     // DECISIONS R4-M118's precedence: a meet with an Unclassed operand (row 9, a located limit) is Unclassed whatever its Dependent
@@ -136,7 +117,7 @@ public sealed partial class OriginRowsTest
         var (unbound, site) = (slice.Atoms[row.Shorter].Atom, c.SyntaxOf(row.Site));
         var mtBody = Bodies(c).Single(static x => x.Key.Decl?.Name == "mt").Key.Body;
         var mt = c.Types.OriginRows(mtBody);
-        // `put`'s own Parameter atom: an operand of the callee's meet in mt's row. Since G216 (a)'s one operand set (DECISIONS R4-M155, the
+        // `put`'s own Parameter atom: an operand of the callee's meet in mt's row. Since G216 (a)'s revision 2 (DECISIONS R4-M155, the
         // planning session's decision of 2026-10-30) the exclusive layer at t@uniq forms no well-formedness row of its own, which held the
         // operand alone: that relation was entailed by t's own Type and the fit's equality.
         var foreign = mt.Atoms.First(static x => x is { Kind: OriginAtomKind.Unclassed, Atom.Kind: OriginKind.Intersection }).Atom.Operands.First(static x => x.Kind == OriginKind.Parameter);

@@ -181,15 +181,16 @@ public class AbstractCallReachTest
         ["KeyedCells"] = ("(KeyedCells during q)", string.Empty, RequirementIdentityTest.KeyedTake + KeyedCells),
     };
 
-    // The default pipeline's listed L1 exception (PLAN G217), pinned as the one record its generic does not cover, so the row fails when
-    // the old path changes; the MIR has none. gx9 (G217's N9 fact): the generic body is accepted while its concrete twin's shared read of
-    // the source meets the exclusive item (H: AddType gives a projection's Origin argument the schema's shared mode). `again UniqItems`,
-    // the old path's false CallActivationConflict_Kd at `let second = it.next()` on the concrete instance (G217's p4), closed with G216
-    // (a)'s one operand set (DECISIONS R4-M155, the planning session's decision of 2026-10-30): the call's solve no longer meets the
-    // exclusive receiver's region with an operand its own Type entails, which the old analysis read as a dependency on the earlier Loan.
+    // The default pipeline's two listed L1 exceptions (PLAN G217), each pinned as the one record its generic does not cover, so the row
+    // fails when the old path changes; the MIR has none. gx9 (G217's N9 fact): the generic body is accepted while its concrete twin's
+    // shared read of the source meets the exclusive item (H: AddType gives a projection's Origin argument the schema's shared mode).
+    // again runs the opposite way: the old path rejects the concrete instance, which SPEC 15.6.3 and 15.6.4 and the MIR accept as they
+    // accept the generic (its over-strictness on concrete code, G217's p4), so no weaker abstract model and no counterexample that the
+    // proposal's 4.3 routes to a restriction of the base rule; its pin fails when p4 is fixed or the old path goes at R6-check.
     private static readonly Dictionary<string, string> OldPathGaps = new()
     {
         ["gx9 Concrete"] = "ComparisonLoanConflict_Kd at inspect(values@ref)",
+        ["again UniqItems"] = "CallActivationConflict_Kd at let second = it.next()",
     };
 
     /// <summary>Gets L1's pairs: each generic case with each of its instances.</summary>

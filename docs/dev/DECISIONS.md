@@ -5713,12 +5713,16 @@ and migration obligations remain in force; no numeric cap changes are authorized
     substituted one, so leaving written arguments out changed solutions (r4i). ContentUpdateTest's conflict came from an entailed
     operand: in `flip(first@uniq, second@uniq)` right's region was met with first's referent Origin, which T's equality and second's
     well-formed Type entail, and the old analysis read it as a dependency on first's Loan (ContentUpdateTest's
-    `AnExclusiveArgumentsRegionTakesNoOperandItsOwnTypeGives`). The evidence walk's collection over the formed pattern goes (Q3; the
-    planning session's decision of 2026-10-30): it was a second operand source of entailed operands, so the set is now one. It moves no
-    verdict a user sees: the old path's false CallActivationConflict_Kd in AbstractCallReachTest's `again UniqItems` closes (the
-    ContentUpdate cause), and Binding forms no row whose relation the exact solution entails, so OriginRowsTest reads its `$for.iterator`
-    and RepeatedSet `k` fixtures on constructed inputs. No corpus or library program now forms a row at a parentless Use (E1's rule stays;
-    whether another form reaches it is open for the review). A slot still unsolved gives no bound: no fallback to the formed pattern.
+    `AnExclusiveArgumentsRegionTakesNoOperandItsOwnTypeGives`). A slot still unsolved gives no bound: no fallback to the formed pattern.
+  - Q3's removal of the evidence walk's formed-pattern well-formedness (the planning session's decision (a), the owner's 「(a) のまま」,
+    2026-10-30): it stays, as entailed operands only, which two legacy structural readers need. Evidence: Binding's facts are identical
+    with and without it (the generic body's and the program's Types and plans, Origin arguments included, dumped for UniqSliceTest), so
+    no verdict depends on it. Reason: the legacy Emission's value check (ValidateValues, FitsValue at an Alias) compares region expressions
+    structurally instead of reading Binding's proof, and fails UniqSliceTest's indexUniq instance (`return element@move`) without the
+    operand; the old analysis's `again UniqItems` gap (AbstractCallReachTest) and OriginRowsTest's `$for.iterator` and RepeatedSet `k`
+    rows also rest on it. Removal condition: the legacy Emission's retirement, or a later owner-approved fix of FitsValue. Pinned by
+    UniqSliceTest's two programs on the default pipeline (`AssignmentEvaluatesRightReceiverAndKeyExactlyOnce`,
+    `ViewsPreserveOrdinaryElementAndAcquisitionRules`' TemporaryWrite).
   - The owner's (A): the premise catalog adds nothing for a Function Type inside a signature; an anonymous function's result is a
     premise of its body; TypeOrigins forms no occurrence relation for a nested signature's input or result; each value call proves its
     callee's result (`RequireNestedResult`) and, as a named call does, its result Type's constraints (`RequireCallConstraints`).
