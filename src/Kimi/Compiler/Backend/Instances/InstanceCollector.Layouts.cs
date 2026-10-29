@@ -18,15 +18,15 @@ internal sealed partial class InstanceCollector
 
     /// <summary>Gets the record of a Layout outcome (K 4.8; R5-M37: the collector alone maps Layout's outcomes). A size, count or depth limit
     /// is Resource (IMPL 21.3.2); a C-layout instance whose C layout is unavailable (open, derived, empty or storing a zero-sized Field), at
-    /// any depth in the window, is the Language error InvalidCLayout_Kd (SPEC 6.7.1, 8.15.3); Ok has none, and Rejected storage derives from
-    /// the Binding error that rejected it (Derived, DECISIONS BU-38). Oversized is reported through Result.Oversized, which an oversized
-    /// CLayout carries too.</summary>
+    /// any depth in the window, is the Language error InvalidCLayout_Kd (SPEC 6.7.1, 8.15.3); Ok has none, and Rejected storage, which rests on
+    /// a part Binding rejected, is a broken contract in a complete compilation and otherwise a dependent that Report drops (DECISIONS BU-38,
+    /// R5-M151). Oversized is reported through Result.Oversized, which an oversized CLayout carries too.</summary>
     /// <param name="outcome">The outcome.</param>
     /// <returns>Its record, or null for none.</returns>
     internal DiagnosticCode? RecordOf(Layout.Outcome outcome) => outcome switch
     {
         Layout.Outcome.Ok or Layout.Outcome.Oversized => null,
-        Layout.Outcome.Rejected => this.Derived,
+        Layout.Outcome.Rejected => DiagnosticCode.InternalInvariant_Kd,
         Layout.Outcome.SizeLimit or Layout.Outcome.CountLimit or Layout.Outcome.DepthLimit => DiagnosticCode.GenerationResourceLimit_Kd,
         Layout.Outcome.CLayout => DiagnosticCode.InvalidCLayout_Kd,
         _ => throw new InvalidOperationException($"The layout outcome {outcome} has no record row."),
@@ -195,12 +195,12 @@ internal sealed partial class InstanceCollector
         var result = this.layout.Of(type);
         if (result.Oversized)
         {
-            this.Set.Report(DiagnosticCode.OversizedLayout_Kd, subject);
+            this.Report(DiagnosticCode.OversizedLayout_Kd, subject);
         }
 
         if (this.RecordOf(result.Outcome) is { } code && (!result.IsLimit || this.limited.Add(this.types.Erase(type))))
         {
-            this.Set.Report(code, subject);
+            this.Report(code, subject);
         }
 
         return result.Outcome == Layout.Outcome.Ok;
