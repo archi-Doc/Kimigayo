@@ -5705,6 +5705,54 @@ and migration obligations remain in force; no numeric cap changes are authorized
     B/A' 1.003; Work 12,254,995, Bytes 268,904 and the 7 problems equal on every side, and so are cold step 4 (87,463,456 B), warm step 4
     (3,424 B) and warm step 2 (3,622,752 B). Bind on Hello and Milestone26 (3 runs x 20 reps): cold B/A 0.995 and 0.995 (A'/A 0.999 and
     0.997), warm 0.993 and 0.997; cold allocation equal (4,858,160 and 4,932,944 B), warm 0 B.
+- **R4-M157 G307, A5's Type walks visit a DAG of Types once per Type: a stored part's inline parts keyed by what their facts read**
+  (2026-10-30; the R4 planning session's design `r4-notes\g307\design.md` revision 3, joint design review 3 ACCEPT by R4's reviewer and
+  review 2 ACCEPT by BU's; Major; the Binding part, `TyCtxt.WrittenAt`, is BU-58) V16 (PLAN G307).
+  - Cause: `MirTypes.Holding.Holds` skipped its memo for an inline Tuple or fixed array of a stored part, since a raw layer there reads
+    its step by its positions (`TyCtxt.RawStep`, `RawMembers`), and so walked every position: on bu69's family `D_i<T> { x: D_{i+1}<(T,
+    T)> }` 2.8 k to 201 M visits from n = 8 to 26 for 348 queries; `MirBorrows.Addresses`' `Inline` (Layering's test, 336 M at n = 26)
+    and `Encloses` (25 M on raw leaves at n = 24) had the same shape. From G2 the default check runs them.
+  - Rule: a raw layer's step and members read the kept layer (the walk's node), the Type the declaration writes at its position
+    (`TyCtxt.WrittenAt`) and the instance; the positions add nothing beyond the written Type, which follows them. The holding memo's key,
+    `MirHoldingKey (Type, Stored, Written, Holder)`, is what a part's facts read: (K, false, null, null) for any part outside a stored
+    part's inline positions; (K, true, null, null) for an inline Tuple or fixed array of a stored part where `WrittenAt` is null; (K,
+    true, W, I) where it is not. Premises, BU-58's contract, both clauses: the facts at or below a node are a function of (K, W, I),
+    and W below follows from W; where W is null no layer at or below steps Own or Shared and none appends a member, which the key's
+    second shape and `Encloses`' null exit both rest on.
+  - Holding: one key path (memo lookup, `Meet` past the bound, the LoanOnly rule, `Enter`), `WrittenAt` asked only at a part's first
+    positions and below a non-null W (`asks`), a stored part's root keyed, and an enum Case's payload components its part's first
+    positions: its payload Tuple is Binding's and no key, since one kept payload can stand for Cases written differently (E3:
+    `A(raw/(ref/i32 during s) during s, i32)` beside `B(raw/(ref/i32 during static) during static, i32)`, one interned payload at `E3
+    during static`). Deleted: the per-position walk and "an inline Tuple or fixed array, whose positions decide it, gives them at once".
+  - Past the bound: an inline part of a stored part gives the bound's facts (Loan in its own storage, Deep where the mode reads the
+    write fact) only where its key is never entered within the bound, R4-M153's per-Type rule on the key. That changes tracking and the
+    guard (`D<(W, N30)>`, W = ((i32, i32), (i32, i32)) at depth 2 and 32: holds true and Deep became false and None) and restores the
+    order independence R4-M153 states, which the "at once" broke (`D<(N30(S), S)>` gave (true, Deep), `D<(S, N30(S))>` (false, None);
+    both now (false, None)).
+  - Addresses: one scratch set of visited (Type, written Type); `Inline` visits each Type once per pre-pass; `Encloses` is false at a
+    null W, else visits each (Type, W) once per enclosing use; each visit of either is a step of `Work` (A3 6.2), which counted one per
+    row before.
+  - Supersedes in part: R4-M120's "a raw layer and its part's inline Tuples bypass the per-(Type, mode) memo" (a raw layer is read at
+    each meeting of its keyed parent) and R4-M153's "The holding walk keys its slots by Type with one per mode".
+  - Rejected: keying below the region by the instance (one shared part walked per instance: `All64<T_20>` 1,280 keys against 20; design
+    review 2's B3); an unkeyed stored-part root (keeps the order dependence past the bound); a key on an enum Case's payload Tuple (E3
+    answers None where Through); a per-position walk bounded by the declaration's text (a closed associated projection writes a 2^n
+    DAG, BU's review 1); a width budget or a Resource record (refuses valid programs a linear walk decides).
+  - Tests: TypeDagScalingTest's Holding rows (raw leaves below the region at T_30, the key set of `D<T_40>`, the Stored bit, the written
+    twin, E3, the past-bound and order rows, one Type stored by 64 instances, the projection chain; its raw-leaf rows at n = 30 are
+    Explicit until G309) and MirBorrowsTest's `TheAddressWalksVisitATypeDagOncePerWalk`; each fails first on dev (its exponential walk,
+    or the changed answers).
+  - Measured. Visits on the family (348 queries, n = 8 / 24): Holds 1,260 / 1,746 (tuple; dev 2,781 / 50.3 M) and 1,081 / 1,257 (raw
+    leaves, 26 `RawStep` calls; dev 1,648 / 33.6 M, 8.4 M), Layering's `Inline` 117 / 277 (dev 1,731 / 83.9 M), `Encloses` 3 (dev 381 /
+    25.2 M). Cost (the G258 host over the 122 census programs, A 4555482e8 = dev 3e614b427 with BU-58's (b), A' its byte copy, B A with
+    this unit, from one folder, interleaved with the side order rotated, 3 runs x 8 reps, CPU 2 pinned, tiering off, a loaded machine;
+    sums of per-program medians): A5's step 4 B/A 0.998, A'/A 0.996, B/A' 1.003 (minima 0.999, 0.995, 1.004), step 2 B/A 1.000; Work
+    12,254,995 to 12,261,128 (the address walks' visits, +49 a program), Bytes 268,904 and the 7 problems equal; cold step 4 +48,584 B
+    over the 122 programs (the visited set and the larger key), retained +376 B a program, warm step 2 and step 4 unchanged. Bind on
+    Hello and Milestone26 (3 runs x 20 reps): cold B/A 1.000 and 0.996 (A'/A 1.007 and 1.006), warm 0.998 and 0.999; allocation equal,
+    warm 0 B.
+  - Open: `Encloses` costs O(distinct (Type, W) of the Place's Type) per use; a per-Place memo, as `ownAt` has, would make it per
+    distinct Place (design review 1's N4).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
