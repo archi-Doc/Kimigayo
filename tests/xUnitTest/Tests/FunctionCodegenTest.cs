@@ -114,13 +114,8 @@ public sealed partial class FunctionCodegenTest
     private const string Imports = "group Native\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n    public unsafe func lastError() -> u32\n" +
         "func last() -> u32\n    var e: u32 = 0\n    unsafe => e = Native.lastError()\n    return e\n";
 
-    // Functions with scalar, string-borrow, zero-sized and Never signatures, a Library's roots.
-    private const string Signatures =
-        "func identity(flag: bool, value: i32, text: ref/string, unit: ()) -> i32\n    if flag => return value\n    return 0\n" +
-        "func stop() -> Never\n    loop\n        let x = 1\n";
-
-    // Programs of the frame's forms only: scalar locals and constants, branches, loops and labels and an explicit startup (an Application
-    // generates only what its startup body reaches, K11; Signatures are a Library's).
+    // Programs of the frame's forms only: scalar locals and constants, branches, loops and labels and an explicit startup, which calls
+    // functions with scalar, string-borrow, zero-sized and Never signatures (an Application generates only what its startup body reaches, K11).
     public static TheoryData<string, string> Frames => new()
     {
         {
@@ -134,7 +129,12 @@ public sealed partial class FunctionCodegenTest
             "var running = true\nlabel outer: loop\n    if running\n        running = false\n        continue to outer\n    exit to outer\n" +
             "let found: i32 = loop => exit 5\nvar again = true\nwhile again\n    again = false\n"
         },
-        { "FrameMain", "public func main()\n    var running = true\n    while running\n        running = false\n" },
+        {
+            "FrameMain",
+            "func identity(flag: bool, value: i32, text: ref/string, unit: ()) -> i32\n    if flag => return value\n    return 0\n" +
+            "func stop() -> Never\n    loop\n        let x = 1\npublic func main()\n    var running = true\n    while running\n        running = false\n" +
+            "    let text = \"frame\"\n    if running => stop()\n    let check = 1 / (identity(true, 1, text@ref, ()) - identity(false, 1, text@ref, ()))\n"
+        },
     };
 
     // The first programs (R5 C0b2, C0c): console output through writeLine, one line, several lines, an empty line and non-ASCII text: the
@@ -476,18 +476,29 @@ public sealed partial class FunctionCodegenTest
     // DECISIONS BU-48 and R5-M149 (the owner's Q1 (a); SPEC 6.3.2-6.3.4, 8.15.3, IMPL 21.3.2): a constructor's construction receiver is no
     // use, so an uncalled constructor whose receiver has no layout is accepted at check; no program that builds calls it (each construction
     // expression is a use of that layout), so a Library checks it only and does not generate it (InstanceCollector.Generates), and an
-    // Application, which generates only its startup's closure, neither: both are written without a record, its Generated column clear.
+    // Application, which generates only its startup's closure, neither: both are written without a record, its Generated column clear, and
+    // so are the bodies only it makes (DECISIONS R5-M153): a Closure in its body, and a Closure in a Field's initializer with the function
+    // declared in it (fail-before: a Library generated each, at the base and under the lexical-nesting rule alike); its default templates
+    // take its verdict, a constant's and a Closure's (fail-before: a Library generated each template, the Closure in it too).
     [Theory]
     [InlineData(OutputKind.Library, "clayout")]
     [InlineData(OutputKind.Library, "limit")]
+    [InlineData(OutputKind.Library, "default")]
+    [InlineData(OutputKind.Library, "closure default")]
     [InlineData(OutputKind.Application, "clayout")]
     [InlineData(OutputKind.Application, "limit")]
     public void AnUncalledConstructorWithoutAReceiverLayoutIsCheckedOnly(OutputKind output, string form)
     {
-        var source = form == "clayout" ? "#Layout(\"C\")\npublic struct S\n    public init() => ()\n" :
-            "public struct Big\n    public var a: [1073741824 of u8]\n    public var b: [1073741824 of u8]\n    public var c: [1073741824 of u8]\n" +
-            "    public init(a: [1073741824 of u8], b: [1073741824 of u8], c: [1073741824 of u8])\n" +
-            "        self.a = a@move\n        self.b = b@move\n        self.c = c@move\n";
+        var source = form switch
+        {
+            "clayout" => "#Layout(\"C\")\npublic struct S\n    public init()\n        let add = func [] (x: i32) -> i32 => x + x\n",
+            "default" => "#Layout(\"C\")\npublic struct S\n    public init(n: i32 = 2) => ()\n",
+            "closure default" => "#Layout(\"C\")\npublic struct S\n    public init(f: (i32) -> i32 = func [] (x: i32) -> i32 => x + 1) => ()\n",
+            _ => "public struct Big\n    public var a: [1073741824 of u8]\n    public var b: [1073741824 of u8]\n    public var c: [1073741824 of u8]\n" +
+                "    public var d: i32 = (func [] (x: i32) -> i32\n        func twice(y: i32) -> i32 => y * 2\n        return twice(x)\n    )(2)\n" +
+                "    public init(a: [1073741824 of u8], b: [1073741824 of u8], c: [1073741824 of u8])\n" +
+                "        self.a = a@move\n        self.b = b@move\n        self.c = c@move\n",
+        };
         var c = Analyze(source + (output == OutputKind.Application ? "let zz = 1\n" : string.Empty), output);
         Assert.True(c.Accepts, string.Join(", ", Records(c)));
         using var writer = new StringWriter();
@@ -497,6 +508,7 @@ public sealed partial class FunctionCodegenTest
         var init = Assert.Single(Enumerable.Range(0, set.RootCount), x => set.Items[x].Key.Body.Def.Kind == MirBodyKind.Fn &&
             set.Items[x].Key.Body.Def.Decl?.Declaration?.ToString().Contains("init(", StringComparison.Ordinal) == true);
         Assert.False(set.IsGenerated(init));
+        Assert.DoesNotContain(Enumerable.Range(0, set.Items.Length), x => set.Items[x].Key.Body.Def.Decl is not null && set.IsGenerated(x));
     }
 
     // SPEC 4.7.4, 8.15.3 (DECISIONS R5-M149): an element of a fixed array behind a reference needs only the element's stride and the array's
@@ -1404,7 +1416,6 @@ public sealed partial class FunctionCodegenTest
     [InlineData(DictionaryLoop, OutputKind.Library)]
     [InlineData("group Registry\n    public let limit: i32 = 4\n", OutputKind.Library)]
     [InlineData("func twice(a: i32) -> i32 => a\n", OutputKind.Library)]
-    [InlineData(Signatures, OutputKind.Library)]
     public void EveryAcceptedFormIsWritten(string source, OutputKind output)
     {
         var c = Analyze(source, output);
@@ -1492,6 +1503,8 @@ public sealed partial class FunctionCodegenTest
 
     // K11 with R4-M28 (K package 4.4, 4.10): a Library generates every root but the body of a closed override whose slot TyCtxt.Applies
     // refutes at its owning layer, which is checked only (the old generator skips it too); where the slot applies, the override is generated.
+    // A Closure and a function nested in its body are no output roots: the override's runtime targets reach them, so they follow its mark
+    // (DECISIONS R5-M153; fail-before: both generated where the slot is refuted).
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -1500,11 +1513,40 @@ public sealed partial class FunctionCodegenTest
         var c = Analyze(
             "contract Marker\nstruct Thing\n" + (applies ? "    Self is Marker\n" : string.Empty) + "    public init() => ()\nopen struct Base<T>\n" +
             "    public init() => ()\n    public virtual func mark(self: objref/Self) -> i32\n        T is Marker\n        return 5\n" +
-            "struct Plain : Base<Thing>\n    public init() => ()\n    override func mark(self: objref/Self) -> i32 => 7\n",
+            "struct Plain : Base<Thing>\n    public init() => ()\n    override func mark(self: objref/Self) -> i32\n" +
+            "        let add = func [] (x: i32) -> i32 => x + x\n        func twice(x: i32) -> i32 => x * 2\n        return add(3) + twice(2)\n",
             OutputKind.Library);
         Assert.True(c.Accepts, MinimalEmissionTest.Describe(c, null));
         _ = c.Generate(TextWriter.Null);
-        Assert.Equal(applies, Assert.Single(Generated(c.Instances!), static x => x.Name == "mark").Generated);
+        var set = c.Instances!;
+        Assert.Equal(applies, Assert.Single(Generated(set), static x => x.Name == "mark").Generated);
+        Assert.Equal(applies, Assert.Single(Generated(set), static x => x.Name == "twice").Generated);
+        var closure = Assert.Single(Enumerable.Range(0, set.Items.Length), x => set.Items[x].Key.Body.Def.Kind == MirBodyKind.Closure);
+        Assert.Equal(applies, set.IsGenerated(closure));
+    }
+
+    // DECISIONS R5-M153, against over-exclusion: no Closure's body is a Library output root (Generates), yet each one a generated body makes
+    // at its Aggregate(Closure) site is Generated through that target: in an accessor's get and set, a destructor, a default template and a
+    // static's initializer.
+    [Fact]
+    public void ALibraryReachesEachClosureItsBodiesMake()
+    {
+        var c = Analyze(
+            "struct Gauge\n    var stored: i32 = 2\n    public computed count: i32\n        get() -> i32\n" +
+            "            let f = func [] (x: i32) -> i32 => x + 1\n            return f(self.stored)\n        set(value: i32) -> ()\n" +
+            "            let g = func [] (x: i32) -> i32 => x * 2\n            self.stored = g(value)\n    public init() => ()\n    drop\n" +
+            "        let h = func [] (y: i32) -> i32 => y + 1\n        _ = h(2)\n" +
+            "func apply(x: i32, f: (i32) -> i32 = func [] (y: i32) -> i32 => y + 1) -> i32 => f(x)\n" +
+            "group Registry\n    public let limit: i32 = (func [] (y: i32) -> i32 => y + 1)(3)\n",
+            OutputKind.Library);
+        _ = Generate(c);
+        var program = c.BuildMir();
+        var collector = new InstanceCollector(c.Types, c.Layout);
+        var set = collector.Run(program, 1);
+        var closures = Enumerable.Range(0, set.RootCount).Where(x => set.Items[x].Key.Body.Def.Kind == MirBodyKind.Closure).ToArray();
+        Assert.Equal(5, closures.Length);
+        Assert.All(closures, x => Assert.False(collector.Generates(program, x)));
+        Assert.All(closures, x => Assert.True(c.Instances!.IsGenerated(c.Instances.Find(set.Items[x].Key))));
     }
 
     // DECISIONS R5-M146: every milestone check accepts under MIR code generation is generated with no record (no coverage row remains);
