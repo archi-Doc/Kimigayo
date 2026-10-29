@@ -213,19 +213,19 @@ public class ComponentSummaryTest
         Assert.Equal(record, string.Join(" | ", TestDiagnostics.Of(c).Select(static x => x.Code)));
     }
 
-    // OQ-F5-3 (a), D5 (DECISIONS BU-22): Binding now accepts a value of a non-regular recursive Type where Owned is required, and the old
-    // Emission meets its existing generation depth limit with it, as with any value of that Type; the acceptance change adds no runtime
-    // form to the old path, so no old-path guard is needed.
+    // OQ-F5-3 (a), D5 (DECISIONS BU-22): Binding now accepts a value of a non-regular recursive Type where Owned is required, and check
+    // meets the existing generation limits with it, as with any value of that Type, on every pipeline (DECISIONS R5-M156): each call
+    // requesting an instance over Chain<i32>, whose storage walk passes Binding's bound, is the capability table's storage-nesting gap
+    // (PLAN G128, PD30's (e) row), and the value's Type is past the layout depth limit (R5-M44); the acceptance change adds no runtime form.
     [Fact]
-    public void ANewlyOwnedNonRegularValueMeetsTheOldGenerationLimit()
+    public void ANewlyOwnedNonRegularValueMeetsTheGenerationLimits()
     {
-        var old = MinimalEmissionTest.Analyze(
+        var c = MinimalEmissionTest.Analyze(
             "struct Chain<T>\n    public let next: Option<obj/Chain<(T, T)>>\n    public init()\n        self.next = .None\n" + Need +
-            "let c = Chain<i32>.init()\nneed(c@move)\nConsole.writeLine(\"chain\")",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(old.Binding.Result.IsComplete, Describe(old));
-        Assert.False(old.WriteIr(TextWriter.Null, out var failure));
-        Assert.Contains("depth limit of 64 levels", failure, StringComparison.Ordinal);
+            "let c = Chain<i32>.init()\nneed(c@move)\nConsole.writeLine(\"chain\")");
+        Assert.True(c.Binding.Result.IsComplete, Describe(c));
+        Assert.Equal(
+            "Unsupported_Kd Chain<i32>.init() | Unsupported_Kd need(c@move) | GenerationResourceLimit_Kd c@move", MinimalEmissionTest.Problems(c));
     }
 
     // Immutable after Bind and pooled: a warm rebind that solves the summaries again allocates nothing, a family's settled limit included.

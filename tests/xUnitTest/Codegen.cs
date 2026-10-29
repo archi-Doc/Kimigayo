@@ -1,8 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // The codegen deviation form of R5 (plan E12, PD10, OQ7; DECISIONS R5-M85, R5-M106): a temporary structure. The stage that makes a target
-// the default reduces its Expect or LegacyNative to it (G2 for acceptance-time records, G3 for generated output); G4 removes the form with
-// the catalog, the .deviation sidecar and compare-fixtures.ps1's deviating count.
+// the default reduces its Expect or LegacyNative to it (G2 did so for acceptance-time records, DECISIONS R5-M156; G3 for generated
+// output); G4 removes the form with the catalog, the .deviation sidecar and compare-fixtures.ps1's deviating count.
 // Responsibility: an expectation that MIR code generation (sel) meets differently from the old generator by a decided item states its
 // target and keeps the legacy value beside it, naming the item's one catalog entry; a native fixture's outcome so (LegacyNative, which
 // ScalarEmissionTest's fixture writers take), whose .deviation sidecar both runs write byte-equal (Sidecar).
@@ -106,15 +106,6 @@ internal enum DeviationClass
 /// <summary>The deviation catalog: one entry per decided item, which every expectation of that item names (M7 counts the entries).</summary>
 internal static class CodegenDeviations
 {
-    /// <summary>K13a, K13b: a record of the checked set, an instance's operation the backend does not generate (R5-M54) or a generation
-    /// resource limit (R5-M40, R5-M44), rejects at check under MIR code generation.</summary>
-    internal static readonly Deviation CheckedSetAtCheck = new(
-        "checked-set-at-check",
-        DeviationClass.D,
-        "R5-M41",
-        "23.2.2",
-        "Under MIR code generation check reports the checked set's records; the old generator accepts the program and refuses it at generation.");
-
     /// <summary>G188 (x1rows): MIR code generation makes no temporary for a string constant operand (a literal comparison operand, an argument
     /// a later one abandons, a component a transfer abandons), so the string lifetime audits count none of the Static destructions the old
     /// generator makes for it.</summary>

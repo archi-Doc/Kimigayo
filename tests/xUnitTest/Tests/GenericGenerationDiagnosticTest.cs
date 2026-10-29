@@ -30,8 +30,8 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
 
-        // Check, then generation, as a build runs them: MIR code generation reports the instance's operation at check (K13a).
-        Assert.True(c.Analysis.IsVerified == Codegen.Expect(false, true, CodegenDeviations.CheckedSetAtCheck), MinimalEmissionTest.Describe(c, null));
+        // Check, then generation, as a build runs them: check reports the instance's operation (K13a), on every pipeline (DECISIONS R5-M156).
+        Assert.Equal("Unsupported_Kd " + (remainder ? "value % 2" : "value / 2"), MinimalEmissionTest.Problems(c));
         c.ReportAnalysis();
         using var writer = new StringWriter();
         Assert.False(c.Generate(writer));
@@ -56,26 +56,6 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
             Assert.Contains(error.Message, sent.Message, StringComparison.Ordinal);
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
-
-        // The old generator's refused instance, on a compilation pinned to it so that every run checks it, until G2 (DECISIONS R5-M85).
-        var old = MinimalEmissionTest.Analyze(source, path, CompilerCodegen.Legacy);
-        using var oldWriter = new StringWriter();
-        Assert.False(old.WriteIr(oldWriter, out var failure));
-        Assert.Empty(oldWriter.ToString());
-        Assert.False(old.Emission.FailureIsResourceLimit);
-        Assert.Equal("i128", old.Emission.FailureInstance!.TypeArguments[0]!.Name);
-        var refused = old.Ownership.FailedInstance;
-        Assert.NotNull(refused);
-        var issue = Assert.Single(refused.IssueStorage);
-        Assert.Equal(OwnershipRequirement.Unsupported, issue.Failure);
-        Assert.True(old.Analysis.IsVerified);
-        Assert.Empty(old.Problems);
-        old.Emission.ReportFailure(failure);
-        Assert.False(old.Validate(out var repeated));
-        Assert.Same(refused, old.Ownership.FailedInstance);
-        Assert.Equal(failure, repeated);
-        old.Bind();
-        Assert.Null(old.Ownership.FailedInstance);
     }
 
     [Fact]
@@ -115,7 +95,7 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
     public void IndependentUnsupportedOperationsRetainSeparateLocations()
     {
         var c = MinimalEmissionTest.Analyze(WideDivision.Replace("    return value / 2", "    let first = value / 2\n    return value % 2", StringComparison.Ordinal));
-        Assert.True(c.Analysis.IsVerified == Codegen.Expect(false, true, CodegenDeviations.CheckedSetAtCheck), MinimalEmissionTest.Describe(c, null));
+        Assert.Equal("Unsupported_Kd value / 2 | Unsupported_Kd value % 2", MinimalEmissionTest.Problems(c)); // At check (DECISIONS R5-M156).
         c.ReportAnalysis();
         Assert.False(c.Generate(TextWriter.Null));
         var errors = TestDiagnostics.Of(c);

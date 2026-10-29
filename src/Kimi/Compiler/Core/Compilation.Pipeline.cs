@@ -1,11 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the public entry path for post-Binding phases and their Problem records.
-// Input: a prepared compilation and the pipeline and code generator it runs (Compilation.Switch.cs). Output: analysis, validated MIR (analyzed
-// under mir), its checked set on every pipeline, and diagnostics; generation has its own entry (Compilation.Generation.cs, R5 C0a).
-// Until R6 the legacy path decides acceptance; MIR findings join through the same Problem publication. The checked set's Language records
-// join them on every pipeline (SPEC 8.15.3, 23.2.2; DECISIONS BU-48), its other records under MIR code generation (sel, R5 PD4, K4b).
-// Observers of Analyzed (R4-M17) are read-only; no compiler code subscribes.
+// Input: a prepared compilation. Output: analysis, the validated and analyzed MIR with its checked set, and diagnostics, the same on every
+// pipeline (Compilation.Switch.cs; DECISIONS R5-M156); generation has its own entry (Compilation.Generation.cs, R5 C0a).
+// Until R6 the legacy path decides acceptance; the MIR's construction records, validator findings and every record of its checked set join
+// it through the same Problem publication (SPEC 8.15.3, 23.2.2; DECISIONS R5-M156); its analysis problems stay unpublished (R4-M1, until
+// H3). Observers of Analyzed (R4-M17) are read-only; no compiler code subscribes.
 // Must not expose a second analysis/generation path or re-decide phase-owned facts.
 
 using Kimi.Compiler.Parsing;
@@ -14,9 +14,9 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler;
 
 // The analysis entry points (plan 12.1, 13.2), the one way to run and read the analyses after Binding and startup (generation has its own
-// entry, Compilation.Generation.cs), follow the pipeline: until R6 the old path decides under both; the MIR is built and validated and its
-// checked set collected under both (DECISIONS BU-48), and under mir the MIR is analyzed beside the old path and its construction records
-// and validator findings are analysis Errors (its analysis problems stay unpublished, R4-M1).
+// entry, Compilation.Generation.cs): until R6 the old path decides; on every pipeline the MIR is built, validated, analyzed beside the old
+// path and collected, and its construction records, validator findings and checked set's records are analysis Errors (DECISIONS R5-M156;
+// its analysis problems stay unpublished, R4-M1).
 public partial class Compilation
 {
     private readonly List<Problem> problems = [];
@@ -24,10 +24,10 @@ public partial class Compilation
     private Mir.MirAnalysis? mirAnalysis;
     private Backend.InstanceCollector? instances;
     private Backend.CheckedSet? collected; // The checked set of the latest Analyze; null before one and after invalidation.
-    private Mir.MirProgram? mir; // The MIR of the latest Analyze under the mir pipeline; null otherwise and after invalidation.
+    private Mir.MirProgram? mir; // The MIR of the latest Analyze; null before one and after invalidation.
 
-    /// <summary>Occurs at the end of every <see cref="Analyze"/>, on both pipelines, when the old path's records and, under mir, the
-    /// MIR's of the version are final: the one observation point of the difference ledger (R4-M17). Observers only read.</summary>
+    /// <summary>Occurs at the end of every <see cref="Analyze"/>, on both pipelines, when the old path's records and the MIR's of the
+    /// version are final: the one observation point of the difference ledger (R4-M17). Observers only read.</summary>
     [Transitional("R6", Reason = "The difference ledger compares the old path with the MIR until R6 deletes the old path.")]
     internal static event Action<Compilation>? Analyzed;
 
@@ -64,21 +64,12 @@ public partial class Compilation
         }
     }
 
-    /// <summary>Analyzes the bodies after final Binding and the startup check (P6–P9). The MIR is built and validated first, its checked set
-    /// collected on every pipeline (SPEC 8.15.3), and under mir it is analyzed as well; then <see cref="Analyzed"/> occurs.</summary>
+    /// <summary>Analyzes the bodies after final Binding and the startup check (P6–P9). The MIR is built, validated, analyzed and its checked
+    /// set collected first, on every pipeline (SPEC 8.15.3; DECISIONS R5-M156); then <see cref="Analyzed"/> occurs.</summary>
     /// <returns>The analysis result.</returns>
     public AnalysisResult Analyze()
     {
-        if (this.pipeline == CompilerPipeline.Mir)
-        {
-            this.mir = this.BuildMir();
-        }
-        else
-        {
-            this.mir = null;
-            this.Collect((this.mirBuilder ??= new(this)).Build());
-        }
-
+        this.mir = this.BuildMir();
         this.Ownership.Analyze();
         Analyzed?.Invoke(this);
         return this.Analysis;
@@ -130,10 +121,9 @@ public partial class Compilation
     private void Collect(Mir.MirProgram program)
         => this.collected = (this.instances ??= new(this.Types, this.Layout)).Run(program, this.SourceModules.Length);
 
-    // The MIR records published, added to the list when one is given: under mir the construction records and validator findings, the
-    // library's as well as the source modules'; on every pipeline the checked set's Language records of the latest Analyze (SPEC 23.2.2:
-    // check reports every Language error of the checked set, its layout obligations among them), and under MIR code generation also its
-    // Unsupported, Resource and Internal records (R5 K4b, DECISIONS R5-M41, until G2), which join acceptance like the others.
+    // The MIR records of the latest Analyze, added to the list when one is given: the construction records and validator findings, the
+    // library's as well as the source modules', and every record of the checked set (SPEC 23.2.2: check reports every error of the checked
+    // set, its layout obligations among them; DECISIONS R5-M156), on every pipeline.
     private int MirRecords(List<Problem>? into)
     {
         var count = 0;
@@ -152,15 +142,8 @@ public partial class Compilation
 
         if (this.collected is { } set)
         {
-            foreach (var record in set.Records)
-            {
-                var language = DiagnosticEntries.TryGet(record.Code, out var entry) && entry.Category == DiagnosticCategory.Language;
-                if (language || this.codegen == CompilerCodegen.Mir)
-                {
-                    count++;
-                    into?.Add(record);
-                }
-            }
+            count += set.Records.Count;
+            into?.AddRange(set.Records);
         }
 
         return count;

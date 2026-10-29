@@ -22,10 +22,12 @@
 #   ./scripts/verify.ps1 -Mode Session -Configuration Debug
 # Native O0/O2 coverage is independent of the compiler configuration and is unchanged.
 #
-# -Pipeline mir (R3-R5) runs every compiler process of the run with KIMI_PIPELINE=mir; the default is legacy.
+# -Pipeline mir (R3-R6) runs every compiler process of the run with KIMI_PIPELINE=mir; the default is legacy. Since G2 it publishes what the
+# default does (DECISIONS R5-M156), so its run is the difference ledger's (KIMI_MIR_DIFF).
 #   ./scripts/verify.ps1 -Class XunitTest.PipelineSwitchTest -Pipeline mir
-# -Codegen mir (R5, until G4) also sets KIMI_CODEGEN=mir, MIR code generation ("sel"), which needs -Pipeline mir; the default is legacy.
-# Its tests print theory arguments in full, and a sel run that wrote test results ends with the pending ledger gate
+# -Codegen mir (R5, until G4) sets KIMI_CODEGEN=mir, MIR code generation, on either pipeline (DECISIONS R5-M156); the default is legacy.
+# With -Pipeline mir it is "sel".
+# Its tests print theory arguments in full, and a -Codegen mir run that wrote test results ends with the pending ledger gate
 # (codegen-pending.ps1): codegen-pending.json and the summary.json field codegenPending. Its test and native steps leave
 # their failing cases and fixtures to the gate, which passes when they equal the ledger; -UpdatePending then writes the ledger.
 #   ./scripts/verify.ps1 -Class XunitTest.PipelineSwitchTest -Pipeline mir -Codegen mir [-UpdatePending]
@@ -76,7 +78,6 @@ $Method = @(Join-KimiCommonTestSelections $requestedMethod -Method)
 $Mode = if ($Mode -eq 'Session') { 'Session' } else { 'Unit' } # The steps and codegen-pending.ps1 compare the canonical spelling.
 $Pipeline = $Pipeline.ToLowerInvariant()
 $Codegen = $Codegen.ToLowerInvariant()
-Assert-KimiCompilerConfiguration $Pipeline $Codegen
 $previousPipeline = $env:KIMI_PIPELINE
 $previousCodegen = $env:KIMI_CODEGEN
 $env:KIMI_PIPELINE = $Pipeline # Tests, fixtures and milestone harnesses inherit it.

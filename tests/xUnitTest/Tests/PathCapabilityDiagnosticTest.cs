@@ -172,7 +172,8 @@ public class PathCapabilityDiagnosticTest
     // a value call's input (R4-M90 PQ-1). A
     // Borrow SPEC denies (a let, a private or custom setter, a let ancestor, a shared handle's payload exclusively, an argument's implicit
     // exclusive borrow) keeps its Language error. Parentheses and inline parts keep the Place, which is never a Temporary Value (SPEC 3.4,
-    // 3.6), and a getter result is lent only shared (SPEC 11.5).
+    // 3.6), and a getter result is lent only shared (SPEC 11.5). Each row asserts the records its own text locates, after the prelude,
+    // whose StaticStorage records one test asserts (OI-1 (a′), DECISIONS R5-M156).
     [Theory]
     [InlineData("        ()\nfunc f()\n    let r = State.dict[1]@ref", "State.dict", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f()\n    let r = (State.dict)[1]@ref", "(State.dict)", DiagnosticCode.Unsupported_Kd)]
@@ -275,8 +276,7 @@ public class PathCapabilityDiagnosticTest
     public void AStaticBorrowIsUnsupported(string body, string at, DiagnosticCode code)
     {
         var source = Statics + body + "\npublic func main() => ()\n";
-        var observed = DiagnosticCorpus.Check(source).Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length));
-        Assert.Equal([(code.ToString(), source.IndexOf(at, Statics.Length, StringComparison.Ordinal), at.Length)], observed);
+        Assert.Equal([(code.ToString(), source.IndexOf(at, Statics.Length, StringComparison.Ordinal), at.Length)], RowRecords(source));
     }
 
     // SPEC 23.1.2: a static callee's Unsupported_Kd (an owned callee's or a handle's) fails the callee alone, as every implicit static
@@ -296,10 +296,42 @@ public class PathCapabilityDiagnosticTest
     public void AStaticCalleeKeepsTheCallsRecords(string body, string callee, string at, DiagnosticCode code)
     {
         var source = Statics + body + "\npublic func main() => ()\n";
-        var observed = DiagnosticCorpus.Check(source).Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length)).Order();
         var unsupported = (DiagnosticCode.Unsupported_Kd.ToString(), source.IndexOf(callee, Statics.Length, StringComparison.Ordinal), callee.Length);
         var record = (code.ToString(), source.IndexOf(at, Statics.Length, StringComparison.Ordinal), at.Length);
-        Assert.Equal(new[] { unsupported, record }.Order(), observed);
+        Assert.Equal(new[] { unsupported, record }.Order(), RowRecords(source).Order());
+    }
+
+    // DECISIONS R5-M82, R5-M156 (OI-1 (a′)): check reports each of the prelude's 26 statics whose storage P42 has not brought (one that can
+    // be set or whose Type is not a scalar; `limit` is an immutable scalar) as the collector's StaticStorage record at its declaration,
+    // through its accessors, on every pipeline, also beside a Binding error after the prelude (SPEC 23.1.2), so the rows above assert
+    // their own records once. P42 reverts this test.
+    [Theory]
+    [InlineData("        ()", "")]
+    [InlineData("        _ = missing", "missing")]
+    public void ThePreludesStaticsAreUnsupportedAtCheck(string body, string at)
+    {
+        var source = Statics + body + "\npublic func main() => ()\n";
+        var declarations = new[]
+        {
+            "var counter:", "var point:", "let fixed:", "var pair:", "var fa:", "var values:", "var dict:", "var handle:", "var circle:",
+            "let ring:", "var shared:", "var leaf:", "var fn:", "let fixedFn:", "var f1:", "var rec:", "var h:", "var fns:", "var oc:", "var rcf:",
+            "var ex =", "let fixedEx =", "var exs =", "let fixedExs =", "var guarded:", "var custom:",
+        };
+        var group = Statics.IndexOf("group State", StringComparison.Ordinal);
+        var expected = declarations.Select(head =>
+        {
+            var start = Statics.IndexOf("    public " + head, group, StringComparison.Ordinal) + "    public ".Length;
+            return (DiagnosticCode.Unsupported_Kd.ToString(), start, Statics.IndexOf("\n    public ", start, StringComparison.Ordinal) - start);
+        }).ToList();
+
+        // Beside a Binding error the old analysis does not run; in a complete program it reports its own Unsupported_Kd at the custom
+        // setter's static write (P42).
+        expected.Add(at.Length > 0
+            ? (DiagnosticCode.UnresolvedBinding_Kd.ToString(), source.IndexOf(at, Statics.Length, StringComparison.Ordinal), at.Length)
+            : (DiagnosticCode.Unsupported_Kd.ToString(), Statics.IndexOf("State.counter = value", StringComparison.Ordinal), "State.counter".Length));
+
+        var observed = DiagnosticCorpus.Check(source).Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length));
+        Assert.Equal(expected.Order(), observed.Order());
     }
 
     // Reads, writes and calls through the group borrow no static Field in Binding. A case adaptation borrows a function reference as a
@@ -373,4 +405,10 @@ public class PathCapabilityDiagnosticTest
         var generated = c.WriteIr(TextWriter.Null, out var failure);
         Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified && generated, MinimalEmissionTest.Describe(c, failure));
     }
+
+    // The checked records a row's own text locates, after the Statics prelude, whose StaticStorage records
+    // ThePreludesStaticsAreUnsupportedAtCheck asserts once (OI-1 (a′), DECISIONS R5-M156).
+    private static IEnumerable<(string Code, int Start, int Length)> RowRecords(string source)
+        => DiagnosticCorpus.Check(source).Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length))
+            .Where(static x => x.Start >= Statics.Length);
 }

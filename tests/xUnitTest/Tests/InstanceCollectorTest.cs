@@ -1650,9 +1650,9 @@ public sealed partial class InstanceCollectorTest
         Assert.DoesNotContain(set.Items.ToArray(), static x => x.Key.Kind == MonoKind.ClosureErasure);
     }
 
-    // DECISIONS R5-M44 (P7c's Q6, R5-M6): the depth bound counts placed levels (R5-M37), and the old generator, whose pool takes Layout's
-    // verdict, agrees for a struct chain and a one-component Tuple chain, read down to the scalar leaf, at 64 and 65 levels; the height-64
-    // difference R5-M37 anticipated does not arise. The old generator is selected whatever the process's code generator (R5-M73).
+    // DECISIONS R5-M44 (P7c's Q6, R5-M6): the depth bound counts placed levels (R5-M37) for a struct chain and a one-component Tuple chain,
+    // read down to the scalar leaf, at 64 and 65 levels; the height-64 difference R5-M37 anticipated does not arise. The old generator,
+    // whose pool takes Layout's verdict, agreed (R5-M73) until check rejected the 65-level program before it (DECISIONS R5-M156).
     [Theory]
     [InlineData("Struct", 64, false)]
     [InlineData("Struct", 65, true)]
@@ -1684,9 +1684,6 @@ public sealed partial class InstanceCollectorTest
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         var records = set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString().Split('\n')[0]));
         Assert.Equal(limited ? [(DiagnosticCode.GenerationResourceLimit_Kd, type)] : [], records);
-        var legacy = MinimalEmissionTest.Analyze(source.ToString(), codegen: CompilerCodegen.Legacy);
-        Assert.Equal(!limited, legacy.Validate(out var error));
-        Assert.True(limited == (error is { } text && text.Contains("generation depth limit of 64 levels", StringComparison.Ordinal)), error);
     }
 
     // K 4.7, IMPL 21.3.3, DECISIONS R5-M53: Binding refuses a closed 128-bit division, remainder (compound forms included) or float

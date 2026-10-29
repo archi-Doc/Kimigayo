@@ -94,7 +94,7 @@ public class RecursiveDefaultTest
 
     [Fact]
     public void GrowingDefaultSubstitutionsAreResourceDiagnosed()
-        => MinimalEmissionTest.AssertGenerationResourceLimit("func grow<T>(n: i32, result: i32 = if n == 0 => 0 else => grow<[1 of T]>(n - 1)) -> i32 => result\n_ = grow<i32>(2)", "closed substitutions");
+        => MinimalEmissionTest.AssertGenerationResourceLimit("func grow<T>(n: i32, result: i32 = if n == 0 => 0 else => grow<[1 of T]>(n - 1)) -> i32 => result\n_ = grow<i32>(2)", "grow<[1 of T]>(n - 1)");
 
     [Fact]
     public void RecursiveAbortDoesNotUnwindPreparedInputsOrDefaultDefers()

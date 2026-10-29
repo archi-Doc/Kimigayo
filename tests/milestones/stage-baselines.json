@@ -1,6 +1,6 @@
 [
   { "Program": 39, "Stage": "Binding", "Diagnostic": "UnresolvedBinding_Kd", "Anchor": "view.extra", "SupportedPrefixEnd": "func inspect" },
   { "Program": 41, "Stage": "Binding", "Diagnostic": "Unsupported_Kd", "Anchor": "Weak", "SupportedPrefixEnd": "struct Node" },
-  { "Program": 42, "Stage": "Ownership", "Diagnostic": "Unsupported_Kd", "Anchor": "Registry", "SupportedPrefixEnd": "public func main()" },
+  { "Program": 42, "Stage": "Ownership", "Diagnostic": "Unsupported_Kd", "Anchor": "var count: i32 = Registry.initialCount()", "SupportedPrefixEnd": "public func main()" },
   { "Program": 43, "Stage": "Binding", "Diagnostic": "Unsupported_Kd", "Anchor": "Weak", "SupportedPrefixEnd": "group Registry" }
 ]
