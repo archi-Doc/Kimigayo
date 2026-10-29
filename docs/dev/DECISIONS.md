@@ -5380,9 +5380,19 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `TyCtxt.CoreContent` is the one table of a built-in Core's stored content (`string` -> `u8`; the other Cores none; never "holds
     any"), which `HeldParts` reads for the positions and the sources alike, so `Utf8Slice`'s `Slice<u8> during source` borrows a part
     reached through `text`. Its `string` row's source is SPEC 3.1.2 as written (a string's content is its UTF-8 bytes): asked about
-    the design owner's offered clarifying sentence there, the owner answered 「加えない」 (2026-10-29), so no SPEC text changes. Wk row `viewHolds` (each Bad form valid on 295224f0e). The per-contract comparison against e9ad0a5fa
-    differs only there: iterate, iterateUniq and utf8 results Content -> Value (census Milestone31, 32, 35 and the iterations golden
-    among them), and the raw slots of the rawPath rows' callees, which now hold `zr`'s value as the borrow their Origin `r` belongs to.
+    the design owner's offered clarifying sentence there, the owner answered 「加えない」 (2026-10-29), so no SPEC text changes. Wk row
+    `viewHolds` (each Bad form valid on 295224f0e). The per-contract comparison against e9ad0a5fa differs only there: iterate,
+    iterateUniq and utf8 results Content -> Value (census Milestone31, 32, 35 and the iterations golden among them), and the raw slots
+    of the rawPath rows' callees, which now hold `zr`'s value as the borrow their Origin `r` belongs to.
+  - r2.3 (design-r2 §9c), the one walk: `StorageWalk` visits each Type once per state (`StorageAt`: the output's storage and whether
+    the call writes there; the input, whether the Type is held by value or reached through a layer, and the path's reduced prefix), and
+    each visit goes to the fold its state names, the output fold's position (`Position`) or the input fold's sources (`Source`; past a
+    layer `Through`). The second walk (`Sources`) and `OwnParts` are deleted. Behavior-preserving: the per-contract comparison against
+    e43ada5eb (census, probe programs, Wk rows; 58,469 calls) is identical. Cold Retains about +30 µs (Hello 955-959 -> 988 µs, a
+    duplicate baseline within 5 µs) and +192 B. Of r2.2's 15 raw-path differences, all are §9c's (a): in each rawPath callee (`sneak`,
+    `sneakS`, `sneakR`, `sneakRS`, `sneakRel`, `sneakRelS`, `sneakR3`, `sneakR3R`; probe and Wk programs) the written input's raw slot
+    states r, whose borrow among the inputs is `zr`, so it reads as `ref/i32` and holds `zr`'s own value (Content -> Value, as before
+    0fd5e2f37's rules); none is (b).
   - An abstract referent holds any part (`Holds`; BU's review N2, the design owner's answer recorded with its exact rule): the exact
     rule is (β′) applied to the source side, a borrow formed through an argument whose referent is abstract having, besides `ref/T` and
     `uniq/T`, the Types a handed callable forms from a `ref/T` or `uniq/T` input (a requirement `n(self: ref/Self) -> ref/i32 during
@@ -5392,8 +5402,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     condition: that Type set formed, a precision unit after WK.
   - One enumeration of a value's parts (fix round 1, R4's review N3): `HeldParts` gives the parts a value holds at its own address,
     each with the Type its declaration writes and its holder and whether it has an address (a nominal Type's Type argument has none
-    but a collection's); the storage walk (`Parts`) and the sources and fits (`OwnParts`, which adds the layers' owned parts and what
-    a `during self` layer admits) both read it. `OwnParts` had listed only Tuples, fixed arrays, Arrays, Closures and `obj` payloads, so
+    but a collection's); the walk (`Parts`) and the fits (`Holds`, `Borrows`) read it (r2.3: it also gives what a layer owns and a
+    `during self` Field's content, which `OwnParts` had added; `OwnParts` is deleted). `OwnParts` had listed only Tuples, fixed arrays,
+    Arrays, Closures and `obj` payloads, so
     a Dictionary's keys and values were no parts held by value and `Dictionary.index`/`tryGet`'s `ref/V during self` kept only Content:
     `d.clear()` while that result is used was accepted (fd4f56ae3; dev rejects it), now `CallActivationConflict_Kd` again (Wk row C7).
     Commit 65942abed mixed this restructuring (`HeldParts`, `SelfAdmitted`'s one owner) with that behavior change (1,021 Dictionary
@@ -5408,7 +5419,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `s.r = pin(s.r@ref)` valid, and `apply(identity, n@mode)` (ObjectCallableOriginTest, four modes and the warm twins) and
     `apply(none)` (InputDependentValueCallTest's Callable row) keep no Loan on their Function Item temporary, R4-M136's class (a) rows
     gone, so those seven tests drop their OldRule ledger keys and MirTargetSide calls (31 -> 24 OldRule traits; the without-target-side
-    ratchet stays 7); by (S), `seedRoute` errs (a
+    ratchet stays 7); `Holder.viaSlot`'s result `ref/(ref/i32 during a) during q` can hold neither q's own value nor a borrow formed
+    through q at its own layer, and the storage behind its own shared layer is lent, not filled by the call (design-r2 §9c), so `other =
+    4` while it lives is valid: ResultPremiseTest.AMethodPremiseUsesTheReceiverTypesSlots keeps its default-pipeline conflict under
+    OldRule `ledger:e953d3c484f2:22` with its MIR side (no record; 25 OldRule traits); by (S), `seedRoute` errs (a
     self-row, SPEC's letter, PLAN G148 (2) GXS) and nestedPointee, mixed, tupleTyped err also at `z = 5`; RetentionTest's rows as
     rule 2 reads them (AnErasedSignatureReadsNoSignatureCap, both Cell rows of ExclusiveInputsAreStores, ALentLayerRetainsTheRaw
     Arguments, RawLayersRetainByTheirOrigins' two rows, DeclaredRelationsDecideTheResult's two rows, the three BU-49 rows).

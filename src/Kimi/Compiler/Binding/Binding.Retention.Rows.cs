@@ -156,7 +156,7 @@ public sealed partial class Binding
         }
 
         this.BeginStorages();
-        this.StorageWalk(environment, result, ResultStorage, writable: true, (null, null, 0));
+        this.StorageWalk(environment, result, StorageAt.Output(ResultStorage, writable: true));
         this.Storages(environment, links, kept);
         var resultKinds = this.retentionKinds[ResultStorage];
         var resultRecord = new StorageRetention([.. resultKinds], this.Pairs(resultKinds, ResultStorage), untied);

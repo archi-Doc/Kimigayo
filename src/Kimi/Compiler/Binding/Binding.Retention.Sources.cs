@@ -6,26 +6,26 @@ namespace Kimi.Compiler;
 
 // Call retention, the Value sources and the fits (SPEC 15.6.4 read as (iii) with (β′), 15.6.3; DECISIONS R4-M154; contract in
 // TyCtxt.Retention.cs).
-// Responsibility: the Value sources of each input (RetentionSources: a value of its Type, of a part it holds by value, or a borrow formed
-// through it, each named by its layer's node with the layers it is formed through) and whether a position can hold one (CanHold, Holds,
-// Borrows, Fits); Binding.Retention.Rows.cs reads them into a storage's Value kinds and pairs, and the hold walk reads Fits.
-// Inputs: the contract's instantiated inputs, the nodes of its own layers and arguments (OwnNodes), the parts a value holds
-// (HeldParts) and the pair layers' admitted cases (LayerAdmitted).
+// Responsibility: the input fold of the one walk (StorageWalk; DECISIONS R4-M154, r2.3): the Value sources of each input
+// (RetentionSources, Source, Through: a value of its Type, of a part it holds by value, or a borrow formed through it, each named by its
+// layer's node with the layers it is formed through), and whether a position can hold one (CanHold, Holds, Borrows, Fits);
+// Binding.Retention.Rows.cs reads them into a storage's Value kinds and pairs, and the hold walk reads Fits.
+// Inputs: the contract's instantiated inputs, the walk's visits, the nodes of a Type's own layers and arguments (OwnNodes), the parts a
+// value holds (HeldParts) and the pair layers' admitted cases (LayerAdmitted).
 // Outputs: per computation, the sources by node (retentionSources, with their layer paths, retentionPaths); per question, whether a
 // position's Type can hold a source.
 // Invariants: a source is identified by its path (Revision 10): the layers it is formed through but those the premise catalog's
 // well-formedness rule relates to the layer above (Related), each of which a fit needs, so a Type is walked once per path; a fit compares
 // Origin-erased Types (TyCtxt.Erase), a pair layer by its admitted cases; an abstract part, a part Binding did not bind and a library Type
-// keeping no part hold any; the walks stop at the depth bound (StorageBound).
-// Must not: judge an Origin relation (the premise closure's), walk a storage (the storage walk's), or read the call's arguments.
+// keeping no part hold any; the input fold's walks and the fits stop at the depth bound (StorageBound).
+// Must not: judge an Origin relation (the premise closure's), walk a value itself (the walk's), or read the call's arguments.
 public sealed partial class Binding
 {
-    // The Value sources of the computation by node, their layer paths (each a run of retentionPaths) and the path being walked, Sources'
-    // visits, and the parts Holds has met; reused.
+    // The Value sources of the computation by node, their layer paths (each a run of retentionPaths) and the path being walked, and the
+    // parts Holds has met; reused.
     private readonly List<RetentionSource> retentionSources = new();
     private readonly List<int> retentionPaths = new();
     private readonly List<int> retentionPath = new();
-    private readonly HashSet<(int Path, bool Own, BoundType Type)> retentionVisits = new(); // Sources' visits, by path.
     private readonly Dictionary<(int Path, int Layer), int> retentionPathIds = new(); // The paths walked, each by its prefix and last layer.
     private readonly HashSet<BoundType> retentionParts = new(ReferenceEqualityComparer.Instance);
 
@@ -42,7 +42,7 @@ public sealed partial class Binding
     // it): through a borrow layer among those parts (shared or exclusive), a borrow of its referent or of a part the referent holds by
     // value, and through each exclusive layer reached from it before another shared one, its referent's (SPEC 15.6.3: a Ref's region lies
     // within each layer from its last step outward up to the first shared one), each named by the layer's node. A raw input has none
-    // here (its own value is the hold walk's, Held).
+    // here (its own value is the hold walk's, Held). Each input's are the input fold of the one walk from its own value (Source).
     private void RetentionSources(OriginPremiseEnvironment environment, ReadOnlySpan<BoundType> inputs)
     {
         this.retentionSources.Clear();
@@ -52,71 +52,65 @@ public sealed partial class Binding
         {
             if (inputs[i] is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
             {
-                this.retentionVisits.Clear();
-                this.Sources(environment, inputs[i], i, own: true, (-1, 0), 0);
+                this.storageSeen.Clear();
+                this.StorageWalk(environment, inputs[i], StorageAt.Source(i));
             }
         }
     }
 
-    // An input's sources at a part of its own value (`own`) or at a part a referent of it holds by value, past its own layer and exclusive
-    // ones (else), each with its path (retentionPath, Revision 10): the nodes of the layers it is formed through (a reborrow's region lies
-    // within each, SPEC 15.6.3; a borrow of a raw place within the raw layer's Origin, 5.2.2) but those Related to the layer above
-    // (`at.Above`, the node of the layer whose referent the walk is in, -1: none). Each path forms its own sources (form (b)): a Type is
-    // walked once per path (`at.Path`, an interned id), so one reached through two layers forms the borrows of both.
-    private void Sources(OriginPremiseEnvironment environment, BoundType? type, int input, bool own, (int Above, int Path) at, int depth)
+    // The input fold at a Type the walk visits (StorageWalk): the sources of the input there, by node, each with its path (retentionPath,
+    // Revision 10): the nodes of the layers it is formed through (a reborrow's region lies within each, SPEC 15.6.3; a borrow of a raw
+    // place within the raw layer's Origin, 5.2.2) but those Related to the layer above (`at.Above`). A Type held by value from the input
+    // is a source of its own Type; a Type reached through a layer is one only as an exclusive layer, of the borrows formed through it (its
+    // referent, Through), as a shared layer held by value is too. Returns the node past which a source goes through the Type's layer (-1:
+    // none, also below a shared layer reached through another): each path forms its own sources (form (b)), the walk visiting a Type once
+    // per path (`at.Path`, an interned id), so one reached through two layers forms the borrows of both.
+    private int Source(OriginPremiseEnvironment environment, BoundType type, StorageAt at)
     {
-        if (type is null || depth > StorageBound || !this.retentionVisits.Add((at.Path, own, type)))
-        {
-            return;
-        }
-
         var referent = Abstract(type) ? null : this.BorrowTarget(type);
         var exclusive = referent is not null && (IsInvariantLayer(type, this) || type.Symbol?.LibraryDeclaration == KimiDeclarationId.UniqSlice);
-        if (own || exclusive)
+        if (!at.Held && !exclusive)
         {
-            var layer = -1;
-            foreach (var node in this.OwnNodes(environment, type))
-            {
-                var start = this.retentionPaths.Count;
-                this.retentionPaths.AddRange(this.retentionPath);
-                if (!Related(environment, node, at.Above))
-                {
-                    this.retentionPaths.Add(node);
-                }
-
-                this.retentionSources.Add(new(node, input, own ? type : null, referent, (start, this.retentionPaths.Count - start)));
-                layer = node;
-            }
-
-            if (referent is not null && layer >= 0)
-            {
-                var kept = !Related(environment, layer, at.Above);
-                if (kept)
-                {
-                    this.retentionPath.Add(layer);
-                }
-
-                this.Sources(environment, referent, input, own: false, (layer, kept ? this.PathId(at.Path, layer) : at.Path), depth + 1);
-                this.retentionPath.RemoveRange(this.retentionPath.Count - (kept ? 1 : 0), kept ? 1 : 0);
-                return;
-            }
+            return -1;
         }
 
-        if (referent is not null || Abstract(type) || IsCallable(type) || type.Semantics == SemanticsKind.Raw)
+        var layer = -1;
+        foreach (var node in this.OwnNodes(environment, type))
+        {
+            var start = this.retentionPaths.Count;
+            this.retentionPaths.AddRange(this.retentionPath);
+            if (!Related(environment, node, at.Above))
+            {
+                this.retentionPaths.Add(node);
+            }
+
+            this.retentionSources.Add(new(node, at.Input, at.Held ? type : null, referent, (start, this.retentionPaths.Count - start)));
+            layer = node;
+        }
+
+        return referent is null ? -1 : layer;
+    }
+
+    // The input fold past a layer (Past, Admitted): what a source goes through the layer at node `layer` to (-1: none), reached, with the
+    // layer on its path unless Related to the layer above.
+    private void Through(OriginPremiseEnvironment environment, BoundType referent, int layer, StorageAt at)
+    {
+        if (at.Input < 0 || layer < 0)
         {
             return;
         }
 
-        var (from, to) = this.OwnParts(type, carried: false);
-        for (var i = from; i < to; i++)
+        var kept = !Related(environment, layer, at.Above);
+        if (kept)
         {
-            this.Sources(environment, this.retentionHeld[i].Type, input, own, at, depth + 1);
+            this.retentionPath.Add(layer);
         }
 
-        this.retentionHeld.RemoveRange(from, to - from);
+        this.StorageWalk(environment, referent, at with { Held = false, Above = layer, Path = kept ? this.PathId(at.Path, layer) : at.Path });
+        this.retentionPath.RemoveRange(this.retentionPath.Count - (kept ? 1 : 0), kept ? 1 : 0);
     }
 
-    // The id of a path (Sources): its prefix's id with one more layer, interned for the computation (0: the empty path).
+    // The id of a path (Through): its prefix's id with one more layer, interned for the computation (0: the empty path).
     private int PathId(int prefix, int layer)
     {
         if (!this.retentionPathIds.TryGetValue((prefix, layer), out var id))
@@ -163,14 +157,14 @@ public sealed partial class Binding
             return false;
         }
 
-        var (start, end) = this.OwnParts(position, carried: true);
+        _ = this.HeldParts(position, null, null, carried: true, out var run);
         var borrows = false;
-        for (var i = start; !borrows && i < end; i++)
+        for (var i = run.Start; !borrows && i < run.End; i++)
         {
-            borrows = this.Borrows(this.retentionHeld[i].Type, referent, depth + 1);
+            borrows = this.retentionHeld[i].Addressed && this.Borrows(this.retentionHeld[i].Type, referent, depth + 1);
         }
 
-        this.retentionHeld.RemoveRange(start, end - start);
+        this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
         return borrows;
     }
 
@@ -197,7 +191,7 @@ public sealed partial class Binding
         return stated ? type.Components[0] : this.BorrowReferent(type, out _, out _);
     }
 
-    // Whether a storage holds a value of a Type as itself or a part (OwnParts; `carried`: also a shared handle's payload, which a new value
+    // Whether a storage holds a value of a Type as itself or a part (HeldParts; `carried`: also a shared handle's payload, which a new value
     // built there carries); an abstract part, a part Binding did not bind (Rejected storage keeps the rows that hold whatever it is, BU-36)
     // and a library Type keeping no part (compiler-implemented storage, Opaque) hold any (a referent an abstract part is may hold any part,
     // as an implementation of its Contract may).
@@ -223,14 +217,14 @@ public sealed partial class Binding
             return false;
         }
 
-        var (start, end) = this.OwnParts(storage, carried);
+        _ = this.HeldParts(storage, null, null, carried, out var run);
         var holds = false;
-        for (var i = start; !holds && i < end; i++)
+        for (var i = run.Start; !holds && i < run.End; i++)
         {
-            holds = this.Holds(this.retentionHeld[i].Type, value, carried, depth + 1);
+            holds = this.retentionHeld[i].Addressed && this.Holds(this.retentionHeld[i].Type, value, carried, depth + 1);
         }
 
-        this.retentionHeld.RemoveRange(start, end - start);
+        this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
         return holds;
     }
 
@@ -256,70 +250,6 @@ public sealed partial class Binding
         }
 
         return false;
-    }
-
-    // The parts a value of a Type holds by value (SPEC 15.6.3), appended to retentionHeld as a run (Start, End) its caller removes: a raw
-    // layer's pointee where it states no Origin (the value owns it), a pair layer's target in an owning case and, `carried`, a shared
-    // handle's payload (which a new value built there carries), else the parts HeldParts gives an address, with what each `during self`
-    // layer among them admits (SelfAdmitted: its pointee and the holding instance's Type arguments by their actual Types).
-    private (int Start, int End) OwnParts(BoundType type, bool carried)
-    {
-        var parts = this.retentionHeld;
-        var start = parts.Count;
-        if (this.OwnLayer(type, carried, out var owned))
-        {
-            parts.AddRange(owned is null ? [] : [new(owned, null, null, true)]);
-            return (start, parts.Count);
-        }
-
-        _ = this.HeldParts(type, null, null, out var run);
-        var kept = run.Start;
-        for (var i = run.Start; i < run.End; i++)
-        {
-            var part = parts[i];
-            parts[kept] = part;
-            kept += part.Addressed ? 1 : 0;
-            if (part is { Type: { Semantics: SemanticsKind.Raw, Components: [var held] } raw, Holder: { } holder } &&
-                this.DeclaredStep(raw, part.Written, holder) == RawStep.Own)
-            {
-                _ = SelfAdmitted(holder, out var arguments);
-                parts.Add(new(held, null, null, true));
-                foreach (var argument in arguments)
-                {
-                    parts.Add(new(argument, null, null, true));
-                }
-            }
-        }
-
-        parts.RemoveRange(kept, run.End - kept);
-        return (start, parts.Count);
-    }
-
-    // OwnParts' layers: whether the Type is a raw, pair or shared handle layer, and the part it holds by value (`owned`, null for none): a
-    // raw layer's pointee where it states no Origin, a pair layer's target in an owning case, `carried` a shared handle's payload too.
-    private bool OwnLayer(BoundType type, bool carried, out BoundType? owned)
-    {
-        owned = null;
-        if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] })
-        {
-            owned = OwnedOrigin(type) is null or { Kind: OriginKind.Unstated } ? pointee : null;
-            return true;
-        }
-
-        if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Rc or SemanticsKind.Arc, Components: [var payload] })
-        {
-            owned = carried ? payload : null;
-            return true;
-        }
-
-        if (!TryPairLayer(type, out _, out var target))
-        {
-            return false;
-        }
-
-        var shared = carried ? SemanticsMask.Rc | SemanticsMask.Arc : SemanticsMask.None;
-        owned = (this.LayerAdmitted(type) & (SemanticsMask.Owner | SemanticsMask.Obj | shared)) != 0 ? target : null;
-        return true;
     }
 
     // A Value source of an input (RetentionSources): its node, the part of its own value it is (null: one reached through an exclusive
