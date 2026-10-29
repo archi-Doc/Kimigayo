@@ -57,13 +57,14 @@
 // carries (Chain) and every input but j by its own value (Value), and unties that output (its records' Untied), as a `static` layer
 // does without these rows; one behind a borrow in the result (a Slice's or UniqSlice's elements included, and a result raw layer
 // stating a borrow's Origin, which retains as that borrow would) is lent, not written: it retains only the raw inputs, by Value and
-// Chain, and unties nothing (R′). A published operation that transfers values (an Iterator's `next`, `exchange`, `swap`, an operation of SPEC 4.6 to 4.9, keyed by
-// declaring identity in Binding.Retention.Transfers.cs) retains there a borrowed input by its Chain only, `exchange`'s result only its
-// target's Chain, and a 4.9 operation's receiver storage, of the other inputs, only its added ones (KimiLibraryCatalog.Added; a member
-// without a receiver, construction, has no receiver storage, so its result keeps every input). It writes only its own outputs
-// (TransferWrites): a 4.9 operation its result and its receiver's element storage, `exchange` its result and its target; rule A forms
-// no row at another output. An operation of SPEC 4.6 to 4.9 writes the store at its borrowed receiver only in the storage that receiver
-// refers to (ReferentStores; 4.9.6).
+// Chain, and unties nothing (R′). A published operation that transfers values (an Iterator's `next`, `exchange`, `swap`, an operation
+// of SPEC 4.6 to 4.9, keyed by declaring identity in Binding.Retention.Transfers.cs) retains there a borrowed input by its Chain only,
+// `exchange`'s result only its target's Chain, and a 4.9 operation's receiver storage, of the other inputs, only its added ones
+// (KimiLibraryCatalog.Added; a member without a receiver, construction, has no receiver storage, so its result keeps every input). It
+// writes only its own outputs (TransferWrites): a 4.9 operation its result and its receiver's element storage, `exchange` its result
+// and its target; at another output rule A forms no row and a raw layer there unties nothing (DECISIONS BU-52: an added value's
+// Fields, payloads and elements are no storage the operation writes). An operation of SPEC 4.6 to 4.9 writes the store at its
+// borrowed receiver only in the storage that receiver refers to (ReferentStores; 4.9.6).
 // Content and Chain are two measures: Content what one read through the input carries (premises, step 4), Chain any chain of reads.
 // Files: this one (the contract and its records RetentionKind, StorageRetention, OutputRetention, CallRetention); TyCtxt.Retention.Calls.cs
 // (TyCtxt.Retains, RetainsErasedDestruction and their memo, the callables handed to a body); Binding.Retention.cs with .Atoms.cs,

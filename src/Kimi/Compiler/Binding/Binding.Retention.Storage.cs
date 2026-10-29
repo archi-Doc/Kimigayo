@@ -96,8 +96,9 @@ public sealed partial class Binding
 
     // The one walk (DECISIONS R4-M154, r2.3): a Type the walk visits, once per state it is in (StorageAt, the path's reduced prefix
     // included). Each visit emits to the fold its state names: the output fold its position where the call writes it (Position; an input's
-    // also a hold, storageHolds), the input fold its sources (Source). Then what the Type holds and reaches: what a pair, borrow, shared handle or raw layer refers to (Past;
-    // a raw layer by its step, `during self` content as Admitted), its parts by value (Parts); an abstract part or a callable, nothing.
+    // also a hold, storageHolds), the input fold its sources (Source). Then what the Type holds and reaches: what a pair, borrow, shared
+    // handle or raw layer refers to (Past; a raw layer by its step, `during self` content as Admitted), its parts by value (Parts); an
+    // abstract part or a callable, nothing.
     private void StorageWalk(OriginPremiseEnvironment environment, BoundType? type, StorageAt at)
     {
         var source = at.Source.Input >= 0;

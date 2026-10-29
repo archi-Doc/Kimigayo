@@ -206,8 +206,8 @@ public sealed partial class Binding
     }
 
     // Begins a retention computation at `use`: resets the per-computation fields, registers each input's atoms and the result's atoms,
-    // over the scope of the inputs and declaring Type, of which `signatureInputs` are a callee's own signature inputs (none for an erased signature), then rents
-    // the premise environment, which EndRetention returns.
+    // over the scope of the inputs and declaring Type, of which `signatureInputs` are a callee's own signature inputs (none for an erased
+    // signature), then rents the premise environment, which EndRetention returns.
     private OriginPremiseEnvironment BeginRetention(Koto use, ReadOnlySpan<BoundType> inputs, BoundType result, BoundType? declaring, int signatureInputs)
     {
         this.retentionAtoms.Clear();

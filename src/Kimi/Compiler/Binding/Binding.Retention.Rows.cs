@@ -92,15 +92,16 @@ public sealed partial class Binding
     // premises followed) from one of its targets reaches an occurrence of the input, by Value where the closure from a position's node
     // reaches one of the input's sources that the position can hold (CanHold), and by what the output's hold walk keeps (Held from its
     // holds, the result's whole Type or each position the storage walk names for input j, DECISIONS BU-52; each position once per lent
-    // bit, BU-35, BU-40): a raw input's own value where a layer with an Origin or an abstract part can hold it
-    // (R4-M116 R-B4), every input at a raw layer the call writes without an Origin (rule A, WrittenUnstated, the transfer rule narrowing
-    // it), the raw inputs at one the result lends (R′); one stepping Unstated or Static, not lent, unties every storage of the output, and
-    // a result atom whose non-static Origin reaches no input unties the result. A result the call forms within a raw parameter's storage
-    // (`within`) retains that argument's own value. The transfer key by declaring identity also gives the stores written only where the
-    // receiver refers (ReferentStores). The work is one closure per node a target names, each node with its incoming premises once, and
-    // the walks; the identity key is read once per contract, and for a callee it does not name the Iterator key once, at the first output
-    // that meets a written unstated layer, under `premises`, the scope TyCtxt read an instance with an abstract part under (null: none, or
-    // an erased callable's, which has no callee). CallRetention.Limit where a walk meets storage past its limits.
+    // bit, BU-35, BU-40): a raw input's own value where a layer with an Origin or an abstract part can hold it (R4-M116 R-B4), every
+    // input at a raw layer the call writes without an Origin (rule A, WrittenUnstated, the transfer rule narrowing it), the raw inputs at
+    // one the result lends (R′); one stepping Unstated or Static, not lent, unties every storage of the output, where a transfer operation
+    // writes it (TransferWrites, as for rule A), and a result atom whose non-static Origin reaches no input unties the result. A result
+    // the call forms within a raw parameter's storage (`within`) retains that argument's own value. The transfer key by declaring identity
+    // also gives the stores written only where the receiver refers (ReferentStores). The work is one closure per node a target names, each
+    // node with its incoming premises once, and the walks; the identity key is read once per contract, and for a callee it does not name
+    // the Iterator key once, at the first output that meets a written unstated layer, under `premises`, the scope TyCtxt read an instance
+    // with an abstract part under (null: none, or an erased callable's, which has no callee). CallRetention.Limit where a walk meets
+    // storage past its limits.
     private CallRetention RetentionRows(
         OriginPremiseEnvironment environment,
         int[] nodes,
@@ -481,7 +482,9 @@ public sealed partial class Binding
     // An output's hold walk (Held from each of its holds: the result's whole Type, or each position of input j's storages the storage walk
     // emits with the Type its declaration writes there and the instance holding it, DECISIONS BU-52; each position once per lent bit)
     // and what it keeps (`kept`): rule A's rows at a written unstated layer (WrittenUnstated, the transfer read once per contract), the
-    // raw inputs at a lent one (R′); whether it met a layer stepping Unstated or Static, not lent, which unties the output.
+    // raw inputs at a lent one (R′); whether it met a layer stepping Unstated or Static, not lent, which unties the output. A published
+    // transfer operation writes only its own outputs (TransferWrites, by the declaring-identity key: an Iterator's `next` writes each),
+    // so at another it neither forms rule A's rows nor unties it: the output has no record from these layers.
     private bool Hold(
         int output,
         ReadOnlySpan<(BoundType Type, BoundType? Written, BoundType? Holder)> holds,
@@ -497,7 +500,8 @@ public sealed partial class Binding
             met |= this.Held(type, written, holder, output, kept, lent: false);
         }
 
-        if ((met & Holding.Unstated) != 0)
+        var writes = (met & (Holding.Unstated | Holding.Static)) != 0 && TransferWrites(call.Key, call.Callee?.BoundSymbol, output);
+        if (writes && (met & Holding.Unstated) != 0)
         {
             transfer ??= call.Key == Transfer.None ? this.IteratorTransfer(call.Callee?.BoundSymbol, inputs, call.Premises) : call.Key;
             this.WrittenUnstated(kept, output, inputs, transfer.Value, call.Callee?.BoundSymbol);
@@ -510,15 +514,15 @@ public sealed partial class Binding
             }
         }
 
-        return (met & (Holding.Unstated | Holding.Static)) != 0;
+        return writes;
     }
 
     // SPEC 15.6.4's rule A (DECISIONS R4-M131, BU-40): at a raw layer without an Origin that the call may write in `output`, every input
     // keeps what any chain of reads through it carries, and every input but the one written through keeps its own value; narrower for a
-    // published transfer operation, which writes only its own outputs (TransferWrites, TransferKept).
+    // published transfer operation (TransferKept), at an output it writes (Hold reads TransferWrites).
     private void WrittenUnstated(RetentionKind[] kept, int output, ReadOnlySpan<BoundType> inputs, Transfer transfer, BindingSymbol? callee)
     {
-        for (var i = 0; TransferWrites(transfer, callee, output) && i < inputs.Length; i++)
+        for (var i = 0; i < inputs.Length; i++)
         {
             kept[i] |= i == output ? RetentionKind.Chain : this.TransferKept(transfer, callee, inputs[i], i, output);
         }

@@ -950,8 +950,10 @@ public sealed class RetentionTest
     // `appendAll`'s Array, `appendCopies`' Slice by its chain), no index, key or predicate; construction has no receiver storage, so its
     // result keeps every argument, `repeating` and `count`, by its own value and its chain (fail-before: only `untied`). The keys are
     // declaring identities: a LendingIterator-only `next`, a user `pop` and a user `swap` keep every argument (A's cost, R4-M131 Open), and
-    // `exchange` over a borrow keeps its rows. A 4.9 operation and `exchange` form none at an output they do not write (SPEC 4.9.6's
-    // complete published effect; PLAN G255's C4): an added `raw/(raw/u8)`'s pointee, `exchange`'s `with` (fail-before: `0 Chain store 1`).
+    // `exchange` over a borrow keeps its rows. A 4.9 operation and `exchange` form no row and untie nothing at an output they do not write
+    // (SPEC 4.9.6's complete published effect; PLAN G255's C4; DECISIONS BU-52): an added `raw/(raw/u8)`'s pointee, a struct's Field and
+    // an enum's payload added by value (`append`, `insertOrReplace`), `exchange`'s `with` (fail-before: `store 1: own {}, reached {}
+    // untied`, an untied pointer for what the added value addresses; before C4, `0 Chain store 1`).
     // A 4.9 operation writes its receiver's store only in the storage the receiver refers to (`referent store 0`, DECISIONS BU-42);
     // construction, `exchange`, `swap`, an Iterator's `next` and a user `trade` or `pop` have no such store.
     [Theory]
@@ -969,11 +971,16 @@ public sealed class RetentionTest
         "result {0 Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0 | result {0 Value Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied")]
     [InlineData("var d: Dictionary<i32, raw/u8> = [:]\nlet k = 1\nlet x = d.remove(k@ref)\n", "remove", "result {0 Chain, 1 Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0")]
     [InlineData("var a: Array<raw/u8> = []\na.insert(0, null)\n", "insert", "store 0: own {0 Chain, 2 Value Chain}, reached {0 Chain, 2 Value Chain} untied, referent store 0")]
-    [InlineData("var a: Array<raw/(raw/u8)> = []\nvar h: raw/u8 = null\na.append(h@raw)\n", "append", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied, store 1: own {}, reached {} untied, referent store 0")]
+    [InlineData("var a: Array<raw/(raw/u8)> = []\nvar h: raw/u8 = null\na.append(h@raw)\n", "append", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied, referent store 0")]
+    [InlineData(Pp + "var a: Array<Pp> = []\na.append(Pp.init(p: null))\n", "append", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied, referent store 0")]
+    [InlineData(
+        "enum E\n    A(raw/(raw/u8))\n    B\nvar d: Dictionary<i32, E> = [:]\nlet old = d.insertOrReplace(1, .A(null))\n",
+        "insertOrReplace",
+        "result {0 Chain, 1 Value Chain, 2 Value Chain}, untied, store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {0 Chain, 1 Value Chain, 2 Value Chain} untied, referent store 0")]
     [InlineData(
         "var x: raw/(raw/u8) = null\nlet old = Kimi.Intrinsics.exchange(x@uniq, with: null)\n",
         "exchange",
-        "result {0 Chain}, untied, store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied, store 1: own {}, reached {} untied")]
+        "result {0 Chain}, untied, store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
     [InlineData("var a: Array<raw/u8> = []\nvar b: Array<raw/u8> = [null]\na.appendAll(b@move)\n", "appendAll", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied, referent store 0")]
     [InlineData("var a: Array<raw/u8> = []\nlet b: Array<raw/u8> = [null]\na.appendCopies(b.slice())\n", "appendCopies", "store 0: own {0 Chain, 1 Chain}, reached {0 Chain, 1 Chain} untied, referent store 0")]
     [InlineData("var a: Array<raw/u8> = [null]\nvar bias = 1\nlet b = bias@ref\na.sort(by: func (x, y) => b@follow)\n", "sort", "store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0")]

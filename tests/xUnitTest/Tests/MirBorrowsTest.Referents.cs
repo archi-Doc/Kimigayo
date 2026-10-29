@@ -530,10 +530,11 @@ public sealed partial class MirBorrowsTest
     // Loans reach only the Array: litPairOk, a generic literal of a pair layer's value removed again, is valid (fail-before: it erred at
     // `v@follow = x`, the literal's append keeping W), and so are litDropOk, lit2DropOk (another element first) and litObjOk (an object
     // through its base's handle), whose element's drop stores through its raw slot, consumed, then the slot used before `y = 5`. Those three
-    // err on the MIR at `y = 5` as the interim of DECISIONS BU-52 (the owner's 「暫定として認める (推奨)」): the consuming call's cleanup
-    // writes through the element's raw layers (PLAN G266), and A5 keeps Φ_E per whole value at a call (DECISIONS R4-M120, departure 1, the
-    // class of dev's viaRefOk), so W from the Array, whose element an untied constructor built, reaches E, which keeps y's Loan. They flip
-    // back to valid when part-level raw reach lands (PLAN G303, G264 U2); the default pipeline's `check` accepts them.
+    // err on the MIR at `y = 5` as the interim of DECISIONS BU-52 (the owner's 「暫定として認める (推奨)」, then 「類として認める」): the
+    // consuming call's cleanup writes through the element's raw layers (PLAN G266), and in A5's whole-value Φ_E at calls (DECISIONS
+    // R4-M120, departure 1, the class of dev's viaRefOk) W from the Array, whose element carries an untied constructor's Φ_E, reaches E,
+    // which receives every input the row retains and keeps every chain the whole value carries, y's Loan with it. They flip back to valid
+    // when part-level raw reach lands (PLAN G303, G264 U2); the default pipeline's old analysis reports no conflict at `y = 5`.
     [Fact]
     public void AnArrayLiteralPlacesItsElementsThroughNoReceiverStore()
         => Assert.Equal(["litDropOk: y = 5", "lit2DropOk: y = 5", "litObjOk: y = 5"], Problems(RawShapes + ReferentShapes + """
