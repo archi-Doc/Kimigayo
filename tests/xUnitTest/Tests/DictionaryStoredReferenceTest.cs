@@ -237,18 +237,14 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
         MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At(conflict, subject)));
     }
 
-    // The `objuniq/P` Field's form of AFieldReborrowConflictInADictionaryLiteralIsG231sKnownAcceptance: A5 also reports an
-    // UnprovenOriginRelation_Kd at each Reborrow (as at the valid `[1: h.o]`, PLAN G256's review R2-N1).
+    // The `objuniq/P` Field's form of AFieldReborrowConflictInADictionaryLiteralIsG231sKnownAcceptance. Each value, adapted at the
+    // literal's value Type, is Reborrowed as the `uniq` Field's is (PLAN G232), so A5 reports only the conflict, no Origin relation.
     [Fact]
     [Trait("OldRule", "ledger:e877352d188e:9")]
     public void AnObjectViewFieldReborrowConflictInADictionaryLiteralIsG231sKnownAcceptance()
     {
         var c = AnalyzedFieldReborrow("func f(h: uniq/(H2 during a) during s) -> i32\n    let d = [1: h.o, 2: h.o]\n    _ = d@move\n");
-        MirTargetSide.Check(
-            c,
-            (DiagnosticCode.UnprovenOriginRelation_Kd, MirTargetSide.At("[1: h.o", "h.o")),
-            (DiagnosticCode.UnprovenOriginRelation_Kd, MirTargetSide.At("2: h.o]", "h.o")),
-            (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At("2: h.o]", "h.o")));
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At("2: h.o]", "h.o")));
     }
 
     // The Conditional form is ABorrowPastAResultKeepsTheContainersLoan's.
