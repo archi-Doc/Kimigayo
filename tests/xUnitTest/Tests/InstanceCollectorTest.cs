@@ -232,11 +232,16 @@ public sealed partial class InstanceCollectorTest
     // DECISIONS BU-38 (PLAN G242; designs A and B, the review's combination C): programs whose instance (a local, a Type argument, a
     // requirement Item or a LegacyRow's collection), composed substitution (Self or a Type argument) or bodyless callee's parameter rests on
     // storage Binding rejected, with Binding's records and the collector's; and their genuine-limit twins, which keep the storage-nesting gap,
-    // beside a failed part in either order too, and C8d's LegacyRow over a Type nested past the bound (before: InternalInvariant_Kd).
+    // beside a failed part in either order too, and C8d's LegacyRow over a Type nested past the bound (before: InternalInvariant_Kd). DECISIONS
+    // R5-M151 (PLAN G285): a virtual slot whose applicability rests on a constraint Binding rejected, in the clause and the Block form, which
+    // the VTable leaves undecided (before: InternalInvariant_Kd at the creation).
     public static TheoryData<string, string, string, string> RejectedCases
     {
         get
         {
+            const string VirtualBase = "open struct Base<T>\n    T is Owned\n    public init() => ()\n";
+            const string Slot = "    public virtual func copy(self: objref/Self, value: ref/T) -> T";
+            const string Create = "func g() => Base<i32>.init()@obj\n";
             const string Inspect = "func inspect<T>(value: ref/T) => ()\n";
             const string Bad = "struct Bad\n    public var m: Missing\n";
             const string Box = "struct B<T>\n    public var v: T\n";
@@ -321,6 +326,14 @@ public sealed partial class InstanceCollectorTest
                     "noConformanceArity", HasItem + "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is T\n    var t: T\n" +
                     "struct DerX : BaseG<i32, u8>\n    var m: i32\nfunc g(b: HA<DerX>) => ()\n",
                     "InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                },
+                {
+                    "virtualClause", VirtualBase + Slot + "\n        T is Missing\n        return value@follow\n" + Create,
+                    "InvalidConstraint_Kd UnresolvedBinding_Kd InvalidConstraint_Kd", string.Empty
+                },
+                {
+                    "virtualBlock", "contract Marker\n" + VirtualBase + "    Self is Marker when T is Missing\n    " + Slot + " => value@follow\n" + Create,
+                    "InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd UnresolvedBinding_Kd InvalidConstraint_Kd", string.Empty
                 },
                 { "limitBesideError", Inspect + Box + $"func h(b: ref/{b65}) => inspect(b)\nfunc other() -> i32 => missing\n", "UnresolvedBinding_Kd", "Unsupported_Kd inspect(b)" },
                 { "limitBesideField", Inspect + Box + $"struct Bad\n    public var m: Missing\n    public var big: {b65}\nfunc h(b: ref/Bad) => inspect(b)\n", "UnresolvedBinding_Kd", "Unsupported_Kd inspect(b)" },
@@ -633,10 +646,10 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(records, string.Join(" | ", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}")));
     }
 
-    // DECISIONS BU-38 (R5's guard): the collector's one reading of a storage verdict at a site (Made) and Layout's Rejected row read Binding's
-    // completeness through TyCtxt.BindingComplete. A part Binding rejected exists only in an incomplete compilation, where Rejected is a
-    // dependent without a record; in a complete one, which no source reaches, it is InternalInvariant_Kd at the site. Prepared makes the
-    // instance and Limit is the storage-nesting gap in both.
+    // DECISIONS BU-38 (R5's guard), R5-M151: the collector's one reading of a storage verdict at a site (Made) and Layout's Rejected row map
+    // Rejected to a broken contract, which the collector's one record path keeps only where TyCtxt.BindingComplete holds. A part Binding
+    // rejected exists only in an incomplete compilation, where Rejected is a dependent without a record; in a complete one, which no source
+    // reaches, it is InternalInvariant_Kd at the site. Prepared makes the instance and Limit is the storage-nesting gap in both.
     [Theory]
     [InlineData(false, "Unsupported_Kd")]
     [InlineData(true, "InternalInvariant_Kd Unsupported_Kd")]
@@ -649,7 +662,7 @@ public sealed partial class InstanceCollectorTest
         var verdicts = new[] { Binding.StorageOutcome.Prepared, Binding.StorageOutcome.Rejected, Binding.StorageOutcome.Limit };
         Assert.Equal([true, false, false], verdicts.Select(x => collector.Made(x, site)));
         Assert.Equal(records, string.Join(' ', collector.Set.Records.Select(static x => x.Code)));
-        Assert.Equal(complete ? DiagnosticCode.InternalInvariant_Kd : null, collector.RecordOf(Layout.Outcome.Rejected));
+        Assert.Equal(DiagnosticCode.InternalInvariant_Kd, collector.RecordOf(Layout.Outcome.Rejected));
     }
 
     // SPEC 8.6.1, 8.2.3, IMPL 21.1 (DECISIONS BU-50, PLAN G271): an instance whose stored part is an associated projection is collected and

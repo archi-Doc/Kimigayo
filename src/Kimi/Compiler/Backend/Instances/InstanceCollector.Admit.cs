@@ -47,7 +47,7 @@ internal sealed partial class InstanceCollector
         Subst? erased = null;
         if (target.Key.Decl is { } decl && this.types.Instantiates(decl) && (subst is null || (erased = this.types.Erase(subst)) is null))
         {
-            set.Report(DiagnosticCode.InternalInvariant_Kd, site); // An instance without its substitution.
+            this.Report(DiagnosticCode.InternalInvariant_Kd, site); // An instance without its substitution.
             return -1;
         }
 
@@ -57,7 +57,7 @@ internal sealed partial class InstanceCollector
         if (erased is not null && this.types.EnclosingFunction(target.Key.Decl!) is { } enclosing && this.types.Instantiates(enclosing) &&
             !Carries(subst!, enclosing))
         {
-            set.Report(Capability.Code(CapabilityGap.EnclosingInstance), site);
+            this.Report(Capability.Code(CapabilityGap.EnclosingInstance), site);
             return -1;
         }
 
@@ -77,7 +77,7 @@ internal sealed partial class InstanceCollector
         this.counts.TryGetValue(target.Key, out var count);
         if (depth > DepthLimit || count >= SetLimit || this.Grows(parent, target.Key))
         {
-            set.Report(DiagnosticCode.GenerationResourceLimit_Kd, site);
+            this.Report(DiagnosticCode.GenerationResourceLimit_Kd, site);
             return -1;
         }
 
@@ -101,7 +101,7 @@ internal sealed partial class InstanceCollector
         var set = this.Set;
         if (type.ContainsParameter)
         {
-            set.Report(DiagnosticCode.InternalInvariant_Kd, site);
+            this.Report(DiagnosticCode.InternalInvariant_Kd, site);
             return -1;
         }
 
@@ -119,7 +119,7 @@ internal sealed partial class InstanceCollector
         var depth = set.Items[parent].Depth + 1;
         if (depth > DepthLimit)
         {
-            set.Report(DiagnosticCode.GenerationResourceLimit_Kd, site);
+            this.Report(DiagnosticCode.GenerationResourceLimit_Kd, site);
             return -1;
         }
 
@@ -151,7 +151,7 @@ internal sealed partial class InstanceCollector
         if ((instantiates && (subst is null || (erased = this.types.Erase(subst)) is null)) ||
             collection is not { ContainsParameter: false, Components.Count: > 0 })
         {
-            set.Report(DiagnosticCode.InternalInvariant_Kd, site);
+            this.Report(DiagnosticCode.InternalInvariant_Kd, site);
             return -1;
         }
 
@@ -175,7 +175,7 @@ internal sealed partial class InstanceCollector
         var depth = set.Items[parent].Depth + 1;
         if (depth > DepthLimit)
         {
-            set.Report(DiagnosticCode.GenerationResourceLimit_Kd, site);
+            this.Report(DiagnosticCode.GenerationResourceLimit_Kd, site);
             return -1;
         }
 
@@ -207,7 +207,7 @@ internal sealed partial class InstanceCollector
 
         if (open)
         {
-            this.Set.Report(DiagnosticCode.InternalInvariant_Kd, site);
+            this.Report(DiagnosticCode.InternalInvariant_Kd, site);
             return false;
         }
 
@@ -238,7 +238,7 @@ internal sealed partial class InstanceCollector
         var views = this.cases.Views(body, representative);
         if (BitOperations.PopCount(views) != 1)
         {
-            this.Set.Report(DiagnosticCode.InternalInvariant_Kd, site);
+            this.Report(DiagnosticCode.InternalInvariant_Kd, site);
             return 0;
         }
 

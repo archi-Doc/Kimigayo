@@ -176,10 +176,10 @@ internal static class MirDescriptors
         IntrinsicId.FormatInteger128 => Row(MirAccess.None, effects: MirEffect.None),
         IntrinsicId.Abort => Row(MirAccess.None, MirEffect.Abort, 1, diverges: true),
         IntrinsicId.Fail => Row(MirAccess.None, MirEffect.Abort, 1, diverges: true),
-        IntrinsicId.TestRequireAbort => Row(MirAccess.None, MirEffect.Abort, -1, diverges: true),
+        IntrinsicId.TestRequireAbort => Row(MirAccess.None, MirEffect.Abort, 2, diverges: true), // The issue and the site's location.
         IntrinsicId.WriteStdout => Row(MirAccess.None, MirEffect.Environment),
-        IntrinsicId.TestMessage => Row(MirAccess.None, MirEffect.Environment),
-        IntrinsicId.TestRecordValue => Row(MirAccess.None, MirEffect.Environment),
+        IntrinsicId.TestMessage => Row(MirAccess.None, MirEffect.Environment, 2), // The issue and a shared view of the message.
+        IntrinsicId.TestRecordValue => Row(MirAccess.None, MirEffect.Environment, 2), // The side and the Scalar value (F8b).
         IntrinsicId.TestObserve => Row(MirAccess.None, MirEffect.Environment, 2), // The condition and the site's id (plan 5.6.7).
         IntrinsicId.TestTempDirectory => Row(MirAccess.None, MirEffect.Environment, 0),
         IntrinsicId.StaticEnsure => Row(MirAccess.None, MirEffect.StaticInit | MirEffect.Abort, 1), // The static's slot (plan 5.6.6).

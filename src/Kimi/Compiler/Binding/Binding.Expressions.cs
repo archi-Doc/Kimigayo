@@ -774,7 +774,7 @@ public sealed partial class Binding
                     return this.Fail(node, BindingFailure.InvalidAssignment);
                 }
 
-                return Complete(node, symbol.Type is { } field ? this.ReadHolder(field, node, node) : null);
+                return Complete(node, this.MemberRead(node, symbol, scope));
             }
 
             var operation = write ? property.Setter : property.Getter;
@@ -823,13 +823,12 @@ public sealed partial class Binding
                 }
 
                 if ((!operation.IsStandard && !this.BindPropertyCall(node, operation, scope, write ? input : null)) ||
-                    (update && !property.Setter.IsStandard && (input is null || !this.BindPropertyCall(node, property.Setter, scope, input))) ||
-                    (update && (node is not MemberAccessKoto updateMember || !this.BindPropertyUpdate(updateMember, scope))))
+                    (update && !property.Setter.IsStandard && (input is null || !this.BindPropertyCall(node, property.Setter, scope, input))))
                 {
                     return null;
                 }
 
-                return Complete(node, write ? this.PropertySetterInput(node) : this.propertyCalls.GetValueOrDefault((node, PropertyAccessorKind.Get))?.BoundType ?? property.Getter.Result);
+                return update ? this.BindPropertyUpdate(node, scope) : Complete(node, this.AccessorUseType(node, operation));
             }
 
             if (node is MemberAccessKoto stored && sourceReceiver?.BoundType is { } storedSource && this.memberSelections.TryGetValue(stored, out var storageSelection) && storageSelection.Path is not null)
@@ -838,17 +837,12 @@ public sealed partial class Binding
             }
         }
 
-        var type = symbol.Type;
-        if (node is MemberAccessKoto member && type is not null && this.memberSelections.TryGetValue(member, out var selection) && selection.DeclaringType is { } declaringType)
-        {
-            type = this.PartType(type, declaringType);
-        }
-        else if (type is null)
+        if (symbol.Type is null)
         {
             this.ConsultTypeSource(symbol);
         }
 
-        return Complete(node, node is MemberAccessKoto && type is not null ? this.ReadHolder(type, node, node) : type);
+        return Complete(node, node is MemberAccessKoto ? this.MemberRead(node, symbol, scope) : symbol.Type);
     }
 
     private BoundType? RequireType(Koto node, BindingScope scope, BoundType? expected)

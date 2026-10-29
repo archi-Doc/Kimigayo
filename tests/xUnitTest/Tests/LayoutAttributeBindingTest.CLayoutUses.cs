@@ -227,6 +227,31 @@ public partial class LayoutAttributeBindingTest
         }
     }
 
+    // A bodyless import's by-value parameter and result (the owner, 2026-10-29, 「みなす (推奨)」; DECISIONS R5-M150): SPEC 8.15.3 counts
+    // passing and returning a value by value, an import is nongeneric (22.6) and checked as a nongeneric body is, called or not; 22.6 makes a
+    // struct by value in an import Unsupported; 23.1.2 reports each independent failure. The rows expect both records. An import whose
+    // Attribute fails as a whole (an empty symbol name) is no import: Binding checks no signature, so its InvalidLibraryImport_Kd stands alone.
+    public static TheoryData<string, string, string> ImportRows
+    {
+        get
+        {
+            var rows = new TheoryData<string, string, string>();
+            foreach (var shape in Unavailable.Concat(Never))
+            {
+                var declaration = ImportHead + shape.Type + ") -> i32";
+                rows.Add($"{shape.Name}.import", Program(shape.Declaration, ImportHead + "X) -> i32\n", shape.Type), $"InvalidCLayout_Kd {declaration}|Unsupported_Kd {declaration}");
+                var result = ImportHead + "i32) -> " + shape.Type;
+                var returned = Program(shape.Declaration, ImportHead + "i32) -> X\n", shape.Type);
+                rows.Add($"{shape.Name}.importret", returned, $"InvalidCLayout_Kd {result}|Unsupported_Kd {result}");
+            }
+
+            var unnamed = ImportHead.Replace("\"VirtualAlloc\"", "\"\"", StringComparison.Ordinal) + "X) -> i32\n";
+            var unit = Array.Find(Unavailable, static x => x.Name == "unit").Declaration;
+            rows.Add("unit.importname", Program(unit, unnamed, "S"), "InvalidLibraryImport_Kd #LibraryImport(\"kernel32\", \"\")");
+            return rows;
+        }
+    }
+
     // Part (2) of the row, judged by Layout alone (DECISIONS BU-48): a Never Field. SPEC 6.7.1 names Never among the zero-sized Fields, so each by-value use of S or
     // P<Never> is InvalidCLayout_Kd beside the Never limit's Unsupported_Kd its twin keeps (23.1.2); the uses needing no layout stay
     // accepted; ref/X in an import is Unsupported_Kd alone.
@@ -268,6 +293,11 @@ public partial class LayoutAttributeBindingTest
     [Theory]
     [MemberData(nameof(TwinRows))]
     public void TheTwinsWithoutTheUnavailableLayoutKeepTheirVerdicts(string form, string source, string records)
+        => AssertUses(form, source, records, sel: false);
+
+    [Theory]
+    [MemberData(nameof(ImportRows))]
+    public void AByValueImportParameterIsAUse(string form, string source, string records)
         => AssertUses(form, source, records, sel: false);
 
     [Theory]

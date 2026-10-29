@@ -2,15 +2,17 @@
 
 // Owns the site templates of the checked set (R5 package K 4.5, 4.7 and 4.8): one per body and program version, the body's sites in
 // location order, each with whether a runtime path from the body's entry reaches it, which replaying an item's template resolves.
-// Input: a built, validated MirProgram; the number of root modules; the Target and LaysOutType columns of the intrinsic rows.
-// Output: each body's sites, `sites` from `starts[body.Ordinal]` to `starts[body.Ordinal + 1]`, which Replay reads.
+// Input: a built, validated MirProgram; the number of root modules; the Target and Need columns of the intrinsic rows; LayoutNeeds and
+// Layout.Indirect (DECISIONS R5-M149).
+// Output: each body's sites, `sites` from `starts[body.Ordinal]` to `starts[body.Ordinal + 1]`, which Replay reads; and its layout needs
+// past its Places' roots' storage (InstanceCollector.Layouts.cs' ListNeeds), which LayOutNeeds reads.
 // Sites: a call whose callee may carry a target (a Fn, Requirement or Value callee, an intrinsic whose row names one; a Virtual call none,
 // X5) or whose intrinsic lays out its Type argument; a Drop; a case adaptation (an instance's creation, DECISIONS R5-M111); an aggregate;
 // an erasure to a Function Type; a function item constant; a cast or binary operation whose Types depend on slots (K 4.7, checked per
-// instance). A root-module body's operations take the definition-stage capability check on the way (A3b,
-// InstanceCollector.Capabilities.cs).
+// instance); a binary operation whose operator row has a layout need (a raw pointer's displacement, K 4.8). A root-module body's
+// operations take the definition-stage capability check on the way (A3b, InstanceCollector.Capabilities.cs).
 // Invariants: built once per version, before any item is replayed; the runtime bit is one MirReach walk without CheckTarget edges; a
-// template holds locations only, no substitution or target.
+// template holds locations and the body's Places only, no substitution or target.
 // Must not: resolve a target, read TyCtxt or an item, or record anything but A3b's capability gaps.
 
 using Kimi.Compiler.Mir;
@@ -36,13 +38,15 @@ internal sealed partial class InstanceCollector
     // K 4.5 rows 8 and 11-13, K 4.7 and K 4.8: a statement is a site by its rvalue: a case adaptation, which carries its payload's
     // descriptor where its instance's case creates an object (DECISIONS R5-M111); an aggregate, a by-value use whose Closure environment
     // also carries a target; an erasure to a Function Type; a function item constant; an operation whose Types depend on slots, which the
-    // capability table checks per instance.
+    // capability table checks per instance; an operator with a layout need (LayoutNeeds; DECISIONS R5-M149).
     private static bool IsSite(MirBody body, in MirStatement statement)
         => statement is { Kind: MirStatementKind.Assign, Rvalue: var rvalue } && rvalue.Kind switch
     {
         MirRvalueKind.Adapt or MirRvalueKind.Aggregate => true,
         MirRvalueKind.Cast when (MirCastKind)rvalue.Op == MirCastKind.Erasure => true,
-        MirRvalueKind.Cast or MirRvalueKind.BinaryOp => IsOpen(body, rvalue),
+        MirRvalueKind.Cast => IsOpen(body, rvalue),
+        MirRvalueKind.BinaryOp => IsOpen(body, rvalue) ||
+            LayoutNeeds.Of((MirBinaryOp)rvalue.Op, OperandType(body, body.Operands[rvalue.Start])) != LayoutNeed.None,
         MirRvalueKind.Use => body.Operands[rvalue.Start] is { Kind: MirOperandKind.Const } operand && body.Consts[operand.Arg].Kind == MirConstKind.FnItem,
         _ => false,
     };
@@ -53,6 +57,22 @@ internal sealed partial class InstanceCollector
         (terminator is { Kind: MirTerminatorKind.Call, Callee: var callee } &&
             (Carries(callee) || (callee.Kind == MirCalleeKind.Intrinsic && IntrinsicRows.Of((IntrinsicId)callee.Arg).ReadsTypeArgument)));
 
+    // Whether a step of a body's Places may leave its root's storage: a Deref, a PairLayer or an Index (of a sequence handle), the steps whose
+    // prefix may be laid out without its component.
+    private static bool MayLeave(MirBody body)
+    {
+        var projections = body.Projections;
+        for (var id = 1; id < projections.Length; id++)
+        {
+            if (projections[id].Kind is MirProjectionKind.Deref or MirProjectionKind.PairLayer or MirProjectionKind.Index)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // Each body's sites, once per version, in location order, with whether a runtime path from its entry reaches each.
     private void Templates(MirProgram program)
     {
@@ -60,24 +80,28 @@ internal sealed partial class InstanceCollector
         if (this.starts.Length <= bodies.Length)
         {
             this.starts = new int[Math.Max(bodies.Length + 1, this.starts.Length * 2)];
+            this.needStarts = new int[this.starts.Length];
         }
 
         var count = 0;
+        this.needCount = 0;
         foreach (var body in bodies)
         {
-            this.starts[body.Ordinal] = count;
+            (this.starts[body.Ordinal], this.needStarts[body.Ordinal]) = (count, this.needCount);
             count = this.Template(body, count);
         }
 
-        this.starts[bodies.Length] = count;
+        (this.starts[bodies.Length], this.needStarts[bodies.Length]) = (count, this.needCount);
     }
 
     // A body's sites, appended from `count` in location order with their runtime bits; a root-module body's operations, and a root-module
-    // static's declaration, are checked against the capability table on the way (A3b). Returns the new count.
+    // static's declaration, are checked against the capability table on the way (A3b), and the layout needs of its Places past their roots'
+    // storage are listed (K 4.8, ListNeeds) where a step may leave it. Returns the new count.
     private int Template(MirBody body, int count)
     {
         var blocks = body.Blocks;
         var root = body.Source.Module < this.rootModules;
+        var leaves = MayLeave(body);
         if (root)
         {
             this.CheckStatic(body);
@@ -87,7 +111,8 @@ internal sealed partial class InstanceCollector
         this.reach.Walk(body, 0, checks: false);
         for (var block = 0; block < blocks.Length; block++)
         {
-            var (start, end) = (blocks[block].Start, blocks[block].Count);
+            var start = blocks[block].Start;
+            var end = blocks[block].Count;
             for (var index = 0; index <= end; index++)
             {
                 if (index < end && root)
@@ -98,6 +123,11 @@ internal sealed partial class InstanceCollector
                 if (index < end ? IsSite(body, body.Statements[start + index]) : IsSite(blocks[block].Terminator))
                 {
                     count = this.AddSite(count, new(block, index), this.reach[block]);
+                }
+
+                if (leaves)
+                {
+                    this.ListNeeds(body, new(block, index));
                 }
             }
         }

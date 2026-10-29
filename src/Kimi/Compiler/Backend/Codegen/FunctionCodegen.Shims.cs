@@ -35,7 +35,8 @@ internal sealed partial class FunctionCodegen
     internal void WriteShim(InstanceCollector collector, int item, TextWriter output)
     {
         (this.collector, this.item, this.output, this.next, this.leaf) = (collector, item, output, 0, 0);
-        var (key, self) = (collector.Set.Items[item].Key, collector.Set.Items[item].RepresentativeType!);
+        var key = collector.Set.Items[item].Key;
+        var self = collector.Set.Items[item].RepresentativeType!;
         if (this.module.Shim(item) is not { } abi)
         {
             return; // Recorded at the item's site.
@@ -118,11 +119,11 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // SPEC 13.4: a Tuple's parts left to right at their Field offsets; each but the last returns its value from the shim when it is not
-    // equal (Decide), and the last one's value is the Tuple's.
+    // SPEC 13.4: a Tuple's parts left to right at their Field offsets (the node's Parts need, Needed; DECISIONS R5-M149); each but the last
+    // returns its value from the shim when it is not equal (Decide), and the last one's value is the Tuple's.
     private Value? Parts(ComparisonNode node, KimiDeclarationId? contract, Value left, Value right)
     {
-        if (this.Laid(node.Type) is not { } tuple)
+        if (this.Needed(node) is not { } tuple)
         {
             return null; // Recorded.
         }
@@ -184,17 +185,18 @@ internal sealed partial class FunctionCodegen
             return null; // Recorded.
         }
 
-        var (a, b) = (this.Loaded(type, lowering, left), this.Loaded(type, lowering, right));
+        var a = this.Loaded(type, lowering, left);
+        var b = this.Loaded(type, lowering, right);
         if (!equality)
         {
-            return this.Apply((int)MirBinaryOp.Gt, column, a, b, false, default) is { } greater &&
-                this.Apply((int)MirBinaryOp.Lt, column, a, b, false, default) is { } less
+            return this.Apply((int)MirBinaryOp.Gt, column, a, b, proven: false, default) is { } greater &&
+                this.Apply((int)MirBinaryOp.Lt, column, a, b, proven: false, default) is { } less
                 ? this.Combine("sub", "i32", this.Convert("zext ", "i1", greater, "i32"), this.Convert("zext ", "i1", less, "i32")) : null;
         }
 
-        return this.Apply((int)MirBinaryOp.Eq, column, a, b, false, default) is { } same &&
-            this.Apply((int)MirBinaryOp.Ne, column, a, a, false, default) is { } leftNaN &&
-            this.Apply((int)MirBinaryOp.Ne, column, b, b, false, default) is { } rightNaN
+        return this.Apply((int)MirBinaryOp.Eq, column, a, b, proven: false, default) is { } same &&
+            this.Apply((int)MirBinaryOp.Ne, column, a, a, proven: false, default) is { } leftNaN &&
+            this.Apply((int)MirBinaryOp.Ne, column, b, b, proven: false, default) is { } rightNaN
             ? this.Combine("or", "i1", same, this.Combine("and", "i1", leftNaN, rightNaN)) : null;
     }
 
@@ -233,7 +235,7 @@ internal sealed partial class FunctionCodegen
         var (kind, op) = BuiltinArithmetic.Operation(contract.LibraryDeclaration);
         var left = this.Loaded(self, lowering, new('p', 0));
         var right = kind == MirRvalueKind.BinaryOp ? this.Loaded(self, lowering, new('p', 1)) : left;
-        return this.Apply(RowOf(kind, op), Column(self), left, right, false, default);
+        return this.Apply(RowOf(kind, op), Column(self), left, right, proven: false, default);
     }
 
     // SPEC 11.9.2 (DECISIONS R5-M141): a standard property witness, one rule over its operation's three rows. The Field's address A is the

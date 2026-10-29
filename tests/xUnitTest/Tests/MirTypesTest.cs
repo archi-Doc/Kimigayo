@@ -8,8 +8,8 @@ using Xunit;
 namespace XunitTest;
 
 /// <summary>The Type facts A5 reads (docs/dev/DECISIONS.md R4-M36, R4-M73, R4-M147): which values may hold a Loan and what a call may write past them
-/// (<see cref="MirTypes.HoldsLoans"/>), and what destructions may observe of what they hold (<see cref="MirTypes.Observation"/>), over the
-/// parameter Types of one function.</summary>
+/// (<see cref="MirTypes.HoldsLoans"/>), what destructions may observe of what they hold (<see cref="MirTypes.Observation"/>), and the
+/// callables a value hands a callee (TyCtxt.HandedCallables, R4-M154), over the parameter Types of one function.</summary>
 public sealed class MirTypesTest(ITestOutputHelper output)
 {
     private const string Types = "struct Plain\n    var n: i32\nstruct Holder {a}\n    let r: ref/i32 during a\n" +
@@ -313,6 +313,20 @@ public sealed class MirTypesTest(ITestOutputHelper output)
         Assert.Equal(
             [("tree", false), ("table", false), ("chain", false), ("logged", false), ("raw", true), ("nest", true)],
             Parameters(body).Select(x => (x.Name, MirTypes.HoldsRaw(x.Type, seen))).ToArray());
+    }
+
+    // SPEC 15.6.4, 8.10 (β′; DECISIONS R4-M154): the callables a value hands a callee's body that holds it (TyCtxt.HandedCallables) are its
+    // Function parts at any depth: a Function value, in a Tuple, an Option, an Array and a struct's Field; Origin-free data holds none, and
+    // a growing recursive Type ends at the walk's bound.
+    [Fact]
+    public void AValueHandsTheCallablesItsPartsHold()
+    {
+        var (body, c) = Probe("struct Maker<E>\n    var make: (E) -> i32\n" +
+            "func probe(action: () -> (), pair: ((i32) -> i32, i32), maybe: Option<() -> ()>, many: Array<(i32) -> ()>, maker: Maker<i32>, " +
+            "plain: Plain, nest: Nest<i32>)\n    return\n");
+        Assert.Equal(
+            [("action", 1), ("pair", 1), ("maybe", 1), ("many", 1), ("maker", 1), ("plain", 0), ("nest", 0)],
+            Parameters(body).Select(x => (x.Name, c.Types.HandedCallables(x.Type).Length)).ToArray());
     }
 
     // V16 (DECISIONS R4-M58): the destruction walk enters each Type once per query, so a Type several parts share, nested pairs 25 deep

@@ -6,6 +6,13 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private readonly List<BindingSymbol> importDeclarations = new();
+
+    /// <summary>Gets the import declarations of the latest pass (SPEC 22.6): the function of each <c>#LibraryImport</c> declaration whose
+    /// signature Binding checks as an import's (ImportAbi), in source order, whatever its verdict; <see cref="LibraryImports"/> are the valid
+    /// ones. One whose Attribute fails before (InvalidLibraryImport) is no import.</summary>
+    internal IReadOnlyList<BindingSymbol> ImportDeclarations => this.importDeclarations;
+
     // SPEC 22.6: whether a function carries the import Attribute; its validity is checked separately.
     internal static bool IsLibraryImport(FunctionKoto function)
     {
@@ -88,6 +95,7 @@ public sealed partial class Binding
         string? target = null;
         var symbols = this.importSymbols;
         symbols.Clear();
+        this.importDeclarations.Clear();
         var ordinal = 0;
         for (var i = 0; i < this.nodes.Count; i++)
         {
@@ -142,6 +150,7 @@ public sealed partial class Binding
                 }
             }
 
+            this.importDeclarations.Add(function.BoundSymbol!); // An import: its signature is checked, its by-value Types layout uses (R5-M150).
             var signature = this.ImportAbi(attribute, function, ordinal++);
             if (signature is not null)
             {

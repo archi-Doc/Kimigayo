@@ -125,7 +125,7 @@ internal sealed partial class FunctionCodegen
     // __kimi_raw_allocate, which checks the count and the byte size and gives a nonnull aligned address for zero bytes, with T's stride; no
     // Layout alignment exceeds the heap's 16 (DECISIONS R5-M92), so no T is refused. A creation is its target descriptor's factory and a
     // clone its handle's retain (FunctionCodegen.Objects). Null for any other writer, and after a broken contract's record. A T without its
-    // layout is a broken contract, recorded by Laid (its stride 0, in a module then not written).
+    // layout (the row's TypeArguments need, Needed) is a broken contract, recorded by Laid (its stride 0, in a module then not written).
     private FunctionAbi? Routine(IntrinsicRow row, BoundType? result, Subst? subst, int target, out ReadOnlySpan<Value> given)
     {
         given = default;
@@ -138,7 +138,7 @@ internal sealed partial class FunctionCodegen
                 this.module.Request(ModuleCodegen.Needs.StorageBytes | ModuleCodegen.Needs.Memory);
                 return row.Routine;
             case IntrinsicWriter.Allocate:
-                this.slotless[0] = new('\0', this.Laid(argument)?.Layout.Stride ?? 0);
+                this.slotless[0] = new('\0', this.Needed(subst!, 0, out _)?.Layout.Stride ?? 0); // Its row's TypeArguments need.
                 given = this.slotless.AsSpan(0, 1);
                 return row.Routine;
             case IntrinsicWriter.Create:
@@ -175,8 +175,8 @@ internal sealed partial class FunctionCodegen
 
     // SPEC 17.6.3 (PD22; DECISIONS R5-M136): a verification's compared Scalar, which the builder records before its comparison (F8b), is held
     // by the test runtime until its observation numbers the failure: its side (operand 0), its Type's frame kind (TestRuntime.ValueKind) and
-    // width (1 for bool, else its size in bits) and its bits as i128, a float's reinterpreted as an integer, then zero-extended. A value of
-    // another Type is a broken contract: the builder records Scalars only.
+    // width (1 for bool, else its size in bits) and its bits as i128, a float's reinterpreted as an integer, then zero-extended. The value is
+    // a Scalar: MirValidator's testRecordValue row admits no other known Type (the builder never records the Never value it admits).
     private void Record(in MirTerminator call, FunctionAbi routine)
     {
         var key = new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
@@ -186,12 +186,7 @@ internal sealed partial class FunctionCodegen
             return; // A broken contract, recorded (Laid).
         }
 
-        if (this.InstanceType(operand) is not { } type || !ScalarTypes.Supports(type))
-        {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, call.Source);
-            return;
-        }
-
+        var type = this.InstanceType(operand)!;
         if (!this.Operand(operand, out var value))
         {
             return; // A broken contract, recorded.
@@ -241,8 +236,12 @@ internal sealed partial class FunctionCodegen
         var key = new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
         var storage = this.body.Operands[call.Start + ArgumentPosition(key, 0)];
         var length = this.body.Operands[call.Start + ArgumentPosition(key, 1)];
-        if (!this.Address(call.Place, out var record) || !this.Operand(storage, out var buffer) || !this.Operand(length, out var count) ||
-            this.LoweringOf(call.Place) is not { } slice || this.LoweringOf(storage) is not { } pointer || this.LoweringOf(length) is not { } index)
+        if (!this.Address(call.Place, out var record) || !this.Operand(storage, out var buffer) || !this.Operand(length, out var count))
+        {
+            return; // A broken contract, recorded.
+        }
+
+        if (this.LoweringOf(call.Place) is not { } slice || this.LoweringOf(storage) is not { } pointer || this.LoweringOf(length) is not { } index)
         {
             return; // A broken contract, recorded.
         }

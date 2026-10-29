@@ -47,7 +47,7 @@ internal sealed partial class InstanceCollector
 
         if (refused is { } code)
         {
-            this.Set.Report(code, subject);
+            this.Report(code, subject);
             return -1;
         }
 
@@ -65,7 +65,7 @@ internal sealed partial class InstanceCollector
     // erased, which code generation runs as a body or shim item (FunctionCodegen.Calls' Witness). A Body witness without a MIR body is
     // decided by TyCtxt.Bodyless, the one classification of such a function: a compiler function (FixedBuffer's or HeapBuffer's reserve) or
     // a #LibraryImport function is the BodylessWitness gap at each such site, whatever else Binding rejected (SPEC 23.1.2); one Binding
-    // rejected is that error's dependent (no record); any other is a broken contract (Derived). The other edges a requirement runs on (a
+    // rejected is that error's dependent (no record); any other is a broken contract (Report). The other edges a requirement runs on (a
     // compiler function's published row, Text.writer's reserve witness) keep Requirement's -1 for such a witness: their writers read the
     // function itself.
     private int Called(MirProgram program, int item, SourceRef subject, BindingSymbol requirement, in RequirementTarget target)
@@ -83,13 +83,13 @@ internal sealed partial class InstanceCollector
         DiagnosticCode? record = TyCtxt.Bodyless(implementation) switch
         {
             CompilerFunctionEffect.Dependent => null,
-            CompilerFunctionEffect.Unclassified when implementation.CompilerFunction == CompilerFunctionKind.None => this.Derived,
+            CompilerFunctionEffect.Unclassified when implementation.CompilerFunction == CompilerFunctionKind.None => DiagnosticCode.InternalInvariant_Kd,
             _ => Capability.Code(CapabilityGap.BodylessWitness),
         };
 
         if (record is { } code)
         {
-            this.Set.Report(code, subject);
+            this.Report(code, subject);
         }
 
         return -1;
@@ -139,7 +139,9 @@ internal sealed partial class InstanceCollector
     // (TyCtxt.Signature) must be the key's, Type for Type up to Origins (Erase).
     private bool Agrees(BindingSymbol requirement, in RequirementTarget target)
     {
-        var (subst, field, access) = (target.Subst!, target.Target, target.Access);
+        var subst = target.Subst!;
+        var field = target.Target;
+        var access = target.Access;
         var agrees = Same(TyCtxt.Signature(requirement, subst, -1, out var count), this.StorageSignature(subst.Self!, field, access, -1, out var slots)) &&
             count == slots;
         for (var slot = 0; agrees && slot < count; slot++)
@@ -177,7 +179,7 @@ internal sealed partial class InstanceCollector
         switch (key.Symbol!.CompilerFunction)
         {
             case CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare:
-                this.Leaves(program, item, site, this.types.Comparison(TyCtxt.Contract(key.Symbol), self, operators: false));
+                this.Leaves(program, item, site, this.types.Comparison(TyCtxt.Contract(key.Symbol), self, operators: false), pastStorage: false);
                 return;
             case CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinArithmetic:
                 return;
@@ -188,8 +190,10 @@ internal sealed partial class InstanceCollector
 
     // F 4.6: a comparison tree's targets in order: a Witness leaf's Body under its substitution, a Composite's parts', none for a Builtin. A
     // Requirement or None leaf, which a closed Self's comparison has not, is a broken contract, and no tree, a Self whose storage does not
-    // complete, the storage-nesting gap, at the shim's site.
-    private void Leaves(MirProgram program, int item, SourceRef site, ComparisonNode? node)
+    // complete, the storage-nesting gap, at the shim's site. K 4.8 (DECISIONS R5-M149): the shim's Self is laid out at its admission, its
+    // storage; below a node whose Type is laid out without its component (Layout.Indirect: a reference layer), the next node with a layout
+    // need (LayoutNeeds: a compared Tuple's parts) is past that storage, a use at the shim's site, after which its Type is the storage again.
+    private void Leaves(MirProgram program, int item, SourceRef site, ComparisonNode? node, bool pastStorage)
     {
         DiagnosticCode? refused = node?.Kind switch
         {
@@ -201,7 +205,7 @@ internal sealed partial class InstanceCollector
 
         if (refused is { } code)
         {
-            this.Set.Report(code, site);
+            this.Report(code, site);
             return;
         }
 
@@ -210,9 +214,15 @@ internal sealed partial class InstanceCollector
             this.Target(item, this.Implementation(program, item, site, node.Target!, node.Subst));
         }
 
+        var needed = pastStorage && LayoutNeeds.Of(node) != LayoutNeed.None;
+        if (needed)
+        {
+            _ = this.LaysOut(site, LayoutNeeds.TypeOf(node));
+        }
+
         foreach (var part in node.Parts)
         {
-            this.Leaves(program, item, site, part);
+            this.Leaves(program, item, site, part, Layout.Indirect(node.Type) || (pastStorage && !needed));
         }
     }
 }

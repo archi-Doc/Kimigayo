@@ -6,7 +6,8 @@ namespace Kimi.Compiler;
 // 2): the authority such a layer's Origin can keep (RawStep, which A5 and MirTypes.Holding read), the borrows it belongs to (RawMembers)
 // and whether a declaration states it without an Origin (RawStated), with the stored parts through which a walk reaches the instance
 // storing it (StoredParts), for G148 (1)'s per-part guard (R4-M76), read after Binding over Raw Origins (Binding.RawOrigins.Steps.cs,
-// .Keepers.cs) and Binding's instance storage (Binding.Storage.cs); and whether a Type states Unstated (StatesUnstated), which only a kept
+// .Keepers.cs) and Binding's instance storage (Binding.Storage.cs); what a `during self` layer admits past its pointee (SelfAdmitted,
+// Binding's one reading forwarded, which MirTypes.Holding reads); and whether a Type states Unstated (StatesUnstated), which only a kept
 // part does (MirValidator's Local row).
 internal sealed partial class TyCtxt
 {
@@ -41,6 +42,11 @@ internal sealed partial class TyCtxt
 
         return false;
     }
+
+    // SPEC 5.7 Calls (the owner's Q2 (a)): what a `during self` layer of a stored part admits past it besides its pointee, Binding's one
+    // reading (Binding.SelfAdmitted): the holding instance's Type arguments by their actual Types, or the write fact where it has an Origin
+    // argument (true).
+    internal static bool SelfAdmitted(BoundType holder, out IReadOnlyList<BoundType> arguments) => Binding.SelfAdmitted(holder, out arguments);
 
     // SPEC 5.2.1 condition 3 (design-final §15, R4's conditions; the owner's 「Loan 要求で上限 (推奨)」): the step of a raw layer an instance
     // stores, the one reader of one: a struct's Field `part`, or an enum's Case `part` whose first position selects the payload's component,

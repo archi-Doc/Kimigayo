@@ -357,11 +357,11 @@ public class KimiLibraryShapeTest
             foreach (var function in container.Members.OfType<FunctionKoto>())
             {
                 var symbol = function.SymbolOf()!;
-                var rows = c.Types.Retains(symbol, null, null).Rows.ToArray();
+                var writes = c.Types.Retains(symbol, null, null).Writes.ToArray();
                 for (var i = 0; i < function.Parameters.Count; i++)
                 {
                     var stored = symbol.ReceiverIndex >= 0 && i != symbol.ReceiverIndex && !Borrowed(TyCtxt.Signature(symbol, null, i, out _)!) &&
-                        rows.Any(x => x.Input == i && x.Output == symbol.ReceiverIndex);
+                        writes.Any(x => x.Output == symbol.ReceiverIndex && (x.Own.Kinds[i] | x.All.Kinds[i]) != RetentionKind.None);
                     Assert.True(stored == KimiLibraryCatalog.Added(symbol, i), $"{Line(function)}: input {i}");
                     if (stored)
                     {
@@ -397,7 +397,8 @@ public class KimiLibraryShapeTest
             }
 
             var receiver = Assert.Single(retention.ReferentStores.ToArray());
-            Assert.DoesNotContain(retention.Rows.ToArray(), x => x.Output == receiver && x.Input != receiver);
+            Assert.DoesNotContain(retention.Writes.ToArray(), x => x.Output == receiver &&
+                x.Own.Kinds.ToArray().Zip(x.All.Kinds.ToArray()).Where((_, i) => i != receiver).Any(static y => (y.First | y.Second) != RetentionKind.None));
             covered.Add($"{Path(Container(function))}: {Line(function)}");
         }
 
