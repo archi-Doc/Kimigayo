@@ -5693,9 +5693,27 @@ and migration obligations remain in force; no numeric cap changes are authorized
     callee's result (`RequireNestedResult`) and, as a named call does, its result Type's constraints (`RequireCallConstraints`).
     BU-26's reason for judging a nested Function Type part at the declaration, that no premise covers its per-call Origin so leaving it
     unjudged would accept an escape, no longer holds: each call of the nested signature proves it.
-  - The owner's (a), SPEC 15.3.7: every Callable comparison assumes the required signature's own well-formedness (`contractPremises`,
-    set by FunctionFits, ContractFits, ConversionContractFailure and ConditionContractFailure; read by `ExtractOriginPremises`), and a
-    Function value's conversion proves its own well-formedness from it (`FailedSignatureWellFormedness`). A Function value converts to
+  - The owner's (a), SPEC 15.3.7, 7.7.4, 8.10: every Callable comparison (a conversion, a Closure's erasure, a reference, a conformance,
+    the Callable proof of a Closure or Function value subject) assumes the required signature's own well-formedness and judges the
+    implementation's own well-formedness by one judgment, `FailedSignatureWellFormedness` under the comparison's instantiation: in
+    FunctionFits with a Binding, in `CallableSignatureFits` (it takes the use) after its Binding-less subtyping `CallableSubtype`, and in
+    the explanation `ConversionContractFailure` (revision 2, R4-B1: the Binding-less path never judged it, so an erased or
+    Callable-proven Closure leaked its body's result premise; e1x, e1ret, e1arg2, cal2). A Closure's conditions are judged after selection
+    with its receiver and environment (`ErasesToFunction`; applicability reads `CallableSubtype`, SPEC 15.6.1, 10.5); a Function Item's
+    stay `ItemContractFits`', whose solve, not the instantiation in position, decides its Origins (rk4). Open: a comparison nested in a
+    Function Type part is named by no record part, so its failure is the conversion's TypeMismatch_Kd (nest1_n).
+  - Q2 (the planning session, 2026-10-30): a comparison's premises belong to its proof requests, not to an ambient field. `CallableInstance`
+    carries the required signature (`Expected`) and the enclosing comparisons' (`Outer`, an immutable `ComparisonPremises` chain; a
+    nested comparison adds a node only when the enclosing required signature carries an Origin, never on a warm rebind's path); every
+    proof the comparison makes passes it (`ProvesOriginOutlives(.., in CallableInstance, ..)`, `FitOrigin`, `CheckCallOriginRelations`,
+    the Instance and Prove visits through `WellFormedVisit.Comparison`, ContractFits' solve through `OriginInference.Comparison`), and
+    `ExtractOriginPremises` adds the chain's well-formedness to that request only (`OriginPremiseEnvironment.Comparison`). Removes the
+    fields `contractPremises` and `resultPremiseInstance`. Reason: the field replaced an enclosing comparison's premises in a nested one
+    (R4-N8; nest1 is valid only with the outer premise) and was read by any premise extraction made while it was set, retention's and
+    the body oracle's included (BU-N4). Rejected: a fixed-depth array (a bound without a reason).
+  - Q3 (the planning session, 2026-10-30): a well-formedness visit names its subject (`WellFormedSubject`: an input's, a named
+    function's result, a nested signature's result) instead of deriving it from a nullable callee, and one collector,
+    `CollectFilledPremises`, serves every solve. A Function value converts to
     an expected Function Type where it meets it (`FailsFunctionConversion` from `BindAndAdaptNode`, beside a Closure's or a Function Item's erasure), so a failed
     contract is the conversion's own record at the converted value, also as a Tuple or array literal's element (c2, c4); a target that
     names an Origin a local still infers is judged by the local's fit after that inference (`NamesInferredOrigin`; the S3 demo).

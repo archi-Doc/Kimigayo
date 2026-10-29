@@ -146,7 +146,7 @@ internal sealed partial class BodyLowering
             source.Symbol?.Declaration is not FunctionKoto definition || definition.ClosureDefinition is not { Receiver: SemanticsKind.Ref } closure ||
             !ReferenceEquals(body.Resolve(operation.Source.ErasedFunctionType, body.ContextAt(id)), body.Places[operation.Place].Type) ||
             operation.Source.CodeContext.Compilation.Binding.ClosureSignature(source) is not { } signature ||
-            !operation.Source.CodeContext.Compilation.Binding.CallableSignatureFits(signature, body.Places[operation.Place].Type, definition) ||
+            !operation.Source.CodeContext.Compilation.Binding.CallableSignatureFits(signature, body.Places[operation.Place].Type, definition, operation.Source) ||
             this.aggregateLayouts.Get(source) is not { } layout ||
             this.ClosureEntry(source, definition) is not { } entry ||
             (body.IsReachable(id) && !this.Dominates(input, id)))

@@ -28,7 +28,7 @@ public sealed partial class Binding
                 nodes = Math.Max(nodes, capacity.Nodes);
                 edges = Math.Max(edges, capacity.Edges);
                 retains |= environment.Closure.RetainsOrigins || environment.Nodes.Count != 0 || environment.Types.Count != 0 || environment.Results.Count != 0 ||
-                    environment.Resolvers.Count != 0 || environment.Use is not null || environment.Scope is not null;
+                    environment.Resolvers.Count != 0 || environment.Use is not null || environment.Scope is not null || environment.Comparison.Expected is not null;
             }
 
             return (this.originPremiseEnvironments.Count, nodes, edges, retains);
@@ -51,7 +51,7 @@ public sealed partial class Binding
     // The structural instances of reflexivity, `static`, anchors and meets (I1-I4) answer first. Otherwise one environment
     // collects the catalog's premises (OriginPremiseRule) as the edges of a finite graph over the Origin expressions they name,
     // and a single closure from `shorter` decides the relation; its work is linear in the graph (OriginPremiseClosure).
-    private bool EntailsOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
+    private bool EntailsOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition)
     {
         if (OriginOutlives(longer, shorter))
         {
@@ -66,6 +66,7 @@ public sealed partial class Binding
         var environment = this.RentPremises(use) ??
             throw new InvalidOperationException($"The premise environment of `{longer} outlives {shorter}` is not ready: its construction depends on itself (PLAN G74).");
         var start = this.OriginProofMetrics is null ? 0 : Stopwatch.GetTimestamp();
+        environment.Comparison = comparison;
         try
         {
             var closure = environment.Closure;
@@ -210,15 +211,12 @@ public sealed partial class Binding
             }
         }
 
-        if (this.contractPremises is { Components: [var requiredInputs, var requiredResult] })
+        // SPEC 15.3.7, the owner's (a): a request made in a Callable comparison assumes the own well-formedness of the comparison's
+        // required signature and of each enclosing comparison's; no other request sees them (DECISIONS R4-M155).
+        this.AddRequiredPremises(environment, environment.Comparison.Expected);
+        for (var outer = environment.Comparison.Outer; outer is not null; outer = outer.Outer)
         {
-            // SPEC 15.3.7, the owner's (a): a Callable comparison assumes the required signature's own well-formedness.
-            for (var i = 0; i < requiredInputs.Components.Count; i++)
-            {
-                this.AddTypePremises(environment, requiredInputs.Components[i], OriginPremiseRule.Input);
-            }
-
-            this.AddResultPremises(environment, requiredResult);
+            this.AddRequiredPremises(environment, outer.Required);
         }
 
         var closure = environment.Closure;
@@ -233,6 +231,22 @@ public sealed partial class Binding
                 this.AddStoredPremises(environment, stored, node, OriginPremiseRule.LocalPlace, false);
             }
         }
+    }
+
+    // A required signature's own well-formedness: its inputs' and its result's.
+    private void AddRequiredPremises(OriginPremiseEnvironment environment, BoundType? required)
+    {
+        if (required is not { Components: [var inputs, var result] })
+        {
+            return;
+        }
+
+        for (var i = 0; i < inputs.Components.Count; i++)
+        {
+            this.AddTypePremises(environment, inputs.Components[i], OriginPremiseRule.Input);
+        }
+
+        this.AddResultPremises(environment, result);
     }
 
     // SPEC 8.5.4: an associated application's inherited formation and its requirement's clauses, substituted with its
@@ -404,6 +418,9 @@ public sealed partial class Binding
 
         internal BindingScope? Scope { get; set; }
 
+        // The Callable comparison the request is made in (ProvesOriginOutlives), default for any other request.
+        internal CallableInstance Comparison { get; set; }
+
         internal void Clear()
         {
             this.Closure.Clear();
@@ -413,6 +430,7 @@ public sealed partial class Binding
             this.Resolvers.Clear();
             this.Use = null!;
             this.Scope = null;
+            this.Comparison = default;
         }
     }
 }

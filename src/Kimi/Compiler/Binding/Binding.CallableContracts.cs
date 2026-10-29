@@ -83,19 +83,19 @@ public sealed partial class Binding
             }
 
             var actual = Translate(implementation.Input(i)!);
-            if (actual is null || !this.IsSubtypeAt(required, actual, requirement.Binder) || !this.ProvesInputPremises(actual, required, requirement.Binder))
+            if (actual is null || !this.IsSubtypeAt(required, actual, requirement.Binder) || !this.ProvesInputPremises(actual, required, requirement.Binder, default))
             {
                 return ConstraintProof.Refuted;
             }
         }
 
-        if (!this.CheckCallOriginRelations(implementation.Binder, origins, inputs, requirement.Binder, declaringType))
+        if (!this.CheckCallOriginRelations(implementation.Binder, origins, inputs, requirement.Binder, declaringType, default))
         {
             return ConstraintProof.Refuted;
         }
 
         var result = implementation.Result is { } output ? Translate(output) : null;
-        if (result is not null && implementation.Binder is FunctionKoto function && !this.ProvesResultPremises(function, result, requirement.Binder))
+        if (result is not null && implementation.Binder is FunctionKoto function && !this.ProvesResultPremises(function, result, requirement.Binder, default))
         {
             return ConstraintProof.Refuted; // SPEC 15.3.7: the implementation's result premises follow from the requirement's.
         }

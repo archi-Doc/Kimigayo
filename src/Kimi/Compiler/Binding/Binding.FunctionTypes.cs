@@ -319,21 +319,25 @@ public sealed partial class Binding
         static bool Omitted(BoundOrigin? written, BoundOrigin? binding) => ReferenceEquals(written, binding) || written?.Kind == OriginKind.Inference;
     }
 
-    // SPEC 7.7.4: a concrete Closure converts to an expected common Function Type when its signature fits, its minimum
-    // receiver is Shared and its complete environment is Owned. Initializations, returns and call arguments share this judgment.
+    // SPEC 7.7.4: a concrete Closure converts to an expected common Function Type when its signature fits under its conditions
+    // (CallableSignatureFits), its minimum receiver is Shared and its complete environment is Owned. Initializations, returns and call
+    // arguments share this judgment.
     private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
-        => this.ErasureSignatureFits(actual, expected, node) &&
-            (actual.Kind != BoundTypeKind.Closure || BoundClosure.Of(actual) is { Receiver: SemanticsKind.Ref }) &&
+        => (actual.Kind == BoundTypeKind.Closure
+            ? expected.Kind == BoundTypeKind.Function && BoundClosure.Of(actual) is { Receiver: SemanticsKind.Ref } && this.ClosureSignature(actual) is { } signature &&
+                this.CallableSignatureFits(signature, expected, SignatureOwner(actual), node)
+            : this.ErasureSignatureFits(actual, expected, node)) &&
             this.ProveOwned(actual, node) == ConstraintProof.Proven;
 
-    // SPEC 7.7.4, 10.5, 10.7: the signature part of an erasure, which a call's applicability uses; the Shared receiver and the Owned
-    // environment are judged after selection, at the argument, and a failure there never selects another candidate. A Function Item's
-    // Origin conditions belong to its signature, proven from the required contract at `use` (SPEC 15.3.7).
+    // SPEC 7.7.4, 10.5, 10.7: the signature part of an erasure, which a call's applicability uses; the Shared receiver, the Owned
+    // environment and a Closure's Origin conditions are judged after selection, at the argument (SPEC 15.6.1), and a failure there never
+    // selects another candidate. A Function Item's Origin conditions belong to its signature, proven from the required contract at `use`
+    // (SPEC 15.3.7).
     private bool ErasureSignatureFits(BoundType actual, BoundType expected, Koto use)
         => expected.Kind == BoundTypeKind.Function &&
             ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature && this.ItemContractFits(actual, signature, expected, use)) ||
             (actual.Kind == BoundTypeKind.Closure && this.ClosureSignature(actual) is { } closureSignature &&
-            this.CallableSignatureFits(closureSignature, expected, SignatureOwner(actual))));
+            this.CallableSubtype(closureSignature, expected, SignatureOwner(actual))));
 
     // SPEC 10.7, 15.3.7: a Function value converts to an expected Function Type of its storage where it meets it, as a Closure or a
     // Function Item erases (ErasesToFunction), also as a Tuple or array literal's element: a contract that does not fit fails the value
@@ -364,63 +368,58 @@ public sealed partial class Binding
     {
         var generic = function.GenericArguments.Count;
         var inputCount = InputOriginCount(function);
-        var saved = this.contractPremises;
-        this.contractPremises = required; // The owner's (a): the comparison assumes the required signature's own well-formedness.
-        try
+        var parameters = required.Components[0];
+
+        // The owner's (a): every proof of the comparison, its solve's too, assumes the required signature's own well-formedness.
+        var comparison = new CallableInstance(null, null, required, FunctionTypeBinder(required), null);
+        var inference = this.BeginOriginInference(use, function);
+        inference.Comparison = comparison;
+        for (var i = 0; i < function.Parameters.Count; i++)
         {
-            var parameters = required.Components[0];
-            var inference = this.BeginOriginInference(use, function);
-            for (var i = 0; i < function.Parameters.Count; i++)
-            {
-                if (function.Parameters[i].Type.BoundType is not { } written || Bound(written) is not { } parameter)
-                {
-                    return false;
-                }
-
-                // Only the implementation's per-call binders are inferred; the
-                // required signature's quantifiers and fixed Origins remain rigid.
-                this.MatchInputOrigins(parameter, parameters.Components[i], function, origins, inputs);
-                this.CollectOriginInference(parameter, parameters.Components[i], inference);
-            }
-
-            if (symbol.Type is { } writtenResult && Bound(writtenResult) is { } produced)
-            {
-                this.CollectOriginInference(produced, required.Components[1], inference, result: true);
-            }
-
-            if (!this.SolveCallOriginInference(function, inference, origins, inputs, use, null, select: explain))
+            if (function.Parameters[i].Type.BoundType is not { } written || Bound(written) is not { } parameter)
             {
                 return false;
             }
 
-            for (var i = 0; i < function.Parameters.Count; i++)
-            {
-                var parameter = Substitute(Bound(function.Parameters[i].Type.BoundType!)!);
-                if (HasUnsubstitutedOrigin(parameter, function) || !this.IsSubtypeAt(parameters.Components[i], parameter, use) ||
-                    !this.ProvesInputPremises(parameter, parameters.Components[i], use))
-                {
-                    return false;
-                }
+            // Only the implementation's per-call binders are inferred; the
+            // required signature's quantifiers and fixed Origins remain rigid.
+            this.MatchInputOrigins(parameter, parameters.Components[i], function, origins, inputs);
+            this.CollectOriginInference(parameter, parameters.Components[i], inference);
+        }
 
-                if (!operations.IsEmpty)
-                {
-                    // Compare the same substituted contract that established applicability. In particular,
-                    // independently named per-call Origins are fixed to the required signature before ranking.
-                    // References insert no adaptations and use no defaults; results never rank candidates.
-                    operations[i] = new(null, null, parameter, ArgumentOperationKind.Value, ArgumentAdaptation.Exact);
-                }
+        if (symbol.Type is { } writtenResult && Bound(writtenResult) is { } produced)
+        {
+            this.CollectOriginInference(produced, required.Components[1], inference, result: true);
+        }
+
+        if (!this.SolveCallOriginInference(function, inference, origins, inputs, use, null, select: explain))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < function.Parameters.Count; i++)
+        {
+            var parameter = Substitute(Bound(function.Parameters[i].Type.BoundType!)!);
+            if (HasUnsubstitutedOrigin(parameter, function) || !FitsTypeCore(parameters.Components[i], parameter, this, use, instance: comparison) ||
+                !this.ProvesInputPremises(parameter, parameters.Components[i], use, comparison))
+            {
+                return false;
             }
 
-            return this.CheckCallOriginRelations(function, origins, inputs, use, null) &&
-                symbol.Type is { } result && Bound(result) is { } boundResult &&
-                !HasUnsubstitutedOrigin(result = Substitute(boundResult), function) &&
-                this.IsSubtypeAt(result, CompatibleResult(result, required.Components[1]), use) &&
-                this.ProvesResultPremises(function, result, use);
+            if (!operations.IsEmpty)
+            {
+                // Compare the same substituted contract that established applicability. In particular,
+                // independently named per-call Origins are fixed to the required signature before ranking.
+                // References insert no adaptations and use no defaults; results never rank candidates.
+                operations[i] = new(null, null, parameter, ArgumentOperationKind.Value, ArgumentAdaptation.Exact);
+            }
         }
-        finally
-        {
-            this.contractPremises = saved;
-        }
+
+        return this.CheckCallOriginRelations(function, origins, inputs, use, null, comparison) &&
+            symbol.Type is { } result && Bound(result) is { } boundResult &&
+            !HasUnsubstitutedOrigin(result = Substitute(boundResult), function) &&
+            FitsTypeCore(result, CompatibleResult(result, required.Components[1]), this, use, instance: comparison) &&
+            this.ProvesResultPremises(function, result, use, comparison);
 
         BoundType? Bound(BoundType type)
         {

@@ -166,7 +166,7 @@ public sealed partial class Binding
             // stand-in instead (SPEC 15.3.6, PerCallCallables). A Function Item's Origin conditions, its clauses and result premises, are
             // proven from the required contract and belong to that Origin part (SPEC 15.3.7).
             return (subject.Kind == BoundTypeKind.FunctionItem ? this.ItemContractFits(subject, signature, proposition.RequiredType!, scope.Owner)
-                : this.CallableSignatureFits(signature, proposition.RequiredType!, SignatureOwner(subject))) ? ConstraintProof.Proven
+                : this.CallableSignatureFits(signature, proposition.RequiredType!, SignatureOwner(subject), scope.Owner)) ? ConstraintProof.Proven
                 : ReferenceTypes.StorageMatches(proposition.RequiredType, signature) && !HasOpenOrigin(proposition.RequiredType!) ? ConstraintProof.Unknown
                 : ConstraintProof.Refuted;
         }

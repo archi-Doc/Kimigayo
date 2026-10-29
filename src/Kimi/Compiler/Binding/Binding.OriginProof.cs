@@ -408,12 +408,17 @@ public sealed partial class Binding
     // (EntailsOrigin). A request leaves inference, obligation and declaration state unchanged, which every request checks
     // (originStateVersion). `condition` is the Semantics case the relation is required in (SPEC 15.6.5).
     private bool ProvesOriginOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
+        => this.ProvesOriginOutlives(longer, shorter, use, default(CallableInstance), condition);
+
+    // The request made in the Callable comparison `comparison`, which assumes its required signatures' own well-formedness too (the
+    // owner's (a)); outside a comparison it is the default instance.
+    private bool ProvesOriginOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition = 0)
     {
         var version = this.originStateVersion;
         longer = this.OriginAtUse(longer, use);
         shorter = this.OriginAtUse(shorter, use);
         this.OriginProofMetrics?.Enter(longer, shorter, use, this.originPremiseDepth);
-        var proven = this.EntailsOrigin(longer, shorter, use, condition);
+        var proven = this.EntailsOrigin(longer, shorter, use, comparison, condition);
         if (version != this.originStateVersion)
         {
             throw new InvalidOperationException($"The Origin proof of `{longer} outlives {shorter}` changed inference or obligation state (PLAN G74).");
@@ -426,7 +431,7 @@ public sealed partial class Binding
     // annotation or initializer, while that initializer is still bound, bounds the Origin with the value, and the relation is proven
     // again once the Origin is resolved; any other requirement is the pure proof. An open region holds no Loans, so a value fitted
     // into it would lose its Loans: such a fit is never collected here.
-    private bool FitOriginOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
+    private bool FitOriginOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition = 0)
     {
         longer = this.OriginAtUse(longer, use);
         shorter = this.OriginAtUse(shorter, use);
@@ -436,13 +441,13 @@ public sealed partial class Binding
             return true;
         }
 
-        return this.ProvesOriginOutlives(longer, shorter, use, condition);
+        return this.ProvesOriginOutlives(longer, shorter, use, comparison, condition);
     }
 
     // SPEC 15.4.4, 10.1: the answer of FitOriginOutlives without its side effects, for applicability. The requirement that a value
     // outlive an Origin omitted in an open initializer is satisfiable (the asymmetry of plan T4 is kept), and only while a selected
     // call's fits are collected (collectingFits) is the value recorded as the Origin's bound; any other requirement is the pure proof.
-    private bool FitsOriginOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
+    private bool FitsOriginOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition = 0)
     {
         longer = this.OriginAtUse(longer, use);
         shorter = this.OriginAtUse(shorter, use);
@@ -456,13 +461,14 @@ public sealed partial class Binding
             return true;
         }
 
-        return this.ProvesOriginOutlives(longer, shorter, use, condition);
+        return this.ProvesOriginOutlives(longer, shorter, use, comparison, condition);
     }
 
     // SPEC 10.1: the Origin part of a fit (FitsTypeCore). During candidate evaluation and while a selected call's fits are collected
-    // it is the pure answer; any other fit records its bounds at once (FitOriginOutlives).
-    private bool FitOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
-        => this.collectingFits || this.candidateTrials != 0 ? this.FitsOriginOutlives(longer, shorter, use, condition) : this.FitOriginOutlives(longer, shorter, use, condition);
+    // it is the pure answer; any other fit records its bounds at once (FitOriginOutlives). `comparison` is the Callable comparison the
+    // fit is part of, whose premises its proof assumes.
+    private bool FitOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition = 0)
+        => this.collectingFits || this.candidateTrials != 0 ? this.FitsOriginOutlives(longer, shorter, use, comparison, condition) : this.FitOriginOutlives(longer, shorter, use, comparison, condition);
 
     // The collector's record (CollectFitBounds): `bound` bounds the Origin `variable` that `local` omits.
     private void CollectInitializerBound(VariableKoto local, BoundOrigin variable, BoundOrigin bound, Koto use, ulong condition)
@@ -537,7 +543,7 @@ public sealed partial class Binding
         }
     }
 
-    private bool CheckCallOriginRelations(Koto function, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType)
+    private bool CheckCallOriginRelations(Koto function, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType, in CallableInstance comparison)
     {
         if (!this.originDeclarations.TryGetValue(function, out var declaration))
         {
@@ -553,7 +559,7 @@ public sealed partial class Binding
         {
             var a = Substitute(relation.Longer);
             var b = Substitute(relation.Shorter);
-            if (!this.ProvesOriginOutlives(a, b, use) || (relation.Equality && !this.ProvesOriginOutlives(b, a, use)))
+            if (!this.ProvesOriginOutlives(a, b, use, comparison) || (relation.Equality && !this.ProvesOriginOutlives(b, a, use, comparison)))
             {
                 return false;
             }
