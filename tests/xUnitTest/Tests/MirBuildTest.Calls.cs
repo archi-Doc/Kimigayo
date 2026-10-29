@@ -271,10 +271,7 @@ public sealed partial class MirBuildTest
     [Fact]
     public void ATupleOperatorWithoutItsComparisonIsUnsupported()
     {
-        var deep = string.Concat(Enumerable.Repeat("Wrap<", 80)) + "i32" + new string('>', 80);
-        var c = Compile("struct Wrap<V>\n    Self is Equatable\n    public init() => ()\n" +
-            "    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n" +
-            $"func f(a: ref/({deep}, i32), b: ref/({deep}, i32)) -> bool => a == b\n");
+        var c = Compile(Unbuilt.Declarations + $"func f(a: ref/{Unbuilt.Tuple}, b: ref/{Unbuilt.Tuple}) -> bool => a == b\n");
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var record = Assert.Single(program.Records, static x => x.Subject.Module == 0);

@@ -1,8 +1,3 @@
-// A position of a Type parameter is unsupported until PLAN G167 builds it (DECISIONS R5-M84).
-func sum<I>(values: [3 of i32], p: I, b: i32) -> i32
-    I is PrimitiveInteger
-    let c = values[p]
-    return b
 func fail() -> i32 => missing
 func take(a: string, b: string) -> i32 => 1
 func kept(n: i32, s: string) -> i32

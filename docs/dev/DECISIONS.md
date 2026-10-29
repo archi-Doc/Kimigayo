@@ -9868,6 +9868,8 @@ structure is recorded here by the unit that first implements it.
   - Rejected: `MirCastKind.Position` (option A: a vocabulary entry); failing at the conversion (option C: an Abort before later
     boundaries are evaluated); a branchless shift-and-or encoding (not a MIR form, opaque to review); keeping Wrap for a same-width
     unsigned position (a second encoding of an unresolved position).
+  - Superseded in part by R5-M154 (G167): a Type parameter's position is compared with 0 in its own Type and with isize's maximum
+    in u128, not a located `Unsupported_Kd`.
 - **R5-M85 The codegen deviation form** (2026-10-20, E lane; plan E12 and K13a, PD10, OQ7; under R5-M8, R5-M66 and R5-M73; DEC Q6
   form 1; temporary: the stage that makes an `Expect`'s target the default reduces it to the target, G2 for acceptance-time records
   such as this entry's (the collector runs on the default pipeline from G2, R5-M41) and G3 for generated output; G4 removes the form
@@ -12209,3 +12211,23 @@ structure is recorded here by the unit that first implements it.
     their records; `RecordOf(Rejected)` is `InternalInvariant_Kd` in both compilations, since the record path decides. No other site is
     reached: nine probes stop at Binding's error at the call, and the 349 Binding-incomplete ledger sources of `shared-base/228d6f0b4`
     give no `InternalInvariant_Kd` under sel.
+- **R5-M154 A position typed by a Type parameter is tested in its own Type and u128 (G167)** (2026-10-29, planning session; PLAN
+  G167; the owner's OI-2 (a) 「推奨どおり」 under R5-M152; supersedes R5-M84's Type-parameter clause; Major, design (D) accepted by the
+  planning session) SPEC 4.6.1, 4.6.3, 4.7.1: a position of a Type parameter (`values[p]` with `p: I`, `I is PrimitiveInteger`) is
+  valid and the default builds it; the MIR recorded it as a located `Unsupported_Kd` (R5-M84), the one valid form G2 would newly
+  reject at default `check` (R6-gen G0 §1, OI-2).
+  - Rule: `MirBuilder.Position` converts a Type parameter's position as R5-M84 converts any other Type's, with the tests its unknown
+    range cannot drop: `Le(const 0_I, p)`, then p widened by a Proven Integer Cast to u128, which holds every nonnegative value of
+    every PrimitiveInteger Type, and `Le(w, const isize.max)` in u128; each failing test leaves for -1 (`Unresolved`), else the
+    Proven Cast to isize. One conversion is valid for every integer Type an instance can take, and each instance's code folds the
+    tests its Type proves. A negative value gives -1, not itself: every selection's one check rejects any negative position alike, at
+    the selection (an element's index, a written `^x`'s `0 <= x`, a range's `0 <= start <= end`; SPEC 4.6.3). Binding is unchanged
+    (it applies a generic integer key directly, as a concrete one): no new fact and no vocabulary entry, and the default generator's
+    output is unchanged. R5-M84's extension of R5-M63 (an Opaque at a position names the built value's root) loses its one site.
+  - O2 (`opt -O2` instructions per instance: an element at i8, i64, u64, isize, u128; `^x` at i32; a range at u16): sel 14, 12, 12,
+    12, 14, 15, 18 against a concrete key's 12, 11, 12, 11, 14, 15, 18; the default stays 12, 11, 11, 11, 14, 13, 12.
+  - Rejected: (A) Binding applying only a concrete integer key directly, so a generic one resolves through
+    `PositionSyntax.resolved`/`resolvedRange` (`IntegerPosition.tryResolve<I>`; PLAN G167's "shorter rule", a review suggestion):
+    `tryResolve`'s own contract (`length >= 0`, `p <= length`) costs 2 compares and 2 selects per element and 1 -> 4 branches per
+    range at O2 on both generators (default 18, 16, 15, 14, 17, 17, 23), and it moves a Binding decision every later phase reads;
+    a located record left in place (OI-2: from G2 the default would reject a form it builds today).
