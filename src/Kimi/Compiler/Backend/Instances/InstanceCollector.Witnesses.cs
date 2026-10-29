@@ -47,7 +47,7 @@ internal sealed partial class InstanceCollector
 
         if (refused is { } code)
         {
-            this.Set.Report(code, subject);
+            this.Report(code, subject);
             return -1;
         }
 
@@ -65,7 +65,7 @@ internal sealed partial class InstanceCollector
     // erased, which code generation runs as a body or shim item (FunctionCodegen.Calls' Witness). A Body witness without a MIR body is
     // decided by TyCtxt.Bodyless, the one classification of such a function: a compiler function (FixedBuffer's or HeapBuffer's reserve) or
     // a #LibraryImport function is the BodylessWitness gap at each such site, whatever else Binding rejected (SPEC 23.1.2); one Binding
-    // rejected is that error's dependent (no record); any other is a broken contract (Derived). The other edges a requirement runs on (a
+    // rejected is that error's dependent (no record); any other is a broken contract (Report). The other edges a requirement runs on (a
     // compiler function's published row, Text.writer's reserve witness) keep Requirement's -1 for such a witness: their writers read the
     // function itself.
     private int Called(MirProgram program, int item, SourceRef subject, BindingSymbol requirement, in RequirementTarget target)
@@ -83,13 +83,13 @@ internal sealed partial class InstanceCollector
         DiagnosticCode? record = TyCtxt.Bodyless(implementation) switch
         {
             CompilerFunctionEffect.Dependent => null,
-            CompilerFunctionEffect.Unclassified when implementation.CompilerFunction == CompilerFunctionKind.None => this.Derived,
+            CompilerFunctionEffect.Unclassified when implementation.CompilerFunction == CompilerFunctionKind.None => DiagnosticCode.InternalInvariant_Kd,
             _ => Capability.Code(CapabilityGap.BodylessWitness),
         };
 
         if (record is { } code)
         {
-            this.Set.Report(code, subject);
+            this.Report(code, subject);
         }
 
         return -1;
@@ -205,7 +205,7 @@ internal sealed partial class InstanceCollector
 
         if (refused is { } code)
         {
-            this.Set.Report(code, site);
+            this.Report(code, site);
             return;
         }
 

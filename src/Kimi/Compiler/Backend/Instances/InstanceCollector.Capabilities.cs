@@ -36,7 +36,7 @@ internal sealed partial class InstanceCollector
             OperandType(body, body.Operands[rvalue.Start]) is { ContainsParameter: false } operand && rvalue.Type is not { ContainsParameter: true } &&
             Capability.Of(rvalue, operand) is { } gap)
         {
-            this.Set.Report(Capability.Code(gap), this.Located(body, statement.Source));
+            this.Report(Capability.Code(gap), this.Located(body, statement.Source));
         }
     }
 
@@ -49,7 +49,7 @@ internal sealed partial class InstanceCollector
         var result = rvalue.Type is { } type ? this.In(item, subject, type) : null;
         if (operand is not null && (rvalue.Type is null || result is not null) && Capability.Of(rvalue with { Type = result }, operand) is { } gap)
         {
-            this.Set.Report(Capability.Code(gap), subject);
+            this.Report(Capability.Code(gap), subject);
         }
     }
 
@@ -62,7 +62,7 @@ internal sealed partial class InstanceCollector
         if (body.Key is { Kind: MirBodyKind.StaticInit, Decl: { Property: { IsVerified: true } property } definition } &&
             (property.Setter.IsPresent || !ScalarTypes.Supports(body.Locals[0].Type) || this.types.Instantiates(definition)))
         {
-            this.Set.Report(Capability.Code(CapabilityGap.StaticStorage), body.Source);
+            this.Report(Capability.Code(CapabilityGap.StaticStorage), body.Source);
         }
     }
 }

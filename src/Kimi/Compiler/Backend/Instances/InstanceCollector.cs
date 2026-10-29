@@ -44,24 +44,26 @@
 // comparison shim's tree), and the parameters and result of each import a root module declares, at their written Types (no item; SPEC
 // 22.6, DECISIONS R5-M150) take Layout's verdict: a limit is GenerationResourceLimit_Kd once per erased Type at its
 // first use, a C-layout instance whose C layout is unavailable (open, derived, empty or storing a zero-sized Field) InvalidCLayout_Kd and
-// a layout over 2^63 - 1 bytes OversizedLayout_Kd at each use (both at one use when both hold); Rejected storage derives from a Binding
-// error (Derived); a type-driven item needs an Ok verdict.
+// a layout over 2^63 - 1 bytes OversizedLayout_Kd at each use (both at one use when both hold); Rejected storage is a broken contract in a
+// complete compilation and otherwise a dependent that Report drops; a type-driven item needs an Ok verdict.
 // Storage (DECISIONS BU-36, BU-38): TyCtxt's verdict on a Type or substitution of an item's instance is read once, at its requesting site
-// (Made): Prepared makes it; Rejected rests on a part Binding rejected, a dependent dropped without a record, as Layout's Rejected; a
-// limit is the storage-nesting gap. A complete compilation has no part Binding rejected (TyCtxt.BindingComplete): there TyCtxt's or
-// Layout's Rejected is InternalInvariant_Kd at its site (Derived). Every row reads a Type of an instance at its site through In, Below or
-// Instantiable, so through Made, never through TypeOf, TyCtxt.Apply or TyCtxt.Signature under a substitution; those read no verdict and
-// serve code generation and a Type whose verdict its site already read (Rest's operand and environment, Agrees' signature under a
-// witness's substitution whose Self the call's composition made, Bodyless's intrinsic row's Type argument, a part of the Item Type its site
-// made).
+// (Made): Prepared makes it; Rejected rests on a part Binding rejected, as Layout's Rejected, which a complete compilation has none of
+// (TyCtxt.BindingComplete), so it is a broken contract at its site (Report); a limit is the storage-nesting gap. Every row reads a Type of
+// an instance at its site through In, Below or Instantiable, so through Made, never through TypeOf, TyCtxt.Apply or TyCtxt.Signature
+// under a substitution; those read no verdict and serve code generation and a Type whose verdict its site already read (Rest's operand and
+// environment, Agrees' signature under a witness's substitution whose Self the call's composition made, Bodyless's intrinsic row's Type
+// argument, a part of the Item Type its site made).
 // Admission (K 4.6, X19): a new key is admitted once; its representative is the first composed substitution or Type, erased only into the
 // key (KD3). A call of a nested function whose substitution does not carry its enclosing instance (DECISIONS R5-M43), a substitution or
 // Type whose storage is a limit (Made), OCC-X's refused witness and a requirement call's or requirement Item's witness without a MIR body
 // (Called) are the capability table's gaps (an access of a static of a generic
 // container's group is none: its declaration is, X33 (a), R5-M82); depth past 128, 16 ancestors of the same definition and 1,024 items of
 // one definition are GenerationResourceLimit_Kd; a representative that is open or leaves its body open, and a requirement call of a closed
-// Self without a witness, are InternalInvariant_Kd.
+// Self without a witness, are broken contracts.
 // A refused edge is dropped and collection continues.
+// Records (DECISIONS R5-M151): every record goes through one path (Report). A broken contract is InternalInvariant_Kd where Binding is
+// complete; in an incomplete compilation a fact the collector reads may be undecided because it rests on a part Binding rejected, which the
+// collector cannot name, so the record is that error's dependent and is dropped (SPEC 23.1.2); the edge is refused all the same.
 // Location (K 4.9): a record's subject is the cause's site, moved out of inlined library defaults to the outermost omitting call, else the
 // root-module site the admission chain first reached; code generation's records take the same rule.
 // Invariants: deterministic; one item per key; every representative is closed and closes its body (K 4.3); one target per site of a body,
@@ -104,11 +106,6 @@ internal sealed partial class InstanceCollector
 
     /// <summary>Gets the work of the latest run: the sites replayed and the items admitted, which grow linearly with the instances.</summary>
     internal int Work { get; private set; }
-
-    // SPEC 23.1.2, DIAGNOSTICS rule 8 (DECISIONS BU-38): the record of a verdict resting on a part Binding rejected, TyCtxt's or Layout's
-    // Rejected: none, a dependent of the Binding error, in an incomplete compilation; InternalInvariant_Kd in a complete one, which has no
-    // such part (R5's guard, as Binding.Readable's and R4-M118's).
-    private DiagnosticCode? Derived => this.types.BindingComplete ? DiagnosticCode.InternalInvariant_Kd : null;
 
     /// <summary>Collects the checked set of a program version unless this version already was.</summary>
     /// <param name="program">The built and validated program.</param>
@@ -160,8 +157,8 @@ internal sealed partial class InstanceCollector
     internal BoundType? TypeOf(int item, BoundType type) => this.Instance(item, type) is ({ } closed, Binding.StorageOutcome.Prepared) ? closed : null;
 
     /// <summary>Gets whether a storage verdict of TyCtxt makes the instance a site requests, the collector's one reading of it (DECISIONS
-    /// BU-36, BU-38, R5-M37): Prepared does; Rejected rests on a part Binding rejected (Derived); Limit is the storage-nesting gap (PLAN
-    /// G128) at the site.</summary>
+    /// BU-36, BU-38, R5-M37): Prepared does; Rejected rests on a part Binding rejected, a broken contract (Report); Limit is the
+    /// storage-nesting gap (PLAN G128) at the site.</summary>
     /// <param name="storage">The verdict.</param>
     /// <param name="subject">The requesting site.</param>
     /// <returns>Whether the verdict is Prepared.</returns>
@@ -170,14 +167,14 @@ internal sealed partial class InstanceCollector
         DiagnosticCode? record = storage switch
         {
             Binding.StorageOutcome.Prepared => null,
-            Binding.StorageOutcome.Rejected => this.Derived,
+            Binding.StorageOutcome.Rejected => DiagnosticCode.InternalInvariant_Kd,
             Binding.StorageOutcome.Limit => Capability.Code(CapabilityGap.StorageNesting),
             _ => throw new InvalidOperationException($"The storage verdict {storage} has no row."),
         };
 
         if (record is { } code)
         {
-            this.Set.Report(code, subject);
+            this.Report(code, subject);
         }
 
         return storage == Binding.StorageOutcome.Prepared;
@@ -202,9 +199,20 @@ internal sealed partial class InstanceCollector
         _ = TyCtxt.Layer(type, out var below, out _);
         if (storage == Binding.StorageOutcome.Prepared && below is null)
         {
-            this.Set.Report(DiagnosticCode.InternalInvariant_Kd, subject);
+            this.Report(DiagnosticCode.InternalInvariant_Kd, subject);
         }
 
         return this.Made(storage, subject) ? below : null;
+    }
+
+    // SPEC 23.1.2, DIAGNOSTICS rules 1 and 9 (DECISIONS R5-M151, amending BU-38's guard): the collector's one record path. A broken contract,
+    // InternalInvariant_Kd, presupposes a complete Binding; in an incomplete compilation it may rest on a part Binding rejected, which the
+    // collector cannot name, so it is that error's dependent, without a record. Every other record is kept.
+    private void Report(DiagnosticCode code, SourceRef subject)
+    {
+        if (code != DiagnosticCode.InternalInvariant_Kd || this.types.BindingComplete)
+        {
+            this.Set.Report(code, subject);
+        }
     }
 }

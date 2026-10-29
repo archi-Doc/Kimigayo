@@ -12,8 +12,8 @@
 // Invariants: a slot whose original Applies refutes at the layer owning the original has no target, its override's body staying checked
 // only (a closed root, which a Library does not generate either (Generates, K11), or a generic body no instance applies; R4-M28); a slot
 // naming a definition without a MIR body has none (an override Binding failed after slot selection, R4-M18; a struct whose slot selection
-// failed has no table); an undecided Applies or a function off the representative's base chain is a broken contract, InternalInvariant_Kd
-// at the VTable's site.
+// failed has no table); an undecided Applies or a function off the representative's base chain is a broken contract at the VTable's site
+// (Report: Applies is undecided where the original's constraint rests on a part Binding rejected, DECISIONS R5-M151).
 // Must not: give a type test or a clone a target (SPEC 13.6.4: a test acquires nothing; code generation numbers the Types of the generated
 // descriptors' chains), a Virtual call or a virtual slot's Item (X5: the receiver's VTable holds the entries); decide applicability
 // (TyCtxt.Applies) or prove on an erased value.
@@ -80,7 +80,7 @@ internal sealed partial class InstanceCollector
             var applies = this.Applies(type, table, slot, out var layer);
             if (applies is null)
             {
-                this.Set.Report(DiagnosticCode.InternalInvariant_Kd, site);
+                this.Report(DiagnosticCode.InternalInvariant_Kd, site);
             }
             else if (applies.Value)
             {
