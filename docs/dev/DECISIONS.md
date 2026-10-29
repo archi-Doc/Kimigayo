@@ -7220,10 +7220,12 @@ resumed by R4-M86 (2026-10-20).
     `PairBindings`, before the hash and only when a Component's `CarriesRawOrigin` bit is set (an inlined guard; the unguarded call cost
     about 0.5% warm Bind), for `Constructed` (Component i of a schema slot of Kind Pair, an enclosing declaration's slots and
     Contract references included) and `FunctionItem` (the slot's Component by `Binding.ItemComponent`, the Item layout's one statement,
-    which `CopyItemArguments` and `ItemTypeArgumentCount` read since the restructuring commit), writing one reused TyCtxt scratch (0 B
-    warm); and `SubstituteTypeCore`'s pair arm, where an original `s/T` reads `PairBinding(arguments[slot])` before the unchanged
-    annotation branch. Invariant (TyCtxt.cs's head): no instance or Item states a raw Origin on a pair slot's argument. Neither point
-    suffices alone: Intern never sees a call's argument list (`id<raw/i32 during x>(q)`), the arm never a written instance.
+    which `CopyItemArguments` and `ItemTypeArgumentCount` read since the restructuring commit; it also states a requirement Item's
+    Components, only `[Self, Contract reference]`: a generic requirement's Item is `Unsupported_Kd`, so no requirement Item holds a
+    slot's argument; bu75, PLAN G244), writing one reused TyCtxt scratch (0 B warm); and `SubstituteTypeCore`'s pair arm, where an
+    original `s/T` reads `PairBinding(arguments[slot])` before the unchanged annotation branch. Invariant (TyCtxt.cs's head): no
+    instance or Item states a raw Origin on a pair slot's argument. Neither point suffices alone: Intern never sees a call's argument
+    list (`id<raw/i32 during x>(q)`), the arm never a written instance.
   - P1 (the planning session's SPEC reading): `Holder<raw/i32 during x>` and `Holder<raw/i32>` are one Type, and so are the Items
     `id<raw/i32 during x>` and `id<raw/i32>`, and `Outer<raw/i32 during x>.Inner` and `K<raw/i32 during static>` with their unstated
     spellings: the fit (5.7, 3.8) is what the slot receives; a Type parameter denotes the one Type its declaration binds (8.2.3); a
