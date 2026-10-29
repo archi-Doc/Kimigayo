@@ -596,14 +596,16 @@ public sealed partial class Binding
         pending = this.AssociatedEvidencePending;
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.ConformancePath is { } path && ReferenceEquals(path.Type, receiver.Symbol) && this.AssociatedInPath(path, receiver, associated, qualifier, scope) is { } selected)
+            if (current.ConformancePath is { } path && ReferenceEquals(path.Type, receiver.Symbol) &&
+                this.AssociatedInPath(path, receiver, associated, qualifier, scope) is { } selected)
             {
                 return this.ResolveAssociated(path, selected, out pending);
             }
         }
 
         if (receiver.Symbol is not { } owner ||
-            (qualifier is not { Kind: BoundTypeKind.Constructed } ? this.ConformanceByDeclaration(owner, associated.Scope.Owner.BoundSymbol!, out _) : this.ConformanceByReference(owner, receiver, associated, qualifier, scope)) is not { } identity)
+            (qualifier is not { Kind: BoundTypeKind.Constructed } ? this.ConformanceByDeclaration(owner, associated.Scope.Owner.BoundSymbol!, out _)
+                : this.ConformanceByReference(owner, receiver, associated, qualifier, scope)) is not { } identity)
         {
             return null;
         }
@@ -687,7 +689,8 @@ public sealed partial class Binding
         return found;
     }
 
-    private BoundRequirement? AssociatedInPath(BoundConformancePath path, BoundType receiver, BindingSymbol associated, BoundType? qualifier, BindingScope scope)
+    private BoundRequirement? AssociatedInPath(
+        BoundConformancePath path, BoundType receiver, BindingSymbol associated, BoundType? qualifier, BindingScope scope)
     {
         BoundRequirement? found = null;
         foreach (var identity in path.Contract.Contract!.AssociatedStorage)

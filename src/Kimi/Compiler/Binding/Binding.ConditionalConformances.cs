@@ -181,7 +181,8 @@ public sealed partial class Binding
     // (`Iter<S.(HasItem).Item>` of `B<SrcI>` is `Iter<i32>`), or a premise of `scope` names one, so the substituted form's reference
     // decides no identity.
     private bool NamesReference(BoundType formal, BoundType receiver, BoundType required, BindingScope scope)
-        => ReferenceEquals(formal.Symbol, required.Symbol) && this.StoredType(formal, receiver) is { } instance && this.SameConformanceType(instance, required, scope);
+        => ReferenceEquals(formal.Symbol, required.Symbol) && this.StoredType(formal, receiver) is { } instance &&
+            this.SameConformanceType(instance, required, scope);
 
     private void BindConditionalDeclarations(bool conditions)
     {

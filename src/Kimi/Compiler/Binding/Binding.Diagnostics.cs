@@ -688,15 +688,38 @@ public sealed partial class Binding
 
         if (core?.Symbol is { Declaration: StructKoto or EnumKoto } owner)
         {
-            // Several Key conformances are distinct; the key's own Type selects one (SPEC 4.7.1).
+            // Several Key conformances are distinct; the key's own Type selects one (SPEC 4.7.1). The Note names the one whose written Key
+            // is that Type, by identity: an explanation proves nothing again (the check's ConformanceForKey judges the instance).
             var name = DiagnosticTypeName(core);
-            var registered = this.ConformanceByDeclaration(owner, uniqIndexable, out var byKey) ?? (byKey ? this.ConformanceForKey(owner, uniqIndexable, index.Right) : null);
+            var registered = this.ConformanceByDeclaration(owner, uniqIndexable, out var byKey) ??
+                (byKey && KeyType(index.Right) is { } key ? this.WrittenKeyConformance(owner, uniqIndexable, key) : null);
             return registered is not null ? $"{name} conforms to UniqIndexable only under a condition that does not hold here, so its element is published by index alone, which grants Read only" :
                 byKey ? $"{name} has no UniqIndexable conformance for this key, so its element is published by index alone, which grants Read only" :
                 $"{name} has no UniqIndexable conformance, so its element is published by index alone, which grants Read only";
         }
 
         return core is { Kind: BoundTypeKind.Parameter } ? $"{DiagnosticTypeName(core)} is not required to be UniqIndexable here, so its element is published by index alone, which grants Read only" : null;
+    }
+
+    // The one conformance of `owner` to a bound reference of `contract` whose written Key is `key`, or null (SharedIndexNote's text).
+    private BoundConformance? WrittenKeyConformance(BindingSymbol owner, BindingSymbol contract, BoundType key)
+    {
+        BoundConformance? found = null;
+        foreach (var identity in this.conformancesByType.GetValueOrDefault(owner) ?? [])
+        {
+            if (ReferenceEquals(identity.Contract.Declaration, contract.Declaration) && identity.Paths.Count != 0 &&
+                identity.Contract.Type is { Components: [var argument] } && ReferenceEquals(argument, key))
+            {
+                if (found is not null)
+                {
+                    return null;
+                }
+
+                found = identity;
+            }
+        }
+
+        return found;
     }
 
     // SPEC 11.3: an accessor receiver has the shape of its operation. The report is located at the written receiver Type and

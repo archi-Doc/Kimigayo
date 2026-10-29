@@ -208,8 +208,8 @@ public class PropertyBindingTest
         var associate = condition.Length == 0 ? "\n    associate Holds.E is S.Element" : "\n        associate Holds.E is S.Element";
         var c = CompilationTestHelper.ParseSuccess(
             $"contract HasElem\n    associate Element\ncontract Holds\n    associate E\n    property item: {result} has get\nopen struct Base<T>\n" +
-            $"    public var item: T\nstruct W<S>{(inherited ? " : Base<S.Element>" : string.Empty)}\n    S is HasElem\n    Self is Holds{condition}{associate}\n" +
-            (inherited ? string.Empty : "    public var item: S.Element\n"));
+            $"    public var item: T\nstruct W<S>{(inherited ? " : Base<S.Element>" : string.Empty)}\n    S is HasElem\n" +
+            $"    Self is Holds{condition}{associate}\n" + (inherited ? string.Empty : "    public var item: S.Element\n"));
         Assert.True(c.Bind().IsComplete == valid, Describe(c));
         Assert.True(valid || c.Binding.Issues.Any(static x => x.Code == DiagnosticCode.UnprovenConstraint_Kd), Describe(c));
     }

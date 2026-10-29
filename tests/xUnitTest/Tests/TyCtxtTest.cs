@@ -791,7 +791,8 @@ public sealed class TyCtxtTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(
             ["B<SrcI> Body size", "B<Src> Body size"],
-            RequirementCalls(c, c.Kotonoha).Select(x => (Composed(c, x)!.Self!, Witness(c, x))).Select(static x => $"{TyCtxt.Name(x.Item1)} {x.Item2.Kind} {x.Item2.Target?.Name}"));
+            RequirementCalls(c, c.Kotonoha).Select(x => (Composed(c, x)!.Self!, Witness(c, x)))
+                .Select(static x => $"{TyCtxt.Name(x.Item1)} {x.Item2.Kind} {x.Item2.Target?.Name}"));
     }
 
     // SPEC 5.7 Calls, Fits (DECISIONS BU-46): a kept part states Unstated on each raw layer its declaration writes without `during`, so an
