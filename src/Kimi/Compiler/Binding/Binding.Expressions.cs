@@ -823,13 +823,13 @@ public sealed partial class Binding
                 }
 
                 if ((!operation.IsStandard && !this.BindPropertyCall(node, operation, scope, write ? input : null)) ||
-                    (update && !property.Setter.IsStandard && (input is null || !this.BindPropertyCall(node, property.Setter, scope, input))) ||
-                    (update && (node is not MemberAccessKoto updateMember || !this.BindPropertyUpdate(updateMember, scope))))
+                    (update && !property.Setter.IsStandard && (input is null || !this.BindPropertyCall(node, property.Setter, scope, input))))
                 {
                     return null;
                 }
 
-                return Complete(node, write ? this.PropertySetterInput(node) : this.propertyCalls.GetValueOrDefault((node, PropertyAccessorKind.Get))?.BoundType ?? property.Getter.Result);
+                return update ? this.BindPropertyUpdate(node, scope)
+                    : Complete(node, write ? this.PropertySetterInput(node) : this.propertyCalls.GetValueOrDefault((node, PropertyAccessorKind.Get))?.BoundType);
             }
 
             if (node is MemberAccessKoto stored && sourceReceiver?.BoundType is { } storedSource && this.memberSelections.TryGetValue(stored, out var storageSelection) && storageSelection.Path is not null)

@@ -258,6 +258,67 @@ public class PropertyBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
+    // SPEC 13.7.1, 13.7.2, 8.2.3 (PLAN G292, DECISIONS BU-50): a compound assignment, `++` or `--` with one custom accessor computes in
+    // the read Type; its standard `get` reads and its standard `set` writes the Field's Place as the body reads it (MemberRead), as a
+    // plain `h.x` does: `x: S` of `HY<i32>`, closed or under `T is PrimitiveInteger`, `x: S.Output` likewise, and a custom `get` with
+    // the standard `set` (before, TypeMismatch_Kd "expected S" or "expected S.Output"). Twins: both accessors custom, a non-generic
+    // Field of a generic struct, and a bool operand, which stays TypeMismatch_Kd.
+    [Theory]
+    [InlineData("", "var h = HY<i32>.init(x: 3)\n    h.x += 4", "")]
+    [InlineData("", "var h = HY<i32>.init(x: 3)\n    h.x |= 4\n    h.x++\n    ++h.x", "")]
+    [InlineData("func f<T>(h: uniq/HY<T>, a: T) -> T\n    T is PrimitiveInteger\n    h.x += a\n    return h.x\n", "var h = HY<i64>.init(x: 3)\n    let v = f(h@uniq, 4)", "")]
+    [InlineData("", "var h = HS<i32>.init(x: 3)\n    h.x += 4\n    --h.x", "")]
+    [InlineData("func f<T>(h: uniq/HS<T>, a: T) -> T\n    T is PrimitiveInteger\n    h.x *= a\n    h.x++\n    return h.x\n", "var h = HS<u8>.init(x: 3)\n    let v = f(h@uniq, 4)", "")]
+    [InlineData("", "var h = HG<i32>.init(x: 3)\n    h.x |= 4\n    h.x++", "")]
+    [InlineData("func f<T>(h: uniq/HG<T>, a: T) -> T\n    T is PrimitiveInteger\n    h.x += a\n    return h.x\n", "var h = HG<i32>.init(x: 3)\n    let v = f(h@uniq, 4)", "")]
+    [InlineData("", "var h = HB<i32>.init(x: 3)\n    h.x += 4\n    h.x |= 4\n    h.x++", "")]
+    [InlineData("", "var h = HN<bool>.init(x: 3, s: true)\n    h.x += 4\n    h.x |= 4", "")]
+    [InlineData("", "var h = HY<i32>.init(x: 3)\n    h.x += true", "h.x += true")]
+    [InlineData("func f<T>(h: uniq/HS<T>, a: T) -> ()\n    T is PrimitiveInteger\n    h.x |= true\n    return\n", "var h = HS<i32>.init(x: 3)\n    f(h@uniq, 4)", "h.x |= true")]
+    [InlineData("", "var h = HG<i32>.init(x: 3)\n    h.x += true", "h.x += true")]
+    public void AnUpdateReadsItsStandardSideAsTheBodyReadsTheField(string declarations, string use, string mismatch)
+    {
+        const string Holders = """
+            struct HY<S>
+                public var x: S
+                    set(value: S) -> ()
+                        storage = value@move
+                public init(x: S) => self.x = x@move
+            struct HS<S>
+                S is Addable<S>
+                public var x: S.Output
+                    set(value: S.Output) -> ()
+                        storage = value@move
+                public init(x: S.Output) => self.x = x@move
+            struct HG<S>
+                S is Copy
+                public var x: S
+                    get() -> S
+                        return storage
+                public init(x: S) => self.x = x
+            struct HB<S>
+                S is Copy
+                public var x: S
+                    get() -> S
+                        return storage
+                    set(value: S) -> ()
+                        storage = value
+                public init(x: S) => self.x = x
+            struct HN<S>
+                public var x: i32
+                    set(value: i32) -> ()
+                        storage = value
+                public var s: S
+                public init(x: i32, s: S)
+                    self.x = x
+                    self.s = s@move
+
+            """;
+        var c = MinimalEmissionTest.Analyze(Holders + declarations + $"public func main() -> ()\n    {use}\n    return\n");
+        Assert.Equal(mismatch.Length == 0 ? [] : [$"TypeMismatch_Kd {mismatch}"], c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}".Split('\n')[0]));
+        Assert.Empty(c.Problems);
+    }
+
     [Fact]
     public void SharedStoredGetterCannotWriteItsContextualStorage()
     {
