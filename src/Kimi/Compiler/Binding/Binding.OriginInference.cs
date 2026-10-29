@@ -18,6 +18,7 @@ public sealed partial class Binding
         inference.Bounds.Clear();
         inference.Variables.Clear();
         inference.WellFormed.Clear();
+        inference.Assumed = null;
         return inference;
     }
 
@@ -129,11 +130,11 @@ public sealed partial class Binding
 
                     if (bound.LongerVariable && ReferenceEquals(bound.Longer, variable.Origin) && Resolve(bound.Shorter, bound.ShorterVariable) is { } floor)
                     {
-                        if (lower is null || this.ProvesOriginOutlives(floor, lower, use))
+                        if (lower is null || this.ProvesOriginOutlives(floor, lower, use, 0, inference.Assumed))
                         {
                             lower = floor;
                         }
-                        else if (!this.ProvesOriginOutlives(lower, floor, use))
+                        else if (!this.ProvesOriginOutlives(lower, floor, use, 0, inference.Assumed))
                         {
                             incomparable = true;
                         }
@@ -146,7 +147,7 @@ public sealed partial class Binding
                 for (var i = 0; upper is not null && variable.Polarity != 3 && i < inference.WellFormed.Count; i++)
                 {
                     if (ReferenceEquals(inference.WellFormed[i].Shorter, variable.Origin) && Resolve(inference.WellFormed[i].Longer, true) is { } stored &&
-                        !this.ProvesOriginOutlives(stored, upper, use))
+                        !this.ProvesOriginOutlives(stored, upper, use, 0, inference.Assumed))
                     {
                         upper = this.Meet(upper, stored);
                     }
@@ -154,7 +155,7 @@ public sealed partial class Binding
 
                 var candidate = variable.Polarity == 2 ? (incomparable ? null : lower) : upper ?? (incomparable ? null : lower);
                 if (variable.Polarity == 3 && (incomparable || upper is null || lower is null ||
-                    !this.ProvesOriginOutlives(upper, lower, use) || !this.ProvesOriginOutlives(lower, upper, use)))
+                    !this.ProvesOriginOutlives(upper, lower, use, 0, inference.Assumed) || !this.ProvesOriginOutlives(lower, upper, use, 0, inference.Assumed)))
                 {
                     candidate = null;
                 }
@@ -198,7 +199,7 @@ public sealed partial class Binding
         {
             var longer = Resolve(bound.Longer, bound.LongerVariable);
             var shorter = Resolve(bound.Shorter, bound.ShorterVariable);
-            if (longer is null || shorter is null || !this.ProvesOriginOutlives(longer, shorter, use))
+            if (longer is null || shorter is null || !this.ProvesOriginOutlives(longer, shorter, use, 0, inference.Assumed))
             {
                 return false;
             }
@@ -298,6 +299,9 @@ public sealed partial class Binding
 
         // SPEC 15.6.4 step 3: the relations of the call's inputs' well-formedness, each an upper limit of its shorter end only.
         internal List<(BoundOrigin Longer, BoundOrigin Shorter)> WellFormed { get; } = new();
+
+        // A whole-contract comparison's target signature, whose own Types are premises of the solve's proofs (SPEC 15.3.7, 10.7).
+        internal BoundType? Assumed { get; set; }
 
         internal void Add(BoundOrigin longer, BoundOrigin shorter, bool longerVariable = true, bool shorterVariable = true)
         {

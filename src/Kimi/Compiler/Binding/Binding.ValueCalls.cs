@@ -574,10 +574,8 @@ public sealed partial class Binding
                 return null;
             }
 
-            if (conditioned is not null)
-            {
-                this.RequireResultPremises(conditioned, result, call); // SPEC 15.3.7: the callee's result premises.
-            }
+            // SPEC 15.3.7, 15.6.1: the instantiated result, under a named callee's premises, else a nested signature's whole (the owner's (A)).
+            this.RequireResultPremises(ownBinder is FunctionKoto { IsAnonymous: false } namedCallee ? namedCallee : null, result, call);
 
             var inputs = count == 0 ? BoundType.Unit : this.types.Tuple(instantiated.AsSpan(0, count));
             var declaredSignature = signature;

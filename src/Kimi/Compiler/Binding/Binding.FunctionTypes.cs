@@ -271,7 +271,8 @@ public sealed partial class Binding
 
     // SPEC 10.7, 15.3.7: the implementation's per-call Origins are solved against the required signature, whose quantifiers and fixed
     // Origins stay rigid, under its declared relations and result premises; then the required inputs fit the implementation's, its
-    // result fits the required one, and its conditions are proven for the solution. The implementation's Types are its members within
+    // result fits the required one, and its conditions are proven for the solution, every proof under the required signature's own Types
+    // too, which each call through it proves (SPEC 15.3.7; the owner's (a)). The implementation's Types are its members within
     // `container` with `arguments` bound, or those of the Function Item `item`.
     private bool ContractFits(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, BoundType? container, BoundType? item, BoundType?[]? arguments, Span<BoundArgumentOperation> operations, BoundOrigin[] origins, BoundOrigin[] inputs, bool explain = false, BoundLength?[]? lengths = null)
     {
@@ -279,6 +280,7 @@ public sealed partial class Binding
         var generic = function.GenericArguments.Count;
         var inputCount = InputOriginCount(function);
         var inference = this.BeginOriginInference(use, function);
+        inference.Assumed = required; // SPEC 15.3.7, 10.7: the required Function Type's own Types are premises of every proof below.
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             if (function.Parameters[i].Type.BoundType is not { } written || Bound(written) is not { } parameter)
@@ -305,8 +307,8 @@ public sealed partial class Binding
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             var parameter = Substitute(Bound(function.Parameters[i].Type.BoundType!)!);
-            if (HasUnsubstitutedOrigin(parameter, function) || !this.IsSubtypeAt(parameters.Components[i], parameter, use) ||
-                !this.ProvesInputPremises(parameter, parameters.Components[i], use))
+            if (HasUnsubstitutedOrigin(parameter, function) || !this.IsSubtypeAt(parameters.Components[i], parameter, use, required) ||
+                !this.ProvesInputPremises(parameter, parameters.Components[i], use, inference))
             {
                 return false;
             }
@@ -320,11 +322,11 @@ public sealed partial class Binding
             }
         }
 
-        return this.CheckCallOriginRelations(function, origins, inputs, use, null) &&
+        return this.CheckCallOriginRelations(function, origins, inputs, use, null, required) &&
             symbol.Type is { } result && Bound(result) is { } boundResult &&
             !HasUnsubstitutedOrigin(result = Substitute(boundResult), function) &&
-            this.IsSubtypeAt(result, CompatibleResult(result, required.Components[1]), use) &&
-            this.ProvesResultPremises(function, result, use);
+            this.IsSubtypeAt(result, CompatibleResult(result, required.Components[1]), use, required) &&
+            this.ProvesResultPremises(function, result, use, inference);
 
         BoundType? Bound(BoundType type)
         {

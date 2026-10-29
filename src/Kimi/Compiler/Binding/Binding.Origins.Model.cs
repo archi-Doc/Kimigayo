@@ -370,23 +370,25 @@ internal enum TypePosition : byte
 
 // SPEC 10.7, 15.3.7: one Callable comparison of an implementation signature (Actual) with a required one (Expected). The Origins that
 // the implementation binds per call are instantiated at the required inputs in the same positions; the required per-call Origins are
-// rigid symbols of the comparison, and every other Origin is compared as written.
+// symbols of the comparison that only the required signature's own Types relate (InstanceOutlives), and every other Origin is compared
+// as written.
 internal readonly struct CallableInstance
 {
     private readonly BoundType? actual;
     private readonly Koto? actualBinder;
     private readonly BoundType? expected;
-    private readonly Koto? expectedBinder;
 
-    internal CallableInstance(BoundType? actual, Koto? actualBinder, BoundType? expected, Koto? expectedBinder)
+    internal CallableInstance(BoundType? actual, Koto? actualBinder, BoundType? expected)
     {
         this.actual = actual;
         this.actualBinder = actualBinder;
         this.expected = expected;
-        this.expectedBinder = expectedBinder;
     }
 
     internal BoundType? Actual => this.actual;
+
+    // The required signature, whose own Types are premises of every relation the comparison judges (SPEC 15.3.7, 10.7).
+    internal BoundType? Expected => this.expected;
 
     // A direct input whose outer Origin the implementation binds at that input's own position.
     internal bool IsQuantifiedInput(BoundType input, int position)
@@ -405,11 +407,6 @@ internal readonly struct CallableInstance
         var input = this.actual.Components[0].Components[origin.Slot];
         return ReferenceEquals(input.Origin, origin) && this.IsQuantifiedInput(input, origin.Slot) && this.expected.Components[0].Components[origin.Slot].Origin is { } required ? required : origin;
     }
-
-    // A per-call Origin of the required signature: the outer Origin of a direct required input, bound by that signature at its slot.
-    internal bool IsRequiredSlot(BoundOrigin origin)
-        => this.expected is not null && this.expectedBinder is not null && origin is { Kind: OriginKind.Input, Occurrence: null } && ReferenceEquals(origin.Binder, this.expectedBinder) &&
-            (uint)origin.Slot < (uint)this.expected.Components[0].Components.Count && ReferenceEquals(this.expected.Components[0].Components[origin.Slot].Origin, origin);
 
     // SPEC 10.7, 15.3.6: a universal Origin of the implementation that none of its inputs mentions, such as the result-only `s` of
     // `constant() -> ref/i32 during s`, is a call-time Origin that each call instantiates; it is instantiated to an open region of the

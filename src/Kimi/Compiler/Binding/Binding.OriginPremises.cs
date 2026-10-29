@@ -27,8 +27,7 @@ public sealed partial class Binding
                 var capacity = environment.Closure.Capacity;
                 nodes = Math.Max(nodes, capacity.Nodes);
                 edges = Math.Max(edges, capacity.Edges);
-                retains |= environment.Closure.RetainsOrigins || environment.Nodes.Count != 0 || environment.Types.Count != 0 || environment.Results.Count != 0 ||
-                    environment.Resolvers.Count != 0 || environment.Use is not null || environment.Scope is not null;
+                retains |= environment.Retains;
             }
 
             return (this.originPremiseEnvironments.Count, nodes, edges, retains);
@@ -50,8 +49,9 @@ public sealed partial class Binding
     // SPEC 15.3.6 (PLAN G74): whether the premises visible at `use` entail `longer outlives shorter`, both resolved at the use.
     // The structural instances of reflexivity, `static`, anchors and meets (I1-I4) answer first. Otherwise one environment
     // collects the catalog's premises (OriginPremiseRule) as the edges of a finite graph over the Origin expressions they name,
-    // and a single closure from `shorter` decides the relation; its work is linear in the graph (OriginPremiseClosure).
-    private bool EntailsOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
+    // and a single closure from `shorter` decides the relation; its work is linear in the graph (OriginPremiseClosure). `assumed`
+    // is the request's Callable comparison target, a signature whose own Types are premises too (SPEC 15.3.7, 10.7).
+    private bool EntailsOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition, BoundType? assumed)
     {
         if (OriginOutlives(longer, shorter))
         {
@@ -65,6 +65,7 @@ public sealed partial class Binding
 
         var environment = this.RentPremises(use) ??
             throw new InvalidOperationException($"The premise environment of `{longer} outlives {shorter}` is not ready: its construction depends on itself (PLAN G74).");
+        environment.Assumed = assumed;
         var start = this.OriginProofMetrics is null ? 0 : Stopwatch.GetTimestamp();
         try
         {
@@ -159,10 +160,22 @@ public sealed partial class Binding
     // The catalog's context-dependent premises from `from` outward (for a request, its use): associated formation and requirements
     // (R4), the inputs (R2, a Closure's call receiver among them) and result (R3) of each enclosing signature, a computed or
     // requirement Property's header being its getter's result (SPEC 11.4), and the clauses of each established enclosing declaration (R1).
-    // Then every borrowed complete local Place among the graph's expressions adds its stored Origins (R5), including Places
-    // that those Origins introduce, so the closure applies R5 at every expression it reaches.
+    // A request's comparison target (Assumed) is one more signature: its inputs (R2) and result (R3), which each call through it proves
+    // (SPEC 15.3.7, 15.6.1, 10.7). Then every borrowed complete local Place among the graph's expressions adds its stored Origins (R5),
+    // including Places that those Origins introduce, so the closure applies R5 at every expression it reaches.
     private void ExtractOriginPremises(OriginPremiseEnvironment environment, Koto? from)
     {
+        if (environment.Assumed is { Kind: BoundTypeKind.Function, Components.Count: 2 } target)
+        {
+            var parameters = target.Components[0];
+            for (var i = 0; !ReferenceEquals(parameters, BoundType.Unit) && i < parameters.Components.Count; i++)
+            {
+                this.AddTypePremises(environment, parameters.Components[i], OriginPremiseRule.Input);
+            }
+
+            this.AddResultPremises(environment, target.Components[1]);
+        }
+
         Koto? previous = null;
         for (var node = from; node is not null; previous = node, node = node.Parent)
         {
@@ -190,9 +203,10 @@ public sealed partial class Binding
                     this.AddReceiverPremises(environment, literal, plan);
                 }
 
-                // SPEC 15.3.7: the result Type's intrinsic well-formedness is a premise of the definition (Binding.ResultPremises.cs).
-                if (!ReferenceEquals(signature, this.resultPremiseExcluded) &&
-                    signature is FunctionKoto { IsAnonymous: false, IsConstructor: false, BoundSymbol.Type: { } result })
+                // SPEC 15.3.7, 15.6.1: the result Type's intrinsic well-formedness is a premise of the definition (Binding.ResultPremises.cs),
+                // an anonymous function's written one too: each call through its signature and each conversion of its value proves it.
+                if (!ReferenceEquals(signature, this.resultPremiseExcluded) && signature is FunctionKoto { IsConstructor: false } function &&
+                    (function.IsAnonymous ? function.ReturnType?.BoundType : function.BoundSymbol?.Type) is { } result)
                 {
                     this.AddResultPremises(environment, result);
                 }
@@ -282,18 +296,13 @@ public sealed partial class Binding
     // target within its outer-Origin slot, whose well-formedness makes the target's Origins outlive that slot; in the value cases no
     // Type denotes the slot, so those edges hold only in the borrow cases (SPEC 15.6.5, PairSlotCondition). The stored Origins include
     // the implicit `o` of an original pair layer below a borrow layer (StoresOrigin). Each Type is visited once per environment. A nested
-    // Function Type's inputs add none: their well-formedness is that signature's premise, proven at each call (RequireInputPremises), never
-    // one of the body whose input holds the Function Type (SPEC 15.3.4, 15.6.1; DECISIONS R4-M137); its result is PLAN G216's open half.
+    // Function Type adds none of its own: its inputs' and result's well-formedness is that signature's, proven at each call through it and
+    // each conversion of its value, never a premise of the body whose input holds it (SPEC 15.3.4, 15.6.1; DECISIONS R4-M137; the owner's
+    // (A)); the Origins a layer stores in it stay that layer's (AddStoredPremises).
     private void AddTypePremises(OriginPremiseEnvironment environment, BoundType type, OriginPremiseRule rule)
     {
-        if (!environment.Types.Add(type))
+        if (!environment.Types.Add(type) || type.Kind == BoundTypeKind.Function)
         {
-            return;
-        }
-
-        if (type.Kind == BoundTypeKind.Function)
-        {
-            this.AddTypePremises(environment, type.Components[1], rule);
             return;
         }
 
@@ -403,7 +412,18 @@ public sealed partial class Binding
 
         internal Koto Use { get; set; } = null!;
 
+        // The request's Callable comparison target, whose own Types are premises of the request (ExtractOriginPremises).
+        internal BoundType? Assumed { get; set; }
+
         internal BindingScope? Scope { get; set; }
+
+        // Whether the environment still references an Origin, a Type, a declaration or syntax: what a request collected or the request
+        // itself, which Clear empties.
+        internal bool Retains => this.Closure.RetainsOrigins || this.HoldsPremises || this.HoldsRequest;
+
+        private bool HoldsPremises => this.Nodes.Count != 0 || this.Types.Count != 0 || this.Results.Count != 0 || this.Resolvers.Count != 0;
+
+        private bool HoldsRequest => this.Use is not null || this.Assumed is not null || this.Scope is not null;
 
         internal void Clear()
         {
@@ -413,6 +433,7 @@ public sealed partial class Binding
             this.Results.Clear();
             this.Resolvers.Clear();
             this.Use = null!;
+            this.Assumed = null;
             this.Scope = null;
         }
     }

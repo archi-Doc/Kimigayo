@@ -206,6 +206,23 @@ public sealed partial class Binding
         return proof;
     }
 
+    // API and constraint validation can invalidate a target or Type after call selection; a target whose declaration failed leaves the
+    // call resting on that failure (SPEC 23.1.2). A value call has no target: its result Type is validated as a named call's, since each
+    // call through a nested signature proves its instantiated result (SPEC 15.6.1, the owner's (A)).
+    private void CheckCallConstraints(Koto node, CallPlan call, BindingMode mode)
+    {
+        if (call.Kind != CalleeKind.Value && node.BindingFailure == BindingFailure.None &&
+            this.InvalidDeclarationContextCause(this.Library.PresentedTarget(call.Target).Declaration) is { } invalidTarget)
+        {
+            this.CompleteDependent(node, invalidTarget);
+            return;
+        }
+
+        var scope = this.ConstraintScope(node);
+        this.RequireConstraint(
+            node, call.Kind == CalleeKind.Value ? this.CheckTypeConstraints(call.ReturnType, scope) : this.CheckCallTypeConstraints(call, scope), mode);
+    }
+
     private ConstraintProof CheckCallTypeConstraints(CallPlan call, BindingScope scope)
     {
         // A linked constructor is judged as the public declaration it selected (SPEC 22.1).
