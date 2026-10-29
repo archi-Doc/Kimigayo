@@ -324,7 +324,8 @@ public class MinimalEmissionTest
         }
     }
 
-    // A program analyzed for an Application, by the process's code generator unless one is named (MIR code generation on the mir pipeline).
+    // A program analyzed for an Application, by the process's code generator unless one is named; MIR code generation needs the mir
+    // pipeline until G2 ends that pairing (R5 PD4), so this switch goes in G2's merge.
     internal static Compilation Analyze(string source, string path = "Hello.kimi", CompilerCodegen? codegen = null)
     {
         var c = Compilation.CreateForTest();

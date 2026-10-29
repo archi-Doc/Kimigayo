@@ -12815,16 +12815,34 @@ structure is recorded here by the unit that first implements it.
   - D5 (the owner, 2026-10-30, verbatim 「(a) D5 の例外として認める」, to: the old paths accept the newly valid forms until
     R6-check, each shown natively to be generated and run correctly under both generators): the old analysis accepts them. Shown on
     both generators: a call's right side (the old element stays, the secured result is destroyed), a nested element, a Field written
-    and updated, a borrow for a call. The old generator refuses `replace` and `exchange` of such an element with `GenerationFailed_Kd`
-    (`ValidateComparisonLoans`; no code), which MIR code generation runs; the owner's answer on that: (pending).
-  - Not newly accepted: `swap`'s later input and a read of a local such an element initializes are the old analysis's first
+    and updated or updated by a user operator (`u[(return 42)] += Counter.init(2)`), shared reads (`let k = t[(return 42)].1`),
+    comparisons, `++`, a shared borrow for a call or a local (`let r = a[(return 42)]@ref`), a `match` scrutinee. The old generator
+    refuses with
+    `GenerationFailed_Kd` (`ValidateComparisonLoans`; no code) an exclusive borrow of such an element, or of a part of one (a Field,
+    a Tuple element, a nested element), taken as a call's input: a `@uniq` argument, a `uniq/Self` receiver, user or library
+    (`Array.append`), `replace`, `exchange`. MIR code generation runs each. Three of them the old generator generated before, typing
+    the part Never: `bump(n2[(return 42)][0]@uniq)`, `bump(t[(return 42)].1@uniq)` and `replace(t[(return 42)].1@uniq, with: …)`
+    (base MIR code generation gave `InternalInvariant_Kd`). The owner's answer on this family: (pending).
+  - Newly rejected, SPEC-correctly (3.1.3, 3.8): an element used at a mismatched Type (`let x: bool = ia[(return 42)]`,
+    `TypeMismatch_Kd`; base accepted it at default, `InternalInvariant_Kd` under sel). Under MIR code generation `build` rejects a
+    Move of such an element (`take(a[(return 42)]@move)`, `_ = a[(return 42)]@move`) with A1's `StaticMovePathRequired_Kd` (SPEC
+    15.1.3, 14.10.3), while `check` accepts it on both pipelines, the old analysis skipping the Move Path check of a non-completing
+    element, until R6-check (STATUS).
+  - Newly accepted, invalid (BU's review): the default pipeline accepts a Move of such an element into an untyped local
+    (`let s = a[(return 42)]@move`, `let x = a[(return 42)]` of a string, `var v = …@move`, `let q = (a[(return 42)], 1)`,
+    `let e = b[(return 42)]@move`), whose reachable twins are `StaticMovePathRequired_Kd` or `TransferRequired_Kd` (SPEC 4.8, 3.5,
+    14.10.3). Dev rejected them only because the local was Never: the old analysis's `AcquireElement` checks nothing where the access
+    cannot complete normally (R1's limit, STATUS Unreachable code), as dev already accepted `take(…@move)`, `let w: string = …@move`
+    and `other = …@move`. The owner's answer on these: (pending).
+  - Not newly accepted: `swap`'s later input and a later read of a local such an element initializes are the old analysis's first
     unreachable local use, its located `Unsupported_Kd` (STATUS Unreachable code) until R6-check, a better category than the former
     Language error. AD4's assumed-path Loan conflict is PLAN G305's.
   - Rejected: a builder walk typing the destination over HIR shapes (a second copy of `TryType`, Binding's rejections kept); a
     published destination-Type fact (the target's Meaning carries it once Binding follows SPEC); the right side's own Type for the
     temporary (wrong for a ReferenceRead, an Erasure, a borrow); a BU-10-style old-analysis guard (the owner's (b)).
   - Verified (fail-first): `NeverContinuationTest` (the forms accepted, the published element Types, the Never receiver's
-    `InvalidAssignment_Kd`), `MirBuildTest.ARightSideIsSecuredAtTheElementTypeBeforeADivergingKey`, Element* native fixtures. The
+    `InvalidAssignment_Kd`, the mismatched Type's `TypeMismatch_Kd`), `MirBuildTest.ARightSideIsSecuredAtTheElementTypeBeforeADivergingKey`,
+    Element* native fixtures (the exclusive inputs under MIR code generation). The
     `ElementReplacementTransfer*` audits lose their `constant-temporaries` deviation: MIR code generation now secures and destroys the
     right side as the old generator does, so R5-M118's two `ElementReplacementTransfer*Audit` rows were this cause, not a constant a
     transfer abandons (G157 (45)'s part for them).
