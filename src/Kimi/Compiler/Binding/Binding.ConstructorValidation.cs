@@ -137,6 +137,8 @@ public sealed partial class Binding
                     this.inferenceFixedChecks++;
                 }
 
+                var rechecked = new EvaluatedCandidate(
+                    previous.Symbol, CandidateApplicability.Inapplicable, construction, 0, ArgumentMap: previous.ArgumentMap);
                 var state = this.TryCandidate(
                     new SlotSolution
                     {
@@ -153,22 +155,16 @@ public sealed partial class Binding
                     },
                     [],
                     mapping,
-                    previous.ArgumentMap,
                     expected,
                     candidateOperations,
-                    out var defaults,
-                    out var unbound,
-                    out var receiver,
-                    out _,
-                    out _,
-                    out var premiseUnknown);
-                checkedCandidates[i] = new(previous.Symbol, state, construction, defaults, unbound, receiver, previous.ArgumentMap, PremiseUnknown: premiseUnknown);
-                if ((state == CandidateApplicability.Pending && !premiseUnknown) || state == CandidateApplicability.Error || unbound)
+                    ref rechecked);
+                checkedCandidates[i] = rechecked with { State = state };
+                if ((state == CandidateApplicability.Pending && !rechecked.PremiseUnknown) || state == CandidateApplicability.Error || rechecked.Unsolved)
                 {
                     return Reject(function, ConstructionCheck.UnprovenCandidate);
                 }
 
-                unproven ??= premiseUnknown ? function : null;
+                unproven ??= rechecked.PremiseUnknown ? function : null;
 
                 if (state is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
                 {

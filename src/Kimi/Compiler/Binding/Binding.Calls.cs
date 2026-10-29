@@ -393,19 +393,9 @@ public sealed partial class Binding
                     return Complete(call, null);
                 }
 
+                var completed = evaluated[winnerIndex]; // The recheck's facts are not kept: only its state decides.
                 var state = this.TryCandidate(
-                    this.Solution(evaluation, selected, selectedType),
-                    explicitLengths,
-                    mapping,
-                    evaluated[winnerIndex].ArgumentMap,
-                    expected,
-                    waitingOperations,
-                    out _,
-                    out _,
-                    out _,
-                    out _,
-                    out _,
-                    out _);
+                    this.Solution(evaluation, selected, selectedType), explicitLengths, mapping, expected, waitingOperations, ref completed);
                 if (state != CandidateApplicability.Applicable)
                 {
                     var rejected = new RejectedCandidate(selected, null, null, Selected: true);

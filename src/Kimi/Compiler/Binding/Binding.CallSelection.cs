@@ -85,12 +85,7 @@ public sealed partial class Binding
         }
 
         var argumentMap = MapCallArguments(call, function, this.CallReceiver(evaluation.Generic?.Identifier ?? KotoHelper.UnwrapParentheses(call.Method)) is not null, evaluation.Mapping, evaluation.Used);
-        var defaultsUsed = argumentMap.DefaultsUsed;
-        ClosureReceiverRefutation? closureReceiver = null;
-        var unsolved = false;
-        var independentRejection = false;
-        var premiseUnknown = false;
-        ReferenceConstraintFailure? rejectedConstraint = null;
+        var evaluated = new EvaluatedCandidate(candidate, state, declaringType, argumentMap.DefaultsUsed, ArgumentMap: argumentMap);
         // SPEC 4.6.2: a synthesized range construction pins its Kimi target, which source access does not restrict.
         var accessible = callee is SyntheticKoto || this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType);
         if (accessible)
@@ -103,18 +98,7 @@ public sealed partial class Binding
 
             this.activeRequirementContract = evaluation.Requirements?.Contracts[index] ?? (callee as RequirementCalleeKoto)?.Contract;
             state = this.TryCandidate(
-                this.Solution(evaluation, function, declaringType),
-                evaluation.ExplicitLengths,
-                evaluation.Mapping,
-                argumentMap,
-                evaluation.Expected,
-                operations,
-                out defaultsUsed,
-                out unsolved,
-                out closureReceiver,
-                out independentRejection,
-                out rejectedConstraint,
-                out premiseUnknown);
+                this.Solution(evaluation, function, declaringType), evaluation.ExplicitLengths, evaluation.Mapping, evaluation.Expected, operations, ref evaluated);
             this.activeRequirementContract = null;
         }
 
@@ -123,7 +107,13 @@ public sealed partial class Binding
             declaringType = this.ConstructionType(function, declaringType, evaluation.Scratch) ?? declaringType;
         }
 
-        evaluation.Evaluated[index] = new(candidate, state, declaringType, defaultsUsed, unsolved, closureReceiver, argumentMap, accessible, function.IsConstructor && StableConstructionPremises(state, unsolved, declaringType, operations), independentRejection, rejectedConstraint, premiseUnknown);
+        evaluation.Evaluated[index] = evaluated with
+        {
+            State = state,
+            DeclaringType = declaringType,
+            Accessible = accessible,
+            StableConstruction = function.IsConstructor && StableConstructionPremises(state, evaluated.Unsolved, declaringType, operations),
+        };
         var saved = evaluation.SavedCandidates != 0;
         var argumentCount = call.ArgumentNodes.Count;
         if (saved)
@@ -137,7 +127,7 @@ public sealed partial class Binding
         {
             // SPEC 8.3, 15.6.1: a Callable proof that is Unknown only in its Origin part is explained by its Constraint record.
             evaluation.PendingCount++;
-            evaluation.PremisesOnly &= premiseUnknown;
+            evaluation.PremisesOnly &= evaluated.PremiseUnknown;
             evaluation.CallableFailure ??= function.TypeConstraints.Count != 0 ? this.CallableOriginFailure(call, function, evaluation.Scratch, evaluation.LengthArguments, evaluation.Mapping, scope, evaluation.Self, declaringType) : null;
             evaluation.ConstraintFailure ??= this.CandidateConstraintFailure(function, evaluation.Scratch, evaluation.LengthArguments, scope, evaluation.Self, declaringType, ConstraintProof.Unknown);
         }

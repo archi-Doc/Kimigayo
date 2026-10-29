@@ -533,27 +533,17 @@ public sealed partial class Binding
     // never reselects.
     private bool CheckDefaulted(ref CallEvaluation evaluation, int winner, SlotSolution solution, Span<BoundArgumentOperation> operations)
     {
+        var defaulted = evaluation.Evaluated[winner];
         var state = this.TryCandidate(
-            solution,
-            evaluation.ExplicitLengths,
-            evaluation.Mapping,
-            evaluation.Evaluated[winner].ArgumentMap,
-            evaluation.Expected,
-            operations,
-            out _,
-            out var unsolved,
-            out _,
-            out _,
-            out var failure,
-            out _);
+            solution, evaluation.ExplicitLengths, evaluation.Mapping, evaluation.Expected, operations, ref defaulted);
         if (state is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
         {
-            evaluation.Evaluated[winner] = evaluation.Evaluated[winner] with { State = state, Unsolved = unsolved };
+            evaluation.Evaluated[winner] = evaluation.Evaluated[winner] with { State = state, Unsolved = defaulted.Unsolved };
             return true;
         }
 
         var call = evaluation.Call;
-        (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = [new(solution.Function, null, null, ConstraintFailure: failure)];
+        (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = [new(solution.Function, null, null, ConstraintFailure: defaulted.ConstraintFailure)];
         this.FailWaitingSelection(call, state == CandidateApplicability.Pending ? BindingFailure.UnprovenConstraint : BindingFailure.NoApplicableCandidate);
         return false;
     }

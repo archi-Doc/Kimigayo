@@ -20,19 +20,15 @@ public sealed partial class Binding
     // The invariant slot bindings belong to one candidate; a nested call bound while it is evaluated keeps its own.
     // `unsolved` holds the required structural slots that no evidence binds (SPEC 10.8); an Applicable or Waiting candidate with such
     // slots stays rankable, and its selection is the inference-boundary record (FailUnboundSlots).
+    // `candidate` is the candidate's evaluation record: its ArgumentMap is the mapping the candidate is tried with, and the trial writes
+    // the facts it decides (DefaultsUsed, Unsolved, ClosureReceiver, IndependentRejection, ConstraintFailure, PremiseUnknown).
     private CandidateApplicability TryCandidate(
         SlotSolution solution,
         BoundLength?[] explicitLengths,
         int[] mapping,
-        CallArgumentMap argumentMap,
         BoundType? expected,
         Span<BoundArgumentOperation> operations,
-        out int defaultsUsed,
-        out bool unsolved,
-        out ClosureReceiverRefutation? closureReceiver,
-        out bool independentRejection,
-        out ReferenceConstraintFailure? constraintFailure,
-        out bool premiseUnknown)
+        ref EvaluatedCandidate candidate)
     {
         if (this.MeasureCallInference)
         {
@@ -49,19 +45,7 @@ public sealed partial class Binding
         this.environmentEvidence = false;
         try
         {
-            var result = this.TryCandidateCore(
-                ref solution,
-                explicitLengths,
-                mapping,
-                argumentMap,
-                expected,
-                operations,
-                out defaultsUsed,
-                out unsolved,
-                out closureReceiver,
-                out independentRejection,
-                out constraintFailure,
-                out premiseUnknown);
+            var result = this.TryCandidateCore(ref solution, explicitLengths, mapping, expected, operations, ref candidate);
             if (result is CandidateApplicability.Applicable or CandidateApplicability.Waiting && this.acquisitionFailure is { } acquisition)
             {
                 // Only a candidate whose other inputs, result and Constraints fit can explain the absent spelling.
@@ -89,16 +73,11 @@ public sealed partial class Binding
         ref SlotSolution solution,
         BoundLength?[] explicitLengths,
         int[] mapping,
-        CallArgumentMap argumentMap,
         BoundType? expected,
         Span<BoundArgumentOperation> operations,
-        out int defaultsUsed,
-        out bool unsolved,
-        out ClosureReceiverRefutation? closureReceiver,
-        out bool independentRejection,
-        out ReferenceConstraintFailure? constraintFailure,
-        out bool premiseUnknown)
+        ref EvaluatedCandidate candidate)
     {
+        var argumentMap = candidate.ArgumentMap;
         var call = solution.Call;
         var function = solution.Function;
         var scope = solution.Scope;
@@ -117,12 +96,15 @@ public sealed partial class Binding
         var defaults = this.RentSlotSet(function.Parameters.Count);
         try
         {
-            defaultsUsed = argumentMap.DefaultsUsed;
-            closureReceiver = null;
-            unsolved = false;
-            independentRejection = false;
-            constraintFailure = null;
-            premiseUnknown = false;
+            candidate = candidate with
+            {
+                DefaultsUsed = argumentMap.DefaultsUsed,
+                ClosureReceiver = null,
+                Unsolved = false,
+                IndependentRejection = false,
+                ConstraintFailure = null,
+                PremiseUnknown = false,
+            };
             if (!argumentMap.InputsValid || (function.IsConstructor && declaringType is null))
             {
                 return CandidateApplicability.Inapplicable;
@@ -240,7 +222,7 @@ public sealed partial class Binding
                 {
                     if (part.BoundType is { } actual)
                     {
-                        independentRejection = function.IsConstructor && IndependentInputPattern(type) && !actual.CarriesOrigin;
+                        candidate = candidate with { IndependentRejection = function.IsConstructor && IndependentInputPattern(type) && !actual.CarriesOrigin };
                         // Retain this failed comparison in existing candidate scratch space. It is used only if no candidate
                         // applies; a successful overload selection publishes nothing from rejected alternatives.
                         if (DifferentRangeShapes(actual, type))
@@ -549,7 +531,7 @@ public sealed partial class Binding
                     return CandidateApplicability.Pending;
                 }
 
-                unsolved = !unsolvedSlots.IsEmpty;
+                candidate = candidate with { Unsolved = !unsolvedSlots.IsEmpty };
                 return CandidateApplicability.Waiting;
             }
 
@@ -561,7 +543,7 @@ public sealed partial class Binding
                 try
                 {
                     var permitted = solution.Prove(arguments.AsSpan(0, CallOwnSlots(function).Count), waitingCallables);
-                    closureReceiver = permitted == ConstraintProof.Proven ? mismatch : null;
+                    candidate = candidate with { ClosureReceiver = permitted == ConstraintProof.Proven ? mismatch : null };
                 }
                 finally
                 {
@@ -570,13 +552,16 @@ public sealed partial class Binding
             }
 
             // Retain only a condition actually reached after the argument/result checks, before scratch is reused.
-            if (proof == ConstraintProof.Refuted && closureReceiver is null)
+            if (proof == ConstraintProof.Refuted && candidate.ClosureReceiver is null)
             {
-                constraintFailure = this.CandidateConstraintFailure(function, arguments, lengths, scope, self, declaringType, ConstraintProof.Refuted);
+                candidate = candidate with { ConstraintFailure = this.CandidateConstraintFailure(function, arguments, lengths, scope, self, declaringType, ConstraintProof.Refuted) };
             }
 
-            unsolved = proof == ConstraintProof.Proven && !unsolvedSlots.IsEmpty;
-            premiseUnknown = proof == ConstraintProof.Unknown; // SPEC 8.3.3: every argument and result check has passed.
+            candidate = candidate with
+            {
+                Unsolved = proof == ConstraintProof.Proven && !unsolvedSlots.IsEmpty,
+                PremiseUnknown = proof == ConstraintProof.Unknown, // SPEC 8.3.3: every argument and result check has passed.
+            };
             return proof switch
             {
                 ConstraintProof.Proven => CandidateApplicability.Applicable,
