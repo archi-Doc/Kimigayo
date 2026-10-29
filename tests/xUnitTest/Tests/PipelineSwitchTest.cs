@@ -336,6 +336,7 @@ public sealed class PipelineSwitchTest
         const string Source = "struct Box\n    public let v: i32\n    public init(v: i32) => self.v = v\nfunc twice(b: ref/Box) -> i32 => b.v * 2\n" +
             "let b = Box.init(21)\nrequire twice(b@ref) == 42 else => $abort(\"twice\")\nConsole.writeLine(\"ok\")\n";
         var c = Compilation.CreateForTest();
+        c.Pipeline = CompilerPipeline.Legacy; // Whatever the process's pipeline, so that each switch below changes it.
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Source));
         var legacy = Check(c);
