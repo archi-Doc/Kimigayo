@@ -30,7 +30,8 @@ internal enum RawStep : byte
 // Raw Origins, steps (SPEC 5.7, 5.2.1 condition 3; DECISIONS BU-24, BU-41, BU-46; contract in Binding.RawOrigins.cs): the authority a
 // raw layer's Origin can keep, which retention and the TyCtxt views read after Binding: by its kind (StepOf), a signature's layer
 // (SignatureStep) and a layer an instance stores (StoredStep and its members StoredMembers, both over StoredLayer, which reads the
-// instance's kept part; the step from the layer its declaration states, DeclaredStep, which StoredStep and the hold walk read).
+// instance's kept part and, by WrittenAt, the Type its declaration writes there; the step from the layer its declaration states,
+// DeclaredStep, which StoredStep and the hold walk read).
 public sealed partial class Binding
 {
     // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-24; R4's constraint 2): the authority a raw layer's Origin can keep where no declaration
@@ -108,6 +109,26 @@ public sealed partial class Binding
         => type is { Kind: BoundTypeKind.Tuple } && (uint)position < (uint)type.Components.Count ? type.Components[position]
             : type is { Kind: BoundTypeKind.FixedArray } ? type.Components[0] : null;
 
+    // The Type an instance's declaration writes (WrittenType) at a struct's Field `part`, or at the payload an enum's Case `part` selects
+    // by the first position, then at the inline positions below it, followed through the Tuples and fixed arrays it writes only
+    // (InlinePart): null past any other Type (a Type parameter, a pair layer), and where the declaration writes no such part (`writes`
+    // false). It reads the declaration only, never an instance's kept part (StoredLayer reads both).
+    private static BoundType? WrittenAt(BoundType instance, int part, ReadOnlySpan<int> positions, out bool writes)
+    {
+        var adt = instance.Symbol?.Adt;
+        var structure = AdtDef.IsStruct(instance);
+        var written = WrittenType(structure ? (uint)part < (uint)adt!.Fields.Length ? adt.Fields[part] : null
+            : adt is not null && (uint)part < (uint)adt.Cases.Length && adt.Cases[part] is { } selected && positions.Length > 0 &&
+                (uint)positions[0] < (uint)selected.Payload.Length ? selected.Payload[positions[0]] : null);
+        writes = written is not null;
+        for (var i = structure ? 0 : 1; i < positions.Length && written is not null; i++)
+        {
+            written = InlinePart(written, positions[i]);
+        }
+
+        return written;
+    }
+
     // Whether an Origin is `origin` or a meet with it as an operand.
     private static bool Names(BoundOrigin? stated, BoundOrigin origin)
         => ReferenceEquals(stated, origin) || (stated?.Kind == OriginKind.Intersection && stated.Operands.Contains(origin));
@@ -164,22 +185,17 @@ public sealed partial class Binding
 
     // The raw layer an instance stores at a struct's Field `part`, or an enum's Case `part` whose first position selects the payload's
     // component, then the inline positions (a Tuple's component, a fixed array's element), in the instance's kept part (Instance: its
-    // substitution with the raw Origins it gives), and as `declared` the raw layer its declaration states there: null where a Type
-    // argument supplies the layer, the declaration stating another Type (a Type parameter, a pair layer) at the path or above it. A path
-    // whose kept part is no raw layer, a Case's that did not substitute (null; DECISIONS BU-37) included, is a broken contract.
+    // substitution with the raw Origins it gives) where its declaration writes the part, and as `declared` the raw layer its declaration
+    // states there (WrittenAt): null where a Type argument supplies the layer, the declaration stating another Type (a Type parameter, a
+    // pair layer) at the path or above it. A path whose kept part is no raw layer, a Case's that did not substitute (null; DECISIONS
+    // BU-37) included, is a broken contract.
     private BoundType StoredLayer(BoundType instance, int part, ReadOnlySpan<int> positions, out BoundType? declared)
     {
-        var adt = instance.Symbol?.Adt;
-        var structure = AdtDef.IsStruct(instance);
-        Koto? declaration = structure ? (uint)part < (uint)adt!.Fields.Length ? adt.Fields[part] : null
-            : adt is not null && (uint)part < (uint)adt.Cases.Length && adt.Cases[part] is { } selected && positions.Length > 0 &&
-                (uint)positions[0] < (uint)selected.Payload.Length ? selected.Payload[positions[0]] : null;
-        var written = WrittenType(declaration);
-        var kept = written is null ? null : this.Instance(instance).Parts[part];
-        var stored = structure || kept is null ? kept : InlinePart(kept, positions[0]);
-        for (var i = structure ? 0 : 1; i < positions.Length && stored is not null; i++)
+        var written = WrittenAt(instance, part, positions, out var writes);
+        var stored = writes ? this.Instance(instance).Parts[part] : null;
+        for (var i = 0; i < positions.Length && stored is not null; i++)
         {
-            (written, stored) = (InlinePart(written, positions[i]), InlinePart(stored, positions[i]));
+            stored = InlinePart(stored, positions[i]);
         }
 
         declared = ReferenceTypes.IsPointer(written) ? written : null;
